@@ -41,8 +41,9 @@ Hard constraints:
 public betting percentage, and none is available to you. Do not guess at one, \
 do not reason about what "the market" thinks, and do not anchor on a number you \
 imagine a sportsbook would post. Reason only from the factors given.
-- Factors marked (defaulted) had no value available and were filled with a \
-neutral placeholder. Treat them as unknown, not as zero.
+- Factors listed as NOT MEASURABLE have no value for this game at all. \
+Treat them as unknown: do not assume a value, do not treat them as zero, and \
+say so in your reasoning if one of them would have mattered.
 - You are estimating a probability, not giving advice. Do not mention betting, \
 staking, value, or whether something is worth backing.
 
@@ -166,10 +167,21 @@ def _client():
 
 def build_prompt(question: str, factor_rows: list[dict], notes: list[str]) -> str:
     lines = [f"CLAIM: {question}", "", "MEASURED FACTORS:"]
+    unmeasured = []
     for row in factor_rows:
-        tag = " (defaulted)" if row.get("missing") else ""
-        lines.append(f"- {row['factor']} = {row['value']:g}{tag}")
+        if not row.get("present", True):
+            unmeasured.append(row["factor"])
+            continue
+        source = f" [source: {row['source']}]" if row.get("source") else ""
+        lines.append(f"- {row['factor']} = {row['value']:g}{source}")
         lines.append(f"    what it measures: {row['rationale']}")
+    if unmeasured:
+        lines.append("")
+        lines.append(
+            "NOT MEASURABLE for this game. No value exists. Do not assume one, "
+            "and do not treat these as zero:"
+        )
+        lines.extend(f"- {name}" for name in unmeasured)
     if notes:
         lines.append("")
         lines.append("CAVEATS ON THIS DATA:")

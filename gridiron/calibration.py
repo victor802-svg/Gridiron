@@ -23,7 +23,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from . import config
-from .factors import registry
+from .factors import compute as factor_compute, registry
 from .model import logistic
 
 #: Stated-confidence buckets. Confidence is always >= 0.5 by construction: the
@@ -385,7 +385,7 @@ def factor_report(
         log_odds = payload.get("log_odds")
         question = payload.get("question") or {}
         yes_label = question.get("yes_label")
-        missing = set(payload.get("missing") or [])
+        absent = set(factor_compute.absent_factors(payload))
         if log_odds is None or not contributions or not yes_label:
             continue
         outcome_yes = r.outcome if r.model_side == yes_label else 1 - r.outcome
@@ -417,7 +417,7 @@ def factor_report(
             # untested hypothesis, not a disproved one.
             if abs(c.get("value") or 0.0) > 1e-9:
                 bucket["nonzero"] += 1
-            if name in missing:
+            if name in absent:
                 bucket["defaulted"] += 1
 
     factors = []
@@ -459,6 +459,20 @@ def factor_report(
             entry["verdict"] = "inactive; never used in a prediction"
         factors.append(entry)
 
+    # What the current fit could actually do with each factor. A factor absent
+    # from every training row, or present but never varying, has no coefficient
+    # to score and would otherwise show as "no resolved predictions yet", which
+    # reads like patience when it is really a measurement problem.
+    fit_status = _fit_status(conn, factor_set_version or config.FACTOR_SET_VERSION)
+    for entry in factors:
+        status = fit_status.get(entry["factor"])
+        if not status:
+            continue
+        entry["training_rows_measured"] = status.get("presence")
+        entry["excluded_from_fit"] = status.get("excluded")
+        if status.get("excluded") and not entry["n"]:
+            entry["verdict"] = status["reason"]
+
     factors.sort(key=lambda e: (-(e["delta_brier"] or -9), e["factor"]))
     return {
         "n": len(items),
@@ -466,6 +480,44 @@ def factor_report(
         "factor_set_version": factor_set_version or config.FACTOR_SET_VERSION,
         "factors": factors,
     }
+
+
+def _fit_status(conn: sqlite3.Connection, version: str) -> dict[str, dict]:
+    """Per-factor presence in the most recent fit of each market type."""
+    out: dict[str, dict] = {}
+    for market_type in ("spread", "prop"):
+        row = conn.execute(
+            "SELECT coefficients_json FROM model_fits"
+            " WHERE market_type = ? AND factor_set_version = ?"
+            " ORDER BY id DESC LIMIT 1",
+            (market_type, version),
+        ).fetchone()
+        if row is None:
+            continue
+        blob = json.loads(row["coefficients_json"])
+        total = blob.get("n") or 0
+        for name, count in (blob.get("presence") or {}).items():
+            out.setdefault(name, {"presence": count, "excluded": False})
+        for name, count in (blob.get("constant") or {}).items():
+            out[name] = {
+                "presence": count,
+                "excluded": True,
+                "reason": (
+                    f"never varied where it could be measured - one value across all "
+                    f"{count:,} of {total:,} training rows that carried it, so there "
+                    "is nothing to fit and nothing to score"
+                ),
+            }
+        for name, count in (blob.get("dropped") or {}).items():
+            out[name] = {
+                "presence": count,
+                "excluded": True,
+                "reason": (
+                    f"measurable in only {count:,} of {total:,} training rows, below "
+                    "the floor for estimating a coefficient at all"
+                ),
+            }
+    return out
 
 
 def _factor_verdict(
@@ -526,6 +578,7 @@ def scorecard(conn: sqlite3.Connection) -> dict:
         "headline": headline,
         "categories": categories,
         "edge": edge(conn, market_type="spread", predictor="statistical"),
+        "versions": version_comparison(conn),
         "separation_note": (
             "Curves are never merged. Spreads and props are different questions, "
             "and the statistical and LLM predictors are different forecasters; an "
@@ -534,3 +587,90 @@ def scorecard(conn: sqlite3.Connection) -> dict:
     }
     assert_every_figure_has_n(payload)
     return payload
+
+
+# ---------------------------------------------------------------------------
+# factor-set versions: closed records and accumulating ones, never summed
+# ---------------------------------------------------------------------------
+
+VERSION_NOTE = (
+    "A factor set is a different forecaster. Its record begins at N=0 on the day "
+    "it was activated and nothing earlier is backfitted onto it (LAW 2). The "
+    "versions below are reported side by side and are NEVER added together: a "
+    "closed record and an accumulating one describe different models, and their "
+    "sum describes neither."
+)
+
+
+def version_comparison(conn: sqlite3.Connection) -> dict:
+    """Every factor set that has produced predictions, side by side.
+
+    The current version almost always starts at N=0 and says so in words rather
+    than showing an empty chart and letting the reader assume a rendering bug.
+    """
+    seen = [
+        r["v"]
+        for r in conn.execute(
+            "SELECT DISTINCT factor_set_version AS v FROM predictions ORDER BY v"
+        )
+    ]
+    known = list(config.FACTOR_SET_HISTORY)
+    versions = known + [v for v in seen if v not in known]
+
+    entries = []
+    for version in versions:
+        counts = conn.execute(
+            "SELECT COUNT(*) AS total,"
+            " SUM(CASE WHEN resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
+            " FROM predictions WHERE factor_set_version = ?",
+            (version,),
+        ).fetchone()
+        total = counts["total"] or 0
+        n_resolved = counts["resolved"] or 0
+        is_current = version == config.FACTOR_SET_VERSION
+
+        categories = []
+        for market_type in ("spread", "prop"):
+            for predictor in ("statistical", "llm"):
+                items = resolved(
+                    conn,
+                    market_type=market_type,
+                    predictor=predictor,
+                    factor_set_version=version,
+                )
+                if not items and not is_current:
+                    continue
+                categories.append({
+                    "category": f"{market_type} / {predictor}",
+                    "market_type": market_type,
+                    "predictor": predictor,
+                    **score(items),
+                })
+
+        entry = {
+            "version": version,
+            "activated_utc": config.FACTOR_SET_ACTIVATED.get(version),
+            "status": "current" if is_current else "closed",
+            "n": n_resolved,
+            "predictions_written": total,
+            "open": total - n_resolved,
+            "categories": categories,
+        }
+        if n_resolved == 0:
+            entry["message"] = (
+                f"{version} has {total} prediction(s) written and 0 resolved. Its "
+                "record begins at N=0 on activation"
+                + (f" ({config.FACTOR_SET_ACTIVATED[version]})"
+                   if version in config.FACTOR_SET_ACTIVATED else "")
+                + ". Nothing is carried over from an earlier version, so there is "
+                "nothing to show yet and nothing wrong."
+            )
+        entries.append(entry)
+
+    return {
+        "n": sum(e["n"] for e in entries),   # LAW 4: the payload's own sample size
+        "current": config.FACTOR_SET_VERSION,
+        "note": VERSION_NOTE,
+        "never_summed": True,
+        "versions": entries,
+    }

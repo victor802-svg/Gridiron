@@ -143,8 +143,11 @@ def neutral_site(ctx) -> float:
     applies_to=("spread",),
     rationale=(
         "Recovery time is physical. An extra few days is more healing, more "
-        "practice reps and more film; the differential is what matters, since "
-        "both clubs playing on a short week cancels out."
+        "practice reps and more film. This is the signed difference in actual "
+        "rest days, and unlike the short-week flag it is a working instrument: "
+        "measured over 2024-25 it is non-zero in 206 games of 544 (37.9%), "
+        "spanning -8 to +8 days. It needs no replacement and has not been given "
+        "one."
     ),
 )
 def rest_diff(ctx) -> float | None:
@@ -156,6 +159,17 @@ def rest_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    active=False,
+    deactivated="2026-08-29T00:00:00Z",
+    note=(
+        "DEACTIVATED 2026-08-29 as a broken instrument, not as a refuted idea. "
+        "Measured over 2024-25: non-zero in 1 game of 544 (0.2%). The reason is "
+        "the schedule, not the hypothesis - the NFL puts BOTH clubs on a short "
+        "week for a Thursday game, so the differential cancels to zero exactly "
+        "when the effect is largest. The idea was right and the shape was wrong. "
+        "Replaced by short_week_either, which measures the level instead of the "
+        "difference. History stays; its v1 score stands as recorded."
+    ),
     rationale=(
         "A Thursday game after a Sunday game is a categorically different "
         "preparation, not just a smaller number of rest days: the install week "
@@ -166,6 +180,27 @@ def short_week_diff(ctx) -> float | None:
     if ctx.home_rest is None or ctx.away_rest is None:
         return None
     return float((ctx.away_rest <= 4) - (ctx.home_rest <= 4))
+
+
+@factor(
+    added="2026-08-29T00:00:00Z",
+    applies_to=("spread",),
+    rationale=(
+        "REPAIR of short_week_diff, which the schedule never let vary. The "
+        "short-week effect is a property of the GAME, not an asymmetry between "
+        "the clubs: when both sides come off six days, both installs are cut, "
+        "both walkthroughs are in shells, and neither side's soft-tissue knocks "
+        "have settled. That produces sloppier, more variable football, which "
+        "changes how often any given spread is covered - and it is invisible to "
+        "a differential that cancels. Measured over the same 544 games the "
+        "differential could not see, this is non-zero in 38 of them."
+    ),
+)
+def short_week_either(ctx) -> float | None:
+    """1 when either club is on four days' rest or fewer."""
+    if ctx.home_rest is None or ctx.away_rest is None:
+        return None
+    return 1.0 if (ctx.home_rest <= 4 or ctx.away_rest <= 4) else 0.0
 
 
 @factor(
@@ -342,6 +377,16 @@ def cold(ctx) -> float | None:
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
     default=0.0,
+    note=(
+        "REPAIRED 2026-08-29. It was not inert because rain does not matter; it "
+        "was inert because it was unmeasurable in 66% of games and those games "
+        "were filled in with 0.0, which the fit read as confirmed dry weather. "
+        "Two fixes: forward predictions now fetch a real kickoff-hour forecast "
+        "for outdoor stadiums (Open-Meteo, cached, tagged with its source), and "
+        "a game with no reading now EXCLUDES this factor rather than defaulting "
+        "it. Historical games still carry no precipitation reading at all, so "
+        "this factor's honest sample begins with the forward record."
+    ),
     rationale=(
         "Rain and snow reduce grip for the passing game and increase fumbles, "
         "compressing scoring. Probability of precipitation at kickoff, 0-1."

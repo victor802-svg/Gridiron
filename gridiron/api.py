@@ -87,6 +87,17 @@ def scorecard() -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/versions")
+def versions() -> dict:
+    """Factor-set records side by side. Never summed."""
+    try:
+        payload = calibration.version_comparison(get_conn())
+        calibration.assert_every_figure_has_n(payload)
+        return payload
+    except calibration.MissingSampleSize as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/week")
 def week(season: int | None = None, week: int | None = None) -> dict:
     return views.week(get_conn(), season, week)

@@ -12,7 +12,7 @@ import sqlite3
 
 from . import calibration, config, db
 from .data import repo
-from .factors import registry
+from .factors import compute as factor_compute, registry
 from .market import lines
 
 
@@ -46,7 +46,13 @@ def meta(conn: sqlite3.Connection) -> dict:
     }
 
 
+def _rationale(name: str) -> str:
+    factor = registry.REGISTRY.get(name)
+    return factor.rationale if factor else ""
+
+
 def _top_factors(payload: dict, limit: int = 5) -> list[dict]:
+    sources = payload.get("sources") or {}
     contributions = payload.get("contributions") or []
     if contributions:
         return [
@@ -54,25 +60,37 @@ def _top_factors(payload: dict, limit: int = 5) -> list[dict]:
                 "factor": c["factor"],
                 "value": c["value"],
                 "contribution": c["contribution"],
-                "missing": c.get("missing", False),
-                "rationale": (registry.REGISTRY[c["factor"]].rationale
-                              if c["factor"] in registry.REGISTRY else ""),
+                "present": c.get("present", True),
+                "source": sources.get(c["factor"]),
+                "rationale": _rationale(c["factor"]),
             }
             for c in contributions[:limit]
         ]
     # An LLM prediction has no decomposition; show the values it was given.
     values = payload.get("values") or {}
-    missing = set(payload.get("missing") or [])
     return [
         {
             "factor": name,
             "value": value,
             "contribution": None,
-            "missing": name in missing,
-            "rationale": (registry.REGISTRY[name].rationale
-                          if name in registry.REGISTRY else ""),
+            "present": True,
+            "source": sources.get(name),
+            "rationale": _rationale(name),
         }
         for name, value in list(values.items())[:limit]
+    ]
+
+
+def _absent_factors(payload: dict) -> list[dict]:
+    """What the model could not see, named on the card rather than omitted."""
+    detail = payload.get("absent_detail") or {}
+    return [
+        {
+            "factor": name,
+            "why": detail.get(name, "not measurable for this game"),
+            "rationale": _rationale(name),
+        }
+        for name in factor_compute.absent_factors(payload)
     ]
 
 
@@ -142,7 +160,8 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
                 "gap": gap,
                 "abs_gap": abs(gap) if gap is not None else -1.0,
                 "top_factors": _top_factors(payload),
-                "defaulted_factors": payload.get("missing") or [],
+                "absent_factors": _absent_factors(payload),
+                "factor_coverage": payload.get("coverage"),
                 "notes": payload.get("notes") or [],
                 "reasoning": r["reasoning"],
                 "degraded": r["degraded"],

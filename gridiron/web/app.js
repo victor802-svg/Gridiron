@@ -436,6 +436,49 @@ const Gridiron = (function () {
       }));
   }
 
+  // --- VERSIONS ----------------------------------------------------------
+  async function renderVersions() {
+    const data = await fetchJSON('/api/versions');
+    requireN(data, 'version comparison');
+    document.getElementById('versions-caption').textContent =
+      '— current: ' + data.current;
+    document.getElementById('versions-note').textContent = data.note;
+
+    const host = document.getElementById('versions-list');
+    host.innerHTML = '';
+    data.versions.forEach(v => {
+      const card = el('div', 'score-card');
+      const h = el('h3', '', v.version + '  ');
+      h.appendChild(el('span', 'tag' + (v.status === 'current' ? '' : ' warn'), v.status));
+      h.appendChild(nTag(v.n));
+      card.appendChild(h);
+      card.appendChild(el('div', 'card-meta',
+        'activated ' + (v.activated_utc || 'unrecorded') +
+        ' · ' + int(v.predictions_written) + ' written · ' +
+        int(v.open) + ' open'));
+
+      if (v.message) {
+        card.appendChild(el('div', 'empty', v.message));
+      } else {
+        const t = el('table', 'grid');
+        table(t, [{ label: 'Category' }, { label: 'N' }, { label: 'Brier' },
+                  { label: 'Log loss' }, { label: 'Hit rate' }],
+          v.categories.map(c => {
+            requireN(c, 'version ' + v.version + ' / ' + c.category);
+            return [c.category, int(c.n), num(c.brier), num(c.log_loss), pct(c.hit_rate)];
+          }));
+        card.appendChild(t);
+      }
+      host.appendChild(card);
+    });
+
+    // There is deliberately no total row. Summing a closed record and an
+    // accumulating one would describe neither model.
+    host.appendChild(el('p', 'footnote',
+      'No combined total is shown, and none will be: these are different ' +
+      'forecasters, and their sum describes nobody.'));
+  }
+
   // --- HISTORY -----------------------------------------------------------
   function historyQuery() {
     const p = new URLSearchParams();
@@ -512,6 +555,7 @@ const Gridiron = (function () {
     record: renderRecord,
     week: renderWeek,
     factors: renderFactors,
+    versions: renderVersions,
     history: renderHistory
   };
 

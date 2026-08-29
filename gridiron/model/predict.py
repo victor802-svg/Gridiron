@@ -245,8 +245,12 @@ def predict_week(
             predictor="statistical",
             prob_yes=stat["prob_yes"],
             fv=fv,
-            reasoning=baseline.explain(stat["contributions"]),
-            extra={"contributions": stat["contributions"], "log_odds": round(stat["log_odds"], 6)},
+            reasoning=baseline.explain(stat["contributions"], absent=stat["absent"]),
+            extra={
+                "contributions": stat["contributions"],
+                "log_odds": round(stat["log_odds"], 6),
+                "absent_detail": stat["absent_detail"],
+            },
             degraded=stat_degraded,
         )
         if written:

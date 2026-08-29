@@ -1,10 +1,21 @@
 """Turn a context into the feature vector the model sees.
 
-The only interesting decision here is what to do with a factor that returns
-`None`. We substitute the factor's declared `default` and record the name in
-`missing`, which is stored on the prediction. So a forecast made without a
-weather forecast says so on its own record, forever, instead of looking
-identical to one made in a dome.
+**Missing is an explicit state (v2).** A factor that cannot be measured for a
+game is *excluded from that game's vector*. It does not become a default, and
+it is never silently indistinguishable from a real measurement that happened to
+be zero. The prediction row records which factors were actually PRESENT and
+which were ABSENT, and both lists are permanent.
+
+Before v2 an unmeasurable factor was substituted with its declared default —
+usually 0.0 — and merely noted. That is how `precipitation`, unmeasurable in
+66% of games, came to be fitted as if two thirds of the league's history were
+played in confirmed dry weather.
+
+One thing this does not do, stated here because the temptation to overclaim is
+strong: for a linear model, excluding a term and imputing zero produce the same
+coefficients. The gain is in the record, in what gets scored, and in what an
+explanation is allowed to say — not in the arithmetic of the fit. See
+`logistic.fit` and `tests/test_missingness.py`.
 """
 
 from __future__ import annotations
@@ -17,24 +28,53 @@ from . import registry
 @dataclass
 class FeatureVector:
     market_type: str
+    #: Only the factors that could actually be measured for this game.
     values: dict[str, float] = field(default_factory=dict)
     raw: dict[str, float | None] = field(default_factory=dict)
-    missing: list[str] = field(default_factory=list)
+    #: Declared, active, applicable — and not measurable here.
+    absent: list[str] = field(default_factory=list)
+    #: Absent because the factor function raised. Kept apart from ordinary
+    #: unavailability: one is the world being quiet, the other is a bug.
     failed: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    #: Where each measured value came from, when that is not obvious
+    #: (e.g. weather: forecast / observed / indoors).
+    sources: dict[str, str] = field(default_factory=dict)
 
     @property
     def names(self) -> list[str]:
         return list(self.values)
 
+    @property
+    def present(self) -> list[str]:
+        return list(self.values)
+
+    @property
+    def coverage(self) -> float:
+        total = len(self.values) + len(self.absent)
+        return len(self.values) / total if total else 0.0
+
     def to_json_dict(self) -> dict:
         return {
             "market_type": self.market_type,
             "values": {k: round(v, 6) for k, v in self.values.items()},
-            "missing": self.missing,
+            "present": self.present,
+            "absent": self.absent,
             "failed": self.failed,
             "notes": self.notes,
+            "sources": self.sources,
+            "coverage": round(self.coverage, 4),
         }
+
+
+def absent_factors(payload: dict) -> list[str]:
+    """Read the absent list off a stored prediction of either factor set.
+
+    v1 rows wrote `missing`; v2 rows write `absent`. Both are permanent records
+    and both must stay readable, so the reader knows about both rather than the
+    writer pretending v1 never happened.
+    """
+    return list(payload.get("absent") or payload.get("missing") or [])
 
 
 def feature_vector(ctx, market_type: str) -> FeatureVector:
@@ -44,35 +84,55 @@ def feature_vector(ctx, market_type: str) -> FeatureVector:
             value = f.fn(ctx)
         except Exception as exc:  # noqa: BLE001 - a broken factor must not kill the slate
             fv.failed[f.name] = f"{type(exc).__name__}: {exc}"
-            value = None
+            fv.raw[f.name] = None
+            fv.absent.append(f.name)
+            continue
         fv.raw[f.name] = value
         if value is None:
-            fv.values[f.name] = f.default
-            fv.missing.append(f.name)
+            fv.absent.append(f.name)
         else:
             fv.values[f.name] = float(value)
+
+    basis = getattr(ctx, "weather_basis", None)
+    if basis:
+        for name in ("wind", "cold", "precipitation"):
+            if name in fv.values:
+                fv.sources[name] = basis
     return fv
 
 
 def describe(fv: FeatureVector, coefficients: dict[str, float] | None = None) -> list[dict]:
-    """Per-factor contributions, largest absolute effect first.
+    """Per-factor rows for display, largest absolute effect first.
 
-    With coefficients this is the actual decomposition of the log-odds, which is
-    what makes the statistical model explainable: every prediction can be read
-    back as a list of "this pushed it this far, in this direction".
+    Absent factors are listed too, with a null value — the reader is told what
+    the model could not see, which is part of reading a forecast honestly.
     """
     out = []
     for name, value in fv.values.items():
         entry = {
             "factor": name,
             "value": round(value, 4),
-            "missing": name in fv.missing,
+            "present": True,
             "rationale": registry.REGISTRY[name].rationale,
         }
+        if name in fv.sources:
+            entry["source"] = fv.sources[name]
         if coefficients is not None and name in coefficients:
             entry["coefficient"] = round(coefficients[name], 4)
             entry["contribution"] = round(coefficients[name] * value, 4)
         out.append(entry)
+
     if coefficients is not None:
         out.sort(key=lambda e: abs(e.get("contribution", 0.0)), reverse=True)
+
+    for name in fv.absent:
+        out.append({
+            "factor": name,
+            "value": None,
+            "present": False,
+            "contribution": None,
+            "rationale": registry.REGISTRY[name].rationale
+            if name in registry.REGISTRY else "",
+            "why_absent": fv.failed.get(name, "not measurable for this game"),
+        })
     return out

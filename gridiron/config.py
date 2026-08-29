@@ -32,7 +32,19 @@ PORT = int(os.environ.get("GRIDIRON_PORT", "8848"))
 # --- the factor set --------------------------------------------------------
 # Bumped whenever a factor is added, removed or redefined. Calibration curves
 # are kept separate per version (LAW 4: never merge incomparable samples).
-FACTOR_SET_VERSION = "fs1"
+FACTOR_SET_VERSION = "fs2"
+
+#: Every factor set that has ever produced predictions, oldest first. A version
+#: is CLOSED, never erased: its record stands as recorded and is reported beside
+#: the current one rather than merged into it.
+FACTOR_SET_HISTORY = ("fs1", "fs2")
+
+#: When each version began. A version's record starts at N=0 on this date and
+#: nothing earlier is backfitted onto it (LAW 2).
+FACTOR_SET_ACTIVATED = {
+    "fs1": "2026-08-28T00:00:00Z",
+    "fs2": "2026-08-29T00:00:00Z",
+}
 
 # --- LAW 4 -----------------------------------------------------------------
 # Nothing claims an edge below this many resolved predictions in a category.

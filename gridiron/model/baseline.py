@@ -209,6 +209,7 @@ def predict(fit: logistic.Fit, fv: compute.FeatureVector) -> dict:
     """
     prob = fit.predict(fv.values)
     contributions = fit.contributions(fv.values)
+    coefficients = dict(zip(fit.names, fit.coefficients))
     return {
         "prob_yes": prob,
         "log_odds": fit.log_odds(fv.values),
@@ -217,12 +218,20 @@ def predict(fit: logistic.Fit, fv: compute.FeatureVector) -> dict:
             {
                 "factor": name,
                 "value": round(value, 4),
-                "coefficient": round(dict(zip(fit.names, fit.coefficients))[name], 4),
+                "coefficient": round(coefficients[name], 4),
                 "contribution": round(contribution, 4),
-                "missing": name in fv.missing,
+                "present": True,
             }
             for name, value, contribution in contributions
         ],
+        # Named, not silently omitted. A reader is entitled to know what the
+        # model could not see; a factor merely absent from the contributions
+        # list would be indistinguishable from one that contributed zero.
+        "absent": list(fv.absent),
+        "absent_detail": {
+            name: fv.failed.get(name, "not measurable for this game")
+            for name in fv.absent
+        },
     }
 
 
@@ -238,7 +247,9 @@ def stated_side(prob_yes: float, yes_label: str, no_label: str) -> tuple[str, fl
     return no_label, 1.0 - prob_yes
 
 
-def explain(contributions: list[dict], limit: int = 4) -> str:
+def explain(
+    contributions: list[dict], limit: int = 4, absent: list[str] | None = None
+) -> str:
     """A plain-language reading of the largest contributions, used when the LLM
     pass is unavailable so a statistical-only prediction still has a reasoning
     field rather than an empty string."""
@@ -247,11 +258,18 @@ def explain(contributions: list[dict], limit: int = 4) -> str:
         if abs(c["contribution"]) < 0.01:
             continue
         direction = "toward" if c["contribution"] > 0 else "against"
-        tag = " (value unavailable, defaulted)" if c["missing"] else ""
         parts.append(
             f"{c['factor']} = {c['value']:g} pushes {direction} the yes side by "
-            f"{abs(c['contribution']):.2f} in log-odds{tag}"
+            f"{abs(c['contribution']):.2f} in log-odds"
         )
-    if not parts:
-        return "No factor moved this materially; the estimate sits near the base rate."
-    return "Statistical decomposition: " + "; ".join(parts) + "."
+    text = (
+        "No factor moved this materially; the estimate sits near the base rate."
+        if not parts
+        else "Statistical decomposition: " + "; ".join(parts) + "."
+    )
+    if absent:
+        text += (
+            " Not measurable for this game, and excluded rather than assumed: "
+            + ", ".join(sorted(absent)) + "."
+        )
+    return text

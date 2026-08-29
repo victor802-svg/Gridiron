@@ -357,7 +357,7 @@ def load_disagreements(
                 if any("fall back" in n for n in (payload.get("notes") or []))
                 else "season"
             ),
-            missing=payload.get("missing") or [],
+            missing=list(payload.get("absent") or payload.get("missing") or []),
             contributions=contributions,
             injury_report_present=present,
         )

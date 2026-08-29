@@ -30,7 +30,7 @@ def test_the_spec_factor_set_is_all_present():
     """Every factor the specification asked for is declared."""
     required = {
         "rest_diff",
-        "short_week_diff",
+        "short_week_either",
         "travel_kmiles",
         "timezone_shift",
         "home_field",
@@ -103,8 +103,8 @@ def test_recording_a_factor_score_requires_a_sample_size(conn):
 
 # --- feature vectors -------------------------------------------------------
 
-def test_missing_values_are_defaulted_and_recorded(league):
-    """A defaulted factor must be visible on the record, not blended in."""
+def test_an_unmeasurable_factor_leaves_the_vector_entirely(league):
+    """v2: absent is an explicit state, not a default that looks like data."""
     game_id = league.execute(
         "SELECT id FROM games WHERE status = 'scheduled' LIMIT 1"
     ).fetchone()["id"]
@@ -113,9 +113,12 @@ def test_missing_values_are_defaulted_and_recorded(league):
     fv = compute.feature_vector(ctx, "spread")
 
     assert fv.raw["rest_diff"] is None
-    assert fv.values["rest_diff"] == registry.REGISTRY["rest_diff"].default
-    assert "rest_diff" in fv.missing
-    assert "rest_diff" in fv.to_json_dict()["missing"]
+    assert "rest_diff" not in fv.values, "an unmeasurable factor must not carry a value"
+    assert "rest_diff" in fv.absent
+    payload = fv.to_json_dict()
+    assert "rest_diff" in payload["absent"]
+    assert "rest_diff" not in payload["present"]
+    assert payload["coverage"] < 1.0
 
 
 def test_a_broken_factor_does_not_kill_the_slate(league, monkeypatch):
@@ -139,8 +142,9 @@ def test_a_broken_factor_does_not_kill_the_slate(league, monkeypatch):
     ).fetchone()["id"]
     fv = compute.feature_vector(context.build_game_context(league, game_id), "spread")
     assert "ZeroDivisionError" in fv.failed["home_field"]
-    assert "home_field" in fv.missing
-    assert len(fv.values) == len(registry.active_factors("spread"))
+    assert "home_field" in fv.absent
+    assert "home_field" not in fv.values
+    assert len(fv.values) + len(fv.absent) == len(registry.active_factors("spread"))
 
 
 # --- the ratings -----------------------------------------------------------

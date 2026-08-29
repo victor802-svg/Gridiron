@@ -240,8 +240,8 @@ class StubClient:
 
 def _factor_rows():
     return [
-        {"factor": "srs_diff", "value": 0.8, "missing": False, "rationale": "Team quality."},
-        {"factor": "wind", "value": 0.0, "missing": True, "rationale": "Wind matters."},
+        {"factor": "srs_diff", "value": 0.8, "present": True, "rationale": "Team quality."},
+        {"factor": "wind", "value": None, "present": False, "rationale": "Wind matters."},
     ]
 
 
@@ -271,7 +271,8 @@ def test_the_prompt_carries_factors_and_no_line(conn):
     llm.reason(conn, question="KC covers -3.5", factor_rows=_factor_rows(),
                notes=[], game_id="G1", client=client)
     prompt = client.prompts[0]
-    assert "srs_diff" in prompt and "(defaulted)" in prompt
+    assert "srs_diff" in prompt
+    assert "NOT MEASURABLE" in prompt and "wind" in prompt
     for word in ("moneyline", "implied", "sportsbook", "vig", "juice"):
         assert word not in prompt.lower()
     assert "market" not in prompt.lower()
