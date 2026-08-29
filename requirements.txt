@@ -1,0 +1,5 @@
+# Gridiron runtime dependencies. Each one earns its place.
+fastapi==0.115.6         # HTTP API + static file serving
+uvicorn==0.34.0          # ASGI server, 127.0.0.1 only
+anthropic==0.42.0        # the LLM reasoning pass (optional at runtime;
+                         # absent key degrades to statistical-only, tagged)

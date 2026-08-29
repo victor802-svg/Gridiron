@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest==8.3.4
+httpx==0.28.1            # required by starlette's TestClient
+pyinstaller==6.11.1      # onedir desktop build
+playwright==1.49.1       # headless smoke test (G6); skipped if unavailable
