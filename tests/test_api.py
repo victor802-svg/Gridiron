@@ -73,8 +73,8 @@ def test_scorecard_fails_loudly_rather_than_rendering_without_n(client, monkeypa
     """LAW 4 at the boundary: a stripped payload must 500, not reach the page."""
     real = calibration.scorecard
 
-    def stripped(conn):
-        payload = real(conn)
+    def stripped(conn, *, sport):
+        payload = real(conn, sport=sport)
         payload["headline"]["score"].pop("n")
         return payload
 

@@ -57,7 +57,7 @@ def test_public_betting_is_declared_but_inactive_with_a_reason():
     assert f.deactivated_utc
     assert f.note and "no free source" in f.note.lower()
     assert f.fn(object()) is None, "an inactive factor must not synthesise a value"
-    assert f.name not in {g.name for g in registry.active_factors("spread")}
+    assert f.name not in {g.name for g in registry.active_factors("nfl", "spread")}
 
 
 def test_inactive_factors_are_excluded_from_the_vector(league):
@@ -98,7 +98,7 @@ def test_a_factor_cannot_move_its_own_activation_date(conn, monkeypatch):
 def test_recording_a_factor_score_requires_a_sample_size(conn):
     store.sync_registry(conn)
     with pytest.raises(ValueError, match="LAW 4"):
-        store.record_factor_score(conn, "home_field", "since_activation", None, 0.24, 0.6)
+        store.record_factor_score(conn, "nfl", "home_field", "since_activation", None, 0.24, 0.6)
 
 
 # --- feature vectors -------------------------------------------------------
@@ -144,7 +144,7 @@ def test_a_broken_factor_does_not_kill_the_slate(league, monkeypatch):
     assert "ZeroDivisionError" in fv.failed["home_field"]
     assert "home_field" in fv.absent
     assert "home_field" not in fv.values
-    assert len(fv.values) + len(fv.absent) == len(registry.active_factors("spread"))
+    assert len(fv.values) + len(fv.absent) == len(registry.active_factors("nfl", "spread"))
 
 
 # --- the ratings -----------------------------------------------------------

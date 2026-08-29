@@ -98,6 +98,29 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
 }
 .banner strong { letter-spacing: 0.06em; }
 
+/* Sport tabs. The outermost switch on the page, above everything, because
+   LAW 6 means every number below belongs to exactly one of them. Each label
+   carries its own resolved count, so an empty record is visible before the tab
+   is clicked. */
+.sportbar { background: var(--panel); border-bottom: 1px solid var(--rule); }
+.sportbar-inner {
+  max-width: 1120px; margin: 0 auto; padding: 0 24px;
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+}
+#sport-tabs { display: flex; gap: 2px; }
+#sport-tabs button {
+  font: inherit; font-size: var(--t-body); font-weight: 600;
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 11px 14px 9px; color: var(--ink-3); cursor: pointer;
+  display: flex; align-items: baseline; gap: 7px;
+}
+#sport-tabs button:hover { color: var(--ink); }
+#sport-tabs button[aria-current="true"] {
+  color: var(--ink); border-bottom-color: var(--accent);
+}
+#sport-tabs .tab-n { font-size: var(--t-caption); font-weight: 400; color: var(--ink-3); }
+#sport-tabs button[aria-current="true"] .tab-n { color: var(--ink-2); }
+
 .masthead { border-bottom: 1px solid var(--rule); }
 .masthead-inner {
   max-width: 1120px; margin: 0 auto; padding: 20px 24px 0;
@@ -225,6 +248,12 @@ table.grid td.wide {
 }
 .rail-legend .k { color: var(--ink-3); font-size: var(--t-caption); }
 .rail-legend .v { font-size: var(--t-display); font-weight: 650; letter-spacing: -0.02em; }
+/* A market with no source. Rendered in the caption size and the muted ink,
+   never in the display size, so it cannot be mistaken for a probability. */
+.rail-legend .v.no-line {
+  font-size: var(--t-body); font-weight: 500; color: var(--ink-3);
+  font-style: normal;
+}
 .rail-legend .gap-value.pos { color: var(--pos); }
 .rail-legend .gap-value.neg { color: var(--neg); }
 
@@ -338,6 +367,8 @@ canvas { display: block; max-width: 100%; }
 /* --- phone -------------------------------------------------------------- */
 
 @media (max-width: 640px) {
+  .sportbar-inner { padding: 0 14px; overflow-x: auto; }
+  #sport-tabs button { padding: 10px 10px 8px; white-space: nowrap; }
   .masthead-inner { padding: 16px 14px 0; }
   main { padding: 18px 14px 48px; }
   .colophon { padding: 16px 14px 32px; }

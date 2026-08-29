@@ -194,7 +194,7 @@ def test_a_forced_re_resolution_is_rejected_by_name(resolved_league):
 # --- LAW 4: no figure renders without its N --------------------------------
 
 def test_a_removed_sample_size_is_caught_by_name(resolved_league):
-    payload = calibration.scorecard(resolved_league)
+    payload = calibration.scorecard(resolved_league, sport="nfl")
     payload["categories"][0]["score"].pop("n")
     with pytest.raises(calibration.MissingSampleSize) as exc:
         calibration.assert_every_figure_has_n(payload)
@@ -203,14 +203,14 @@ def test_a_removed_sample_size_is_caught_by_name(resolved_league):
 
 
 def test_a_removed_bucket_sample_size_is_caught(resolved_league):
-    payload = calibration.scorecard(resolved_league)
+    payload = calibration.scorecard(resolved_league, sport="nfl")
     payload["headline"]["buckets"][0].pop("n")
     with pytest.raises(calibration.MissingSampleSize, match="LAW 4"):
         calibration.assert_every_figure_has_n(payload)
 
 
 def test_an_edge_figure_below_threshold_is_not_present_to_render(resolved_league):
-    edge = calibration.edge(resolved_league, market_type="spread")
+    edge = calibration.edge(resolved_league, sport="nfl", market_type="spread")
     assert edge["renderable"] is False
     for key in ("model_more_confident", "market_more_confident"):
         assert key not in edge, f"{key} leaked below the sample threshold"
@@ -350,7 +350,7 @@ def test_the_default_field_was_removed_not_merely_unused():
 def test_a_vector_that_defaults_an_absent_factor_is_caught_at_runtime():
     from gridiron.factors.compute import FeatureVector
 
-    fv = FeatureVector(market_type="spread")
+    fv = FeatureVector(sport="nfl", market_type="spread")
     fv.values["precipitation"] = 0.0
     fv.raw["precipitation"] = None
     fv.absent.append("precipitation")
@@ -374,7 +374,7 @@ def test_a_real_vector_passes_the_runtime_check(league):
 # --- curves are never merged ------------------------------------------------
 
 def test_a_planted_merged_prop_curve_is_caught_by_name(resolved_league):
-    payload = calibration.scorecard(resolved_league)
+    payload = calibration.scorecard(resolved_league, sport="nfl")
     merged = dict(payload["categories"][0])
     merged["category"] = "props / statistical"
     merged["market"] = "prop"
@@ -387,7 +387,7 @@ def test_a_planted_merged_prop_curve_is_caught_by_name(resolved_league):
 
 
 def test_a_planted_merged_forecaster_curve_is_caught(resolved_league):
-    payload = calibration.scorecard(resolved_league)
+    payload = calibration.scorecard(resolved_league, sport="nfl")
     merged = dict(payload["categories"][0])
     merged["filters"] = {**merged["filters"], "predictor": "all"}
     payload["categories"].append(merged)
@@ -396,7 +396,7 @@ def test_a_planted_merged_forecaster_curve_is_caught(resolved_league):
 
 
 def test_the_real_scorecard_has_no_merged_category(resolved_league):
-    payload = calibration.scorecard(resolved_league)
+    payload = calibration.scorecard(resolved_league, sport="nfl")
     calibration.assert_no_merged_categories(payload)     # must not raise
     markets = {c["market"] for c in payload["categories"]}
     assert markets == {"spread", *config.PROP_MARKETS}
@@ -406,13 +406,13 @@ def test_the_scorecard_refuses_to_serve_a_merged_payload(resolved_league, monkey
     """The check runs inside scorecard(), so a merge cannot reach the API."""
     real = calibration.version_comparison
 
-    def merged(conn):
-        payload = real(conn)
+    def merged(conn, *, sport):
+        payload = real(conn, sport=sport)
         payload["versions"] = payload["versions"]
         return payload
 
     monkeypatch.setattr(calibration, "version_comparison", merged)
-    calibration.scorecard(resolved_league)               # still clean
+    calibration.scorecard(resolved_league, sport="nfl")               # still clean
 
 
 # --- a factor declared in code, not just inserted in SQL --------------------

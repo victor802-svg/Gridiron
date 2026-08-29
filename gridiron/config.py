@@ -29,6 +29,50 @@ DB_PATH = Path(os.environ.get("GRIDIRON_DB", DEFAULT_DB))
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("GRIDIRON_PORT", "8848"))
 
+# --- the sports ------------------------------------------------------------
+# Order is display order in the interface. NFL first because it is the sport
+# the project was built for; MLB second because it is the one resolving daily.
+SPORTS: tuple[str, ...] = ("nfl", "mlb", "nba")
+
+SPORT_LABELS = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA"}
+
+#: What a sport calls one slate. NFL and NBA number weeks; a baseball slate is
+#: a day's card, so MLB's slate ordinal is a day.
+SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week"}
+
+#: The markets each sport asks about. MLB is moneyline only: there is no run
+#: line question worth asking that the moneyline does not already ask better.
+SPORT_MARKETS: dict[str, tuple[str, ...]] = {
+    "nfl": ("spread", "passing_yards", "receiving_yards", "rushing_yards",
+            "receptions", "passing_tds"),
+    "mlb": ("moneyline",),
+    "nba": ("spread", "points", "rebounds", "assists", "threes"),
+}
+
+#: Which of a sport's markets are player props (the rest are game markets).
+SPORT_PROP_MARKETS: dict[str, tuple[str, ...]] = {
+    "nfl": ("passing_yards", "receiving_yards", "rushing_yards",
+            "receptions", "passing_tds"),
+    "mlb": (),
+    "nba": ("points", "rebounds", "assists", "threes"),
+}
+
+#: Season the live slate is drawn from, per sport.
+SPORT_CURRENT_SEASON = {
+    "nfl": int(os.environ.get("GRIDIRON_SEASON", "2026")),
+    "mlb": int(os.environ.get("GRIDIRON_MLB_SEASON", "2026")),
+    # NBA seasons are named by their starting year: 2026 is 2026-27.
+    "nba": int(os.environ.get("GRIDIRON_NBA_SEASON", "2026")),
+}
+
+#: Seasons pulled by the loader, per sport.
+SPORT_LOAD_SEASONS = {
+    "nfl": tuple(range(2016, 2027)),
+    "mlb": tuple(range(2021, 2027)),
+    "nba": tuple(range(2021, 2027)),
+}
+
+
 # --- the factor set --------------------------------------------------------
 # Bumped whenever a factor is added, removed or redefined. Calibration curves
 # are kept separate per version (LAW 4: never merge incomparable samples).

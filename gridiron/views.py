@@ -16,15 +16,79 @@ from .factors import compute as factor_compute, registry
 from .market import lines
 
 
-def meta(conn: sqlite3.Connection) -> dict:
+def sports_summary(conn: sqlite3.Connection) -> dict:
+    """Per-sport counts for the tab labels.
+
+    Every sport is listed even with nothing in it, and each carries its own
+    resolved count, so an empty record is visible BEFORE clicking the tab. A
+    tab that looks the same whether it holds a season or nothing is a tab that
+    hides an empty record (LAW 4 and LAW 6 together).
+    """
+    rows = {
+        r["sport"]: r
+        for r in conn.execute(
+            "SELECT sport, COUNT(*) AS written,"
+            " SUM(CASE WHEN resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
+            " FROM predictions GROUP BY sport"
+        )
+    }
+    voided = {
+        r["sport"]: r["n"]
+        for r in conn.execute(
+            "SELECT p.sport, COUNT(*) AS n FROM prediction_voids v"
+            " JOIN predictions p ON p.id = v.prediction_id GROUP BY p.sport"
+        )
+    }
+    out = []
+    for sport in config.SPORTS:
+        row = rows.get(sport)
+        games = conn.execute(
+            "SELECT COUNT(*) AS n,"
+            " SUM(CASE WHEN status = 'final' THEN 1 ELSE 0 END) AS final"
+            " FROM games WHERE sport = ?",
+            (sport,),
+        ).fetchone()
+        out.append({
+            "sport": sport,
+            "label": config.SPORT_LABELS.get(sport, sport.upper()),
+            "n": (row["resolved"] if row else 0) or 0,
+            "written": (row["written"] if row else 0) or 0,
+            "voided": voided.get(sport, 0),
+            "games_loaded": games["n"] or 0,
+            "games_final": games["final"] or 0,
+            "markets": list(config.SPORT_MARKETS.get(sport, ())),
+            "line_source": lines.line_source_for(sport),
+        })
+    # No total. Summing resolved counts across sports would be the exact
+    # aggregation LAW 6 forbids, and it would be the first number a reader saw.
+    return {
+        "side_by_side_sports": True,
+        "sports": out,
+        "never_summed": (
+            "LAW 6: these counts are listed side by side and are never added "
+            "together. There is deliberately no combined total."
+        ),
+    }
+
+
+def meta(conn: sqlite3.Connection, sport: str) -> dict:
     from .model import llm
 
+    calibration.require_sport(sport, "views.meta")
     kind = db.database_kind(conn)
     counts = repo.counts(conn)
     row = conn.execute(
-        "SELECT MIN(created_utc) AS first, MAX(created_utc) AS last FROM predictions"
+        "SELECT MIN(created_utc) AS first, MAX(created_utc) AS last"
+        " FROM predictions WHERE sport = ?",
+        (sport,),
     ).fetchone()
     return {
+        "sport": sport,
+        "sport_label": config.SPORT_LABELS.get(sport, sport.upper()),
+        "sports": sports_summary(conn),
+        "markets": list(config.SPORT_MARKETS.get(sport, ())),
+        "prop_markets": list(config.SPORT_PROP_MARKETS.get(sport, ())),
+        "line_source": lines.line_source_for(sport),
         "database_kind": kind["kind"],
         "database_note": kind["note"],
         "factor_set_version": config.FACTOR_SET_VERSION,
@@ -36,7 +100,7 @@ def meta(conn: sqlite3.Connection) -> dict:
         "predictions": counts["predictions"],
         "first_prediction_utc": row["first"],
         "last_prediction_utc": row["last"],
-        "market_coverage": lines.coverage(conn),
+        "market_coverage": lines.coverage(conn, sport=sport),
         "llm_ledger": llm.ledger_summary(conn),
         "not_a_betting_tool": (
             "Gridiron states probabilities and keeps score of them. It does not "
@@ -108,12 +172,19 @@ def _absent_factors(payload: dict) -> list[dict]:
     ]
 
 
-def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = None) -> dict:
-    """THIS WEEK: one card per forecast, sorted by disagreement with the market."""
+def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
+         wk: int | None = None) -> dict:
+    """THE SLATE: one card per forecast, sorted by disagreement with the market.
+
+    "Week" is the slate key. NFL and NBA number weeks; MLB numbers days, since
+    a baseball slate is a day's card. Either way it is an integer that orders
+    the record, and the interface prints the sport's own word for it.
+    """
+    calibration.require_sport(sport, "views.week")
     explicit = wk is not None
-    season = season or config.CURRENT_SEASON
+    season = season or config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
     if wk is None:
-        wk = repo.next_unplayed_week(conn, season)
+        wk = repo.next_unplayed_week(conn, season, sport=sport)
 
     def fetch(s: int, w: int | None):
         if w is None:
@@ -121,8 +192,8 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
         return conn.execute(
             "SELECT p.*, g.home, g.away, g.kickoff_utc, g.status, g.home_score,"
             " g.away_score FROM predictions p JOIN games g ON g.id = p.game_id"
-            " WHERE g.season = ? AND g.week = ? ORDER BY p.id",
-            (s, w),
+            " WHERE p.sport = ? AND g.season = ? AND g.week = ? ORDER BY p.id",
+            (sport, s, w),
         ).fetchall()
 
     rows = fetch(season, wk)
@@ -132,11 +203,14 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
         # week that actually has forecasts rather than showing an empty page.
         latest = conn.execute(
             "SELECT g.season, g.week FROM predictions p JOIN games g ON g.id = p.game_id"
-            " ORDER BY g.season DESC, g.week DESC LIMIT 1"
+            " WHERE p.sport = ? ORDER BY g.season DESC, g.week DESC LIMIT 1",
+            (sport,),
         ).fetchone()
         if latest is None:
-            return {"season": season, "week": None, "n": 0, "cards": [],
-                    "message": "No predictions have been made yet.",
+            return {"sport": sport, "season": season, "week": None, "n": 0,
+                    "cards": [], "message": _empty_slate_message(conn, sport),
+                    "slate_word": config.SPORT_SLATE_WORD.get(sport, "week"),
+                    "line_source": lines.line_source_for(sport),
                     "sorted_by": "size of disagreement with the market"}
         season, wk = latest["season"], latest["week"]
         rows = fetch(season, wk)
@@ -160,7 +234,7 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
         )
         if key not in bucket_cache:
             bucket_cache[key] = calibration.bucket_record(
-                conn, r["model_prob"], market_type=r["market_type"],
+                conn, r["model_prob"], sport=sport, market_type=r["market_type"],
                 prop_type=r["prop_type"], predictor=r["predictor"],
             )
         cards.append(
@@ -187,6 +261,8 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
                 "market_line": snap.get("line"),
                 "market_implied_prob": implied,
                 "market_source": snap.get("source"),
+                "line_availability": lines.market_availability(
+                    sport, r["prop_type"] or r["market_type"]),
                 "public_pct": snap.get("public_pct"),
                 "gap": gap,
                 "abs_gap": abs(gap) if gap is not None else -1.0,
@@ -210,28 +286,69 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
     # lives. Cards with no market comparison sort last rather than first.
     cards.sort(key=lambda c: c["abs_gap"], reverse=True)
     return {
+        "sport": sport,
         "season": season,
         "week": wk,
+        "slate_word": config.SPORT_SLATE_WORD.get(sport, "week"),
         "n": len(cards),
         "cards": cards,
-        "sorted_by": "size of disagreement with the market; no comparison sorts last",
+        "line_source": lines.line_source_for(sport),
+        "sorted_by": (
+            "size of disagreement with the market; no comparison sorts last"
+            if lines.line_source_for(sport)["available"]
+            else "prediction id; this sport has no line source, so there is no "
+                 "disagreement to sort by"
+        ),
     }
 
 
-def available_weeks(conn: sqlite3.Connection) -> list[dict]:
+def available_weeks(conn: sqlite3.Connection, sport: str) -> list[dict]:
+    calibration.require_sport(sport, "views.available_weeks")
     return [
         {"season": r["season"], "week": r["week"], "n": r["n"]}
         for r in conn.execute(
             "SELECT g.season, g.week, COUNT(*) AS n FROM predictions p"
-            " JOIN games g ON g.id = p.game_id GROUP BY g.season, g.week"
-            " ORDER BY g.season DESC, g.week DESC"
+            " JOIN games g ON g.id = p.game_id WHERE p.sport = ?"
+            " GROUP BY g.season, g.week ORDER BY g.season DESC, g.week DESC",
+            (sport,),
         )
     ]
+
+
+def _empty_slate_message(conn: sqlite3.Connection, sport: str) -> str:
+    """Why this tab is empty, in words. An empty tab that says nothing looks
+    broken; an empty tab that says when the first slate arrives is just early."""
+    label = config.SPORT_LABELS.get(sport, sport.upper())
+    upcoming = conn.execute(
+        "SELECT MIN(kickoff_utc) AS first FROM games"
+        " WHERE sport = ? AND status = 'scheduled' AND kickoff_utc IS NOT NULL",
+        (sport,),
+    ).fetchone()
+    loaded = conn.execute(
+        "SELECT COUNT(*) AS n FROM games WHERE sport = ?", (sport,)
+    ).fetchone()["n"]
+    if not loaded:
+        return (
+            f"No {label} games are loaded yet. Run the loader for this sport; "
+            "until then there is nothing to forecast and nothing is wrong."
+        )
+    if upcoming and upcoming["first"]:
+        return (
+            f"No {label} forecasts written yet. The next scheduled game is "
+            f"{upcoming['first'].replace('T', ' ')}, and the first slate will be "
+            "written blind before it."
+        )
+    return (
+        f"No {label} forecasts written yet, and no scheduled games are loaded. "
+        "The schedule for the coming season has not been published to the "
+        "source yet."
+    )
 
 
 def history(
     conn: sqlite3.Connection,
     *,
+    sport: str,
     query: str = "",
     market_type: str | None = None,
     prop_type: str | None = None,
@@ -242,8 +359,9 @@ def history(
 ) -> dict:
     """Every past prediction, searchable. There is no write path to this table
     from the interface at all — the API exposes no verb but GET."""
-    where = ["1=1"]
-    params: list = []
+    calibration.require_sport(sport, "views.history")
+    where = ["p.sport = ?"]
+    params: list = [sport]
     if query:
         where.append("(p.subject LIKE ? OR p.game_id LIKE ? OR p.reasoning LIKE ?)")
         like = f"%{query}%"
@@ -317,6 +435,8 @@ def history(
 
 
 def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | None:
+    """One prediction, by id. Not sport-scoped because an id names exactly one
+    row of exactly one sport; the sport is returned on the payload."""
     r = conn.execute(
         "SELECT p.*, g.season, g.week, g.home, g.away, g.status, g.home_score,"
         " g.away_score, g.kickoff_utc FROM predictions p JOIN games g ON g.id = p.game_id"
@@ -329,6 +449,7 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
     payload = json.loads(r["factors_json"] or "{}")
     return {
         "prediction_id": r["id"],
+        "sport": r["sport"],
         "created_utc": r["created_utc"],
         "game_id": r["game_id"],
         "matchup": f"{r['away']} @ {r['home']}",
@@ -351,18 +472,21 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
     }
 
 
-def scorecard(conn: sqlite3.Connection) -> dict:
-    payload = calibration.scorecard(conn)
-    payload["meta"] = meta(conn)
+def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
+    calibration.require_sport(sport, "views.scorecard")
+    payload = calibration.scorecard(conn, sport=sport)
+    payload["meta"] = meta(conn, sport)
     calibration.assert_every_figure_has_n(payload)
+    calibration.assert_single_sport(payload, sport)
     return payload
 
 
-def factors(conn: sqlite3.Connection) -> dict:
+def factors(conn: sqlite3.Connection, sport: str) -> dict:
     from .factors import store
 
-    report = calibration.factor_report(conn)
-    stored = {f["name"]: f for f in store.stored_factors(conn)}
+    calibration.require_sport(sport, "views.factors")
+    report = calibration.factor_report(conn, sport=sport)
+    stored = {f["name"]: f for f in store.stored_factors(conn, sport=sport)}
     for entry in report["factors"]:
         row = stored.get(entry["factor"])
         if row:

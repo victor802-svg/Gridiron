@@ -41,8 +41,12 @@ class GameContext:
     away: str
     kickoff_utc: str | None
 
-    #: The line OUR question is about, chosen blind by `model.questions`. It is
-    #: not the market's price and never becomes one; see the module docstring.
+    #: Which sport's factor registry applies. Every context carries it, so
+    #: NFL's factors can never reach a baseball model by omission (LAW 6).
+    sport: str = "nfl"
+
+    #: The line OUR question is about, chosen blind. It is not the market's
+    #: price and never becomes one; see the module docstring.
     line_asked: float | None = None
 
     neutral_site: bool = False

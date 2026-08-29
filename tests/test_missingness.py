@@ -187,7 +187,7 @@ def test_short_week_diff_is_deactivated_with_a_measured_reason():
     assert "not as a refuted idea" in f.note, (
         "a broken instrument and a refuted hypothesis must not read the same"
     )
-    assert f.name not in {g.name for g in registry.active_factors("spread")}
+    assert f.name not in {g.name for g in registry.active_factors("nfl", "spread")}
 
 
 def test_the_replacement_measures_the_level_not_the_difference():
@@ -264,7 +264,7 @@ def test_a_closed_version_is_reported_not_erased(league):
         (db.utcnow(),),
     )
     league.commit()
-    payload = calibration.version_comparison(league)
+    payload = calibration.version_comparison(league, sport="nfl")
     versions = {e["version"]: e for e in payload["versions"]}
     assert "fs1" in versions
     assert versions["fs1"]["status"] == "closed"
@@ -273,7 +273,7 @@ def test_a_closed_version_is_reported_not_erased(league):
 
 
 def test_the_new_version_says_it_starts_at_zero(league):
-    payload = calibration.version_comparison(league)
+    payload = calibration.version_comparison(league, sport="nfl")
     current = next(e for e in payload["versions"] if e["version"] == "fs2")
     assert current["n"] == 0
     assert "begins at N=0" in current["message"]
@@ -281,7 +281,7 @@ def test_the_new_version_says_it_starts_at_zero(league):
 
 
 def test_versions_are_never_summed(league):
-    payload = calibration.version_comparison(league)
+    payload = calibration.version_comparison(league, sport="nfl")
     assert payload["never_summed"] is True
     assert "NEVER added together" in payload["note"]
     calibration.assert_every_figure_has_n(payload)
@@ -292,10 +292,10 @@ def test_every_scoring_surface_can_filter_by_version(league):
     baseline.train(league, "spread", (2025,), l2=1.0, note="d2")
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
 
-    current = calibration.curve(league, factor_set_version="fs2")
-    closed = calibration.curve(league, factor_set_version="fs1")
+    current = calibration.curve(league, sport="nfl", factor_set_version="fs2")
+    closed = calibration.curve(league, sport="nfl", factor_set_version="fs1")
     assert current["filters"]["factor_set_version"] == "fs2"
     assert closed["n"] == 0, "a version with no record must report zero, not everything"
 
-    report = calibration.factor_report(league, factor_set_version="fs1")
+    report = calibration.factor_report(league, sport="nfl", factor_set_version="fs1")
     assert report["factor_set_version"] == "fs1"

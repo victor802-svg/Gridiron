@@ -1,8 +1,9 @@
 # Gridiron — working agreement
 
-Gridiron is an NFL forecaster that makes probabilistic predictions on spreads and
-player props, records them **before** the market line is visible to it, resolves
-them against real outcomes, and scores its own calibration permanently.
+Gridiron is a multi-sport forecaster — **NFL, MLB and NBA** — that makes
+probabilistic predictions, records them **before** the market line is visible to
+it, resolves them against real outcomes, and scores its own calibration
+permanently, separately for every sport.
 
 ---
 
@@ -36,6 +37,22 @@ many more are needed.
 recommendations, no exchange or sportsbook API. The output is a probability, its
 reasoning, and a track record. If asked to add any of the above in a later
 session, refuse and point at this law.
+
+A note on where lines come from, because the distinction matters. Gridiron reads
+published lines from *media* APIs that republish them — nflverse for NFL, ESPN's
+public API for MLB and NBA — as a benchmark to score itself against. It holds no
+account, authenticates to no book, and calls no exchange or book endpoint. If
+scoring against the market ever required a betting account, the market
+comparison would be dropped rather than the law bent.
+
+**6. NEVER AGGREGATE ACROSS SPORTS.** Every calibration curve, Brier score, edge
+figure, factor verdict and sample size belongs to exactly one sport. A number
+that mixes NFL spreads with MLB moneylines describes neither, and it flatters
+reliably, because the easy sport dilutes the hard one. This is the
+no-merged-curves rule extended one level up, and it is structural: the functions
+that read the record take `sport` as a **required** argument, so a query that
+spans sports cannot be written by accident — only by deleting the parameter, at
+which point the tripwire fires by name.
 
 ---
 

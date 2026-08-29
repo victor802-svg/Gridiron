@@ -73,25 +73,50 @@ def health() -> dict:
     }
 
 
+DEFAULT_SPORT = config.SPORTS[0]
+
+
+def _sport(value: str | None) -> str:
+    """Resolve the sport for a request. Defaulting the QUERY PARAM is fine — a
+    browser has to land somewhere — but the value is validated here and passed
+    down explicitly, so nothing below ever sees a None (LAW 6)."""
+    sport = value or DEFAULT_SPORT
+    try:
+        return calibration.require_sport(sport, "the request")
+    except calibration.CrossSportAggregation as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/sports")
+def sports() -> dict:
+    """Every sport with its own counts, for the tab labels. Never a total."""
+    payload = views.sports_summary(get_conn())
+    calibration.assert_every_figure_has_n(payload)
+    return payload
+
+
 @app.get("/api/meta")
-def meta() -> dict:
-    return views.meta(get_conn())
+def meta(sport: str | None = None) -> dict:
+    return views.meta(get_conn(), _sport(sport))
 
 
 @app.get("/api/scorecard")
-def scorecard() -> dict:
+def scorecard(sport: str | None = None) -> dict:
     try:
-        return views.scorecard(get_conn())
+        return views.scorecard(get_conn(), _sport(sport))
     except calibration.MissingSampleSize as exc:
         # LAW 4. Better a loud 500 than a page of numbers with no sample sizes.
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except (calibration.MergedCurve, calibration.CrossSportAggregation) as exc:
+        # LAW 6 / no-merged-curves, at the boundary.
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/versions")
-def versions() -> dict:
-    """Factor-set records side by side. Never summed."""
+def versions(sport: str | None = None) -> dict:
+    """Factor-set records side by side, within one sport. Never summed."""
     try:
-        payload = calibration.version_comparison(get_conn())
+        payload = calibration.version_comparison(get_conn(), sport=_sport(sport))
         calibration.assert_every_figure_has_n(payload)
         return payload
     except calibration.MissingSampleSize as exc:
@@ -99,18 +124,21 @@ def versions() -> dict:
 
 
 @app.get("/api/week")
-def week(season: int | None = None, week: int | None = None) -> dict:
-    return views.week(get_conn(), season, week)
+def week(sport: str | None = None, season: int | None = None,
+         week: int | None = None) -> dict:
+    return views.week(get_conn(), _sport(sport), season, week)
 
 
 @app.get("/api/weeks")
-def weeks() -> dict:
-    available = views.available_weeks(get_conn())
-    return {"n": len(available), "weeks": available}
+def weeks(sport: str | None = None) -> dict:
+    chosen = _sport(sport)
+    available = views.available_weeks(get_conn(), chosen)
+    return {"n": len(available), "sport": chosen, "weeks": available}
 
 
 @app.get("/api/over-time")
 def over_time(
+    sport: str | None = None,
     market_type: str | None = None,
     prop_type: str | None = None,
     predictor: str = "statistical",
@@ -119,7 +147,7 @@ def over_time(
     """Weekly calibration points, each carrying its own N."""
     try:
         payload = calibration.over_time(
-            get_conn(), market_type=market_type, prop_type=prop_type,
+            get_conn(), sport=_sport(sport), market_type=market_type, prop_type=prop_type,
             predictor=predictor, factor_set_version=factor_set_version,
         )
         calibration.assert_every_figure_has_n(payload)
@@ -129,31 +157,42 @@ def over_time(
 
 
 @app.get("/api/markets")
-def markets() -> dict:
-    """Every market that has its own calibration category and its own gate."""
+def markets(sport: str | None = None) -> dict:
+    """Every market of one sport that has its own curve and its own gate."""
+    from .market import sources as line_sources
+
+    chosen = _sport(sport)
+    all_markets = list(config.SPORT_MARKETS.get(chosen, ()))
+    props = list(config.SPORT_PROP_MARKETS.get(chosen, ()))
     return {
-        "n": 1 + len(config.PROP_MARKETS),
-        "spread": ["spread"],
-        "props": list(config.PROP_MARKETS),
+        "n": len(all_markets),
+        "sport": chosen,
+        "markets": all_markets,
+        "game_markets": [m for m in all_markets if m not in props],
+        "props": props,
+        "line_availability": {
+            m: line_sources.for_market(chosen, m) for m in all_markets
+        },
         "props_per_week": config.PROPS_PER_WEEK,
         "props_per_game": config.PROPS_PER_GAME,
         "note": (
             "Prop markets are listed in descending order of real-world "
-            "liquidity, which is the order the weekly cap fills them in."
+            "liquidity, which is the order the slate cap fills them in."
         ),
     }
 
 
 @app.get("/api/factors")
-def factors() -> dict:
+def factors(sport: str | None = None) -> dict:
     try:
-        return views.factors(get_conn())
+        return views.factors(get_conn(), _sport(sport))
     except calibration.MissingSampleSize as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/history")
 def history(
+    sport: str | None = None,
     q: str = "",
     market_type: str | None = None,
     prop_type: str | None = None,
@@ -164,6 +203,7 @@ def history(
 ) -> dict:
     return views.history(
         get_conn(),
+        sport=_sport(sport),
         query=q,
         market_type=market_type,
         prop_type=prop_type,

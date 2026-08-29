@@ -36,7 +36,11 @@ CREATE TABLE IF NOT EXISTS meta (
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS games (
-    id            TEXT PRIMARY KEY,          -- nflverse game_id, e.g. 2026_01_NE_SEA
+    id            TEXT PRIMARY KEY,          -- source game id, namespaced by sport
+    -- LAW 6: every row belongs to exactly one sport, and nothing aggregates
+    -- across them. Defaulted to 'nfl' so rows written before there was a second
+    -- sport keep the only value they could have had.
+    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba')),
     season        INTEGER NOT NULL,
     week          INTEGER NOT NULL,
     game_type     TEXT    NOT NULL,          -- REG | WC | DIV | CON | SB
@@ -49,7 +53,8 @@ CREATE TABLE IF NOT EXISTS games (
     away_score    INTEGER,
     CHECK ((status = 'final') = (home_score IS NOT NULL AND away_score IS NOT NULL))
 );
-CREATE INDEX IF NOT EXISTS games_season_week ON games (season, week);
+CREATE INDEX IF NOT EXISTS games_season_week ON games (sport, season, week);
+CREATE INDEX IF NOT EXISTS games_sport_status ON games (sport, status);
 CREATE INDEX IF NOT EXISTS games_kickoff     ON games (kickoff_utc);
 
 -- Non-market context for a game: rest, venue, observed weather. Separated from
@@ -179,8 +184,10 @@ CREATE INDEX IF NOT EXISTS snap_pred ON market_snapshots (prediction_id);
 CREATE TABLE IF NOT EXISTS predictions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     created_utc   TEXT    NOT NULL,
+    sport         TEXT    NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba')),
     game_id       TEXT    NOT NULL REFERENCES games (id),
-    market_type   TEXT    NOT NULL CHECK (market_type IN ('spread', 'prop')),
+    -- 'moneyline' is MLB's only market; NBA and NFL use spread + prop.
+    market_type   TEXT    NOT NULL CHECK (market_type IN ('spread', 'prop', 'moneyline')),
     -- For props, the specific market: passing_yards, receptions, ... Each type
     -- is its own category with its own curve and its own gate; they are never
     -- merged into one "props" number.
@@ -210,9 +217,16 @@ CREATE INDEX IF NOT EXISTS pred_open     ON predictions (resolved_utc) WHERE res
 DROP INDEX IF EXISTS pred_unique;
 CREATE UNIQUE INDEX IF NOT EXISTS pred_one_answer_per_question
     ON predictions (game_id, market_type, subject, predictor, factor_set_version);
+CREATE INDEX IF NOT EXISTS pred_sport ON predictions (sport, market_type, prop_type);
 
+-- Factor names are globally unique across sports, not merely unique within
+-- one. Non-NFL factors carry their sport as a prefix (`mlb_home_away`), which
+-- keeps the primary key intact, makes a name self-describing wherever it is
+-- printed, and means no factor from one sport can ever be scored against
+-- another's record by a name collision.
 CREATE TABLE IF NOT EXISTS factors (
     name          TEXT PRIMARY KEY,
+    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba')),
     added_utc     TEXT NOT NULL
                   CHECK (added_utc LIKE '____-__-__T%'),
     -- LAW 2: a factor without a stated causal reason is not a factor.
@@ -225,6 +239,7 @@ CREATE TABLE IF NOT EXISTS factors (
 
 CREATE TABLE IF NOT EXISTS factor_scores (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba')),
     computed_utc  TEXT NOT NULL,
     factor        TEXT NOT NULL REFERENCES factors (name),
     window        TEXT NOT NULL,        -- 'since_activation' | 'season:2026' | ...
@@ -255,6 +270,7 @@ CREATE INDEX IF NOT EXISTS llm_day ON llm_calls (day_utc);
 -- re-explained with the exact weights that produced it.
 CREATE TABLE IF NOT EXISTS model_fits (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    sport              TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba')),
     fitted_utc         TEXT NOT NULL,
     factor_set_version TEXT NOT NULL,
     market_type        TEXT NOT NULL,

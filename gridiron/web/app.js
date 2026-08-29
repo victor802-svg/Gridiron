@@ -71,8 +71,16 @@ const Gridiron = (function () {
   }
 
   // --- data --------------------------------------------------------------
-  const state = { meta: null, scorecard: null, markets: ['spread'],
-                  historyOffset: 0, historyTotal: 0 };
+  // `sport` is the outermost piece of state on the page. Every fetch carries
+  // it, because every number below belongs to exactly one sport (LAW 6).
+  const state = { sport: 'nfl', sports: [], meta: null, scorecard: null,
+                  markets: ['spread'], historyOffset: 0, historyTotal: 0 };
+
+  function withSport(path, extra) {
+    const p = new URLSearchParams(extra || {});
+    p.set('sport', state.sport);
+    return path + (path.includes('?') ? '&' : '?') + p.toString();
+  }
 
   async function fetchJSON(url) {
     const res = await fetch(url);
@@ -317,7 +325,7 @@ const Gridiron = (function () {
     const params = new URLSearchParams({ predictor: predictor });
     if (market === 'spread') params.set('market_type', 'spread');
     else { params.set('market_type', 'prop'); params.set('prop_type', market); }
-    const data = await fetchJSON('/api/over-time?' + params.toString());
+    const data = await fetchJSON(withSport('/api/over-time?' + params.toString()));
     document.getElementById('overtime-caption').textContent =
       DASH + ' ' + int(data.n) + ' resolved across ' + int(data.points.length) + ' weeks';
     document.getElementById('overtime-note').textContent = data.note;
@@ -430,6 +438,29 @@ const Gridiron = (function () {
     const market = card.market_implied_prob;
     const at = v => (v * 100) + '%';
     const hasMarket = market !== null && market !== undefined;
+
+    // Where no line source exists, the rail is NOT drawn against an invented
+    // number. The absence is stated and the model's own probability stands on
+    // its own. A missing source degrades the comparison, never the record.
+    if (!hasMarket) {
+      const bare = el('div', 'dumbbell');
+      const block = el('div', 'rail-legend');
+      const m = el('div');
+      m.appendChild(el('span', 'k', 'MODEL'));
+      m.appendChild(el('div', 'v', pct(model)));
+      m.appendChild(el('span', 'chip-sub', card.model_side.replace('_', ' ')));
+      block.appendChild(m);
+      const none = el('div');
+      none.appendChild(el('span', 'k', 'MARKET'));
+      none.appendChild(el('div', 'v no-line', 'no line available'));
+      none.appendChild(el('span', 'chip-sub',
+        (card.line_availability && card.line_availability.reason)
+          ? card.line_availability.reason.split('.')[0] + '.'
+          : 'no free source prices this market'));
+      block.appendChild(none);
+      bare.appendChild(block);
+      return bare;
+    }
 
     if (hasMarket) {
       const span = el('div', 'rail-span ' + (model >= market ? 'pos' : 'neg'));
@@ -631,7 +662,7 @@ const Gridiron = (function () {
     const picker = document.getElementById('week-picker');
     const chosen = picker.value ? JSON.parse(picker.value) : {};
     const qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
-    const data = await fetchJSON('/api/week' + qs);
+    const data = await fetchJSON(withSport('/api/week' + qs));
     const market = document.getElementById('week-market').value;
 
     document.getElementById('week-title').textContent =
@@ -651,7 +682,7 @@ const Gridiron = (function () {
   }
 
   async function loadWeekPicker() {
-    const data = await fetchJSON('/api/weeks');
+    const data = await fetchJSON(withSport('/api/weeks'));
     const picker = document.getElementById('week-picker');
     picker.innerHTML = '';
     data.weeks.forEach(w => {
@@ -662,7 +693,7 @@ const Gridiron = (function () {
   }
 
   async function loadMarkets() {
-    const data = await fetchJSON('/api/markets');
+    const data = await fetchJSON(withSport('/api/markets'));
     state.markets = data.spread.concat(data.props);
     const chart = document.getElementById('chart-market');
     chart.innerHTML = '';
@@ -679,7 +710,7 @@ const Gridiron = (function () {
 
   // --- VERSIONS -----------------------------------------------------------
   async function renderVersions() {
-    const data = await fetchJSON('/api/versions');
+    const data = await fetchJSON(withSport('/api/versions'));
     requireN(data, 'version comparison');
     document.getElementById('versions-caption').textContent = DASH + ' current: ' + data.current;
     document.getElementById('versions-note').textContent = data.note;
@@ -721,7 +752,7 @@ const Gridiron = (function () {
 
   // --- FACTORS ------------------------------------------------------------
   async function renderFactors() {
-    const data = await fetchJSON('/api/factors');
+    const data = await fetchJSON(withSport('/api/factors'));
     requireN(data, 'factor report');
     document.getElementById('factors-caption').textContent =
       DASH + ' scored over ' + int(data.n) + ' resolved statistical predictions';
@@ -765,7 +796,7 @@ const Gridiron = (function () {
   }
 
   async function renderHistory() {
-    const data = await fetchJSON('/api/history?' + historyQuery());
+    const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
     requireN(data, 'history');
     state.historyTotal = data.n;
     document.getElementById('history-caption').textContent =
@@ -796,6 +827,45 @@ const Gridiron = (function () {
     document.getElementById('history-prev').disabled = state.historyOffset === 0;
     document.getElementById('history-next').disabled =
       state.historyOffset + data.returned >= data.n;
+  }
+
+  // --- sport tabs ---------------------------------------------------------
+  async function loadSports() {
+    const data = await fetchJSON('/api/sports');
+    state.sports = data.sports;
+    const host = document.getElementById('sport-tabs');
+    host.innerHTML = '';
+    data.sports.forEach(sp => {
+      const b = el('button', '', sp.label);
+      // LAW 4 in the navigation: the count is on the label, so an empty record
+      // is visible before the tab is clicked rather than after.
+      b.appendChild(el('span', 'tab-n', 'n=' + int(sp.n)));
+      b.setAttribute('aria-current', sp.sport === state.sport ? 'true' : 'false');
+      b.dataset.sport = sp.sport;
+      b.addEventListener('click', () => selectSport(sp.sport));
+      host.appendChild(b);
+    });
+    document.getElementById('sport-note').textContent = data.never_summed;
+  }
+
+  async function selectSport(sport) {
+    if (sport === state.sport) return;
+    state.sport = sport;
+    state.historyOffset = 0;
+    document.querySelectorAll('#sport-tabs button').forEach(b => {
+      b.setAttribute('aria-current', b.dataset.sport === sport ? 'true' : 'false');
+    });
+    try {
+      state.meta = await fetchJSON(withSport('/api/meta'));
+      renderBanner(state.meta);
+      renderColophon(state.meta);
+      state.scorecard = await fetchJSON(withSport('/api/scorecard'));
+      await loadMarkets();
+      await loadWeekPicker();
+      await route();
+    } catch (err) {
+      showError(err);
+    }
   }
 
   // --- chrome -------------------------------------------------------------
@@ -844,10 +914,11 @@ const Gridiron = (function () {
   async function boot() {
     skeleton(document.getElementById('week-cards'), 'skeleton-card', 3);
     try {
-      state.meta = await fetchJSON('/api/meta');
+      await loadSports();
+      state.meta = await fetchJSON(withSport('/api/meta'));
       renderBanner(state.meta);
       renderColophon(state.meta);
-      state.scorecard = await fetchJSON('/api/scorecard');
+      state.scorecard = await fetchJSON(withSport('/api/scorecard'));
       await loadMarkets();
       await loadWeekPicker();
     } catch (err) {

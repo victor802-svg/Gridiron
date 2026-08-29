@@ -40,6 +40,12 @@ class Factor:
     rationale: str
     applies_to: tuple[str, ...]
     fn: Callable
+    #: LAW 6: a factor belongs to exactly one sport and is never scored against
+    #: another's record. Names are globally unique, and non-NFL factors carry
+    #: their sport as a prefix so a name is self-describing wherever it prints.
+    #: The default matches the decorator's, and the decorator is the real gate:
+    #: it refuses an unprefixed name for any sport but the first one.
+    sport: str = "nfl"
     active: bool = True
     deactivated_utc: str | None = None
     note: str | None = None
@@ -53,6 +59,7 @@ def factor(
     added: str,
     rationale: str,
     applies_to: Iterable[str],
+    sport: str = "nfl",
     active: bool = True,
     deactivated: str | None = None,
     note: str | None = None,
@@ -64,8 +71,15 @@ def factor(
         name = fn.__name__
         if name in REGISTRY:
             raise ValueError(f"factor {name!r} is already declared")
+        if sport != "nfl" and not name.startswith(f"{sport}_"):
+            raise ValueError(
+                f"factor {name!r} is declared for {sport!r} but is not prefixed "
+                f"{sport}_. Names are globally unique so that no factor can be "
+                "scored against another sport's record by collision (LAW 6)."
+            )
         REGISTRY[name] = Factor(
             name=name,
+            sport=sport,
             added_utc=added,
             rationale=" ".join(rationale.split()),
             applies_to=tuple(applies_to),
@@ -79,16 +93,27 @@ def factor(
     return wrap
 
 
-def active_factors(market_type: str) -> list[Factor]:
+def active_factors(sport: str, market_type: str) -> list[Factor]:
+    """Active factors for one sport's market. `sport` is required: defaulting it
+    would silently hand NFL's factors to a baseball model (LAW 6)."""
     return [
-        f for f in REGISTRY.values() if f.active and market_type in f.applies_to
+        f
+        for f in REGISTRY.values()
+        if f.active and f.sport == sport and market_type in f.applies_to
     ]
 
 
-def all_factors(market_type: str | None = None) -> list[Factor]:
-    if market_type is None:
-        return list(REGISTRY.values())
-    return [f for f in REGISTRY.values() if market_type in f.applies_to]
+def all_factors(sport: str | None = None, market_type: str | None = None) -> list[Factor]:
+    out = list(REGISTRY.values())
+    if sport is not None:
+        out = [f for f in out if f.sport == sport]
+    if market_type is not None:
+        out = [f for f in out if market_type in f.applies_to]
+    return out
+
+
+def sports() -> list[str]:
+    return sorted({f.sport for f in REGISTRY.values()})
 
 
 # ===========================================================================

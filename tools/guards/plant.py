@@ -34,6 +34,8 @@ for stream in (sys.stdout, sys.stderr):
         pass
 
 from gridiron import audit, blind, calibration, config, db, resolve, run  # noqa: E402
+from gridiron.factors import compute  # noqa: E402
+from gridiron.market import sources as line_sources  # noqa: E402
 from gridiron.factors import registry, store  # noqa: E402
 from gridiron.model import baseline  # noqa: E402
 
@@ -101,7 +103,7 @@ def seeded_database(path: Path) -> sqlite3.Connection:
                             (week, team, gid, opp, pf, pa, rng.randint(55, 72)),
                         )
     store.sync_registry(conn)
-    baseline.train(conn, "spread", (2025,), l2=1.0, note="guard harness")
+    baseline.train(conn, "spread", (2025,), sport="nfl", l2=1.0, note="guard harness")
     return conn
 
 
@@ -293,7 +295,7 @@ def plant_double_resolution(conn: sqlite3.Connection) -> Result:
 
 def plant_figure_without_sample_size(conn: sqlite3.Connection) -> Result:
     """LAW 4: strip the N off a rendered figure."""
-    payload = calibration.scorecard(conn)
+    payload = calibration.scorecard(conn, sport="nfl")
     payload["headline"]["score"].pop("n", None)
     try:
         calibration.assert_every_figure_has_n(payload)
@@ -307,7 +309,7 @@ def plant_figure_without_sample_size(conn: sqlite3.Connection) -> Result:
 
 def plant_edge_claim_below_threshold(conn: sqlite3.Connection) -> Result:
     """LAW 4: try to read an edge figure that has not earned the right to exist."""
-    edge = calibration.edge(conn, market_type="spread", predictor="statistical")
+    edge = calibration.edge(conn, sport="nfl", market_type="spread", predictor="statistical")
     if edge["n_disagreements"] >= config.MIN_SAMPLE_FOR_EDGE_CLAIM:
         return Result("LAW 4", "read an edge figure below the sample threshold",
                       "calibration.edge", False,
@@ -407,7 +409,7 @@ def plant_a_defaulted_factor_at_runtime() -> Result:
     """The same violation, at the moment it would produce its first silent zero."""
     from gridiron.factors.compute import FeatureVector
 
-    fv = FeatureVector(market_type="spread")
+    fv = FeatureVector(sport="nfl", market_type="spread")
     fv.values["precipitation"] = 0.0
     fv.raw["precipitation"] = None
     fv.absent.append("precipitation")
@@ -423,7 +425,7 @@ def plant_a_defaulted_factor_at_runtime() -> Result:
 
 def plant_a_merged_calibration_curve(conn: sqlite3.Connection) -> Result:
     """LAW 4 / no-merged-curves: average every prop market into one number."""
-    payload = calibration.scorecard(conn)
+    payload = calibration.scorecard(conn, sport="nfl")
     merged = dict(payload["categories"][0])
     merged["category"] = "props / statistical"
     merged["market"] = "prop"
@@ -442,7 +444,7 @@ def plant_a_merged_calibration_curve(conn: sqlite3.Connection) -> Result:
 
 
 def plant_a_merged_forecaster_curve(conn: sqlite3.Connection) -> Result:
-    payload = calibration.scorecard(conn)
+    payload = calibration.scorecard(conn, sport="nfl")
     merged = dict(payload["categories"][0])
     merged["filters"] = dict(merged["filters"])
     merged["filters"]["predictor"] = "all"
@@ -477,6 +479,123 @@ def plant_a_registry_factor_without_a_rationale(conn: sqlite3.Connection) -> Res
                   "CHECK constraint reached through store.sync_registry", False,
                   "NOT CAUGHT - an unjustified factor entered the registry in code")
 
+
+def plant_a_cross_sport_query(conn: sqlite3.Connection) -> Result:
+    """LAW 6: ask the record a question that spans sports.
+
+    The tripwire is that `sport` is a REQUIRED argument on every function that
+    reads the record. The only way to write a cross-sport query is to delete
+    the parameter, so that is exactly what this plants.
+    """
+    for attempt, label in (
+        (lambda: calibration.resolved(conn, sport=None), "sport=None"),
+        (lambda: calibration.resolved(conn, sport="all"), "sport='all'"),
+        (lambda: calibration.curve(conn, sport="all"), "curve over every sport"),
+    ):
+        try:
+            attempt()
+        except calibration.CrossSportAggregation as exc:
+            return Result("LAW 6", f"read the record with {label}",
+                          "calibration.require_sport", True, str(exc))
+        return Result("LAW 6", f"read the record with {label}",
+                      "calibration.require_sport", False,
+                      "NOT CAUGHT - a query spanning sports returned a number")
+    return Result("LAW 6", "read the record across sports",
+                  "calibration.require_sport", False, "no attempt was made")
+
+
+def plant_a_cross_sport_payload(conn: sqlite3.Connection) -> Result:
+    """LAW 6, one level up: two correct queries stitched into one payload."""
+    payload = calibration.scorecard(conn, sport="nfl")
+    intruder = dict(payload["categories"][0])
+    intruder["sport"] = "mlb"
+    intruder["category"] = "moneyline / statistical"
+    payload["categories"].append(intruder)
+    try:
+        calibration.assert_single_sport(payload, "nfl")
+    except calibration.CrossSportAggregation as exc:
+        return Result("LAW 6", "stitch an MLB category into an NFL scorecard",
+                      "calibration.assert_single_sport", True, str(exc))
+    return Result("LAW 6", "stitch an MLB category into an NFL scorecard",
+                  "calibration.assert_single_sport", False,
+                  "NOT CAUGHT - one payload described two sports")
+
+
+def plant_a_faked_line_where_none_exists() -> Result:
+    """A market with no source must report absence, never a number.
+
+    Planted at the source descriptor: if `for_market` ever claims availability
+    for a market nothing prices, the interface would draw a dumbbell against an
+    invented number and the edge figure would be computed from it.
+    """
+    offenders = []
+    for sport in config.SPORTS:
+        for market in config.SPORT_PROP_MARKETS.get(sport, ()):
+            entry = line_sources.for_market(sport, market)
+            if entry.get("available"):
+                offenders.append(f"{sport}:{market}")
+            elif not entry.get("reason"):
+                offenders.append(f"{sport}:{market} (absent with no reason given)")
+    if offenders:
+        return Result("NO FAKED LINES", "check every prop market reports no source",
+                      "market.sources.for_market", False,
+                      "NOT CAUGHT - these claim a line that does not exist: "
+                      + ", ".join(offenders))
+    return Result("NO FAKED LINES", "check every prop market reports no source",
+                  "market.sources.for_market", True,
+                  "every prop market reports available=False with a stated reason")
+
+
+def plant_a_line_claimed_for_an_unpriced_market() -> Result:
+    """The same check, planted: claim a market that no source carries."""
+    fake = "shots_on_goal"
+    entry = line_sources.for_market("mlb", fake)
+    caught = not entry.get("available") and bool(entry.get("reason"))
+    return Result(
+        "NO FAKED LINES", "ask for a line on a market nobody prices",
+        "market.sources.for_market", caught,
+        entry.get("reason", "") if caught
+        else "NOT CAUGHT - an unpriced market reported a line",
+    )
+
+
+def plant_a_context_with_no_sport() -> Result:
+    """LAW 6 at the factor loop: a context that does not say whose factors apply."""
+    class Anonymous:
+        notes: list = []
+
+    try:
+        compute.feature_vector(Anonymous(), "spread")
+    except compute.SportNotOnContext as exc:
+        return Result("LAW 6", "build a feature vector from a context with no sport",
+                      "compute.feature_vector", True, str(exc))
+    return Result("LAW 6", "build a feature vector from a context with no sport",
+                  "compute.feature_vector", False,
+                  "NOT CAUGHT - one sport's factors could reach another's model")
+
+
+def plant_an_unprefixed_foreign_factor() -> Result:
+    """LAW 6 in the registry: declare an MLB factor without its sport prefix."""
+    try:
+        @registry.factor(
+            added="2026-08-29T00:00:00Z",
+            sport="mlb",
+            applies_to=("moneyline",),
+            rationale=(
+                "A planted factor that collides with another sport's namespace, "
+                "which is exactly what the prefix rule exists to prevent."
+            ),
+        )
+        def home_advantage(ctx):
+            return 1.0
+    except ValueError as exc:
+        registry.REGISTRY.pop("home_advantage", None)
+        return Result("LAW 6", "declare an MLB factor with no sport prefix",
+                      "registry.factor prefix rule", True, str(exc))
+    registry.REGISTRY.pop("home_advantage", None)
+    return Result("LAW 6", "declare an MLB factor with no sport prefix",
+                  "registry.factor prefix rule", False,
+                  "NOT CAUGHT - two sports can now collide on one factor name")
 
 def plant_betting_surface() -> Result:
     """LAW 5: has a staking surface grown anywhere in the package?
@@ -537,6 +656,10 @@ def main() -> int:
     results.append(plant_betting_surface_violation())
     results.append(plant_a_silent_missing_data_default())
     results.append(plant_a_defaulted_factor_at_runtime())
+    results.append(plant_a_faked_line_where_none_exists())
+    results.append(plant_a_line_claimed_for_an_unpriced_market())
+    results.append(plant_a_context_with_no_sport())
+    results.append(plant_an_unprefixed_foreign_factor())
 
     with tempfile.TemporaryDirectory() as tmp:
         conn = seeded_database(Path(tmp) / "guards.db")
@@ -553,6 +676,8 @@ def main() -> int:
         results.append(plant_a_registry_factor_without_a_rationale(conn))
         results.append(plant_a_merged_calibration_curve(conn))
         results.append(plant_a_merged_forecaster_curve(conn))
+        results.append(plant_a_cross_sport_query(conn))
+        results.append(plant_a_cross_sport_payload(conn))
         conn.close()
 
     print("=" * 74)

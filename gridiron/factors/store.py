@@ -28,10 +28,11 @@ def sync_registry(conn: sqlite3.Connection) -> dict[str, int]:
 
             if row is None:
                 conn.execute(
-                    "INSERT INTO factors (name, added_utc, rationale, active,"
-                    " deactivated_utc, note) VALUES (?,?,?,?,?,?)",
+                    "INSERT INTO factors (name, sport, added_utc, rationale, active,"
+                    " deactivated_utc, note) VALUES (?,?,?,?,?,?,?)",
                     (
                         f.name,
+                        f.sport,
                         f.added_utc,
                         f.rationale,
                         1 if f.active else 0,
@@ -75,8 +76,16 @@ def sync_registry(conn: sqlite3.Connection) -> dict[str, int]:
     return {"added": added, "updated": updated, "unchanged": unchanged}
 
 
-def stored_factors(conn: sqlite3.Connection) -> list[dict]:
-    rows = conn.execute("SELECT * FROM factors ORDER BY active DESC, name").fetchall()
+def stored_factors(conn: sqlite3.Connection, sport: str | None = None) -> list[dict]:
+    if sport is None:
+        rows = conn.execute(
+            "SELECT * FROM factors ORDER BY sport, active DESC, name"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM factors WHERE sport = ? ORDER BY active DESC, name",
+            (sport,),
+        ).fetchall()
     out = []
     for r in rows:
         entry = dict(r)
@@ -89,6 +98,7 @@ def stored_factors(conn: sqlite3.Connection) -> list[dict]:
 
 def record_factor_score(
     conn: sqlite3.Connection,
+    sport: str,
     factor: str,
     window: str,
     n: int,
@@ -100,9 +110,9 @@ def record_factor_score(
     if n is None:
         raise ValueError("LAW 4: a factor score cannot be recorded without its sample size")
     cur = conn.execute(
-        "INSERT INTO factor_scores (computed_utc, factor, window, n, brier, log_loss, note)"
-        " VALUES (?,?,?,?,?,?,?)",
-        (utcnow(), factor, window, int(n), brier, log_loss, note),
+        "INSERT INTO factor_scores (sport, computed_utc, factor, window, n, brier,"
+        " log_loss, note) VALUES (?,?,?,?,?,?,?,?)",
+        (sport, utcnow(), factor, window, int(n), brier, log_loss, note),
     )
     conn.commit()
     return cur.lastrowid

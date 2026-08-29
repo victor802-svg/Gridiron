@@ -256,7 +256,7 @@ def test_the_summary_counts_voids_apart_from_losses(settled_props):
 # --- per-market scoring -----------------------------------------------------
 
 def test_each_market_is_its_own_category(settled_props):
-    payload = calibration.scorecard(settled_props)
+    payload = calibration.scorecard(settled_props, sport="nfl")
     labels = {c["category"] for c in payload["categories"]}
     for market in config.PROP_MARKETS:
         assert f"{market} / statistical" in labels
@@ -267,7 +267,7 @@ def test_each_market_carries_its_own_void_count(settled_props):
     _ghost_prop(settled_props, "passing_yards")
     resolve.resolve_all(settled_props)
     curve = calibration.curve(
-        settled_props, market_type="prop", prop_type="passing_yards",
+        settled_props, sport="nfl", market_type="prop", prop_type="passing_yards",
         predictor="statistical",
     )
     assert curve["voided"] >= 1
@@ -277,13 +277,13 @@ def test_each_market_carries_its_own_void_count(settled_props):
 
 def test_a_void_is_excluded_from_the_curve_but_reported_beside_it(settled_props):
     before = calibration.curve(
-        settled_props, market_type="prop", prop_type="passing_yards",
+        settled_props, sport="nfl", market_type="prop", prop_type="passing_yards",
         predictor="statistical",
     )
     _ghost_prop(settled_props, "passing_yards")
     resolve.resolve_all(settled_props)
     after = calibration.curve(
-        settled_props, market_type="prop", prop_type="passing_yards",
+        settled_props, sport="nfl", market_type="prop", prop_type="passing_yards",
         predictor="statistical",
     )
     assert after["n"] == before["n"], "a void must not enter the calibration sample"
@@ -293,7 +293,8 @@ def test_a_void_is_excluded_from_the_curve_but_reported_beside_it(settled_props)
 def test_each_market_has_its_own_gate(settled_props):
     for market in config.PROP_MARKETS:
         e = calibration.edge(
-            settled_props, market_type="prop", prop_type=market, predictor="statistical"
+            settled_props, sport="nfl", market_type="prop", prop_type=market,
+            predictor="statistical",
         )
         assert e["prop_type"] == market
         assert e["minimum_for_a_claim"] == config.MIN_SAMPLE_FOR_EDGE_CLAIM

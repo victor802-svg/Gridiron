@@ -33,14 +33,32 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 #: rewrite `predictions` would be a way around LAW 3.
 MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("predictions", "prop_type", "TEXT"),
+    # S1: every record belongs to exactly one sport (LAW 6). Existing rows
+    # backfill to 'nfl' via the column default, which is correct: they are all
+    # NFL, and there was no other sport when they were written.
+    ("games", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
+    ("predictions", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
+    ("factors", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
+    ("factor_scores", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
+    ("model_fits", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
 )
 
 
 def _migrate(conn: sqlite3.Connection) -> list[str]:
+    """Widen existing tables before the schema script runs.
+
+    Order matters: the script creates indexes over columns these migrations
+    add, so on an already-populated database the ALTERs must land first. On a
+    fresh database the tables do not exist yet, `PRAGMA table_info` returns
+    nothing, and each migration is skipped — the CREATE TABLE statements
+    already carry the column.
+    """
     applied = []
     for table, column, decl in MIGRATIONS:
-        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
-        if column not in existing:
+        info = list(conn.execute(f"PRAGMA table_info({table})"))
+        if not info:
+            continue            # fresh database; the schema script defines it
+        if column not in {r[1] for r in info}:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
             applied.append(f"{table}.{column}")
     return applied
@@ -48,8 +66,8 @@ def _migrate(conn: sqlite3.Connection) -> list[str]:
 
 def init(conn: sqlite3.Connection) -> None:
     """Create the schema. Idempotent — every object is IF NOT EXISTS."""
-    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     _migrate(conn)
+    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     conn.execute(
         "INSERT OR IGNORE INTO meta (key, value) VALUES ('kind', 'live')"
     )

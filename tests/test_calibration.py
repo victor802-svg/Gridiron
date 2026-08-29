@@ -131,7 +131,7 @@ def test_a_prop_for_a_player_who_did_not_appear_is_VOIDED_not_guessed(settled):
 # --- LAW 4: no sample, no claim --------------------------------------------
 
 def test_every_bucket_carries_its_n_even_when_empty(settled):
-    c = calibration.curve(settled, market_type="spread", predictor="statistical")
+    c = calibration.curve(settled, sport="nfl", market_type="spread", predictor="statistical")
     assert len(c["buckets"]) == len(calibration.BUCKETS)
     for b in c["buckets"]:
         assert "n" in b and isinstance(b["n"], int)
@@ -152,13 +152,13 @@ def test_the_validator_reports_where_the_n_is_missing():
 
 
 def test_a_full_scorecard_passes_its_own_validator(settled):
-    payload = calibration.scorecard(settled)
+    payload = calibration.scorecard(settled, sport="nfl")
     calibration.assert_every_figure_has_n(payload)      # must not raise
     assert payload["headline"]["n"] >= 0
 
 
 def test_no_edge_is_claimed_below_the_threshold(settled):
-    e = calibration.edge(settled, market_type="spread", predictor="statistical")
+    e = calibration.edge(settled, sport="nfl", market_type="spread", predictor="statistical")
     assert e["minimum_for_a_claim"] == config.MIN_SAMPLE_FOR_EDGE_CLAIM
     assert e["renderable"] is False
     assert "model_more_confident" not in e, "a figure leaked below the threshold"
@@ -167,13 +167,13 @@ def test_no_edge_is_claimed_below_the_threshold(settled):
 
 
 def test_the_edge_note_stands_whether_or_not_it_renders(settled):
-    e = calibration.edge(settled)
+    e = calibration.edge(settled, sport="nfl")
     assert "luck" in e["standing_note"]
 
 
 def test_the_edge_shows_both_directions_once_it_renders(settled, monkeypatch):
     monkeypatch.setattr(config, "MIN_SAMPLE_FOR_EDGE_CLAIM", 1)
-    e = calibration.edge(settled, market_type="spread", predictor="statistical")
+    e = calibration.edge(settled, sport="nfl", market_type="spread", predictor="statistical")
     if e["renderable"]:
         assert "model_more_confident" in e
         assert "market_more_confident" in e, (
@@ -216,7 +216,7 @@ def test_a_thin_bucket_does_not_get_to_be_the_headline():
 def test_categories_are_never_merged(settled):
     """Each prop market is its own category. There is no combined "props" row,
     because receptions and passing touchdowns are different questions."""
-    payload = calibration.scorecard(settled)
+    payload = calibration.scorecard(settled, sport="nfl")
     labels = {c["category"] for c in payload["categories"]}
     expected = {
         f"{market} / {predictor}"
@@ -232,7 +232,7 @@ def test_categories_are_never_merged(settled):
 
 
 def test_the_market_baseline_is_scored_on_the_same_questions(settled):
-    c = calibration.curve(settled, market_type="spread", predictor="statistical")
+    c = calibration.curve(settled, sport="nfl", market_type="spread", predictor="statistical")
     market = c["baselines"]["market"]
     if market["n"]:
         same = c["baselines"]["model_on_market_subset"]
@@ -242,7 +242,7 @@ def test_the_market_baseline_is_scored_on_the_same_questions(settled):
 
 
 def test_the_always_fifty_baseline_is_stated(settled):
-    c = calibration.curve(settled, market_type="spread")
+    c = calibration.curve(settled, sport="nfl", market_type="spread")
     assert c["baselines"]["always_50"]["brier"] == pytest.approx(0.25)
 
 
@@ -263,13 +263,13 @@ def test_factors_are_scored_only_from_their_activation_date(settled, monkeypatch
             fn=original.fn,
         ),
     )
-    report = calibration.factor_report(settled)
+    report = calibration.factor_report(settled, sport="nfl")
     entry = next(f for f in report["factors"] if f["factor"] == "srs_diff")
     assert entry["n"] == 0, "a factor cannot be scored on predictions older than itself"
 
 
 def test_the_factor_report_separates_the_kinds_of_nothing(settled):
-    report = calibration.factor_report(settled)
+    report = calibration.factor_report(settled, sport="nfl")
     verdicts = {f["factor"]: f["verdict"] for f in report["factors"]}
     assert verdicts["public_bet_pct"] == "inactive; never used in a prediction"
     for f in report["factors"]:
@@ -281,7 +281,7 @@ def test_a_factor_whose_input_never_varies_is_untested_not_disproved(settled):
     """`short_week_diff` is zero in almost every real game because the schedule
     puts both clubs on a short week together. That is a fact about the NFL
     calendar, and the verdict must not read as a verdict on the idea."""
-    report = calibration.factor_report(settled)
+    report = calibration.factor_report(settled, sport="nfl")
     entry = next(f for f in report["factors"] if f["factor"] == "short_week_diff")
     if entry["n"]:
         assert entry["nonzero_share"] == 0.0

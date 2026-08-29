@@ -27,20 +27,26 @@ def game(conn: sqlite3.Connection, game_id: str) -> sqlite3.Row | None:
     ).fetchone()
 
 
-def games_for_week(conn: sqlite3.Connection, season: int, week: int) -> list[sqlite3.Row]:
+def games_for_week(
+    conn: sqlite3.Connection, season: int, week: int, sport: str = "nfl"
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT g.*, c.home_rest, c.away_rest, c.roof, c.surface, c.neutral_site,"
         " c.div_game, c.stadium, c.temp_f, c.wind_mph"
         " FROM games g LEFT JOIN game_conditions c ON c.game_id = g.id"
-        " WHERE g.season = ? AND g.week = ? ORDER BY g.kickoff_utc, g.id",
-        (season, week),
+        " WHERE g.sport = ? AND g.season = ? AND g.week = ?"
+        " ORDER BY g.kickoff_utc, g.id",
+        (sport, season, week),
     ).fetchall()
 
 
-def next_unplayed_week(conn: sqlite3.Connection, season: int) -> int | None:
+def next_unplayed_week(
+    conn: sqlite3.Connection, season: int, sport: str = "nfl"
+) -> int | None:
     row = conn.execute(
-        "SELECT MIN(week) AS w FROM games WHERE season = ? AND status = 'scheduled'",
-        (season,),
+        "SELECT MIN(week) AS w FROM games"
+        " WHERE sport = ? AND season = ? AND status = 'scheduled'",
+        (sport, season),
     ).fetchone()
     return None if row is None or row["w"] is None else int(row["w"])
 

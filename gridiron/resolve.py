@@ -90,7 +90,20 @@ def _prop_actual(conn: sqlite3.Connection, pred: sqlite3.Row) -> float:
 
 
 def outcome_for(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
-    """1 if the side the model stated is what happened."""
+    """1 if the side the model stated is what happened.
+
+    Dispatches to the sport's own adapter: a baseball moneyline and a football
+    spread are settled by different arithmetic, and neither should know about
+    the other.
+    """
+    from . import sports
+
+    sport = pred["sport"] if "sport" in pred.keys() else "nfl"
+    return sports.get(sport).resolve_outcome(conn, pred)
+
+
+def resolve_nfl_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
+    """NFL: a spread cover, or a player prop over/under."""
     game = conn.execute(
         "SELECT home_score, away_score, status FROM games WHERE id = ?",
         (pred["game_id"],),

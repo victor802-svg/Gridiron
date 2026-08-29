@@ -29,18 +29,42 @@ PACKAGE = "gridiron"
 #: The module the whole blind path hangs off.
 PREDICTION_ENTRYPOINT = "gridiron.model.predict"
 
+
+def prediction_entrypoints() -> dict[str, str]:
+    """Every entrypoint the LAW 1 scan must walk, keyed by what it covers.
+
+    Each sport is audited SEPARATELY rather than as one aggregate. A market
+    import smuggled into baseball would otherwise hide inside a closure that
+    football's cleanliness dominated, and the module counts would say nothing
+    about where the problem was.
+    """
+    from . import sports
+
+    return {"shared": PREDICTION_ENTRYPOINT, **sports.entrypoints()}
+
 #: Packages the prediction closure may not contain.
 FORBIDDEN_MODULES = ("gridiron.market",)
 
-#: Identifiers and literal fragments that name market data. `market_type` is
-#: deliberately absent: it is a column on `predictions` describing what kind of
-#: question was asked, not a price.
+#: Identifiers and literal fragments that name market DATA.
+#:
+#: Two words are deliberately absent, and the distinction is the same one that
+#: renamed `spread_line_asked` to `spread_rung` in G6 — our vocabulary must not
+#: collide with the market's, and where it does, the more precise name wins:
+#:
+#:   * `market_type` is a column on `predictions` describing what kind of
+#:     question was asked, not a price.
+#:   * `moneyline` is the NAME of MLB's market — the question we ask — exactly
+#:     as `spread` is the name of NFL's. The market's *price* is stored in the
+#:     columns `home_moneyline` / `away_moneyline`, and those are forbidden. A
+#:     prediction-path module can say which market it is forecasting; it cannot
+#:     name the price of one.
 FORBIDDEN_IDENTIFIERS = (
     "market_lines_raw",
     "market_snapshots",
     "spread_line",
     "total_line",
-    "moneyline",
+    "home_moneyline",
+    "away_moneyline",
     "implied_prob",
     "public_pct",
 )
@@ -181,10 +205,22 @@ def market_identifiers_in(path: Path) -> list[tuple[str, int]]:
     return hits
 
 
+def check_all_prediction_closures(root: Path | None = None) -> dict[str, ClosureReport]:
+    """Walk every sport's prediction closure, and the shared core.
+
+    Returns one report per entrypoint so module counts can be reported per
+    sport. Raises on the first violation, naming which sport it was in.
+    """
+    return {
+        name: check_prediction_closure(entrypoint, root)
+        for name, entrypoint in prediction_entrypoints().items()
+    }
+
+
 def check_prediction_closure(
     entrypoint: str = PREDICTION_ENTRYPOINT, root: Path | None = None
 ) -> ClosureReport:
-    """Raise `LawViolation` if the prediction path can reach market data."""
+    """Raise `LawViolation` if this prediction path can reach market data."""
     report = import_closure(entrypoint, root)
 
     for module in sorted(report.modules):

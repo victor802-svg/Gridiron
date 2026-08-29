@@ -15,7 +15,9 @@ from __future__ import annotations
 import math
 import sqlite3
 
+from .. import config
 from ..db import utcnow
+from . import sources
 
 #: Standard deviation of an NFL final margin around the closing spread, in
 #: points. The value is stable across seasons at roughly 13; it is used only to
@@ -26,21 +28,70 @@ MARGIN_SD = 13.2
 
 SOURCE = "nflverse/schedules"
 NO_PROP_MARKET = "unavailable:no-free-prop-line-source"
+NO_SOURCE = "unavailable:no-free-line-source"
+
+#: Standard deviation of a final margin around the closing spread, per sport.
+#: NFL's is the long-standing ~13; NBA's is ~11.5 across recent seasons. Both
+#: are stated modelling assumptions used only to put the model and the market on
+#: one probability axis, and both are written down rather than buried.
+MARGIN_SD_BY_SPORT = {"nfl": 13.2, "nba": 11.5}
+
+
+def market_availability(sport: str, market: str) -> dict:
+    """Whether THIS market has a line, and the stated reason when it does not."""
+    return sources.for_market(sport, market)
+
+
+def line_source_for(sport: str) -> dict:
+    """What this sport's market comparison is drawn from, or why there is none."""
+    return sources.for_sport(sport)
+
+
+def american_to_probability(price: int) -> float:
+    """A moneyline price as an implied probability, vig included.
+
+    The vig is NOT removed. Removing it requires assuming how the book split its
+    margin between the two sides, and that assumption would be ours rather than
+    the market's. Both sides are converted the same way and the pair sums to
+    slightly more than one, which is the honest shape of a posted price.
+    """
+    if price < 0:
+        return (-price) / ((-price) + 100.0)
+    return 100.0 / (price + 100.0)
+
+
+def devig_pair(home_price: int, away_price: int) -> tuple[float, float]:
+    """The two implied probabilities, normalised to sum to one.
+
+    Stated plainly because it IS an assumption: this is proportional de-vigging,
+    which assumes the book loaded its margin evenly across both sides. It is the
+    standard choice and it is not the only defensible one. The raw pair is kept
+    alongside so a reader can see how much was removed.
+    """
+    home = american_to_probability(home_price)
+    away = american_to_probability(away_price)
+    total = home + away
+    if total <= 0:
+        return 0.5, 0.5
+    return home / total, away / total
 
 
 def norm_cdf(z: float) -> float:
     return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
-def implied_cover_probability(market_spread: float, line_asked: float) -> float:
+def implied_cover_probability(
+    market_spread: float, line_asked: float, sport: str = "nfl"
+) -> float:
     """P(home covers `line_asked`), as implied by the market's spread.
 
-    nflverse states `spread_line` as the expected home margin, so a home side
-    favoured by three is +3. Our question asks whether the home margin plus
-    `line_asked` exceeds zero, which under a normal margin is
+    `spread_line` is stated as the expected home margin, so a home side favoured
+    by three is +3. Our question asks whether the home margin plus `line_asked`
+    exceeds zero, which under a normal margin is
     Phi((expected_margin + line_asked) / sd).
     """
-    return norm_cdf((market_spread + line_asked) / MARGIN_SD)
+    sd = MARGIN_SD_BY_SPORT.get(sport, MARGIN_SD)
+    return norm_cdf((market_spread + line_asked) / sd)
 
 
 def raw_line(conn: sqlite3.Connection, game_id: str) -> sqlite3.Row | None:
@@ -63,13 +114,19 @@ def public_percentage(conn: sqlite3.Connection, game_id: str) -> float | None:
 def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | None:
     """Attach the market to one already-written prediction.
 
-    Idempotent: a prediction keeps its first snapshot. Re-running the week does
+    Idempotent: a prediction keeps its first snapshot. Re-running a slate does
     not append a second look at a line that has since moved, because the record
     is of what the market said when the prediction was made.
+
+    Where no source exists for the sport or the market, a snapshot is still
+    written — carrying NULLs and a source string naming the absence. That is
+    deliberate: "we looked and there was nothing" is a different fact from "we
+    never looked", and the interface shows the first as a missing comparison
+    rather than as a missing prediction.
     """
     pred = conn.execute(
-        "SELECT id, game_id, market_type, line_asked, model_side FROM predictions"
-        " WHERE id = ?",
+        "SELECT id, sport, game_id, market_type, prop_type, line_asked, model_side"
+        " FROM predictions WHERE id = ?",
         (prediction_id,),
     ).fetchone()
     if pred is None:
@@ -82,45 +139,45 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
     if existing is not None:
         return dict(existing)
 
-    if pred["market_type"] != "spread":
+    sport = pred["sport"]
+    market = pred["prop_type"] or pred["market_type"]
+    availability = sources.for_market(sport, market)
+
+    def write(source: str, line, implied) -> dict:
         cur = conn.execute(
             "INSERT INTO market_snapshots (prediction_id, fetched_utc, source, line,"
-            " implied_prob, public_pct) VALUES (?,?,?,NULL,NULL,NULL)",
-            (prediction_id, utcnow(), NO_PROP_MARKET),
+            " implied_prob, public_pct) VALUES (?,?,?,?,?,?)",
+            (prediction_id, utcnow(), source, line, implied,
+             public_percentage(conn, pred["game_id"])),
         )
         conn.commit()
-        return {"id": cur.lastrowid, "source": NO_PROP_MARKET, "line": None,
-                "implied_prob": None, "public_pct": None}
+        return {"id": cur.lastrowid, "source": source, "line": line,
+                "implied_prob": implied, "public_pct": None}
+
+    if not availability["available"]:
+        return write(
+            NO_PROP_MARKET if market in sources.NO_LINE_MARKETS else NO_SOURCE,
+            None, None,
+        )
 
     row = raw_line(conn, pred["game_id"])
-    if row is None or row["spread_line"] is None:
+    if row is None:
         return None
 
-    implied_yes = implied_cover_probability(row["spread_line"], pred["line_asked"])
-    # State the market's probability for the same side the model claimed, so the
-    # two numbers on the card are answers to the same question.
-    implied = implied_yes if pred["model_side"] == "cover" else 1.0 - implied_yes
+    if pred["market_type"] == "moneyline":
+        if row["home_moneyline"] is None or row["away_moneyline"] is None:
+            return None
+        home_p, away_p = devig_pair(row["home_moneyline"], row["away_moneyline"])
+        # `subject` names the side; model_side is 'win' or 'lose' for that side.
+        implied_home = home_p
+        implied = implied_home if pred["model_side"] == "win" else 1.0 - implied_home
+        return write(row["source"], float(row["home_moneyline"]), round(implied, 6))
 
-    cur = conn.execute(
-        "INSERT INTO market_snapshots (prediction_id, fetched_utc, source, line,"
-        " implied_prob, public_pct) VALUES (?,?,?,?,?,?)",
-        (
-            prediction_id,
-            utcnow(),
-            SOURCE,
-            row["spread_line"],
-            round(implied, 6),
-            public_percentage(conn, pred["game_id"]),
-        ),
-    )
-    conn.commit()
-    return {
-        "id": cur.lastrowid,
-        "source": SOURCE,
-        "line": row["spread_line"],
-        "implied_prob": round(implied, 6),
-        "public_pct": None,
-    }
+    if row["spread_line"] is None:
+        return None
+    implied_yes = implied_cover_probability(row["spread_line"], pred["line_asked"], sport)
+    implied = implied_yes if pred["model_side"] == "cover" else 1.0 - implied_yes
+    return write(row["source"], row["spread_line"], round(implied, 6))
 
 
 def snapshot_many(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[str, int]:
@@ -168,20 +225,28 @@ def snapshots_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[i
     return {r["prediction_id"]: dict(r) for r in rows}
 
 
-def coverage(conn: sqlite3.Connection) -> dict:
-    """How much of the record has a market comparison at all."""
+def coverage(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """How much of ONE sport's record has a market comparison at all (LAW 6)."""
     row = conn.execute(
         "SELECT COUNT(*) AS predictions,"
         " SUM(CASE WHEN s.implied_prob IS NOT NULL THEN 1 ELSE 0 END) AS with_line"
         " FROM predictions p LEFT JOIN market_snapshots s ON s.prediction_id = p.id"
+        " WHERE p.sport = ?",
+        (sport,),
     ).fetchone()
+    descriptor = sources.for_sport(sport)
     return {
         "n": row["predictions"] or 0,
+        "sport": sport,
         "with_market_line": row["with_line"] or 0,
         "public_pct_available": 0,
+        "source": descriptor.get("name"),
+        "licence": descriptor.get("licence"),
+        "markets_priced": descriptor.get("markets", []),
         "note": (
-            "Props have no free market line source, so they carry a snapshot "
-            "recording that absence rather than a number. Public betting "
-            "percentage is unavailable from any free source and is never proxied."
+            "Player props have no free market line source in any sport, so they "
+            "carry a snapshot recording that absence rather than a number. "
+            "Public betting percentage is unavailable from any free source and "
+            "is never proxied."
         ),
     }

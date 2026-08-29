@@ -56,6 +56,33 @@ class MissingSampleSize(RuntimeError):
     """LAW 4: a figure was about to render without its N."""
 
 
+class CrossSportAggregation(RuntimeError):
+    """LAW 6: a figure was about to mix two sports into one number."""
+
+
+def require_sport(sport: str | None, where: str) -> str:
+    """The LAW 6 tripwire.
+
+    `sport` is a required argument on every function that reads the record. It
+    is validated here rather than defaulted, so the only way to write a query
+    spanning two sports is to delete the parameter — and then this fires by
+    name instead of quietly returning a number that describes neither sport.
+    """
+    if sport is None or sport == "" or sport == "all":
+        raise CrossSportAggregation(
+            f"LAW 6: {where} was asked for sport={sport!r}. Every curve, score, "
+            "edge figure and sample size belongs to exactly one sport. A number "
+            "mixing NFL spreads with MLB moneylines describes neither, and it "
+            "flatters reliably because the easy sport dilutes the hard one."
+        )
+    if sport not in config.SPORTS:
+        raise CrossSportAggregation(
+            f"LAW 6: {where} was asked for unknown sport {sport!r}; "
+            f"declared sports are {list(config.SPORTS)}."
+        )
+    return sport
+
+
 def assert_every_figure_has_n(payload, path: str = "$") -> None:
     """Walk a payload and refuse any claim standing without its sample size."""
     if isinstance(payload, dict):
@@ -100,14 +127,16 @@ class Resolved:
 def resolved(
     conn: sqlite3.Connection,
     *,
+    sport: str,
     market_type: str | None = None,
     prop_type: str | None = None,
     predictor: str | None = None,
     factor_set_version: str | None = None,
     with_factors: bool = False,
 ) -> list[Resolved]:
-    where = ["p.resolved_utc IS NOT NULL"]
-    params: list = []
+    require_sport(sport, "calibration.resolved")
+    where = ["p.resolved_utc IS NOT NULL", "p.sport = ?"]
+    params: list = [sport]
     if market_type:
         where.append("p.market_type = ?")
         params.append(market_type)
@@ -260,13 +289,15 @@ def baselines(items: list[Resolved]) -> dict:
 def void_count(
     conn: sqlite3.Connection,
     *,
+    sport: str,
     market_type: str | None = None,
     prop_type: str | None = None,
     predictor: str | None = None,
     factor_set_version: str | None = None,
 ) -> int:
-    where = ["1=1"]
-    params: list = []
+    require_sport(sport, "calibration.void_count")
+    where = ["p.sport = ?"]
+    params: list = [sport]
     for column, value in (
         ("market_type", market_type),
         ("prop_type", prop_type),
@@ -286,13 +317,16 @@ def void_count(
 def curve(
     conn: sqlite3.Connection,
     *,
+    sport: str,
     market_type: str | None = None,
     prop_type: str | None = None,
     predictor: str | None = None,
     factor_set_version: str | None = None,
 ) -> dict:
+    require_sport(sport, "calibration.curve")
     items = resolved(
         conn,
+        sport=sport,
         market_type=market_type,
         prop_type=prop_type,
         predictor=predictor,
@@ -300,11 +334,13 @@ def curve(
     )
     buckets = calibration_buckets(items)
     voids = void_count(
-        conn, market_type=market_type, prop_type=prop_type,
+        conn, sport=sport, market_type=market_type, prop_type=prop_type,
         predictor=predictor, factor_set_version=factor_set_version,
     )
     return {
+        "sport": sport,
         "filters": {
+            "sport": sport,
             "market_type": market_type or "all",
             "prop_type": prop_type or "all",
             "predictor": predictor or "all",
@@ -338,6 +374,7 @@ EDGE_STANDING_NOTE = (
 def edge(
     conn: sqlite3.Connection,
     *,
+    sport: str,
     market_type: str = "spread",
     prop_type: str | None = None,
     predictor: str | None = None,
@@ -352,10 +389,12 @@ def edge(
     of a comparison is how a record lies while being technically accurate.
     """
     threshold = config.EDGE_DISAGREEMENT_THRESHOLD if threshold is None else threshold
+    require_sport(sport, "calibration.edge")
     items = [
         r
         for r in resolved(
-            conn, market_type=market_type, prop_type=prop_type, predictor=predictor
+            conn, sport=sport, market_type=market_type, prop_type=prop_type,
+            predictor=predictor,
         )
         if r.implied_prob is not None
     ]
@@ -381,6 +420,7 @@ def edge(
     minimum = config.MIN_SAMPLE_FOR_EDGE_CLAIM
     n_eligible = len(model_bolder)
     payload = {
+        "sport": sport,
         "market_type": market_type,
         "prop_type": prop_type or "all",
         "predictor": predictor or "all",
@@ -421,10 +461,12 @@ FACTOR_METHOD_NOTE = (
 
 
 def factor_report(
-    conn: sqlite3.Connection, *, factor_set_version: str | None = None
+    conn: sqlite3.Connection, *, sport: str, factor_set_version: str | None = None
 ) -> dict:
+    require_sport(sport, "calibration.factor_report")
     items = resolved(
         conn,
+        sport=sport,
         predictor="statistical",
         factor_set_version=factor_set_version,
         with_factors=True,
@@ -473,7 +515,7 @@ def factor_report(
                 bucket["defaulted"] += 1
 
     factors = []
-    for f in registry.REGISTRY.values():
+    for f in registry.all_factors(sport=sport):
         entry: dict = {
             "factor": f.name,
             "added_utc": f.added_utc,
@@ -515,7 +557,7 @@ def factor_report(
     # from every training row, or present but never varying, has no coefficient
     # to score and would otherwise show as "no resolved predictions yet", which
     # reads like patience when it is really a measurement problem.
-    fit_status = _fit_status(conn, factor_set_version or config.FACTOR_SET_VERSION)
+    fit_status = _fit_status(conn, sport, factor_set_version or config.FACTOR_SET_VERSION)
     for entry in factors:
         status = fit_status.get(entry["factor"])
         if not status:
@@ -528,21 +570,23 @@ def factor_report(
     factors.sort(key=lambda e: (-(e["delta_brier"] or -9), e["factor"]))
     return {
         "n": len(items),
+        "sport": sport,
         "method": FACTOR_METHOD_NOTE,
         "factor_set_version": factor_set_version or config.FACTOR_SET_VERSION,
         "factors": factors,
     }
 
 
-def _fit_status(conn: sqlite3.Connection, version: str) -> dict[str, dict]:
-    """Per-factor presence in the most recent fit of each market type."""
+def _fit_status(conn: sqlite3.Connection, sport: str, version: str) -> dict[str, dict]:
+    """Per-factor presence in the most recent fit of each of the sport's markets."""
     out: dict[str, dict] = {}
-    for market_type in ("spread", "prop"):
+    for market in config.SPORT_MARKETS.get(sport, ()):
+        market_type = market if market in ("spread", "moneyline") else f"prop:{market}"
         row = conn.execute(
             "SELECT coefficients_json FROM model_fits"
-            " WHERE market_type = ? AND factor_set_version = ?"
+            " WHERE sport = ? AND market_type = ? AND factor_set_version = ?"
             " ORDER BY id DESC LIMIT 1",
-            (market_type, version),
+            (sport, market_type, version),
         ).fetchone()
         if row is None:
             continue
@@ -759,6 +803,7 @@ def bucket_record(
     conn: sqlite3.Connection,
     probability: float,
     *,
+    sport: str,
     market_type: str,
     prop_type: str | None = None,
     predictor: str = "statistical",
@@ -773,10 +818,11 @@ def bucket_record(
     """
     label = bucket_label(probability)
     lo, hi = next((lo, hi) for lo, hi, name in BUCKETS if name == label)
+    require_sport(sport, "calibration.bucket_record")
     items = [
         r
         for r in resolved(
-            conn, market_type=market_type, prop_type=prop_type,
+            conn, sport=sport, market_type=market_type, prop_type=prop_type,
             predictor=predictor, factor_set_version=factor_set_version,
         )
         if lo <= r.model_prob < hi
@@ -801,6 +847,7 @@ def bucket_record(
 def over_time(
     conn: sqlite3.Connection,
     *,
+    sport: str,
     market_type: str | None = None,
     prop_type: str | None = None,
     predictor: str = "statistical",
@@ -812,8 +859,9 @@ def over_time(
     because a rolling average across a thin week and a fat one is a line drawn
     through a sample size that never existed.
     """
+    require_sport(sport, "calibration.over_time")
     items = resolved(
-        conn, market_type=market_type, prop_type=prop_type,
+        conn, sport=sport, market_type=market_type, prop_type=prop_type,
         predictor=predictor, factor_set_version=factor_set_version,
     )
     weeks: dict[tuple[int, int], list[Resolved]] = {}
@@ -844,7 +892,9 @@ def over_time(
 
     return {
         "n": len(items),
+        "sport": sport,
         "filters": {
+            "sport": sport,
             "market_type": market_type or "all",
             "prop_type": prop_type or "all",
             "predictor": predictor,
@@ -864,20 +914,26 @@ class MergedCurve(RuntimeError):
 
 
 def assert_no_merged_categories(payload: dict) -> None:
-    """Every scoring category names exactly one concrete market.
+    """Every scoring category names exactly one concrete market of one sport.
 
-    A "props" curve averaging receptions with passing touchdowns, or a curve
-    with `market_type: all`, flatters reliably: the easy category dilutes the
-    hard one and the result describes nobody. This is checked on the payload
-    rather than trusted to the code that built it.
+    A "props" curve averaging rebounds with threes, a curve with
+    `market_type: all`, or anything spanning two sports flatters reliably: the
+    easy category dilutes the hard one and the result describes nobody. Checked
+    on the payload rather than trusted to the code that built it.
     """
-    declared = {"spread", *config.PROP_MARKETS}
+    sport = payload.get("sport")
+    declared = set(config.SPORT_MARKETS.get(sport, ()))
     for category in payload.get("categories") or []:
+        if category.get("sport") != sport:
+            raise CrossSportAggregation(
+                f"LAW 6: category {category.get('category')!r} reports sport "
+                f"{category.get('sport')!r} inside a {sport!r} scorecard."
+            )
         market = category.get("market")
         if market not in declared:
             raise MergedCurve(
                 f"LAW: category {category.get('category')!r} reports market "
-                f"{market!r}, which is not one of the declared markets "
+                f"{market!r}, which is not one of {sport}'s declared markets "
                 f"{sorted(declared)}. Curves are never merged."
             )
         filters = category.get("filters") or {}
@@ -886,9 +942,189 @@ def assert_no_merged_categories(payload: dict) -> None:
                 f"LAW: category {category.get('category')!r} merges the "
                 "statistical and LLM forecasters into one curve."
             )
-        if market != "spread" and filters.get("prop_type") in (None, "all"):
+        is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
+        if is_prop and filters.get("prop_type") in (None, "all"):
             raise MergedCurve(
                 f"LAW: category {category.get('category')!r} is a prop category "
                 "with no prop_type filter, so it averages every prop market "
                 "into a single number."
             )
+
+
+def assert_single_sport(payload, sport: str, path: str = "$") -> None:
+    """LAW 6, on the finished payload: no nested figure names another sport.
+
+    `require_sport` stops a cross-sport QUERY. This stops a cross-sport
+    PAYLOAD — two individually correct queries stitched into one object that a
+    reader would take for a single record.
+    """
+    if isinstance(payload, dict):
+        if payload.get("side_by_side_sports"):
+            # The one permitted multi-sport structure: the tab summary, which
+            # lists every sport with its OWN counts and computes no total. LAW 6
+            # forbids aggregating across sports, not displaying them beside each
+            # other; this flag marks the difference explicitly rather than
+            # leaving the validator to guess.
+            return
+        found = payload.get("sport")
+        if found is not None and found != sport:
+            raise CrossSportAggregation(
+                f"LAW 6: {path} carries sport={found!r} inside a {sport!r} "
+                "payload. Sports are reported side by side, never stitched "
+                "into one record."
+            )
+        for key, value in payload.items():
+            assert_single_sport(value, sport, f"{path}.{key}")
+    elif isinstance(payload, list):
+        for i, value in enumerate(payload):
+            assert_single_sport(value, sport, f"{path}[{i}]")
+
+
+# ---------------------------------------------------------------------------
+# factor-set versions: closed records and accumulating ones, never summed
+# ---------------------------------------------------------------------------
+
+VERSION_NOTE = (
+    "A factor set is a different forecaster. Its record begins at N=0 on the day "
+    "it was activated and nothing earlier is backfitted onto it (LAW 2). The "
+    "versions below are reported side by side and are NEVER added together: a "
+    "closed record and an accumulating one describe different models, and their "
+    "sum describes neither."
+)
+
+
+def market_type_of(sport: str, market: str) -> str:
+    """The `market_type` column value a named market is stored under."""
+    if market in config.SPORT_PROP_MARKETS.get(sport, ()):
+        return "prop"
+    return market      # 'spread' or 'moneyline'
+
+
+def prop_type_of(sport: str, market: str) -> str | None:
+    return market if market in config.SPORT_PROP_MARKETS.get(sport, ()) else None
+
+
+def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """Every factor set that has produced predictions FOR THIS SPORT."""
+    require_sport(sport, "calibration.version_comparison")
+    seen = [
+        r["v"]
+        for r in conn.execute(
+            "SELECT DISTINCT factor_set_version AS v FROM predictions"
+            " WHERE sport = ? ORDER BY v",
+            (sport,),
+        )
+    ]
+    known = list(config.FACTOR_SET_HISTORY)
+    versions = known + [v for v in seen if v not in known]
+
+    entries = []
+    for version in versions:
+        counts = conn.execute(
+            "SELECT COUNT(*) AS total,"
+            " SUM(CASE WHEN resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
+            " FROM predictions WHERE sport = ? AND factor_set_version = ?",
+            (sport, version),
+        ).fetchone()
+        total = counts["total"] or 0
+        n_resolved = counts["resolved"] or 0
+        is_current = version == config.FACTOR_SET_VERSION
+
+        categories = []
+        for market in config.SPORT_MARKETS.get(sport, ()):
+            for predictor in ("statistical", "llm"):
+                items = resolved(
+                    conn,
+                    sport=sport,
+                    market_type=market_type_of(sport, market),
+                    prop_type=prop_type_of(sport, market),
+                    predictor=predictor,
+                    factor_set_version=version,
+                )
+                if not items and not is_current:
+                    continue
+                categories.append({
+                    "category": f"{market} / {predictor}",
+                    "market": market,
+                    "predictor": predictor,
+                    **score(items),
+                })
+
+        entry = {
+            "version": version,
+            "activated_utc": config.FACTOR_SET_ACTIVATED.get(version),
+            "status": "current" if is_current else "closed",
+            "n": n_resolved,
+            "predictions_written": total,
+            "open": total - n_resolved,
+            "categories": categories,
+        }
+        if n_resolved == 0:
+            label = config.SPORT_LABELS.get(sport, sport)
+            entry["message"] = (
+                f"{version} has {total} prediction(s) written for {label} and 0 "
+                "resolved. Its record begins at N=0 on activation"
+                + (f" ({config.FACTOR_SET_ACTIVATED[version]})"
+                   if version in config.FACTOR_SET_ACTIVATED else "")
+                + ". Nothing is carried over from an earlier version, so there "
+                "is nothing to show yet and nothing wrong."
+            )
+        entries.append(entry)
+
+    return {
+        "n": sum(e["n"] for e in entries),
+        "sport": sport,
+        "current": config.FACTOR_SET_VERSION,
+        "note": VERSION_NOTE,
+        "never_summed": True,
+        "versions": entries,
+    }
+
+
+def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """Every curve for ONE sport, kept separate. Never a merged headline."""
+    require_sport(sport, "calibration.scorecard")
+    markets = config.SPORT_MARKETS.get(sport, ())
+
+    categories = []
+    for market in markets:
+        for predictor in ("statistical", "llm"):
+            c = curve(conn, sport=sport,
+                      market_type=market_type_of(sport, market),
+                      prop_type=prop_type_of(sport, market),
+                      predictor=predictor)
+            c["category"] = f"{market} / {predictor}"
+            c["market"] = market
+            categories.append(c)
+
+    headline_market = markets[0] if markets else "spread"
+    headline = curve(conn, sport=sport,
+                     market_type=market_type_of(sport, headline_market),
+                     prop_type=prop_type_of(sport, headline_market),
+                     predictor="statistical")
+    headline["market"] = headline_market
+
+    payload = {
+        "sport": sport,
+        "sport_label": config.SPORT_LABELS.get(sport, sport.upper()),
+        "generated_for_factor_set": config.FACTOR_SET_VERSION,
+        "headline": headline,
+        "headline_market": headline_market,
+        "categories": categories,
+        "markets": list(markets),
+        "edge": edge(conn, sport=sport,
+                     market_type=market_type_of(sport, headline_market),
+                     prop_type=prop_type_of(sport, headline_market),
+                     predictor="statistical"),
+        "versions": version_comparison(conn, sport=sport),
+        "separation_note": (
+            "Curves are never merged, and never across sports (LAW 6). Each "
+            "market is its own category with its own gate, and the statistical "
+            "and LLM predictors are different forecasters. An average across "
+            "any of these describes nobody."
+        ),
+    }
+    assert_every_figure_has_n(payload)
+    assert_no_merged_categories(payload)
+    assert_single_sport(payload, sport)
+    return payload

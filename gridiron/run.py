@@ -23,8 +23,9 @@ from .blind import blind_window, forget_market_module
 from .model import predict
 
 
-def run_week(
+def run_slate(
     conn: sqlite3.Connection,
+    sport: str,
     season: int,
     week: int,
     *,
@@ -34,12 +35,13 @@ def run_week(
     snapshot: bool = True,
     progress=None,
 ) -> dict:
-    """Predict a week blind, then attach the market to what was written."""
+    """Predict one slate blind, then attach the market to what was written."""
     forget_market_module()
 
     with blind_window():
-        run = predict.predict_week(
+        run = predict.predict_slate(
             conn,
+            sport,
             season,
             week,
             include_props=include_props,
@@ -49,6 +51,7 @@ def run_week(
         )
 
     result = {
+        "sport": sport,
         "season": season,
         "week": week,
         "written": len(run.written),
@@ -69,3 +72,8 @@ def run_week(
         result["snapshots"] = lines.snapshot_many(conn, run.prediction_ids)
 
     return result
+
+
+def run_week(conn: sqlite3.Connection, season: int, week: int, **kwargs) -> dict:
+    """NFL-shaped call, kept for existing callers and tests."""
+    return run_slate(conn, "nfl", season, week, **kwargs)
