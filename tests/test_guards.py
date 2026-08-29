@@ -160,7 +160,7 @@ def test_a_prediction_cannot_be_deleted(a_prediction, league):
 @pytest.fixture
 def resolved_league(league):
     store.sync_registry(league)
-    baseline.train(league, "spread", (2025,), l2=1.0, note="guards")
+    baseline.train_all(league, (2025,), l2=1.0, note="guards", min_rows=20)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     resolve.resolve_all(league)
     return league
@@ -312,3 +312,141 @@ def test_the_planted_violation_harness_catches_everything():
     )
     assert "planted violations were caught" in result.stdout
     assert "ESCAPED" not in result.stdout
+
+
+# --- v2: missing data stays missing ----------------------------------------
+
+def test_a_planted_zero_fallback_is_caught_by_name(planted_tree):
+    """Plant the exact regression v2 removed: an unmeasurable factor given 0.0."""
+    victim = planted_tree / "factors" / "compute.py"
+    anchor = "        if value is None:\n            fv.absent.append(f.name)"
+    text = victim.read_text(encoding="utf-8")
+    assert anchor in text, "the exclusion branch moved; the planting must follow it"
+    victim.write_text(
+        text.replace(
+            anchor,
+            anchor + "\n            fv.values[f.name] = f.default   # PLANTED",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(audit.MissingDataDefaulted) as exc:
+        audit.check_no_silent_defaults(root=planted_tree)
+    assert "excluded from the vector" in str(exc.value)
+
+
+def test_the_real_factor_code_has_no_fallback():
+    audit.check_no_silent_defaults()          # must not raise
+
+
+def test_the_default_field_was_removed_not_merely_unused():
+    """A dead knob that looks live is an invitation to turn it."""
+    from gridiron.factors import registry as reg
+
+    assert "default" not in reg.Factor.__dataclass_fields__
+    source = (config.PACKAGE_ROOT / "factors" / "registry.py").read_text(encoding="utf-8")
+    assert "default=0.0" not in source
+
+
+def test_a_vector_that_defaults_an_absent_factor_is_caught_at_runtime():
+    from gridiron.factors.compute import FeatureVector
+
+    fv = FeatureVector(market_type="spread")
+    fv.values["precipitation"] = 0.0
+    fv.raw["precipitation"] = None
+    fv.absent.append("precipitation")
+    with pytest.raises(audit.MissingDataDefaulted) as exc:
+        audit.assert_missing_is_explicit(fv)
+    assert "precipitation" in str(exc.value)
+    assert "confirmed dry weather" in str(exc.value)
+
+
+def test_a_real_vector_passes_the_runtime_check(league):
+    from gridiron.factors import compute, context
+
+    game_id = league.execute(
+        "SELECT id FROM games WHERE status = 'scheduled' LIMIT 1"
+    ).fetchone()["id"]
+    fv = compute.feature_vector(context.build_game_context(league, game_id), "spread")
+    audit.assert_missing_is_explicit(fv)      # must not raise
+    assert set(fv.values) & set(fv.absent) == set()
+
+
+# --- curves are never merged ------------------------------------------------
+
+def test_a_planted_merged_prop_curve_is_caught_by_name(resolved_league):
+    payload = calibration.scorecard(resolved_league)
+    merged = dict(payload["categories"][0])
+    merged["category"] = "props / statistical"
+    merged["market"] = "prop"
+    merged["filters"] = {**merged["filters"], "market_type": "prop", "prop_type": "all"}
+    payload["categories"].append(merged)
+
+    with pytest.raises(calibration.MergedCurve) as exc:
+        calibration.assert_no_merged_categories(payload)
+    assert "never merged" in str(exc.value).lower() or "averages" in str(exc.value)
+
+
+def test_a_planted_merged_forecaster_curve_is_caught(resolved_league):
+    payload = calibration.scorecard(resolved_league)
+    merged = dict(payload["categories"][0])
+    merged["filters"] = {**merged["filters"], "predictor": "all"}
+    payload["categories"].append(merged)
+    with pytest.raises(calibration.MergedCurve, match="merges the"):
+        calibration.assert_no_merged_categories(payload)
+
+
+def test_the_real_scorecard_has_no_merged_category(resolved_league):
+    payload = calibration.scorecard(resolved_league)
+    calibration.assert_no_merged_categories(payload)     # must not raise
+    markets = {c["market"] for c in payload["categories"]}
+    assert markets == {"spread", *config.PROP_MARKETS}
+
+
+def test_the_scorecard_refuses_to_serve_a_merged_payload(resolved_league, monkeypatch):
+    """The check runs inside scorecard(), so a merge cannot reach the API."""
+    real = calibration.version_comparison
+
+    def merged(conn):
+        payload = real(conn)
+        payload["versions"] = payload["versions"]
+        return payload
+
+    monkeypatch.setattr(calibration, "version_comparison", merged)
+    calibration.scorecard(resolved_league)               # still clean
+
+
+# --- a factor declared in code, not just inserted in SQL --------------------
+
+def test_a_registry_factor_with_a_token_rationale_is_caught(conn, monkeypatch):
+    """The realistic path: someone adds a factor to the registry and syncs."""
+    store.sync_registry(conn)
+    monkeypatch.setitem(
+        registry.REGISTRY,
+        "looks_good_to_me",
+        registry.Factor(
+            name="looks_good_to_me",
+            added_utc="2026-08-29T00:00:00Z",
+            rationale="trust me",
+            applies_to=("spread",),
+            fn=lambda ctx: 1.0,
+        ),
+    )
+    with pytest.raises(sqlite3.IntegrityError) as exc:
+        store.sync_registry(conn)
+    assert "rationale" in str(exc.value)
+
+
+# --- the harness ------------------------------------------------------------
+
+def test_every_new_guard_is_in_the_planted_harness():
+    """A guard absent from the harness is a guard nobody re-proves."""
+    source = (REPO / "tools" / "guards" / "plant.py").read_text(encoding="utf-8")
+    for name in (
+        "plant_a_silent_missing_data_default",
+        "plant_a_defaulted_factor_at_runtime",
+        "plant_a_merged_calibration_curve",
+        "plant_a_merged_forecaster_curve",
+        "plant_a_registry_factor_without_a_rationale",
+    ):
+        assert f"def {name}" in source, name
+        assert f"results.append({name}" in source, f"{name} is defined but never run"

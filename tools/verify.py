@@ -45,7 +45,7 @@ from gridiron.model import baseline  # noqa: E402
 
 FACT_TABLES = (
     "games", "game_conditions", "team_week_stats", "player_week_stats",
-    "injuries", "market_lines_raw", "http_cache",
+    "injuries", "snap_counts", "market_lines_raw", "http_cache",
 )
 
 
@@ -81,7 +81,7 @@ def step_2_guards() -> bool:
 def step_3_one_week_end_to_end(source: Path) -> bool:
     rule("STEP 3 — one complete week, end to end (retrospective; resolution works)")
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         target = Path(tmp) / "one-week.db"
         conn = db.open_db(target)
         conn.execute("ATTACH DATABASE ? AS live", (str(source),))
@@ -102,12 +102,13 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
         print(f"target: {season} week {week} (the most recent completed regular-season week)")
 
         started = time.time()
-        for market_type in ("spread", "prop"):
-            fit = baseline.train(
-                conn, market_type, tuple(range(2016, season)),
-                note=f"verification fit, strictly before {season}",
-            )
-            print(f"  fit {market_type:7s} n={fit.n:,}, trained on 2016-{season - 1} only")
+        fits = baseline.train_all(
+            conn, tuple(range(2016, season)),
+            note=f"verification fit, strictly before {season}",
+        )
+        for market_type, fit in sorted(fits.items()):
+            print(f"  fit {market_type:22s} n={fit.n:>6,}, trained on "
+                  f"2016-{season - 1} only")
 
         result = run.run_week(conn, season, week, include_props=True, use_llm=False)
         print(f"  predictions written blind: {result['written']}  {result['by_predictor']}")
@@ -120,16 +121,20 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
         print(f"  snapshots timestamped before their prediction: {ordering_violations}")
 
         settled = resolve.resolve_all(conn)
-        print(f"  resolved: {settled['settled']}  still open: {settled['still_open']}")
+        print(f"  resolved: {settled['settled']}  voided: {settled['voided']}"
+              f"  still open: {settled['still_open']}")
         again = resolve.resolve_all(conn)
         print(f"  second resolution pass settled: {again['settled']} (must be 0)")
 
         print(f"  [{time.time() - started:.0f}s]")
         print()
         ok = True
-        for market_type in ("spread", "prop"):
-            curve = calibration.curve(conn, market_type=market_type, predictor="statistical")
-            print(f"  {market_type} / statistical  n={curve['n']}")
+        markets = [("spread", None)] + [("prop", m) for m in config.PROP_MARKETS]
+        for market_type, prop_type in markets:
+            curve = calibration.curve(conn, market_type=market_type,
+                                      prop_type=prop_type, predictor="statistical")
+            name = prop_type or market_type
+            print(f"  {name} / statistical  n={curve['n']}, {curve['voided']} void")
             for bucket in curve["buckets"]:
                 if bucket["n"]:
                     print(f"     {bucket['label']:>7s} n={bucket['n']:>3}  "
@@ -146,6 +151,9 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
         print(f"  edge question: {edge.get('message', 'rendered')}")
 
         ok = ok and ordering_violations == 0 and settled["settled"] > 0 and again["settled"] == 0
+        # Close before the TemporaryDirectory unwinds: Windows will not delete a
+        # file that still has an open handle, and the cleanup error would mask
+        # the result of the step.
         conn.close()
         return ok
 

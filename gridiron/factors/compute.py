@@ -25,6 +25,40 @@ from dataclasses import dataclass, field
 from . import registry
 
 
+class MissingDataDefaulted(AssertionError):
+    """An unmeasurable factor was given a value instead of being excluded.
+
+    This lives here rather than in `gridiron.audit` for a structural reason:
+    `feature_vector` is on the prediction path, and importing the audit module
+    would drag its list of forbidden market identifiers into the closure that
+    the LAW 1 scan walks. The guard would then flag itself.
+    """
+
+
+def assert_missing_is_explicit(fv: "FeatureVector") -> None:
+    """A factor is measured or absent. Never both, never absent with a value.
+
+    Runs on every feature vector, so a fallback reintroduced anywhere between a
+    factor function and the model is caught at the moment it produces its first
+    silent zero, not a season later when a coefficient looks strange.
+    """
+    overlap = set(fv.values) & set(fv.absent)
+    if overlap:
+        raise MissingDataDefaulted(
+            f"GRIDIRON v2: {sorted(overlap)} are recorded as absent AND carry a "
+            "value. An unmeasurable factor is excluded from the vector; it does "
+            "not get a stand-in value and a note saying it was defaulted. That "
+            "is how precipitation came to be fitted as confirmed dry weather in "
+            "two thirds of the league's history."
+        )
+    for name in fv.absent:
+        if fv.raw.get(name) is not None:
+            raise MissingDataDefaulted(
+                f"GRIDIRON v2: {name!r} is listed absent but its raw value is "
+                f"{fv.raw[name]!r}."
+            )
+
+
 @dataclass
 class FeatureVector:
     market_type: str
@@ -92,6 +126,8 @@ def feature_vector(ctx, market_type: str) -> FeatureVector:
             fv.absent.append(f.name)
         else:
             fv.values[f.name] = float(value)
+
+    assert_missing_is_explicit(fv)
 
     basis = getattr(ctx, "weather_basis", None)
     if basis:

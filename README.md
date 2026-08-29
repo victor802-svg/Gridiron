@@ -179,27 +179,32 @@ tools/
 
 ## Status
 
-All six phases complete. 152 tests. Every law has a guard, and every guard has
-been made to fire by planting the violation it exists to catch:
+Six build phases (G1-G6) and five repair phases (D1-D5). 252 tests. Every law
+has a guard and every guard has been made to fire by planting the violation it
+exists to catch — 20 plantings, all caught:
 
 ```bash
 python tools/verify.py
 ```
 
-**The live forward record is N = 0 resolved, and that is the honest state.**
-48 predictions for 2026 week 1 were written on 2026-08-29, twelve days before
-the first kickoff, with the lines snapshotted afterwards. Nothing can resolve
-until the games are played. The LLM pass degraded to statistical-only with the
-tag `llm_unavailable:no_api_key`, recorded on the run rather than papered over.
+**The forward record is N = 0 resolved, and that is the honest state.** 104
+predictions were written before kickoff on 2026-08-29 (56 under factor set fs2,
+48 under the now-closed fs1) against a first kickoff of 2026-09-10. Nothing can
+resolve until the games are played.
 
-The walk-forward backtest over 2024-2025 (1,632 resolved predictions, each
-season fitted only on earlier ones) says the model is beaten by the market:
-Brier 0.2142 against the closing line's 0.2011 on the same 544 spread
-questions. Where the model disagreed with the market by more than 5 points it
-was right 55.6% of the time (n=207); where the market was the more confident
-one, the outcome went the model's way 71.2% (n=146). Its disagreements are
-worse than its agreements.
+**What the backtest says, reported as found.** Walk-forward over 2024-25, each
+season fitted only on earlier ones, six markets scored separately and never
+merged. On the 544 spread questions the model scores 0.2141 Brier; the closing
+line scores 0.2011 on the same questions. Where the model disagreed with the
+market by more than 5 points it was right 55.1% of the time (n=207); where the
+market was the more confident side, the outcome went the model's way 70.3%
+(n=148). Its disagreements are worse than its agreements.
 
-That is the result. It is on the front page of the app for the same reason it
-is here. See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for what would have to
-be true before any of it counted as evidence.
+[docs/DIAGNOSIS.md](docs/DIAGNOSIS.md) is a pre-registered attempt to explain
+that failure — 29 declared comparisons, a Bonferroni-adjusted threshold, and
+four hypotheses of which **none is supported**. The recorded conclusion is *the
+disagreements lose and we do not know why yet*, which was the honest answer
+available and is better than a manufactured one.
+
+See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for what would have to be true
+before any of it counted as evidence.

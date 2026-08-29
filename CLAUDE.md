@@ -57,6 +57,9 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | 4 | `calibration.assert_every_figure_has_n` walks the payload and raises naming the path; the API returns 500 rather than serving it; `Gridiron.requireN` throws in the browser | `test_guards.py::test_a_removed_sample_size_is_caught_by_name`, `test_smoke.py::test_the_renderer_refuses_a_figure_with_no_sample_size` |
 | 4 | The edge figure is absent from the payload below `MIN_SAMPLE_FOR_EDGE_CLAIM`, replaced by the shortfall | `test_guards.py::test_an_edge_figure_below_threshold_is_not_present_to_render` |
 | 5 | `audit.check_not_a_betting_tool` scans package **identifiers** for a staking surface — prose is exempt, so the disclaimer may keep saying "bankroll" | `test_guards.py::test_a_planted_stake_sizer_is_caught_by_name`, `::test_the_disclaimer_is_not_mistaken_for_a_feature` |
+| 4 | Curves are never merged: `assert_no_merged_categories` rejects a category with no concrete market, an `all` prop_type, or a merged forecaster. Runs inside `scorecard()`, so a merge cannot reach the API | `test_guards.py::test_a_planted_merged_prop_curve_is_caught_by_name`, `::test_a_planted_merged_forecaster_curve_is_caught` |
+| v2 | Missing stays missing: `compute.assert_missing_is_explicit` runs on every feature vector, and `audit.check_no_silent_defaults` scans the factor code for a reintroduced fallback. `Factor.default` was **removed**, not left unused | `test_guards.py::test_a_planted_zero_fallback_is_caught_by_name`, `::test_a_vector_that_defaults_an_absent_factor_is_caught_at_runtime` |
+| 3 | A void is terminal: `prediction_voids` is append-only and a trigger refuses to resolve a voided prediction afterwards | `test_props.py::test_a_void_is_terminal`, `::test_a_void_reason_cannot_be_rewritten` |
 
 Run them all at once, each violation planted for real:
 
@@ -92,3 +95,11 @@ python tools/verify.py
   "N/A" placeholder standing in for a sample size.
 - Tests: `pytest`. Guard tests must fail loudly with a *named* error, not an
   assertion that happens to trip.
+- **A repair is not a discovery.** When a factor is retired because its input
+  never varied, or a default is removed because it was never a measurement, the
+  registry note says so in those words. A later reader who mistakes the one for
+  the other will draw the wrong conclusion from both.
+- **`gridiron.audit` stays outside the prediction closure.** It holds the list
+  of forbidden market identifiers, so a prediction-path module that imported it
+  would make the LAW 1 scan flag itself. The runtime missing-data check
+  therefore lives in `factors.compute`, and `audit` re-exports it.

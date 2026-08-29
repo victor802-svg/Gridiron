@@ -652,6 +652,7 @@ def scorecard(conn: sqlite3.Connection) -> dict:
         "markets": ["spread"] + list(config.PROP_MARKETS),
     }
     assert_every_figure_has_n(payload)
+    assert_no_merged_categories(payload)
     return payload
 
 
@@ -856,3 +857,38 @@ def over_time(
             "through a sample size that never existed."
         ),
     }
+
+
+class MergedCurve(RuntimeError):
+    """Two categories were averaged into one, which describes neither."""
+
+
+def assert_no_merged_categories(payload: dict) -> None:
+    """Every scoring category names exactly one concrete market.
+
+    A "props" curve averaging receptions with passing touchdowns, or a curve
+    with `market_type: all`, flatters reliably: the easy category dilutes the
+    hard one and the result describes nobody. This is checked on the payload
+    rather than trusted to the code that built it.
+    """
+    declared = {"spread", *config.PROP_MARKETS}
+    for category in payload.get("categories") or []:
+        market = category.get("market")
+        if market not in declared:
+            raise MergedCurve(
+                f"LAW: category {category.get('category')!r} reports market "
+                f"{market!r}, which is not one of the declared markets "
+                f"{sorted(declared)}. Curves are never merged."
+            )
+        filters = category.get("filters") or {}
+        if filters.get("predictor") in (None, "all"):
+            raise MergedCurve(
+                f"LAW: category {category.get('category')!r} merges the "
+                "statistical and LLM forecasters into one curve."
+            )
+        if market != "spread" and filters.get("prop_type") in (None, "all"):
+            raise MergedCurve(
+                f"LAW: category {category.get('category')!r} is a prop category "
+                "with no prop_type filter, so it averages every prop market "
+                "into a single number."
+            )

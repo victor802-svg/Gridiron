@@ -278,3 +278,38 @@ def check_not_a_betting_tool(root: Path | None = None) -> None:
             "score of them. It does not size stakes, manage a bankroll, or "
             "recommend a bet."
         )
+
+
+# ---------------------------------------------------------------------------
+# v2: missing stays explicit
+# ---------------------------------------------------------------------------
+
+# The runtime half lives in `factors.compute`, because that module IS on the
+# prediction path and importing this one would drag the forbidden-identifier
+# list below into the closure the LAW 1 scan walks — the guard would flag
+# itself. Re-exported here so the planted-violation harness has one door.
+from .factors.compute import (  # noqa: E402
+    MissingDataDefaulted,
+    assert_missing_is_explicit,
+)
+
+
+#: The prediction closure may not read a per-factor fallback value. The
+#: `Factor.default` field was removed in v2 rather than left unused, so any
+#: reappearance of this name in the factor-computing code is a fallback coming
+#: back.
+def check_no_silent_defaults(root: Path | None = None) -> None:
+    path = (root or config.PACKAGE_ROOT) / "factors" / "compute.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == "default":
+            raise MissingDataDefaulted(
+                f"GRIDIRON v2 VIOLATED: {path.name} line {node.lineno} reads a "
+                "`.default` off a factor. A factor that cannot be measured is "
+                "excluded from the vector; it is never given a stand-in value."
+            )
+        if isinstance(node, ast.Name) and node.id == "default":
+            raise MissingDataDefaulted(
+                f"GRIDIRON v2 VIOLATED: {path.name} line {node.lineno} uses a "
+                "`default` value in the factor vector."
+            )

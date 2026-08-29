@@ -56,6 +56,7 @@ FACT_TABLES = (
     "team_week_stats",
     "player_week_stats",
     "injuries",
+    "snap_counts",
     "market_lines_raw",
     "http_cache",
 )
@@ -99,16 +100,16 @@ def run_backtest(
         if not train_seasons:
             raise SystemExit(f"nothing to train on before {season}")
 
-        markets = ("spread", "prop") if include_props else ("spread",)
-        for market_type in markets:
-            fit = baseline.train(
-                conn,
-                market_type,
-                train_seasons,
-                note=f"backtest fit for {season}, trained on {min(train_seasons)}-{max(train_seasons)}",
-            )
+        fits = baseline.train_all(
+            conn,
+            train_seasons,
+            include_props=include_props,
+            note=f"backtest fit for {season}, trained on "
+                 f"{min(train_seasons)}-{max(train_seasons)}",
+        )
+        for market_type, fit in fits.items():
             log(
-                f"  fit {market_type:7s} n={fit.n:,} on seasons "
+                f"  fit {market_type:22s} n={fit.n:,} on seasons "
                 f"{min(train_seasons)}-{max(train_seasons)} (strictly before {season})"
             )
 
@@ -143,12 +144,15 @@ def report(conn: sqlite3.Connection, log=print) -> None:
     log("BACKTEST RESULT — pipeline sanity, NOT evidence of an edge")
     log("=" * 66)
 
-    for market_type in ("spread", "prop"):
-        c = calibration.curve(conn, market_type=market_type, predictor="statistical")
+    markets = [("spread", None)] + [("prop", m) for m in config.PROP_MARKETS]
+    for market_type, prop_type in markets:
+        c = calibration.curve(conn, market_type=market_type, prop_type=prop_type,
+                              predictor="statistical")
         s = c["score"]
         if not s["n"]:
             continue
-        log(f"\n{market_type.upper()}  (n={s['n']:,})")
+        name = prop_type or market_type
+        log(f"\n{name.upper()}  (n={s['n']:,}, {c['voided']} void)")
         log(f"  Brier    {s['brier']:.4f}   vs always-50%: {calibration.ALWAYS_HALF_BRIER:.4f}")
         log(f"  log loss {s['log_loss']:.4f}   vs always-50%: {calibration.ALWAYS_HALF_LOG_LOSS:.4f}")
         log(f"  hit rate {s['hit_rate']:.4f}")
@@ -199,6 +203,19 @@ def report(conn: sqlite3.Connection, log=print) -> None:
             f"    {f['factor']:22s} n={f['n']:>5,}  delta Brier {f['delta_brier']:+.5f}  "
             f"mean |contribution| {f['mean_abs_contribution']:.4f}  {f['verdict']}"
         )
+
+    log("\n" + "-" * 66)
+    log("ON COMPARING THIS TO A PREVIOUS FACTOR SET")
+    log("-" * 66)
+    log("A Brier score from a refit is not a result. Any change in it, in")
+    log("either direction, is what refitting a model on the same seasons")
+    log("produces. It means nothing until the new factor set has a FORWARD")
+    log("record of its own. The version comparison in the interface starts")
+    log("v2 at N=0 for exactly this reason, and never adds it to v1.")
+    log("")
+    log("This run's numbers are stated above. They are not offered as an")
+    log("improvement on anything. If they look like one, that is the")
+    log("expected behaviour of a refit and not evidence about football.")
 
     log("\n" + "=" * 66)
     log("Reminder: every number above was produced over seasons already played,")

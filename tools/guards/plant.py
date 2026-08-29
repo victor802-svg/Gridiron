@@ -376,6 +376,108 @@ def plant_backdated_factor(conn: sqlite3.Connection) -> Result:
                   "NOT CAUGHT — a factor moved its own start date")
 
 
+def plant_a_silent_missing_data_default() -> Result:
+    """v2: reintroduce the 0.0 fallback that made precipitation look measured."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root)
+        victim = root / "factors" / "compute.py"
+        text = victim.read_text(encoding="utf-8")
+        anchor = (
+            "        if value is None:" + chr(10)
+            + "            fv.absent.append(f.name)"
+        )
+        text = text.replace(
+            anchor,
+            anchor + chr(10)
+            + "            fv.values[f.name] = f.default   # PLANTED",
+        )
+        victim.write_text(text, encoding="utf-8")
+        try:
+            audit.check_no_silent_defaults(root=root)
+        except audit.MissingDataDefaulted as exc:
+            return Result("v2 MISSING", "put back the 0.0 fallback in the feature vector",
+                          "audit.check_no_silent_defaults", True, str(exc))
+    return Result("v2 MISSING", "put back the 0.0 fallback in the feature vector",
+                  "audit.check_no_silent_defaults", False,
+                  "NOT CAUGHT - an unmeasurable factor can be given a value again")
+
+
+def plant_a_defaulted_factor_at_runtime() -> Result:
+    """The same violation, at the moment it would produce its first silent zero."""
+    from gridiron.factors.compute import FeatureVector
+
+    fv = FeatureVector(market_type="spread")
+    fv.values["precipitation"] = 0.0
+    fv.raw["precipitation"] = None
+    fv.absent.append("precipitation")
+    try:
+        audit.assert_missing_is_explicit(fv)
+    except audit.MissingDataDefaulted as exc:
+        return Result("v2 MISSING", "a vector carrying a value for an ABSENT factor",
+                      "audit.assert_missing_is_explicit", True, str(exc))
+    return Result("v2 MISSING", "a vector carrying a value for an ABSENT factor",
+                  "audit.assert_missing_is_explicit", False,
+                  "NOT CAUGHT - absent and measured are indistinguishable again")
+
+
+def plant_a_merged_calibration_curve(conn: sqlite3.Connection) -> Result:
+    """LAW 4 / no-merged-curves: average every prop market into one number."""
+    payload = calibration.scorecard(conn)
+    merged = dict(payload["categories"][0])
+    merged["category"] = "props / statistical"
+    merged["market"] = "prop"
+    merged["filters"] = dict(merged["filters"])
+    merged["filters"]["market_type"] = "prop"
+    merged["filters"]["prop_type"] = "all"
+    payload["categories"].append(merged)
+    try:
+        calibration.assert_no_merged_categories(payload)
+    except calibration.MergedCurve as exc:
+        return Result("NO MERGED CURVES", "average all five prop markets into one curve",
+                      "calibration.assert_no_merged_categories", True, str(exc))
+    return Result("NO MERGED CURVES", "average all five prop markets into one curve",
+                  "calibration.assert_no_merged_categories", False,
+                  "NOT CAUGHT - a merged curve reached the interface")
+
+
+def plant_a_merged_forecaster_curve(conn: sqlite3.Connection) -> Result:
+    payload = calibration.scorecard(conn)
+    merged = dict(payload["categories"][0])
+    merged["filters"] = dict(merged["filters"])
+    merged["filters"]["predictor"] = "all"
+    payload["categories"].append(merged)
+    try:
+        calibration.assert_no_merged_categories(payload)
+    except calibration.MergedCurve as exc:
+        return Result("NO MERGED CURVES", "average the statistical and LLM forecasters",
+                      "calibration.assert_no_merged_categories", True, str(exc))
+    return Result("NO MERGED CURVES", "average the statistical and LLM forecasters",
+                  "calibration.assert_no_merged_categories", False, "NOT CAUGHT")
+
+
+def plant_a_registry_factor_without_a_rationale(conn: sqlite3.Connection) -> Result:
+    """LAW 2 through the REALISTIC path: declared in code, then synced."""
+    planted = registry.Factor(
+        name="looks_good_to_me",
+        added_utc="2026-08-29T00:00:00Z",
+        rationale="trust me",
+        applies_to=("spread",),
+        fn=lambda ctx: 1.0,
+    )
+    registry.REGISTRY["looks_good_to_me"] = planted
+    try:
+        store.sync_registry(conn)
+    except sqlite3.IntegrityError as exc:
+        return Result("LAW 2", "declare a factor in the registry whose rationale is 'trust me'",
+                      "CHECK constraint reached through store.sync_registry", True, str(exc))
+    finally:
+        registry.REGISTRY.pop("looks_good_to_me", None)
+    return Result("LAW 2", "declare a factor in the registry whose rationale is 'trust me'",
+                  "CHECK constraint reached through store.sync_registry", False,
+                  "NOT CAUGHT - an unjustified factor entered the registry in code")
+
+
 def plant_betting_surface() -> Result:
     """LAW 5: has a staking surface grown anywhere in the package?
 
@@ -433,6 +535,8 @@ def main() -> int:
     results.append(plant_market_import_inside_the_blind_window())
     results.append(plant_betting_surface())
     results.append(plant_betting_surface_violation())
+    results.append(plant_a_silent_missing_data_default())
+    results.append(plant_a_defaulted_factor_at_runtime())
 
     with tempfile.TemporaryDirectory() as tmp:
         conn = seeded_database(Path(tmp) / "guards.db")
@@ -446,6 +550,9 @@ def main() -> int:
         results.append(plant_factor_without_rationale(conn))
         results.append(plant_factor_without_a_date(conn))
         results.append(plant_backdated_factor(conn))
+        results.append(plant_a_registry_factor_without_a_rationale(conn))
+        results.append(plant_a_merged_calibration_curve(conn))
+        results.append(plant_a_merged_forecaster_curve(conn))
         conn.close()
 
     print("=" * 74)

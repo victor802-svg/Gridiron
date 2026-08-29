@@ -16,9 +16,13 @@ Deactivating is also deliberate: set `active=False` and give `deactivated_utc`
 and a note. The row stays. The history stays.
 
 Every function takes a context object (see `context.py`) and returns a float,
-or `None` when the input genuinely is not available. `None` is not zero — the
-caller substitutes `default` and records that the value was missing, so a
-defaulted factor is visible in `factors_json` rather than silently blended in.
+or `None` when the input genuinely is not available.
+
+**There is no `default`.** A factor that returns `None` is EXCLUDED from that
+game's vector entirely (v2). The field used to exist and used to be substituted,
+which is how `precipitation` came to be fitted as if two thirds of the league's
+history were played in confirmed dry weather. It is gone rather than merely
+unused, because a dead knob that looks live is an invitation to turn it.
 """
 
 from __future__ import annotations
@@ -36,7 +40,6 @@ class Factor:
     rationale: str
     applies_to: tuple[str, ...]
     fn: Callable
-    default: float = 0.0
     active: bool = True
     deactivated_utc: str | None = None
     note: str | None = None
@@ -50,7 +53,6 @@ def factor(
     added: str,
     rationale: str,
     applies_to: Iterable[str],
-    default: float = 0.0,
     active: bool = True,
     deactivated: str | None = None,
     note: str | None = None,
@@ -68,7 +70,6 @@ def factor(
             rationale=" ".join(rationale.split()),
             applies_to=tuple(applies_to),
             fn=fn,
-            default=default,
             active=active,
             deactivated_utc=deactivated,
             note=note,
@@ -206,7 +207,6 @@ def short_week_either(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
-    default=0.0,
     rationale=(
         "Distance flown costs sleep and adds a day of logistics for the "
         "visiting side only. Scaled to thousands of miles so the coefficient is "
@@ -237,7 +237,6 @@ def timezone_shift(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
-    default=0.0,
     rationale=(
         "Points scored minus points allowed, adjusted for the quality of the "
         "opponents faced, is the plainest available statement of how good a "
@@ -254,7 +253,6 @@ def srs_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
-    default=0.0,
     rationale=(
         "Rosters and schemes change during a season through injury and "
         "adjustment, so the last four games carry information the full-season "
@@ -271,7 +269,6 @@ def recent_form_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
-    default=0.0,
     rationale=(
         "Plays from scrimmage per game sets how many chances exist for the "
         "better team to express itself. A fast pairing produces a wider "
@@ -288,7 +285,6 @@ def pace_sum(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
-    default=0.0,
     rationale=(
         "Players listed Out on the final injury report do not play. This counts "
         "declared non-availability only; it makes no attempt to judge how badly "
@@ -305,7 +301,6 @@ def injury_out_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
-    default=0.0,
     rationale=(
         "Quarterback is the one position where the backup is usually a large "
         "step down and the whole offence is built around the starter. This is a "
@@ -322,7 +317,6 @@ def qb_out_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
-    default=0.0,
     rationale=(
         "Division opponents play twice a year with continuous film and shared "
         "personnel knowledge, which historically compresses margins relative to "
@@ -340,7 +334,6 @@ def divisional(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
-    default=0.0,
     rationale=(
         "Wind is the weather variable that actually changes football: it moves "
         "the deep ball and the field goal, pushes teams towards the run, and "
@@ -359,7 +352,6 @@ def wind(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
-    default=0.0,
     rationale=(
         "Cold stiffens the ball and the hands and favours the running game. "
         "Centred on 55F and scaled per 20F, so a 15F night in Buffalo reads -2."
@@ -376,7 +368,6 @@ def cold(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
-    default=0.0,
     note=(
         "REPAIRED 2026-08-29. It was not inert because rain does not matter; it "
         "was inert because it was unmeasurable in 66% of games and those games "
@@ -541,7 +532,6 @@ def prop_volatility(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
-    default=0.0,
     rationale=(
         "Defences differ in what they surrender by position, through scheme and "
         "personnel. Yards allowed per game to the position, expressed relative "
@@ -560,7 +550,6 @@ def opponent_allowance(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
-    default=0.0,
     rationale=(
         "A player carrying a Questionable tag into the weekend plays fewer snaps "
         "on average even when active. Participation status only, read straight "

@@ -35,9 +35,20 @@ Every rung ends in `.5`, so no question can push.
 
 ### Props
 
-For a configurable number of players per game (default two), one question each:
-**does this player exceed `line_asked` in this stat?** Stats are passing yards,
-rushing yards and receiving yards.
+Five markets, each its own scoring category: **passing yards, receiving yards,
+rushing yards, receptions, passing touchdowns.** For each, one question:
+**does this player exceed `line_asked` in this stat?**
+
+There is no combined "props" number and there will not be. Receptions and
+passing touchdowns are different questions with different difficulty, and an
+average across them describes neither. Each market has its own calibration
+curve, its own fitted model, and its own 100-resolution gate.
+
+**The slate is capped at 40 props a week, at most three per game,** filled by
+round-robin across the markets in descending order of real-world liquidity. So
+the cap bites on the thinnest market first, and the slate is never all
+quarterbacks. Quality of resolution beats quantity of predictions: a forecast
+nobody reads is not a forecast anybody can check.
 
 The player is chosen by usage — the highest-volume qualifying player at the
 position, with at least three prior games — never by how interesting the answer
@@ -49,11 +60,23 @@ trailing `.5`.
 The offsets exist because asking exactly at a player's average would make every
 honest answer 50%, and a scorecard of coin-flips teaches nothing.
 
-**A player who does not appear recorded zero**, so a question about whether they
-would exceed a number resolves against the claim. This is the honest reading of
-the question we asked, and failing to anticipate an absence is a real
-forecasting error rather than an excuse. The training set counts non-appearances
-the same way, so the model is fitted against the world it is scored in.
+**A prop whose stat cannot be read is VOID, not a loss.** If the player did not
+appear, or the box score carries no value for him, the prediction reaches a
+terminal void state with a stated reason and is excluded from every curve.
+
+This reverses an earlier choice and the reversal is on the record. It used to
+settle as a loss, on the reasoning that a player who did not play recorded zero,
+so "more than 180.5 yards" was false. True as arithmetic, wrong as measurement:
+it scores a *production* forecast on whether somebody was **active**, which is a
+different question from the one asked.
+
+Two things keep that from becoming an excuse. Selection excludes players already
+ruled Out and players who have not appeared within two completed weeks, so a
+non-appearance is a genuine surprise rather than something walked into — that
+rule alone cut the measured void rate from 11.7% to 4.2%. And the **void count
+is printed beside every prop curve**: a model that keeps choosing players who do
+not play is telling you something, and burying it in the loss column would hide
+it.
 
 ### Two forecasters, scored separately
 
@@ -92,7 +115,9 @@ ways:
    `gridiron.model.predict` and fails if any module in it imports
    `gridiron.market`, or names a market column anywhere in code. Docstrings are
    exempt: a module must stay free to explain in prose what it refuses to do.
-   The closure is currently 16 modules.
+   The closure is currently 16 modules. `gridiron.audit` deliberately sits
+   OUTSIDE it: the module holds the list of forbidden market identifiers, so
+   importing it from the prediction path would make the guard flag itself.
 3. **Runtime.** `blind.blind_window()` installs an import sentinel that raises if
    `gridiron.market` is imported while a prediction is being formed, and refuses
    to open at all if that package is already loaded. This forces the market
@@ -141,7 +166,8 @@ activation date.
 | `home_field` | 2026-08-28 | Home teams win more than away teams and always have: no travel, a familiar surface and snap count, crowd noise on the opposing offence, and the officiating tilt crowd noise produces. |
 | `neutral_site` | 2026-08-28 | A neutral site removes home advantage from the home-listed team while still costing both sides a trip — a different game from the one `home_field` describes. |
 | `rest_diff` | 2026-08-28 | Recovery time is physical: more healing, more practice reps, more film. The differential is what matters, since both clubs on a short week cancels out. |
-| `short_week_diff` | 2026-08-28 | A Thursday game after a Sunday is a categorically different preparation, not just fewer days: the install week disappears and soft tissue does not settle. |
+| `short_week_diff` **(deactivated 2026-08-29)** | 2026-08-28 | A Thursday game after a Sunday is a categorically different preparation. Retired as a broken instrument, not a refuted idea: see below. |
+| `short_week_either` | 2026-08-29 | REPAIR of the above. The short-week effect is a property of the GAME, not an asymmetry between the clubs: when both sides come off six days, both installs are cut and neither side's knocks have settled. Invisible to a differential that cancels. |
 | `travel_kmiles` | 2026-08-28 | Distance flown costs sleep and adds logistics, for the visitor only. In thousands of miles; a cross-country trip is about 2.5 units. |
 | `timezone_shift` | 2026-08-28 | Crossing time zones desynchronises the body clock independently of distance. A west-coast club at a 1pm Eastern kickoff is playing at what its body calls breakfast. |
 | `srs_diff` | 2026-08-28 | Points for minus points against, adjusted for opponent quality, is the plainest statement of how good a team has been. Adjusting matters because an easy schedule inflates a raw differential. |
@@ -176,15 +202,85 @@ absence of wind, not missing data.
 | `prop_volatility` | 2026-08-28 | Two players with the same average are not the same question: a high-variance player clears a high line more often and a low line less often. Without a spread estimate a mean cannot become a probability. |
 | `opponent_allowance` | 2026-08-28 | Defences differ in what they surrender by position. Yards allowed per game to the position, relative to league average, carried with its own sample size. |
 | `prop_player_status` | 2026-08-28 | A Questionable tag means fewer snaps on average even when active. Participation status only: 1 Out, 0.5 Doubtful, 0.25 Questionable. |
+| `prop_volume_share` | 2026-08-29 | A player's share of his own offence's volume. Eight targets on a team that throws forty times is a different role from eight on a team that throws twenty, and the share is what survives when the offence changes pace. |
+| `prop_snap_share` | 2026-08-29 | Offensive snap share: the most direct measure of opportunity there is, and it moves before production does when a role changes. The source keys on player NAME, so roughly one in twenty cannot be matched (measured join rate 95.1%); those games record the factor as absent, never as a zero, which would read as a healthy scratch. |
+| `prop_game_script` | 2026-08-29 | Projected game script from the same opponent-adjusted ratings the spread question uses, signed for the player's own team. A team expected to lead runs to hold the lead; a team expected to trail throws to catch up. The same player has a different job in the two games. Derived from our ratings, never from a market number. |
 
 `travel_kmiles`, `pace_sum` and the three weather factors also apply to props.
 
-### Missing values are named, never blended in
+### Missing is an explicit state (v2)
 
-A factor that cannot be computed returns `None`. The feature vector substitutes
-the factor's declared default **and records the name in `missing`**, which is
-stored on the prediction row forever. A forecast made without a weather forecast
-says so on its own record, rather than looking identical to one made in a dome.
+A factor that cannot be measured for a game is **excluded from that game's
+vector**. It does not receive a default, and it is never silently
+indistinguishable from a real measurement that happened to be zero. Every
+prediction records `present`, `absent`, `absent_detail`, `sources` and
+`coverage`, permanently.
+
+Before v2, an unmeasurable factor was substituted with a declared default —
+usually `0.0` — and merely noted. That is how `precipitation`, unmeasurable in
+66% of games, came to be fitted as if two thirds of the league's history had
+been played in confirmed dry weather.
+
+**An honest limit on that change, because it would be easy to oversell.** For a
+linear model, excluding a term and imputing zero produce *identical*
+coefficients: a row with `x = 0` already contributes nothing to that
+coefficient's normal equations. This was verified on the real 2,639-game
+training set — largest coefficient difference `0.00e+00` — and
+`tests/test_missingness.py` pins the equivalence so nobody later believes the
+change improved the fit.
+
+What exclusion actually buys is downstream, and it is not small:
+
+* The record distinguishes *"measured, and it was dry"* from *"we could not
+  look"*. Those were previously identical, forever.
+* `Fit.presence` reports how many training rows actually carried each factor:
+  `srs_diff` 2,603 of 2,639, `wind` 2,468, `precipitation` 761. Under
+  zero-imputation the last of those reported 2,639.
+* A factor is scored only over the predictions where it was measured.
+* A factor that never *varies* where it is measurable is dropped from the fit
+  and named, instead of being fitted to 0.0 and read as "no effect".
+  `precipitation` is exactly this: measurable only indoors, where it is always
+  zero.
+
+The substantive repair for `precipitation` is not the arithmetic. It is
+fetching the forecast so the factor has a value at all — which forward
+predictions now do, from Open-Meteo, cached and tagged with its source on the
+prediction row.
+
+### The two repaired instruments
+
+Neither was a refuted hypothesis. Both were instruments that never measured
+anything, and the registry says so on the row, because a reader who mistakes a
+repair for a discovery will draw the wrong conclusion from both.
+
+**`short_week_diff` → deactivated, replaced by `short_week_either`.** The
+differential was non-zero in **1 game of 544**. The reason is the schedule, not
+the idea: the NFL puts *both* clubs on a short week for a Thursday game, so the
+difference cancels to zero exactly when the effect is largest. The level does
+vary — non-zero in 38 of the same 544 games — and fits a real coefficient where
+the differential fitted 0.000. The old factor's history stays; its v1 score
+stands as recorded.
+
+**`rest_diff` was kept, not duplicated.** A replacement "signed difference in
+actual rest days" was proposed. That factor already existed under this name and
+is a working instrument: non-zero in 206 of 544 games (37.9%), spanning −8 to
++8 days. A second one would have been perfectly collinear with the first, and a
+test now fails if a duplicate rest factor ever appears.
+
+### Factor set versions
+
+A factor set is a different forecaster. Its record **begins at N = 0 on its
+activation date**, and nothing earlier is backfitted onto it. Versions are
+reported side by side and are **never summed**: a closed record and an
+accumulating one describe different models, and their total describes neither.
+
+* **fs1** — activated 2026-08-28. Closed. 48 forward predictions written, 0
+  resolved.
+* **fs2** — activated 2026-08-29. Current. 56 forward predictions written, 0
+  resolved.
+
+The interface shows both, with no total row, and says in words that a version
+starting at zero is the expected state rather than a rendering fault.
 
 ---
 
@@ -322,32 +418,65 @@ conflating them retires good ideas for bad reasons:
 
 ## 6. What the record currently says
 
-From the walk-forward backtest over 2024–2025, each season fitted only on
-seasons before it, 1,632 resolved predictions:
+Two records, kept apart on purpose.
 
-| | spread | prop |
-|---|---|---|
-| N | 544 | 1,088 |
-| Brier | 0.2142 | 0.1941 |
-| log loss | 0.6154 | 0.5698 |
-| always-50% Brier | 0.2500 | 0.2500 |
-| **market Brier, same questions** | **0.2011** | no free source |
+### The forward record: N = 0 resolved
 
-**The market beats the model.** On the same 544 spread questions the closing line
-scores 0.2011 against the model's 0.2142.
+**104 predictions have been written before kickoff and none has resolved.**
+56 under fs2 and 48 under fs1, written on 2026-08-29, with the first kickoff of
+the 2026 season on 2026-09-10. Nothing can resolve until the games are played,
+and the scorecard says zero rather than borrowing a number from below.
 
-And on the edge question:
+This is the only record that could ever become evidence.
 
-| | N | model said | market said | resolved model's way |
-|---|---|---|---|---|
-| model more confident | 207 | 65.2% | 52.4% | **55.6%** |
-| market more confident | 146 | — | — | **71.2%** |
+### The backtest: pipeline sanity, not evidence
 
-Where the model disagreed with the market, it did *worse*. Where it deferred, it
-did better. That is the opposite of an edge, and it is reported here for the
-same reason it is reported in the interface: this is what the project is for.
+Walk-forward over 2024–2025, each season fitted only on seasons before it,
+1,892 resolved predictions under the fs2 factor set.
 
-These numbers are from a retrospective run. See below.
+| Market | N | Void | Brier | Log loss | Hit rate |
+|---|---:|---:|---:|---:|---:|
+| spread | 544 | 0 | 0.2141 | 0.6153 | 64.9% |
+| passing yards | 261 | 27 | 0.1684 | 0.5164 | 77.0% |
+| receiving yards | 275 | 13 | 0.2137 | 0.6166 | 65.1% |
+| rushing yards | 273 | 15 | 0.2091 | 0.6071 | 64.8% |
+| receptions | 275 | 13 | 0.2074 | 0.6039 | 66.9% |
+| passing TDs | 264 | 21 | 0.2318 | 0.6584 | 59.1% |
+
+Always-50% scores 0.2500 Brier and 0.6931 log loss. On the same 544 spread
+questions, **the closing line scores 0.2011** against the model's 0.2141.
+
+There is no combined row and there will not be one.
+
+**On comparing this to fs1.** A Brier from a refit is not a result. Any change
+in it, in either direction, is what refitting on the same seasons produces, and
+it means nothing until fs2 has a forward record of its own. The numbers above
+are stated, not offered as an improvement on anything.
+
+### The worst thing the record says
+
+Two findings, both unflattering, both reported because that is the point.
+
+**Where the model disagrees with the market, it does worse.** Over the 544
+spread questions:
+
+| | N | Model said | Market said | Resolved model's way |
+|---|---:|---:|---:|---:|
+| model more confident by >5 pts | 207 | 65.4% | 52.5% | **55.1%** |
+| market more confident by >5 pts | 148 | — | — | **70.3%** |
+
+Where it deferred, it did better. That is the opposite of an edge, it survived
+the move from fs1 to fs2 essentially unchanged, and
+[docs/DIAGNOSIS.md](DIAGNOSIS.md) is a pre-registered attempt to find out why
+that failed: none of the four hypotheses is supported, and the honest conclusion
+recorded there is *the disagreements lose and we do not know why yet.*
+
+**Passing touchdowns are badly calibrated.** The model claimed 54.3% in the
+50–60% bucket and was right 41.8% across 98 resolved — overconfident by 12.4
+points — and it is over-confident in every bucket of that market. Passing TDs
+are a small-count Poisson-ish quantity being forecast by a model whose other
+markets are continuous yardage; that is a plausible reason, and it is a
+hypothesis for a later phase, not a finding from this one.
 
 ---
 
@@ -365,20 +494,24 @@ split removes that. This is why backtests live in a separate database marked
 the verification run reports the retrospective and forward records separately
 and never adds them together.
 
-**The live forward record is currently N = 0 resolved.** 48 predictions for 2026
-week 1 were written on 2026-08-29, twelve days before the first kickoff on
-2026-09-10, with lines snapshotted afterwards. None can resolve until the games
-are played. The scorecard says zero, and it should.
+**The live forward record is currently N = 0 resolved.** 104 predictions for
+2026 week 1 were written on 2026-08-29 (56 under fs2, 48 under the now-closed
+fs1), twelve days before the first kickoff on 2026-09-10, with lines
+snapshotted afterwards. None can resolve until the games are played. The
+scorecard says zero, and it should.
 
 Before any claim here deserves weight, all of the following would have to hold:
 
 1. **Volume.** At least 100 resolved forward predictions in the specific
-   category being claimed about — and 100 is a floor for showing a number at
+   category being claimed about — and there are now eleven such categories, one
+   per market per forecaster, each gated separately — and 100 is a floor for showing a number at
    all, not a threshold for believing it. Several hundred, across more than one
    season, is where the discussion starts.
-2. **A season it was not built in.** The current factor set was declared with
-   knowledge of 2016–2025. Its first honest test is 2026 and beyond. A factor
-   set that keeps changing never accumulates one.
+2. **A season it was not built in.** fs2 was declared with knowledge of
+   2016–2025. Its first honest test is 2026 and beyond. A factor set that keeps
+   changing never accumulates one — which is the cost of the v2 repairs, paid
+   knowingly: fs1's forward record is closed at zero resolved and fs2 starts
+   again from nothing.
 3. **Calibration that holds in the tails.** Being right about 55% claims is
    easy. The 80%+ bucket is where a model's self-knowledge is actually tested,
    and it fills slowest.
@@ -392,6 +525,10 @@ Before any claim here deserves weight, all of the following would have to hold:
    common true answer and should be the prior.
 6. **Stability under a factor change.** If adding or removing one factor swings
    the record materially, the record was noise.
+7. **A reason for the disagreement failure.** The single clearest signal in the
+   record is that the model's disagreements with the market resolve worse than
+   its agreements. A pre-registered diagnosis could not explain it. Until it
+   can, any claim of edge is contradicted by the project's own scorecard.
 
 Until then the correct reading of every number in this project is: *the pipeline
 works, and we do not yet know whether the model does.*
