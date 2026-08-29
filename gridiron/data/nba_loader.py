@@ -152,11 +152,11 @@ def load_schedule(conn: sqlite3.Connection, season: int) -> dict:
             hs = as_ = None
         conn.execute(
             "INSERT INTO games (id, sport, season, week, game_type, home, away,"
-            " kickoff_utc, status, home_score, away_score)"
-            " VALUES (?, 'nba', ?, ?, 'REG', ?, ?, ?, ?, ?, ?)"
+            " kickoff_utc, status, home_score, away_score, league_date)"
+            " VALUES (?, 'nba', ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(id) DO UPDATE SET status=excluded.status,"
             " kickoff_utc=excluded.kickoff_utc, home_score=excluded.home_score,"
-            " away_score=excluded.away_score",
+            " away_score=excluded.away_score, league_date=excluded.league_date",
             (
                 f"nba_{g['gameId']}",
                 season,
@@ -167,6 +167,11 @@ def load_schedule(conn: sqlite3.Connection, season: int) -> dict:
                 "final" if played else "scheduled",
                 hs,
                 as_,
+                # The league's own date, which `leaguegamelog` keys every row
+                # on. Not the UTC date: 76.8% of NBA games tip after midnight
+                # UTC, and cutting a rolling window on the UTC date let each of
+                # them into its own window.
+                (g.get("gameDateEst") or "")[:10] or None,
             ),
         )
         # The arena lives on `game_conditions`, which is where every sport's

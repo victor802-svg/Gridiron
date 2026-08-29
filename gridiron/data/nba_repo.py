@@ -35,11 +35,27 @@ def game(conn: sqlite3.Connection, game_id: str) -> sqlite3.Row | None:
 
 
 def game_date(conn: sqlite3.Connection, game_id: str) -> str | None:
-    row = conn.execute(
-        "SELECT substr(kickoff_utc, 1, 10) AS d FROM games WHERE id = ?", (game_id,)
-    ).fetchone()
-    return row["d"] if row and row["d"] else None
+    """The LEAGUE's own calendar date for this game, which is the cutoff every
+    rolling window must use.
 
+    NOT the UTC date, and the difference is not cosmetic. A game tipping at
+    02:00 UTC is the previous evening where it is played, so its own row in the
+    game log is dated the day before its `kickoff_utc`. Cutting a window at
+    `game_date < utc_date` therefore let the game being predicted into its own
+    rolling form, availability and pace — 76.8% of NBA games and 25.1% of MLB
+    ones. The model was reading the result it was forecasting.
+
+    Falls back to the UTC date only when no league date was recorded, which is
+    the pre-migration case; the loaders now always write one.
+    """
+    row = conn.execute(
+        "SELECT league_date, substr(kickoff_utc, 1, 10) AS utc_date"
+        " FROM games WHERE id = ?",
+        (game_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return row["league_date"] or row["utc_date"]
 
 def games_in_week(conn: sqlite3.Connection, season: int, week: int) -> list[sqlite3.Row]:
     return conn.execute(

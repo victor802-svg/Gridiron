@@ -342,3 +342,54 @@ def _days_from_now(n: int) -> str:
     return (datetime.now(timezone.utc) + timedelta(days=n)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
+
+
+# --- the leak that made a model look clairvoyant ---------------------------
+
+def test_the_cutoff_is_the_league_date_not_the_utc_date(conn):
+    """A game tipping after midnight UTC is the previous evening where it is
+    played, so its own game-log row is dated the day BEFORE its kickoff_utc.
+    Cutting a rolling window on the UTC date let the game being predicted into
+    its own rolling form — 76.8% of NBA games and 25.1% of MLB ones. The model
+    was reading the result it was forecasting.
+    """
+    from gridiron.data import nba_repo
+
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('nba_late', 'nba', 2025, 1,"
+        " 'REG', 'LAL', 'GSW', '2025-10-22T02:00:00Z', 'scheduled', '2025-10-21')"
+    )
+    conn.commit()
+    # The UTC date and the league date genuinely differ for this game...
+    assert conn.execute(
+        "SELECT substr(kickoff_utc,1,10) FROM games WHERE id='nba_late'"
+    ).fetchone()[0] == "2025-10-22"
+    # ...and the cutoff must be the league's.
+    assert nba_repo.game_date(conn, "nba_late") == "2025-10-21"
+
+
+@pytest.mark.parametrize("sport", ["nba", "mlb"])
+def test_no_game_appears_in_its_own_rolling_window(sport, nba_league, mlb_league):
+    """The invariant stated directly, so it is checked by outcome rather than by
+    trusting the mechanism that produces it."""
+    from gridiron.data import mlb_repo, nba_repo
+
+    conn = nba_league if sport == "nba" else mlb_league
+    repo, table = (
+        (nba_repo, "nba_team_games") if sport == "nba" else (mlb_repo, "mlb_team_games")
+    )
+    games = conn.execute(
+        "SELECT id, home FROM games WHERE sport = ? AND status = 'final' LIMIT 40",
+        (sport,),
+    ).fetchall()
+    assert games, "fixture produced no completed games to check"
+    for g in games:
+        before = repo.game_date(conn, g["id"])
+        rows = conn.execute(
+            f"SELECT game_id FROM {table} WHERE team = ? AND game_date < ?",
+            (g["home"], before),
+        ).fetchall()
+        assert not any(r["game_id"] == g["id"] for r in rows), (
+            f"{g['id']} is inside its own rolling window"
+        )

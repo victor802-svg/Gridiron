@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS games (
     week          INTEGER NOT NULL,
     game_type     TEXT    NOT NULL,          -- REG | WC | DIV | CON | SB
     kickoff_utc   TEXT,                      -- ISO-8601 Z; NULL if TBD
+    -- The LEAGUE's own calendar date, which is NOT the UTC date. A game tipping
+    -- at 02:00 UTC is the previous evening where it is played, and every game
+    -- log is keyed on that local date. Every rolling-window cutoff uses this
+    -- column: cutting on the UTC date instead let the game being predicted into
+    -- its own window, for 76.8% of NBA games and 25.1% of MLB ones.
+    league_date   TEXT,
     home          TEXT    NOT NULL,
     away          TEXT    NOT NULL,
     status        TEXT    NOT NULL           -- scheduled | final

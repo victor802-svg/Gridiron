@@ -506,3 +506,70 @@ def factors(conn: sqlite3.Connection, sport: str) -> dict:
             entry["deactivated_utc"] = row["deactivated_utc"]
     calibration.assert_every_figure_has_n(report)
     return report
+
+
+# ---------------------------------------------------------------------------
+# how stale is what we know
+# ---------------------------------------------------------------------------
+
+#: Where each sport's schedule comes from, as a LIKE pattern over the fetch
+#: cache. Staleness is measured from the actual fetch record rather than from a
+#: loader's own report of success, because a loader served entirely from cache
+#: reports success and fetches nothing — which is exactly how a six-hour TTL hid
+#: three finished baseball games while `load` said it had touched 2,458 rows.
+SCHEDULE_URL_PATTERNS = {
+    "nfl": "%nflverse-data%schedules%",
+    "mlb": "%statsapi.mlb.com%schedule%",
+    "nba": "%stats.nba.com%scheduleleaguev2%",
+}
+
+#: Beyond this, a sport's schedule is reported stale rather than merely old.
+STALE_AFTER_HOURS = 12
+
+
+def schedule_staleness(conn: sqlite3.Connection) -> dict:
+    """Age of the newest schedule fetch, per sport.
+
+    Reported so a silent loader is VISIBLE rather than assumed healthy. There is
+    no combined figure: staleness belongs to one sport at a time like every
+    other number here.
+    """
+    from datetime import datetime, timezone
+
+    from .data import sources
+
+    now = datetime.now(timezone.utc)
+    out = []
+    for sport in config.SPORTS:
+        newest = sources.newest_fetch(conn, SCHEDULE_URL_PATTERNS[sport])
+        if newest is None:
+            out.append({
+                "sport": sport,
+                "label": config.SPORT_LABELS.get(sport, sport.upper()),
+                "fetched_utc": None,
+                "age_hours": None,
+                "stale": True,
+                "note": "no schedule has ever been fetched for this sport",
+            })
+            continue
+        age = (now - datetime.strptime(newest, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )).total_seconds() / 3600.0
+        out.append({
+            "sport": sport,
+            "label": config.SPORT_LABELS.get(sport, sport.upper()),
+            "fetched_utc": newest,
+            "age_hours": round(age, 2),
+            "stale": age > STALE_AFTER_HOURS,
+            "note": (
+                f"schedule last fetched {age:.1f}h ago"
+                if age <= STALE_AFTER_HOURS
+                else f"schedule last fetched {age:.1f}h ago, which is stale; "
+                     "results may have finished upstream without being recorded"
+            ),
+        })
+    return {
+        "side_by_side_sports": True,
+        "stale_after_hours": STALE_AFTER_HOURS,
+        "sports": out,
+    }

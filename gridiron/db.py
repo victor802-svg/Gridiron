@@ -42,6 +42,11 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("factor_scores", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
     ("model_fits", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
     ("nba_injuries", "player_name", "TEXT NOT NULL DEFAULT ''"),
+    # The LEAGUE's own calendar date for a game, which is not the UTC date. A
+    # game tipping at 02:00 UTC is the previous evening where it is played, and
+    # every rolling window cut on the UTC date therefore INCLUDED the game it
+    # was predicting: 76.8% of NBA games and 25.1% of MLB ones.
+    ("games", "league_date", "TEXT"),
 )
 
 

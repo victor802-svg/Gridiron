@@ -241,13 +241,19 @@ def test_a_renamed_arena_is_not_a_neutral_site(conn):
 
 def test_every_nba_factor_is_namespaced_and_carries_a_rationale():
     factors = [f for f in registry.all_factors() if f.sport == "nba"]
-    assert len(factors) == 15
-    assert len([f for f in factors if "spread" in f.applies_to]) == 8
+    assert len(factors) == 16
+    assert len([f for f in factors if "spread" in f.applies_to]) == 9
     assert len([f for f in factors if "prop" in f.applies_to]) == 7
+    assert sum(f.active for f in factors) == 15, (
+        "nba_back_to_back is deactivated in favour of nba_b2b_either"
+    )
     for f in factors:
         assert f.name.startswith("nba_"), f"{f.name} would collide across sports"
         assert len(f.rationale) > 80, f"{f.name} has a token rationale"
-        assert f.active, f"{f.name} is declared inactive with no note"
+        if not f.active:
+            assert f.note and f.deactivated_utc, (
+                f"{f.name} is inactive with no dated note saying why"
+            )
 
 
 def test_the_home_court_factor_can_actually_vary():

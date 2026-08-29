@@ -46,7 +46,18 @@ SNAP_COUNTS_URL = f"{NFLVERSE}/snap_counts/snap_counts_{{season}}.csv"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 #: How stale a mutable cache entry may get before we revalidate.
+#: How long a fetch of MUTABLE-BUT-SLOW-MOVING data stays fresh. A completed
+#: season's schedule, a historical box score: nothing about them changes hour to
+#: hour, so six hours is generous and polite.
 LIVE_TTL = timedelta(hours=6)
+
+#: How long a fetch of data about TODAY stays fresh. Six hours was catastrophic
+#: here and the failure was silent: baseball finishes games all evening, so a
+#: schedule cached at 19:10 still said every game was scheduled at 20:39 while
+#: two were already final upstream. `load` reported success, `resolve` found
+#: nothing to settle, and the record simply stayed empty. A forecaster whose
+#: results arrive six hours late is not a forecaster that resolves daily.
+LIVE_TODAY_TTL = timedelta(minutes=5)
 
 
 class SourceUnavailable(RuntimeError):
@@ -88,6 +99,7 @@ def fetch(
     immutable: bool = False,
     offline_ok: bool = True,
     headers: dict[str, str] | None = None,
+    ttl: timedelta | None = None,
 ) -> bytes:
     """Return the bytes at `url`, from cache when we can.
 
@@ -102,7 +114,8 @@ def fetch(
     if row is not None:
         if row["immutable"]:
             return row["body"]
-        age_cutoff = (datetime.now(timezone.utc) - LIVE_TTL).strftime("%Y-%m-%dT%H:%M:%SZ")
+        window = ttl if ttl is not None else LIVE_TTL
+        age_cutoff = (datetime.now(timezone.utc) - window).strftime("%Y-%m-%dT%H:%M:%SZ")
         if row["fetched_utc"] >= age_cutoff:
             return row["body"]
 
@@ -143,3 +156,26 @@ def cache_stats(conn: sqlite3.Connection) -> list[dict[str, object]]:
         " FROM http_cache ORDER BY url"
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def ttl_for_range(start: str, end: str) -> timedelta:
+    """The freshness window for a fetch covering the dates `start`..`end`.
+
+    A range that reaches today or beyond describes games that are being played
+    right now, and gets minutes. A range wholly in the past describes games that
+    finished, and gets hours. Passing the range rather than a boolean means the
+    caller cannot forget which side it is on.
+    """
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return LIVE_TODAY_TTL if end >= today else LIVE_TTL
+
+
+def newest_fetch(conn: sqlite3.Connection, like: str) -> str | None:
+    """When we last actually fetched anything matching `like`. Used by the
+    staleness reporting, so a silent loader is visible rather than assumed
+    healthy."""
+    row = conn.execute(
+        "SELECT MAX(fetched_utc) AS newest FROM http_cache WHERE url LIKE ?",
+        (like,),
+    ).fetchone()
+    return row["newest"] if row and row["newest"] else None

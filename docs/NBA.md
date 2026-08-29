@@ -50,17 +50,24 @@ over, in different shapes.
 
 | Factor | Fitted weight | Present in |
 |--------|--------------:|-----------:|
-| `nba_asked_line` | +1.2565 | 4,920 / 4,920 |
-| `nba_net_rating_rolling` | +1.0275 | 4,851 |
-| `nba_availability_index` | +0.5472 | 4,911 |
-| `nba_home_court` | +0.1021 | 4,920 |
-| `nba_travel_recent` | −0.0524 | 4,887 |
-| `nba_rest_days_diff` | +0.0176 | 4,911 |
-| `nba_back_to_back` | +0.0128 | 4,911 |
-| `nba_pace_rolling` | +0.0137 | 3,690 |
+| `nba_asked_line` | +1.1078 | 4,920 / 4,920 |
+| `nba_availability_index` | +1.0338 | 4,904 |
+| `nba_net_rating_rolling` | +0.6244 | 4,841 |
+| `nba_rest_days_diff` | +0.0969 | 4,904 |
+| `nba_home_court` | +0.0665 | 4,920 |
+| `nba_pace_rolling` | +0.0380 | 3,690 |
+| `nba_b2b_either` | +0.0109 | 4,904 |
+| `nba_travel_recent` | −0.0069 | 4,857 |
 
-Fitted on 2022-23 through 2025-26, 4,920 completed games. Nothing dropped and
-nothing constant — which took two repairs to be true.
+Fitted on 2022-23 through 2025-26, 4,920 completed games, **after the
+rolling-window leak was fixed**. Nothing dropped, nothing constant.
+
+The first fit of this table, before the fix, is worth keeping beside it:
+`nba_net_rating_rolling` sat at +1.03 and `nba_availability_index` at +0.55.
+Once the model stopped seeing the game it was predicting, those swapped —
+availability rose to +1.03 and net rating fell to +0.62. Net rating was the
+factor carrying most of the leaked information, which is exactly why it looked
+like the strongest thing in the model.
 
 `nba_pace_rolling` is present in only 3,690 rows because it is expressed against
 the league average of **prior** seasons, and 2022-23 is the earliest season
@@ -292,6 +299,36 @@ nights in hotels — and distinguishes a long homestand from a long road trip,
 which are the two states that matter.
 
 ---
+
+## Backtest — pipeline sanity, not evidence
+
+2025-26, walk-forward, fitted on 2022-25 only. 1,230 predictions, all resolved.
+
+| | with the leak | **leak-free** |
+|-|--:|--:|
+| model Brier | 0.1849 | **0.2065** |
+| model on the market's subset | 0.1855 | **0.2072** |
+| market Brier | 0.1920 | 0.1920 |
+| hit rate | 0.7228 | **0.6756** |
+| **model as a share of market skill** | **111.3%** | **73.8%** |
+| model's confident disagreements right | 66.9% | **52.8%** |
+| market's confident disagreements right for model | 72.5% | 80.4% |
+
+The left column is what a model looks like when it can see the result it is
+forecasting. It appeared to beat the market by 14%; corrected, the market beats
+it and basketball lands at 73.8% of market skill, beside football's 73.1%.
+
+The disagreement line is the one to read. When this model confidently disagrees
+with a basketball line it is right 52.8% of the time — a coin flip, on exactly
+the questions where it is most sure. When the market is the confident one, the
+market is right 80.4% of the time. D1 reached the same conclusion about football
+and it has not changed for a second sport.
+
+Two chased explanations were wrong before the right one was found, and both were
+stated with more confidence than they had earned: that the margin SD was to
+blame (it moved the market's Brier by 0.0012), and that the ladder's tails were
+(the advantage sat near the line, and the market won the deep tail). The leak was
+found by measuring, not by reasoning.
 
 ## The record
 

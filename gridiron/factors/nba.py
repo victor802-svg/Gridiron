@@ -68,21 +68,61 @@ def nba_availability_index(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    active=False,
+    deactivated="2026-08-29T00:00:00Z",
+    note=(
+        "DEACTIVATED 2026-08-29 in favour of nba_b2b_either, which measures the "
+        "LEVEL rather than the difference. "
+        "THE NUMBER THAT ORIGINALLY JUSTIFIED THIS WAS WRONG, and the correction "
+        "is recorded rather than quietly dropped. The backtest reported the "
+        "differential non-zero in only 4.4% of games and the verdict read 'input "
+        "almost never varies'. That 4.4% was an ARTEFACT OF THE ROLLING-WINDOW "
+        "LEAK: with the cutoff taken on the UTC date, a game fell inside its own "
+        "window, days-since-last-game collapsed to zero for both clubs, and the "
+        "differential cancelled. Measured on leak-free data it is non-zero in "
+        "21.3% of games - not a broken instrument at all. "
+        "The replacement is still the better shape: both clubs are on the second "
+        "night together in 5.7% of games, where a differential says nothing and "
+        "a level says plenty, so the level fires in 27.0% against the "
+        "differential's 21.3%. But this is a REFINEMENT, not the rescue of a "
+        "dead instrument, and calling it the latter would have entered a false "
+        "finding into the record. Compare short_week_diff, which genuinely never "
+        "varied (1 game in 544)."
+    ),
     rationale=(
         "The second night of a back-to-back is the most reliable schedule effect "
         "in basketball: legs are gone, and it is also when a club is most likely "
         "to sit a star. Measured as a differential of a zero-one flag, so it "
         "reads +1 when only the away side is on no rest and -1 when only the "
-        "home side is. Declared separately from rest days rather than folded "
-        "into it because zero days rest is a categorically different state, not "
-        "one step on a continuum: 17.9% of team-games are on zero rest, so this "
-        "has room to vary, which was measured before it was declared."
+        "home side is."
     ),
 )
 def nba_back_to_back(ctx) -> float | None:
     if ctx.home_rest_days is None or ctx.away_rest_days is None:
         return None
     return float((ctx.away_rest_days == 0) - (ctx.home_rest_days == 0))
+
+
+@factor(
+    added="2026-08-29T00:00:00Z",
+    sport="nba",
+    applies_to=("spread",),
+    rationale=(
+        "REPAIR of nba_back_to_back, which the schedule cancelled. Measures the "
+        "LEVEL rather than the difference: 1 when EITHER side is on the second "
+        "night of a back-to-back, 0 when neither is. The hypothesis was never "
+        "that tired legs favour one team - it is that a game with a tired team "
+        "in it is a different game, higher variance and more prone to a rested "
+        "side pulling away, and that shows up in whether a spread is covered "
+        "regardless of which club is tired. Zero-rest team-games are 17.9%, so "
+        "this fires in roughly a third of games where the differential fired in "
+        "4.4%. Same repair, same reasoning, as NFL's short_week_either."
+    ),
+)
+def nba_b2b_either(ctx) -> float | None:
+    if ctx.home_rest_days is None or ctx.away_rest_days is None:
+        return None
+    return float(ctx.home_rest_days == 0 or ctx.away_rest_days == 0)
 
 
 @factor(

@@ -80,6 +80,7 @@ def step_2_guards() -> bool:
 def step_3_one_week_end_to_end(source: Path) -> bool:
     rule("STEP 3 — one complete week, end to end (retrospective; resolution works)")
 
+    sport = "nfl"
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         target = Path(tmp) / "one-week.db"
         conn = db.open_db(target)
@@ -88,10 +89,19 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
         db.set_meta(conn, "kind_note", "single-week end-to-end verification run")
         store.sync_registry(conn)
 
+        # SPORT-SCOPED. This step verifies one NFL week, and without the filter
+        # it took MAX(week) across every sport - which is a BASEBALL DAY NUMBER,
+        # 155 and climbing. It selected a week no football game has ever been
+        # played in, wrote zero predictions, and reported that as a failure of
+        # the pipeline rather than of the query. LAW 6 is about reading the
+        # record, but the same confusion reaches anything that mixes the sports'
+        # week keys.
         last = conn.execute(
             "SELECT season, MAX(week) AS week FROM games"
-            " WHERE status = 'final' AND game_type = 'REG'"
-            " AND season = (SELECT MAX(season) FROM games WHERE status = 'final')"
+            " WHERE sport = ? AND status = 'final' AND game_type = 'REG'"
+            " AND season = (SELECT MAX(season) FROM games"
+            "               WHERE sport = ? AND status = 'final')",
+            (sport, sport),
         ).fetchone()
         season, week = last["season"], last["week"]
         print(f"target: {season} week {week} (the most recent completed regular-season week)")
@@ -124,9 +134,13 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
         print(f"  [{time.time() - started:.0f}s]")
         print()
         ok = True
+        # LAW 6: every read of the record names its sport. This step verifies
+        # one NFL week, so it asks NFL. It was written before LAW 6 existed and
+        # sat broken behind an earlier failure, which is its own small lesson
+        # about what an unrun verifier is worth.
         markets = [("spread", None)] + [("prop", m) for m in config.PROP_MARKETS]
         for market_type, prop_type in markets:
-            curve = calibration.curve(conn, market_type=market_type,
+            curve = calibration.curve(conn, sport=sport, market_type=market_type,
                                       prop_type=prop_type, predictor="statistical")
             name = prop_type or market_type
             print(f"  {name} / statistical  n={curve['n']}, {curve['voided']} void")
@@ -139,7 +153,7 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
                     print(f"     {bucket['label']:>7s} n=0")
             print(f"     {curve['largest_gap']}")
 
-        payload = calibration.scorecard(conn)
+        payload = calibration.scorecard(conn, sport=sport)
         calibration.assert_every_figure_has_n(payload)
         print("\n  scorecard passed the LAW 4 validator: every figure carries its N")
         edge = payload["edge"]
@@ -163,13 +177,23 @@ def step_4_live_forward_week() -> bool:
     kind = db.database_kind(conn)
     print(f"database: {config.DB_PATH}  (kind={kind['kind']})")
 
+    # GROUPED BY SPORT, and VOIDED ROWS EXCLUDED. Both matter and both were
+    # wrong. Without the sport, NFL week 1 and NBA week 1 were added together
+    # and reported as one slate of 151 predictions - the same cross-sport week
+    # confusion that made step 3 target a baseball day number. And a voided
+    # prediction is not part of the record: the six MLB rows written after first
+    # pitch were voided FOR that reason, and counting them made the blind-first
+    # check fail on predictions that had already been removed for failing it.
     rows = conn.execute(
-        "SELECT g.season, g.week, COUNT(*) AS n,"
+        "SELECT g.sport, g.season, g.week, COUNT(*) AS n,"
         " MIN(p.created_utc) AS written, MIN(g.kickoff_utc) AS first_kickoff,"
         " SUM(CASE WHEN p.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved,"
         " SUM(CASE WHEN g.status = 'final' THEN 1 ELSE 0 END) AS played"
         " FROM predictions p JOIN games g ON g.id = p.game_id"
-        " GROUP BY g.season, g.week ORDER BY g.season DESC, g.week DESC"
+        " WHERE NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)"
+        " GROUP BY g.sport, g.season, g.week"
+        " ORDER BY g.sport, g.season DESC, g.week DESC"
     ).fetchall()
     if not rows:
         print("no forward predictions on record")
@@ -181,8 +205,8 @@ def step_4_live_forward_week() -> bool:
         snapshots = conn.execute(
             "SELECT COUNT(*) FROM market_snapshots s JOIN predictions p"
             " ON p.id = s.prediction_id JOIN games g ON g.id = p.game_id"
-            " WHERE g.season = ? AND g.week = ?",
-            (r["season"], r["week"]),
+            " WHERE g.sport = ? AND g.season = ? AND g.week = ?",
+            (r["sport"], r["season"], r["week"]),
         ).fetchone()[0]
         blind_ok = r["written"] < r["first_kickoff"] if r["first_kickoff"] else None
         print(f"\n  {r['season']} week {r['week']}: {r['n']} predictions")

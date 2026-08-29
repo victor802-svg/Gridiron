@@ -70,6 +70,10 @@ def health() -> dict:
         "version": app.version,
         "database": str(_database or config.DB_PATH),
         "kind": db.get_meta(conn, "kind", "live"),
+        # How old what we know is, per sport. A loader served entirely from
+        # cache reports success and fetches nothing, so "the load ran" is not
+        # evidence that the data is current — only the fetch record is.
+        "schedule_staleness": views.schedule_staleness(conn),
     }
 
 

@@ -110,7 +110,17 @@ def load_season(conn: sqlite3.Connection, season: int, *, progress=None) -> dict
         if progress:
             progress(f"mlb schedule {cursor} to {chunk_end}")
         try:
-            payload = json.loads(sources.fetch(conn, url, immutable=immutable))
+            payload = json.loads(
+                sources.fetch(
+                    conn,
+                    url,
+                    immutable=immutable,
+                    # Minutes for a chunk that reaches today, hours for one
+                    # wholly in the past. Baseball finishes games all evening
+                    # and this is the fetch resolution depends on.
+                    ttl=sources.ttl_for_range(cursor.isoformat(), chunk_end.isoformat()),
+                )
+            )
         except sources.SourceUnavailable:
             cursor = chunk_end + timedelta(days=1)
             continue
@@ -164,15 +174,22 @@ def _write_game(conn, game, season: int, day_index: dict, counts: dict,
 
     conn.execute(
         "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc, home,"
-        " away, status, home_score, away_score) VALUES (?, 'mlb', ?,?,?,?,?,?,?,?,?)"
+        " away, status, home_score, away_score, league_date)"
+        " VALUES (?, 'mlb', ?,?,?,?,?,?,?,?,?,?)"
         " ON CONFLICT(id) DO UPDATE SET kickoff_utc=excluded.kickoff_utc,"
         " status=excluded.status, home_score=excluded.home_score,"
         " away_score=excluded.away_score, week=excluded.week,"
-        " home=excluded.home, away=excluded.away",
+        " home=excluded.home, away=excluded.away,"
+        " league_date=excluded.league_date",
         (
             game_id, season, day_index.get(official, 0), "REG",
             game.get("gameDate"), home_abbr, away_abbr,
             "final" if final else "scheduled", home_runs, away_runs,
+            # `officialDate` is the league's own calendar date and is what every
+            # game log is keyed on. It is NOT the UTC date: a night game on the
+            # west coast is the next day in UTC, and cutting a rolling window on
+            # the UTC date let that game into its own window.
+            official,
         ),
     )
     conn.execute(

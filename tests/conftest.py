@@ -264,11 +264,11 @@ def mlb_league(conn) -> sqlite3.Connection:
                     hs += 1
             conn.execute(
                 "INSERT INTO games (id, sport, season, week, game_type, home, away,"
-                " kickoff_utc, status, home_score, away_score) VALUES"
-                " (?, 'mlb', 2025, ?, 'REG', ?, ?, ?, ?, ?, ?)",
+                " kickoff_utc, status, home_score, away_score, league_date) VALUES"
+                " (?, 'mlb', 2025, ?, 'REG', ?, ?, ?, ?, ?, ?, ?)",
                 (
                     gid, day, home, away, _iso(date),
-                    "final" if played else "scheduled", hs, a_s,
+                    "final" if played else "scheduled", hs, a_s, _iso(date)[:10],
                 ),
             )
             if played:
@@ -422,9 +422,10 @@ def nba_league(conn) -> sqlite3.Connection:
         home, away = NBA_CLUBS[i], NBA_CLUBS[i + 1]
         conn.execute(
             "INSERT INTO games (id, sport, season, week, game_type, home, away,"
-            " kickoff_utc, status) VALUES (?, 'nba', 2026, 1, 'REG', ?, ?, ?,"
-            " 'scheduled')",
-            (f"nba_2026_001_{home}_{away}", home, away, _iso(future)),
+            " kickoff_utc, status, league_date) VALUES (?, 'nba', 2026, 1, 'REG',"
+            " ?, ?, ?, 'scheduled', ?)",
+            (f"nba_2026_001_{home}_{away}", home, away, _iso(future),
+             _iso(future)[:10]),
         )
     conn.commit()
     return conn

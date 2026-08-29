@@ -12,6 +12,8 @@ exist or if the snapshot claims to predate it.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import math
 import sqlite3
 
@@ -19,22 +21,92 @@ from .. import config
 from ..db import utcnow
 from . import sources
 
-#: Standard deviation of an NFL final margin around the closing spread, in
-#: points. The value is stable across seasons at roughly 13; it is used only to
-#: turn a spread into a comparable probability so the model and the market can be
-#: read on the same axis. It is a stated modelling assumption, not a measurement,
-#: and it is written down here rather than buried in an expression.
-MARGIN_SD = 13.2
+#: The bare `MARGIN_SD = 13.2` that stood here was REMOVED on 2026-08-29. It
+#: was the module-wide default behind `MARGIN_SD_BY_SPORT.get(sport,
+#: MARGIN_SD)`, so any sport without its own entry silently received
+#: football's number - and MLB had no entry. Its replacement is `margin_sd()`,
+#: which has no fallback and fails by name. What was assumed and what was
+#: measured now sit side by side on each MarginSD as `assumed_before`.
 
 SOURCE = "nflverse/schedules"
 NO_PROP_MARKET = "unavailable:no-free-prop-line-source"
 NO_SOURCE = "unavailable:no-free-line-source"
 
-#: Standard deviation of a final margin around the closing spread, per sport.
-#: NFL's is the long-standing ~13; NBA's is ~11.5 across recent seasons. Both
-#: are stated modelling assumptions used only to put the model and the market on
-#: one probability axis, and both are written down rather than buried.
-MARGIN_SD_BY_SPORT = {"nfl": 13.2, "nba": 11.5}
+class UnmeasuredMarginSD(RuntimeError):
+    """A scoring path reached for a margin SD that carries no measurement."""
+
+
+@dataclass(frozen=True)
+class MarginSD:
+    """A measured standard deviation, with the evidence attached.
+
+    Every field is required. A bare float is what this replaces, and a bare
+    float is how NBA's market comparison came to be wrong for an entire day:
+    11.5 was written down as "~11.5 across recent seasons", nobody could check
+    it because there was nothing to check it against, and the true figure is
+    13.95. Understating it by 21% made the market's implied probabilities far
+    too confident on big spreads, inflated its Brier score, and produced a
+    backtest in which the model appeared to BEAT the market by 14%.
+    """
+
+    sd: float
+    n: int
+    measured_utc: str
+    source: str
+    assumed_before: float | None = None
+
+
+#: SD(actual home margin - market spread), measured per sport by
+#: `tools/measure_margin_sd.py`, deduplicated by game id across every database
+#: that holds lines for that sport. NEVER assumed again: the guard below refuses
+#: any entry without a measurement date, so a plausible-looking number cannot be
+#: typed in and used.
+#:
+#: MLB is measured from ESPN's run line. Gridiron asks no run-line question, so
+#: nothing uses it today — it is recorded because the previous table had NO mlb
+#: key at all, which meant an MLB caller would have silently received football's
+#: number through a dict default.
+MARGIN_SD_BY_SPORT: dict[str, MarginSD] = {
+    "nfl": MarginSD(
+        sd=12.70, n=2761, measured_utc="2026-08-29T20:51:30Z",
+        source="nflverse closing lines, 1999-2025 completed games",
+        assumed_before=13.2,
+    ),
+    "mlb": MarginSD(
+        sd=4.71, n=2110, measured_utc="2026-08-29T20:51:30Z",
+        source="ESPN run line, 2025 season plus live fetches",
+        assumed_before=None,   # there was no entry; the default would have applied
+    ),
+    "nba": MarginSD(
+        sd=13.95, n=1191, measured_utc="2026-08-29T20:51:30Z",
+        source="ESPN spread, 2025-26 season",
+        assumed_before=11.5,
+    ),
+}
+
+
+def margin_sd(sport: str) -> float:
+    """The measured SD for a sport, or a NAMED failure.
+
+    There is deliberately no fallback. The old code did `.get(sport, MARGIN_SD)`,
+    so a sport with no entry quietly received football's number and every
+    probability derived from it was wrong in a way nothing would ever print.
+    """
+    entry = MARGIN_SD_BY_SPORT.get(sport)
+    if entry is None:
+        raise UnmeasuredMarginSD(
+            f"no margin SD has been measured for {sport!r}. Run "
+            "tools/measure_margin_sd.py and add a dated entry; do not guess one. "
+            "A margin SD sets how confident the market is made to look, so an "
+            "invented value silently rewrites the comparison this project exists "
+            "to make."
+        )
+    if not entry.measured_utc or not entry.n:
+        raise UnmeasuredMarginSD(
+            f"the margin SD for {sport!r} carries no measurement date or sample "
+            "size, so it is an assumption wearing a measurement's clothes."
+        )
+    return entry.sd
 
 
 def market_availability(sport: str, market: str) -> dict:
@@ -90,8 +162,7 @@ def implied_cover_probability(
     exceeds zero, which under a normal margin is
     Phi((expected_margin + line_asked) / sd).
     """
-    sd = MARGIN_SD_BY_SPORT.get(sport, MARGIN_SD)
-    return norm_cdf((market_spread + line_asked) / sd)
+    return norm_cdf((market_spread + line_asked) / margin_sd(sport))
 
 
 def raw_line(conn: sqlite3.Connection, game_id: str) -> sqlite3.Row | None:

@@ -42,6 +42,68 @@ FACT_TABLES = (
 )
 
 
+SEPARATOR = chr(10) + "  "
+
+
+class TransposedCopy(RuntimeError):
+    """A copied table does not match its source column for column."""
+
+
+def _fingerprint(conn: sqlite3.Connection, table: str, columns: list[str],
+                 prefix: str = "") -> dict[str, tuple]:
+    """A per-COLUMN summary, which is what makes a shift detectable.
+
+    Row counts do not catch transposition — a positional copy moves every value
+    one place along and the count is unchanged. Summarising each column
+    separately does catch it, because two adjacent columns almost never hold the
+    same values.
+    """
+    out: dict[str, tuple] = {}
+    for col in columns:
+        row = conn.execute(
+            f"SELECT COUNT({col}) AS n, SUM(LENGTH(CAST({col} AS TEXT))) AS bytes"
+            f" FROM {prefix}{table}"
+        ).fetchone()
+        out[col] = (row[0], row[1])
+    return out
+
+
+def verify_copy(conn: sqlite3.Connection, tables=FACT_TABLES) -> dict:
+    """Assert the copy in `conn` matches `live.` column for column.
+
+    This exists because avoiding a bug and DETECTING it are different things.
+    The positional copy was avoided by writing column names — but nothing would
+    have noticed if a later edit reverted that, except by luck: the only reason
+    the original was caught at all was a CHECK constraint that happened to
+    reject a season number where a sport name belonged. Luck is not a guard.
+
+    Requires `live` to still be attached; `copy_facts` calls it before detaching.
+    """
+    mismatches: list[str] = []
+    for table in tables:
+        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+        live_cols = {r[1] for r in conn.execute(f"PRAGMA live.table_info({table})")}
+        shared = [c for c in cols if c in live_cols]
+        if not shared:
+            continue
+        here = _fingerprint(conn, table, shared)
+        there = _fingerprint(conn, table, shared, prefix="live.")
+        for col in shared:
+            if here[col] != there[col]:
+                mismatches.append(
+                    f"{table}.{col}: copy has {here[col]}, source has {there[col]}"
+                )
+    if mismatches:
+        raise TransposedCopy(
+            "the copied tables do not match their source column for column, "
+            "which is what a POSITIONAL copy produces: a column added by "
+            "migration sits at the end of the live table and in its declared "
+            "position in a fresh schema, so every value after it shifts one "
+            "place along. Mismatches:" + SEPARATOR + SEPARATOR.join(mismatches[:8])
+        )
+    return {"tables": len(tables), "ok": True}
+
+
 def copy_facts(conn: sqlite3.Connection, source: Path | str, tables=FACT_TABLES) -> dict:
     """Copy the fact tables from `source` into the already-open `conn`.
 
@@ -68,6 +130,9 @@ def copy_facts(conn: sqlite3.Connection, source: Path | str, tables=FACT_TABLES)
             )
             copied[table] = cur.rowcount
         conn.commit()
+        # Checked, not assumed. The copy is the step that silently corrupted a
+        # backtest and a verifier; it does not get to be trusted.
+        verify_copy(conn, tables)
     finally:
         conn.execute("DETACH DATABASE live")
     return copied

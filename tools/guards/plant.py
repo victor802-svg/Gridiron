@@ -643,6 +643,159 @@ def plant_betting_surface_violation() -> Result:
 
 # ---------------------------------------------------------------------------
 
+def plant_a_transposed_column_copy() -> Result:
+    """Copy a table POSITIONALLY, the way the original bug did, and check the
+    verifier names it.
+
+    This is the planting that was missing when it mattered. The positional copy
+    corrupted both a backtest and the verifier itself, and the only reason it was
+    ever noticed was a CHECK constraint that happened to reject a season number
+    where a sport name belonged. Had `sport` carried no CHECK, both tools would
+    have run happily on transposed data and every figure downstream would have
+    been quietly wrong. Luck is not a guard.
+    """
+    import sqlite3 as _sqlite
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+    import dbcopy
+
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _Path(tmp) / "source.db"
+        target = _Path(tmp) / "target.db"
+        src = db.open_db(source)
+        # Two columns whose values are obviously different, so a shift shows.
+        src.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " status, league_date) VALUES ('g1', 'nfl', 2025, 3, 'REG', 'KC',"
+            " 'BUF', 'scheduled', '2025-09-14')"
+        )
+        src.commit()
+        src.close()
+
+        conn = db.open_db(target)
+        conn.execute("ATTACH DATABASE ? AS live", (str(source),))
+        # THE PLANTED BUG: copy by position, deliberately shifting two columns.
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(games)")]
+        shifted = cols[:]
+        i = shifted.index("home")
+        shifted[i], shifted[i + 1] = shifted[i + 1], shifted[i]
+        conn.execute(
+            f"INSERT INTO games ({', '.join(cols)})"
+            f" SELECT {', '.join(shifted)} FROM live.games"
+        )
+        conn.commit()
+
+        try:
+            dbcopy.verify_copy(conn, tables=("games",))
+        except dbcopy.TransposedCopy as exc:
+            conn.close()
+            return Result(
+                "DBCOPY", "copy a table positionally so two columns shift",
+                "dbcopy.verify_copy", True, str(exc),
+            )
+        except _sqlite.Error as exc:
+            conn.close()
+            return Result(
+                "DBCOPY", "copy a table positionally so two columns shift",
+                "dbcopy.verify_copy", False,
+                f"NOT CAUGHT BY NAME - only a database error, by luck: {exc}",
+            )
+        conn.close()
+        return Result(
+            "DBCOPY", "copy a table positionally so two columns shift",
+            "dbcopy.verify_copy", False,
+            "NOT CAUGHT - a transposed copy verified as correct",
+        )
+
+
+def plant_an_undated_margin_sd() -> Result:
+    """Reach for a margin SD that carries no measurement.
+
+    A margin SD decides how confident the MARKET is made to look, so an invented
+    one silently rewrites the comparison this project exists to make. NBA's was
+    written down as "~11.5 across recent seasons"; measured, it is 13.95.
+    """
+    from gridiron.market import lines as market_lines
+
+    failures = []
+
+    # 1. a sport with no entry at all must fail by name, never fall back
+    try:
+        market_lines.margin_sd("cricket")
+        failures.append("an unknown sport returned a number instead of raising")
+    except market_lines.UnmeasuredMarginSD:
+        pass
+
+    # 2. an entry with no measurement date is an assumption in disguise
+    saved = market_lines.MARGIN_SD_BY_SPORT.get("nfl")
+    market_lines.MARGIN_SD_BY_SPORT["nfl"] = market_lines.MarginSD(
+        sd=13.2, n=0, measured_utc="", source="vibes",
+    )
+    try:
+        market_lines.margin_sd("nfl")
+        failures.append("an undated SD was accepted as a measurement")
+    except market_lines.UnmeasuredMarginSD:
+        pass
+    finally:
+        market_lines.MARGIN_SD_BY_SPORT["nfl"] = saved
+
+    # 3. every shipped entry must actually carry its evidence
+    for sport, entry in market_lines.MARGIN_SD_BY_SPORT.items():
+        if not entry.measured_utc or not entry.n or not entry.source:
+            failures.append(f"{sport} ships without its measurement")
+
+    if failures:
+        return Result("MEASURED NOT ASSUMED", "use a margin SD with no measurement",
+                      "market.lines.margin_sd", False, "NOT CAUGHT - " + "; ".join(failures))
+    return Result(
+        "MEASURED NOT ASSUMED", "use a margin SD with no measurement",
+        "market.lines.margin_sd", True,
+        "an unknown sport and an undated entry both raise UnmeasuredMarginSD; "
+        "every shipped SD carries its date, sample size and source",
+    )
+
+
+def plant_a_game_inside_its_own_rolling_window() -> Result:
+    """The leak that made a model look clairvoyant.
+
+    A game tipping after midnight UTC is the previous evening where it is
+    played, so its own game-log row is dated the day before its kickoff_utc.
+    Cutting a rolling window on the UTC date admitted the game being predicted
+    into its own rolling form: 76.8% of NBA games and 25.1% of MLB ones.
+    """
+    from pathlib import Path as _Path
+
+    from gridiron.data import nba_repo
+
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(_Path(tmp) / "leak.db")
+        # A 7pm Pacific tip-off: 02:00 the NEXT day in UTC.
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('nba_x', 'nba', 2025, 1,"
+            " 'REG', 'LAL', 'GSW', '2025-10-22T02:00:00Z', 'scheduled',"
+            " '2025-10-21')"
+        )
+        conn.commit()
+        utc_date = conn.execute(
+            "SELECT substr(kickoff_utc, 1, 10) FROM games WHERE id = 'nba_x'"
+        ).fetchone()[0]
+        cutoff = nba_repo.game_date(conn, "nba_x")
+        conn.close()
+
+    caught = cutoff == "2025-10-21" and utc_date == "2025-10-22"
+    return Result(
+        "NO FUTURE DATA", "cut a rolling window on the UTC date, not the league date",
+        "data.nba_repo.game_date", caught,
+        f"the cutoff is the league date {cutoff}, not the UTC date {utc_date}, so "
+        "the game cannot enter its own window" if caught
+        else f"NOT CAUGHT - cutoff {cutoff} equals the UTC date {utc_date}, so this "
+             "game is inside its own rolling window",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -660,6 +813,9 @@ def main() -> int:
     results.append(plant_a_line_claimed_for_an_unpriced_market())
     results.append(plant_a_context_with_no_sport())
     results.append(plant_an_unprefixed_foreign_factor())
+    results.append(plant_a_transposed_column_copy())
+    results.append(plant_an_undated_margin_sd())
+    results.append(plant_a_game_inside_its_own_rolling_window())
 
     with tempfile.TemporaryDirectory() as tmp:
         conn = seeded_database(Path(tmp) / "guards.db")
