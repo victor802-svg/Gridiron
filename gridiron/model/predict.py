@@ -88,8 +88,22 @@ def write_prediction(
     if extra:
         payload.update(extra)
 
+    # An existence check rather than INSERT OR IGNORE, and the difference is
+    # not stylistic. OR IGNORE swallows EVERY constraint failure, so a row
+    # rejected by a CHECK looked exactly like a rerun of a question already
+    # answered — which is how an entire sport's first slate silently wrote zero
+    # predictions and reported success. A duplicate is a no-op; a violated
+    # constraint is a bug, and the two must not return the same thing.
+    already = conn.execute(
+        "SELECT 1 FROM predictions WHERE game_id = ? AND market_type = ?"
+        " AND subject = ? AND predictor = ? AND factor_set_version = ?",
+        (q.game_id, q.market_type, q.subject, predictor, config.FACTOR_SET_VERSION),
+    ).fetchone()
+    if already:
+        return None
+
     cur = conn.execute(
-        "INSERT OR IGNORE INTO predictions (created_utc, sport, game_id, market_type,"
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
         " prop_type, subject, line_asked, model_prob, model_side, predictor,"
         " factor_set_version, factors_json, reasoning, degraded)"
         " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -111,7 +125,7 @@ def write_prediction(
         ),
     )
     conn.commit()
-    if cur.lastrowid is None or cur.rowcount == 0:
+    if cur.lastrowid is None:
         return None
     return WrittenPrediction(
         prediction_id=cur.lastrowid,
@@ -143,6 +157,16 @@ def predict_slate(
     run = BlindRun(sport=sport, season=season, week=week)
     cache = context.WeekCache()
 
+    # BLIND FIRST implies BEFORE. A live record may only contain predictions
+    # written before the event started; a game already under way is skipped with
+    # a stated reason rather than forecast retrospectively. A backtest database
+    # is exempt because retrospection is its entire purpose, and it is marked
+    # and bannered so nobody reads it as a forward record.
+    from ..db import database_kind, utcnow as _now
+
+    live = database_kind(conn)["kind"] == "live"
+    now = _now()
+
     fits: dict[str, object] = {}
     for market in config.SPORT_MARKETS.get(sport, ()):
         if not include_props and market in config.SPORT_PROP_MARKETS.get(sport, ()):
@@ -156,6 +180,20 @@ def predict_slate(
     llm_off: str | None = None
 
     for q in adapter.slate_questions(conn, season, week, include_props=include_props):
+        if live:
+            kickoff = conn.execute(
+                "SELECT kickoff_utc, status FROM games WHERE id = ?", (q.game_id,)
+            ).fetchone()
+            started = kickoff and (
+                kickoff["status"] == "final"
+                or (kickoff["kickoff_utc"] and kickoff["kickoff_utc"] <= now)
+            )
+            if started:
+                run.skipped.append(
+                    f"{q.game_id}: already under way at {now}; a forecast written "
+                    "after the first pitch is not a forecast"
+                )
+                continue
         if q.market_key not in fits:
             run.skipped.append(f"{q.game_id} {q.market_key}: no fitted model")
             continue

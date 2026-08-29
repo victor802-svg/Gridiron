@@ -180,8 +180,35 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
     return write(row["source"], row["spread_line"], round(implied, 6))
 
 
+def ensure_lines(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
+    """Fetch whatever published lines exist for these predictions' games.
+
+    NFL lines arrive with the nflverse schedule at load time. MLB and NBA are
+    fetched here, from ESPN, AFTER the predictions exist -- which is the whole
+    ordering LAW 1 is about, and why this function lives in the quarantine.
+    """
+    from . import espn
+
+    if not prediction_ids:
+        return {}
+    placeholders = ",".join("?" for _ in prediction_ids)
+    by_sport: dict[str, list[str]] = {}
+    for r in conn.execute(
+        f"SELECT DISTINCT sport, game_id FROM predictions WHERE id IN ({placeholders})",
+        prediction_ids,
+    ):
+        by_sport.setdefault(r["sport"], []).append(r["game_id"])
+
+    out = {}
+    for sport, game_ids in by_sport.items():
+        if sport in espn.LEAGUE_PATH:
+            out[sport] = espn.fetch_for_games(conn, sport, game_ids)
+    return out
+
+
 def snapshot_many(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[str, int]:
     counts = {"snapshotted": 0, "already": 0, "no_line": 0}
+    counts["fetched"] = ensure_lines(conn, prediction_ids)
     for pid in prediction_ids:
         before = conn.execute(
             "SELECT COUNT(*) AS n FROM market_snapshots WHERE prediction_id = ?", (pid,)

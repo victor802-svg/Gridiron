@@ -217,7 +217,16 @@ def test_rest_diff_was_kept_rather_than_duplicated():
     a second identical factor would be collinear with the first."""
     assert registry.REGISTRY["rest_diff"].active
     assert "signed difference in actual rest days" in registry.REGISTRY["rest_diff"].rationale
-    duplicates = [n for n in registry.REGISTRY if "rest" in n and n != "short_week_either"]
+    # Football's registry only. Baseball declares its own rest instruments —
+    # a pitcher's days between starts and a club's days between games — and
+    # they are different measurements of a different sport, not duplicates of
+    # this one. Scanning every sport's names for the substring found them and
+    # called them a regression.
+    duplicates = [
+        f.name
+        for f in registry.REGISTRY.values()
+        if f.sport == "nfl" and "rest" in f.name and f.name != "short_week_either"
+    ]
     assert duplicates == ["rest_diff"], f"a duplicate rest instrument appeared: {duplicates}"
 
 

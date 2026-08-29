@@ -150,6 +150,55 @@ CREATE INDEX IF NOT EXISTS snaps_lookup ON snap_counts (season, week, team);
 
 
 -- ---------------------------------------------------------------------------
+-- MLB. Game facts only; no market number appears in this section.
+-- ---------------------------------------------------------------------------
+
+-- Who is announced to start. The announcement is the whole point: a prediction
+-- made before probables are posted records that absence rather than guessing,
+-- and that happens often enough to be shown on the card.
+CREATE TABLE IF NOT EXISTS mlb_probables (
+    game_id       TEXT NOT NULL REFERENCES games (id),
+    side          TEXT NOT NULL CHECK (side IN ('home','away')),
+    pitcher_id    INTEGER,
+    pitcher_name  TEXT,
+    recorded_utc  TEXT NOT NULL,
+    PRIMARY KEY (game_id, side)
+);
+
+-- One row per pitcher appearance, from the player's own game log.
+CREATE TABLE IF NOT EXISTS mlb_pitcher_starts (
+    pitcher_id    INTEGER NOT NULL,
+    season        INTEGER NOT NULL,
+    game_date     TEXT    NOT NULL,
+    game_pk       INTEGER,
+    is_start      INTEGER NOT NULL DEFAULT 0,
+    innings       REAL,
+    runs          INTEGER,
+    earned_runs   INTEGER,
+    batters_faced INTEGER,
+    PRIMARY KEY (pitcher_id, season, game_date, game_pk)
+);
+CREATE INDEX IF NOT EXISTS mlb_starts_lookup
+    ON mlb_pitcher_starts (pitcher_id, game_date);
+
+-- One row per team per game: the club's own view of a result.
+CREATE TABLE IF NOT EXISTS mlb_team_games (
+    game_id        TEXT    NOT NULL REFERENCES games (id),
+    team           TEXT    NOT NULL,
+    opponent       TEXT    NOT NULL,
+    season         INTEGER NOT NULL,
+    game_date      TEXT    NOT NULL,
+    is_home        INTEGER NOT NULL,
+    runs_for       INTEGER,
+    runs_against   INTEGER,
+    innings_played REAL,
+    PRIMARY KEY (game_id, team)
+);
+CREATE INDEX IF NOT EXISTS mlb_team_games_lookup
+    ON mlb_team_games (team, game_date);
+
+
+-- ---------------------------------------------------------------------------
 -- LAW 1 QUARANTINE. Everything below this line is market data.
 -- Only `gridiron.market` may read these two tables. The prediction path has no
 -- import path to that module, and these columns exist on no table it reads.

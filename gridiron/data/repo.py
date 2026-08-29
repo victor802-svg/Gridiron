@@ -43,6 +43,22 @@ def games_for_week(
 def next_unplayed_week(
     conn: sqlite3.Connection, season: int, sport: str = "nfl"
 ) -> int | None:
+    # Not yet played means not yet STARTED, which is a stricter test than
+    # status='scheduled'. Status only changes when the loader next runs, so a
+    # game that began an hour ago still reads as scheduled — and in a sport
+    # whose slate turns over daily, that showed yesterday's card as though it
+    # were the one still to come.
+    from ..db import utcnow
+
+    row = conn.execute(
+        "SELECT MIN(week) AS w FROM games WHERE sport = ? AND season = ?"
+        " AND status = 'scheduled' AND kickoff_utc > ?",
+        (sport, season, utcnow()),
+    ).fetchone()
+    if row is not None and row["w"] is not None:
+        return int(row["w"])
+    # No future slate: a completed season, or a backtest database whose games
+    # are all in the past. The caller falls back to the last slate forecast.
     row = conn.execute(
         "SELECT MIN(week) AS w FROM games"
         " WHERE sport = ? AND season = ? AND status = 'scheduled'",

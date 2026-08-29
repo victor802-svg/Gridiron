@@ -14,6 +14,20 @@ ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 # --- LAW 2: every factor is declared, dated, and justified -----------------
 
+def _all_declared_markets() -> set[str]:
+    """What a factor may say it applies to.
+
+    Two vocabularies meet here and both are legitimate. A game factor names a
+    concrete market — `spread`, `moneyline` — while a prop factor applies to
+    the whole `prop` class rather than being redeclared once per stat. Listing
+    football's two by hand stopped being right the moment baseball declared a
+    moneyline, and the failure was the assertion, not the factor."""
+    from gridiron import config
+
+    concrete = {m for markets in config.SPORT_MARKETS.values() for m in markets}
+    return concrete | {"prop"}
+
+
 def test_every_factor_has_a_dated_causal_rationale():
     assert registry.REGISTRY, "the registry is empty"
     for f in registry.REGISTRY.values():
@@ -23,7 +37,7 @@ def test_every_factor_has_a_dated_causal_rationale():
         assert f.rationale.rstrip().endswith("."), f"{f.name} rationale is not a sentence"
         assert f.applies_to, f"{f.name} applies to no market type"
         for market in f.applies_to:
-            assert market in ("spread", "prop"), f"{f.name} -> {market}"
+            assert market in _all_declared_markets(), f"{f.name} -> {market}"
 
 
 def test_the_spec_factor_set_is_all_present():

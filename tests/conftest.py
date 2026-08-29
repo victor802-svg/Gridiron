@@ -51,7 +51,14 @@ def league(conn) -> sqlite3.Connection:
 
     rng = random.Random(20260828)
     strength = {t: s for t, s in zip(TEAMS, [7, 5, 4, 2, 0, -2, -4, -6])}
-    start = datetime(2025, 9, 7, 17, 0, tzinfo=timezone.utc)
+    # Anchored to the clock rather than to a fixed date, so that the fixture is
+    # INTERNALLY CONSISTENT: the sixteen played weeks are behind us and the two
+    # scheduled weeks are ahead. A fixture that dated an unplayed game in the
+    # past described a state a live database cannot be in, and the blind-first
+    # check that a forecast precedes its own kickoff had nothing to stand on.
+    start = datetime.now(timezone.utc).replace(
+        hour=17, minute=0, second=0, microsecond=0
+    ) - timedelta(days=7 * 16 - 3)
 
     with conn:
         for week in range(1, 19):
@@ -165,6 +172,21 @@ def league(conn) -> sqlite3.Connection:
                                 0,
                             ),
                         )
+
+    # This fixture is a BACKTEST database and says so, because that is what it
+    # is: every test needing a resolvable prediction forecasts a week already
+    # played. Declaring it lets the live rule - a forecast must precede its own
+    # kickoff - stay strict in production instead of being loosened to
+    # accommodate fixtures. The test that exercises the live rule sets `kind`
+    # to live itself.
+    db.set_meta(conn, "kind", "backtest")
+    db.set_meta(
+        conn,
+        "kind_note",
+        "Synthetic test fixture. Predictions here are written about games "
+        "already played and are not a record of anything.",
+    )
+    conn.commit()
     return conn
 
 
@@ -193,3 +215,107 @@ def a_prediction(league):
     )
     league.commit()
     return cur.lastrowid
+
+
+
+MLB_CLUBS = ["NYY", "BOS", "LAD", "SFG", "CHC", "STL", "HOU", "SEA"]
+
+
+@pytest.fixture
+def mlb_league(conn) -> sqlite3.Connection:
+    """A synthetic 8-club baseball season: 19 days played, day 20 scheduled.
+
+    Built to exercise the two things baseball tests need and football's fixture
+    cannot supply — a daily cadence with real rest gaps, and a slate where SOME
+    starting pitchers are announced and some are not. Two of the four games on
+    day 20 have no probable starter on either side, which is the state a real
+    slate is in when the loader runs early.
+    """
+    import random
+
+    rng = random.Random(1789)
+    strength = {club: 0.5 + 0.06 * (4 - i) for i, club in enumerate(MLB_CLUBS)}
+    # Anchored to the clock for the same reason the football fixture is: day 20
+    # is the slate still to be played, so it has to be in the future.
+    start = datetime.now(timezone.utc).replace(
+        hour=23, minute=10, second=0, microsecond=0
+    ) - timedelta(days=18)
+
+    pitchers = {}
+    for i, club in enumerate(MLB_CLUBS):
+        for j in range(2):
+            pid = 1000 + i * 10 + j
+            pitchers.setdefault(club, []).append(pid)
+
+    for day in range(1, 21):
+        date = start + timedelta(days=day - 1)
+        clubs = MLB_CLUBS[:]
+        rng.shuffle(clubs)
+        for pair in range(0, len(clubs), 2):
+            home, away = clubs[pair], clubs[pair + 1]
+            gid = f"mlb_2025_{day:03d}_{home}_{away}"
+            played = day < 20
+            hs = a_s = None
+            if played:
+                edge = strength[home] - strength[away] + 0.04
+                hs = max(0, int(rng.gauss(4.5 + 4 * edge, 2.5)))
+                a_s = max(0, int(rng.gauss(4.5 - 4 * edge, 2.5)))
+                if hs == a_s:
+                    hs += 1
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+                " kickoff_utc, status, home_score, away_score) VALUES"
+                " (?, 'mlb', 2025, ?, 'REG', ?, ?, ?, ?, ?, ?)",
+                (
+                    gid, day, home, away, _iso(date),
+                    "final" if played else "scheduled", hs, a_s,
+                ),
+            )
+            if played:
+                for team, opp, is_home, rf, ra in (
+                    (home, away, 1, hs, a_s), (away, home, 0, a_s, hs)
+                ):
+                    conn.execute(
+                        "INSERT INTO mlb_team_games (game_id, team, opponent, season,"
+                        " game_date, is_home, runs_for, runs_against, innings_played)"
+                        " VALUES (?,?,?,2025,?,?,?,?,9.0)",
+                        (gid, team, opp, _iso(date)[:10], is_home, rf, ra),
+                    )
+            # Starters are announced for the played days and for HALF of the
+            # final slate, so the unannounced case is present in the fixture
+            # rather than only in production.
+            announced = played or pair < 4
+            if announced:
+                for side, club in (("home", home), ("away", away)):
+                    pid = pitchers[club][day % 2]
+                    conn.execute(
+                        "INSERT INTO mlb_probables (game_id, side, pitcher_id,"
+                        " pitcher_name, recorded_utc) VALUES (?,?,?,?,?)",
+                        (gid, side, pid, f"P{pid}", _iso(date)),
+                    )
+                    if played:
+                        conn.execute(
+                            "INSERT INTO mlb_pitcher_starts (pitcher_id, season,"
+                            " game_date, game_pk, is_start, innings, runs,"
+                            " earned_runs, batters_faced) VALUES (?,2025,?,?,1,?,?,?,?)",
+                            (
+                                pid, _iso(date)[:10], day * 100 + pid,
+                                5.0 + rng.random() * 2, rng.randint(0, 5),
+                                rng.randint(0, 4), rng.randint(18, 28),
+                            ),
+                        )
+    # This fixture is a BACKTEST database and says so, because that is what it
+    # is: every test that needs a resolvable prediction forecasts a week that
+    # has already been played. Declaring it lets the live rule — a forecast must
+    # precede its own kickoff — stay strict in production instead of being
+    # loosened to accommodate the fixtures. The one test that exercises the live
+    # rule sets `kind` to live itself.
+    db.set_meta(conn, "kind", "backtest")
+    db.set_meta(
+        conn,
+        "kind_note",
+        "Synthetic test fixture. Predictions here are written about games "
+        "already played and are not a record of anything.",
+    )
+    conn.commit()
+    return conn

@@ -50,6 +50,8 @@ from gridiron.model import baseline  # noqa: E402
 #: Tables carrying facts about the world. Copied from the live database so the
 #: backtest does not refetch 25MB that is already on disk. Predictions are
 #: pointedly not in this list.
+# `games` FIRST: the sport tables carry foreign keys into it, and copying a
+# child before its parent fails the constraint.
 FACT_TABLES = (
     "games",
     "game_conditions",
@@ -59,6 +61,9 @@ FACT_TABLES = (
     "snap_counts",
     "market_lines_raw",
     "http_cache",
+    "mlb_probables",
+    "mlb_pitcher_starts",
+    "mlb_team_games",
 )
 
 
@@ -73,7 +78,16 @@ def build_database(source: Path, target: Path, note: str) -> sqlite3.Connection:
     conn = db.open_db(target)
     conn.execute("ATTACH DATABASE ? AS live", (str(source),))
     for table in FACT_TABLES:
-        conn.execute(f"INSERT INTO {table} SELECT * FROM live.{table}")
+        # By NAME, never `SELECT *`. A column added by migration lands at the
+        # end of the live table but sits in its declared position in a fresh
+        # schema, so a positional copy shifts every value one place along and
+        # the only reason we noticed was a CHECK constraint catching a season
+        # number where a sport name belonged. Silent corruption otherwise.
+        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+        live_cols = {r[1] for r in conn.execute(f"PRAGMA live.table_info({table})")}
+        shared = [c for c in cols if c in live_cols]
+        joined = ", ".join(shared)
+        conn.execute(f"INSERT INTO {table} ({joined}) SELECT {joined} FROM live.{table}")
     conn.commit()
     conn.execute("DETACH DATABASE live")
 
@@ -88,7 +102,9 @@ def run_backtest(
     seasons: list[int],
     train_from: int,
     *,
+    sport: str = "nfl",
     include_props: bool = True,
+    snapshot: bool = True,
     log=print,
 ) -> dict:
     totals = {"predicted": 0, "resolved": 0, "seasons": {}}
@@ -103,6 +119,7 @@ def run_backtest(
         fits = baseline.train_all(
             conn,
             train_seasons,
+            sport=sport,
             include_props=include_props,
             note=f"backtest fit for {season}, trained on "
                  f"{min(train_seasons)}-{max(train_seasons)}",
@@ -116,15 +133,18 @@ def run_backtest(
         weeks = [
             r["week"]
             for r in conn.execute(
-                "SELECT DISTINCT week FROM games WHERE season = ? AND game_type = 'REG'"
+                "SELECT DISTINCT week FROM games WHERE sport = ? AND season = ?"
                 " AND status = 'final' ORDER BY week",
-                (season,),
+                (sport, season),
             )
         ]
         written = 0
-        for week in weeks:
-            result = run.run_week(
-                conn, season, week, include_props=include_props, use_llm=False
+        for i, week in enumerate(weeks):
+            if log and i % 25 == 0:
+                log(f"    slate {i}/{len(weeks)}")
+            result = run.run_slate(
+                conn, sport, season, week, include_props=include_props,
+                use_llm=False, snapshot=snapshot,
             )
             written += result["written"]
         settled = resolve.resolve_all(conn)
@@ -139,15 +159,18 @@ def run_backtest(
     return totals
 
 
-def report(conn: sqlite3.Connection, log=print) -> None:
+def report(conn: sqlite3.Connection, log=print, sport: str = "nfl") -> None:
     log("\n" + "=" * 66)
     log("BACKTEST RESULT — pipeline sanity, NOT evidence of an edge")
     log("=" * 66)
 
-    markets = [("spread", None)] + [("prop", m) for m in config.PROP_MARKETS]
+    markets = [
+        (calibration.market_type_of(sport, m), calibration.prop_type_of(sport, m))
+        for m in config.SPORT_MARKETS.get(sport, ())
+    ]
     for market_type, prop_type in markets:
-        c = calibration.curve(conn, market_type=market_type, prop_type=prop_type,
-                              predictor="statistical")
+        c = calibration.curve(conn, sport=sport, market_type=market_type,
+                              prop_type=prop_type, predictor="statistical")
         s = c["score"]
         if not s["n"]:
             continue
@@ -175,8 +198,19 @@ def report(conn: sqlite3.Connection, log=print) -> None:
                 log(f"    {b['label']:>7s}  n=0")
         log(f"  {c['largest_gap']}")
 
-    e = calibration.edge(conn, market_type="spread", predictor="statistical")
-    log(f"\nEDGE QUESTION (spread, threshold {e['threshold']}):")
+    # The game market of THIS sport, not football's. A hardcoded "spread" here
+    # asked baseball a football question and got an empty answer that looked
+    # like a finding; the required sport argument is what made it fail loudly
+    # instead of quietly reporting nothing.
+    game_market = next(
+        m for m in config.SPORT_MARKETS[sport]
+        if m not in config.SPORT_PROP_MARKETS.get(sport, ())
+    )
+    e = calibration.edge(
+        conn, sport=sport, market_type=game_market, predictor="statistical"
+    )
+    log("")
+    log(f"EDGE QUESTION ({game_market}, threshold {e['threshold']}):")
     if not e.get("renderable"):
         log(f"  {e['message']}")
     else:
@@ -193,7 +227,7 @@ def report(conn: sqlite3.Connection, log=print) -> None:
         )
     log(f"  {e['standing_note']}")
 
-    fr = calibration.factor_report(conn)
+    fr = calibration.factor_report(conn, sport=sport)
     log(f"\nFACTORS (over {fr['n']:,} resolved statistical predictions):")
     for f in fr["factors"]:
         if not f["n"]:
@@ -226,7 +260,10 @@ def report(conn: sqlite3.Connection, log=print) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("--sport", default="nfl", choices=list(config.SPORTS))
     p.add_argument("--seasons", type=int, nargs="+", default=[2023, 2024, 2025])
+    p.add_argument("--no-snapshot", action="store_true",
+                   help="skip the market fetch; the record still resolves")
     p.add_argument("--train-from", type=int, default=2016)
     p.add_argument("--source", default=str(config.DEFAULT_DB))
     p.add_argument("--target", default=str(config.REPO_ROOT / "var" / "backtest.db"))
@@ -238,7 +275,8 @@ def main() -> int:
         raise SystemExit(f"no source database at {source}; run `gridiron.cli load` first")
 
     note = (
-        f"Walk-forward backtest over {args.seasons}, each season predicted by a fit "
+        f"Walk-forward {args.sport.upper()} backtest over {args.seasons}, each season "
+        f"predicted by a fit "
         f"trained only on seasons from {args.train_from} up to the year before. "
         "Predictions were made AFTER the games were played. This is a pipeline "
         "sanity check, not evidence of an edge."
@@ -248,9 +286,10 @@ def main() -> int:
     print(f"kind: {db.database_kind(conn)}")
 
     run_backtest(
-        conn, args.seasons, args.train_from, include_props=not args.no_props
+        conn, args.seasons, args.train_from, sport=args.sport,
+        include_props=not args.no_props, snapshot=not args.no_snapshot,
     )
-    report(conn)
+    report(conn, sport=args.sport)
     conn.close()
     return 0
 

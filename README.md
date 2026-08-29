@@ -41,9 +41,14 @@ than by good intentions:
 
 ---
 
-## Data source and licence
+## Data sources and licences
 
-All football data comes from **nflverse**:
+Each sport is loaded from a different place, and the terms differ sharply
+between them. They are set out separately because "we got it off the internet"
+is not a provenance, and a benchmark drawn from a source you cannot describe is
+not a benchmark anyone can check.
+
+### Football — nflverse
 
 | What | Where | Licence |
 |------|-------|---------|
@@ -67,12 +72,85 @@ The loader now warns loudly when a season with completed games returns zero
 rows, and exits non-zero, because a source that quietly ends is worse than one
 that is plainly missing.
 
+### Baseball — MLB Stats API
+
+| What | Where | Licence |
+|------|-------|---------|
+| Schedules, results, probable starters, linescores | `https://statsapi.mlb.com/api/v1/schedule` | **None granted.** Copyright MLB Advanced Media; the terms permit personal, non-commercial use and forbid redistribution |
+| Club abbreviations and venue ids | `https://statsapi.mlb.com/api/v1/teams` | as above |
+| Starting-pitcher game logs | `https://statsapi.mlb.com/api/v1/people/{id}/stats?stats=gameLog` | as above |
+
+Chosen over `pybaseball`, which was the brief's other candidate. Two reasons.
+`pybaseball` is a scraping layer over Baseball Reference and Statcast whose
+terms are *less* permissive, not more, and it drags in a pandas/lxml stack that
+this project deliberately does not have. The Stats API is the source MLB itself
+publishes, needs no key, and returns exactly the fields the factors need in one
+request per date range.
+
+**No published rate limit exists.** The loader is nevertheless written to a
+budget: schedules are fetched in 30-day chunks, game logs only for pitchers who
+actually appear as a probable starter, and no per-game boxscore is fetched at
+all. A full three-season load is roughly 250 requests, and every response is
+cached permanently — a completed season is never refetched.
+
+Verified available on 2026-08-29: 7,289 games across 2023–2025 complete with
+scores, plus 2,057 games of the running 2026 season, and probable starters
+published one to two days ahead of first pitch.
+
+**The unannounced starter is the important missing case.** A club names its
+starter anywhere from a week out to ninety minutes before first pitch. When the
+name is not yet published, `mlb_starter_rolling_perf` and `mlb_starter_rest_days`
+are **absent from the feature vector**, not zero — the explicit-absent rule from
+D2 — and the prediction card says so on its face. Five of the fourteen games on
+the first forward slate were in exactly that state.
+
+### Basketball — NBA Stats
+
+Documented in the NBA section below.
+
+### Market lines
+
+The line is a benchmark to score against, never an input. Where it comes from
+per sport, and what happens where it does not exist:
+
+| Sport | Market | Source | Licence |
+|-------|--------|--------|---------|
+| NFL | spread | nflverse `games.csv` closing line | CC BY 4.0 |
+| MLB | moneyline | `sports.core.api.espn.com` | **None stated anywhere** |
+| NBA | spread | `sports.core.api.espn.com` | **None stated anywhere** |
+| all | player props | **no free source found** | — |
+
+ESPN's core API is undocumented and public, needs no key, and republishes
+DraftKings prices. Gridiron holds no account and calls no book or exchange
+endpoint: this is a media API. If scoring against the market ever required a
+betting account, the comparison would be dropped rather than LAW 5 bent.
+
+Because that licence is unstated, it is treated as a source that may vanish
+without notice. Responses are cached permanently, a settled game is never
+refetched, and a failure degrades the *comparison* visibly rather than touching
+the record at all.
+
+**Where no line exists, nothing is invented.** Every prop market in all three
+sports has no free line source, and so does any game whose line ESPN did not
+publish. Those cards say **"no line available"** in plain words, the gap visual
+is absent rather than drawn at zero, and the edge figure states that it cannot
+be computed. The prediction is still written blind and still resolves against
+the real outcome — a missing line source degrades the comparison, never the
+record. This is the same rule that keeps `public_bet_pct` declared but inactive:
+no proxies, no inventions.
+
+Two feeds abbreviate two clubs differently (`ARI`/`AZ` and `CHW`/`CWS` in
+baseball, seven pairs in basketball). Those are listed explicitly in
+[`espn.py`](gridiron/market/espn.py) rather than matched fuzzily, so a game that
+cannot be matched stays a *counted failure* instead of being quietly attached to
+the wrong line.
+
 **Public betting percentage** is declared as a factor but ships **inactive**: no
 free source publishes it reliably enough to depend on. Law 2 says record that
 and leave it inactive rather than invent a proxy, so that is what it does.
 
 Nothing is refetched that is already stored. Completed seasons are cached
-permanently; the live schedule is revalidated with an ETag every six hours.
+permanently; live schedules are revalidated with an ETag every six hours.
 
 ---
 

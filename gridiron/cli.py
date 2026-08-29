@@ -22,8 +22,27 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_load(args: argparse.Namespace) -> int:
     conn = db.open_db(args.database)
-    seasons = tuple(range(args.since, args.until + 1))
-    result = loader.load_all(conn, seasons, progress=lambda m: print(f"  .. {m}", flush=True))
+    say = lambda m: print(f"  .. {m}", flush=True)
+
+    if args.sport == "mlb":
+        from .data import mlb_loader
+
+        seasons = tuple(range(
+            args.since or min(config.SPORT_LOAD_SEASONS["mlb"]),
+            (args.until or max(config.SPORT_LOAD_SEASONS["mlb"])) + 1,
+        ))
+        result = mlb_loader.load_all(conn, seasons, progress=say)
+    elif args.sport == "nba":
+        from .data import nba_loader
+
+        seasons = tuple(range(
+            args.since or min(config.SPORT_LOAD_SEASONS["nba"]),
+            (args.until or max(config.SPORT_LOAD_SEASONS["nba"])) + 1,
+        ))
+        result = nba_loader.load_all(conn, seasons, progress=say)
+    else:
+        seasons = tuple(range(args.since, args.until + 1))
+        result = loader.load_all(conn, seasons, progress=say)
     print()
     for table, n in result["rows"].items():
         print(f"{table:22s} {n:>8,} rows touched")
@@ -72,19 +91,24 @@ def cmd_train(args: argparse.Namespace) -> int:
     conn = db.open_db(args.database)
     store.sync_registry(conn)
     seasons = tuple(range(args.since, args.until + 1))
+    sport = args.sport
     markets = args.markets
     if markets == ["all"]:
-        markets = ["spread"] + [baseline.prop_market(s) for s in config.PROP_MARKETS]
+        markets = [
+            m if m not in config.SPORT_PROP_MARKETS.get(sport, ()) else f"prop:{m}"
+            for m in config.SPORT_MARKETS.get(sport, ())
+        ]
     for market_type in markets:
         fit = baseline.train(
             conn,
             market_type,
             seasons,
+            sport=sport,
             note=args.note,
             progress=lambda m: print(f"  .. {market_type} {m}", flush=True),
         )
         print()
-        print(f"{market_type}: n={fit.n:,} converged={fit.converged} "
+        print(f"{sport}:{market_type}: n={fit.n:,} converged={fit.converged} "
               f"iterations={fit.iterations} intercept={fit.intercept:+.4f}")
         for name, coef in sorted(zip(fit.names, fit.coefficients), key=lambda t: -abs(t[1])):
             print(f"    {name:22s} {coef:+.4f}")
@@ -101,27 +125,31 @@ def cmd_weather(args: argparse.Namespace) -> int:
 
 
 def cmd_predict(args: argparse.Namespace) -> int:
-    """The G3 loop: blind prediction, then -- and only then -- the market."""
-    from .run import run_week
+    """The blind loop: predict, then -- and only then -- the market."""
+    from .run import run_slate
 
     conn = db.open_db(args.database)
     store.sync_registry(conn)
+    sport = args.sport
+    season = args.season or config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
     week = args.week
     if week is None:
-        week = repo.next_unplayed_week(conn, args.season)
+        week = repo.next_unplayed_week(conn, season, sport=sport)
         if week is None:
-            print(f"no scheduled games left in {args.season}")
+            print(f"no scheduled {sport} games left in {season}")
             conn.close()
             return 1
-        print(f"next unplayed week in {args.season} is week {week}")
+        word = config.SPORT_SLATE_WORD.get(sport, "week")
+        print(f"next unplayed {word} in {season} is {word} {week}")
 
-    if not args.no_weather:
-        counts = weather.fetch_week(conn, args.season, week)
+    if sport == "nfl" and not args.no_weather:
+        counts = weather.fetch_week(conn, season, week)
         print(f"weather: {counts}")
 
-    result = run_week(
+    result = run_slate(
         conn,
-        args.season,
+        sport,
+        season,
         week,
         include_props=not args.no_props,
         use_llm=not args.no_llm,
@@ -149,16 +177,21 @@ def cmd_scorecard(args: argparse.Namespace) -> int:
         print(f"!! {kind['kind'].upper()} DATABASE — {kind['note']}")
         print()
     if args.json:
-        print(json.dumps(calibration.scorecard(conn), indent=2))
+        print(json.dumps(calibration.scorecard(conn, sport=args.sport), indent=2))
         conn.close()
         return 0
 
-    for market_type in ("spread", "prop"):
+    for market in config.SPORT_MARKETS.get(args.sport, ()):
         for predictor in ("statistical", "llm"):
-            c = calibration.curve(conn, market_type=market_type, predictor=predictor)
+            c = calibration.curve(
+                conn, sport=args.sport,
+                market_type=calibration.market_type_of(args.sport, market),
+                prop_type=calibration.prop_type_of(args.sport, market),
+                predictor=predictor,
+            )
             if not c["n"]:
                 continue
-            print(f"=== {market_type} / {predictor}  (n={c['n']:,})")
+            print(f"=== {args.sport} {market} / {predictor}  (n={c['n']:,})")
             s2 = c["score"]
             print(f"    Brier {s2['brier']}  log loss {s2['log_loss']}  hit rate {s2['hit_rate']}")
             for b in c["buckets"]:
@@ -170,7 +203,7 @@ def cmd_scorecard(args: argparse.Namespace) -> int:
             print(f"    {c['largest_gap']}")
             print()
 
-    e = calibration.edge(conn)
+    e = calibration.edge(conn, sport=args.sport)
     print("=== edge question")
     print(f"    {e['message'] if not e.get('renderable') else e['model_more_confident']}")
     print(f"    {e['standing_note']}")
@@ -195,7 +228,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("init", help="create the schema")
     s.set_defaults(func=cmd_init)
 
-    s = sub.add_parser("load", help="fetch and cache nflverse data")
+    s = sub.add_parser("load", help="fetch and cache one sport's data")
+    s.add_argument("--sport", default="nfl", choices=list(config.SPORTS))
     s.add_argument("--since", type=int, default=min(config.DEFAULT_LOAD_SEASONS))
     s.add_argument("--until", type=int, default=max(config.DEFAULT_LOAD_SEASONS))
     s.set_defaults(func=cmd_load)
@@ -205,6 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_factors)
 
     s = sub.add_parser("train", help="fit the statistical baseline")
+    s.add_argument("--sport", default="nfl", choices=list(config.SPORTS))
     s.add_argument("--since", type=int, default=min(config.DEFAULT_LOAD_SEASONS))
     s.add_argument("--until", type=int, default=config.CURRENT_SEASON - 1)
     s.add_argument("--markets", nargs="+", default=["all"],
@@ -217,8 +252,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--week", type=int, required=True)
     s.set_defaults(func=cmd_weather)
 
-    s = sub.add_parser("predict", help="blind prediction for a week, then snapshot lines")
-    s.add_argument("--season", type=int, default=config.CURRENT_SEASON)
+    s = sub.add_parser("predict", help="blind prediction for a slate, then snapshot lines")
+    s.add_argument("--sport", default="nfl", choices=list(config.SPORTS))
+    s.add_argument("--season", type=int, default=None)
     s.add_argument("--week", type=int, default=None, help="default: next unplayed")
     s.add_argument("--no-props", action="store_true")
     s.add_argument("--no-llm", action="store_true")
@@ -229,7 +265,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("resolve", help="settle every open prediction whose game is final")
     s.set_defaults(func=cmd_resolve)
 
-    s = sub.add_parser("scorecard", help="the calibration record")
+    s = sub.add_parser("scorecard", help="the calibration record for one sport")
+    s.add_argument("--sport", default="nfl", choices=list(config.SPORTS))
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_scorecard)
 
