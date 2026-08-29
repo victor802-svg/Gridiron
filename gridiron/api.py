@@ -109,6 +109,25 @@ def weeks() -> dict:
     return {"n": len(available), "weeks": available}
 
 
+@app.get("/api/over-time")
+def over_time(
+    market_type: str | None = None,
+    prop_type: str | None = None,
+    predictor: str = "statistical",
+    factor_set_version: str | None = None,
+) -> dict:
+    """Weekly calibration points, each carrying its own N."""
+    try:
+        payload = calibration.over_time(
+            get_conn(), market_type=market_type, prop_type=prop_type,
+            predictor=predictor, factor_set_version=factor_set_version,
+        )
+        calibration.assert_every_figure_has_n(payload)
+        return payload
+    except calibration.MissingSampleSize as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/markets")
 def markets() -> dict:
     """Every market that has its own calibration category and its own gate."""

@@ -82,6 +82,8 @@ class Resolved:
     id: int
     created_utc: str
     game_id: str
+    season: int
+    week: int
     market_type: str
     prop_type: str | None
     predictor: str
@@ -120,12 +122,13 @@ def resolved(
         params.append(factor_set_version)
 
     rows = conn.execute(
-        "SELECT p.id, p.created_utc, p.game_id, p.market_type, p.prop_type, p.predictor,"
-        " p.factor_set_version, p.subject, p.line_asked, p.model_prob, p.model_side,"
-        " p.outcome, p.factors_json,"
+        "SELECT p.id, p.created_utc, p.game_id, g.season, g.week, p.market_type,"
+        " p.prop_type, p.predictor, p.factor_set_version, p.subject, p.line_asked,"
+        " p.model_prob, p.model_side, p.outcome, p.factors_json,"
         " (SELECT s.implied_prob FROM market_snapshots s WHERE s.prediction_id = p.id"
         "  ORDER BY s.id LIMIT 1) AS implied_prob"
-        f" FROM predictions p WHERE {' AND '.join(where)} ORDER BY p.id",
+        f" FROM predictions p JOIN games g ON g.id = p.game_id"
+        f" WHERE {' AND '.join(where)} ORDER BY p.id",
         params,
     ).fetchall()
 
@@ -134,6 +137,8 @@ def resolved(
             id=r["id"],
             created_utc=r["created_utc"],
             game_id=r["game_id"],
+            season=r["season"],
+            week=r["week"],
             market_type=r["market_type"],
             prop_type=r["prop_type"],
             predictor=r["predictor"],
@@ -734,4 +739,120 @@ def version_comparison(conn: sqlite3.Connection) -> dict:
         "note": VERSION_NOTE,
         "never_summed": True,
         "versions": entries,
+    }
+
+
+# ---------------------------------------------------------------------------
+# surfaces the interface draws
+# ---------------------------------------------------------------------------
+
+def bucket_label(probability: float) -> str:
+    """Which confidence bucket a stated probability falls in."""
+    for lo, hi, label in BUCKETS:
+        if lo <= probability < hi:
+            return label
+    return BUCKETS[-1][2]
+
+
+def bucket_record(
+    conn: sqlite3.Connection,
+    probability: float,
+    *,
+    market_type: str,
+    prop_type: str | None = None,
+    predictor: str = "statistical",
+    factor_set_version: str | None = None,
+) -> dict:
+    """How this bucket has actually done, for the chip on a pick card.
+
+    Always carries `n`, including when `n` is zero. A chip that showed an
+    accuracy without its sample size would be the most persuasive lie on the
+    page: it sits right next to a specific forecast and reads as a track record
+    for THAT pick.
+    """
+    label = bucket_label(probability)
+    lo, hi = next((lo, hi) for lo, hi, name in BUCKETS if name == label)
+    items = [
+        r
+        for r in resolved(
+            conn, market_type=market_type, prop_type=prop_type,
+            predictor=predictor, factor_set_version=factor_set_version,
+        )
+        if lo <= r.model_prob < hi
+    ]
+    n = len(items)
+    entry = {
+        "label": label,
+        "n": n,
+        "provisional": n < config.MIN_SAMPLE_FOR_BUCKET_POINT,
+        "minimum": config.MIN_SAMPLE_FOR_BUCKET_POINT,
+    }
+    if n:
+        entry["actual"] = round(sum(r.outcome for r in items) / n, 4)
+        entry["claimed"] = round(sum(r.model_prob for r in items) / n, 4)
+    else:
+        entry["actual"] = None
+        entry["claimed"] = None
+        entry["message"] = f"no resolved predictions in the {label} bucket yet"
+    return entry
+
+
+def over_time(
+    conn: sqlite3.Connection,
+    *,
+    market_type: str | None = None,
+    prop_type: str | None = None,
+    predictor: str = "statistical",
+    factor_set_version: str | None = None,
+) -> dict:
+    """Weekly calibration points: how far claimed sat from actual, week by week.
+
+    Each point carries its own n. Weeks are never smoothed into each other,
+    because a rolling average across a thin week and a fat one is a line drawn
+    through a sample size that never existed.
+    """
+    items = resolved(
+        conn, market_type=market_type, prop_type=prop_type,
+        predictor=predictor, factor_set_version=factor_set_version,
+    )
+    weeks: dict[tuple[int, int], list[Resolved]] = {}
+    for r in items:
+        weeks.setdefault((r.season, r.week), []).append(r)
+
+    points = []
+    running = 0
+    for (season, week) in sorted(weeks):
+        chosen = weeks[(season, week)]
+        n = len(chosen)
+        running += n
+        claimed = sum(r.model_prob for r in chosen) / n
+        actual = sum(r.outcome for r in chosen) / n
+        points.append({
+            "season": season,
+            "week": week,
+            "label": f"{season} wk{week}",
+            "n": n,
+            "cumulative_n": running,
+            "claimed": round(claimed, 4),
+            "actual": round(actual, 4),
+            "gap": round(actual - claimed, 4),
+            "brier": round(logistic.brier(
+                [r.model_prob for r in chosen], [r.outcome for r in chosen]), 4),
+            "provisional": n < config.MIN_SAMPLE_FOR_BUCKET_POINT,
+        })
+
+    return {
+        "n": len(items),
+        "filters": {
+            "market_type": market_type or "all",
+            "prop_type": prop_type or "all",
+            "predictor": predictor,
+            "factor_set_version": factor_set_version or "all",
+        },
+        "points": points,
+        "note": (
+            "One point per week, each with its own N. Nothing is smoothed: a "
+            "rolling average across a thin week and a fat one draws a line "
+            "through a sample size that never existed."
+        ),
     }

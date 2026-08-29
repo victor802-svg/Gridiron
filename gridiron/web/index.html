@@ -43,9 +43,21 @@
           </select>
         </label>
       </div>
-      <canvas id="calibration" width="620" height="440" role="img"
-              aria-label="Calibration chart: claimed confidence against observed frequency"></canvas>
-      <table id="bucket-table" class="grid"></table>
+      <div class="chart-frame">
+        <canvas id="calibration" width="640" height="440" role="img"
+                aria-label="Calibration chart: claimed confidence against observed frequency"></canvas>
+      </div>
+      <p class="footnote" id="largest-gap-prose"></p>
+      <div class="table-scroll"><table id="bucket-table" class="grid"></table></div>
+    </div>
+
+    <div class="chart-block">
+      <h2>Calibration over time <span id="overtime-caption" class="caption"></span></h2>
+      <div class="chart-frame" id="overtime-frame">
+        <canvas id="overtime" width="640" height="180" role="img"
+                aria-label="Weekly calibration gap, one point per week"></canvas>
+      </div>
+      <p class="footnote" id="overtime-note"></p>
     </div>
     <div id="record-scores"></div>
     <div id="record-edge"></div>
@@ -71,7 +83,7 @@
   <section id="view-factors" class="view" hidden>
     <h2>Factors <span id="factors-caption" class="caption"></span></h2>
     <p class="footnote" id="factors-method"></p>
-    <table id="factors-table" class="grid"></table>
+    <div class="table-scroll"><table id="factors-table" class="grid"></table></div>
   </section>
 
   <section id="view-versions" class="view" hidden>
@@ -89,11 +101,15 @@
       <select id="history-outcome"><option value="">any status</option><option value="resolved">resolved</option><option value="open">open</option><option value="correct">correct</option><option value="wrong">wrong</option><option value="void">void</option></select>
     </div>
     <p class="footnote">This record is read-only. The API exposes no verb that writes to it.</p>
-    <table id="history-table" class="grid"></table>
+    <div class="table-scroll"><table id="history-table" class="grid"></table></div>
     <div class="pager"><button id="history-prev">Previous</button><span id="history-range"></span><button id="history-next">Next</button></div>
   </section>
 
   <div id="error" class="error" hidden></div>
+  <div id="tooltip" role="status" hidden
+       style="position:fixed;pointer-events:none;z-index:20;background:var(--card);
+              border:1px solid var(--rule-2);border-radius:6px;padding:6px 9px;
+              font-size:12px;color:var(--ink);white-space:pre"></div>
 </main>
 
 <footer class="colophon">

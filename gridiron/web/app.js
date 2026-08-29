@@ -1,9 +1,16 @@
 /* Gridiron front end. Vanilla JS, no build step, no framework.
  *
- * LAW 4 lives in here too, not only on the server: `requireN` throws if
- * anything is about to be drawn without its sample size. A page that renders a
- * probability with no N beside it is a page that lies by omission, so the
- * renderer would rather fail loudly than draw it.
+ * LAW 4 lives here too, not only on the server: `requireN` throws if anything
+ * is about to be drawn without its sample size, and every visual goes through
+ * it — the calibration chart, the weekly strip, the bucket chip on a pick card.
+ * A page that renders a probability with no N beside it lies by omission, so
+ * the renderer would rather fail loudly than draw it.
+ *
+ * Design rules enforced in code, not only in the stylesheet:
+ *   - the dumbbell tells model from market by FORM (filled vs hollow), never by
+ *     hue, because colour is reserved for the value of the gap between them;
+ *   - contribution bars are signed, sorted by magnitude, capped at five;
+ *   - nothing animates except card expansion.
  */
 'use strict';
 
@@ -16,7 +23,7 @@ const Gridiron = (function () {
     if (!obj || typeof obj.n !== 'number') {
       throw new MissingSampleSize(
         'LAW 4: refusing to render ' + where + ' without its sample size. ' +
-        'No calibration curve, edge estimate or factor verdict renders ' +
+        'No calibration curve, edge estimate, chart or factor verdict renders ' +
         'without its N beside it.'
       );
     }
@@ -24,17 +31,11 @@ const Gridiron = (function () {
   }
 
   // --- formatting --------------------------------------------------------
-  const pct = (x, dp) => (x === null || x === undefined) ? '—' : (x * 100).toFixed(dp === undefined ? 1 : dp) + '%';
-  const num = (x, dp) => (x === null || x === undefined) ? '—' : Number(x).toFixed(dp === undefined ? 4 : dp);
-  const int = (x) => (x === null || x === undefined) ? '—' : Number(x).toLocaleString();
-  const signed = (x, dp) => (x === null || x === undefined) ? '—' : (x > 0 ? '+' : '') + Number(x).toFixed(dp === undefined ? 1 : dp);
-
-  function nTag(n) {
-    const s = document.createElement('span');
-    s.className = 'n-tag';
-    s.textContent = ' n=' + int(n);
-    return s;
-  }
+  const DASH = '—';
+  const pct = (x, dp) => (x === null || x === undefined) ? DASH : (x * 100).toFixed(dp === undefined ? 1 : dp) + '%';
+  const num = (x, dp) => (x === null || x === undefined) ? DASH : Number(x).toFixed(dp === undefined ? 4 : dp);
+  const int = (x) => (x === null || x === undefined) ? DASH : Number(x).toLocaleString();
+  const signed = (x, dp) => (x === null || x === undefined) ? DASH : (x > 0 ? '+' : '') + Number(x).toFixed(dp === undefined ? 1 : dp);
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -43,10 +44,11 @@ const Gridiron = (function () {
     return e;
   }
 
+  function nTag(n) { return el('span', 'n-tag', ' n=' + int(n)); }
+
   function table(host, columns, rows) {
     host.innerHTML = '';
-    const thead = el('thead');
-    const hr = el('tr');
+    const thead = el('thead'), hr = el('tr');
     columns.forEach(c => hr.appendChild(el('th', c.cls || '', c.label)));
     thead.appendChild(hr);
     host.appendChild(thead);
@@ -63,15 +65,20 @@ const Gridiron = (function () {
     host.appendChild(tbody);
   }
 
+  function skeleton(host, cls, count) {
+    host.innerHTML = '';
+    for (let i = 0; i < (count || 1); i++) host.appendChild(el('div', 'skeleton ' + cls));
+  }
+
   // --- data --------------------------------------------------------------
   const state = { meta: null, scorecard: null, markets: ['spread'],
-                historyOffset: 0, historyTotal: 0 };
+                  historyOffset: 0, historyTotal: 0 };
 
   async function fetchJSON(url) {
     const res = await fetch(url);
     if (!res.ok) {
       let detail = res.statusText;
-      try { detail = (await res.json()).detail || detail; } catch (e) { /* body was not json */ }
+      try { detail = (await res.json()).detail || detail; } catch (e) { /* not json */ }
       throw new Error(url + ' → ' + res.status + ': ' + detail);
     }
     return res.json();
@@ -82,104 +89,183 @@ const Gridiron = (function () {
     box.hidden = false;
     box.textContent = String(err && err.message ? err.message : err);
   }
-
-  function clearError() {
-    document.getElementById('error').hidden = true;
-  }
-
-  // --- the calibration chart ---------------------------------------------
-  const AXIS_MIN = 0.40, AXIS_MAX = 1.0;
+  function clearError() { document.getElementById('error').hidden = true; }
 
   function css(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000';
   }
 
-  function drawCalibration(canvas, curveData) {
-    const buckets = curveData.buckets || [];
-    buckets.forEach((b, i) => requireN(b, 'calibration bucket ' + (b.label || i)));
-
+  function prepareCanvas(canvas, ctx) {
     const dpr = window.devicePixelRatio || 1;
-    const W = canvas.width, H = canvas.height;
+    const W = Number(canvas.getAttribute('width'));
+    const H = Number(canvas.getAttribute('height'));
     canvas.width = W * dpr; canvas.height = H * dpr;
     canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
+    return { W, H };
+  }
 
-    const pad = { l: 62, r: 20, t: 18, b: 52 };
+  // --- the calibration chart ---------------------------------------------
+  const AXIS_MIN = 0.40, AXIS_MAX = 1.0;
+  // How far from the diagonal still reads as well calibrated. Drawn as a band
+  // so a reader can see at a glance whether a miss is really a miss.
+  const ACCEPTABLE = 0.05;
+
+  function drawCalibration(canvas, curveData) {
+    const buckets = (curveData && curveData.buckets) || [];
+    buckets.forEach((b, i) => requireN(b, 'calibration bucket ' + (b.label || i)));
+
+    const ctx = canvas.getContext('2d');
+    const dims = prepareCanvas(canvas, ctx);
+    const W = dims.W, H = dims.H;
+    const pad = { l: 56, r: 18, t: 16, b: 46 };
     const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
     const X = v => pad.l + (v - AXIS_MIN) / (AXIS_MAX - AXIS_MIN) * w;
     const Y = v => pad.t + h - (v - AXIS_MIN) / (AXIS_MAX - AXIS_MIN) * h;
+    const clamp = v => Math.min(Math.max(v, AXIS_MIN), AXIS_MAX);
 
-    const ink = css('--ink'), faint = css('--ink-faint'), rule = css('--rule');
-    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    const ink = css('--ink'), faint = css('--ink-3'), rule = css('--rule');
+    ctx.font = '12px ui-sans-serif, system-ui, sans-serif';
     ctx.textBaseline = 'middle';
 
-    // grid
+    ctx.fillStyle = css('--band');
+    ctx.beginPath();
+    ctx.moveTo(X(AXIS_MIN), Y(clamp(AXIS_MIN + ACCEPTABLE)));
+    ctx.lineTo(X(AXIS_MAX), Y(clamp(AXIS_MAX)));
+    ctx.lineTo(X(AXIS_MAX), Y(clamp(AXIS_MAX - ACCEPTABLE)));
+    ctx.lineTo(X(AXIS_MIN), Y(clamp(AXIS_MIN)));
+    ctx.closePath();
+    ctx.fill();
+
     ctx.strokeStyle = rule; ctx.lineWidth = 1;
     for (let v = AXIS_MIN; v <= AXIS_MAX + 1e-9; v += 0.1) {
       ctx.beginPath(); ctx.moveTo(X(v), pad.t); ctx.lineTo(X(v), pad.t + h); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(pad.l, Y(v)); ctx.lineTo(pad.l + w, Y(v)); ctx.stroke();
-      ctx.fillStyle = faint; ctx.textAlign = 'center';
-      ctx.fillText(Math.round(v * 100) + '%', X(v), pad.t + h + 16);
-      ctx.textAlign = 'right';
-      ctx.fillText(Math.round(v * 100) + '%', pad.l - 8, Y(v));
+      ctx.fillStyle = faint;
+      ctx.textAlign = 'center'; ctx.fillText(Math.round(v * 100) + '%', X(v), pad.t + h + 15);
+      ctx.textAlign = 'right'; ctx.fillText(Math.round(v * 100) + '%', pad.l - 8, Y(v));
     }
 
-    // the diagonal: where a perfectly calibrated forecaster sits
     ctx.strokeStyle = faint; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(X(AXIS_MIN), Y(AXIS_MIN)); ctx.lineTo(X(AXIS_MAX), Y(AXIS_MAX)); ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(X(AXIS_MIN), Y(AXIS_MIN)); ctx.lineTo(X(AXIS_MAX), Y(AXIS_MAX));
+    ctx.stroke(); ctx.setLineDash([]);
 
     ctx.fillStyle = faint; ctx.textAlign = 'center';
-    ctx.fillText('claimed confidence', pad.l + w / 2, H - 14);
+    ctx.fillText('claimed confidence', pad.l + w / 2, H - 12);
     ctx.save();
-    ctx.translate(16, pad.t + h / 2); ctx.rotate(-Math.PI / 2);
+    ctx.translate(14, pad.t + h / 2); ctx.rotate(-Math.PI / 2);
     ctx.fillText('actually happened', 0, 0);
     ctx.restore();
     ctx.textAlign = 'right';
-    ctx.fillStyle = faint;
-    ctx.fillText('dashed line = perfect calibration', pad.l + w, pad.t + 8);
+    ctx.fillText('dashed = perfect  ·  shaded = within ' +
+      Math.round(ACCEPTABLE * 100) + ' points', pad.l + w, pad.t + 7);
 
     const drawn = buckets.filter(b => b.n > 0 && b.claimed !== null);
     if (!drawn.length) {
-      ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.font = '13px ui-sans-serif, sans-serif';
+      ctx.fillStyle = ink; ctx.textAlign = 'center';
       ctx.fillText('Nothing has resolved yet in this category.', pad.l + w / 2, pad.t + h / 2);
       return;
     }
 
-    const model = css('--model');
-    // 95% interval on the observed rate. A four-sample bucket should look as
-    // uncertain as it is.
+    ctx.strokeStyle = ink; ctx.lineWidth = 1.25;
     drawn.forEach(b => {
       const se = Math.sqrt(Math.max(b.actual * (1 - b.actual), 1e-6) / b.n);
-      const lo = Math.max(AXIS_MIN, b.actual - 1.96 * se);
-      const hi = Math.min(AXIS_MAX, b.actual + 1.96 * se);
-      ctx.strokeStyle = model; ctx.globalAlpha = 0.35; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(X(b.claimed), Y(lo)); ctx.lineTo(X(b.claimed), Y(hi)); ctx.stroke();
+      ctx.globalAlpha = 0.32;
+      ctx.beginPath();
+      ctx.moveTo(X(b.claimed), Y(clamp(b.actual - 1.96 * se)));
+      ctx.lineTo(X(b.claimed), Y(clamp(b.actual + 1.96 * se)));
+      ctx.stroke();
       ctx.globalAlpha = 1;
     });
 
-    ctx.strokeStyle = model; ctx.lineWidth = 2; ctx.beginPath();
-    drawn.forEach((b, i) => {
-      const x = X(b.claimed), y = Y(Math.min(Math.max(b.actual, AXIS_MIN), AXIS_MAX));
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
     drawn.forEach(b => {
-      const x = X(b.claimed), y = Y(Math.min(Math.max(b.actual, AXIS_MIN), AXIS_MAX));
-      ctx.fillStyle = model;
-      ctx.beginPath();
-      ctx.arc(x, y, b.provisional ? 3.5 : 5.5, 0, Math.PI * 2);
-      ctx.fill();
-      if (b.provisional) {
-        ctx.strokeStyle = css('--bg'); ctx.lineWidth = 1.5; ctx.stroke();
-      }
-      // LAW 4: N is printed on every point, always.
-      ctx.fillStyle = ink; ctx.textAlign = 'left'; ctx.font = '11px ui-sans-serif, sans-serif';
-      ctx.fillText('n=' + b.n, x + 9, y - 9);
+      const x = X(b.claimed), y = Y(clamp(b.actual));
+      ctx.fillStyle = ink;
+      ctx.beginPath(); ctx.arc(x, y, b.provisional ? 3.5 : 5.5, 0, Math.PI * 2); ctx.fill();
+      if (b.provisional) { ctx.strokeStyle = css('--card'); ctx.lineWidth = 1.5; ctx.stroke(); }
+      ctx.fillStyle = ink; ctx.textAlign = 'left';
+      ctx.fillText('n=' + b.n, x + 9, y - 10);          // LAW 4, on every point
     });
+  }
+
+  // --- the weekly strip ---------------------------------------------------
+  function drawOverTime(canvas, data) {
+    requireN(data, 'calibration-over-time strip');
+    const points = data.points || [];
+    points.forEach((p, i) => requireN(p, 'weekly point ' + (p.label || i)));
+
+    const ctx = canvas.getContext('2d');
+    const dims = prepareCanvas(canvas, ctx);
+    const W = dims.W, H = dims.H;
+    const pad = { l: 56, r: 18, t: 14, b: 26 };
+    const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+    const ink = css('--ink'), faint = css('--ink-3'), rule = css('--rule');
+    ctx.font = '12px ui-sans-serif, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    canvas._hits = [];
+
+    if (!points.length) {
+      ctx.fillStyle = faint; ctx.textAlign = 'center';
+      ctx.fillText('No resolved weeks yet.', W / 2, H / 2);
+      return;
+    }
+
+    const span = Math.max(0.25, Math.max.apply(null, points.map(p => Math.abs(p.gap))) * 1.25);
+    const X = i => pad.l + (points.length === 1 ? w / 2 : (i / (points.length - 1)) * w);
+    const Y = g => pad.t + h / 2 - (g / span) * (h / 2);
+
+    ctx.strokeStyle = rule; ctx.lineWidth = 1;
+    [-span / 2, 0, span / 2].forEach(g => {
+      ctx.beginPath(); ctx.moveTo(pad.l, Y(g)); ctx.lineTo(pad.l + w, Y(g)); ctx.stroke();
+      ctx.fillStyle = faint; ctx.textAlign = 'right';
+      ctx.fillText(signed(g * 100, 0) + ' pts', pad.l - 8, Y(g));
+    });
+    ctx.strokeStyle = faint; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(pad.l, Y(0)); ctx.lineTo(pad.l + w, Y(0)); ctx.stroke();
+    ctx.setLineDash([]);
+
+    points.forEach((p, i) => {
+      const x = X(i), y = Y(p.gap);
+      ctx.strokeStyle = rule; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, Y(0)); ctx.lineTo(x, y); ctx.stroke();
+      ctx.fillStyle = p.gap >= 0 ? css('--pos') : css('--neg');
+      ctx.beginPath(); ctx.arc(x, y, p.provisional ? 2.5 : 4, 0, Math.PI * 2); ctx.fill();
+      canvas._hits.push({ x: x, y: y, point: p });
+    });
+
+    ctx.fillStyle = faint; ctx.textAlign = 'left';
+    ctx.fillText(points[0].label, pad.l, pad.t + h + 12);
+    ctx.textAlign = 'right';
+    ctx.fillText(points[points.length - 1].label, pad.l + w, pad.t + h + 12);
+    ctx.textAlign = 'center'; ctx.fillStyle = ink;
+    ctx.fillText('actual minus claimed, by week  ·  hover for N',
+      pad.l + w / 2, pad.t + h + 12);
+  }
+
+  function attachStripTooltip(canvas) {
+    if (canvas._tooltipBound) return;
+    canvas._tooltipBound = true;
+    const tip = document.getElementById('tooltip');
+    canvas.addEventListener('mousemove', ev => {
+      const rect = canvas.getBoundingClientRect();
+      const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+      let best = null, bestD = 16;
+      (canvas._hits || []).forEach(hit => {
+        const d = Math.sqrt((hit.x - x) * (hit.x - x) + (hit.y - y) * (hit.y - y));
+        if (d < bestD) { bestD = d; best = hit; }
+      });
+      if (!best) { tip.hidden = true; return; }
+      const p = best.point;
+      tip.hidden = false;
+      tip.textContent =
+        p.label + '\nn=' + int(p.n) + '  (running ' + int(p.cumulative_n) + ')' +
+        '\nclaimed ' + pct(p.claimed) + ', actual ' + pct(p.actual) +
+        '\ngap ' + signed(p.gap * 100, 1) + ' pts';
+      tip.style.left = (ev.clientX + 14) + 'px';
+      tip.style.top = (ev.clientY + 14) + 'px';
+    });
+    canvas.addEventListener('mouseleave', () => { tip.hidden = true; });
   }
 
   // --- TRACK RECORD ------------------------------------------------------
@@ -190,8 +276,8 @@ const Gridiron = (function () {
 
   function renderRecord() {
     const sc = state.scorecard;
-    const market = document.getElementById('chart-market').value;
-    const predictor = document.getElementById('chart-predictor').value;
+    const market = document.getElementById('chart-market').value || 'spread';
+    const predictor = document.getElementById('chart-predictor').value || 'statistical';
     const curve = findCurve(sc, market, predictor) || sc.headline;
     requireN(curve, 'calibration curve');
 
@@ -199,14 +285,14 @@ const Gridiron = (function () {
     head.innerHTML = '';
     head.appendChild(el('div', '', curve.largest_gap));
     head.appendChild(el('div', 'sub',
-      'Showing ' + market + ' / ' + predictor + '. ' + int(curve.n) +
-      ' resolved predictions in this category. The sentence above always names ' +
-      'the largest gap, never the best-looking bucket.'));
+      market + ' / ' + predictor + '. ' + int(curve.n) + ' resolved' +
+      (curve.voided ? ', ' + int(curve.voided) + ' void' : '') +
+      '. The sentence above always names the largest gap, never the best bucket.'));
 
     document.getElementById('chart-caption').textContent =
-      '— ' + market + ' / ' + predictor + ', n=' + int(curve.n) +
-      (curve.voided ? ', ' + int(curve.voided) + ' void' : '');
+      DASH + ' ' + market + ' / ' + predictor + ', n=' + int(curve.n);
     drawCalibration(document.getElementById('calibration'), curve);
+    document.getElementById('largest-gap-prose').textContent = curve.largest_gap;
 
     table(document.getElementById('bucket-table'),
       [{ label: 'Confidence bucket' }, { label: 'N' }, { label: 'Claimed' },
@@ -215,7 +301,7 @@ const Gridiron = (function () {
         requireN(b, 'bucket row ' + b.label);
         return [
           b.label, int(b.n), pct(b.claimed), pct(b.actual),
-          b.gap === null ? '—' : signed(b.gap * 100, 1) + ' pts',
+          b.gap === null ? DASH : signed(b.gap * 100, 1) + ' pts',
           b.n === 0 ? 'no predictions yet'
             : (b.provisional ? 'provisional: below ' + state.meta.minimum_for_bucket_point : '')
         ];
@@ -224,6 +310,20 @@ const Gridiron = (function () {
     renderScores(sc, curve, market, predictor);
     renderEdge(sc.edge);
     document.getElementById('separation-note').textContent = sc.separation_note;
+    renderOverTime(market, predictor).catch(showError);
+  }
+
+  async function renderOverTime(market, predictor) {
+    const params = new URLSearchParams({ predictor: predictor });
+    if (market === 'spread') params.set('market_type', 'spread');
+    else { params.set('market_type', 'prop'); params.set('prop_type', market); }
+    const data = await fetchJSON('/api/over-time?' + params.toString());
+    document.getElementById('overtime-caption').textContent =
+      DASH + ' ' + int(data.n) + ' resolved across ' + int(data.points.length) + ' weeks';
+    document.getElementById('overtime-note').textContent = data.note;
+    const canvas = document.getElementById('overtime');
+    drawOverTime(canvas, data);
+    attachStripTooltip(canvas);
   }
 
   function scoreCard(title, payload, extraNote) {
@@ -237,11 +337,11 @@ const Gridiron = (function () {
       return card;
     }
     [['Brier', num(payload.brier)], ['Log loss', num(payload.log_loss)],
-     ['Hit rate', pct(payload.hit_rate)]].forEach(([k, v]) => {
-      if (v === '—') return;
+     ['Hit rate', pct(payload.hit_rate)]].forEach(pair => {
+      if (pair[1] === DASH) return;
       const row = el('div', 'score-row');
-      row.appendChild(el('span', 'label', k));
-      row.appendChild(el('span', 'stat-value', v));
+      row.appendChild(el('span', 'label', pair[0]));
+      row.appendChild(el('span', 'stat-value', pair[1]));
       card.appendChild(row);
     });
     if (extraNote) card.appendChild(el('div', 'footnote', extraNote));
@@ -252,7 +352,7 @@ const Gridiron = (function () {
     const host = document.getElementById('record-scores');
     host.innerHTML = '';
     const h = el('h2', '', 'Scores');
-    h.appendChild(el('span', 'caption', ' — lower Brier and log loss are better'));
+    h.appendChild(el('span', 'caption', ' ' + DASH + ' lower Brier and log loss are better'));
     host.appendChild(h);
 
     const grid = el('div', 'scores');
@@ -271,17 +371,19 @@ const Gridiron = (function () {
     const byCat = el('div');
     byCat.appendChild(el('h2', '', 'Record by category'));
     byCat.appendChild(el('p', 'caption',
-      'Kept separate. Averaging a fast easy category with a slow hard one flatters the model.'));
+      'Never merged. Each market is its own question with its own difficulty.'));
+    const wrap = el('div', 'table-scroll');
     const t = el('table', 'grid');
     table(t,
-      [{ label: 'Category' }, { label: 'N' }, { label: 'Brier' },
+      [{ label: 'Category' }, { label: 'N' }, { label: 'Void' }, { label: 'Brier' },
        { label: 'Log loss' }, { label: 'Hit rate' }],
       sc.categories.map(c => {
         requireN(c.score, 'category ' + c.category);
-        return [c.category, int(c.score.n), num(c.score.brier),
+        return [c.category, int(c.score.n), int(c.voided), num(c.score.brier),
                 num(c.score.log_loss), pct(c.score.hit_rate)];
       }));
-    byCat.appendChild(t);
+    wrap.appendChild(t);
+    byCat.appendChild(wrap);
     host.appendChild(byCat);
   }
 
@@ -290,7 +392,7 @@ const Gridiron = (function () {
     host.innerHTML = '';
     const h = el('h2', '', 'The edge question');
     h.appendChild(el('span', 'caption',
-      ' — where the model disagreed with the market, who was right?'));
+      ' ' + DASH + ' where the model disagreed with the market, who was right?'));
     host.appendChild(h);
 
     if (!edge.renderable) {
@@ -300,88 +402,232 @@ const Gridiron = (function () {
       host.appendChild(box);
       return;
     }
-
+    const wrap = el('div', 'table-scroll');
     const t = el('table', 'grid');
-    const rows = [edge.model_more_confident, edge.market_more_confident].map(side => {
-      requireN(side, 'edge side "' + side.label + '"');
-      return [side.label, int(side.n), pct(side.mean_model_prob),
-              pct(side.mean_market_prob), pct(side.resolved_in_model_favour)];
-    });
     table(t, [{ label: 'Disagreement' }, { label: 'N' }, { label: 'Model said' },
-              { label: 'Market said' }, { label: 'Resolved model’s way' }], rows);
-    host.appendChild(t);
+              { label: 'Market said' }, { label: 'Resolved model’s way' }],
+      [edge.model_more_confident, edge.market_more_confident].map(side => {
+        requireN(side, 'edge side "' + side.label + '"');
+        return [side.label, int(side.n), pct(side.mean_model_prob),
+                pct(side.mean_market_prob), pct(side.resolved_in_model_favour)];
+      }));
+    wrap.appendChild(t);
+    host.appendChild(wrap);
     host.appendChild(el('p', 'footnote', edge.standing_note));
   }
 
-  // --- THIS WEEK ---------------------------------------------------------
-  function probBlock(kind, label, value, note) {
-    const d = el('div', 'prob ' + kind);
-    d.appendChild(el('span', 'k', label));
-    d.appendChild(el('span', 'v', value));
-    if (note) d.appendChild(el('span', 'note', note));
-    return d;
+  // --- THE PICK CARD ------------------------------------------------------
+
+  /* Two dots on one 0-100 rail with the gap shaded between them, so "how far
+     apart, and which way" is one glance rather than two percentages and a
+     subtraction. */
+  function dumbbell(card) {
+    const wrap = el('div', 'dumbbell');
+    const rail = el('div', 'rail');
+    rail.appendChild(el('div', 'rail-line'));
+
+    const model = card.model_prob;
+    const market = card.market_implied_prob;
+    const at = v => (v * 100) + '%';
+    const hasMarket = market !== null && market !== undefined;
+
+    if (hasMarket) {
+      const span = el('div', 'rail-span ' + (model >= market ? 'pos' : 'neg'));
+      span.style.left = at(Math.min(model, market));
+      span.style.width = (Math.abs(model - market) * 100) + '%';
+      rail.appendChild(span);
+      const marketDot = el('div', 'rail-dot market');
+      marketDot.style.left = at(market);
+      marketDot.title = 'market implies ' + pct(market);
+      rail.appendChild(marketDot);
+    }
+    const modelDot = el('div', 'rail-dot model');
+    modelDot.style.left = at(model);
+    modelDot.title = 'model says ' + pct(model);
+    rail.appendChild(modelDot);
+    wrap.appendChild(rail);
+
+    const scale = el('div', 'rail-scale');
+    ['0%', '50%', '100%'].forEach(t => scale.appendChild(el('span', '', t)));
+    wrap.appendChild(scale);
+
+    const legend = el('div', 'rail-legend');
+    const modelBlock = el('div');
+    modelBlock.appendChild(el('span', 'k', 'MODEL ●'));
+    modelBlock.appendChild(el('div', 'v', pct(model)));
+    legend.appendChild(modelBlock);
+
+    const marketBlock = el('div');
+    marketBlock.appendChild(el('span', 'k', 'MARKET ○'));
+    marketBlock.appendChild(el('div', 'v', hasMarket ? pct(market) : DASH));
+    if (!hasMarket) marketBlock.appendChild(el('span', 'chip-sub', 'no free line source'));
+    legend.appendChild(marketBlock);
+
+    if (card.gap !== null && card.gap !== undefined) {
+      const gapBlock = el('div');
+      gapBlock.appendChild(el('span', 'k', 'GAP'));
+      gapBlock.appendChild(el('div', 'v gap-value ' + (card.gap >= 0 ? 'pos' : 'neg'),
+        signed(card.gap * 100, 1) + ' pts'));
+      gapBlock.appendChild(el('span', 'chip-sub',
+        card.gap >= 0 ? 'model more confident' : 'market more confident'));
+      legend.appendChild(gapBlock);
+    }
+    wrap.appendChild(legend);
+    return wrap;
+  }
+
+  /* Signed contribution bars: which factors pushed toward the model's side and
+     which pushed away. The reasoning, made visible. */
+  function contributions(card) {
+    const rows = (card.top_factors || []).filter(f =>
+      f.contribution !== null && f.contribution !== undefined);
+    if (!rows.length) return null;
+
+    const host = el('div', 'contrib');
+    const scale = Math.max(Math.max.apply(null, rows.map(f => Math.abs(f.contribution))), 0.01);
+
+    function bar(f) {
+      const row = el('div', 'contrib-row');
+      row.appendChild(el('div', 'contrib-name', f.factor));
+      const track = el('div', 'contrib-track');
+      const b = el('div', 'contrib-bar ' + (f.contribution >= 0 ? 'pos' : 'neg'));
+      const half = Math.abs(f.contribution) / scale * 50;
+      if (f.contribution >= 0) { b.style.left = '50%'; b.style.width = half + '%'; }
+      else { b.style.left = (50 - half) + '%'; b.style.width = half + '%'; }
+      b.title = f.rationale || '';
+      track.appendChild(b);
+      row.appendChild(track);
+      row.appendChild(el('div', 'contrib-value', signed(f.contribution, 3)));
+      return row;
+    }
+
+    rows.slice(0, 5).forEach(f => host.appendChild(bar(f)));
+    const rest = rows.slice(5);
+    if (rest.length) {
+      const hidden = el('div');
+      hidden.hidden = true;
+      rest.forEach(f => hidden.appendChild(bar(f)));
+      const more = el('button', 'contrib-more', '+ ' + rest.length + ' more factors');
+      more.addEventListener('click', ev => {
+        ev.stopPropagation();
+        hidden.hidden = !hidden.hidden;
+        more.textContent = hidden.hidden
+          ? '+ ' + rest.length + ' more factors' : 'show fewer';
+      });
+      host.appendChild(hidden);
+      host.appendChild(more);
+    }
+    return host;
+  }
+
+  /* This pick's confidence bucket, with that bucket's live accuracy and N.
+     Never the accuracy without the N: the chip sits beside a specific forecast
+     and reads as a track record for THAT pick. */
+  function bucketChip(bucket) {
+    requireN(bucket, 'bucket chip');
+    const chip = el('span', 'chip' + (bucket.provisional ? ' provisional' : ''));
+    chip.appendChild(el('span', 'chip-label', bucket.label));
+    if (bucket.n === 0) {
+      chip.appendChild(el('span', 'chip-sub', 'no record yet · n=0'));
+    } else {
+      chip.appendChild(el('span', '', pct(bucket.actual) + ' actual'));
+      chip.appendChild(el('span', 'chip-sub', 'n=' + int(bucket.n) +
+        (bucket.provisional ? ' · provisional' : '')));
+    }
+    return chip;
+  }
+
+  function outcomeStamp(card) {
+    if (card.voided) return el('span', 'outcome-stamp void', 'void');
+    if (card.outcome === 1) return el('span', 'outcome-stamp win', 'correct');
+    if (card.outcome === 0) return el('span', 'outcome-stamp loss', 'wrong');
+    return null;
   }
 
   function renderCard(c) {
     const card = el('div', 'card');
+
     const head = el('div', 'card-head');
+    head.setAttribute('role', 'button');
+    head.setAttribute('tabindex', '0');
     const left = el('div');
-    left.appendChild(el('div', 'card-claim', c.claim || (c.subject + ' ' + signed(c.line_asked))));
+    left.appendChild(el('div', 'card-claim',
+      c.claim || (c.subject + ' ' + signed(c.line_asked))));
     left.appendChild(el('div', 'card-meta',
-      c.matchup + ' · ' + c.market_type + ' · ' + c.predictor +
-      ' · asked at ' + signed(c.line_asked) +
-      ' · written ' + (c.created_utc || '').replace('T', ' ') +
-      ' · factor set ' + c.factor_set_version));
+      c.matchup + ' · ' + c.market + ' · ' + c.predictor +
+      ' · asked at ' + signed(c.line_asked) + ' · ' + c.factor_set_version));
     head.appendChild(left);
 
     const right = el('div');
-    if (c.outcome !== null && c.outcome !== undefined) {
-      right.appendChild(el('span', 'tag ' + (c.outcome ? 'win' : 'loss'),
-        c.outcome ? 'resolved: correct' : 'resolved: wrong'));
-    }
+    right.appendChild(bucketChip(c.bucket));
+    const stamp = outcomeStamp(c);
+    if (stamp) right.appendChild(stamp);
     if (c.degraded) right.appendChild(el('span', 'tag warn', c.degraded));
     head.appendChild(right);
     card.appendChild(head);
 
-    const probs = el('div', 'probs');
-    probs.appendChild(probBlock('model', 'model says', pct(c.model_prob),
-      c.model_side.replace('_', ' ')));
-    if (c.market_implied_prob !== null && c.market_implied_prob !== undefined) {
-      probs.appendChild(probBlock('market', 'market implies', pct(c.market_implied_prob),
-        'line ' + signed(c.market_line)));
-      const cls = c.gap >= 0 ? 'gap-pos' : 'gap-neg';
-      probs.appendChild(probBlock(cls, 'disagreement', signed(c.gap * 100, 1) + ' pts',
-        c.gap >= 0 ? 'model more confident' : 'market more confident'));
-    } else {
-      probs.appendChild(probBlock('market', 'market implies', '—',
-        'no free line source'));
-    }
-    probs.appendChild(probBlock('', 'public %', '—', 'no free source; never proxied'));
-    card.appendChild(probs);
+    const body = el('div', 'card-body');
+    body.appendChild(dumbbell(c));
+    const bars = contributions(c);
+    if (bars) body.appendChild(bars);
+    card.appendChild(body);
 
-    if (c.top_factors && c.top_factors.length) {
-      const ul = el('ul', 'factor-list');
-      c.top_factors.forEach(f => {
-        const li = el('li');
-        const name = el('span', 'fname', f.factor);
-        if (f.missing) name.appendChild(el('span', 'tag warn', 'defaulted'));
-        li.appendChild(name);
-        li.appendChild(el('span', 'fval', num(f.value, 3)));
-        li.appendChild(el('span', 'fcon',
-          f.contribution === null || f.contribution === undefined
-            ? '' : signed(f.contribution, 3)));
-        li.appendChild(el('span', 'fwhy', f.rationale));
-        ul.appendChild(li);
-      });
-      card.appendChild(ul);
+    const detail = el('div', 'card-detail');
+    const inner = el('div', 'card-detail-inner');
+    if (c.reasoning) inner.appendChild(el('div', 'reasoning', c.reasoning));
+
+    const wrap = el('div', 'table-scroll');
+    const t = el('table', 'grid');
+    table(t, [{ label: 'Factor' }, { label: 'Value' }, { label: 'Contribution' },
+              { label: 'Source' }, { label: 'Why it is declared', cls: 'wide' }],
+      (c.top_factors || []).map(f => [
+        f.factor,
+        (f.value === null || f.value === undefined) ? 'not measurable' : num(f.value, 3),
+        (f.contribution === null || f.contribution === undefined)
+          ? DASH : signed(f.contribution, 3),
+        f.source || DASH,
+        f.rationale || ''
+      ]));
+    wrap.appendChild(t);
+    inner.appendChild(wrap);
+
+    if ((c.absent_factors || []).length) {
+      inner.appendChild(el('h3', '', 'Not measurable for this game'));
+      inner.appendChild(el('div', 'footnote',
+        c.absent_factors.map(a => a.factor + ' (' + a.why + ')').join('; ')));
     }
 
-    if (c.reasoning) card.appendChild(el('div', 'reasoning', c.reasoning));
-    (c.notes || []).forEach(nte => card.appendChild(el('div', 'footnote', 'Note: ' + nte)));
+    inner.appendChild(el('div', 'footnote',
+      'Prediction written ' + (c.created_utc || '?').replace('T', ' ') +
+      (c.market_fetched_utc
+        ? ' · market snapshot taken ' + c.market_fetched_utc.replace('T', ' ') +
+          ' from ' + (c.market_source || 'unknown')
+        : ' · no market snapshot') +
+      ((c.market_line !== null && c.market_line !== undefined)
+        ? ' · line at the time ' + signed(c.market_line) : '') +
+      ' · factor coverage ' +
+      ((c.factor_coverage === null || c.factor_coverage === undefined)
+        ? 'not recorded' : pct(c.factor_coverage, 0))));
+
+    if (c.void_reason) inner.appendChild(el('div', 'footnote', 'VOID: ' + c.void_reason));
+    (c.notes || []).forEach(n => inner.appendChild(el('div', 'footnote', 'Note: ' + n)));
+
+    detail.appendChild(inner);
+    card.appendChild(detail);
+
+    function toggle() { card.classList.toggle('open'); }
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
+    });
     return card;
   }
 
+  // --- THIS WEEK ----------------------------------------------------------
   async function renderWeek() {
+    const host = document.getElementById('week-cards');
+    skeleton(host, 'skeleton-card', 3);
+
     const picker = document.getElementById('week-picker');
     const chosen = picker.value ? JSON.parse(picker.value) : {};
     const qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
@@ -393,37 +639,15 @@ const Gridiron = (function () {
     document.getElementById('week-sort').textContent =
       data.n + ' forecasts · sorted by ' + (data.sorted_by || '');
 
-    const host = document.getElementById('week-cards');
     host.innerHTML = '';
     const cards = market ? data.cards.filter(c => c.market === market) : data.cards;
     if (!cards.length) {
-      host.appendChild(el('div', 'empty',
-        data.message || (market
-          ? 'No ' + market + ' forecasts on this slate.'
-          : 'No forecasts recorded for this week yet.')));
+      host.appendChild(el('div', 'empty', data.message ||
+        (market ? 'No ' + market + ' forecasts on this slate.'
+                : 'No forecasts recorded for this week yet.')));
       return;
     }
     cards.forEach(c => host.appendChild(renderCard(c)));
-  }
-
-  async function loadMarkets() {
-    const data = await fetchJSON('/api/markets');
-    state.markets = data.spread.concat(data.props);
-    const chart = document.getElementById('chart-market');
-    chart.innerHTML = '';
-    state.markets.forEach(m => {
-      const o = el('option', '', m);
-      o.value = m;
-      chart.appendChild(o);
-    });
-    ['week-market', 'history-market'].forEach(id => {
-      const sel = document.getElementById(id);
-      state.markets.forEach(m => {
-        const o = el('option', '', m);
-        o.value = m;
-        sel.appendChild(o);
-      });
-    });
   }
 
   async function loadWeekPicker() {
@@ -437,75 +661,93 @@ const Gridiron = (function () {
     });
   }
 
-  // --- FACTORS -----------------------------------------------------------
+  async function loadMarkets() {
+    const data = await fetchJSON('/api/markets');
+    state.markets = data.spread.concat(data.props);
+    const chart = document.getElementById('chart-market');
+    chart.innerHTML = '';
+    state.markets.forEach(m => {
+      const o = el('option', '', m); o.value = m; chart.appendChild(o);
+    });
+    ['week-market', 'history-market'].forEach(id => {
+      const sel = document.getElementById(id);
+      state.markets.forEach(m => {
+        const o = el('option', '', m); o.value = m; sel.appendChild(o);
+      });
+    });
+  }
+
+  // --- VERSIONS -----------------------------------------------------------
+  async function renderVersions() {
+    const data = await fetchJSON('/api/versions');
+    requireN(data, 'version comparison');
+    document.getElementById('versions-caption').textContent = DASH + ' current: ' + data.current;
+    document.getElementById('versions-note').textContent = data.note;
+
+    const host = document.getElementById('versions-list');
+    host.innerHTML = '';
+    const grid = el('div', 'scores');
+    data.versions.forEach(v => {
+      const card = el('div', 'score-card');
+      const h = el('h3', '', v.version + ' ');
+      h.appendChild(el('span', 'tag' + (v.status === 'current' ? '' : ' warn'), v.status));
+      h.appendChild(nTag(v.n));
+      card.appendChild(h);
+      card.appendChild(el('div', 'card-meta',
+        'activated ' + (v.activated_utc || 'unrecorded').slice(0, 10) +
+        ' · ' + int(v.predictions_written) + ' written · ' +
+        int(v.open) + ' open'));
+      if (v.message) {
+        card.appendChild(el('div', 'empty', v.message));
+      } else {
+        const wrap = el('div', 'table-scroll');
+        const t = el('table', 'grid');
+        table(t, [{ label: 'Category' }, { label: 'N' }, { label: 'Brier' },
+                  { label: 'Hit rate' }],
+          v.categories.filter(c => c.n > 0).map(c => {
+            requireN(c, 'version ' + v.version + ' / ' + c.category);
+            return [c.category, int(c.n), num(c.brier), pct(c.hit_rate)];
+          }));
+        wrap.appendChild(t);
+        card.appendChild(wrap);
+      }
+      grid.appendChild(card);
+    });
+    host.appendChild(grid);
+    host.appendChild(el('p', 'footnote',
+      'No combined total is shown, and none will be: these are different ' +
+      'forecasters, and their sum describes nobody.'));
+  }
+
+  // --- FACTORS ------------------------------------------------------------
   async function renderFactors() {
     const data = await fetchJSON('/api/factors');
     requireN(data, 'factor report');
     document.getElementById('factors-caption').textContent =
-      '— scored over ' + int(data.n) + ' resolved statistical predictions';
+      DASH + ' scored over ' + int(data.n) + ' resolved statistical predictions';
     document.getElementById('factors-method').textContent = data.method;
 
     table(document.getElementById('factors-table'),
       [{ label: 'Factor' }, { label: 'Added' }, { label: 'Applies to' },
-       { label: 'N' }, { label: 'Brier' }, { label: 'Δ Brier' },
-       { label: 'Mean |effect|' }, { label: 'Verdict' }, { label: 'Why it was declared', cls: 'wide' }],
+       { label: 'N' }, { label: 'Rows measured' }, { label: 'Δ Brier' },
+       { label: 'Mean |effect|' }, { label: 'Verdict' },
+       { label: 'Why it was declared', cls: 'wide' }],
       data.factors.map(f => {
         requireN(f, 'factor row ' + f.factor);
         const name = el('span', '', f.factor);
         if (!f.active) name.appendChild(el('span', 'tag warn', 'inactive'));
         return [
           name, (f.added_utc || '').slice(0, 10), f.applies_to.join(', '),
-          int(f.n), num(f.brier), f.delta_brier === null ? '—' : signed(f.delta_brier, 5),
+          int(f.n), int(f.training_rows_measured),
+          (f.delta_brier === null || f.delta_brier === undefined)
+            ? DASH : signed(f.delta_brier, 5),
           num(f.mean_abs_contribution, 4), f.verdict,
           f.note ? f.rationale + ' — NOTE: ' + f.note : f.rationale
         ];
       }));
   }
 
-  // --- VERSIONS ----------------------------------------------------------
-  async function renderVersions() {
-    const data = await fetchJSON('/api/versions');
-    requireN(data, 'version comparison');
-    document.getElementById('versions-caption').textContent =
-      '— current: ' + data.current;
-    document.getElementById('versions-note').textContent = data.note;
-
-    const host = document.getElementById('versions-list');
-    host.innerHTML = '';
-    data.versions.forEach(v => {
-      const card = el('div', 'score-card');
-      const h = el('h3', '', v.version + '  ');
-      h.appendChild(el('span', 'tag' + (v.status === 'current' ? '' : ' warn'), v.status));
-      h.appendChild(nTag(v.n));
-      card.appendChild(h);
-      card.appendChild(el('div', 'card-meta',
-        'activated ' + (v.activated_utc || 'unrecorded') +
-        ' · ' + int(v.predictions_written) + ' written · ' +
-        int(v.open) + ' open'));
-
-      if (v.message) {
-        card.appendChild(el('div', 'empty', v.message));
-      } else {
-        const t = el('table', 'grid');
-        table(t, [{ label: 'Category' }, { label: 'N' }, { label: 'Brier' },
-                  { label: 'Log loss' }, { label: 'Hit rate' }],
-          v.categories.map(c => {
-            requireN(c, 'version ' + v.version + ' / ' + c.category);
-            return [c.category, int(c.n), num(c.brier), num(c.log_loss), pct(c.hit_rate)];
-          }));
-        card.appendChild(t);
-      }
-      host.appendChild(card);
-    });
-
-    // There is deliberately no total row. Summing a closed record and an
-    // accumulating one would describe neither model.
-    host.appendChild(el('p', 'footnote',
-      'No combined total is shown, and none will be: these are different ' +
-      'forecasters, and their sum describes nobody.'));
-  }
-
-  // --- HISTORY -----------------------------------------------------------
+  // --- HISTORY ------------------------------------------------------------
   function historyQuery() {
     const p = new URLSearchParams();
     const q = document.getElementById('history-q').value.trim();
@@ -527,7 +769,7 @@ const Gridiron = (function () {
     requireN(data, 'history');
     state.historyTotal = data.n;
     document.getElementById('history-caption').textContent =
-      '— ' + int(data.n) + ' predictions match';
+      DASH + ' ' + int(data.n) + ' predictions match';
 
     table(document.getElementById('history-table'),
       [{ label: 'Written' }, { label: 'Season/wk' }, { label: 'Subject' },
@@ -542,7 +784,8 @@ const Gridiron = (function () {
         return [
           (i.created_utc || '').slice(0, 10), i.season + ' wk' + i.week,
           i.subject, i.market, i.predictor, signed(i.line_asked),
-          pct(i.model_prob), i.market_line_at_the_time === null ? '—' : signed(i.market_line_at_the_time),
+          pct(i.model_prob),
+          i.market_line_at_the_time === null ? DASH : signed(i.market_line_at_the_time),
           pct(i.market_implied_prob), outcome
         ];
       }));
@@ -555,7 +798,7 @@ const Gridiron = (function () {
       state.historyOffset + data.returned >= data.n;
   }
 
-  // --- chrome ------------------------------------------------------------
+  // --- chrome -------------------------------------------------------------
   function renderBanner(meta) {
     const banner = document.getElementById('kind-banner');
     if (meta.database_kind === 'live') { banner.hidden = true; return; }
@@ -566,17 +809,16 @@ const Gridiron = (function () {
   }
 
   function renderColophon(meta) {
-    const parts = [
+    document.getElementById('colophon-text').textContent = [
       'Factor set ' + meta.factor_set_version,
       int(meta.predictions) + ' predictions on record',
       int(meta.games_final) + ' completed games loaded (' +
         meta.seasons_loaded[0] + '–' + meta.seasons_loaded[1] + ')',
-      'market comparison available for ' + int(meta.market_coverage.with_market_line) +
+      'market comparison for ' + int(meta.market_coverage.with_market_line) +
         ' of ' + int(meta.market_coverage.n),
       'LLM spend today $' + Number(meta.llm_ledger.usd_spent).toFixed(4) +
         ' of $' + Number(meta.llm_ledger.usd_cap).toFixed(2)
-    ];
-    document.getElementById('colophon-text').textContent = parts.join(' · ');
+    ].join(' · ');
   }
 
   const ROUTES = {
@@ -596,14 +838,11 @@ const Gridiron = (function () {
     document.querySelectorAll('nav a').forEach(a => {
       a.classList.toggle('active', a.dataset.route === view);
     });
-    try {
-      await ROUTES[view]();
-    } catch (err) {
-      showError(err);
-    }
+    try { await ROUTES[view](); } catch (err) { showError(err); }
   }
 
   async function boot() {
+    skeleton(document.getElementById('week-cards'), 'skeleton-card', 3);
     try {
       state.meta = await fetchJSON('/api/meta');
       renderBanner(state.meta);
@@ -641,7 +880,9 @@ const Gridiron = (function () {
     document.body.dataset.ready = 'true';
   }
 
-  return { boot, route, state, requireN, MissingSampleSize, drawCalibration, fetchJSON };
+  return { boot, route, state, requireN, MissingSampleSize,
+           drawCalibration, drawOverTime, dumbbell, contributions, bucketChip,
+           fetchJSON };
 })();
 
 window.Gridiron = Gridiron;

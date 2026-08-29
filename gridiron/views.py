@@ -140,7 +140,12 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
                     "sorted_by": "size of disagreement with the market"}
         season, wk = latest["season"], latest["week"]
         rows = fetch(season, wk)
-    snapshots = lines.snapshots_for(conn, [r["id"] for r in rows])
+    ids = [r["id"] for r in rows]
+    snapshots = lines.snapshots_for(conn, ids)
+    voided = _voids_for(conn, ids)
+    # One bucket record per (market, predictor, bucket) rather than one per
+    # card: the same lookup would otherwise run once for every pick on the slate.
+    bucket_cache: dict[tuple, dict] = {}
 
     cards = []
     for r in rows:
@@ -148,6 +153,16 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
         snap = snapshots.get(r["id"]) or {}
         implied = snap.get("implied_prob")
         gap = None if implied is None else round(r["model_prob"] - implied, 4)
+
+        key = (
+            r["market_type"], r["prop_type"], r["predictor"],
+            calibration.bucket_label(r["model_prob"]),
+        )
+        if key not in bucket_cache:
+            bucket_cache[key] = calibration.bucket_record(
+                conn, r["model_prob"], market_type=r["market_type"],
+                prop_type=r["prop_type"], predictor=r["predictor"],
+            )
         cards.append(
             {
                 "prediction_id": r["id"],
@@ -183,6 +198,10 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
                 "degraded": r["degraded"],
                 "outcome": r["outcome"],
                 "resolved_utc": r["resolved_utc"],
+                "voided": r["id"] in voided,
+                "void_reason": voided.get(r["id"]),
+                "bucket": bucket_cache[key],
+                "market_fetched_utc": snap.get("fetched_utc"),
                 "factor_set_version": r["factor_set_version"],
             }
         )
