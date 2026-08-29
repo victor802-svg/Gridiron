@@ -388,3 +388,49 @@ canvas { display: block; max-width: 100%; }
   * { transition: none !important; animation: none !important; }
   .card-detail { transition: none; }
 }
+
+/* --- the schedule panel --------------------------------------------------
+   Deliberately plain. A status board that uses alarming colour for ordinary
+   states teaches the reader to ignore it, so only two things are marked: a
+   task that has gone quiet, and a slate that was missed. */
+.sched {
+  border: 1px solid var(--rule-2);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: var(--card);
+}
+.sched-warn { border-color: var(--accent); }
+.sched-head { display: flex; align-items: baseline; gap: 10px; }
+.sched-what { color: var(--ink-2); font-size: 13px; margin: 2px 0 10px; }
+.sched-result {
+  font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--ink-2); border: 1px solid var(--rule-2);
+  border-radius: 999px; padding: 1px 8px;
+}
+.sched-result.r-failed, .sched-result.r-never { color: var(--accent); border-color: var(--accent); }
+.sched-grid {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 2px 14px; font-size: 13px;
+}
+.sched-k { color: var(--ink-2); }
+.sched-v { font-variant-numeric: tabular-nums; }
+.sched-detail { color: var(--ink-2); font-size: 13px; margin-top: 8px; }
+.sched-alarm, .sched-missed {
+  margin-top: 8px; padding: 8px 10px; font-size: 13px;
+  border-left: 2px solid var(--accent); color: var(--ink);
+  background: var(--rule-1);
+}
+.sched-stale {
+  display: flex; gap: 12px; align-items: baseline;
+  padding: 8px 0; border-bottom: 1px solid var(--rule-1);
+}
+.sched-stale.sched-warn strong { color: var(--accent); }
+.caption.warn { color: var(--accent); }
+.subhead { font-size: 14px; margin-top: 22px; }
+
+@media (max-width: 430px) {
+  .sched { padding: 12px; }
+  .sched-grid { grid-template-columns: 1fr; gap: 0 0; }
+  .sched-k { margin-top: 6px; }
+}

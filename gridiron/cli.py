@@ -270,6 +270,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_scorecard)
 
+    s = sub.add_parser("task", help="run one scheduled task and record the attempt")
+    s.add_argument("name", choices=sorted(list(_task_names()) + ["catch-up"]))
+    s.add_argument("--no-llm", action="store_true")
+    s.set_defaults(func=cmd_task)
+
+    s = sub.add_parser("schedule", help="what the scheduler has and has not done")
+    s.set_defaults(func=cmd_schedule)
+
     s = sub.add_parser("serve", help="run the local web interface")
     s.add_argument("--port", type=int, default=config.PORT)
     s.set_defaults(func=cmd_serve)
@@ -278,6 +286,48 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_status)
 
     return p
+
+
+def _task_names():
+    from .tasks import TASKS
+
+    return TASKS.keys()
+
+
+def cmd_task(args: argparse.Namespace) -> int:
+    """Run one scheduled task. Always exits 0 unless the task itself failed:
+    the scheduler should not retry a task that correctly did nothing."""
+    from . import tasks
+
+    conn = db.open_db(args.database)
+    if args.name == "catch-up":
+        results = tasks.catch_up(conn, use_llm=not args.no_llm)
+    else:
+        results = [tasks.run_task(conn, args.name, use_llm=not args.no_llm)]
+    for r in results:
+        print(f"[{r['result']:6s}] {r['task']}: {r['detail']}")
+    return 1 if any(r["result"] == "failed" for r in results) else 0
+
+
+def cmd_schedule(args: argparse.Namespace) -> int:
+    from . import tasks
+
+    conn = db.open_db(args.database)
+    st = tasks.status(conn)
+    print(f"{'task':14s} {'last run':22s} {'result':8s} {'age':>7s}  next due")
+    for t in st["tasks"]:
+        age = f"{t['age_hours']:.1f}h" if t["age_hours"] is not None else "never"
+        print(f"{t['task']:14s} {str(t['last_run_utc']):22s} "
+              f"{str(t['last_result']):8s} {age:>7s}  {t['next_due_utc'] or '-'}")
+        if t.get("warning"):
+            print(f"                 !! {t['warning']}")
+        for m in t["missed"]:
+            print(f"                 MISSED {m['started_utc']}: {m['detail'][:90]}")
+    print()
+    for s in st["schedule_staleness"]["sports"]:
+        flag = "STALE" if s["stale"] else "ok   "
+        print(f"  schedule {s['label']:4s} {flag}  {s['note']}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

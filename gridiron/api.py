@@ -91,6 +91,20 @@ def _sport(value: str | None) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/schedule")
+def schedule() -> dict:
+    """What the scheduler has and has not done.
+
+    Not sport-scoped, and deliberately so: this reports on the APPLIANCE, not on
+    the record. LAW 6 forbids mixing sports' predictions into one figure; it says
+    nothing about whether a cron job fired, and pretending otherwise would mean
+    four separate panels that each answer half the question "did it run".
+    """
+    from . import tasks
+
+    return tasks.status(get_conn())
+
+
 @app.get("/api/sports")
 def sports() -> dict:
     """Every sport with its own counts, for the tab labels. Never a total."""

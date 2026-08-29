@@ -275,6 +275,35 @@ CREATE TABLE IF NOT EXISTS nba_injuries (
 CREATE INDEX IF NOT EXISTS nba_injuries_team ON nba_injuries (team);
 
 
+-- --- the appliance ----------------------------------------------------------
+-- One row per attempt at a scheduled task. APPEND-ONLY, like every other
+-- history here: a run that failed is a fact about the record, and a panel that
+-- quietly forgets its failures is worse than no panel.
+--
+-- `result` is deliberately coarse and honest:
+--   ok      the task ran and did what it was for
+--   noop    it ran and there was correctly nothing to do
+--   missed  the slate's games had already started, so it was NOT predicted
+--   failed  it raised
+CREATE TABLE IF NOT EXISTS task_runs (
+    id            INTEGER PRIMARY KEY,
+    task          TEXT    NOT NULL,
+    started_utc   TEXT    NOT NULL,
+    finished_utc  TEXT,
+    result        TEXT    NOT NULL
+                  CHECK (result IN ('ok', 'noop', 'missed', 'failed')),
+    detail        TEXT,
+    payload_json  TEXT
+);
+CREATE INDEX IF NOT EXISTS task_runs_lookup ON task_runs (task, started_utc DESC);
+
+CREATE TRIGGER IF NOT EXISTS task_runs_no_delete
+BEFORE DELETE ON task_runs
+BEGIN
+    SELECT RAISE(ABORT, 'task_runs is append-only: a run that failed is a fact');
+END;
+
+
 -- ---------------------------------------------------------------------------
 -- LAW 1 QUARANTINE. Everything below this line is market data.
 -- Only `gridiron.market` may read these two tables. The prediction path has no

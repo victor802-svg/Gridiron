@@ -891,12 +891,77 @@ const Gridiron = (function () {
     ].join(' · ');
   }
 
+  // --- the schedule panel -------------------------------------------------
+  // Honest about failure, never reassuring. A task that has not run is not
+  // rendered as a blank row: it says it has never run, and says what that
+  // means. The one thing this panel must never do is look calm when the
+  // appliance has stopped.
+  async function renderSchedule() {
+    const data = await fetchJSON('/api/schedule');
+    const host = document.getElementById('schedule-tasks');
+    host.innerHTML = '';
+
+    const caption = document.getElementById('schedule-caption');
+    const problems = data.tasks.filter(t => t.silent).length;
+    const missed = data.tasks.reduce((n, t) => n + t.missed.length, 0);
+    caption.textContent = problems || missed
+      ? problems + ' quiet · ' + missed + ' missed'
+      : 'all tasks reporting';
+    caption.className = 'caption' + (problems || missed ? ' warn' : '');
+
+    data.tasks.forEach(t => {
+      const card = el('div', 'sched' + (t.silent ? ' sched-warn' : ''));
+      const head = el('div', 'sched-head');
+      head.appendChild(el('strong', '', t.task));
+      head.appendChild(el('span', 'sched-result ' + 'r-' + (t.last_result || 'never'),
+                          t.last_result || 'never run'));
+      card.appendChild(head);
+      card.appendChild(el('div', 'sched-what', t.what));
+
+      const rows = [
+        ['last ran', t.last_run_utc ? t.last_run_utc.replace('T', ' ') +
+          '  (' + t.age_hours + 'h ago)' : 'never'],
+        ['next due', t.next_due_utc ? t.next_due_utc.replace('T', ' ') : 'unknown'],
+        ['every', t.every_hours + 'h'],
+        ['failures all time', String(t.failures_all_time)]
+      ];
+      const dl = el('div', 'sched-grid');
+      rows.forEach(([k, v]) => {
+        dl.appendChild(el('span', 'sched-k', k));
+        dl.appendChild(el('span', 'sched-v', v));
+      });
+      card.appendChild(dl);
+
+      if (t.last_detail) card.appendChild(el('div', 'sched-detail', t.last_detail));
+      (t.degraded || []).forEach(d => {
+        card.appendChild(el('div', 'sched-alarm',
+          'ran degraded: ' + d + ' — the statistical forecaster stood alone'));
+      });
+      if (t.warning) card.appendChild(el('div', 'sched-alarm', t.warning));
+      t.missed.forEach(m => {
+        card.appendChild(el('div', 'sched-missed',
+          'MISSED ' + m.started_utc.replace('T', ' ') + ' — ' + m.detail));
+      });
+      host.appendChild(card);
+    });
+
+    const stale = document.getElementById('schedule-staleness');
+    stale.innerHTML = '';
+    data.schedule_staleness.sports.forEach(s => {
+      const row = el('div', 'sched-stale' + (s.stale ? ' sched-warn' : ''));
+      row.appendChild(el('strong', '', s.label));
+      row.appendChild(el('span', 'sched-detail', s.note));
+      stale.appendChild(row);
+    });
+  }
+
   const ROUTES = {
     record: renderRecord,
     week: renderWeek,
     factors: renderFactors,
     versions: renderVersions,
-    history: renderHistory
+    history: renderHistory,
+    schedule: renderSchedule
   };
 
   async function route() {

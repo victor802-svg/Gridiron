@@ -30,6 +30,7 @@
       <a href="#/factors" data-route="factors">Factors</a>
       <a href="#/versions" data-route="versions">Versions</a>
       <a href="#/history" data-route="history">History</a>
+      <a href="#/schedule" data-route="schedule">Schedule</a>
     </nav>
   </div>
 </header>
@@ -110,6 +111,18 @@
     <p class="footnote">This record is read-only. The API exposes no verb that writes to it.</p>
     <div class="table-scroll"><table id="history-table" class="grid"></table></div>
     <div class="pager"><button id="history-prev">Previous</button><span id="history-range"></span><button id="history-next">Next</button></div>
+  </section>
+
+  <section id="view-schedule" class="view" hidden>
+    <h2>Schedule <span id="schedule-caption" class="caption"></span></h2>
+    <p class="footnote">
+      What the appliance has actually done, not what it was configured to do. A
+      task that has gone quiet says so. A slate that started without being
+      forecast is recorded as missed and is never forecast late.
+    </p>
+    <div id="schedule-tasks"></div>
+    <h3 class="subhead">Data freshness</h3>
+    <div id="schedule-staleness"></div>
   </section>
 
   <div id="error" class="error" hidden></div>

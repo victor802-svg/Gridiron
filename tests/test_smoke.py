@@ -410,3 +410,44 @@ def test_the_phone_layout_does_not_overflow(served):
         for offset in rail["dots"]:
             assert -8 <= offset <= rail["width"] + 8
         browser.close()
+
+
+# --- the schedule panel -----------------------------------------------------
+
+def test_the_schedule_panel_renders_every_task(page):
+    """The daily glance: did it run, did anything miss."""
+    page.evaluate("location.hash = '#/schedule'")
+    page.wait_for_selector("#schedule-tasks .sched", timeout=10000)
+    cards = page.query_selector_all("#schedule-tasks .sched")
+    assert len(cards) == 4, f"expected four tasks, rendered {len(cards)}"
+    text = page.inner_text("#view-schedule")
+    for task in ("resolve", "predict:mlb", "predict:nfl", "predict:nba"):
+        assert task in text
+
+
+def test_a_task_that_never_ran_says_so_in_the_browser(page):
+    """A blank row reads as 'fine'. It must read as 'nothing is running'."""
+    page.evaluate("location.hash = '#/schedule'")
+    page.wait_for_selector("#schedule-tasks .sched", timeout=10000)
+    text = page.inner_text("#view-schedule")
+    assert "never run" in text
+    assert "nothing is running" in text
+
+
+def test_the_panel_shows_data_freshness_per_sport(page):
+    page.evaluate("location.hash = '#/schedule'")
+    page.wait_for_selector("#schedule-staleness .sched-stale", timeout=10000)
+    rows = page.query_selector_all("#schedule-staleness .sched-stale")
+    assert len(rows) == 3, "one freshness line per sport"
+
+
+def test_the_schedule_panel_fits_a_phone(page):
+    """The daily glance happens on a phone. Nothing may overflow sideways."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.evaluate("location.hash = '#/schedule'")
+    page.wait_for_selector("#schedule-tasks .sched", timeout=10000)
+    overflow = page.evaluate(
+        "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+    )
+    assert overflow <= 0, f"the schedule panel overflows by {overflow}px"
+    page.set_viewport_size({"width": 1280, "height": 900})
