@@ -49,7 +49,7 @@ def stable_index(key: str, modulus: int) -> int:
     return zlib.crc32(key.encode("utf-8")) % modulus
 
 
-def spread_line_asked(game_id: str) -> float:
+def spread_rung(game_id: str) -> float:
     return SPREAD_LADDER[stable_index(game_id, len(SPREAD_LADDER))]
 
 

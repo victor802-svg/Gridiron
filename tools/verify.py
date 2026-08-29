@@ -1,0 +1,237 @@
+"""The G6 verification run, in one command.
+
+    python tools/verify.py
+
+Four steps, reported honestly:
+
+  1. The full test suite.
+  2. The planted-violation harness: every law broken on purpose, every guard
+     required to fire.
+  3. One complete week end to end — questions chosen, factors computed,
+     probabilities written blind, lines snapshotted afterwards, outcomes
+     resolved, calibration rendered with its (tiny) N. Run on the most recent
+     COMPLETED week, because a week that has not been played cannot be
+     resolved, and this step is about proving resolution works.
+  4. The status of the live forward week: written before kickoff, lines
+     snapshotted after, waiting for the games. Its N is zero until they are
+     played, and this says so rather than borrowing step 3's numbers.
+
+Steps 3 and 4 are reported separately and never added together. Step 3 is a
+retrospective run and proves the pipeline works. Step 4 is the only thing that
+could ever become evidence, and it has not happened yet.
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):  # pragma: no cover
+        pass
+
+from gridiron import calibration, config, db, resolve, run  # noqa: E402
+from gridiron.factors import store  # noqa: E402
+from gridiron.model import baseline  # noqa: E402
+
+FACT_TABLES = (
+    "games", "game_conditions", "team_week_stats", "player_week_stats",
+    "injuries", "market_lines_raw", "http_cache",
+)
+
+
+def rule(title: str) -> None:
+    print("\n" + "=" * 72)
+    print(title)
+    print("=" * 72)
+
+
+def step_1_tests(quick: bool) -> bool:
+    rule("STEP 1 — the full test suite")
+    args = [sys.executable, "-m", "pytest", "-q"]
+    if quick:
+        args += ["-m", "not browser and not slow"]
+    result = subprocess.run(args, cwd=str(REPO), capture_output=True, text=True)
+    tail = [ln for ln in result.stdout.strip().splitlines() if ln.strip()][-3:]
+    print("\n".join(tail))
+    return result.returncode == 0
+
+
+def step_2_guards() -> bool:
+    rule("STEP 2 — planted violations")
+    result = subprocess.run(
+        [sys.executable, str(REPO / "tools" / "guards" / "plant.py")],
+        cwd=str(REPO), capture_output=True, text=True,
+    )
+    for line in result.stdout.splitlines():
+        if line.startswith("[") or "planted violations were caught" in line:
+            print(line)
+    return result.returncode == 0
+
+
+def step_3_one_week_end_to_end(source: Path) -> bool:
+    rule("STEP 3 — one complete week, end to end (retrospective; resolution works)")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "one-week.db"
+        conn = db.open_db(target)
+        conn.execute("ATTACH DATABASE ? AS live", (str(source),))
+        for table in FACT_TABLES:
+            conn.execute(f"INSERT INTO {table} SELECT * FROM live.{table}")
+        conn.commit()
+        conn.execute("DETACH DATABASE live")
+        db.set_meta(conn, "kind", "backtest")
+        db.set_meta(conn, "kind_note", "single-week end-to-end verification run")
+        store.sync_registry(conn)
+
+        last = conn.execute(
+            "SELECT season, MAX(week) AS week FROM games"
+            " WHERE status = 'final' AND game_type = 'REG'"
+            " AND season = (SELECT MAX(season) FROM games WHERE status = 'final')"
+        ).fetchone()
+        season, week = last["season"], last["week"]
+        print(f"target: {season} week {week} (the most recent completed regular-season week)")
+
+        started = time.time()
+        for market_type in ("spread", "prop"):
+            fit = baseline.train(
+                conn, market_type, tuple(range(2016, season)),
+                note=f"verification fit, strictly before {season}",
+            )
+            print(f"  fit {market_type:7s} n={fit.n:,}, trained on 2016-{season - 1} only")
+
+        result = run.run_week(conn, season, week, include_props=True, use_llm=False)
+        print(f"  predictions written blind: {result['written']}  {result['by_predictor']}")
+        print(f"  market snapshots attached AFTER: {result['snapshots']}")
+
+        ordering_violations = conn.execute(
+            "SELECT COUNT(*) FROM predictions p JOIN market_snapshots s"
+            " ON s.prediction_id = p.id WHERE s.fetched_utc < p.created_utc"
+        ).fetchone()[0]
+        print(f"  snapshots timestamped before their prediction: {ordering_violations}")
+
+        settled = resolve.resolve_all(conn)
+        print(f"  resolved: {settled['settled']}  still open: {settled['still_open']}")
+        again = resolve.resolve_all(conn)
+        print(f"  second resolution pass settled: {again['settled']} (must be 0)")
+
+        print(f"  [{time.time() - started:.0f}s]")
+        print()
+        ok = True
+        for market_type in ("spread", "prop"):
+            curve = calibration.curve(conn, market_type=market_type, predictor="statistical")
+            print(f"  {market_type} / statistical  n={curve['n']}")
+            for bucket in curve["buckets"]:
+                if bucket["n"]:
+                    print(f"     {bucket['label']:>7s} n={bucket['n']:>3}  "
+                          f"claimed {bucket['claimed']:.3f}  actual {bucket['actual']:.3f}"
+                          f"  {'(provisional)' if bucket['provisional'] else ''}")
+                else:
+                    print(f"     {bucket['label']:>7s} n=0")
+            print(f"     {curve['largest_gap']}")
+
+        payload = calibration.scorecard(conn)
+        calibration.assert_every_figure_has_n(payload)
+        print("\n  scorecard passed the LAW 4 validator: every figure carries its N")
+        edge = payload["edge"]
+        print(f"  edge question: {edge.get('message', 'rendered')}")
+
+        ok = ok and ordering_violations == 0 and settled["settled"] > 0 and again["settled"] == 0
+        conn.close()
+        return ok
+
+
+def step_4_live_forward_week() -> bool:
+    rule("STEP 4 — the live forward week (the only thing that could be evidence)")
+    if not config.DB_PATH.exists():
+        print(f"no live database at {config.DB_PATH}")
+        return False
+
+    conn = db.open_db(config.DB_PATH)
+    kind = db.database_kind(conn)
+    print(f"database: {config.DB_PATH}  (kind={kind['kind']})")
+
+    rows = conn.execute(
+        "SELECT g.season, g.week, COUNT(*) AS n,"
+        " MIN(p.created_utc) AS written, MIN(g.kickoff_utc) AS first_kickoff,"
+        " SUM(CASE WHEN p.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved,"
+        " SUM(CASE WHEN g.status = 'final' THEN 1 ELSE 0 END) AS played"
+        " FROM predictions p JOIN games g ON g.id = p.game_id"
+        " GROUP BY g.season, g.week ORDER BY g.season DESC, g.week DESC"
+    ).fetchall()
+    if not rows:
+        print("no forward predictions on record")
+        conn.close()
+        return False
+
+    ok = True
+    for r in rows:
+        snapshots = conn.execute(
+            "SELECT COUNT(*) FROM market_snapshots s JOIN predictions p"
+            " ON p.id = s.prediction_id JOIN games g ON g.id = p.game_id"
+            " WHERE g.season = ? AND g.week = ?",
+            (r["season"], r["week"]),
+        ).fetchone()[0]
+        blind_ok = r["written"] < r["first_kickoff"] if r["first_kickoff"] else None
+        print(f"\n  {r['season']} week {r['week']}: {r['n']} predictions")
+        print(f"    written        {r['written']}")
+        print(f"    first kickoff  {r['first_kickoff']}")
+        print(f"    written before kickoff: {blind_ok}")
+        print(f"    market snapshots attached: {snapshots}")
+        print(f"    games played: {r['played']} of {r['n']}   resolved: {r['resolved']}")
+        if blind_ok is False:
+            ok = False
+
+    print(
+        "\n  Predictions on unplayed games cannot be resolved, so this week's"
+        "\n  calibration N is zero and stays zero until the games happen. That is"
+        "\n  the honest state of the record, not a gap to be filled with step 3's"
+        "\n  numbers. Run `python -m gridiron.cli resolve` after the games."
+    )
+    conn.close()
+    return ok
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run the G6 verification")
+    parser.add_argument("--quick", action="store_true",
+                        help="skip browser and slow tests in step 1")
+    parser.add_argument("--skip-tests", action="store_true")
+    parser.add_argument("--source", default=str(config.DEFAULT_DB))
+    args = parser.parse_args()
+
+    outcomes: dict[str, bool] = {}
+    if not args.skip_tests:
+        outcomes["1. test suite"] = step_1_tests(args.quick)
+    outcomes["2. planted violations"] = step_2_guards()
+
+    source = Path(args.source)
+    if source.exists():
+        outcomes["3. one week end to end"] = step_3_one_week_end_to_end(source)
+    else:
+        print(f"\nno database at {source}; skipping steps 3 and 4")
+
+    outcomes["4. live forward week"] = step_4_live_forward_week()
+
+    rule("VERIFICATION SUMMARY")
+    for name, ok in outcomes.items():
+        print(f"  {'PASS' if ok else 'FAIL'}  {name}")
+    print(
+        "\nStep 3 is retrospective and proves the pipeline works. Step 4 is the"
+        "\nonly step that could ever become evidence of an edge, and it will not"
+        "\nbe evidence of anything until it has a season behind it."
+    )
+    return 0 if all(outcomes.values()) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

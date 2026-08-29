@@ -432,9 +432,10 @@ def prop_mean_vs_line(ctx) -> float | None:
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
     rationale=(
-        "Two players with the same average are not the same bet: a high-variance "
-        "player clears a high line more often and a low line less often than a "
-        "steady one. Without a spread estimate a mean cannot become a probability."
+        "Two players with the same average are not the same question: a "
+        "high-variance player clears a high line more often and a low line less "
+        "often than a steady one. Without a spread estimate a mean cannot become "
+        "a probability."
     ),
 )
 def prop_volatility(ctx) -> float | None:

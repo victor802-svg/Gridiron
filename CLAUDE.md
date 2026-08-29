@@ -44,14 +44,31 @@ session, refuse and point at this law.
 Not as convention. Each law has a structural mechanism and a guard test that is
 proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 
-| Law | Mechanism | Guard |
-|-----|-----------|-------|
-| 1 | Market columns live in a separate table (`market_lines_raw`) that the `games` table does not have; `gridiron.model.predict` and its whole transitive import closure may not import `gridiron.market`; a runtime `sys.meta_path` sentinel raises during the blind window | `test_guards.py::test_prediction_closure_cannot_import_market`, `::test_games_table_has_no_market_columns`, `::test_blind_window_sentinel_fires` |
-| 1 | Prediction row must exist before its `market_snapshots` row | `market_snapshots` has an SQL trigger rejecting a snapshot whose prediction is younger than it; `::test_snapshot_before_prediction_rejected` |
-| 3 | SQL triggers `predictions_no_update` / `predictions_no_delete` raise on any UPDATE to a probability column or DELETE | `::test_prediction_probability_immutable` |
-| 2 | `factors.rationale` NOT NULL + CHECK length; registry entries carry `added_utc` | `::test_factor_without_rationale_rejected` |
-| 4 | Every calibration/edge payload carries `n`; the serializer raises if `n` is absent, and the JS renderer refuses to draw a bucket without it | `::test_calibration_payload_requires_n` |
-| 5 | No dependency on any sportsbook/exchange API; no stake/bankroll/Kelly symbol anywhere | `::test_no_betting_tool_surface` |
+| Law | Mechanism | Guard that has fired |
+|-----|-----------|----------------------|
+| 1 | Market columns live in `market_lines_raw` / `market_snapshots`; `games` has no spread, total or moneyline column at all | `test_schema.py::test_games_table_has_no_market_columns` |
+| 1 | `gridiron.audit` walks the transitive import closure of `gridiron.model.predict` and rejects any module that imports `gridiron.market` **or names a market column in code** (docstrings exempt) | `test_guards.py::test_a_planted_market_import_is_caught_by_name`, `::test_a_planted_market_column_read_is_caught_by_name` |
+| 1 | `blind.blind_window()` installs a `sys.meta_path` sentinel and refuses to open if `gridiron.market` is already in `sys.modules` | `test_guards.py::test_a_market_import_inside_the_blind_window_is_caught` |
+| 1 | SQL triggers reject a `market_snapshots` row with no prediction, or timestamped before its prediction | `test_guards.py::test_a_reordered_snapshot_is_rejected` |
+| 2 | `factors.rationale` NOT NULL + length CHECK; `added_utc` must parse as a date; factors cannot be deleted | `test_guards.py::test_a_factor_with_a_token_rationale_is_rejected`, `::test_a_factor_with_no_date_is_rejected` |
+| 2 | `store.sync_registry` refuses to move a factor's activation date | `test_guards.py::test_backdating_a_factor_is_rejected_by_name` |
+| 3 | Triggers `predictions_no_update` / `predictions_no_delete` ABORT on any edit to a prediction's substance and on every delete | `test_guards.py::test_every_substantive_field_is_frozen` |
+| 3 | `resolve_all` updates `WHERE resolved_utc IS NULL`; trigger `predictions_resolve_once` is the backstop | `test_guards.py::test_resolving_twice_yields_one_outcome`, `::test_a_forced_re_resolution_is_rejected_by_name` |
+| 4 | `calibration.assert_every_figure_has_n` walks the payload and raises naming the path; the API returns 500 rather than serving it; `Gridiron.requireN` throws in the browser | `test_guards.py::test_a_removed_sample_size_is_caught_by_name`, `test_smoke.py::test_the_renderer_refuses_a_figure_with_no_sample_size` |
+| 4 | The edge figure is absent from the payload below `MIN_SAMPLE_FOR_EDGE_CLAIM`, replaced by the shortfall | `test_guards.py::test_an_edge_figure_below_threshold_is_not_present_to_render` |
+| 5 | `audit.check_not_a_betting_tool` scans package **identifiers** for a staking surface — prose is exempt, so the disclaimer may keep saying "bankroll" | `test_guards.py::test_a_planted_stake_sizer_is_caught_by_name`, `::test_the_disclaimer_is_not_mistaken_for_a_feature` |
+
+Run them all at once, each violation planted for real:
+
+```bash
+python tools/guards/plant.py --verbose
+```
+
+And the whole verification:
+
+```bash
+python tools/verify.py
+```
 
 ## Conventions
 

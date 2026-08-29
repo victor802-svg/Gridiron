@@ -60,8 +60,8 @@ def test_fitting_on_nothing_is_an_error_not_a_flat_model():
 # --- the questions are chosen blind and deterministically ------------------
 
 def test_the_same_game_is_always_asked_the_same_question():
-    first = [questions.spread_line_asked(f"2026_01_X{i}_Y") for i in range(50)]
-    second = [questions.spread_line_asked(f"2026_01_X{i}_Y") for i in range(50)]
+    first = [questions.spread_rung(f"2026_01_X{i}_Y") for i in range(50)]
+    second = [questions.spread_rung(f"2026_01_X{i}_Y") for i in range(50)]
     assert first == second, "the question rule must be reproducible across runs"
     assert set(first) <= set(questions.SPREAD_LADDER)
     assert len(set(first)) == len(questions.SPREAD_LADDER), "all rungs get used"
@@ -85,10 +85,10 @@ def test_spread_outcome_uses_the_ordinary_convention():
 def test_a_question_is_not_chosen_from_a_market_line():
     """The rule may depend on the game id and nothing else.
 
-    (`spread_line_asked` is our own name for our own question; what must not
+    (`spread_rung` is our own name for our own question; what must not
     appear is any reference to the quarantined tables or to a market price.)
     """
-    assert questions.spread_line_asked("2026_01_NE_SEA") == questions.spread_line_asked(
+    assert questions.spread_rung("2026_01_NE_SEA") == questions.spread_rung(
         "2026_01_NE_SEA"
     )
     source = (config.PACKAGE_ROOT / "model" / "questions.py").read_text(encoding="utf-8")

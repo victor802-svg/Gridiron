@@ -169,16 +169,37 @@ desktop/
 docs/
   GRIDIRON.md         the build specification, verbatim
   METHODOLOGY.md      what the numbers mean and when to believe them
+  audit.py            static enforcement of LAW 1 and LAW 5 over the source
 tests/                including the guard tests that prove the laws hold
-tools/                backtest and the planted-violation harness
+tools/
+  backtest.py         walk-forward sanity check, its own database
+  verify.py           the whole verification in one command
+  guards/plant.py     breaks every law on purpose and requires the guard to fire
 ```
 
 ## Status
 
-Phases G1-G5 complete: skeleton, schema, data loader, factor registry, blind
-prediction loop, resolution and calibration, and the interface.
+All six phases complete. 152 tests. Every law has a guard, and every guard has
+been made to fire by planting the violation it exists to catch:
 
-2026 Week 1 has been forecast blind: 48 predictions written (16 spreads, 32
-props), then 48 market snapshots attached afterwards. The LLM pass degraded to
-statistical-only with the tag `llm_unavailable:no_api_key`, which is recorded
-on the run rather than papered over.
+```bash
+python tools/verify.py
+```
+
+**The live forward record is N = 0 resolved, and that is the honest state.**
+48 predictions for 2026 week 1 were written on 2026-08-29, twelve days before
+the first kickoff, with the lines snapshotted afterwards. Nothing can resolve
+until the games are played. The LLM pass degraded to statistical-only with the
+tag `llm_unavailable:no_api_key`, recorded on the run rather than papered over.
+
+The walk-forward backtest over 2024-2025 (1,632 resolved predictions, each
+season fitted only on earlier ones) says the model is beaten by the market:
+Brier 0.2142 against the closing line's 0.2011 on the same 544 spread
+questions. Where the model disagreed with the market by more than 5 points it
+was right 55.6% of the time (n=207); where the market was the more confident
+one, the outcome went the model's way 71.2% (n=146). Its disagreements are
+worse than its agreements.
+
+That is the result. It is on the front page of the app for the same reason it
+is here. See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for what would have to
+be true before any of it counted as evidence.

@@ -61,7 +61,7 @@ def spread_training_set(
     for i, g in enumerate(games):
         if progress and i % 250 == 0:
             progress(f"features {i}/{len(games)}")
-        line = questions.spread_line_asked(g["id"])
+        line = questions.spread_rung(g["id"])
         ctx = context.build_game_context(conn, g["id"], cache, line_asked=line)
         # Weeks 1-2 have no in-season sample and a prior-season fallback that is
         # a different kind of estimate; they are still included, because

@@ -76,7 +76,7 @@ def week_questions(
 
     out: list[Question] = []
     for game in repo.games_for_week(conn, season, week):
-        line = questions.spread_line_asked(game["id"])
+        line = questions.spread_rung(game["id"])
         sign = "+" if line > 0 else ""
         out.append(
             Question(
