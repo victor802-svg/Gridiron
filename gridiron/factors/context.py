@@ -41,6 +41,10 @@ class GameContext:
     away: str
     kickoff_utc: str | None
 
+    #: The line OUR question is about, chosen blind by `model.questions`. It is
+    #: not the market's price and never becomes one; see the module docstring.
+    line_asked: float | None = None
+
     neutral_site: bool = False
     div_game: float | None = None
     home_rest: int | None = None
@@ -87,7 +91,6 @@ class PropContext(GameContext):
     team: str = ""
     opponent: str = ""
     stat: str = ""
-    line_asked: float | None = None
 
     volume_recent: float | None = None
     efficiency_recent: float | None = None
@@ -131,6 +134,35 @@ def srs_ratings(rows, iterations: int = 12) -> dict[str, float]:
         mean = sum(updated.values()) / len(updated)
         rating = {t: v - mean for t, v in updated.items()}
     return rating
+
+
+class WeekCache:
+    """Memoises the per-(season, week) league view.
+
+    Every game in a week shares the same history and therefore the same ratings.
+    Training over ten seasons builds ~2,700 contexts across ~190 distinct weeks,
+    so without this the same SRS is solved fourteen times per week for nothing.
+    """
+
+    def __init__(self) -> None:
+        self._cache: dict[tuple[int, int], tuple[dict[str, float], dict[str, list]]] = {}
+        self._prior: dict[tuple[int, str], float | None] = {}
+
+    def league(self, conn: sqlite3.Connection, season: int, week: int):
+        key = (season, week)
+        if key not in self._cache:
+            rows = repo.league_history(conn, season, week)
+            played: dict[str, list] = {}
+            for r in rows:
+                played.setdefault(r["team"], []).append(r)
+            self._cache[key] = (srs_ratings(rows), played)
+        return self._cache[key]
+
+    def prior_margin(self, conn: sqlite3.Connection, season: int, team: str):
+        key = (season, team)
+        if key not in self._prior:
+            self._prior[key] = repo.prior_season_margin(conn, season, team)
+        return self._prior[key]
 
 
 # ---------------------------------------------------------------------------
@@ -185,17 +217,19 @@ def _weather(conn: sqlite3.Connection, game: sqlite3.Row) -> tuple[bool, float |
     return False, None, None, None, "none"
 
 
-def build_game_context(conn: sqlite3.Connection, game_id: str) -> GameContext:
+def build_game_context(
+    conn: sqlite3.Connection,
+    game_id: str,
+    cache: "WeekCache | None" = None,
+    line_asked: float | None = None,
+) -> GameContext:
     game = repo.game(conn, game_id)
     if game is None:
         raise KeyError(f"unknown game {game_id!r}")
 
     season, week = game["season"], game["week"]
-    league = repo.league_history(conn, season, week)
-    ratings = srs_ratings(league)
-    played = {}
-    for r in league:
-        played.setdefault(r["team"], []).append(r)
+    cache = cache or WeekCache()
+    ratings, played = cache.league(conn, season, week)
 
     ctx = GameContext(
         game_id=game_id,
@@ -204,6 +238,7 @@ def build_game_context(conn: sqlite3.Connection, game_id: str) -> GameContext:
         home=game["home"],
         away=game["away"],
         kickoff_utc=game["kickoff_utc"],
+        line_asked=line_asked,
         neutral_site=bool(game["neutral_site"]),
         div_game=None if game["div_game"] is None else float(game["div_game"]),
         home_rest=game["home_rest"],
@@ -219,8 +254,7 @@ def build_game_context(conn: sqlite3.Connection, game_id: str) -> GameContext:
         if len(history) >= 2:
             setattr(ctx, f"{side}_srs", ratings.get(team))
         else:
-            prior = repo.prior_season_margin(conn, season, team)
-            setattr(ctx, f"{side}_srs", prior)
+            setattr(ctx, f"{side}_srs", cache.prior_margin(conn, season, team))
 
         recent = history[-RECENT_WINDOW:]
         if recent:
@@ -278,8 +312,9 @@ def build_prop_context(
     player_id: str,
     stat: str,
     line_asked: float,
+    cache: "WeekCache | None" = None,
 ) -> PropContext:
-    base = build_game_context(conn, game_id)
+    base = build_game_context(conn, game_id, cache, line_asked)
     game = repo.game(conn, game_id)
 
     history = repo.player_history(conn, player_id, base.season, base.week, PROP_WINDOW)

@@ -7,8 +7,9 @@ import json
 import sys
 
 from . import config, db
-from .data import loader, repo
+from .data import loader, repo, weather
 from .factors import registry, store
+from .model import baseline
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -66,6 +67,68 @@ def cmd_factors(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_train(args: argparse.Namespace) -> int:
+    conn = db.open_db(args.database)
+    store.sync_registry(conn)
+    seasons = tuple(range(args.since, args.until + 1))
+    for market_type in args.markets:
+        fit = baseline.train(
+            conn,
+            market_type,
+            seasons,
+            note=args.note,
+            progress=lambda m: print(f"  .. {market_type} {m}", flush=True),
+        )
+        print()
+        print(f"{market_type}: n={fit.n:,} converged={fit.converged} "
+              f"iterations={fit.iterations} intercept={fit.intercept:+.4f}")
+        for name, coef in sorted(zip(fit.names, fit.coefficients), key=lambda t: -abs(t[1])):
+            print(f"    {name:22s} {coef:+.4f}")
+        print()
+    conn.close()
+    return 0
+
+
+def cmd_weather(args: argparse.Namespace) -> int:
+    conn = db.open_db(args.database)
+    print(json.dumps(weather.fetch_week(conn, args.season, args.week), indent=2))
+    conn.close()
+    return 0
+
+
+def cmd_predict(args: argparse.Namespace) -> int:
+    """The G3 loop: blind prediction, then -- and only then -- the market."""
+    from .run import run_week
+
+    conn = db.open_db(args.database)
+    store.sync_registry(conn)
+    week = args.week
+    if week is None:
+        week = repo.next_unplayed_week(conn, args.season)
+        if week is None:
+            print(f"no scheduled games left in {args.season}")
+            conn.close()
+            return 1
+        print(f"next unplayed week in {args.season} is week {week}")
+
+    if not args.no_weather:
+        counts = weather.fetch_week(conn, args.season, week)
+        print(f"weather: {counts}")
+
+    result = run_week(
+        conn,
+        args.season,
+        week,
+        include_props=not args.no_props,
+        use_llm=not args.no_llm,
+        progress=lambda m: print(f"  .. {m}", flush=True) if args.verbose else None,
+    )
+    print()
+    print(json.dumps(result, indent=2))
+    conn.close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gridiron", description="NFL forecaster with a scorecard")
     p.add_argument("--database", help="path to the SQLite file (default: var/gridiron.db)")
@@ -82,6 +145,27 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("factors", help="the declared factor registry")
     s.add_argument("--sync", action="store_true", help="write the registry into the database")
     s.set_defaults(func=cmd_factors)
+
+    s = sub.add_parser("train", help="fit the statistical baseline")
+    s.add_argument("--since", type=int, default=min(config.DEFAULT_LOAD_SEASONS))
+    s.add_argument("--until", type=int, default=config.CURRENT_SEASON - 1)
+    s.add_argument("--markets", nargs="+", default=["spread", "prop"])
+    s.add_argument("--note")
+    s.set_defaults(func=cmd_train)
+
+    s = sub.add_parser("weather", help="fetch kickoff forecasts for a week")
+    s.add_argument("--season", type=int, default=config.CURRENT_SEASON)
+    s.add_argument("--week", type=int, required=True)
+    s.set_defaults(func=cmd_weather)
+
+    s = sub.add_parser("predict", help="blind prediction for a week, then snapshot lines")
+    s.add_argument("--season", type=int, default=config.CURRENT_SEASON)
+    s.add_argument("--week", type=int, default=None, help="default: next unplayed")
+    s.add_argument("--no-props", action="store_true")
+    s.add_argument("--no-llm", action="store_true")
+    s.add_argument("--no-weather", action="store_true")
+    s.add_argument("--verbose", action="store_true")
+    s.set_defaults(func=cmd_predict)
 
     s = sub.add_parser("status", help="row counts")
     s.set_defaults(func=cmd_status)

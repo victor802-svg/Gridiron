@@ -110,6 +110,21 @@ gridiron/
     loader.py         ingest; the only place a market column is read
     repo.py           read-only accessors for the prediction path
     reference.py      stadium coordinates, kickoff -> UTC
+    weather.py        Open-Meteo kickoff forecasts
+  factors/
+    registry.py       THE registry: every factor, dated, with its rationale
+    context.py        everything a factor may see; no market field exists on it
+    compute.py        context -> feature vector, with missing values named
+  model/
+    logistic.py       pure-Python IRLS logistic regression
+    questions.py      choosing line_asked, blind
+    baseline.py       train / predict / explain
+    llm.py            the reasoning pass and its budget ledger
+    predict.py        steps 1-4: the blind core. Cannot reach the market.
+  market/
+    lines.py          step 5: the quarantine. Only this reads market tables.
+  blind.py            the blind window: market imports raise inside it
+  run.py              the ordering, on one page
 docs/
   GRIDIRON.md         the build specification, verbatim
   METHODOLOGY.md      what the numbers mean and when to believe them
@@ -119,4 +134,10 @@ tools/                backtest and the planted-violation harness
 
 ## Status
 
-Phases G1-G2 complete: skeleton, schema, data loader, factor registry.
+Phases G1-G3 complete: skeleton, schema, data loader, factor registry, blind
+prediction loop.
+
+2026 Week 1 has been forecast blind: 48 predictions written (16 spreads, 32
+props), then 48 market snapshots attached afterwards. The LLM pass degraded to
+statistical-only with the tag `llm_unavailable:no_api_key`, which is recorded
+on the run rather than papered over.

@@ -30,7 +30,11 @@ def _iso(dt: datetime) -> str:
 
 @pytest.fixture
 def league(conn) -> sqlite3.Connection:
-    """A synthetic 8-team season: weeks 1-6 played, week 7 scheduled.
+    """A synthetic 8-team season: weeks 1-16 played, weeks 17-18 scheduled.
+
+    Sixteen played weeks is enough for `baseline.train` to accept the sample,
+    which matters: the production guard refuses to fit on fewer than fifty
+    games and the fixture should not be exempt from it.
 
     Scores are generated from a fixed per-team strength so the statistical model
     has a real signal to find, and from a fixed seed so it finds the same one
@@ -43,14 +47,14 @@ def league(conn) -> sqlite3.Connection:
     start = datetime(2025, 9, 7, 17, 0, tzinfo=timezone.utc)
 
     with conn:
-        for week in range(1, 8):
+        for week in range(1, 19):
             order = list(TEAMS)
             rng.shuffle(order)
             kickoff = start + timedelta(days=7 * (week - 1))
             for i in range(0, len(order), 2):
                 away, home = order[i], order[i + 1]
                 gid = f"2025_{week:02d}_{away}_{home}"
-                played = week <= 6
+                played = week <= 16
                 if played:
                     margin = strength[home] - strength[away] + 2.0 + rng.gauss(0, 9)
                     home_pts = max(0, int(round(21 + margin / 2)))
@@ -76,6 +80,19 @@ def league(conn) -> sqlite3.Connection:
                     "INSERT INTO game_conditions (game_id, home_rest, away_rest, roof,"
                     " surface, neutral_site, div_game, stadium) VALUES (?,?,?,?,?,0,0,?)",
                     (gid, 7, 7, "outdoors", "grass", f"{home} Field"),
+                )
+                # The loader would have split these out of the same upstream
+                # row; the fixture does the same so the market half has
+                # something to snapshot.
+                conn.execute(
+                    "INSERT INTO market_lines_raw (game_id, fetched_utc, source,"
+                    " spread_line, total_line) VALUES (?,?,'fixture',?,?)",
+                    (
+                        gid,
+                        _iso(kickoff),
+                        round((strength[home] - strength[away] + 2.0) * 2) / 2,
+                        44.5,
+                    ),
                 )
                 if played:
                     for team, opp, pf, pa in (

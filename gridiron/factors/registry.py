@@ -98,6 +98,22 @@ def all_factors(market_type: str | None = None) -> list[Factor]:
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
     rationale=(
+        "The question's own reference point. Our spread questions rotate across "
+        "four pre-declared rungs, and a model that cannot see which rung it was "
+        "asked is averaging four different questions into one answer. This is "
+        "our line, chosen blind by model.questions, never the market's price. "
+        "Scaled by 7 so one unit is about a touchdown."
+    ),
+)
+def asked_line(ctx) -> float | None:
+    if ctx.line_asked is None:
+        return None
+    return ctx.line_asked / 7.0
+
+@factor(
+    added="2026-08-28T00:00:00Z",
+    applies_to=("spread",),
+    rationale=(
         "Home teams win more than away teams and always have: no travel, a "
         "familiar surface and snap count, crowd noise on the opposing offence, "
         "and the officiating tilt that crowd noise produces. This is the single "

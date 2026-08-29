@@ -176,8 +176,12 @@ CREATE TABLE IF NOT EXISTS predictions (
 CREATE INDEX IF NOT EXISTS pred_game     ON predictions (game_id);
 CREATE INDEX IF NOT EXISTS pred_created  ON predictions (created_utc);
 CREATE INDEX IF NOT EXISTS pred_open     ON predictions (resolved_utc) WHERE resolved_utc IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS pred_unique
-    ON predictions (game_id, market_type, subject, model_side, predictor, factor_set_version);
+-- One answer per question, per predictor, per factor set. Re-running a week is
+-- a no-op rather than a second opinion, and a predictor cannot quietly change
+-- its mind by writing a row for the other side (LAW 3).
+DROP INDEX IF EXISTS pred_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS pred_one_answer_per_question
+    ON predictions (game_id, market_type, subject, predictor, factor_set_version);
 
 CREATE TABLE IF NOT EXISTS factors (
     name          TEXT PRIMARY KEY,
