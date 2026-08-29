@@ -1,0 +1,153 @@
+"""The HTTP layer. Read-only, 127.0.0.1 only, no build step.
+
+Every route is a GET. There is deliberately no verb that writes: predictions are
+made by `python -m gridiron.cli predict` and settled by `... resolve`, and the
+interface is a window onto the record rather than a way to alter it. That is
+LAW 3 expressed as an API surface — "searchable, never editable" is not a
+front-end convention here, there is simply nothing to call.
+
+Serving is bound to 127.0.0.1. Not configurable to a public interface.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import threading
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from . import calibration, config, db, views
+
+WEB_DIR = config.PACKAGE_ROOT / "web"
+
+app = FastAPI(
+    title="Gridiron",
+    description="An NFL forecaster that grades itself. Not a betting tool.",
+    version="0.1.0",
+    docs_url="/api/docs",
+    redoc_url=None,
+)
+
+# A SQLite connection belongs to the thread that made it, and the ASGI server
+# runs sync endpoints on a worker pool, so connections are thread-local. Each is
+# opened read-only: the interface cannot write to the record even by accident
+# (LAW 3), and `query_only` makes that a property of the handle rather than a
+# promise about the code.
+_local = threading.local()
+_database: Path | None = None
+
+
+def get_conn() -> sqlite3.Connection:
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        conn = db.open_db(_database)
+        conn.execute("PRAGMA query_only = ON")
+        _local.conn = conn
+    return conn
+
+
+def set_database(path: Path | str | None) -> None:
+    """Point the app at a database. Used by the launcher and by tests."""
+    global _database
+    _database = Path(path) if path is not None else None
+    _local.conn = None
+
+
+@app.get("/api/health")
+def health() -> dict:
+    try:
+        conn = get_conn()
+        conn.execute("SELECT 1").fetchone()
+    except Exception as exc:  # noqa: BLE001 - health must answer, not raise
+        return JSONResponse(
+            status_code=503, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        )
+    return {
+        "ok": True,
+        "version": app.version,
+        "database": str(_database or config.DB_PATH),
+        "kind": db.get_meta(conn, "kind", "live"),
+    }
+
+
+@app.get("/api/meta")
+def meta() -> dict:
+    return views.meta(get_conn())
+
+
+@app.get("/api/scorecard")
+def scorecard() -> dict:
+    try:
+        return views.scorecard(get_conn())
+    except calibration.MissingSampleSize as exc:
+        # LAW 4. Better a loud 500 than a page of numbers with no sample sizes.
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/week")
+def week(season: int | None = None, week: int | None = None) -> dict:
+    return views.week(get_conn(), season, week)
+
+
+@app.get("/api/weeks")
+def weeks() -> dict:
+    available = views.available_weeks(get_conn())
+    return {"n": len(available), "weeks": available}
+
+
+@app.get("/api/factors")
+def factors() -> dict:
+    try:
+        return views.factors(get_conn())
+    except calibration.MissingSampleSize as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/history")
+def history(
+    q: str = "",
+    market_type: str | None = None,
+    predictor: str | None = None,
+    outcome: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    return views.history(
+        get_conn(),
+        query=q,
+        market_type=market_type,
+        predictor=predictor,
+        outcome=outcome,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@app.get("/api/prediction/{prediction_id}")
+def prediction(prediction_id: int) -> dict:
+    detail = views.prediction_detail(get_conn(), prediction_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"no prediction {prediction_id}")
+    return detail
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(WEB_DIR / "index.html")
+
+
+if WEB_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+
+
+def serve(host: str = config.HOST, port: int = config.PORT, *, log_level: str = "info") -> None:
+    import uvicorn
+
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        raise ValueError(
+            f"refusing to bind {host!r}: Gridiron serves 127.0.0.1 only"
+        )
+    uvicorn.run(app, host=host, port=port, log_level=log_level)

@@ -94,6 +94,39 @@ python -m venv .venv
 .venv/Scripts/python -m gridiron.cli status
 ```
 
+Then train, forecast a week blind, and open the app:
+
+```bash
+.venv/Scripts/python -m gridiron.cli train --since 2016 --until 2025
+```
+
+```bash
+.venv/Scripts/python -m gridiron.cli predict --season 2026 --week 1
+```
+
+```bash
+.venv/Scripts/python desktop/launcher.py
+```
+
+After the games are played, settle them:
+
+```bash
+.venv/Scripts/python -m gridiron.cli resolve
+```
+
+To see the interface with a full calibration curve before your own forward
+record has any volume, run the walk-forward backtest and point the app at it.
+It opens with a loud banner saying the predictions in it were made after the
+games, because they were:
+
+```bash
+.venv/Scripts/python tools/backtest.py --seasons 2024 2025
+```
+
+```bash
+GRIDIRON_DB=var/backtest.db .venv/Scripts/python desktop/launcher.py
+```
+
 On macOS or Linux use `.venv/bin/` instead of `.venv/Scripts/`.
 
 ---
@@ -127,6 +160,12 @@ gridiron/
   run.py              the ordering, on one page
   resolve.py          settling, idempotently
   calibration.py      the scorecard, and the LAW 4 validator
+  views.py            view models; assembly only, no new claims
+  api.py              FastAPI, 127.0.0.1, GET-only
+  web/                index.html + app.js + style.css. That is the whole build.
+desktop/
+  launcher.py         attach-first, health-gated, loud failure
+  gridiron.spec       PyInstaller onedir
 docs/
   GRIDIRON.md         the build specification, verbatim
   METHODOLOGY.md      what the numbers mean and when to believe them
@@ -136,8 +175,8 @@ tools/                backtest and the planted-violation harness
 
 ## Status
 
-Phases G1-G3 complete: skeleton, schema, data loader, factor registry, blind
-prediction loop.
+Phases G1-G5 complete: skeleton, schema, data loader, factor registry, blind
+prediction loop, resolution and calibration, and the interface.
 
 2026 Week 1 has been forecast blind: 48 predictions written (16 spreads, 32
 props), then 48 market snapshots attached afterwards. The LLM pass degraded to

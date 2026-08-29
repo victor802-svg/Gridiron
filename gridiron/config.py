@@ -3,14 +3,25 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_ROOT.parent
 
+#: True inside a PyInstaller bundle, where PACKAGE_ROOT is a read-only
+#: extraction directory that is replaced wholesale on every rebuild.
+FROZEN = bool(getattr(sys, "frozen", False))
+
+#: Where mutable state lives. Kept outside the bundle when frozen, because a
+#: track record that a rebuild deletes is not a track record.
+STATE_DIR = Path(
+    os.environ.get("GRIDIRON_STATE")
+    or (Path.home() / ".gridiron" if FROZEN else REPO_ROOT / "var")
+)
+
 # --- storage ---------------------------------------------------------------
-# Default DB sits under var/ so it is gitignored and survives a rebuild.
-DEFAULT_DB = REPO_ROOT / "var" / "gridiron.db"
+DEFAULT_DB = STATE_DIR / "gridiron.db"
 DB_PATH = Path(os.environ.get("GRIDIRON_DB", DEFAULT_DB))
 
 # --- server ----------------------------------------------------------------

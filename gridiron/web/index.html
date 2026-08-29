@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridiron</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="kind-banner" class="banner" hidden></div>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <h1>Gridiron</h1>
+      <p class="tagline">An NFL forecaster that grades itself.</p>
+    </div>
+    <nav id="nav">
+      <!-- Track record is first and is the default route, deliberately. -->
+      <a href="#/record" data-route="record">Track record</a>
+      <a href="#/week" data-route="week">This week</a>
+      <a href="#/factors" data-route="factors">Factors</a>
+      <a href="#/history" data-route="history">History</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section id="view-record" class="view" hidden>
+    <div id="record-headline" class="headline"></div>
+    <div class="chart-block">
+      <h2>Calibration <span id="chart-caption" class="caption"></span></h2>
+      <div class="chart-controls">
+        <label>Market
+          <select id="chart-market">
+            <option value="spread">spread</option>
+            <option value="prop">prop</option>
+          </select>
+        </label>
+        <label>Forecaster
+          <select id="chart-predictor">
+            <option value="statistical">statistical</option>
+            <option value="llm">LLM</option>
+          </select>
+        </label>
+      </div>
+      <canvas id="calibration" width="620" height="440" role="img"
+              aria-label="Calibration chart: claimed confidence against observed frequency"></canvas>
+      <table id="bucket-table" class="grid"></table>
+    </div>
+    <div id="record-scores"></div>
+    <div id="record-edge"></div>
+    <p class="footnote" id="separation-note"></p>
+  </section>
+
+  <section id="view-week" class="view" hidden>
+    <div class="section-head">
+      <h2 id="week-title">This week</h2>
+      <label>Week
+        <select id="week-picker"></select>
+      </label>
+    </div>
+    <p class="caption" id="week-sort"></p>
+    <div id="week-cards"></div>
+  </section>
+
+  <section id="view-factors" class="view" hidden>
+    <h2>Factors <span id="factors-caption" class="caption"></span></h2>
+    <p class="footnote" id="factors-method"></p>
+    <table id="factors-table" class="grid"></table>
+  </section>
+
+  <section id="view-history" class="view" hidden>
+    <h2>History <span id="history-caption" class="caption"></span></h2>
+    <div class="filters">
+      <input id="history-q" type="search" placeholder="search subject, game or reasoning" autocomplete="off">
+      <select id="history-market"><option value="">all markets</option><option value="spread">spread</option><option value="prop">prop</option></select>
+      <select id="history-predictor"><option value="">both forecasters</option><option value="statistical">statistical</option><option value="llm">LLM</option></select>
+      <select id="history-outcome"><option value="">any status</option><option value="resolved">resolved</option><option value="open">open</option><option value="correct">correct</option><option value="wrong">wrong</option></select>
+    </div>
+    <p class="footnote">This record is read-only. The API exposes no verb that writes to it.</p>
+    <table id="history-table" class="grid"></table>
+    <div class="pager"><button id="history-prev">Previous</button><span id="history-range"></span><button id="history-next">Next</button></div>
+  </section>
+
+  <div id="error" class="error" hidden></div>
+</main>
+
+<footer class="colophon">
+  <p id="colophon-text"></p>
+  <p class="footnote">
+    Not a betting tool. No stake sizing, no bankroll, no recommendations, and no
+    sportsbook or exchange connection. Data from
+    <a href="https://github.com/nflverse/nflverse-data">nflverse</a> (CC BY 4.0)
+    and <a href="https://open-meteo.com">Open-Meteo</a>.
+  </p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

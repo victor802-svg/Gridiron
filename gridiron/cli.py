@@ -175,6 +175,15 @@ def cmd_scorecard(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from . import api
+
+    api.set_database(args.database or config.DB_PATH)
+    print(f"Gridiron on http://{config.HOST}:{args.port}  (127.0.0.1 only)")
+    api.serve(port=args.port)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gridiron", description="NFL forecaster with a scorecard")
     p.add_argument("--database", help="path to the SQLite file (default: var/gridiron.db)")
@@ -219,6 +228,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("scorecard", help="the calibration record")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_scorecard)
+
+    s = sub.add_parser("serve", help="run the local web interface")
+    s.add_argument("--port", type=int, default=config.PORT)
+    s.set_defaults(func=cmd_serve)
 
     s = sub.add_parser("status", help="row counts")
     s.set_defaults(func=cmd_status)

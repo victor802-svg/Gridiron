@@ -145,3 +145,43 @@ def snapshot_for_game(conn: sqlite3.Connection, game_id: str) -> dict[str, int]:
         for r in conn.execute("SELECT id FROM predictions WHERE game_id = ?", (game_id,))
     ]
     return snapshot_many(conn, ids)
+
+
+# ---------------------------------------------------------------------------
+# read side, for the interface
+# ---------------------------------------------------------------------------
+# The rule in CLAUDE.md is that only this module reads the market tables. The
+# interface needs those numbers, so the accessor lives here rather than the
+# read being done inline somewhere on the other side of the wall.
+
+def snapshots_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[int, dict]:
+    """First snapshot per prediction, keyed by prediction id."""
+    if not prediction_ids:
+        return {}
+    placeholders = ",".join("?" for _ in prediction_ids)
+    rows = conn.execute(
+        f"SELECT prediction_id, MIN(id) AS id, fetched_utc, source, line, implied_prob,"
+        f" public_pct FROM market_snapshots WHERE prediction_id IN ({placeholders})"
+        f" GROUP BY prediction_id",
+        prediction_ids,
+    ).fetchall()
+    return {r["prediction_id"]: dict(r) for r in rows}
+
+
+def coverage(conn: sqlite3.Connection) -> dict:
+    """How much of the record has a market comparison at all."""
+    row = conn.execute(
+        "SELECT COUNT(*) AS predictions,"
+        " SUM(CASE WHEN s.implied_prob IS NOT NULL THEN 1 ELSE 0 END) AS with_line"
+        " FROM predictions p LEFT JOIN market_snapshots s ON s.prediction_id = p.id"
+    ).fetchone()
+    return {
+        "n": row["predictions"] or 0,
+        "with_market_line": row["with_line"] or 0,
+        "public_pct_available": 0,
+        "note": (
+            "Props have no free market line source, so they carry a snapshot "
+            "recording that absence rather than a number. Public betting "
+            "percentage is unavailable from any free source and is never proxied."
+        ),
+    }

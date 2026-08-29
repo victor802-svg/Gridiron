@@ -18,8 +18,15 @@ TEAMS = ["KC", "BUF", "SF", "PHI", "DAL", "MIA", "SEA", "GB"]
 
 
 @pytest.fixture
-def conn(tmp_path) -> sqlite3.Connection:
-    c = db.open_db(tmp_path / "test.db")
+def db_path(tmp_path):
+    """The file the test database lives in. The API layer takes a path rather
+    than a connection, because it opens one per worker thread."""
+    return tmp_path / "test.db"
+
+
+@pytest.fixture
+def conn(db_path) -> sqlite3.Connection:
+    c = db.open_db(db_path)
     yield c
     c.close()
 
