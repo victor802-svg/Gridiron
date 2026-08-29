@@ -1,0 +1,243 @@
+"""Access control for a personal appliance.
+
+The threat model is small and worth stating, because security written without
+one is decoration. Gridiron binds 127.0.0.1 and, in P4, is published to a
+private tailnet. It holds no money and no personal data. What it holds is a
+RECORD — an append-only forecasting history whose value is entirely in nobody
+having been able to touch it. So the job here is: keep the record private on a
+network where other devices exist, and make sure a device that has not proved it
+holds the token sees nothing at all.
+
+Four decisions worth reading:
+
+**The token never reaches the browser.** It is compared server-side and
+exchanged for a session id. A token in a cookie is a token in every request log,
+every screenshot, and every `document.cookie` read.
+
+**The cookie is HttpOnly and SameSite=Strict, set by the SERVER.** JavaScript
+cannot set an HttpOnly cookie — `document.cookie` silently ignores the flag and
+you end up with a readable cookie that looks right. The handoff is therefore a
+real POST that the server answers with a `Set-Cookie`.
+
+**Failures are stored, not counted in memory.** A restart must not be the way
+around the backoff, and a failed sign-in nobody records is one nobody notices.
+
+**`/api/health` is liveness only.** It answers before authentication so a
+monitor can see the process is up, which means it must carry no data at all —
+not counts, not staleness, not the database path. Everything it used to carry
+moved behind the gate.
+"""
+
+from __future__ import annotations
+
+import hmac
+import os
+import secrets
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from . import config
+
+#: Where the token lives. Read at request time rather than import time so
+#: `make_token.py` does not require a restart to take effect.
+ENV_FILE = config.REPO_ROOT / ".env"
+TOKEN_VAR = "GRIDIRON_ACCESS_TOKEN"
+
+COOKIE_NAME = "gridiron_session"
+SESSION_HOURS = 24 * 30
+
+#: Paths that answer WITHOUT a session. Deliberately tiny, and each one earns
+#: its place:
+#:   /api/health   liveness for a monitor; carries no data
+#:   /login        the page you must be able to see in order to sign in
+#:   /auth/login   the POST that signs you in
+#:   /auth/handoff the desktop launcher's single-use nonce exchange
+#:   /static/login.css, /static/app.css  so the login page is not unstyled
+OPEN_PATHS = frozenset({
+    "/api/health",
+    "/login",
+    "/auth/login",
+    "/auth/handoff",
+    "/favicon.ico",
+})
+
+#: Backoff after this many failures from one address, doubling each time.
+FAILURES_BEFORE_BACKOFF = 3
+BACKOFF_BASE_SECONDS = 2
+BACKOFF_MAX_SECONDS = 300
+#: Failures older than this stop counting, so one bad evening is not permanent.
+FAILURE_WINDOW_MINUTES = 30
+
+
+class NotConfigured(RuntimeError):
+    """No access token has been created yet."""
+
+
+# ---------------------------------------------------------------------------
+# the token
+# ---------------------------------------------------------------------------
+
+def read_token() -> str | None:
+    """The configured token, from the environment or `.env`.
+
+    Never logged and never returned to a client. The only thing done with it is
+    a constant-time comparison.
+    """
+    from_env = os.environ.get(TOKEN_VAR)
+    if from_env:
+        return from_env.strip() or None
+    if not ENV_FILE.exists():
+        return None
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() == TOKEN_VAR:
+            return value.strip().strip('"').strip("'") or None
+    return None
+
+
+def token_matches(candidate: str) -> bool:
+    """Constant-time comparison. `==` on a secret leaks its prefix through
+    timing, which is a small leak on a fast local network and a free one to
+    avoid."""
+    token = read_token()
+    if not token or not candidate:
+        return False
+    return hmac.compare_digest(token, candidate)
+
+
+# ---------------------------------------------------------------------------
+# sessions
+# ---------------------------------------------------------------------------
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(when: datetime) -> str:
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def create_session(conn: sqlite3.Connection, *, user_agent: str | None = None) -> str:
+    session_id = secrets.token_urlsafe(32)
+    conn.execute(
+        "INSERT INTO sessions (id, created_utc, expires_utc, user_agent)"
+        " VALUES (?,?,?,?)",
+        (
+            session_id,
+            _iso(_now()),
+            _iso(_now() + timedelta(hours=SESSION_HOURS)),
+            (user_agent or "")[:200],
+        ),
+    )
+    conn.commit()
+    return session_id
+
+
+def session_is_valid(conn: sqlite3.Connection, session_id: str | None) -> bool:
+    if not session_id:
+        return False
+    row = conn.execute(
+        "SELECT expires_utc FROM sessions WHERE id = ?", (session_id,)
+    ).fetchone()
+    return bool(row) and row["expires_utc"] > _iso(_now())
+
+
+def drop_session(conn: sqlite3.Connection, session_id: str | None) -> None:
+    if session_id:
+        conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# rate limiting
+# ---------------------------------------------------------------------------
+
+def record_failure(conn: sqlite3.Connection, ip: str, reason: str) -> None:
+    conn.execute(
+        "INSERT INTO auth_failures (at_utc, ip, reason) VALUES (?,?,?)",
+        (_iso(_now()), ip, reason),
+    )
+    conn.commit()
+
+
+def backoff_seconds(conn: sqlite3.Connection, ip: str) -> int:
+    """How long this address must wait before its next attempt is considered.
+
+    Doubles per failure past the threshold and caps, so a wrong paste costs
+    nothing and a script costs progressively more. Computed from stored rows so
+    restarting the server does not reset it.
+    """
+    since = _iso(_now() - timedelta(minutes=FAILURE_WINDOW_MINUTES))
+    row = conn.execute(
+        "SELECT COUNT(*) AS n, MAX(at_utc) AS last FROM auth_failures"
+        " WHERE ip = ? AND at_utc >= ?",
+        (ip, since),
+    ).fetchone()
+    n = row["n"] or 0
+    if n < FAILURES_BEFORE_BACKOFF or not row["last"]:
+        return 0
+    penalty = min(
+        BACKOFF_BASE_SECONDS * (2 ** (n - FAILURES_BEFORE_BACKOFF)),
+        BACKOFF_MAX_SECONDS,
+    )
+    elapsed = (_now() - datetime.strptime(row["last"], "%Y-%m-%dT%H:%M:%SZ")
+               .replace(tzinfo=timezone.utc)).total_seconds()
+    return max(0, int(penalty - elapsed))
+
+
+# ---------------------------------------------------------------------------
+# the desktop handoff
+# ---------------------------------------------------------------------------
+
+def mint_handoff(conn: sqlite3.Connection, *, seconds: int = 60) -> str:
+    """A single-use nonce so the launcher can open an authenticated browser.
+
+    The TOKEN is never in a URL. This is not the token: it is a random value
+    that is valid once, for a minute, and is useless the instant it is
+    exchanged. That distinction is the whole reason it exists — without it the
+    only way to open a signed-in browser is to put the secret in the address
+    bar, where it lands in history.
+    """
+    nonce = secrets.token_urlsafe(24)
+    conn.execute(
+        "INSERT INTO handoff_nonces (nonce, created_utc, expires_utc)"
+        " VALUES (?,?,?)",
+        (nonce, _iso(_now()), _iso(_now() + timedelta(seconds=seconds))),
+    )
+    conn.commit()
+    return nonce
+
+
+def redeem_handoff(conn: sqlite3.Connection, nonce: str | None) -> bool:
+    if not nonce:
+        return False
+    row = conn.execute(
+        "SELECT expires_utc, used_utc FROM handoff_nonces WHERE nonce = ?", (nonce,)
+    ).fetchone()
+    if row is None or row["used_utc"] or row["expires_utc"] <= _iso(_now()):
+        return False
+    conn.execute(
+        "UPDATE handoff_nonces SET used_utc = ? WHERE nonce = ?", (_iso(_now()), nonce)
+    )
+    conn.commit()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# the gate
+# ---------------------------------------------------------------------------
+
+def path_is_open(path: str) -> bool:
+    """Whether a path answers without a session.
+
+    Static assets are open because the login page needs its stylesheet, and a
+    stylesheet reveals nothing. Every other path — including /docs, /redoc and
+    /openapi.json, which describe the whole surface — is closed.
+    """
+    if path in OPEN_PATHS:
+        return True
+    return path.startswith("/static/") and path.endswith((".css", ".ico", ".svg"))

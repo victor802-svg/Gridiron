@@ -11,3 +11,8 @@ dist/
 *.spec.bak
 .gridiron/
 var/
+
+# The access token lives here. Never committed: a secret in git history is a
+# secret forever, because removing it later does not remove it from every
+# clone and every reflog.
+.env

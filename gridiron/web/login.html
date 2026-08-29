@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridiron — sign in</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  /* Inline rather than a second stylesheet: the login page is the one thing
+     that must render before authentication, so it depends on as little as
+     possible. */
+  .signin { max-width: 380px; margin: 14vh auto 0; padding: 0 20px; }
+  .signin h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.01em; }
+  .signin .sub { color: var(--ink-2); font-size: 14px; margin: 0 0 28px; }
+  .signin label {
+    display: block; font-size: 12px; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px;
+  }
+  .signin input {
+    width: 100%; box-sizing: border-box; padding: 11px 12px; font-size: 15px;
+    font-family: inherit; color: var(--ink); background: var(--card);
+    border: 1px solid var(--rule-2); border-radius: 6px;
+  }
+  .signin input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .signin button {
+    width: 100%; margin-top: 14px; padding: 11px 12px; font-size: 15px;
+    font-family: inherit; cursor: pointer; color: var(--bg);
+    background: var(--ink); border: 0; border-radius: 6px;
+    min-height: 44px;
+  }
+  .signin button:disabled { opacity: .55; cursor: default; }
+  .msg { min-height: 20px; margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
+  .msg.bad { color: var(--accent); }
+  .signin .note {
+    margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--rule-1);
+    color: var(--ink-2); font-size: 13px; line-height: 1.55;
+  }
+  .signin code { font-size: 12px; }
+</style>
+</head>
+<body>
+
+<main class="signin">
+  <h1>Gridiron</h1>
+  <p class="sub">A multi-sport forecaster that grades itself.</p>
+
+  <form id="login" autocomplete="off">
+    <label for="token">Access token</label>
+    <input id="token" name="token" type="password" autocomplete="current-password"
+           spellcheck="false" autocapitalize="none" required autofocus>
+    <button type="submit" id="submit">Sign in</button>
+    <p class="msg" id="msg" role="status" aria-live="polite"></p>
+  </form>
+
+  <p class="note">
+    The token was printed once, by <code>tools/make_token.py</code>. It is not
+    stored in this browser: signing in exchanges it for a session cookie that
+    JavaScript cannot read.
+  </p>
+</main>
+
+<script>
+  const form = document.getElementById('login');
+  const msg = document.getElementById('msg');
+  const submit = document.getElementById('submit');
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    submit.disabled = true;
+    msg.textContent = '';
+    msg.className = 'msg';
+    try {
+      // A real POST. The cookie is set by the SERVER with HttpOnly, which
+      // document.cookie cannot do - it accepts the flag and silently drops it,
+      // leaving a readable cookie that passes a naive test.
+      const response = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: document.getElementById('token').value })
+      });
+      if (response.ok) { location.href = '/'; return; }
+      const body = await response.json().catch(() => ({}));
+      msg.className = 'msg bad';
+      msg.textContent = response.status === 429
+        ? 'Too many attempts. Try again in ' + (body.retry_after_seconds || '?') + 's.'
+        : (body.error || 'That did not work.');
+    } catch (err) {
+      msg.className = 'msg bad';
+      msg.textContent = 'The server did not answer.';
+    } finally {
+      submit.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

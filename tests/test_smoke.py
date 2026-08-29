@@ -20,7 +20,7 @@ import time
 
 import pytest
 
-from gridiron import api, resolve, run
+from gridiron import api, auth, resolve, run
 from gridiron.factors import store
 from gridiron.model import baseline
 
@@ -37,9 +37,14 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+SMOKE_TOKEN = "smoke-token-for-the-browser-suite"
+
+
 @pytest.fixture(scope="function")
-def served(league, db_path):
+def served(league, db_path, monkeypatch):
     import uvicorn
+
+    monkeypatch.setenv(auth.TOKEN_VAR, SMOKE_TOKEN)
 
     store.sync_registry(league)
     # Six markets: the spread plus each prop type, fitted separately.
@@ -84,7 +89,15 @@ def page(served):
         page.on("console", lambda m: page.console_errors.append(m.text)
                 if m.type == "error" else None)
         page.on("pageerror", lambda e: page.page_errors.append(str(e)))
-        page.goto(served, wait_until="networkidle")
+        # Sign in the way a person does, through the real login page. Every
+        # route is behind the gate (P3), so without this the browser lands on
+        # /login and every assertion below fails for the wrong reason. It also
+        # means the login flow is exercised by every browser test rather than
+        # only by the one that names it.
+        page.goto(served + "/login", wait_until="networkidle")
+        page.fill("#token", SMOKE_TOKEN)
+        page.click("#submit")
+        page.wait_for_url(served + "/", timeout=15000)
         page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
         yield page
         browser.close()
@@ -348,7 +361,15 @@ def test_nothing_moves_under_reduced_motion(served):
         page = context.new_page()
         errors: list[str] = []
         page.on("pageerror", lambda e: errors.append(str(e)))
-        page.goto(served, wait_until="networkidle")
+        # Sign in the way a person does, through the real login page. Every
+        # route is behind the gate (P3), so without this the browser lands on
+        # /login and every assertion below fails for the wrong reason. It also
+        # means the login flow is exercised by every browser test rather than
+        # only by the one that names it.
+        page.goto(served + "/login", wait_until="networkidle")
+        page.fill("#token", SMOKE_TOKEN)
+        page.click("#submit")
+        page.wait_for_url(served + "/", timeout=15000)
         page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
         page.evaluate("location.hash = '#/week'")
         page.wait_for_selector("#week-cards .card", timeout=10000)
@@ -387,7 +408,15 @@ def test_the_phone_layout_does_not_overflow(served):
             pytest.skip(f"chromium unavailable: {exc}")
         context = browser.new_context(viewport={"width": 375, "height": 812})
         page = context.new_page()
-        page.goto(served, wait_until="networkidle")
+        # Sign in the way a person does, through the real login page. Every
+        # route is behind the gate (P3), so without this the browser lands on
+        # /login and every assertion below fails for the wrong reason. It also
+        # means the login flow is exercised by every browser test rather than
+        # only by the one that names it.
+        page.goto(served + "/login", wait_until="networkidle")
+        page.fill("#token", SMOKE_TOKEN)
+        page.click("#submit")
+        page.wait_for_url(served + "/", timeout=15000)
         page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
         page.evaluate("location.hash = '#/week'")
         page.wait_for_selector("#week-cards .card", timeout=10000)
@@ -451,3 +480,46 @@ def test_the_schedule_panel_fits_a_phone(page):
     )
     assert overflow <= 0, f"the schedule panel overflows by {overflow}px"
     page.set_viewport_size({"width": 1280, "height": 900})
+
+
+# --- the auth walk, in a real browser ---------------------------------------
+
+def test_a_fresh_browser_is_sent_to_login_and_can_sign_in(served):
+    """Fresh session -> redirected -> sign in -> full app. Walked in a real
+    browser rather than asserted against a test client, because the cookie
+    flags that matter are enforced by the browser, not by the server's opinion
+    of them."""
+    with playwright_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as exc:  # noqa: BLE001
+            pytest.skip(f"chromium unavailable: {exc}")
+        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        page = context.new_page()
+
+        # 1. a fresh browser cannot see the app
+        page.goto(served + "/", wait_until="networkidle")
+        assert page.url.endswith("/login"), f"landed on {page.url} without signing in"
+        assert "access token" in page.inner_text("body").lower()
+
+        # 2. the wrong token is refused, in the page
+        page.fill("#token", "not-the-token")
+        page.click("#submit")
+        page.wait_for_selector(".msg.bad", timeout=10000)
+        assert page.url.endswith("/login")
+
+        # 3. the right one opens it
+        page.fill("#token", SMOKE_TOKEN)
+        page.click("#submit")
+        page.wait_for_url(served + "/", timeout=15000)
+        page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+        assert page.query_selector("#sport-tabs")
+
+        # 4. the session cookie is not readable from JavaScript
+        visible = page.evaluate("document.cookie")
+        assert auth.COOKIE_NAME not in visible, (
+            "the session cookie is readable from JavaScript, so it is not HttpOnly"
+        )
+        assert SMOKE_TOKEN not in visible
+
+        browser.close()

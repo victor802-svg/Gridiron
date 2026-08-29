@@ -12,6 +12,33 @@ as a permanent worry.
 
 ## Open
 
+### The first MLB forward predictions carry the pre-fix factor set
+
+The **25 standing MLB forward predictions** — day 155 and day 156, written
+2026-08-29 19:17 and 19:22 UTC — were made before the rolling-window leak was
+found. Their factor vectors were computed with the UTC-date cutoff, so any of
+them whose game falls on the ~24% of MLB dates where the league date differs may
+have included the game in progress in its own rolling form.
+
+**They stand, and that is deliberate.** LAW 3: a prediction cannot be edited,
+deleted or re-scored after the fact. They were written blind and before first
+pitch, so LAW 1 held. Re-writing them with corrected factors would be exactly
+the re-scoring the law forbids, and voiding them would be discarding a real
+forward record to tidy up an inconvenience.
+
+But **the record should know its first resolutions came from a contaminated
+factor set**, and this is where it is written down. When these resolve — the
+first real resolutions this project has ever had — they enter the fs2 MLB
+moneyline curve alongside later predictions made with the corrected cutoff. At
+n=25 out of a 100-prediction gate they are a small share and will be a smaller
+one by the time anything is claimable, but the mixture is real and is not
+visible in the curve itself.
+
+**What would settle it:** when MLB moneyline passes n=100, compute the curve
+twice — with and without these 25 — and record whether the difference is
+material. If it is, the honest move is to report the corrected-cutoff sample as
+the headline and these as a footnote. Do not pre-judge which; measure it.
+
 ### Factors that fire too rarely to be tested
 
 Each of these is **untested, not disproved**, and the distinction is the one

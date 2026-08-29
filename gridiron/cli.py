@@ -214,9 +214,15 @@ def cmd_scorecard(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     from . import api
 
+    from . import auth
+
     api.set_database(args.database or config.DB_PATH)
     print(f"Gridiron on http://{config.HOST}:{args.port}  (127.0.0.1 only)")
-    api.serve(port=args.port)
+    if auth.read_token() is None:
+        print("  no access token configured — run: python tools/make_token.py")
+    elif getattr(args, "open_browser", False):
+        print("  opening a signed-in browser (single-use handoff, 60s)")
+    api.serve(port=args.port, open_browser=getattr(args, "open_browser", False))
     return 0
 
 
@@ -279,6 +285,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_schedule)
 
     s = sub.add_parser("serve", help="run the local web interface")
+    s.add_argument("--open", dest="open_browser", action="store_true",
+                   help="open an already-signed-in browser (the desktop launcher)")
     s.add_argument("--port", type=int, default=config.PORT)
     s.set_defaults(func=cmd_serve)
 

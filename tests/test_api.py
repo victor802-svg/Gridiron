@@ -7,13 +7,16 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from gridiron import api, calibration, config, resolve, run
+from gridiron import api, auth, calibration, config, resolve, run
 from gridiron.factors import store
 from gridiron.model import baseline
 
 
+TOKEN = "test-token-for-the-api-suite"
+
+
 @pytest.fixture
-def client(league, db_path):
+def client(league, db_path, monkeypatch):
     store.sync_registry(league)
     # Six markets: the spread plus each prop type, fitted separately.
     baseline.train_all(league, (2025,), l2=1.0, note="test", min_rows=20)
@@ -21,20 +24,36 @@ def client(league, db_path):
     run.run_week(league, 2025, 8, include_props=True, use_llm=False)
     resolve.resolve_all(league)
     league.commit()
+    monkeypatch.setenv(auth.TOKEN_VAR, TOKEN)
     api.set_database(db_path)
     with TestClient(api.app) as c:
+        # Every route is behind the gate now (P3), so the interface suite signs
+        # in the way a person does. What it is testing is the interface, not the
+        # gate; test_auth.py tests the gate.
+        c.post("/auth/login", json={"token": TOKEN})
         yield c
     api.set_database(None)
 
 
 # --- LAW 3: there is no way in ---------------------------------------------
 
-def test_the_api_exposes_no_verb_that_writes():
-    """History is "searchable, never editable" because nothing can be called."""
-    methods = set()
-    for route in api.app.routes:
-        methods |= set(getattr(route, "methods", set()) or set())
-    assert methods <= {"GET", "HEAD"}, f"a write verb is exposed: {sorted(methods)}"
+def test_no_route_can_write_to_the_record():
+    """History is "searchable, never editable" because nothing can be called.
+
+    P3 added two POSTs, and the guarantee had to be restated rather than
+    weakened: the RECORD is still unreachable by any verb. `/auth/login` and
+    `/auth/logout` write a session row and nothing else, on a separate handle,
+    and they are named here so a third POST cannot appear without this test
+    failing and someone having to justify it.
+    """
+    writers = sorted(
+        route.path
+        for route in api.app.routes
+        if set(getattr(route, "methods", set()) or set()) - {"GET", "HEAD"}
+    )
+    assert writers == ["/auth/login", "/auth/logout"], (
+        f"a write verb appeared outside the sign-in paths: {writers}"
+    )
 
 
 def test_the_interface_connection_is_read_only(client):
@@ -53,10 +72,14 @@ def test_serving_refuses_a_public_interface():
 
 # --- health ----------------------------------------------------------------
 
-def test_health_answers_ok(client):
+def test_health_answers_liveness_only(client):
+    """P3 stripped this route to nothing but liveness. It is the one endpoint
+    that answers before authentication, so anything it carried would be readable
+    by anyone who could reach the port. The kind banner and the staleness lines
+    moved to /api/meta and /api/schedule, both behind the gate."""
     body = client.get("/api/health").json()
     assert body["ok"] is True
-    assert body["kind"] in ("live", "backtest")
+    assert set(body) == {"ok", "version"}
 
 
 # --- the scorecard ---------------------------------------------------------
@@ -233,7 +256,7 @@ def test_the_page_and_its_assets_are_served(client):
 def test_the_page_has_no_build_step():
     """No bundler, no npm, no framework: the assets shipped are the assets written."""
     web = config.PACKAGE_ROOT / "web"
-    assert {p.name for p in web.iterdir()} == {"index.html", "app.js", "style.css"}
+    assert {p.name for p in web.iterdir()} == {"index.html", "login.html", "app.js", "style.css"}
     html = (web / "index.html").read_text(encoding="utf-8")
     assert "/static/app.js" in html
     assert "node_modules" not in html and "cdn" not in html.lower()

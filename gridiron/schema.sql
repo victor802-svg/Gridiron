@@ -304,6 +304,39 @@ BEGIN
 END;
 
 
+-- --- access ----------------------------------------------------------------
+-- A browser session. The cookie carries only this id; the token itself is never
+-- sent to the browser, never written to a log, and never appears in a URL.
+CREATE TABLE IF NOT EXISTS sessions (
+    id           TEXT PRIMARY KEY,
+    created_utc  TEXT NOT NULL,
+    expires_utc  TEXT NOT NULL,
+    user_agent   TEXT
+);
+CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions (expires_utc);
+
+-- One row per FAILED sign-in. Kept rather than counted in memory: the backoff
+-- must survive a restart, or a restart is the way around it. It is also the
+-- only security-relevant log this project keeps, and a failure nobody records
+-- is a failure nobody can notice.
+CREATE TABLE IF NOT EXISTS auth_failures (
+    id        INTEGER PRIMARY KEY,
+    at_utc    TEXT NOT NULL,
+    ip        TEXT NOT NULL,
+    reason    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS auth_failures_ip ON auth_failures (ip, at_utc DESC);
+
+-- A single-use handoff nonce, so the desktop launcher can open an authenticated
+-- browser without ever putting the TOKEN in a URL. Sixty seconds, one use.
+CREATE TABLE IF NOT EXISTS handoff_nonces (
+    nonce       TEXT PRIMARY KEY,
+    created_utc TEXT NOT NULL,
+    expires_utc TEXT NOT NULL,
+    used_utc    TEXT
+);
+
+
 -- ---------------------------------------------------------------------------
 -- LAW 1 QUARANTINE. Everything below this line is market data.
 -- Only `gridiron.market` may read these two tables. The prediction path has no

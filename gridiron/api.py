@@ -15,11 +15,11 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import calibration, config, db, views
+from . import auth, calibration, config, db, views
 
 WEB_DIR = config.PACKAGE_ROOT / "web"
 
@@ -27,6 +27,9 @@ app = FastAPI(
     title="Gridiron",
     description="An NFL forecaster that grades itself. Not a betting tool.",
     version="0.1.0",
+    # These describe the entire surface, so they sit BEHIND the gate like
+    # everything else. `auth.path_is_open` does not list them, and the
+    # middleware closes anything not on that list.
     docs_url="/api/docs",
     redoc_url=None,
 )
@@ -49,11 +52,160 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def get_auth_conn() -> sqlite3.Connection:
+    """A WRITABLE handle, used only by the sign-in paths.
+
+    The record's handle stays `query_only`, so the interface still cannot write
+    a prediction even by accident (LAW 3). Sessions, failed attempts and handoff
+    nonces are not the record, and they have to be written somewhere that
+    survives a restart — a backoff held in memory is a backoff you get past by
+    restarting the process.
+
+    Nothing outside `gridiron.auth` is given this connection, and the LAW 3
+    triggers on `predictions` remain the backstop if anything ever tries.
+    """
+    conn = getattr(_local, "auth_conn", None)
+    if conn is None:
+        conn = db.open_db(_database)
+        _local.auth_conn = conn
+    return conn
+
+
 def set_database(path: Path | str | None) -> None:
     """Point the app at a database. Used by the launcher and by tests."""
     global _database
     _database = Path(path) if path is not None else None
     _local.conn = None
+    _local.auth_conn = None
+
+
+# ---------------------------------------------------------------------------
+# the gate
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def require_session(request: Request, call_next):
+    """Everything is closed unless it is on the small open list.
+
+    ENUMERATED FROM THE APP, not hardcoded: `auth.path_is_open` decides, and a
+    route added tomorrow is closed by default because it is simply not on the
+    list. The opposite arrangement — a list of protected paths — fails open, and
+    the failure is invisible until someone reads the whole route table.
+
+    /api/docs, /redoc and /openapi.json are NOT open. They describe the entire
+    surface, which is exactly what an unauthenticated caller should not have.
+    """
+    path = request.url.path
+    if auth.path_is_open(path):
+        return await call_next(request)
+
+    if auth.read_token() is None:
+        # Refuse rather than fall open. An appliance with no token configured is
+        # not "unprotected by choice", it is unconfigured, and serving the
+        # record to anyone who asks would be the worst possible default.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "no access token is configured",
+                "fix": "run: python tools/make_token.py",
+            },
+        )
+
+    if auth.session_is_valid(get_auth_conn(), request.cookies.get(auth.COOKIE_NAME)):
+        return await call_next(request)
+
+    # A browser asking for a page gets the login page; anything else gets 401.
+    accepts_html = "text/html" in (request.headers.get("accept") or "")
+    if accepts_html and request.method == "GET":
+        return RedirectResponse("/login", status_code=303)
+    return JSONResponse(status_code=401, content={"error": "authentication required"})
+
+
+@app.get("/login")
+def login_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "login.html")
+
+
+@app.post("/auth/login")
+async def login(request: Request) -> JSONResponse:
+    """Exchange the token for a session cookie.
+
+    The cookie is set BY THE SERVER, with HttpOnly. JavaScript cannot set an
+    HttpOnly cookie — `document.cookie` accepts the string and silently drops
+    the flag, leaving a readable cookie that looks correct in every test that
+    only checks the name. The handoff is a real POST for that reason.
+    """
+    conn = get_auth_conn()
+    ip = request.client.host if request.client else "unknown"
+
+    wait = auth.backoff_seconds(conn, ip)
+    if wait > 0:
+        return JSONResponse(
+            status_code=429,
+            content={"error": "too many attempts", "retry_after_seconds": wait},
+            headers={"Retry-After": str(wait)},
+        )
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 - a malformed body is just a failed attempt
+        body = {}
+    candidate = (body.get("token") or "").strip()
+
+    if not auth.token_matches(candidate):
+        auth.record_failure(conn, ip, "bad token")
+        return JSONResponse(status_code=401, content={"error": "that token is not valid"})
+
+    session_id = auth.create_session(conn, user_agent=request.headers.get("user-agent"))
+    response = JSONResponse(content={"ok": True})
+    _set_session_cookie(response, session_id, request)
+    return response
+
+
+@app.get("/auth/handoff")
+async def handoff(request: Request, n: str = Query(default="")):
+    """The desktop launcher's single-use exchange.
+
+    `n` is a NONCE, not the token: random, valid once, expiring in sixty
+    seconds, and useless the moment it is redeemed. This is how `cli serve` can
+    open an already-signed-in browser without the secret ever appearing in an
+    address bar or a browser history.
+    """
+    conn = get_auth_conn()
+    if not auth.redeem_handoff(conn, n):
+        ip = request.client.host if request.client else "unknown"
+        auth.record_failure(conn, ip, "bad or spent handoff nonce")
+        return RedirectResponse("/login", status_code=303)
+    session_id = auth.create_session(conn, user_agent=request.headers.get("user-agent"))
+    response = RedirectResponse("/", status_code=303)
+    _set_session_cookie(response, session_id, request)
+    return response
+
+
+@app.post("/auth/logout")
+async def logout(request: Request) -> JSONResponse:
+    auth.drop_session(get_auth_conn(), request.cookies.get(auth.COOKIE_NAME))
+    response = JSONResponse(content={"ok": True})
+    response.delete_cookie(auth.COOKIE_NAME, path="/")
+    return response
+
+
+def _set_session_cookie(response, session_id: str, request: Request) -> None:
+    """HttpOnly, SameSite=Strict, Secure over TLS.
+
+    `secure` is conditional because the desktop case is plain http on
+    127.0.0.1, where a Secure cookie would simply never be stored. Over the
+    tailnet (P4) the scheme is https and the flag is set.
+    """
+    response.set_cookie(
+        auth.COOKIE_NAME,
+        session_id,
+        max_age=auth.SESSION_HOURS * 3600,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
 
 
 @app.get("/api/health")
@@ -61,20 +213,19 @@ def health() -> dict:
     try:
         conn = get_conn()
         conn.execute("SELECT 1").fetchone()
-    except Exception as exc:  # noqa: BLE001 - health must answer, not raise
-        return JSONResponse(
-            status_code=503, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-        )
-    return {
-        "ok": True,
-        "version": app.version,
-        "database": str(_database or config.DB_PATH),
-        "kind": db.get_meta(conn, "kind", "live"),
-        # How old what we know is, per sport. A loader served entirely from
-        # cache reports success and fetches nothing, so "the load ran" is not
-        # evidence that the data is current — only the fetch record is.
-        "schedule_staleness": views.schedule_staleness(conn),
-    }
+    except Exception:  # noqa: BLE001 - health must answer, not raise
+        # The EXCEPTION TEXT IS NOT RETURNED. A sqlite error carries the full
+        # database path, so returning it from the one unauthenticated route
+        # would leak the filesystem layout to anyone who could make the query
+        # fail. The operator reads the real error in the server log.
+        return JSONResponse(status_code=503, content={"ok": False})
+    # LIVENESS ONLY. This is the one route that answers before authentication,
+    # so it must carry NO data: not the database path, not the record's kind,
+    # not counts, not staleness. Everything it used to return moved behind the
+    # gate into /api/schedule, which is where a person looks anyway. An open
+    # endpoint that reports what is in the database is a data leak with a
+    # reassuring name.
+    return {"ok": True, "version": app.version}
 
 
 DEFAULT_SPORT = config.SPORTS[0]
@@ -249,11 +400,45 @@ if WEB_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
 
-def serve(host: str = config.HOST, port: int = config.PORT, *, log_level: str = "info") -> None:
+def desktop_handoff_url(host: str = config.HOST, port: int = config.PORT) -> str | None:
+    """A one-time URL that opens an already-signed-in browser.
+
+    THE TOKEN IS NOT IN IT. The nonce is random, single-use, and expires in
+    sixty seconds; redeeming it is what mints the session. This is the whole
+    reason the nonce exists — otherwise the only way to open a signed-in browser
+    from a launcher is to put the secret in the address bar, where it lands in
+    the browser's history and in any screen recording.
+
+    Returns None when no token is configured, because there is then nothing to
+    hand off and the caller should say so rather than opening a broken page.
+    """
+    if auth.read_token() is None:
+        return None
+    nonce = auth.mint_handoff(db.open_db(_database))
+    return f"http://{host}:{port}/auth/handoff?n={nonce}"
+
+
+def serve(host: str = config.HOST, port: int = config.PORT, *, log_level: str = "info",
+          open_browser: bool = False) -> None:
     import uvicorn
 
     if host not in ("127.0.0.1", "localhost", "::1"):
         raise ValueError(
-            f"refusing to bind {host!r}: Gridiron serves 127.0.0.1 only"
+            f"refusing to bind {host!r}: Gridiron serves 127.0.0.1 only. "
+            "To reach it from another device use `tailscale serve`, which "
+            "publishes it to your tailnet over TLS without opening a port to "
+            "the internet."
         )
+    if open_browser:
+        import threading as _threading
+        import webbrowser
+
+        url = desktop_handoff_url(host, port)
+        if url is None:
+            print("No access token configured. Run: python tools/make_token.py")
+        else:
+            # Opened after a short delay so the server is listening. The URL is
+            # never printed: a one-time nonce is not a secret worth guarding
+            # forever, but there is no reason to put it in a terminal log.
+            _threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=host, port=port, log_level=log_level)
