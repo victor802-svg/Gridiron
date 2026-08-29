@@ -152,6 +152,15 @@ def write_prediction(
     side, confidence = baseline.stated_side(prob_yes, q.yes_label, q.no_label)
     payload = fv.to_json_dict()
     payload["prob_yes"] = round(prob_yes, 6)
+    # What was asked, in resolvable terms. The resolver needs the player id and
+    # stat by name later; `subject` is for humans and must not be parsed back.
+    payload["question"] = {
+        "claim": q.claim,
+        "player_id": q.player_id,
+        "stat": q.stat,
+        "yes_label": q.yes_label,
+        "no_label": q.no_label,
+    }
     if extra:
         payload.update(extra)
 

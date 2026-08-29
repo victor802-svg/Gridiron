@@ -110,8 +110,12 @@ def prop_training_set(
                 " WHERE season = ? AND week = ? AND player_id = ?",
                 (g["season"], g["week"], pick["player_id"]),
             ).fetchone()
-            if actual is None or actual["v"] is None:
-                continue  # the player did not appear; the question never resolves
+            # A player with no box-score row did not appear and therefore
+            # recorded zero. Training counts that as an under, exactly as the
+            # resolver will: the question asked whether he would exceed a
+            # number, and he did not. Dropping these rows instead would train a
+            # model that never sees the games its subject misses.
+            value = 0.0 if actual is None or actual["v"] is None else float(actual["v"])
             try:
                 ctx = context.build_prop_context(
                     conn, g["id"], pick["player_id"], pick["stat"], pick["line_asked"], cache
@@ -120,7 +124,7 @@ def prop_training_set(
                 continue
             fv = compute.feature_vector(ctx, "prop")
             rows.append(fv.values)
-            labels.append(questions.prop_outcome(float(actual["v"]), pick["line_asked"]))
+            labels.append(questions.prop_outcome(value, pick["line_asked"]))
 
     names = [f.name for f in registry.active_factors("prop")]
     return rows, labels, names

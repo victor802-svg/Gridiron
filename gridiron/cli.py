@@ -7,6 +7,7 @@ import json
 import sys
 
 from . import config, db
+from . import calibration, resolve as resolver
 from .data import loader, repo, weather
 from .factors import registry, store
 from .model import baseline
@@ -129,6 +130,51 @@ def cmd_predict(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_resolve(args: argparse.Namespace) -> int:
+    conn = db.open_db(args.database)
+    result = resolver.resolve_all(conn, progress=lambda m: print(f"  .. {m}", flush=True))
+    print(json.dumps(result, indent=2))
+    print(json.dumps(resolver.summary(conn), indent=2))
+    conn.close()
+    return 0
+
+
+def cmd_scorecard(args: argparse.Namespace) -> int:
+    conn = db.open_db(args.database)
+    kind = db.database_kind(conn)
+    if kind["kind"] != "live":
+        print(f"!! {kind['kind'].upper()} DATABASE — {kind['note']}")
+        print()
+    if args.json:
+        print(json.dumps(calibration.scorecard(conn), indent=2))
+        conn.close()
+        return 0
+
+    for market_type in ("spread", "prop"):
+        for predictor in ("statistical", "llm"):
+            c = calibration.curve(conn, market_type=market_type, predictor=predictor)
+            if not c["n"]:
+                continue
+            print(f"=== {market_type} / {predictor}  (n={c['n']:,})")
+            s2 = c["score"]
+            print(f"    Brier {s2['brier']}  log loss {s2['log_loss']}  hit rate {s2['hit_rate']}")
+            for b in c["buckets"]:
+                if b["n"]:
+                    print(f"      {b['label']:>7s} n={b['n']:>5,} claimed {b['claimed']:.3f}"
+                          f" actual {b['actual']:.3f} gap {b['gap']:+.3f}")
+                else:
+                    print(f"      {b['label']:>7s} n=0")
+            print(f"    {c['largest_gap']}")
+            print()
+
+    e = calibration.edge(conn)
+    print("=== edge question")
+    print(f"    {e['message'] if not e.get('renderable') else e['model_more_confident']}")
+    print(f"    {e['standing_note']}")
+    conn.close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gridiron", description="NFL forecaster with a scorecard")
     p.add_argument("--database", help="path to the SQLite file (default: var/gridiron.db)")
@@ -166,6 +212,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-weather", action="store_true")
     s.add_argument("--verbose", action="store_true")
     s.set_defaults(func=cmd_predict)
+
+    s = sub.add_parser("resolve", help="settle every open prediction whose game is final")
+    s.set_defaults(func=cmd_resolve)
+
+    s = sub.add_parser("scorecard", help="the calibration record")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_scorecard)
 
     s = sub.add_parser("status", help="row counts")
     s.set_defaults(func=cmd_status)

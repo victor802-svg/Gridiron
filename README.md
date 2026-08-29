@@ -125,6 +125,8 @@ gridiron/
     lines.py          step 5: the quarantine. Only this reads market tables.
   blind.py            the blind window: market imports raise inside it
   run.py              the ordering, on one page
+  resolve.py          settling, idempotently
+  calibration.py      the scorecard, and the LAW 4 validator
 docs/
   GRIDIRON.md         the build specification, verbatim
   METHODOLOGY.md      what the numbers mean and when to believe them

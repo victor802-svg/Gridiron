@@ -31,7 +31,33 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 def init(conn: sqlite3.Connection) -> None:
     """Create the schema. Idempotent — every object is IF NOT EXISTS."""
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    conn.execute(
+        "INSERT OR IGNORE INTO meta (key, value) VALUES ('kind', 'live')"
+    )
     conn.commit()
+
+
+def get_meta(conn: sqlite3.Connection, key: str, default: str | None = None) -> str | None:
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return default if row is None else row["value"]
+
+
+def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?,?)"
+        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+
+
+def database_kind(conn: sqlite3.Connection) -> dict:
+    """`live` = predictions made before kickoff. `backtest` = made afterwards
+    over completed games, which proves the pipeline works and nothing else."""
+    return {
+        "kind": get_meta(conn, "kind", "live"),
+        "note": get_meta(conn, "kind_note"),
+    }
 
 
 def open_db(path: Path | str | None = None) -> sqlite3.Connection:

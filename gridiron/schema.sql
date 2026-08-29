@@ -21,6 +21,16 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 
+-- What kind of database this is. A backtest database holds predictions made
+-- retrospectively over completed games; a live one holds predictions made
+-- before kickoff. They must never be read as the same record, so the kind is
+-- stored here and the interface says so loudly.
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+
 -- ---------------------------------------------------------------------------
 -- Facts about the world. No market data lives in this section.
 -- ---------------------------------------------------------------------------
