@@ -53,12 +53,19 @@ class SourceUnavailable(RuntimeError):
     """An upstream fetch failed and no cached copy exists to fall back on."""
 
 
-def _http_get(url: str, etag: str | None) -> tuple[int, bytes, str | None]:
+def _http_get(
+    url: str, etag: str | None, extra: dict[str, str] | None = None
+) -> tuple[int, bytes, str | None]:
+    # `extra` exists for one host. stats.nba.com does not answer a request that
+    # does not look like nba.com's own client, and rather than hiding that in a
+    # second HTTP layer the caller passes the headers it needs and the cache
+    # stays the only way anything reaches the network.
     req = urllib.request.Request(
         url,
         headers={
             "User-Agent": config.USER_AGENT,
             "Accept-Encoding": "gzip",
+            **(extra or {}),
             **({"If-None-Match": etag} if etag else {}),
         },
     )
@@ -80,6 +87,7 @@ def fetch(
     *,
     immutable: bool = False,
     offline_ok: bool = True,
+    headers: dict[str, str] | None = None,
 ) -> bytes:
     """Return the bytes at `url`, from cache when we can.
 
@@ -100,7 +108,7 @@ def fetch(
 
     etag = row["etag"] if row is not None else None
     try:
-        status, body, new_etag = _http_get(url, etag)
+        status, body, new_etag = _http_get(url, etag, headers)
     except Exception as exc:  # noqa: BLE001 - any network failure is the same to us
         if row is not None and offline_ok:
             return row["body"]

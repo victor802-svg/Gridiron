@@ -90,6 +90,25 @@ FACTOR_SET_ACTIVATED = {
     "fs2": "2026-08-29T00:00:00Z",
 }
 
+#: How far ahead a live slate may be forecast, in days.
+#:
+#: BLIND FIRST means before the event, but not arbitrarily long before it. A
+#: forecast written two months out is made from the previous season's form, with
+#: rotations that no longer exist and no injury report, and — because a question
+#: once answered is never re-asked — it would PERMANENTLY occupy that slate's
+#: slot, so the model never gets to forecast it with the information it will
+#: actually have on the day.
+#:
+#: The number is a judgement and is recorded as one. What forced it was an NBA
+#: run that wrote 47 predictions 52 days before tip. What bounds it from below is
+#: a season opener, which is legitimately forecast about two weeks out because
+#: that is when rosters settle: the NFL 2026 week 1 slate in this record was
+#: written at 12 to 17 days, which was measured rather than assumed, and sits
+#: inside 21. Three weeks contains one slate of any of the three sports plus a
+#: realistic lead, and excludes the case that prompted the rule by more than
+#: double.
+MAX_FORECAST_LEAD_DAYS = int(os.environ.get("GRIDIRON_MAX_LEAD_DAYS", "21"))
+
 # --- LAW 4 -----------------------------------------------------------------
 # Nothing claims an edge below this many resolved predictions in a category.
 MIN_SAMPLE_FOR_EDGE_CLAIM = 100
@@ -143,7 +162,19 @@ PROP_LINE_STEP = {
     "rushing_yards": 5.0,
     "receptions": 1.0,
     "passing_tds": 1.0,
+    # Basketball's four are all counting stats, so all step by one and all sit
+    # on a half. Market names do not collide across sports, so one table serves
+    # every sport rather than three tables that could drift apart.
+    "points": 1.0,
+    "rebounds": 1.0,
+    "assists": 1.0,
+    "threes": 1.0,
 }
+
+#: Counting stats sit at 0.5, 1.5, 2.5 ... and never below half, in every sport.
+COUNTING_STATS = frozenset(
+    {"receptions", "passing_tds", "points", "rebounds", "assists", "threes"}
+)
 
 #: A reviewable slate beats a large one. Quality of resolution beats quantity of
 #: predictions: 40 props a week is what one person can actually read, and a

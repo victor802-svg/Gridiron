@@ -198,6 +198,77 @@ CREATE INDEX IF NOT EXISTS mlb_team_games_lookup
     ON mlb_team_games (team, game_date);
 
 
+-- --- basketball -------------------------------------------------------------
+-- One row per team per game, from the league team game log.
+CREATE TABLE IF NOT EXISTS nba_team_games (
+    game_id      TEXT    NOT NULL REFERENCES games (id),
+    team         TEXT    NOT NULL,
+    opponent     TEXT    NOT NULL,
+    season       INTEGER NOT NULL,
+    game_date    TEXT    NOT NULL,
+    is_home      INTEGER NOT NULL,
+    points_for   INTEGER,
+    points_against INTEGER,
+    minutes      REAL,      -- team minutes played; 240 in regulation, more in OT
+    fga          INTEGER,
+    fta          INTEGER,
+    oreb         INTEGER,
+    turnovers    INTEGER,
+    PRIMARY KEY (game_id, team)
+);
+CREATE INDEX IF NOT EXISTS nba_team_games_lookup
+    ON nba_team_games (team, game_date);
+
+-- One row per player per game. This is the prop substrate: minutes and the four
+-- counting stats the four prop markets ask about.
+CREATE TABLE IF NOT EXISTS nba_player_games (
+    game_id      TEXT    NOT NULL REFERENCES games (id),
+    player_id    INTEGER NOT NULL,
+    player_name  TEXT    NOT NULL,
+    team         TEXT    NOT NULL,
+    opponent     TEXT    NOT NULL,
+    season       INTEGER NOT NULL,
+    game_date    TEXT    NOT NULL,
+    is_home      INTEGER NOT NULL,
+    minutes      REAL,
+    points       INTEGER,
+    rebounds     INTEGER,
+    assists      INTEGER,
+    threes       INTEGER,
+    fga          INTEGER,
+    fta          INTEGER,
+    threes_att   INTEGER,
+    turnovers    INTEGER,
+    PRIMARY KEY (game_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS nba_player_games_lookup
+    ON nba_player_games (player_id, game_date);
+CREATE INDEX IF NOT EXISTS nba_player_games_team
+    ON nba_player_games (team, game_date);
+-- The prop path asks what an OPPONENT has been giving up, which filters on a
+-- column the other two indexes do not cover. Without this every such call is a
+-- full scan of a hundred thousand rows, and a prop fit that should take minutes
+-- takes hours.
+CREATE INDEX IF NOT EXISTS nba_player_games_opponent
+    ON nba_player_games (opponent, game_date);
+
+-- The current injury report, one row per listed player. This table is a
+-- SNAPSHOT, not a history: the source publishes only what is true now, so it is
+-- replaced on each fetch rather than appended to. It is therefore usable for a
+-- forward prediction and useless for a backtest, which is stated in
+-- `nba_availability_index`'s rationale rather than papered over.
+CREATE TABLE IF NOT EXISTS nba_injuries (
+    player_id    INTEGER NOT NULL,   -- ESPN's athlete id, NOT a stats.nba.com id
+    player_name  TEXT    NOT NULL,
+    team         TEXT    NOT NULL,
+    status       TEXT    NOT NULL,
+    detail       TEXT,
+    fetched_utc  TEXT    NOT NULL,
+    PRIMARY KEY (player_id)
+);
+CREATE INDEX IF NOT EXISTS nba_injuries_team ON nba_injuries (team);
+
+
 -- ---------------------------------------------------------------------------
 -- LAW 1 QUARANTINE. Everything below this line is market data.
 -- Only `gridiron.market` may read these two tables. The prediction path has no

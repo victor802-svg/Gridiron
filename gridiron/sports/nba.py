@@ -1,0 +1,717 @@
+"""The NBA adapter: spreads on a ladder, and four player prop markets.
+
+Nothing here imports `gridiron.market`, and nothing it imports does either. The
+LAW 1 scan walks this module as basketball's own closure.
+
+Two things about basketball shape everything below.
+
+**Availability is the question.** Five men take almost every possession, so one
+absence is a fifth of a lineup, and clubs rest healthy stars deliberately. The
+availability measurement is therefore defined to use only information that
+exists BEFORE tip in both the forward and the backtest regimes — see
+`nba_availability_index` for the full argument. Getting that wrong would have
+fitted the model on hindsight it can never have on a Tuesday night in November.
+
+**The season has not started.** At the time this was written the 2026-27 season
+tips on 2026-10-20. `first_slate_note` exists so the interface can say that
+plainly rather than rendering an empty page that looks broken.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass, field
+from datetime import date
+
+from .. import config
+from ..data import nba_repo as repo
+from ..factors import compute
+from ..model import questions
+from ..model.question import Question
+
+SPORT = "nba"
+SLATE_WORD = "week"
+
+#: Home-team spread rungs, in points. Wider than football's because basketball
+#: margins are wider: a four-point NBA spread is a coin flip, a fourteen-point
+#: one is a heavy favourite. Every rung ends in .5 so nothing can push.
+SPREAD_LADDER: tuple[float, ...] = (-9.5, -4.5, 0.5, 5.5)
+
+#: A club needs this many completed games before its rolling form is a number.
+MIN_TEAM_HISTORY = 5
+#: A player needs this many before we will ask a question about him...
+MIN_PROP_HISTORY = 5
+#: ...and must have played within this many days. A player who has quietly
+#: stopped appearing resolves VOID and teaches the scorecard nothing while
+#: occupying a slot on a capped slate. Basketball's version of the NFL rule,
+#: in days rather than weeks because the schedule is daily.
+MAX_DAYS_SINCE_PLAYED = 10
+#: Below this many projected minutes a prop is not worth asking: the answer is
+#: dominated by whether he plays at all, which is not what the question is about.
+MIN_PROP_MINUTES = 20.0
+
+PROP_STATS = ("points", "rebounds", "assists", "threes")
+
+
+@dataclass
+class NbaGameContext:
+    """Everything an NBA spread factor may see. No market field exists on it."""
+
+    game_id: str
+    season: int
+    week: int
+    home: str
+    away: str
+    kickoff_utc: str | None
+    game_date: str
+
+    sport: str = SPORT
+    line_asked: float | None = None
+    neutral_site: bool = False
+
+    home_availability: float | None = None
+    away_availability: float | None = None
+    home_rest_days: int | None = None
+    away_rest_days: int | None = None
+    home_road_games: int | None = None
+    away_road_games: int | None = None
+    home_pace: float | None = None
+    away_pace: float | None = None
+    home_net_rating: float | None = None
+    away_net_rating: float | None = None
+    league_pace: float | None = None
+
+    home_rotation_n: int = 0
+    away_rotation_n: int = 0
+    injury_report_seen: bool = False
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class NbaPropContext:
+    """Everything an NBA prop factor may see."""
+
+    game_id: str
+    season: int
+    week: int
+    player_id: int
+    player_name: str
+    team: str
+    opponent: str
+    stat: str
+    game_date: str
+
+    sport: str = SPORT
+    line_asked: float | None = None
+
+    minutes_mean: float | None = None
+    rolling_mean: float | None = None
+    rolling_sd: float | None = None
+    usage_rate: float | None = None
+    stat_per_minute: float | None = None
+    opponent_allowance: float | None = None
+    league_allowance: float | None = None
+    teammate_volume: float | None = None
+    team_availability: float | None = None
+
+    games: int = 0
+    notes: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# availability — the measurement the whole sport turns on
+# ---------------------------------------------------------------------------
+
+def availability(conn: sqlite3.Connection, team: str, before: str) -> tuple[float | None, int]:
+    """Minutes-weighted share of the club's rotation expected to be available.
+
+    Defined so that it means the same thing in a backtest and in a forward
+    prediction. A rotation player counts as unavailable if:
+
+      * he did not appear in the club's most recent completed game — strictly
+        prior information, identical in both regimes; or
+      * he is listed OUT on the current injury report — which exists only
+        forward, and so can only ever ADD information to a live prediction.
+
+    That asymmetry is deliberate and one-directional: the fitted coefficient
+    comes from the weaker of the two measurements, so it is a floor rather than
+    a ceiling. Reading who actually played from the box score of the game being
+    predicted would have been the easy version and would have fitted on
+    hindsight the forward path can never have.
+    """
+    rot = repo.rotation(conn, team, before)
+    if not rot:
+        return None, 0
+    played = repo.played_in_last_game(conn, team, before)
+    if played is None:
+        return None, len(rot)
+    out_names = repo.listed_out(conn, team)
+
+    total = 0.0
+    available = 0.0
+    for player in rot:
+        weight = float(player["mpg"] or 0.0)
+        total += weight
+        if player["player_id"] not in played:
+            continue
+        if (player["player_name"] or "").strip().upper() in out_names:
+            continue
+        available += weight
+    if total <= 0:
+        return None, len(rot)
+    return available / total, len(rot)
+
+
+# ---------------------------------------------------------------------------
+# contexts
+# ---------------------------------------------------------------------------
+
+def build_context(conn: sqlite3.Connection, game_id: str, line_asked=None) -> NbaGameContext:
+    game = repo.game(conn, game_id)
+    if game is None:
+        raise KeyError(f"unknown NBA game {game_id!r}")
+    on_date = repo.game_date(conn, game_id)
+    if on_date is None:
+        raise KeyError(f"NBA game {game_id!r} has no date")
+
+    ctx = NbaGameContext(
+        game_id=game_id,
+        season=game["season"],
+        week=game["week"],
+        home=game["home"],
+        away=game["away"],
+        kickoff_utc=game["kickoff_utc"],
+        game_date=on_date,
+        line_asked=line_asked,
+        neutral_site=bool(game["neutral_site"]),
+    )
+    ctx.injury_report_seen = bool(
+        conn.execute("SELECT 1 FROM nba_injuries LIMIT 1").fetchone()
+    )
+
+    for side, team in (("home", game["home"]), ("away", game["away"])):
+        share, n = availability(conn, team, on_date)
+        setattr(ctx, f"{side}_availability", share)
+        setattr(ctx, f"{side}_rotation_n", n)
+        setattr(ctx, f"{side}_rest_days", repo.days_of_rest(conn, team, on_date))
+        setattr(ctx, f"{side}_road_games", repo.road_games_recent(conn, team, on_date))
+
+        recent = repo.team_recent(conn, team, on_date)
+        if len(recent) >= MIN_TEAM_HISTORY:
+            pace, rating, _n = repo.pace_and_rating(recent)
+            setattr(ctx, f"{side}_pace", pace)
+            setattr(ctx, f"{side}_net_rating", rating)
+
+    ctx.league_pace = repo.league_pace(conn, game["season"])
+    if ctx.neutral_site:
+        ctx.notes.append("neutral site: the home club is not in its own building")
+    if not ctx.injury_report_seen:
+        ctx.notes.append(
+            "no injury report was loaded, so availability is measured only from "
+            "who appeared in each club's last game"
+        )
+    return ctx
+
+
+def build_prop_context(
+    conn: sqlite3.Connection, game_id: str, player_id: int, stat: str, line_asked: float
+) -> NbaPropContext:
+    game = repo.game(conn, game_id)
+    if game is None:
+        raise KeyError(f"unknown NBA game {game_id!r}")
+    on_date = repo.game_date(conn, game_id)
+    if on_date is None:
+        raise KeyError(f"NBA game {game_id!r} has no date")
+
+    history = repo.player_recent(conn, player_id, on_date)
+    if not history:
+        raise KeyError(f"no history for NBA player {player_id}")
+    team = history[0]["team"]
+    if team not in (game["home"], game["away"]):
+        # He was traded since his last appearance, so the club he most recently
+        # played for is not in tonight's game. Raised rather than resolved to
+        # the home side, which is what taking the else-branch would silently
+        # have done: it would have named the wrong opponent and every
+        # opponent-facing factor would then be measuring the wrong defence.
+        raise KeyError(
+            f"player {player_id} last played for {team}, which is not in "
+            f"{game['away']} @ {game['home']}"
+        )
+    opponent = game["away"] if team == game["home"] else game["home"]
+
+    ctx = NbaPropContext(
+        game_id=game_id,
+        season=game["season"],
+        week=game["week"],
+        player_id=player_id,
+        player_name=history[0]["player_name"],
+        team=team,
+        opponent=opponent,
+        stat=stat,
+        game_date=on_date,
+        line_asked=line_asked,
+        games=len(history),
+    )
+
+    minutes = [float(r["minutes"]) for r in history if r["minutes"] is not None]
+    if minutes:
+        ctx.minutes_mean = sum(minutes) / len(minutes)
+
+    total_minutes = sum(minutes) if minutes else 0.0
+    values = [float(r[stat] or 0) for r in history]
+    stat_total = sum(values)
+    if total_minutes > 0:
+        ctx.stat_per_minute = stat_total / total_minutes
+    if values:
+        ctx.rolling_mean = stat_total / len(values)
+    if len(values) > 1 and ctx.rolling_mean is not None:
+        var = sum((v - ctx.rolling_mean) ** 2 for v in values) / (len(values) - 1)
+        ctx.rolling_sd = var ** 0.5
+
+    # Usage: this player's shot-and-turnover load per minute, against his club's
+    # per-minute load over the same window.
+    player_load = sum(
+        float(r["fga"] or 0) + 0.44 * float(r["fta"] or 0) + float(r["turnovers"] or 0)
+        for r in history
+    )
+    team_games = repo.team_recent(conn, team, on_date)
+    team_load = 0.0
+    team_minutes = 0.0
+    for g in team_games:
+        p = repo.possessions(g)
+        if p is None or not g["minutes"]:
+            team_load = 0.0
+            break
+        team_load += p
+        team_minutes += float(g["minutes"]) / 5.0
+    if total_minutes > 0 and team_load > 0 and team_minutes > 0:
+        ctx.usage_rate = (player_load / total_minutes) / (team_load / team_minutes)
+
+    ctx.opponent_allowance, _n = repo.opponent_allowance(conn, opponent, stat, on_date)
+    ctx.league_allowance = _league_allowance(conn, stat, game["season"])
+    ctx.teammate_volume, _tn = repo.teammate_volume(conn, team, player_id, stat, on_date)
+    ctx.team_availability, _rn = availability(conn, team, on_date)
+
+    if ctx.games < repo.PLAYER_WINDOW:
+        ctx.notes.append(f"only {ctx.games} prior games in the window")
+    return ctx
+
+
+_LEAGUE_ALLOWANCE: dict[tuple[str, int], float | None] = {}
+
+
+def _league_allowance(conn: sqlite3.Connection, stat: str, season: int) -> float | None:
+    """League-average team total in this stat, from PRIOR seasons only, so it is
+    cutoff-safe by construction."""
+    key = (stat, season)
+    if key in _LEAGUE_ALLOWANCE:
+        return _LEAGUE_ALLOWANCE[key]
+    row = conn.execute(
+        f"SELECT AVG(total) AS mean FROM ("
+        f"  SELECT game_id, team, SUM({stat}) AS total FROM nba_player_games"
+        "   WHERE season < ? GROUP BY game_id, team)",
+        (season,),
+    ).fetchone()
+    value = float(row["mean"]) if row and row["mean"] is not None else None
+    _LEAGUE_ALLOWANCE[key] = value
+    return value
+
+
+# ---------------------------------------------------------------------------
+# the adapter surface
+# ---------------------------------------------------------------------------
+
+def next_slate(conn: sqlite3.Connection, season: int) -> int | None:
+    from ..db import utcnow
+
+    row = conn.execute(
+        "SELECT MIN(week) AS w FROM games WHERE sport = 'nba' AND season = ?"
+        " AND status = 'scheduled' AND kickoff_utc > ?",
+        (season, utcnow()),
+    ).fetchone()
+    return None if row is None or row["w"] is None else int(row["w"])
+
+
+def first_slate_note(conn: sqlite3.Connection, season: int) -> dict | None:
+    """What the interface should say when the season has not started.
+
+    Returns None once basketball is under way. Until then it returns the date of
+    the first slate and how far off it is, so the NBA tab states plainly when it
+    begins rather than rendering an empty page that reads as broken.
+    """
+    from ..db import utcnow
+
+    played = conn.execute(
+        "SELECT COUNT(*) AS n FROM games WHERE sport = 'nba' AND season = ?"
+        " AND status = 'final'",
+        (season,),
+    ).fetchone()["n"]
+    if played:
+        return None
+    row = conn.execute(
+        "SELECT MIN(kickoff_utc) AS first FROM games WHERE sport = 'nba'"
+        " AND season = ? AND kickoff_utc IS NOT NULL",
+        (season,),
+    ).fetchone()
+    if row is None or not row["first"]:
+        return {
+            "state": "no_schedule",
+            "message": (
+                "The NBA schedule for this season has not been published yet. "
+                "Nothing is being forecast, and nothing is being hidden."
+            ),
+        }
+    first = row["first"]
+    days = (date.fromisoformat(first[:10]) - date.fromisoformat(utcnow()[:10])).days
+    scheduled = conn.execute(
+        "SELECT COUNT(*) AS n FROM games WHERE sport = 'nba' AND season = ?", (season,)
+    ).fetchone()["n"]
+    return {
+        "state": "preseason",
+        "first_game_utc": first,
+        "days_away": days,
+        "games_scheduled": scheduled,
+        "message": (
+            f"The NBA season starts on {first[:10]}, {days} days from now. "
+            f"{scheduled:,} games are loaded and waiting; the first forecasts are "
+            "written the morning of the first slate. Nothing is predicted before "
+            "then, because there is nothing yet to predict."
+        ),
+    }
+
+
+def slate_questions(
+    conn: sqlite3.Connection, season: int, week: int, *, include_props: bool = True
+) -> list[Question]:
+    games = repo.games_in_week(conn, season, week)
+    out: list[Question] = []
+    for game in games:
+        line = SPREAD_LADDER[questions.stable_index(game["id"], len(SPREAD_LADDER))]
+        sign = "+" if line > 0 else ""
+        out.append(
+            Question(
+                sport=SPORT,
+                game_id=game["id"],
+                market_type="spread",
+                market="spread",
+                subject=game["home"],
+                line_asked=line,
+                claim=(
+                    f"{game['home']} (home) covers {sign}{line:g} against "
+                    f"{game['away']}"
+                ),
+                yes_label="cover",
+                no_label="not_cover",
+            )
+        )
+
+    if not include_props:
+        return out
+
+    for pick in select_week_props(conn, games):
+        out.append(
+            Question(
+                sport=SPORT,
+                game_id=pick["game_id"],
+                # `prop` is the CLASS of question, the stat is WHICH prop. That
+                # split is football's and it is kept: the schema's market_type
+                # CHECK enforces the class, and (market_type, prop_type) is the
+                # pair calibration already keys a category on, so basketball's
+                # four markets are four separate curves without new machinery.
+                market_type="prop",
+                market=pick["stat"],
+                subject=f"{pick['player_name']} {pick['stat']}",
+                line_asked=pick["line_asked"],
+                claim=(
+                    f"{pick['player_name']} ({pick['team']}) records more than "
+                    f"{pick['line_asked']:g} {pick['stat']}"
+                ),
+                yes_label="over",
+                no_label="under",
+                player_id=str(pick["player_id"]),
+                stat=pick["stat"],
+            )
+        )
+    return out
+
+
+def prop_candidates(conn: sqlite3.Connection, game: sqlite3.Row) -> list[dict]:
+    """Every prop question worth asking about one game.
+
+    Eligibility only — which questions are worth asking, never what the answer
+    is. A player must have a real recent sample, must have played recently
+    enough that the question will actually resolve, and must project to enough
+    minutes that the question is about his production rather than about whether
+    he plays at all.
+    """
+    on_date = repo.game_date(conn, game["id"])
+    if on_date is None:
+        return []
+    picks: list[dict] = []
+    for team in (game["home"], game["away"]):
+        for player in repo.rotation(conn, team, on_date):
+            history = repo.player_recent(conn, player["player_id"], on_date)
+            if len(history) < MIN_PROP_HISTORY:
+                continue
+            last = history[0]["game_date"]
+            gap = (date.fromisoformat(on_date) - date.fromisoformat(last)).days
+            if gap > MAX_DAYS_SINCE_PLAYED:
+                continue
+            mpg = float(player["mpg"] or 0.0)
+            if mpg < MIN_PROP_MINUTES:
+                continue
+            # ONE stat per player per game, chosen by a stable rotation.
+            # Sorting the four and taking the first would have asked every
+            # player about assists forever - alphabetical order is not a
+            # sampling strategy, and three of the four markets would have sat
+            # permanently empty while looking merely unlucky.
+            order = questions.stable_index(
+                f"{game['id']}:{player['player_id']}", len(PROP_STATS)
+            )
+            for offset in range(len(PROP_STATS)):
+                stat = PROP_STATS[(order + offset) % len(PROP_STATS)]
+                values = [float(r[stat] or 0) for r in history]
+                mean = sum(values) / len(values)
+                if mean < 1.0:
+                    # A question about a stat he does not record is not a
+                    # question, it is a formality with a known answer. Fall
+                    # through to the next stat in the rotation rather than
+                    # dropping the player.
+                    continue
+                picks.append(
+                    {
+                        "game_id": game["id"],
+                        "player_id": player["player_id"],
+                        "player_name": player["player_name"],
+                        "team": team,
+                        "stat": stat,
+                        "rolling_mean": mean,
+                        "minutes": mpg,
+                        "line_asked": questions.prop_line_asked(
+                            mean, f"{game['id']}:{player['player_id']}:{stat}", stat
+                        ),
+                    }
+                )
+                break
+    return picks
+
+
+def select_week_props(conn: sqlite3.Connection, games) -> list[dict]:
+    """Fill the slate's prop budget across the week's games.
+
+    ROUND-ROBIN across games, not a global sort by minutes. The difference
+    matters: a global sort hands all forty slots to the highest-minutes players
+    in the league, which on an NBA week means the same three dozen stars every
+    time. The resulting record would be about those players rather than about
+    the model, and their rows would be heavily correlated week to week. Taking
+    each game's best candidate first, then each game's second, spreads the same
+    budget across the league.
+
+    Within a game, candidates are ordered by projected minutes, because minutes
+    are what make a prop resolvable at all. This is an eligibility rule - which
+    questions are worth asking - never a claim about what the answer is.
+    """
+    per_game = config.PROPS_PER_GAME
+    budget = config.PROPS_PER_WEEK
+    ranked: list[list[dict]] = []
+    for game in games:
+        candidates = prop_candidates(conn, game)
+        candidates.sort(key=lambda c: (-c["minutes"], c["player_name"], c["stat"]))
+        seen: set[int] = set()
+        chosen: list[dict] = []
+        for c in candidates:
+            if len(chosen) >= per_game:
+                break
+            # One question per player per game: four questions about the same
+            # man are four correlated rows dressed up as four observations.
+            if c["player_id"] in seen:
+                continue
+            seen.add(c["player_id"])
+            chosen.append(c)
+        if chosen:
+            ranked.append(chosen)
+
+    out: list[dict] = []
+    for rank in range(per_game):
+        for game_picks in ranked:
+            if rank < len(game_picks):
+                out.append(game_picks[rank])
+                if len(out) >= budget:
+                    return out
+    return out
+
+
+def build_features(conn: sqlite3.Connection, q: Question, cache=None):
+    if q.market_type == "spread":
+        ctx = build_context(conn, q.game_id, line_asked=q.line_asked)
+        return compute.feature_vector(ctx, "spread"), ctx
+    ctx = build_prop_context(
+        conn, q.game_id, int(q.player_id), q.stat, q.line_asked
+    )
+    # Every prop market shares one factor vocabulary and is fitted separately;
+    # `prop` is the vocabulary's name, `q.market_type` is the category's.
+    return compute.feature_vector(ctx, "prop"), ctx
+
+
+def training_set(
+    conn: sqlite3.Connection,
+    seasons,
+    market: str,
+    *,
+    through_season: int | None = None,
+    through_week: int | None = None,
+    progress=None,
+):
+    from ..factors import registry
+
+    if market == "spread":
+        return _spread_training_set(
+            conn, seasons, through_season, through_week, progress
+        )
+    if market in PROP_STATS:
+        return _prop_training_set(
+            conn, seasons, market, through_season, through_week, progress
+        )
+    raise ValueError(f"NBA has no {market!r} market")
+
+
+def _completed_games(conn, seasons, through_season, through_week):
+    placeholders = ",".join("?" for _ in seasons)
+    sql = (
+        f"SELECT id, season, week FROM games WHERE sport = 'nba' AND status = 'final'"
+        f" AND season IN ({placeholders})"
+    )
+    params: list = list(seasons)
+    if through_season is not None:
+        sql += " AND (season < ? OR (season = ? AND week <= ?))"
+        params += [through_season, through_season, through_week or 999]
+    return conn.execute(sql + " ORDER BY season, week, id", params).fetchall()
+
+
+def _spread_training_set(conn, seasons, through_season, through_week, progress):
+    from ..factors import registry
+
+    games = _completed_games(conn, seasons, through_season, through_week)
+    rows: list[dict] = []
+    labels: list[int] = []
+    for i, g in enumerate(games):
+        if progress and i % 500 == 0:
+            progress(f"nba spread features {i}/{len(games)}")
+        line = SPREAD_LADDER[questions.stable_index(g["id"], len(SPREAD_LADDER))]
+        try:
+            ctx = build_context(conn, g["id"], line_asked=line)
+        except KeyError:
+            continue
+        fv = compute.feature_vector(ctx, "spread")
+        score = conn.execute(
+            "SELECT home_score, away_score FROM games WHERE id = ?", (g["id"],)
+        ).fetchone()
+        if score["home_score"] is None or score["away_score"] is None:
+            continue
+        rows.append(fv.values)
+        labels.append(
+            questions.spread_outcome(score["home_score"], score["away_score"], line)
+        )
+    names = [f.name for f in registry.active_factors(SPORT, "spread")]
+    return rows, labels, names
+
+
+def _prop_training_set(conn, seasons, stat, through_season, through_week, progress):
+    """Rows for one prop market.
+
+    Note what this trains on. `prop_candidates` gives each player ONE stat per
+    game, chosen by a stable hash of the two ids, so a given market sees roughly
+    a quarter of all eligible player-games — 15,076 for points, 11,866 for
+    rebounds. That is a RANDOM SUBSAMPLE, not a selection effect: the hash is a
+    crc32 of two identifiers and knows nothing about how anyone played. It costs
+    a little precision on the coefficients and buys a training set that matches
+    the shape of the questions actually asked. Training on all four stats for
+    every player would quadruple the rows and the runtime, and would fit on
+    questions the live slate never puts.
+    """
+    from ..factors import registry
+
+    games = _completed_games(conn, seasons, through_season, through_week)
+    rows: list[dict] = []
+    labels: list[int] = []
+    for i, g in enumerate(games):
+        if progress and i % 200 == 0:
+            progress(f"nba {stat} features {i}/{len(games)}")
+        game = repo.game(conn, g["id"])
+        for pick in prop_candidates(conn, game):
+            if pick["stat"] != stat:
+                continue
+            actual = conn.execute(
+                f"SELECT {stat} AS v FROM nba_player_games WHERE game_id = ?"
+                " AND player_id = ?",
+                (g["id"], pick["player_id"]),
+            ).fetchone()
+            if actual is None or actual["v"] is None:
+                continue          # did not play: VOID forward, excluded here
+            try:
+                ctx = build_prop_context(
+                    conn, g["id"], pick["player_id"], stat, pick["line_asked"]
+                )
+            except KeyError:
+                continue
+            fv = compute.feature_vector(ctx, "prop")
+            rows.append(fv.values)
+            labels.append(questions.prop_outcome(float(actual["v"]), pick["line_asked"]))
+    names = [f.name for f in registry.active_factors(SPORT, "prop")]
+    return rows, labels, names
+
+
+def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
+    """Settle one NBA prediction, or raise Void when the question has no answer."""
+    from ..resolve import Unresolvable, Void
+
+    game = conn.execute(
+        "SELECT home, away, home_score, away_score, status FROM games WHERE id = ?",
+        (pred["game_id"],),
+    ).fetchone()
+    if game is None or game["status"] != "final":
+        raise Unresolvable(f"game {pred['game_id']} is not final")
+    if game["home_score"] is None or game["away_score"] is None:
+        raise Void(
+            f"{pred['game_id']} is marked final but carries no score; the "
+            "question has no answer and is not being given one"
+        )
+
+    if pred["market_type"] == "spread":
+        outcome = questions.spread_outcome(
+            game["home_score"], game["away_score"], pred["line_asked"]
+        )
+        return outcome if pred["model_side"] == "cover" else 1 - outcome
+
+    stat = pred["prop_type"]
+    player_id = _player_of(pred)
+    if player_id is None:
+        raise Unresolvable(
+            f"prediction {pred['id']} carries no player id, so there is nothing "
+            "to look up"
+        )
+    row = conn.execute(
+        f"SELECT {stat} AS v, minutes FROM nba_player_games WHERE game_id = ?"
+        " AND player_id = ?",
+        (pred["game_id"], player_id),
+    ).fetchone()
+    if row is None or row["v"] is None:
+        raise Void(
+            f"{pred['subject']} did not appear in {pred['game_id']}. The question "
+            "asked how much he would record, and a man who did not play did not "
+            "answer it either way; scoring it as an under would credit the model "
+            "for a roster decision it never forecast."
+        )
+    outcome = questions.prop_outcome(float(row["v"]), pred["line_asked"])
+    return outcome if pred["model_side"] == "over" else 1 - outcome
+
+
+def _player_of(pred: sqlite3.Row) -> int | None:
+    import json
+
+    try:
+        payload = json.loads(pred["factors_json"])
+    except (TypeError, ValueError):
+        return None
+    player = (payload.get("question") or {}).get("player_id")
+    return int(player) if player else None

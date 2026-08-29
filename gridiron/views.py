@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import calibration, config, db
+from . import calibration, config, db, sports
 from .data import repo
 from .factors import compute as factor_compute, registry
 from .market import lines
@@ -319,6 +319,18 @@ def _empty_slate_message(conn: sqlite3.Connection, sport: str) -> str:
     """Why this tab is empty, in words. An empty tab that says nothing looks
     broken; an empty tab that says when the first slate arrives is just early."""
     label = config.SPORT_LABELS.get(sport, sport.upper())
+
+    # A sport may know something more specific about why it is empty. Basketball
+    # does: it can say the season starts on a named date, how far off that is,
+    # and how many games are already loaded and waiting. An empty tab that says
+    # "the season starts in 52 days" is early; one that says nothing is broken.
+    adapter = sports.get(sport)
+    note = getattr(adapter, "first_slate_note", None)
+    if note is not None:
+        detail = note(conn, config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON))
+        if detail and detail.get("message"):
+            return detail["message"]
+
     upcoming = conn.execute(
         "SELECT MIN(kickoff_utc) AS first FROM games"
         " WHERE sport = ? AND status = 'scheduled' AND kickoff_utc IS NOT NULL",

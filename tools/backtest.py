@@ -34,6 +34,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# `tools/` itself, so the shared copy helper imports by name.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # The report contains em-dashes; a Windows console defaults to cp1252 and would
 # mangle them into replacement characters.
@@ -47,24 +49,7 @@ from gridiron import calibration, config, db, resolve, run  # noqa: E402
 from gridiron.factors import store  # noqa: E402
 from gridiron.model import baseline  # noqa: E402
 
-#: Tables carrying facts about the world. Copied from the live database so the
-#: backtest does not refetch 25MB that is already on disk. Predictions are
-#: pointedly not in this list.
-# `games` FIRST: the sport tables carry foreign keys into it, and copying a
-# child before its parent fails the constraint.
-FACT_TABLES = (
-    "games",
-    "game_conditions",
-    "team_week_stats",
-    "player_week_stats",
-    "injuries",
-    "snap_counts",
-    "market_lines_raw",
-    "http_cache",
-    "mlb_probables",
-    "mlb_pitcher_starts",
-    "mlb_team_games",
-)
+from dbcopy import FACT_TABLES, copy_facts  # noqa: E402,F401
 
 
 def build_database(source: Path, target: Path, note: str) -> sqlite3.Connection:
@@ -76,20 +61,7 @@ def build_database(source: Path, target: Path, note: str) -> sqlite3.Connection:
             extra.unlink()
 
     conn = db.open_db(target)
-    conn.execute("ATTACH DATABASE ? AS live", (str(source),))
-    for table in FACT_TABLES:
-        # By NAME, never `SELECT *`. A column added by migration lands at the
-        # end of the live table but sits in its declared position in a fresh
-        # schema, so a positional copy shifts every value one place along and
-        # the only reason we noticed was a CHECK constraint catching a season
-        # number where a sport name belonged. Silent corruption otherwise.
-        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
-        live_cols = {r[1] for r in conn.execute(f"PRAGMA live.table_info({table})")}
-        shared = [c for c in cols if c in live_cols]
-        joined = ", ".join(shared)
-        conn.execute(f"INSERT INTO {table} ({joined}) SELECT {joined} FROM live.{table}")
-    conn.commit()
-    conn.execute("DETACH DATABASE live")
+    copy_facts(conn, source)
 
     db.set_meta(conn, "kind", "backtest")
     db.set_meta(conn, "kind_note", note)

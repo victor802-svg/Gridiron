@@ -41,6 +41,7 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("factors", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
     ("factor_scores", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
     ("model_fits", "sport", "TEXT NOT NULL DEFAULT 'nfl'"),
+    ("nba_injuries", "player_name", "TEXT NOT NULL DEFAULT ''"),
 )
 
 

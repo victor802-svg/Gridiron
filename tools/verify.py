@@ -32,6 +32,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+# `tools/` itself, so the shared copy helper imports by name.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 for stream in (sys.stdout, sys.stderr):
     try:
@@ -43,10 +45,7 @@ from gridiron import calibration, config, db, resolve, run  # noqa: E402
 from gridiron.factors import store  # noqa: E402
 from gridiron.model import baseline  # noqa: E402
 
-FACT_TABLES = (
-    "games", "game_conditions", "team_week_stats", "player_week_stats",
-    "injuries", "snap_counts", "market_lines_raw", "http_cache",
-)
+from dbcopy import FACT_TABLES, copy_facts  # noqa: E402,F401
 
 
 def rule(title: str) -> None:
@@ -84,11 +83,7 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         target = Path(tmp) / "one-week.db"
         conn = db.open_db(target)
-        conn.execute("ATTACH DATABASE ? AS live", (str(source),))
-        for table in FACT_TABLES:
-            conn.execute(f"INSERT INTO {table} SELECT * FROM live.{table}")
-        conn.commit()
-        conn.execute("DETACH DATABASE live")
+        copy_facts(conn, source)
         db.set_meta(conn, "kind", "backtest")
         db.set_meta(conn, "kind_note", "single-week end-to-end verification run")
         store.sync_registry(conn)

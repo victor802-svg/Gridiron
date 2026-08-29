@@ -22,6 +22,8 @@ import json
 import sqlite3
 from dataclasses import dataclass, field
 
+from datetime import date
+
 from .. import config, sports
 from ..db import utcnow
 from ..factors import compute, context
@@ -167,6 +169,30 @@ def predict_slate(
     live = database_kind(conn)["kind"] == "live"
     now = _now()
 
+    # ...and BEFORE has a near edge as well as a far one. A slate two months out
+    # is not the next slate, it is the season opener, and a forecast written for
+    # it would be made with last season's rotations, last season's form and no
+    # injury report — conditions that will never recur and cannot be compared
+    # with anything else in the record. NBA's first run wrote 47 such rows at 52
+    # days' notice before this guard existed.
+    if live:
+        horizon = conn.execute(
+            "SELECT MIN(kickoff_utc) AS first FROM games WHERE sport = ?"
+            " AND season = ? AND week = ? AND kickoff_utc IS NOT NULL",
+            (sport, season, week),
+        ).fetchone()
+        if horizon and horizon["first"]:
+            lead = _days_between(now, horizon["first"])
+            if lead is not None and lead > config.MAX_FORECAST_LEAD_DAYS:
+                run.skipped.append(
+                    f"{sport} {season} slate {week} starts in {lead} days, beyond "
+                    f"the {config.MAX_FORECAST_LEAD_DAYS}-day forecast horizon. "
+                    "Nothing was written: a forecast made from a previous "
+                    "season's form is not the forecast this slate will get, and "
+                    "keeping both would put two incomparable things in one record."
+                )
+                return run
+
     fits: dict[str, object] = {}
     for market in config.SPORT_MARKETS.get(sport, ()):
         if not include_props and market in config.SPORT_PROP_MARKETS.get(sport, ()):
@@ -275,3 +301,10 @@ def predict_week(
 ) -> BlindRun:
     """NFL-shaped call kept for the existing callers and tests."""
     return predict_slate(conn, "nfl", season, week, **kwargs)
+
+
+def _days_between(now: str, later: str) -> int | None:
+    try:
+        return (date.fromisoformat(later[:10]) - date.fromisoformat(now[:10])).days
+    except ValueError:
+        return None

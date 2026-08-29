@@ -68,30 +68,37 @@ rows rather than defaulted.
 and the distinction is the one this project keeps insisting on. The backtest
 reported it constant across all 4,859 training rows, so there was nothing to fit.
 
-The cause is the shape of the question. Every MLB question asks whether the
-*home* club wins, so the home side is home in one hundred percent of rows and the
-factor returns 1.0 every time. NFL's `home_away` varies because its subject
-rotates between the two clubs across the spread ladder; a moneyline has no ladder
-to rotate on.
+It returns 1.0 unconditionally, because every MLB question asks whether the
+*home* club wins and the home club is at home.
+
+**A repair was available, and was measured before being declined.** NFL's
+`home_field` is the same idea and does vary, because it reads 0 at a neutral site
+and 65 of 3,033 NFL games — 2.1% — are played at one. Baseball has that case too:
+Tokyo, Bristol Motor Speedway, Journey Bank Ballpark. But it was **four games out
+of 2,430** in 2025, 0.16%, which is the `short_week_diff` situation again. A
+differential that varies in one row in six hundred is not an instrument, it is a
+rounding error with a name. The repair was not made because measuring it first
+showed it would not work, and that measurement is recorded so nobody re-derives
+it.
 
 This is the third time this failure has appeared — `short_week_diff` never varied
 because the NFL schedules both clubs onto a Thursday, and `precipitation` never
 varied because the source reported it as zero. The pattern is now clear enough to
-name: **a differential is only an instrument if the two sides can actually
-differ**, and whether they can is a fact about the sport's structure, not about
-the hypothesis.
+name: **a factor is only an instrument if the thing it measures actually differs
+across rows**, and how often it differs is a measurable fact about the sport, not
+a matter of opinion about the hypothesis.
 
-There is no repair to make here and none is offered. The quantity is still
-measured — it just lives in the intercept, which fitted at 0.0913, putting a
+The quantity itself is not lost. It lives in the intercept, which fitted at 0.0913, putting a
 league-average home club at **52.3%**. That is baseball's home-field advantage,
 measured rather than assumed, and smaller than football's as expected.
 
 ### The factor that was asked for and is not here
 
 `mlb_asked_line` was in the brief by analogy with NFL's `asked_line`. It is not
-declared, for the same reason `mlb_home_away` is now inactive: a moneyline has no
-rungs, so `line_asked` is NULL on every MLB prediction and the factor could not
-vary. The reasoning is written out at the foot of
+declared, and the reason is the same family as above: a moneyline has no rungs,
+so `line_asked` is NULL on every MLB prediction and the factor could not vary.
+Here there is no repair even in principle — the question genuinely has no line to
+ask about. The reasoning is written out at the foot of
 [`factors/mlb.py`](../gridiron/factors/mlb.py) so a later reader finds it where
 they would look for the factor.
 

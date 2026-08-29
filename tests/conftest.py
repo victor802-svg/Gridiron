@@ -319,3 +319,112 @@ def mlb_league(conn) -> sqlite3.Connection:
     )
     conn.commit()
     return conn
+
+
+
+NBA_CLUBS = ["BOS", "LAL", "DEN", "MIL", "PHX", "MIA", "GSW", "NYK"]
+
+
+@pytest.fixture
+def nba_league(conn) -> sqlite3.Connection:
+    """A synthetic 8-club basketball season plus an unstarted next one.
+
+    Season 2025 is played out over four weeks on a real daily cadence, so
+    back-to-backs occur naturally and `days_of_rest` has something to measure.
+    Season 2026 is scheduled and untouched, so `first_slate_note` has an
+    unstarted season to describe.
+
+    Nine players per club, with a minutes distribution that gives a genuine
+    rotation: five starters above the twelve-minute rotation floor, and four
+    reserves straddling it.
+    """
+    import random
+
+    rng = random.Random(58008)
+    strength = {club: 6.0 - 1.5 * i for i, club in enumerate(NBA_CLUBS)}
+    start = datetime.now(timezone.utc).replace(
+        hour=1, minute=0, second=0, microsecond=0
+    ) - timedelta(days=30)
+
+    roster = {
+        club: [(3000 + i * 20 + j, f"{club} Player {j}", 34.0 - 3.0 * j)
+               for j in range(9)]
+        for i, club in enumerate(NBA_CLUBS)
+    }
+
+    day = 0
+    for week in range(1, 5):
+        for slot in range(4):          # four game days a week
+            day += 2 if slot % 2 else 1   # produces genuine back-to-backs
+            when = start + timedelta(days=day)
+            clubs = NBA_CLUBS[:]
+            rng.shuffle(clubs)
+            for pair in range(0, len(clubs), 2):
+                home, away = clubs[pair], clubs[pair + 1]
+                gid = f"nba_2025_{day:03d}_{home}_{away}"
+                edge = strength[home] - strength[away] + 3.0
+                hs = max(70, int(rng.gauss(112 + edge / 2, 11)))
+                as_ = max(70, int(rng.gauss(112 - edge / 2, 11)))
+                if hs == as_:
+                    hs += 1
+                conn.execute(
+                    "INSERT INTO games (id, sport, season, week, game_type, home,"
+                    " away, kickoff_utc, status, home_score, away_score)"
+                    " VALUES (?, 'nba', 2025, ?, 'REG', ?, ?, ?, 'final', ?, ?)",
+                    (gid, week, home, away, _iso(when), hs, as_),
+                )
+                conn.execute(
+                    "INSERT INTO game_conditions (game_id, stadium, neutral_site,"
+                    " div_game) VALUES (?, ?, 0, 0)",
+                    (gid, f"{home} Arena"),
+                )
+                for team, opp, is_home, pf, pa in (
+                    (home, away, 1, hs, as_), (away, home, 0, as_, hs)
+                ):
+                    conn.execute(
+                        "INSERT INTO nba_team_games (game_id, team, opponent,"
+                        " season, game_date, is_home, points_for, points_against,"
+                        " minutes, fga, fta, oreb, turnovers)"
+                        " VALUES (?,?,?,2025,?,?,?,?,240,?,?,?,?)",
+                        (
+                            gid, team, opp, _iso(when)[:10], is_home, pf, pa,
+                            rng.randint(84, 96), rng.randint(16, 28),
+                            rng.randint(8, 14), rng.randint(10, 18),
+                        ),
+                    )
+                    # Eight of the nine play; the ninth is a healthy scratch, so
+                    # availability has a real absence to find.
+                    for pid, name, mpg in roster[team][:8]:
+                        minutes = max(6.0, rng.gauss(mpg, 3.0))
+                        conn.execute(
+                            "INSERT INTO nba_player_games (game_id, player_id,"
+                            " player_name, team, opponent, season, game_date,"
+                            " is_home, minutes, points, rebounds, assists,"
+                            " threes, fga, fta, threes_att, turnovers)"
+                            " VALUES (?,?,?,?,?,2025,?,?,?,?,?,?,?,?,?,?,?)",
+                            (
+                                gid, pid, name, team, opp, _iso(when)[:10],
+                                is_home, round(minutes, 1),
+                                max(0, int(rng.gauss(minutes * 0.55, 5))),
+                                max(0, int(rng.gauss(minutes * 0.17, 2))),
+                                max(0, int(rng.gauss(minutes * 0.13, 2))),
+                                max(0, int(rng.gauss(minutes * 0.07, 1))),
+                                max(1, int(rng.gauss(minutes * 0.45, 3))),
+                                max(0, int(rng.gauss(minutes * 0.12, 2))),
+                                max(0, int(rng.gauss(minutes * 0.20, 2))),
+                                max(0, int(rng.gauss(minutes * 0.05, 1))),
+                            ),
+                        )
+
+    # An unstarted season, so the preseason note has something to describe.
+    future = datetime.now(timezone.utc) + timedelta(days=45)
+    for i in range(0, len(NBA_CLUBS), 2):
+        home, away = NBA_CLUBS[i], NBA_CLUBS[i + 1]
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status) VALUES (?, 'nba', 2026, 1, 'REG', ?, ?, ?,"
+            " 'scheduled')",
+            (f"nba_2026_001_{home}_{away}", home, away, _iso(future)),
+        )
+    conn.commit()
+    return conn

@@ -296,3 +296,49 @@ def test_the_raw_pair_carries_the_vig_and_the_devigged_pair_does_not():
     home, away = lines.devig_pair(-193, 179)
     assert home + away == pytest.approx(1.0)
     assert home < lines.american_to_probability(-193)
+
+
+# --- the forecast horizon ---------------------------------------------------
+
+def test_a_slate_beyond_the_horizon_is_not_forecast(nba_league):
+    """BLIND FIRST means before the event, but not arbitrarily long before it.
+
+    A question once answered is never re-asked, so a forecast written two months
+    out would PERMANENTLY occupy that slate's slot and the model would never get
+    to answer it with the information it will actually have on the day. An NBA
+    run wrote 47 such rows at 52 days' notice before this guard existed.
+    """
+    from gridiron.model import predict
+
+    db.set_meta(nba_league, "kind", "live")
+    nba_league.commit()
+    run = predict.predict_slate(
+        nba_league, "nba", 2026, 1, include_props=False, use_llm=False
+    )
+    assert run.written == []
+    assert any("forecast horizon" in s for s in run.skipped)
+
+
+def test_a_slate_inside_the_horizon_is_forecast(nba_league):
+    """The rule has to let a real slate through, or it is not a horizon, it is a
+    switch. The NFL season opener in this record was written at 12 to 17 days."""
+    from gridiron.model import predict
+
+    db.set_meta(nba_league, "kind", "live")
+    nba_league.execute(
+        "UPDATE games SET kickoff_utc = ? WHERE sport = 'nba' AND season = 2026",
+        (_days_from_now(3),),
+    )
+    nba_league.commit()
+    run = predict.predict_slate(
+        nba_league, "nba", 2026, 1, include_props=False, use_llm=False
+    )
+    assert not any("forecast horizon" in s for s in run.skipped), run.skipped
+
+
+def _days_from_now(n: int) -> str:
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) + timedelta(days=n)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )

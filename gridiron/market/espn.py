@@ -44,9 +44,37 @@ SOURCE_NAME = {sport: f"espn/{sport}" for sport in LEAGUE_PATH}
 #: attach the wrong line to the wrong game and nobody would notice.
 ABBREVIATION_ALIASES = {
     "mlb": {"ARI": "AZ", "CHW": "CWS"},
-    "nba": {"UTAH": "UTA", "NOP": "NO", "NY": "NYK", "GS": "GSW",
-            "SA": "SAS", "WSH": "WAS", "PHX": "PHO"},
+    "nba": {"UTAH": "UTA", "NO": "NOP", "NY": "NYK", "GS": "GSW",
+            "SA": "SAS", "WSH": "WAS"},
 }
+
+#: The tricodes our own game rows use, per sport, so an alias can be checked
+#: rather than trusted. NBA's are stats.nba.com's `teamTricode` values; MLB's
+#: are statsapi.mlb.com's team abbreviations. Both read from the loaded database
+#: on 2026-08-29. An alias must map a name that is NOT in this set to one that
+#: IS, and a test asserts exactly that — which is what the reversed New Orleans
+#: entry violated.
+OUR_TRICODES = {
+    "nba": frozenset({
+        "ATL", "BKN", "BOS", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW",
+        "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK",
+        "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS",
+    }),
+    "mlb": frozenset({
+        "ATH", "ATL", "AZ", "BAL", "BOS", "CHC", "CIN", "CLE", "COL", "CWS",
+        "DET", "HOU", "KC", "LAA", "LAD", "MIA", "MIL", "MIN", "NYM", "NYY",
+        "PHI", "PIT", "SD", "SEA", "SF", "STL", "TB", "TEX", "TOR", "WSH",
+    }),
+}
+
+#: Measured 2026-08-29 by fetching all thirty ESPN team records and diffing
+#: their abbreviations against ours. The six NBA entries above are the complete
+#: difference and nothing else needs an alias. The first version of this map had
+#: two wrong entries and both were silent: `NOP -> NO` was written backwards, so
+#: New Orleans never matched, and `PHX -> PHO` rewrote a code the two feeds
+#: already agree on, so Phoenix stopped matching too. Seven of fifty-three games
+#: on a sample slate went unmatched as a result — counted, which is how it was
+#: noticed, but no line was attached to them.
 
 
 def events_url(sport: str, yyyymmdd: str) -> str:
@@ -129,16 +157,28 @@ def fetch_day(
 
 
 def _home_spread(odds: dict) -> float | None:
-    """ESPN's `spread` is stated from the FAVOURITE's side; we store the home
-    team's expected margin, which is the convention every other line in this
-    project uses."""
+    """ESPN's `spread` is the HOME team's line in betting convention; we store
+    the home team's expected MARGIN, which is the opposite sign.
+
+    Measured rather than assumed, because the first version guessed and was
+    half-wrong. On 2026-04-10: CHA hosting as a -218 favourite carried
+    `spread: -6.5`, and WSH hosting as a +900 underdog carried `spread: 15.5`.
+    So negative means the home side gives points, positive means it gets them —
+    the ordinary way a line is written, and the same convention `line_asked`
+    uses on our own questions.
+
+    `market_lines_raw.spread_line` is nflverse's convention instead: positive
+    when the home side is favoured. So the sign is flipped once, here, and the
+    two conventions never meet anywhere else. The earlier version flipped only
+    when ESPN also said the home team was the favourite, which produced a
+    correct number for home favourites and a sign-reversed one for home
+    underdogs — a mistake that reverses the market comparison on roughly half
+    of all games and looks like nothing at all in the data.
+    """
     spread = odds.get("spread")
     if spread is None:
         return None
-    home = odds.get("homeTeamOdds") or {}
-    # `spread` is negative for the favourite. Expected home margin is +ve when
-    # the home side is favoured.
-    return -float(spread) if home.get("favorite") else float(spread)
+    return -float(spread)
 
 
 def _match_game(conn: sqlite3.Connection, sport: str, event: dict, yyyymmdd: str) -> str | None:

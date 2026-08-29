@@ -106,7 +106,35 @@ the first forward slate were in exactly that state.
 
 ### Basketball — NBA Stats
 
-Documented in the NBA section below.
+| What | Where | Licence |
+|------|-------|---------|
+| Schedules, including seasons not yet started | `https://stats.nba.com/stats/scheduleleaguev2` | **None stated.** Undocumented endpoint |
+| Team game logs | `https://stats.nba.com/stats/leaguegamelog` (`PlayerOrTeam=T`) | as above |
+| Player game logs | `https://stats.nba.com/stats/leaguegamelog` (`PlayerOrTeam=P`) | as above |
+| Injury report | `https://sports.core.api.espn.com` | **None stated** |
+
+These are the endpoints nba.com's own site calls. No key. The host **refuses any
+request that does not look like its own client**: the `Referer`, `Origin` and
+`x-nba-stats-*` headers are all required, and without them it hangs rather than
+returning an error. `cdn.nba.com`'s static schedule JSON returns 403, so the
+schedule comes from the same host as everything else.
+
+Chosen over the `nba_api` package, which is a wrapper over exactly these
+endpoints: it would add a dependency, a pandas requirement, and a layer between
+us and the bytes, in exchange for constants we can write down.
+
+**Three requests per season**, not one per game — one schedule call and two game
+log calls. A four-season load is twelve requests and about 25 MB, cached
+permanently. Verified available on 2026-08-29: 4,920 completed games across
+2022-23 to 2025-26, 105,253 player-games, and the full 1,200-game 2026-27
+schedule. Only the regular season is loaded; preseason lineups are not a club's
+lineups and a playoff series is a different question.
+
+**The injury report is a snapshot, not a history.** ESPN publishes what is true
+now, so the table is replaced on each fetch. It can therefore inform a forward
+prediction and can tell a backtest nothing, and `nba_availability_index` is
+defined so that it degrades to a strictly pre-game, strictly symmetric
+measurement without it. See [docs/NBA.md](docs/NBA.md).
 
 ### Market lines
 
