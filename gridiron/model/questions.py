@@ -39,6 +39,14 @@ PROP_OFFSETS: tuple[float, ...] = (-0.30, 0.0, 0.30)
 #: A player needs this many prior games before we will ask a question about them.
 MIN_PROP_HISTORY = 3
 
+#: ...and must have actually played within this many completed weeks. A player
+#: who has quietly stopped appearing - benched, on a new team, hurt but not yet
+#: on the report - resolves VOID and teaches the scorecard nothing while
+#: occupying a slot on a capped slate. Quality of resolution over quantity of
+#: predictions. This is an eligibility rule, not a model change: it decides
+#: which questions are worth asking, never what the answer is.
+MAX_WEEKS_SINCE_PLAYED = 2
+
 
 def stable_index(key: str, modulus: int) -> int:
     """A deterministic, platform-independent rotation.
@@ -66,10 +74,18 @@ def _round_to(value: float, step: float) -> float:
 
 
 def prop_line_asked(rolling_mean: float, key: str, stat: str) -> float:
+    """The player's own recent average, shifted by a pre-declared offset.
+
+    Rounded in the stat's own units - to five for yardage, to one for receptions
+    and touchdowns - then given a trailing .5 so nothing can push.
+    """
     offset = PROP_OFFSETS[stable_index(key, len(PROP_OFFSETS))]
-    step = 5.0 if stat == "passing_yards" else 5.0
-    base = _round_to(max(rolling_mean * (1.0 + offset), step), step)
-    return base + 0.5
+    step = config.PROP_LINE_STEP[stat]
+    base = _round_to(max(rolling_mean * (1.0 + offset), 0.0), step)
+    if stat in ("receptions", "passing_tds"):
+        # Counting stats sit at 0.5, 1.5, 2.5 ... never below half.
+        return max(base, 1.0) - 0.5
+    return max(base, step) + 0.5
 
 
 def prop_outcome(actual: float, line_asked: float) -> int:
@@ -80,37 +96,69 @@ def prop_outcome(actual: float, line_asked: float) -> int:
 # selection
 # ---------------------------------------------------------------------------
 
-#: Which position supplies which stat. Fixed so the selection cannot drift
+#: Which position supplies which market. Fixed so selection cannot drift
 #: towards whoever happens to look good.
 STAT_POSITIONS = {
     "passing_yards": ("QB",),
+    "passing_tds": ("QB",),
     "rushing_yards": ("RB",),
     "receiving_yards": ("WR", "TE"),
+    "receptions": ("WR", "TE", "RB"),
 }
 STAT_VOLUME_COLUMN = {
     "passing_yards": "att",
+    "passing_tds": "att",
     "rushing_yards": "car",
     "receiving_yards": "tgt",
+    "receptions": "tgt",
 }
 STAT_MEAN_COLUMN = {
     "passing_yards": "pass_yds",
+    "passing_tds": "pass_tds",
     "rushing_yards": "rush_yds",
     "receiving_yards": "rec_yds",
+    "receptions": "rec",
+}
+#: The volume column on `player_week_stats` behind each market, used for a
+#: player's share of his own offence.
+STAT_VOLUME_STAT = {
+    "passing_yards": "attempts",
+    "passing_tds": "attempts",
+    "rushing_yards": "carries",
+    "receiving_yards": "targets",
+    "receptions": "targets",
 }
 
 
-def prop_candidates(
-    conn: sqlite3.Connection, game: sqlite3.Row
-) -> list[dict]:
+def players_ruled_out(
+    conn: sqlite3.Connection, season: int, week: int, team: str
+) -> set[str]:
+    """Names the injury report lists as Out.
+
+    They are excluded from selection. This is not the model ducking a hard
+    question: a prediction about a player already ruled out would resolve VOID
+    and teach the scorecard nothing, while consuming a slot on a slate that is
+    deliberately capped.
+    """
+    return {
+        r["player_name"]
+        for r in repo.injuries_for(conn, season, week, team)
+        if (r["report_status"] or "") == "Out" and r["player_name"]
+    }
+
+
+def prop_candidates(conn: sqlite3.Connection, game: sqlite3.Row) -> list[dict]:
     """Every prop question this game could support, in a deterministic order.
 
-    Eligibility is by usage only: the player with the most attempts, carries or
-    targets at their position. No filtering on how interesting the answer might
-    be, because that would be choosing the questions after seeing the data.
+    Eligibility is by usage only: the highest-volume qualifying player at the
+    position, with enough history to have a rolling average. No filtering on how
+    interesting the answer might be, because that would be choosing the
+    questions after seeing the data.
     """
     out: list[dict] = []
     for team in (game["home"], game["away"]):
         roster = repo.team_players(conn, game["season"], team, game["week"])
+        ruled_out = players_ruled_out(conn, game["season"], game["week"], team)
         for stat in config.PROP_MARKETS:
             positions = STAT_POSITIONS[stat]
             volume_col = STAT_VOLUME_COLUMN[stat]
@@ -120,6 +168,19 @@ def prop_candidates(
                 if (r["position"] or "") in positions
                 and r["games"] >= MIN_PROP_HISTORY
                 and (r[volume_col] or 0) > 0
+                and (r["player_name"] or "") not in ruled_out
+                # Prior-season rows are kept for early-season coverage, but past
+                # week 1 a player must have actually appeared for THIS club this
+                # season. Without it, a traded player stays on his old team's
+                # slate and can be asked the same question twice in one week.
+                and (game["week"] <= 1 or (r["games_this_season"] or 0) >= 1)
+                and (
+                    game["week"] <= 1
+                    or (
+                        r["last_week_played"] is not None
+                        and game["week"] - r["last_week_played"] <= MAX_WEEKS_SINCE_PLAYED
+                    )
+                )
             ]
             if not eligible:
                 continue
@@ -129,11 +190,13 @@ def prop_candidates(
                 continue
             out.append(
                 {
+                    "game_id": game["id"],
                     "player_id": best["player_id"],
                     "player_name": best["player_name"],
                     "position": best["position"],
                     "team": team,
                     "stat": stat,
+                    "volume": float(best[volume_col] or 0.0),
                     "rolling_mean_hint": float(mean),
                 }
             )
@@ -141,19 +204,93 @@ def prop_candidates(
     return out
 
 
+def _attach_line(candidate: dict) -> dict:
+    candidate["line_asked"] = prop_line_asked(
+        candidate["rolling_mean_hint"],
+        f"{candidate['game_id']}:{candidate['player_id']}:{candidate['stat']}",
+        candidate["stat"],
+    )
+    return candidate
+
+
 def select_props(
     conn: sqlite3.Connection, game: sqlite3.Row, per_game: int | None = None
 ) -> list[dict]:
-    """Pick `per_game` questions from the candidates, rotating the starting
-    point by game id so the slate is not all quarterbacks."""
+    """Questions from one game, rotating the starting point by game id so a
+    single-game slate is not all quarterbacks."""
     per_game = config.PROPS_PER_GAME if per_game is None else per_game
     candidates = prop_candidates(conn, game)
     if not candidates or per_game <= 0:
         return []
     start = stable_index(game["id"], len(candidates))
-    picked = [candidates[(start + i) % len(candidates)] for i in range(min(per_game, len(candidates)))]
-    for c in picked:
-        c["line_asked"] = prop_line_asked(
-            c["rolling_mean_hint"], f"{game['id']}:{c['player_id']}:{c['stat']}", c["stat"]
-        )
-    return picked
+    picked = [
+        candidates[(start + i) % len(candidates)]
+        for i in range(min(per_game, len(candidates)))
+    ]
+    return [_attach_line(dict(c)) for c in picked]
+
+
+def select_week_props(
+    conn: sqlite3.Connection,
+    games: list,
+    cap: int | None = None,
+    per_game: int | None = None,
+) -> list[dict]:
+    """The week's prop slate: capped, balanced, deterministic.
+
+    Filled by round-robin across `config.PROP_MARKETS`, which is ordered by
+    real-world liquidity. Within a market, candidates are taken by usage. Two
+    consequences, both intended:
+
+      * When the cap bites it bites on the thinnest market first, so what
+        survives is the part of the slate a person could actually check.
+      * The slate is never all quarterbacks, because the round-robin takes one
+        from each market before it takes a second from any.
+
+    A per-game ceiling stops one marquee fixture eating the whole week. Quality
+    of resolution beats quantity of predictions: a forecast nobody reads is not
+    a forecast anybody can check.
+    """
+    cap = config.PROPS_PER_WEEK if cap is None else cap
+    per_game = config.PROPS_PER_GAME if per_game is None else per_game
+    if cap <= 0:
+        return []
+
+    by_stat: dict[str, list[dict]] = {stat: [] for stat in config.PROP_MARKETS}
+    for game in games:
+        for candidate in prop_candidates(conn, game):
+            by_stat[candidate["stat"]].append(candidate)
+    for stat in by_stat:
+        # Deterministic: volume descending, then ids. Never a random tiebreak.
+        by_stat[stat].sort(key=lambda c: (-c["volume"], c["game_id"], c["player_id"]))
+
+    chosen: list[dict] = []
+    per_game_count: dict[str, int] = {}
+    seen: set[tuple[str, str]] = set()      # (player_id, stat), once per week
+    cursors = {stat: 0 for stat in config.PROP_MARKETS}
+
+    progressed = True
+    while len(chosen) < cap and progressed:
+        progressed = False
+        for stat in config.PROP_MARKETS:
+            if len(chosen) >= cap:
+                break
+            pool = by_stat[stat]
+            while cursors[stat] < len(pool):
+                candidate = pool[cursors[stat]]
+                cursors[stat] += 1
+                progressed = True
+                key = (candidate["player_id"], candidate["stat"])
+                if key in seen:
+                    continue        # one question per player per market per week
+                if per_game_count.get(candidate["game_id"], 0) >= per_game:
+                    continue
+                seen.add(key)
+                per_game_count[candidate["game_id"]] = (
+                    per_game_count.get(candidate["game_id"], 0) + 1
+                )
+                chosen.append(_attach_line(dict(candidate)))
+                break
+
+    chosen.sort(key=lambda c: (c["game_id"], c["stat"], c["player_id"]))
+    return chosen

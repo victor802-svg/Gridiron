@@ -15,8 +15,8 @@ from gridiron.model import baseline
 @pytest.fixture
 def client(league, db_path):
     store.sync_registry(league)
-    baseline.train(league, "spread", (2025,), l2=1.0, note="test")
-    baseline.train(league, "prop", (2025,), l2=1.0, note="test")
+    # Six markets: the spread plus each prop type, fitted separately.
+    baseline.train_all(league, (2025,), l2=1.0, note="test", min_rows=20)
     run.run_week(league, 2025, 7, include_props=True, use_llm=False)
     run.run_week(league, 2025, 8, include_props=True, use_llm=False)
     resolve.resolve_all(league)
@@ -92,8 +92,17 @@ def test_the_headline_is_the_largest_gap(client):
 
 def test_categories_are_reported_separately(client):
     payload = client.get("/api/scorecard").json()
-    assert len(payload["categories"]) == 4
+    # spread + five prop markets, each times two forecasters.
+    assert len(payload["categories"]) == 2 * (1 + len(config.PROP_MARKETS))
+    assert payload["markets"][0] == "spread"
     assert "never merged" in payload["separation_note"].lower()
+
+
+def test_every_prop_market_has_its_own_gate(client):
+    """The 100-resolution threshold applies per market, not to "props"."""
+    for market in config.PROP_MARKETS:
+        body = client.get(f"/api/history?prop_type={market}&limit=1").json()
+        assert "n" in body
 
 
 def test_the_edge_figure_is_withheld_below_the_threshold(client):
@@ -136,6 +145,8 @@ def test_props_say_there_is_no_market_rather_than_implying_one(client):
     for card in props:
         assert card["market_implied_prob"] is None
         assert card["gap"] is None
+        assert card["prop_type"] in config.PROP_MARKETS
+        assert card["market"] == card["prop_type"]
 
 
 def test_an_unforecast_week_falls_back_rather_than_showing_nothing(client):

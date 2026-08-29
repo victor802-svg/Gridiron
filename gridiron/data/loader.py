@@ -305,6 +305,7 @@ def load_all(
     totals: dict[str, int] = dict(load_games(conn, seasons))
     totals["player_week_stats"] = 0
     totals["injuries"] = 0
+    totals["snap_counts"] = 0
     warnings: list[str] = []
     expected = seasons_expecting_data(conn, seasons)
 
@@ -319,6 +320,9 @@ def load_all(
                 "pace and every prop factor will be blank for this season."
             )
 
+        say(f"snap counts {season}")
+        totals["snap_counts"] += load_snap_counts(conn, season)
+
         say(f"injuries {season}")
         n_injuries = load_injuries(conn, season)
         totals["injuries"] += n_injuries
@@ -332,3 +336,39 @@ def load_all(
     totals["team_week_stats"] = rebuild_team_week_stats(conn, seasons)
 
     return {"rows": totals, "warnings": warnings}
+
+
+def load_snap_counts(conn: sqlite3.Connection, season: int) -> int:
+    """Offensive participation. Joined by player name, which is the only key the
+    source publishes; unmatched players become an absent factor, never a zero."""
+    url = sources.SNAP_COUNTS_URL.format(season=season)
+    immutable = season < config.CURRENT_SEASON
+    try:
+        rows = sources.fetch_csv(conn, url, immutable=immutable)
+    except sources.SourceUnavailable:
+        return 0
+
+    n = 0
+    with conn:
+        for r in rows:
+            name = (r.get("player") or "").strip()
+            team = (r.get("team") or "").strip()
+            if not name or not team:
+                continue
+            conn.execute(
+                "INSERT INTO snap_counts (season, week, team, player_name, position,"
+                " offense_snaps, offense_pct) VALUES (?,?,?,?,?,?,?)"
+                " ON CONFLICT(season, week, team, player_name) DO UPDATE SET"
+                " offense_snaps=excluded.offense_snaps, offense_pct=excluded.offense_pct",
+                (
+                    _int(r.get("season")),
+                    _int(r.get("week")),
+                    team,
+                    name,
+                    (r.get("position") or "").strip() or None,
+                    _int(r.get("offense_snaps")),
+                    _num(r.get("offense_pct")),
+                ),
+            )
+            n += 1
+    return n

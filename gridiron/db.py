@@ -28,9 +28,28 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
     return conn
 
 
+#: Columns added to existing tables after the first release. Additive only:
+#: nothing here drops or rewrites a column, because a migration that could
+#: rewrite `predictions` would be a way around LAW 3.
+MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("predictions", "prop_type", "TEXT"),
+)
+
+
+def _migrate(conn: sqlite3.Connection) -> list[str]:
+    applied = []
+    for table, column, decl in MIGRATIONS:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            applied.append(f"{table}.{column}")
+    return applied
+
+
 def init(conn: sqlite3.Connection) -> None:
     """Create the schema. Idempotent — every object is IF NOT EXISTS."""
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    _migrate(conn)
     conn.execute(
         "INSERT OR IGNORE INTO meta (key, value) VALUES ('kind', 'live')"
     )

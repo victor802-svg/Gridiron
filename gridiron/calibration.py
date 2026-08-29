@@ -83,6 +83,7 @@ class Resolved:
     created_utc: str
     game_id: str
     market_type: str
+    prop_type: str | None
     predictor: str
     factor_set_version: str
     subject: str
@@ -98,6 +99,7 @@ def resolved(
     conn: sqlite3.Connection,
     *,
     market_type: str | None = None,
+    prop_type: str | None = None,
     predictor: str | None = None,
     factor_set_version: str | None = None,
     with_factors: bool = False,
@@ -107,6 +109,9 @@ def resolved(
     if market_type:
         where.append("p.market_type = ?")
         params.append(market_type)
+    if prop_type:
+        where.append("p.prop_type = ?")
+        params.append(prop_type)
     if predictor:
         where.append("p.predictor = ?")
         params.append(predictor)
@@ -115,7 +120,7 @@ def resolved(
         params.append(factor_set_version)
 
     rows = conn.execute(
-        "SELECT p.id, p.created_utc, p.game_id, p.market_type, p.predictor,"
+        "SELECT p.id, p.created_utc, p.game_id, p.market_type, p.prop_type, p.predictor,"
         " p.factor_set_version, p.subject, p.line_asked, p.model_prob, p.model_side,"
         " p.outcome, p.factors_json,"
         " (SELECT s.implied_prob FROM market_snapshots s WHERE s.prediction_id = p.id"
@@ -130,6 +135,7 @@ def resolved(
             created_utc=r["created_utc"],
             game_id=r["game_id"],
             market_type=r["market_type"],
+            prop_type=r["prop_type"],
             predictor=r["predictor"],
             factor_set_version=r["factor_set_version"],
             subject=r["subject"],
@@ -246,23 +252,56 @@ def baselines(items: list[Resolved]) -> dict:
     return out
 
 
+def void_count(
+    conn: sqlite3.Connection,
+    *,
+    market_type: str | None = None,
+    prop_type: str | None = None,
+    predictor: str | None = None,
+    factor_set_version: str | None = None,
+) -> int:
+    where = ["1=1"]
+    params: list = []
+    for column, value in (
+        ("market_type", market_type),
+        ("prop_type", prop_type),
+        ("predictor", predictor),
+        ("factor_set_version", factor_set_version),
+    ):
+        if value:
+            where.append(f"p.{column} = ?")
+            params.append(value)
+    return conn.execute(
+        "SELECT COUNT(*) FROM prediction_voids v JOIN predictions p"
+        f" ON p.id = v.prediction_id WHERE {' AND '.join(where)}",
+        params,
+    ).fetchone()[0]
+
+
 def curve(
     conn: sqlite3.Connection,
     *,
     market_type: str | None = None,
+    prop_type: str | None = None,
     predictor: str | None = None,
     factor_set_version: str | None = None,
 ) -> dict:
     items = resolved(
         conn,
         market_type=market_type,
+        prop_type=prop_type,
         predictor=predictor,
         factor_set_version=factor_set_version,
     )
     buckets = calibration_buckets(items)
+    voids = void_count(
+        conn, market_type=market_type, prop_type=prop_type,
+        predictor=predictor, factor_set_version=factor_set_version,
+    )
     return {
         "filters": {
             "market_type": market_type or "all",
+            "prop_type": prop_type or "all",
             "predictor": predictor or "all",
             "factor_set_version": factor_set_version or "all",
         },
@@ -271,6 +310,10 @@ def curve(
         "largest_gap": largest_gap_sentence(buckets),
         "score": score(items),
         "baselines": baselines(items),
+        # Reported beside the curve, never folded into it. A rising void rate is
+        # a finding about which questions we are choosing, not a rounding error.
+        "voided": voids,
+        "void_rate": round(voids / (len(items) + voids), 4) if (len(items) + voids) else None,
     }
 
 
@@ -291,6 +334,7 @@ def edge(
     conn: sqlite3.Connection,
     *,
     market_type: str = "spread",
+    prop_type: str | None = None,
     predictor: str | None = None,
     threshold: float | None = None,
 ) -> dict:
@@ -305,7 +349,9 @@ def edge(
     threshold = config.EDGE_DISAGREEMENT_THRESHOLD if threshold is None else threshold
     items = [
         r
-        for r in resolved(conn, market_type=market_type, predictor=predictor)
+        for r in resolved(
+            conn, market_type=market_type, prop_type=prop_type, predictor=predictor
+        )
         if r.implied_prob is not None
     ]
 
@@ -331,6 +377,7 @@ def edge(
     n_eligible = len(model_bolder)
     payload = {
         "market_type": market_type,
+        "prop_type": prop_type or "all",
         "predictor": predictor or "all",
         "threshold": threshold,
         "n": len(items),
@@ -564,11 +611,23 @@ def scorecard(conn: sqlite3.Connection) -> dict:
             " WHERE resolved_utc IS NOT NULL ORDER BY v"
         )
     ]
+    # One category per MARKET, not per market_type. "props" is not a category:
+    # receptions and passing touchdowns are different questions with different
+    # difficulty, and a single props number would be an average describing
+    # neither. Each carries its own curve and its own 100-resolution gate.
     categories = []
-    for market_type in ("spread", "prop"):
+    for predictor in ("statistical", "llm"):
+        c = curve(conn, market_type="spread", predictor=predictor)
+        c["category"] = f"spread / {predictor}"
+        c["market"] = "spread"
+        categories.append(c)
+    for prop_type in config.PROP_MARKETS:
         for predictor in ("statistical", "llm"):
-            c = curve(conn, market_type=market_type, predictor=predictor)
-            c["category"] = f"{market_type} / {predictor}"
+            c = curve(
+                conn, market_type="prop", prop_type=prop_type, predictor=predictor
+            )
+            c["category"] = f"{prop_type} / {predictor}"
+            c["market"] = prop_type
             categories.append(c)
 
     headline = curve(conn, market_type="spread", predictor="statistical")
@@ -580,10 +639,12 @@ def scorecard(conn: sqlite3.Connection) -> dict:
         "edge": edge(conn, market_type="spread", predictor="statistical"),
         "versions": version_comparison(conn),
         "separation_note": (
-            "Curves are never merged. Spreads and props are different questions, "
-            "and the statistical and LLM predictors are different forecasters; an "
-            "average across them describes nobody."
+            "Curves are never merged. Each prop market is its own category with "
+            "its own gate - receptions and passing touchdowns are different "
+            "questions - and the statistical and LLM predictors are different "
+            "forecasters. An average across any of these describes nobody."
         ),
+        "markets": ["spread"] + list(config.PROP_MARKETS),
     }
     assert_every_figure_has_n(payload)
     return payload

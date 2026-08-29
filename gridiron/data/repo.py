@@ -110,22 +110,75 @@ def player_history(
 def team_players(
     conn: sqlite3.Connection, season: int, team: str, before_week: int
 ) -> list[sqlite3.Row]:
-    """Players who have appeared for this team this season, with their volume,
-    so the prop selector can pick the ones who actually play."""
+    """Players on this club, with their volume, so the selector can pick the ones
+    who actually play.
+
+    `games_this_season` is returned separately from `games` because prior-season
+    rows are included for early-season coverage, and a player who has since been
+    traded away would otherwise still look like a member of his old team. That
+    is not hypothetical: it put the same quarterback on two different teams'
+    slates in the same week.
+    """
     return conn.execute(
         "SELECT player_id, player_name, position,"
         "       COUNT(*) AS games,"
+        "       SUM(CASE WHEN season = ? THEN 1 ELSE 0 END) AS games_this_season,"
+        "       MAX(CASE WHEN season = ? THEN week END) AS last_week_played,"
         "       AVG(COALESCE(attempts,0))  AS att,"
         "       AVG(COALESCE(carries,0))   AS car,"
         "       AVG(COALESCE(targets,0))   AS tgt,"
         "       AVG(COALESCE(passing_yards,0))   AS pass_yds,"
         "       AVG(COALESCE(rushing_yards,0))   AS rush_yds,"
-        "       AVG(COALESCE(receiving_yards,0)) AS rec_yds"
+        "       AVG(COALESCE(receiving_yards,0)) AS rec_yds,"
+        "       AVG(COALESCE(receptions,0))      AS rec,"
+        "       AVG(COALESCE(passing_tds,0))     AS pass_tds"
         " FROM player_week_stats"
         " WHERE team = ? AND ((season = ? AND week < ?) OR season = ?)"
         " GROUP BY player_id ORDER BY games DESC",
-        (team, season, before_week, season - 1),
+        (season, season, team, season, before_week, season - 1),
     ).fetchall()
+
+
+def team_volume(
+    conn: sqlite3.Connection, season: int, team: str, before_week: int, column: str
+) -> float | None:
+    """The club's average per-game total of a volume stat, before the cutoff.
+
+    Used as the denominator for a player's share of his own offence, which is
+    what makes 8 targets on a 40-target team different from 8 on a 20-target one.
+    """
+    if column not in ("attempts", "carries", "targets"):
+        raise ValueError(f"not a volume column: {column!r}")
+    row = conn.execute(
+        f"SELECT SUM(COALESCE({column},0)) AS total, COUNT(DISTINCT week) AS n"
+        " FROM player_week_stats WHERE team = ? AND season = ? AND week < ?",
+        (team, season, before_week),
+    ).fetchone()
+    if row is None or not row["n"] or not row["total"]:
+        return None
+    return float(row["total"]) / row["n"]
+
+
+def snap_share(
+    conn: sqlite3.Connection, season: int, team: str, player_name: str, before_week: int,
+    window: int = 4,
+) -> tuple[float | None, int]:
+    """Recent offensive snap share, and how many games it was measured over.
+
+    The upstream source keys on player NAME, so about 5% of skill players do not
+    match. Those return (None, 0) and the factor is absent for that game rather
+    than assumed.
+    """
+    rows = conn.execute(
+        "SELECT offense_pct FROM snap_counts"
+        " WHERE season = ? AND team = ? AND player_name = ? AND week < ?"
+        " AND offense_pct IS NOT NULL ORDER BY week DESC LIMIT ?",
+        (season, team, player_name, before_week, window),
+    ).fetchall()
+    if not rows:
+        return None, 0
+    values = [r["offense_pct"] for r in rows]
+    return sum(values) / len(values), len(values)
 
 
 def positional_allowance(

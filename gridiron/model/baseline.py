@@ -16,6 +16,7 @@ import sqlite3
 
 from .. import config
 from ..db import utcnow
+from ..data import repo
 from ..factors import compute, context, registry
 from . import logistic, questions
 
@@ -75,56 +76,84 @@ def spread_training_set(
     return rows, labels, names
 
 
-def prop_training_set(
-    conn: sqlite3.Connection,
-    seasons: tuple[int, ...],
-    *,
-    through_season: int | None = None,
-    through_week: int | None = None,
-    progress=None,
-) -> tuple[list[dict[str, float]], list[int], list[str]]:
-    """One row per (completed game, selected player, stat), labelled over/under
-    the line the same rule would have asked."""
+def prop_market(stat: str) -> str:
+    """The market key a prop model is stored under.
+
+    Each prop type is fitted separately. A receptions question and a
+    passing-yards question are different questions: the distributions differ in
+    shape, and pooling them would let the market with the most rows set the
+    coefficients for the market with the fewest.
+    """
+    return f"prop:{stat}"
+
+
+def prop_stat(market_type: str) -> str | None:
+    return market_type.split(":", 1)[1] if market_type.startswith("prop:") else None
+
+
+def _weeks(conn: sqlite3.Connection, seasons: tuple[int, ...],
+           through_season: int | None, through_week: int | None):
     placeholders = ",".join("?" for _ in seasons)
     sql = (
-        f"SELECT id, season, week, home, away FROM games"
+        f"SELECT DISTINCT season, week FROM games"
         f" WHERE status = 'final' AND game_type = 'REG' AND season IN ({placeholders})"
     )
     params: list = list(seasons)
     if through_season is not None:
         sql += " AND (season < ? OR (season = ? AND week <= ?))"
         params += [through_season, through_season, through_week or 99]
-    sql += " ORDER BY season, week, id"
+    sql += " ORDER BY season, week"
+    return conn.execute(sql, params).fetchall()
 
-    games = conn.execute(sql, params).fetchall()
+
+def prop_training_set(
+    conn: sqlite3.Connection,
+    seasons: tuple[int, ...],
+    stat: str,
+    *,
+    through_season: int | None = None,
+    through_week: int | None = None,
+    progress=None,
+) -> tuple[list[dict[str, float]], list[int], list[str]]:
+    """One row per selected prop question of this type, labelled over/under.
+
+    Selection runs a WEEK at a time using the same capped, liquidity-ordered
+    rule the live slate uses, so the model is fitted on the questions it will
+    actually be asked rather than on a different, larger set.
+
+    A question whose stat cannot be read is skipped here for the same reason it
+    resolves VOID in the live record: a guess would be training data invented
+    to fill a gap.
+    """
+    weeks = _weeks(conn, seasons, through_season, through_week)
     cache = context.WeekCache()
     rows: list[dict[str, float]] = []
     labels: list[int] = []
 
-    for i, g in enumerate(games):
-        if progress and i % 250 == 0:
-            progress(f"prop features {i}/{len(games)}")
-        for pick in questions.select_props(conn, g):
+    for i, w in enumerate(weeks):
+        if progress and i % 25 == 0:
+            progress(f"{stat} week {i}/{len(weeks)}")
+        games = repo.games_for_week(conn, w["season"], w["week"])
+        for pick in questions.select_week_props(conn, games):
+            if pick["stat"] != stat:
+                continue
             actual = conn.execute(
-                f"SELECT {pick['stat']} AS v FROM player_week_stats"
+                f"SELECT {stat} AS v FROM player_week_stats"
                 " WHERE season = ? AND week = ? AND player_id = ?",
-                (g["season"], g["week"], pick["player_id"]),
+                (w["season"], w["week"], pick["player_id"]),
             ).fetchone()
-            # A player with no box-score row did not appear and therefore
-            # recorded zero. Training counts that as an under, exactly as the
-            # resolver will: the question asked whether he would exceed a
-            # number, and he did not. Dropping these rows instead would train a
-            # model that never sees the games its subject misses.
-            value = 0.0 if actual is None or actual["v"] is None else float(actual["v"])
+            if actual is None or actual["v"] is None:
+                continue          # would be VOID live; not invented here either
             try:
                 ctx = context.build_prop_context(
-                    conn, g["id"], pick["player_id"], pick["stat"], pick["line_asked"], cache
+                    conn, pick["game_id"], pick["player_id"], stat,
+                    pick["line_asked"], cache,
                 )
             except KeyError:
                 continue
             fv = compute.feature_vector(ctx, "prop")
             rows.append(fv.values)
-            labels.append(questions.prop_outcome(value, pick["line_asked"]))
+            labels.append(questions.prop_outcome(float(actual["v"]), pick["line_asked"]))
 
     names = [f.name for f in registry.active_factors("prop")]
     return rows, labels, names
@@ -139,20 +168,36 @@ def train(
     through_week: int | None = None,
     l2: float = 2.0,
     note: str | None = None,
+    min_rows: int = 50,
     progress=None,
 ) -> logistic.Fit:
-    builder = spread_training_set if market_type == "spread" else prop_training_set
-    rows, labels, names = builder(
-        conn,
-        seasons,
-        through_season=through_season,
-        through_week=through_week,
-        progress=progress,
-    )
-    if len(rows) < 50:
+    """Fit one market. `market_type` is 'spread' or 'prop:<stat>'.
+
+    `min_rows` is the floor below which we refuse to fit at all. It is 50 in
+    production and is a parameter only so a synthetic test league, which has
+    eight clubs rather than thirty-two, can exercise the same code path without
+    the real floor being quietly lowered for everyone.
+    """
+    stat = prop_stat(market_type)
+    if stat is not None:
+        if stat not in config.PROP_MARKETS:
+            raise ValueError(f"not a declared prop market: {stat!r}")
+        rows, labels, names = prop_training_set(
+            conn, seasons, stat, through_season=through_season,
+            through_week=through_week, progress=progress,
+        )
+    elif market_type == "spread":
+        rows, labels, names = spread_training_set(
+            conn, seasons, through_season=through_season,
+            through_week=through_week, progress=progress,
+        )
+    else:
+        raise ValueError(f"unknown market type {market_type!r}")
+
+    if len(rows) < min_rows:
         raise NotTrained(
             f"only {len(rows)} training rows for {market_type}; refusing to fit a "
-            "model on a sample that small"
+            f"model on fewer than {min_rows}"
         )
     fitted = logistic.fit(rows, labels, names, l2=l2)
 
@@ -176,6 +221,27 @@ def train(
     )
     conn.commit()
     return fitted
+
+
+def train_all(
+    conn: sqlite3.Connection,
+    seasons: tuple[int, ...] = config.DEFAULT_LOAD_SEASONS,
+    *,
+    include_props: bool = True,
+    progress=None,
+    **kwargs,
+) -> dict[str, logistic.Fit]:
+    markets = ["spread"]
+    if include_props:
+        markets += [prop_market(stat) for stat in config.PROP_MARKETS]
+    out: dict[str, logistic.Fit] = {}
+    for market in markets:
+        try:
+            out[market] = train(conn, market, seasons, progress=progress, **kwargs)
+        except NotTrained as exc:
+            if progress:
+                progress(f"{market}: {exc}")
+    return out
 
 
 def load_fit(

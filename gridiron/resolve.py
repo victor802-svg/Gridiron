@@ -11,12 +11,23 @@ Resolution writes an outcome. It never touches a probability, a factor vector
 or a piece of reasoning (LAW 3), and the trigger will abort the transaction if
 it tries.
 
-A note on props where the player did not appear: the question asked was
-"does this player record more than N", and a player who did not play recorded
-zero, so the claim is false and the prediction resolves against it. That is the
-honest reading of our own question, and failing to anticipate an absence is a
-real forecasting error rather than an excuse. The training set counts these the
-same way, so the model is fitted against the world it is scored in.
+VOID is a terminal state, and it is not a loss. A prop whose stat cannot be
+read - the player did not appear, or the box score carries no value for him -
+is voided with a stated reason rather than settled on a guess.
+
+This reverses an earlier choice, and the reason is worth writing down. It used
+to resolve as a loss, on the reasoning that a player who did not play recorded
+zero, so "more than 180.5 yards" was false. True as arithmetic, wrong as
+measurement: it scores a production forecast on whether somebody was active,
+which is a different question from the one that was asked. The selection rule
+now excludes players already ruled Out, so a non-appearance is a genuine
+surprise rather than something we walked into - and the void COUNT is reported
+beside every prop curve, because a model that keeps choosing players who do not
+play is telling you something, and burying it in the loss column would hide it.
+
+Voids live in `prediction_voids`, not in a nullable outcome, so `predictions`
+keeps its CHECK constraints exactly as strict as they were and stays
+append-only. A trigger refuses to resolve a voided prediction afterwards.
 """
 
 from __future__ import annotations
@@ -30,6 +41,14 @@ from .model import questions
 
 class Unresolvable(RuntimeError):
     """The prediction cannot be settled from the data we hold."""
+
+
+class Void(RuntimeError):
+    """The question cannot be answered from real data, and will not be guessed."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 def _prop_actual(conn: sqlite3.Connection, pred: sqlite3.Row) -> float:
@@ -46,15 +65,27 @@ def _prop_actual(conn: sqlite3.Connection, pred: sqlite3.Row) -> float:
         "SELECT season, week FROM games WHERE id = ?", (pred["game_id"],)
     ).fetchone()
 
-    row = None
-    if player_id:
-        row = conn.execute(
-            f"SELECT {stat} AS v FROM player_week_stats"
-            " WHERE season = ? AND week = ? AND player_id = ?",
-            (game["season"], game["week"], player_id),
-        ).fetchone()
-    if row is None or row["v"] is None:
-        return 0.0  # did not appear; recorded nothing
+    if not player_id:
+        raise Void(
+            f"no player id recorded on prediction {pred['id']}; the stat cannot "
+            "be looked up without guessing who it was about"
+        )
+    row = conn.execute(
+        f"SELECT {stat} AS v FROM player_week_stats"
+        " WHERE season = ? AND week = ? AND player_id = ?",
+        (game["season"], game["week"], player_id),
+    ).fetchone()
+    if row is None:
+        raise Void(
+            f"{pred['subject']} has no box score for {game['season']} week "
+            f"{game['week']}: the player did not appear, so the question has no "
+            "answer and is not being given one"
+        )
+    if row["v"] is None:
+        raise Void(
+            f"{pred['subject']} appeared but {stat} is not reported for "
+            f"{game['season']} week {game['week']}"
+        )
     return float(row["v"])
 
 
@@ -79,22 +110,42 @@ def outcome_for(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
 
 
 def open_predictions(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Unresolved predictions on finished games, excluding those already void."""
     return conn.execute(
         "SELECT p.* FROM predictions p JOIN games g ON g.id = p.game_id"
         " WHERE p.resolved_utc IS NULL AND g.status = 'final'"
+        " AND NOT EXISTS (SELECT 1 FROM prediction_voids v WHERE v.prediction_id = p.id)"
         " ORDER BY p.id"
     ).fetchall()
+
+
+def void_prediction(conn: sqlite3.Connection, prediction_id: int, reason: str) -> bool:
+    """Mark a prediction unanswerable. Idempotent: the first reason stands."""
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO prediction_voids (prediction_id, voided_utc, reason)"
+        " VALUES (?,?,?)",
+        (prediction_id, utcnow(), reason),
+    )
+    conn.commit()
+    return cur.rowcount == 1
 
 
 def resolve_all(conn: sqlite3.Connection, *, progress=None) -> dict:
     """Settle every open prediction whose game has finished."""
     settled = 0
     already = 0
+    voided = 0
+    void_reasons: list[str] = []
     failures: list[str] = []
 
     for pred in open_predictions(conn):
         try:
             outcome = outcome_for(conn, pred)
+        except Void as exc:
+            if void_prediction(conn, pred["id"], exc.reason):
+                voided += 1
+                void_reasons.append(f"prediction {pred['id']}: {exc.reason}")
+            continue
         except Unresolvable as exc:
             failures.append(f"prediction {pred['id']}: {exc}")
             continue
@@ -113,11 +164,14 @@ def resolve_all(conn: sqlite3.Connection, *, progress=None) -> dict:
             progress(f"settled {settled}")
 
     total_open = conn.execute(
-        "SELECT COUNT(*) FROM predictions WHERE resolved_utc IS NULL"
+        "SELECT COUNT(*) FROM predictions p WHERE p.resolved_utc IS NULL"
+        " AND NOT EXISTS (SELECT 1 FROM prediction_voids v WHERE v.prediction_id = p.id)"
     ).fetchone()[0]
     return {
         "settled": settled,
         "already_resolved": already,
+        "voided": voided,
+        "void_reasons": void_reasons[:20],
         "unresolvable": failures,
         "still_open": total_open,
     }
@@ -130,11 +184,13 @@ def summary(conn: sqlite3.Connection) -> dict:
         " SUM(CASE WHEN outcome = 1 THEN 1 ELSE 0 END) AS correct"
         " FROM predictions"
     ).fetchone()
+    voided = conn.execute("SELECT COUNT(*) FROM prediction_voids").fetchone()[0]
     resolved = row["resolved"] or 0
     return {
         "predictions": row["total"],
         "resolved": resolved,
-        "open": row["total"] - resolved,
+        "voided": voided,
+        "open": row["total"] - resolved - voided,
         "correct": row["correct"] or 0,
         "hit_rate": round((row["correct"] or 0) / resolved, 4) if resolved else None,
     }

@@ -79,6 +79,31 @@ USER_AGENT = "gridiron/0.1 (personal forecasting project)"
 DEFAULT_LOAD_SEASONS = tuple(range(2016, 2027))
 CURRENT_SEASON = int(os.environ.get("GRIDIRON_SEASON", "2026"))
 
-# Props are opt-in and configurable (G3 step 1).
-PROP_MARKETS = ("passing_yards", "rushing_yards", "receiving_yards")
-PROPS_PER_GAME = int(os.environ.get("GRIDIRON_PROPS_PER_GAME", "2"))
+# --- props -----------------------------------------------------------------
+# Five markets, in descending order of real-world liquidity. The order is used
+# to fill the weekly slate: when the cap bites, it bites on the thinnest market
+# first. Each type is its own scoring category and its own 100-resolution gate;
+# they are never merged into a single "props" number.
+PROP_MARKETS = (
+    "passing_yards",
+    "receiving_yards",
+    "rushing_yards",
+    "receptions",
+    "passing_tds",
+)
+
+#: Rounding step for each market's line, in the stat's own units.
+PROP_LINE_STEP = {
+    "passing_yards": 5.0,
+    "receiving_yards": 5.0,
+    "rushing_yards": 5.0,
+    "receptions": 1.0,
+    "passing_tds": 1.0,
+}
+
+#: A reviewable slate beats a large one. Quality of resolution beats quantity of
+#: predictions: 40 props a week is what one person can actually read, and a
+#: forecast nobody reads is not a forecast anybody can check.
+PROPS_PER_WEEK = int(os.environ.get("GRIDIRON_PROPS_PER_WEEK", "40"))
+#: Ceiling per game, so one marquee fixture cannot eat the whole slate.
+PROPS_PER_GAME = int(os.environ.get("GRIDIRON_PROPS_PER_GAME", "3"))

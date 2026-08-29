@@ -101,6 +101,13 @@ class PropContext(GameContext):
     allowance_n: int = 0
     allowance_league_avg: float | None = None
     player_status_penalty: float | None = None
+    #: The player's share of his own offence's volume in this market.
+    volume_share: float | None = None
+    #: Recent offensive snap share, and the games it was measured over.
+    snap_share: float | None = None
+    snap_share_n: int = 0
+    #: Expected margin for the PLAYER'S team, positive when they are favoured.
+    game_script: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -294,16 +301,14 @@ def build_game_context(
     return ctx
 
 
-STAT_VOLUME = {
-    "passing_yards": "attempts",
-    "rushing_yards": "carries",
-    "receiving_yards": "targets",
-}
-STAT_POSITION = {
-    "passing_yards": "QB",
-    "rushing_yards": "RB",
-    "receiving_yards": "WR",
-}
+# The stat -> column maps live in `model.questions` and are imported, not
+# copied. They were duplicated here once; the copy fell behind when two markets
+# were added, and `receptions` and `passing_tds` raised KeyError and were
+# silently skipped by every caller that catches KeyError. One source of truth.
+def _stat_maps():
+    from ..model.questions import STAT_POSITIONS, STAT_VOLUME_STAT
+
+    return STAT_VOLUME_STAT, STAT_POSITIONS
 
 
 def build_prop_context(
@@ -324,10 +329,13 @@ def build_prop_context(
     latest = history[0]
     team = latest["team"] or ""
     opponent = game["away"] if team == game["home"] else game["home"]
-    position = latest["position"] or STAT_POSITION.get(stat, "")
+    position = latest["position"] or (position_map.get(stat) or ("",))[0]
 
+    volume_map, position_map = _stat_maps()
+    if stat not in volume_map:
+        raise KeyError(f"undeclared prop market {stat!r}")
     values = [float(r[stat] or 0.0) for r in history]
-    volume_col = STAT_VOLUME[stat]
+    volume_col = volume_map[stat]
     volumes = [float(r[volume_col] or 0.0) for r in history]
 
     ctx = PropContext(
@@ -340,6 +348,23 @@ def build_prop_context(
     ctx.opponent = opponent
     ctx.stat = stat
     ctx.line_asked = line_asked
+
+    volume_stat = volume_map.get(stat)
+    if volume_stat and team:
+        team_total = repo.team_volume(conn, base.season, team, base.week, volume_stat)
+        player_mean = sum(float(r[volume_stat] or 0.0) for r in history) / len(history)
+        if team_total and team_total > 0:
+            ctx.volume_share = player_mean / team_total
+
+    ctx.snap_share, ctx.snap_share_n = repo.snap_share(
+        conn, base.season, team, ctx.player_name, base.week
+    )
+
+    # Game script from the spread question's own ratings, signed for the
+    # player's team. No market number is involved, and none could be.
+    if base.home_srs is not None and base.away_srs is not None:
+        margin = base.home_srs - base.away_srs
+        ctx.game_script = margin if team == game["home"] else -margin
 
     ctx.rolling_n = len(values)
     ctx.rolling_mean = sum(values) / len(values)

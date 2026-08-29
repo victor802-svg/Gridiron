@@ -39,6 +39,9 @@ GAMES_URL = f"{NFLVERSE}/schedules/games.csv"
 PLAYER_STATS_URL = f"{NFLVERSE}/stats_player/stats_player_week_{{season}}.csv"
 #: Weekly injury/participation report for one season.
 INJURIES_URL = f"{NFLVERSE}/injuries/injuries_{{season}}.csv"
+#: Offensive snap share per player per game. Keyed by player NAME upstream, so
+#: a player who cannot be matched is recorded as absent rather than guessed.
+SNAP_COUNTS_URL = f"{NFLVERSE}/snap_counts/snap_counts_{{season}}.csv"
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 

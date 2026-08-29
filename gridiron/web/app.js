@@ -64,7 +64,8 @@ const Gridiron = (function () {
   }
 
   // --- data --------------------------------------------------------------
-  const state = { meta: null, scorecard: null, historyOffset: 0, historyTotal: 0 };
+  const state = { meta: null, scorecard: null, markets: ['spread'],
+                historyOffset: 0, historyTotal: 0 };
 
   async function fetchJSON(url) {
     const res = await fetch(url);
@@ -184,7 +185,7 @@ const Gridiron = (function () {
   // --- TRACK RECORD ------------------------------------------------------
   function findCurve(scorecard, market, predictor) {
     return (scorecard.categories || []).find(c =>
-      c.filters.market_type === market && c.filters.predictor === predictor);
+      c.market === market && c.filters.predictor === predictor);
   }
 
   function renderRecord() {
@@ -203,7 +204,8 @@ const Gridiron = (function () {
       'the largest gap, never the best-looking bucket.'));
 
     document.getElementById('chart-caption').textContent =
-      '— ' + market + ' / ' + predictor + ', n=' + int(curve.n);
+      '— ' + market + ' / ' + predictor + ', n=' + int(curve.n) +
+      (curve.voided ? ', ' + int(curve.voided) + ' void' : '');
     drawCalibration(document.getElementById('calibration'), curve);
 
     table(document.getElementById('bucket-table'),
@@ -384,6 +386,7 @@ const Gridiron = (function () {
     const chosen = picker.value ? JSON.parse(picker.value) : {};
     const qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
     const data = await fetchJSON('/api/week' + qs);
+    const market = document.getElementById('week-market').value;
 
     document.getElementById('week-title').textContent =
       data.week === null ? 'This week' : ('Season ' + data.season + ', week ' + data.week);
@@ -392,12 +395,35 @@ const Gridiron = (function () {
 
     const host = document.getElementById('week-cards');
     host.innerHTML = '';
-    if (!data.cards.length) {
+    const cards = market ? data.cards.filter(c => c.market === market) : data.cards;
+    if (!cards.length) {
       host.appendChild(el('div', 'empty',
-        data.message || 'No forecasts recorded for this week yet.'));
+        data.message || (market
+          ? 'No ' + market + ' forecasts on this slate.'
+          : 'No forecasts recorded for this week yet.')));
       return;
     }
-    data.cards.forEach(c => host.appendChild(renderCard(c)));
+    cards.forEach(c => host.appendChild(renderCard(c)));
+  }
+
+  async function loadMarkets() {
+    const data = await fetchJSON('/api/markets');
+    state.markets = data.spread.concat(data.props);
+    const chart = document.getElementById('chart-market');
+    chart.innerHTML = '';
+    state.markets.forEach(m => {
+      const o = el('option', '', m);
+      o.value = m;
+      chart.appendChild(o);
+    });
+    ['week-market', 'history-market'].forEach(id => {
+      const sel = document.getElementById(id);
+      state.markets.forEach(m => {
+        const o = el('option', '', m);
+        o.value = m;
+        sel.appendChild(o);
+      });
+    });
   }
 
   async function loadWeekPicker() {
@@ -485,7 +511,8 @@ const Gridiron = (function () {
     const q = document.getElementById('history-q').value.trim();
     if (q) p.set('q', q);
     const m = document.getElementById('history-market').value;
-    if (m) p.set('market_type', m);
+    if (m === 'spread') p.set('market_type', 'spread');
+    else if (m) p.set('prop_type', m);
     const pr = document.getElementById('history-predictor').value;
     if (pr) p.set('predictor', pr);
     const o = document.getElementById('history-outcome').value;
@@ -509,11 +536,12 @@ const Gridiron = (function () {
        { label: 'Outcome' }],
       data.items.map(i => {
         let outcome = 'open';
-        if (i.outcome === 1) outcome = 'correct';
+        if (i.voided) outcome = 'void';
+        else if (i.outcome === 1) outcome = 'correct';
         else if (i.outcome === 0) outcome = 'wrong';
         return [
           (i.created_utc || '').slice(0, 10), i.season + ' wk' + i.week,
-          i.subject, i.market_type, i.predictor, signed(i.line_asked),
+          i.subject, i.market, i.predictor, signed(i.line_asked),
           pct(i.model_prob), i.market_line_at_the_time === null ? '—' : signed(i.market_line_at_the_time),
           pct(i.market_implied_prob), outcome
         ];
@@ -581,6 +609,7 @@ const Gridiron = (function () {
       renderBanner(state.meta);
       renderColophon(state.meta);
       state.scorecard = await fetchJSON('/api/scorecard');
+      await loadMarkets();
       await loadWeekPicker();
     } catch (err) {
       showError(err);
@@ -591,8 +620,9 @@ const Gridiron = (function () {
       document.getElementById(id).addEventListener('change', () => {
         try { renderRecord(); } catch (err) { showError(err); }
       }));
-    document.getElementById('week-picker').addEventListener('change', () =>
-      renderWeek().catch(showError));
+    ['week-picker', 'week-market'].forEach(id =>
+      document.getElementById(id).addEventListener('change', () =>
+        renderWeek().catch(showError)));
     ['history-q', 'history-market', 'history-predictor', 'history-outcome'].forEach(id =>
       document.getElementById(id).addEventListener('input', () => {
         state.historyOffset = 0;

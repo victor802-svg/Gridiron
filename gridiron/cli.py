@@ -72,7 +72,10 @@ def cmd_train(args: argparse.Namespace) -> int:
     conn = db.open_db(args.database)
     store.sync_registry(conn)
     seasons = tuple(range(args.since, args.until + 1))
-    for market_type in args.markets:
+    markets = args.markets
+    if markets == ["all"]:
+        markets = ["spread"] + [baseline.prop_market(s) for s in config.PROP_MARKETS]
+    for market_type in markets:
         fit = baseline.train(
             conn,
             market_type,
@@ -204,7 +207,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("train", help="fit the statistical baseline")
     s.add_argument("--since", type=int, default=min(config.DEFAULT_LOAD_SEASONS))
     s.add_argument("--until", type=int, default=config.CURRENT_SEASON - 1)
-    s.add_argument("--markets", nargs="+", default=["spread", "prop"])
+    s.add_argument("--markets", nargs="+", default=["all"],
+                   help="'all', or e.g. spread prop:receptions")
     s.add_argument("--note")
     s.set_defaults(func=cmd_train)
 

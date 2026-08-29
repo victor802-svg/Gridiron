@@ -164,7 +164,7 @@ def fit(
     l2: float = 1.0,
     max_iterations: int = 40,
     tol: float = 1e-7,
-    min_rows_per_factor: int = 50,
+    min_rows_per_factor: int | None = None,
 ) -> Fit:
     """Fit by iteratively reweighted least squares, with explicit missingness.
 
@@ -200,12 +200,16 @@ def fit(
 
     A factor measured on fewer than `min_rows_per_factor` rows is dropped from
     the fit rather than estimated from a sample too thin to estimate from, and
-    the count is recorded on the Fit.
+    the count is recorded on the Fit. Left unset it scales with the sample --
+    one tenth of the rows, capped at 50 -- so the floor is a real 50 on a full
+    season of games and never exceeds the dataset it is filtering.
     """
     if len(rows) != len(labels):
         raise ValueError("rows and labels differ in length")
     if not rows:
         raise ValueError("cannot fit a model on no data")
+    if min_rows_per_factor is None:
+        min_rows_per_factor = min(50, max(5, len(rows) // 10))
 
     presence = {name: sum(1 for r in rows if r.get(name) is not None) for name in names}
     dropped = {n: c for n, c in presence.items() if c < min_rows_per_factor}

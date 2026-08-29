@@ -42,8 +42,8 @@ def served(league, db_path):
     import uvicorn
 
     store.sync_registry(league)
-    baseline.train(league, "spread", (2025,), l2=1.0, note="smoke")
-    baseline.train(league, "prop", (2025,), l2=1.0, note="smoke")
+    # Six markets: the spread plus each prop type, fitted separately.
+    baseline.train_all(league, (2025,), l2=1.0, note="smoke", min_rows=20)
     run.run_week(league, 2025, 7, include_props=True, use_llm=False)
     run.run_week(league, 2025, 8, include_props=True, use_llm=False)
     resolve.resolve_all(league)

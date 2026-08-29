@@ -96,8 +96,9 @@ def test_an_unplayed_game_is_left_open(league):
     assert result["still_open"] == 4
 
 
-def test_a_prop_for_a_player_who_did_not_appear_resolves_against_the_claim(settled):
-    """The claim was that he would exceed a number. He recorded nothing."""
+def test_a_prop_for_a_player_who_did_not_appear_is_VOIDED_not_guessed(settled):
+    """Reversed deliberately in D3. Settling this as a loss would score a
+    production forecast on whether somebody was active."""
     game_id = settled.execute(
         "SELECT id FROM games WHERE week = 7 LIMIT 1"
     ).fetchone()["id"]
@@ -114,11 +115,17 @@ def test_a_prop_for_a_player_who_did_not_appear_resolves_against_the_claim(settl
         ),
     ).lastrowid
     settled.commit()
-    resolve.resolve_all(settled)
+    result = resolve.resolve_all(settled)
     row = settled.execute(
-        "SELECT outcome FROM predictions WHERE id = ?", (pred,)
+        "SELECT outcome, resolved_utc FROM predictions WHERE id = ?", (pred,)
     ).fetchone()
-    assert row["outcome"] == 0
+    assert row["outcome"] is None and row["resolved_utc"] is None
+    assert result["voided"] >= 1
+    void = settled.execute(
+        "SELECT reason FROM prediction_voids WHERE prediction_id = ?", (pred,)
+    ).fetchone()
+    assert void is not None
+    assert "did not appear" in void["reason"]
 
 
 # --- LAW 4: no sample, no claim --------------------------------------------
@@ -207,17 +214,21 @@ def test_a_thin_bucket_does_not_get_to_be_the_headline():
 # --- categories stay separate ----------------------------------------------
 
 def test_categories_are_never_merged(settled):
+    """Each prop market is its own category. There is no combined "props" row,
+    because receptions and passing touchdowns are different questions."""
     payload = calibration.scorecard(settled)
     labels = {c["category"] for c in payload["categories"]}
-    assert labels == {
-        "spread / statistical",
-        "spread / llm",
-        "prop / statistical",
-        "prop / llm",
+    expected = {
+        f"{market} / {predictor}"
+        for market in ["spread"] + list(config.PROP_MARKETS)
+        for predictor in ("statistical", "llm")
     }
+    assert labels == expected
+    assert not any(c["category"].startswith("prop /") for c in payload["categories"])
     for c in payload["categories"]:
         assert c["filters"]["market_type"] in ("spread", "prop")
         assert c["filters"]["predictor"] in ("statistical", "llm")
+        assert "voided" in c, "a void count must sit beside every curve"
 
 
 def test_the_market_baseline_is_scored_on_the_same_questions(settled):

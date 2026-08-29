@@ -34,10 +34,7 @@
       <h2>Calibration <span id="chart-caption" class="caption"></span></h2>
       <div class="chart-controls">
         <label>Market
-          <select id="chart-market">
-            <option value="spread">spread</option>
-            <option value="prop">prop</option>
-          </select>
+          <select id="chart-market"></select>
         </label>
         <label>Forecaster
           <select id="chart-predictor">
@@ -58,9 +55,14 @@
   <section id="view-week" class="view" hidden>
     <div class="section-head">
       <h2 id="week-title">This week</h2>
-      <label>Week
-        <select id="week-picker"></select>
-      </label>
+      <div class="filters">
+        <label>Week
+          <select id="week-picker"></select>
+        </label>
+        <label>Market
+          <select id="week-market"><option value="">all markets</option></select>
+        </label>
+      </div>
     </div>
     <p class="caption" id="week-sort"></p>
     <div id="week-cards"></div>
@@ -82,9 +84,9 @@
     <h2>History <span id="history-caption" class="caption"></span></h2>
     <div class="filters">
       <input id="history-q" type="search" placeholder="search subject, game or reasoning" autocomplete="off">
-      <select id="history-market"><option value="">all markets</option><option value="spread">spread</option><option value="prop">prop</option></select>
+      <select id="history-market"><option value="">all markets</option></select>
       <select id="history-predictor"><option value="">both forecasters</option><option value="statistical">statistical</option><option value="llm">LLM</option></select>
-      <select id="history-outcome"><option value="">any status</option><option value="resolved">resolved</option><option value="open">open</option><option value="correct">correct</option><option value="wrong">wrong</option></select>
+      <select id="history-outcome"><option value="">any status</option><option value="resolved">resolved</option><option value="open">open</option><option value="correct">correct</option><option value="wrong">wrong</option><option value="void">void</option></select>
     </div>
     <p class="footnote">This record is read-only. The API exposes no verb that writes to it.</p>
     <table id="history-table" class="grid"></table>

@@ -129,6 +129,20 @@ CREATE TABLE IF NOT EXISTS injuries (
 );
 CREATE INDEX IF NOT EXISTS inj_lookup ON injuries (season, week, team);
 
+-- Offensive snap share, joined by name because that is the key the source
+-- publishes. A player who cannot be matched is ABSENT, never assumed.
+CREATE TABLE IF NOT EXISTS snap_counts (
+    season        INTEGER NOT NULL,
+    week          INTEGER NOT NULL,
+    team          TEXT    NOT NULL,
+    player_name   TEXT    NOT NULL,
+    position      TEXT,
+    offense_snaps INTEGER,
+    offense_pct   REAL,
+    PRIMARY KEY (season, week, team, player_name)
+);
+CREATE INDEX IF NOT EXISTS snaps_lookup ON snap_counts (season, week, team);
+
 
 -- ---------------------------------------------------------------------------
 -- LAW 1 QUARANTINE. Everything below this line is market data.
@@ -167,6 +181,10 @@ CREATE TABLE IF NOT EXISTS predictions (
     created_utc   TEXT    NOT NULL,
     game_id       TEXT    NOT NULL REFERENCES games (id),
     market_type   TEXT    NOT NULL CHECK (market_type IN ('spread', 'prop')),
+    -- For props, the specific market: passing_yards, receptions, ... Each type
+    -- is its own category with its own curve and its own gate; they are never
+    -- merged into one "props" number.
+    prop_type     TEXT,
     subject       TEXT    NOT NULL,   -- 'KC' for a spread side; 'Patrick Mahomes passing_yards' for a prop
     -- The line the QUESTION was about. Chosen by us before any market contact
     -- (a round number, or a stat-derived reference point). It is NOT the
@@ -256,9 +274,40 @@ CREATE TABLE IF NOT EXISTS http_cache (
 );
 
 
+-- A prediction that cannot be settled from real data reaches a terminal VOID
+-- state with a stated reason. It is recorded here rather than as a nullable
+-- outcome, so `predictions` stays append-only and its CHECK constraints stay
+-- exactly as strict as they were. A void prediction is never resolved 0 or 1,
+-- and is excluded from every curve while its COUNT is reported beside them --
+-- a rising void rate is itself a finding, not a rounding error.
+CREATE TABLE IF NOT EXISTS prediction_voids (
+    prediction_id INTEGER PRIMARY KEY REFERENCES predictions (id),
+    voided_utc    TEXT NOT NULL,
+    reason        TEXT NOT NULL CHECK (length(trim(reason)) >= 10)
+);
+
+
 -- ---------------------------------------------------------------------------
 -- LAW 3 — append-only, enforced.
 -- ---------------------------------------------------------------------------
+
+CREATE TRIGGER IF NOT EXISTS voids_no_update
+BEFORE UPDATE ON prediction_voids
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a void is terminal and its reason cannot be rewritten');
+END;
+
+CREATE TRIGGER IF NOT EXISTS voided_prediction_stays_void
+BEFORE UPDATE OF resolved_utc, outcome ON predictions
+FOR EACH ROW
+WHEN NEW.resolved_utc IS NOT NULL
+ AND (SELECT COUNT(*) FROM prediction_voids WHERE prediction_id = OLD.id) > 0
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: this prediction was voided for want of real data; '
+        || 'it cannot later be given an outcome');
+END;
 
 CREATE TRIGGER IF NOT EXISTS predictions_no_delete
 BEFORE DELETE ON predictions

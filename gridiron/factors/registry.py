@@ -433,6 +433,55 @@ def public_bet_pct(ctx) -> float | None:
 # ===========================================================================
 
 @factor(
+    added="2026-08-29T00:00:00Z",
+    applies_to=("prop",),
+    rationale=(
+        "A player's share of his own offence's volume, not just his raw count. "
+        "Eight targets on a team that throws forty times a game is a different "
+        "role from eight on a team that throws twenty, and the share is what "
+        "survives when the offence speeds up or slows down. Raw volume conflates "
+        "the player with his team's pace; this separates them."
+    ),
+)
+def prop_volume_share(ctx) -> float | None:
+    return ctx.volume_share
+
+
+@factor(
+    added="2026-08-29T00:00:00Z",
+    applies_to=("prop",),
+    rationale=(
+        "Offensive snap share is the most direct measure of opportunity there "
+        "is: a player on the field for 85% of snaps has chances a rotational "
+        "player does not, and snap share moves before production does when a "
+        "role changes. The source keys on player name, so roughly one in twenty "
+        "cannot be matched - those games record this factor as absent, never as "
+        "a zero, which would read as a healthy scratch."
+    ),
+)
+def prop_snap_share(ctx) -> float | None:
+    return ctx.snap_share
+
+
+@factor(
+    added="2026-08-29T00:00:00Z",
+    applies_to=("prop",),
+    rationale=(
+        "Projected game script, taken from the same opponent-adjusted ratings "
+        "the spread question uses and signed for the player's own team. A team "
+        "expected to lead runs the ball to hold the lead; a team expected to "
+        "trail throws to catch up. The same player has a different job in the "
+        "two games, and this is the only factor here that knows which one he is "
+        "in. Derived from our ratings, never from a market number."
+    ),
+)
+def prop_game_script(ctx) -> float | None:
+    if ctx.game_script is None:
+        return None
+    return ctx.game_script / 10.0
+
+
+@factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
     rationale=(

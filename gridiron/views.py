@@ -46,6 +46,20 @@ def meta(conn: sqlite3.Connection) -> dict:
     }
 
 
+def _voids_for(conn: sqlite3.Connection, ids: list[int]) -> dict[int, str]:
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    return {
+        r["prediction_id"]: r["reason"]
+        for r in conn.execute(
+            f"SELECT prediction_id, reason FROM prediction_voids"
+            f" WHERE prediction_id IN ({placeholders})",
+            ids,
+        )
+    }
+
+
 def _rationale(name: str) -> str:
     factor = registry.REGISTRY.get(name)
     return factor.rationale if factor else ""
@@ -147,6 +161,8 @@ def week(conn: sqlite3.Connection, season: int | None = None, wk: int | None = N
                     if r["status"] == "final" else None
                 ),
                 "market_type": r["market_type"],
+                "prop_type": r["prop_type"],
+                "market": r["prop_type"] or r["market_type"],
                 "predictor": r["predictor"],
                 "subject": r["subject"],
                 "claim": (payload.get("question") or {}).get("claim"),
@@ -199,6 +215,7 @@ def history(
     *,
     query: str = "",
     market_type: str | None = None,
+    prop_type: str | None = None,
     predictor: str | None = None,
     outcome: str | None = None,
     limit: int = 100,
@@ -215,6 +232,9 @@ def history(
     if market_type:
         where.append("p.market_type = ?")
         params.append(market_type)
+    if prop_type:
+        where.append("p.prop_type = ?")
+        params.append(prop_type)
     if predictor:
         where.append("p.predictor = ?")
         params.append(predictor)
@@ -226,6 +246,10 @@ def history(
         where.append("p.outcome = 1")
     elif outcome == "wrong":
         where.append("p.outcome = 0")
+    elif outcome == "void":
+        where.append(
+            "EXISTS (SELECT 1 FROM prediction_voids v WHERE v.prediction_id = p.id)"
+        )
 
     clause = " AND ".join(where)
     total = conn.execute(
@@ -237,7 +261,9 @@ def history(
         f" ORDER BY p.id DESC LIMIT ? OFFSET ?",
         params + [min(limit, 500), offset],
     ).fetchall()
-    snapshots = lines.snapshots_for(conn, [r["id"] for r in rows])
+    ids = [r["id"] for r in rows]
+    snapshots = lines.snapshots_for(conn, ids)
+    voided = _voids_for(conn, ids)
 
     items = []
     for r in rows:
@@ -251,6 +277,8 @@ def history(
                 "game_id": r["game_id"],
                 "matchup": f"{r['away']} @ {r['home']}",
                 "market_type": r["market_type"],
+                "prop_type": r["prop_type"],
+                "market": r["prop_type"] or r["market_type"],
                 "predictor": r["predictor"],
                 "subject": r["subject"],
                 "line_asked": r["line_asked"],
@@ -260,6 +288,8 @@ def history(
                 "market_implied_prob": snap.get("implied_prob"),
                 "outcome": r["outcome"],
                 "resolved_utc": r["resolved_utc"],
+                "voided": r["id"] in voided,
+                "void_reason": voided.get(r["id"]),
                 "degraded": r["degraded"],
                 "factor_set_version": r["factor_set_version"],
             }

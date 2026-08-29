@@ -109,6 +109,22 @@ def weeks() -> dict:
     return {"n": len(available), "weeks": available}
 
 
+@app.get("/api/markets")
+def markets() -> dict:
+    """Every market that has its own calibration category and its own gate."""
+    return {
+        "n": 1 + len(config.PROP_MARKETS),
+        "spread": ["spread"],
+        "props": list(config.PROP_MARKETS),
+        "props_per_week": config.PROPS_PER_WEEK,
+        "props_per_game": config.PROPS_PER_GAME,
+        "note": (
+            "Prop markets are listed in descending order of real-world "
+            "liquidity, which is the order the weekly cap fills them in."
+        ),
+    }
+
+
 @app.get("/api/factors")
 def factors() -> dict:
     try:
@@ -121,6 +137,7 @@ def factors() -> dict:
 def history(
     q: str = "",
     market_type: str | None = None,
+    prop_type: str | None = None,
     predictor: str | None = None,
     outcome: str | None = None,
     limit: int = Query(100, ge=1, le=500),
@@ -130,6 +147,7 @@ def history(
         get_conn(),
         query=q,
         market_type=market_type,
+        prop_type=prop_type,
         predictor=predictor,
         outcome=outcome,
         limit=limit,
