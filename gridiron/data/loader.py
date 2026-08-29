@@ -138,7 +138,11 @@ def load_games(conn: sqlite3.Connection, seasons: tuple[int, ...]) -> dict[str, 
 
 
 def load_player_stats(conn: sqlite3.Connection, season: int) -> int:
-    """Weekly box scores for one season. Completed seasons are cached forever."""
+    """Weekly box scores for one season. Completed seasons are cached forever.
+
+    Returns the row count. A zero for a season that has completed games is a
+    problem, not a quiet nothing — `load_all` turns it into a warning.
+    """
     url = sources.PLAYER_STATS_URL.format(season=season)
     immutable = season < config.CURRENT_SEASON
     try:
@@ -167,7 +171,7 @@ def load_player_stats(conn: sqlite3.Connection, season: int) -> int:
                     r.get("player_id"),
                     r.get("player_display_name") or r.get("player_name"),
                     r.get("position"),
-                    r.get("recent_team"),
+                    r.get("team") or r.get("recent_team"),
                     r.get("opponent_team"),
                     _num(r.get("attempts")),
                     _num(r.get("completions")),
@@ -276,27 +280,55 @@ def rebuild_team_week_stats(conn: sqlite3.Connection, seasons: tuple[int, ...]) 
     return n
 
 
+def seasons_expecting_data(conn: sqlite3.Connection, seasons: tuple[int, ...]) -> set[int]:
+    """Seasons with at least one completed game, so we know which ones ought to
+    have box scores. The upcoming season legitimately has none."""
+    placeholders = ",".join("?" for _ in seasons)
+    rows = conn.execute(
+        f"SELECT DISTINCT season FROM games WHERE status = 'final' AND season IN ({placeholders})",
+        seasons,
+    ).fetchall()
+    return {r["season"] for r in rows}
+
+
 def load_all(
     conn: sqlite3.Connection,
     seasons: tuple[int, ...] = config.DEFAULT_LOAD_SEASONS,
     *,
     progress=None,
-) -> dict[str, int]:
+) -> dict:
     def say(msg: str) -> None:
         if progress:
             progress(msg)
 
     say(f"schedules 1999-present, keeping {min(seasons)}-{max(seasons)}")
-    totals = dict(load_games(conn, seasons))
+    totals: dict[str, int] = dict(load_games(conn, seasons))
     totals["player_week_stats"] = 0
     totals["injuries"] = 0
+    warnings: list[str] = []
+    expected = seasons_expecting_data(conn, seasons)
 
     for season in seasons:
         say(f"player stats {season}")
-        totals["player_week_stats"] += load_player_stats(conn, season)
+        n_players = load_player_stats(conn, season)
+        totals["player_week_stats"] += n_players
+        if n_players == 0 and season in expected:
+            warnings.append(
+                f"{season}: zero player-week rows for a season that has completed "
+                f"games. Check {sources.PLAYER_STATS_URL.format(season=season)} — "
+                "pace and every prop factor will be blank for this season."
+            )
+
         say(f"injuries {season}")
-        totals["injuries"] += load_injuries(conn, season)
+        n_injuries = load_injuries(conn, season)
+        totals["injuries"] += n_injuries
+        if n_injuries == 0 and season in expected and season >= 2009:
+            warnings.append(
+                f"{season}: zero injury rows for a season that has completed games. "
+                f"Check {sources.INJURIES_URL.format(season=season)}."
+            )
 
     say("deriving team-week stats")
     totals["team_week_stats"] = rebuild_team_week_stats(conn, seasons)
-    return totals
+
+    return {"rows": totals, "warnings": warnings}

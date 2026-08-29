@@ -48,7 +48,7 @@ All football data comes from **nflverse**:
 | What | Where | Licence |
 |------|-------|---------|
 | Schedules, results, kickoff times, rest days, venue, roof, observed weather, and the closing lines | [`nflverse-data`](https://github.com/nflverse/nflverse-data) release `schedules` → `games.csv` | CC BY 4.0 |
-| Weekly player box scores | `nflverse-data` release `player_stats` → `player_stats_{season}.csv` | CC BY 4.0 |
+| Weekly player box scores | `nflverse-data` release `stats_player` → `stats_player_week_{season}.csv` | CC BY 4.0 |
 | Injury / practice participation reports | `nflverse-data` release `injuries` → `injuries_{season}.csv` | CC BY 4.0 |
 | Club home-market coordinates and time zones | [`nfldata`](https://github.com/nflverse/nfldata) `data/airports.csv`, embedded in [`reference.py`](gridiron/data/reference.py) | nflverse; the repo declares no SPDX licence, and we reproduce 32 rows of coordinates with attribution |
 | Kickoff weather forecast for upcoming outdoor games | [Open-Meteo](https://open-meteo.com) | CC BY 4.0, free for non-commercial use, no key |
@@ -57,7 +57,15 @@ These are the same artifacts the `nfl_data_py` package wraps. Gridiron reads the
 release CSVs directly instead of depending on that package, so the runtime needs
 no pandas/pyarrow stack and the exact bytes used are cached verbatim in the
 local database. Verified available on 2026-08-28: 7,548 games from 1999 through
-the completed 2025 season, plus the full 2026 schedule.
+the completed 2025 season, plus the full 2026 schedule; player weeks from 1999
+to 2025; injury reports from 2009 to 2025.
+
+A note on picking the right asset: nflverse also publishes a legacy
+`player_stats/player_stats_{season}.csv`, which silently stops at 2024. Loading
+from it produced a database that looked fine and had no 2025 box scores at all.
+The loader now warns loudly when a season with completed games returns zero
+rows, and exits non-zero, because a source that quietly ends is worse than one
+that is plainly missing.
 
 **Public betting percentage** is declared as a factor but ships **inactive**: no
 free source publishes it reliably enough to depend on. Law 2 says record that
@@ -111,4 +119,4 @@ tools/                backtest and the planted-violation harness
 
 ## Status
 
-Phase G1 complete: skeleton, schema, data loader.
+Phases G1-G2 complete: skeleton, schema, data loader, factor registry.

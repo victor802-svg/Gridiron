@@ -33,8 +33,10 @@ NFLVERSE = "https://github.com/nflverse/nflverse-data/releases/download"
 
 #: Full schedule + results, 1999-present, one row per game.
 GAMES_URL = f"{NFLVERSE}/schedules/games.csv"
-#: Weekly player box scores for one season.
-PLAYER_STATS_URL = f"{NFLVERSE}/player_stats/player_stats_{{season}}.csv"
+#: Weekly player box scores for one season. nflverse's current asset naming;
+#: the older `player_stats/player_stats_{season}.csv` stops at 2024 and is not
+#: used, because a source that silently ends is worse than one that is missing.
+PLAYER_STATS_URL = f"{NFLVERSE}/stats_player/stats_player_week_{{season}}.csv"
 #: Weekly injury/participation report for one season.
 INJURIES_URL = f"{NFLVERSE}/injuries/injuries_{{season}}.csv"
 
