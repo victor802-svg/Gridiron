@@ -181,6 +181,25 @@ built dark-native as part of T2. Recorded because the failure was not technical 
 nothing prevented it — and a list of technical debts that omits "we forgot" is a
 list that flatters.
 
+### The markets contract was broken for three sessions
+
+*(found and fixed 2026-08-30, T3)*
+
+`s1: multi-sport` renamed `/api/markets`'s `spread` field to `game_markets`.
+The browser still read `data.spread`, so `loadMarkets` threw `undefined.concat`
+on **every page load** — inside `boot()`'s catch, which meant no error banner and
+no console output. Everything after it in boot never ran, so the week picker and
+the chart's market selector have been **empty since s1**.
+
+Nothing caught it: not the suite, not the browser tests, not four sessions of
+screenshots. I saw the empty select in a T1 render and did not chase it. It was
+found only because a T3 test needed the picker to navigate to a played week.
+
+There is now a contract test asserting that every `data.<field>` the browser
+reads from that endpoint is a field the endpoint returns. **What would settle
+the wider worry:** the same class of drift can exist on any of the other twelve
+endpoints, and only this one is checked.
+
 ## Resolved, kept for the record
 
 ### The rolling-window leak *(found and fixed 2026-08-29, P1)*

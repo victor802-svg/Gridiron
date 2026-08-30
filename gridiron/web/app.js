@@ -903,7 +903,12 @@ const Gridiron = (function () {
 
   async function loadMarkets() {
     const data = await fetchJSON(withSport('/api/markets'));
-    state.markets = data.spread.concat(data.props);
+    // `game_markets`, not `spread`. s1 renamed this field on the server and
+    // the browser was never updated, so `data.spread.concat` threw on every
+    // boot — silently, because it happened inside boot's catch. The week
+    // picker and the chart's market selector have been EMPTY ever since,
+    // and no test looked at them.
+    state.markets = (data.game_markets || []).concat(data.props || []);
     const chart = document.getElementById('chart-market');
     chart.innerHTML = '';
     state.markets.forEach(m => {

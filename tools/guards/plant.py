@@ -1022,6 +1022,112 @@ def plant_a_double_resolve() -> Result:
     )
 
 
+def plant_a_stake_column() -> Result:
+    """Add a stake sizer to the package and check LAW 5's scan names it.
+
+    Confidence tiers are the closest this project has come to the thing LAW 5
+    forbids: they rank picks by how sure the model is, which is one short step
+    from ranking them by how much to put on. The step is not taken, and this
+    proves the guard would notice if it were.
+    """
+    root = Path(audit.__file__).resolve().parent
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        copy = Path(tmp) / "gridiron"
+        shutil.copytree(root, copy, ignore=shutil.ignore_patterns("__pycache__"))
+        (copy / "web" / "stake.py").parent.mkdir(parents=True, exist_ok=True)
+        (copy / "tiers_stake.py").write_text(
+            chr(10).join([
+                '"""A staking surface, planted."""',
+                "",
+                "",
+                "def stake_for_tier(tier, bankroll):",
+                "    units = {'LEAN': 0.5, 'SOLID': 1.0, 'STRONG': 2.0}[tier]",
+                "    return bankroll * 0.01 * units",
+            ]),
+            encoding="utf-8",
+        )
+        try:
+            audit.check_not_a_betting_tool(copy)
+        except audit.LawViolation as exc:
+            return Result("LAW 5", "add a stake column keyed on the tier",
+                          "audit.check_not_a_betting_tool", True, str(exc))
+        return Result("LAW 5", "add a stake column keyed on the tier",
+                      "audit.check_not_a_betting_tool", False,
+                      "NOT CAUGHT - a stake sizer passed the scan")
+
+
+def plant_a_tier_hit_rate_below_the_gate() -> Result:
+    """Ask a tier for its earned figure with nine settled picks behind it.
+
+    This is the most persuasive lie the page could tell: a hit rate sitting
+    directly beside a specific forecast, reading as a track record FOR that
+    forecast, computed from a sample too small to mean anything.
+    """
+    from gridiron import calibration
+
+    thin = calibration.tier_from_bucket(
+        {"label": "70-80%", "n": 9, "actual": 0.889}
+    )
+    caught = (
+        thin["earned"] is None
+        and thin["proven"] is False
+        and "%" not in thin["message"]
+        and "9 settled of 20 needed" in thin["message"]
+    )
+    return Result(
+        "LAW 4", "render a tier hit rate below its sample gate",
+        "calibration.tier_from_bucket", caught,
+        f"a thin tier states the shortfall and no rate: {thin['message']!r}"
+        if caught else
+        f"NOT CAUGHT - a 9-sample tier reported {thin.get('earned')!r}",
+    )
+
+
+def plant_a_tier_that_pools_two_buckets() -> Result:
+    """STRONG covers 70-80% and 80%+. Pooling them into one hit rate would be
+    the merge LAW 4 forbids, and it flatters: the easier bucket lifts the
+    harder one."""
+    from gridiron import calibration
+
+    a = calibration.tier_from_bucket({"label": "70-80%", "n": 40, "actual": 0.60})
+    b = calibration.tier_from_bucket({"label": "80%+", "n": 40, "actual": 0.90})
+    caught = a["earned"] != b["earned"] and a["bucket"] != b["bucket"]
+    return Result(
+        "NO MERGED CURVES", "pool two buckets into one tier figure",
+        "calibration.tier_from_bucket", caught,
+        f"each bucket keeps its own number: {a['bucket']} {a['earned']} vs "
+        f"{b['bucket']} {b['earned']}" if caught else
+        "NOT CAUGHT - two buckets reported one pooled hit rate",
+    )
+
+
+def plant_an_unreadable_sample_size() -> Result:
+    """Every foreground token measured against every ground it is drawn on.
+
+    LAW 4 says a number never renders without its N. It does not say the N has
+    to be legible, and for a while it was not: `--faint`, the token every
+    sample size uses, sat at 3.23:1 on a card. An N nobody can read is an N
+    that is not there.
+    """
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, str(Path(audit.__file__).resolve().parent.parent
+                             / "tools" / "contrast.py")],
+        capture_output=True, text=True,
+    )
+    caught = result.returncode == 0
+    worst = next(
+        (line for line in result.stdout.splitlines() if line.startswith("worst pair")),
+        "no worst pair reported",
+    )
+    return Result(
+        "READABLE N", "check every text/ground pair against WCAG AA",
+        "tools/contrast.py", caught,
+        worst if caught else "NOT CAUGHT - " + result.stdout.strip()[-300:],
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -1047,6 +1153,10 @@ def main() -> int:
     results.append(plant_an_unauthenticated_route())
     results.append(plant_a_late_predict())
     results.append(plant_a_double_resolve())
+    results.append(plant_a_stake_column())
+    results.append(plant_a_tier_hit_rate_below_the_gate())
+    results.append(plant_a_tier_that_pools_two_buckets())
+    results.append(plant_an_unreadable_sample_size())
 
     with tempfile.TemporaryDirectory() as tmp:
         conn = seeded_database(Path(tmp) / "guards.db")

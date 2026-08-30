@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 
 import pytest
@@ -280,3 +281,32 @@ def test_the_meta_states_it_is_not_a_betting_tool(client):
     body = client.get("/api/meta").json()
     assert "does not" in body["not_a_betting_tool"]
     assert body["minimum_for_edge_claim"] == config.MIN_SAMPLE_FOR_EDGE_CLAIM
+
+
+def test_the_markets_payload_matches_what_the_browser_reads(client):
+    """A contract test, because this one broke and nobody noticed for three
+    sessions. s1 renamed `spread` to `game_markets` on the server; the browser
+    still read `data.spread`, threw inside boot's catch on every load, and left
+    the week picker and the chart's market selector permanently empty."""
+    body = client.get("/api/markets").json()
+    for field in ("markets", "game_markets", "props", "n"):
+        assert field in body, f"/api/markets no longer returns {field!r}"
+
+    # Comments stripped first: the fix for this bug is documented in a comment
+    # that names the old field, and an earlier draft of this test matched its
+    # own explanation. A check that reads prose fails when prose improves.
+    app_js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    body_of = app_js.split("loadMarkets")[1][:600]
+    code = chr(10).join(line.split("//", 1)[0] for line in body_of.splitlines())
+    reads = set(re.findall(r"data\.(\w+)", code))
+    unknown = reads - set(body)
+    assert not unknown, (
+        f"loadMarkets reads {sorted(unknown)}, which /api/markets does not return"
+    )
+
+
+def test_the_week_picker_is_offered_every_slate_that_has_predictions(client):
+    body = client.get("/api/weeks").json()
+    assert body["n"] > 0, "no slates offered to the picker"
+    for week in body["weeks"]:
+        assert {"season", "week", "n"} <= set(week)

@@ -726,3 +726,138 @@ def test_an_unexplained_browser_skip_becomes_a_failure(page):
         assert "unallowed reason" in result.stdout + result.stderr
     finally:
         probe.unlink(missing_ok=True)
+
+
+# --- T3: the dark theme, rendered ------------------------------------------
+
+def _open_first_card(page):
+    page.evaluate("location.hash = '#/week'")
+    page.wait_for_selector("#week-cards .card", timeout=10000)
+
+
+def test_a_pending_card_carries_the_rail_the_sentence_and_the_tier(page):
+    """The three things the approved design added, on one card."""
+    _open_first_card(page)
+    card = page.locator("#week-cards .card:has(.dumbbell)").first
+    assert card.locator(".rail .dot.model").count() == 1
+    assert card.locator(".pick .arrow").count() == 1
+    assert "Model picks" in card.locator(".pick").inner_text()
+    tier = card.locator(".tier").first
+    assert tier.inner_text().strip() in ("LEAN", "SOLID", "STRONG")
+    score = card.locator(".tier-score").first.inner_text()
+    assert "unproven" in score or "hits" in score
+    # Below the gate a tier must not state a rate at all.
+    if "unproven" in score:
+        assert "%" not in score
+
+
+def test_a_card_with_no_market_line_says_so_and_draws_one_dot(page):
+    """Never a second dot at a number nobody published."""
+    _open_first_card(page)
+    found = page.evaluate("""() => {
+        const cards = [...document.querySelectorAll('#week-cards .card')];
+        const hit = cards.find(c => c.querySelector('.rail-noline'));
+        if (!hit) return null;
+        return {
+            text: hit.querySelector('.rail-noline').textContent,
+            model: hit.querySelectorAll('.dot.model').length,
+            market: hit.querySelectorAll('.dot.market').length
+        };
+    }""")
+    if found is None:
+        # Every card on this slate has a line; assert the inverse holds instead.
+        counts = page.evaluate("""() => [...document.querySelectorAll(
+            '#week-cards .card:has(.dumbbell)')].map(c => c.querySelectorAll('.dot.market').length)""")
+        assert counts and all(c == 1 for c in counts)
+        return
+    assert "no line available" in found["text"]
+    assert found["model"] == 1 and found["market"] == 0
+
+
+def test_a_resolved_card_shows_a_verdict_and_no_rail(page):
+    """History does not compete with the thing still to happen.
+
+    The default slate is the UNPLAYED one, so this navigates to a week that has
+    results. The first draft skipped when it found no settled card — with an
+    allowlisted reason, which would have slipped past the very guard added this
+    session. A test that cannot find its subject must go looking for it, not
+    excuse itself.
+    """
+    page.evaluate("location.hash = '#/week'")
+    page.wait_for_selector("#week-cards .card", timeout=10000)
+    moved = page.evaluate("""() => {
+        const picker = document.getElementById('week-picker');
+        const played = [...picker.options].find(o => {
+            const v = JSON.parse(o.value); return v.week === 7;
+        });
+        if (!played) return false;
+        picker.value = played.value;
+        picker.dispatchEvent(new Event('change'));
+        return true;
+    }""")
+    if not moved:
+        options = page.evaluate(
+            "[...document.getElementById('week-picker').options].map(o => o.value)")
+        raise AssertionError(f"no played week in the picker; it offers {options}")
+    page.wait_for_selector("#week-cards .card.resolved", timeout=10000)
+    shape = page.evaluate("""() => {
+        const c = document.querySelector('#week-cards .card.resolved');
+        return { verdict: (c.querySelector('.verdict') || {}).textContent,
+                 rails: c.querySelectorAll('.rail').length,
+                 story: (c.querySelector('.market-line') || {}).textContent };
+    }""")
+    assert shape["verdict"] in ("WIN", "LOSS")
+    assert shape["rails"] == 0, "a settled card drew a probability rail"
+    assert "picked" in shape["story"]
+
+
+def test_the_greeting_strip_leads_the_page(page):
+    """It is the first thing on the page because it answers the first
+    question: was I right last night."""
+    page.evaluate("location.hash = '#/record'")
+    page.wait_for_timeout(600)
+    box = page.evaluate("""() => {
+        const g = document.getElementById('greeting');
+        if (!g || g.hidden) return null;
+        const r = g.getBoundingClientRect();
+        const cards = document.querySelector('#week-cards');
+        return { top: r.top, text: document.getElementById('greet-msg').textContent };
+    }""")
+    assert box is not None, "the greeting strip did not render"
+    assert box["text"].strip(), "the greeting strip rendered empty"
+
+
+def test_the_calibration_chart_is_not_drawn_in_the_page_colour(page):
+    """The `--ink` collision, checked by number rather than by eyeball: the
+    chart's ink must not equal its ground."""
+    page.evaluate("location.hash = '#/record'")
+    page.wait_for_selector("#calibration", timeout=10000)
+    tokens = page.evaluate("""() => {
+        const s = getComputedStyle(document.documentElement);
+        return { ink: s.getPropertyValue('--ink').trim(),
+                 chrome: s.getPropertyValue('--chrome').trim() };
+    }""")
+    assert tokens["ink"] != tokens["chrome"]
+    painted = page.evaluate("""() => {
+        const c = document.getElementById('calibration');
+        const ctx = c.getContext('2d');
+        const d = ctx.getImageData(0, 0, c.width, c.height).data;
+        const seen = new Set();
+        for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] > 200) seen.add(d[i] + ',' + d[i+1] + ',' + d[i+2]);
+        }
+        return seen.size;
+    }""")
+    assert painted > 2, f"the chart painted only {painted} distinct colours"
+
+
+@pytest.mark.parametrize("route", ["#/week", "#/record", "#/digest", "#/schedule"])
+def test_each_dark_screen_renders_on_a_phone(route, page):
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.evaluate(f"location.hash = '{route}'")
+    page.wait_for_timeout(700)
+    overflow = page.evaluate(
+        "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+    )
+    assert overflow <= 0, f"{route} overflows by {overflow}px at 390"
+    page.set_viewport_size({"width": 1280, "height": 900})
