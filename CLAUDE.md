@@ -102,6 +102,7 @@ python tools/verify.py
 
 ## Conventions
 
+- Read docs/MENTOR.md at the start of every session.
 - **Python 3.10+**, standard library first. Third-party deps are listed in
   `requirements.txt` and each one earns its place.
 - **No build step.** The frontend is vanilla JS + CSS served as static files.
