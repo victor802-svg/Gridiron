@@ -5,8 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gridiron</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon.svg">
+<meta name="theme-color" content="#12151a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gridiron">
 </head>
 <body>
+
+<div id="offline-bar" class="banner offline" hidden>
+  <strong>OFFLINE</strong> — nothing below is being refreshed. Gridiron does not
+  cache forecasts: a probability whose age you cannot see is worse than no
+  probability. Reconnect to see the current record.
+</div>
 
 <div id="kind-banner" class="banner" hidden></div>
 

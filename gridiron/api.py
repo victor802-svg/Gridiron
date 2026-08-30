@@ -121,6 +121,18 @@ async def require_session(request: Request, call_next):
     return JSONResponse(status_code=401, content={"error": "authentication required"})
 
 
+@app.get("/sw.js")
+def service_worker() -> FileResponse:
+    """Served from the ROOT, not /static/, because a worker's scope is limited
+    to the directory it is served from. At /static/sw.js it could only control
+    /static/, which is the one part of the app that does not need it."""
+    return FileResponse(
+        WEB_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/login")
 def login_page() -> FileResponse:
     return FileResponse(WEB_DIR / "login.html")

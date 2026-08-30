@@ -434,3 +434,47 @@ canvas { display: block; max-width: 100%; }
   .sched-grid { grid-template-columns: 1fr; gap: 0 0; }
   .sched-k { margin-top: 6px; }
 }
+
+/* The offline bar. Deliberately the loudest thing on the page: every number
+   below it is frozen, and a reader who misses that is being misled. */
+.banner.offline {
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.banner.offline strong { letter-spacing: .06em; }
+
+/* --- tap targets ---------------------------------------------------------
+   44px is the floor a thumb reliably hits, and the whole set was under it:
+   sport tabs at 41.7, nav links at 39.7, selects at 30. Measured headlessly at
+   390px rather than eyeballed, because "looks about right" on a 27-inch
+   monitor is how this gets shipped wrong.
+
+   Applied at every width, not just narrow ones. A larger target is not worse
+   with a mouse, and two sets of sizes is two sets to keep true. */
+#sport-tabs a,
+#sport-tabs button,
+nav#nav a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+select,
+.filters select,
+.filters input,
+button {
+  min-height: 44px;
+}
+
+/* The card header is the expansion target and must be comfortably tappable
+   even when its text is one short line. */
+.card-head { min-height: 44px; }
+
+@media (max-width: 430px) {
+  /* Phones: give the controls room to breathe rather than cramming the row. */
+  .filters { gap: 8px; }
+  .filters select,
+  .filters input { width: 100%; }
+}

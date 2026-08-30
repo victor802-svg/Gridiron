@@ -796,6 +796,57 @@ def plant_a_game_inside_its_own_rolling_window() -> Result:
     )
 
 
+#: A service worker that caches API responses. Written as a list of lines so no
+#: escape sequence has to survive being pasted through three layers of tooling.
+_CACHING_WORKER = chr(10).join([
+    "self.addEventListener('fetch', (event) => {",
+    "  const url = new URL(event.request.url);",
+    "  if (url.pathname.startsWith('/api/')) {",
+    "    event.respondWith(caches.open('data').then((cache) =>",
+    "      cache.match(event.request).then((hit) => hit ||",
+    "        fetch(event.request).then((r) => {",
+    "          cache.put(event.request, r.clone());",
+    "          return r;",
+    "        }))));",
+    "  }",
+    "});",
+])
+
+
+def plant_an_offline_data_cache() -> Result:
+    """Write a service worker that caches API responses, and check the audit
+    names it.
+
+    This is the PWA version of the failure the whole project is built against.
+    An app shell served from cache is a convenience; a calibration curve served
+    from cache is a forecast whose age nobody can see, and it arrives looking
+    exactly like a fresh one.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        worker = Path(tmp) / "sw.js"
+        worker.write_text(_CACHING_WORKER, encoding="utf-8")
+        try:
+            audit.check_no_offline_data_caching(worker)
+        except audit.LawViolation as exc:
+            return Result("OFFLINE HONESTY", "cache API responses in the service worker",
+                          "audit.check_no_offline_data_caching", True, str(exc))
+        return Result("OFFLINE HONESTY", "cache API responses in the service worker",
+                      "audit.check_no_offline_data_caching", False,
+                      "NOT CAUGHT - a worker that caches forecasts passed the audit")
+
+
+def plant_a_shipped_worker_that_caches_data() -> Result:
+    """The shipped worker, checked as it stands."""
+    hits = audit.offline_data_caching()
+    return Result(
+        "OFFLINE HONESTY", "check the shipped service worker caches no data",
+        "audit.offline_data_caching", not hits,
+        "the shipped worker caches the app shell only; every /api/ and /auth/ "
+        "request goes to the network" if not hits
+        else "NOT CAUGHT - " + "; ".join(hits[:4]),
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -816,6 +867,8 @@ def main() -> int:
     results.append(plant_a_transposed_column_copy())
     results.append(plant_an_undated_margin_sd())
     results.append(plant_a_game_inside_its_own_rolling_window())
+    results.append(plant_an_offline_data_cache())
+    results.append(plant_a_shipped_worker_that_caches_data())
 
     with tempfile.TemporaryDirectory() as tmp:
         conn = seeded_database(Path(tmp) / "guards.db")

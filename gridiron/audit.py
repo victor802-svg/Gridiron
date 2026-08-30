@@ -349,3 +349,91 @@ def check_no_silent_defaults(root: Path | None = None) -> None:
                 f"GRIDIRON v2 VIOLATED: {path.name} line {node.lineno} uses a "
                 "`default` value in the factor vector."
             )
+
+
+# ---------------------------------------------------------------------------
+# the service worker may not cache data
+# ---------------------------------------------------------------------------
+
+#: A worker that caches a response from these paths is serving a forecast whose
+#: age nobody can see. That is the failure this whole project is built against,
+#: arriving through the one component that runs after the page has loaded.
+_NL2 = chr(10) + "  "
+
+DATA_PATHS = ("/api/", "/auth/")
+
+#: Ways a service worker puts a response into a cache. Any of these appearing in
+#: a branch that handles a data path is the violation.
+CACHE_WRITES = ("cache.put", "cache.add", "caches.open", "cache.addAll",
+                "caches.match", "cache.match")
+
+#: How far past a data-path mention to keep looking for a cache write.
+#: Twelve lines covers any chained expression a person would write.
+WINDOW_LINES = 12
+
+
+def offline_data_caching(worker: Path | None = None) -> list[str]:
+    """Statements in the service worker that would cache a DATA response.
+
+    The rule this enforces, stated plainly: **once the worker has noticed that a
+    request is for a data path, it must RETURN before it touches a cache.**
+
+    The first version of this check looked for a data path and a cache write on
+    the SAME LINE, and a planted caching worker walked straight past it — the
+    two sat on adjacent lines of one chained expression, which is how anybody
+    would actually write it. The planting caught the guard, which is what
+    plantings are for; a guard nobody has tried to break is a guard nobody
+    should trust.
+
+    So it scans forward from each data-path mention and flags a cache write that
+    appears before a `return`. Crude on purpose: a cleverer check that followed
+    the control flow would be easier to fool, and the fix for a false positive
+    is to write the worker more plainly, which is desirable anyway.
+    """
+    worker = worker or (config.PACKAGE_ROOT / "web" / "sw.js")
+    if not worker.exists():
+        return ["no service worker found at " + str(worker)]
+
+    lines = worker.read_text(encoding="utf-8").splitlines()
+    code = [line.split("//", 1)[0] for line in lines]
+    hits: list[str] = []
+
+    for number, line in enumerate(code):
+        if not any(path in line for path in DATA_PATHS):
+            continue
+        # From here to the end of this branch, the only correct move is to stop.
+        for offset in range(number, min(number + WINDOW_LINES, len(code))):
+            ahead = code[offset]
+            if "return" in ahead and offset > number:
+                break
+            if any(call in ahead for call in CACHE_WRITES):
+                hits.append(
+                    f"sw.js:{offset + 1}: caches a response on a path matched at "
+                    f"line {number + 1} without returning first — "
+                    f"{lines[offset].strip()[:70]}"
+                )
+                break
+
+    # A worker that never mentions a data path at all has no guard, so every
+    # request it caches is potentially data.
+    if not any(any(path in line for line in code) for path in DATA_PATHS):
+        if any(call in line for line in code for call in CACHE_WRITES):
+            hits.append(
+                "sw.js: caches responses but never names a data path, so nothing "
+                "stops a forecast being served from storage"
+            )
+    return hits
+
+
+def check_no_offline_data_caching(worker: Path | None = None) -> None:
+    hits = offline_data_caching(worker)
+    if hits:
+        raise LawViolation(
+            "OFFLINE DATA CACHING: the service worker would serve API data from "
+            "storage. A forecaster showing yesterday's probabilities as though "
+            "they were today's is lying in the exact way this project exists to "
+            "prevent: a cached calibration figure has no N you can trust and a "
+            "cached slate may describe games that have already finished. The "
+            "shell may be cached; data is always fetched, and when the network "
+            "is gone the app says so. Offending lines:" + _NL2 + _NL2.join(hits[:8])
+        )

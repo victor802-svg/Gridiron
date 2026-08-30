@@ -254,12 +254,26 @@ def test_the_page_and_its_assets_are_served(client):
 
 
 def test_the_page_has_no_build_step():
-    """No bundler, no npm, no framework: the assets shipped are the assets written."""
+    """No bundler, no npm, no framework: the assets shipped are the assets
+    written. The list is spelled out rather than counted so that adding a file
+    to `web/` is a decision somebody makes on purpose — a minified bundle or a
+    vendored framework would land here and have to be argued for."""
     web = config.PACKAGE_ROOT / "web"
-    assert {p.name for p in web.iterdir()} == {"index.html", "login.html", "app.js", "style.css"}
+    assert {p.name for p in web.iterdir()} == {
+        "index.html",        # the app
+        "login.html",        # P3: the one page reachable without a session
+        "app.js",
+        "style.css",
+        "sw.js",             # P4: app shell only, never data
+        "icon.svg",          # drawn in code, not exported from a design tool
+        "manifest.webmanifest",
+    }
     html = (web / "index.html").read_text(encoding="utf-8")
     assert "/static/app.js" in html
     assert "node_modules" not in html and "cdn" not in html.lower()
+    # Nothing shipped may be a build artefact.
+    assert not any(p.name.endswith((".min.js", ".min.css", ".map"))
+                   for p in web.iterdir())
 
 
 def test_the_meta_states_it_is_not_a_betting_tool(client):

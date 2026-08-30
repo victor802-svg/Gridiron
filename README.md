@@ -237,6 +237,142 @@ On macOS or Linux use `.venv/bin/` instead of `.venv/Scripts/`.
 
 ---
 
+## The appliance
+
+Gridiron is meant to run without being tended. Four scheduled tasks keep the
+record current, a panel says whether they actually ran, and the app is reachable
+from a phone on your own tailnet.
+
+### What runs, and when
+
+| task | when | what it does |
+|---|---|---|
+| `Gridiron-Resolve` | every 4 hours | settles every prediction whose game has finished |
+| `Gridiron-Predict-MLB` | daily, 11:00 local | forecasts today's baseball slate, blind |
+| `Gridiron-Predict-NFL` | Wednesdays, 11:00 local | forecasts the week's football slate, blind |
+| `Gridiron-Predict-NBA` | daily, 11:00 local | a logged no-op until the season starts |
+| `Gridiron-CatchUp` | at logon | resolve unconditionally; predict only slates that have not started |
+
+Install and remove:
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools\schedule_install.ps1
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools\schedule_install.ps1 -Remove
+```
+
+Re-running the installer replaces the existing tasks rather than adding a second
+set. Removal leaves the database and its record untouched.
+
+**A missed slate is recorded, never caught up.** If the machine was asleep when
+a slate began, those games are gone: a question once answered is never re-asked,
+so forecasting them late would permanently occupy the slot the real forecast
+should have had. The task writes a MISSED row with its reason and moves on. This
+is not a limitation, it is the rule that voided 47 NBA rows and 6 MLB ones
+earlier in this project's life.
+
+### How to check it is working
+
+```bash
+.venv\Scripts\python.exe -m gridiron.cli schedule
+```
+
+or open **Schedule** in the app. Either shows, per task: when it last ran, what
+happened, how long ago, when it is next due, all-time failures, and every MISSED
+entry. A task silent past its window says so in plain words. A task that has
+never run says *that*, rather than rendering an empty row — a blank reads as
+"fine".
+
+The same panel carries the per-sport **data freshness** line: how long ago each
+sport's schedule was actually fetched. This exists because a loader served
+entirely from cache reports success and fetches nothing, so "the load ran" is
+not evidence the data is current. Only the fetch record is.
+
+### Reaching it from a phone
+
+The server binds `127.0.0.1` and that never changes. `tailscale serve` puts a
+TLS listener in front of it, reachable only from devices signed in to your own
+tailnet:
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools\phone_setup.ps1
+```
+
+Then open `https://<this-machine>.<your-tailnet>.ts.net/` on the phone, enter
+the access token once, and **Add to Home Screen** installs it as an app.
+
+Verify it is not public:
+
+```bash
+tailscale funnel status
+```
+
+That must say no funnel is configured. `tailscale serve` is tailnet-only;
+`tailscale funnel` is the public internet, and this project configures the
+former and never the latter. Binding `0.0.0.0` is refused outright by
+`api.serve`, because it would expose the record to whatever network the machine
+happens to be joined to.
+
+To withdraw:
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools\phone_setup.ps1 -Remove
+```
+
+### The phone app caches the shell, never the data
+
+The service worker caches HTML, CSS, JS and the icon so the app opens instantly.
+It caches **no** API response, ever, and there is a guard that fails by name if
+one is added — `audit.check_no_offline_data_caching`, planted in
+`tools/guards/plant.py`.
+
+The reason is the same one behind everything else here. A forecaster showing
+yesterday's probabilities as though they were today's is lying in the exact way
+this project exists to prevent: a cached calibration figure has no N you can
+trust, and a cached slate may describe games that have already finished. So
+offline, the app says **OFFLINE** in a bar across the top and refreshes nothing.
+It does not guess.
+
+### Access
+
+One token, created once:
+
+```bash
+.venv\Scripts\python.exe tools\make_token.py
+```
+
+It is printed once and never again, written to `.env`, which is gitignored. The
+desktop launcher reads it from there, so `cli serve --open` opens an
+already-signed-in browser without you typing anything — using a single-use,
+sixty-second nonce, so the token itself never appears in a URL or a browser
+history. You need the token only when signing in from another device.
+
+To replace it and end every open session:
+
+```bash
+.venv\Scripts\python.exe tools\make_token.py --rotate
+```
+
+Every route is closed without a session, including `/api/docs` and
+`/openapi.json`. `/api/health` alone answers openly, and it returns only
+`{"ok", "version"}` — no path, no counts, no staleness. An open endpoint that
+reports what is in the database is a data leak with a reassuring name.
+
+### Two-line uninstall
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools\schedule_install.ps1 -Remove
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools\phone_setup.ps1 -Remove
+```
+
+Nothing else is installed anywhere. The database, the record and the repository
+are untouched by both.
+
 ## Layout
 
 ```

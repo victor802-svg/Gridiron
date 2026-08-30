@@ -60,6 +60,11 @@ OPEN_PATHS = frozenset({
     "/auth/login",
     "/auth/handoff",
     "/favicon.ico",
+    # The service worker is the app SHELL. It must be fetchable before a session
+    # exists or it can never install, and it carries no data: a guard in
+    # `audit.check_no_offline_data_caching` is what keeps that true.
+    "/sw.js",
+    "/static/manifest.webmanifest",
 })
 
 #: Backoff after this many failures from one address, doubling each time.

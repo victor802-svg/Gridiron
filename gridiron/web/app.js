@@ -976,7 +976,28 @@ const Gridiron = (function () {
     try { await ROUTES[view](); } catch (err) { showError(err); }
   }
 
+  // The app shell is cached so the app opens instantly and survives a flaky
+  // connection. DATA IS NEVER CACHED — see sw.js and the guard that enforces it.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        // A worker that will not install is not worth an error message: the app
+        // works without it, just without the instant open.
+      });
+    });
+  }
+
+  // Offline says offline. It does not show the last numbers it happened to have.
+  function renderConnection() {
+    const bar = document.getElementById('offline-bar');
+    if (!bar) return;
+    bar.hidden = navigator.onLine;
+  }
+  window.addEventListener('online', renderConnection);
+  window.addEventListener('offline', renderConnection);
+
   async function boot() {
+    renderConnection();
     skeleton(document.getElementById('week-cards'), 'skeleton-card', 3);
     try {
       await loadSports();

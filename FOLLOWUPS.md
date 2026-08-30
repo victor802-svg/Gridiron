@@ -39,6 +39,23 @@ twice — with and without these 25 — and record whether the difference is
 material. If it is, the honest move is to report the corrected-cutoff sample as
 the headline and these as a footnote. Do not pre-judge which; measure it.
 
+### The tailnet leg is UNVERIFIED
+
+`tools/phone_setup.ps1` is written and its not-installed path is verified — it
+detects the absence of Tailscale, prints install instructions, changes nothing
+and exits 1. **The serving path has never been run**, because Tailscale is not
+installed on this machine. What is untested: whether `tailscale serve --bg
+--https=443` succeeds, whether the TLS certificate provisions, whether the app
+loads over the tailnet, and whether "Add to Home Screen" installs it.
+
+The phone layout itself IS verified, headlessly at 390px with touch emulation:
+every screen, tap targets, card expansion, dumbbells, contribution bars and the
+schedule panel. That was done over localhost, not over the tailnet.
+
+**What would settle it:** install Tailscale, run the script, open the URL on a
+phone. Until then, treat P4's phone claim as "the app is ready for a tailnet",
+not "the app has been used on one".
+
 ### Factors that fire too rarely to be tested
 
 Each of these is **untested, not disproved**, and the distinction is the one

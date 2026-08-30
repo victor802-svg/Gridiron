@@ -523,3 +523,132 @@ def test_a_fresh_browser_is_sent_to_login_and_can_sign_in(served):
         assert SMOKE_TOKEN not in visible
 
         browser.close()
+
+# --- the phone pass ---------------------------------------------------------
+
+@pytest.fixture
+def phone(served):
+    """A 390px viewport, signed in. 390 is the iPhone 14/15 width and the
+    narrowest thing most people will hold; 375 is covered separately because it
+    is what an SE still is."""
+    with playwright_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as exc:  # noqa: BLE001
+            pytest.skip(f"chromium unavailable: {exc}")
+        context = browser.new_context(
+            viewport={"width": 390, "height": 844},
+            device_scale_factor=3,
+            is_mobile=True,
+            has_touch=True,
+        )
+        page = context.new_page()
+        page.goto(served + "/login", wait_until="networkidle")
+        page.fill("#token", SMOKE_TOKEN)
+        page.click("#submit")
+        page.wait_for_url(served + "/", timeout=15000)
+        page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+        yield page
+        browser.close()
+
+
+def _overflow(page) -> int:
+    return page.evaluate(
+        "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+    )
+
+
+@pytest.mark.parametrize(
+    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/history", "#/schedule"]
+)
+def test_no_screen_overflows_a_phone(phone, route):
+    """Sideways scroll on a phone is the single most common way a dense layout
+    breaks, and it hides content without any sign that it has."""
+    phone.evaluate(f"location.hash = '{route}'")
+    phone.wait_for_timeout(400)
+    assert _overflow(phone) <= 0, f"{route} overflows by {_overflow(phone)}px at 390"
+
+
+def test_the_sport_tabs_are_reachable_and_tappable(phone):
+    tabs = phone.query_selector_all("#sport-tabs a, #sport-tabs button")
+    assert len(tabs) == 3, f"expected three sport tabs, found {len(tabs)}"
+    for tab in tabs:
+        box = tab.bounding_box()
+        assert box["height"] >= 44, (
+            f"a sport tab is {box['height']:.0f}px tall; 44 is the smallest "
+            "target a thumb reliably hits"
+        )
+
+
+def test_every_tap_target_on_the_slate_is_big_enough(phone):
+    """44px is Apple's floor and the one most people cite. Checked on the
+    controls that are actually tapped, not on every element."""
+    phone.evaluate("location.hash = '#/week'")
+    phone.wait_for_selector("#week-cards .card", timeout=10000)
+    small = phone.evaluate("""
+      Array.from(document.querySelectorAll(
+        'nav a, #sport-tabs a, #sport-tabs button, select, button, .card-head'
+      ))
+        .filter(el => el.offsetParent !== null)
+        .map(el => ({ tag: el.tagName + '.' + (el.className || ''),
+                      h: el.getBoundingClientRect().height }))
+        .filter(x => x.h > 0 && x.h < 44)
+    """)
+    assert not small, f"tap targets under 44px: {small}"
+
+
+def test_a_card_still_expands_on_a_phone(phone):
+    phone.evaluate("location.hash = '#/week'")
+    phone.wait_for_selector("#week-cards .card", timeout=10000)
+    head = phone.query_selector("#week-cards .card .card-head")
+    head.click()
+    phone.wait_for_selector("#week-cards .card .card-body", timeout=5000)
+    assert _overflow(phone) <= 0, "an expanded card overflows the phone"
+
+
+def test_the_dumbbell_and_contribution_bars_fit(phone):
+    """Both are horizontal by nature and are the first things to break narrow."""
+    phone.evaluate("location.hash = '#/week'")
+    phone.wait_for_selector("#week-cards .card", timeout=10000)
+    phone.query_selector("#week-cards .card .card-head").click()
+    phone.wait_for_selector("#week-cards .card .card-body", timeout=5000)
+
+    wide = phone.evaluate("""
+      Array.from(document.querySelectorAll('.dumbbell, .contrib, .contrib-row'))
+        .filter(el => el.getBoundingClientRect().right > window.innerWidth + 1)
+        .map(el => el.className)
+    """)
+    assert not wide, f"these run past the right edge at 390px: {wide}"
+
+
+def test_the_daily_glance_answers_did_it_run(phone):
+    """The whole point of the phone view: open it, and know whether the
+    appliance did its job without tapping anything."""
+    phone.evaluate("location.hash = '#/schedule'")
+    phone.wait_for_selector("#schedule-tasks .sched", timeout=10000)
+    text = phone.inner_text("#view-schedule")
+    assert "resolve" in text
+    for signal in ("last ran", "next due"):
+        assert signal in text.lower(), f"the panel does not say {signal!r}"
+    assert _overflow(phone) <= 0
+
+
+def test_the_offline_bar_is_hidden_while_online(phone):
+    bar = phone.query_selector("#offline-bar")
+    assert bar is not None, "there is no offline bar to show"
+    assert not bar.is_visible(), "the offline bar shows while the app is online"
+
+
+def test_the_manifest_and_worker_are_reachable_without_a_session(served):
+    """Both are app shell. They must load before a session exists or the app can
+    never install, which is why they are on the open list — and why the audit
+    checks the worker caches no data."""
+    import urllib.request
+
+    for path in ("/static/manifest.webmanifest", "/sw.js"):
+        with urllib.request.urlopen(served + path, timeout=10) as response:
+            assert response.status == 200
+            body = response.read().decode("utf-8")
+        assert body.strip()
+        if path == "/sw.js":
+            assert "/api/" in body, "the worker has no data-path guard at all"

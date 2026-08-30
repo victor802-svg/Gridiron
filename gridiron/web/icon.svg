@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img"
+     aria-label="Gridiron">
+  <!-- Drawn in code, not exported from a design tool: the repository holds the
+       source of everything it ships, and a binary nobody can diff is a thing
+       nobody can check. The mark is a calibration plot — the diagonal a
+       forecaster is trying to sit on, and four points scattered around it. -->
+  <rect width="512" height="512" rx="96" fill="#12151a"/>
+  <g stroke="#3d4450" stroke-width="10" stroke-linecap="round">
+    <path d="M112 400h288M112 400V112"/>
+  </g>
+  <path d="M112 400 400 112" stroke="#5b6472" stroke-width="10"
+        stroke-linecap="round" stroke-dasharray="22 20"/>
+  <g fill="#e8a13a">
+    <circle cx="184" cy="336" r="20"/>
+    <circle cx="256" cy="252" r="20"/>
+    <circle cx="328" cy="196" r="20"/>
+    <circle cx="376" cy="150" r="20"/>
+  </g>
+</svg>
