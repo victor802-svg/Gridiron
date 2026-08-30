@@ -409,6 +409,22 @@ def main(argv: list[str] | None = None) -> int:
     window = open_window(signed_in_url(args.port), geometry)
     save_geometry(geometry)
 
+    # A server we ATTACHED to belongs to somebody else, and somebody else can
+    # stop it. When that happened the window was already open and simply went
+    # blank: no error, no title, nothing to act on. Re-checking here converts a
+    # silent blank page into a sentence that names the cause.
+    if window is not None and not started_by_us:
+        time.sleep(1.5)
+        if not gridiron_is_healthy(args.port):
+            error_dialog(
+                "Gridiron — the server it attached to has gone",
+                f"This launcher found a Gridiron already running on {HOST}:"
+                f"{args.port} and opened a window onto it, but that server has "
+                "since stopped. The window will be blank. "
+                "Close the window and open Gridiron again: with nothing on the "
+                "port, this launcher will start its own server.",
+            )
+
     if window is None:
         # The default browser was used, so there is no window to wait on. Leave
         # the server up: there is no reliable way to know when the user is done.

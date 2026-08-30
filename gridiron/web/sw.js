@@ -17,7 +17,9 @@
  * catches it by name.
  */
 
-const SHELL_CACHE = 'gridiron-shell-v1';
+// Bumped whenever the shell changes shape. The activate handler deletes every
+// cache that is not this one, so a bump purges the old shell.
+const SHELL_CACHE = 'gridiron-shell-v2';
 
 const SHELL = [
   '/',
@@ -63,9 +65,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // The shell: cache first, because it does not change between deploys and a
-  // stale stylesheet cannot misinform anybody about a forecast.
+  // The shell: NETWORK FIRST, with the cache as an offline fallback only.
+  //
+  // This was cache-first, and it was wrong in the way this whole file exists to
+  // warn about. The cache name never changed between builds, so a rebuilt app
+  // kept serving the OLD interface indefinitely: the desktop app was updated,
+  // relaunched, and still showed the previous version's page. A stale shell is
+  // a smaller lie than a stale probability, but it is the same lie, and here it
+  // hid an entire redesign.
+  //
+  // Network-first costs a few milliseconds on open and guarantees that what you
+  // see is what is installed. The cache still answers when the network does
+  // not, which is the only thing it was ever needed for.
   event.respondWith(
-    caches.match(event.request).then((hit) => hit || fetch(event.request))
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(SHELL_CACHE).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
