@@ -618,3 +618,302 @@ def season_record(conn: sqlite3.Connection, sport: str) -> dict:
             f"{config.SPORT_LABELS.get(sport, sport.upper())} this season - nothing settled yet"
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# since you last looked
+# ---------------------------------------------------------------------------
+
+def digest(
+    conn: sqlite3.Connection,
+    *,
+    sport: str,
+    since: str | None = None,
+    day: str | None = None,
+) -> dict:
+    """What happened while you were away, for one sport.
+
+    Two modes, and the difference matters:
+
+      * `since` — everything resolved after this device last looked. The panel
+        that leads the front page.
+      * `day` — everything resolved on one calendar day, whether or not you
+        were watching. This is what makes the digest LINKABLE: "what happened
+        while I was away" should not evaporate the moment it is read once.
+
+    Read-only by construction. The web layer hands this a `query_only`
+    connection, and a test asserts the digest path cannot write even when
+    handed a writable one — a page that summarises the record must not be able
+    to touch it (LAW 3).
+    """
+    calibration.require_sport(sport, "views.digest")
+
+    if day:
+        window = (f"{day}T00:00:00Z", f"{day}T23:59:59Z")
+        scope = f"on {day}"
+    else:
+        window = (since or "0000-01-01T00:00:00Z", db.utcnow())
+        scope = "since you last looked" if since else "so far"
+
+    rows = conn.execute(
+        "SELECT p.id, p.subject, p.model_prob, p.model_side, p.outcome,"
+        " p.resolved_utc, p.market_type, p.prop_type, p.predictor,"
+        " g.home, g.away, g.home_score, g.away_score,"
+        " s.implied_prob"
+        " FROM predictions p JOIN games g ON g.id = p.game_id"
+        " LEFT JOIN market_snapshots s ON s.prediction_id = p.id"
+        " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"
+        "   AND p.resolved_utc > ? AND p.resolved_utc <= ?"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)"
+        " ORDER BY p.resolved_utc DESC, p.id DESC",
+        (sport, window[0], window[1]),
+    ).fetchall()
+
+    settled = []
+    for r in rows:
+        settled.append({
+            "prediction_id": r["id"],
+            "matchup": f"{r['away']} @ {r['home']}",
+            "subject": r["subject"],
+            "model_prob": r["model_prob"],
+            "market_prob": r["implied_prob"],
+            "outcome": r["outcome"],
+            "correct": bool(r["outcome"]),
+            "final_score": (
+                f"{r['away']} {r['away_score']} - {r['home_score']} {r['home']}"
+                if r["home_score"] is not None else None
+            ),
+            "market": r["prop_type"] or r["market_type"],
+            "predictor": r["predictor"],
+            "resolved_utc": r["resolved_utc"],
+        })
+
+    n = len(settled)
+    correct = sum(1 for s in settled if s["correct"])
+    brier = (
+        round(sum((s["model_prob"] - s["outcome"]) ** 2 for s in settled) / n, 4)
+        if n else None
+    )
+
+    # --- the headline, in the mockup's words -------------------------------
+    if n:
+        headline = (
+            f"Since you last looked: {n} resolved - {correct} correct, "
+            f"{n - correct} wrong"
+        )
+        if brier is not None:
+            headline += f" · Brier {brier}"
+    else:
+        headline = _nothing_resolved_message(conn, sport)
+
+    return {
+        "sport": sport,
+        "sport_label": config.SPORT_LABELS.get(sport, sport.upper()),
+        "scope": scope,
+        "since": window[0] if not day else None,
+        "day": day,
+        "n": n,
+        "correct": correct,
+        "wrong": n - correct,
+        "brier": brier,
+        "headline": headline,
+        "settled": settled,
+        "movement": _record_movement(conn, sport, n),
+        "today": _todays_slate_line(conn, sport),
+        # Warnings travel to the FRONT page. A panel nobody visits is a panel
+        # that cannot warn anybody.
+        "warnings": _front_page_warnings(conn),
+    }
+
+
+def _nothing_resolved_message(conn: sqlite3.Connection, sport: str) -> str:
+    """The empty state, in plain words and with the next thing named."""
+    label = config.SPORT_LABELS.get(sport, sport.upper())
+    row = conn.execute(
+        "SELECT MIN(kickoff_utc) AS next FROM games WHERE sport = ?"
+        " AND status = 'scheduled' AND kickoff_utc > ?",
+        (sport, db.utcnow()),
+    ).fetchone()
+    if row and row["next"]:
+        return (
+            f"Nothing resolved since you last looked. Next {label} games "
+            f"{_friendly_time(row['next'])}."
+        )
+    return f"Nothing resolved since you last looked, and no {label} games are scheduled."
+
+
+def _friendly_time(iso: str) -> str:
+    """"tonight at 6:40" rather than an ISO timestamp, because this line is
+    read by a person deciding whether to come back later."""
+    from datetime import datetime, timezone
+
+    try:
+        when = datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return iso
+    now = datetime.now(timezone.utc)
+    delta = (when.date() - now.date()).days
+    clock = when.strftime("%H:%M UTC")
+    if delta <= 0:
+        return f"today at {clock}"
+    if delta == 1:
+        return f"tomorrow at {clock}"
+    return f"on {when.date().isoformat()} at {clock}"
+
+
+def _record_movement(conn: sqlite3.Connection, sport: str, just_settled: int) -> dict:
+    """Resolved counts before and after, and how far the gate still is.
+
+    One sport. LAW 6 means there is no combined movement figure and there never
+    will be one here.
+    """
+    total = conn.execute(
+        "SELECT COUNT(*) AS n FROM predictions WHERE sport = ?"
+        " AND resolved_utc IS NOT NULL"
+        " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                 WHERE v.prediction_id = predictions.id)",
+        (sport,),
+    ).fetchone()["n"]
+
+    buckets = []
+    for lo, hi, label in calibration.BUCKETS:
+        n = conn.execute(
+            "SELECT COUNT(*) AS n FROM predictions WHERE sport = ?"
+            " AND resolved_utc IS NOT NULL AND model_prob >= ? AND model_prob < ?"
+            " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                 WHERE v.prediction_id = predictions.id)",
+            (sport, lo, hi),
+        ).fetchone()["n"]
+        if not n:
+            continue
+        buckets.append({
+            "label": label,
+            "n": n,
+            "needed": max(0, config.MIN_SAMPLE_FOR_EDGE_CLAIM - n),
+            "provisional": n < config.MIN_SAMPLE_FOR_BUCKET_POINT,
+            # The countdown line, right-aligned in the design and deliberately
+            # unglamorous: it is the honest distance to being able to say
+            # anything at all.
+            "countdown": (
+                f"{label} bucket: {n} of {config.MIN_SAMPLE_FOR_EDGE_CLAIM}"
+                f" · {max(0, config.MIN_SAMPLE_FOR_EDGE_CLAIM - n)} more"
+                " before calibration speaks"
+            ),
+        })
+
+    return {
+        "sport": sport,
+        "resolved_before": total - just_settled,
+        "resolved_now": total,
+        "gained": just_settled,
+        "buckets": buckets,
+        "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+    }
+
+
+def _todays_slate_line(conn: sqlite3.Connection, sport: str) -> dict:
+    """Today's slate in one line, with the sharpest disagreement as the teaser."""
+    season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
+    week = repo.next_unplayed_week(conn, season, sport=sport)
+    if week is None:
+        return {"n": 0, "line": None, "week": None}
+
+    rows = conn.execute(
+        "SELECT p.model_prob, p.subject, g.away, g.home, s.implied_prob"
+        " FROM predictions p JOIN games g ON g.id = p.game_id"
+        " LEFT JOIN market_snapshots s ON s.prediction_id = p.id"
+        " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
+        "   AND p.resolved_utc IS NULL"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)",
+        (sport, season, week),
+    ).fetchall()
+    if not rows:
+        return {"n": 0, "line": None, "week": week}
+
+    label = config.SPORT_LABELS.get(sport, sport.upper())
+    sharpest, gap = None, 0.0
+    for r in rows:
+        if r["implied_prob"] is None:
+            continue
+        delta = r["model_prob"] - r["implied_prob"]
+        if abs(delta) > abs(gap):
+            sharpest, gap = r, delta
+    line = f"{len(rows)} {label} predictions in"
+    if sharpest is not None:
+        line += (
+            f" · sharpest disagreement {gap * 100:+.1f} on "
+            f"{sharpest['away']} @ {sharpest['home']}"
+        )
+    return {
+        "n": len(rows), "week": week, "line": line,
+        "sharpest_gap": round(gap, 4) if sharpest is not None else None,
+    }
+
+
+def _front_page_warnings(conn: sqlite3.Connection) -> list[dict]:
+    """MISSED slates, silent tasks and stale schedules, on the front page.
+
+    Not sport-scoped, and that is not a LAW 6 problem: these are facts about
+    the APPLIANCE, not about any sport's record. A cron job that did not fire
+    belongs to the machine.
+    """
+    from . import tasks
+
+    out: list[dict] = []
+    status = tasks.status(conn)
+    for task in status["tasks"]:
+        if task["silent"]:
+            out.append({"kind": "silent", "text": f"{task['task']}: {task['warning']}"})
+        for missed in task["missed"]:
+            out.append({
+                "kind": "missed",
+                "text": f"{task['task']} MISSED {missed['started_utc']}: "
+                        f"{missed['detail'][:160]}",
+            })
+    for entry in status["schedule_staleness"]["sports"]:
+        if entry["stale"]:
+            out.append({
+                "kind": "stale",
+                "text": f"{entry['label']} schedule: {entry['note']}",
+            })
+    return out
+
+
+def seen_marker(conn: sqlite3.Connection, session_id: str | None, sport: str) -> str | None:
+    """When this device last read THIS SPORT's digest, without moving it."""
+    if not session_id:
+        return None
+    row = conn.execute(
+        "SELECT last_seen_utc FROM session_seen WHERE session_id = ? AND sport = ?",
+        (session_id, sport),
+    ).fetchone()
+    return row["last_seen_utc"] if row else None
+
+
+def mark_seen(
+    conn: sqlite3.Connection, session_id: str | None, sport: str
+) -> str | None:
+    """Advance this device's marker FOR ONE SPORT and return what it was.
+
+    Per sport, and that is not fussiness. With one marker per device, opening
+    the app on football advanced it, and switching to baseball then reported
+    "nothing resolved since you last looked" across six results that had landed
+    minutes earlier. The panel was confidently wrong about the only thing it
+    exists to say.
+
+    Returns the PREVIOUS value so the caller computes the digest against it
+    before the marker moves.
+    """
+    if not session_id:
+        return None
+    previous = seen_marker(conn, session_id, sport)
+    conn.execute(
+        "INSERT INTO session_seen (session_id, sport, last_seen_utc)"
+        " VALUES (?,?,?) ON CONFLICT(session_id, sport)"
+        " DO UPDATE SET last_seen_utc = excluded.last_seen_utc",
+        (session_id, sport, db.utcnow()),
+    )
+    conn.commit()
+    return previous

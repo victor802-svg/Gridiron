@@ -139,7 +139,9 @@ const Gridiron = (function () {
     const Y = v => pad.t + h - (v - AXIS_MIN) / (AXIS_MAX - AXIS_MIN) * h;
     const clamp = v => Math.min(Math.max(v, AXIS_MIN), AXIS_MAX);
 
-    const ink = css('--ink'), faint = css('--ink-3'), rule = css('--rule');
+    // `--ink` is the page GROUND in this palette; chart ink is `--chrome`.
+    // Drawn in --ink these axes and labels were black on black.
+    const ink = css('--chrome'), faint = css('--faint'), rule = css('--line');
     ctx.font = '12px ui-sans-serif, system-ui, sans-serif';
     ctx.textBaseline = 'middle';
 
@@ -195,8 +197,14 @@ const Gridiron = (function () {
 
     drawn.forEach(b => {
       const x = X(b.claimed), y = Y(clamp(b.actual));
-      ctx.fillStyle = ink;
+      // Green ONLY where the bucket sits inside the acceptable band, red where
+      // it does not. This is the positive/negative semantic doing its one job:
+      // "this bucket is calibrated" is a value, not decoration.
+      const inside = Math.abs(b.actual - b.claimed) <= ACCEPTABLE;
+      ctx.fillStyle = inside ? css('--green') : css('--red');
       ctx.beginPath(); ctx.arc(x, y, b.provisional ? 3.5 : 5.5, 0, Math.PI * 2); ctx.fill();
+      // A provisional point is drawn hollow: below the sample floor it is a
+      // position, not a finding.
       if (b.provisional) { ctx.strokeStyle = css('--card'); ctx.lineWidth = 1.5; ctx.stroke(); }
       ctx.fillStyle = ink; ctx.textAlign = 'left';
       ctx.fillText('n=' + b.n, x + 9, y - 10);          // LAW 4, on every point
@@ -214,7 +222,9 @@ const Gridiron = (function () {
     const W = dims.W, H = dims.H;
     const pad = { l: 56, r: 18, t: 14, b: 26 };
     const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
-    const ink = css('--ink'), faint = css('--ink-3'), rule = css('--rule');
+    // `--ink` is the page GROUND in this palette; chart ink is `--chrome`.
+    // Drawn in --ink these axes and labels were black on black.
+    const ink = css('--chrome'), faint = css('--faint'), rule = css('--line');
     ctx.font = '12px ui-sans-serif, system-ui, sans-serif';
     ctx.textBaseline = 'middle';
     canvas._hits = [];
@@ -1091,6 +1101,7 @@ const Gridiron = (function () {
     });
     try {
       await renderRecordLine();
+      await renderGreeting();
       state.meta = await fetchJSON(withSport('/api/meta'));
       renderBanner(state.meta);
       renderColophon(state.meta);
@@ -1190,13 +1201,136 @@ const Gridiron = (function () {
     });
   }
 
+  // --- since you last looked ------------------------------------------------
+  // Leads the page. The first question on opening a forecaster is not "what do
+  // you think tonight" — it is "was I right last night".
+
+  function settledRow(s) {
+    const row = el('div', 'settled-row' + (s.correct ? ' win' : ' loss'));
+    row.appendChild(el('span', 'settled-verdict', s.correct ? 'WIN' : 'LOSS'));
+    row.appendChild(el('span', 'settled-match', s.matchup));
+    row.appendChild(el('span', 'settled-pick', 'picked ' + String(s.subject).toUpperCase()));
+    const nums = el('span', 'settled-nums');
+    nums.textContent = 'model ' + pct(s.model_prob, 1) +
+      (s.market_prob === null || s.market_prob === undefined
+        ? ' · no line' : ' · market ' + pct(s.market_prob, 1));
+    row.appendChild(nums);
+    if (s.final_score) row.appendChild(el('span', 'settled-score', s.final_score));
+    return row;
+  }
+
+  function paintDigest(data, hosts) {
+    const msg = hosts.msg;
+    msg.innerHTML = '';
+    if (data.n) {
+      // Correct in green, wrong in plain chrome. Green is the positive value;
+      // being wrong is not an alarm, it is half of a calibration record.
+      msg.appendChild(document.createTextNode('Since you last looked: '));
+      msg.appendChild(el('b', '', data.n + ' resolved'));
+      msg.appendChild(document.createTextNode(' — '));
+      msg.appendChild(el('span', 'up', data.correct + ' correct'));
+      msg.appendChild(document.createTextNode(', ' + data.wrong + ' wrong'));
+      if (data.brier !== null && data.brier !== undefined) {
+        msg.appendChild(el('span', 'mono-inline', ' · Brier ' + num(data.brier, 4)));
+      }
+    } else {
+      msg.textContent = data.headline;
+    }
+
+    const counts = hosts.countdown;
+    counts.textContent = (data.movement.buckets[0] || {}).countdown ||
+      (data.today && data.today.line) || '';
+
+    if (hosts.warnings) {
+      hosts.warnings.innerHTML = '';
+      (data.warnings || []).forEach(w => {
+        hosts.warnings.appendChild(el('div', 'greet-warn ' + w.kind, w.text));
+      });
+    }
+
+    if (hosts.settled) {
+      hosts.settled.innerHTML = '';
+      if (data.settled.length) {
+        hosts.settled.appendChild(el('div', 'section-label', 'Resolved ' + data.scope));
+        data.settled.forEach(s => hosts.settled.appendChild(settledRow(s)));
+      }
+      if (data.today && data.today.line) {
+        hosts.settled.appendChild(el('div', 'today-line', data.today.line));
+      }
+    }
+  }
+
+  async function renderGreeting() {
+    const strip = document.getElementById('greeting');
+    if (!strip) return;
+    try {
+      const data = await fetchJSON(withSport('/api/digest'));
+      paintDigest(data, {
+        msg: document.getElementById('greet-msg'),
+        countdown: document.getElementById('greet-countdown'),
+        warnings: document.getElementById('greet-warnings'),
+        settled: null
+      });
+      strip.hidden = false;
+      strip.dataset.empty = 'false';
+    } catch (err) {
+      // Hidden rather than half-drawn, but NOT silent: a greeting that fails
+      // quietly is a greeting that is wrong and looks fine.
+      strip.hidden = true;
+      strip.dataset.empty = 'true';
+      console.error('greeting failed:', err);
+    }
+  }
+
+  // The permanent page. Reads WITHOUT moving the marker, so a day can be
+  // linked, shared and read twice.
+  async function renderDigest() {
+    const picker = document.getElementById('digest-day');
+    // Defaults to TODAY rather than "since you last looked". The strip at the
+    // top of the page moves the marker when it is read, so by the time anybody
+    // opens this page that window is empty by construction — and an empty
+    // permanent page is not a permanent page.
+    if (picker && !picker.value) {
+      picker.value = new Date().toISOString().slice(0, 10);
+    }
+    const day = picker && picker.value ? picker.value : null;
+    const url = day
+      ? withSport('/api/digest') + '&day=' + encodeURIComponent(day)
+      : withSport('/api/digest') + '&peek=true';
+    const data = await fetchJSON(url);
+
+    document.getElementById('digest-caption').textContent =
+      data.day ? data.day : 'since you last looked';
+
+    const host = document.getElementById('digest-body');
+    host.innerHTML = '';
+    const strip = el('section', 'greet');
+    const msg = el('div', 'msg');
+    const countdown = el('div', 'countdown');
+    strip.appendChild(msg);
+    strip.appendChild(countdown);
+    host.appendChild(strip);
+
+    const warnings = el('div');
+    const settled = el('div');
+    host.appendChild(warnings);
+    host.appendChild(settled);
+    paintDigest(data, { msg, countdown, warnings, settled });
+
+    if (!data.n && !data.day) {
+      host.appendChild(el('div', 'footnote',
+        'Pick a day above to read any past digest.'));
+    }
+  }
+
   const ROUTES = {
     record: renderRecord,
     week: renderWeek,
     factors: renderFactors,
     versions: renderVersions,
     history: renderHistory,
-    schedule: renderSchedule
+    schedule: renderSchedule,
+    digest: renderDigest
   };
 
   async function route() {
@@ -1204,6 +1338,13 @@ const Gridiron = (function () {
     const name = (location.hash.replace('#/', '') || 'record');
     const view = ROUTES[name] ? name : 'record';
     document.querySelectorAll('.view').forEach(v => { v.hidden = true; });
+    // The strip leads the FRONT page. On the digest route the same content is
+    // the page itself, and showing both put two identical panels on screen.
+    const onDigest = view === 'digest';
+    ['greeting', 'greet-warnings', 'greet-settled'].forEach(id => {
+      const node = document.getElementById(id);
+      if (node) node.hidden = onDigest || (id === 'greeting' && node.dataset.empty === 'true');
+    });
     document.getElementById('view-' + view).hidden = false;
     document.querySelectorAll('nav a').forEach(a => {
       a.classList.toggle('active', a.dataset.route === view);
@@ -1237,6 +1378,7 @@ const Gridiron = (function () {
     try {
       await loadSports();
       await renderRecordLine();
+      await renderGreeting();
       state.meta = await fetchJSON(withSport('/api/meta'));
       renderBanner(state.meta);
       renderColophon(state.meta);
@@ -1248,6 +1390,9 @@ const Gridiron = (function () {
     }
 
     wireSortToggle();
+    const dayPicker = document.getElementById('digest-day');
+    if (dayPicker) dayPicker.addEventListener('change', () =>
+      renderDigest().catch(showError));
     window.addEventListener('hashchange', route);
     ['chart-market', 'chart-predictor'].forEach(id =>
       document.getElementById(id).addEventListener('change', () => {

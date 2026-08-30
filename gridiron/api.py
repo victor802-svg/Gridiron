@@ -268,6 +268,41 @@ def schedule() -> dict:
     return tasks.status(get_conn())
 
 
+@app.get("/api/digest")
+def digest(request: Request, sport: str | None = None,
+           day: str | None = None, peek: bool = False) -> dict:
+    """Since you last looked, for one sport.
+
+    THE READ USES THE `query_only` CONNECTION. The digest summarises the record
+    and must not be able to touch it: `get_conn()` is opened
+    `PRAGMA query_only = ON`, so this path holds no write capability at all
+    even if a future edit asked it to (LAW 3). Advancing the device's marker is
+    a separate statement on the separate writable handle, and it happens after
+    the digest has been computed against the OLD value.
+
+    `day` returns one calendar day and never moves the marker, which is what
+    makes a digest linkable. `peek` reads without advancing, for tests and for
+    anyone who wants to look twice.
+    """
+    chosen = _sport(sport)
+    if day:
+        return views.digest(get_conn(), sport=chosen, day=day)
+
+    session_id = request.cookies.get(auth.COOKIE_NAME)
+    if peek:
+        since = views.seen_marker(get_conn(), session_id, chosen)
+    else:
+        since = views.mark_seen(get_auth_conn(), session_id, chosen)
+    return views.digest(get_conn(), sport=chosen, since=since)
+
+
+@app.get("/digest")
+def digest_page() -> FileResponse:
+    """A permanent, linkable page. The front-page panel is ephemeral by design
+    - it advances the marker - so the same content has a URL that does not."""
+    return FileResponse(WEB_DIR / "index.html")
+
+
 @app.get("/api/record-line")
 def record_line(sport: str | None = None) -> dict:
     """The active sport's settled record for the header. One sport, never a sum."""

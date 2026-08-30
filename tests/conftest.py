@@ -429,3 +429,50 @@ def nba_league(conn) -> sqlite3.Connection:
         )
     conn.commit()
     return conn
+
+
+# ---------------------------------------------------------------------------
+# a skip that reads green is the vacuous verifier in new clothes
+# ---------------------------------------------------------------------------
+
+#: The only reasons a browser test may skip. Anything else is a test that found
+#: nothing, called it fine, and reported a green dot.
+#:
+#: This exists because one did exactly that. `test_model_and_market_are_told_
+#: apart_by_form_not_colour` looked for `.rail-dot`, which a redesign had
+#: renamed to `.dot`, found nothing, and skipped with "no card on this slate
+#: carries a market comparison". It read as a pass for as long as it took
+#: somebody to look at the summary line. A skip must name an ABSENT CAPABILITY
+#: — no browser, no network — never an absent selector or an empty fixture.
+ALLOWED_SKIP_REASONS = (
+    "chromium unavailable",
+    "playwright is not installed",
+    "playwright not installed",
+)
+
+
+def pytest_runtest_makereport(item, call):
+    """Turn an unexplained browser skip into a failure.
+
+    Hooked at report time so it catches `pytest.skip()` raised anywhere in the
+    test body, not only a decorator.
+    """
+    import pytest as _pytest
+
+    if call.when != "call" or call.excinfo is None:
+        return
+    if not call.excinfo.errisinstance(_pytest.skip.Exception):
+        return
+    if "browser" not in [m.name for m in item.iter_markers()]:
+        return
+    reason = str(call.excinfo.value).lower()
+    if any(allowed in reason for allowed in ALLOWED_SKIP_REASONS):
+        return
+    raise AssertionError(
+        f"{item.name} skipped with an unallowed reason: {call.excinfo.value!r}. "
+        "A browser test may skip only when a CAPABILITY is missing (no chromium, "
+        "no playwright). Skipping because a selector matched nothing or a fixture "
+        "was empty is a test that asserts nothing and reports green — which is "
+        "how a renamed selector went unnoticed. Fix the selector or the fixture, "
+        "or add the reason to ALLOWED_SKIP_REASONS with a note saying why."
+    )

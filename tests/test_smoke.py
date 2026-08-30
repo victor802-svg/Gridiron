@@ -14,6 +14,7 @@ Skipped with a clear reason if playwright or its browser is not installed;
 
 from __future__ import annotations
 
+import pathlib
 import socket
 import threading
 import time
@@ -698,3 +699,30 @@ def test_the_manifest_and_worker_are_reachable_without_a_session(served):
         assert body.strip()
         if path == "/sw.js":
             assert "/api/" in body, "the worker has no data-path guard at all"
+
+
+def test_an_unexplained_browser_skip_becomes_a_failure(page):
+    """The guard, planted. A skip that reads green is the vacuous verifier in
+    new clothes, and this project already shipped one."""
+    import subprocess
+    import sys as _sys
+    import textwrap
+
+    probe = pathlib.Path(__file__).parent / "_skip_probe.py"
+    probe.write_text(textwrap.dedent('''
+        import pytest
+        pytestmark = pytest.mark.browser
+
+        def test_skips_for_a_bad_reason():
+            pytest.skip("no card on this slate carries a market comparison")
+    '''), encoding="utf-8")
+    try:
+        result = subprocess.run(
+            [_sys.executable, "-m", "pytest", str(probe), "-q"],
+            cwd=str(pathlib.Path(__file__).parent.parent),
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0, "an unexplained browser skip still passed"
+        assert "unallowed reason" in result.stdout + result.stderr
+    finally:
+        probe.unlink(missing_ok=True)

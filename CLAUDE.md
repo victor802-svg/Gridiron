@@ -120,3 +120,27 @@ python tools/verify.py
   of forbidden market identifiers, so a prediction-path module that imported it
   would make the LAW 1 scan flag itself. The runtime missing-data check
   therefore lives in `factors.compute`, and `audit` re-exports it.
+
+---
+
+## Ending a session
+
+**Every session ends with a close-out table against its brief's phase list.**
+One row per phase, one of four verdicts, and one line of evidence each:
+
+| verdict | means |
+|---|---|
+| **DONE** | built, tested, and the evidence is nameable |
+| **PARTIAL** | some of it shipped; the row says which part did not and why |
+| **SKIPPED** | not built, and the row says whether that was a decision or an oversight |
+| **DECLINED** | refused, with the law or reason named |
+
+The table is not a summary. It is a check against the brief, written last,
+when the temptation is strongest to describe the work as more complete than it
+is. A phase that quietly vanished between the brief and the report is the
+failure this convention exists to catch — it has happened here at least once,
+when the greeting was assigned, not blocked, and simply not built, and the
+session report did not say so because nothing forced it to.
+
+SKIPPED and DECLINED are ordinary outcomes. A brief that produces four DONEs
+every time is a brief nobody is reading carefully.

@@ -311,7 +311,23 @@ CREATE TABLE IF NOT EXISTS sessions (
     id           TEXT PRIMARY KEY,
     created_utc  TEXT NOT NULL,
     expires_utc  TEXT NOT NULL,
-    user_agent   TEXT
+    user_agent   TEXT,
+    -- Kept for the migration; the live marker is per SPORT in `session_seen`.
+    last_seen_utc TEXT
+);
+
+-- When this device last read the digest FOR ONE SPORT.
+--
+-- Per sport, not per session, and the reason is a bug this replaced: with one
+-- marker per device, opening the app on NFL advanced it, and switching to MLB
+-- then reported "nothing resolved since you last looked" over six results that
+-- had just landed. "Since you last looked" is a question about a record, and
+-- every record here belongs to exactly one sport (LAW 6).
+CREATE TABLE IF NOT EXISTS session_seen (
+    session_id    TEXT NOT NULL,
+    sport         TEXT NOT NULL CHECK (sport IN ('nfl','mlb','nba')),
+    last_seen_utc TEXT NOT NULL,
+    PRIMARY KEY (session_id, sport)
 );
 CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions (expires_utc);
 

@@ -8,7 +8,7 @@
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon.svg">
-<meta name="theme-color" content="#12151a">
+<meta name="theme-color" content="#0A0F0C">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Gridiron">
 </head>
@@ -44,11 +44,21 @@
       <a href="#/versions" data-route="versions">Versions</a>
       <a href="#/history" data-route="history">History</a>
       <a href="#/schedule" data-route="schedule">Schedule</a>
+      <a href="#/digest" data-route="digest">Digest</a>
     </nav>
   </div>
 </header>
 
 <main id="main">
+  <!-- SINCE YOU LAST LOOKED. Leads the page, above the picks, because the
+       first question on opening the app is "what happened while I was away". -->
+  <section id="greeting" class="greet" hidden>
+    <div class="msg" id="greet-msg"></div>
+    <div class="countdown" id="greet-countdown"></div>
+  </section>
+  <div id="greet-warnings"></div>
+  <div id="greet-settled"></div>
+
   <section id="view-record" class="view" hidden>
     <div id="record-headline" class="headline"></div>
     <div class="chart-block">
@@ -142,6 +152,19 @@
     <div id="schedule-tasks"></div>
     <h3 class="subhead">Data freshness</h3>
     <div id="schedule-staleness"></div>
+  </section>
+
+  <section id="view-digest" class="view" hidden>
+    <h2>Digest <span id="digest-caption" class="caption"></span></h2>
+    <p class="footnote">
+      What happened, day by day. The strip at the top of the page moves its
+      marker when you read it; this page does not, so a day can be linked and
+      read again.
+    </p>
+    <div class="filters">
+      <label>Day <input id="digest-day" type="date"></label>
+    </div>
+    <div id="digest-body"></div>
   </section>
 
   <div id="error" class="error" hidden></div>

@@ -134,6 +134,53 @@ an hour; the remaining cost is Python, not SQL.
 
 ---
 
+### The `--ink` collision, and what it says about the test suite
+
+*(found and fixed 2026-08-30, T1)*
+
+The approved palette uses `--ink` for the page GROUND. The CSS it replaced used
+`--ink` for the TEXT. Aliasing one to the other painted every heading the colour
+of the page: the matchup and the probability rendered **black on black**, in both
+the CSS and the canvas that draws the calibration chart.
+
+**Every test passed.** 472 of them. It was caught by looking at a screenshot.
+
+`tools/contrast.py` now measures every foreground token against every ground it
+is actually drawn on — heading-on-ground pairs first, because those are the ones
+that went invisible — and fails anything under WCAG AA. Running it immediately
+found a second, real problem the eye had not: `--faint`, the token carrying every
+sample size, sat at 3.23:1 against a card. An N nobody can read is an N that is
+not there, so LAW 4 makes that a correctness bug and not a taste one. Lightened
+to #6F8471, 4.56:1, same hue and saturation.
+
+**What would settle the wider worry:** the suite still cannot see the page. The
+contrast audit and the browser tests together cover a lot, but neither would
+catch, say, an element positioned off-screen or a z-index that hides a warning.
+
+### Three launcher tests had never been seen red
+
+*(proved 2026-08-30)*
+
+`test_a_database_inside_dist_is_refused_by_name` and its two siblings passed on
+first write and were never watched failing. Proved by neutering
+`paths_are_outside_the_bundle()` in a throwaway copy of the tree: all three go
+red with named assertions, and the real tree was never modified.
+
+Worth recording what the first attempt showed. Removing only the `dist/` check
+left all three still green — the installation check added later caught the same
+planted fault. That is defence in depth working, and it also means each test is
+less specific than its name suggests. They are load-bearing as a group.
+
+### F2 was assigned and skipped
+
+*(recorded 2026-08-30, executed the same day)*
+
+The greeting was assigned in the F-phase brief, was not blocked, and was simply
+not built; the session went from F1 to discussing F3 without it. It has now been
+built dark-native as part of T2. Recorded because the failure was not technical —
+nothing prevented it — and a list of technical debts that omits "we forgot" is a
+list that flatters.
+
 ## Resolved, kept for the record
 
 ### The rolling-window leak *(found and fixed 2026-08-29, P1)*

@@ -33,7 +33,12 @@
      values, muted for secondary, faint for captions and sample sizes. */
   --chrome: #F2F5F0;
   --muted: #8AA08C;
-  --faint: #5A6B5C;
+  /* Lightened from the mockup's #5A6B5C, which measured 3.23:1 on a card
+     and failed WCAG AA. This is the token every SAMPLE SIZE is drawn in,
+     and an N nobody can read is an N that is not there — LAW 4 means it
+     has to be legible, not merely present. Same hue and saturation,
+     lightness 0.386 -> 0.476, measured by tools/contrast.py. */
+  --faint: #6F8471;
   --faintest: #3A4A3C;       /* rail end labels only */
 
   /* ---- the two colours, and their two jobs -------------------------------
@@ -652,4 +657,100 @@ button {
   .filters { gap: 8px; }
   .filters select,
   .filters input { width: 100%; }
+}
+
+/* --- the greeting strip --------------------------------------------------
+   Correct in green, wrong in plain chrome: being wrong is not an alarm, it is
+   half of a calibration record, and colouring it red would make the page shout
+   at its own honesty. */
+/* `display:flex` beats the `hidden` attribute, so a hidden strip rendered as an
+   empty bordered box. Stated explicitly rather than relying on the default. */
+.greet[hidden] { display: none; }
+.greet {
+  margin: 20px 0 0; padding: 14px 16px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px;
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 16px; flex-wrap: wrap;
+}
+.greet .msg { color: var(--muted); }
+.greet .msg b { color: var(--chrome); font-weight: 600; }
+.greet .msg .up { color: var(--green); }
+.greet .mono-inline { font-family: var(--mono); font-size: var(--t-caption); }
+.countdown {
+  font-family: var(--mono); font-size: var(--t-caption); color: var(--faint);
+  margin-left: auto; text-align: right;
+}
+
+/* Warnings travel to the front page. A panel nobody visits cannot warn anybody. */
+.greet-warn {
+  margin-top: 8px; padding: 9px 14px; border-radius: 8px;
+  font-size: var(--t-caption); line-height: 1.5;
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 2px solid var(--red); color: var(--muted);
+}
+.greet-warn.stale { border-left-color: var(--muted); }
+
+.settled-row {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 9px 14px; margin-top: 6px; border-radius: 8px;
+  background: var(--resolved); border: 1px solid var(--line);
+}
+.settled-verdict {
+  font-family: var(--cond); font-weight: 700; font-size: 12px;
+  letter-spacing: 0.12em; padding: 1px 7px; border-radius: 4px;
+}
+.settled-row.win .settled-verdict { color: var(--green); background: var(--green-wash); }
+.settled-row.loss .settled-verdict { color: var(--red); background: var(--red-wash); }
+.settled-match {
+  font-family: var(--cond); font-weight: 700; font-size: 15px;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--chrome);
+}
+.settled-pick { color: var(--muted); font-size: var(--t-caption); }
+.settled-nums, .settled-score {
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+}
+.settled-score { margin-left: auto; }
+.today-line {
+  margin-top: 12px; font-size: var(--t-caption); color: var(--muted);
+}
+
+/* --- selects, styled rather than native ---------------------------------
+   A native select renders in the OS chrome, which on a dark page is a white
+   slab. These are the market and forecaster pickers on the record page and the
+   week/market pickers on the picks page: same tokens as everything else. */
+select, input[type="date"], input[type="search"], input[type="text"] {
+  font-family: var(--body); font-size: 13px;
+  background: var(--card-2); color: var(--chrome);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 8px 10px; min-height: 44px;
+}
+select:hover, input:hover { border-color: var(--line-lit); }
+select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--green); outline-offset: 1px;
+}
+label { color: var(--muted); font-size: var(--t-caption); }
+
+/* --- tables, on the dark ground ----------------------------------------- */
+table.grid { width: 100%; border-collapse: collapse; }
+table.grid th {
+  text-align: left; font-family: var(--cond); font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--faint); font-size: 11px;
+  border-bottom: 1px solid var(--line); padding: 8px 10px;
+}
+table.grid td {
+  padding: 9px 10px; border-bottom: 1px solid var(--line);
+  color: var(--muted); font-size: 13px;
+}
+table.grid td:first-child { color: var(--chrome); }
+/* Numbers are mono everywhere, so a column lines up and a changed digit does
+   not shift the ones beside it. */
+table.grid td.num, table.grid .n-tag { font-family: var(--mono); }
+table.grid tr:hover td { background: var(--card-2); }
+
+.n-tag { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.caption, .footnote { color: var(--faint); font-size: var(--t-caption); }
+.empty {
+  padding: 18px; border: 1px dashed var(--line); border-radius: var(--radius);
+  color: var(--muted); font-size: 13px;
 }
