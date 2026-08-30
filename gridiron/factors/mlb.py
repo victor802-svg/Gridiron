@@ -14,6 +14,10 @@ anything else and changes completely every day.
 
 One factor from the brief is deliberately absent; see `mlb_asked_line` at the
 bottom of this file for why.
+
+The player-prop factors are declared further down, dated 2026-08-30, and they
+are a separate set rather than an extension of this one: a moneyline asks which
+club wins and a prop asks what one man does, and no instrument serves both.
 """
 
 from __future__ import annotations
@@ -177,6 +181,357 @@ def mlb_team_rest_travel(ctx) -> float | None:
     if ctx.home_team_rest is None or ctx.away_team_rest is None:
         return None
     return float(ctx.home_team_rest - ctx.away_team_rest)
+
+
+# ===========================================================================
+# PLAYER PROPS — declared 2026-08-30
+# ===========================================================================
+#
+# Four markets, and they are NOT four variations on one question. Three ask
+# about a batter and one asks about the pitcher facing him, so the factor sets
+# are disjoint except for the two instruments every prop market needs. That
+# split is enforced by the `markets=` argument rather than by a factor returning
+# None for questions it has nothing to say about: an always-absent factor is
+# item 2's "constant across training" failure arriving by the back door.
+#
+# THE FIRST TWO FACTORS HERE ARE THE CHECKLIST'S FIRST ITEM, and they are first
+# in the file for the same reason they are first in the list. NBA's props
+# shipped without them, the fit converged, the coefficients looked reasonable,
+# and nothing was visibly wrong. Refitted, `mean_vs_line` became the largest
+# coefficient in all four markets.
+
+PROP_ADDED = "2026-08-30T00:00:00Z"
+
+#: The three batting markets, which share a subject and an instrument set.
+BATTER_MARKETS = ("batter_hits", "batter_total_bases", "batter_home_runs")
+#: All four, for the two instruments every prop question needs.
+ALL_PROP_MARKETS = BATTER_MARKETS + ("pitcher_strikeouts",)
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=ALL_PROP_MARKETS,
+    rationale=(
+        "WHICH RUNG WAS ASKED. A model that cannot see where the line sits "
+        "relative to the subject's own recent average is averaging several "
+        "different questions into one answer: a batter asked about 0.5 hits and "
+        "the same batter asked about 1.5 are not the same question, and neither "
+        "are a pitcher's 3.5 and 6.5 strikeouts. Expressed as the gap between "
+        "the rolling mean and the asked line, scaled by the line, so it is "
+        "comparable across a market asked at half a hit and one asked at six "
+        "strikeouts. This is the factor NBA's props shipped without; refitted "
+        "with it, it became the dominant coefficient in all four of those "
+        "markets, which is why it is declared before anything else here."
+    ),
+)
+def mlb_prop_mean_vs_line(ctx) -> float | None:
+    if ctx.rolling_mean is None or not ctx.line_asked:
+        return None
+    return (ctx.rolling_mean - ctx.line_asked) / max(ctx.line_asked, 1.0)
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=ALL_PROP_MARKETS,
+    rationale=(
+        "Two subjects with the same average are not the same question. A "
+        "high-variance batter clears a high line more often than a steady one "
+        "with identical output and misses a low one more often too, so "
+        "dispersion moves the answer in opposite directions on either side of "
+        "the mean. Measured as the standard deviation over the window divided "
+        "by the mean, which makes it comparable between a market that lives at "
+        "half a hit and one that lives at five strikeouts. Baseball needs this "
+        "more than basketball does, not less: a single game is a handful of "
+        "plate appearances, so the spread around a batter's mean is enormous "
+        "relative to the mean itself."
+    ),
+)
+def mlb_prop_volatility(ctx) -> float | None:
+    if ctx.rolling_sd is None or ctx.rolling_mean is None or ctx.rolling_mean <= 0:
+        return None
+    return ctx.rolling_sd / ctx.rolling_mean
+
+
+# --- the batter's own inputs ------------------------------------------------
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=BATTER_MARKETS,
+    note=(
+        "MEASURED 2026-08-30, AFTER THE FIRST FIT, and recorded here so nobody "
+        "re-derives it: this factor and `mlb_batter_expected_pa` MULTIPLY TO "
+        "EXACTLY the rolling mean that `mlb_prop_mean_vs_line` is built from. "
+        "Hits per plate appearance times plate appearances per game IS hits per "
+        "game. Measured on 2,444 sampled batter-games, corr(rate x pa, mean) = "
+        "+1.000 - not close to one, one. "
+        "The three are therefore not three independent instruments, and their "
+        "coefficients must NOT be read as effects. In the batter_hits fit this "
+        "factor came out at -5.39 and expected_pa at -0.27, both causally "
+        "backwards, because in a linear model a product does not decompose "
+        "additively: the two act as corrections to a term the model already has "
+        "rather than as separate causes. "
+        "IT IS NOT A COLLINEARITY IN THE ORDINARY SENSE and would not be caught "
+        "by looking for one - the pairwise correlations are small (rate vs "
+        "mean_vs_line -0.077, pa vs mean_vs_line +0.082). The dependency is "
+        "through the product, which no pairwise check sees. "
+        "The fit is not broken by it: it converged in 5 iterations, no factor "
+        "was constant or dropped, and the probabilities it produces are sensible. "
+        "And `mean_vs_line` DOES dominate once the factors are put on a "
+        "comparable footing - standardised as coefficient times the factor's own "
+        "spread, it is +0.527 against this factor's -0.314 and expected_pa's "
+        "-0.179. The raw coefficient table says otherwise and the raw "
+        "coefficient table is misleading, because these three factors live on "
+        "scales that differ by an order of magnitude. "
+        "LEFT AS DECLARED rather than repaired mid-session. The factor set was "
+        "declared in the brief and changing it is a deliberate act with its own "
+        "date (LAW 2), not a thing to do quietly while fitting. The repair to "
+        "consider is redefining this factor over a LONGER window than the mean "
+        "uses, so it measures current form against established level - "
+        "information the mean does not already contain."
+    ),
+    rationale=(
+        "How often the batter does the thing PER TRIP TO THE PLATE, over the "
+        "rolling fifteen games. Deliberately a rate rather than a per-game "
+        "average, because a per-game average is what `mean_vs_line` already "
+        "reads and declaring the same quantity twice is not two instruments. "
+        "Rate and volume decompose that average instead: a batter's hits per "
+        "game is his hits per plate appearance times his plate appearances, and "
+        "the two halves move for completely different reasons -- form on one "
+        "side, lineup position and game length on the other."
+    ),
+)
+def mlb_batter_rate(ctx) -> float | None:
+    if ctx.stat_per_pa is None:
+        return None
+    return ctx.stat_per_pa
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=BATTER_MARKETS,
+    rationale=(
+        "Plate appearances per game over the window: how many chances the "
+        "question gets. THIS IS THE VOLUME INSTRUMENT AND IT STANDS WHERE "
+        "TONIGHT'S LINEUP SLOT CANNOT. A scheduled game carries no lineup -- "
+        "measured 2026-08-30, zero of 41 games across three future dates had "
+        "one, because lineups post about two hours before first pitch -- so the "
+        "slot a batter will occupy tonight is not knowable when the forecast is "
+        "written, and a factor reading it would be reading the future. Plate "
+        "appearances per game is a fact about games already played and carries "
+        "the same information directly: a leadoff hitter gets more trips than a "
+        "nine-hole hitter, which is what the slot was a proxy for."
+    ),
+)
+def mlb_batter_expected_pa(ctx) -> float | None:
+    if ctx.pa_per_game is None:
+        return None
+    return ctx.pa_per_game
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=BATTER_MARKETS,
+    rationale=(
+        "The batter's average batting-order slot across his most recent five "
+        "STARTS, signed so that a higher number means a better slot: 5 minus "
+        "the slot, so a leadoff hitter reads +4 and a nine-hole hitter reads "
+        "-4. Games he did not start are excluded rather than counted as slot "
+        "zero, because he did not have a slot. This is the batter's ROLE, which "
+        "is not the same quantity as his recent plate appearances: a three-hole "
+        "hitter in a club that goes down in order gets fewer trips than a "
+        "leadoff hitter in one that does not, and the two factors separate a "
+        "manager's judgement about the player from the traffic in front of him."
+    ),
+)
+def mlb_batter_lineup_slot(ctx) -> float | None:
+    if ctx.recent_slot is None:
+        return None
+    return 5.0 - ctx.recent_slot
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=BATTER_MARKETS,
+    rationale=(
+        "The platoon split, as a plain statement of whether the batter has the "
+        "advantage: +1 when a left-handed batter faces a right-handed pitcher "
+        "or the reverse, -1 when they match, 0 for a switch hitter, who by "
+        "definition takes the good side of every matchup and so has neither the "
+        "advantage nor the disadvantage the other two describe. The effect is "
+        "one of the oldest measured facts in the sport and is why managers "
+        "carry a bench. ABSENT, not neutral, when either hand is unknown or the "
+        "starter has not been announced -- an unannounced starter has no "
+        "handedness, and guessing at one would put a real number where there is "
+        "no information at all."
+    ),
+)
+def mlb_batter_platoon(ctx) -> float | None:
+    if not ctx.bat_side or not ctx.opposing_hand:
+        return None
+    if ctx.bat_side == "S":
+        return 0.0
+    return 1.0 if ctx.bat_side != ctx.opposing_hand else -1.0
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=("batter_hits", "batter_total_bases"),
+    rationale=(
+        "The opposing starter's strikeout rate per batter faced, over his "
+        "rolling ten starts. A strikeout is the one out that puts no ball in "
+        "play, so a high-strikeout arm removes the chances a hit could come "
+        "from before fielding, park or luck get a say. Signed negative so the "
+        "factor reads in the direction of the question: a higher value means a "
+        "better night for the batter. Per batter faced rather than per nine "
+        "innings, because what a hitter faces is one trip to the plate, not a "
+        "notional nine innings the starter will not pitch."
+    ),
+)
+def mlb_batter_opposing_k_rate(ctx) -> float | None:
+    if ctx.opposing_k_rate is None:
+        return None
+    return -ctx.opposing_k_rate
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=("batter_total_bases", "batter_home_runs"),
+    rationale=(
+        "The opposing starter's home runs allowed per batter faced, over his "
+        "rolling ten starts. This is the single most direct input to a home-run "
+        "question and a strong one for total bases, where a home run is four of "
+        "them at once. Counted only when EVERY start in the window reported the "
+        "figure: a partial sum over a full denominator would understate the "
+        "rate and read as a stingier pitcher than he is, so a gap makes the "
+        "factor absent rather than optimistic."
+    ),
+)
+def mlb_batter_opposing_hr_rate(ctx) -> float | None:
+    if ctx.opposing_hr_rate is None:
+        return None
+    return ctx.opposing_hr_rate
+
+
+# --- the pitcher's own inputs -----------------------------------------------
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=("pitcher_strikeouts",),
+    rationale=(
+        "The starter's own strikeout rate per batter faced over his rolling ten "
+        "starts. The rate half of the strikeout question: how often he gets one "
+        "when he has the chance. Separated from how many chances he gets, which "
+        "is the innings factor, because a pitcher whose rate is holding but "
+        "whose outings are being cut short is a different forecast from one "
+        "whose rate is falling."
+    ),
+)
+def mlb_pitcher_k_rate(ctx) -> float | None:
+    if ctx.pitcher_k_rate is None:
+        return None
+    return ctx.pitcher_k_rate
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=("pitcher_strikeouts",),
+    rationale=(
+        "Innings per start over the rolling ten: the workload the strikeouts "
+        "have to come out of. A strikeout market is bounded by how long a "
+        "manager leaves the starter in, and that has been falling across the "
+        "sport for a decade, so it is declared rather than assumed to be six "
+        "innings. This is the volume half of the same decomposition the batting "
+        "markets use, and it is why the rate factor is a rate."
+    ),
+)
+def mlb_pitcher_innings_form(ctx) -> float | None:
+    if ctx.pitcher_innings is None:
+        return None
+    return ctx.pitcher_innings
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=("pitcher_strikeouts",),
+    rationale=(
+        "The opposing club's strikeouts per plate appearance over its last "
+        "thirty games. Lineups differ enormously in how often they strike out, "
+        "that difference is a property of a roster rather than of a night, and "
+        "it is the other half of every strikeout: someone has to take it. "
+        "Thirty games rather than fifteen because plate discipline moves slowly "
+        "and a shorter window would mostly measure which pitchers a club "
+        "happened to face."
+    ),
+)
+def mlb_pitcher_opponent_k_rate(ctx) -> float | None:
+    if ctx.opponent_team_k_rate is None:
+        return None
+    return ctx.opponent_team_k_rate
+
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=("pitcher_strikeouts",),
+    rationale=(
+        "Days since the starter last pitched, CLIPPED to six either way for the "
+        "same reason `mlb_starter_rest_days` clips: a man on sixteen days is not "
+        "three times as rested as one on five, he is returning from the injured "
+        "list. Rest belongs in a strikeout question specifically because it acts "
+        "on workload rather than on quality -- a short-rest starter is on a "
+        "shorter leash, and a shorter leash is fewer batters faced."
+    ),
+)
+def mlb_pitcher_prop_rest(ctx) -> float | None:
+    if ctx.pitcher_rest is None:
+        return None
+    return max(-6.0, min(6.0, float(ctx.pitcher_rest)))
+
+
+# --- shared context ---------------------------------------------------------
+
+@factor(
+    added=PROP_ADDED,
+    sport="mlb",
+    applies_to=("prop",),
+    markets=ALL_PROP_MARKETS,
+    rationale=(
+        "The park's run environment relative to the league, measured over PRIOR "
+        "seasons only, exactly as the moneyline factor measures it. Parks differ by "
+        "roughly a third between the extremes in runs allowed, and that acts on "
+        "every one of these markets: more balls falling in is more hits and "
+        "total bases, a smaller park is more home runs, and both are fewer "
+        "strikeouts because contact is being rewarded. Restricting it to earlier "
+        "seasons makes it cutoff-safe by construction rather than by remembering."
+    ),
+)
+def mlb_prop_park_factor(ctx) -> float | None:
+    if ctx.park_runs_pg is None or not ctx.league_runs_pg:
+        return None
+    return (ctx.park_runs_pg - ctx.league_runs_pg) / ctx.league_runs_pg
 
 
 # ---------------------------------------------------------------------------

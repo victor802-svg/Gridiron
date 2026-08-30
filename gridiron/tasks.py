@@ -160,14 +160,24 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
         "written": written,
         "snapshots": result.get("snapshots"),
         "degradations": result.get("degradations"),
+        "below_floor": result.get("below_floor"),
         # Recorded per slate so the timing of this task can be revisited with
         # data rather than opinion: if most slates are forecast without a
         # starter, the task is running too early in the day.
         "absent_starters": _absent_starters(conn, sport, season, week),
     }
+    floor_note = (
+        f"; {result['below_floor']} prop question(s) were below the "
+        f"{round(config.PROPS_MIN_CLAIM * 100)}% confidence floor and not asked"
+        if result.get("below_floor") else ""
+    )
     if written == 0:
-        return "noop", "every question on this slate was already answered", payload
-    return "ok", f"wrote {written} prediction(s) for slate {week}", payload
+        return (
+            "noop",
+            "every question on this slate was already answered" + floor_note,
+            payload,
+        )
+    return "ok", f"wrote {written} prediction(s) for slate {week}{floor_note}", payload
 
 
 def _record_missed_slates(conn: sqlite3.Connection, sport: str) -> list[dict]:

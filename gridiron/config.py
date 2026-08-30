@@ -60,7 +60,8 @@ SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week"}
 SPORT_MARKETS: dict[str, tuple[str, ...]] = {
     "nfl": ("spread", "passing_yards", "receiving_yards", "rushing_yards",
             "receptions", "passing_tds"),
-    "mlb": ("moneyline",),
+    "mlb": ("moneyline", "batter_hits", "batter_total_bases",
+            "batter_home_runs", "pitcher_strikeouts"),
     "nba": ("spread", "points", "rebounds", "assists", "threes"),
 }
 
@@ -68,9 +69,17 @@ SPORT_MARKETS: dict[str, tuple[str, ...]] = {
 SPORT_PROP_MARKETS: dict[str, tuple[str, ...]] = {
     "nfl": ("passing_yards", "receiving_yards", "rushing_yards",
             "receptions", "passing_tds"),
-    "mlb": (),
+    "mlb": ("batter_hits", "batter_total_bases", "batter_home_runs",
+            "pitcher_strikeouts"),
     "nba": ("points", "rebounds", "assists", "threes"),
 }
+
+#: MLB's four, in descending order of liquidity -- which is also descending
+#: order of how many of them a slate offers. Measured on the 2026-08-30 card:
+#: 216 hits quotes, 81 total bases, 108 home runs, 24 strikeouts. When the daily
+#: cap bites it bites on strikeouts, which is the thinnest market and the one
+#: with roughly one qualifying subject per game.
+MLB_PROP_MARKETS: tuple[str, ...] = SPORT_PROP_MARKETS["mlb"]
 
 #: Season the live slate is drawn from, per sport.
 SPORT_CURRENT_SEASON = {
@@ -79,6 +88,21 @@ SPORT_CURRENT_SEASON = {
     # NBA seasons are named by their starting year: 2026 is 2026-27.
     "nba": int(os.environ.get("GRIDIRON_NBA_SEASON", "2026")),
 }
+
+#: Seasons MLB player-level rows are fetched for: lineups and per-batter game
+#: logs. Narrower than SPORT_LOAD_SEASONS because these are the expensive part
+#: of the request budget -- one request per batter per season, roughly 700
+#: batters a season -- and only the prop markets read them. The moneyline
+#: market goes on using every season in SPORT_LOAD_SEASONS.
+#:
+#: Three seasons is the judgement: enough for a walk-forward fit that trains on
+#: two and tests on one, and few enough that a full load is minutes rather than
+#: an afternoon.
+MLB_PLAYER_SEASONS: tuple[int, ...] = tuple(
+    int(x) for x in os.environ.get(
+        "GRIDIRON_MLB_PLAYER_SEASONS", "2024,2025,2026"
+    ).split(",") if x.strip()
+)
 
 #: Seasons pulled by the loader, per sport.
 SPORT_LOAD_SEASONS = {
@@ -170,6 +194,77 @@ PROP_MARKETS = (
     "passing_tds",
 )
 
+# --- MLB props: the declared ladder (ruling R1) ------------------------------
+#
+# DECLARED 2026-08-30. The rungs are fixed in advance, in this file, and the one
+# a question is asked at is the rung NEAREST THE MODEL'S OWN ROLLING MEAN.
+#
+# This replaces the NFL offset mechanism FOR MLB ONLY. NFL's stands exactly as
+# recorded: its props were asked at the player's own average shifted by a
+# declared offset, and every NFL prop snapshot says
+# `unavailable:no-free-prop-line-source` because nothing published a line to
+# compare them against.
+#
+# WHY A LADDER RATHER THAN AN OFFSET, and why it is still blind:
+#
+#   * It is blind by construction. Only our own stats choose the rung. The set
+#     is declared here, before any slate; nothing is fetched inside the blind
+#     window; and the rung a question lands on cannot be moved by what a book
+#     is offering, because nothing in the prediction path can see what a book is
+#     offering.
+#   * It makes the market comparison possible for the first time on a prop.
+#     ESPN does publish MLB prop lines -- measured 2026-08-30, 1,084 athlete
+#     rows across one 14-game slate -- and they sit on a handful of values:
+#     hits 0.5 (96%) and 1.5 (4%), total bases 1.5 (100%), home runs "1+"
+#     (100%, i.e. over 0.5), strikeouts 3.5 to 6.5. Asking at a self-generated
+#     1.2 hits would produce a question no book answers, so the comparison would
+#     stay absent even though lines now exist. Asking where the market answers
+#     is what buys the comparison, and it costs nothing that LAW 1 protects.
+#
+# The rungs below ARE that measured distribution, which is a statement about
+# where baseball's prop questions actually live rather than about any one book.
+MLB_PROP_LADDER: dict[str, tuple[float, ...]] = {
+    "batter_hits": (0.5, 1.5),
+    "batter_total_bases": (1.5,),
+    # ESPN quotes this as the milestone "1+", which is the same question as
+    # over 0.5, and we ask it in the over/under form the rest of the record
+    # uses.
+    "batter_home_runs": (0.5,),
+    "pitcher_strikeouts": (3.5, 4.5, 5.5, 6.5),
+}
+MLB_PROP_LADDER_DECLARED = "2026-08-30T00:00:00Z"
+
+# --- props: the confidence floor (ruling R4) ---------------------------------
+#
+# DECLARED 2026-08-30, and it applies to EVERY prop market in EVERY sport from
+# that date. Existing prop records stand exactly as written (LAW 3); this
+# changes which questions get asked from here on, never any answer already
+# given.
+#
+# A player-prop prediction is written only when the model's claimed confidence
+# in the side it states is at least this. Because `stated_side` always reports
+# confidence in the side claimed, this reads the same on both halves of a
+# market: a 28% chance of a home run is a 72% claim that there will not be one,
+# and it qualifies.
+#
+# It is applied at prediction time from the model's own numbers, so it is
+# blind-compatible by construction -- there is nothing to consult but the
+# probability the model just produced.
+#
+# TWO CONSEQUENCES, STATED IN ADVANCE so the record can be read honestly:
+#   * a slate may run well under its cap, and that is the floor working;
+#   * prop resolutions will concentrate in the 70-80% and 80%+ buckets, which
+#     fills the STRONG tier's earned-accuracy line faster than any other part of
+#     the record. That is the experiment: boldest claims first, and the record
+#     says quickly whether bold means good.
+PROPS_MIN_CLAIM = float(os.environ.get("GRIDIRON_PROPS_MIN_CLAIM", "0.70"))
+PROPS_MIN_CLAIM_DECLARED = "2026-08-30T00:00:00Z"
+
+#: A reviewable daily card. Baseball's slate is a day, not a week, so this is
+#: the daily equivalent of PROPS_PER_WEEK and is deliberately smaller than the
+#: number of questions the data could support.
+MLB_PROPS_PER_DAY = int(os.environ.get("GRIDIRON_MLB_PROPS_PER_DAY", "25"))
+
 #: Rounding step for each market's line, in the stat's own units.
 PROP_LINE_STEP = {
     "passing_yards": 5.0,
@@ -184,11 +279,21 @@ PROP_LINE_STEP = {
     "rebounds": 1.0,
     "assists": 1.0,
     "threes": 1.0,
+    # Baseball's four are counting stats too. They are never rounded by this
+    # table in practice -- MLB_PROP_LADDER fixes the rungs outright -- but the
+    # entry exists so a market cannot be added to one table and forgotten in
+    # the other.
+    "batter_hits": 1.0,
+    "batter_total_bases": 1.0,
+    "batter_home_runs": 1.0,
+    "pitcher_strikeouts": 1.0,
 }
 
 #: Counting stats sit at 0.5, 1.5, 2.5 ... and never below half, in every sport.
 COUNTING_STATS = frozenset(
-    {"receptions", "passing_tds", "points", "rebounds", "assists", "threes"}
+    {"receptions", "passing_tds", "points", "rebounds", "assists", "threes",
+     "batter_hits", "batter_total_bases", "batter_home_runs",
+     "pitcher_strikeouts"}
 )
 
 #: A reviewable slate beats a large one. Quality of resolution beats quantity of

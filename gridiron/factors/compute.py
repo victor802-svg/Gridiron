@@ -117,7 +117,7 @@ class SportNotOnContext(AssertionError):
     """A context reached the factor loop without saying which sport it is."""
 
 
-def feature_vector(ctx, market_type: str) -> FeatureVector:
+def feature_vector(ctx, market_type: str, market: str | None = None) -> FeatureVector:
     sport = getattr(ctx, "sport", None)
     if not sport:
         raise SportNotOnContext(
@@ -129,7 +129,7 @@ def feature_vector(ctx, market_type: str) -> FeatureVector:
     fv = FeatureVector(
         sport=sport, market_type=market_type, notes=list(getattr(ctx, "notes", []))
     )
-    for f in registry.active_factors(sport, market_type):
+    for f in registry.active_factors(sport, market_type, market):
         try:
             value = f.fn(ctx)
         except Exception as exc:  # noqa: BLE001 - a broken factor must not kill the slate

@@ -13,13 +13,26 @@ scorecard. Rotating across games instead means that over a season all four rungs
 are exercised and the whole confidence range gets tested, without pretending a
 sample is bigger than it is.
 
-**Props.** The line is the player's own recent average, shifted by one of three
-pre-declared offsets, again chosen by a stable hash. Asking exactly at the
-average would make every answer 50% and the scorecard would learn nothing.
+**Props, NFL and NBA.** The line is the player's own recent average, shifted by
+one of three pre-declared offsets, again chosen by a stable hash. Asking exactly
+at the average would make every answer 50% and the scorecard would learn
+nothing.
+
+**Props, MLB.** A DECLARED LADDER instead, and the rung is the one nearest the
+subject's own rolling mean -- see `ladder_rung`. The mechanism differs by sport
+because what is available differs by sport, and the difference is recorded
+rather than smoothed over: nothing publishes NFL prop lines, so an NFL question
+asked at 1.2 receptions costs nothing that a question asked at 1.5 would have
+bought. Something does publish MLB prop lines, and they sit on a handful of
+values, so asking anywhere else would throw away a market comparison this
+project has never once been able to make on a prop.
 
 Every rung ends in .5, so nothing can push and every prediction resolves 0 or 1.
 
-Nothing in this module reads a market table, and nothing in it may.
+Nothing in this module reads a market table, and nothing in it may. The MLB
+ladder is a constant in `config`, declared in advance and dated; it is not a
+line, it is not fetched, and it does not become one by describing where lines
+happen to sit.
 """
 
 from __future__ import annotations
@@ -90,6 +103,52 @@ def prop_line_asked(rolling_mean: float, key: str, stat: str) -> float:
 
 def prop_outcome(actual: float, line_asked: float) -> int:
     return 1 if actual > line_asked else 0
+
+
+class RungOffLadder(ValueError):
+    """A question was formed at a line the declared ladder does not contain."""
+
+
+def ladder_rung(rolling_mean: float, market: str) -> float:
+    """The declared rung nearest the subject's own rolling mean (ruling R1).
+
+    Blind by construction: the only input that moves the answer is a number
+    computed from our own stored stats. The candidate set comes from
+    `config.MLB_PROP_LADDER`, which is a constant declared in advance and dated,
+    and this function cannot reach anything else.
+
+    Ties go to the LOWER rung, stated here rather than left to whichever way
+    `min` happens to break them. A tie means the mean sits exactly between two
+    questions; the lower rung is the one more of the distribution clears, so it
+    is the question with the larger sample behind it on both sides.
+    """
+    rungs = config.MLB_PROP_LADDER.get(market)
+    if not rungs:
+        raise RungOffLadder(f"no declared ladder for market {market!r}")
+    return min(rungs, key=lambda rung: (abs(rolling_mean - rung), rung))
+
+
+def assert_on_ladder(line_asked: float, market: str) -> None:
+    """Refuse a line the ladder does not contain.
+
+    A question formed off the ladder is not a smaller version of the same
+    record: it is asked at a rung nothing published a price for, so it cannot be
+    compared with the market, and it is asked at a rung no other prediction in
+    its category shares, so it is not comparable with them either. Both halves
+    of what the ladder buys are lost silently, which is why this raises rather
+    than warns.
+    """
+    rungs = config.MLB_PROP_LADDER.get(market)
+    if not rungs:
+        raise RungOffLadder(f"no declared ladder for market {market!r}")
+    if line_asked not in rungs:
+        raise RungOffLadder(
+            f"{market} was asked at {line_asked}, which is not on the declared "
+            f"ladder {rungs}. The ladder is declared in config, dated "
+            f"{config.MLB_PROP_LADDER_DECLARED}, and a rung outside it makes the "
+            "prediction incomparable with both the market and the rest of its "
+            "own category."
+        )
 
 
 # ---------------------------------------------------------------------------

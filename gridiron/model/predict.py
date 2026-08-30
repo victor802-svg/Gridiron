@@ -3,6 +3,7 @@
   1. select the questions for the slate (the sport's adapter decides how)
   2. compute the factor vector from stored data only
   3. produce probabilities: the statistical baseline, and the LLM pass
+  3b. drop prop questions below the declared confidence floor
   4. WRITE THE PREDICTION ROWS
 
 Step 5 — fetching the line — is deliberately not here and cannot be. This
@@ -51,6 +52,10 @@ class BlindRun:
     written: list[WrittenPrediction] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
     degradations: dict[str, int] = field(default_factory=dict)
+    #: Prop questions the model formed an answer to and did not write, because
+    #: the answer was not confident enough to be worth claiming. Counted rather
+    #: than dropped: a slate that ran under its cap should say why.
+    below_floor: int = 0
 
     @property
     def prediction_ids(self) -> list[int]:
@@ -234,6 +239,33 @@ def predict_slate(
 
         # --- the statistical path ------------------------------------------
         stat = baseline.predict(fits[q.market_key], fv)
+
+        # THE PROPS CONFIDENCE FLOOR (config.PROPS_MIN_CLAIM, declared
+        # 2026-08-30). A player-prop question whose answer the model is not at
+        # least this sure of is not asked at all.
+        #
+        # It is blind-compatible by construction: the only input is the
+        # probability the model has just produced from stored data, and there is
+        # nothing else here to consult.
+        #
+        # The gate reads the STATISTICAL probability and skips the question for
+        # every predictor, rather than letting each predictor filter its own.
+        # Two predictors that answered different sets of questions could not be
+        # compared with each other at all -- the LLM's record would be over the
+        # questions the LLM found easy, which is the one thing a head-to-head
+        # must not be.
+        #
+        # `stated_side` reports confidence in the side claimed, so this reads
+        # the same on both halves of a market: a 28% chance of a home run is a
+        # 72% claim that there will not be one, and it qualifies.
+        if q.market_type == "prop":
+            _side, claimed = baseline.stated_side(
+                stat["prob_yes"], q.yes_label, q.no_label
+            )
+            if claimed < config.PROPS_MIN_CLAIM:
+                run.below_floor += 1
+                continue
+
         written = write_prediction(
             conn,
             q,
@@ -292,6 +324,14 @@ def predict_slate(
         run.skipped.append(
             f"LLM reasoning pass unavailable for this run ({llm_off}); "
             "statistical predictions stand alone"
+        )
+    if run.below_floor:
+        run.skipped.append(
+            f"{run.below_floor} below confidence floor: the model formed an "
+            f"answer and was less than {round(config.PROPS_MIN_CLAIM * 100)}% "
+            "sure of it, so the question was not asked. A slate under its cap "
+            "for this reason is the floor working, not a failure to find "
+            "questions."
         )
     return run
 

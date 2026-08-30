@@ -46,9 +46,25 @@ class Factor:
     #: The default matches the decorator's, and the decorator is the real gate:
     #: it refuses an unprefixed name for any sport but the first one.
     sport: str = "nfl"
+    #: Which CONCRETE markets inside `applies_to` this factor is an instrument
+    #: for. `None` means all of them, which is right when a sport's prop markets
+    #: are variations on one question -- NBA's four are all "how many of a
+    #: counting stat does this player record".
+    #:
+    #: MLB is the case that forced this field. Its prop markets are not
+    #: variations on one question: three ask about a batter and one asks about
+    #: the pitcher facing him, and a batter's platoon split is not a weak
+    #: instrument for a strikeout prop, it is not an instrument at all. Without
+    #: this, every batter factor would be absent in every row of the strikeout
+    #: fit -- which is item 2's "constant across training" failure arriving by
+    #: the back door, dressed as missing data.
+    markets: tuple[str, ...] | None = None
     active: bool = True
     deactivated_utc: str | None = None
     note: str | None = None
+
+    def applies_to_market(self, market: str | None) -> bool:
+        return self.markets is None or market is None or market in self.markets
 
 
 REGISTRY: dict[str, Factor] = {}
@@ -60,6 +76,7 @@ def factor(
     rationale: str,
     applies_to: Iterable[str],
     sport: str = "nfl",
+    markets: Iterable[str] | None = None,
     active: bool = True,
     deactivated: str | None = None,
     note: str | None = None,
@@ -83,6 +100,7 @@ def factor(
             added_utc=added,
             rationale=" ".join(rationale.split()),
             applies_to=tuple(applies_to),
+            markets=tuple(markets) if markets is not None else None,
             fn=fn,
             active=active,
             deactivated_utc=deactivated,
@@ -93,13 +111,24 @@ def factor(
     return wrap
 
 
-def active_factors(sport: str, market_type: str) -> list[Factor]:
+def active_factors(
+    sport: str, market_type: str, market: str | None = None
+) -> list[Factor]:
     """Active factors for one sport's market. `sport` is required: defaulting it
-    would silently hand NFL's factors to a baseball model (LAW 6)."""
+    would silently hand NFL's factors to a baseball model (LAW 6).
+
+    `market` narrows further, to the concrete market inside the class -- the
+    difference between "a prop" and "a pitcher strikeout prop". Left out, every
+    factor declared for the class applies, which is the behaviour every sport
+    but MLB wants.
+    """
     return [
         f
         for f in REGISTRY.values()
-        if f.active and f.sport == sport and market_type in f.applies_to
+        if f.active
+        and f.sport == sport
+        and market_type in f.applies_to
+        and f.applies_to_market(market)
     ]
 
 

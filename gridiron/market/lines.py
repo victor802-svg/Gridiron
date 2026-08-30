@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import math
+import json
 import sqlite3
 
 from .. import config
@@ -231,6 +232,9 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
             None, None,
         )
 
+    if pred["market_type"] == "prop":
+        return _snapshot_prop(conn, pred, write)
+
     row = raw_line(conn, pred["game_id"])
     if row is None:
         return None
@@ -251,14 +255,69 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
     return write(row["source"], row["spread_line"], round(implied, 6))
 
 
+#: Why a prop got no comparison. Each is a DIFFERENT fact and they are recorded
+#: differently on purpose: "nobody published a price", "a price exists but we
+#: cannot tell whose it is", "a price exists for this player but at a different
+#: rung", and "a price exists at this rung but its side could not be derived".
+#: Collapsing them into one "no line" would hide which part of the chain broke.
+NO_PROP_CROSSWALK = "unavailable:player-not-matched-to-odds-feed"
+NO_PROP_AT_RUNG = "unavailable:no-quote-at-the-rung-asked"
+#: The market is published one-sided -- a milestone with no other half -- and we
+#: stated the side it does not carry. The complement is NOT computed: a vigged
+#: price does not have an honest complement, so 1 - P(over) would understate the
+#: under by the book's whole margin and the comparison would be against a number
+#: nobody quoted.
+NO_PROP_THIS_SIDE = "unavailable:market-is-one-sided-and-we-took-the-other"
+
+
+def _snapshot_prop(conn: sqlite3.Connection, pred: sqlite3.Row, write) -> dict:
+    """Attach a published prop quote to one prediction, or record why not.
+
+    The quote must be for exactly the question asked: same game, same market,
+    same rung, same side. A price at a neighbouring rung is a different question
+    and is not a substitute -- that substitution is how a comparison ends up
+    looking rigorous and measuring something else.
+    """
+    from . import props
+
+    payload = json.loads(pred["factors_json"])
+    question = payload.get("question") or {}
+    subject_id = question.get("player_id")
+    if not subject_id:
+        return write(NO_SOURCE, None, None)
+
+    espn_id = props.espn_id_for(conn, pred["sport"], int(subject_id))
+    if espn_id is None:
+        return write(NO_PROP_CROSSWALK, None, None)
+
+    row = props.line_for(
+        conn, pred["game_id"], pred["prop_type"], espn_id,
+        pred["line_asked"], pred["model_side"],
+    )
+    if row is None:
+        other = props.line_for(
+            conn, pred["game_id"], pred["prop_type"], espn_id,
+            pred["line_asked"],
+            "under" if pred["model_side"] == "over" else "over",
+        )
+        return write(
+            NO_PROP_THIS_SIDE if other is not None else NO_PROP_AT_RUNG,
+            None, None,
+        )
+    return write(row["source"], row["line"], row["implied_prob"])
+
+
 def ensure_lines(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     """Fetch whatever published lines exist for these predictions' games.
 
     NFL lines arrive with the nflverse schedule at load time. MLB and NBA are
     fetched here, from ESPN, AFTER the predictions exist -- which is the whole
     ordering LAW 1 is about, and why this function lives in the quarantine.
+
+    MLB player props are fetched here too, by the same rule and in the same
+    place: the prediction rows exist before the request is made.
     """
-    from . import espn
+    from . import espn, props
 
     if not prediction_ids:
         return {}
@@ -270,11 +329,52 @@ def ensure_lines(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     ):
         by_sport.setdefault(r["sport"], []).append(r["game_id"])
 
+    has_props = {
+        r["sport"]
+        for r in conn.execute(
+            f"SELECT DISTINCT sport FROM predictions WHERE id IN ({placeholders})"
+            " AND market_type = 'prop'",
+            prediction_ids,
+        )
+    }
+
     out = {}
     for sport, game_ids in by_sport.items():
         if sport in espn.LEAGUE_PATH:
             out[sport] = espn.fetch_for_games(conn, sport, game_ids)
+        if sport in has_props and sport in props.LEAGUE_PATH:
+            out[f"{sport}:props"] = _fetch_prop_days(conn, sport, game_ids)
     return out
+
+
+def _fetch_prop_days(conn: sqlite3.Connection, sport: str,
+                     game_ids: list[str]) -> dict:
+    """Prop quotes for the dates these games fall on, one fetch per date."""
+    placeholders = ",".join("?" for _ in game_ids)
+    days = [
+        r["d"]
+        for r in conn.execute(
+            f"SELECT DISTINCT substr(kickoff_utc, 1, 10) AS d FROM games"
+            f" WHERE id IN ({placeholders}) AND kickoff_utc IS NOT NULL",
+            game_ids,
+        )
+    ]
+    totals = {"days": 0, "written": 0, "unknown_side": 0,
+              "unmatched_athlete": 0, "unmatched_game": 0}
+    for day in sorted(set(days)):
+        settled = conn.execute(
+            "SELECT COUNT(*) AS n FROM games WHERE sport = ?"
+            " AND substr(kickoff_utc, 1, 10) = ? AND status = 'scheduled'",
+            (sport, day),
+        ).fetchone()["n"] == 0
+        counts = props.fetch_day(
+            conn, sport, day.replace("-", ""), settled=settled
+        )
+        totals["days"] += 1
+        for key in ("written", "unknown_side", "unmatched_athlete",
+                    "unmatched_game"):
+            totals[key] += counts.get(key, 0)
+    return totals
 
 
 def snapshot_many(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[str, int]:

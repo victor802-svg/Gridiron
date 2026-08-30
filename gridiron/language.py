@@ -85,6 +85,41 @@ def strip_market_suffix(subject: str | None, market: str | None) -> str:
     return text
 
 
+#: A counting-stat prop asked at half a unit is a yes/no question about whether
+#: the thing happened at all, and English has words for that. "under 0.5 home
+#: runs" is arithmetic; "no home run" is what a person says.
+#:
+#: This matters most where the market lives below an even chance. An over-0.5
+#: home-run prop sits around 15-35%, so the model states the NO side almost
+#: every time, and rendering that as "under 0.5 home runs" buries the actual
+#: claim inside a comparison the reader has to run themselves.
+HALF_UNIT_WORDS = {
+    "batter_hits": ("a hit", "hits"),
+    "batter_total_bases": ("a total base", "total bases"),
+    "batter_home_runs": ("a home run", "home runs"),
+    "pitcher_strikeouts": ("a strikeout", "strikeouts"),
+    "receptions": ("a reception", "receptions"),
+    "passing_tds": ("a passing touchdown", "passing touchdowns"),
+    "points": ("a point", "points"),
+    "rebounds": ("a rebound", "rebounds"),
+    "assists": ("an assist", "assists"),
+    "threes": ("a three-pointer", "three-pointers"),
+}
+
+
+def half_unit_phrase(subject: str, market: str, side: str) -> str | None:
+    """"Kyle Schwarber - NO home run", or None if this is not that shape."""
+    words = HALF_UNIT_WORDS.get(market)
+    if not words:
+        return None
+    singular = words[0]
+    if side == "over":
+        return f"{subject} records {singular}".strip()
+    if side == "under":
+        return f"{subject} - NO {singular.split(' ', 1)[-1]}".strip()
+    return None
+
+
 def phrase(item: dict) -> str:
     """One readable sentence for a prediction, whatever kind it is.
 
@@ -104,6 +139,11 @@ def phrase(item: dict) -> str:
 
     if market_type == "prop" or (market and market in MARKET_WORDS
                                  and market not in ("spread", "moneyline")):
+        # A half-unit question is a yes/no question, and gets said that way.
+        if line is not None and float(line) == 0.5:
+            said = half_unit_phrase(subject, market, side)
+            if said:
+                return said
         side_word = SIDE_WORDS.get(side, side or "over")
         line_text = _number(line)
         return f"{subject} {side_word} {line_text} {humanise(market)}".strip()

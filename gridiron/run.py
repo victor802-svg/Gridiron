@@ -58,6 +58,9 @@ def run_slate(
         "by_predictor": {},
         "skipped": run.skipped,
         "degradations": run.degradations,
+        # Carried out of the blind run so a slate that came in under its cap can
+        # say why on the panel rather than looking like a quiet failure.
+        "below_floor": run.below_floor,
         "snapshots": None,
     }
     for w in run.written:
