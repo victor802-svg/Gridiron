@@ -41,7 +41,10 @@ from . import config
 
 #: Where the token lives. Read at request time rather than import time so
 #: `make_token.py` does not require a restart to take effect.
-ENV_FILE = config.REPO_ROOT / ".env"
+#: Beside the installation, NOT beside the package. A frozen build's
+#: REPO_ROOT is the extraction directory, so this used to look inside the
+#: bundle and find nothing.
+ENV_FILE = config.HOME / ".env"
 TOKEN_VAR = "GRIDIRON_ACCESS_TOKEN"
 
 COOKIE_NAME = "gridiron_session"

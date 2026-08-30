@@ -335,6 +335,43 @@ trust, and a cached slate may describe games that have already finished. So
 offline, the app says **OFFLINE** in a bar across the top and refreshes nothing.
 It does not guess.
 
+### The desktop app
+
+```bash
+.venv\Scripts\pyinstaller.exe desktop\gridiron.spec --noconfirm
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File desktop\make_shortcut.ps1
+```
+
+The first builds `dist\Gridiron\` (onedir, ~40MB); the second puts shortcuts on
+the Desktop and in the Start Menu. The icon is drawn in code by
+`desktop/make_icon.py` at 16/32/48/256 — a dark card with a probability
+dumbbell, the same shape the app draws on every card.
+
+**It attaches first.** If a healthy Gridiron is already listening on 8848, the
+launcher opens a window onto it and starts nothing. Two servers on one SQLite
+file is how an appliance ends up locked, and the second copy is invisible: it
+looks like the app simply opening. On close it stops the server **only if it
+started it** — attaching to one you started in a terminal and then killing it on
+close would be an unpleasant surprise. `--keep-running` leaves it up either way.
+
+**Closing the window never stops the record.** The scheduled tasks call
+`python -m gridiron.cli task ...` directly against the database. They do not talk
+to the server, do not need a window, and are not touched by the launcher — a test
+asserts the launcher contains no reference to any scheduling API. The appliance
+and the viewer are separate things, and the viewer is the disposable one.
+
+**The record and the token live outside the bundle.** The shortcut sets its
+working directory to the repository, so `var\gridiron.db` and `.env` sit beside
+it and a rebuild — which replaces `dist\` wholesale — cannot touch either. The
+launcher checks this at startup and refuses to run if either has drifted inside,
+and it checks something stricter as well: that the database is *the one this
+installation keeps*, not merely one in a safe place. A frozen build that quietly
+used `~/.gridiron/gridiron.db` would show an empty record while the scheduled
+tasks filled the real one, with nothing anywhere saying why.
+
 ### Access
 
 One token, created once:

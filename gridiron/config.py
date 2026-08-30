@@ -15,9 +15,24 @@ FROZEN = bool(getattr(sys, "frozen", False))
 
 #: Where mutable state lives. Kept outside the bundle when frozen, because a
 #: track record that a rebuild deletes is not a track record.
+#: The installation this process belongs to. A frozen build's PACKAGE_ROOT is
+#: inside the bundle, so REPO_ROOT points at the extraction directory and both
+#: the record and the token would be looked for THERE. The desktop launcher sets
+#: GRIDIRON_HOME to the directory it was started from, which the shortcut sets
+#: to the repository, so a frozen window reads the same record the scheduler
+#: keeps.
+#:
+#: This was found by building the exe and watching it answer 503: it looked for
+#: .env inside its own bundle, found none, and refused to serve. The subtler
+#: half was worse and would not have announced itself — STATE_DIR fell back to
+#: ~/.gridiron, a DIFFERENT database, so the window would have opened onto an
+#: empty record while the scheduled tasks went on filling the real one.
+HOME = Path(os.environ.get("GRIDIRON_HOME") or REPO_ROOT)
+
 STATE_DIR = Path(
     os.environ.get("GRIDIRON_STATE")
-    or (Path.home() / ".gridiron" if FROZEN else REPO_ROOT / "var")
+    or (HOME / "var" if os.environ.get("GRIDIRON_HOME") else
+        (Path.home() / ".gridiron" if FROZEN else REPO_ROOT / "var"))
 )
 
 # --- storage ---------------------------------------------------------------

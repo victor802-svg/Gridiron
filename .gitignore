@@ -16,3 +16,5 @@ var/
 # secret forever, because removing it later does not remove it from every
 # clone and every reflog.
 .env
+dist/
+build/

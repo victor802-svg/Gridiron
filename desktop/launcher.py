@@ -1,340 +1,444 @@
-"""Desktop launcher for Gridiron.
+"""The desktop launcher.
 
-Four properties, in the order they matter:
+ATTACH FIRST. If a healthy Gridiron is already listening, this opens a window
+onto it and starts nothing. Two servers on one database is how a personal
+appliance ends up with a locked SQLite file and a record that stops growing, and
+the second copy is invisible — it looks like the app simply opened.
 
-**Attach first.** If a healthy Gridiron is already serving on the port, this
-opens a window onto it and starts nothing. Two servers on one SQLite file is a
-lock fight nobody asked for, and the second one silently failing is worse.
+STARTED-BY-US BOOKKEEPING decides what happens on close. If this process started
+the server, closing the window stops it. If it attached to one that was already
+running — from a terminal, or from another window — closing leaves it alone.
+Killing a server somebody else started is the kind of surprise that makes a tool
+untrustworthy.
 
-**Health gated.** The window is not opened until `/api/health` answers ok. A
-browser pointed at a port that is not listening yet shows a connection error the
-user then has to reload past, which teaches them to distrust the app.
+THE SCHEDULED TASKS DO NOT NEED THIS. `Gridiron-Resolve` and the three predict
+tasks invoke `python -m gridiron.cli task ...` directly against the database.
+They do not talk to the server, they do not need a window, and closing this one
+never stops the record from being kept. The launcher deliberately does not read,
+write, start, stop or inspect any scheduled task: the appliance and the viewer
+are separate things, and the viewer is the disposable one.
 
-**Loud failure.** If the server does not come up, this prints the captured
-traceback and reason, shows a native dialog on Windows, and exits non-zero. It
-never opens a window onto nothing and never exits 0 on a failure.
-
-**Geometry remembered.** The app window runs in its own browser profile under
-the state directory, so Chromium remembers its size and position across
-launches. The last known placement is mirrored into `launcher.json` so the
-fallback path and `--status` can report and reuse it.
-
-Usage:
-    python desktop/launcher.py
-    python desktop/launcher.py --status
-    python desktop/launcher.py --attach-only
+127.0.0.1 ALWAYS. `api.serve` refuses any other host, and this passes none.
+Reaching Gridiron from a phone is `tailscale serve` (see tools/phone_setup.ps1),
+which puts a TLS listener in front of the loopback socket rather than opening
+one to the network.
 """
 
 from __future__ import annotations
 
 import argparse
-import ctypes
 import json
 import os
-import shutil
+import socket
 import subprocess
 import sys
-import threading
 import time
-import traceback
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from gridiron import config  # noqa: E402
-
-# The launcher keeps its window profile beside whatever state directory the
-# package chose, so a frozen build and a source checkout do not disagree about
-# where "here" is.
-STATE_DIR = Path(os.environ.get("GRIDIRON_STATE") or (Path.home() / ".gridiron"))
-PROFILE_DIR = STATE_DIR / "window-profile"
-LAUNCHER_STATE = STATE_DIR / "launcher.json"
-
-DEFAULT_GEOMETRY = {"width": 1180, "height": 900, "x": 60, "y": 40}
-HEALTH_TIMEOUT_SECONDS = 25.0
-
-CHROMIUM_CANDIDATES = (
-    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-)
+REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 
-class LaunchFailure(RuntimeError):
-    pass
+def _pin_installation() -> Path:
+    """Point this process at the installation, BEFORE gridiron.config is imported.
 
-
-# ---------------------------------------------------------------------------
-# state
-# ---------------------------------------------------------------------------
-
-def load_state() -> dict:
-    try:
-        return json.loads(LAUNCHER_STATE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def save_state(**fields) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    state = load_state()
-    state.update(fields)
-    LAUNCHER_STATE.write_text(json.dumps(state, indent=2), encoding="utf-8")
-
-
-def remembered_geometry() -> dict:
-    """Chromium's own record of where the window was, with our file as fallback.
-
-    The browser profile is the authority — it is what actually restores the
-    window — and this reads it back so the value can be shown and reused.
+    A frozen build resolves its package root inside the bundle, so without this
+    it looks for `.env` in the extraction directory (found: nothing, answered
+    503) and falls back to `~/.gridiron` for the database — a different, empty
+    record, while the scheduled tasks go on filling the real one. The window
+    would have shown an empty project and nothing would have said why.
     """
-    preferences = PROFILE_DIR / "Default" / "Preferences"
-    try:
-        placement = (
-            json.loads(preferences.read_text(encoding="utf-8"))
-            .get("browser", {})
-            .get("window_placement", {})
+    home = Path(
+        os.environ.get("GRIDIRON_HOME")
+        or (Path(sys.executable).resolve().parent
+            if getattr(sys, "frozen", False) else REPO)
+    )
+    # A frozen exe sits in dist/Gridiron/, so the installation is two up.
+    if getattr(sys, "frozen", False) and (home.parent.parent / "gridiron").is_dir():
+        home = home.parent.parent
+    os.environ["GRIDIRON_HOME"] = str(home)
+    return home
+
+
+HOME = _pin_installation()
+
+HOST = "127.0.0.1"
+DEFAULT_PORT = 8848
+HEALTH_TIMEOUT = 30.0
+LOG_TAIL_LINES = 15
+
+#: Window geometry lives beside the user's other application state, NOT in the
+#: bundle. A rebuild replaces dist/ wholesale, and a window that forgets where
+#: it was every time the app is rebuilt is a small daily annoyance that reads as
+#: the app being broken.
+STATE_DIR = Path(os.environ.get("APPDATA", Path.home())) / "Gridiron"
+GEOMETRY_FILE = STATE_DIR / "window.json"
+LOG_FILE = STATE_DIR / "launcher.log"
+
+DEFAULT_GEOMETRY = {"width": 1280, "height": 900, "x": None, "y": None}
+
+
+# ---------------------------------------------------------------------------
+# where things live
+# ---------------------------------------------------------------------------
+
+def bundle_root() -> Path | None:
+    """The PyInstaller extraction directory, or None when running from source."""
+    return Path(sys._MEIPASS) if getattr(sys, "frozen", False) else None
+
+
+def repo_root() -> Path:
+    """The working directory the server runs in.
+
+    When frozen, this is the directory the executable was launched from — set by
+    the shortcut — NOT the bundle. That distinction is the whole reason the
+    record survives a rebuild.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(os.environ.get("GRIDIRON_HOME", Path(sys.executable).resolve().parent))
+    return REPO
+
+
+def database_path() -> Path:
+    """Where the record lives. MUST resolve outside any bundle directory.
+
+    A database inside dist/ is a database that a rebuild deletes, and the record
+    is the only thing in this project that cannot be regenerated. A test asserts
+    this path is not under dist/ or under the PyInstaller extraction directory.
+    """
+    from gridiron import config
+
+    return Path(config.DB_PATH).resolve()
+
+
+def env_path() -> Path:
+    """Where the access token lives. Outside the bundle for the same reason: a
+    rebuild must not silently sign every device out."""
+    from gridiron import auth
+
+    return Path(auth.ENV_FILE).resolve()
+
+
+def paths_are_outside_the_bundle() -> list[str]:
+    """Every path that must survive a rebuild, checked. Returns what is wrong.
+
+    "Outside the bundle" is NECESSARY BUT NOT SUFFICIENT, and the insufficiency
+    was found the hard way. A frozen build fell back to `~/.gridiron` for its
+    database — outside the bundle, so this check passed — while the scheduled
+    tasks went on writing `var/gridiron.db`. The window would have opened onto
+    an empty record with nothing anywhere saying why. So it also checks the
+    paths are the ones the INSTALLATION uses.
+    """
+    problems: list[str] = []
+    bundle = bundle_root()
+    for name, path in (("database", database_path()), ("token file", env_path())):
+        if "dist" in path.parts:
+            problems.append(f"the {name} resolves inside dist/: {path}")
+        if bundle is not None:
+            try:
+                path.relative_to(bundle)
+            except ValueError:
+                pass
+            else:
+                problems.append(f"the {name} resolves inside the bundle: {path}")
+
+    # The same record the CLI and the scheduler use, not merely a safe one.
+    expected_db = (HOME / "var" / "gridiron.db").resolve()
+    if database_path() != expected_db:
+        problems.append(
+            f"the database is {database_path()}, but this installation keeps its "
+            f"record at {expected_db}. A window onto a different database shows "
+            "an empty project while the scheduled tasks fill the real one."
         )
-        if placement:
-            geometry = {
-                "x": placement.get("left", DEFAULT_GEOMETRY["x"]),
-                "y": placement.get("top", DEFAULT_GEOMETRY["y"]),
-                "width": placement.get("right", 0) - placement.get("left", 0)
-                or DEFAULT_GEOMETRY["width"],
-                "height": placement.get("bottom", 0) - placement.get("top", 0)
-                or DEFAULT_GEOMETRY["height"],
-                "maximized": placement.get("maximized", False),
-                "source": "browser profile",
-            }
-            return geometry
-    except (OSError, json.JSONDecodeError, TypeError):
-        pass
-
-    saved = load_state().get("geometry")
-    if saved:
-        return {**saved, "source": "launcher.json"}
-    return {**DEFAULT_GEOMETRY, "source": "default"}
+    expected_env = (HOME / ".env").resolve()
+    if env_path() != expected_env:
+        problems.append(
+            f"the token file is {env_path()}, but this installation keeps it at "
+            f"{expected_env}"
+        )
+    return problems
 
 
 # ---------------------------------------------------------------------------
-# health
+# attach first
 # ---------------------------------------------------------------------------
 
-def probe(port: int, timeout: float = 1.5) -> dict | None:
-    """Ask a possible server whether it is a healthy Gridiron."""
+def port_is_open(port: int, timeout: float = 0.4) -> bool:
+    with socket.socket() as probe:
+        probe.settimeout(timeout)
+        return probe.connect_ex((HOST, port)) == 0
+
+
+def gridiron_is_healthy(port: int, timeout: float = 2.0) -> bool:
+    """Whether what is on that port is OUR app and answering.
+
+    An open port is not enough: something else may hold 8848. `/api/health` is
+    the one route that answers without a session, which is exactly what makes it
+    usable here, and it returns a known shape.
+    """
     try:
         with urllib.request.urlopen(
-            f"http://{config.HOST}:{port}/api/health", timeout=timeout
+            f"http://{HOST}:{port}/api/health", timeout=timeout
         ) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-            return payload if payload.get("ok") else None
-    except (urllib.error.URLError, OSError, json.JSONDecodeError, TimeoutError):
-        return None
-
-
-def wait_for_health(port: int, deadline: float, server_error: list) -> dict:
-    while time.time() < deadline:
-        if server_error:
-            raise LaunchFailure(
-                "the server thread died before it became healthy:\n\n"
-                + "".join(server_error)
-            )
-        payload = probe(port, timeout=1.0)
-        if payload:
-            return payload
-        time.sleep(0.25)
-    raise LaunchFailure(
-        f"/api/health did not answer within {HEALTH_TIMEOUT_SECONDS:.0f}s on port {port}. "
-        "The window was not opened, because a window onto a dead server is worse "
-        "than no window."
-    )
+            body = json.loads(response.read())
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+    return bool(body.get("ok")) and "version" in body
 
 
 # ---------------------------------------------------------------------------
-# server
+# the window
 # ---------------------------------------------------------------------------
 
-def start_server(port: int, database: str | None) -> list:
-    """Run uvicorn on a daemon thread. Returns a list that receives the
-    traceback if it dies, which is what makes the failure loud rather than a
-    hang."""
-    errors: list = []
-
-    def run() -> None:
-        try:
-            import uvicorn
-
-            from gridiron import api
-
-            api.set_database(database or config.DB_PATH)
-            uvicorn.run(api.app, host=config.HOST, port=port, log_level="warning")
-        except BaseException:  # noqa: BLE001 - the traceback is the product here
-            errors.append(traceback.format_exc())
-
-    threading.Thread(target=run, name="gridiron-server", daemon=True).start()
-    return errors
+def load_geometry() -> dict:
+    try:
+        saved = json.loads(GEOMETRY_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return dict(DEFAULT_GEOMETRY)
+    geometry = dict(DEFAULT_GEOMETRY)
+    for key in geometry:
+        if isinstance(saved.get(key), int):
+            geometry[key] = saved[key]
+    # A window remembered off-screen is a window the user cannot find.
+    geometry["width"] = max(480, min(geometry["width"], 6000))
+    geometry["height"] = max(400, min(geometry["height"], 4000))
+    return geometry
 
 
-# ---------------------------------------------------------------------------
-# window
-# ---------------------------------------------------------------------------
+def save_geometry(geometry: dict) -> None:
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        GEOMETRY_FILE.write_text(json.dumps(geometry, indent=1), encoding="utf-8")
+    except OSError:
+        pass
 
-def find_browser() -> str | None:
-    for candidate in CHROMIUM_CANDIDATES:
-        if Path(candidate).exists():
-            return candidate
-    for name in ("msedge", "chrome", "chromium", "brave", "google-chrome"):
-        found = shutil.which(name)
-        if found:
-            return found
+
+def browser_command(url: str, geometry: dict) -> list[str] | None:
+    """A Chromium app window if one is installed, else None for the default browser.
+
+    `--app=` gives a window with no tabs, no address bar and its own taskbar
+    entry, which is as close to a native window as this gets without adding a
+    GUI toolkit and a webview runtime to a project that has neither. The URL
+    carries a single-use handoff nonce, never the token.
+    """
+    candidates = [
+        Path(os.environ.get("PROGRAMFILES", "C:/Program Files"))
+        / "Google/Chrome/Application/chrome.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)"))
+        / "Google/Chrome/Application/chrome.exe",
+        Path(os.environ.get("PROGRAMFILES", "C:/Program Files"))
+        / "Microsoft/Edge/Application/msedge.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)"))
+        / "Microsoft/Edge/Application/msedge.exe",
+    ]
+    for exe in candidates:
+        if exe.exists():
+            args = [
+                str(exe),
+                f"--app={url}",
+                f"--window-size={geometry['width']},{geometry['height']}",
+                f"--user-data-dir={STATE_DIR / 'browser'}",
+            ]
+            if geometry["x"] is not None and geometry["y"] is not None:
+                args.append(f"--window-position={geometry['x']},{geometry['y']}")
+            return args
     return None
 
 
-def open_window(url: str, geometry: dict) -> str:
-    """Open the app window. Returns a description of how it was opened."""
-    browser = find_browser()
-    if browser is None:
+def open_window(url: str, geometry: dict) -> subprocess.Popen | None:
+    command = browser_command(url, geometry)
+    if command is None:
         import webbrowser
 
         webbrowser.open(url)
-        return "default browser (no Chromium found; geometry not applied)"
-
-    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    args = [
-        browser,
-        f"--app={url}",
-        f"--user-data-dir={PROFILE_DIR}",
-        "--no-first-run",
-        "--no-default-browser-check",
-    ]
-    # Only impose geometry when the profile has nothing of its own to restore;
-    # after that the browser's memory is the better answer.
-    if geometry.get("source") == "default":
-        args += [
-            f"--window-size={geometry['width']},{geometry['height']}",
-            f"--window-position={geometry['x']},{geometry['y']}",
-        ]
-    subprocess.Popen(args, close_fds=True)
-    return f"{Path(browser).name} app window (profile at {PROFILE_DIR})"
-
-
-def shout(title: str, message: str, *, allow_dialog: bool = True) -> None:
-    """Fail where the user can actually see it.
-
-    From a terminal the banner on stderr is the loud failure, and a modal dialog
-    would only block a script waiting for a click nobody is there to give. With
-    no console attached - a desktop shortcut, a frozen build - stderr goes
-    nowhere, so the dialog is the only way the failure is visible at all.
-    """
-    banner = "=" * 68
-    print(os.linesep.join(["", banner, title, banner, message, banner]),
-          file=sys.stderr, flush=True)
-
-    has_console = bool(getattr(sys.stderr, "isatty", lambda: False)())
-    if not allow_dialog or has_console or os.environ.get("GRIDIRON_NO_DIALOG"):
-        return
-    if sys.platform == "win32":
-        try:
-            ctypes.windll.user32.MessageBoxW(
-                None, message[:1500], f"Gridiron - {title}", 0x10
-            )
-        except Exception:  # noqa: BLE001 - a missing dialog must not mask the error
-            pass
+        return None
+    return subprocess.Popen(command)
 
 
 # ---------------------------------------------------------------------------
+# failure, said out loud
+# ---------------------------------------------------------------------------
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Launch Gridiron")
-    parser.add_argument("--port", type=int, default=config.PORT)
-    parser.add_argument("--database", default=None)
-    parser.add_argument("--attach-only", action="store_true",
-                        help="attach to a running server; never start one")
-    parser.add_argument("--no-window", action="store_true",
-                        help="serve and health-gate, but open no window")
-    parser.add_argument("--status", action="store_true",
-                        help="report what is running and what geometry is remembered")
-    parser.add_argument("--no-dialog", action="store_true",
-                        help="never show a modal error dialog (for automation)")
-    args = parser.parse_args(argv)
-
-    geometry = remembered_geometry()
-
-    if args.status:
-        running = probe(args.port)
-        print(json.dumps({
-            "port": args.port,
-            "running": running is not None,
-            "health": running,
-            "state_dir": str(STATE_DIR),
-            "remembered_geometry": geometry,
-            "last_launch": load_state().get("last_launch_utc"),
-        }, indent=2))
-        return 0
-
-    url = f"http://{config.HOST}:{args.port}/"
-
-    # --- attach first ------------------------------------------------------
-    existing = probe(args.port)
-    if existing:
-        print(f"Gridiron already healthy on port {args.port}; attaching.")
-        if not args.no_window:
-            print("  window:", open_window(url, geometry))
-        save_state(
-            last_launch_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            mode="attached",
-            port=args.port,
-            geometry={k: geometry[k] for k in ("x", "y", "width", "height")},
-        )
-        return 0
-
-    if args.attach_only:
-        shout(
-            "nothing to attach to",
-            f"No healthy Gridiron is serving on port {args.port}, and --attach-only "
-            "was given, so no server was started.",
-            allow_dialog=not args.no_dialog,
-        )
-        return 3
-
-    # --- start, then gate on health ---------------------------------------
-    print(f"Starting Gridiron on {url}")
-    errors = start_server(args.port, args.database)
+def log_tail(lines: int = LOG_TAIL_LINES) -> str:
     try:
-        health = wait_for_health(
-            args.port, time.time() + HEALTH_TIMEOUT_SECONDS, errors
+        return "\n".join(
+            LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
         )
-    except LaunchFailure as exc:
-        shout("failed to start", str(exc), allow_dialog=not args.no_dialog)
-        return 2
+    except OSError:
+        return "(no launcher log)"
 
-    print(f"  healthy: {health}")
-    if not args.no_window:
-        print("  window:", open_window(url, geometry))
-    save_state(
-        last_launch_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        mode="started",
-        port=args.port,
-        database=health.get("database"),
-        geometry={k: geometry[k] for k in ("x", "y", "width", "height")},
+
+def error_dialog(title: str, message: str) -> None:
+    """A native dialog, because a frozen app has no console to print to.
+
+    Without this, a server that fails to start produces an executable that
+    flashes and vanishes, which tells the user nothing at all.
+    """
+    body = f"{message}\n\nLast {LOG_TAIL_LINES} log lines:\n\n{log_tail()}"
+    try:
+        import tkinter as tk
+        from tkinter import scrolledtext
+
+        root = tk.Tk()
+        root.title(title)
+        root.geometry("760x420")
+        text = scrolledtext.ScrolledText(root, wrap="word", font=("Consolas", 9))
+        text.insert("1.0", body)
+        text.configure(state="disabled")
+        text.pack(fill="both", expand=True, padx=10, pady=10)
+        tk.Button(root, text="Close", command=root.destroy, width=12).pack(pady=(0, 10))
+        root.mainloop()
+    except Exception:  # noqa: BLE001 - a dialog that cannot open must still report
+        print(f"{title}\n{body}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# the run
+# ---------------------------------------------------------------------------
+
+def start_server(port: int) -> subprocess.Popen:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    handle = LOG_FILE.open("a", encoding="utf-8")
+    handle.write(f"\n--- launcher start {time.strftime('%Y-%m-%dT%H:%M:%SZ')} ---\n")
+    handle.flush()
+
+    if getattr(sys, "frozen", False):
+        command = [sys.executable, "--serve-only", "--port", str(port)]
+    else:
+        command = [
+            sys.executable, "-m", "gridiron.cli", "serve", "--port", str(port)
+        ]
+    # STDIO IS ALWAYS REDIRECTED, and it is not optional. A console=False
+    # frozen build has no stdout handle at all; the first log line it writes
+    # then kills the process, and what you see is an executable that starts,
+    # binds nothing, and exits 1 with no message. Handing it a real file is
+    # what makes the frozen server work.
+    return subprocess.Popen(
+        command, cwd=str(repo_root()), stdout=handle, stderr=handle,
+        env={**os.environ, "GRIDIRON_HOME": str(HOME)},
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 
-    if args.no_window:
+
+def wait_for_health(port: int, deadline: float) -> bool:
+    while time.time() < deadline:
+        if gridiron_is_healthy(port):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def signed_in_url(port: int) -> str:
+    """The URL to open: a one-time handoff when a token is configured.
+
+    THE TOKEN IS NEVER IN THE URL AND NEVER LOGGED. The nonce is random, valid
+    once, and expires in sixty seconds; redeeming it is what mints the session.
+    With no token configured the plain root is opened, and the middleware sends
+    the window to a page that explains what to run.
+    """
+    from gridiron import api, auth, config
+
+    api.set_database(config.DB_PATH)
+    if auth.read_token() is None:
+        return f"http://{HOST}:{port}/"
+    url = api.desktop_handoff_url(HOST, port)
+    return url or f"http://{HOST}:{port}/"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Open Gridiron in a window.")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "--keep-running", action="store_true",
+        help="leave the server running after the window closes, even if this "
+             "launcher started it",
+    )
+    parser.add_argument(
+        "--serve-only", action="store_true",
+        help="run the server in the foreground; used by the frozen build to "
+             "re-enter itself as a child process",
+    )
+    args = parser.parse_args(argv)
+
+    if args.serve_only:
+        from gridiron import api, config
+
+        api.set_database(config.DB_PATH)
+        api.serve(port=args.port, log_level="info")
         return 0
 
-    print("\nGridiron is running. Close this window or press Ctrl+C to stop the server.")
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        print("\nstopped.")
+    problems = paths_are_outside_the_bundle()
+    if problems:
+        error_dialog(
+            "Gridiron — refusing to start",
+            "The record or the token would live inside the application bundle, "
+            "where a rebuild would delete it:\n  " + "\n  ".join(problems),
+        )
+        return 2
+
+    # --- attach first ------------------------------------------------------
+    started_by_us = False
+    server: subprocess.Popen | None = None
+
+    if gridiron_is_healthy(args.port):
+        print(f"attaching to the Gridiron already on {HOST}:{args.port}")
+    elif port_is_open(args.port):
+        error_dialog(
+            "Gridiron — port in use",
+            f"Something is listening on {HOST}:{args.port} but it is not "
+            "Gridiron: /api/health did not answer as expected. Close whatever "
+            "holds the port, or start Gridiron on another one with --port.",
+        )
+        return 2
+    else:
+        server = start_server(args.port)
+        started_by_us = True
+        if not wait_for_health(args.port, time.time() + HEALTH_TIMEOUT):
+            server.terminate()
+            error_dialog(
+                "Gridiron — the server did not start",
+                f"No healthy response from http://{HOST}:{args.port}/api/health "
+                f"within {HEALTH_TIMEOUT:.0f} seconds.",
+            )
+            return 1
+
+    geometry = load_geometry()
+    window = open_window(signed_in_url(args.port), geometry)
+    save_geometry(geometry)
+
+    if window is None:
+        # The default browser was used, so there is no window to wait on. Leave
+        # the server up: there is no reliable way to know when the user is done.
+        print("opened in the default browser; leaving the server running")
         return 0
+
+    try:
+        window.wait()
+    except KeyboardInterrupt:
+        pass
+
+    if server is not None and started_by_us and not args.keep_running:
+        # Ours to stop, so stop it. A server nobody asked for outliving its
+        # window is a background process the user cannot see or account for.
+        server.terminate()
+        try:
+            server.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            server.kill()
+        print("stopped the server this launcher started")
+    elif started_by_us:
+        print("leaving the server running (--keep-running)")
+    else:
+        print("leaving the server running: this launcher did not start it")
+
+    # THE SCHEDULED TASKS ARE UNTOUCHED. They call the CLI directly against the
+    # database and never needed the server; the record keeps itself whether this
+    # window is open or not.
+    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
