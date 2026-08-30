@@ -52,6 +52,10 @@ def served(league, db_path, monkeypatch):
     run.run_week(league, 2025, 7, include_props=True, use_llm=False)
     run.run_week(league, 2025, 8, include_props=True, use_llm=False)
     resolve.resolve_all(league)
+    # A slate that has NOT been played, so the picks tab has live cards. The
+    # rail, the pick sentence and the tier chip only exist before a result:
+    # a settled card shows its verdict instead, per the approved mockup.
+    run.run_week(league, 2025, 18, include_props=True, use_llm=False)
     league.commit()
 
     api.set_database(db_path)
@@ -208,9 +212,13 @@ def test_the_track_record_is_the_default_screen(page):
 
 def test_the_dumbbell_renders(page):
     page.evaluate("location.hash = '#/week'")
+    # T1 old -> new: `.rail-dot` became `.dot`, and the rail now exists only on
+    # a PENDING card — a settled one shows its verdict and final probabilities
+    # instead, per the approved mockup. The selector targets a card that still
+    # has a rail rather than blindly taking the first.
     page.wait_for_selector("#week-cards .card .dumbbell", timeout=10000)
     geometry = page.eval_on_selector_all(
-        "#week-cards .card:first-child .rail-dot",
+        "#week-cards .card:has(.dumbbell) .dot",
         """dots => dots.map(d => {
             const rail = d.parentElement.getBoundingClientRect();
             const r = d.getBoundingClientRect();
@@ -231,11 +239,15 @@ def test_model_and_market_are_told_apart_by_form_not_colour(page):
     page.wait_for_selector("#week-cards .card .dumbbell", timeout=10000)
     styles = page.evaluate(
         """() => {
-            const model = document.querySelector('.rail-dot.model');
-            const market = document.querySelector('.rail-dot.market');
+            /* T1 old -> new: `.rail-dot` became `.dot`. With the old selector
+               this test found nothing and SKIPPED, which reads green and
+               asserts nothing at all. */
+            const model = document.querySelector('.dot.model');
+            const market = document.querySelector('.dot.market');
             if (!model || !market) return null;
             const a = getComputedStyle(model), b = getComputedStyle(market);
-            return { modelBorder: a.borderTopWidth, marketBorder: b.borderTopWidth };
+            return { modelBorder: a.borderTopWidth, marketBorder: b.borderTopWidth,
+                     modelFill: a.backgroundColor, marketFill: b.backgroundColor };
         }"""
     )
     if styles is None:
@@ -243,10 +255,19 @@ def test_model_and_market_are_told_apart_by_form_not_colour(page):
     assert styles["modelBorder"] != styles["marketBorder"], (
         "the two dots are distinguished by colour alone"
     )
+    # The model is filled, the market is an outline: told apart by FORM, so the
+    # two colours stay reserved for value.
+    assert styles["marketBorder"] != "0px", "the market dot has no outline"
 
 
 def test_the_contribution_bars_render_signed(page):
+    # T1 old -> new: the bars moved inside the collapsed reasoning, so the card
+    # has to be opened before they have geometry. The chips are the glance; the
+    # bars are still the detail.
     page.evaluate("location.hash = '#/week'")
+    page.wait_for_selector("#week-cards .card", timeout=10000)
+    page.locator("#week-cards .card").first.locator(".card-head").click()
+    page.wait_for_timeout(300)
     page.wait_for_selector("#week-cards .card .contrib-bar", timeout=10000)
     bars = page.eval_on_selector_all(
         "#week-cards .card:first-child .contrib-bar",
@@ -264,23 +285,42 @@ def test_a_card_expands_and_shows_its_detail(page):
     page.wait_for_selector("#week-cards .card", timeout=10000)
     card = page.locator("#week-cards .card").first
     detail = card.locator(".card-detail")
-    assert detail.bounding_box()["height"] < 2, "the card starts open"
+    # T1 old -> new: the detail is now display:none rather than a collapsed
+    # max-height, so it has NO bounding box when closed. `is_visible()` is the
+    # honest check either way and does not depend on how the hiding is done.
+    assert not detail.is_visible(), "the card starts open"
 
     card.locator(".card-head").click()
     page.wait_for_timeout(400)
-    assert detail.bounding_box()["height"] > 40, "the card did not expand"
+    assert detail.is_visible(), "the card did not expand"
+    assert detail.bounding_box()["height"] > 40
     assert card.locator(".card-detail table.grid tbody tr").count() > 0
 
 
-def test_the_bucket_chip_never_shows_an_accuracy_without_its_n(page):
+def test_the_bucket_line_never_shows_an_accuracy_without_its_n(page):
+    """LAW 4 on the card, unchanged in meaning.
+
+    T1 old -> new: the sample size used to read "n=6" in a `.chip`; it now reads
+    "6 resolved" in a `.bucket` line, because the approved design states counts
+    in words. `.chip` is now the FACTOR chip and carries no N by design. What is
+    asserted is the thing the law actually cares about: a percentage never
+    appears without a count beside it.
+    """
+    import re
+
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .card .chip", timeout=10000)
-    chips = page.eval_on_selector_all(
-        "#week-cards .card .chip", "els => els.map(e => e.textContent)"
+    page.wait_for_selector("#week-cards .card .bucket", timeout=10000)
+    lines = page.eval_on_selector_all(
+        "#week-cards .card .bucket", "els => els.map(e => e.textContent)"
     )
-    assert chips
-    for text in chips:
-        assert "n=" in text, f"a bucket chip rendered without its N: {text!r}"
+    assert lines
+    for text in lines:
+        assert re.search(r"\d+ resolved", text), (
+            f"a bucket line rendered without its count: {text!r}"
+        )
+        # If it states an accuracy, the count must be right there with it.
+        if "hits" in text or re.search(r"\d+% actual", text):
+            assert re.search(r"\d+ resolved", text)
 
 
 def test_the_weekly_strip_renders_with_hit_targets(page):
@@ -346,7 +386,13 @@ def test_only_the_card_expansion_animates(page):
             return [...new Set(out)];
         }"""
     )
-    assert moving == ["transition:card-detail"], f"something else moves: {moving}"
+    # T1 old -> new: the card gains a border-COLOUR transition on hover from
+    # the approved mockup, and the detail is a display toggle rather than a
+    # max-height animation. Nothing MOVES and nothing resizes, so the rule the
+    # project set itself still holds; the assertion now names what may
+    # transition instead of forbidding every transition.
+    unexpected = [m for m in moving if not m.startswith('transition:card')]
+    assert not unexpected, f"something else moves: {unexpected}"
 
 
 def test_nothing_moves_under_reduced_motion(served):

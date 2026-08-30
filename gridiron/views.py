@@ -277,6 +277,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "voided": r["id"] in voided,
                 "void_reason": voided.get(r["id"]),
                 "bucket": bucket_cache[key],
+                # Derived from the bucket above, never re-counted. One
+                # implementation means the chip on this card and the point on
+                # the calibration chart cannot disagree.
+                "tier": calibration.tier_from_bucket(bucket_cache[key]),
                 "market_fetched_utc": snap.get("fetched_utc"),
                 "factor_set_version": r["factor_set_version"],
             }
@@ -572,4 +576,45 @@ def schedule_staleness(conn: sqlite3.Connection) -> dict:
         "side_by_side_sports": True,
         "stale_after_hours": STALE_AFTER_HOURS,
         "sports": out,
+    }
+
+
+def season_record(conn: sqlite3.Connection, sport: str) -> dict:
+    """The active sport's settled record, for the header.
+
+    Wins and losses of RESOLVED predictions in the current season, one sport
+    only. LAW 6: there is no combined figure and the header shows whichever
+    sport is being looked at, never a total.
+    """
+    calibration.require_sport(sport, "views.season_record")
+    season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
+    row = conn.execute(
+        "SELECT COUNT(*) AS n, SUM(p.outcome) AS wins FROM predictions p"
+        " JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport = ? AND g.season = ? AND p.resolved_utc IS NOT NULL"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)",
+        (sport, season),
+    ).fetchone()
+    n = row["n"] or 0
+    wins = row["wins"] or 0
+    updated = conn.execute(
+        "SELECT MAX(resolved_utc) AS last FROM predictions WHERE sport = ?", (sport,)
+    ).fetchone()["last"]
+    return {
+        "sport": sport,
+        "label": config.SPORT_LABELS.get(sport, sport.upper()),
+        "season": season,
+        "n": n,
+        "wins": wins,
+        "losses": n - wins,
+        "updated_utc": updated,
+        # Said in words rather than assembled in the browser, so the one place
+        # that decides how a record reads is here.
+        "line": (
+            f"{config.SPORT_LABELS.get(sport, sport.upper())} this season "
+            f"{wins}-{n - wins}"
+            if n else
+            f"{config.SPORT_LABELS.get(sport, sport.upper())} this season - nothing settled yet"
+        ),
     }

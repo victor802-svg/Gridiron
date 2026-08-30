@@ -35,6 +35,26 @@ BUCKETS: tuple[tuple[float, float, str], ...] = (
     (0.80, 1.01, "80%+"),
 )
 
+#: Confidence tiers, mapped from the claimed-probability bucket. This is a
+#: LABEL over the existing buckets, not a second grouping: a tier's earned
+#: figure comes from `bucket_record` — the same function the record page uses —
+#: so the number on a pick card and the number on the chart cannot drift apart.
+#:
+#: STRONG covers two buckets, and each keeps its OWN number. Pooling 70-80% with
+#: 80%+ to make one "STRONG hit rate" would be exactly the merge LAW 4 forbids,
+#: and it would flatter: the easier bucket would lift the harder one.
+TIERS: dict[str, str] = {
+    "50-60%": "LEAN",
+    "60-70%": "SOLID",
+    "70-80%": "STRONG",
+    "80%+": "STRONG",
+}
+
+#: A tier states its earned accuracy only once its own bucket holds this many
+#: settled picks. Deliberately the same constant the calibration chart uses to
+#: decide whether a point is provisional — one threshold, one meaning.
+TIER_MIN_SETTLED = config.MIN_SAMPLE_FOR_BUCKET_POINT
+
 ALWAYS_HALF_BRIER = 0.25
 ALWAYS_HALF_LOG_LOSS = math.log(2.0)
 
@@ -841,6 +861,40 @@ def bucket_record(
         entry["actual"] = None
         entry["claimed"] = None
         entry["message"] = f"no resolved predictions in the {label} bucket yet"
+    return entry
+
+
+def tier_from_bucket(bucket: dict) -> dict:
+    """The tier chip for a pick, derived from the bucket record it already has.
+
+    Takes the dict `bucket_record` returned rather than re-querying, so there is
+    exactly one place that counts a bucket and exactly one number it can
+    produce. `earned` is None below the threshold and the caller renders the
+    shortfall instead — a tier that showed a hit rate on nine settled picks
+    would be the most persuasive lie on the page, sitting beside a specific
+    forecast and reading as a track record for it.
+    """
+    label = bucket.get("label")
+    tier = TIERS.get(label)
+    if tier is None:
+        return {"tier": None, "earned": None, "n": 0, "proven": False,
+                "message": "no tier for this probability"}
+
+    n = bucket.get("n") or 0
+    proven = n >= TIER_MIN_SETTLED
+    entry = {
+        "tier": tier,
+        "bucket": label,
+        "n": n,
+        "needed": TIER_MIN_SETTLED,
+        "proven": proven,
+        "earned": bucket.get("actual") if proven else None,
+    }
+    entry["message"] = (
+        f"this tier hits {round((entry['earned'] or 0) * 100)}% over {n} settled"
+        if proven
+        else f"tier unproven - {n} settled of {TIER_MIN_SETTLED} needed"
+    )
     return entry
 
 

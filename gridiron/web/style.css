@@ -17,57 +17,86 @@
  */
 
 :root {
-  /* ink and ground */
-  --bg: #ffffff;
-  --panel: #f5f6f8;
-  --card: #ffffff;
-  --ink: #14161a;
-  --ink-2: #4a5058;
-  --ink-3: #767d86;
-  --rule: #e0e3e7;
-  --rule-2: #c3c9d0;
+  /* ---- the ground -------------------------------------------------------
+     Approved mockup: docs/mockup/gridiron_dark.html. Dark is the only theme
+     now, not a preference-dependent variant: two themes is two sets of
+     contrast ratios to keep true, and only one of them was ever designed. */
+  --ink: #0A0F0C;            /* page: black with a green undertone */
+  --card: #10160F;           /* elevated card */
+  --card-2: #151D13;         /* hover, inner wells */
+  --line: #1F2B1E;           /* hairline */
+  --line-lit: #2C3D2B;       /* hairline, hover and the 50 tick */
+  --resolved: #0D120C;       /* a settled card sits lower than a live one */
 
-  /* the one accent: interactive only */
-  --accent: #1a4fd6;
+  /* ---- ink --------------------------------------------------------------
+     Three weights of text and no more: chrome for headings and primary
+     values, muted for secondary, faint for captions and sample sizes. */
+  --chrome: #F2F5F0;
+  --muted: #8AA08C;
+  --faint: #5A6B5C;
+  --faintest: #3A4A3C;       /* rail end labels only */
 
-  /* the two semantic colours: values only */
-  --pos: #10693f;
-  --neg: #a3231a;
+  /* ---- the two colours, and their two jobs -------------------------------
+     GREEN is the interactive accent AND the positive value. Those are its
+     only jobs: it never decorates a heading, a border or a tab that is not
+     selected, and it never marks a number simply to make it feel important.
+     RED is a negative value only. Confidence escalates by WEIGHT, not hue —
+     see .tier — precisely so green keeps its meaning. */
+  --green: #00DC82;
+  --red: #FF6B6B;
+  --green-wash: rgba(0, 220, 130, 0.10);
+  --red-wash: rgba(255, 107, 107, 0.10);
+  --model-halo: rgba(242, 245, 240, 0.12);
+  --span-far: #3A5238;       /* the lit end of the disagreement span */
 
-  /* chart ink */
-  --band: rgba(20, 22, 26, 0.06);
+  /* ---- a NAME COLLISION, resolved deliberately -------------------------
+     `--ink` is the GROUND in the approved palette. In the CSS this
+     replaced it meant the TEXT. Aliasing one to the other silently
+     painted every heading the colour of the page: the matchup and the
+     probability rendered black on black and were invisible in the first
+     render. Text now says `--chrome`; `--ink` is the page, and nothing
+     reads it as a foreground except `.tier.strong`, which really does
+     want dark text on a white chip.
 
-  --warn-bg: #fff6db;
-  --warn-ink: #6b4a00;
-  --warn-rule: #d9a800;
+     ---- legacy aliases ---------------------------------------------------
+     The pages built before this theme use these names. Aliased rather than
+     renamed across every rule at once: a rename touching six pages in one
+     commit is a rename nobody can review. */
+  --bg: var(--ink);
+  --panel: var(--card);
+  --rule: var(--line);
+  --rule-2: var(--line-lit);
+  --ink-2: var(--muted);
+  --ink-3: var(--faint);
+  --accent: var(--green);
+  --pos: var(--green);
+  --neg: var(--red);
+  --band: rgba(242, 245, 240, 0.07);
+  --rule-1: var(--card-2);
+  --warn-bg: rgba(255, 107, 107, 0.08);
+  --warn-ink: var(--red);
+  --warn-rule: var(--red);
 
-  /* three sizes, and only three */
-  --t-display: 26px;
+  /* ---- type -------------------------------------------------------------
+     NOT SELF-HOSTED, and that is a deliberate refusal rather than an
+     oversight. The mockup pulls Archivo, Barlow Condensed and IBM Plex Mono
+     from Google's CDN; this app ships no CDN link (a test asserts it) and no
+     downloaded binary (the icon is drawn in code for the same reason — a
+     binary nobody can diff is a thing nobody can check). The families are
+     named first so they apply wherever they are installed, and every stack
+     falls back to a system face with the same proportions. */
+  --body: 'Archivo', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --cond: 'Barlow Condensed', 'Archivo Narrow', 'Segoe UI Semibold',
+          'Arial Narrow', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --t-display: 28px;
   --t-body: 14px;
   --t-caption: 12px;
 
-  --radius: 8px;
+  --radius: 12px;
+  --radius-sm: 8px;
   --ease: 150ms cubic-bezier(0.2, 0, 0.2, 1);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d0f13;
-    --panel: #14171d;
-    --card: #161a21;
-    --ink: #f0f3f7;
-    --ink-2: #b3bcc7;
-    --ink-3: #7d8894;
-    --rule: #242932;
-    --rule-2: #39404b;
-    --accent: #7fa6ff;
-    --pos: #4ecb8b;
-    --neg: #ff7d6f;
-    --band: rgba(240, 243, 247, 0.07);
-    --warn-bg: #2b2206;
-    --warn-ink: #ffdc86;
-    --warn-rule: #7d6300;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -76,9 +105,8 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--ink);
-  font: var(--t-body)/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto,
-        Helvetica, Arial, sans-serif;
+  color: var(--chrome);
+  font: var(--t-body)/1.45 var(--body);
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum" 1;
 }
@@ -107,19 +135,41 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
   max-width: 1120px; margin: 0 auto; padding: 0 24px;
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
 }
+/* The wordmark lives in the masthead, which already had one. A second copy in
+   the sport bar was a duplicate on screen, not a design. */
+.masthead .brand em { font-style: normal; color: var(--green); }
+/* A degraded run says so quietly. It is a fact about the forecast, not an
+   alarm: the statistical prediction stands and is scored normally. */
+.degraded-note {
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+  margin-top: 6px; text-align: right;
+}
+/* The ACTIVE sport's record, at the right of the bar. One sport, never a sum. */
+.resolved-count {
+  margin-left: auto; font-family: var(--mono); font-size: var(--t-caption);
+  color: var(--faint);
+}
+.resolved-count b { color: var(--muted); font-weight: 500; }
+/* The never-summed note is quiet now: it is a standing fact, not news. */
+#sport-note { flex-basis: 100%; color: var(--faint); font-size: 11px; }
 #sport-tabs { display: flex; gap: 2px; }
 #sport-tabs button {
-  font: inherit; font-size: var(--t-body); font-weight: 600;
+  font-family: var(--cond); font-size: 16px; font-weight: 600;
+  letter-spacing: 0.08em;
   background: none; border: 0; border-bottom: 2px solid transparent;
-  padding: 11px 14px 9px; color: var(--ink-3); cursor: pointer;
-  display: flex; align-items: baseline; gap: 7px;
+  padding: 8px 14px 10px; color: var(--muted); cursor: pointer;
+  display: flex; align-items: baseline; gap: 6px;
 }
-#sport-tabs button:hover { color: var(--ink); }
+#sport-tabs button:hover { color: var(--chrome); }
+/* Green underlines the ACTIVE tab only. An unselected tab gets no accent:
+   the accent means "this is the thing you are looking at or can act on". */
 #sport-tabs button[aria-current="true"] {
-  color: var(--ink); border-bottom-color: var(--accent);
+  color: var(--chrome); border-bottom-color: var(--green);
 }
-#sport-tabs .tab-n { font-size: var(--t-caption); font-weight: 400; color: var(--ink-3); }
-#sport-tabs button[aria-current="true"] .tab-n { color: var(--ink-2); }
+#sport-tabs .tab-n {
+  font-family: var(--mono); font-size: 10px; font-weight: 400;
+  color: var(--faint); letter-spacing: 0;
+}
 
 .masthead { border-bottom: 1px solid var(--rule); }
 .masthead-inner {
@@ -136,8 +186,8 @@ nav a {
   color: var(--ink-3); font-size: var(--t-body); font-weight: 500;
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
-nav a:hover { color: var(--ink); }
-nav a.active { color: var(--ink); border-bottom-color: var(--accent); }
+nav a:hover { color: var(--chrome); }
+nav a.active { color: var(--chrome); border-bottom-color: var(--accent); }
 
 main { max-width: 1120px; margin: 0 auto; padding: 24px 24px 64px; }
 
@@ -158,7 +208,7 @@ h3 { font-size: var(--t-body); font-weight: 600; margin: 0 0 6px; }
 select, input[type=search] {
   font: inherit; font-size: var(--t-caption); padding: 5px 8px;
   border: 1px solid var(--rule-2); border-radius: 6px;
-  background: var(--bg); color: var(--ink);
+  background: var(--bg); color: var(--chrome);
 }
 select:hover, input[type=search]:hover { border-color: var(--accent); }
 
@@ -205,57 +255,182 @@ table.grid td.wide {
 
 /* --- pick cards --------------------------------------------------------- */
 
-.card {
-  border: 1px solid var(--rule); border-radius: var(--radius);
-  background: var(--card); margin-bottom: 10px; overflow: hidden;
-}
-.card-head {
-  display: flex; justify-content: space-between; gap: 14px;
-  flex-wrap: wrap; align-items: baseline;
-  padding: 14px 16px 0; cursor: pointer;
-}
-.card-claim { font-weight: 600; }
-.card-meta { color: var(--ink-3); }
-.card-body { padding: 0 16px 14px; }
+/* --- the pick card ------------------------------------------------------
+   Rebuilt to docs/mockup/gridiron_dark.html. The card answers, top to bottom:
+   who is playing, what the model thinks and how sure, where the market sits,
+   how that tier has actually done, and why. In that order, because that is the
+   order the questions arrive in. */
 
-/* the dumbbell: model and market on one probability rail */
-.dumbbell { margin: 14px 0 4px; }
-.rail {
-  position: relative; height: 26px; margin: 0 6px;
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px 18px 14px; margin: 14px 0;
+  transition: border-color var(--ease);
 }
-.rail-line {
-  position: absolute; left: 0; right: 0; top: 12px; height: 2px;
-  background: var(--rule); border-radius: 1px;
-}
-.rail-span { position: absolute; top: 10px; height: 6px; border-radius: 3px; }
-.rail-span.pos { background: var(--pos); }
-.rail-span.neg { background: var(--neg); }
-.rail-dot {
-  position: absolute; top: 6px; width: 14px; height: 14px; margin-left: -7px;
-  border-radius: 50%; box-sizing: border-box;
-}
-/* Model and market are told apart by FORM, not hue: colour is reserved for the
-   value of the gap between them. */
-.rail-dot.model { background: var(--ink); }
-.rail-dot.market { background: var(--bg); border: 2.5px solid var(--ink-2); }
-.rail-scale {
+.card:hover { border-color: var(--line-lit); }
+
+/* `.card-top` is the mockup's name; `.card-head` is kept alongside it because
+   it is the expansion target the browser tests click. */
+.card-head, .card-top {
   display: flex; justify-content: space-between;
-  color: var(--ink-3); font-size: var(--t-caption); margin: 0 6px;
+  align-items: flex-start; gap: 16px; cursor: pointer;
 }
-.rail-legend {
-  display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline;
-  margin-top: 6px;
+
+.matchup {
+  font-family: var(--cond); font-weight: 700; font-size: 24px;
+  letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.1;
 }
-.rail-legend .k { color: var(--ink-3); font-size: var(--t-caption); }
-.rail-legend .v { font-size: var(--t-display); font-weight: 650; letter-spacing: -0.02em; }
-/* A market with no source. Rendered in the caption size and the muted ink,
-   never in the display size, so it cannot be mistaken for a probability. */
-.rail-legend .v.no-line {
-  font-size: var(--t-body); font-weight: 500; color: var(--ink-3);
-  font-style: normal;
+.market-line { font-size: var(--t-caption); color: var(--muted); margin-top: 3px; }
+
+/* THE PICK AS A SENTENCE. A probability is a fact about a distribution; this
+   is the fact a person came for, said in words they would use out loud. */
+.pick { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.pick b { color: var(--chrome); font-weight: 600; letter-spacing: 0.02em; }
+.pick .arrow { color: var(--green); font-weight: 700; }
+/* Below 53% the sentence says "— barely". The app never oversells a coin flip. */
+.pick .barely { color: var(--faint); }
+
+/* CONFIDENCE TIERS escalate by WEIGHT, never by hue: faint outline, white
+   outline, filled. Colour is not available for this — green has two jobs
+   already (interactive, positive) and a third would empty it of meaning. */
+.tier {
+  display: inline-block; font-family: var(--cond); font-weight: 700;
+  font-size: 13px; letter-spacing: 0.14em; padding: 2px 9px;
+  border-radius: 5px; margin-top: 8px;
 }
-.rail-legend .gap-value.pos { color: var(--pos); }
-.rail-legend .gap-value.neg { color: var(--neg); }
+.tier.lean { color: var(--faint); border: 1px solid var(--line); }
+.tier.solid { color: var(--chrome); border: 1px solid var(--muted); }
+.tier.strong { color: var(--ink); background: var(--chrome); }
+.tier-score {
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  margin-left: 8px; letter-spacing: 0;
+}
+.tier-legend {
+  display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+  margin: 10px 0 0; padding: 12px 16px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px;
+  font-size: var(--t-caption); color: var(--muted);
+}
+.tier-legend .tl { display: flex; align-items: center; gap: 8px; }
+
+.prob {
+  font-family: var(--mono); font-weight: 600; font-size: var(--t-display);
+  text-align: right; line-height: 1; white-space: nowrap;
+}
+.prob .pct { color: var(--faint); }
+.prob small {
+  display: block; font-size: 10px; font-weight: 400; color: var(--faint);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px;
+}
+
+/* THE RAIL. 0-100, a tick at 50, the model solid and the market hollow, with
+   the disagreement shaded between them. Model and market are told apart by
+   FORM, not hue, so the two colours stay reserved for value. */
+.dumbbell { margin: 0; }
+.rail { position: relative; height: 34px; margin: 14px 0 6px; }
+.rail .track {
+  position: absolute; left: 0; right: 0; top: 16px; height: 2px;
+  background: var(--line);
+}
+.rail .tick50 {
+  position: absolute; top: 11px; height: 12px; width: 1px;
+  background: var(--line-lit); left: 50%;
+}
+.rail .span {
+  position: absolute; top: 15px; height: 4px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--line-lit), var(--span-far));
+}
+.dot {
+  position: absolute; top: 10px; width: 14px; height: 14px;
+  border-radius: 50%; transform: translateX(-50%);
+}
+.dot.model { background: var(--chrome); box-shadow: 0 0 0 3px var(--model-halo); }
+.dot.market { background: none; border: 2px solid var(--muted); }
+.dot-label {
+  position: absolute; top: -6px; transform: translateX(-50%);
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+  white-space: nowrap;
+}
+.rail .zero, .rail .hundred {
+  position: absolute; top: 22px; font-family: var(--mono);
+  font-size: 9px; color: var(--faintest);
+}
+.rail .hundred { right: 0; }
+/* No market line: the model dot stands alone and the absence is stated. There
+   is never a second dot at an invented number. */
+.rail-noline {
+  font-size: var(--t-caption); color: var(--faint); margin-top: 2px;
+}
+
+.gap-chip {
+  font-family: var(--mono); font-size: var(--t-caption);
+  font-weight: 600; color: var(--chrome);
+}
+.gap-chip.quiet { color: var(--muted); }
+
+.meta {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap; margin-top: 6px;
+}
+.bucket { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.factors { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  background: var(--card-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 8px;
+}
+.chip b { font-weight: 500; color: var(--chrome); }
+
+/* Reasoning is collapsed by default: it is the answer to "why", and "why" is
+   the second question. `.card-body` is kept as an alias for the tests. */
+.reason, .card-body {
+  margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px;
+  display: none; color: var(--muted); font-size: 13px; line-height: 1.55;
+}
+.card.open .reason, .card.open .card-body { display: block; }
+.expand {
+  margin-top: 10px; background: none; border: 0; color: var(--green);
+  font-family: var(--body); font-size: var(--t-caption); font-weight: 600;
+  cursor: pointer; padding: 0; min-height: 44px; text-align: left;
+}
+.expand:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+/* --- resolved ------------------------------------------------------------
+   A settled card sits lower and quieter than a live one: it is history, and
+   history should not compete with the thing still to happen. */
+.card.resolved { background: var(--resolved); }
+.card.resolved .matchup { color: var(--muted); }
+.verdict {
+  font-family: var(--cond); font-weight: 700; font-size: 15px;
+  letter-spacing: 0.12em; padding: 3px 10px; border-radius: 6px;
+}
+.verdict.win { color: var(--green); background: var(--green-wash); }
+.verdict.loss { color: var(--red); background: var(--red-wash); }
+.final { font-family: var(--mono); font-size: var(--t-caption); color: var(--muted); }
+
+.section-label {
+  font-family: var(--cond); font-size: 15px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
+  margin: 30px 0 2px;
+}
+
+/* --- the sort control ---------------------------------------------------- */
+.seg { display: flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.seg button {
+  background: none; border: 0; color: var(--muted); font-family: var(--body);
+  font-size: 13px; font-weight: 500; padding: 7px 14px; cursor: pointer;
+  min-height: 44px;
+}
+.seg button[aria-pressed="true"] { background: var(--card-2); color: var(--green); }
+.controls {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: 22px 0 6px; flex-wrap: wrap; gap: 8px;
+}
+.why { font-size: var(--t-caption); color: var(--faint); }
+
+@media (max-width: 560px) {
+  .matchup { font-size: 20px; }
+  .prob { font-size: 22px; }
+}
 
 /* contribution bars: the reasoning made visible */
 .contrib { margin-top: 14px; }
@@ -287,7 +462,7 @@ table.grid td.wide {
   border: 1px solid var(--rule-2); border-radius: 999px;
   padding: 3px 11px; font-size: var(--t-caption); color: var(--ink-2);
 }
-.chip .chip-label { font-weight: 600; color: var(--ink); }
+.chip .chip-label { font-weight: 600; color: var(--chrome); }
 .chip-sub { color: var(--ink-3); }
 .chip.provisional { border-style: dashed; }
 
@@ -341,7 +516,7 @@ canvas { display: block; max-width: 100%; }
 .pager { display: flex; align-items: center; gap: 14px; margin-top: 14px; color: var(--ink-3); font-size: var(--t-caption); }
 .pager button {
   font: inherit; font-size: var(--t-caption); padding: 5px 12px;
-  border: 1px solid var(--rule-2); background: var(--bg); color: var(--ink);
+  border: 1px solid var(--rule-2); background: var(--bg); color: var(--chrome);
   border-radius: 6px; cursor: pointer;
 }
 .pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
@@ -418,7 +593,7 @@ canvas { display: block; max-width: 100%; }
 .sched-detail { color: var(--ink-2); font-size: 13px; margin-top: 8px; }
 .sched-alarm, .sched-missed {
   margin-top: 8px; padding: 8px 10px; font-size: 13px;
-  border-left: 2px solid var(--accent); color: var(--ink);
+  border-left: 2px solid var(--accent); color: var(--chrome);
   background: var(--rule-1);
 }
 .sched-stale {

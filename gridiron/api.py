@@ -268,6 +268,12 @@ def schedule() -> dict:
     return tasks.status(get_conn())
 
 
+@app.get("/api/record-line")
+def record_line(sport: str | None = None) -> dict:
+    """The active sport's settled record for the header. One sport, never a sum."""
+    return views.season_record(get_conn(), _sport(sport))
+
+
 @app.get("/api/sports")
 def sports() -> dict:
     """Every sport with its own counts, for the tab labels. Never a total."""

@@ -25,6 +25,7 @@
 <div class="sportbar">
   <div class="sportbar-inner">
     <nav id="sport-tabs" aria-label="Sport"></nav>
+    <div class="resolved-count" id="record-line"></div>
     <span class="caption" id="sport-note"></span>
   </div>
 </div>
@@ -96,7 +97,13 @@
         </label>
       </div>
     </div>
-    <p class="caption" id="week-sort"></p>
+    <div class="controls">
+      <div class="seg" id="week-sort-seg" role="group" aria-label="Sort the slate">
+        <button type="button" data-sort="disagreement" aria-pressed="true">By disagreement</button>
+        <button type="button" data-sort="confidence" aria-pressed="false">By confidence</button>
+      </div>
+      <p class="why" id="week-sort"></p>
+    </div>
     <div id="week-cards"></div>
   </section>
 

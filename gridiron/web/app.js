@@ -32,6 +32,9 @@ const Gridiron = (function () {
 
   // --- formatting --------------------------------------------------------
   const DASH = '—';
+  // The disagreement threshold the record uses, so the card and the edge
+  // question mean the same thing by 'disagreed'.
+  const DISAGREEMENT = 0.05;
   const pct = (x, dp) => (x === null || x === undefined) ? DASH : (x * 100).toFixed(dp === undefined ? 1 : dp) + '%';
   const num = (x, dp) => (x === null || x === undefined) ? DASH : Number(x).toFixed(dp === undefined ? 4 : dp);
   const int = (x) => (x === null || x === undefined) ? DASH : Number(x).toLocaleString();
@@ -73,7 +76,10 @@ const Gridiron = (function () {
   // --- data --------------------------------------------------------------
   // `sport` is the outermost piece of state on the page. Every fetch carries
   // it, because every number below belongs to exactly one sport (LAW 6).
-  const state = { sport: 'nfl', sports: [], meta: null, scorecard: null,
+  const state = {
+    // Disagreement is the default order, and the note under the control
+    // says why. Confidence-first would put the model's easiest calls on top.
+    weekSort: 'disagreement', sport: 'nfl', sports: [], meta: null, scorecard: null,
                   markets: ['spread'], historyOffset: 0, historyTotal: 0 };
 
   function withSport(path, extra) {
@@ -575,38 +581,217 @@ const Gridiron = (function () {
     return null;
   }
 
-  function renderCard(c) {
-    const card = el('div', 'card');
+  // --- the pick card ------------------------------------------------------
+  // Rebuilt to docs/mockup/gridiron_dark.html. The order is the order the
+  // questions arrive in: who is playing, what the model thinks, how sure, where
+  // the market sits, how that tier has really done, and only then why.
 
-    const head = el('div', 'card-head');
+  const LOW_CONFIDENCE = 0.53;
+
+  // "SD @ TB" -> the side the model picked, said the way a person would say it.
+  function pickSentence(c) {
+    const line = el('div', 'pick');
+    line.appendChild(el('span', 'arrow', '▸'));
+    line.appendChild(document.createTextNode(' Model picks '));
+    line.appendChild(el('b', '', String(c.subject || '').toUpperCase()));
+    const verb = c.market_type === 'spread' ? ' to cover'
+      : (c.market_type === 'prop' ? ' over' : ' to win');
+    line.appendChild(document.createTextNode(verb));
+    // Below 53% the app says so. Selling a coin flip as a pick is the small
+    // dishonesty that makes every larger number less believable.
+    if (typeof c.model_prob === 'number' && c.model_prob < LOW_CONFIDENCE) {
+      line.appendChild(el('span', 'barely', ' — barely'));
+    }
+    return line;
+  }
+
+  function tierChip(c) {
+    const t = c.tier || {};
+    if (!t.tier) return null;
+    const holder = el('div');
+    holder.appendChild(el('span', 'tier ' + t.tier.toLowerCase(), t.tier));
+    // The earned figure, or the shortfall. Never a hit rate below the gate:
+    // a tier showing an accuracy on nine settled picks reads as a track record
+    // for the pick beside it, which is the most persuasive lie available here.
+    holder.appendChild(el('span', 'tier-score', t.message));
+    return holder;
+  }
+
+  function probBlock(c) {
+    const box = el('div', 'prob');
+    box.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
+    box.appendChild(el('span', 'pct', '%'));
+    // Plain words, not field names. "chance TB wins", never "model · home win".
+    box.appendChild(el('small', '', 'chance ' + shortSubject(c) + ' ' +
+      (c.market_type === 'spread' ? 'covers' : (c.market_type === 'prop' ? 'goes over' : 'wins'))));
+    return box;
+  }
+
+  function shortSubject(c) {
+    const s = String(c.subject || '');
+    return s.length > 14 ? s.slice(0, 13) + '…' : s;
+  }
+
+  // THE RAIL. 0-100 with a tick at 50; the model solid, the market hollow, the
+  // disagreement shaded between them. Where no market line exists there is one
+  // dot and a sentence — never a second dot at a number nobody published.
+  function rail(c) {
+    const wrap = el('div', 'dumbbell');
+    const r = el('div', 'rail');
+    r.appendChild(el('div', 'track'));
+    r.appendChild(el('div', 'tick50'));
+
+    const model = clamp01(c.model_prob) * 100;
+    const market = (c.market_implied_prob === null || c.market_implied_prob === undefined)
+      ? null : clamp01(c.market_implied_prob) * 100;
+
+    if (market !== null) {
+      const span = el('div', 'span');
+      span.style.left = Math.min(model, market) + '%';
+      span.style.width = Math.abs(model - market) + '%';
+      r.appendChild(span);
+
+      const md = el('div', 'dot market');
+      md.style.left = market + '%';
+      r.appendChild(md);
+      const ml = el('div', 'dot-label', 'MKT ' + Math.round(market));
+      ml.style.left = market + '%';
+      r.appendChild(ml);
+    }
+
+    const dot = el('div', 'dot model');
+    dot.style.left = model + '%';
+    r.appendChild(dot);
+    const label = el('div', 'dot-label', String(Math.round(model)));
+    label.style.left = model + '%';
+    r.appendChild(label);
+
+    r.appendChild(el('span', 'zero', '0'));
+    r.appendChild(el('span', 'hundred', '100'));
+    wrap.appendChild(r);
+
+    if (market === null) {
+      wrap.appendChild(el('div', 'rail-noline',
+        'no line available' +
+        (c.line_availability && c.line_availability.reason
+          ? ' — ' + c.line_availability.reason : '')));
+    }
+    return wrap;
+  }
+
+  function clamp01(v) {
+    return Math.max(0, Math.min(1, typeof v === 'number' ? v : 0.5));
+  }
+
+  function bucketLine(c) {
+    const b = c.bucket || {};
+    const bits = [b.label + ' bucket', requireN(b, 'bucket line') + ' resolved'];
+    if (b.provisional) bits.push('too few to grade');
+    return el('span', 'bucket', bits.join(' · '));
+  }
+
+  function factorChips(c) {
+    const rows = (c.top_factors || [])
+      .filter(f => f.contribution !== null && f.contribution !== undefined)
+      .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+      .slice(0, 4);
+    if (!rows.length) return null;
+    const host = el('div', 'factors');
+    rows.forEach(f => {
+      const chip = el('span', 'chip');
+      chip.appendChild(document.createTextNode(readableFactor(f.factor) + ' '));
+      chip.appendChild(el('b', '', signed(f.contribution, 1)));
+      host.appendChild(chip);
+    });
+    return host;
+  }
+
+  function readableFactor(name) {
+    return String(name).replace(/^(nfl|mlb|nba)_/, '').replace(/_/g, ' ');
+  }
+
+  function renderCard(c) {
+    const card = el('div', 'card' + (c.outcome === null || c.outcome === undefined ? '' : ' resolved'));
+    const settled = !(c.outcome === null || c.outcome === undefined);
+
+    // `card-head` is kept beside `card-top`: it is the expansion target the
+    // browser tests click, and renaming it would break them for no gain.
+    const head = el('div', 'card-head card-top');
     head.setAttribute('role', 'button');
     head.setAttribute('tabindex', '0');
+
     const left = el('div');
-    left.appendChild(el('div', 'card-claim',
-      c.claim || (c.subject + ' ' + signed(c.line_asked))));
-    left.appendChild(el('div', 'card-meta',
-      c.matchup + ' · ' + c.market + ' · ' + c.predictor +
-      ' · asked at ' + signed(c.line_asked) + ' · ' + c.factor_set_version));
+    left.appendChild(el('div', 'matchup', c.matchup || c.game_id));
+
+    if (settled) {
+      // The one-line story: what was picked, what happened.
+      const story = el('div', 'market-line');
+      story.appendChild(document.createTextNode('picked '));
+      story.appendChild(el('b', '', String(c.subject || '').toUpperCase()));
+      if (c.final_score) story.appendChild(document.createTextNode(' · ' + c.final_score));
+      story.appendChild(document.createTextNode(
+        ' · ' + c.predictor + ' · ' + c.factor_set_version));
+      if (typeof c.gap === 'number' && Math.abs(c.gap) >= DISAGREEMENT) {
+        story.appendChild(document.createTextNode(
+          ' · gap was ' + signed(c.gap * 100, 1)));
+      }
+      left.appendChild(story);
+    } else {
+      left.appendChild(el('div', 'market-line',
+        (c.kickoff_utc ? 'starts ' + localTime(c.kickoff_utc) : 'start time unknown') +
+        ' · ' + c.predictor + ' · ' + c.factor_set_version));
+      left.appendChild(pickSentence(c));
+      const tier = tierChip(c);
+      if (tier) left.appendChild(tier);
+    }
     head.appendChild(left);
 
     const right = el('div');
-    right.appendChild(bucketChip(c.bucket));
-    const stamp = outcomeStamp(c);
-    if (stamp) right.appendChild(stamp);
-    if (c.degraded) right.appendChild(el('span', 'tag warn', c.degraded));
+    if (settled) {
+      right.style.textAlign = 'right';
+      const won = c.outcome === 1;
+      right.appendChild(el('span', 'verdict ' + (won ? 'win' : 'loss'), won ? 'WIN' : 'LOSS'));
+      const nums = ['model ' + pct(c.model_prob, 1)];
+      if (c.market_implied_prob !== null && c.market_implied_prob !== undefined) {
+        nums.push('market ' + pct(c.market_implied_prob, 1));
+      }
+      right.appendChild(el('div', 'final', nums.join(' · ')));
+    } else {
+      right.appendChild(probBlock(c));
+    }
+    if (c.degraded) right.appendChild(el('div', 'degraded-note', c.degraded));
     head.appendChild(right);
     card.appendChild(head);
 
-    const body = el('div', 'card-body');
-    body.appendChild(dumbbell(c));
+    if (!settled) {
+      card.appendChild(rail(c));
+
+      const meta = el('div', 'meta');
+      if (typeof c.gap === 'number') {
+        meta.appendChild(el('span',
+          'gap-chip' + (Math.abs(c.gap) >= DISAGREEMENT ? '' : ' quiet'),
+          'gap ' + signed(c.gap * 100, 1)));
+      }
+      meta.appendChild(bucketLine(c));
+      card.appendChild(meta);
+
+      const chips = factorChips(c);
+      if (chips) {
+        const row = el('div', 'meta');
+        row.appendChild(chips);
+        card.appendChild(row);
+      }
+    }
+
+    // Reasoning, collapsed. `card-body` is the alias the tests look for.
+    const body = el('div', 'card-body reason card-detail');
+    if (c.reasoning) body.appendChild(el('div', 'reasoning', c.reasoning));
     const bars = contributions(c);
     if (bars) body.appendChild(bars);
-    card.appendChild(body);
 
-    const detail = el('div', 'card-detail');
-    const inner = el('div', 'card-detail-inner');
-    if (c.reasoning) inner.appendChild(el('div', 'reasoning', c.reasoning));
-
+    // The chips are the glance; this is the whole hand. Kept from the previous
+    // design because it carries what a chip cannot — each factor's source and
+    // the reason it is declared at all, which is LAW 2 made inspectable.
     const wrap = el('div', 'table-scroll');
     const t = el('table', 'grid');
     table(t, [{ label: 'Factor' }, { label: 'Value' }, { label: 'Contribution' },
@@ -620,38 +805,45 @@ const Gridiron = (function () {
         f.rationale || ''
       ]));
     wrap.appendChild(t);
-    inner.appendChild(wrap);
+    body.appendChild(wrap);
 
     if ((c.absent_factors || []).length) {
-      inner.appendChild(el('h3', '', 'Not measurable for this game'));
-      inner.appendChild(el('div', 'footnote',
+      body.appendChild(el('div', 'footnote',
+        'Not measurable for this game: ' +
         c.absent_factors.map(a => a.factor + ' (' + a.why + ')').join('; ')));
     }
-
-    inner.appendChild(el('div', 'footnote',
-      'Prediction written ' + (c.created_utc || '?').replace('T', ' ') +
+    body.appendChild(el('div', 'footnote',
+      'Written ' + (c.created_utc || '?').replace('T', ' ') +
       (c.market_fetched_utc
-        ? ' · market snapshot taken ' + c.market_fetched_utc.replace('T', ' ') +
+        ? ' · market snapshot ' + c.market_fetched_utc.replace('T', ' ') +
           ' from ' + (c.market_source || 'unknown')
         : ' · no market snapshot') +
-      ((c.market_line !== null && c.market_line !== undefined)
-        ? ' · line at the time ' + signed(c.market_line) : '') +
-      ' · factor coverage ' +
-      ((c.factor_coverage === null || c.factor_coverage === undefined)
-        ? 'not recorded' : pct(c.factor_coverage, 0))));
+      ' · ' + c.predictor + ' · ' + c.factor_set_version));
+    if (c.void_reason) body.appendChild(el('div', 'footnote', 'VOID: ' + c.void_reason));
+    (c.notes || []).forEach(n => body.appendChild(el('div', 'footnote', 'Note: ' + n)));
+    card.appendChild(body);
 
-    if (c.void_reason) inner.appendChild(el('div', 'footnote', 'VOID: ' + c.void_reason));
-    (c.notes || []).forEach(n => inner.appendChild(el('div', 'footnote', 'Note: ' + n)));
+    const button = el('button', 'expand', 'Show reasoning');
+    button.setAttribute('type', 'button');
+    card.appendChild(button);
 
-    detail.appendChild(inner);
-    card.appendChild(detail);
-
-    function toggle() { card.classList.toggle('open'); }
+    function toggle() {
+      card.classList.toggle('open');
+      button.textContent = card.classList.contains('open')
+        ? 'Hide reasoning' : 'Show reasoning';
+    }
+    button.addEventListener('click', ev => { ev.stopPropagation(); toggle(); });
     head.addEventListener('click', toggle);
     head.addEventListener('keydown', ev => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
     });
     return card;
+  }
+
+  function localTime(iso) {
+    try {
+      return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch (err) { return iso; }
   }
 
   // --- THIS WEEK ----------------------------------------------------------
@@ -667,11 +859,18 @@ const Gridiron = (function () {
 
     document.getElementById('week-title').textContent =
       data.week === null ? 'This week' : ('Season ' + data.season + ', week ' + data.week);
+    // The standing note, in the mockup's words. Agreeing with the market is
+    // not a finding, which is why disagreement is the default order.
     document.getElementById('week-sort').textContent =
-      data.n + ' forecasts · sorted by ' + (data.sorted_by || '');
+      state.weekSort === 'confidence'
+        ? 'Sorted by how sure the model is. ' + data.n + ' forecasts.'
+        : 'Agreeing confidently with the market is not a finding.';
 
     host.innerHTML = '';
-    const cards = market ? data.cards.filter(c => c.market === market) : data.cards;
+    let cards = market ? data.cards.filter(c => c.market === market) : data.cards;
+    if (state.weekSort === 'confidence') {
+      cards = cards.slice().sort((a, b) => (b.model_prob || 0) - (a.model_prob || 0));
+    }
     if (!cards.length) {
       host.appendChild(el('div', 'empty', data.message ||
         (market ? 'No ' + market + ' forecasts on this slate.'
@@ -830,6 +1029,39 @@ const Gridiron = (function () {
   }
 
   // --- sport tabs ---------------------------------------------------------
+  // The active sport's own settled record. Never a total: LAW 6 means the
+  // header shows whichever sport is being looked at, and the never-summed note
+  // moves to a quiet footer line.
+  function wireSortToggle() {
+    const seg = document.getElementById('week-sort-seg');
+    if (!seg) return;
+    seg.querySelectorAll('button').forEach(button => {
+      button.addEventListener('click', () => {
+        state.weekSort = button.dataset.sort;
+        seg.querySelectorAll('button').forEach(b => {
+          b.setAttribute('aria-pressed', b === button ? 'true' : 'false');
+        });
+        renderWeek().catch(showError);
+      });
+    });
+  }
+
+  async function renderRecordLine() {
+    const host = document.getElementById('record-line');
+    if (!host) return;
+    try {
+      const data = await fetchJSON(withSport('/api/record-line'));
+      const bits = [data.line];
+      if (data.updated_utc) {
+        bits.push('updated ' + new Date(data.updated_utc)
+          .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+      }
+      host.textContent = bits.join(' · ');
+    } catch (err) {
+      host.textContent = '';
+    }
+  }
+
   async function loadSports() {
     const data = await fetchJSON('/api/sports');
     state.sports = data.sports;
@@ -839,7 +1071,9 @@ const Gridiron = (function () {
       const b = el('button', '', sp.label);
       // LAW 4 in the navigation: the count is on the label, so an empty record
       // is visible before the tab is clicked rather than after.
-      b.appendChild(el('span', 'tab-n', 'n=' + int(sp.n)));
+      // "6 settled", not "n=6". LAW 4 wants the count present, not a
+      // particular notation, and a tab is read at a glance by a person.
+      b.appendChild(el('span', 'tab-n', int(sp.n) + ' settled'));
       b.setAttribute('aria-current', sp.sport === state.sport ? 'true' : 'false');
       b.dataset.sport = sp.sport;
       b.addEventListener('click', () => selectSport(sp.sport));
@@ -856,6 +1090,7 @@ const Gridiron = (function () {
       b.setAttribute('aria-current', b.dataset.sport === sport ? 'true' : 'false');
     });
     try {
+      await renderRecordLine();
       state.meta = await fetchJSON(withSport('/api/meta'));
       renderBanner(state.meta);
       renderColophon(state.meta);
@@ -1001,6 +1236,7 @@ const Gridiron = (function () {
     skeleton(document.getElementById('week-cards'), 'skeleton-card', 3);
     try {
       await loadSports();
+      await renderRecordLine();
       state.meta = await fetchJSON(withSport('/api/meta'));
       renderBanner(state.meta);
       renderColophon(state.meta);
@@ -1011,6 +1247,7 @@ const Gridiron = (function () {
       showError(err);
     }
 
+    wireSortToggle();
     window.addEventListener('hashchange', route);
     ['chart-market', 'chart-predictor'].forEach(id =>
       document.getElementById(id).addEventListener('change', () => {
