@@ -35,19 +35,44 @@ Every rung ends in `.5`, so no question can push.
 
 ### Props
 
-Five markets, each its own scoring category: **passing yards, receiving yards,
-rushing yards, receptions, passing touchdowns.** For each, one question:
-**does this player exceed `line_asked` in this stat?**
+**Football**: five markets, each its own scoring category — passing yards,
+receiving yards, rushing yards, receptions, passing touchdowns.
+**Basketball**: four — points, rebounds, assists, three-pointers.
+**Baseball**: four, added 2026-08-30 — batter hits, batter total bases, batter
+home runs, pitcher strikeouts. See `docs/MLB_PROPS.md`, which records what was
+measured before any of it was built.
+
+For each, one question: **does this subject exceed `line_asked` in this stat?**
+
+Baseball differs from the other two in three ways, all of them because what is
+available differs:
+
+* **The asked line comes from a declared ladder**, not from an offset applied to
+  the subject's average, and the rung chosen is the one nearest that average.
+  ESPN publishes MLB prop lines and they sit on a handful of values, so asking
+  where the market answers buys a real prop-versus-market comparison — the first
+  one this project has ever been able to make. Football's props run permanently
+  line-less and their snapshots say so.
+* **A confidence floor of 70%** (`config.PROPS_MIN_CLAIM`, declared 2026-08-30,
+  and applied to every sport's props from that date). A question the model is
+  not that sure of is not asked. A slate under its cap for this reason says so.
+* **The over/under side of a published quote is derived, never assumed.** ESPN's
+  prop rows carry a line and a price and no label; the side is recovered by
+  matching against a one-sided "milestone" quote for the same event, and a pair
+  that cannot be separated is refused.
 
 There is no combined "props" number and there will not be. Receptions and
 passing touchdowns are different questions with different difficulty, and an
 average across them describes neither. Each market has its own calibration
 curve, its own fitted model, and its own 100-resolution gate.
 
-**The slate is capped at 40 props a week, at most three per game,** filled by
+**The football slate is capped at 40 props a week, at most three per game**, and
+**the baseball slate at 25 a day, one question per subject**, both filled by
 round-robin across the markets in descending order of real-world liquidity. So
 the cap bites on the thinnest market first, and the slate is never all
-quarterbacks. Quality of resolution beats quantity of predictions: a forecast
+quarterbacks. Asking one batter about both hits and total bases would be two
+correlated looks at one afternoon, and counting them as two would inflate every
+N on the scorecard. Quality of resolution beats quantity of predictions: a forecast
 nobody reads is not a forecast anybody can check.
 
 The player is chosen by usage — the highest-volume qualifying player at the

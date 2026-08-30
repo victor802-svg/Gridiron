@@ -102,23 +102,73 @@ def test_one_question_per_game_and_the_subject_is_the_home_club(mlb_league):
         assert q.subject == home
 
 
-def test_mlb_declares_only_the_moneyline_market():
-    assert config.SPORT_MARKETS["mlb"] == ("moneyline",)
-    assert config.SPORT_PROP_MARKETS.get("mlb", ()) == ()
+def test_mlb_declares_a_moneyline_and_four_player_props():
+    """Baseball asked only a moneyline until 2026-08-30, when the four player
+    prop markets were declared. The moneyline stays first: it is the game
+    market, and the props are additions to the sport rather than replacements."""
+    assert config.SPORT_MARKETS["mlb"] == (
+        "moneyline", "batter_hits", "batter_total_bases", "batter_home_runs",
+        "pitcher_strikeouts",
+    )
+    assert config.SPORT_PROP_MARKETS["mlb"] == (
+        "batter_hits", "batter_total_bases", "batter_home_runs",
+        "pitcher_strikeouts",
+    )
+    # Every prop market has a declared, dated ladder and nothing else does.
+    assert set(config.MLB_PROP_LADDER) == set(config.SPORT_PROP_MARKETS["mlb"])
+    assert config.MLB_PROP_LADDER_DECLARED
+
+
+def test_every_prop_rung_ends_in_a_half_so_nothing_can_push():
+    for market, rungs in config.MLB_PROP_LADDER.items():
+        assert rungs, f"{market} has an empty ladder"
+        for rung in rungs:
+            assert rung % 1 == 0.5, f"{market} rung {rung} could push"
 
 
 # --- the factors ------------------------------------------------------------
 
 def test_every_mlb_factor_is_namespaced_and_carries_a_rationale():
     mlb_factors = [f for f in registry.all_factors() if f.sport == "mlb"]
-    assert len(mlb_factors) == 7
-    assert sum(f.active for f in mlb_factors) == 6, (
+    moneyline = [f for f in mlb_factors if f.applies_to == ("moneyline",)]
+    props = [f for f in mlb_factors if f.applies_to == ("prop",)]
+    assert len(moneyline) == 7
+    assert sum(f.active for f in moneyline) == 6, (
         "mlb_home_away is deactivated as a constant; see its note"
     )
+    assert len(props) == 13
+    assert len(mlb_factors) == len(moneyline) + len(props)
     for f in mlb_factors:
         assert f.name.startswith("mlb_"), f"{f.name} would collide across sports"
         assert len(f.rationale) > 80, f"{f.name} has a token rationale"
-        assert f.applies_to == ("moneyline",)
+        assert f.applies_to in (("moneyline",), ("prop",))
+
+
+def test_the_batter_and_pitcher_markets_get_disjoint_instruments():
+    """A batter's platoon split is not a weak instrument for a strikeout prop,
+    it is not an instrument at all. Without the market scoping, every batter
+    factor would be absent in every row of the strikeout fit -- which is item
+    2's constant-across-training failure arriving as missing data."""
+    batter = {f.name for f in registry.active_factors("mlb", "prop", "batter_hits")}
+    pitcher = {
+        f.name for f in registry.active_factors("mlb", "prop", "pitcher_strikeouts")
+    }
+    shared = batter & pitcher
+    assert shared == {
+        "mlb_prop_mean_vs_line", "mlb_prop_volatility", "mlb_prop_park_factor",
+    }, "only the question instruments and the park serve both subjects"
+    assert "mlb_batter_platoon" in batter - pitcher
+    assert "mlb_pitcher_k_rate" in pitcher - batter
+
+
+def test_the_question_instruments_exist_in_every_prop_market():
+    """New-market checklist, item 1. NBA shipped without these, the fit
+    converged, and mean_vs_line turned out to be the largest coefficient in all
+    four markets once it was added."""
+    for market in config.SPORT_PROP_MARKETS["mlb"]:
+        names = {f.name for f in registry.active_factors("mlb", "prop", market)}
+        assert "mlb_prop_mean_vs_line" in names, market
+        assert "mlb_prop_volatility" in names, market
 
 
 def test_the_asked_line_factor_is_not_declared():
@@ -262,11 +312,31 @@ def test_the_mlb_moneyline_has_a_named_source_with_its_licence_stated():
 
 
 def test_a_market_with_no_source_says_so_rather_than_reporting_a_number():
+    """Both halves of an availability claim must be backed.
+
+    This test used to assert that EVERY prop market reports no source. That was
+    true when it was written and became false on 2026-08-30, when ESPN was found
+    to publish MLB player props in quantity -- 1,084 athlete rows on one slate.
+    The old assertion was a measurement promoted to a law, and the measurement
+    was one look at one sport generalised to three.
+
+    What matters, and stays true as sources come and go: a market claiming a
+    line must have a fetch path behind it, and one claiming none must say why.
+    """
+    from gridiron.market import props as prop_lines
+
+    wired = set(prop_lines.TOTAL_MARKETS.values()) | set(
+        prop_lines.MILESTONE_MARKETS.values()
+    )
     for sport, markets in config.SPORT_PROP_MARKETS.items():
         for market in markets:
             source = sources.for_market(sport, market)
-            assert source["available"] is False
-            assert source["reason"], f"{sport}/{market} degrades silently"
+            if source["available"]:
+                assert market in wired, (
+                    f"{sport}/{market} claims a line with no fetch path behind it"
+                )
+            else:
+                assert source["reason"], f"{sport}/{market} degrades silently"
 
 
 # --- blind first, for baseball too ------------------------------------------

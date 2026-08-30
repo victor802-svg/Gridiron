@@ -113,8 +113,35 @@ SPORT_LOAD_SEASONS = {
 
 
 # --- the factor set --------------------------------------------------------
-# Bumped whenever a factor is added, removed or redefined. Calibration curves
-# are kept separate per version (LAW 4: never merge incomparable samples).
+# Bumped whenever a factor is added, removed or redefined FOR A MARKET THAT
+# ALREADY HAS A RECORD. Calibration curves are kept separate per version
+# (LAW 4: never merge incomparable samples).
+#
+# NOT BUMPED FOR MLB'S PROP MARKETS ON 2026-08-30, and the reasoning is written
+# here because the convention as first stated says "whenever a factor is added"
+# and this is a deliberate reading of it rather than an oversight.
+#
+# Thirteen factors were added. Every one of them applies ONLY to the four new
+# MLB prop markets, which had no record at all: their curves start at N=0
+# whatever this string says. No factor belonging to nfl:spread, to any NFL prop,
+# to mlb:moneyline or to any NBA market changed by a character.
+#
+# Bumping would therefore have declared four existing records incomparable with
+# their own futures WHEN NOTHING ABOUT THEM CHANGED -- a split that says "these
+# two groups of NFL spread predictions were made under different assumptions"
+# when they were made under identical ones. That is its own dishonesty, and it
+# is permanent: a version split cannot be undone, while leaving the version
+# alone can be reversed by bumping later.
+#
+# The general point, for whoever adds the next sport: this string is global and
+# factor sets are per sport per market, so the granularities do not match. It
+# tracks changes to an EXISTING market's instruments. Adding a market is not
+# that.
+#
+# THE OPERATOR CAN OVERRULE THIS. If a bump is wanted, the cost is small today
+# -- six resolved predictions across the whole forward record -- and the four
+# prop fits would need re-running, because a fit is stored against the version
+# it was trained under.
 FACTOR_SET_VERSION = "fs2"
 
 #: Every factor set that has ever produced predictions, oldest first. A version

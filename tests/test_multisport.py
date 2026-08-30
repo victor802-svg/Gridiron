@@ -258,10 +258,25 @@ def test_every_sport_declares_its_line_source_or_its_absence(sport):
 
 @pytest.mark.parametrize("sport", config.SPORTS)
 def test_no_prop_market_claims_a_line_that_does_not_exist(sport):
+    """A claimed line must be backed by a fetch path; an absent one, by a reason.
+
+    Was "no prop market has a line", which stopped being true for MLB on
+    2026-08-30. See the note in test_mlb.py: the assertion was a measurement
+    wearing a law's clothes.
+    """
+    from gridiron.market import props as prop_lines
+
+    wired = set(prop_lines.TOTAL_MARKETS.values()) | set(
+        prop_lines.MILESTONE_MARKETS.values()
+    )
     for market in config.SPORT_PROP_MARKETS.get(sport, ()):
         entry = sources.for_market(sport, market)
-        assert entry["available"] is False
-        assert len(entry["reason"]) > 40, "an absence must be explained, not asserted"
+        if entry["available"]:
+            assert market in wired, f"{sport}/{market} claims an unwired line"
+        else:
+            assert len(entry["reason"]) > 40, (
+                "an absence must be explained, not asserted"
+            )
 
 
 def test_an_unpriced_market_reports_absence_rather_than_a_number():

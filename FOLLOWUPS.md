@@ -274,3 +274,142 @@ NBA's was written down as "~11.5 across recent seasons". Measured: 13.95, from
 Neither explained the NBA model's apparent edge — the leak did — but an assumed
 constant that decides how confident the *market* is made to look has no business
 being unmeasured. `margin_sd()` now fails by name on anything undated.
+
+---
+
+## M1-M4, the MLB prop markets *(2026-08-30)*
+
+### A blanket claim, generalised from one sport, written down as measured
+
+`market/sources.py` said as a checked fact that *"ESPN's odds documents carry a
+`propBets` link that returns nothing usable"*, and applied it to every prop
+market of every sport by a comprehension over `SPORT_PROP_MARKETS`. Re-checked:
+**false for MLB.** One 14-game slate carries 1,306 prop rows, 1,084 naming an
+athlete, across all four markets.
+
+The reading was of one NFL document and was probably correct about NFL. The
+defect was the generalisation, and it had teeth: a test
+(`test_a_market_with_no_source_says_so_rather_than_reporting_a_number`) and a
+planted guard both asserted the blanket claim, so the wrong belief was *enforced*
+in three places. Correcting the source meant correcting its guards, which is the
+shape to watch for — a guard that encodes a measurement rather than a law will
+defend the measurement after it stops being true.
+
+Both now check the thing that stays true: an availability claim must be backed by
+a fetch path, and an absence must state a reason. NBA's entry says explicitly
+that it has **not** been re-checked, because an untested market and a market with
+no source must not read the same.
+
+### The feasibility report said lineup slot was available. It is, and it is useless
+
+`battingOrder` is real and decodes cleanly. But it is a fact about a game that
+has **started**: measured across three future dates, **0 of 41** scheduled games
+carried a lineup, because they post about two hours before first pitch.
+
+The feasibility probe checked a *final* game and reported the field as available,
+which was true and misleading — the question a forecaster asks is whether the
+field is available *when the forecast is written*. The factor set uses the
+batter's **recent** slot and his recent plate appearances per game instead, both
+facts about the past.
+
+**What would settle it:** nothing further; but the general lesson is that
+"the source carries field X" and "we will have field X at prediction time" are
+different claims and the feasibility answer conflated them.
+
+### R2's specified derivation had no data, and a better one existed
+
+The ruling asked for the over/under side to be derived from cross-rung
+monotonicity: P(over) must fall as the line rises, so a subject quoted at two
+rungs identifies its own sides. Correct reasoning. Measured: **0 of 354 subjects
+were quoted at more than one rung.** Every subject gets exactly one line.
+
+What works instead is a *milestone anchor*: the same slate publishes one-sided
+"2+ total bases" quotes, and a milestone at K+ is the same event as the over at
+K-0.5, so its price states P(over) directly. Measured separation between the
+matching and non-matching member of a pair: **0.001 against 0.10-0.19**, three
+orders of magnitude. 173 pairs resolved, 1 refused as unseparable.
+
+The forbidden method was measured too, and it deserved forbidding: the first row
+in document order carries the shorter price in **62.7%** of pairs, which is
+noise.
+
+### Three declared factors that are not three instruments
+
+`mlb_batter_rate` (hits per plate appearance) times `mlb_batter_expected_pa`
+(plate appearances per game) **is** hits per game, which is exactly what
+`mlb_prop_mean_vs_line` is built from. Measured on 2,444 sampled batter-games,
+`corr(rate x pa, mean) = +1.000` — not close to one, one.
+
+The consequence is visible in the fit: both came out causally backwards
+(-5.39 and -0.27) because they act as corrections to a term the model already
+has. **It is not ordinary collinearity and no pairwise check would find it** —
+the pairwise correlations are -0.077 and +0.082. The dependency runs through the
+product.
+
+`mean_vs_line` does still dominate once the factors are put on a comparable
+footing: standardised as coefficient times the factor's own spread, +0.527
+against -0.314 and -0.179. The raw coefficient table says otherwise and the raw
+coefficient table is misleading, because these three factors live on scales an
+order of magnitude apart.
+
+**Left as declared, not repaired**, because the factor set was declared in the
+brief and changing it is a deliberate dated act (LAW 2), not something to do
+quietly while fitting. **What would settle it:** redefine `mlb_batter_rate` over
+a longer window than the mean uses, so it measures current form against
+established level — information the mean does not already contain — and refit.
+
+### A crosswalk refusal produces no line, not a void
+
+The brief asked for the crosswalk-refused case to VOID the prediction. It does
+not, and the reason is the standing rule that a missing line source degrades the
+comparison and never the record: voiding would delete a legitimate blind forecast
+because a third party's feed was unhelpful. The refusal is recorded, the prop
+carries "no line" in words, and the prediction resolves normally against the
+stat.
+
+Note also that the crosswalk cannot run at selection time at all — it reads ESPN,
+which is inside the LAW 1 quarantine — so there is no point in the flow where a
+refusal could prevent a question being asked.
+
+### The prop training set is slow, and avoidably so *(open)*
+
+Each of the four fits takes roughly 12-13 minutes over 81,000 rows, and most of
+that is `park_run_environment` and `league_run_environment` re-running a
+multi-table scan **once per training row** when the answer only varies by
+(stadium, season) and (season). A memo would cut it by most of its runtime.
+
+Not done in this session on purpose: the fits were already running, and adding
+an unproven cache to a path that decides what the model sees is not a thing to
+do under time pressure. **What would settle it:** memoise both in
+`build_prop_context`, keyed on the tuple they actually depend on, with a test
+that the memoised value equals the uncached one for a sample of stadium-seasons.
+
+### The record ends 2026-09-27 and several gates cannot clear *(open, by ruling)*
+
+R3 keeps `GAME_TYPES = ("R",)`, so there is no postseason. With ~29 slates left
+and a cap of 25 prop predictions a day, the arithmetic on the four gates is in
+the M4 close-out. The interface must say so in words where a gate cannot clear
+rather than showing a number that will never arrive.
+
+### `FACTOR_SET_VERSION` was NOT bumped for thirteen new factors *(decision, 2026-08-30)*
+
+The convention says bump whenever a factor is added. Thirteen were. It was not
+bumped, and the reasoning is in `config.py` beside the constant so a reader finds
+it where they look.
+
+In short: every one of the thirteen applies only to the four **new** MLB prop
+markets, which had no record to be made incomparable with. Nothing belonging to
+`nfl:spread`, any NFL prop, `mlb:moneyline` or any NBA market changed. Bumping
+would have declared four untouched records incomparable with their own futures —
+a permanent split asserting a difference that does not exist.
+
+The deciding argument is asymmetry: **not bumping is reversible and bumping is
+not.** The cost of reversing is six resolved predictions of continuity across the
+entire forward record, plus re-running the four prop fits, which are stored
+against the version they were trained under.
+
+**What would settle it:** the operator either endorses the narrower reading —
+the version tracks changes to an *existing* market's instruments, not the
+addition of a market — or calls for the bump, which is cheap today and expensive
+later. The underlying mismatch is that the version string is global while factor
+sets are per sport per market.

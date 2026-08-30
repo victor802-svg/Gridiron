@@ -524,28 +524,230 @@ def plant_a_cross_sport_payload(conn: sqlite3.Connection) -> Result:
 
 
 def plant_a_faked_line_where_none_exists() -> Result:
-    """A market with no source must report absence, never a number.
+    """Every prop market's availability claim must be BACKED, either way.
 
-    Planted at the source descriptor: if `for_market` ever claims availability
-    for a market nothing prices, the interface would draw a dumbbell against an
-    invented number and the edge figure would be computed from it.
+    This check used to assert that every prop market reports no source, which
+    was true when it was written and became false on 2026-08-30, when ESPN was
+    found to publish MLB player props in quantity. The guard was encoding a
+    measurement as a law -- and the measurement was a generalisation from one
+    look at one sport.
+
+    So it now checks the thing that actually matters and stays true as sources
+    come and go: a market that CLAIMS a line must have a fetch path that could
+    produce one, and a market that claims none must say why. Both halves are
+    faked-line failures. A market claiming availability with nothing behind it
+    would draw a dumbbell against an invented number; a market claiming absence
+    with no reason hides whether anybody ever looked.
     """
+    from gridiron.market import props as prop_lines
+
+    wired = set(prop_lines.TOTAL_MARKETS.values()) | set(
+        prop_lines.MILESTONE_MARKETS.values()
+    )
     offenders = []
     for sport in config.SPORTS:
         for market in config.SPORT_PROP_MARKETS.get(sport, ()):
             entry = line_sources.for_market(sport, market)
-            if entry.get("available"):
-                offenders.append(f"{sport}:{market}")
-            elif not entry.get("reason"):
+            if entry.get("available") and market not in wired:
+                offenders.append(
+                    f"{sport}:{market} (claims a line with no fetch path)"
+                )
+            elif not entry.get("available") and not entry.get("reason"):
                 offenders.append(f"{sport}:{market} (absent with no reason given)")
     if offenders:
-        return Result("NO FAKED LINES", "check every prop market reports no source",
+        return Result("NO FAKED LINES",
+                      "check every prop market's availability claim is backed",
                       "market.sources.for_market", False,
-                      "NOT CAUGHT - these claim a line that does not exist: "
-                      + ", ".join(offenders))
-    return Result("NO FAKED LINES", "check every prop market reports no source",
+                      "NOT CAUGHT - " + ", ".join(offenders))
+    return Result("NO FAKED LINES",
+                  "check every prop market's availability claim is backed",
                   "market.sources.for_market", True,
-                  "every prop market reports available=False with a stated reason")
+                  "every prop market either has a wired fetch path or states "
+                  "why it has none")
+
+
+def plant_a_reversed_side_pair() -> Result:
+    """Swap the two halves of a prop pair and check the anchor refuses to be
+    fooled by the swap.
+
+    THE FAILURE THIS GUARDS IS THE ESPN SPREAD SIGN, IN A NEW MARKET. A prop
+    row carries a line and a price and no over/under label. Getting the side
+    backwards produces a plausible number for every subject and a
+    sign-reversed comparison for half of them, and nothing in the data looks
+    wrong.
+
+    The derivation is anchored on a one-sided milestone -- "2+ total bases" is
+    the same event as "over 1.5 total bases", so the milestone's price states
+    P(over) directly. Reversing the pair therefore CANNOT flip the answer: the
+    anchor picks the same member whichever order the pair arrives in. That is
+    the property being proved here, and it is why the derivation is not "the
+    shorter price is the over", which reversal would silently flip.
+    """
+    from gridiron.market import props as prop_lines
+
+    # Each row keeps its OWN price and its own implied probability; reversing
+    # swaps the order they arrive in, which is the only thing a caller could
+    # ever get wrong about an unlabelled pair.
+    rows = [
+        {"line": 1.5, "price": -150, "prob": 0.600},
+        {"line": 1.5, "price": 120, "prob": 0.455},
+    ]
+    anchor = [{"line": 2.0, "price": 118, "prob": 0.459}]
+
+    forward = prop_lines.derive_sides(
+        "batter_total_bases", {"totals": list(rows), "milestones": anchor}
+    )
+    reversed_ = prop_lines.derive_sides(
+        "batter_total_bases", {"totals": list(reversed(rows)), "milestones": anchor}
+    )
+
+    def over_price(quotes):
+        return next((q["price"] for q in quotes if q["side"] == "over"), None)
+
+    same = (
+        over_price(forward) is not None
+        and over_price(forward) == over_price(reversed_)
+    )
+    return Result(
+        "NO REVERSED SIDES", "reverse the two halves of an unlabelled prop pair",
+        "market.props.derive_sides", same,
+        f"the anchor names the same quote as the over either way "
+        f"({over_price(forward)}), so document order cannot flip a comparison"
+        if same else
+        f"NOT CAUGHT - reversing the pair changed the over from "
+        f"{over_price(forward)} to {over_price(reversed_)}",
+    )
+
+
+def plant_an_ambiguous_side_accepted() -> Result:
+    """Two sides priced alike: the anchor must refuse, not pick the closer one."""
+    from gridiron.market import props as prop_lines
+
+    quotes = prop_lines.derive_sides("pitcher_strikeouts", {
+        "totals": [
+            {"line": 5.5, "price": -105, "prob": 0.512},
+            {"line": 5.5, "price": -102, "prob": 0.505},
+        ],
+        "milestones": [{"line": 6.0, "price": -104, "prob": 0.510}],
+    })
+    caught = bool(quotes) and all(q["side"] == "unknown" for q in quotes)
+    return Result(
+        "NO GUESSED SIDES", "accept a side the anchor cannot separate",
+        "market.props.derive_sides", caught,
+        f"refused: {quotes[0]['method']}" if caught else
+        f"NOT CAUGHT - a coin-flip pair was labelled {quotes}",
+    )
+
+
+def plant_an_ambiguous_crosswalk_match() -> Result:
+    """Two players normalising to one name must REFUSE, never pick one.
+
+    An ambiguous name accepted attaches a published price to the wrong player,
+    and nothing downstream can tell: the line looks reasonable, the comparison
+    computes, and the record is quietly about somebody else.
+    """
+    from gridiron.market import crosswalk
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(Path(tmp) / "crosswalk.db")
+        for pid, name in ((1, "Jose Ramirez"), (2, "José Ramírez")):
+            conn.execute(
+                "INSERT INTO mlb_batter_games (player_id, season, game_date,"
+                " game_pk, player_name, hits) VALUES (?,?,?,?,?,0)",
+                (pid, 2026, "2026-05-01", 900000 + pid, name),
+            )
+        conn.commit()
+        index = crosswalk.our_players(conn, "mlb")
+        candidates = index.get(crosswalk.normalise("Jose Ramirez")) or []
+        caught = len(candidates) > 1
+        conn.close()
+    return Result(
+        "NO GUESSED IDENTITY", "let two players share one normalised name",
+        "market.crosswalk.our_players", caught,
+        f"{len(candidates)} players normalise to 'jose ramirez', so the match "
+        "is refused rather than decided by a coin flip"
+        if caught else
+        "NOT CAUGHT - an ambiguous name resolved to a single player",
+    )
+
+
+def plant_a_constant_prop_factor() -> Result:
+    """A factor that never varies is a broken instrument, and the fit says so.
+
+    Checklist item 2. `short_week_diff` varied in 1 NFL game of 544;
+    `mlb_home_away` was constant across all 4,859 rows; `nba_back_to_back`
+    never fired at all. Each looked like a weak factor and was a dead one.
+    """
+    from gridiron.model import logistic
+
+    rows = [{"real": float(i % 7), "always_one": 1.0} for i in range(200)]
+    labels = [i % 2 for i in range(200)]
+    fit = logistic.fit(rows, labels, ["real", "always_one"], l2=2.0)
+    caught = "always_one" in fit.constant and "real" not in fit.constant
+    return Result(
+        "VARIANCE BOOKKEEPING", "fit a factor that is constant across training",
+        "logistic.fit constant detection", caught,
+        f"reported constant: {fit.constant}" if caught else
+        f"NOT CAUGHT - a constant factor was fitted a coefficient: {fit.as_dict()}",
+    )
+
+
+def plant_a_rung_off_the_declared_ladder() -> Result:
+    """Ask an MLB prop at a line the declared ladder does not contain.
+
+    An off-ladder rung is incomparable twice over: no book quotes it, so there
+    is no market comparison, and no other prediction in the category shares it,
+    so there is no internal comparison either. Both losses are silent.
+    """
+    from gridiron.model import questions as q
+
+    try:
+        q.assert_on_ladder(2.5, "batter_hits")
+    except q.RungOffLadder as exc:
+        return Result("DECLARED LADDER", "ask a prop at a rung off the ladder",
+                      "questions.assert_on_ladder", True, str(exc))
+    return Result("DECLARED LADDER", "ask a prop at a rung off the ladder",
+                  "questions.assert_on_ladder", False,
+                  "NOT CAUGHT - a question was formed at an undeclared rung")
+
+
+def plant_a_home_run_bucket_below_fifty() -> Result:
+    """Check the home-run market's claims really do land in the declared buckets.
+
+    THE BRIEF ASKED FOR A BUCKET SET EXTENDING BELOW 50 FOR THIS MARKET, and
+    building it would have been wrong. An over-0.5 home-run prop does live at
+    15-35%, but `baseline.stated_side` converts every probability into a SIDE
+    and a confidence in that side, so a 28% chance of a home run is stored as a
+    72% claim that there will not be one. Confidence is >= 0.5 by construction
+    and a sub-50 bucket could never receive a row.
+
+    So this plants the opposite: a home-run probability from the bottom of that
+    range, checked to land in a real bucket with the NO side stated. A bucket
+    set starting below 50 would be a set of empty bins next to a tier chip
+    reading LEAN on a claim that is not a lean.
+    """
+    side, claimed = baseline.stated_side(0.28, "over", "under")
+    label = calibration.bucket_label(claimed)
+    tier = calibration.TIERS.get(label)
+    lowest = min(lo for lo, _hi, _name in calibration.BUCKETS)
+    caught = (
+        side == "under"
+        and abs(claimed - 0.72) < 1e-9
+        and label == "70-80%"
+        and tier == "STRONG"
+        and lowest == 0.50
+    )
+    return Result(
+        "SUB-50 CLAIMS MAP CORRECTLY",
+        "read a 28% home-run chance as a weak claim rather than a strong NO",
+        "baseline.stated_side + calibration.bucket_label", caught,
+        f"28% over becomes {side!r} at {claimed:.0%}, bucket {label}, tier "
+        f"{tier}; the bucket set starts at {lowest:.0%} because confidence "
+        "cannot be lower"
+        if caught else
+        f"NOT CAUGHT - 28% mapped to side={side!r} claimed={claimed} "
+        f"bucket={label} tier={tier} lowest bucket={lowest}",
+    )
 
 
 def plant_a_line_claimed_for_an_unpriced_market() -> Result:
@@ -1192,6 +1394,12 @@ def main() -> int:
     results.append(plant_a_defaulted_factor_at_runtime())
     results.append(plant_a_faked_line_where_none_exists())
     results.append(plant_a_line_claimed_for_an_unpriced_market())
+    results.append(plant_a_reversed_side_pair())
+    results.append(plant_an_ambiguous_side_accepted())
+    results.append(plant_an_ambiguous_crosswalk_match())
+    results.append(plant_a_constant_prop_factor())
+    results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_home_run_bucket_below_fifty())
     results.append(plant_a_context_with_no_sport())
     results.append(plant_an_unprefixed_foreign_factor())
     results.append(plant_a_transposed_column_copy())

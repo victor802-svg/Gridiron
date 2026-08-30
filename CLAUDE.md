@@ -5,6 +5,11 @@ probabilistic predictions, records them **before** the market line is visible to
 it, resolves them against real outcomes, and scores its own calibration
 permanently, separately for every sport.
 
+Adding a market goes through `docs/NEW_MARKET_CHECKLIST.md`, item by item, and
+the phase that adds it shows the list ticked. `docs/MLB_PROPS.md` is the first
+market family built that way and records what was measured before anything was
+built — including two things the code already claimed and had wrong.
+
 ---
 
 ## THE LAWS — binding on every phase
@@ -77,6 +82,11 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | 4 | Curves are never merged: `assert_no_merged_categories` rejects a category with no concrete market, an `all` prop_type, or a merged forecaster. Runs inside `scorecard()`, so a merge cannot reach the API | `test_guards.py::test_a_planted_merged_prop_curve_is_caught_by_name`, `::test_a_planted_merged_forecaster_curve_is_caught` |
 | v2 | Missing stays missing: `compute.assert_missing_is_explicit` runs on every feature vector, and `audit.check_no_silent_defaults` scans the factor code for a reintroduced fallback. `Factor.default` was **removed**, not left unused | `test_guards.py::test_a_planted_zero_fallback_is_caught_by_name`, `::test_a_vector_that_defaults_an_absent_factor_is_caught_at_runtime` |
 | 3 | A void is terminal: `prediction_voids` is append-only and a trigger refuses to resolve a voided prediction afterwards | `test_props.py::test_a_void_is_terminal`, `::test_a_void_reason_cannot_be_rewritten` |
+| 1 | MLB prop rungs come from `config.MLB_PROP_LADDER`, a dated constant; `questions.assert_on_ladder` refuses a question formed anywhere else | `plant.py::plant_a_rung_off_the_declared_ladder`, `test_mlb_props.py::test_a_rung_off_the_ladder_is_refused_by_name` |
+| NO GUESSED SIDES | An unlabelled prop pair is labelled from a one-sided milestone quote, never from the sign of a price; an unseparable pair is refused | `plant.py::plant_a_reversed_side_pair`, `::plant_an_ambiguous_side_accepted` |
+| NO GUESSED IDENTITY | The ESPN↔MLB player bridge is measured and stored dated, both match rates reported; two players sharing a normalised name refuse | `plant.py::plant_an_ambiguous_crosswalk_match`, `test_mlb_props.py::test_two_players_sharing_a_normalised_name_are_ambiguous` |
+| 4 | A sub-50 probability is stored as a confident claim about the other side, so the bucket set starts at 50 and the tier chip cannot mislabel it | `plant.py::plant_a_home_run_bucket_below_fifty` |
+| 2 | `logistic.fit` reports `constant` and `dropped` per factor, and a constant factor is named rather than fitted | `plant.py::plant_a_constant_prop_factor` |
 
 Run them all at once, each violation planted for real:
 

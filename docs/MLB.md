@@ -13,29 +13,49 @@ sample sooner, not a reason to have picked a different sport.
 
 ## What is predicted
 
-**The moneyline, and nothing else.** One question per game: *does the home club
-win?*
+**The moneyline**, one question per game — *does the home club win?* — **and,
+since 2026-08-30, four player-prop markets**: batter hits, batter total bases,
+batter home runs, pitcher strikeouts. Those have their own document,
+`docs/MLB_PROPS.md`.
 
-No spread, no total, no props. Three deliberate omissions:
+No spread and no total. Two deliberate omissions:
 
 - The **run line** is a fixed -1.5/+1.5 spread, which makes it a different
   question rather than a rung on a ladder, and it resolves on a margin that a
   single ninth-inning swing rewrites entirely.
 - **Totals** would need a run-scoring model, which is a separate instrument from
   a win model and would arrive undeclared and unmeasured.
-- **Props** would need per-batter matchup data at a granularity the free source
-  does not publish, and there is no free line to score them against anyway.
 
-One question per game also means the home club is always the subject. Asking
+**Props were a third omission and the reasons given for it were both wrong.**
+This document said they "would need per-batter matchup data at a granularity the
+free source does not publish, and there is no free line to score them against
+anyway." Measured 2026-08-29 and 2026-08-30:
+
+- statsapi publishes complete per-batter and per-pitcher game logs, one request
+  per player per season, carrying every stat the four markets need plus
+  handedness and batting order;
+- ESPN publishes MLB player prop lines in quantity — 1,084 athlete rows on a
+  single 14-game slate, covering all four markets.
+
+Neither claim had been checked when it was written. Both are now, and the
+measurements are in `docs/MLB_PROPS.md` rather than summarised here, because the
+next person to doubt them should be able to see the numbers.
+
+One question per game on the moneyline also means the home club is always the
+subject. Asking
 "does the away club win" as well would be the exact complement, so the model
 would learn a mirror of itself and every game would enter the record twice.
 
 That decision has a consequence, and it cost a factor — see `mlb_home_away`
 below.
 
-## The factors
+## The moneyline factors
 
-Seven declared, six active. Lean and pitcher-centric on purpose. A single
+Seven declared, six active. The thirteen player-prop factors are a separate set
+with its own date and its own table in `docs/MLB_PROPS.md`: a moneyline asks
+which club wins and a prop asks what one man does, and no instrument serves both.
+
+Lean and pitcher-centric on purpose. A single
 baseball game is close to a coin flip — the best club in a season wins about 60%
 of its games and the worst wins about 40% — so the signal available per game is
 small, and a wide factor set would mostly be fitting noise with more parameters.

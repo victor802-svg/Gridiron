@@ -554,10 +554,28 @@ def select_day_props(
 # ---------------------------------------------------------------------------
 
 def next_slate(conn: sqlite3.Connection, season: int) -> int | None:
+    """The earliest slate that still has a game nobody has played yet.
+
+    THE `kickoff_utc > now` CLAUSE IS LOAD-BEARING and MLB was missing it while
+    NBA had it. Without it, a day whose games have all started but whose rows
+    have not yet been refreshed to `final` stays the "next" slate forever: on
+    2026-08-30, five games from the previous evening were still marked scheduled
+    twelve hours after first pitch, so the daily task kept selecting that day,
+    skipped all five as already under way, and wrote nothing. Two consecutive
+    `predict:mlb` runs recorded `noop` for exactly this reason, and the next
+    day's card was never reached.
+
+    A slate that is only PARTLY under way is still returned, because
+    `predict_slate` skips started games one at a time and the rest are
+    legitimately forecastable.
+    """
+    from ..db import utcnow
+
     row = conn.execute(
         "SELECT MIN(week) AS w FROM games"
-        " WHERE sport = 'mlb' AND season = ? AND status = 'scheduled'",
-        (season,),
+        " WHERE sport = 'mlb' AND season = ? AND status = 'scheduled'"
+        " AND kickoff_utc > ?",
+        (season, utcnow()),
     ).fetchone()
     return None if row is None or row["w"] is None else int(row["w"])
 
