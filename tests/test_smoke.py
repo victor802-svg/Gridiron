@@ -915,3 +915,89 @@ def test_the_result_reads_as_a_word_not_as_open(page):
     assert chips
     assert all(c in ("PENDING", "WIN", "LOSS", "VOID") for c in chips), chips
     assert "open" not in " ".join(chips).lower()
+
+
+# --- C2: the page calms down ------------------------------------------------
+
+def test_notices_collapse_into_one_bar_that_expands(page):
+    """Compression, not suppression: one line, every sentence behind it."""
+    page.evaluate("location.hash = '#/record'")
+    page.wait_for_selector("#notices .notices-summary", timeout=10000)
+    bars = page.eval_on_selector_all("#notices .notices-summary", "e => e.length")
+    assert bars == 1, f"{bars} notice bars rendered; the point is one"
+
+    summary = page.locator("#notices .notices-summary")
+    text = summary.inner_text()
+    assert "notice" in text.lower()
+    assert page.locator("#notices .notices-detail").is_visible() is False
+
+    summary.click()
+    page.wait_for_timeout(250)
+    assert page.locator("#notices .notices-detail").is_visible(), "it does not expand"
+    full = page.locator("#notices .notices-detail").inner_text()
+    # Every sentence survives; the bar is a summary of them, not a replacement.
+    assert len(full) > len(text)
+
+
+def test_the_greeting_is_on_the_home_tab_only(page):
+    """One page greets; every page warns."""
+    page.evaluate("location.hash = '#/record'")
+    page.wait_for_timeout(700)
+    assert page.locator("#greeting").is_visible(), "the home tab does not greet"
+
+    for route in ("#/factors", "#/history", "#/schedule"):
+        page.evaluate(f"location.hash = '{route}'")
+        page.wait_for_timeout(400)
+        assert not page.locator("#greeting").is_visible(), (
+            f"{route} shows the since-you-last-looked strip"
+        )
+        assert page.locator("#notices").is_visible(), (
+            f"{route} lost its notices; a warning nobody sees is not a warning"
+        )
+
+
+def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
+    page.evaluate("location.hash = '#/record'")
+    page.wait_for_timeout(500)
+    note = page.locator("#sport-note")
+    assert "never" in note.inner_text().lower()
+    inside_footer = page.evaluate(
+        "!!document.querySelector('footer #sport-note')")
+    assert inside_footer, "LAW 6's caption is still above the fold"
+
+
+@pytest.mark.parametrize(
+    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/history"]
+)
+def test_no_bare_dash_stands_in_for_a_value(route, page):
+    """A dash in a data cell reads as a rendering fault. Every absence names
+    itself: "no line", "not played", "nothing resolved yet"."""
+    page.evaluate(f"location.hash = '{route}'")
+    page.wait_for_timeout(800)
+    bare = page.evaluate("""() => {
+        const cells = [...document.querySelectorAll('td, .v, .chip-sub')];
+        return cells.map(c => c.textContent.trim())
+                    .filter(t => t === '\u2014' || t === '-');
+    }""")
+    assert not bare, f"{route} has {len(bare)} cells showing a bare dash"
+
+
+def test_each_notice_keeps_its_task_name_in_the_summary(page):
+    """The bar said "predict never run · predict never run": splitting on the
+    first colon threw away the sport, so two different notices read as one
+    repeated. A summary that cannot tell two warnings apart is not a summary."""
+    page.evaluate("location.hash = '#/record'")
+    page.wait_for_selector("#notices .notices-summary", timeout=10000)
+    text = page.locator("#notices .notices-summary").inner_text()
+    parts = [p.strip() for p in text.split("—")[-1].split("·")]
+    assert len(parts) == len(set(parts)), f"the summary repeats itself: {parts}"
+
+
+def test_the_header_record_follows_the_selected_sport(page):
+    """One sport at a time, and the header says which."""
+    before = page.locator("#record-line").inner_text()
+    page.evaluate("document.querySelector('#sport-tabs button[data-sport=mlb]').click()")
+    page.wait_for_timeout(1800)
+    after = page.locator("#record-line").inner_text()
+    assert after.startswith("MLB"), f"the header still reads {after!r}"
+    assert after != before

@@ -200,6 +200,26 @@ reads from that endpoint is a field the endpoint returns. **What would settle
 the wider worry:** the same class of drift can exist on any of the other twelve
 endpoints, and only this one is checked.
 
+### MLB player props are deferred, not skipped
+
+*(ruling 2026-08-30)*
+
+C4 — four MLB prop markets (batter hits, total bases, home runs, pitcher
+strikeouts) — was deferred to its own session by the operator, on the reasoning
+that C3's checklist should GOVERN C4 rather than describe it. Writing both in
+one pass would have made `docs/NEW_MARKET_CHECKLIST.md` an account of what had
+just been done instead of a constraint on what comes next.
+
+The work is fully specified in the brief and unblocked. **What it needs:** the
+MLB loader extended to player game logs, ~13 factors with rationales, four
+per-market fits and gates, VOID rules written first, a bucket set that covers
+the 15–35% range home runs actually live in rather than starting at 50%, a
+dated daily cap, and a walk-forward backtest labelled pipeline-sanity.
+
+MLB is live and resolving daily, so these become the fastest-accumulating record
+in the app once they start — which is the argument for doing them next, and also
+the argument for doing them carefully.
+
 ## Resolved, kept for the record
 
 ### The rolling-window leak *(found and fixed 2026-08-29, P1)*

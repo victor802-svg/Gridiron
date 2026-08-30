@@ -773,3 +773,29 @@ table.grid tr:hover td { background: var(--card-2); }
 .absent { color: var(--faint); font-style: normal; font-size: var(--t-caption); }
 
 table.grid td.wide { min-width: 22rem; color: var(--chrome); }
+
+/* --- the notice bar -------------------------------------------------------
+   One line, expandable. Three stacked full-width banners with red borders
+   trained the eye to skip the whole region; a single line with the count in
+   red and the rest in chrome is read. Every sentence survives behind the
+   expander - this is compression, not suppression. */
+.notices { margin: 14px 0 0; }
+.notices[hidden] { display: none; }
+.notices-summary {
+  width: 100%; text-align: left; cursor: pointer;
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 2px solid var(--red); border-radius: 8px;
+  padding: 9px 14px; min-height: 44px;
+  font-family: var(--body); font-size: var(--t-caption);
+  color: var(--muted); line-height: 1.5;
+}
+.notices-summary:hover { border-color: var(--line-lit); border-left-color: var(--red); }
+.notices-summary:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.notices-count { color: var(--red); font-weight: 600; }
+.notices-detail { margin-top: 6px; }
+.notices-detail[hidden] { display: none; }
+
+/* A value the market never published, in the card's own language. */
+.rail-legend .v.no-line, .v.no-line {
+  font-size: var(--t-body); font-weight: 500; color: var(--faint);
+}

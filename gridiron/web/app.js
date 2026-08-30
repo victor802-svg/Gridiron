@@ -31,14 +31,21 @@ const Gridiron = (function () {
   }
 
   // --- formatting --------------------------------------------------------
+  // An em-dash is a PROSE separator here — "Calibration — spread, 6 resolved" —
+  // and nothing else. It is never a value.
   const DASH = '—';
+  // What a data cell says when it has no value. A dash in a cell means nothing
+  // to a reader and looks like a rendering fault; every absence names itself.
+  const ABSENT = 'not recorded';
+  const NO_LINE = 'no line';
+  const NOT_PLAYED = 'not played';
   // The disagreement threshold the record uses, so the card and the edge
   // question mean the same thing by 'disagreed'.
   const DISAGREEMENT = 0.05;
-  const pct = (x, dp) => (x === null || x === undefined) ? DASH : (x * 100).toFixed(dp === undefined ? 1 : dp) + '%';
-  const num = (x, dp) => (x === null || x === undefined) ? DASH : Number(x).toFixed(dp === undefined ? 4 : dp);
-  const int = (x) => (x === null || x === undefined) ? DASH : Number(x).toLocaleString();
-  const signed = (x, dp) => (x === null || x === undefined) ? DASH : (x > 0 ? '+' : '') + Number(x).toFixed(dp === undefined ? 1 : dp);
+  const pct = (x, dp) => (x === null || x === undefined) ? ABSENT : (x * 100).toFixed(dp === undefined ? 1 : dp) + '%';
+  const num = (x, dp) => (x === null || x === undefined) ? ABSENT : Number(x).toFixed(dp === undefined ? 4 : dp);
+  const int = (x) => (x === null || x === undefined) ? ABSENT : Number(x).toLocaleString();
+  const signed = (x, dp) => (x === null || x === undefined) ? ABSENT : (x > 0 ? '+' : '') + Number(x).toFixed(dp === undefined ? 1 : dp);
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -325,7 +332,8 @@ const Gridiron = (function () {
         requireN(b, 'bucket row ' + b.label);
         return [
           b.label, int(b.n), pct(b.claimed), pct(b.actual),
-          b.gap === null ? DASH : signed(b.gap * 100, 1) + ' pts',
+          b.gap === null ? el('span', 'absent', 'nothing resolved yet')
+                         : signed(b.gap * 100, 1) + ' pts',
           b.n === 0 ? 'no predictions yet'
             : (b.provisional ? 'provisional: below ' + state.meta.minimum_for_bucket_point : '')
         ];
@@ -362,7 +370,7 @@ const Gridiron = (function () {
     }
     [['Brier', num(payload.brier)], ['Log loss', num(payload.log_loss)],
      ['Hit rate', pct(payload.hit_rate)]].forEach(pair => {
-      if (pair[1] === DASH) return;
+      if (pair[1] === ABSENT) return;
       const row = el('div', 'score-row');
       row.appendChild(el('span', 'label', pair[0]));
       row.appendChild(el('span', 'stat-value', pair[1]));
@@ -515,7 +523,8 @@ const Gridiron = (function () {
 
     const marketBlock = el('div');
     marketBlock.appendChild(el('span', 'k', 'MARKET ○'));
-    marketBlock.appendChild(el('div', 'v', hasMarket ? pct(market) : DASH));
+    marketBlock.appendChild(el('div', 'v' + (hasMarket ? '' : ' no-line'),
+      hasMarket ? pct(market) : NO_LINE));
     if (!hasMarket) marketBlock.appendChild(el('span', 'chip-sub', 'no free line source'));
     legend.appendChild(marketBlock);
 
@@ -819,8 +828,8 @@ const Gridiron = (function () {
         f.factor,
         (f.value === null || f.value === undefined) ? 'not measurable' : num(f.value, 3),
         (f.contribution === null || f.contribution === undefined)
-          ? DASH : signed(f.contribution, 3),
-        f.source || DASH,
+          ? el('span', 'absent', 'not measurable') : signed(f.contribution, 3),
+        f.source || el('span', 'absent', 'not recorded'),
         f.rationale || ''
       ]));
     wrap.appendChild(t);
@@ -999,7 +1008,7 @@ const Gridiron = (function () {
           name, (f.added_utc || '').slice(0, 10), f.applies_to.join(', '),
           int(f.n), int(f.training_rows_measured),
           (f.delta_brier === null || f.delta_brier === undefined)
-            ? DASH : signed(f.delta_brier, 5),
+            ? el('span', 'absent', 'nothing resolved yet') : signed(f.delta_brier, 5),
           num(f.mean_abs_contribution, 4), f.verdict,
           f.note ? f.rationale + ' — NOTE: ' + f.note : f.rationale
         ];
@@ -1292,12 +1301,7 @@ const Gridiron = (function () {
     counts.textContent = (data.movement.buckets[0] || {}).countdown ||
       (data.today && data.today.line) || '';
 
-    if (hosts.warnings) {
-      hosts.warnings.innerHTML = '';
-      (data.warnings || []).forEach(w => {
-        hosts.warnings.appendChild(el('div', 'greet-warn ' + w.kind, w.text));
-      });
-    }
+    if (hosts.warnings) renderNotices(data.warnings || [], hosts.warnings);
 
     if (hosts.settled) {
       hosts.settled.innerHTML = '';
@@ -1311,6 +1315,48 @@ const Gridiron = (function () {
     }
   }
 
+  // ONE compact bar in place of three full-width banners. This is compression,
+  // not suppression: the count and the key words are the summary, every
+  // sentence survives behind the expander, and the bar still travels to the
+  // front page. Three stacked red borders trained the eye to skip them.
+  function renderNotices(warnings, host) {
+    host.innerHTML = '';
+    if (!warnings.length) { host.hidden = true; return; }
+    host.hidden = false;
+
+    const summary = el('button', 'notices-summary');
+    summary.type = 'button';
+    summary.setAttribute('aria-expanded', 'false');
+    summary.appendChild(el('b', 'notices-count',
+      warnings.length + (warnings.length === 1 ? ' notice' : ' notices')));
+    summary.appendChild(document.createTextNode(' — ' +
+      warnings.map(shortNotice).join(' · ')));
+
+    const detail = el('div', 'notices-detail');
+    detail.hidden = true;
+    warnings.forEach(w => detail.appendChild(el('div', 'greet-warn ' + w.kind, w.text)));
+
+    summary.addEventListener('click', () => {
+      detail.hidden = !detail.hidden;
+      summary.setAttribute('aria-expanded', String(!detail.hidden));
+    });
+    host.appendChild(summary);
+    host.appendChild(detail);
+  }
+
+  // "predict:nfl never run", "NFL schedule stale 21h" — the key words only.
+  function shortNotice(w) {
+    // Keep the task's NAME. Splitting on the first colon turned "predict:nfl"
+    // and "predict:nba" both into "predict", so the bar said "predict never
+    // run · predict never run" — two notices that read as one repeated.
+    const text = w.text || '';
+    const head = text.split(': ')[0];
+    if (w.kind === 'silent') return head + ' never run';
+    if (w.kind === 'missed') return head + ' missed a slate';
+    const hours = text.match(/([\d.]+)h ago/);
+    return head + (hours ? ' stale ' + Math.round(+hours[1]) + 'h' : ' stale');
+  }
+
   async function renderGreeting() {
     const strip = document.getElementById('greeting');
     if (!strip) return;
@@ -1319,7 +1365,7 @@ const Gridiron = (function () {
       paintDigest(data, {
         msg: document.getElementById('greet-msg'),
         countdown: document.getElementById('greet-countdown'),
-        warnings: document.getElementById('greet-warnings'),
+        warnings: document.getElementById('notices'),
         settled: null
       });
       strip.hidden = false;
@@ -1391,11 +1437,18 @@ const Gridiron = (function () {
     document.querySelectorAll('.view').forEach(v => { v.hidden = true; });
     // The strip leads the FRONT page. On the digest route the same content is
     // the page itself, and showing both put two identical panels on screen.
-    const onDigest = view === 'digest';
-    ['greeting', 'greet-warnings', 'greet-settled'].forEach(id => {
-      const node = document.getElementById(id);
-      if (node) node.hidden = onDigest || (id === 'greeting' && node.dataset.empty === 'true');
-    });
+    // ONE PAGE GREETS; EVERY PAGE WARNS. The since-you-last-looked strip is a
+    // home-tab thing - it answers "what happened while I was away", which is
+    // not the question somebody browsing the factor registry is asking. The
+    // notice bar stays on every page, because a warning nobody sees is not a
+    // warning.
+    const home = view === 'record';
+    const greeting = document.getElementById('greeting');
+    if (greeting) {
+      greeting.hidden = !home || greeting.dataset.empty === 'true';
+    }
+    const settled = document.getElementById('greet-settled');
+    if (settled) settled.hidden = !home;
     document.getElementById('view-' + view).hidden = false;
     document.querySelectorAll('nav a').forEach(a => {
       a.classList.toggle('active', a.dataset.route === view);

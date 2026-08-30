@@ -26,7 +26,6 @@
   <div class="sportbar-inner">
     <nav id="sport-tabs" aria-label="Sport"></nav>
     <div class="resolved-count" id="record-line"></div>
-    <span class="caption" id="sport-note"></span>
   </div>
 </div>
 
@@ -56,7 +55,11 @@
     <div class="msg" id="greet-msg"></div>
     <div class="countdown" id="greet-countdown"></div>
   </section>
-  <div id="greet-warnings"></div>
+  <div id="notices" class="notices" hidden>
+    <button type="button" id="notices-summary" class="notices-summary"
+            aria-expanded="false" aria-controls="notices-detail"></button>
+    <div id="notices-detail" class="notices-detail" hidden></div>
+  </div>
   <div id="greet-settled"></div>
 
   <section id="view-record" class="view" hidden>
@@ -175,6 +178,7 @@
 </main>
 
 <footer class="colophon">
+  <p class="footnote" id="sport-note"></p>
   <p id="colophon-text"></p>
   <p class="footnote">
     Not a betting tool. No stake sizing, no bankroll, no recommendations, and no
