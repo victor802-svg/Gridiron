@@ -27,10 +27,12 @@ OUT = Path(__file__).resolve().parent / "gridiron.ico"
 SIZES = (16, 32, 48, 256)
 
 # The app's own palette, so the icon and the interface are the same object.
-CARD = (0x12, 0x15, 0x1A, 255)      # near-black, the app background
-RAIL = (0x3D, 0x44, 0x50, 255)      # the muted rule colour
-MODEL = (0xE8, 0xA1, 0x3A, 255)     # the single accent: the model's dot
-MARKET = (0x8A, 0x93, 0xA0, 255)    # grey: the market's dot
+# Kept in step with the approved palette in gridiron/web/style.css. An icon
+# that is the app's old colours is a small daily lie about what will open.
+CARD = (0x0A, 0x0F, 0x0C, 255)      # --ink: the page ground
+RAIL = (0x1F, 0x2B, 0x1E, 255)      # --line: the hairline
+MODEL = (0x00, 0xDC, 0x82, 255)     # --green: the model's dot
+MARKET = (0x8A, 0xA0, 0x8C, 255)    # --muted: the market's dot
 CLEAR = (0, 0, 0, 0)
 
 
