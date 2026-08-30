@@ -39,6 +39,18 @@ twice — with and without these 25 — and record whether the difference is
 material. If it is, the honest move is to report the corrected-cutoff sample as
 the headline and these as a footnote. Do not pre-judge which; measure it.
 
+### P5 left two items incomplete, and one of them is now done
+
+**Phone proof over Tailscale — INCOMPLETE.** See the entry below. The 390px
+phone pass is verified headlessly over localhost; the tailnet leg is not.
+
+**The first real resolutions — DONE, 2026-08-30.** Six MLB moneylines settled,
+three correct, Brier 0.2556 on n=6. The calibration page reports the single
+occupied bucket as PROVISIONAL and says 94 more are needed before anything is
+claimable, which is the machinery behaving exactly as LAW 4 requires. These are
+the 25 standing predictions written under the pre-fix UTC cutoff — see the entry
+above; the contamination note applies to them.
+
 ### The tailnet leg is UNVERIFIED
 
 `tools/phone_setup.ps1` is written and its not-installed path is verified — it

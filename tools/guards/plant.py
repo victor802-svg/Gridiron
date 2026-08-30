@@ -16,12 +16,14 @@ run against a temporary SQLite file.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sqlite3
 import sys
 import tempfile
 import textwrap
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -847,6 +849,179 @@ def plant_a_shipped_worker_that_caches_data() -> Result:
     )
 
 
+def plant_an_unauthenticated_route() -> Result:
+    """Ask every route for data without a session and see what answers.
+
+    Enumerated from the app rather than from a list, because a hand-kept list of
+    protected paths goes stale the first time somebody adds an endpoint — and it
+    goes stale silently, while the suite stays green and the new route serves
+    the record to anyone who asks.
+    """
+    from fastapi.testclient import TestClient
+
+    from gridiron import api, auth
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        target = Path(tmp) / "gate.db"
+        db.open_db(target).close()
+        previous = os.environ.get(auth.TOKEN_VAR)
+        os.environ[auth.TOKEN_VAR] = "planted-token-for-the-guard-run"
+        api.set_database(target)
+        leaked: list[str] = []
+        try:
+            with TestClient(api.app) as client:
+                for route in api.app.routes:
+                    path = getattr(route, "path", None)
+                    methods = getattr(route, "methods", set()) or set()
+                    if not path or "{" in path or "GET" not in methods:
+                        continue
+                    if auth.path_is_open(path):
+                        continue
+                    code = client.get(path, headers={"accept": "application/json"}).status_code
+                    if code not in (401, 403):
+                        leaked.append(f"{path} -> {code}")
+        finally:
+            api.set_database(None)
+            if previous is None:
+                os.environ.pop(auth.TOKEN_VAR, None)
+            else:
+                os.environ[auth.TOKEN_VAR] = previous
+
+    if leaked:
+        return Result("AUTH", "reach every route without a session",
+                      "api.require_session", False,
+                      "NOT CAUGHT - these answered unauthenticated: " + ", ".join(leaked))
+    return Result("AUTH", "reach every route without a session",
+                  "api.require_session", True,
+                  "every route enumerated from the app answered 401 without a "
+                  "session; only the open list is reachable")
+
+
+def plant_a_late_predict() -> Result:
+    """Try to forecast a slate whose games have already started.
+
+    This is the rule that cost 47 NBA rows and 6 MLB ones. A question once
+    answered is never re-asked, so a late answer permanently occupies the slot
+    the real forecast should have had. The task must record MISSED and write
+    nothing.
+    """
+    from gridiron import tasks
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(Path(tmp) / "late.db")
+        db.set_meta(conn, "kind", "live")
+        started = (datetime.now(timezone.utc) - timedelta(hours=6)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        season = config.SPORT_CURRENT_SEASON["mlb"]
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('late_1', 'mlb', ?, 900,"
+            " 'REG', 'NYY', 'BOS', ?, 'scheduled', ?)",
+            (season, started, started[:10]),
+        )
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, model_prob, model_side, predictor, factor_set_version,"
+            " factors_json, reasoning) VALUES (?, 'mlb', 'late_1', 'moneyline',"
+            " 'NYY', 0.55, 'win', 'statistical', ?, '{}', 'seed')",
+            ((datetime.now(timezone.utc) - timedelta(days=2)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"), config.FACTOR_SET_VERSION),
+        )
+        # A SECOND slate, also begun, which nothing has forecast.
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('late_2', 'mlb', ?, 901,"
+            " 'REG', 'LAD', 'SFG', ?, 'scheduled', ?)",
+            (season, started, started[:10]),
+        )
+        conn.commit()
+
+        before = conn.execute(
+            "SELECT COUNT(*) FROM predictions WHERE game_id = 'late_2'"
+        ).fetchone()[0]
+        tasks._record_missed_slates(conn, "mlb")
+        after = conn.execute(
+            "SELECT COUNT(*) FROM predictions WHERE game_id = 'late_2'"
+        ).fetchone()[0]
+        missed = conn.execute(
+            "SELECT detail FROM task_runs WHERE result = 'missed'"
+        ).fetchall()
+        conn.close()
+
+    if after != before:
+        return Result("NEVER PREDICT LATE", "forecast a slate whose games have started",
+                      "tasks._record_missed_slates", False,
+                      f"NOT CAUGHT - {after - before} prediction(s) were written late")
+    if not missed:
+        return Result("NEVER PREDICT LATE", "forecast a slate whose games have started",
+                      "tasks._record_missed_slates", False,
+                      "NOT CAUGHT - nothing was written, but no MISSED row was "
+                      "recorded either, so the gap is invisible")
+    return Result("NEVER PREDICT LATE", "forecast a slate whose games have started",
+                  "tasks._record_missed_slates", True,
+                  "recorded MISSED and wrote nothing: " + missed[0]["detail"][:120])
+
+
+def plant_a_double_resolve() -> Result:
+    """Run resolve twice and check the second run changes nothing.
+
+    The scheduler runs this every four hours, six times a day. If a second pass
+    could re-settle anything, the record would drift on its own with nobody
+    touching it.
+    """
+    from gridiron import tasks
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "twice.db")
+        # Give the first pass something to settle. Without this the planting
+        # proves only that zero equals zero, which is true of any code at all.
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, home_score, away_score, league_date)"
+            " VALUES ('twice_1', 'mlb', 2026, 800, 'REG', 'NYY', 'BOS',"
+            " '2026-01-01T18:00:00Z', 'final', 5, 3, '2026-01-01')"
+        )
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, model_prob, model_side, predictor, factor_set_version,"
+            " factors_json, reasoning) VALUES ('2026-01-01T12:00:00Z', 'mlb',"
+            " 'twice_1', 'moneyline', 'NYY', 0.61, 'win', 'statistical', ?,"
+            " '{}', 'planted so the first pass has work to do')",
+            (config.FACTOR_SET_VERSION,),
+        )
+        conn.commit()
+        first = tasks.run_task(conn, "resolve", use_llm=False)
+        fingerprint = conn.execute(
+            "SELECT COUNT(*) AS n, SUM(outcome) AS wins, MAX(resolved_utc) AS last"
+            " FROM predictions WHERE resolved_utc IS NOT NULL"
+        ).fetchone()
+        second = tasks.run_task(conn, "resolve", use_llm=False)
+        again = conn.execute(
+            "SELECT COUNT(*) AS n, SUM(outcome) AS wins, MAX(resolved_utc) AS last"
+            " FROM predictions WHERE resolved_utc IS NOT NULL"
+        ).fetchone()
+        conn.close()
+
+    changed = tuple(fingerprint) != tuple(again)
+    if not first.get("settled"):
+        return Result("IDEMPOTENT RESOLVE", "run resolve twice back to back",
+                      "resolve.resolve_all", False,
+                      "NOT A TEST - the first pass settled nothing, so the second "
+                      "settling nothing proves only that zero equals zero")
+    if second["result"] != "noop" or changed:
+        return Result("IDEMPOTENT RESOLVE", "run resolve twice back to back",
+                      "resolve.resolve_all", False,
+                      f"NOT CAUGHT - second run reported {second['result']} and the "
+                      f"record {'changed' if changed else 'held'}")
+    return Result(
+        "IDEMPOTENT RESOLVE", "run resolve twice back to back",
+        "resolve.resolve_all", True,
+        f"first pass settled {first.get('settled', 0)}; second settled 0 and every "
+        "resolved outcome and timestamp is byte-identical",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -869,6 +1044,9 @@ def main() -> int:
     results.append(plant_a_game_inside_its_own_rolling_window())
     results.append(plant_an_offline_data_cache())
     results.append(plant_a_shipped_worker_that_caches_data())
+    results.append(plant_an_unauthenticated_route())
+    results.append(plant_a_late_predict())
+    results.append(plant_a_double_resolve())
 
     with tempfile.TemporaryDirectory() as tmp:
         conn = seeded_database(Path(tmp) / "guards.db")
