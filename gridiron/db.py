@@ -51,6 +51,12 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # get their own "since you last looked" rather than stealing it from
     # one another.
     ("sessions", "last_seen_utc", "TEXT"),
+    # Strikeouts are the pitcher prop market; home runs allowed is the input to
+    # the batters' home-run market. Both were already in the cached game-log
+    # responses and simply were not being read, so this widening costs no
+    # fetches at all -- the loader re-parses what is already stored.
+    ("mlb_pitcher_starts", "strike_outs", "INTEGER"),
+    ("mlb_pitcher_starts", "home_runs_allowed", "INTEGER"),
 )
 
 

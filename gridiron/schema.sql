@@ -182,6 +182,8 @@ CREATE TABLE IF NOT EXISTS mlb_pitcher_starts (
     runs          INTEGER,
     earned_runs   INTEGER,
     batters_faced INTEGER,
+    strike_outs   INTEGER,
+    home_runs_allowed INTEGER,
     PRIMARY KEY (pitcher_id, season, game_date, game_pk)
 );
 CREATE INDEX IF NOT EXISTS mlb_starts_lookup
@@ -202,6 +204,131 @@ CREATE TABLE IF NOT EXISTS mlb_team_games (
 );
 CREATE INDEX IF NOT EXISTS mlb_team_games_lookup
     ON mlb_team_games (team, game_date);
+
+
+-- One row per batter per game. The four batting prop markets resolve from this
+-- table and every batter factor reads it.
+--
+-- Sourced from the per-player GAME LOG (`/people/{id}/stats?stats=gameLog`),
+-- one request per player per season, NOT from per-game boxscores. A boxscore is
+-- 178 KB and there are 2,430 games in a season, which is a third of a gigabyte
+-- of cache per season for the same numbers -- the outage the loader's docstring
+-- warns about. The game log carries every stat the markets need.
+CREATE TABLE IF NOT EXISTS mlb_batter_games (
+    player_id        INTEGER NOT NULL,
+    season           INTEGER NOT NULL,
+    game_date        TEXT    NOT NULL,
+    game_pk          INTEGER NOT NULL,
+    player_name      TEXT,
+    team             TEXT,
+    opponent         TEXT,
+    is_home          INTEGER,
+    hits             INTEGER,
+    total_bases      INTEGER,
+    home_runs        INTEGER,
+    doubles          INTEGER,
+    triples          INTEGER,
+    at_bats          INTEGER,
+    plate_appearances INTEGER,
+    strike_outs      INTEGER,
+    walks            INTEGER,
+    rbi              INTEGER,
+    -- The batting-order slot, 1 to 9, decoded from the boxscore's `battingOrder`
+    -- (slot = value // 100). NULL where no lineup was recorded for the game.
+    -- IT IS NOT KNOWN BEFORE THE GAME: see `mlb_lineups`.
+    lineup_slot      INTEGER,
+    is_substitute    INTEGER,
+    PRIMARY KEY (player_id, season, game_date, game_pk)
+);
+CREATE INDEX IF NOT EXISTS mlb_batter_games_lookup
+    ON mlb_batter_games (player_id, game_date);
+CREATE INDEX IF NOT EXISTS mlb_batter_games_by_game
+    ON mlb_batter_games (game_pk);
+
+-- The posted batting order for a game, one row per slot per side.
+--
+-- MEASURED, NOT ASSUMED: the schedule's `hydrate=lineups` returns
+-- `homePlayers`/`awayPlayers` as ORDERED arrays, and that order was checked
+-- against the boxscore's own `battingOrder` field on 12 team-games -- 12 agree,
+-- 0 disagree. One request per date range covers every game on it.
+--
+-- A LINEUP IS A FACT ABOUT A GAME THAT HAS STARTED. Measured 2026-08-30: of 41
+-- scheduled games across three future dates, ZERO carried lineups; they are all
+-- 'Preview' until roughly two hours before first pitch. So this table can never
+-- tell a forecast who is batting where TONIGHT, and no factor may read it for
+-- the game being predicted. What it supports is the batter's RECENT slot, which
+-- is a fact about games already played and is available at prediction time.
+CREATE TABLE IF NOT EXISTS mlb_lineups (
+    game_id     TEXT    NOT NULL REFERENCES games (id),
+    side        TEXT    NOT NULL CHECK (side IN ('home', 'away')),
+    slot        INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 9),
+    player_id   INTEGER NOT NULL,
+    player_name TEXT,
+    recorded_utc TEXT   NOT NULL,
+    PRIMARY KEY (game_id, side, slot)
+);
+CREATE INDEX IF NOT EXISTS mlb_lineups_player ON mlb_lineups (player_id);
+
+-- Handedness, which is the input to the platoon-split factor.
+--
+-- Fetched in BATCHES: `/people?personIds=a,b,c,...` takes 300 ids in one
+-- request, so every player in the record costs about five requests rather than
+-- fifteen hundred. Handedness does not change, so a row is written once.
+CREATE TABLE IF NOT EXISTS mlb_people (
+    player_id   INTEGER PRIMARY KEY,
+    full_name   TEXT,
+    bat_side    TEXT,     -- 'R' | 'L' | 'S' (switch)
+    pitch_hand  TEXT,     -- 'R' | 'L'
+    primary_position TEXT,
+    fetched_utc TEXT NOT NULL
+);
+
+-- THE MEASURED PLAYER CROSSWALK (new-market checklist, item 3).
+--
+-- The stats source and the odds source share no player id: Paul Goldschmidt is
+-- 502671 to MLB and 31027 to ESPN, and neither payload carries the other's
+-- number. The only bridge is the name, so the bridge is MEASURED and STORED
+-- rather than computed on the fly and trusted.
+--
+-- `method` records HOW a row was matched, so the normaliser's contribution is
+-- quantified rather than guessed: 'exact' means the raw names were identical,
+-- 'normalised' means it took accent-stripping and punctuation folding. An
+-- ambiguous name -- two players normalising to the same string -- is REFUSED,
+-- and the refusal is stored with its reason so the prop is skipped visibly.
+CREATE TABLE IF NOT EXISTS player_crosswalk (
+    sport       TEXT    NOT NULL,
+    espn_id     TEXT    NOT NULL,
+    source_id   INTEGER,
+    espn_name   TEXT    NOT NULL,
+    source_name TEXT,
+    normalised  TEXT    NOT NULL,
+    method      TEXT    NOT NULL CHECK (
+                    method IN ('exact', 'normalised', 'refused_ambiguous',
+                               'refused_unmatched')),
+    reason      TEXT,
+    measured_utc TEXT   NOT NULL,
+    PRIMARY KEY (sport, espn_id)
+);
+CREATE INDEX IF NOT EXISTS player_crosswalk_source
+    ON player_crosswalk (sport, source_id);
+
+-- Prop lines as published, one row per game per market per athlete per rung.
+-- Lives outside `market_lines_raw` because that table is one row per GAME.
+CREATE TABLE IF NOT EXISTS market_prop_lines_raw (
+    game_id     TEXT    NOT NULL REFERENCES games (id),
+    market      TEXT    NOT NULL,
+    espn_id     TEXT    NOT NULL,
+    line        REAL    NOT NULL,
+    -- 'over' / 'under', DERIVED from cross-rung monotonicity, never assumed
+    -- from the sign of the price. See `market/props.py`.
+    side        TEXT    NOT NULL CHECK (side IN ('over', 'under', 'unknown')),
+    price       INTEGER,
+    implied_prob REAL,
+    side_method TEXT,
+    source      TEXT    NOT NULL,
+    fetched_utc TEXT    NOT NULL,
+    PRIMARY KEY (game_id, market, espn_id, line, side)
+);
 
 
 -- --- basketball -------------------------------------------------------------

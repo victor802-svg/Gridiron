@@ -39,6 +39,15 @@ FACT_TABLES = (
     "mlb_team_games",
     "nba_team_games",
     "nba_player_games",
+    # MLB player-level facts, added with the prop markets on 2026-08-30. A
+    # backtest copy without these can form no prop question at all, and the
+    # crosswalk is a fact about two feeds rather than a record of anything we
+    # claimed, so it travels with them.
+    "mlb_batter_games",
+    "mlb_lineups",
+    "mlb_people",
+    "player_crosswalk",
+    "market_prop_lines_raw",
 )
 
 
