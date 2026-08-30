@@ -285,6 +285,26 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "factor_set_version": r["factor_set_version"],
             }
         )
+        # PLAIN WORDS, built on the SERVER, exactly as the history table does.
+        # The card used to build its own sentence in JavaScript from the raw
+        # `subject` and a hardcoded verb, and it was wrong in two ways at once:
+        # it printed the stored identifier ("FERNANDO TATIS JR. BATTER_HITS")
+        # and it said "over" for every prop regardless of which side the model
+        # had actually taken. A card reading "72% chance he goes over" beside a
+        # prediction of UNDER is not a cosmetic fault; it is the interface
+        # stating the opposite of the record.
+        #
+        # This is precisely the drift `language.py` exists to prevent, and the
+        # reason it says the humanising rules live in ONE place: the history
+        # table was fixed in C1 and the card was left building its own.
+        cards[-1]["phrase"] = language.phrase(cards[-1])
+        cards[-1]["player"] = language.strip_market_suffix(
+            cards[-1]["subject"], cards[-1]["market"]
+        )
+        cards[-1]["market_label"] = language.market_label(cards[-1])
+        cards[-1]["side_word"] = language.SIDE_WORDS.get(
+            r["model_side"], r["model_side"] or ""
+        )
 
     # Sorted by disagreement size, because that is where anything interesting
     # lives. Cards with no market comparison sort last rather than first.

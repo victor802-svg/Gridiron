@@ -616,15 +616,28 @@ const Gridiron = (function () {
 
   const LOW_CONFIDENCE = 0.53;
 
-  // "SD @ TB" -> the side the model picked, said the way a person would say it.
+  // The side the model picked, said the way a person would say it.
+  //
+  // THE SENTENCE COMES FROM THE SERVER. This function used to build it here,
+  // from the raw `subject` and a verb chosen by market type, and it was wrong
+  // twice over: it printed the stored identifier ("FERNANDO TATIS JR.
+  // BATTER_HITS") and it said "over" for EVERY prop, including the ones the
+  // model had called under. A card reading "72% chance he goes over" next to a
+  // prediction of under states the opposite of the record.
+  //
+  // `gridiron.language` is the one implementation, and this is one of the three
+  // places its docstring says must not drift apart.
   function pickSentence(c) {
     const line = el('div', 'pick');
     line.appendChild(el('span', 'arrow', '▸'));
     line.appendChild(document.createTextNode(' Model picks '));
-    line.appendChild(el('b', '', String(c.subject || '').toUpperCase()));
-    const verb = c.market_type === 'spread' ? ' to cover'
-      : (c.market_type === 'prop' ? ' over' : ' to win');
-    line.appendChild(document.createTextNode(verb));
+    if (c.phrase) {
+      line.appendChild(el('b', '', String(c.phrase).toUpperCase()));
+    } else {
+      line.appendChild(el('b', '', String(c.subject || '').toUpperCase()));
+      line.appendChild(document.createTextNode(
+        c.market_type === 'spread' ? ' to cover' : ' to win'));
+    }
     // Below 53% the app says so. Selling a coin flip as a pick is the small
     // dishonesty that makes every larger number less believable.
     if (typeof c.model_prob === 'number' && c.model_prob < LOW_CONFIDENCE) {
@@ -649,14 +662,25 @@ const Gridiron = (function () {
     const box = el('div', 'prob');
     box.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
     box.appendChild(el('span', 'pct', '%'));
-    // Plain words, not field names. "chance TB wins", never "model · home win".
-    box.appendChild(el('small', '', 'chance ' + shortSubject(c) + ' ' +
-      (c.market_type === 'spread' ? 'covers' : (c.market_type === 'prop' ? 'goes over' : 'wins'))));
+    // Plain words, not field names, and THE SIDE THE MODEL ACTUALLY TOOK. This
+    // said "goes over" for every prop, so the confidence figure was labelled
+    // with the opposite claim on every under.
+    let what;
+    if (c.market_type === 'spread') {
+      what = 'covers';
+    } else if (c.market_type === 'prop') {
+      what = 'goes ' + (c.model_side === 'under' ? 'under' : 'over');
+    } else {
+      what = c.model_side === 'lose' ? 'loses' : 'wins';
+    }
+    box.appendChild(el('small', '', 'chance ' + shortSubject(c) + ' ' + what));
     return box;
   }
 
   function shortSubject(c) {
-    const s = String(c.subject || '');
+    // The PLAYER, not the storage key. `subject` is "Name batter_hits"; the
+    // server strips the suffix into `player` and that is what a reader sees.
+    const s = String(c.player || c.subject || '');
     return s.length > 14 ? s.slice(0, 13) + '…' : s;
   }
 
@@ -934,11 +958,23 @@ const Gridiron = (function () {
     state.markets.forEach(m => {
       const o = el('option', '', marketLabel(m)); o.value = m; chart.appendChild(o);
     });
+    // CLEARED BEFORE REFILLING, like the chart select above. These two only
+    // appended, so every sport switch stacked the new sport's markets on top of
+    // the previous one's: on MLB the filter offered `spread`, `passing_yards`
+    // and `receptions`, none of which baseball has, and a reader could pick a
+    // market that could not appear. The "all markets" option is markup rather
+    // than data, so it is put back rather than kept.
     ['week-market', 'history-market'].forEach(id => {
       const sel = document.getElementById(id);
+      const keep = sel.value;
+      sel.innerHTML = '';
+      const all = el('option', '', 'all markets'); all.value = '';
+      sel.appendChild(all);
       state.markets.forEach(m => {
         const o = el('option', '', marketLabel(m)); o.value = m; sel.appendChild(o);
       });
+      // A filter that survives the switch only if the new sport has it.
+      sel.value = state.markets.includes(keep) ? keep : '';
     });
   }
 

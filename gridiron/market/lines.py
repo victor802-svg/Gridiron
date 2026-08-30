@@ -197,8 +197,11 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
     rather than as a missing prediction.
     """
     pred = conn.execute(
-        "SELECT id, sport, game_id, market_type, prop_type, line_asked, model_side"
-        " FROM predictions WHERE id = ?",
+        # `factors_json` carries the question, and the question carries the
+        # subject's id -- which is what a prop quote has to be looked up by.
+        # `subject` is the human string and cannot be matched on.
+        "SELECT id, sport, game_id, market_type, prop_type, line_asked,"
+        " model_side, factors_json FROM predictions WHERE id = ?",
         (prediction_id,),
     ).fetchone()
     if pred is None:
@@ -260,7 +263,13 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
 #: cannot tell whose it is", "a price exists for this player but at a different
 #: rung", and "a price exists at this rung but its side could not be derived".
 #: Collapsing them into one "no line" would hide which part of the chain broke.
-NO_PROP_CROSSWALK = "unavailable:player-not-matched-to-odds-feed"
+NO_PROP_CROSSWALK = "unavailable:player-matched-to-nobody-in-the-odds-feed"
+#: He was never in the crosswalk to begin with, because the odds feed published
+#: no prop about him at all on this slate. DIFFERENT from a refusal: nothing was
+#: ambiguous and nothing failed -- there was simply nothing to match against, so
+#: recording it as a matching failure would blame the bridge for the absence of
+#: the thing on the far side of it.
+NO_PROP_SUBJECT_QUOTED = "unavailable:no-prop-published-for-this-player"
 NO_PROP_AT_RUNG = "unavailable:no-quote-at-the-rung-asked"
 #: The market is published one-sided -- a milestone with no other half -- and we
 #: stated the side it does not carry. The complement is NOT computed: a vigged
@@ -288,7 +297,14 @@ def _snapshot_prop(conn: sqlite3.Connection, pred: sqlite3.Row, write) -> dict:
 
     espn_id = props.espn_id_for(conn, pred["sport"], int(subject_id))
     if espn_id is None:
-        return write(NO_PROP_CROSSWALK, None, None)
+        looked_at = conn.execute(
+            "SELECT method FROM player_crosswalk WHERE sport = ? AND source_id = ?",
+            (pred["sport"], int(subject_id)),
+        ).fetchone()
+        return write(
+            NO_PROP_CROSSWALK if looked_at else NO_PROP_SUBJECT_QUOTED,
+            None, None,
+        )
 
     row = props.line_for(
         conn, pred["game_id"], pred["prop_type"], espn_id,
@@ -349,7 +365,18 @@ def ensure_lines(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
 
 def _fetch_prop_days(conn: sqlite3.Connection, sport: str,
                      game_ids: list[str]) -> dict:
-    """Prop quotes for the dates these games fall on, one fetch per date."""
+    """Prop quotes for the dates these games fall on, one fetch per date.
+
+    The import is local for the same reason every market import in this project
+    is local: at module scope it would put `gridiron.market.props` into
+    sys.modules before the blind window opened, and the window would refuse to
+    run. It was missing here and the caller's local import did not reach this
+    function, so the whole market step raised NameError AFTER the predictions
+    were already safely written -- which is the ordering working, but it left
+    eight rows with no line until this was fixed.
+    """
+    from . import props
+
     placeholders = ",".join("?" for _ in game_ids)
     days = [
         r["d"]
