@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import calibration, config, db, sports
+from . import calibration, config, db, language, sports
 from .data import repo
 from .factors import compute as factor_compute, registry
 from .market import lines
@@ -421,8 +421,7 @@ def history(
     items = []
     for r in rows:
         snap = snapshots.get(r["id"]) or {}
-        items.append(
-            {
+        item = {
                 "prediction_id": r["id"],
                 "created_utc": r["created_utc"],
                 "season": r["season"],
@@ -445,8 +444,16 @@ def history(
                 "void_reason": voided.get(r["id"]),
                 "degraded": r["degraded"],
                 "factor_set_version": r["factor_set_version"],
-            }
-        )
+        }
+        # PLAIN WORDS, built once on the server. The same sentence appears on a
+        # card, in this table and in the digest; three copies of the humanising
+        # rules would drift into three vocabularies, which is how this table
+        # came to have two columns both called "Market".
+        item["phrase"] = language.phrase(item)
+        item["result"] = language.result_word(item)
+        item["market_label"] = language.market_label(item)
+        item["player"] = language.strip_market_suffix(item["subject"], item["market"])
+        items.append(item)
     return {"n": total, "returned": len(items), "offset": offset, "items": items}
 
 

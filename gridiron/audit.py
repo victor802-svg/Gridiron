@@ -437,3 +437,62 @@ def check_no_offline_data_caching(worker: Path | None = None) -> None:
             "shell may be cached; data is always fetched, and when the network "
             "is gone the app says so. Offending lines:" + _NL2 + _NL2.join(hits[:8])
         )
+
+
+# ---------------------------------------------------------------------------
+# the plain-words law
+# ---------------------------------------------------------------------------
+
+#: Internal vocabulary that must never reach a reader. Market names are here
+#: because they are the ones that actually leaked: the history table showed
+#: "Saquon Barkley rushing_yards" for months.
+INTERNAL_TERMS = (
+    "rushing_yards", "receiving_yards", "passing_yards", "passing_tds",
+    "batter_hits", "batter_total_bases", "batter_home_runs",
+    "pitcher_strikeouts", "market_type", "prop_type", "model_prob",
+    "line_asked", "factor_set_version", "created_utc", "resolved_utc",
+    "implied_prob", "game_id",
+)
+#: NOT on that list, deliberately: "predictor" and "forecaster". They are
+#: ENGLISH WORDS, and the page says "the statistical and LLM predictors are
+#: scored separately" as ordinary prose. A scan that cannot tell an identifier
+#: from a word starts forcing prose to get worse to satisfy it, which is the
+#: opposite of the law.
+
+#: Words that look like snake_case but are legitimate visible text. Kept short
+#: and each one justified, because a long allowlist is how a law stops binding.
+SNAKE_ALLOWED = (
+    "llm_unavailable",   # a degradation TAG, shown verbatim so it can be
+                         # grepped in a log; it is a machine fact on purpose
+)
+
+SNAKE_CASE = __import__("re").compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+")
+
+
+def plain_words_violations(text: str) -> list[str]:
+    """Internal vocabulary found in text a person will read.
+
+    Deliberately crude: it looks at rendered visible text, not at markup, and
+    flags anything shaped like an identifier. A false positive is fixed by
+    writing the label in words, which is the desired outcome anyway.
+    """
+    hits: list[str] = []
+    for term in INTERNAL_TERMS:
+        if term in text:
+            hits.append(f"internal term {term!r} is visible to a reader")
+    for match in SNAKE_CASE.findall(text):
+        if match in SNAKE_ALLOWED or any(match in h for h in hits):
+            continue
+        hits.append(f"snake_case {match!r} is visible to a reader")
+    return sorted(set(hits))
+
+
+def check_plain_words(text: str, where: str = "the page") -> None:
+    hits = plain_words_violations(text)
+    if hits:
+        raise LawViolation(
+            f"PLAIN WORDS: {where} shows internal vocabulary. Every visible "
+            "label is a phrase a person would say out loud - a record nobody "
+            "can read is a record nobody can check. Offending text:"
+            + _NL2 + _NL2.join(hits[:8])
+        )

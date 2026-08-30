@@ -1128,6 +1128,55 @@ def plant_an_unreadable_sample_size() -> Result:
     )
 
 
+def plant_snake_case_in_a_label() -> Result:
+    """Put `rushing_yards` back in a visible label and check the scan names it.
+
+    This is the exact string that was on the history page for months: the
+    subject is STORED as "Saquon Barkley rushing_yards" because the subject has
+    to be unique per question, and the table printed it verbatim. Nobody
+    decided to show an identifier to a reader; it simply happened, which is why
+    the law needs a scan rather than good intentions.
+    """
+    planted = chr(10).join(
+        ["Saquon Barkley rushing_yards", "Market", "Market", "open"])
+    hits = audit.plain_words_violations(planted)
+    caught = any("rushing_yards" in h for h in hits)
+    return Result(
+        "PLAIN WORDS", "show an internal identifier in a label",
+        "audit.plain_words_violations", caught,
+        "; ".join(hits[:3]) if caught
+        else "NOT CAUGHT - an identifier passed as readable text",
+    )
+
+
+def plant_an_undecodable_column_name() -> Result:
+    """Field names as headings: `market_type`, `model_prob`, `line_asked`."""
+    hits = audit.plain_words_violations(
+        "market_type  model_prob  line_asked  factor_set_version"
+    )
+    caught = len(hits) >= 4
+    return Result(
+        "PLAIN WORDS", "name a column after a database field",
+        "audit.plain_words_violations", caught,
+        f"{len(hits)} field names caught" if caught
+        else "NOT CAUGHT - database columns passed as headings",
+    )
+
+
+def plant_prose_that_is_not_an_identifier() -> Result:
+    """The scan must NOT fire on English. A check that forces prose to get
+    worse to satisfy it is worse than no check."""
+    prose = ("Curves are never merged. The statistical and LLM predictors are "
+             "scored separately, and each forecaster keeps its own record.")
+    hits = audit.plain_words_violations(prose)
+    return Result(
+        "PLAIN WORDS", "check the scan does not fire on ordinary prose",
+        "audit.plain_words_violations", not hits,
+        "ordinary prose passes: 'predictor' and 'forecaster' are words, not "
+        "identifiers" if not hits else f"FALSE POSITIVE - {hits}",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -1157,6 +1206,9 @@ def main() -> int:
     results.append(plant_a_tier_hit_rate_below_the_gate())
     results.append(plant_a_tier_that_pools_two_buckets())
     results.append(plant_an_unreadable_sample_size())
+    results.append(plant_snake_case_in_a_label())
+    results.append(plant_an_undecodable_column_name())
+    results.append(plant_prose_that_is_not_an_identifier())
 
     with tempfile.TemporaryDirectory() as tmp:
         conn = seeded_database(Path(tmp) / "guards.db")

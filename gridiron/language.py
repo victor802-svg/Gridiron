@@ -1,0 +1,157 @@
+"""Turning the record into words a person would say out loud.
+
+THE PLAIN-WORDS LAW lives here. No internal identifier reaches the interface:
+not `rushing_yards`, not a column named after a database field, not a bare
+em-dash standing in for an absence. Every phrase this module returns is one a
+reader could say aloud without decoding anything.
+
+It is server-side and single-implementation on purpose. The same sentence has
+to appear on a pick card, in the history table and in the digest, and three
+copies of the humanising rules would drift into three different vocabularies —
+which is how the history page ended up with two columns both called "Market".
+
+The scan in `gridiron.audit` checks rendered pages for snake_case and known
+internal terms, and a planting puts `rushing_yards` in a label to prove it
+fires. This module is what makes passing that scan possible rather than a
+matter of remembering.
+"""
+
+from __future__ import annotations
+
+#: What each market is CALLED. Anything absent falls back to the name with its
+#: underscores opened out, so nothing can render as snake_case even for a
+#: market added later and forgotten.
+#:
+#: These are NAMES, for a label or a dropdown: "point spread", "moneyline".
+#: They are NOT the verb a sentence uses - that is SIDE_WORDS. Conflating the
+#: two put the word "covers" in a dropdown labelled Market, which is not a
+#: thing a market is called.
+MARKET_WORDS = {
+    # football
+    "spread": "point spread",
+    "passing_yards": "passing yards",
+    "receiving_yards": "receiving yards",
+    "rushing_yards": "rushing yards",
+    "receptions": "receptions",
+    "passing_tds": "passing touchdowns",
+    # baseball
+    "moneyline": "moneyline",
+    "batter_hits": "hits",
+    "batter_total_bases": "total bases",
+    "batter_home_runs": "home runs",
+    "pitcher_strikeouts": "strikeouts",
+    # basketball
+    "points": "points",
+    "rebounds": "rebounds",
+    "assists": "assists",
+    "threes": "three-pointers",
+}
+
+#: What the two sides of each question are called in speech.
+SIDE_WORDS = {
+    "cover": "covers",
+    "not_cover": "does not cover",
+    "over": "over",
+    "under": "under",
+    "win": "to win",
+    "lose": "to lose",
+}
+
+#: A settled prediction's verdict, in the card language.
+RESULT_WORDS = {
+    None: "PENDING",
+    1: "WIN",
+    0: "LOSS",
+}
+
+
+def humanise(name: str | None) -> str:
+    """`rushing_yards` -> "rushing yards". The floor under everything here."""
+    if not name:
+        return ""
+    return MARKET_WORDS.get(name, str(name).replace("_", " "))
+
+
+def strip_market_suffix(subject: str | None, market: str | None) -> str:
+    """"Saquon Barkley rushing_yards" -> "Saquon Barkley".
+
+    Prop subjects are stored with the stat appended, because the subject has to
+    be unique per question. That is a storage decision and it has no business
+    being read by a person.
+    """
+    text = (subject or "").strip()
+    if market and text.endswith(market):
+        text = text[: -len(market)].strip()
+    return text
+
+
+def phrase(item: dict) -> str:
+    """One readable sentence for a prediction, whatever kind it is.
+
+        "Saquon Barkley over 95.5 rushing yards"
+        "PHI covers -3.5"
+        "ATL to win"
+
+    The market never appears twice: if the sentence already names it, the
+    caller does not add a column for it. That duplication is exactly what the
+    history table used to do.
+    """
+    market = item.get("prop_type") or item.get("market") or item.get("market_type")
+    market_type = item.get("market_type")
+    subject = strip_market_suffix(item.get("subject"), market)
+    side = item.get("model_side")
+    line = item.get("line_asked")
+
+    if market_type == "prop" or (market and market in MARKET_WORDS
+                                 and market not in ("spread", "moneyline")):
+        side_word = SIDE_WORDS.get(side, side or "over")
+        line_text = _number(line)
+        return f"{subject} {side_word} {line_text} {humanise(market)}".strip()
+
+    if market_type == "moneyline":
+        return f"{subject} {SIDE_WORDS.get(side, 'to win')}".strip()
+
+    # spreads
+    side_word = SIDE_WORDS.get(side, "covers")
+    return f"{subject} {side_word} {_signed(line)}".strip()
+
+
+def result_word(item: dict) -> str:
+    """PENDING / WIN / LOSS / VOID. "open" is not a word anybody says."""
+    if item.get("voided"):
+        return "VOID"
+    return RESULT_WORDS.get(item.get("outcome"), "PENDING")
+
+
+def market_label(item: dict) -> str:
+    """What to call this market in a filter or a heading."""
+    return humanise(item.get("prop_type") or item.get("market")
+                    or item.get("market_type"))
+
+
+#: What to say instead of a dash. A dash means nothing to a reader and looks
+#: like an error; each of these says WHY the cell is empty.
+ABSENT_WORDS = {
+    "market_line": "no line",
+    "market_prob": "no line",
+    "outcome": "not played",
+    "resolved": "not played",
+    "generic": "not recorded",
+}
+
+
+def absent(kind: str = "generic") -> str:
+    return ABSENT_WORDS.get(kind, ABSENT_WORDS["generic"])
+
+
+def _number(value) -> str:
+    if value is None:
+        return ""
+    text = f"{float(value):.10g}"
+    return text
+
+
+def _signed(value) -> str:
+    if value is None:
+        return ""
+    return f"{float(value):+.10g}"

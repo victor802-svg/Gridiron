@@ -309,12 +309,12 @@ const Gridiron = (function () {
     head.innerHTML = '';
     head.appendChild(el('div', '', curve.largest_gap));
     head.appendChild(el('div', 'sub',
-      market + ' / ' + predictor + '. ' + int(curve.n) + ' resolved' +
+      marketLabel(market) + ', ' + predictor + '. ' + int(curve.n) + ' resolved' +
       (curve.voided ? ', ' + int(curve.voided) + ' void' : '') +
       '. The sentence above always names the largest gap, never the best bucket.'));
 
     document.getElementById('chart-caption').textContent =
-      DASH + ' ' + market + ' / ' + predictor + ', n=' + int(curve.n);
+      DASH + ' ' + marketLabel(market) + ', ' + predictor + ' · ' + int(curve.n) + ' resolved';
     drawCalibration(document.getElementById('calibration'), curve);
     document.getElementById('largest-gap-prose').textContent = curve.largest_gap;
 
@@ -380,7 +380,8 @@ const Gridiron = (function () {
     host.appendChild(h);
 
     const grid = el('div', 'scores');
-    grid.appendChild(scoreCard('Model: ' + market + ' / ' + predictor, curve.score));
+    grid.appendChild(scoreCard(
+      'Model on ' + marketLabel(market) + ', ' + predictor, curve.score));
     grid.appendChild(scoreCard('Baseline: always 50%', curve.baselines.always_50,
       curve.baselines.always_50.note));
     grid.appendChild(scoreCard('Baseline: the market', curve.baselines.market,
@@ -403,8 +404,16 @@ const Gridiron = (function () {
        { label: 'Log loss' }, { label: 'Hit rate' }],
       sc.categories.map(c => {
         requireN(c.score, 'category ' + c.category);
-        return [c.category, int(c.score.n), int(c.voided), num(c.score.brier),
-                num(c.score.log_loss), pct(c.score.hit_rate)];
+        // An unscored category says WHY it has no numbers. Four em-dashes in a
+        // row read as an error; "nothing resolved yet" reads as the truth.
+        const empty = !c.score.n;
+        const blank = () => el('span', 'absent', 'nothing resolved yet');
+        return [
+          categoryLabel(c.category), int(c.score.n), int(c.voided),
+          empty ? blank() : num(c.score.brier),
+          empty ? el('span', 'absent', '') : num(c.score.log_loss),
+          empty ? el('span', 'absent', '') : pct(c.score.hit_rate)
+        ];
       }));
     wrap.appendChild(t);
     byCat.appendChild(wrap);
@@ -909,15 +918,17 @@ const Gridiron = (function () {
     // picker and the chart's market selector have been EMPTY ever since,
     // and no test looked at them.
     state.markets = (data.game_markets || []).concat(data.props || []);
+    // Labels come from the server so every page says the same words.
+    state.marketLabels = data.labels || {};
     const chart = document.getElementById('chart-market');
     chart.innerHTML = '';
     state.markets.forEach(m => {
-      const o = el('option', '', m); o.value = m; chart.appendChild(o);
+      const o = el('option', '', marketLabel(m)); o.value = m; chart.appendChild(o);
     });
     ['week-market', 'history-market'].forEach(id => {
       const sel = document.getElementById(id);
       state.markets.forEach(m => {
-        const o = el('option', '', m); o.value = m; sel.appendChild(o);
+        const o = el('option', '', marketLabel(m)); o.value = m; sel.appendChild(o);
       });
     });
   }
@@ -951,7 +962,10 @@ const Gridiron = (function () {
                   { label: 'Hit rate' }],
           v.categories.filter(c => c.n > 0).map(c => {
             requireN(c, 'version ' + v.version + ' / ' + c.category);
-            return [c.category, int(c.n), num(c.brier), pct(c.hit_rate)];
+            // Categories arrive as `market / forecaster`; the market half is
+            // an internal name and must be said in words.
+            return [categoryLabel(c.category), int(c.n), num(c.brier),
+                    pct(c.hit_rate)];
           }));
         wrap.appendChild(t);
         card.appendChild(wrap);
@@ -1009,30 +1023,62 @@ const Gridiron = (function () {
     return p.toString();
   }
 
+  // PENDING / WIN / LOSS / VOID, in the card language. "open" is not a word
+  // anybody says about a forecast that has not happened yet.
+  // "receiving_yards / statistical" -> "receiving yards, statistical"
+  function categoryLabel(category) {
+    const parts = String(category).split(' / ');
+    const market = marketLabel(parts[0]);
+    return parts.length > 1 ? market + ', ' + parts[1] : market;
+  }
+
+  function marketLabel(name) {
+    return (state.marketLabels && state.marketLabels[name])
+      || String(name).replace(/_/g, ' ');
+  }
+
+  function resultChip(item) {
+    const word = item.result || 'PENDING';
+    const chip = el('span', 'result-chip ' + word.toLowerCase(), word);
+    if (word === 'VOID' && item.void_reason) chip.title = item.void_reason;
+    return chip;
+  }
+
   async function renderHistory() {
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
     requireN(data, 'history');
     state.historyTotal = data.n;
     document.getElementById('history-caption').textContent =
-      DASH + ' ' + int(data.n) + ' predictions match';
+      int(data.n) + ' predictions match';
 
-    table(document.getElementById('history-table'),
-      [{ label: 'Written' }, { label: 'Season/wk' }, { label: 'Subject' },
-       { label: 'Market' }, { label: 'By' }, { label: 'Asked' },
-       { label: 'Model' }, { label: 'Line then' }, { label: 'Market' },
-       { label: 'Outcome' }],
+    // The forecaster column appears ONLY when both are being shown. A column
+    // that always says "statistical" is a column of noise.
+    const predictorFilter = document.getElementById('history-predictor').value;
+    const showForecaster = !predictorFilter;
+
+    const columns = [{ label: 'Prediction', cls: 'wide' }, { label: 'Date' },
+                     { label: 'Week' }, { label: 'Model' },
+                     { label: 'Market then' }, { label: 'Result' }];
+    if (showForecaster) columns.splice(3, 0, { label: 'Forecaster' });
+
+    table(document.getElementById('history-table'), columns,
       data.items.map(i => {
-        let outcome = 'open';
-        if (i.voided) outcome = 'void';
-        else if (i.outcome === 1) outcome = 'correct';
-        else if (i.outcome === 0) outcome = 'wrong';
-        return [
-          (i.created_utc || '').slice(0, 10), i.season + ' wk' + i.week,
-          i.subject, i.market, i.predictor, signed(i.line_asked),
-          pct(i.model_prob),
-          i.market_line_at_the_time === null ? DASH : signed(i.market_line_at_the_time),
-          pct(i.market_implied_prob), outcome
+        const row = [
+          // One sentence, built on the server so the card, this table and the
+          // digest cannot drift into three vocabularies.
+          i.phrase,
+          (i.created_utc || '').slice(0, 10),
+          'wk ' + i.week,
+          pct(i.model_prob, 1),
+          // "no line" in WORDS. A bare dash reads as an error rather than an
+          // absence, and absence here is a fact about the market, not a fault.
+          (i.market_implied_prob === null || i.market_implied_prob === undefined)
+            ? el('span', 'absent', 'no line')
+            : pct(i.market_implied_prob, 1),
+          resultChip(i)
         ];
+        if (showForecaster) row.splice(3, 0, i.predictor);
+        return row;
       }));
 
     const from = data.n ? state.historyOffset + 1 : 0;

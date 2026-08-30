@@ -116,6 +116,20 @@ python tools/verify.py
   never varied, or a default is removed because it was never a measurement, the
   registry note says so in those words. A later reader who mistakes the one for
   the other will draw the wrong conclusion from both.
+- **PLAIN WORDS. No internal identifier ever reaches the interface.** No
+  snake_case, no column named after a database field, no jargon a first-time
+  reader would have to decode. Every visible label is a phrase a person would
+  say out loud: "Saquon Barkley over 95.5 rushing yards", not
+  `rushing_yards`; "Market then", not a second column also called `market`;
+  "no line", not a bare em-dash, which reads as an error rather than an
+  absence. This is not decoration. A record nobody can read is a record nobody
+  can check, and every law above about showing the N and never merging a curve
+  assumes a reader who can tell what they are looking at.
+
+  Enforced, not trusted: a rendered-page scan fails on snake_case or a known
+  internal term in visible text, and `tools/guards/plant.py` puts
+  `rushing_yards` in a label to prove the scan fires.
+
 - **`gridiron.audit` stays outside the prediction closure.** It holds the list
   of forbidden market identifiers, so a prediction-path module that imported it
   would make the LAW 1 scan flag itself. The runtime missing-data check

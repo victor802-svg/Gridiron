@@ -861,3 +861,57 @@ def test_each_dark_screen_renders_on_a_phone(route, page):
     )
     assert overflow <= 0, f"{route} overflows by {overflow}px at 390"
     page.set_viewport_size({"width": 1280, "height": 900})
+
+
+# --- the plain-words law, on the rendered page ------------------------------
+
+@pytest.mark.parametrize(
+    "route", ["#/record", "#/week", "#/factors", "#/versions",
+              "#/history", "#/schedule", "#/digest"]
+)
+def test_no_internal_vocabulary_reaches_the_reader(route, page):
+    """Scanned on the RENDERED page, not in the source. Labels are only half of
+    it — the history table showed "Saquon Barkley rushing_yards" because the
+    VALUE carried the identifier, and no scan of the markup would have seen it."""
+    from gridiron import audit
+
+    page.evaluate(f"location.hash = '{route}'")
+    page.wait_for_timeout(900)
+    visible = page.evaluate("document.body.innerText")
+    hits = audit.plain_words_violations(visible)
+    assert not hits, f"{route} shows internal vocabulary: {hits[:6]}"
+
+
+def test_no_data_cell_renders_a_bare_dash(page):
+    """A dash means nothing to a reader and looks like an error. Every absence
+    says what is absent: "no line", "not played"."""
+    page.evaluate("location.hash = '#/history'")
+    page.wait_for_selector("#history-table tbody tr", timeout=10000)
+    bare = page.evaluate("""() => {
+        const cells = [...document.querySelectorAll('#history-table tbody td')];
+        return cells.map(c => c.textContent.trim())
+                    .filter(t => t === '\u2014' || t === '-' || t === '');
+    }""")
+    assert not bare, f"{len(bare)} data cells render a bare dash or nothing"
+
+
+def test_the_history_row_is_one_sentence_and_the_market_appears_once(page):
+    page.evaluate("location.hash = '#/history'")
+    page.wait_for_selector("#history-table tbody tr", timeout=10000)
+    headers = page.eval_on_selector_all(
+        "#history-table thead th", "els => els.map(e => e.textContent.trim())")
+    assert headers.count("Market") == 0, "a column is still called just 'Market'"
+    assert len([h for h in headers if h.lower().startswith("market")]) <= 1
+    first = page.eval_on_selector(
+        "#history-table tbody tr td", "e => e.textContent.trim()")
+    assert " " in first and "_" not in first, f"the row is not a sentence: {first!r}"
+
+
+def test_the_result_reads_as_a_word_not_as_open(page):
+    page.evaluate("location.hash = '#/history'")
+    page.wait_for_selector("#history-table tbody tr", timeout=10000)
+    chips = page.eval_on_selector_all(
+        "#history-table tbody .result-chip", "els => els.map(e => e.textContent)")
+    assert chips
+    assert all(c in ("PENDING", "WIN", "LOSS", "VOID") for c in chips), chips
+    assert "open" not in " ".join(chips).lower()

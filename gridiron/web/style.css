@@ -754,3 +754,22 @@ table.grid tr:hover td { background: var(--card-2); }
   padding: 18px; border: 1px dashed var(--line); border-radius: var(--radius);
   color: var(--muted); font-size: 13px;
 }
+
+/* --- the history row ------------------------------------------------------
+   One sentence per prediction, then only the columns that earn their space. */
+.result-chip {
+  font-family: var(--cond); font-weight: 700; font-size: 11px;
+  letter-spacing: 0.12em; padding: 2px 8px; border-radius: 4px;
+  display: inline-block;
+}
+.result-chip.win { color: var(--green); background: var(--green-wash); }
+.result-chip.loss { color: var(--red); background: var(--red-wash); }
+.result-chip.pending { color: var(--muted); border: 1px solid var(--line); }
+.result-chip.void { color: var(--faint); border: 1px dashed var(--line); }
+
+/* An absence, said in words. Styled apart from a value so it cannot be
+   mistaken for one, and never rendered as a bare dash — a dash reads as an
+   error rather than as a fact about the market. */
+.absent { color: var(--faint); font-style: normal; font-size: var(--t-caption); }
+
+table.grid td.wide { min-width: 22rem; color: var(--chrome); }

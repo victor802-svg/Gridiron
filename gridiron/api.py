@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, calibration, config, db, views
+from . import auth, calibration, config, db, language, views
 
 WEB_DIR = config.PACKAGE_ROOT / "web"
 
@@ -392,6 +392,10 @@ def markets(sport: str | None = None) -> dict:
         "markets": all_markets,
         "game_markets": [m for m in all_markets if m not in props],
         "props": props,
+        # PLAIN WORDS: the browser renders these, never the raw names. Served
+        # from the server so there is one vocabulary rather than one per page -
+        # the market dropdowns were the last place `rushing_yards` was visible.
+        "labels": {m: language.humanise(m) for m in all_markets},
         "line_availability": {
             m: line_sources.for_market(chosen, m) for m in all_markets
         },
