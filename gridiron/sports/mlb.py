@@ -837,6 +837,51 @@ def _prop_training_set(
     return rows, labels, names
 
 
+class NonMonotoneLadder(AssertionError):
+    """A model said a higher rung was easier to clear than a lower one."""
+
+
+def rung_probabilities(conn: sqlite3.Connection, fit, game_id: str,
+                       market: str, subject_id: int) -> list[tuple[float, float]]:
+    """P(over) at every rung of the declared ladder, for one subject.
+
+    Everything except the line is held fixed, which is the point: the only
+    thing that changes between rungs is the question being asked.
+    """
+    from ..model import baseline
+
+    out = []
+    for rung in config.MLB_PROP_LADDER[market]:
+        ctx = build_prop_context(conn, game_id, market, subject_id, rung)
+        fv = compute.feature_vector(ctx, "prop", market)
+        out.append((rung, baseline.predict(fit, fv)["prob_yes"]))
+    return out
+
+
+def assert_monotone_across_rungs(pairs: list[tuple[float, float]],
+                                 label: str = "this subject") -> None:
+    """P(over) must FALL as the rung rises. CHECKLIST ITEM 4.
+
+    Clearing 6.5 strikeouts is strictly harder than clearing 5.5 -- every game
+    that does the first does the second, so the probabilities are ordered by
+    logic, not by estimation. A model that says otherwise is not slightly
+    miscalibrated, it is contradicting itself, and the contradiction would be
+    invisible on a card showing one rung at a time.
+
+    This is the same shape of check as the spread-versus-moneyline one that
+    caught the ESPN sign error: two stored numbers that describe the same world
+    must agree about it.
+    """
+    for (low_line, low_p), (high_line, high_p) in zip(pairs, pairs[1:]):
+        if high_p > low_p:
+            raise NonMonotoneLadder(
+                f"{label}: the model gives {high_p:.4f} of clearing "
+                f"{high_line} and only {low_p:.4f} of clearing {low_line}. "
+                "Every outcome that clears the higher rung clears the lower "
+                "one, so this is a self-contradiction rather than a close call."
+            )
+
+
 def _game_pk(game_id: str) -> int | None:
     """`mlb_776543` -> 776543. The player tables are keyed on MLB's own pk."""
     try:

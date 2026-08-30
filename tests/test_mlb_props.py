@@ -410,3 +410,49 @@ def test_a_batters_rolling_window_excludes_the_game_being_predicted(conn):
     mean, _sd, n = mlb_repo.batter_rolling(conn, 5, "batter_hits", "2026-05-01")
     assert n == 2, "the game being predicted must not be in its own window"
     assert mean == pytest.approx(2.5)
+
+
+# --- item 4: plausibility cross-checks between related numbers -------------
+
+def test_the_model_cannot_say_a_higher_rung_is_easier():
+    """Every game that clears 6.5 strikeouts clears 5.5. A model that orders
+    them the other way is contradicting itself, not merely miscalibrated."""
+    from gridiron.sports import mlb
+
+    good = [(3.5, 0.81), (4.5, 0.64), (5.5, 0.42), (6.5, 0.25)]
+    mlb.assert_monotone_across_rungs(good, "a well-behaved fit")
+
+
+def test_a_non_monotone_ladder_is_caught_by_name():
+    from gridiron.sports import mlb
+
+    bad = [(3.5, 0.60), (4.5, 0.64), (5.5, 0.42), (6.5, 0.25)]
+    with pytest.raises(mlb.NonMonotoneLadder) as exc:
+        mlb.assert_monotone_across_rungs(bad, "a planted reversal")
+    assert "self-contradiction" in str(exc.value)
+
+
+def test_monotonicity_follows_from_the_sign_of_one_coefficient():
+    """The property is structural, not lucky: holding everything else fixed,
+    `mean_vs_line` is the only factor that moves with the rung, and it falls as
+    the rung rises. So the ladder is monotone exactly when that coefficient is
+    positive -- which is what makes a negative one a defect worth naming rather
+    than a coefficient worth shrugging at."""
+    from gridiron.model import logistic
+
+    fit = logistic.Fit(
+        names=["mlb_prop_mean_vs_line"], coefficients=[2.0], intercept=0.0,
+        n=1000, iterations=4, converged=True, l2=2.0,
+    )
+    from gridiron.model import baseline
+    from gridiron.factors.compute import FeatureVector
+
+    probs = []
+    for rung in config.MLB_PROP_LADDER["pitcher_strikeouts"]:
+        fv = FeatureVector(sport="mlb", market_type="prop")
+        fv.values["mlb_prop_mean_vs_line"] = (5.0 - rung) / max(rung, 1.0)
+        probs.append((rung, baseline.predict(fit, fv)["prob_yes"]))
+    from gridiron.sports import mlb
+
+    mlb.assert_monotone_across_rungs(probs, "a positive coefficient")
+    assert probs[0][1] > probs[-1][1]

@@ -188,6 +188,12 @@ CREATE TABLE IF NOT EXISTS mlb_pitcher_starts (
 );
 CREATE INDEX IF NOT EXISTS mlb_starts_lookup
     ON mlb_pitcher_starts (pitcher_id, game_date);
+-- The strikeout market resolves and trains by GAME, not by pitcher, and without
+-- this every lookup was a scan of the whole table. It cost the pitcher fit
+-- roughly an order of magnitude in time before anyone noticed, because a slow
+-- fit looks exactly like a big one.
+CREATE INDEX IF NOT EXISTS mlb_starts_by_game
+    ON mlb_pitcher_starts (game_pk);
 
 -- One row per team per game: the club's own view of a result.
 CREATE TABLE IF NOT EXISTS mlb_team_games (
