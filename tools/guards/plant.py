@@ -803,6 +803,133 @@ def plant_a_decorated_function_mistaken_for_an_orphan() -> Result:
     )
 
 
+def plant_a_tier_row_below_its_gate_showing_a_rate() -> Result:
+    """A confidence band with nine settled picks, asked for its accuracy.
+
+    This is the most persuasive lie the Record tab could tell: a rate in a
+    column of real rates, off a sample too small to mean anything, beside a
+    tier label a reader already trusts from the pick cards. LAW 4 says the row
+    states the shortfall and NO percentage -- not greyed, not parenthesised,
+    absent.
+    """
+    thin = calibration.tier_verdict(0.75, 0.90, 9)
+    caught = (
+        thin == f"unproven \u2014 9 of {calibration.TIER_MIN_SETTLED}"
+        and "%" not in thin
+        and "90" not in thin
+    )
+    return Result(
+        "LAW 4", "show a tier row's accuracy below its sample gate",
+        "calibration.tier_verdict", caught,
+        f"a nine-sample band states the shortfall and no rate: {thin!r}"
+        if caught else
+        f"NOT CAUGHT - a nine-sample band reported {thin!r}",
+    )
+
+
+def plant_verdict_words_that_disagree_with_the_gap() -> Result:
+    """Verdict prose must follow the declared rule on (actual - claimed).
+
+    The rule is a dated constant precisely so the words cannot be chosen to
+    suit the row. Planted: a band that is twenty points overconfident, checked
+    that it is not described as fine.
+    """
+    badly_off = calibration.tier_verdict(0.75, 0.55, 40)
+    honest = calibration.tier_verdict(0.55, 0.55, 40)
+    better = calibration.tier_verdict(0.60, 0.70, 40)
+    caught = (
+        badly_off == "much more confident than it should be"
+        and honest == "about as good as it claims"
+        and better == "better than it claims"
+        and badly_off != honest
+    )
+    return Result(
+        "VERDICT FOLLOWS THE RULE",
+        "describe a twenty-point miss as well calibrated",
+        "calibration.tier_verdict", caught,
+        f"20 points off reads {badly_off!r}, on the nose reads {honest!r}"
+        if caught else
+        f"NOT CAUGHT - 20 points off reported {badly_off!r}",
+    )
+
+
+def plant_a_pooled_strong_tier() -> Result:
+    """Collapse STRONG's two bands into one row and check the table refuses.
+
+    STRONG spans 70-80% and 80%+. Pooling them is the merge LAW 4 forbids and
+    it flatters in a known direction: the easier band lifts the harder one, so
+    a model badly calibrated at 70-80% shows one reassuring number.
+    """
+    import tempfile as _tf
+    from pathlib import Path as _P
+
+    with _tf.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(_P(tmp) / "tiers.db")
+        table = calibration.tier_table(conn, sport="nfl", market_type="spread")
+        conn.close()
+    bands = [r["band"] for r in table["rows"]]
+    strong = [r for r in table["rows"] if r["tier"] == "STRONG"]
+    caught = len(strong) == 2 and bands == [b[2] for b in calibration.BUCKETS]
+    return Result(
+        "NO MERGED CURVES", "pool STRONG's two bands into one tier row",
+        "calibration.tier_table", caught,
+        f"STRONG reported separately as {[r['band'] for r in strong]}"
+        if caught else
+        f"NOT CAUGHT - STRONG appears {len(strong)} time(s); bands {bands}",
+    )
+
+
+def plant_a_why_that_disagrees_with_its_contributions() -> Result:
+    """Prose naming the wrong driver, and prose with the direction flipped.
+
+    The words on a pick are DERIVED from the contributions rather than written
+    beside them, so they cannot drift. Planted both ways.
+    """
+    from gridiron import language as _lang
+
+    phrases = {f.name: f.why for f in registry.all_factors() if f.why}
+    item = {
+        "subject": "TB", "market_type": "moneyline", "model_side": "win",
+        "model_prob": 0.6,
+        "contributions": [
+            {"factor": "mlb_starter_rolling_perf", "contribution": 0.90,
+             "missing": False},
+            {"factor": "mlb_park_factor", "contribution": -0.40,
+             "missing": False},
+        ],
+    }
+    said = _lang.why_sentences(item, phrases)
+    top = phrases["mlb_starter_rolling_perf"]
+    names_top = said and said[0].lower().startswith(top.lower())
+    right_way = said and "helps the pick" in said[0]
+    # ...and the flipped side must reverse it rather than repeat it
+    flipped = _lang.why_sentences(dict(item, model_side="lose"), phrases)
+    reverses = flipped and "works against it" in flipped[0]
+    caught = bool(names_top and right_way and reverses)
+    return Result(
+        "WORDS FOLLOW THE NUMBERS",
+        "let a pick's prose name a different driver than its arithmetic",
+        "language.why_sentences", caught,
+        f"largest contribution leads and its sign sets the direction: {said[0]!r}"
+        if caught else
+        f"NOT CAUGHT - prose was {said!r}",
+    )
+
+
+def plant_a_factor_with_no_why_template() -> Result:
+    """A factor that cannot be explained would be silently dropped from the
+    reasons: present in the arithmetic, absent from the words."""
+    missing = [f.name for f in registry.all_factors() if not (f.why or "").strip()]
+    caught = not missing
+    return Result(
+        "EVERY FACTOR EXPLAINS ITSELF", "ship a factor with no why-template",
+        "registry.Factor.why", caught,
+        f"all {len(registry.all_factors())} declared factors carry a template"
+        if caught else
+        f"NOT CAUGHT - no template on: {', '.join(sorted(missing))}",
+    )
+
+
 def plant_a_line_claimed_for_an_unpriced_market() -> Result:
     """The same check, planted: claim a market that no source carries."""
     fake = "shots_on_goal"
@@ -1453,6 +1580,11 @@ def main() -> int:
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
     results.append(plant_a_home_run_bucket_below_fifty())
+    results.append(plant_a_tier_row_below_its_gate_showing_a_rate())
+    results.append(plant_verdict_words_that_disagree_with_the_gap())
+    results.append(plant_a_pooled_strong_tier())
+    results.append(plant_a_why_that_disagrees_with_its_contributions())
+    results.append(plant_a_factor_with_no_why_template())
     results.append(plant_an_orphan_guard())
     results.append(plant_a_decorated_function_mistaken_for_an_orphan())
     results.append(plant_a_context_with_no_sport())

@@ -65,38 +65,34 @@
 
   <section id="view-record" class="view" hidden>
     <div id="record-headline" class="headline"></div>
-    <div class="chart-block">
-      <h2>Calibration <span id="chart-caption" class="caption"></span></h2>
-      <div class="chart-controls">
-        <label>Market
-          <select id="chart-market"></select>
-        </label>
-        <label>Forecaster
-          <select id="chart-predictor">
-            <option value="statistical">statistical</option>
-            <option value="llm">LLM</option>
-          </select>
-        </label>
-      </div>
-      <div class="chart-frame">
-        <canvas id="calibration" width="640" height="440" role="img"
-                aria-label="Calibration chart: claimed confidence against observed frequency"></canvas>
-      </div>
-      <p class="footnote" id="largest-gap-prose"></p>
-      <div class="table-scroll"><table id="bucket-table" class="grid"></table></div>
-    </div>
 
-    <div class="chart-block">
-      <h2>Calibration over time <span id="overtime-caption" class="caption"></span></h2>
-      <div class="chart-frame" id="overtime-frame">
-        <canvas id="overtime" width="640" height="180" role="img"
-                aria-label="Weekly calibration gap, one point per week"></canvas>
+    <!-- THE TIER TABLE LEADS. The Record tab used to open with a calibration
+         chart, which is the right shape for auditing the model and the wrong
+         shape for the question a reader actually has: when it says STRONG, is
+         it? This is that question, in the vocabulary the chips on every pick
+         already use. The chart is not deleted -- it moved to "How the model
+         works", linked once at the foot of this tab. -->
+    <section class="panel">
+      <h2>When it says STRONG, is it?
+        <span id="tier-caption" class="caption"></span>
+      </h2>
+      <p class="why" id="tier-headline"></p>
+      <div class="controls">
+        <label class="filters">Market
+          <select id="tier-market"></select>
+        </label>
       </div>
-      <p class="footnote" id="overtime-note"></p>
-    </div>
-    <div id="record-scores"></div>
+      <div class="table-scroll"><table id="tier-table" class="grid"></table></div>
+      <p class="footnote" id="tier-bands-note"></p>
+    </section>
+
     <div id="record-edge"></div>
+    <div id="record-scores"></div>
     <p class="footnote" id="separation-note"></p>
+    <p class="footnote">
+      The calibration chart, the drift over time and the Brier detail live on
+      <a href="#/factors">How the model works</a>.
+    </p>
   </section>
 
   <section id="view-week" class="view" hidden>
@@ -136,6 +132,36 @@
          AUDITING the model wants the arithmetic, and this is where they come
          looking for it. One worked example, from a real forecast on the
          current slate, so the numbers are checkable rather than illustrative. -->
+    <div class="chart-block">
+      <h2>Calibration <span id="chart-caption" class="caption"></span></h2>
+      <div class="chart-controls">
+        <label>Market
+          <select id="chart-market"></select>
+        </label>
+        <label>Forecaster
+          <select id="chart-predictor">
+            <option value="statistical">statistical</option>
+            <option value="llm">LLM</option>
+          </select>
+        </label>
+      </div>
+      <div class="chart-frame">
+        <canvas id="calibration" width="640" height="440" role="img"
+                aria-label="Calibration chart: claimed confidence against observed frequency"></canvas>
+      </div>
+      <p class="footnote" id="largest-gap-prose"></p>
+      <div class="table-scroll"><table id="bucket-table" class="grid"></table></div>
+    </div>
+
+    <div class="chart-block">
+      <h2>Calibration over time <span id="overtime-caption" class="caption"></span></h2>
+      <div class="chart-frame" id="overtime-frame">
+        <canvas id="overtime" width="640" height="180" role="img"
+                aria-label="Weekly calibration gap, one point per week"></canvas>
+      </div>
+      <p class="footnote" id="overtime-note"></p>
+    </div>
+
     <section id="factors-worked" class="worked" hidden>
       <h3>A worked example <span id="worked-caption" class="caption"></span></h3>
       <div id="worked-bars"></div>

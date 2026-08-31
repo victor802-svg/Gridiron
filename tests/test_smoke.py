@@ -194,7 +194,9 @@ def test_every_screen_renders(page):
         ("#/week", "#week-cards .row"),
         ("#/factors", "#factors-table tbody tr"),
         ("#/history", "#history-table tbody tr"),
-        ("#/record", "#bucket-table tbody tr"),
+        # R1 old -> new: the Record tab leads with THE TIER TABLE. The bucket
+        # table and the calibration chart moved to "How the model works".
+        ("#/record", "#tier-table tbody tr"),
     ):
         page.evaluate(f"location.hash = '{route}'")
         page.wait_for_selector(selector, timeout=10000)
@@ -790,7 +792,9 @@ def test_a_pending_row_shows_five_things_and_hides_the_rest(page):
     assert row.locator(".row-title").count() == 1
     assert row.locator(".row-pick .row-phrase").count() == 1
     assert row.locator(".prob").count() == 1
-    tier = row.locator(".chip").first
+    # R1 old -> new: `.tier`, which is what the stylesheet and the mockup
+    # define. K2 emitted `chip chip-lean`, for which no rule existed.
+    tier = row.locator(".tier").first
     assert tier.inner_text().strip() in ("LEAN", "SOLID", "STRONG")
 
     # ...and the detail is NOT on screen until it is asked for
@@ -889,7 +893,8 @@ def test_the_greeting_strip_leads_the_page(page):
 def test_the_calibration_chart_is_not_drawn_in_the_page_colour(page):
     """The `--ink` collision, checked by number rather than by eyeball: the
     chart's ink must not equal its ground."""
-    page.evaluate("location.hash = '#/record'")
+    # R1 old -> new: the calibration chart moved to the Factors page.
+    page.evaluate("location.hash = '#/factors'")
     page.wait_for_selector("#calibration", timeout=10000)
     tokens = page.evaluate("""() => {
         const s = getComputedStyle(document.documentElement);

@@ -1056,3 +1056,16 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   padding: 14px 16px; margin: 12px 0 20px; background: var(--card);
 }
 .worked h3 { margin: 0 0 10px; font-size: 15px; }
+
+/* A row with nothing to show yet still occupies its slot in the table without
+   a chip shouting at the reader. */
+.tier-none { border: 0; }
+/* The verdict words carry the reading. Not coloured: "overconfident by 4
+   points" is information, not an alarm, and a red row would make an honest
+   report look like a failure. */
+.verdict-words { color: var(--chrome); }
+
+/* The tier table's own controls sit tight under its headline; the generic
+   .controls rule spaces them for a page header and left a dead band between
+   the sentence and the filter. */
+.panel .controls { margin: 6px 0 4px; }

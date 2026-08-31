@@ -1182,6 +1182,14 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
         "generated_for_factor_set": config.FACTOR_SET_VERSION,
         "headline": headline,
         "headline_market": headline_market,
+        # THE TIER TABLE leads the Record tab. Same bucket math as the chips on
+        # every pick card -- one implementation, so the two cannot drift.
+        "tier_table": tier_table(
+            conn, sport=sport,
+            market_type=market_type_of(sport, headline_market),
+            prop_type=prop_type_of(sport, headline_market),
+            predictor="statistical",
+        ),
         "categories": categories,
         "markets": list(markets),
         "edge": edge(conn, sport=sport,
@@ -1200,3 +1208,144 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     assert_no_merged_categories(payload)
     assert_single_sport(payload, sport)
     return payload
+
+# ---------------------------------------------------------------------------
+# THE TIER TABLE — the record as the operator already reads it
+# ---------------------------------------------------------------------------
+#
+# The Record tab led with a calibration chart. A chart is the right shape for
+# somebody auditing the model and the wrong shape for the question a reader
+# actually has, which is "when it says STRONG, is it?". This is that question as
+# a table, in the same vocabulary the tier chips on every pick already use.
+#
+# ONE ROW PER BUCKET, NOT PER TIER, AND THAT IS NOT A DETAIL. The brief that
+# asked for this said the buckets and the tiers are "the same partition (LEAN
+# 50-60, SOLID 60-70, STRONG 70%+)". They are not: there are four buckets and
+# three tiers, because STRONG spans 70-80% AND 80%+. Collapsing them into one
+# STRONG row is precisely the merge LAW 4 forbids, and it flatters in a
+# predictable direction -- the easier bucket lifts the harder one, so a model
+# that is well calibrated at 80%+ and badly calibrated at 70-80% would show a
+# single reassuring number.
+#
+# So STRONG appears twice, labelled with its band. The table answers the same
+# question and cannot tell that particular lie.
+
+#: How far actual may sit from claimed before the verdict stops saying so, in
+#: PERCENTAGE POINTS. Dated because it is a judgement about what "about right"
+#: means, not a measurement.
+VERDICT_BANDS_DECLARED = "2026-08-31T00:00:00Z"
+VERDICT_CLOSE_ENOUGH = 3.0      # within this, the claim is honest
+VERDICT_BADLY_OFF = 8.0         # beyond this, the claim is not close
+
+
+def tier_verdict(claimed: float | None, actual: float | None, n: int) -> str:
+    """The verdict words for one row, from a fixed rule on (actual - claimed).
+
+    Below the gate there is no verdict, only the shortfall: a row with nine
+    settled picks has nothing to say about calibration and must not imply it
+    does (LAW 4). No italics, no hedge, no number.
+    """
+    if n < TIER_MIN_SETTLED:
+        return f"unproven — {n} of {TIER_MIN_SETTLED}"
+    if claimed is None or actual is None:
+        return f"unproven — {n} of {TIER_MIN_SETTLED}"
+
+    # Rounded to one decimal BEFORE the comparison. 0.53 - 0.50 is
+    # 3.0000000000000027 in binary floating point, so a gap the rule calls
+    # "close enough" fell out of its own band and read "overconfident by 3.0
+    # points" -- a boundary decided by representation error rather than by the
+    # declared threshold.
+    gap = round((actual - claimed) * 100.0, 1)
+    if abs(gap) <= VERDICT_CLOSE_ENOUGH:
+        return "about as good as it claims"
+    if gap > VERDICT_CLOSE_ENOUGH:
+        return "better than it claims"
+    if gap >= -VERDICT_BADLY_OFF:
+        # ONE DECIMAL, not zero. A gap of 3.4 rounded to "3 points" sits
+        # directly beside a rule that calls anything within 3 points honest,
+        # and a reader is entitled to conclude one of them is wrong. The
+        # decimal costs a character and removes the contradiction.
+        return f"overconfident by {abs(gap):.1f} points"
+    return "much more confident than it should be"
+
+
+def tier_table(
+    conn: sqlite3.Connection,
+    *,
+    sport: str,
+    market_type: str,
+    prop_type: str | None = None,
+    predictor: str = "statistical",
+) -> dict:
+    """One row per confidence band, with its verdict.
+
+    EVERY NUMBER COMES FROM `bucket_record`, the same function the tier chip on
+    a pick card calls. Not a reimplementation that happens to agree today: the
+    chip and this table cannot drift, because there is one place that counts a
+    bucket and one number it can produce.
+    """
+    require_sport(sport, "calibration.tier_table")
+
+    rows = []
+    for lo, hi, label in BUCKETS:
+        midpoint = (lo + min(hi, 1.0)) / 2.0
+        bucket = bucket_record(
+            conn, midpoint, sport=sport, market_type=market_type,
+            prop_type=prop_type, predictor=predictor,
+        )
+        n = bucket.get("n") or 0
+        proven = n >= TIER_MIN_SETTLED
+        claimed = bucket.get("claimed") if proven else None
+        actual = bucket.get("actual") if proven else None
+        rows.append({
+            "tier": TIERS.get(label),
+            "band": label,
+            "n": n,
+            "settled": n,
+            "right": round((actual or 0) * n) if proven else None,
+            "claimed": claimed,
+            "actual": actual,
+            "proven": proven,
+            "needed": TIER_MIN_SETTLED,
+            "verdict": tier_verdict(claimed, actual, n),
+        })
+
+    return {
+        "sport": sport,
+        "market_type": market_type,
+        "prop_type": prop_type,
+        "predictor": predictor,
+        "rows": rows,
+        "n": sum(r["n"] for r in rows),
+        "minimum": TIER_MIN_SETTLED,
+        "headline": _tier_headline(rows),
+        "bands_note": (
+            "One row per confidence band. STRONG spans two bands and they are "
+            "shown separately: pooling them would let the easier one lift the "
+            "harder one, which is the merge LAW 4 forbids."
+        ),
+    }
+
+
+def _tier_headline(rows: list[dict]) -> str:
+    """One sentence above the table: the LARGEST GAP, never the flattering row.
+
+    A headline that picked the best-looking band would be the model marking its
+    own homework. Where nothing is proven, it says that instead.
+    """
+    proven = [r for r in rows if r["proven"]]
+    if not proven:
+        best = max(rows, key=lambda r: r["n"]) if rows else None
+        if best is None or not best["n"]:
+            return "Nothing has resolved yet, so there is nothing to grade."
+        return (
+            f"No band has the {TIER_MIN_SETTLED} settled picks needed to grade "
+            f"calibration — the fullest has {best['n']}."
+        )
+
+    worst = max(proven, key=lambda r: abs((r["actual"] or 0) - (r["claimed"] or 0)))
+    actual = (worst["actual"] or 0) * 100
+    return (
+        f"{worst['tier']} picks in the {worst['band']} band have been right "
+        f"{actual:.0f}% of the time over {worst['n']} — {worst['verdict']}."
+    )

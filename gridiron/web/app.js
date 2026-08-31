@@ -307,6 +307,11 @@ const Gridiron = (function () {
 
   function renderRecord() {
     const sc = state.scorecard;
+    // THE TIER TABLE LEADS. Rendered first and unconditionally: the charts
+    // below it now live on the Factors page and may not be on screen at all.
+    renderTierTable(sc.tier_table);
+    loadTierMarkets((sc.tier_table || {}).prop_type ||
+                    (sc.tier_table || {}).market_type);
     const market = document.getElementById('chart-market').value || 'spread';
     const predictor = document.getElementById('chart-predictor').value || 'statistical';
     const curve = findCurve(sc, market, predictor) || sc.headline;
@@ -320,10 +325,19 @@ const Gridiron = (function () {
       (curve.voided ? ', ' + int(curve.voided) + ' void' : '') +
       '. The sentence above always names the largest gap, never the best bucket.'));
 
-    document.getElementById('chart-caption').textContent =
-      DASH + ' ' + marketLabel(market) + ', ' + predictor + ' · ' + int(curve.n) + ' resolved';
-    drawCalibration(document.getElementById('calibration'), curve);
-    document.getElementById('largest-gap-prose').textContent = curve.largest_gap;
+    // These moved to the Factors page (R1), so they are not guaranteed to be
+    // in the document when the Record tab renders. Guarded rather than
+    // assumed: a missing element used to throw inside boot's catch, which is
+    // how the market dropdowns sat empty for three sessions.
+    const cap = document.getElementById('chart-caption');
+    if (cap) {
+      cap.textContent = DASH + ' ' + marketLabel(market) + ', ' + predictor +
+        ' · ' + int(curve.n) + ' resolved';
+    }
+    const canvas = document.getElementById('calibration');
+    if (canvas) drawCalibration(canvas, curve);
+    const prose = document.getElementById('largest-gap-prose');
+    if (prose) prose.textContent = curve.largest_gap;
 
     table(document.getElementById('bucket-table'),
       [{ label: 'Confidence bucket' }, { label: 'N' }, { label: 'Claimed' },
@@ -437,11 +451,67 @@ const Gridiron = (function () {
     // categoryLabel returns a STRING, not a node.
     cell.appendChild(el('div', '', categoryLabel(c.category)));
     const o = c.outlook;
-    if (o && o.message) {
+    // ONLY WHERE THERE IS A RATE TO PROJECT FROM. The outlook counts THIS
+    // season; the category's N counts the whole record. On a backtest, and on
+    // any sport whose settled picks predate the current season, that put
+    // "nothing written in this market yet" directly beside "N = 8" -- two true
+    // statements that read as a contradiction. Silence beats a sentence the
+    // reader has to reconcile.
+    if (o && o.message && o.reachable !== null && o.reachable !== undefined) {
       const cls = o.reachable === false ? 'footnote gate-unreachable' : 'footnote';
       cell.appendChild(el('div', cls, o.message));
     }
     return cell;
+  }
+
+  // THE TIER TABLE. The Record tab's lead, in the same vocabulary the chips
+  // on every pick use, answering the question a reader actually has: when it
+  // says STRONG, is it?
+  //
+  // ONE ROW PER BAND, and STRONG appears twice. The brief called the buckets
+  // and the tiers "the same partition"; they are not -- STRONG spans 70-80%
+  // and 80%+, and pooling them would let the easier band lift the harder one,
+  // which is the merge LAW 4 forbids.
+  function renderTierTable(t) {
+    if (!t) return;
+    document.getElementById('tier-caption').textContent =
+      DASH + ' ' + int(t.n) + ' settled, by how sure the model said it was';
+    document.getElementById('tier-headline').textContent = t.headline;
+    document.getElementById('tier-bands-note').textContent = t.bands_note;
+
+    table(document.getElementById('tier-table'),
+      [{ label: 'Tier' }, { label: 'Band' }, { label: 'Settled' },
+       { label: 'Right' }, { label: 'Claimed' }, { label: 'Actual' },
+       { label: 'Verdict' }],
+      t.rows.map(r => {
+        // BELOW THE GATE, NO PERCENTAGES AT ALL. Not greyed, not italic, not
+        // parenthesised: absent. A rate off nine settled picks is the most
+        // persuasive lie the page could tell, sitting in a column of real
+        // ones (LAW 4).
+        const blank = () => el('span', 'absent', '');
+        return [
+          el('span', 'tier ' + String(r.tier || '').toLowerCase(), r.tier || ''),
+          r.band,
+          int(r.settled),
+          r.proven ? int(r.right) : blank(),
+          r.proven ? pct(r.claimed, 0) : blank(),
+          r.proven ? pct(r.actual, 0) : blank(),
+          el('span', r.proven ? 'verdict-words' : 'absent', r.verdict)
+        ];
+      }));
+  }
+
+  async function loadTierMarkets(current) {
+    const sel = document.getElementById('tier-market');
+    if (!sel || sel.dataset.sport === state.sport) return;
+    sel.innerHTML = '';
+    (state.markets || []).forEach(m => {
+      const o = el('option', '', marketLabel(m));
+      o.value = m;
+      sel.appendChild(o);
+    });
+    sel.dataset.sport = state.sport;
+    if (current) sel.value = current;
   }
 
   function renderEdge(edge) {
@@ -863,8 +933,12 @@ const Gridiron = (function () {
   }
 
   function tierChip(tier) {
-    if (!tier || !tier.tier) return el('span', 'chip chip-none', '');
-    const chip = el('span', 'chip chip-' + tier.tier.toLowerCase(), tier.tier);
+    // `.tier` with a modifier, which is what the stylesheet and the approved
+    // mockup both define. K2 emitted `chip chip-lean`, for which no rule
+    // exists -- the chips have been rendering with base styling only and
+    // nothing said so, because an unstyled element is still an element.
+    if (!tier || !tier.tier) return el('span', 'tier tier-none', '');
+    const chip = el('span', 'tier ' + tier.tier.toLowerCase(), tier.tier);
     chip.title = tier.message || '';
     return chip;
   }
