@@ -31,6 +31,7 @@ from ..factors import compute, context
 from . import baseline, llm
 from .question import Question
 from . import rungs
+from .. import correction
 
 __all__ = ["Question", "BlindRun", "WrittenPrediction", "predict_slate", "predict_week"]
 
@@ -113,11 +114,36 @@ def write_prediction(
     if already:
         return None
 
+    # THE CORRECTION, APPLIED AT WRITE TIME AND ONLY HERE.
+    #
+    # `model_prob` is what the model claimed and is never touched. When the
+    # category has an active correction, the number the interface will SHOW is
+    # computed now and stored beside the raw claim, with the version that
+    # produced it. Two consequences, both intended:
+    #
+    #   * nothing already written ever changes (LAW 3) -- a correction reaches
+    #     only predictions made after it activates;
+    #   * every version is gradeable, because the rows written under it carry
+    #     its number and have their own forward record.
+    #
+    # A raw category leaves both NULL, which reads correctly as "no correction
+    # was in force", because none was.
+    claimed = round(min(max(confidence, 0.001), 0.999), 6)
+    active = correction.active_correction(
+        conn, sport=q.sport, market_type=q.market_type, forecaster=predictor)
+    calibrated = correction_version = None
+    if active is not None:
+        calibrated = round(correction.Platt(
+            slope=active["slope"], intercept=active["intercept"],
+            n_train=active["n_train"]).apply(claimed), 6)
+        correction_version = active["version"]
+
     cur = conn.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
         " prop_type, subject, line_asked, model_prob, model_side, predictor,"
-        " factor_set_version, factors_json, reasoning, degraded)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " factor_set_version, factors_json, reasoning, degraded,"
+        " calibrated_prob, correction_version)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             utcnow(),
             q.sport,
@@ -126,13 +152,15 @@ def write_prediction(
             q.stat if q.market_type == "prop" else None,
             q.subject,
             q.line_asked,
-            round(min(max(confidence, 0.001), 0.999), 6),
+            claimed,
             side,
             predictor,
             config.FACTOR_SET_VERSION,
             json.dumps(payload),
             reasoning,
             degraded,
+            calibrated,
+            correction_version,
         ),
     )
     conn.commit()

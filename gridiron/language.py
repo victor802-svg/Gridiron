@@ -625,6 +625,7 @@ def why_block(item: dict, factors: dict | None = None) -> dict:
 #: LOOKS like English and is a colon-joined key. A reader should not have to
 #: know the code to read the panel that says whether the machine is alive.
 TASK_WORDS = {
+    "recalibrate": "Re-check the claims",
     "refresh": "Fetch results",
     "resolve": "Settle picks",
     "predict:nfl": "Predict football",

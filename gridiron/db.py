@@ -32,6 +32,11 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 #: nothing here drops or rewrites a column, because a migration that could
 #: rewrite `predictions` would be a way around LAW 3.
 MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    # The shown number and the correction that produced it. Added
+    # 2026-08-31; every row written before then is NULL, which reads
+    # correctly as "no correction was in force", because none was.
+    ("predictions", "calibrated_prob", "REAL"),
+    ("predictions", "correction_version", "INTEGER"),
     ("predictions", "prop_type", "TEXT"),
     # S1: every record belongs to exactly one sport (LAW 6). Existing rows
     # backfill to 'nfl' via the column default, which is correct: they are all

@@ -557,6 +557,15 @@ CREATE TABLE IF NOT EXISTS predictions (
     predictor     TEXT    NOT NULL CHECK (predictor IN ('statistical', 'llm')),
     factor_set_version TEXT NOT NULL,
     factors_json  TEXT    NOT NULL,
+    -- THE NUMBER ACTUALLY SHOWN, when a correction was in force at write time.
+    -- NULL means the category was raw and `model_prob` was displayed as-is.
+    --
+    -- Stored BESIDE the raw claim and never instead of it. A record that kept
+    -- only the corrected figure could not answer "was the correction right",
+    -- which is the entire reason for versioning it: the predictions written
+    -- under a version are its forward record.
+    calibrated_prob    REAL,
+    correction_version INTEGER,
     reasoning     TEXT    NOT NULL,
     degraded      TEXT,               -- non-NULL tag when a path was unavailable
     resolved_utc  TEXT,
@@ -656,6 +665,76 @@ CREATE TABLE IF NOT EXISTS prediction_voids (
     voided_utc    TEXT NOT NULL,
     reason        TEXT NOT NULL CHECK (length(trim(reason)) >= 10)
 );
+
+
+-- ---------------------------------------------------------------------------
+-- CALIBRATION CORRECTIONS — the model'''s claims, adjusted by its own record.
+-- ---------------------------------------------------------------------------
+--
+-- A forecaster that says 70% and is right 62% of the time is not broken; it is
+-- MISCALIBRATED, and that is a measurable, correctable fact. Platt scaling
+-- fits two numbers per category -- a slope and an intercept on the claim'''s
+-- log-odds -- so a claim can be mapped onto what claims like it have actually
+-- been worth.
+--
+-- ONE CORRECTION PER CATEGORY, and a category is (sport, market_type,
+-- forecaster). LAW 6 applies INSIDE the correction exactly as it does outside
+-- it: a slope fitted across two sports describes neither, and one fitted
+-- across two forecasters would let the better one flatter the worse. The
+-- statistical and LLM forecasters each earn their own.
+--
+-- APPEND-ONLY, AND VERSIONED. A refit never edits a correction; it writes a
+-- new version. Corrections apply at WRITE TIME to new predictions only --
+-- nothing already written ever changes, because a prediction is what was
+-- claimed at the time (LAW 3). That also means every version can be GRADED:
+-- the predictions written under it carry its number and have their own curve.
+--
+-- `train_brier_raw` and `train_brier_corrected` are IN-SAMPLE and are labelled
+-- so everywhere they are shown. They say the fit did something; they are not
+-- evidence it helps, and the column names are not allowed to imply otherwise.
+CREATE TABLE IF NOT EXISTS calibration_corrections (
+    id            INTEGER PRIMARY KEY,
+    sport         TEXT NOT NULL,
+    market_type   TEXT NOT NULL,
+    forecaster    TEXT NOT NULL,
+    version       INTEGER NOT NULL,
+    fitted_utc    TEXT NOT NULL,
+    n_train       INTEGER NOT NULL CHECK (n_train >= 0),
+    -- Platt'''s two: corrected = sigmoid(slope * logit(claim) + intercept).
+    slope         REAL NOT NULL,
+    intercept     REAL NOT NULL,
+    train_brier_raw       REAL,
+    train_brier_corrected REAL,
+    -- The holdout check (C2). NULL until a category has enough to run it.
+    holdout_n            INTEGER,
+    holdout_brier_raw    REAL,
+    holdout_brier_corrected REAL,
+    -- NULL means fitted but NOT ACTIVE. A correction is inert until this is
+    -- set, so a fit can be recorded and inspected without touching a claim.
+    active_from   TEXT,
+    -- Why it is or is not active, in words, for the interface.
+    status        TEXT NOT NULL,
+    UNIQUE (sport, market_type, forecaster, version)
+);
+
+CREATE INDEX IF NOT EXISTS calibration_corrections_category
+    ON calibration_corrections (sport, market_type, forecaster, version DESC);
+
+CREATE TRIGGER IF NOT EXISTS calibration_corrections_no_update
+BEFORE UPDATE ON calibration_corrections
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a fitted correction is what it was at the time; '
+        || 'refitting writes a new version and never edits one');
+END;
+
+CREATE TRIGGER IF NOT EXISTS calibration_corrections_no_delete
+BEFORE DELETE ON calibration_corrections
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: corrections are append-only; a version that was '
+        || 'once active graded the predictions written under it');
+END;
 
 
 -- ---------------------------------------------------------------------------
@@ -762,6 +841,8 @@ WHEN OLD.created_utc        IS NOT NEW.created_utc
   OR OLD.predictor          IS NOT NEW.predictor
   OR OLD.factor_set_version IS NOT NEW.factor_set_version
   OR OLD.factors_json       IS NOT NEW.factors_json
+  OR OLD.calibrated_prob    IS NOT NEW.calibrated_prob
+  OR OLD.correction_version IS NOT NEW.correction_version
   OR OLD.reasoning          IS NOT NEW.reasoning
 BEGIN
     SELECT RAISE(ABORT,

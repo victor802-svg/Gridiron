@@ -90,6 +90,7 @@ def step_2_guards() -> bool:
         ("no shadowed definitions", audit.check_no_shadowed_definitions),
         ("the side, in prose, anywhere", audit.check_side_named_everywhere),
         ("the renderer composes no prose", audit.check_js_composes_no_prose),
+        ("the correction sees claims only", audit.check_correction_is_isolated),
         ("no silent defaults (v2)", audit.check_no_silent_defaults),
         ("not a betting tool (LAW 5)", audit.check_not_a_betting_tool),
         ("no offline data caching", audit.check_no_offline_data_caching),

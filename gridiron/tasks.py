@@ -47,6 +47,16 @@ TASKS: dict[str, TaskSpec] = {
         every_hours=4.0,
         silent_after_hours=12.0,
     ),
+    "recalibrate": TaskSpec(
+        "recalibrate",
+        "re-fit each category's claim correction against its settled record",
+        # WEEKLY, and not more often. A correction refitted daily would move
+        # under the interface for reasons nobody could point at, and its
+        # training set grows by a handful of rows a day -- there is nothing a
+        # daily refit could see that a weekly one misses.
+        every_hours=24 * 7,
+        silent_after_hours=24 * 9,
+    ),
     "resolve": TaskSpec(
         "resolve",
         "settle every prediction whose game has finished",
@@ -95,6 +105,8 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
     try:
         if task == "refresh":
             result, detail, payload = _run_refresh(conn)
+        elif task == "recalibrate":
+            result, detail, payload = _run_recalibrate(conn)
         elif task == "resolve":
             result, detail, payload = _run_resolve(conn)
         else:
@@ -195,6 +207,24 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     return ("ok",
             f"re-read {len(counts)} sport(s); {became_final} prediction(s) now "
             "have a finished game waiting for the resolver", payload)
+
+
+def _run_recalibrate(conn: sqlite3.Connection) -> tuple[str, str, dict]:
+    """Re-fit every category's correction. Writes versions; activates nothing.
+
+    Reports in the same voice as the gates elsewhere: a category under the
+    threshold says how far off it is, because "no correction" and "not enough
+    record yet" are different states and the panel must not show them alike.
+    """
+    from . import correction
+
+    report = correction.refit_all(conn)
+    if not report["n"]:
+        return "noop", "nothing has settled yet, so there is nothing to fit", report
+    detail = (f"fitted {report['n']} categor"
+              f"{'y' if report['n'] == 1 else 'ies'}; "
+              f"{report['eligible']} had at least {correction.MIN_TRAIN} settled")
+    return ("ok" if report["eligible"] else "noop"), detail, report
 
 
 def _run_resolve(conn: sqlite3.Connection) -> tuple[str, str, dict]:

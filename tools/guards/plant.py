@@ -966,6 +966,100 @@ def plant_a_view_that_names_the_side_itself() -> Result:
                       "NOT CAUGHT - a view built the side into a sentence and passed")
 
 
+def _planted_correction(extra: str) -> str:
+    """A miniature correction module with one training query."""
+    return chr(10).join([
+        "import sqlite3",
+        "",
+        "",
+        "def training_rows(conn, *, sport, before_utc):",
+        "    return conn.execute(",
+        '        "SELECT p.model_prob, p.outcome FROM predictions p"',
+        '        " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"',
+        '        " AND p.outcome IS NOT NULL AND p.resolved_utc < ?"',
+        '        " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"',
+        '        "                 WHERE v.prediction_id = p.id)"',
+        "        " + extra + ",",
+        "        (sport, before_utc)).fetchall()",
+        "",
+    ])
+
+
+def _correction_result(what: str, caught: bool, detail: str) -> Result:
+    return Result("THE CORRECTION SEES CLAIMS ONLY", what,
+                  "audit.check_correction_is_isolated", caught, detail)
+
+
+def _plant_correction(extra: str, what: str, needle: str,
+                      text: str | None = None) -> Result:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        copy = Path(tmp) / "correction.py"
+        copy.write_text(text if text is not None else _planted_correction(extra),
+                        encoding="utf-8")
+        try:
+            audit.check_correction_is_isolated(copy)
+        except audit.LawViolation as exc:
+            if needle in str(exc):
+                return _correction_result(what, True, str(exc).splitlines()[-1])
+            return _correction_result(
+                what, False,
+                "caught, but the message does not name " + needle)
+        return _correction_result(what, False,
+                                  "NOT CAUGHT - " + what + " passed the scan")
+
+
+def plant_a_correction_that_reads_the_score() -> Result:
+    """Join the game table into the correction's training set.
+
+    A correction is fitted ON OUTCOMES, which is legitimate and is also one
+    step from a second model fitted on the result wearing a calibration label.
+    The line is which tables it may name: the record's own claims and outcomes,
+    and nothing that could tell it about the game itself.
+    """
+    return _plant_correction(
+        '" JOIN games g ON g.id = p.game_id"',
+        "join the game table into a correction fit", "games")
+
+
+def plant_a_correction_that_reads_the_line() -> Result:
+    """The same, through `market_snapshots` -- LAW 1's subject, after the fact."""
+    return _plant_correction(
+        '" JOIN market_snapshots s ON s.prediction_id = p.id"',
+        "fit a correction on the market line", "market_snapshots")
+
+
+def plant_a_correction_that_can_see_its_own_future() -> Result:
+    """Drop the time bound from the training query.
+
+    Without `resolved_utc <` the fit trains on rows that settled after it was
+    made, and C2's holdout -- earliest 80% to fit, latest 20% to test -- would
+    be testing on rows it had already trained on.
+    """
+    text = _planted_correction('""').replace(
+        ' " AND p.outcome IS NOT NULL AND p.resolved_utc < ?"',
+        ' " AND p.outcome IS NOT NULL"')
+    return _plant_correction("", "fit a correction with no time bound",
+                             "resolved_utc <", text=text)
+
+
+def plant_a_correction_that_scores_a_void() -> Result:
+    """Drop the void exclusion. A void has no outcome to be right or wrong about."""
+    text = chr(10).join([
+        "import sqlite3",
+        "",
+        "",
+        "def training_rows(conn, *, sport, before_utc):",
+        "    return conn.execute(",
+        '        "SELECT p.model_prob, p.outcome FROM predictions p"',
+        '        " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"',
+        '        " AND p.outcome IS NOT NULL AND p.resolved_utc < ?",',
+        "        (sport, before_utc)).fetchall()",
+        "",
+    ])
+    return _plant_correction("", "train a correction on voided predictions",
+                             "prediction_voids", text=text)
+
+
 def plant_a_scored_rung_claim() -> Result:
     """Try to settle a rung claim as if it were a prediction.
 
@@ -1816,6 +1910,10 @@ def main() -> int:
     results.append(plant_a_why_that_disagrees_with_its_contributions())
     results.append(plant_a_factor_with_no_why_template())
     results.append(plant_a_view_that_names_the_side_itself())
+    results.append(plant_a_correction_that_reads_the_score())
+    results.append(plant_a_correction_that_reads_the_line())
+    results.append(plant_a_correction_that_can_see_its_own_future())
+    results.append(plant_a_correction_that_scores_a_void())
     results.append(plant_a_scored_rung_claim())
     results.append(plant_a_renderer_that_composes_prose())
     results.append(plant_a_class_name_mistaken_for_prose())

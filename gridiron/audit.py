@@ -1001,3 +1001,115 @@ def check_js_composes_no_prose(path: Path | None = None) -> None:
             "the finished string:"
             + _NL2 + _NL2.join(hits[:12])
         )
+
+
+# ---------------------------------------------------------------------------
+# THE CORRECTION SEES THE RECORD'S CLAIMS AND NOTHING ELSE
+# ---------------------------------------------------------------------------
+#
+# A calibration correction is fitted on outcomes. That is legitimate -- it is
+# the only way to learn what a claim has been worth -- and it is also one
+# reachable step away from a second model fitted on the result, wearing a
+# calibration label. Two properties keep it honest, and both are scanned here
+# rather than trusted:
+#
+#   1. IT MAY READ ONLY THE RECORD'S OWN CLAIMS AND OUTCOMES. `predictions`,
+#      and `prediction_voids` to exclude the terminal ones. A correction that
+#      could reach `games` would be fitting on the score; one that could reach
+#      `market_snapshots` would be fitting on the line, which is LAW 1's whole
+#      subject arriving through the back door after the fact.
+#
+#   2. EVERY TRAINING QUERY IS BOUNDED IN TIME. A correction trained on rows
+#      that resolved after it was fitted has seen its own future, and C2's
+#      holdout -- earliest 80% to fit, latest 20% to test -- would be testing
+#      on rows it trained on. The bound is what makes the holdout mean
+#      anything.
+
+#: Tables the correction engine may name. Everything else is a different model.
+CORRECTION_TABLES = frozenset({
+    "predictions", "prediction_voids", "calibration_corrections",
+})
+
+#: A training query must carry all of these. Not style: each one is a way the
+#: fit could otherwise include a row it must not see.
+CORRECTION_REQUIRED = (
+    ("resolved_utc IS NOT NULL", "an unsettled prediction has no outcome to fit"),
+    ("resolved_utc <", "without a time bound the fit can see its own future"),
+    ("prediction_voids", "a void is terminal and must be excluded, not scored"),
+)
+
+#: The separator before the keyword is load-bearing. Without it, `FROM` matches
+#: inside `active_from IS NOT NULL` and the scan reports the engine reading a
+#: table called 'IS'. A `\b` would say the same thing; it is written out
+#: because two earlier versions of this file had a `\b` turn into a literal
+#: backspace in transit, and a scan whose pattern silently matches nothing
+#: passes everything.
+_SQL_TABLE = __import__("re").compile(
+    r"(?:^|[\s,(])(?:FROM|JOIN|INTO|UPDATE)\s+([a-z_][a-z0-9_]*)",
+    __import__("re").I)
+
+
+#: A string is SQL if it STARTS with a SQL verb. Not "contains a table-shaped
+#: word": the first version of this scan matched prose, reporting that the
+#: engine reads a table called 'the' out of its own docstring. Python joins
+#: adjacent string literals at parse time, so a query split across a dozen
+#: source lines arrives here as one node beginning with SELECT.
+_SQL_START = __import__("re").compile(
+    r"^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\s", __import__("re").I)
+
+
+def _correction_sql(path: Path) -> list[tuple[int, str]]:
+    """Every SQL statement in the module, with its line."""
+    import ast as _ast
+
+    tree = _ast.parse(path.read_text(encoding="utf-8"))
+    out = []
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+            if _SQL_START.match(node.value):
+                out.append((getattr(node, "lineno", 0), node.value))
+    return out
+
+
+def correction_reaches(path: Path | None = None) -> list[str]:
+    """Tables the correction engine names that it has no business naming."""
+    path = (Path(__file__).resolve().parent / "correction.py") if path is None else Path(path)
+    if not path.exists():
+        return []
+    bad = []
+    for line, sql in _correction_sql(path):
+        for table in _SQL_TABLE.findall(sql):
+            if table.lower() not in CORRECTION_TABLES:
+                bad.append(f"line {line}: reads {table!r}")
+    return sorted(set(bad))
+
+
+def correction_training_is_bounded(path: Path | None = None) -> list[str]:
+    """Training queries missing a guard that keeps a forbidden row out."""
+    path = (Path(__file__).resolve().parent / "correction.py") if path is None else Path(path)
+    if not path.exists():
+        return []
+    missing = []
+    for line, sql in _correction_sql(path):
+        # A training query is one that reads outcomes out of predictions.
+        if "outcome" not in sql or "predictions" not in sql:
+            continue
+        for needle, why in CORRECTION_REQUIRED:
+            if needle not in sql:
+                missing.append(f"line {line}: no {needle!r} -- {why}")
+    return sorted(set(missing))
+
+
+def check_correction_is_isolated(path: Path | None = None) -> None:
+    hits = correction_reaches(path) + correction_training_is_bounded(path)
+    if hits:
+        raise LawViolation(
+            "THE CORRECTION REACHED PAST THE RECORD: a calibration correction "
+            "is fitted on outcomes, which makes it one step from a second "
+            "model fitted on the result. It may read the record's own claims "
+            "and outcomes -- `predictions`, and `prediction_voids` to exclude "
+            "the terminal ones -- and every training query must be settled, "
+            "void-free and BOUNDED IN TIME, or the fit sees its own future and "
+            "the holdout tests on rows it trained on:"
+            + _NL2 + _NL2.join(hits[:10])
+        )
