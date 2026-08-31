@@ -22,6 +22,7 @@ club wins and a prop asks what one man does, and no instrument serves both.
 
 from __future__ import annotations
 
+from .. import config
 from .registry import factor
 
 ADDED = "2026-08-29T00:00:00Z"
@@ -208,11 +209,44 @@ BATTER_MARKETS = ("batter_hits", "batter_total_bases", "batter_home_runs")
 ALL_PROP_MARKETS = BATTER_MARKETS + ("pitcher_strikeouts",)
 
 
+#: Markets whose declared ladder has exactly one rung. In these,
+#: `mlb_prop_mean_vs_line` reduces to (mean - rung) / rung with `rung` fixed --
+#: an affine function of the mean, carrying NO information about which question
+#: was asked, because only one question is ever asked.
+#:
+#: It stays declared, because checklist item 1 requires the question instrument
+#: to exist in every market from the first fit and because a market can gain a
+#: rung later. But it is LABELLED here rather than left for a reader to work out
+#: from a coefficient near zero: in batter_total_bases it fitted at -0.0534,
+#: sixth of nine, and that is what an inert instrument looks like rather than a
+#: refuted one.
+SINGLE_RUNG_MARKETS = tuple(
+    m for m, rungs in config.MLB_PROP_LADDER.items() if len(rungs) == 1
+)
+
+
 @factor(
     added=PROP_ADDED,
     sport="mlb",
     applies_to=("prop",),
     markets=ALL_PROP_MARKETS,
+    note=(
+        "INERT IN SINGLE-RUNG MARKETS, and that is a property of the ladder "
+        "rather than a defect in the factor. Where a market declares one rung "
+        f"-- currently {', '.join(SINGLE_RUNG_MARKETS)} -- this reduces to an "
+        "affine function of the rolling mean, because the only other term is a "
+        "constant. It cannot tell the model which question was asked when only "
+        "one question is ever asked. "
+        "Measured 2026-08-30: it fitted at -0.0534 in batter_total_bases, sixth "
+        "of nine factors, against +2.07 in batter_hits and +1.96 in "
+        "pitcher_strikeouts, both of which have real ladders. "
+        "RUNGS WERE NOT ADDED TO REPAIR IT. A rung exists because the market "
+        "quotes it, not because the model would like more spread; manufacturing "
+        "one would be choosing the questions to flatter the instrument. It "
+        "stays declared because item 1 requires it in every market from the "
+        "first fit, and because a market that gains a rung gains the "
+        "instrument back with no code change."
+    ),
     rationale=(
         "WHICH RUNG WAS ASKED. A model that cannot see where the line sits "
         "relative to the subject's own recent average is averaging several "
@@ -261,49 +295,48 @@ def mlb_prop_volatility(ctx) -> float | None:
 @factor(
     added=PROP_ADDED,
     sport="mlb",
-    applies_to=("prop",),
     markets=BATTER_MARKETS,
+    applies_to=("prop",),
     note=(
-        "MEASURED 2026-08-30, AFTER THE FIRST FIT, and recorded here so nobody "
-        "re-derives it: this factor and `mlb_batter_expected_pa` MULTIPLY TO "
-        "EXACTLY the rolling mean that `mlb_prop_mean_vs_line` is built from. "
-        "Hits per plate appearance times plate appearances per game IS hits per "
+        "REDECLARED 2026-08-31 over a SIXTY-game window, having been declared "
+        "on 2026-08-30 over the same fifteen games the rolling mean uses. This "
+        "is a REPAIR OF A BROKEN INSTRUMENT, not a refinement of a working one, "
+        "and the distinction matters because a later reader who mistakes one "
+        "for the other will draw the wrong conclusion from both. "
+        "WHAT WAS WRONG: measured over the mean's own window, this factor times "
+        "`mlb_batter_expected_pa` reconstructed the rolling mean EXACTLY. Hits "
+        "per plate appearance times plate appearances per game is hits per "
         "game. Measured on 2,444 sampled batter-games, corr(rate x pa, mean) = "
-        "+1.000 - not close to one, one. "
-        "The three are therefore not three independent instruments, and their "
-        "coefficients must NOT be read as effects. In the batter_hits fit this "
-        "factor came out at -5.39 and expected_pa at -0.27, both causally "
-        "backwards, because in a linear model a product does not decompose "
-        "additively: the two act as corrections to a term the model already has "
-        "rather than as separate causes. "
-        "IT IS NOT A COLLINEARITY IN THE ORDINARY SENSE and would not be caught "
-        "by looking for one - the pairwise correlations are small (rate vs "
-        "mean_vs_line -0.077, pa vs mean_vs_line +0.082). The dependency is "
-        "through the product, which no pairwise check sees. "
-        "The fit is not broken by it: it converged in 5 iterations, no factor "
-        "was constant or dropped, and the probabilities it produces are sensible. "
-        "And `mean_vs_line` DOES dominate once the factors are put on a "
-        "comparable footing - standardised as coefficient times the factor's own "
-        "spread, it is +0.527 against this factor's -0.314 and expected_pa's "
-        "-0.179. The raw coefficient table says otherwise and the raw "
-        "coefficient table is misleading, because these three factors live on "
-        "scales that differ by an order of magnitude. "
-        "LEFT AS DECLARED rather than repaired mid-session. The factor set was "
-        "declared in the brief and changing it is a deliberate act with its own "
-        "date (LAW 2), not a thing to do quietly while fitting. The repair to "
-        "consider is redefining this factor over a LONGER window than the mean "
-        "uses, so it measures current form against established level - "
-        "information the mean does not already contain."
+        "+1.000 -- not close to one, one. So three declared factors were two "
+        "instruments and an identity, and the fit had to reconcile terms that "
+        "were algebraically dependent. It did so by making them corrections: "
+        "in batter_hits this factor fitted at -5.39 and expected_pa at -0.27, "
+        "both causally backwards, which is not something a reader can "
+        "interpret. "
+        "IT WAS NOT ORDINARY COLLINEARITY and no pairwise check would have "
+        "found it -- rate against mean_vs_line correlated -0.077, pa against "
+        "mean_vs_line +0.082. The dependency ran through the product. "
+        "WHY THE REPAIR IS A LONGER WINDOW: sixty games is what this batter "
+        "usually does; fifteen is what he is doing now. The gap between them is "
+        "information the mean does not contain, which is what an instrument has "
+        "to be. "
+        "TIMING: made while all four prop markets stood at ZERO resolutions, "
+        "which is the only window in which it is free. A factor redeclared "
+        "after a record exists splits that record permanently (LAW 2), so the "
+        "choice was to fix it now or live with it."
     ),
     rationale=(
-        "How often the batter does the thing PER TRIP TO THE PLATE, over the "
-        "rolling fifteen games. Deliberately a rate rather than a per-game "
-        "average, because a per-game average is what `mean_vs_line` already "
-        "reads and declaring the same quantity twice is not two instruments. "
-        "Rate and volume decompose that average instead: a batter's hits per "
-        "game is his hits per plate appearance times his plate appearances, and "
-        "the two halves move for completely different reasons -- form on one "
-        "side, lineup position and game length on the other."
+        "What the batter USUALLY does, per trip to the plate, over a rolling "
+        "sixty games -- his established level, against which the fifteen-game "
+        "mean the question is asked about is current form. The gap between the "
+        "two is the instrument: a batter whose recent average sits above his "
+        "own baseline is having a good fortnight, and a good fortnight predicts "
+        "less than an established level does. "
+        "The window is deliberately four times the mean's, and that is the "
+        "whole design. Measured over the SAME window it is not a second "
+        "instrument at all: rate times plate appearances per game IS the mean, "
+        "so it would restate what `mlb_prop_mean_vs_line` already reads rather "
+        "than adding to it. See the note."
     ),
 )
 def mlb_batter_rate(ctx) -> float | None:

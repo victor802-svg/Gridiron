@@ -22,7 +22,7 @@ import math
 import sqlite3
 from dataclasses import dataclass, field
 
-from . import config
+from . import config, horizon
 from .factors import compute as factor_compute, registry
 from .model import logistic
 
@@ -1149,6 +1149,13 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
                       predictor=predictor)
             c["category"] = f"{market} / {predictor}"
             c["market"] = market
+            # RULING R3: a gate that will not be reached is not a gate that has
+            # not been reached YET, and rendering them alike reads as progress.
+            # Attached per category, statistical only -- the LLM predictor
+            # answers the same questions, so one projection covers both and two
+            # would invite a reader to add them.
+            if predictor == "statistical":
+                c["outlook"] = horizon.market_outlook(conn, sport, market)
             categories.append(c)
 
     headline_market = markets[0] if markets else "spread"

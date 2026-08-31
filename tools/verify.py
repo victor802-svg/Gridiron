@@ -74,7 +74,29 @@ def step_2_guards() -> bool:
     for line in result.stdout.splitlines():
         if line.startswith("[") or "planted violations were caught" in line:
             print(line)
-    return result.returncode == 0
+    ok = result.returncode == 0
+
+    # The standing scans, run against the REAL package rather than a planted
+    # copy. A planting proves a scan fires; this proves the package passes it.
+    # They were reachable only from tests until 2026-08-31, which the orphan
+    # scan is what noticed.
+    from gridiron import audit
+
+    print()
+    for name, fn in (
+        ("prediction closures (LAW 1)", audit.check_all_prediction_closures),
+        ("no orphan functions", audit.check_no_orphan_functions),
+        ("no silent defaults (v2)", audit.check_no_silent_defaults),
+        ("not a betting tool (LAW 5)", audit.check_not_a_betting_tool),
+        ("no offline data caching", audit.check_no_offline_data_caching),
+    ):
+        try:
+            fn()
+            print(f"  PASS  {name}")
+        except audit.LawViolation as exc:
+            ok = False
+            print(f"  FAIL  {name}: {str(exc).splitlines()[0]}")
+    return ok
 
 
 def step_3_one_week_end_to_end(source: Path) -> bool:

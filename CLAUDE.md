@@ -87,6 +87,7 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | NO GUESSED IDENTITY | The ESPN↔MLB player bridge is measured and stored dated, both match rates reported; two players sharing a normalised name refuse | `plant.py::plant_an_ambiguous_crosswalk_match`, `test_mlb_props.py::test_two_players_sharing_a_normalised_name_are_ambiguous` |
 | 4 | A sub-50 probability is stored as a confident claim about the other side, so the bucket set starts at 50 and the tier chip cannot mislabel it | `plant.py::plant_a_home_run_bucket_below_fifty` |
 | 2 | `logistic.fit` reports `constant` and `dropped` per factor, and a constant factor is named rather than fitted | `plant.py::plant_a_constant_prop_factor` |
+| ORPHANS | `audit.check_no_orphan_functions` fails on a public function the shipped code never reaches; a decorator counts as a call site, `tools/` counts as a caller, `tests/` does not. Runs in `verify.py` step 2 | `plant.py::plant_an_orphan_guard`, `::plant_a_decorated_function_mistaken_for_an_orphan` |
 
 Run them all at once, each violation planted for real:
 

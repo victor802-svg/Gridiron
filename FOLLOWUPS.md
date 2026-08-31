@@ -413,3 +413,109 @@ the version tracks changes to an *existing* market's instruments, not the
 addition of a market — or calls for the bump, which is cheap today and expensive
 later. The underlying mismatch is that the version string is global while factor
 sets are per sport per market.
+
+---
+
+## The rulings on the M1-M4 close-out *(2026-08-31)*
+
+### The M3 stop condition fired and the report did not say so *(fixed)*
+
+The M1-M4 brief said: *"mean_vs_line should dominate as it does everywhere — if
+it does not, stop and say so rather than shipping."* In `batter_total_bases` it
+fitted at **-0.0534, sixth of nine factors, and negative.** The condition fired
+and the session report did not mention it. It was not in FOLLOWUPS, not in
+MLB_PROPS.md, not in the factor note.
+
+**The cause was two separate defects wearing one symptom**, and only the milder
+one had been documented:
+
+1. *The ladder.* `batter_total_bases` declares ONE rung (1.5), so `mean_vs_line`
+   reduces to an affine function of the mean and carries no information about
+   which question was asked — because only one question is ever asked. That is a
+   property of the market, not a fault in the factor.
+2. *The identity.* `mlb_batter_rate` was measured over the same fifteen games as
+   the mean, so rate x plate-appearances reconstructed the mean EXACTLY
+   (`corr = +1.000`). Three declared factors were two instruments and an
+   identity.
+
+Both are now addressed. The rate was **redeclared over sixty games** — the
+identity measured at `+1.000` before and `+0.786` after, which is a correlation
+rather than an identity — and `mean_vs_line` carries a dated note labelling it
+inert in single-rung markets. **Rungs were NOT added to repair it**, per ruling:
+a rung exists because the market quotes it, and manufacturing one would be
+choosing the questions to flatter the instrument.
+
+**What made this findable at all was writing the close-out against a rubric
+rather than from memory.** The grading pass re-read the fit logs; the session
+report had not. **What would settle the general case:** the fit report now
+prints `constant` and `dropped` and runs the ladder check, but nothing yet fails
+a build on a question instrument fitting near zero. That is a judgement, not a
+threshold, and it is not obvious it should be automated.
+
+### A guard with no caller, and the scan that now looks for them *(fixed)*
+
+`rung_probabilities` shipped as checklist item 4's cross-check with **zero
+callers anywhere** — not in production, not in a test. `assert_monotone_across_rungs`
+was reached only by its own tests. The suite was green and the check was
+decorative.
+
+Both are wired: the fit report calls them, so a non-monotone ladder is named
+where the coefficients that caused it are on screen.
+
+The class fix is `audit.check_no_orphan_functions` — a scan for public functions
+the shipped code defines and never reaches, with a dated allowlist, two planted
+violations, and a place in `tools/verify.py` step 2. **Its first run flagged 64
+functions and would have needed a 35-line allowlist**, which is the mute button
+this project's own docstrings warn about, so the rule was narrowed rather than
+the noise silenced: a decorated function is wired (the decorator IS the call
+site), `tools/` counts as a caller, `tests/` does not. That left 11 real
+orphans — five audit checks that had never been run outside the test suite, now
+wired into the gate, and six accessors allowlisted with dated reasons.
+
+This is Agentville's orphan guard arriving here, a project late.
+
+### A redeclared factor keeps its name, so a stale fit still loads *(open)*
+
+Found while doing ruling 1. `mlb_batter_rate` changed meaning on 2026-08-31 --
+same name, different window -- and `baseline.load_fit` matches a stored fit to a
+feature vector **by factor name**. Between the code change and the refit, the
+stored coefficients were fitted on 15-game rates and the vector carried 60-game
+rates. Nothing would have complained: the names lined up, the fit loaded, the
+probabilities came out plausible and wrong.
+
+Nothing was written in that window -- the next scheduled `predict:mlb` was
+roughly eighteen hours out and the refits landed first -- so this cost nothing
+this time. It cost nothing because the refit was remembered, which is not a
+mechanism.
+
+`FACTOR_SET_VERSION` is the intended guard and it does not reach this case: the
+ruling not to bump it was correct (the markets stood at zero resolutions), and a
+correct decision not to bump still leaves a stale fit loadable.
+
+**What would settle it:** store a hash of each factor's source alongside the
+fit, and refuse to load one whose factors have changed since it was trained --
+`NotTrained` naming the factor, rather than a silent mismatch. It is the same
+shape as the margin-SD repair: a number that decides an output has no business
+being unverifiable.
+
+### FACTOR_SET_VERSION is global; factor sets are per sport per market *(open)*
+
+The narrower reading is now the ruling: **the version tracks changes to an
+existing market's instruments, and adding a market is a new category with its
+own activation date.** So the four MLB prop markets did not bump it, and the
+2026-08-31 redeclaration of `mlb_batter_rate` does not either, because it
+touches only markets standing at zero resolutions.
+
+The underlying mismatch stands: `FACTOR_SET_VERSION` is **one global string**,
+while factor sets are per sport per market. A change to an NBA prop factor and a
+change to an MLB batting factor would both bump the same version, splitting
+records in markets neither change touched. Nothing has been lost to this yet
+because every bump so far has been project-wide.
+
+**What would settle it:** make the version per market — `fs2` becomes
+`{"mlb:prop:batter_hits": "fs2", ...}` — so a redeclaration splits exactly the
+record it affects and no other. The migration is the awkward part: existing rows
+carry a scalar `factor_set_version`, and the reader would have to treat a bare
+string as "the project-wide version that was in force", which is true but needs
+saying in the schema rather than assumed. Worth doing **before** a bump is ever
+needed for one sport, because after that the damage is already in the record.

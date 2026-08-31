@@ -112,9 +112,71 @@ def cmd_train(args: argparse.Namespace) -> int:
               f"iterations={fit.iterations} intercept={fit.intercept:+.4f}")
         for name, coef in sorted(zip(fit.names, fit.coefficients), key=lambda t: -abs(t[1])):
             print(f"    {name:22s} {coef:+.4f}")
+        if fit.constant:
+            print(f"    CONSTANT ACROSS TRAINING: {sorted(fit.constant)}")
+            print("      A constant factor is a broken instrument, not a weak "
+                  "one; there is nothing to fit.")
+        if fit.dropped:
+            print(f"    DROPPED, too few measured rows: {sorted(fit.dropped)}")
+        _report_ladder_check(conn, sport, market_type, fit)
         print()
     conn.close()
     return 0
+
+
+def _report_ladder_check(conn, sport: str, market_type: str, fit) -> None:
+    """CHECKLIST ITEM 4, run against the fit that was just produced.
+
+    This is where the cross-check earns its place: a model must not say a higher
+    rung is easier to clear than a lower one. Every game that records more than
+    6.5 strikeouts records more than 5.5, so the ordering is a fact of
+    arithmetic, and a fit that inverts it is contradicting itself rather than
+    being slightly miscalibrated -- invisible on a card, which shows one rung.
+
+    It runs HERE, in the report, rather than inside `train`: a fit that fails
+    the check is still worth looking at, and refusing to store it would hide the
+    coefficients that explain the failure.
+    """
+    from .model import baseline as _baseline
+
+    stat = _baseline.prop_stat(market_type)
+    if sport != "mlb" or stat is None:
+        return
+    rungs = config.MLB_PROP_LADDER.get(stat, ())
+    if len(rungs) < 2:
+        print(f"    ladder check: {stat} declares one rung ({rungs[0]}), so "
+              "there is no ordering to contradict")
+        return
+
+    from .sports import mlb as _mlb
+
+    subject = conn.execute(
+        "SELECT p.subject_id, p.game_id FROM ("
+        "  SELECT b.player_id AS subject_id, g.id AS game_id"
+        "  FROM mlb_batter_games b JOIN games g ON g.id = 'mlb_' || b.game_pk"
+        "  WHERE g.status = 'final' AND b.lineup_slot IS NOT NULL"
+        "  UNION ALL"
+        "  SELECT s.pitcher_id, g.id FROM mlb_pitcher_starts s"
+        "  JOIN games g ON g.id = 'mlb_' || s.game_pk"
+        "  WHERE g.status = 'final' AND s.is_start = 1"
+        ") p ORDER BY p.game_id DESC LIMIT 1"
+    ).fetchone()
+    if subject is None:
+        print("    ladder check: no completed game to evaluate against")
+        return
+    try:
+        pairs = _mlb.rung_probabilities(
+            conn, fit, subject["game_id"], stat, int(subject["subject_id"])
+        )
+        _mlb.assert_monotone_across_rungs(pairs, f"{stat} on {subject['game_id']}")
+    except _mlb.NonMonotoneLadder as exc:
+        print(f"    LADDER CHECK FAILED: {exc}")
+        return
+    except (KeyError, ValueError) as exc:
+        print(f"    ladder check: could not evaluate ({exc})")
+        return
+    shape = "  ".join(f"{r}:{p:.3f}" for r, p in pairs)
+    print(f"    ladder check PASSED, P(over) falls as the rung rises: {shape}")
 
 
 def cmd_weather(args: argparse.Namespace) -> int:

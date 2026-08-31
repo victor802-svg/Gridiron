@@ -19,6 +19,7 @@ but it may not name `spread_line` in a string that could become SQL.
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -495,4 +496,146 @@ def check_plain_words(text: str, where: str = "the page") -> None:
             "label is a phrase a person would say out loud - a record nobody "
             "can read is a record nobody can check. Offending text:"
             + _NL2 + _NL2.join(hits[:8])
+        )
+
+
+# ---------------------------------------------------------------------------
+# ORPHANS — a guard nobody calls is a guard on faith
+# ---------------------------------------------------------------------------
+#
+# This scan exists because `rung_probabilities` shipped as checklist item 4's
+# cross-check with ZERO callers anywhere -- not in production, not even in a
+# test. It could not fail, because nothing ran it. The suite was green and the
+# check was decorative.
+#
+# That is a shape this project keeps meeting from new angles: a green suite
+# verifies the code that RUNS. It says nothing about code that does not. A
+# planted violation proves a guard fires; this proves a guard is reached.
+#
+# TWO RULES DECIDE WHAT COUNTS, and both were forced by the first run, which
+# flagged 64 functions and would have needed a 35-line allowlist -- the mute
+# button this file's own docstring warns about:
+#
+#   * A DECORATED function is wired. `@factor(...)` registers the function into
+#     REGISTRY and the loop invokes it as `f.fn(ctx)`; a route decorator does
+#     the same for a handler. The decorator IS the call site, so requiring a
+#     bare-name caller would flag every factor in the project.
+#   * `tools/` COUNTS AS A CALLER, `tests/` DOES NOT. `tools/verify.py` and
+#     `tools/guards/plant.py` are shipped code that runs in earnest. A function
+#     reached only by its own unit test is precisely the case this scan is for.
+
+#: Public functions that legitimately have no caller in `gridiron/` or `tools/`.
+#: Every entry is DATED and says why, because "it is fine" ages badly and an
+#: allowlist nobody can audit is just a mute button.
+ORPHAN_ALLOWLIST: dict[str, str] = {
+    "main": "2026-08-31: module entry point, invoked by the shell, not by us.",
+    # The sport-adapter protocol. `sports.get()` imports the module and the
+    # blind loop calls these through it, so no bare name appears at a call site.
+    "slate_questions": "2026-08-31: sport-adapter surface, reached through the adapter module.",
+    "build_features": "2026-08-31: sport-adapter surface, reached through the adapter module.",
+    "training_set": "2026-08-31: sport-adapter surface, reached through the adapter module.",
+    "resolve_outcome": "2026-08-31: sport-adapter surface, reached through the adapter module.",
+    "next_slate": "2026-08-31: sport-adapter surface, reached through the adapter module.",
+    "markets": "2026-08-31: sport-adapter surface, reached through the adapter module.",
+    "first_slate_note": "2026-08-31: optional adapter surface, looked up with getattr.",
+    "build_context": "2026-08-31: adapter surface, reached through the adapter module.",
+    "build_prop_context": "2026-08-31: adapter surface, reached through the adapter module.",
+    # Kept deliberately for callers outside this repository's own code.
+    "run_week": "2026-08-31: NFL-shaped wrapper kept for existing callers and tests.",
+    "select_props": "2026-08-31: single-game prop selection, kept beside select_week_props for callers and tests.",
+    "snapshot_for_game": "2026-08-31: per-game snapshot entry point used by the CLI's ad-hoc path and tests.",
+    # Read-only accessors and diagnostics, kept because deleting a query is not
+    # the same as deleting dead logic: each is exercised by tests, each is one
+    # obvious call away, and none can be wrong in a way that reaches the record.
+    # MENTOR.md §4: delete is the last resort in a model or data module.
+    "batter_last_played": "2026-08-31: batter recency accessor; selection currently inlines the same MAX(game_date). Kept as the named form.",
+    "cache_stats": "2026-08-31: http_cache diagnostic, read by hand when a season load looks wrong.",
+    "injury_report_names": "2026-08-31: NBA injury accessor, sibling of the one the rotation filter uses.",
+    "team_history": "2026-08-31: NFL team history accessor, kept beside the ones the factors use.",
+    "prop_market": "2026-08-31: inverse of prop_stat; kept as the named pair so neither is re-derived at a call site.",
+    "record_factor_score": "2026-08-31: writes factor_scores; the scoring pass that calls it is not built yet, and the table it writes is declared in the schema.",
+    "scalar": "2026-08-31: db convenience, one line, used by tests and ad-hoc queries.",
+    "table_columns": "2026-08-31: db introspection used by tests and by the migration path by hand.",
+    "check_plain_words": "2026-08-31: raises for callers that render a page; the smoke suite is the only renderer, so it is the only caller.",
+}
+
+
+def _decorated(node) -> bool:
+    return bool(getattr(node, "decorator_list", []))
+
+
+def _public_functions(root: Path) -> dict[str, str]:
+    """Public, UNDECORATED, top-level functions in the package: name -> file."""
+    import ast as _ast
+
+    out: dict[str, str] = {}
+    for path in sorted(root.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = _ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in tree.body:
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                if not node.name.startswith("_") and not _decorated(node):
+                    out.setdefault(node.name, str(path.relative_to(root.parent)))
+    return out
+
+
+def _caller_sources(root: Path) -> dict[str, str]:
+    """Every file whose calls count: the package, plus `tools/`. Never tests."""
+    out: dict[str, str] = {}
+    roots = [root]
+    tools = root.parent / "tools"
+    if tools.is_dir():
+        roots.append(tools)
+    for base in roots:
+        for path in sorted(base.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            try:
+                out[str(path)] = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+    return out
+
+
+def orphan_functions(root: Path | None = None) -> list[str]:
+    """Public functions the shipped code defines and never reaches.
+
+    Callers in `tests/` do not count. A function reached only by its own unit
+    test is exactly the case that looked green and did nothing.
+    """
+    root = Path(__file__).resolve().parent if root is None else Path(root)
+    functions = _public_functions(root)
+    sources = _caller_sources(root)
+
+    orphans = []
+    for name, where in sorted(functions.items()):
+        if name in ORPHAN_ALLOWLIST:
+            continue
+        pattern = re.compile(rf"\b{re.escape(name)}\b")
+        uses = 0
+        for body in sources.values():
+            for line in body.splitlines():
+                stripped = line.strip()
+                if stripped.startswith((f"def {name}", f"async def {name}")):
+                    continue
+                uses += len(pattern.findall(line))
+        if uses == 0:
+            orphans.append(f"{name} ({where}) is defined and never called")
+    return orphans
+
+
+def check_no_orphan_functions(root: Path | None = None) -> None:
+    hits = orphan_functions(root)
+    if hits:
+        raise LawViolation(
+            "ORPHANS: these public functions are defined in the shipped code "
+            "and reached from nowhere in it. A guard nobody calls is a guard on "
+            "faith, and a helper nobody calls is dead weight a reader still has "
+            "to get past. Wire it, delete it, or add a DATED line to "
+            "audit.ORPHAN_ALLOWLIST saying why it stands alone:"
+            + _NL2 + _NL2.join(hits[:10])
         )

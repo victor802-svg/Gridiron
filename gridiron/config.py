@@ -138,10 +138,22 @@ SPORT_LOAD_SEASONS = {
 # tracks changes to an EXISTING market's instruments. Adding a market is not
 # that.
 #
-# THE OPERATOR CAN OVERRULE THIS. If a bump is wanted, the cost is small today
-# -- six resolved predictions across the whole forward record -- and the four
-# prop fits would need re-running, because a fit is stored against the version
-# it was trained under.
+# ENDORSED BY THE OPERATOR 2026-08-31, as the narrower reading: the version
+# tracks changes to an EXISTING market's instruments, and adding a market is a
+# new category with its own activation date rather than a change to this string.
+#
+# NOT BUMPED AGAIN ON 2026-08-31 for the redeclaration of `mlb_batter_rate`
+# from a 15-game window to a 60-game one, by the same reading and one further
+# fact: all four MLB prop markets stood at ZERO resolutions when it was made.
+# There is no record for a split to divide. That window closes at the first
+# resolution, which is why the repair was made then rather than later.
+#
+# THE MISMATCH THIS LEAVES IS RECORDED IN FOLLOWUPS.md: the string is global,
+# factor sets are per sport per market, so a change to one NBA prop factor would
+# bump the version for every MLB market too and split records nothing touched.
+# Nothing has been lost to it yet because every bump so far has been
+# project-wide. The fix is to make the version per market, and it is much
+# cheaper before a single-sport bump is ever needed than after.
 FACTOR_SET_VERSION = "fs2"
 
 #: Every factor set that has ever produced predictions, oldest first. A version

@@ -417,7 +417,7 @@ const Gridiron = (function () {
         const empty = !c.score.n;
         const blank = () => el('span', 'absent', 'nothing resolved yet');
         return [
-          categoryLabel(c.category), int(c.score.n), int(c.voided),
+          categoryCell(c), int(c.score.n), int(c.voided),
           empty ? blank() : num(c.score.brier),
           empty ? el('span', 'absent', '') : num(c.score.log_loss),
           empty ? el('span', 'absent', '') : pct(c.score.hit_rate)
@@ -426,6 +426,22 @@ const Gridiron = (function () {
     wrap.appendChild(t);
     byCat.appendChild(wrap);
     host.appendChild(byCat);
+  }
+
+  // RULING R3: a gate that will not be reached and a gate that has not been
+  // reached YET must not render the same way. "6 of 100" reads as progress; the
+  // outlook line says which of the two it is, with the arithmetic beside it so
+  // the reader does not have to take it on trust.
+  function categoryCell(c) {
+    const cell = el('div', 'cat-cell');
+    // categoryLabel returns a STRING, not a node.
+    cell.appendChild(el('div', '', categoryLabel(c.category)));
+    const o = c.outlook;
+    if (o && o.message) {
+      const cls = o.reachable === false ? 'footnote gate-unreachable' : 'footnote';
+      cell.appendChild(el('div', cls, o.message));
+    }
+    return cell;
   }
 
   function renderEdge(edge) {
@@ -1345,6 +1361,13 @@ const Gridiron = (function () {
         hosts.settled.appendChild(el('div', 'section-label', 'Resolved ' + data.scope));
         data.settled.forEach(s => hosts.settled.appendChild(settledRow(s)));
       }
+      // RULING 1: a market the slate asked nothing in says so in words. A
+      // silent absence reads as a failure to find questions and invites the
+      // wrong repair -- adding rungs until the model is confident somewhere.
+      const quiet = (data.today && data.today.quiet_markets) || [];
+      quiet.forEach(line => {
+        hosts.settled.appendChild(el('div', 'today-line quiet-market', line));
+      });
       if (data.today && data.today.line) {
         hosts.settled.appendChild(el('div', 'today-line', data.today.line));
       }

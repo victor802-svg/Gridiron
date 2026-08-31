@@ -25,6 +25,16 @@ BULLPEN_WINDOW_DAYS = 3   # days
 #: baseball -- long enough that a two-hit night does not dominate it, short
 #: enough to still be about the player's current shape rather than his April.
 BATTER_WINDOW = 15
+#: The batter's ESTABLISHED level, over a window deliberately much longer than
+#: BATTER_WINDOW. Sixty games is most of a half-season: long enough that a hot
+#: fortnight barely moves it, short enough to still be this year's player.
+#:
+#: The two windows must not be close together, and that is the whole point of
+#: the constant. See `mlb_batter_rate`: when the rate was measured over the SAME
+#: fifteen games as the mean, rate x plate-appearances reconstructed the mean
+#: exactly (corr +1.000), so the factor carried no information the question
+#: instrument did not already have.
+BATTER_BASELINE_WINDOW = 60
 #: The opposing club's strikeout rate, over a longer window: a team's plate
 #: discipline is a property of its roster and moves slowly.
 TEAM_RATE_WINDOW = 30
@@ -256,6 +266,40 @@ def batter_rolling(
         return mean, None, n
     var = sum((v - mean) ** 2 for v in values) / (n - 1)
     return mean, var ** 0.5, n
+
+
+def batter_baseline_rate(
+    conn: sqlite3.Connection,
+    player_id: int,
+    stat: str,
+    before_date: str,
+    limit: int = BATTER_BASELINE_WINDOW,
+) -> tuple[float | None, int]:
+    """The batter's rate per plate appearance over his ESTABLISHED window.
+
+    Deliberately a different, much longer window than `batter_rolling` uses. A
+    rate measured over the same fifteen games as the mean is not a second
+    instrument: hits per plate appearance times plate appearances per game IS
+    hits per game, so the two together reconstruct exactly what
+    `mean_vs_line` already reads.
+
+    Over sixty games it is a different quantity -- what this batter usually
+    does, against which the fifteen-game mean is current form. `n` is returned
+    because a rate off twenty games and one off sixty are not the same number.
+    """
+    column = BATTER_STAT_COLUMN.get(stat)
+    if column is None:
+        raise ValueError(f"no batting column for market {stat!r}")
+    rows = conn.execute(
+        f"SELECT {column} AS v, plate_appearances AS pa FROM mlb_batter_games"
+        " WHERE player_id = ? AND game_date < ?"
+        " ORDER BY game_date DESC, game_pk DESC LIMIT ?",
+        (player_id, before_date, limit),
+    ).fetchall()
+    pa = sum((r["pa"] or 0) for r in rows)
+    if not rows or pa <= 0:
+        return None, len(rows)
+    return sum((r["v"] or 0) for r in rows) / pa, len(rows)
 
 
 def batter_pa_per_game(

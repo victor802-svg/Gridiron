@@ -247,6 +247,7 @@ class MlbPropContext:
     rolling_sd: float | None = None
     rolling_n: int = 0
     stat_per_pa: float | None = None
+    baseline_n: int = 0
     pa_per_game: float | None = None
     recent_slot: float | None = None
 
@@ -334,12 +335,12 @@ def build_prop_context(
         mean, sd, n = repo.batter_rolling(conn, subject_id, market, on_date)
         ctx.rolling_mean, ctx.rolling_sd, ctx.rolling_n = mean, sd, n
 
-        column = repo.BATTER_STAT_COLUMN[market]
-        recent = repo.batter_recent(conn, subject_id, on_date)
-        pa_total = sum((r["plate_appearances"] or 0) for r in recent)
-        stat_total = sum((r[column] or 0) for r in recent)
-        if pa_total > 0:
-            ctx.stat_per_pa = stat_total / pa_total
+        # The ESTABLISHED rate, over sixty games rather than the mean's
+        # fifteen. Measured over the same window it was not an instrument at
+        # all -- rate x plate appearances reconstructed the mean exactly.
+        ctx.stat_per_pa, ctx.baseline_n = repo.batter_baseline_rate(
+            conn, subject_id, market, on_date
+        )
         ctx.pa_per_game, _ = repo.batter_pa_per_game(conn, subject_id, on_date)
         ctx.recent_slot, _ = repo.batter_recent_slot(conn, subject_id, on_date)
         ctx.bat_side = repo.batter_handedness(conn, subject_id)

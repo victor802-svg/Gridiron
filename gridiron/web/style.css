@@ -799,3 +799,23 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .rail-legend .v.no-line, .v.no-line {
   font-size: var(--t-body); font-weight: 500; color: var(--faint);
 }
+
+/* RULING R3. A gate that cannot clear is not an error and is not a warning --
+   it is a fact about the calendar, and it reads in the muted voice the rest of
+   the footnotes use. Deliberately NOT red: nothing has gone wrong, the season
+   is simply shorter than the sample the gate needs. */
+.gate-unreachable {
+  color: var(--faint);
+  border-left: 2px solid var(--line);
+  padding-left: 0.5rem;
+}
+.cat-cell .footnote {
+  margin-top: 0.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A market the slate declined to ask in. Muted, like the gate note: the floor
+   holding is the system working, not a problem to draw attention to. */
+.quiet-market {
+  color: var(--faint);
+}

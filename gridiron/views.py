@@ -857,7 +857,13 @@ def _todays_slate_line(conn: sqlite3.Connection, sport: str) -> dict:
         (sport, season, week),
     ).fetchall()
     if not rows:
-        return {"n": 0, "line": None, "week": week}
+        # Still say which markets went quiet. A slate with nothing standing is
+        # exactly when a reader wants to know whether the model declined to
+        # answer or was never asked.
+        return {
+            "n": 0, "line": None, "week": week,
+            "quiet_markets": _quiet_markets(conn, sport, season, week),
+        }
 
     label = config.SPORT_LABELS.get(sport, sport.upper())
     sharpest, gap = None, 0.0
@@ -876,7 +882,41 @@ def _todays_slate_line(conn: sqlite3.Connection, sport: str) -> dict:
     return {
         "n": len(rows), "week": week, "line": line,
         "sharpest_gap": round(gap, 4) if sharpest is not None else None,
+        "quiet_markets": _quiet_markets(conn, sport, season, week),
     }
+
+
+def _quiet_markets(conn: sqlite3.Connection, sport: str, season: int,
+                   week: int) -> list[str]:
+    """Prop markets this slate asked NOTHING in, said in words (ruling 1).
+
+    A market where the model never reached the confidence floor at the line the
+    market actually quotes is the floor working, not a defect and not a gap. The
+    slate says so, because a silent absence reads as a failure to find questions
+    and invites exactly the wrong repair -- adding rungs until the model is
+    confident somewhere, which is choosing the questions to flatter the answer.
+    """
+    from . import horizon
+
+    props = config.SPORT_PROP_MARKETS.get(sport, ())
+    if not props:
+        return []
+    asked = {
+        r["prop_type"]: r["n"]
+        for r in conn.execute(
+            "SELECT p.prop_type, COUNT(*) AS n FROM predictions p"
+            " JOIN games g ON g.id = p.game_id"
+            " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
+            "   AND p.market_type = 'prop' AND p.predictor = 'statistical'"
+            " GROUP BY p.prop_type",
+            (sport, season, week),
+        )
+    }
+    return [
+        horizon.zero_write_line(market, asked.get(market, 0), config.PROPS_MIN_CLAIM)
+        for market in props
+        if not asked.get(market)
+    ]
 
 
 def _front_page_warnings(conn: sqlite3.Connection) -> list[dict]:

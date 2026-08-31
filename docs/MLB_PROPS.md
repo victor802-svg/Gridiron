@@ -271,6 +271,27 @@ inflate every N on the scorecard.
 usage — and pooling it into the same category would be the merge item 6 forbids,
 in a new costume.
 
+**And some gates therefore cannot clear, which the interface says out loud.**
+`gridiron/horizon.py` projects each market's resolutions from the rate it has
+actually been writing at and renders the result beside the category:
+
+    batter_hits    0 of 100 · ~60 expected · season ends 09-27 · THIS GATE
+                   CANNOT CLEAR THIS SEASON
+
+A gate that will not be reached and a gate that has not been reached *yet* are
+different facts, and "6 of 100" on its own reads as progress. The projection is
+an extrapolation and is flagged as one; a market with nothing written says it
+has no rate to project from rather than claiming it will never get there —
+absent, degraded and declined are three states.
+
+**A slate that asked nothing in a market says so too:**
+
+    total bases: 0 asked — model never reached 70% at the market's line
+
+A market where the model never reaches the floor at the line the book actually
+quotes is the floor telling the truth. A silent gap reads as a failure to find
+questions and invites the wrong repair.
+
 ---
 
 ## The declared factors
@@ -288,10 +309,10 @@ failure arriving as missing data.
 
 | factor | markets | what it measures |
 |---|---|---|
-| `mlb_prop_mean_vs_line` | all four | which rung was asked, relative to the subject's own mean |
+| `mlb_prop_mean_vs_line` | all four | which rung was asked, relative to the subject's own mean — **inert in the two single-rung markets** |
 | `mlb_prop_volatility` | all four | dispersion over the window, scaled by the mean |
 | `mlb_prop_park_factor` | all four | the venue's run environment in prior seasons, against the league |
-| `mlb_batter_rate` | 3 batter | the stat per plate appearance |
+| `mlb_batter_rate` | 3 batter | the stat per plate appearance over **60** games — established level |
 | `mlb_batter_expected_pa` | 3 batter | plate appearances per game — the volume instrument |
 | `mlb_batter_lineup_slot` | 3 batter | recent average batting-order slot, signed so higher is better |
 | `mlb_batter_platoon` | 3 batter | +1 opposite hands, −1 same, 0 switch-hitter |
@@ -302,11 +323,54 @@ failure arriving as missing data.
 | `mlb_pitcher_opponent_k_rate` | strikeouts | the opposing club's strikeouts per plate appearance, 30 games |
 | `mlb_pitcher_prop_rest` | strikeouts | days since his last start, clipped to six either way |
 
-**`mlb_batter_rate` carries a dated note recording a defect in its own
-declaration**, found after the first fit: it and `mlb_batter_expected_pa`
-multiply to exactly the rolling mean that `mlb_prop_mean_vs_line` is built from
-(`corr(rate × pa, mean) = +1.000`), so their coefficients are corrections rather
-than effects and must not be read as causes. It is not ordinary collinearity —
-the pairwise correlations are −0.077 and +0.082, and the dependency runs through
-the product, which no pairwise check sees. Left as declared rather than repaired
-mid-session, because changing a declared factor set is a deliberate dated act.
+### The defect in the first declaration, and its repair
+
+`mlb_batter_rate` was declared on 2026-08-30 over **the same fifteen games the
+rolling mean uses**, and that made it useless. Rate × plate-appearances *is* the
+mean, so it and `mlb_batter_expected_pa` together reconstructed exactly what
+`mlb_prop_mean_vs_line` already reads: measured on 2,444 sampled batter-games,
+`corr(rate × pa, mean) = +1.000` — not close to one, one.
+
+Three declared factors were two instruments and an identity. The fit reconciled
+them by making two of them corrections: in `batter_hits` the rate came out at
+−5.39 and expected PA at −0.27, both causally backwards and neither
+interpretable, which defeats the point of a model whose coefficients are meant
+to be read.
+
+**It was not ordinary collinearity and no pairwise check would have found it** —
+rate against `mean_vs_line` correlated −0.077, plate appearances against it
++0.082. The dependency ran through the product.
+
+**Repaired 2026-08-31 by redeclaring the rate over sixty games**: what the batter
+usually does, against which the fifteen-game mean is current form. The gap
+between them is information the mean does not contain, which is what an
+instrument has to be. Measured after the change, the identity is gone:
+
+| | corr(rate × PA, rolling mean) |
+|---|---|
+| rate over the mean's own 15 games | **+1.0000** |
+| rate over 60 games | **+0.7855** |
+
+A correlation, not an identity — and the two definitions correlate only +0.576
+with each other, so it is genuinely a different quantity.
+
+The timing was the whole constraint: all four prop markets stood at **zero
+resolutions**, and a factor redeclared after a record exists splits that record
+permanently (LAW 2). The choice was to fix it then or live with it.
+
+### Where `mean_vs_line` is inert, and why no rung was added
+
+In `batter_total_bases` and `batter_home_runs` the declared ladder has **one
+rung**. There, `mean_vs_line` reduces to an affine function of the mean and
+carries no information about which question was asked — because only one
+question is ever asked. Measured 2026-08-30, it fitted at **−0.0534 in
+batter_total_bases, sixth of nine factors**, against +2.07 in `batter_hits` and
++1.96 in `pitcher_strikeouts`, both of which have real ladders.
+
+**Rungs were not added to repair this.** A rung exists because the market quotes
+it; manufacturing one so the model has somewhere to be confident would be
+choosing the questions to flatter the instrument. The factor stays declared —
+checklist item 1 requires it in every market from the first fit, and a market
+that gains a rung gains the instrument back with no code change — and it carries
+a dated note saying it is inert here, so a coefficient near zero reads as a
+property of the ladder rather than a refuted idea.

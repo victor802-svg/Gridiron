@@ -750,6 +750,59 @@ def plant_a_home_run_bucket_below_fifty() -> Result:
     )
 
 
+def plant_an_orphan_guard() -> Result:
+    """Add a guard nothing calls and check the orphan scan names it.
+
+    THIS IS THE FAILURE THAT PROMPTED THE SCAN, PLANTED. `rung_probabilities`
+    shipped as checklist item 4's cross-check with zero callers anywhere -- not
+    in production, not even in a test. The suite was green. The check was
+    decorative, and nothing in the harness could tell the difference between a
+    guard that passes and a guard that never runs.
+    """
+    root = Path(audit.__file__).resolve().parent
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        copy = Path(tmp) / "gridiron"
+        shutil.copytree(root, copy, ignore=shutil.ignore_patterns("__pycache__"))
+        (copy / "orphaned_check.py").write_text(
+            chr(10).join([
+                '"""A guard nobody calls, planted."""',
+                "",
+                "",
+                "def assert_the_thing_nobody_checks(value):",
+                "    if value < 0:",
+                "        raise ValueError('negative')",
+            ]),
+            encoding="utf-8",
+        )
+        try:
+            audit.check_no_orphan_functions(copy)
+        except audit.LawViolation as exc:
+            return Result("ORPHANS", "ship a guard that nothing calls",
+                          "audit.check_no_orphan_functions", True, str(exc))
+        return Result("ORPHANS", "ship a guard that nothing calls",
+                      "audit.check_no_orphan_functions", False,
+                      "NOT CAUGHT - a guard with no caller passed the scan")
+
+
+def plant_a_decorated_function_mistaken_for_an_orphan() -> Result:
+    """The other half: a REGISTERED function must not be reported.
+
+    A scan that flagged every factor would need a thirty-five line allowlist,
+    and an allowlist that long is a mute button. The decorator is the call site;
+    this proves the scan knows that, so the allowlist stays short enough to read.
+    """
+    hits = audit.orphan_functions()
+    factors = [h for h in hits if h.split(" ")[0] in registry.REGISTRY]
+    caught = not factors
+    return Result(
+        "ORPHANS", "report a decorator-registered factor as uncalled",
+        "audit.orphan_functions", caught,
+        f"{len(registry.REGISTRY)} registered factors, none reported as orphans"
+        if caught else
+        f"NOT CAUGHT - registered factors flagged: {factors[:5]}",
+    )
+
+
 def plant_a_line_claimed_for_an_unpriced_market() -> Result:
     """The same check, planted: claim a market that no source carries."""
     fake = "shots_on_goal"
@@ -1400,6 +1453,8 @@ def main() -> int:
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
     results.append(plant_a_home_run_bucket_below_fifty())
+    results.append(plant_an_orphan_guard())
+    results.append(plant_a_decorated_function_mistaken_for_an_orphan())
     results.append(plant_a_context_with_no_sport())
     results.append(plant_an_unprefixed_foreign_factor())
     results.append(plant_a_transposed_column_copy())
