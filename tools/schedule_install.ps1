@@ -11,7 +11,13 @@
 
     Four tasks:
 
-      Gridiron-Resolve      every 4 hours. Idempotent and cheap: `resolve_all`
+      Gridiron-Refresh      every 4 hours, on the hour. Re-reads each sport's
+                            CURRENT season so a game that finished in the world
+                            is marked finished here. Without it the resolver has
+                            nothing to find and the record never moves.
+
+      Gridiron-Resolve      every 4 hours, twenty minutes after Refresh.
+                            Idempotent and cheap: `resolve_all`
                             only touches rows whose resolved_utc is NULL, so a
                             second run in the same hour settles nothing.
                             Baseball finishes games all evening, so four-hourly
@@ -56,6 +62,7 @@ $Python = Join-Path $Repo ".venv\Scripts\python.exe"
 $Prefix = "Gridiron-"
 
 $TaskNames = @(
+    "$($Prefix)Refresh",
     "$($Prefix)Resolve",
     "$($Prefix)Predict-MLB",
     "$($Prefix)Predict-NFL",
@@ -108,11 +115,27 @@ function New-GridironTask {
     Write-Host "  registered $Name"
 }
 
-# resolve — every four hours, starting on the next hour.
-New-GridironTask -Name "$($Prefix)Resolve" -TaskArg "resolve" `
+# refresh — every four hours, ON THE HOUR, twenty minutes AHEAD of resolve.
+#
+# THE ORDER IS THE WHOLE POINT AND ITS ABSENCE STALLED THE RECORD. The resolver
+# settles against `games.status`; nothing else updates `games.status`. With no
+# refresh task at all, `resolve` ran every four hours for two days, reported
+# "no prediction had a finished game waiting" truthfully every time, and the
+# record sat at six settled while 27 predictions waited on games that had
+# finished in the world and were still marked `scheduled` here.
+#
+# Twenty minutes of gap, not zero: a refresh that is still fetching when the
+# resolver starts leaves the resolver reading the table mid-write.
+New-GridironTask -Name "$($Prefix)Refresh" -TaskArg "refresh" `
     -Trigger (New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddHours((Get-Date).Hour + 1) `
               -RepetitionInterval (New-TimeSpan -Hours 4)) `
-    -Description "Settle every Gridiron prediction whose game has finished. Idempotent."
+    -Description "Re-read each sport's current season so finished games are marked finished. Runs before Resolve."
+
+# resolve — every four hours, twenty minutes after the refresh.
+New-GridironTask -Name "$($Prefix)Resolve" -TaskArg "resolve" `
+    -Trigger (New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddHours((Get-Date).Hour + 1).AddMinutes(20) `
+              -RepetitionInterval (New-TimeSpan -Hours 4)) `
+    -Description "Settle every Gridiron prediction whose game has finished. Idempotent. Runs after Refresh."
 
 New-GridironTask -Name "$($Prefix)Predict-MLB" -TaskArg "predict:mlb" `
     -Trigger (New-ScheduledTaskTrigger -Daily -At $Time) `

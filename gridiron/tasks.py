@@ -40,6 +40,12 @@ class TaskSpec:
 
 
 TASKS: dict[str, TaskSpec] = {
+    "refresh": TaskSpec(
+        "refresh",
+        "re-read the current season's results so finished games are marked finished",
+        every_hours=4.0,
+        silent_after_hours=12.0,
+    ),
     "resolve": TaskSpec(
         "resolve",
         "settle every prediction whose game has finished",
@@ -86,7 +92,9 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
         _record_missed_slates(conn, task.split(":", 1)[1])
 
     try:
-        if task == "resolve":
+        if task == "refresh":
+            result, detail, payload = _run_refresh(conn)
+        elif task == "resolve":
             result, detail, payload = _run_resolve(conn)
         else:
             result, detail, payload = _run_predict(
@@ -103,6 +111,77 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
     )
     conn.commit()
     return {"task": task, "result": result, "detail": detail, **payload}
+
+
+def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
+    """Re-read the CURRENT season from each sport's source, so a game that has
+    finished in the world is marked finished in the record.
+
+    THIS TASK EXISTS BECAUSE ITS ABSENCE STALLED THE WHOLE APPLIANCE. Everything
+    else was running correctly and nothing settled: `predict` wrote forecasts,
+    `resolve` ran every four hours and reported `noop` truthfully every time,
+    because it settles against `games.status` and NOTHING EVER UPDATED
+    `games.status`. On 2026-08-31 the record held 27 open MLB predictions whose
+    games were all still marked `scheduled` -- five of them from two days
+    earlier. The six that ever settled did so only because a loader happened to
+    be run by hand during development.
+
+    A resolver reading a table nobody refreshes is a clock with no winder. The
+    tasks were each individually correct, which is what made it invisible: no
+    task failed, no error was logged, and the panel showed an unbroken run of
+    successes with a record that never moved.
+
+    Cheap by construction. Every loader fetches through `http_cache`, and a
+    range wholly in the past is cached immutably, so a refresh re-reads only the
+    chunks that touch today. The rest is re-parsed from cache and UPSERTed,
+    which is local work.
+    """
+    from . import config as _config
+
+    counts: dict[str, object] = {}
+    warnings: list[str] = []
+    for sport in _config.SPORTS:
+        season = _config.SPORT_CURRENT_SEASON.get(sport, _config.CURRENT_SEASON)
+        try:
+            if sport == "mlb":
+                from .data import mlb_loader
+
+                result = mlb_loader.load_all(conn, (season,))
+            elif sport == "nba":
+                from .data import nba_loader
+
+                result = nba_loader.load_all(conn, (season,))
+            else:
+                from .data import loader
+
+                result = loader.load_all(conn, (season,))
+        except Exception as exc:  # noqa: BLE001 - one sport's outage is not all three
+            warnings.append(f"{sport}: {type(exc).__name__}: {exc}")
+            continue
+        counts[sport] = result.get("rows", result) if isinstance(result, dict) else {}
+        warnings.extend(result.get("warnings", []) if isinstance(result, dict) else [])
+
+    became_final = conn.execute(
+        "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE p.resolved_utc IS NULL AND g.status = 'final'"
+        " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                 WHERE v.prediction_id = p.id)"
+    ).fetchone()[0]
+
+    payload = {"sports": list(counts), "resolvable_now": became_final,
+               "warnings": warnings[:8]}
+    if warnings:
+        return ("ok" if counts else "failed",
+                f"refreshed {len(counts)} sport(s); {became_final} prediction(s) "
+                f"now have a finished game waiting; {len(warnings)} warning(s)",
+                payload)
+    if became_final == 0:
+        return ("noop",
+                "every sport re-read; no prediction's game has finished since "
+                "the last refresh", payload)
+    return ("ok",
+            f"re-read {len(counts)} sport(s); {became_final} prediction(s) now "
+            "have a finished game waiting for the resolver", payload)
 
 
 def _run_resolve(conn: sqlite3.Connection) -> tuple[str, str, dict]:
@@ -283,12 +362,18 @@ def _absent_starters(conn: sqlite3.Connection, sport: str, season: int, week: in
 def catch_up(conn: sqlite3.Connection, *, use_llm: bool = True) -> list[dict]:
     """What runs when the machine wakes up.
 
-    `resolve` runs unconditionally: it is cheap, idempotent, and the record is
-    always behind after a sleep. Every `predict` runs only if its slate has not
-    started — and if one has, the MISSED branch records it rather than
-    forecasting into the past.
+    `refresh` runs FIRST and `resolve` second, and the order is the whole point:
+    the resolver settles against `games.status`, so resolving before re-reading
+    the results settles nothing and reports `noop` truthfully. That ordering
+    error, in its earlier form of having no refresh at all, is what stalled the
+    record for two days while every task reported success.
+
+    Both are cheap and idempotent, and the record is always behind after a
+    sleep. Every `predict` runs only if its slate has not started — and if one
+    has, the MISSED branch records it rather than forecasting into the past.
     """
-    out = [run_task(conn, "resolve", use_llm=False)]
+    out = [run_task(conn, "refresh", use_llm=False),
+           run_task(conn, "resolve", use_llm=False)]
     for sport in config.SPORTS:
         out.append(run_task(conn, f"predict:{sport}", use_llm=use_llm))
     return out
