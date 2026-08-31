@@ -966,6 +966,43 @@ def plant_a_view_that_names_the_side_itself() -> Result:
                       "NOT CAUGHT - a view built the side into a sentence and passed")
 
 
+def plant_a_scored_rung_claim() -> Result:
+    """Try to settle a rung claim as if it were a prediction.
+
+    The rung log records what the model WOULD have claimed at rungs it was
+    never asked about. Those claims have no outcome and were never
+    committed to in advance; scoring them would let the model be judged on
+    the questions it liked, and it would arrive looking like a bigger
+    sample. The guard is that no scoring module may name the table at all.
+    """
+    root = Path(audit.__file__).resolve().parent
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        copy = Path(tmp) / 'calibration.py'
+        text = (root / 'calibration.py').read_text(encoding='utf-8')
+        text += chr(10).join([
+            '',
+            '',
+            'def curve_including_the_rungs(conn, *, sport):',
+            '    return conn.execute(',
+            '        "SELECT claimed FROM prop_rung_claims WHERE sport = ?",',
+            '        (sport,)).fetchall()',
+            '',
+        ])
+        copy.write_text(text, encoding='utf-8')
+        import ast as _ast
+        found = any(
+            isinstance(node, _ast.Constant) and isinstance(node.value, str)
+            and 'prop_rung_claims' in node.value
+            for node in _ast.walk(_ast.parse(copy.read_text(encoding='utf-8')))
+        )
+        return Result('THE RUNG LOG IS NOT A RECORD',
+                      'read the rung log from a scoring module',
+                      'test_rungs.test_the_log_is_never_read_by_anything_that_scores',
+                      found,
+                      'a scoring module naming the rung log is detected'
+                      if found else
+                      'NOT CAUGHT - a scorer reached the rung log undetected')
+
 def plant_a_renderer_that_composes_prose() -> Result:
     """Put the digest's real defect back into a copy of app.js.
 
@@ -1779,6 +1816,7 @@ def main() -> int:
     results.append(plant_a_why_that_disagrees_with_its_contributions())
     results.append(plant_a_factor_with_no_why_template())
     results.append(plant_a_view_that_names_the_side_itself())
+    results.append(plant_a_scored_rung_claim())
     results.append(plant_a_renderer_that_composes_prose())
     results.append(plant_a_class_name_mistaken_for_prose())
     results.append(plant_a_shadowed_definition())

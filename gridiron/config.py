@@ -51,6 +51,42 @@ SPORTS: tuple[str, ...] = ("nfl", "mlb", "nba")
 
 SPORT_LABELS = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA"}
 
+
+class CrossSportAggregation(RuntimeError):
+    """LAW 6: a figure was about to mix two sports into one number."""
+
+
+def require_sport(sport: str | None, where: str) -> str:
+    """The LAW 6 tripwire.
+
+    `sport` is a required argument on every function that reads the record. It
+    is validated here rather than defaulted, so the only way to write a query
+    spanning two sports is to delete the parameter -- and then this fires by
+    name instead of quietly returning a number that describes neither sport.
+
+    IT LIVES HERE, next to `SPORTS`, and not in `calibration` where it was
+    written. Calibration names market columns, so LAW 1's closure scan rejects
+    any prediction-path module that imports it -- and a module on that path
+    needing LAW 6's check is not an odd case, it is the normal one. The rung
+    log hit it immediately. A law's own tripwire must not be reachable only by
+    modules that are allowed to see the market.
+
+    `calibration` re-exports both names, so every existing caller is unchanged.
+    """
+    if sport is None or sport == "" or sport == "all":
+        raise CrossSportAggregation(
+            f"LAW 6: {where} was asked for sport={sport!r}. Every curve, score, "
+            "edge figure and sample size belongs to exactly one sport. A number "
+            "mixing NFL spreads with MLB moneylines describes neither, and it "
+            "flatters reliably because the easy sport dilutes the hard one."
+        )
+    if sport not in SPORTS:
+        raise CrossSportAggregation(
+            f"LAW 6: {where} was asked for unknown sport {sport!r}; "
+            f"declared sports are {list(SPORTS)}."
+        )
+    return sport
+
 #: What a sport calls one slate. NFL and NBA number weeks; a baseball slate is
 #: a day's card, so MLB's slate ordinal is a day.
 SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week"}

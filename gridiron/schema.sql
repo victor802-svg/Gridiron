@@ -659,6 +659,68 @@ CREATE TABLE IF NOT EXISTS prediction_voids (
 
 
 -- ---------------------------------------------------------------------------
+-- THE RUNG LOG — a measurement, and deliberately NOT a record of predictions.
+-- ---------------------------------------------------------------------------
+--
+-- Ruling, 2026-08-31: "The ladder question gets MEASURED before it gets
+-- retuned. Add to the props slate log the model'''s claim at every OFFERED rung,
+-- written or not. After two weeks: if below-floor claims cluster at 60-69 near
+-- the mean rung, that is the floor working as designed, not a mis-set ladder."
+--
+-- Six MLB prop questions in one night were below the 70% floor and not asked.
+-- That is either the floor doing its job or a ladder set at the wrong heights,
+-- and the two look identical from a count. What separates them is the
+-- DISTRIBUTION of the claims that failed -- which needs the claims recorded,
+-- including the ones that never became predictions.
+--
+-- THIS TABLE IS NOT A PREDICTION LOG AND MUST NEVER BE READ AS ONE. A row here
+-- is what the model would have said at a rung it was not asked about; it has no
+-- outcome, is never resolved, and never enters a curve, a Brier score or an N.
+-- Treating these as forecasts would be backfitting with extra steps: the model
+-- gets to be judged on the questions it liked, which is the one thing the whole
+-- record exists to prevent. `asked` marks the single rung per subject that
+-- became a real question, and even that row is a copy for analysis, never the
+-- prediction itself.
+CREATE TABLE IF NOT EXISTS prop_rung_claims (
+    id            INTEGER PRIMARY KEY,
+    sport         TEXT NOT NULL,
+    season        INTEGER NOT NULL,
+    week          INTEGER,
+    game_id       TEXT NOT NULL,
+    subject       TEXT NOT NULL,
+    market        TEXT NOT NULL,
+    rung          REAL NOT NULL,
+    -- The rung this subject'''s own rolling mean chose, so "near the mean rung"
+    -- is answerable without recomputing it later against a changed ladder.
+    chosen_rung   REAL,
+    rolling_mean  REAL,
+    prob_yes      REAL NOT NULL CHECK (prob_yes >= 0.0 AND prob_yes <= 1.0),
+    -- Confidence in the side actually stated, which is what the floor tests.
+    claimed       REAL NOT NULL CHECK (claimed >= 0.5 AND claimed <= 1.0),
+    side          TEXT NOT NULL,
+    asked         INTEGER NOT NULL DEFAULT 0,
+    written       INTEGER NOT NULL DEFAULT 0,
+    floor_applied REAL NOT NULL,
+    factor_set_version TEXT NOT NULL,
+    created_utc   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS prop_rung_claims_sport_day
+    ON prop_rung_claims (sport, created_utc);
+CREATE UNIQUE INDEX IF NOT EXISTS prop_rung_claims_once
+    ON prop_rung_claims (sport, season, game_id, subject, market, rung, created_utc);
+
+-- Append-only like everything else that records what the model said.
+CREATE TRIGGER IF NOT EXISTS prop_rung_claims_no_update
+BEFORE UPDATE ON prop_rung_claims
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a recorded claim is what the model said at the time '
+        || 'and cannot be rewritten');
+END;
+
+
+-- ---------------------------------------------------------------------------
 -- LAW 3 — append-only, enforced.
 -- ---------------------------------------------------------------------------
 

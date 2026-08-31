@@ -30,6 +30,7 @@ from ..db import utcnow
 from ..factors import compute, context
 from . import baseline, llm
 from .question import Question
+from . import rungs
 
 __all__ = ["Question", "BlindRun", "WrittenPrediction", "predict_slate", "predict_week"]
 
@@ -56,6 +57,9 @@ class BlindRun:
     #: the answer was not confident enough to be worth claiming. Counted rather
     #: than dropped: a slate that ran under its cap should say why.
     below_floor: int = 0
+    #: Rows added to the rung log. A MEASUREMENT, never a prediction count --
+    #: see `model/rungs.py` for why the two must not be added together.
+    rungs_logged: int = 0
 
     @property
     def prediction_ids(self) -> list[int]:
@@ -258,12 +262,27 @@ def predict_slate(
         # `stated_side` reports confidence in the side claimed, so this reads
         # the same on both halves of a market: a 28% chance of a home run is a
         # 72% claim that there will not be one, and it qualifies.
+        # THE RUNG LOG (ruling, 2026-08-31). What the model would claim at
+        # every rung the ladder OFFERS, recorded whether or not the question
+        # gets asked -- because the thing that separates "the floor working"
+        # from "the ladder mis-set" is the shape of the claims that failed, and
+        # a count cannot show a shape. Computed before the floor is applied so
+        # the below-floor cases are exactly the ones it keeps.
+        rung_claims = []
+        if q.market_type == "prop":
+            rung_claims = rungs.claims_across_the_ladder(
+                conn, adapter, fits, q, chosen_stat=stat, baseline=baseline)
+
         if q.market_type == "prop":
             _side, claimed = baseline.stated_side(
                 stat["prob_yes"], q.yes_label, q.no_label
             )
             if claimed < config.PROPS_MIN_CLAIM:
                 run.below_floor += 1
+                run.rungs_logged += rungs.record(
+                    conn, q, rung_claims, season=season, week=week,
+                    rolling_mean=getattr(ctx, "rolling_mean", None),
+                    written=False)
                 continue
 
         written = write_prediction(
@@ -282,6 +301,10 @@ def predict_slate(
         )
         if written:
             run.written.append(written)
+        run.rungs_logged += rungs.record(
+            conn, q, rung_claims, season=season, week=week,
+            rolling_mean=getattr(ctx, "rolling_mean", None),
+            written=bool(written))
 
         # --- the LLM path ---------------------------------------------------
         if not use_llm or llm_off:

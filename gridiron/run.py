@@ -61,6 +61,9 @@ def run_slate(
         # Carried out of the blind run so a slate that came in under its cap can
         # say why on the panel rather than looking like a quiet failure.
         "below_floor": run.below_floor,
+        # A MEASUREMENT COUNT, never a prediction count. Reported separately
+        # and named so it cannot be added to the one above by mistake.
+        "rungs_logged": run.rungs_logged,
         "snapshots": None,
     }
     for w in run.written:

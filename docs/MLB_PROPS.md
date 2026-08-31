@@ -237,6 +237,62 @@ asserts exactly that chain, and the interface says
 
 ---
 
+## Is the floor working, or is the ladder mis-set? (measuring, not deciding)
+
+On 2026-08-31 six MLB prop questions were below the 70% floor and not asked.
+A count cannot tell two very different things apart:
+
+- **the floor working as designed** — the model formed answers it was nearly
+  confident enough to claim, and the floor held them back;
+- **a ladder set where the model has nothing to say** — the rungs are at
+  heights the model cannot call either way, so it will keep producing 52%
+  answers forever.
+
+Ruling, 2026-08-31: *"The ladder question gets MEASURED before it gets retuned.
+Add to the props slate log the model's claim at every OFFERED rung, written or
+not. After two weeks: if below-floor claims cluster at 60-69 near the mean
+rung, that is the floor working as designed, not a mis-set ladder. Decide then,
+with the distribution in hand. Four days is not evidence."*
+
+So `prop_rung_claims` now records, for every prop subject on every slate, what
+the model claimed **at each rung the declared ladder offers** — including the
+rungs it was never asked about and the questions that never became
+predictions. Nothing about the floor or the ladder changed; the log writes down
+what was already computed and thrown away.
+
+```bash
+python -m gridiron.cli rungs --sport mlb
+```
+
+**These are not predictions and can never be scored.** A rung claim has no
+outcome, was never committed to in advance, and enters no curve, Brier score or
+N. Scoring them would let the model be judged on the questions it liked, while
+arriving in the shape of a larger sample. A test asserts no scoring module so
+much as names the table, and a planted violation proves it fires.
+
+### The first day, which is not evidence
+
+One slate, 2026-08-31, 26 questions across 54 offered rungs:
+
+| claim at the rung asked | questions |
+|---|---|
+| 50-59% | 12 |
+| 60-69% | 4 |
+| 70-79% | 4 |
+| 80-89% | 5 |
+| 90-99% | 1 |
+
+Sixteen fell below the floor; four of those were in the 60-69% band. On ten
+subjects a **different offered rung would have cleared the floor**.
+
+That is recorded here because it is what the log holds, and for no other
+reason. One day is not two weeks, the ruling says four days is not evidence,
+and the `rungs` command refuses to read a verdict out of a window that has not
+closed. **No conclusion is drawn and no retune is proposed.** Ask again on
+2026-09-14.
+
+---
+
 ## Void rules, written before the first prediction
 
 Decided and recorded in code and here *before* any MLB prop existed. Deciding

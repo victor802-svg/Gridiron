@@ -76,31 +76,12 @@ class MissingSampleSize(RuntimeError):
     """LAW 4: a figure was about to render without its N."""
 
 
-class CrossSportAggregation(RuntimeError):
-    """LAW 6: a figure was about to mix two sports into one number."""
-
-
-def require_sport(sport: str | None, where: str) -> str:
-    """The LAW 6 tripwire.
-
-    `sport` is a required argument on every function that reads the record. It
-    is validated here rather than defaulted, so the only way to write a query
-    spanning two sports is to delete the parameter — and then this fires by
-    name instead of quietly returning a number that describes neither sport.
-    """
-    if sport is None or sport == "" or sport == "all":
-        raise CrossSportAggregation(
-            f"LAW 6: {where} was asked for sport={sport!r}. Every curve, score, "
-            "edge figure and sample size belongs to exactly one sport. A number "
-            "mixing NFL spreads with MLB moneylines describes neither, and it "
-            "flatters reliably because the easy sport dilutes the hard one."
-        )
-    if sport not in config.SPORTS:
-        raise CrossSportAggregation(
-            f"LAW 6: {where} was asked for unknown sport {sport!r}; "
-            f"declared sports are {list(config.SPORTS)}."
-        )
-    return sport
+#: RE-EXPORTED, not redefined. Both moved to `config`, beside `SPORTS`,
+#: because this module names market columns and so cannot be imported by
+#: anything on the prediction path -- which left LAW 6's own tripwire out of
+#: reach of the modules most likely to need it. See `config.require_sport`.
+CrossSportAggregation = config.CrossSportAggregation
+require_sport = config.require_sport
 
 
 def assert_every_figure_has_n(payload, path: str = "$") -> None:

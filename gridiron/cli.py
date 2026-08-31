@@ -232,6 +232,46 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rungs(args: argparse.Namespace) -> int:
+    """The ladder measurement, for the decision the ruling defers two weeks.
+
+    Prints the distribution and REFUSES TO CONCLUDE before the window is up.
+    The question it will answer: do below-floor claims cluster just under the
+    floor -- which is the floor working -- or are they scattered far below it
+    at every rung, which would mean the ladder asks where the model has
+    nothing to say.
+    """
+    from .model import rungs
+
+    conn = db.open_db(args.database)
+    d = rungs.distribution(conn, sport=args.sport)
+    if args.json:
+        print(json.dumps(d, indent=2))
+        conn.close()
+        return 0
+
+    if not d.get("n"):
+        print(f"{args.sport}: nothing logged yet. The log fills as slates run.")
+        conn.close()
+        return 0
+
+    print(f"{args.sport}: {d['questions']} questions asked across {d['n']} "
+          f"offered rungs, {d['first_day']} to {d['last_day']}")
+    print(f"floor {d['floor']:.0%} · {d['below_floor']} below it, of which "
+          f"{d['below_floor_nearly']} were in the 60-69% band")
+    print()
+    print("claim at the rung actually asked:")
+    for band in sorted(d["bands"]):
+        print(f"  {band:8s} {d['bands'][band]:4d}")
+    print()
+    print(f"subjects where another OFFERED rung would have cleared the floor: "
+          f"{d['subjects_with_a_rung_that_would_have_cleared']}")
+    print()
+    print(d["verdict"])
+    conn.close()
+    return 0
+
+
 def cmd_scorecard(args: argparse.Namespace) -> int:
     conn = db.open_db(args.database)
     kind = db.database_kind(conn)
@@ -337,6 +377,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--sport", default="nfl", choices=list(config.SPORTS))
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_scorecard)
+
+    s = sub.add_parser(
+        "rungs",
+        help="what the model claimed at every offered prop rung (the ladder measurement)")
+    s.add_argument("--sport", default="mlb", choices=list(config.SPORTS))
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_rungs)
 
     s = sub.add_parser("task", help="run one scheduled task and record the attempt")
     s.add_argument("name", choices=sorted(list(_task_names()) + ["catch-up"]))
