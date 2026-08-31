@@ -32,6 +32,7 @@ ADDED = "2026-08-29T00:00:00Z"
     added=ADDED,
     sport="mlb",
     applies_to=("moneyline",),
+    why="the starting pitching matchup",
     rationale=(
         "The starting pitcher is the single largest lever in a baseball game and "
         "he changes every day, which is what makes baseball different from every "
@@ -52,6 +53,7 @@ def mlb_starter_rolling_perf(ctx) -> float | None:
     added=ADDED,
     sport="mlb",
     applies_to=("moneyline",),
+    why="how much rest the two starters have had",
     rationale=(
         "Days between starts. A pitcher on short rest has not finished "
         "recovering, and one on unusually long rest has lost rhythm; the "
@@ -74,6 +76,7 @@ def mlb_starter_rest_days(ctx) -> float | None:
     added=ADDED,
     sport="mlb",
     applies_to=("moneyline",),
+    why="how hard the bullpens have been worked lately",
     rationale=(
         "A bullpen that threw six innings over the last three days is short of "
         "its best arms tonight: the leverage relievers are unavailable or "
@@ -93,6 +96,7 @@ def mlb_bullpen_recent_load(ctx) -> float | None:
     added=ADDED,
     sport="mlb",
     applies_to=("moneyline",),
+    why="how the two offences have been scoring",
     rationale=(
         "Runs scored per game over a rolling fifteen games. Offence is the other "
         "half of a result and it is far steadier than run prevention across a "
@@ -110,6 +114,7 @@ def mlb_team_offense_rolling(ctx) -> float | None:
     added=ADDED,
     sport="mlb",
     applies_to=("moneyline",),
+    why="how much scoring this park allows",
     rationale=(
         "Parks are not the same size or the same altitude, and the run "
         "environment they produce differs by a third between the extremes. A "
@@ -154,6 +159,7 @@ def mlb_park_factor(ctx) -> float | None:
         "smaller than football's as expected. History stays; the deactivation is "
         "recorded rather than the declaration being deleted."
     ),
+    why="playing at home",
     rationale=(
         "The home team bats last, which is worth real outs in a close game, and "
         "plays without travel on a familiar field. Baseball's home edge is the "
@@ -170,6 +176,7 @@ def mlb_home_away(ctx) -> float:
     added=ADDED,
     sport="mlb",
     applies_to=("moneyline",),
+    why="rest and travel between the two clubs",
     rationale=(
         "Rest and travel, kept as ONE factor because baseball barely has either: "
         "clubs play almost daily and travel between series rather than between "
@@ -247,6 +254,7 @@ SINGLE_RUNG_MARKETS = tuple(
         "first fit, and because a market that gains a rung gains the "
         "instrument back with no code change."
     ),
+    why="where the line sits against his recent average",
     rationale=(
         "WHICH RUNG WAS ASKED. A model that cannot see where the line sits "
         "relative to the subject's own recent average is averaging several "
@@ -271,6 +279,7 @@ def mlb_prop_mean_vs_line(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=ALL_PROP_MARKETS,
+    why="how much his numbers swing from game to game",
     rationale=(
         "Two subjects with the same average are not the same question. A "
         "high-variance batter clears a high line more often than a steady one "
@@ -325,6 +334,7 @@ def mlb_prop_volatility(ctx) -> float | None:
         "after a record exists splits that record permanently (LAW 2), so the "
         "choice was to fix it now or live with it."
     ),
+    why="what he usually does at the plate",
     rationale=(
         "What the batter USUALLY does, per trip to the plate, over a rolling "
         "sixty games -- his established level, against which the fifteen-game "
@@ -350,6 +360,7 @@ def mlb_batter_rate(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=BATTER_MARKETS,
+    why="how many times he has been getting to the plate",
     rationale=(
         "Plate appearances per game over the window: how many chances the "
         "question gets. THIS IS THE VOLUME INSTRUMENT AND IT STANDS WHERE "
@@ -374,6 +385,7 @@ def mlb_batter_expected_pa(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=BATTER_MARKETS,
+    why="where he has been batting in the order",
     rationale=(
         "The batter's average batting-order slot across his most recent five "
         "STARTS, signed so that a higher number means a better slot: 5 minus "
@@ -397,6 +409,7 @@ def mlb_batter_lineup_slot(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=BATTER_MARKETS,
+    why="the left-right matchup against tonight's starter",
     rationale=(
         "The platoon split, as a plain statement of whether the batter has the "
         "advantage: +1 when a left-handed batter faces a right-handed pitcher "
@@ -423,6 +436,7 @@ def mlb_batter_platoon(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=("batter_hits", "batter_total_bases"),
+    why="how often tonight's starter strikes hitters out",
     rationale=(
         "The opposing starter's strikeout rate per batter faced, over his "
         "rolling ten starts. A strikeout is the one out that puts no ball in "
@@ -445,6 +459,7 @@ def mlb_batter_opposing_k_rate(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=("batter_total_bases", "batter_home_runs"),
+    why="how many home runs tonight's starter gives up",
     rationale=(
         "The opposing starter's home runs allowed per batter faced, over his "
         "rolling ten starts. This is the single most direct input to a home-run "
@@ -468,6 +483,7 @@ def mlb_batter_opposing_hr_rate(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=("pitcher_strikeouts",),
+    why="how often he strikes hitters out",
     rationale=(
         "The starter's own strikeout rate per batter faced over his rolling ten "
         "starts. The rate half of the strikeout question: how often he gets one "
@@ -488,6 +504,7 @@ def mlb_pitcher_k_rate(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=("pitcher_strikeouts",),
+    why="how deep into games he has been going",
     rationale=(
         "Innings per start over the rolling ten: the workload the strikeouts "
         "have to come out of. A strikeout market is bounded by how long a "
@@ -508,6 +525,7 @@ def mlb_pitcher_innings_form(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=("pitcher_strikeouts",),
+    why="how often this lineup strikes out",
     rationale=(
         "The opposing club's strikeouts per plate appearance over its last "
         "thirty games. Lineups differ enormously in how often they strike out, "
@@ -529,6 +547,7 @@ def mlb_pitcher_opponent_k_rate(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=("pitcher_strikeouts",),
+    why="how much rest he has had",
     rationale=(
         "Days since the starter last pitched, CLIPPED to six either way for the "
         "same reason `mlb_starter_rest_days` clips: a man on sixteen days is not "
@@ -551,6 +570,7 @@ def mlb_pitcher_prop_rest(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=ALL_PROP_MARKETS,
+    why="how much scoring this park allows",
     rationale=(
         "The park's run environment relative to the league, measured over PRIOR "
         "seasons only, exactly as the moneyline factor measures it. Parks differ by "

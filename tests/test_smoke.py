@@ -266,16 +266,14 @@ def test_model_and_market_are_told_apart_by_form_not_colour(page):
 
 
 def test_the_contribution_bars_render_signed(page):
-    # T1 old -> new: the bars moved inside the collapsed reasoning, so the card
-    # has to be opened before they have geometry. The chips are the glance; the
-    # bars are still the detail.
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row", timeout=10000)
-    page.locator("#week-cards .row").first.locator(".row-head").click()
-    page.wait_for_timeout(300)
-    page.wait_for_selector("#week-cards .row .contrib-bar", timeout=10000)
+    # K3 old -> new: THE BARS ARE NOT ON A PICK ANY MORE. The decomposition
+    # moved to the Factors page, where somebody auditing the model goes looking
+    # for it; a pick shows the plain why instead. So this checks them where they
+    # now live, as a worked example on a real forecast.
+    page.evaluate("location.hash = '#/factors'")
+    page.wait_for_selector("#factors-worked .contrib-bar", timeout=10000)
     bars = page.eval_on_selector_all(
-        "#week-cards .row:first-child .contrib-bar",
+        "#factors-worked .contrib-bar",
         "els => els.map(e => ({ cls: e.className, left: e.style.left, width: e.style.width }))",
     )
     assert bars, "no contribution bars rendered"

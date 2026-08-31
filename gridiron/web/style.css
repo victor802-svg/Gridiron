@@ -1042,3 +1042,17 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   .prob small { max-width: 14ch; }
   .controls { gap: 8px; }
 }
+
+/* The two closing clauses of a WHY read quieter than the reasons themselves:
+   what could not be measured, and what the market thinks. Both are context for
+   the reasons above them rather than reasons of their own. */
+.why-absent { color: var(--faint); }
+.why-market { color: var(--faint); }
+
+/* The worked example. Set apart from the registry table below it, because it
+   is one forecast rather than a property of the model. */
+.worked {
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; margin: 12px 0 20px; background: var(--card);
+}
+.worked h3 { margin: 0 0 10px; font-size: 15px; }

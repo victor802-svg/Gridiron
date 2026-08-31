@@ -281,3 +281,188 @@ def _signed(value) -> str:
     if value is None:
         return ""
     return f"{float(value):+.10g}"
+
+# ---------------------------------------------------------------------------
+# THE PLAIN WHY
+# ---------------------------------------------------------------------------
+#
+# What replaced the engineering output on a pick card. It used to read:
+#
+#     srs_diff = 1.3322 pushes toward the yes side by 1.38 in log-odds;
+#     asked_line = -0.5 pushes against the yes side by 0.56 in log-odds; ...
+#
+# Every term in that sentence is an internal identifier or a unit nobody thinks
+# in. The decomposition is not wrong and it has not been deleted -- it moved to
+# the Factors page, where somebody auditing the model goes looking for it. What
+# a reader wants on a pick is which few things drove it and how hard.
+#
+# THE WORDS ARE DERIVED FROM THE SAME CONTRIBUTIONS THE ARITHMETIC USES. Order
+# is by absolute contribution; direction is the contribution's sign; size is the
+# contribution's share of the total movement. Nothing here consults the factor's
+# rationale for a direction, and no template asserts one -- a coefficient's sign
+# is a measured fact that changes on a refit, and prose that hardcoded it would
+# go quietly wrong the way `mlb_batter_rate` went backwards for a day.
+
+#: At most this many factor sentences. Four is what fits in a paragraph a
+#: person will actually read; the rest are on the Factors page.
+WHY_MAX_SENTENCES = 4
+
+#: How a contribution's share of the total movement becomes words. Bands, not a
+#: number: "0.42 of the log-odds" is the thing this replaced.
+WHY_SIZE_BANDS = (
+    (0.45, "the biggest reason"),
+    (0.25, "a good deal"),
+    (0.10, "some"),
+    (0.00, "a little"),
+)
+
+
+def _size_words(share: float) -> str:
+    for floor, words in WHY_SIZE_BANDS:
+        if share >= floor:
+            return words
+    return "a little"
+
+
+#: The side each market's question was FORMED as. A contribution is signed
+#: toward this side, which is not always the side the model took.
+WHY_YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over"}
+
+
+def why_is_flipped(item: dict) -> bool:
+    """Did the model take the NO side of the question as asked?
+
+    THIS IS THE K1 BUG'S SHAPE, in prose rather than in a verb table. A
+    contribution is signed toward the YES side -- "does the home club win" --
+    and the model frequently takes the other one. Without this, a pick for
+    Colorado renders as "Why Atlanta Braves" with every reason "working against
+    it": each sentence individually true about the yes side, and the paragraph
+    as a whole describing the opposite of the forecast above it.
+    """
+    yes = WHY_YES_SIDE.get(item.get("market_type"))
+    side = item.get("model_side")
+    return bool(yes and side and side != yes)
+
+
+def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
+    """The plain-English reasons for one pick, strongest first.
+
+    `item` is a rendered prediction carrying `contributions` (the same list the
+    decomposition uses) and optionally `absent_factors`. `factors` maps a factor
+    name to its declared WHY phrase; passed in so this module never imports the
+    registry, which would put the factor code inside the humaniser's blast
+    radius for no reason.
+    """
+    contributions = item.get("contributions") or []
+    known = factors or {}
+    # Directions are relative to THE PICK, not to the question's yes side.
+    flip = -1.0 if why_is_flipped(item) else 1.0
+
+    scored = []
+    for c in contributions:
+        name = c.get("factor")
+        value = c.get("contribution")
+        if not name or value is None or c.get("missing"):
+            continue
+        phrase = known.get(name)
+        if not phrase:
+            # A factor with no declared phrase is SKIPPED rather than rendered
+            # as its identifier. A test fails on any such factor, so this is a
+            # belt to the test's braces and never the normal path.
+            continue
+        scored.append((abs(float(value)), float(value) * flip, phrase))
+
+    if not scored:
+        return []
+
+    scored.sort(key=lambda t: -t[0])
+    total = sum(t[0] for t in scored) or 1.0
+
+    out = []
+    for magnitude, value, phrase in scored[:WHY_MAX_SENTENCES]:
+        direction = "helps the pick" if value > 0 else "works against it"
+        size = _size_words(magnitude / total)
+        # "The starting pitching matchup helps the pick — the biggest reason."
+        joiner = " — " if size == "the biggest reason" else " "
+        out.append(f"{phrase[:1].upper()}{phrase[1:]} {direction}{joiner}{size}.")
+    return out
+
+
+def why_absent(item: dict, factors: dict | None = None) -> str | None:
+    """One clause for what could not be measured, or None.
+
+    Absence is a fact about the world and is stated as one. It is deliberately
+    ONE sentence however many factors are missing: a reader needs to know the
+    model was working partly blind, not to read a list.
+    """
+    known = factors or {}
+    # Accepts either bare names or the card's richer {"factor": ...} rows, so
+    # a caller does not have to reshape what it already has.
+    raw = item.get("absent_factors") or []
+    names = [
+        (a.get("factor") if isinstance(a, dict) else a) for a in raw
+    ]
+    names = [n for n in names if known.get(n)]
+    if not names:
+        return None
+    phrases = [known[n] for n in names[:3]]
+    if len(phrases) == 1:
+        subject = phrases[0]
+    elif len(phrases) == 2:
+        subject = f"{phrases[0]} and {phrases[1]}"
+    else:
+        subject = f"{phrases[0]}, {phrases[1]} and {phrases[2]}"
+    more = len(names) - len(phrases)
+    tail = f", and {more} other thing{'s' if more > 1 else ''}" if more else ""
+    return f"{subject[:1].upper()}{subject[1:]}{tail} could not be measured for this game."
+
+
+def why_market(item: dict) -> str | None:
+    """The closing clause, where a line exists. None where none does.
+
+    Never invents a comparison: a market with no published price gets no
+    sentence at all rather than a hedged one.
+    """
+    implied = item.get("market_implied_prob")
+    model = item.get("model_prob")
+    if implied is None or model is None:
+        return None
+    subject = strip_market_suffix(item.get("subject"), item.get("prop_type"))
+    if item.get("market_type") in ("moneyline", "spread"):
+        subject = team_name(subject, item.get("team_names"))
+    lean = "heavier" if model > implied else "lighter"
+    return (
+        f"The market has {subject} at {round(implied * 100)}%; "
+        f"the model weighs the same evidence {lean}."
+    )
+
+
+def why_block(item: dict, factors: dict | None = None) -> dict:
+    """Everything the expanded row needs to explain a pick, in words.
+
+    One structure so the card, and anything else that ever shows a reason, read
+    from the same place. `heading` names the pick rather than repeating the
+    market: "Why Tampa Bay Rays", not "Why moneyline".
+    """
+    # The heading names WHO the pick is on, not the whole claim: "Why SF", not
+    # "Why SF covers -3.5" -- the claim is already on the row above, and
+    # repeating it inside its own explanation reads as a stutter.
+    #
+    # Derived the same way `phrase` derives its subject, including the flip
+    # that names the opponent when the model takes the NO side of a moneyline,
+    # so the heading and the pick sentence cannot name different teams.
+    picked = strip_market_suffix(item.get("subject"), item.get("prop_type"))
+    if item.get("market_type") in ("moneyline", "spread"):
+        if item.get("market_type") == "moneyline" and item.get("model_side") == "lose"                 and item.get("opponent"):
+            picked = item["opponent"]
+        picked = team_name(picked, item.get("team_names"))
+    sentences = why_sentences(item, factors)
+    return {
+        "heading": f"Why {picked}" if picked else "Why this pick",
+        "sentences": sentences,
+        "absent": why_absent(item, factors),
+        "market": why_market(item),
+        "more_label": "How the model works",
+        "more_href": "#/factors",
+        "n_factors": len(item.get("contributions") or []),
+    }

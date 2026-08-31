@@ -524,7 +524,7 @@ needed for one sport, because after that the damage is already in the record.
 
 ## K0-K4, the compact screen *(2026-08-31)*
 
-### K3 and K4 are DEFERRED to their own session *(open)*
+### K3 and K4 were DEFERRED to their own session *(K3 closed 2026-08-31)*
 
 By the one-session-per-big-build precedent (MENTOR.md §4), which this brief
 proved again rather than merely cited: K0 and K1 were diagnosis-and-fix and both
@@ -541,6 +541,17 @@ not a tail-end task and starting it with a session's remaining room is how the
 NBA props shipped missing two instruments.
 
 **K4** is the verification pass and cannot run before K3 exists.
+
+**K3 CLOSED 2026-08-31.** Built as its own session, as the precedent required
+and as its size predicted: 63 why-templates, the generator, the move of the
+decomposition to the Factors page, and the consistency guard. One defect the
+sizing did not predict and only the render showed -- the heading read "Why SF
+covers -3.5", repeating the claim inside its own explanation.
+
+The templates came to 63 rather than the ~50 estimated, because the estimate
+counted active factors and a deactivated one still needs a phrase: it can
+return to service, and a factor whose explanation has to be written later is a
+factor that ships without one.
 
 ### The teams table, and what it does not cover *(done, with a measured gap)*
 

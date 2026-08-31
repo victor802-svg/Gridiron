@@ -59,6 +59,18 @@ class Factor:
     #: fit -- which is item 2's "constant across training" failure arriving by
     #: the back door, dressed as missing data.
     markets: tuple[str, ...] | None = None
+    #: THE WHY TEMPLATE. A short noun phrase naming what this factor measured,
+    #: in words a person would say out loud: "the starting pitching matchup",
+    #: "how much rest he has had". `language.why_sentences` composes it with a
+    #: direction and a size, so the prose on a pick card comes from the same
+    #: place the factor is declared and cannot drift from it.
+    #:
+    #: It is a PHRASE, not a sentence, and it names the QUANTITY rather than
+    #: its effect: "the wind", never "the wind hurts the passing game". The
+    #: direction is read from the fitted contribution at render time, because
+    #: a coefficient's sign is a measured fact that can change on a refit, and
+    #: a sentence that hardcoded it would go quietly wrong.
+    why: str | None = None
     active: bool = True
     deactivated_utc: str | None = None
     note: str | None = None
@@ -77,6 +89,7 @@ def factor(
     applies_to: Iterable[str],
     sport: str = "nfl",
     markets: Iterable[str] | None = None,
+    why: str | None = None,
     active: bool = True,
     deactivated: str | None = None,
     note: str | None = None,
@@ -101,6 +114,7 @@ def factor(
             rationale=" ".join(rationale.split()),
             applies_to=tuple(applies_to),
             markets=tuple(markets) if markets is not None else None,
+            why=why,
             fn=fn,
             active=active,
             deactivated_utc=deactivated,
@@ -152,6 +166,7 @@ def sports() -> list[str]:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="which number the question was asked at",
     rationale=(
         "The question's own reference point. Our spread questions rotate across "
         "four pre-declared rungs, and a model that cannot see which rung it was "
@@ -168,6 +183,7 @@ def asked_line(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="home field",
     rationale=(
         "Home teams win more than away teams and always have: no travel, a "
         "familiar surface and snap count, crowd noise on the opposing offence, "
@@ -183,6 +199,7 @@ def home_field(ctx) -> float:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="that neither side is really at home",
     rationale=(
         "Neutral-site games remove home advantage from the home-listed team "
         "while still costing both sides a trip, which is a different game from "
@@ -196,6 +213,7 @@ def neutral_site(ctx) -> float:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="the rest difference between the two clubs",
     rationale=(
         "Recovery time is physical. An extra few days is more healing, more "
         "practice reps and more film. This is the signed difference in actual "
@@ -225,6 +243,7 @@ def rest_diff(ctx) -> float | None:
         "Replaced by short_week_either, which measures the level instead of the "
         "difference. History stays; its v1 score stands as recorded."
     ),
+    why="the short-week difference between the two clubs",
     rationale=(
         "A Thursday game after a Sunday game is a categorically different "
         "preparation, not just a smaller number of rest days: the install week "
@@ -240,6 +259,7 @@ def short_week_diff(ctx) -> float | None:
 @factor(
     added="2026-08-29T00:00:00Z",
     applies_to=("spread",),
+    why="whether either side is on a short week",
     rationale=(
         "REPAIR of short_week_diff, which the schedule never let vary. The "
         "short-week effect is a property of the GAME, not an asymmetry between "
@@ -261,6 +281,7 @@ def short_week_either(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
+    why="how far the visitors travelled",
     rationale=(
         "Distance flown costs sleep and adds a day of logistics for the "
         "visiting side only. Scaled to thousands of miles so the coefficient is "
@@ -276,6 +297,7 @@ def travel_kmiles(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="the time-zone change for the visiting side",
     rationale=(
         "Crossing time zones desynchronises the body clock independently of "
         "distance, and a west-coast club playing a 1pm Eastern kickoff is "
@@ -291,6 +313,7 @@ def timezone_shift(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="how good the two teams have been, adjusted for who they played",
     rationale=(
         "Points scored minus points allowed, adjusted for the quality of the "
         "opponents faced, is the plainest available statement of how good a "
@@ -307,6 +330,7 @@ def srs_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="how the two teams have played lately",
     rationale=(
         "Rosters and schemes change during a season through injury and "
         "adjustment, so the last four games carry information the full-season "
@@ -323,6 +347,7 @@ def recent_form_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
+    why="how many plays both offences run",
     rationale=(
         "Plays from scrimmage per game sets how many chances exist for the "
         "better team to express itself. A fast pairing produces a wider "
@@ -339,6 +364,7 @@ def pace_sum(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="who is ruled out on each side",
     rationale=(
         "Players listed Out on the final injury report do not play. This counts "
         "declared non-availability only; it makes no attempt to judge how badly "
@@ -355,6 +381,7 @@ def injury_out_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="whether a starting quarterback is out",
     rationale=(
         "Quarterback is the one position where the backup is usually a large "
         "step down and the whole offence is built around the starter. This is a "
@@ -371,6 +398,7 @@ def qb_out_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    why="that this is a division game",
     rationale=(
         "Division opponents play twice a year with continuous film and shared "
         "personnel knowledge, which historically compresses margins relative to "
@@ -388,6 +416,7 @@ def divisional(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
+    why="the wind",
     rationale=(
         "Wind is the weather variable that actually changes football: it moves "
         "the deep ball and the field goal, pushes teams towards the run, and "
@@ -406,6 +435,7 @@ def wind(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "prop"),
+    why="the cold",
     rationale=(
         "Cold stiffens the ball and the hands and favours the running game. "
         "Centred on 55F and scaled per 20F, so a 15F night in Buffalo reads -2."
@@ -432,6 +462,7 @@ def cold(ctx) -> float | None:
         "it. Historical games still carry no precipitation reading at all, so "
         "this factor's honest sample begins with the forward record."
     ),
+    why="the rain or snow",
     rationale=(
         "Rain and snow reduce grip for the passing game and increase fumbles, "
         "compressing scoring. Probability of precipitation at kickoff, 0-1."
@@ -461,6 +492,7 @@ def precipitation(ctx) -> float | None:
         "inactive so the hypothesis stays visible and can be switched on the "
         "day a real source exists."
     ),
+    why="which side the public is betting",
     rationale=(
         "A hypothesis, not an assumption: that heavy public agreement marks "
         "spots where the line has moved on sentiment rather than information, "
@@ -480,6 +512,7 @@ def public_bet_pct(ctx) -> float | None:
 @factor(
     added="2026-08-29T00:00:00Z",
     applies_to=("prop",),
+    why="his share of his own offence",
     rationale=(
         "A player's share of his own offence's volume, not just his raw count. "
         "Eight targets on a team that throws forty times a game is a different "
@@ -495,6 +528,7 @@ def prop_volume_share(ctx) -> float | None:
 @factor(
     added="2026-08-29T00:00:00Z",
     applies_to=("prop",),
+    why="how much of the offence he is on the field for",
     rationale=(
         "Offensive snap share is the most direct measure of opportunity there "
         "is: a player on the field for 85% of snaps has chances a rotational "
@@ -511,6 +545,7 @@ def prop_snap_share(ctx) -> float | None:
 @factor(
     added="2026-08-29T00:00:00Z",
     applies_to=("prop",),
+    why="how the game is likely to unfold",
     rationale=(
         "Projected game script, taken from the same opponent-adjusted ratings "
         "the spread question uses and signed for the player's own team. A team "
@@ -529,6 +564,7 @@ def prop_game_script(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
+    why="how many chances he has been getting",
     rationale=(
         "A player's recent per-game volume — attempts, carries, targets — is "
         "the strongest single determinant of a counting-stat prop, because "
@@ -542,6 +578,7 @@ def prop_volume(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
+    why="how much he does with each chance",
     rationale=(
         "Yards per opportunity separates a player who gets 12 targets for 60 "
         "yards from one who gets 6 for the same, and the two have different "
@@ -555,6 +592,7 @@ def prop_efficiency(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
+    why="where the line sits against his recent average",
     rationale=(
         "The rolling mean of the stat itself, in the stat's own units, is the "
         "centre of the distribution the prop question is asked about. Scaled by "
@@ -570,6 +608,7 @@ def prop_mean_vs_line(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
+    why="how much his numbers swing from game to game",
     rationale=(
         "Two players with the same average are not the same question: a "
         "high-variance player clears a high line more often and a low line less "
@@ -586,6 +625,7 @@ def prop_volatility(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
+    why="how much this defence gives up to the position",
     rationale=(
         "Defences differ in what they surrender by position, through scheme and "
         "personnel. Yards allowed per game to the position, expressed relative "
@@ -604,6 +644,7 @@ def opponent_allowance(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("prop",),
+    why="his injury status going into the weekend",
     rationale=(
         "A player carrying a Questionable tag into the weekend plays fewer snaps "
         "on average even when active. Participation status only, read straight "

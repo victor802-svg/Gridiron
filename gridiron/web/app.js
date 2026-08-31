@@ -880,30 +880,37 @@ const Gridiron = (function () {
     line.appendChild(el('span', 'row-bucket', c.bucket_line || ''));
     body.appendChild(line);
 
-    // THE CONTRIBUTION BARS STAY HERE FOR NOW, and that is a deliberate
-    // sequencing decision rather than an oversight. K3 moves the decomposition
-    // to the Factors page and replaces it here with a plain-English WHY; K3 is
-    // deferred to its own session. Removing them now would delete a working
-    // explanation and leave nothing in its place until that session happens --
-    // a feature deleted ahead of its replacement is just a regression with a
-    // plan attached.
-    body.appendChild(contributions(c));
-
-    // K3 fills this. Until then the stored reasoning stands in rather than a
-    // blank space, because an empty expander reads as broken.
+    // THE PLAIN WHY (K3). The contribution bars and the decomposition sentence
+    // that used to sit here have moved to the Factors page, which is where
+    // somebody auditing the model goes looking for them. What a reader wants on
+    // a pick is which few things drove it and how hard, in words.
+    //
+    // Every sentence is written by `language.why_block` from the SAME
+    // contributions the decomposition uses, so the prose and the arithmetic
+    // cannot disagree about direction or order.
     const why = el('div', 'row-why');
-    if (c.why && c.why.length) {
-      why.appendChild(el('b', '', 'Why ' + (c.why_subject || 'this pick') + ':'));
-      c.why.forEach(sentence => {
+    const w = c.why;
+    if (w && (w.sentences || []).length) {
+      why.appendChild(el('b', '', w.heading + ':'));
+      w.sentences.forEach(sentence => {
         why.appendChild(document.createTextNode(' ' + sentence));
       });
+      if (w.absent) {
+        why.appendChild(el('span', 'why-absent', ' ' + w.absent));
+      }
+      if (w.market) {
+        why.appendChild(el('span', 'why-market', ' ' + w.market));
+      }
     } else if (c.reasoning) {
+      // A pick whose factors carry no declared phrase still says something
+      // rather than showing an empty box.
       why.textContent = c.reasoning;
     }
     body.appendChild(why);
 
-    const more = el('a', 'row-more', 'How the model works \u2192');
-    more.href = '#/factors';
+    const more = el('a', 'row-more',
+      ((w && w.more_label) || 'How the model works') + ' \u2192');
+    more.href = (w && w.more_href) || '#/factors';
     body.appendChild(more);
 
     if (c.tier && c.tier.message) {
@@ -1105,12 +1112,39 @@ const Gridiron = (function () {
   }
 
   // --- FACTORS ------------------------------------------------------------
+  // The decomposition, moved off the pick cards (K3). One real forecast from
+  // the current slate, with its bars and the sentence that used to sit under
+  // every card. Failing to load it hides the section rather than showing an
+  // empty frame: this is supporting material, and a broken example is worse
+  // than none.
+  async function renderWorkedExample() {
+    const host = document.getElementById('factors-worked');
+    if (!host) return;
+    try {
+      const data = await fetchJSON(withSport('/api/week'));
+      const card = (data.cards || []).find(c => (c.top_factors || []).length);
+      if (!card) { host.hidden = true; return; }
+
+      document.getElementById('worked-caption').textContent =
+        DASH + ' ' + (card.phrase || '') + ', ' + pct(card.model_prob, 0);
+      const bars = document.getElementById('worked-bars');
+      bars.innerHTML = '';
+      bars.appendChild(contributions(card));
+      document.getElementById('worked-sentence').textContent = card.reasoning || '';
+      host.hidden = false;
+    } catch (err) {
+      host.hidden = true;
+      console.error('worked example failed:', err);
+    }
+  }
+
   async function renderFactors() {
     const data = await fetchJSON(withSport('/api/factors'));
     requireN(data, 'factor report');
     document.getElementById('factors-caption').textContent =
       DASH + ' scored over ' + int(data.n) + ' resolved statistical predictions';
     document.getElementById('factors-method').textContent = data.method;
+    await renderWorkedExample();
 
     table(document.getElementById('factors-table'),
       [{ label: 'Factor' }, { label: 'Added' }, { label: 'Applies to' },

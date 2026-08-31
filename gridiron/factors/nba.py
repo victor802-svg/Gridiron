@@ -37,6 +37,7 @@ ADDED = "2026-08-29T00:00:00Z"
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    why="who is available to play",
     rationale=(
         "The load-management factor, and the one that matters most in this "
         "sport. Basketball is five men, so one absence is twenty percent of a "
@@ -89,6 +90,7 @@ def nba_availability_index(ctx) -> float | None:
         "finding into the record. Compare short_week_diff, which genuinely never "
         "varied (1 game in 544)."
     ),
+    why="playing a second night in a row",
     rationale=(
         "The second night of a back-to-back is the most reliable schedule effect "
         "in basketball: legs are gone, and it is also when a club is most likely "
@@ -107,6 +109,7 @@ def nba_back_to_back(ctx) -> float | None:
     added="2026-08-29T00:00:00Z",
     sport="nba",
     applies_to=("spread",),
+    why="whether either side is on a second night in a row",
     rationale=(
         "REPAIR of nba_back_to_back, which the schedule cancelled. Measures the "
         "LEVEL rather than the difference: 1 when EITHER side is on the second "
@@ -129,6 +132,7 @@ def nba_b2b_either(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    why="the rest difference between the two clubs",
     rationale=(
         "Days since each club last played, home minus away, CLIPPED to four "
         "either way. Rest above about three days is the all-star break or a "
@@ -149,6 +153,7 @@ def nba_rest_days_diff(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    why="how much of the last fortnight each club spent away",
     rationale=(
         "How much of the last fortnight each club spent on the road, as a count "
         "of away games, signed away minus home so a positive value favours the "
@@ -175,6 +180,7 @@ def nba_travel_recent(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    why="how fast both clubs play",
     rationale=(
         "Possessions per forty-eight minutes over the last ten games, summed "
         "across both clubs rather than differenced, because pace is the thing "
@@ -197,6 +203,7 @@ def nba_pace_rolling(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    why="how the two clubs have been playing lately",
     rationale=(
         "Net points per hundred possessions over the last ten games, home minus "
         "away. This is the plainest statement of which club has been better, and "
@@ -217,6 +224,7 @@ def nba_net_rating_rolling(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    why="home court",
     rationale=(
         "Home court, in the only shape that can actually vary. A factor that "
         "returns one for every home team is absorbed entirely into the intercept "
@@ -243,6 +251,7 @@ def nba_home_court(ctx) -> float:
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    why="which number the question was asked at",
     rationale=(
         "Which rung of the spread ladder this question was asked at. Unlike "
         "baseball's moneyline, a basketball spread question rotates across four "
@@ -266,6 +275,7 @@ def nba_asked_line(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("prop",),
+    why="how many minutes he has been playing",
     rationale=(
         "Minutes. Everything a basketball player does is bounded by how long he "
         "is on the floor, and minutes move before production does when a role "
@@ -284,6 +294,7 @@ def nba_prop_minutes(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("prop",),
+    why="how much of the offence runs through him",
     rationale=(
         "Usage: the share of his club's shooting and turnovers that this player "
         "accounts for while on the floor. Minutes say how long he plays; usage "
@@ -301,6 +312,7 @@ def nba_prop_usage(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("prop",),
+    why="how fast he produces while he is on the floor",
     rationale=(
         "Rate of production per minute in the stat actually being asked about, "
         "over the same ten-game window. This is the efficiency half: two players "
@@ -320,6 +332,7 @@ def nba_prop_rate(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("prop",),
+    why="how much this defence gives up in that stat",
     rationale=(
         "How much of this stat the opponent's defence has been giving up, "
         "relative to the league. A LEAGUE-WIDE ALLOWANCE, NOT A POSITIONAL ONE, "
@@ -341,6 +354,7 @@ def nba_prop_opponent_allowance(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("prop",),
+    why="the teammates competing for the same shots",
     rationale=(
         "The teammates competing for the same touches. A scorer's ceiling "
         "depends on who else is taking shots, and a rebounder's on who else is "
@@ -362,6 +376,7 @@ def nba_prop_teammate_competition(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("prop",),
+    why="where the line sits against his recent average",
     rationale=(
         "Where the line sits relative to the player's own recent average, as a "
         "fraction of the line. This is the prop equivalent of nba_asked_line and "
@@ -383,6 +398,7 @@ def nba_prop_mean_vs_line(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("prop",),
+    why="how much his numbers swing from game to game",
     rationale=(
         "Two players with the same average are not the same question. A "
         "high-variance player clears a high line more often than a steady one "

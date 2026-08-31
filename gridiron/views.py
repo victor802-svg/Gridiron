@@ -134,6 +134,24 @@ def _rationale(name: str) -> str:
     return factor.rationale if factor else ""
 
 
+def _why_phrases() -> dict:
+    """Factor name -> its declared WHY phrase.
+
+    Read from the registry so the prose on a card comes from the same
+    declaration as the factor itself. Cached because a slate rebuilds this once
+    per card otherwise, and the registry does not change while the process runs.
+    """
+    global _WHY_CACHE
+    if _WHY_CACHE is None:
+        from .factors import registry
+
+        _WHY_CACHE = {f.name: f.why for f in registry.all_factors() if f.why}
+    return _WHY_CACHE
+
+
+_WHY_CACHE: dict | None = None
+
+
 def _top_factors(payload: dict, limit: int = 5) -> list[dict]:
     sources = payload.get("sources") or {}
     contributions = payload.get("contributions") or []
@@ -302,6 +320,30 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "gap": gap,
                 "abs_gap": abs(gap) if gap is not None else -1.0,
                 "top_factors": _top_factors(payload),
+                # THE PLAIN WHY (K3). Built from the SAME contributions the
+                # decomposition uses, so the words and the arithmetic cannot
+                # disagree -- ordering and direction are read off them rather
+                # than asserted anywhere.
+                "why": language.why_block(
+                    {
+                        "subject": r["subject"],
+                        "market_type": r["market_type"],
+                        "prop_type": r["prop_type"],
+                        # Without these two the why cannot tell which side was
+                        # taken, and every reason renders against the question's
+                        # yes side instead of the pick.
+                        "model_side": r["model_side"],
+                        "line_asked": r["line_asked"],
+                        "opponent": (r["away"] if r["subject"] == r["home"]
+                                     else r["home"]),
+                        "model_prob": r["model_prob"],
+                        "market_implied_prob": implied,
+                        "team_names": team_names,
+                        "contributions": payload.get("contributions") or [],
+                        "absent_factors": _absent_factors(payload),
+                    },
+                    _why_phrases(),
+                ),
                 "absent_factors": _absent_factors(payload),
                 "factor_coverage": payload.get("coverage"),
                 "notes": payload.get("notes") or [],
