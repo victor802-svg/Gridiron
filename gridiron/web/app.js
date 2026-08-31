@@ -678,26 +678,16 @@ const Gridiron = (function () {
     const box = el('div', 'prob');
     box.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
     box.appendChild(el('span', 'pct', '%'));
-    // Plain words, not field names, and THE SIDE THE MODEL ACTUALLY TOOK. This
-    // said "goes over" for every prop, so the confidence figure was labelled
-    // with the opposite claim on every under.
-    let what;
-    if (c.market_type === 'spread') {
-      what = 'covers';
-    } else if (c.market_type === 'prop') {
-      what = 'goes ' + (c.model_side === 'under' ? 'under' : 'over');
-    } else {
-      what = c.model_side === 'lose' ? 'loses' : 'wins';
-    }
-    box.appendChild(el('small', '', 'chance ' + shortSubject(c) + ' ' + what));
+    // THE VERB TABLE THAT USED TO LIVE HERE IS GONE, and its absence is the
+    // fix. It hardcoded a verb per market type, so every prop read "goes over"
+    // whichever side the model took; M4 fixed that branch and left the spread
+    // branch reading "covers" on all 34 cards where the model had said the
+    // opposite. Fixing the second branch here would have left the third.
+    //
+    // The server sends the side in words now, from the same humaniser that
+    // writes the pick sentence, so the two cannot disagree.
+    box.appendChild(el('small', '', 'chance ' + (c.chance_clause || '')));
     return box;
-  }
-
-  function shortSubject(c) {
-    // The PLAYER, not the storage key. `subject` is "Name batter_hits"; the
-    // server strips the suffix into `player` and that is what a reader sees.
-    const s = String(c.player || c.subject || '');
-    return s.length > 14 ? s.slice(0, 13) + '…' : s;
   }
 
   // THE RAIL. 0-100 with a tick at 50; the model solid, the market hollow, the

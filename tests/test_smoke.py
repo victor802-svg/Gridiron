@@ -495,10 +495,19 @@ def test_the_schedule_panel_renders_every_task(page):
     page.evaluate("location.hash = '#/schedule'")
     page.wait_for_selector("#schedule-tasks .sched", timeout=10000)
     cards = page.query_selector_all("#schedule-tasks .sched")
-    assert len(cards) == 4, f"expected four tasks, rendered {len(cards)}"
+    # Derived from the registry, not a hardcoded count. This said "4" and went
+    # stale the moment `refresh` was declared -- a panel whose job is to show
+    # every task must not have its own idea of how many there are.
+    from gridiron import tasks as _tasks
+
+    expected = len(_tasks.TASKS)
+    assert len(cards) == expected, (
+        f"expected {expected} tasks ({sorted(_tasks.TASKS)}), "
+        f"rendered {len(cards)}"
+    )
     text = page.inner_text("#view-schedule")
-    for task in ("resolve", "predict:mlb", "predict:nfl", "predict:nba"):
-        assert task in text
+    for task in _tasks.TASKS:
+        assert task in text, f"{task} is declared but not shown on the panel"
 
 
 def test_a_task_that_never_ran_says_so_in_the_browser(page):

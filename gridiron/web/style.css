@@ -325,6 +325,16 @@ table.grid td.wide {
 .prob small {
   display: block; font-size: 10px; font-weight: 400; color: var(--faint);
   letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px;
+  /* The server now sends this line in words ("WAS does not cover"), so it is
+     as long as the subject's name. The renderer used to truncate at a magic 14
+     characters in JS, which put a pixel budget in the payload; it belongs here.
+     A DEFINITE max-width is required for the ellipsis to have anything to
+     resolve against -- `100%` against a nowrap parent is its own content width,
+     which is circular and overflowed the phone by 84px. */
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: auto;
 }
 
 /* THE RAIL. 0-100, a tick at 50, the model solid and the market hollow, with

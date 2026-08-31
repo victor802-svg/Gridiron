@@ -185,10 +185,16 @@ def test_nothing_before_the_first_prediction_counts_as_missed(mlb_league, mlb_se
 
 # --- catch-up ---------------------------------------------------------------
 
-def test_catch_up_resolves_unconditionally_and_records_every_sport(league):
+def test_catch_up_refreshes_then_resolves_and_records_every_sport(league):
+    """REFRESH FIRST, then resolve. The order is not cosmetic: the resolver
+    settles against `games.status`, so resolving before re-reading the results
+    settles nothing and reports `noop` truthfully. In its earlier form -- no
+    refresh task at all -- that stalled the record for two days while every
+    task reported success."""
     results = tasks.catch_up(league, use_llm=False)
-    assert results[0]["task"] == "resolve"
-    assert {r["task"] for r in results} == {"resolve"} | {
+    assert results[0]["task"] == "refresh"
+    assert results[1]["task"] == "resolve"
+    assert {r["task"] for r in results} == {"refresh", "resolve"} | {
         f"predict:{s}" for s in ("nfl", "mlb", "nba")
     }
     assert all(r["result"] in ("ok", "noop", "missed", "failed") for r in results)

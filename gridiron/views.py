@@ -258,6 +258,13 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "line_asked": r["line_asked"],
                 "model_prob": r["model_prob"],
                 "model_side": r["model_side"],
+                # The side, in words, from the ONE humaniser. The renderer used
+                # to build this and got spreads backwards on 34 cards.
+                "chance_clause": language.chance_clause({
+                    "subject": r["subject"], "market_type": r["market_type"],
+                    "prop_type": r["prop_type"], "model_side": r["model_side"],
+                    "line_asked": r["line_asked"],
+                }),
                 "market_line": snap.get("line"),
                 "market_implied_prob": implied,
                 "market_source": snap.get("source"),
@@ -456,6 +463,13 @@ def history(
                 "line_asked": r["line_asked"],
                 "model_prob": r["model_prob"],
                 "model_side": r["model_side"],
+                # The side, in words, from the ONE humaniser. The renderer used
+                # to build this and got spreads backwards on 34 cards.
+                "chance_clause": language.chance_clause({
+                    "subject": r["subject"], "market_type": r["market_type"],
+                    "prop_type": r["prop_type"], "model_side": r["model_side"],
+                    "line_asked": r["line_asked"],
+                }),
                 "market_line_at_the_time": snap.get("line"),
                 "market_implied_prob": snap.get("implied_prob"),
                 "outcome": r["outcome"],
@@ -505,6 +519,13 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
         "line_asked": r["line_asked"],
         "model_prob": r["model_prob"],
         "model_side": r["model_side"],
+                # The side, in words, from the ONE humaniser. The renderer used
+                # to build this and got spreads backwards on 34 cards.
+                "chance_clause": language.chance_clause({
+                    "subject": r["subject"], "market_type": r["market_type"],
+                    "prop_type": r["prop_type"], "model_side": r["model_side"],
+                    "line_asked": r["line_asked"],
+                }),
         "reasoning": r["reasoning"],
         "degraded": r["degraded"],
         "outcome": r["outcome"],

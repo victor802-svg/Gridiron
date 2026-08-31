@@ -156,6 +156,48 @@ def phrase(item: dict) -> str:
     return f"{subject} {side_word} {_signed(line)}".strip()
 
 
+def chance_clause(item: dict) -> str:
+    """What the confidence figure is a chance OF. "WAS does not cover".
+
+    THIS EXISTS BECAUSE THE RENDERER KEPT GETTING IT WRONG, twice, in the same
+    shape. `app.js` built this sentence itself and hardcoded a verb per market
+    type: every prop read "goes over" whichever side the model took, and after
+    that was fixed in M4, every SPREAD still read "covers" whichever side the
+    model took. 34 spread cards in the record -- 20 NBA, 14 NFL -- stated the
+    opposite of the forecast beside them, at high confidence, with a correct
+    decomposition underneath contradicting the headline.
+
+    Fixing the second branch in the renderer would have left the third. The
+    words come from here now, and the renderer has no verb table to be wrong
+    with: it prints what the server sends.
+
+    Note what was NOT wrong, because it matters for where to look next time:
+    the arithmetic. Across all 190 predictions in the record, in every sport
+    and market, `model_prob` equals the logistic of the displayed contributions
+    for the displayed side, to within rounding. `stated_side` was right, the
+    decomposition's yes-side was right, and only the sentence lied.
+    """
+    subject = strip_market_suffix(item.get("subject"), item.get("prop_type"))
+    market_type = item.get("market_type")
+    side = item.get("model_side")
+
+    if market_type == "prop":
+        market = item.get("prop_type") or item.get("market")
+        line = item.get("line_asked")
+        # A half-unit prop is a yes/no question and reads as one.
+        if line is not None and float(line) == 0.5:
+            said = half_unit_phrase(subject, market, side)
+            if said:
+                return said
+        return f"{subject} goes {'under' if side == 'under' else 'over'}"
+
+    if market_type == "moneyline":
+        return f"{subject} {'loses' if side == 'lose' else 'wins'}"
+
+    # spreads
+    return f"{subject} {'does not cover' if side == 'not_cover' else 'covers'}"
+
+
 def result_word(item: dict) -> str:
     """PENDING / WIN / LOSS / VOID. "open" is not a word anybody says."""
     if item.get("voided"):
