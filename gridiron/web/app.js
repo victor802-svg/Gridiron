@@ -768,136 +768,6 @@ const Gridiron = (function () {
     return String(name).replace(/^(nfl|mlb|nba)_/, '').replace(/_/g, ' ');
   }
 
-  function renderCard(c) {
-    const card = el('div', 'card' + (c.outcome === null || c.outcome === undefined ? '' : ' resolved'));
-    const settled = !(c.outcome === null || c.outcome === undefined);
-
-    // `card-head` is kept beside `card-top`: it is the expansion target the
-    // browser tests click, and renaming it would break them for no gain.
-    const head = el('div', 'card-head card-top');
-    head.setAttribute('role', 'button');
-    head.setAttribute('tabindex', '0');
-
-    const left = el('div');
-    left.appendChild(el('div', 'matchup', c.matchup || c.game_id));
-
-    if (settled) {
-      // The one-line story: what was picked, what happened.
-      const story = el('div', 'market-line');
-      story.appendChild(document.createTextNode('picked '));
-      story.appendChild(el('b', '', String(c.subject || '').toUpperCase()));
-      if (c.final_score) story.appendChild(document.createTextNode(' · ' + c.final_score));
-      story.appendChild(document.createTextNode(
-        ' · ' + c.predictor + ' · ' + c.factor_set_version));
-      if (typeof c.gap === 'number' && Math.abs(c.gap) >= DISAGREEMENT) {
-        story.appendChild(document.createTextNode(
-          ' · gap was ' + signed(c.gap * 100, 1)));
-      }
-      left.appendChild(story);
-    } else {
-      left.appendChild(el('div', 'market-line',
-        (c.kickoff_utc ? 'starts ' + localTime(c.kickoff_utc) : 'start time unknown') +
-        ' · ' + c.predictor + ' · ' + c.factor_set_version));
-      left.appendChild(pickSentence(c));
-      const tier = tierChip(c);
-      if (tier) left.appendChild(tier);
-    }
-    head.appendChild(left);
-
-    const right = el('div');
-    if (settled) {
-      right.style.textAlign = 'right';
-      const won = c.outcome === 1;
-      right.appendChild(el('span', 'verdict ' + (won ? 'win' : 'loss'), won ? 'WIN' : 'LOSS'));
-      const nums = ['model ' + pct(c.model_prob, 1)];
-      if (c.market_implied_prob !== null && c.market_implied_prob !== undefined) {
-        nums.push('market ' + pct(c.market_implied_prob, 1));
-      }
-      right.appendChild(el('div', 'final', nums.join(' · ')));
-    } else {
-      right.appendChild(probBlock(c));
-    }
-    if (c.degraded) right.appendChild(el('div', 'degraded-note', c.degraded));
-    head.appendChild(right);
-    card.appendChild(head);
-
-    if (!settled) {
-      card.appendChild(rail(c));
-
-      const meta = el('div', 'meta');
-      if (typeof c.gap === 'number') {
-        meta.appendChild(el('span',
-          'gap-chip' + (Math.abs(c.gap) >= DISAGREEMENT ? '' : ' quiet'),
-          'gap ' + signed(c.gap * 100, 1)));
-      }
-      meta.appendChild(bucketLine(c));
-      card.appendChild(meta);
-
-      const chips = factorChips(c);
-      if (chips) {
-        const row = el('div', 'meta');
-        row.appendChild(chips);
-        card.appendChild(row);
-      }
-    }
-
-    // Reasoning, collapsed. `card-body` is the alias the tests look for.
-    const body = el('div', 'card-body reason card-detail');
-    if (c.reasoning) body.appendChild(el('div', 'reasoning', c.reasoning));
-    const bars = contributions(c);
-    if (bars) body.appendChild(bars);
-
-    // The chips are the glance; this is the whole hand. Kept from the previous
-    // design because it carries what a chip cannot — each factor's source and
-    // the reason it is declared at all, which is LAW 2 made inspectable.
-    const wrap = el('div', 'table-scroll');
-    const t = el('table', 'grid');
-    table(t, [{ label: 'Factor' }, { label: 'Value' }, { label: 'Contribution' },
-              { label: 'Source' }, { label: 'Why it is declared', cls: 'wide' }],
-      (c.top_factors || []).map(f => [
-        f.factor,
-        (f.value === null || f.value === undefined) ? 'not measurable' : num(f.value, 3),
-        (f.contribution === null || f.contribution === undefined)
-          ? el('span', 'absent', 'not measurable') : signed(f.contribution, 3),
-        f.source || el('span', 'absent', 'not recorded'),
-        f.rationale || ''
-      ]));
-    wrap.appendChild(t);
-    body.appendChild(wrap);
-
-    if ((c.absent_factors || []).length) {
-      body.appendChild(el('div', 'footnote',
-        'Not measurable for this game: ' +
-        c.absent_factors.map(a => a.factor + ' (' + a.why + ')').join('; ')));
-    }
-    body.appendChild(el('div', 'footnote',
-      'Written ' + (c.created_utc || '?').replace('T', ' ') +
-      (c.market_fetched_utc
-        ? ' · market snapshot ' + c.market_fetched_utc.replace('T', ' ') +
-          ' from ' + (c.market_source || 'unknown')
-        : ' · no market snapshot') +
-      ' · ' + c.predictor + ' · ' + c.factor_set_version));
-    if (c.void_reason) body.appendChild(el('div', 'footnote', 'VOID: ' + c.void_reason));
-    (c.notes || []).forEach(n => body.appendChild(el('div', 'footnote', 'Note: ' + n)));
-    card.appendChild(body);
-
-    const button = el('button', 'expand', 'Show reasoning');
-    button.setAttribute('type', 'button');
-    card.appendChild(button);
-
-    function toggle() {
-      card.classList.toggle('open');
-      button.textContent = card.classList.contains('open')
-        ? 'Hide reasoning' : 'Show reasoning';
-    }
-    button.addEventListener('click', ev => { ev.stopPropagation(); toggle(); });
-    head.addEventListener('click', toggle);
-    head.addEventListener('keydown', ev => {
-      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
-    });
-    return card;
-  }
-
   function localTime(iso) {
     try {
       return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -1010,6 +880,15 @@ const Gridiron = (function () {
     line.appendChild(el('span', 'row-bucket', c.bucket_line || ''));
     body.appendChild(line);
 
+    // THE CONTRIBUTION BARS STAY HERE FOR NOW, and that is a deliberate
+    // sequencing decision rather than an oversight. K3 moves the decomposition
+    // to the Factors page and replaces it here with a plain-English WHY; K3 is
+    // deferred to its own session. Removing them now would delete a working
+    // explanation and leave nothing in its place until that session happens --
+    // a feature deleted ahead of its replacement is just a regression with a
+    // plan attached.
+    body.appendChild(contributions(c));
+
     // K3 fills this. Until then the stored reasoning stands in rather than a
     // blank space, because an empty expander reads as broken.
     const why = el('div', 'row-why');
@@ -1045,8 +924,11 @@ const Gridiron = (function () {
     prob.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
     prob.appendChild(el('small', '', 'model'));
     head.appendChild(prob);
+    // `.verdict`, matching the approved mockup's class rather than reusing the
+    // tier chip: a verdict and a confidence tier are different things and
+    // sharing a class invites them to be styled alike.
     const word = c.voided ? 'VOID' : (c.outcome === 1 ? 'WIN' : 'LOSS');
-    head.appendChild(el('span', 'chip chip-' + word.toLowerCase(), word));
+    head.appendChild(el('span', 'verdict ' + word.toLowerCase(), word));
     row.appendChild(head);
     return row;
   }
@@ -1171,7 +1053,12 @@ const Gridiron = (function () {
   async function renderVersions() {
     const data = await fetchJSON(withSport('/api/versions'));
     requireN(data, 'version comparison');
-    document.getElementById('versions-caption').textContent = DASH + ' current: ' + data.current;
+    // The last place the raw code reached a reader: "current: fs2". The set
+    // in force is named by when it began, like every other mention of one.
+    const cur = (data.versions || []).find(v => v.status === 'current');
+    const curStarted = cur && cur.activated_utc ? cur.activated_utc.slice(0, 10) : null;
+    document.getElementById('versions-caption').textContent =
+      DASH + (curStarted ? ' in force since ' + curStarted : ' current set');
     document.getElementById('versions-note').textContent = data.note;
 
     const host = document.getElementById('versions-list');
@@ -1179,13 +1066,18 @@ const Gridiron = (function () {
     const grid = el('div', 'scores');
     data.versions.forEach(v => {
       const card = el('div', 'score-card');
-      const h = el('h3', '', v.version + ' ');
+      // NOT the version code. This page is ABOUT factor sets, which makes it
+      // the last place a reader should have to decode one: "fs2" says neither
+      // what changed nor when. The heading is the date the set began, which is
+      // the thing that distinguishes one from another to a person, and the
+      // code stays in the tooltip for matching against a stored row.
+      const started = (v.activated_utc || '').slice(0, 10);
+      const h = el('h3', '', (started ? 'Set of ' + started : 'Undated set') + ' ');
       h.appendChild(el('span', 'tag' + (v.status === 'current' ? '' : ' warn'), v.status));
       h.appendChild(nTag(v.n));
       card.appendChild(h);
       card.appendChild(el('div', 'card-meta',
-        'activated ' + (v.activated_utc || 'unrecorded').slice(0, 10) +
-        ' · ' + int(v.predictions_written) + ' written · ' +
+        int(v.predictions_written) + ' written · ' +
         int(v.open) + ' open'));
       if (v.message) {
         card.appendChild(el('div', 'empty', v.message));
@@ -1417,7 +1309,13 @@ const Gridiron = (function () {
 
   function renderColophon(meta) {
     document.getElementById('colophon-text').textContent = [
-      'Factor set ' + meta.factor_set_version,
+      // NOT "Factor set fs2". A version string is an internal identifier --
+      // nobody says "fs2" out loud and it tells a reader neither what changed
+      // nor when. The DATE is the thing a person can use, and the code stays
+      // in the tooltip for anyone matching it against a stored row.
+      meta.factor_set_started
+        ? 'Current factor set since ' + meta.factor_set_started.slice(0, 10)
+        : 'Current factor set',
       int(meta.predictions) + ' predictions on record',
       int(meta.games_final) + ' completed games loaded (' +
         meta.seasons_loaded[0] + '–' + meta.seasons_loaded[1] + ')',

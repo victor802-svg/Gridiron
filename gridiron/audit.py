@@ -453,6 +453,14 @@ INTERNAL_TERMS = (
     "pitcher_strikeouts", "market_type", "prop_type", "model_prob",
     "line_asked", "factor_set_version", "created_utc", "resolved_utc",
     "implied_prob", "game_id",
+    # FACTOR-SET VERSION STRINGS. "Factor set fs2" rendered in the footer of
+    # every page and the scan called the page clean, because a version is not
+    # snake_case and was not on this list. It is an internal identifier by any
+    # reading: nobody says "fs2" out loud, and a reader cannot tell from it
+    # what changed or when. Generated from config so a new version cannot be
+    # coined without the scan learning about it.
+    *config.FACTOR_SET_HISTORY,
+    "factor_set", "fs_version",
 )
 #: NOT on that list, deliberately: "predictor" and "forecaster". They are
 #: ENGLISH WORDS, and the page says "the statistical and LLM predictors are

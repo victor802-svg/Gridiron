@@ -212,7 +212,9 @@ def test_the_track_record_is_the_default_screen(page):
 # --- D4 visuals -------------------------------------------------------------
 
 def test_the_dumbbell_renders(page):
-    page.evaluate("location.hash = '#/week'")
+    # K2 old -> new: the rail moved behind a tap, so the row must be OPENED
+    # before it exists in the DOM at all.
+    _open_first_card(page)
     # T1 old -> new: `.rail-dot` became `.dot`, and the rail now exists only on
     # a PENDING card — a settled one shows its verdict and final probabilities
     # instead, per the approved mockup. The selector targets a card that still
@@ -477,16 +479,29 @@ def test_the_phone_layout_does_not_overflow(served):
         page.evaluate("location.hash = '#/week'")
         page.wait_for_selector("#week-cards .row", timeout=10000)
 
+        # The COLLAPSED list must not scroll sideways -- that is the state a
+        # reader arrives in, and it is the state the 84px and 78px regressions
+        # were found in.
         overflow = page.evaluate(
             "() => document.documentElement.scrollWidth > window.innerWidth + 1"
         )
         assert not overflow, "the page scrolls sideways on a phone"
+
+        # K2 old -> new: the rail lives behind a tap, so it has to be opened
+        # before it can be measured. And it must not overflow AFTER opening
+        # either -- an expanded row is still a phone screen.
+        page.locator("#week-cards .row .row-head").first.click()
+        page.wait_for_selector("#week-cards .row .rail", timeout=5000)
+        overflow_open = page.evaluate(
+            "() => document.documentElement.scrollWidth > window.innerWidth + 1"
+        )
+        assert not overflow_open, "an expanded row scrolls sideways on a phone"
         rail = page.evaluate(
             """() => {
                 const r = document.querySelector('.rail');
                 if (!r) return null;
                 const box = r.getBoundingClientRect();
-                const dots = [...r.querySelectorAll('.rail-dot')].map(d =>
+                const dots = [...r.querySelectorAll('.dot')].map(d =>
                     d.getBoundingClientRect().left - box.left);
                 return { width: box.width, dots: dots };
             }"""
@@ -843,7 +858,7 @@ def test_a_resolved_card_shows_a_verdict_and_no_rail(page):
         const c = document.querySelector('#week-cards .row-done');
         return { verdict: (c.querySelector('.verdict') || {}).textContent,
                  rails: c.querySelectorAll('.rail').length,
-                 story: (c.querySelector('.market-line') || {}).textContent };
+                 story: (c.querySelector('.row-pick') || {}).textContent };
     }""")
     assert shape["verdict"] in ("WIN", "LOSS")
     assert shape["rails"] == 0, "a settled card drew a probability rail"
@@ -856,7 +871,7 @@ def test_the_greeting_strip_leads_the_page(page):
     page.evaluate("location.hash = '#/record'")
     page.wait_for_timeout(600)
     box = page.evaluate("""() => {
-        const g = document.getElementById('greeting');
+        const g = document.getElementById('glance');
         if (!g || g.hidden) return null;
         const r = g.getBoundingClientRect();
         const cards = document.querySelector('#week-cards');
@@ -975,12 +990,12 @@ def test_notices_collapse_into_one_bar_that_expands(page):
     summary = page.locator("#notices-summary")
     text = summary.inner_text()
     assert "notice" in text.lower()
-    assert page.locator("#notices .notices-detail").is_visible() is False
+    assert page.locator("#notices-detail").is_visible() is False
 
     summary.click()
     page.wait_for_timeout(250)
-    assert page.locator("#notices .notices-detail").is_visible(), "it does not expand"
-    full = page.locator("#notices .notices-detail").inner_text()
+    assert page.locator("#notices-detail").is_visible(), "it does not expand"
+    full = page.locator("#notices-detail").inner_text()
     # Every sentence survives; the bar is a summary of them, not a replacement.
     assert len(full) > len(text)
 
@@ -994,8 +1009,13 @@ def test_the_greeting_is_on_the_home_tab_only(page):
     for route in ("#/factors", "#/history", "#/schedule"):
         page.evaluate(f"location.hash = '{route}'")
         page.wait_for_timeout(400)
-        assert not page.locator("#glance").is_visible(), (
-            f"{route} shows the since-you-last-looked strip"
+        # K2 old -> new: the greeting and the notices are ONE strip now, and
+        # this test's own docstring is why the assertion had to move. "One
+        # page greets; every page warns" cannot both hold if the notices live
+        # inside a strip that hides off-home. So the STRIP survives carrying
+        # notices and the greeting SENTENCE is what goes quiet.
+        assert not page.locator("#greet-msg").is_visible(), (
+            f"{route} shows the since-you-last-looked sentence"
         )
         assert page.locator("#notices-summary").is_visible(), (
             f"{route} lost its notices; a warning nobody sees is not a warning"

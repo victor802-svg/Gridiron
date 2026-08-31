@@ -733,6 +733,19 @@ VERSION_NOTE = (
 )
 
 
+def version_words(version: str) -> str:
+    """A factor set named the way a person would name it: by when it started.
+
+    "fs2" is an internal identifier -- it says neither what changed nor when,
+    and the plain-words scan is right to reject it. The activation date is the
+    thing that distinguishes one set from another to a reader, and it is
+    already recorded. The code stays in the payload for matching against a
+    stored row; it just does not reach the prose.
+    """
+    started = config.FACTOR_SET_ACTIVATED.get(version)
+    return f"the set of {started[:10]}" if started else "an undated set"
+
+
 def version_comparison(conn: sqlite3.Connection) -> dict:
     """Every factor set that has produced predictions, side by side.
 
@@ -789,10 +802,9 @@ def version_comparison(conn: sqlite3.Connection) -> dict:
         }
         if n_resolved == 0:
             entry["message"] = (
-                f"{version} has {total} prediction(s) written and 0 resolved. Its "
+                f"{version_words(version).capitalize()} has {total} "
+                "prediction(s) written and 0 resolved. Its "
                 "record begins at N=0 on activation"
-                + (f" ({config.FACTOR_SET_ACTIVATED[version]})"
-                   if version in config.FACTOR_SET_ACTIVATED else "")
                 + ". Nothing is carried over from an earlier version, so there is "
                 "nothing to show yet and nothing wrong."
             )
@@ -1116,10 +1128,9 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
         if n_resolved == 0:
             label = config.SPORT_LABELS.get(sport, sport)
             entry["message"] = (
-                f"{version} has {total} prediction(s) written for {label} and 0 "
+                f"{version_words(version).capitalize()} has {total} "
+                f"prediction(s) written for {label} and 0 "
                 "resolved. Its record begins at N=0 on activation"
-                + (f" ({config.FACTOR_SET_ACTIVATED[version]})"
-                   if version in config.FACTOR_SET_ACTIVATED else "")
                 + ". Nothing is carried over from an earlier version, so there "
                 "is nothing to show yet and nothing wrong."
             )

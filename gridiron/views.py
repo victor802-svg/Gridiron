@@ -92,6 +92,11 @@ def meta(conn: sqlite3.Connection, sport: str) -> dict:
         "database_kind": kind["kind"],
         "database_note": kind["note"],
         "factor_set_version": config.FACTOR_SET_VERSION,
+        # The date the current set began. What a reader can actually use: a
+        # version code says neither what changed nor when.
+        "factor_set_started": config.FACTOR_SET_ACTIVATED.get(
+            config.FACTOR_SET_VERSION
+        ),
         "minimum_for_edge_claim": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
         "minimum_for_bucket_point": config.MIN_SAMPLE_FOR_BUCKET_POINT,
         "seasons_loaded": counts["seasons"],

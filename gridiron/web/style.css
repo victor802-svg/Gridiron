@@ -875,6 +875,14 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-family: var(--mono); font-size: 10px; color: var(--faint);
   margin-left: 4px; font-weight: 400;
 }
+/* `nav { flex-wrap: wrap }` and, on phones, `nav { width: 100% }` are
+   leftovers from the two-bar masthead this replaced, and they apply to every
+   <nav> on the page including these two. Unoverridden, the page nav wrapped
+   onto three lines that rendered ABOVE and BELOW a 52px bar, and on a phone the
+   sport tabs scattered across the brand. The bar measured exactly 52px the
+   whole time -- its contents had simply escaped it, which no selector-based
+   test could see and one screenshot showed instantly. */
+.bar #sport-tabs, .bar #nav { flex-wrap: nowrap; width: auto; }
 .bar #nav { display: flex; gap: 14px; margin-left: auto; }
 .bar #nav a {
   color: var(--muted); text-decoration: none; font-size: 13px;
@@ -978,9 +986,15 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .rows-done .row-head { cursor: default; }
 .rows-done { opacity: 0.72; }
 .row-done .row-title { font-weight: 600; }
-.chip-win { background: var(--green); color: var(--ink); border-color: var(--green); }
-.chip-loss { background: #4a1f22; color: #ff9d9d; border-color: #6b2a2e; }
-.chip-void { background: none; color: var(--faint); border-color: var(--line); }
+/* The verdict, per the approved mockup: tinted rather than filled, so a WIN
+   does not shout louder than the forecast it settles. */
+.verdict {
+  font-weight: 700; font-size: 12px; letter-spacing: 0.12em;
+  padding: 3px 9px; border-radius: 5px; min-width: 64px; text-align: center;
+}
+.verdict.win { color: var(--green); background: rgba(0, 220, 130, 0.10); }
+.verdict.loss { color: #ff6b6b; background: rgba(255, 107, 107, 0.10); }
+.verdict.void { color: var(--faint); border: 1px solid var(--line); }
 .chip-none { border: 0; }
 
 /* --- PHONE ---------------------------------------------------------------- */
