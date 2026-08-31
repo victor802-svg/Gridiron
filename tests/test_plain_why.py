@@ -104,7 +104,7 @@ def test_the_direction_of_each_sentence_is_the_sign_of_its_contribution():
     ]), PHRASES)
     # R2 old -> new: direction reads as grammar, not as a verb phrase.
     assert said[0].startswith("Mostly it comes down to")
-    assert said[1].startswith("Pulling the other way:")
+    assert said[1].startswith("Pulling the other way")
 
 
 def test_taking_the_no_side_flips_every_direction():
@@ -116,7 +116,7 @@ def test_taking_the_no_side_flips_every_direction():
     no = language.why_sentences(_item(contribs, side="lose"), PHRASES)
     # The LEAD is the same factor either way -- it is the largest -- but the
     # SECOND sentence swaps between agreeing and opposing.
-    assert yes[1].startswith("Pulling the other way:")
+    assert yes[1].startswith("Pulling the other way")
     assert no[1].startswith("How much scoring this park allows points the same way")
 
 
@@ -135,8 +135,12 @@ def test_the_largest_reason_is_named_as_such():
     said = language.why_sentences(_item([
         ("mlb_starter_rolling_perf", 5.0), ("mlb_park_factor", 0.1),
     ]), PHRASES)
-    assert "and it is the main thing" in said[0]
-    assert "and it is the main thing" not in said[1]
+    # R2 polish: the size is folded into the LEAD-IN rather than tagged on
+    # the end. "Mostly it comes down to X" carries it; ", and it is the main
+    # thing" was a second clause saying the same thing, of a kind only a
+    # machine writes.
+    assert said[0].startswith("Mostly it comes down to")
+    assert not said[1].startswith("Mostly it comes down to")
 
 
 def test_a_factor_with_no_template_is_skipped_rather_than_printed_raw():
@@ -202,7 +206,7 @@ def _agrees(item, sentences):
     named = phrase.lower() in first.lower()
     signed = top["contribution"] * (-1 if language.why_is_flipped(item) else 1)
     if len(sentences) > 1:
-        opposing = sentences[1].startswith("Pulling the other way:")
+        opposing = sentences[1].startswith("Pulling the other way")
         second = [c for c in contribs
                   if c["factor"] != top["factor"]]
         if second:
@@ -228,17 +232,14 @@ def test_a_planted_mismatch_is_caught():
     assert _agrees(item, sound)
 
     wrong_factor = [
-        "Mostly it comes down to how much scoring this park allows, and it is "
-        "the main thing.",
-        "Pulling the other way: the starting pitching matchup, and it counts "
-        "for a lot.",
+        "Mostly it comes down to how much scoring this park allows.",
+        "Pulling the other way: the starting pitching matchup.",
     ]
     assert not _agrees(item, wrong_factor), "prose naming the wrong factor passed"
 
     wrong_direction = [
         sound[0],
-        sound[1].replace("Pulling the other way: ",
-                         "").replace(",", " points the same way,", 1),
+        "How much scoring this park allows points the same way.",
     ]
     assert not _agrees(item, wrong_direction), "prose with the sign flipped passed"
 

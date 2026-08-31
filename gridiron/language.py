@@ -134,6 +134,62 @@ def half_unit_phrase(subject: str, market: str, side: str) -> str | None:
     return None
 
 
+#: The side each market's question was FORMED as. A stored probability and a
+#: stored contribution are both signed toward this side; the model frequently
+#: takes the other one.
+YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over"}
+
+
+def side_named(item: dict) -> tuple[str, float | None]:
+    """WHO the pick is on, and the probability OF THAT SIDE. The one door.
+
+    THIS EXISTS BECAUSE THE SAME DEFECT HAPPENED THREE TIMES, in three places
+    that each reached for `subject` on their own:
+
+      1. the chance label read "97% chance WAS covers" beside a decomposition
+         summing against WAS -- 34 cards, because the renderer hardcoded a verb
+         per market type (K1);
+      2. the Why heading read "Why Atlanta Braves" over a pick for Colorado,
+         with every reason "working against it" (K3);
+      3. the market clause read "the market has Atlanta Braves at 34%" under
+         that same pick -- the number right, the name wrong (R2).
+
+    Each was fixed where it was found. Three instances of one defect is not
+    three bugs, it is a missing function: `subject` is the side the QUESTION
+    was asked about, and prose wants the side the ANSWER took. They differ
+    whenever the model takes the NO side, which on a moneyline is close to half
+    the time.
+
+    So every piece of prose naming a team, an answer or a side-probability goes
+    through here, and `audit.check_side_named` fails by name on any composer in
+    this module that reaches `subject` directly instead.
+
+    Returns the display name and the model's probability for the same side.
+    `model_prob` is already confidence in the side taken (`stated_side`
+    guarantees it), so the pair is always about one thing.
+    """
+    market_type = item.get("market_type")
+    side = item.get("model_side")
+    name = strip_market_suffix(item.get("subject"), item.get("prop_type"))
+
+    if market_type in ("moneyline", "spread"):
+        # THE FLIP. A moneyline's subject is the home club; taking the NO side
+        # is a pick for the visitors, and naming the home club would name the
+        # team being forecast AGAINST.
+        if market_type == "moneyline" and side == "lose" and item.get("opponent"):
+            name = item["opponent"]
+        name = team_name(name, item.get("team_names"))
+
+    return name, item.get("model_prob")
+
+
+def is_no_side(item: dict) -> bool:
+    """Did the model take the NO side of the question as asked?"""
+    yes = YES_SIDE.get(item.get("market_type"))
+    side = item.get("model_side")
+    return bool(yes and side and side != yes)
+
+
 def phrase(item: dict) -> str:
     """One readable sentence for a prediction, whatever kind it is.
 
@@ -147,11 +203,12 @@ def phrase(item: dict) -> str:
     """
     market = item.get("prop_type") or item.get("market") or item.get("market_type")
     market_type = item.get("market_type")
-    subject = strip_market_suffix(item.get("subject"), market)
-    # A game market's subject is a club, so it gets the club's name when one
-    # has been fetched. A prop's subject is a person and is already a name.
-    if market_type in ("moneyline", "spread"):
-        subject = team_name(subject, item.get("team_names"))
+    # THE ONE DOOR. `side_named` resolves the club-or-player the pick is on,
+    # including the flip when the model took the NO side of the question. For a
+    # prop it already strips the stored stat suffix -- `market` and `prop_type`
+    # are the same string there -- so there is nothing left for this function
+    # to do to the name.
+    subject, _prob = side_named(item)
     side = item.get("model_side")
     line = item.get("line_asked")
 
@@ -173,9 +230,9 @@ def phrase(item: dict) -> str:
         # we are actually backing is the whole point of the plain-words law.
         # Falls back to the literal form only when the opponent is unknown,
         # because inventing one would be worse than reading oddly.
-        opponent = team_name(item.get("opponent"), item.get("team_names"))
-        if side == "lose" and opponent:
-            return f"{opponent} to win"
+        # `subject` is already the club being backed, flip included.
+        if side == "lose":
+            return f"{subject} to win"
         return f"{subject} {SIDE_WORDS.get(side, 'to win')}".strip()
 
     # spreads
@@ -204,9 +261,13 @@ def chance_clause(item: dict) -> str:
     for the displayed side, to within rounding. `stated_side` was right, the
     decomposition's yes-side was right, and only the sentence lied.
     """
-    subject = strip_market_suffix(item.get("subject"), item.get("prop_type"))
     market_type = item.get("market_type")
     side = item.get("model_side")
+    # THE ONE DOOR, for the game markets. A prop's subject is a person's name
+    # and needs only its stored stat suffix removed.
+    subject, _prob = side_named(item)
+    if market_type == "prop":
+        subject = strip_market_suffix(item.get("subject"), item.get("prop_type"))
     # THE TRICODE STAYS HERE, deliberately, and the mockup agrees: the pick line
     # reads "Tampa Bay Rays to win" and this small label reads "TB WINS".
     #
@@ -233,10 +294,19 @@ def chance_clause(item: dict) -> str:
         # If these two framed the pick differently -- "COL to win" over "ATL
         # loses" -- a reader would have to hold both in their head to see they
         # agree, which is the work the plain-words law exists to remove.
-        opponent = item.get("opponent")
-        if side == "lose" and opponent:
-            return f"{opponent} wins"
-        return f"{subject} {'loses' if side == 'lose' else 'wins'}"
+        # The TRICODE is deliberate here and not a miss -- see the note above.
+        # It still comes from the side taken, not from the question's subject.
+        #
+        # The fallback matters: with no opponent recorded there is no other
+        # club to name, and "TB wins" under a pick AGAINST Tampa would be the
+        # very inversion this function exists to prevent. Say "TB loses"
+        # instead -- clumsier, and true.
+        raw = strip_market_suffix(item.get("subject"), item.get("prop_type"))
+        if side == "lose":
+            if item.get("opponent"):
+                return f"{item['opponent']} wins"
+            return f"{raw} loses"
+        return f"{raw} wins"
 
     # spreads
     return f"{subject} {'does not cover' if side == 'not_cover' else 'covers'}"
@@ -309,38 +379,49 @@ WHY_MAX_SENTENCES = 3
 
 #: How a contribution's share of the total movement becomes words. Bands, not a
 #: number: "0.42 of the log-odds" is the thing this replaced.
-WHY_SIZE_BANDS = (
-    (0.45, "and it is the main thing"),
-    (0.25, "and it counts for a lot"),
-    (0.10, "and it counts for something"),
-    (0.00, "though only a little"),
+#: THE SIZE IS FOLDED INTO THE LEAD-IN, not appended as a tag. Appending gave
+#: "Mostly it comes down to X, and it is the main thing." -- two clauses saying
+#: the same thing, the second of which is the sort of phrase only a machine
+#: writes. The opening words carry the weight instead.
+WHY_LEAD_BANDS = (
+    (0.45, "Mostly it comes down to"),
+    (0.25, "The biggest single reason is"),
+    (0.00, "No one thing decides it; the largest is"),
+)
+
+#: How much the second factor matters, as a qualifier on its lead-in.
+WHY_SECOND_BANDS = (
+    (0.25, ", and not by a little"),
+    (0.10, ""),
+    (0.00, ", a little"),
 )
 
 
-def _size_words(share: float) -> str:
-    for floor, words in WHY_SIZE_BANDS:
+def _band(bands, share: float) -> str:
+    for floor, words in bands:
         if share >= floor:
             return words
-    return "though only a little"
+    return bands[-1][1]
 
 
-def _lead(phrase: str, size: str) -> str:
-    """The first sentence: what drove it, and how much.
+def _lead(phrase: str, share: float) -> str:
+    """The first sentence: what drove it, with its size in the opening words.
 
     LEAD-IN GRAMMAR RATHER THAN A PREDICATE. The composer used to write
     "{Phrase} helps the pick — the biggest reason", which read as a spreadsheet
-    talking: the phrases are long noun clauses and bolting a verb onto the
+    talking: the phrases are long noun clauses, and bolting a verb onto the
     front of one produces "How good the two teams have been, adjusted for who
     they played helps the pick".
     """
-    return f"Mostly it comes down to {phrase}, {size}."
+    return f"{_band(WHY_LEAD_BANDS, share)} {phrase}."
 
 
-def _second(phrase: str, helps: bool, size: str) -> str:
+def _second(phrase: str, helps: bool, share: float) -> str:
     """The second sentence: another reason, or the thing pulling against it."""
+    size = _band(WHY_SECOND_BANDS, share)
     if helps:
-        return f"{phrase[:1].upper()}{phrase[1:]} points the same way, {size}."
-    return f"Pulling the other way: {phrase}, {size}."
+        return f"{phrase[:1].upper()}{phrase[1:]} points the same way{size}."
+    return f"Pulling the other way{size}: {phrase}."
 
 
 #: The side each market's question was FORMED as. A contribution is signed
@@ -358,9 +439,7 @@ def why_is_flipped(item: dict) -> bool:
     it: each sentence individually true about the yes side, and the paragraph
     as a whole describing the opposite of the forecast above it.
     """
-    yes = WHY_YES_SIDE.get(item.get("market_type"))
-    side = item.get("model_side")
-    return bool(yes and side and side != yes)
+    return is_no_side(item)
 
 
 def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
@@ -401,7 +480,7 @@ def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
     total = sum(t[0] for t in scored) or 1.0
 
     magnitude, value, phrase = scored[0]
-    out = [_lead(phrase, _size_words(magnitude / total))]
+    out = [_lead(phrase, magnitude / total)]
 
     rest = scored[1:]
     if rest:
@@ -415,7 +494,7 @@ def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
             pick = opposers[0]
         elif supporters:
             pick = supporters[0]
-        out.append(_second(pick[2], pick[1] > 0, _size_words(pick[0] / total)))
+        out.append(_second(pick[2], pick[1] > 0, pick[0] / total))
 
     return out
 
@@ -468,13 +547,7 @@ def why_market(item: dict) -> str | None:
     # defect once more, in the one sentence that quotes a number back to the
     # reader. Same flip the heading uses, so the two cannot name different
     # clubs.
-    subject = strip_market_suffix(item.get("subject"), item.get("prop_type"))
-    if item.get("market_type") in ("moneyline", "spread"):
-        if (item.get("market_type") == "moneyline"
-                and item.get("model_side") == "lose"
-                and item.get("opponent")):
-            subject = item["opponent"]
-        subject = team_name(subject, item.get("team_names"))
+    subject, _prob = side_named(item)
     lean = ("leans harder on its own reading" if model > implied
             else "is the more cautious of the two")
     return f"The market has {subject} at {round(implied * 100)}%; the model {lean}."
@@ -494,11 +567,7 @@ def why_block(item: dict, factors: dict | None = None) -> dict:
     # Derived the same way `phrase` derives its subject, including the flip
     # that names the opponent when the model takes the NO side of a moneyline,
     # so the heading and the pick sentence cannot name different teams.
-    picked = strip_market_suffix(item.get("subject"), item.get("prop_type"))
-    if item.get("market_type") in ("moneyline", "spread"):
-        if item.get("market_type") == "moneyline" and item.get("model_side") == "lose"                 and item.get("opponent"):
-            picked = item["opponent"]
-        picked = team_name(picked, item.get("team_names"))
+    picked, _prob = side_named(item)
     sentences = why_sentences(item, factors)
     # THE MARKET IS SENTENCE THREE, where a line exists. Where none does it is
     # omitted rather than replaced by a hedge: the budget is a ceiling, not a

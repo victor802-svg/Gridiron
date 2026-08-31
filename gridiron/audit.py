@@ -647,3 +647,89 @@ def check_no_orphan_functions(root: Path | None = None) -> None:
             "audit.ORPHAN_ALLOWLIST saying why it stands alone:"
             + _NL2 + _NL2.join(hits[:10])
         )
+
+
+# ---------------------------------------------------------------------------
+# ONE DOOR FOR THE SIDE — the class fix for a defect that happened three times
+# ---------------------------------------------------------------------------
+#
+# `subject` on a prediction row is the side the QUESTION was asked about: the
+# home club on a moneyline, the yes side on a prop. Prose wants the side the
+# ANSWER took, and the two differ whenever the model takes the NO side -- close
+# to half of all moneylines.
+#
+# Three composers each reached for `subject` on their own and each got it
+# wrong, in three separate sessions:
+#
+#   K1  the chance label: "97% chance WAS covers" over a decomposition summing
+#       against WAS. 34 cards.
+#   K3  the Why heading: "Why Atlanta Braves" over a pick for Colorado.
+#   R2  the market clause: "the market has Atlanta Braves at 34%" under that
+#       same pick -- the number right, the name wrong.
+#
+# Each was fixed where it was found, which is why it recurred. `language.
+# side_named` is now the only place that resolves it, and this scan is what
+# keeps it the only place: any OTHER function in the humaniser that reaches
+# `subject` or `opponent` directly fails by name.
+
+#: Functions allowed to touch the raw fields, because resolving them IS their
+#: job. Everything else must call `side_named`.
+SIDE_DOOR = "side_named"
+SIDE_RAW_FIELDS = ("subject", "opponent")
+#: `strip_market_suffix` takes the subject as an ARGUMENT and never reads the
+#: item; `chance_clause` is allowlisted with a dated reason because it renders
+#: the tricode rather than the display name, on purpose (a club name is plural:
+#: "Colorado Rockies wins" is wrong), and it still derives that tricode from the
+#: side taken.
+SIDE_ALLOWLIST: dict[str, str] = {
+    "side_named": "2026-08-31: this IS the door.",
+    "strip_market_suffix": "2026-08-31: takes a subject as an argument; reads no item.",
+    "is_no_side": "2026-08-31: reads model_side only, never a name.",
+    "chance_clause": (
+        "2026-08-31: renders the TRICODE deliberately -- club names are plural "
+        "and 'Colorado Rockies wins' is wrong -- but still derives it from the "
+        "side taken, not from the question's subject."
+    ),
+    "why_market": "2026-08-31: calls side_named; the reach is inside a comment.",
+}
+
+
+def side_field_reachers(path: Path | None = None) -> list[str]:
+    """Functions in the humaniser that read a raw side field themselves."""
+    import ast as _ast
+
+    path = (Path(__file__).resolve().parent / "language.py") if path is None else Path(path)
+    tree = _ast.parse(path.read_text(encoding="utf-8"))
+
+    offenders = []
+    for node in tree.body:
+        if not isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            continue
+        if node.name in SIDE_ALLOWLIST:
+            continue
+        for sub in _ast.walk(node):
+            # item.get("subject") / item.get("opponent")
+            if isinstance(sub, _ast.Call) and isinstance(sub.func, _ast.Attribute):
+                if sub.func.attr == "get" and sub.args:
+                    arg = sub.args[0]
+                    if isinstance(arg, _ast.Constant) and arg.value in SIDE_RAW_FIELDS:
+                        offenders.append(f"{node.name} reads item.get({arg.value!r})")
+            # item["subject"]
+            if isinstance(sub, _ast.Subscript) and isinstance(sub.slice, _ast.Constant):
+                if sub.slice.value in SIDE_RAW_FIELDS:
+                    offenders.append(f"{node.name} reads item[{sub.slice.value!r}]")
+    return sorted(set(offenders))
+
+
+def check_side_named(path: Path | None = None) -> None:
+    hits = side_field_reachers(path)
+    if hits:
+        raise LawViolation(
+            "ONE DOOR FOR THE SIDE: these composers resolve the side themselves "
+            "instead of calling language.side_named. That is how the same "
+            "inversion shipped three times -- a chance label, a heading and a "
+            "market clause each naming the team the model was forecasting "
+            "AGAINST. Call side_named, or add a DATED line to "
+            "audit.SIDE_ALLOWLIST saying why this one is different:"
+            + _NL2 + _NL2.join(hits[:10])
+        )

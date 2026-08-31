@@ -904,7 +904,7 @@ def plant_a_why_that_disagrees_with_its_contributions() -> Result:
     names_top = bool(said) and top.lower() in said[0].lower()
     # The SECOND sentence is where direction shows: the park pulls against the
     # pick here, so it must be introduced as opposing rather than agreeing.
-    opposes = len(said) > 1 and said[1].startswith("Pulling the other way:")
+    opposes = len(said) > 1 and said[1].startswith("Pulling the other way")
     # ...and taking the other side must REVERSE that, not repeat it.
     flipped = _lang.why_sentences(dict(item, model_side="lose"), phrases)
     reverses = len(flipped) > 1 and "points the same way" in flipped[1]
@@ -931,6 +931,66 @@ def plant_a_factor_with_no_why_template() -> Result:
         f"all {len(registry.all_factors())} declared factors carry a template"
         if caught else
         f"NOT CAUGHT - no template on: {', '.join(sorted(missing))}",
+    )
+
+
+def plant_a_composer_that_resolves_the_side_itself() -> Result:
+    """Add a composer that reaches for `subject` instead of calling side_named.
+
+    THE DEFECT THIS PREVENTS SHIPPED THREE TIMES: a chance label, a Why heading
+    and a market clause, each naming the club the model was forecasting
+    AGAINST. Each was fixed where it was found, which is exactly why it kept
+    coming back -- three instances of one defect is a missing function, not
+    three bugs.
+    """
+    root = Path(audit.__file__).resolve().parent
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        copy = Path(tmp) / "language.py"
+        text = (root / "language.py").read_text(encoding="utf-8")
+        text += chr(10).join([
+            "",
+            "",
+            "def headline_for_a_card(item):",
+            '    """A planted composer that resolves the side on its own."""',
+            '    who = item.get("subject")',
+            '    return f"Why {who}"',
+            "",
+        ])
+        copy.write_text(text, encoding="utf-8")
+        try:
+            audit.check_side_named(copy)
+        except audit.LawViolation as exc:
+            return Result("ONE DOOR FOR THE SIDE",
+                          "resolve the side in a composer instead of side_named",
+                          "audit.check_side_named", True, str(exc))
+        return Result("ONE DOOR FOR THE SIDE",
+                      "resolve the side in a composer instead of side_named",
+                      "audit.check_side_named", False,
+                      "NOT CAUGHT - a composer reached the raw subject and passed")
+
+
+def plant_a_side_named_that_ignores_the_flip() -> Result:
+    """The behaviour half: the door must NAME THE OTHER CLUB on a NO side.
+
+    A door that exists and returns the subject anyway would pass the structural
+    scan and reproduce the original defect exactly.
+    """
+    from gridiron import language as _lang
+
+    item = {
+        "subject": "ATL", "market_type": "moneyline", "model_side": "lose",
+        "opponent": "COL", "model_prob": 0.53,
+        "team_names": {"ATL": "Atlanta Braves", "COL": "Colorado Rockies"},
+    }
+    name, prob = _lang.side_named(item)
+    yes_name, _ = _lang.side_named(dict(item, model_side="win", opponent="COL"))
+    caught = name == "Colorado Rockies" and yes_name == "Atlanta Braves" and prob == 0.53
+    return Result(
+        "ONE DOOR FOR THE SIDE", "name the subject when the model took the other side",
+        "language.side_named", caught,
+        f"a NO-side moneyline names {name!r}, a YES-side names {yes_name!r}"
+        if caught else
+        f"NOT CAUGHT - NO side named {name!r} and YES side named {yes_name!r}",
     )
 
 
@@ -1589,6 +1649,8 @@ def main() -> int:
     results.append(plant_a_pooled_strong_tier())
     results.append(plant_a_why_that_disagrees_with_its_contributions())
     results.append(plant_a_factor_with_no_why_template())
+    results.append(plant_a_composer_that_resolves_the_side_itself())
+    results.append(plant_a_side_named_that_ignores_the_flip())
     results.append(plant_an_orphan_guard())
     results.append(plant_a_decorated_function_mistaken_for_an_orphan())
     results.append(plant_a_context_with_no_sport())
