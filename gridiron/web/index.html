@@ -22,44 +22,45 @@
 
 <div id="kind-banner" class="banner" hidden></div>
 
-<div class="sportbar">
-  <div class="sportbar-inner">
+<!-- ONE BAR. There were two -- a sport bar above a masthead -- and between
+     them they cost 150px of a phone screen before a single forecast appeared.
+     The brand shrinks to a word, the sport tabs carry their settled counts, the
+     page nav sits right, and the active sport's season record ends the line.
+     The tagline and the LAW 6 caption move to the footer: neither is something
+     a returning reader needs at the top of every visit. -->
+<header class="bar">
+  <div class="bar-inner">
+    <a class="brand" href="#/week" aria-label="Gridiron, picks">
+      <span class="brand-a">GRID</span><span class="brand-b">IRON</span>
+    </a>
     <nav id="sport-tabs" aria-label="Sport"></nav>
-    <div class="resolved-count" id="record-line"></div>
-  </div>
-</div>
-
-<header class="masthead">
-  <div class="masthead-inner">
-    <div class="brand">
-      <h1>Gridiron</h1>
-      <p class="tagline">A forecaster that grades itself, one sport at a time.</p>
-    </div>
-    <nav id="nav">
-      <!-- Track record is first and is the default route, deliberately. -->
-      <a href="#/record" data-route="record">Track record</a>
-      <a href="#/week" data-route="week">This week</a>
-      <a href="#/factors" data-route="factors">Factors</a>
-      <a href="#/versions" data-route="versions">Versions</a>
+    <nav id="nav" aria-label="Page">
+      <a href="#/week" data-route="week">Picks</a>
+      <a href="#/record" data-route="record">Record</a>
       <a href="#/history" data-route="history">History</a>
       <a href="#/schedule" data-route="schedule">Schedule</a>
-      <a href="#/digest" data-route="digest">Digest</a>
+      <a href="#/factors" data-route="factors" class="nav-more">Factors</a>
+      <a href="#/versions" data-route="versions" class="nav-more">Versions</a>
+      <a href="#/digest" data-route="digest" class="nav-more">Digest</a>
     </nav>
+    <div class="season-record" id="record-line"></div>
   </div>
 </header>
 
 <main id="main">
   <!-- SINCE YOU LAST LOOKED. Leads the page, above the picks, because the
        first question on opening the app is "what happened while I was away". -->
-  <section id="greeting" class="greet" hidden>
-    <div class="msg" id="greet-msg"></div>
-    <div class="countdown" id="greet-countdown"></div>
-  </section>
-  <div id="notices" class="notices" hidden>
-    <button type="button" id="notices-summary" class="notices-summary"
-            aria-expanded="false" aria-controls="notices-detail"></button>
-    <div id="notices-detail" class="notices-detail" hidden></div>
+  <!-- ONE STRIP. The greeting and the notices were three stacked full-width
+       boxes above the picks; on a phone the first forecast started below the
+       fold. Since-you-last-looked reads on the left, the notice COUNT on the
+       right, and the detail opens only when asked for. -->
+  <div id="glance" class="glance" hidden>
+    <div class="glance-msg" id="greet-msg"></div>
+    <button type="button" id="notices-summary" class="glance-notices"
+            aria-expanded="false" aria-controls="notices-detail" hidden></button>
   </div>
+  <div id="notices-detail" class="notices-detail" hidden></div>
+  <div id="greet-countdown" class="glance-countdown" hidden></div>
   <div id="greet-settled"></div>
 
   <section id="view-record" class="view" hidden>
@@ -99,8 +100,19 @@
   </section>
 
   <section id="view-week" class="view" hidden>
-    <div class="section-head">
-      <h2 id="week-title">This week</h2>
+    <!-- ONE controls line: the sort on the left, what the slate contains on
+         the right. The title, the week picker and the market filter move
+         behind the "more" details -- a returning reader wants tonight, and
+         choosing a past week is the rarer act. -->
+    <div class="controls">
+      <div class="seg" id="week-sort-seg" role="group" aria-label="Sort the slate">
+        <button type="button" data-sort="disagreement" aria-pressed="true">By disagreement</button>
+        <button type="button" data-sort="confidence" aria-pressed="false">By confidence</button>
+      </div>
+      <div class="slate-counts" id="week-counts"></div>
+    </div>
+    <details class="week-more">
+      <summary id="week-title">This week</summary>
       <div class="filters">
         <label>Week
           <select id="week-picker"></select>
@@ -109,14 +121,8 @@
           <select id="week-market"><option value="">all markets</option></select>
         </label>
       </div>
-    </div>
-    <div class="controls">
-      <div class="seg" id="week-sort-seg" role="group" aria-label="Sort the slate">
-        <button type="button" data-sort="disagreement" aria-pressed="true">By disagreement</button>
-        <button type="button" data-sort="confidence" aria-pressed="false">By confidence</button>
-      </div>
       <p class="why" id="week-sort"></p>
-    </div>
+    </details>
     <div id="week-cards"></div>
   </section>
 

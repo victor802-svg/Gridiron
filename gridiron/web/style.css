@@ -829,3 +829,202 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .quiet-market {
   color: var(--faint);
 }
+
+/* ============================================================
+   K2 — THE COMPACT SCREEN
+   ============================================================
+   Rank, matchup, pick, chance, tier. Everything else behind a tap.
+   The full card put a rail, a gap, a bucket line, a decomposition and three
+   rationale essays on screen for every forecast; a slate of eight filled
+   several screens and the reader scrolled past the picks to find the picks. */
+
+/* --- ONE HEADER BAR -------------------------------------------------------
+   Was two: a sport bar above a masthead, together 150px of a phone screen
+   before a single forecast appeared. */
+.bar {
+  position: sticky; top: 0; z-index: 40;
+  height: 52px;
+  background: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.bar-inner {
+  height: 100%;
+  max-width: var(--page, 1100px);
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex; align-items: center; gap: 18px;
+}
+.brand {
+  font-weight: 700; letter-spacing: 0.04em; font-size: 15px;
+  text-decoration: none; flex: none;
+}
+.brand-a { color: var(--text); }
+.brand-b { color: var(--green); }
+
+.bar #sport-tabs { display: flex; gap: 14px; flex: none; }
+.bar #sport-tabs button {
+  background: none; border: 0; padding: 4px 0 6px;
+  color: var(--muted); font: inherit; font-size: 13px; font-weight: 600;
+  letter-spacing: 0.03em; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.bar #sport-tabs button[aria-pressed="true"] {
+  color: var(--text); border-bottom-color: var(--green);
+}
+.bar #sport-tabs .tab-n {
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+  margin-left: 4px; font-weight: 400;
+}
+.bar #nav { display: flex; gap: 14px; margin-left: auto; }
+.bar #nav a {
+  color: var(--muted); text-decoration: none; font-size: 13px;
+}
+.bar #nav a[aria-current="page"] { color: var(--text); }
+.season-record {
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  flex: none; padding-left: 4px;
+}
+
+/* --- ONE GLANCE STRIP ----------------------------------------------------- */
+.glance {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+  font-size: 13px; color: var(--muted);
+}
+.glance-msg { flex: 1; min-width: 0; }
+.glance-notices {
+  flex: none; background: none; border: 1px solid var(--line);
+  border-radius: 999px; padding: 3px 10px;
+  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
+}
+.glance-notices:hover { color: var(--text); border-color: var(--muted); }
+.glance-countdown { font-size: 12px; color: var(--faint); padding: 6px 0; }
+
+/* --- THE CONTROLS LINE ---------------------------------------------------- */
+.controls {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 14px 0 12px; flex-wrap: wrap;
+}
+.slate-counts {
+  font-family: var(--mono); font-size: 12px; color: var(--faint);
+}
+.week-more { margin-bottom: 10px; }
+.week-more > summary {
+  cursor: pointer; color: var(--muted); font-size: 13px; list-style: none;
+}
+.week-more > summary::-webkit-details-marker { display: none; }
+.week-more > summary::after { content: " \25BE"; color: var(--faint); }
+.week-more[open] > summary::after { content: " \25B4"; }
+
+/* --- THE ROWS ------------------------------------------------------------- */
+.rows {
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  background: var(--card);
+}
+.row + .row { border-top: 1px solid var(--line); }
+.row-head {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  align-items: center; gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  /* 44px minimum tap target, phone included. */
+  min-height: 44px;
+}
+.row-head:hover { background: var(--card-hi, rgba(255,255,255,0.02)); }
+.row-head:focus-visible {
+  outline: 2px solid var(--green); outline-offset: -2px;
+}
+.row.open .row-head { background: var(--card-hi, rgba(255,255,255,0.02)); }
+
+.row-rank {
+  font-family: var(--mono); font-size: 12px; color: var(--faint);
+  text-align: right;
+}
+.row-mid { min-width: 0; }
+.row-title {
+  font-weight: 700; letter-spacing: 0.04em; font-size: 14px;
+  text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row-pick {
+  font-size: 13px; color: var(--muted); margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row-caret { color: var(--green); margin-right: 5px; }
+.row-phrase { color: var(--text); font-weight: 600; }
+.row-when { color: var(--faint); }
+
+/* --- THE EXPANDED BODY ---------------------------------------------------- */
+.row-body { padding: 4px 14px 16px 54px; }
+.row-stats {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  padding: 6px 0 10px;
+}
+.row-why { font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.row-why b { color: var(--text); }
+.row-more {
+  display: inline-block; margin-top: 10px;
+  color: var(--green); text-decoration: none; font-size: 13px;
+}
+.row-more:hover { text-decoration: underline; }
+.row-tierline {
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  margin-top: 10px;
+}
+
+/* --- RESOLVED ------------------------------------------------------------- */
+.rows-done .row-head { cursor: default; }
+.rows-done { opacity: 0.72; }
+.row-done .row-title { font-weight: 600; }
+.chip-win { background: var(--green); color: var(--ink); border-color: var(--green); }
+.chip-loss { background: #4a1f22; color: #ff9d9d; border-color: #6b2a2e; }
+.chip-void { background: none; color: var(--faint); border-color: var(--line); }
+.chip-none { border: 0; }
+
+/* --- PHONE ---------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .bar-inner { gap: 10px; padding: 0 12px; }
+  .bar #nav .nav-more { display: none; }
+  .bar #nav { gap: 12px; }
+  .bar #nav a { font-size: 12px; }
+  .season-record { display: none; }
+  .bar #sport-tabs { gap: 12px; }
+
+  /* A brand, four sport tabs and four page links do not fit in 390px, and a
+     flex row that cannot fit pushes the PAGE wider -- 78px of horizontal
+     scroll on every route, which is the whole layout broken by the header.
+     The nav scrolls inside the bar instead: `min-width: 0` is the load-bearing
+     half, because a flex item defaults to min-content and refuses to shrink
+     below its text no matter what overflow says. */
+  /* `flex: none` on the tabs is why the first attempt at this did nothing:
+     min-width and overflow are both irrelevant to an item with
+     flex-shrink: 0, which simply refuses to be smaller than its content and
+     pushes the page instead. The tabs become the flexible item and scroll
+     inside themselves; the nav keeps its size because four short words are
+     what a reader navigates by. */
+  .bar-inner > * { min-width: 0; }
+  .bar #sport-tabs {
+    flex: 1 1 auto;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .bar #nav { flex: 0 1 auto; overflow-x: auto; scrollbar-width: none; }
+  .bar #sport-tabs::-webkit-scrollbar,
+  .bar #nav::-webkit-scrollbar { display: none; }
+  .bar #nav a, .bar #sport-tabs button { white-space: nowrap; }
+
+  /* The rank folds into the matchup line: at 390px a 28px gutter is 7% of the
+     screen spent on an ordinal the reader can count. */
+  .row-head { grid-template-columns: 1fr auto auto; gap: 8px; padding: 12px; }
+  .row-rank { display: none; }
+  .row-title::before {
+    content: attr(data-rank);
+    color: var(--faint); font-family: var(--mono); margin-right: 6px;
+  }
+  .row-body { padding-left: 12px; }
+  .prob small { max-width: 14ch; }
+  .controls { gap: 8px; }
+}

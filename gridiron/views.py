@@ -187,12 +187,25 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         wk = repo.next_unplayed_week(conn, season, sport=sport)
 
     def fetch(s: int, w: int | None):
+        """The slate's forecasts. VOIDED ROWS ARE NOT FORECASTS.
+
+        A void is terminal: the question was never answered, the row is out of
+        every curve, and it must not appear on the picks list as though the
+        model were standing behind it. Forty-seven voided NBA rows -- written
+        52 days before tip, then voided for exactly that reason -- were
+        rendering as live forecasts on This week, twenty of them additionally
+        showing the opposite side (K1). They belong in History with a VOID chip
+        and their reason, which is where they now are and the only place.
+        """
         if w is None:
             return []
         return conn.execute(
             "SELECT p.*, g.home, g.away, g.kickoff_utc, g.status, g.home_score,"
             " g.away_score FROM predictions p JOIN games g ON g.id = p.game_id"
-            " WHERE p.sport = ? AND g.season = ? AND g.week = ? ORDER BY p.id",
+            " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
+            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                   WHERE v.prediction_id = p.id)"
+            " ORDER BY p.id",
             (sport, s, w),
         ).fetchall()
 
@@ -203,7 +216,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # week that actually has forecasts rather than showing an empty page.
         latest = conn.execute(
             "SELECT g.season, g.week FROM predictions p JOIN games g ON g.id = p.game_id"
-            " WHERE p.sport = ? ORDER BY g.season DESC, g.week DESC LIMIT 1",
+            " WHERE p.sport = ?"
+            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                   WHERE v.prediction_id = p.id)"
+            " ORDER BY g.season DESC, g.week DESC LIMIT 1",
             (sport,),
         ).fetchone()
         if latest is None:
@@ -243,6 +259,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "created_utc": r["created_utc"],
                 "game_id": r["game_id"],
                 "matchup": f"{r['away']} @ {r['home']}",
+                # Who the pick is FOR when the model takes the NO side.
+                "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
                 "kickoff_utc": r["kickoff_utc"],
                 "game_status": r["status"],
                 "final_score": (
@@ -264,6 +282,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     "subject": r["subject"], "market_type": r["market_type"],
                     "prop_type": r["prop_type"], "model_side": r["model_side"],
                     "line_asked": r["line_asked"],
+                    "opponent": (r["away"] if r["subject"] == r["home"]
+                                 else r["home"]),
                 }),
                 "market_line": snap.get("line"),
                 "market_implied_prob": implied,
@@ -290,6 +310,13 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "tier": calibration.tier_from_bucket(bucket_cache[key]),
                 "market_fetched_utc": snap.get("fetched_utc"),
                 "factor_set_version": r["factor_set_version"],
+                # --- the compact row (K2) -------------------------------------
+                # Built here, not in the renderer. The row shows five things and
+                # every one of them is a phrase the server wrote.
+                "row_title": _row_title(r),
+                "start_local": _start_local(r["kickoff_utc"]),
+                "bucket_line": _bucket_line(bucket_cache[key]),
+                "resolved_story": _resolved_story(r, gap),
             }
         )
         # PLAIN WORDS, built on the SERVER, exactly as the history table does.
@@ -324,6 +351,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         "n": len(cards),
         "cards": cards,
         "line_source": lines.line_source_for(sport),
+        # A THIN SLATE HAS TO EXPLAIN ITSELF. Eight picks on a fourteen-game
+        # card reads as a failure until the floor is named, and the floor
+        # holding is the system working (ruling R4).
+        "below_floor": _below_floor(conn, sport, wk),
+        "floor": config.PROPS_MIN_CLAIM,
+        "quiet_markets": _quiet_markets(conn, sport, season, wk) if wk else [],
         "sorted_by": (
             "size of disagreement with the market; no comparison sorts last"
             if lines.line_source_for(sport)["available"]
@@ -469,6 +502,8 @@ def history(
                     "subject": r["subject"], "market_type": r["market_type"],
                     "prop_type": r["prop_type"], "model_side": r["model_side"],
                     "line_asked": r["line_asked"],
+                    "opponent": (r["away"] if r["subject"] == r["home"]
+                                 else r["home"]),
                 }),
                 "market_line_at_the_time": snap.get("line"),
                 "market_implied_prob": snap.get("implied_prob"),
@@ -525,6 +560,8 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
                     "subject": r["subject"], "market_type": r["market_type"],
                     "prop_type": r["prop_type"], "model_side": r["model_side"],
                     "line_asked": r["line_asked"],
+                    "opponent": (r["away"] if r["subject"] == r["home"]
+                                 else r["home"]),
                 }),
         "reasoning": r["reasoning"],
         "degraded": r["degraded"],
@@ -858,6 +895,89 @@ def _record_movement(conn: sqlite3.Connection, sport: str, just_settled: int) ->
         "buckets": buckets,
         "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
     }
+
+
+def _below_floor(conn: sqlite3.Connection, sport: str, wk: int | None) -> int:
+    """How many prop questions this slate formed and did not ask.
+
+    Read from the task's own recorded payload rather than recomputed: the
+    number the reader sees is the number the run actually reported, so the
+    card and the schedule panel cannot drift apart.
+    """
+    if wk is None:
+        return 0
+    row = conn.execute(
+        "SELECT payload_json FROM task_runs WHERE task = ?"
+        " AND payload_json LIKE ? ORDER BY id DESC LIMIT 1",
+        (f"predict:{sport}", f'%"week": {wk},%'),
+    ).fetchone()
+    if row is None:
+        return 0
+    try:
+        return int(json.loads(row["payload_json"]).get("below_floor") or 0)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _row_title(r) -> str:
+    """The row's heading: a matchup, or a subject and what is being asked.
+
+    "SD @ TB" for a game market; "TATIS JR. - HITS" for a prop, because on a
+    prop the subject IS the headline and the fixture is a detail that belongs
+    on the pick line underneath.
+    """
+    if r["market_type"] != "prop":
+        return f"{r['away']} @ {r['home']}"
+    name = language.strip_market_suffix(r["subject"], r["prop_type"])
+    surname = name.split()[-1] if name else name
+    # "Fernando Tatis Jr." -> "Tatis Jr."; a row is not the place for a full
+    # name, and the expanded view carries it.
+    parts = (name or "").split()
+    if len(parts) > 2 and parts[-1].rstrip(".").lower() in ("jr", "sr", "ii", "iii"):
+        surname = " ".join(parts[-2:])
+    return f"{surname} · {language.humanise(r['prop_type'])}"
+
+
+def _start_local(kickoff_utc: str | None) -> str | None:
+    """The start time as a reader's clock shows it, or None.
+
+    A card that says 6:40 PM means the reader's evening. Formatted server-side
+    so one implementation decides it; the browser's own timezone is applied by
+    the browser, which is the one thing it is better placed to know -- so this
+    returns the UTC instant and the row renders it.
+    """
+    return kickoff_utc
+
+
+def _bucket_line(bucket: dict) -> str:
+    """"50-60% bucket · 6 resolved · too few to grade", in words.
+
+    LAW 4 on one line: the bucket, its N, and -- when the N is short -- what
+    that means, rather than a number a reader has to interpret.
+    """
+    label = bucket.get("label") or "?"
+    n = bucket.get("n") or 0
+    minimum = bucket.get("minimum") or config.MIN_SAMPLE_FOR_BUCKET_POINT
+    if n == 0:
+        return f"{label} bucket · nothing resolved here yet"
+    if n < minimum:
+        return f"{label} bucket · {n} resolved · too few to grade"
+    return f"{label} bucket · {n} resolved"
+
+
+def _resolved_story(r, gap) -> str | None:
+    """One line telling what happened, for the resolved section."""
+    if r["resolved_utc"] is None or r["status"] != "final":
+        return None
+    subject = language.strip_market_suffix(r["subject"], r["prop_type"])
+    story = f"picked {subject}"
+    if r["home_score"] is not None and r["away_score"] is not None:
+        winner = r["home"] if r["home_score"] > r["away_score"] else r["away"]
+        story += (f" · {winner} won {max(r['home_score'], r['away_score'])}"
+                  f"-{min(r['home_score'], r['away_score'])}")
+    if gap is not None:
+        story += f" · gap was {gap * 100:+.0f}"
+    return story
 
 
 def _todays_slate_line(conn: sqlite3.Connection, sport: str) -> dict:

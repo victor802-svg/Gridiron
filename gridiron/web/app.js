@@ -905,6 +905,152 @@ const Gridiron = (function () {
   }
 
   // --- THIS WEEK ----------------------------------------------------------
+  // ============================================================
+  // THE COMPACT ROW
+  // ============================================================
+  //
+  // Five things visible: rank, matchup, what it picks, the chance, the tier.
+  // Everything else is behind a tap. The full card put a rail, a gap figure, a
+  // bucket line, a decomposition and three rationale essays on screen for every
+  // forecast, so a slate of eight filled several screens and the reader scrolled
+  // past the picks to find the picks.
+  //
+  // Nothing here builds a sentence. `row_title`, `phrase`, `chance_clause` and
+  // `bucket_line` all arrive written from `language.py`, which is what stopped
+  // the renderer inventing a verb and getting the side backwards twice.
+
+  function pickRow(c, rank) {
+    const row = el('div', 'row');
+    row.dataset.id = c.prediction_id;
+
+    const head = el('div', 'row-head');
+    head.setAttribute('role', 'button');
+    head.setAttribute('tabindex', '0');
+    head.setAttribute('aria-expanded', 'false');
+
+    head.appendChild(el('div', 'row-rank', rank == null ? '' : String(rank)));
+
+    const mid = el('div', 'row-mid');
+    const title = el('div', 'row-title', c.row_title || c.matchup || '');
+    // The phone folds the rank into this line via a CSS ::before, so the
+    // ordinal is carried on the element that survives the layout change.
+    if (rank != null) title.dataset.rank = rank;
+    mid.appendChild(title);
+    const pick = el('div', 'row-pick');
+    pick.appendChild(el('span', 'row-caret', '\u25B8'));
+    pick.appendChild(el('span', 'row-phrase', c.phrase || ''));
+    const tail = rowTail(c);
+    if (tail) pick.appendChild(el('span', 'row-when', ' \u00B7 ' + tail));
+    mid.appendChild(pick);
+    head.appendChild(mid);
+
+    const prob = el('div', 'prob');
+    prob.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
+    prob.appendChild(el('span', 'pct', '%'));
+    prob.appendChild(el('small', '', c.chance_clause || ''));
+    head.appendChild(prob);
+
+    head.appendChild(tierChip(c.tier));
+    row.appendChild(head);
+
+    // Built once, on first open. A slate of 25 would otherwise render 25
+    // rails, 25 decompositions and 25 why-texts nobody has asked to see.
+    const body = el('div', 'row-body');
+    body.hidden = true;
+    row.appendChild(body);
+
+    let built = false;
+    const toggle = () => {
+      if (!built) { buildRowBody(body, c); built = true; }
+      body.hidden = !body.hidden;
+      head.setAttribute('aria-expanded', String(!body.hidden));
+      row.classList.toggle('open', !body.hidden);
+    };
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        toggle();
+      }
+    });
+    return row;
+  }
+
+  // What follows the pick on the line: kick-off for a game, the fixture for a
+  // prop, because on a prop the subject is the headline and the fixture is the
+  // detail.
+  function rowTail(c) {
+    if (c.market_type === 'prop') return c.matchup || '';
+    return c.start_local ? localTime(c.start_local) : '';
+  }
+
+  function localTime(iso) {
+    try {
+      return new Date(iso).toLocaleTimeString([], {
+        hour: 'numeric', minute: '2-digit'
+      });
+    } catch (e) { return ''; }
+  }
+
+  function tierChip(tier) {
+    if (!tier || !tier.tier) return el('span', 'chip chip-none', '');
+    const chip = el('span', 'chip chip-' + tier.tier.toLowerCase(), tier.tier);
+    chip.title = tier.message || '';
+    return chip;
+  }
+
+  function buildRowBody(body, c) {
+    body.innerHTML = '';
+    body.appendChild(rail(c));
+
+    const line = el('div', 'row-stats');
+    line.appendChild(el('span', 'row-gap',
+      c.gap === null || c.gap === undefined
+        ? 'no line' : 'gap ' + (c.gap * 100 >= 0 ? '+' : '') + (c.gap * 100).toFixed(1)));
+    line.appendChild(el('span', 'row-bucket', c.bucket_line || ''));
+    body.appendChild(line);
+
+    // K3 fills this. Until then the stored reasoning stands in rather than a
+    // blank space, because an empty expander reads as broken.
+    const why = el('div', 'row-why');
+    if (c.why && c.why.length) {
+      why.appendChild(el('b', '', 'Why ' + (c.why_subject || 'this pick') + ':'));
+      c.why.forEach(sentence => {
+        why.appendChild(document.createTextNode(' ' + sentence));
+      });
+    } else if (c.reasoning) {
+      why.textContent = c.reasoning;
+    }
+    body.appendChild(why);
+
+    const more = el('a', 'row-more', 'How the model works \u2192');
+    more.href = '#/factors';
+    body.appendChild(more);
+
+    if (c.tier && c.tier.message) {
+      body.appendChild(el('div', 'row-tierline',
+        (c.tier.tier || '') + ' tier ' + c.tier.message.replace(/^tier /, '')));
+    }
+  }
+
+  function resolvedRow(c) {
+    const row = el('div', 'row row-done');
+    const head = el('div', 'row-head');
+    head.appendChild(el('div', 'row-rank', ''));
+    const mid = el('div', 'row-mid');
+    mid.appendChild(el('div', 'row-title', c.matchup || ''));
+    mid.appendChild(el('div', 'row-pick', c.resolved_story || c.phrase || ''));
+    head.appendChild(mid);
+    const prob = el('div', 'prob');
+    prob.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
+    prob.appendChild(el('small', '', 'model'));
+    head.appendChild(prob);
+    const word = c.voided ? 'VOID' : (c.outcome === 1 ? 'WIN' : 'LOSS');
+    head.appendChild(el('span', 'chip chip-' + word.toLowerCase(), word));
+    row.appendChild(head);
+    return row;
+  }
+
   async function renderWeek() {
     const host = document.getElementById('week-cards');
     skeleton(host, 'skeleton-card', 3);
@@ -929,13 +1075,50 @@ const Gridiron = (function () {
     if (state.weekSort === 'confidence') {
       cards = cards.slice().sort((a, b) => (b.model_prob || 0) - (a.model_prob || 0));
     }
-    if (!cards.length) {
+
+    // A resolved forecast is not a pick. Split rather than filtered, so the
+    // slate can show both without a reader mistaking last night for tonight.
+    const open = cards.filter(c => c.resolved_utc === null && !c.voided);
+    const done = cards.filter(c => c.resolved_utc !== null || c.voided);
+
+    // THE CONTROLS LINE. A thin slate has to explain itself: eight picks on a
+    // fourteen-game card looks like a failure until the floor is named.
+    const counts = document.getElementById('week-counts');
+    if (counts) {
+      const bits = [data.slate_word === 'day' ? 'tonight' : 'this week',
+                    open.length + (open.length === 1 ? ' pick' : ' picks')];
+      if (data.below_floor) {
+        bits.push(data.below_floor + ' below the ' +
+                  Math.round((data.floor || 0.7) * 100) + '% floor');
+      }
+      counts.textContent = bits.join(' \u00B7 ');
+    }
+
+    if (!open.length && !done.length) {
       host.appendChild(el('div', 'empty', data.message ||
-        (market ? 'No ' + market + ' forecasts on this slate.'
-                : 'No forecasts recorded for this week yet.')));
+        (market ? 'No ' + marketLabel(market) + ' forecasts on this slate.'
+                : 'No forecasts recorded for this slate yet.')));
+      (data.quiet_markets || []).forEach(q =>
+        host.appendChild(el('div', 'quiet-market', q)));
       return;
     }
-    cards.forEach(c => host.appendChild(renderCard(c)));
+
+    if (open.length) {
+      const list = el('div', 'rows');
+      open.forEach((c, i) => list.appendChild(pickRow(c, i + 1)));
+      host.appendChild(list);
+    }
+    // A market the slate asked nothing in says so, rather than leaving a gap
+    // that reads as a failure to find questions.
+    (data.quiet_markets || []).forEach(q =>
+      host.appendChild(el('div', 'quiet-market', q)));
+
+    if (done.length) {
+      host.appendChild(el('div', 'section-label', 'Resolved'));
+      const list = el('div', 'rows rows-done');
+      done.forEach(c => list.appendChild(resolvedRow(c)));
+      host.appendChild(list);
+    }
   }
 
   async function loadWeekPicker() {
@@ -1181,11 +1364,15 @@ const Gridiron = (function () {
     host.innerHTML = '';
     data.sports.forEach(sp => {
       const b = el('button', '', sp.label);
-      // LAW 4 in the navigation: the count is on the label, so an empty record
-      // is visible before the tab is clicked rather than after.
-      // "6 settled", not "n=6". LAW 4 wants the count present, not a
-      // particular notation, and a tab is read at a glance by a person.
-      b.appendChild(el('span', 'tab-n', int(sp.n) + ' settled'));
+      // LAW 4 in the navigation: the count rides on the tab, so an empty
+      // record is visible before the tab is clicked rather than after. The bar
+      // is 52px now, so it is the NUMBER with the word in the title -- the law
+      // wants the count present, not a particular notation, and the tooltip
+      // keeps the noun for anyone who wants it.
+      const n = el('span', 'tab-n', String(int(sp.n)));
+      b.appendChild(n);
+      b.title = sp.label + ': ' + int(sp.n) + ' settled';
+      b.setAttribute('aria-pressed', sp.sport === state.sport ? 'true' : 'false');
       b.setAttribute('aria-current', sp.sport === state.sport ? 'true' : 'false');
       b.dataset.sport = sp.sport;
       b.addEventListener('click', () => selectSport(sp.sport));
@@ -1199,7 +1386,9 @@ const Gridiron = (function () {
     state.sport = sport;
     state.historyOffset = 0;
     document.querySelectorAll('#sport-tabs button').forEach(b => {
-      b.setAttribute('aria-current', b.dataset.sport === sport ? 'true' : 'false');
+      const on = b.dataset.sport === sport;
+      b.setAttribute('aria-current', on ? 'true' : 'false');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     try {
       await renderRecordLine();
@@ -1340,10 +1529,15 @@ const Gridiron = (function () {
     }
 
     const counts = hosts.countdown;
-    counts.textContent = (data.movement.buckets[0] || {}).countdown ||
-      (data.today && data.today.line) || '';
+    if (counts) {
+      counts.textContent = (data.movement.buckets[0] || {}).countdown ||
+        (data.today && data.today.line) || '';
+      counts.hidden = !counts.textContent;
+    }
 
-    if (hosts.warnings) renderNotices(data.warnings || [], hosts.warnings);
+    // The strip owns the notice controls; renderNotices finds them by id.
+    // Passing a host was how a second copy came to exist.
+    renderNotices(data.warnings || []);
 
     if (hosts.settled) {
       hosts.settled.innerHTML = '';
@@ -1364,33 +1558,51 @@ const Gridiron = (function () {
     }
   }
 
-  // ONE compact bar in place of three full-width banners. This is compression,
-  // not suppression: the count and the key words are the summary, every
-  // sentence survives behind the expander, and the bar still travels to the
-  // front page. Three stacked red borders trained the eye to skip them.
-  function renderNotices(warnings, host) {
-    host.innerHTML = '';
-    if (!warnings.length) { host.hidden = true; return; }
-    host.hidden = false;
+  // ONE STRIP, and ONE IMPLEMENTATION OF IT.
+  //
+  // C2 was meant to collapse three stacked full-width notice boxes into a
+  // single expandable line, and it half did: the markup carried a
+  // `#notices-summary` button and a `#notices-detail` panel, and this function
+  // ALSO built a summary button and a detail panel of its own inside the host.
+  // Two implementations of one control. Which one a reader got depended on
+  // which host the caller passed, so the notices collapsed on the front page
+  // and stacked full-width everywhere else -- the regression the brief
+  // describes, and it was invisible to every test because both versions
+  // render something.
+  //
+  // Now: the markup owns the elements, this fills them, and there is nowhere
+  // for a second version to live.
+  function renderNotices(warnings) {
+    const summary = document.getElementById('notices-summary');
+    const detail = document.getElementById('notices-detail');
+    if (!summary || !detail) return;
 
-    const summary = el('button', 'notices-summary');
-    summary.type = 'button';
-    summary.setAttribute('aria-expanded', 'false');
+    if (!warnings.length) {
+      summary.hidden = true;
+      detail.hidden = true;
+      detail.innerHTML = '';
+      return;
+    }
+
+    summary.hidden = false;
+    summary.innerHTML = '';
     summary.appendChild(el('b', 'notices-count',
       warnings.length + (warnings.length === 1 ? ' notice' : ' notices')));
-    summary.appendChild(document.createTextNode(' — ' +
-      warnings.map(shortNotice).join(' · ')));
+    summary.appendChild(document.createTextNode(' \u25BE'));
+    summary.title = warnings.map(shortNotice).join(' \u00B7 ');
 
-    const detail = el('div', 'notices-detail');
+    detail.innerHTML = '';
     detail.hidden = true;
+    summary.setAttribute('aria-expanded', 'false');
     warnings.forEach(w => detail.appendChild(el('div', 'greet-warn ' + w.kind, w.text)));
 
-    summary.addEventListener('click', () => {
+    // Rebound rather than accumulated: renderNotices runs on every sport
+    // switch, and addEventListener would stack a new handler each time, so the
+    // panel would toggle twice and appear not to open at all.
+    summary.onclick = () => {
       detail.hidden = !detail.hidden;
       summary.setAttribute('aria-expanded', String(!detail.hidden));
-    });
-    host.appendChild(summary);
-    host.appendChild(detail);
+    };
   }
 
   // "predict:nfl never run", "NFL schedule stale 21h" — the key words only.
@@ -1407,14 +1619,14 @@ const Gridiron = (function () {
   }
 
   async function renderGreeting() {
-    const strip = document.getElementById('greeting');
+    const strip = document.getElementById('glance');
     if (!strip) return;
     try {
       const data = await fetchJSON(withSport('/api/digest'));
       paintDigest(data, {
         msg: document.getElementById('greet-msg'),
         countdown: document.getElementById('greet-countdown'),
-        warnings: document.getElementById('notices'),
+        warnings: null,          // the strip owns them now
         settled: null
       });
       strip.hidden = false;
@@ -1492,7 +1704,7 @@ const Gridiron = (function () {
     // notice bar stays on every page, because a warning nobody sees is not a
     // warning.
     const home = view === 'record';
-    const greeting = document.getElementById('greeting');
+    const greeting = document.getElementById('glance');
     if (greeting) {
       greeting.hidden = !home || greeting.dataset.empty === 'true';
     }

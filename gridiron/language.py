@@ -149,6 +149,15 @@ def phrase(item: dict) -> str:
         return f"{subject} {side_word} {line_text} {humanise(market)}".strip()
 
     if market_type == "moneyline":
+        # "ATL to lose" is arithmetic; "COL to win" is what a person says. The
+        # subject of an MLB moneyline is always the home club, so the model
+        # taking the NO side is a pick for the visitors -- and naming the club
+        # we are actually backing is the whole point of the plain-words law.
+        # Falls back to the literal form only when the opponent is unknown,
+        # because inventing one would be worse than reading oddly.
+        opponent = item.get("opponent")
+        if side == "lose" and opponent:
+            return f"{opponent} to win"
         return f"{subject} {SIDE_WORDS.get(side, 'to win')}".strip()
 
     # spreads
@@ -192,6 +201,13 @@ def chance_clause(item: dict) -> str:
         return f"{subject} goes {'under' if side == 'under' else 'over'}"
 
     if market_type == "moneyline":
+        # Same flip as `phrase`: name the club the model is actually backing.
+        # If these two framed the pick differently -- "COL to win" over "ATL
+        # loses" -- a reader would have to hold both in their head to see they
+        # agree, which is the work the plain-words law exists to remove.
+        opponent = item.get("opponent")
+        if side == "lose" and opponent:
+            return f"{opponent} wins"
         return f"{subject} {'loses' if side == 'lose' else 'wins'}"
 
     # spreads
