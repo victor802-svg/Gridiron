@@ -704,37 +704,22 @@ const Gridiron = (function () {
   // questions arrive in: who is playing, what the model thinks, how sure, where
   // the market sits, how that tier has really done, and only then why.
 
-  const LOW_CONFIDENCE = 0.53;
-
-  // The side the model picked, said the way a person would say it.
+  // `pickSentence` WAS DELETED HERE, and finding out why took longer than the
+  // deletion. Ruling 1 says the frontend composes no prose, and this function
+  // was the clearest violation left in the file: a static lead, an uppercased
+  // data field, and -- when the server sent no phrase -- an else branch that
+  // took the raw subject and appended a verb chosen by market type. That verb
+  // table is the K1 defect, which put "97% chance WAS covers" on 34 cards.
   //
-  // THE SENTENCE COMES FROM THE SERVER. This function used to build it here,
-  // from the raw `subject` and a verb chosen by market type, and it was wrong
-  // twice over: it printed the stored identifier ("FERNANDO TATIS JR.
-  // BATTER_HITS") and it said "over" for EVERY prop, including the ones the
-  // model had called under. A card reading "72% chance he goes over" next to a
-  // prediction of under states the opposite of the record.
+  // It had ZERO CALLERS. K2 replaced the pick card with `pickRow`, and this
+  // went with the old card except that nobody removed it, so the K1 shape sat
+  // in the file looking like live code for two sessions. Rewriting it to
+  // comply would have shipped a server function nobody called to feed a
+  // renderer nobody called; the orphan scan would then have failed the build,
+  // correctly, on the mess I had just made.
   //
-  // `gridiron.language` is the one implementation, and this is one of the three
-  // places its docstring says must not drift apart.
-  function pickSentence(c) {
-    const line = el('div', 'pick');
-    line.appendChild(el('span', 'arrow', '▸'));
-    line.appendChild(document.createTextNode(' Model picks '));
-    if (c.phrase) {
-      line.appendChild(el('b', '', String(c.phrase).toUpperCase()));
-    } else {
-      line.appendChild(el('b', '', String(c.subject || '').toUpperCase()));
-      line.appendChild(document.createTextNode(
-        c.market_type === 'spread' ? ' to cover' : ' to win'));
-    }
-    // Below 53% the app says so. Selling a coin flip as a pick is the small
-    // dishonesty that makes every larger number less believable.
-    if (typeof c.model_prob === 'number' && c.model_prob < LOW_CONFIDENCE) {
-      line.appendChild(el('span', 'barely', ' — barely'));
-    }
-    return line;
-  }
+  // This is exactly the sweep ruling 2 defers -- dead-but-named code in
+  // app.js, which no scan looks at today. Recorded in FOLLOWUPS.
 
   function tierChip(c) {
     const t = c.tier || {};
@@ -1457,27 +1442,20 @@ const Gridiron = (function () {
     if (meta.database_kind === 'live') { banner.hidden = true; return; }
     banner.hidden = false;
     banner.innerHTML = '';
-    banner.appendChild(el('strong', '', meta.database_kind.toUpperCase() + ' DATABASE — '));
+    // Said by the server. It was `meta.database_kind.toUpperCase() + ' DATABASE
+    // — '`: a label built in the browser out of a stored value, which is the
+    // pattern this file is no longer allowed to contain.
+    banner.appendChild(el('strong', '', meta.database_label || ''));
     banner.appendChild(document.createTextNode(meta.database_note || ''));
   }
 
+  // The footer is one server-written sentence now. It used to be five,
+  // assembled here: a sliced timestamp glued to "Current factor set since ", a
+  // count glued to " predictions on record", a spend through `toFixed`. Each
+  // of those is a decision about how a number reads, taken in the one place
+  // the plain-words tests cannot see.
   function renderColophon(meta) {
-    document.getElementById('colophon-text').textContent = [
-      // NOT "Factor set fs2". A version string is an internal identifier --
-      // nobody says "fs2" out loud and it tells a reader neither what changed
-      // nor when. The DATE is the thing a person can use, and the code stays
-      // in the tooltip for anyone matching it against a stored row.
-      meta.factor_set_started
-        ? 'Current factor set since ' + meta.factor_set_started.slice(0, 10)
-        : 'Current factor set',
-      int(meta.predictions) + ' predictions on record',
-      int(meta.games_final) + ' completed games loaded (' +
-        meta.seasons_loaded[0] + '–' + meta.seasons_loaded[1] + ')',
-      'market comparison for ' + int(meta.market_coverage.with_market_line) +
-        ' of ' + int(meta.market_coverage.n),
-      'LLM spend today $' + Number(meta.llm_ledger.usd_spent).toFixed(4) +
-        ' of $' + Number(meta.llm_ledger.usd_cap).toFixed(2)
-    ].join(' · ');
+    document.getElementById('colophon-text').textContent = meta.colophon || '';
   }
 
   // --- the schedule panel -------------------------------------------------

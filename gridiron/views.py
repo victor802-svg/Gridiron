@@ -82,7 +82,7 @@ def meta(conn: sqlite3.Connection, sport: str) -> dict:
         " FROM predictions WHERE sport = ?",
         (sport,),
     ).fetchone()
-    return {
+    payload = {
         "sport": sport,
         "sport_label": config.SPORT_LABELS.get(sport, sport.upper()),
         "sports": sports_summary(conn),
@@ -90,6 +90,10 @@ def meta(conn: sqlite3.Connection, sport: str) -> dict:
         "prop_markets": list(config.SPORT_PROP_MARKETS.get(sport, ())),
         "line_source": lines.line_source_for(sport),
         "database_kind": kind["kind"],
+        # Said here. The browser built this label by uppercasing the stored
+        # kind and appending " DATABASE -- ", which is prose composed in the
+        # renderer out of a data field.
+        "database_label": language.database_label(kind["kind"]),
         "database_note": kind["note"],
         "factor_set_version": config.FACTOR_SET_VERSION,
         # The date the current set began. What a reader can actually use: a
@@ -113,7 +117,11 @@ def meta(conn: sqlite3.Connection, sport: str) -> dict:
             "to no sportsbook or exchange."
         ),
     }
-
+    # The footer sentence, composed by the humaniser rather than glued together
+    # in the browser. It is prose about data -- a spend, a span of seasons, a
+    # coverage count -- and every one of those was formatted in `app.js`.
+    payload["colophon"] = language.colophon(payload)
+    return payload
 
 def _voids_for(conn: sqlite3.Connection, ids: list[int]) -> dict[int, str]:
     if not ids:

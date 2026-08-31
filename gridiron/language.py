@@ -778,6 +778,56 @@ def degraded_words(reason: str | None) -> str:
     return DEGRADED_WORDS.get(code, code)
 
 
+#: What a non-live database is called on the banner. `backtest` is the only
+#: other kind today, and "BACKTEST DATABASE" is what it must say -- not the
+#: stored key uppercased in the browser, which is how it was said before.
+DATABASE_LABELS = {
+    "backtest": "BACKTEST DATABASE",
+    "sample": "SAMPLE DATABASE",
+}
+
+
+def database_label(kind: str | None) -> str | None:
+    """The banner's label, or None for a live database, which needs no banner.
+
+    An unrecognised kind still gets a banner -- it is a warning, and a warning
+    suppressed because nobody wrote words for it is the worst of both.
+    """
+    if not kind or kind == "live":
+        return None
+    return DATABASE_LABELS.get(kind) or f"{kind.upper()} DATABASE"
+
+
+def colophon(meta: dict) -> str:
+    """The footer line: what this record actually contains, in one sentence.
+
+    Composed HERE because it is five sentences of prose about data, and it was
+    built in the renderer -- "Current factor set since " + a sliced timestamp,
+    a count glued to " predictions on record", a spend formatted with
+    `toFixed`. Every one of those is a decision about how a number reads, made
+    in the one place the plain-words tests cannot see and the humaniser's rules
+    do not apply.
+    """
+    bits = []
+    started = meta.get("factor_set_started")
+    bits.append(f"Current factor set since {started[:10]}" if started
+                else "Current factor set")
+    bits.append(f"{meta.get('predictions', 0):,} predictions on record")
+
+    seasons = meta.get("seasons_loaded") or []
+    span = f" ({seasons[0]}-{seasons[-1]})" if len(seasons) >= 2 else ""
+    bits.append(f"{meta.get('games_final', 0):,} completed games loaded{span}")
+
+    cover = meta.get("market_coverage") or {}
+    bits.append(f"market comparison for {cover.get('with_market_line', 0):,}"
+                f" of {cover.get('n', 0):,}")
+
+    ledger = meta.get("llm_ledger") or {}
+    bits.append(f"LLM spend today ${float(ledger.get('usd_spent') or 0):.4f}"
+                f" of ${float(ledger.get('usd_cap') or 0):.2f}")
+    return " · ".join(bits)
+
+
 def task_name(task: str | None) -> str:
     """"predict:mlb" -> "Predict baseball". Falls back to opened-out words."""
     if not task:

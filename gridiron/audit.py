@@ -885,3 +885,119 @@ def check_side_named_everywhere(package: Path | None = None) -> None:
             "audit.SIDE_ALLOWLIST:"
             + _NL2 + _NL2.join(hits[:10])
         )
+
+
+# ---------------------------------------------------------------------------
+# THE RENDERER COMPOSES NO PROSE — a tripwire, not a proof
+# ---------------------------------------------------------------------------
+#
+# Ruling, 2026-08-31: "PROSE IS COMPOSED SERVER-SIDE ONLY, in language.py,
+# period. The frontend renders strings it is handed; it never builds a
+# sentence, never concatenates a subject, never uppercases a stat."
+#
+# Everything the wrong-side defect did on the server, `app.js` could do again
+# on its own, out of reach of every Python scan -- and did, in the digest's
+# `'picked ' + String(s.subject).toUpperCase()`, which is where the fifth
+# instance was found.
+#
+# THIS IS A REGEX SCAN OF JAVASCRIPT AND IT IS NOT A PARSER. It will miss
+# things. That is accepted in the ruling and it is the right trade: the three
+# shapes below are the ones that have actually happened here, the scan runs in
+# under a millisecond, and the render-based plain-words scan remains the
+# backstop that sees RESULTS rather than patterns. A tripwire that catches the
+# repeat of a known defect is worth more than a parser nobody finishes.
+
+#: Fields whose value is data about a prediction. Concatenating one of these
+#: into a string, or changing its case, is composition.
+JS_DATA_FIELDS = (
+    "subject", "opponent", "prop_type", "market_type", "model_side",
+    "factor", "task", "reason", "category", "database_kind", "tier",
+)
+
+#: `word + expr` or `expr + word` where the literal contains a space or ends
+#: in one -- a label being glued to data. `'a' + 'b'` of two literals is not
+#: prose, and neither is `'#/' + route`.
+_JS_GLUE = __import__("re").compile(
+    r"""['"][A-Za-z][^'"]*\s['"]\s*\+\s*[A-Za-z_$]|"""
+    r"""[a-zA-Z_$][\w.\[\]'"$]*\s*\+\s*['"]\s[^'"]*['"]"""
+)
+
+#: `.toUpperCase()` / `.toLowerCase()` applied to something that is not a
+#: literal. Case is a CSS decision; applying it to data in JS means the string
+#: was being shaped for reading.
+_JS_CASE = __import__("re").compile(
+    r"""(?<!['"])\)?\s*\.\s*to(?:Upper|Lower)Case\s*\(\s*\)"""
+)
+
+#: A template literal that mixes prose words with an interpolation.
+_JS_TEMPLATE = __import__("re").compile(r"`[^`]*[A-Za-z]{3}[^`]*\$\{[^}]+\}[^`]*`")
+
+
+def js_prose_composition(path: Path | None = None) -> list[str]:
+    """Lines in the renderer that look like a sentence being built."""
+    import re as _re
+
+    path = (Path(__file__).resolve().parent / "web" / "app.js") if path is None else Path(path)
+    if not path.exists():
+        return []
+
+    hits = []
+    for n, raw in enumerate(path.read_text(encoding="utf-8").split(chr(10)), 1):
+        line = raw.strip()
+        # Comments are exempt: this file explains its own history at length,
+        # and quoting a deleted defect must not re-trip the scan that killed it.
+        if line.startswith("//") or line.startswith("*") or line.startswith("/*"):
+            continue
+        body = _re.sub(r"//.*$", "", line)
+        if _exempt_from_js_prose(body):
+            continue
+
+        if _JS_CASE.search(body) and not _re.search(
+                r"""['"][^'"]*['"]\s*\.\s*to(?:Upper|Lower)Case""", body):
+            hits.append(f"line {n}: changes the case of a value -- {line[:72]}")
+        elif any(f".{f}" in body or f"'{f}'" in body or f'"{f}"' in body
+                 for f in JS_DATA_FIELDS) and _JS_GLUE.search(body):
+            hits.append(f"line {n}: glues a label onto a data field -- {line[:72]}")
+        elif _JS_TEMPLATE.search(body):
+            hits.append(f"line {n}: builds a sentence in a template -- {line[:72]}")
+    return hits
+
+
+#: A CSS CLASS is not prose. `el('span', 'tier ' + t.tier.toLowerCase(), t.tier)`
+#: lowercases a value to make a class token, and the TEXT beside it is the raw
+#: server string -- which is the rule being followed, not broken. Matched by
+#: position: second argument of `el(`, which is where a class name goes.
+_JS_CLASS_ARG = __import__("re").compile(
+    r"""el\(\s*['"][^'"]+['"]\s*,\s*['"][^'"]*['"]\s*\+[^,]*to(?:Upper|Lower)Case""")
+
+#: `requireN(obj, where)` builds an EXCEPTION message for a developer, never a
+#: line on a page. Its second argument names the payload path that lost its
+#: sample size, and it has to be specific to be worth throwing.
+_JS_DIAGNOSTIC = __import__("re").compile(r"""requireN\s*\(""")
+
+
+def _exempt_from_js_prose(body: str) -> bool:
+    """Two shapes this scan must not flag, each for a stated reason.
+
+    Narrowed rather than silenced: both exemptions are positional, so a real
+    violation on the same line still trips -- a class name is the second
+    argument of `el(`, a diagnostic is inside `requireN(`, and prose is
+    anywhere else.
+    """
+    return bool(_JS_CLASS_ARG.search(body) or _JS_DIAGNOSTIC.search(body))
+
+
+def check_js_composes_no_prose(path: Path | None = None) -> None:
+    hits = js_prose_composition(path)
+    if hits:
+        raise LawViolation(
+            "THE RENDERER COMPOSED PROSE: app.js is building a string a person "
+            "reads, instead of placing one the server wrote. Every sentence "
+            "comes from gridiron.language -- that is where the side is "
+            "resolved, where the plain-words rule is enforced, and where the "
+            "tests can see it. A sentence assembled in the browser is outside "
+            "all three, which is how `'picked ' + String(s.subject)."
+            "toUpperCase()` shipped. Move the wording to language.py and send "
+            "the finished string:"
+            + _NL2 + _NL2.join(hits[:12])
+        )

@@ -966,6 +966,65 @@ def plant_a_view_that_names_the_side_itself() -> Result:
                       "NOT CAUGHT - a view built the side into a sentence and passed")
 
 
+def plant_a_renderer_that_composes_prose() -> Result:
+    """Put the digest's real defect back into a copy of app.js.
+
+    THE LINE PLANTED HERE SHIPPED: `'picked ' + String(s.subject)
+    .toUpperCase()` named the team the model forecast AGAINST on every
+    moneyline it took the other side of, and shouted a prop's stored stat
+    suffix while doing it. Every Python guard was blind to it because it
+    is JavaScript.
+    """
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        copy = Path(tmp) / 'app.js'
+        copy.write_text(chr(10).join([
+            'function settledRow(s) {',
+            "  const row = el('div', 'settled-row');",
+            "  row.appendChild(el('span', 'settled-pick', 'picked ' + "
+            '                 "String(s.subject).toUpperCase()));',
+            '  return row;',
+            '}',
+        ]), encoding='utf-8')
+        try:
+            audit.check_js_composes_no_prose(copy)
+        except audit.LawViolation as exc:
+            return Result('THE RENDERER COMPOSES NO PROSE',
+                          'build a pick sentence in app.js from the raw subject',
+                          'audit.check_js_composes_no_prose', True,
+                          str(exc).splitlines()[-1])
+        return Result('THE RENDERER COMPOSES NO PROSE',
+                      'build a pick sentence in app.js from the raw subject',
+                      'audit.check_js_composes_no_prose', False,
+                      'NOT CAUGHT - the renderer composed a sentence and passed')
+
+
+def plant_a_class_name_mistaken_for_prose() -> Result:
+    """The other half: the scan must NOT fire on a CSS class token.
+
+    `el('span', 'tier ' + t.tier.toLowerCase(), t.tier)` lowercases a value
+    to build a class name and passes the RAW server string as the text --
+    the rule being followed, not broken. A tripwire that cries on eight
+    good lines gets switched off, and then it is not a tripwire.
+    """
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        copy = Path(tmp) / 'app.js'
+        copy.write_text(chr(10).join([
+            'function tierChip(t) {',
+            "  return el('span', 'tier ' + t.tier.toLowerCase(), t.tier);",
+            '}',
+        ]), encoding='utf-8')
+        try:
+            audit.check_js_composes_no_prose(copy)
+        except audit.LawViolation as exc:
+            return Result('THE RENDERER COMPOSES NO PROSE',
+                          'a CSS class token must not be read as prose',
+                          'audit.check_js_composes_no_prose', False,
+                          'FALSE POSITIVE - ' + str(exc).splitlines()[-1])
+        return Result('THE RENDERER COMPOSES NO PROSE',
+                      'a CSS class token must not be read as prose',
+                      'audit.check_js_composes_no_prose', True,
+                      'a class name built from a value is not flagged')
+
 def plant_a_shadowed_definition() -> Result:
     """Define a name twice and check the scan says which line wins.
 
@@ -1720,6 +1779,8 @@ def main() -> int:
     results.append(plant_a_why_that_disagrees_with_its_contributions())
     results.append(plant_a_factor_with_no_why_template())
     results.append(plant_a_view_that_names_the_side_itself())
+    results.append(plant_a_renderer_that_composes_prose())
+    results.append(plant_a_class_name_mistaken_for_prose())
     results.append(plant_a_shadowed_definition())
     results.append(plant_a_composer_that_resolves_the_side_itself())
     results.append(plant_a_side_named_that_ignores_the_flip())
