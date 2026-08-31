@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from . import config, db, language
+from . import language
 
 #: The tasks the scheduler knows how to run, and how often each is expected.
 #: `silent_after_hours` is when the panel starts complaining; it is deliberately
@@ -473,7 +474,12 @@ def _degradations(last: sqlite3.Row | None) -> list[str]:
     except ValueError:
         return []
     degraded = payload.get("degradations") or {}
-    return [f"{reason} ({count})" for reason, count in sorted(degraded.items())]
+    # IN WORDS, HERE. The stored key is a code and the page said "ran degraded:
+    # llm_unavailable:api_error (1)" inside an otherwise plain sentence.
+    return [
+        f"{language.degraded_words(reason)} ({count})"
+        for reason, count in sorted(degraded.items())
+    ]
 
 
 def _parse(stamp: str) -> datetime:

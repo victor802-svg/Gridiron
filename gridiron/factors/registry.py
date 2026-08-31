@@ -155,6 +155,73 @@ def all_factors(sport: str | None = None, market_type: str | None = None) -> lis
     return out
 
 
+def set_changes(sport: str, start: str | None, end: str | None) -> dict:
+    """Which declared factors JOINED and which LEFT inside one set's window.
+
+    The Versions page names each factor set by the date it began, which says
+    WHEN but not WHAT. The obvious way to answer "what changed" is a hand-
+    written changelog beside the version constant, and that is the thing this
+    project keeps refusing: a second copy of a fact drifts from the first, and
+    a changelog is a copy of the registry written from memory.
+
+    So it is DERIVED. LAW 2 already requires every factor to carry the date it
+    was declared, and a retired one carries the date it stopped; a set's
+    changes are exactly the factors whose dates fall in its window. The line a
+    reader sees cannot disagree with the registry, because it is read from it.
+
+    THREE FACTORS WERE DECLARED AND RETIRED ON THE SAME DAY -- one inactive on
+    arrival, two as broken instruments -- so a window can hold a factor in both
+    lists at once. Reported as its own group rather than in both, because
+    "added the wind; retired the wind" reads as a contradiction when it is
+    actually the most interesting thing on the page: an idea that was tried and
+    measured and dropped inside a day.
+
+    `end` of None means the window is still open -- the current set -- which is
+    why a factor can join a set AFTER it began, and why that is reported
+    separately rather than folded in silently.
+    """
+    def inside(day: str) -> bool:
+        return bool(day) and day >= (start or "") and (end is None or day < end)
+
+    joined, left, both, in_force, before = [], [], [], 0, 0
+    for f in all_factors(sport=sport):
+        added = (f.added_utc or "")[:10]
+        gone = (f.deactivated_utc or "")[:10]
+        if added and (end is None or added < end) and not (gone and gone < (start or "")):
+            in_force += 1
+        if added and added < (start or "") and not (gone and gone < (start or "")):
+            before += 1
+        if inside(added) and inside(gone):
+            both.append(f)
+        elif inside(added):
+            joined.append(f)
+        elif inside(gone):
+            left.append(f)
+
+    def key(f):
+        return (f.added_utc, f.name)
+
+    def words(fs):
+        return [f.why or f.name for f in sorted(fs, key=key)]
+
+    return {
+        "joined": words(joined),
+        "left": words(left),
+        "tried_and_dropped": words(both),
+        "joined_after_it_began": words(
+            [f for f in joined if (f.added_utc or "")[:10] > (start or "")]),
+        #: How many factors this sport had in force at any point in the window.
+        #: Zero means the sport was not being forecast yet, which is a different
+        #: statement from "nothing changed" and must not read like it.
+        "in_force": in_force,
+        #: How many were ALREADY in force when the window opened. Zero means
+        #: this set is where the sport started, whether or not it is the first
+        #: set overall -- baseball and basketball both begin at the second one,
+        #: and "began with 6 MORE" was wrong about their first six.
+        "in_force_before": before,
+    }
+
+
 def sports() -> list[str]:
     return sorted({f.sport for f in REGISTRY.values()})
 

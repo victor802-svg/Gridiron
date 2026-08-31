@@ -218,7 +218,11 @@ select, input[type=search] {
 select:hover, input[type=search]:hover { border-color: var(--accent); }
 
 .headline {
-  border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+  /* NEUTRAL, deliberately. This panel states the LARGEST GAP, which is usually
+     the model being overconfident -- it read "overconfident by 3.4 points"
+     behind a green bar. A fixed colour on a sentence whose valence changes
+     with the number will be wrong half the time, so it carries none. */
+  border: 1px solid var(--rule); border-left: 3px solid var(--rule-2);
   background: var(--panel); border-radius: var(--radius);
   padding: 14px 18px; margin-bottom: 26px;
 }
@@ -449,13 +453,17 @@ table.grid td.wide {
 
 /* contribution bars: the reasoning made visible */
 .contrib { margin-top: 14px; }
+/* The name column was 150px because it used to hold `srs_diff`. It now holds
+   "how good the two teams have been, adjusted for who they played", and at
+   150px every label ellipsised to three words -- which is worse than the code
+   was, because a truncated explanation looks like an explanation. */
 .contrib-row {
-  display: grid; grid-template-columns: 150px 1fr 62px;
-  gap: 10px; align-items: center; padding: 2px 0;
+  display: grid; grid-template-columns: minmax(0, 22ch) 1fr 62px;
+  gap: 10px; align-items: center; padding: 3px 0;
 }
 .contrib-name {
   color: var(--ink-2); font-size: var(--t-caption);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: 1.35; overflow-wrap: anywhere;
 }
 .contrib-track { position: relative; height: 12px; }
 .contrib-track::before {
@@ -568,7 +576,11 @@ canvas { display: block; max-width: 100%; }
   .rail-legend { gap: 14px; }
   .rail-legend .v { font-size: 21px; }
   /* the dumbbell keeps its rail; only the labels compress */
-  .contrib-row { grid-template-columns: 104px 1fr 54px; gap: 7px; }
+  /* On a phone the phrase gets the full width and the bar sits under it:
+     a 104px column cannot hold a sentence, and shrinking the bar to fit one
+     would cost the comparison the bars exist to make. */
+  .contrib-row { grid-template-columns: 1fr 54px; gap: 4px 7px; }
+  .contrib-name { grid-column: 1 / -1; }
   .filters { gap: 7px; }
   .filters input[type=search] { flex-basis: 100%; }
   table.grid th, table.grid td { padding: 6px 7px; }
@@ -611,9 +623,14 @@ canvas { display: block; max-width: 100%; }
 .sched-k { color: var(--ink-2); }
 .sched-v { font-variant-numeric: tabular-nums; }
 .sched-detail { color: var(--ink-2); font-size: 13px; margin-top: 8px; }
+/* The last green alarm on this page. A degraded run and a missed slate are
+   both things that went wrong, and `--accent` is the green reserved for
+   interactive and positive -- so the panel drew its two failure states in the
+   success colour, the same defect as `.sched-warn` and from the same habit of
+   reaching for the accent whenever a rule needed emphasis. */
 .sched-alarm, .sched-missed {
   margin-top: 8px; padding: 8px 10px; font-size: 13px;
-  border-left: 2px solid var(--accent); color: var(--chrome);
+  border-left: 2px solid var(--red); color: var(--chrome);
   background: var(--rule-1);
 }
 .sched-stale {
@@ -634,7 +651,10 @@ canvas { display: block; max-width: 100%; }
 /* The offline bar. Deliberately the loudest thing on the page: every number
    below it is frozen, and a reader who misses that is being misled. */
 .banner.offline {
-  background: var(--accent);
+  /* It shows ONLY when the browser is offline -- `bar.hidden = navigator.onLine`
+     -- so it is never a positive state, and it was painted in the positive
+     colour. Loud is right; green is not. */
+  background: var(--red);
   color: var(--bg);
   font-size: 13px;
   line-height: 1.5;
@@ -894,9 +914,18 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: var(--muted); text-decoration: none; font-size: 13px;
 }
 .bar #nav a[aria-current="page"] { color: var(--text); }
+/* `flex: none` here was the SAME defect as the one on `#sport-tabs` recorded
+   further down this file: an item that cannot shrink does not overflow itself,
+   it pushes the whole PAGE wider -- 35px of horizontal scroll on every NFL
+   route at 1100px and 56px on every MLB one, because the record's text is
+   longer in a sport with a settled record. It fit at 1280 and so went unseen.
+
+   The phone hid it (`display: none` below) rather than fixing it, which is why
+   the phone measured 0 while the laptop did not. */
 .season-record {
   font-family: var(--mono); font-size: 12px; color: var(--muted);
-  flex: none; padding-left: 4px;
+  flex: 0 1 auto; min-width: 0; padding-left: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* --- ONE GLANCE STRIP ----------------------------------------------------- */
@@ -1083,4 +1112,19 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .factor-code {
   font-family: var(--mono); font-size: 10px; color: var(--faint);
   margin-top: 2px;
+}
+
+/* The one line on what a factor set changed. Sits under the counts and above
+   the table: it is the answer to the question the heading's date raises. */
+.set-changed {
+  margin: 6px 0 10px; font-size: 13px; line-height: 1.5;
+  color: var(--faint); max-width: 68ch;
+}
+
+/* The reasons under a resolved digest row. `.settled-row` is a WRAPPING FLEX
+   row, not a grid -- `grid-column: 1 / -1` would have been silently inert
+   here -- so the break onto its own line is `flex-basis: 100%`. */
+.settled-why {
+  flex: 0 0 100%; margin: 4px 0 2px;
+  font-size: 13px; line-height: 1.5; color: var(--faint); max-width: 72ch;
 }

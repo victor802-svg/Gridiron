@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
+from . import subjects
 from .db import utcnow
 from .model import questions
 
@@ -75,15 +76,19 @@ def _prop_actual(conn: sqlite3.Connection, pred: sqlite3.Row) -> float:
         " WHERE season = ? AND week = ? AND player_id = ?",
         (game["season"], game["week"], player_id),
     ).fetchone()
+    # A void reason is SHOWN, so it obeys the plain-words rule like any other
+    # sentence: the stored subject of a prop carries the stat as a suffix
+    # ("FERNANDO TATIS JR. BATTER_HITS") and the reader gets the person.
+    who = subjects.strip_market_suffix(pred["subject"], pred["prop_type"])
     if row is None:
         raise Void(
-            f"{pred['subject']} has no box score for {game['season']} week "
+            f"{who} has no box score for {game['season']} week "
             f"{game['week']}: the player did not appear, so the question has no "
             "answer and is not being given one"
         )
     if row["v"] is None:
         raise Void(
-            f"{pred['subject']} appeared but {stat} is not reported for "
+            f"{who} appeared but {stat} is not reported for "
             f"{game['season']} week {game['week']}"
         )
     return float(row["v"])

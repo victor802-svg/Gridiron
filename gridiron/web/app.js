@@ -639,7 +639,11 @@ const Gridiron = (function () {
 
     function bar(f) {
       const row = el('div', 'contrib-row');
-      row.appendChild(el('div', 'contrib-name', f.factor));
+      // The plain phrase, with the code in the tooltip for anyone matching a
+      // bar against the registry.
+      const label = el('div', 'contrib-name', f.plain_name || f.factor);
+      label.title = f.factor;
+      row.appendChild(label);
       const track = el('div', 'contrib-track');
       const b = el('div', 'contrib-bar ' + (f.contribution >= 0 ? 'pos' : 'neg'));
       const half = Math.abs(f.contribution) / scale * 50;
@@ -1155,12 +1159,19 @@ const Gridiron = (function () {
       // code stays in the tooltip for matching against a stored row.
       const started = (v.activated_utc || '').slice(0, 10);
       const h = el('h3', '', (started ? 'Set of ' + started : 'Undated set') + ' ');
-      h.appendChild(el('span', 'tag' + (v.status === 'current' ? '' : ' warn'), v.status));
+      // A CLOSED SET IS NOT A WARNING. It carried `tag warn`, which reads as
+      // red now that the warn colours are actually warning colours -- and a
+      // superseded factor set is the most ordinary thing on this page: every
+      // set becomes closed the moment the next one starts.
+      h.appendChild(el('span', 'tag', v.status));
       h.appendChild(nTag(v.n));
       card.appendChild(h);
       card.appendChild(el('div', 'card-meta',
         int(v.predictions_written) + ' written · ' +
         int(v.open) + ' open'));
+      // WHAT changed, not only when. Composed server-side from the registry's
+      // own dates, so this line cannot disagree with the Factors page.
+      if (v.changed) card.appendChild(el('p', 'set-changed', v.changed));
       if (v.message) {
         card.appendChild(el('div', 'empty', v.message));
       } else {
@@ -1205,7 +1216,17 @@ const Gridiron = (function () {
       const bars = document.getElementById('worked-bars');
       bars.innerHTML = '';
       bars.appendChild(contributions(card));
-      document.getElementById('worked-sentence').textContent = card.reasoning || '';
+      // NOT `card.reasoning`. That is the STATISTICAL DECOMPOSITION, written
+      // when the prediction was made and stored with it -- "asked_line = -0.5
+      // pushed..." -- so it names factor codes in a sentence, on the one page
+      // whose job is explaining. It cannot be rewritten (LAW 3: a prediction is
+      // never edited after the fact), and it does not need to be: K3's plain
+      // why is built from the same contributions and says the same thing in
+      // words. The raw form stays in the tooltip for anyone who wants it.
+      const worked = document.getElementById('worked-sentence');
+      worked.textContent = ((card.why && card.why.sentences) || []).join(' ')
+        || '';
+      worked.title = card.reasoning || '';
       host.hidden = false;
     } catch (err) {
       host.hidden = true;
@@ -1234,7 +1255,11 @@ const Gridiron = (function () {
         const name = el('div', 'factor-name');
         name.appendChild(el('div', '', f.plain_name || f.factor));
         name.appendChild(el('div', 'factor-code', f.factor));
-        if (!f.active) name.appendChild(el('span', 'tag warn', 'inactive'));
+        // Nor is a retired factor. LAW 2 makes retirement a dated, deliberate
+        // act with a written reason -- "a repair is not a discovery" -- and
+        // three of them were retired the day they were declared, on the
+        // measurement. That is the process working, not an alarm.
+        if (!f.active) name.appendChild(el('span', 'tag', 'inactive'));
         return [
           name, (f.added_utc || '').slice(0, 10), f.applies_to.join(', '),
           int(f.n), int(f.training_rows_measured),
@@ -1364,12 +1389,15 @@ const Gridiron = (function () {
     if (!host) return;
     try {
       const data = await fetchJSON(withSport('/api/record-line'));
-      const bits = [data.line];
-      if (data.updated_utc) {
-        bits.push('updated ' + new Date(data.updated_utc)
-          .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
-      }
-      host.textContent = bits.join(' · ');
+      // The record is what this strip is for. The freshness time moves to the
+      // tooltip because the two together never fit the slot -- see the note in
+      // views.record_line -- and the Schedule page carries "last ran" in full
+      // for anyone who needs the real answer.
+      host.textContent = data.line;
+      host.title = (data.label || '') + ' ' + (data.season || '') +
+        ' season to date' + (data.updated_utc
+          ? ', last updated ' + new Date(data.updated_utc).toLocaleString()
+          : '; nothing settled yet');
     } catch (err) {
       host.textContent = '';
     }
@@ -1525,17 +1553,33 @@ const Gridiron = (function () {
   // Leads the page. The first question on opening a forecaster is not "what do
   // you think tonight" — it is "was I right last night".
 
+  // THE FIFTH INSTANCE of the wrong-side defect lived on the line this
+  // replaces: `'picked ' + String(s.subject).toUpperCase()`. On a moneyline
+  // the subject is the HOME club, so every pick against the home side named
+  // the team the model forecast AGAINST -- and it shouted the stored
+  // identifier, so a prop read "FERNANDO TATIS JR. BATTER_HITS".
+  //
+  // It survived the guard that catches the other four because that guard reads
+  // Python and this is JavaScript. The structural answer is the one the rest of
+  // the interface already uses: the server writes the sentence, the renderer
+  // places it. `s.phrase` comes from `language.phrase`, flip included.
   function settledRow(s) {
     const row = el('div', 'settled-row' + (s.correct ? ' win' : ' loss'));
     row.appendChild(el('span', 'settled-verdict', s.correct ? 'WIN' : 'LOSS'));
     row.appendChild(el('span', 'settled-match', s.matchup));
-    row.appendChild(el('span', 'settled-pick', 'picked ' + String(s.subject).toUpperCase()));
+    row.appendChild(el('span', 'settled-pick', s.phrase || ''));
     const nums = el('span', 'settled-nums');
     nums.textContent = 'model ' + pct(s.model_prob, 1) +
       (s.market_prob === null || s.market_prob === undefined
         ? ' · no line' : ' · market ' + pct(s.market_prob, 1));
     row.appendChild(nums);
     if (s.final_score) row.appendChild(el('span', 'settled-score', s.final_score));
+    // The same three sentences the expanded pick rows carry, so a resolved row
+    // says WHY without having to be opened somewhere else.
+    const sentences = (s.why && s.why.sentences) || [];
+    if (sentences.length) {
+      row.appendChild(el('p', 'settled-why', sentences.join(' ')));
+    }
     return row;
   }
 

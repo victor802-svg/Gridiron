@@ -295,3 +295,73 @@ def test_the_block_carries_the_link_to_the_factors_page():
     block = language.why_block(_item([("mlb_park_factor", 0.4)]), PHRASES)
     assert block["more_label"] == "How the model works"
     assert block["more_href"] == "#/factors"
+
+
+# --- R4: three defects the rendered-page scan could not see -----------------
+#
+# `test_no_internal_vocabulary_reaches_the_reader` scans all seven routes on a
+# real browser, and it was green while the live Picks page read "Sam Darnold
+# passing_yards over 165.5" and the live Schedule page read "ran degraded:
+# llm_unavailable:api_error (1)".
+#
+# It was green because the smoke fixture builds its own record from the CURRENT
+# code path, and none of these shapes occur there: every prop row it writes has
+# a prop_type, no run of it degrades, and no factor set is empty for a sport.
+# The scan was right; the data under it had none of the defects.
+#
+# So these test the shapes directly rather than hoping a fixture reproduces
+# them.
+
+def test_a_prop_written_before_the_column_existed_still_reads_plainly():
+    """Thirty-two NFL prop rows carry `prop_type = NULL`.
+
+    They were written under fs1 at 05:55 on 2026-08-29; the change that started
+    recording the column landed at 07:34 the same morning. LAW 3 makes them
+    permanent, so the reading path has to cope rather than the record being
+    repaired.
+    """
+    from gridiron import views
+
+    row = {
+        "sport": "nfl", "market_type": "prop", "prop_type": None,
+        "subject": "Sam Darnold passing_yards", "away": "NE", "home": "SEA",
+    }
+    title = views._row_title(row)
+    assert "passing_yards" not in title, f"the stored stat reached the row: {title!r}"
+    assert "passing yards" in title, title
+    assert title.startswith("Darnold"), title
+
+
+def test_every_declared_unavailable_reason_has_words():
+    """The Schedule page said "ran degraded: llm_unavailable:api_error (1)".
+
+    Each reason is a DIFFERENT situation with a different response -- a missing
+    key is a setup step, a budget stop is working as designed -- so each gets
+    its own sentence, and a new one added without words fails here rather than
+    reaching the page as a code.
+    """
+    import re
+    from pathlib import Path
+    from gridiron import language
+    from gridiron.model import llm
+
+    src = Path(llm.__file__).read_text(encoding="utf-8")
+    declared = set(re.findall(r'LLMUnavailable\(\s*"([a-z_]+)"', src))
+    assert declared, "no reasons found; has LLMUnavailable been renamed?"
+    missing = sorted(r for r in declared if r not in language.DEGRADED_WORDS)
+    assert not missing, f"these have no words and would print as codes: {missing}"
+
+
+def test_a_sport_absent_from_a_set_does_not_read_as_a_records_gap():
+    """Baseball was not forecast under fs1 at all.
+
+    The first rendering said "The opening set, with nothing recorded about what
+    it declared", which describes a missing record rather than a sport that did
+    not exist yet -- the explicit-absent rule, applied to prose.
+    """
+    from gridiron import language
+
+    line = language.set_change_line(
+        {"joined": [], "left": [], "in_force": 0}, sport_label="MLB")
+    assert "MLB was not being forecast" in line, line
+    assert "nothing recorded" not in line, line

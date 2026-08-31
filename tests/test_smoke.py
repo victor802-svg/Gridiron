@@ -1074,10 +1074,28 @@ def test_each_notice_keeps_its_task_name_in_the_summary(page):
 
 
 def test_the_header_record_follows_the_selected_sport(page):
-    """One sport at a time, and the header says which."""
+    """One sport at a time.
+
+    The strip needed 264px in a 213px slot, so it was clipped at every width
+    and the `flex: none` hiding that clipping pushed the whole page 35-56px
+    wide. The fix cut "this season", not the sport label -- cutting the label
+    first was wrong, and THIS TEST is what caught it: with no label, two sports
+    that have both settled nothing produce the same strip, so switching sports
+    changed nothing on screen.
+
+    So the assertion below is now three: the record follows the sport, it still
+    names it, and it fits the slot it is given.
+    """
     before = page.locator("#record-line").inner_text()
     page.evaluate("document.querySelector('#sport-tabs button[data-sport=mlb]').click()")
     page.wait_for_timeout(1800)
     after = page.locator("#record-line").inner_text()
     assert after.startswith("MLB"), f"the header still reads {after!r}"
-    assert after != before
+    assert after != before, f"the header did not follow the sport: {after!r}"
+    assert "this season" not in after, (
+        f"the long form is back and will clip the strip again: {after!r}")
+    # It must still fit the slot it is given, whatever it says.
+    clipped = page.evaluate(
+        "() => { const e = document.getElementById('record-line');"
+        " return e.scrollWidth > e.clientWidth + 1; }")
+    assert not clipped, f"the record strip is clipped: {after!r}"

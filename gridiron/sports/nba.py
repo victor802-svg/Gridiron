@@ -28,6 +28,7 @@ from ..data import nba_repo as repo
 from ..factors import compute
 from ..model import questions
 from ..model.question import Question
+from .. import subjects
 
 SPORT = "nba"
 SLATE_WORD = "week"
@@ -696,8 +697,11 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
         (pred["game_id"], player_id),
     ).fetchone()
     if row is None or row["v"] is None:
+        # Same as resolve.py: a shown sentence gets the person, not the stored
+        # subject with its stat suffix.
+        who = subjects.strip_market_suffix(pred["subject"], pred["prop_type"])
         raise Void(
-            f"{pred['subject']} did not appear in {pred['game_id']}. The question "
+            f"{who} did not appear in {pred['game_id']}. The question "
             "asked how much he would record, and a man who did not play did not "
             "answer it either way; scoring it as an under would credit the model "
             "for a roster decision it never forecast."

@@ -22,7 +22,7 @@ import math
 import sqlite3
 from dataclasses import dataclass, field
 
-from . import config, horizon
+from . import config, horizon, language
 from .factors import compute as factor_compute, registry
 from .model import logistic
 
@@ -671,66 +671,24 @@ def _factor_verdict(
 # the whole thing
 # ---------------------------------------------------------------------------
 
-def scorecard(conn: sqlite3.Connection) -> dict:
-    """Every curve, kept separate. Never a merged headline number."""
-    versions = [
-        r["v"]
-        for r in conn.execute(
-            "SELECT DISTINCT factor_set_version AS v FROM predictions"
-            " WHERE resolved_utc IS NOT NULL ORDER BY v"
-        )
-    ]
-    # One category per MARKET, not per market_type. "props" is not a category:
-    # receptions and passing touchdowns are different questions with different
-    # difficulty, and a single props number would be an average describing
-    # neither. Each carries its own curve and its own 100-resolution gate.
-    categories = []
-    for predictor in ("statistical", "llm"):
-        c = curve(conn, market_type="spread", predictor=predictor)
-        c["category"] = f"spread / {predictor}"
-        c["market"] = "spread"
-        categories.append(c)
-    for prop_type in config.PROP_MARKETS:
-        for predictor in ("statistical", "llm"):
-            c = curve(
-                conn, market_type="prop", prop_type=prop_type, predictor=predictor
-            )
-            c["category"] = f"{prop_type} / {predictor}"
-            c["market"] = prop_type
-            categories.append(c)
-
-    headline = curve(conn, market_type="spread", predictor="statistical")
-    payload = {
-        "generated_for_factor_set": config.FACTOR_SET_VERSION,
-        "factor_set_versions_in_record": versions,
-        "headline": headline,
-        "categories": categories,
-        "edge": edge(conn, market_type="spread", predictor="statistical"),
-        "versions": version_comparison(conn),
-        "separation_note": (
-            "Curves are never merged. Each prop market is its own category with "
-            "its own gate - receptions and passing touchdowns are different "
-            "questions - and the statistical and LLM predictors are different "
-            "forecasters. An average across any of these describes nobody."
-        ),
-        "markets": ["spread"] + list(config.PROP_MARKETS),
-    }
-    assert_every_figure_has_n(payload)
-    assert_no_merged_categories(payload)
-    return payload
-
-
 # ---------------------------------------------------------------------------
-# factor-set versions: closed records and accumulating ones, never summed
+# TWO PRE-LAW-6 FUNCTIONS WERE DELETED HERE, and they were not dead weight.
 # ---------------------------------------------------------------------------
-
-VERSION_NOTE = (
-    "A factor set is a different forecaster. Its record begins at N=0 on the day "
-    "it was activated and nothing earlier is backfitted onto it (LAW 2). The "
-    "versions below are reported side by side and are NEVER added together: a "
-    "closed record and an accumulating one describe different models, and their "
-    "sum describes neither."
-)
+#
+# `scorecard(conn)` and `version_comparison(conn)` -- no `sport` argument --
+# were the versions from before LAW 6. Each queried `predictions` with no
+# sport filter, which is the merged-across-sports read LAW 6 exists to make
+# impossible. They were REPLACED further down the file by the `*, sport:`
+# versions, and the old bodies were left in place.
+#
+# Python discards a shadowed definition, so neither ran. That is exactly why
+# nothing caught them: `require_sport` never fired because the code never
+# executed, the orphan scan saw the NAME reached (by the live definition's
+# callers) and passed, and every test called the live one. Four hundred lines
+# of a forbidden query, invisible to every guard in the project.
+#
+# Found by editing one of them and watching the output not change.
+# `audit.check_no_shadowed_definitions` now fails on a redefined name.
 
 
 def version_words(version: str) -> str:
@@ -745,83 +703,6 @@ def version_words(version: str) -> str:
     started = config.FACTOR_SET_ACTIVATED.get(version)
     return f"the set of {started[:10]}" if started else "an undated set"
 
-
-def version_comparison(conn: sqlite3.Connection) -> dict:
-    """Every factor set that has produced predictions, side by side.
-
-    The current version almost always starts at N=0 and says so in words rather
-    than showing an empty chart and letting the reader assume a rendering bug.
-    """
-    seen = [
-        r["v"]
-        for r in conn.execute(
-            "SELECT DISTINCT factor_set_version AS v FROM predictions ORDER BY v"
-        )
-    ]
-    known = list(config.FACTOR_SET_HISTORY)
-    versions = known + [v for v in seen if v not in known]
-
-    entries = []
-    for version in versions:
-        counts = conn.execute(
-            "SELECT COUNT(*) AS total,"
-            " SUM(CASE WHEN resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
-            " FROM predictions WHERE factor_set_version = ?",
-            (version,),
-        ).fetchone()
-        total = counts["total"] or 0
-        n_resolved = counts["resolved"] or 0
-        is_current = version == config.FACTOR_SET_VERSION
-
-        categories = []
-        for market_type in ("spread", "prop"):
-            for predictor in ("statistical", "llm"):
-                items = resolved(
-                    conn,
-                    market_type=market_type,
-                    predictor=predictor,
-                    factor_set_version=version,
-                )
-                if not items and not is_current:
-                    continue
-                categories.append({
-                    "category": f"{market_type} / {predictor}",
-                    "market_type": market_type,
-                    "predictor": predictor,
-                    **score(items),
-                })
-
-        entry = {
-            "version": version,
-            "activated_utc": config.FACTOR_SET_ACTIVATED.get(version),
-            "status": "current" if is_current else "closed",
-            "n": n_resolved,
-            "predictions_written": total,
-            "open": total - n_resolved,
-            "categories": categories,
-        }
-        if n_resolved == 0:
-            entry["message"] = (
-                f"{version_words(version).capitalize()} has {total} "
-                "prediction(s) written and 0 resolved. Its "
-                "record begins at N=0 on activation"
-                + ". Nothing is carried over from an earlier version, so there is "
-                "nothing to show yet and nothing wrong."
-            )
-        entries.append(entry)
-
-    return {
-        "n": sum(e["n"] for e in entries),   # LAW 4: the payload's own sample size
-        "current": config.FACTOR_SET_VERSION,
-        "note": VERSION_NOTE,
-        "never_summed": True,
-        "versions": entries,
-    }
-
-
-# ---------------------------------------------------------------------------
-# surfaces the interface draws
-# ---------------------------------------------------------------------------
 
 def bucket_label(probability: float) -> str:
     """Which confidence bucket a stated probability falls in."""
@@ -1084,6 +965,12 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
     known = list(config.FACTOR_SET_HISTORY)
     versions = known + [v for v in seen if v not in known]
 
+    # Each set's window runs from its own activation to the NEXT one's, so
+    # "what changed" is read straight out of the registry rather than kept as a
+    # hand-written changelog beside the version constant.
+    starts = {v: (config.FACTOR_SET_ACTIVATED.get(v) or "")[:10] for v in versions}
+    ordered = sorted([v for v in versions if starts.get(v)], key=lambda v: starts[v])
+
     entries = []
     for version in versions:
         counts = conn.execute(
@@ -1116,9 +1003,20 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
                     **score(items),
                 })
 
+        start = starts.get(version) or None
+        pos = ordered.index(version) if version in ordered else None
+        nxt = ordered[pos + 1] if pos is not None and pos + 1 < len(ordered) else None
+        changes = registry.set_changes(sport, start, starts.get(nxt)) if start else {}
+
         entry = {
             "version": version,
             "activated_utc": config.FACTOR_SET_ACTIVATED.get(version),
+            # WHAT changed, not only when: derived from the registry's own
+            # dates, so the line cannot drift from the factors it describes.
+            "changed": (language.set_change_line(
+                changes, first=(pos == 0),
+                sport_label=config.SPORT_LABELS.get(sport, sport))
+                if start else None),
             "status": "current" if is_current else "closed",
             "n": n_resolved,
             "predictions_written": total,

@@ -87,6 +87,8 @@ def step_2_guards() -> bool:
         ("prediction closures (LAW 1)", audit.check_all_prediction_closures),
         ("no orphan functions", audit.check_no_orphan_functions),
         ("one door for the side", audit.check_side_named),
+        ("no shadowed definitions", audit.check_no_shadowed_definitions),
+        ("the side, in prose, anywhere", audit.check_side_named_everywhere),
         ("no silent defaults (v2)", audit.check_no_silent_defaults),
         ("not a betting tool (LAW 5)", audit.check_not_a_betting_tool),
         ("no offline data caching", audit.check_no_offline_data_caching),

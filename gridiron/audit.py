@@ -733,3 +733,155 @@ def check_side_named(path: Path | None = None) -> None:
             "audit.SIDE_ALLOWLIST saying why this one is different:"
             + _NL2 + _NL2.join(hits[:10])
         )
+
+
+# ---------------------------------------------------------------------------
+# NO SHADOWED DEFINITIONS — the gap the orphan scan could not see
+# ---------------------------------------------------------------------------
+#
+# `calibration.py` carried TWO definitions of `scorecard` and two of
+# `version_comparison`. Python keeps the last one and silently discards the
+# first, so the earlier bodies -- 130 lines -- never ran.
+#
+# They were not harmless. They were the versions from BEFORE LAW 6: each
+# queried `predictions` with no sport filter, which is the merged read that law
+# exists to make impossible. When the `*, sport:` versions were written they
+# were appended rather than substituted, and the originals stayed.
+#
+# Every guard in this project missed them, for a reason worth recording:
+#
+#   * `require_sport` never fired, because the code never executed;
+#   * `check_no_orphan_functions` passed, because the NAME is reached -- the
+#     live definition's callers make it look used;
+#   * every test called the live one and got the right answer.
+#
+# It surfaced only when an edit to one of them changed nothing on the page.
+# A name defined twice at module level is now a failure, and the message says
+# which line wins, because "duplicate definition" is not the useful half.
+
+def shadowed_definitions(package: Path | None = None) -> list[str]:
+    """Module-level names defined more than once in the same file."""
+    import ast as _ast
+
+    root = Path(__file__).resolve().parent if package is None else Path(package)
+    out = []
+    for path in sorted(root.rglob("*.py")):
+        try:
+            tree = _ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        seen: dict[str, list[int]] = {}
+        for node in tree.body:
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef,
+                                 _ast.ClassDef)):
+                seen.setdefault(node.name, []).append(node.lineno)
+        for name, lines in seen.items():
+            if len(lines) > 1:
+                out.append(
+                    f"{path.name}: {name} is defined {len(lines)} times "
+                    f"(lines {', '.join(str(n) for n in lines)}); only line "
+                    f"{lines[-1]} runs"
+                )
+    return sorted(out)
+
+
+def check_no_shadowed_definitions(package: Path | None = None) -> None:
+    hits = shadowed_definitions(package)
+    if hits:
+        raise LawViolation(
+            "SHADOWED DEFINITION: a name is defined more than once at module "
+            "level, so every definition but the last is dead code that still "
+            "reads as live. This is how two pre-LAW-6 functions -- both "
+            "querying every sport at once -- survived in calibration.py past "
+            "the law that forbids them: unreachable code cannot trip a runtime "
+            "check, and the orphan scan sees the name as reached. Delete the "
+            "dead one, or rename it if both are wanted:"
+            + _NL2 + _NL2.join(hits[:10])
+        )
+
+
+# ---------------------------------------------------------------------------
+# THE SIDE, IN PROSE, ANYWHERE IN THE PACKAGE
+# ---------------------------------------------------------------------------
+#
+# `check_side_named` above scans `language.py`, because the rule was written
+# there and the premise was that all prose lives in the humaniser. The premise
+# was wrong by one function: `views._resolved_story` built "picked ATL" out of
+# the raw subject, over nine resolved rows whose pick was on Colorado. A FOURTH
+# instance of the defect the one-door fix was supposed to end, surviving
+# because the guard checked the place the rule was written rather than every
+# place it applies.
+#
+# The distinction that makes a package-wide scan possible without drowning in
+# false positives: reading `subject` into a DICT is plumbing -- views does it
+# constantly, and must, to hand the item to `language` -- while reading it into
+# a STRING is prose. So this looks only for a raw side field interpolated into
+# an f-string or concatenated onto one, which is the shape every one of the
+# four instances had.
+
+def prose_reaching_the_raw_side(package: Path | None = None) -> list[str]:
+    """Raw side fields interpolated straight into a string, anywhere."""
+    import ast as _ast
+
+    root = Path(__file__).resolve().parent if package is None else Path(package)
+    out = []
+    for path in sorted(root.rglob("*.py")):
+        try:
+            tree = _ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.JoinedStr):
+                continue
+            for piece in _ast.walk(node):
+                name = _raw_side_read(piece)
+                if not name:
+                    continue
+                fn = _enclosing_function(tree, piece)
+                if fn in SIDE_ALLOWLIST:
+                    continue
+                out.append(f"{path.name}: {fn or '<module>'} puts the raw "
+                           f"{name!r} straight into a sentence")
+    return sorted(set(out))
+
+
+def _raw_side_read(node) -> str | None:
+    """`item["subject"]` or `item.get("opponent")`, or None."""
+    import ast as _ast
+
+    if isinstance(node, _ast.Subscript) and isinstance(node.slice, _ast.Constant):
+        if node.slice.value in SIDE_RAW_FIELDS:
+            return node.slice.value
+    if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute):
+        if node.func.attr == "get" and node.args:
+            arg = node.args[0]
+            if isinstance(arg, _ast.Constant) and arg.value in SIDE_RAW_FIELDS:
+                return arg.value
+    return None
+
+
+def _enclosing_function(tree, target) -> str | None:
+    import ast as _ast
+
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            for sub in _ast.walk(node):
+                if sub is target:
+                    return node.name
+    return None
+
+
+def check_side_named_everywhere(package: Path | None = None) -> None:
+    hits = prose_reaching_the_raw_side(package)
+    if hits:
+        raise LawViolation(
+            "THE SIDE, IN PROSE: a raw `subject` or `opponent` goes straight "
+            "into a sentence instead of through language.side_named. On a "
+            "moneyline the subject is the HOME club, so on every pick against "
+            "the home side this names the team the model forecast AGAINST. "
+            "That shipped four times -- a chance label, a heading, a market "
+            "clause, and a resolved row reading 'picked ATL' over a pick on "
+            "Colorado. Call side_named, or add a DATED line to "
+            "audit.SIDE_ALLOWLIST:"
+            + _NL2 + _NL2.join(hits[:10])
+        )

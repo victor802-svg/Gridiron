@@ -18,6 +18,8 @@ matter of remembering.
 
 from __future__ import annotations
 
+from . import subjects as _subjects
+
 #: What each market is CALLED. Anything absent falls back to the name with its
 #: underscores opened out, so nothing can render as snake_case even for a
 #: market added later and forgotten.
@@ -107,17 +109,10 @@ def team_name(code: str | None, names: dict | None, form: str = "full") -> str:
     return entry.get(form) or entry.get("full") or code
 
 
-def strip_market_suffix(subject: str | None, market: str | None) -> str:
-    """"Saquon Barkley rushing_yards" -> "Saquon Barkley".
-
-    Prop subjects are stored with the stat appended, because the subject has to
-    be unique per question. That is a storage decision and it has no business
-    being read by a person.
-    """
-    text = (subject or "").strip()
-    if market and text.endswith(market):
-        text = text[: -len(market)].strip()
-    return text
+#: Re-exported, not redefined. It moved to `subjects.py` so a prediction-path
+#: module can use it without importing this one, which names a market column in
+#: the clause below and would fail LAW 1's closure scan. See that module.
+strip_market_suffix = _subjects.strip_market_suffix
 
 
 #: A counting-stat prop asked at half a unit is a yes/no question about whether
@@ -626,6 +621,150 @@ TASK_WORDS = {
     "predict:nba": "Predict basketball",
     "catch-up": "Catch up after a sleep",
 }
+
+
+#: How many reasons a change line names before it says "and N more". Three is
+#: what fits in a line a person reads without stopping; the rest is a count,
+#: which is honest and short.
+CHANGE_NAMES_SHOWN = 3
+
+
+def _names_then_count(phrases: list[str]) -> str:
+    """"a, b and c" -- or "a, b, c and 4 more" once the list stops being read.
+
+    A list of twenty-three noun phrases is not a sentence, it is an inventory,
+    and a reader skips it. The count is not a truncation of the fact: the whole
+    list is on the Factors page, one row each, which is where an inventory
+    belongs.
+    """
+    shown = [p for p in phrases[:CHANGE_NAMES_SHOWN] if p]
+    rest = len(phrases) - len(shown)
+    if not shown:
+        return ""
+    if rest > 0:
+        return ", ".join(shown) + f" and {rest} more"
+    if len(shown) == 1:
+        return shown[0]
+    return ", ".join(shown[:-1]) + " and " + shown[-1]
+
+
+def set_change_line(changes: dict, *, first: bool = False,
+                    sport_label: str | None = None) -> str:
+    """One line on WHAT changed in a factor set, in words.
+
+    The page names each set by the date it began, which answers "when" and
+    leaves "what" to whoever remembers. This is the answer, composed from what
+    `registry.set_changes` read out of the registry -- so the sentence cannot
+    say a factor joined that the registry does not carry.
+
+    THREE SENTENCES THIS GOT WRONG on the first reading, all of them by
+    treating a real distinction as a missing one:
+
+      * "Added playing at home; retired playing at home" -- a factor declared
+        and retired the same day, listed twice, reading as a contradiction. It
+        now has its own clause, because being measured and dropped inside a day
+        is the most informative thing that can happen to a factor.
+      * "The opening set, with nothing recorded about what it declared" for
+        baseball, which was not being forecast under that set AT ALL. That is
+        an absence, and the explicit-absent rule applies to prose as much as to
+        a feature vector: it must not read as a records gap.
+      * "Began with 7 more reasons" about a sport's FIRST seven.
+    """
+    joined = [p for p in (changes.get("joined") or []) if p]
+    left = [p for p in (changes.get("left") or []) if p]
+    both = [p for p in (changes.get("tried_and_dropped") or []) if p]
+    later = [p for p in (changes.get("joined_after_it_began") or []) if p]
+
+    if not changes.get("in_force"):
+        who = sport_label or "This sport"
+        return f"{who} was not being forecast under this set."
+
+    # THE SPORT'S OWN FIRST SET, which is not always the first set overall:
+    # baseball and basketball both begin at the second one. Nothing "changed"
+    # when a sport declared its opening position.
+    first = first or not changes.get("in_force_before")
+
+    parts = []
+    if first:
+        n = len(joined) + len(both)
+        opening = [p for p in joined] or both
+        parts.append(f"Where the model started: {n} {_reasons(n)} declared at "
+                     f"once, {_names_then_count(opening)}")
+        if later:
+            # Not padding. A factor added after the set opened is scored from
+            # ITS date, not the set's (LAW 2), so it has a shorter record than
+            # the set's age implies, and the page should not let that pass.
+            parts.append(f"{len(later)} of them joined after the set opened, so "
+                         f"their record is shorter than its date suggests")
+    elif joined:
+        began = len(joined) - len(later)
+        # A factor that joined AFTER the set began is a real distinction and is
+        # kept: its record starts on its own date (LAW 2), not the set's, so
+        # folding it in would imply a longer track record than it has.
+        if later and began > 0:
+            parts.append(f"Began with {began} more -- "
+                         f"{_names_then_count(joined[:began])} -- then "
+                         f"{len(later)} {_reasons(len(later))} joined later, "
+                         f"{_names_then_count(later)}")
+        elif later:
+            parts.append(f"{len(later)} {_reasons(len(later))} joined after it "
+                         f"began: {_names_then_count(later)}")
+        else:
+            parts.append(f"Added {_names_then_count(joined)}")
+
+    if both:
+        parts.append(f"{_names_then_count(both)} {_was(len(both))} declared and "
+                     f"withdrawn the same day, once measured")
+    if left:
+        parts.append(f"retired {_names_then_count(left)}")
+    elif joined and not both:
+        # Said out loud because the absence is the informative half: a set that
+        # only ever adds is a set nobody has pruned.
+        parts.append("nothing retired")
+
+    if not parts:
+        return "Nothing was added or retired while this set was in force."
+    return "; ".join(parts) + "."
+
+
+def _was(n: int) -> str:
+    return "was" if n == 1 else "were"
+
+
+def _reasons(n: int) -> str:
+    return "reason" if n == 1 else "reasons"
+
+
+#: Why the second forecaster was not asked, in words. The stored reason is a
+#: code -- `llm_unavailable:api_error` -- and it reached the Schedule page
+#: verbatim, inside a sentence that was otherwise plain English.
+#:
+#: Each of these is a DIFFERENT situation with a different response, which is
+#: the argument for saying them rather than printing one code for all of them:
+#: a missing key is a setup step, a budget stop is working as designed, and an
+#: API error is the only one that might be worth retrying.
+DEGRADED_WORDS = {
+    "no_api_key": "no key is configured for the second forecaster",
+    "sdk_missing": "the second forecaster's library is not installed",
+    "daily_budget": "the day's spending cap was reached",
+    "api_error": "the second forecaster could not be reached",
+    "unparseable": "the second forecaster answered in a form we could not read",
+    "out_of_range": "the second forecaster returned something that was not a probability",
+    "no_reasoning": "the second forecaster gave a number with no reasoning",
+}
+
+
+def degraded_words(reason: str | None) -> str:
+    """"llm_unavailable:api_error" -> "the second forecaster could not be reached".
+
+    An unknown code is passed through rather than swallowed: a reason nobody
+    has written words for is still more useful on the page than silence, and
+    seeing it there is what prompts writing them.
+    """
+    code = (reason or "").strip()
+    if code.startswith("llm_unavailable:"):
+        code = code.split(":", 1)[1]
+    return DEGRADED_WORDS.get(code, code)
 
 
 def task_name(task: str | None) -> str:

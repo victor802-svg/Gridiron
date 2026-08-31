@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import calibration, config, db, language, sports
+from . import calibration, config, db, language, sports, subjects
 from .data import repo, teams
 from .factors import compute as factor_compute, registry
 from .market import lines
@@ -159,6 +159,12 @@ def _top_factors(payload: dict, limit: int = 5) -> list[dict]:
         return [
             {
                 "factor": c["factor"],
+                # The same phrase the pick cards and the Factors table use.
+                # Without it the worked example's bars were labelled
+                # `asked_line`, `srs_diff`, `home_field` -- the decomposition
+                # is the one thing on that page whose whole job is explaining,
+                # and it was the only part still speaking in column names.
+                "plain_name": _why_phrases().get(c["factor"]),
                 "value": c["value"],
                 "contribution": c["contribution"],
                 "present": c.get("present", True),
@@ -295,8 +301,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     if r["status"] == "final" else None
                 ),
                 "market_type": r["market_type"],
-                "prop_type": r["prop_type"],
-                "market": r["prop_type"] or r["market_type"],
+                # Recovered for reading where the column is empty; the
+                # browser never queries with these. See _prose_prop_type.
+                "prop_type": _prose_prop_type(r, sport),
+                "market": _prose_prop_type(r, sport) or r["market_type"],
                 "predictor": r["predictor"],
                 "subject": r["subject"],
                 "claim": (payload.get("question") or {}).get("claim"),
@@ -306,7 +314,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # The side, in words, from the ONE humaniser.
         "chance_clause": language.chance_clause({
             "subject": r["subject"], "market_type": r["market_type"],
-            "prop_type": r["prop_type"], "model_side": r["model_side"],
+            "prop_type": _prose_prop_type(r, sport), "model_side": r["model_side"],
             "line_asked": r["line_asked"],
             "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
             "team_names": teams.names(conn, r["sport"]),
@@ -328,7 +336,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     {
                         "subject": r["subject"],
                         "market_type": r["market_type"],
-                        "prop_type": r["prop_type"],
+                        "prop_type": _prose_prop_type(r, sport),
                         # Without these two the why cannot tell which side was
                         # taken, and every reason renders against the question's
                         # yes side instead of the pick.
@@ -366,7 +374,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "row_title": _row_title(r),
                 "start_local": _start_local(r["kickoff_utc"]),
                 "bucket_line": _bucket_line(bucket_cache[key]),
-                "resolved_story": _resolved_story(r, gap),
+                "resolved_story": _resolved_story(r, gap, team_names),
             }
         )
         # PLAIN WORDS, built on the SERVER, exactly as the history table does.
@@ -540,8 +548,10 @@ def history(
                 "game_id": r["game_id"],
                 "matchup": f"{r['away']} @ {r['home']}",
                 "market_type": r["market_type"],
-                "prop_type": r["prop_type"],
-                "market": r["prop_type"] or r["market_type"],
+                # Recovered for reading where the column is empty; the
+                # browser never queries with these. See _prose_prop_type.
+                "prop_type": _prose_prop_type(r, sport),
+                "market": _prose_prop_type(r, sport) or r["market_type"],
                 "predictor": r["predictor"],
                 "subject": r["subject"],
                 "line_asked": r["line_asked"],
@@ -551,7 +561,7 @@ def history(
                 # to build this and got spreads backwards on 34 cards.
                 "chance_clause": language.chance_clause({
                     "subject": r["subject"], "market_type": r["market_type"],
-                    "prop_type": r["prop_type"], "model_side": r["model_side"],
+                    "prop_type": _prose_prop_type(r, sport), "model_side": r["model_side"],
                     "line_asked": r["line_asked"],
                     "opponent": (r["away"] if r["subject"] == r["home"]
                                  else r["home"]),
@@ -621,7 +631,7 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
                 # to build this and got spreads backwards on 34 cards.
         "chance_clause": language.chance_clause({
             "subject": r["subject"], "market_type": r["market_type"],
-            "prop_type": r["prop_type"], "model_side": r["model_side"],
+            "prop_type": _prose_prop_type(r, r["sport"]), "model_side": r["model_side"],
             "line_asked": r["line_asked"],
             "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
             "team_names": teams.names(conn, r["sport"]),
@@ -794,11 +804,19 @@ def season_record(conn: sqlite3.Connection, sport: str) -> dict:
         "updated_utc": updated,
         # Said in words rather than assembled in the browser, so the one place
         # that decides how a record reads is here.
+        # SHORT ENOUGH FOR THE SLOT IT HAS. The strip needed 264px in a 213px
+        # slot at EVERY width, so it was clipped on a 1280px laptop too, and
+        # the `flex: none` hiding that clipping pushed the whole PAGE 35-56px
+        # wide instead.
+        #
+        # "this season" was the part to cut, not the sport. Dropping the label
+        # first was wrong and a test caught it: with no label, two sports that
+        # have both settled nothing render the same strip, so switching sports
+        # showed no change at all. The season is said in full in the tooltip.
         "line": (
-            f"{config.SPORT_LABELS.get(sport, sport.upper())} this season "
-            f"{wins}-{n - wins}"
+            f"{config.SPORT_LABELS.get(sport, sport.upper())} {wins}-{n - wins}"
             if n else
-            f"{config.SPORT_LABELS.get(sport, sport.upper())} this season - nothing settled yet"
+            f"{config.SPORT_LABELS.get(sport, sport.upper())} nothing settled yet"
         ),
     }
 
@@ -841,6 +859,7 @@ def digest(
     rows = conn.execute(
         "SELECT p.id, p.subject, p.model_prob, p.model_side, p.outcome,"
         " p.resolved_utc, p.market_type, p.prop_type, p.predictor,"
+        " p.line_asked, p.factors_json,"
         " g.home, g.away, g.home_score, g.away_score,"
         " s.implied_prob"
         " FROM predictions p JOIN games g ON g.id = p.game_id"
@@ -853,12 +872,39 @@ def digest(
         (sport, window[0], window[1]),
     ).fetchall()
 
+    # The digest's rows were the last place the renderer still built a sentence
+    # out of a raw field: `'picked ' + String(s.subject).toUpperCase()`. That is
+    # the wrong-side defect a FIFTH time -- and in JavaScript, where the Python
+    # scan that catches the other four cannot see it. Every phrase below is
+    # composed here, by the same functions the pick cards use.
+    team_names = teams.names(conn, sport)
+    phrases = _why_phrases()
+
     settled = []
     for r in rows:
+        payload = json.loads(r["factors_json"] or "{}")
+        item = {
+            "subject": r["subject"],
+            "market_type": r["market_type"],
+            "prop_type": _prose_prop_type(r, sport),
+            "model_side": r["model_side"],
+            "line_asked": r["line_asked"],
+            "opponent": (r["away"] if r["subject"] == r["home"] else r["home"]),
+            "model_prob": r["model_prob"],
+            "market_implied_prob": r["implied_prob"],
+            "team_names": team_names,
+            "contributions": payload.get("contributions") or [],
+            "absent_factors": _absent_factors(payload),
+        }
         settled.append({
             "prediction_id": r["id"],
             "matchup": f"{r['away']} @ {r['home']}",
             "subject": r["subject"],
+            # What the pick WAS, in words, with the flip applied.
+            "phrase": language.phrase(item),
+            # The same three-sentence reason the expanded pick rows carry, so a
+            # resolved row in the digest explains itself without being opened.
+            "why": language.why_block(item, phrases),
             "model_prob": r["model_prob"],
             "market_prob": r["implied_prob"],
             "outcome": r["outcome"],
@@ -867,7 +913,7 @@ def digest(
                 f"{r['away']} {r['away_score']} - {r['home_score']} {r['home']}"
                 if r["home_score"] is not None else None
             ),
-            "market": r["prop_type"] or r["market_type"],
+            "market": _prose_prop_type(r, sport) or r["market_type"],
             "predictor": r["predictor"],
             "resolved_utc": r["resolved_utc"],
         })
@@ -1017,6 +1063,27 @@ def _below_floor(conn: sqlite3.Connection, sport: str, wk: int | None) -> int:
         return 0
 
 
+def _prose_prop_type(r, sport: str) -> str | None:
+    """The stat a prop asked about, for READING. Never for querying.
+
+    Thirty-two NFL prop rows predate the column and carry NULL (see
+    `subjects.stat_suffix`), so every label built from `prop_type` fell back to
+    the raw subject and the Picks page read "Sam Darnold passing_yards over
+    165.5".
+
+    FOR READING ONLY, and the distinction is not pedantic. The same rows are
+    passed to `calibration` as query arguments, where `prop_type` selects which
+    record a bucket and a tier are counted from. Filling it in there would ask
+    for a category these rows are not stored under, and the lookup would come
+    back empty -- a wrong chip instead of a raw one. So the recovered value
+    goes into the prose item and nowhere near a query.
+    """
+    if r["market_type"] != "prop":
+        return r["prop_type"]
+    return r["prop_type"] or subjects.stat_suffix(
+        r["subject"], config.SPORT_MARKETS.get(sport, ()))
+
+
 def _row_title(r) -> str:
     """The row's heading: a matchup, or a subject and what is being asked.
 
@@ -1026,14 +1093,15 @@ def _row_title(r) -> str:
     """
     if r["market_type"] != "prop":
         return f"{r['away']} @ {r['home']}"
-    name = language.strip_market_suffix(r["subject"], r["prop_type"])
+    stat = _prose_prop_type(r, r["sport"])
+    name = language.strip_market_suffix(r["subject"], stat)
     surname = name.split()[-1] if name else name
     # "Fernando Tatis Jr." -> "Tatis Jr."; a row is not the place for a full
     # name, and the expanded view carries it.
     parts = (name or "").split()
     if len(parts) > 2 and parts[-1].rstrip(".").lower() in ("jr", "sr", "ii", "iii"):
         surname = " ".join(parts[-2:])
-    return f"{surname} · {language.humanise(r['prop_type'])}"
+    return f"{surname} · {language.humanise(stat)}"
 
 
 def _start_local(kickoff_utc: str | None) -> str | None:
@@ -1063,12 +1131,30 @@ def _bucket_line(bucket: dict) -> str:
     return f"{label} bucket · {n} resolved"
 
 
-def _resolved_story(r, gap) -> str | None:
-    """One line telling what happened, for the resolved section."""
+def _resolved_story(r, gap, team_names: dict | None = None) -> str | None:
+    """One line telling what happened, for the resolved section.
+
+    THE FOURTH INSTANCE of the wrong-side defect, and the one that showed the
+    class fix had been scoped too narrowly. `side_named` was introduced as the
+    one door after the same inversion shipped three times, and its guard scans
+    `language.py` -- on the premise that all prose lives in the humaniser. This
+    line is prose and lives here, so the guard never looked at it, and it read
+    "picked ATL" over nine resolved rows whose pick was on Colorado.
+
+    A guard that checks the place the rule was written, rather than every place
+    the rule applies, measures the author's memory.
+    """
     if r["resolved_utc"] is None or r["status"] != "final":
         return None
-    subject = language.strip_market_suffix(r["subject"], r["prop_type"])
-    story = f"picked {subject}"
+    picked, _prob = language.side_named({
+        "subject": r["subject"],
+        "market_type": r["market_type"],
+        "prop_type": r["prop_type"],
+        "model_side": r["model_side"],
+        "opponent": (r["away"] if r["subject"] == r["home"] else r["home"]),
+        "team_names": team_names or {},
+    })
+    story = f"picked {picked}"
     if r["home_score"] is not None and r["away_score"] is not None:
         winner = r["home"] if r["home_score"] > r["away_score"] else r["away"]
         story += (f" · {winner} won {max(r['home_score'], r['away_score'])}"

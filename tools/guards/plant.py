@@ -934,6 +934,76 @@ def plant_a_factor_with_no_why_template() -> Result:
     )
 
 
+def plant_a_view_that_names_the_side_itself() -> Result:
+    """The same defect OUTSIDE language.py, where the first guard was blind.
+
+    `check_side_named` scans the humaniser, on the premise that all prose lives
+    there. `views._resolved_story` disproved it: "picked ATL" over nine resolved
+    rows whose pick was on Colorado -- the fourth instance of one defect, and
+    the second time a guard was written narrower than the rule it enforces.
+    """
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        pkg = Path(tmp) / "pkg"
+        pkg.mkdir()
+        (pkg / "views.py").write_text(chr(10).join([
+            "def _resolved_story(r):",
+            '    """A planted view composing the side into a sentence."""',
+            '    return f"picked {r[\'subject\']}"',
+            "",
+        ]), encoding="utf-8")
+        try:
+            audit.check_side_named_everywhere(pkg)
+        except audit.LawViolation as exc:
+            named = "_resolved_story" in str(exc)
+            return Result("THE SIDE, IN PROSE, ANYWHERE",
+                          "name the side from a raw subject outside language.py",
+                          "audit.check_side_named_everywhere", named,
+                          str(exc).splitlines()[-1] if named else
+                          "caught, but the message does not name the function")
+        return Result("THE SIDE, IN PROSE, ANYWHERE",
+                      "name the side from a raw subject outside language.py",
+                      "audit.check_side_named_everywhere", False,
+                      "NOT CAUGHT - a view built the side into a sentence and passed")
+
+
+def plant_a_shadowed_definition() -> Result:
+    """Define a name twice and check the scan says which line wins.
+
+    THE REAL ONE: `calibration.scorecard` and `calibration.version_comparison`
+    each existed twice, the earlier of each pair being the pre-LAW-6 version
+    that queried every sport at once. Python discarded them, so no runtime
+    check could fire and the orphan scan saw the name as reached.
+    """
+    root = Path(audit.__file__).resolve().parent
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        pkg = Path(tmp) / "pkg"
+        pkg.mkdir()
+        (pkg / "twice.py").write_text(chr(10).join([
+            "def scorecard(conn):",
+            '    """The pre-LAW-6 one: no sport argument."""',
+            "    return conn",
+            "",
+            "",
+            "def scorecard(conn, *, sport):",
+            '    """The live one."""',
+            "    return sport",
+            "",
+        ]), encoding="utf-8")
+        try:
+            audit.check_no_shadowed_definitions(pkg)
+        except audit.LawViolation as exc:
+            named = "twice.py" in str(exc) and "scorecard" in str(exc)
+            return Result("NO SHADOWED DEFINITIONS",
+                          "define scorecard twice in one module",
+                          "audit.check_no_shadowed_definitions", named,
+                          str(exc).splitlines()[-1] if named else
+                          "caught, but the message names neither file nor name")
+        return Result("NO SHADOWED DEFINITIONS",
+                      "define scorecard twice in one module",
+                      "audit.check_no_shadowed_definitions", False,
+                      "NOT CAUGHT - a name defined twice passed the scan")
+
+
 def plant_a_composer_that_resolves_the_side_itself() -> Result:
     """Add a composer that reaches for `subject` instead of calling side_named.
 
@@ -1649,6 +1719,8 @@ def main() -> int:
     results.append(plant_a_pooled_strong_tier())
     results.append(plant_a_why_that_disagrees_with_its_contributions())
     results.append(plant_a_factor_with_no_why_template())
+    results.append(plant_a_view_that_names_the_side_itself())
+    results.append(plant_a_shadowed_definition())
     results.append(plant_a_composer_that_resolves_the_side_itself())
     results.append(plant_a_side_named_that_ignores_the_flip())
     results.append(plant_an_orphan_guard())
