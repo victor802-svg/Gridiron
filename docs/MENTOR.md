@@ -58,6 +58,13 @@ sees it.
   categories; a green used on anything but interactive/positive.
 - A rung, line, side, or convention "probably" meaning something.
   Derive it from data consistency; never assume the sign.
+- ANY RULE WITH A NUMERIC BOUNDARY IS TESTED **AT** THE BOUNDARY, not
+  either side of it. `0.53 - 0.50` is `3.0000000000000027` in binary
+  floating point, so a verdict rule reading "within 3 points is honest"
+  put a gap of exactly 3 on the wrong side of its own threshold and
+  reported "overconfident by 3.0 points" beside a limit of 3. The tests
+  passed: they checked 0 and 10. A boundary nobody tests is decided by
+  representation error rather than by the declared number.
 
 ## 4. Ruling precedents (apply these without asking; cite them)
 
@@ -82,6 +89,14 @@ sees it.
   didn't add up; assumed margin SDs). Measure, then build.
 - DELETE IS THE LAST RESORT for an orphan in an economics/model
   module; wire if cheap, else allowlist with a dated reason.
+
+## 4a. Process
+
+- THE FIRST ACT OF EVERY SESSION is to save the pasted brief verbatim to
+  `docs/briefs/<date>-<name>.md` and commit it. A brief that exists only
+  in a transcript cannot be checked against what was built from it, and
+  three sessions running have named files that did not exist -- which is
+  only provable against a saved copy.
 
 ## 5. Standing operator asks (surface these, don't nag)
 
