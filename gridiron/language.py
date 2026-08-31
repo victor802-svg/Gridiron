@@ -72,6 +72,20 @@ def humanise(name: str | None) -> str:
     return MARKET_WORDS.get(name, str(name).replace("_", " "))
 
 
+def team_name(code: str | None, names: dict | None) -> str:
+    """A club's display name if one was FETCHED, otherwise its tricode.
+
+    The fallback is the point. `names` comes from the `teams` table, which is
+    populated from the feed and carries the URL and date it came from; a club
+    with no row -- a historical code like OAK or SD that no current team list
+    contains -- keeps rendering as a tricode rather than being guessed at. A
+    tricode is terse; an invented name is wrong.
+    """
+    if not code:
+        return ""
+    return (names or {}).get(code) or code
+
+
 def strip_market_suffix(subject: str | None, market: str | None) -> str:
     """"Saquon Barkley rushing_yards" -> "Saquon Barkley".
 
@@ -134,6 +148,10 @@ def phrase(item: dict) -> str:
     market = item.get("prop_type") or item.get("market") or item.get("market_type")
     market_type = item.get("market_type")
     subject = strip_market_suffix(item.get("subject"), market)
+    # A game market's subject is a club, so it gets the club's name when one
+    # has been fetched. A prop's subject is a person and is already a name.
+    if market_type in ("moneyline", "spread"):
+        subject = team_name(subject, item.get("team_names"))
     side = item.get("model_side")
     line = item.get("line_asked")
 
@@ -155,7 +173,7 @@ def phrase(item: dict) -> str:
         # we are actually backing is the whole point of the plain-words law.
         # Falls back to the literal form only when the opponent is unknown,
         # because inventing one would be worse than reading oddly.
-        opponent = item.get("opponent")
+        opponent = team_name(item.get("opponent"), item.get("team_names"))
         if side == "lose" and opponent:
             return f"{opponent} to win"
         return f"{subject} {SIDE_WORDS.get(side, 'to win')}".strip()
@@ -189,6 +207,16 @@ def chance_clause(item: dict) -> str:
     subject = strip_market_suffix(item.get("subject"), item.get("prop_type"))
     market_type = item.get("market_type")
     side = item.get("model_side")
+    # THE TRICODE STAYS HERE, deliberately, and the mockup agrees: the pick line
+    # reads "Tampa Bay Rays to win" and this small label reads "TB WINS".
+    #
+    # Two reasons. It sits under a large number in a narrow column, where a
+    # full name wraps or truncates. And a club name is plural -- "Colorado
+    # Rockies wins" is wrong, "Colorado Rockies win" is right, and "Miami Heat
+    # win" is right for a name that looks singular. Getting that agreement
+    # right needs a table of which names take which verb, which is a hundred
+    # and twenty judgements typed from memory: the exact thing the teams table
+    # exists to avoid. The tricode takes the singular verb and always has.
 
     if market_type == "prop":
         market = item.get("prop_type") or item.get("market")

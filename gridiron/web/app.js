@@ -1629,8 +1629,11 @@ const Gridiron = (function () {
         warnings: null,          // the strip owns them now
         settled: null
       });
-      strip.hidden = false;
       strip.dataset.empty = 'false';
+      // The route decided visibility before this fetch resolved, so re-apply
+      // it rather than unhiding unconditionally -- otherwise the strip
+      // reappears on whatever page the reader has since navigated to.
+      applyRouteVisibility();
     } catch (err) {
       // Hidden rather than half-drawn, but NOT silent: a greeting that fails
       // quietly is a greeting that is wrong and looks fine.
@@ -1691,6 +1694,31 @@ const Gridiron = (function () {
     digest: renderDigest
   };
 
+  // MERGING THE GREETING AND THE NOTICES PUT TWO RULES ON ONE ELEMENT, and
+  // they disagree. "Since you last looked" belongs on the home tab: it is not
+  // the question somebody browsing the factor registry is asking. A WARNING
+  // belongs on every page, because a warning nobody sees is not a warning.
+  //
+  // So the strip survives off-home when it is carrying notices, and only the
+  // greeting sentence goes quiet. Extracted into a function because the route
+  // decides this BEFORE the digest fetch resolves, and the fetch used to
+  // unhide the strip unconditionally afterwards -- so it reappeared on
+  // whatever page the reader had since navigated to.
+  function applyRouteVisibility() {
+    const home = (state.view || 'record') === 'record';
+    const greeting = document.getElementById('glance');
+    if (greeting) {
+      const notices = document.getElementById('notices-summary');
+      const hasNotices = notices && !notices.hidden;
+      const msg = document.getElementById('greet-msg');
+      if (msg) msg.hidden = !home;
+      greeting.hidden = (!home || greeting.dataset.empty === 'true') && !hasNotices;
+      greeting.classList.toggle('glance-notices-only', !home && hasNotices);
+    }
+    const settled = document.getElementById('greet-settled');
+    if (settled) settled.hidden = !home;
+  }
+
   async function route() {
     clearError();
     const name = (location.hash.replace('#/', '') || 'record');
@@ -1703,13 +1731,8 @@ const Gridiron = (function () {
     // not the question somebody browsing the factor registry is asking. The
     // notice bar stays on every page, because a warning nobody sees is not a
     // warning.
-    const home = view === 'record';
-    const greeting = document.getElementById('glance');
-    if (greeting) {
-      greeting.hidden = !home || greeting.dataset.empty === 'true';
-    }
-    const settled = document.getElementById('greet-settled');
-    if (settled) settled.hidden = !home;
+    state.view = view;
+    applyRouteVisibility();
     document.getElementById('view-' + view).hidden = false;
     document.querySelectorAll('nav a').forEach(a => {
       a.classList.toggle('active', a.dataset.route === view);

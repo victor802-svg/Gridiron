@@ -161,6 +161,18 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
         counts[sport] = result.get("rows", result) if isinstance(result, dict) else {}
         warnings.extend(result.get("warnings", []) if isinstance(result, dict) else [])
 
+        # Club display names, from the feed, alongside the results. Cheap --
+        # cached permanently per club -- and it keeps the interface saying
+        # "Tampa Bay Rays" rather than "TB" without anyone typing a name.
+        try:
+            from .data import teams as _teams
+
+            named = _teams.load_teams(conn, sport, season)
+            if named.get("skipped"):
+                warnings.append(f"{sport} team names: {named['skipped']}")
+        except Exception as exc:  # noqa: BLE001 - names are cosmetic, results are not
+            warnings.append(f"{sport} team names: {type(exc).__name__}: {exc}")
+
     became_final = conn.execute(
         "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
         " WHERE p.resolved_utc IS NULL AND g.status = 'final'"

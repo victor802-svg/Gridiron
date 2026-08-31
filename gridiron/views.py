@@ -11,7 +11,7 @@ import json
 import sqlite3
 
 from . import calibration, config, db, language, sports
-from .data import repo
+from .data import repo, teams
 from .factors import compute as factor_compute, registry
 from .market import lines
 
@@ -233,6 +233,9 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     ids = [r["id"] for r in rows]
     snapshots = lines.snapshots_for(conn, ids)
     voided = _voids_for(conn, ids)
+    # One lookup for the slate, not one per card. Empty when the team table has
+    # not been loaded, and every name then falls back to its tricode.
+    team_names = teams.names(conn, sport)
     # One bucket record per (market, predictor, bucket) rather than one per
     # card: the same lookup would otherwise run once for every pick on the slate.
     bucket_cache: dict[tuple, dict] = {}
@@ -261,6 +264,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "matchup": f"{r['away']} @ {r['home']}",
                 # Who the pick is FOR when the model takes the NO side.
                 "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
+                "team_names": team_names,
                 "kickoff_utc": r["kickoff_utc"],
                 "game_status": r["status"],
                 "final_score": (
@@ -276,15 +280,14 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "line_asked": r["line_asked"],
                 "model_prob": r["model_prob"],
                 "model_side": r["model_side"],
-                # The side, in words, from the ONE humaniser. The renderer used
-                # to build this and got spreads backwards on 34 cards.
-                "chance_clause": language.chance_clause({
-                    "subject": r["subject"], "market_type": r["market_type"],
-                    "prop_type": r["prop_type"], "model_side": r["model_side"],
-                    "line_asked": r["line_asked"],
-                    "opponent": (r["away"] if r["subject"] == r["home"]
-                                 else r["home"]),
-                }),
+        # The side, in words, from the ONE humaniser.
+        "chance_clause": language.chance_clause({
+            "subject": r["subject"], "market_type": r["market_type"],
+            "prop_type": r["prop_type"], "model_side": r["model_side"],
+            "line_asked": r["line_asked"],
+            "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
+            "team_names": teams.names(conn, r["sport"]),
+        }),
                 "market_line": snap.get("line"),
                 "market_implied_prob": implied,
                 "market_source": snap.get("source"),
@@ -477,6 +480,7 @@ def history(
     ids = [r["id"] for r in rows]
     snapshots = lines.snapshots_for(conn, ids)
     voided = _voids_for(conn, ids)
+    team_names = teams.names(conn, sport)
 
     items = []
     for r in rows:
@@ -504,6 +508,7 @@ def history(
                     "line_asked": r["line_asked"],
                     "opponent": (r["away"] if r["subject"] == r["home"]
                                  else r["home"]),
+                    "team_names": team_names,
                 }),
                 "market_line_at_the_time": snap.get("line"),
                 "market_implied_prob": snap.get("implied_prob"),
@@ -556,13 +561,13 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
         "model_side": r["model_side"],
                 # The side, in words, from the ONE humaniser. The renderer used
                 # to build this and got spreads backwards on 34 cards.
-                "chance_clause": language.chance_clause({
-                    "subject": r["subject"], "market_type": r["market_type"],
-                    "prop_type": r["prop_type"], "model_side": r["model_side"],
-                    "line_asked": r["line_asked"],
-                    "opponent": (r["away"] if r["subject"] == r["home"]
-                                 else r["home"]),
-                }),
+        "chance_clause": language.chance_clause({
+            "subject": r["subject"], "market_type": r["market_type"],
+            "prop_type": r["prop_type"], "model_side": r["model_side"],
+            "line_asked": r["line_asked"],
+            "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
+            "team_names": teams.names(conn, r["sport"]),
+        }),
         "reasoning": r["reasoning"],
         "degraded": r["degraded"],
         "outcome": r["outcome"],

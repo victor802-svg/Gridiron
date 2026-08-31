@@ -318,6 +318,23 @@ CREATE TABLE IF NOT EXISTS player_crosswalk (
 CREATE INDEX IF NOT EXISTS player_crosswalk_source
     ON player_crosswalk (sport, source_id);
 
+-- Club display names, READ FROM THE FEED. See gridiron/data/teams.py.
+--
+-- Dated and sourced for the same reason player_crosswalk is: a name typed from
+-- memory is the failure mode this project has paid for twice, and a table that
+-- records WHERE each row came from and WHEN can be re-checked. A tricode with
+-- no row here keeps rendering as a tricode, which is honest.
+CREATE TABLE IF NOT EXISTS teams (
+    sport        TEXT NOT NULL,
+    tricode      TEXT NOT NULL,     -- OUR code, after the measured alias map
+    espn_abbrev  TEXT,              -- what the feed called it, kept for audit
+    display_name TEXT NOT NULL,
+    short_name   TEXT,
+    source_url   TEXT NOT NULL,
+    fetched_utc  TEXT NOT NULL,
+    PRIMARY KEY (sport, tricode)
+);
+
 -- Prop lines as published, one row per game per market per athlete per rung.
 -- Lives outside `market_lines_raw` because that table is one row per GAME.
 CREATE TABLE IF NOT EXISTS market_prop_lines_raw (

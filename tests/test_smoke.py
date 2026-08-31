@@ -968,11 +968,11 @@ def test_the_result_reads_as_a_word_not_as_open(page):
 def test_notices_collapse_into_one_bar_that_expands(page):
     """Compression, not suppression: one line, every sentence behind it."""
     page.evaluate("location.hash = '#/record'")
-    page.wait_for_selector("#notices .notices-summary", timeout=10000)
-    bars = page.eval_on_selector_all("#notices .notices-summary", "e => e.length")
+    page.wait_for_selector("#notices-summary", timeout=10000)
+    bars = page.eval_on_selector_all("#notices-summary", "e => e.length")
     assert bars == 1, f"{bars} notice bars rendered; the point is one"
 
-    summary = page.locator("#notices .notices-summary")
+    summary = page.locator("#notices-summary")
     text = summary.inner_text()
     assert "notice" in text.lower()
     assert page.locator("#notices .notices-detail").is_visible() is False
@@ -1033,8 +1033,8 @@ def test_each_notice_keeps_its_task_name_in_the_summary(page):
     first colon threw away the sport, so two different notices read as one
     repeated. A summary that cannot tell two warnings apart is not a summary."""
     page.evaluate("location.hash = '#/record'")
-    page.wait_for_selector("#notices .notices-summary", timeout=10000)
-    text = page.locator("#notices .notices-summary").inner_text()
+    page.wait_for_selector("#notices-summary", timeout=10000)
+    text = page.locator("#notices-summary").inner_text()
     parts = [p.strip() for p in text.split("—")[-1].split("·")]
     assert len(parts) == len(set(parts)), f"the summary repeats itself: {parts}"
 

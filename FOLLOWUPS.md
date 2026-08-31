@@ -519,3 +519,51 @@ carry a scalar `factor_set_version`, and the reader would have to treat a bare
 string as "the project-wide version that was in force", which is true but needs
 saying in the schema rather than assumed. Worth doing **before** a bump is ever
 needed for one sport, because after that the damage is already in the record.
+
+---
+
+## K0-K4, the compact screen *(2026-08-31)*
+
+### K3 and K4 are DEFERRED to their own session *(open)*
+
+By the one-session-per-big-build precedent (MENTOR.md §4), which this brief
+proved again rather than merely cited: K0 and K1 were diagnosis-and-fix and both
+landed clean; K2 is a layout rewrite that touches the server payload, the
+markup, the stylesheet, the renderer and roughly forty test assertions, and it
+consumed the session.
+
+**K3** wants a plain-English WHY sentence per contributing factor, with a
+template declared beside every factor's rationale and a test failing on any
+factor that lacks one. There are about fifty declared factors across three
+sports. That is fifty pieces of prose written to a standard, plus the
+consistency guard tying the words to the same contributions K1 verified. It is
+not a tail-end task and starting it with a session's remaining room is how the
+NBA props shipped missing two instruments.
+
+**K4** is the verification pass and cannot run before K3 exists.
+
+### The teams table, and what it does not cover *(done, with a measured gap)*
+
+Club names now come from ESPN's `displayName`, one row per club with the URL and
+timestamp it came from, exactly as `player_crosswalk` records its matches.
+Measured coverage against the tricodes actually in the record:
+
+    mlb  30/30      nba  30/30      nfl  30/34
+
+The four NFL gaps are `LA`, `OAK`, `SD` and `WAS` -- pre-relocation codes that
+appear in older seasons and that no current team list contains. They keep
+rendering as tricodes, which is the designed fallback: a tricode is terse, an
+invented name is wrong.
+
+**What would settle it:** fetch historical seasons' team lists too, keyed by
+season, if a name for a 2016 Rams row is ever wanted. Nothing needs it today.
+
+### The chance label keeps the tricode, on purpose *(closed)*
+
+The pick line reads "Tampa Bay Rays to win"; the small label under the
+percentage reads "TB WINS", which is what the mockup shows. Club names are
+plural -- "Colorado Rockies wins" is wrong and "Colorado Rockies win" is right,
+while "Miami Heat win" is right for a name that looks singular. Getting that
+agreement right needs a table of which names take which verb: a hundred and
+twenty judgements typed from memory, which is the exact failure the teams table
+exists to prevent. The tricode takes the singular verb and always has.
