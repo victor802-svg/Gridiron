@@ -282,15 +282,20 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         payload = json.loads(r["factors_json"] or "{}")
         snap = snapshots.get(r["id"]) or {}
         implied = snap.get("implied_prob")
-        gap = None if implied is None else round(r["model_prob"] - implied, 4)
+        # THE SHOWN NUMBER drives the chip, the gap and the sort. See
+        # `shown_prob`: a card whose tier and percentage disagree is worse than
+        # either being wrong, because both are real numbers and neither looks
+        # like the mistake.
+        shown = shown_prob(r)
+        gap = None if implied is None else round(shown - implied, 4)
 
         key = (
             r["market_type"], r["prop_type"], r["predictor"],
-            calibration.bucket_label(r["model_prob"]),
+            calibration.bucket_label(shown),
         )
         if key not in bucket_cache:
             bucket_cache[key] = calibration.bucket_record(
-                conn, r["model_prob"], sport=sport, market_type=r["market_type"],
+                conn, shown, sport=sport, market_type=r["market_type"],
                 prop_type=r["prop_type"], predictor=r["predictor"],
             )
         cards.append(
@@ -317,7 +322,16 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "subject": r["subject"],
                 "claim": (payload.get("question") or {}).get("claim"),
                 "line_asked": r["line_asked"],
+                # BOTH NUMBERS TRAVEL. `model_prob` is what the model
+                # claimed; `shown_prob` is what the reader was shown, which
+                # differ only once a correction is active. A payload carrying
+                # one of them could not answer "was the correction right",
+                # and the version says which correction to ask about.
                 "model_prob": r["model_prob"],
+                "shown_prob": shown,
+                "correction_version": (r["correction_version"]
+                                       if "correction_version" in r.keys()
+                                       else None),
                 "model_side": r["model_side"],
         # The side, in words, from the ONE humaniser.
         "chance_clause": language.chance_clause({
@@ -658,9 +672,65 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     calibration.require_sport(sport, "views.scorecard")
     payload = calibration.scorecard(conn, sport=sport)
     payload["meta"] = meta(conn, sport)
+    payload["corrections"] = corrections_report(conn, sport)
     calibration.assert_every_figure_has_n(payload)
     calibration.assert_single_sport(payload, sport)
     return payload
+
+
+def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
+    """Every correction category for one sport, and how each version has done.
+
+    THREE FIGURES PER VERSION, KEPT APART because they answer different
+    questions and only one of them is evidence:
+
+      * in-sample -- measured on the rows the fit was made from. It says the
+        fit converged. A fit always improves the rows it was fitted on.
+      * holdout -- the latest fifth, which the fit did not see. Thin, and
+        labelled thin.
+      * forward -- predictions actually WRITTEN under that version. The only
+        one that answers "did it help", and empty until a version has been
+        active long enough to have a record.
+
+    A category with no correction at all still appears, with the shortfall in
+    words, because "no correction" and "not enough record yet" are different
+    states and the panel must not show them alike.
+    """
+    from . import correction
+
+    calibration.require_sport(sport, "views.corrections_report")
+    out = []
+    for market_type, forecaster in sorted({
+        (r["market_type"], r["predictor"])
+        for r in conn.execute(
+            "SELECT DISTINCT market_type, predictor FROM predictions"
+            " WHERE sport = ?", (sport,))
+    }):
+        versions = correction.version_report(
+            conn, sport=sport, market_type=market_type, forecaster=forecaster)
+        latest = versions[-1] if versions else None
+        out.append({
+            "market_type": market_type,
+            "forecaster": forecaster,
+            "label": f"{language.humanise(market_type)}, {forecaster}",
+            "active": bool(latest and latest["active_from"]),
+            "status": (latest["status"] if latest else
+                       f"corrections begin at {correction.MIN_TRAIN} settled "
+                       "- nothing settled yet"),
+            "versions": versions,
+            "n": len(versions),
+        })
+    return {
+        "sport": sport,
+        "n": len(out),
+        "min_train": correction.MIN_TRAIN,
+        "categories": out,
+        "any_active": any(c["active"] for c in out),
+        # The one line the Record tab shows while everything is still raw.
+        "note": (f"Claims are shown exactly as the model made them. "
+                 f"Corrections begin at {correction.MIN_TRAIN} settled "
+                 f"predictions in a category."),
+    }
 
 
 def factors(conn: sqlite3.Connection, sport: str) -> dict:
@@ -1090,6 +1160,22 @@ def _prose_prop_type(r, sport: str) -> str | None:
         return r["prop_type"]
     return r["prop_type"] or subjects.stat_suffix(
         r["subject"], config.SPORT_MARKETS.get(sport, ()))
+
+
+def shown_prob(r) -> float:
+    """The number the reader saw, from a prediction row.
+
+    `calibrated_prob` is written at prediction time when the category had an
+    active correction, and is NULL otherwise. Everything a reader compares --
+    the tier chip, the percentage on the card, the sort order, the gap against
+    the market -- must agree about which number it is using, or a STRONG chip
+    ends up on a card whose percentage says LEAN and neither figure is wrong.
+
+    The RAW claim stays available beside it; this is not a replacement, it is
+    the answer to "what was shown".
+    """
+    calibrated = r["calibrated_prob"] if "calibrated_prob" in r.keys() else None
+    return calibrated if calibrated is not None else r["model_prob"]
 
 
 def _row_title(r) -> str:

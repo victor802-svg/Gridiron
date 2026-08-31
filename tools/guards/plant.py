@@ -1008,6 +1008,136 @@ def _plant_correction(extra: str, what: str, needle: str,
                                   "NOT CAUGHT - " + what + " passed the scan")
 
 
+def plant_an_active_correction_below_the_gate() -> Result:
+    """Ask the engine to activate a category with too little record.
+
+    Fifty settled rows is the bar. Below it a correction is two numbers fitted
+    on a handful of results, and applying it would let a dozen games decide
+    what every future claim in the category is shown as.
+    """
+    from gridiron import correction as _c
+
+    conn = _memory_record()
+    _settle(conn, n=20, worth=0.6)
+    report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+    cat = report["categories"][0]
+    caught = not cat["active"] and str(_c.MIN_TRAIN) in cat["status"]
+    return Result("CORRECTIONS ACTIVATE ONLY ON THEIR MERITS",
+                  "activate a correction on 20 settled rows",
+                  "correction.refit_all", caught,
+                  cat["status"] if caught else
+                  "NOT CAUGHT - a category under the gate went active")
+
+
+def plant_a_correction_that_does_not_help() -> Result:
+    """A well-calibrated category must NOT get a correction.
+
+    The in-sample Brier always improves -- a fit improves the rows it was
+    fitted on by construction -- so the gate that can say no is the holdout.
+    This is the planting that proves it says no.
+    """
+    from gridiron import correction as _c
+
+    conn = _memory_record()
+    _settle(conn, n=200, worth=1.0)          # claims already worth what they say
+    report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+    cat = report["categories"][0]
+    caught = not cat["active"]
+    return Result("CORRECTIONS ACTIVATE ONLY ON THEIR MERITS",
+                  "activate a correction that does not improve unseen rows",
+                  "correction.holdout_check", caught,
+                  cat["status"] if caught else
+                  "NOT CAUGHT - a correction that does not help went active")
+
+
+def plant_a_genuine_correction_refused() -> Result:
+    """The other direction: a real miscalibration must be ALLOWED through.
+
+    A gate that never opens is not a gate, it is an off switch, and it would
+    be indistinguishable from a working one for as long as no category
+    qualified.
+    """
+    from gridiron import correction as _c
+
+    conn = _memory_record()
+    _settle(conn, n=200, worth=0.55)         # badly overconfident
+    report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+    cat = report["categories"][0]
+    return Result("CORRECTIONS ACTIVATE ONLY ON THEIR MERITS",
+                  "refuse a correction that genuinely helps",
+                  "correction.holdout_check", cat["active"],
+                  cat["status"] if cat["active"] else
+                  "NOT CAUGHT - a real miscalibration was refused, so the "
+                  "gate never opens")
+
+
+def plant_a_retroactive_correction() -> Result:
+    """Try to rewrite an existing prediction's shown number.
+
+    A correction reaches predictions written after it activates and no others.
+    Recomputing an old row under a new version would make the record look
+    better than it was, which is exactly what LAW 3 exists to stop.
+    """
+    conn = _memory_record()
+    _settle(conn, n=3, worth=0.8)
+    try:
+        conn.execute("UPDATE predictions SET calibrated_prob = 0.5")
+    except sqlite3.IntegrityError as exc:
+        return Result("CORRECTIONS ACTIVATE ONLY ON THEIR MERITS",
+                      "apply a correction retroactively to a written row",
+                      "schema trigger predictions_no_update", True, str(exc))
+    return Result("CORRECTIONS ACTIVATE ONLY ON THEIR MERITS",
+                  "apply a correction retroactively to a written row",
+                  "schema trigger predictions_no_update", False,
+                  "NOT CAUGHT - a written prediction's shown number was rewritten")
+
+
+def _memory_record():
+    """A throwaway database with one game to hang predictions on."""
+    from gridiron import db as _db
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    conn.execute(
+        # A final game must carry scores -- there is a CHECK for it, and it
+        # caught this fixture before the planting could run.
+        "INSERT INTO games (id, season, week, game_type, kickoff_utc, home,"
+        " away, status, home_score, away_score, sport) VALUES"
+        " ('g1', 2026, 1, 'REG', '2025-12-01T00:00:00Z', 'AAA', 'BBB',"
+        " 'final', 24, 17, 'nfl')"
+    )
+    conn.commit()
+    return conn
+
+
+def _settle(conn, *, n: int, worth: float) -> None:
+    """`n` settled predictions whose claims are worth `worth` times what they say.
+
+    `worth=1.0` is a perfectly calibrated forecaster; below 1 is overconfident.
+    Deterministic rather than random: a planted violation that fails one run in
+    twenty is a planting nobody trusts.
+    """
+    import random as _random
+
+    rng = _random.Random(19)
+    rows = []
+    for i in range(n):
+        claim = 0.55 + (i % 40) * 0.01
+        p_true = 0.5 + (claim - 0.5) * worth
+        rows.append((claim, 1 if rng.random() < p_true else 0, i))
+    for claim, outcome, i in rows:
+        conn.execute(
+            "INSERT INTO predictions (sport, created_utc, game_id, market_type,"
+            " subject, model_prob, model_side, predictor, factor_set_version,"
+            " factors_json, reasoning, resolved_utc, outcome)"
+            " VALUES ('nfl', '2025-12-01T00:00:00Z', 'g1', 'moneyline', ?, ?,"
+            " 'win', 'statistical', 'fs2', '{}', 'because', ?, ?)",
+            (f"S{i}", claim, f"2026-01-{i % 28 + 1:02d}T00:00:{i % 60:02d}Z",
+             outcome),
+        )
+    conn.commit()
+
+
 def plant_a_correction_that_reads_the_score() -> Result:
     """Join the game table into the correction's training set.
 
@@ -1910,6 +2040,10 @@ def main() -> int:
     results.append(plant_a_why_that_disagrees_with_its_contributions())
     results.append(plant_a_factor_with_no_why_template())
     results.append(plant_a_view_that_names_the_side_itself())
+    results.append(plant_an_active_correction_below_the_gate())
+    results.append(plant_a_correction_that_does_not_help())
+    results.append(plant_a_genuine_correction_refused())
+    results.append(plant_a_retroactive_correction())
     results.append(plant_a_correction_that_reads_the_score())
     results.append(plant_a_correction_that_reads_the_line())
     results.append(plant_a_correction_that_can_see_its_own_future())

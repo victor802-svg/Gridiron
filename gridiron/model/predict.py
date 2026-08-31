@@ -129,14 +129,10 @@ def write_prediction(
     # A raw category leaves both NULL, which reads correctly as "no correction
     # was in force", because none was.
     claimed = round(min(max(confidence, 0.001), 0.999), 6)
-    active = correction.active_correction(
-        conn, sport=q.sport, market_type=q.market_type, forecaster=predictor)
-    calibrated = correction_version = None
-    if active is not None:
-        calibrated = round(correction.Platt(
-            slope=active["slope"], intercept=active["intercept"],
-            n_train=active["n_train"]).apply(claimed), 6)
-        correction_version = active["version"]
+    shown, correction_version = correction.shown_claim(
+        conn, sport=q.sport, market_type=q.market_type, forecaster=predictor,
+        claim=claimed)
+    calibrated = shown if correction_version is not None else None
 
     cur = conn.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
@@ -305,6 +301,16 @@ def predict_slate(
             _side, claimed = baseline.stated_side(
                 stat["prob_yes"], q.yes_label, q.no_label
             )
+            # THE FLOOR RUNS ON THE NUMBER THE READER WOULD SEE. Once a
+            # category has an active correction, its raw claims are mostly
+            # lower after adjustment, so questions that used to clear 70% stop
+            # clearing it and the slate shrinks. That is the point: the floor
+            # exists to refuse claims the model is not confident enough to
+            # make, and "confident enough" has to mean the earned number or the
+            # floor is being applied to a figure nobody is shown.
+            claimed, _v = correction.shown_claim(
+                conn, sport=q.sport, market_type=q.market_type,
+                forecaster="statistical", claim=claimed)
             if claimed < config.PROPS_MIN_CLAIM:
                 run.below_floor += 1
                 run.rungs_logged += rungs.record(

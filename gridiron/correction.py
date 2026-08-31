@@ -235,6 +235,29 @@ def active_correction(
     ).fetchone()
 
 
+def shown_claim(conn: sqlite3.Connection, *, sport: str, market_type: str,
+                forecaster: str, claim: float) -> tuple[float, int | None]:
+    """The number a reader will see, and the correction version behind it.
+
+    ONE DOOR, for the same reason `side_named` is one door. Every consumer of a
+    claim has to agree about which number it is using: the tier chip, the props
+    confidence floor, the sort order, the sentence on the card. Three of those
+    reading the raw claim and one reading the corrected one would put a STRONG
+    chip on a card whose percentage says LEAN, and the disagreement would be
+    invisible because both numbers are real.
+
+    Returns the raw claim unchanged when the category has no active
+    correction, which is every category today.
+    """
+    active = active_correction(conn, sport=sport, market_type=market_type,
+                              forecaster=forecaster)
+    if active is None:
+        return claim, None
+    model = Platt(slope=active["slope"], intercept=active["intercept"],
+                  n_train=active["n_train"])
+    return round(model.apply(claim), 6), int(active["version"])
+
+
 def next_version(conn: sqlite3.Connection, *, sport: str, market_type: str,
                  forecaster: str) -> int:
     row = conn.execute(
@@ -279,6 +302,85 @@ def record_fit(
     return version
 
 
+#: The share of a category's settled rows used to FIT the holdout check. The
+#: rest -- the most recent fifth -- is what the check is scored on.
+HOLDOUT_TRAIN_SHARE = 0.8
+
+#: The holdout needs enough rows to say anything at all. Ten is not many, and
+#: it is what 20% of the fifty-row gate comes to; a category at exactly the
+#: gate gets a ten-row check, which is thin and is labelled thin everywhere it
+#: is reported.
+HOLDOUT_MIN = 10
+
+#: HOW MUCH BETTER THE HOLDOUT MUST BE, and it is not zero. Measured
+#: 2026-08-31, 60 synthetic categories of 200 rows each at three levels of
+#: miscalibration, holdout of 40:
+#:
+#:   claims worth exactly what they say   -- bare `corrected < raw`: 23 of 60
+#:   claims worth 55% of what they say    -- bare `corrected < raw`: 45 of 60
+#:
+#: A PERFECTLY CALIBRATED CATEGORY PASSED A BARE COMPARISON 38% OF THE TIME.
+#: That is what a coin flip looks like: with no real effect the corrected Brier
+#: lands either side of the raw one at random, and half those flips would
+#: activate a correction that corrects nothing while the interface says the
+#: numbers are earned.
+#:
+#: At this margin the same trials give 2 of 60 for the null and 35 of 60 for
+#: the genuine miscalibration. The false activations fall from 38% to 3%; the
+#: cost is that a mild miscalibration waits for more record before it
+#: activates, which is the right way round for a gate.
+HOLDOUT_MIN_GAIN = 0.005
+
+
+def holdout_check(rows: list[tuple[float, int, str]]) -> dict:
+    """Fit on the earliest 80%, score on the latest 20%. TIME-ORDERED, always.
+
+    WHAT THIS IS: a thin, forward-SHAPED check. The rows are already ordered by
+    when they resolved, so the fit never sees a result that had not happened
+    when the holdout rows were still open. That is the only property that makes
+    the number worth anything.
+
+    WHAT THIS IS NOT: proof the correction helps. Ten to thirty rows decide it
+    at the sizes this gate opens at, and a category can pass by luck. It is a
+    filter against the obvious failure -- a correction that makes things worse
+    on rows it has not seen -- and it is reported as that, never as evidence.
+
+    A random split would be worse than nothing here. It would let the fit train
+    on a game from next week and be tested on one from last week, and the
+    result would look like a forward check while being a backward one.
+    """
+    n = len(rows)
+    cut = int(n * HOLDOUT_TRAIN_SHARE)
+    train, test = rows[:cut], rows[cut:]
+    if len(test) < HOLDOUT_MIN or not train:
+        return {"n": len(test), "passed": False,
+                "why": (f"the holdout would be {len(test)} rows, under the "
+                        f"{HOLDOUT_MIN} needed to check anything")}
+
+    model = fit_platt(train)
+    if model is None:
+        return {"n": len(test), "passed": False,
+                "why": ("the earliest rows have only one kind of outcome, so "
+                        "there is nothing to fit a correction from")}
+
+    probs = [p for p, _y, _t in test]
+    ys = [float(y) for _p, y, _t in test]
+    raw = brier(probs, ys)
+    corrected = brier([model.apply(p) for p in probs], ys)
+    gain = None if (raw is None or corrected is None) else raw - corrected
+    passed = gain is not None and gain > HOLDOUT_MIN_GAIN
+    return {
+        "n": len(test), "brier_raw": raw, "brier_corrected": corrected,
+        "gain": None if gain is None else round(gain, 6),
+        "passed": passed,
+        "why": ("the correction scored better on the most recent rows, which "
+                "it was not fitted on"
+                if passed else
+                "the correction did not clearly improve the rows it had not "
+                "seen"),
+    }
+
+
 def categories_in_the_record(conn: sqlite3.Connection, *,
                             before_utc: str) -> list[tuple[str, str, str]]:
     """Every (sport, market_type, forecaster) with settled rows before a time.
@@ -310,36 +412,125 @@ def categories_in_the_record(conn: sqlite3.Connection, *,
 
 
 def refit_all(conn: sqlite3.Connection, *, now: str | None = None) -> dict:
-    """Fit one version per category. Records what it found, activates nothing.
+    """Fit one version per category, and activate only what clears both bars.
 
-    ACTIVATION IS C2'S DECISION AND IS DELIBERATELY NOT MADE HERE. A fit that
-    activated itself would mean the only way to inspect a correction was to
-    have it already applied to live claims. Every row this writes has
-    `active_from` NULL and a `status` saying why.
+    TWO BARS, and they answer different questions. `MIN_TRAIN` asks whether
+    there is enough record to fit anything. The holdout asks whether the fit is
+    any good on rows it did not see -- which is the question the in-sample
+    Brier cannot answer, because a fit always improves the rows it was fitted
+    on.
+
+    A category failing either stays RAW, and its status says which bar it
+    missed, in words the interface shows unchanged.
     """
     at = now or utcnow()
     written = []
     for sport, market_type, forecaster in categories_in_the_record(conn, before_utc=at):
         rows = training_rows(conn, sport=sport, market_type=market_type,
                              forecaster=forecaster, before_utc=at)
+        model, holdout, active_from = None, None, None
         if len(rows) < MIN_TRAIN:
             status = (f"corrections begin at {MIN_TRAIN} settled - "
                       f"{len(rows)} so far")
-            model = None
         else:
             model = fit_platt(rows)
-            status = ("fitted; awaiting the holdout check"
-                      if model else
-                      "every outcome in this category is the same, so there is "
-                      "nothing to calibrate against")
+            if model is None:
+                status = ("every outcome in this category is the same, so "
+                          "there is nothing to calibrate against")
+            else:
+                # BOTH BARS, and the holdout is the one that can say no to a
+                # fit that already exists. A correction is activated because it
+                # improved rows it had not seen, not because it improved the
+                # rows it was fitted on -- which it always will.
+                holdout = holdout_check(rows)
+                if holdout["passed"]:
+                    active_from = at
+                    status = (f"active - {holdout['why']} "
+                              f"({holdout['n']} rows held out)")
+                else:
+                    status = f"fitted but not applied - {holdout['why']}"
         version = record_fit(conn, sport=sport, market_type=market_type,
                              forecaster=forecaster, model=model, status=status,
+                             holdout=holdout, active_from=active_from,
                              fitted_utc=at)
         written.append({
             "sport": sport, "market_type": market_type,
             "forecaster": forecaster, "version": version,
             "n_train": len(rows), "status": status,
+            "active": active_from is not None,
         })
     return {"fitted_utc": at, "categories": written,
             "n": len(written),
-            "eligible": sum(1 for w in written if w["n_train"] >= MIN_TRAIN)}
+            "eligible": sum(1 for w in written if w["n_train"] >= MIN_TRAIN),
+            "activated": sum(1 for w in written if w["active"])}
+
+
+def version_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
+                   forecaster: str) -> list[dict]:
+    """Every version of one category's correction, and how it has actually done.
+
+    THE IN-SAMPLE FIGURE AND THE FORWARD FIGURE ARE DIFFERENT ANIMALS and are
+    kept apart here so nothing downstream can mistake one for the other.
+    `train_brier_*` is measured on the rows the fit was made from and will
+    almost always look good -- it says the fit converged, not that it helps.
+    The forward figure is measured on predictions WRITTEN UNDER the version,
+    which is the only number that answers "did v1 help".
+
+    A version that was fitted but never activated has no forward record at all,
+    correctly: it never touched a claim.
+    """
+    out = []
+    for row in conn.execute(
+        "SELECT * FROM calibration_corrections"
+        " WHERE sport = ? AND market_type = ? AND forecaster = ?"
+        " ORDER BY version",
+        (sport, market_type, forecaster),
+    ):
+        forward = conn.execute(
+            "SELECT COUNT(*) AS n,"
+            " AVG((p.calibrated_prob - p.outcome) * (p.calibrated_prob - p.outcome))"
+            "   AS brier_shown,"
+            " AVG((p.model_prob - p.outcome) * (p.model_prob - p.outcome))"
+            "   AS brier_raw"
+            " FROM predictions p"
+            " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
+            "   AND p.correction_version = ?"
+            "   AND p.resolved_utc IS NOT NULL AND p.outcome IS NOT NULL"
+            "   AND p.resolved_utc < ?"
+            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                   WHERE v.prediction_id = p.id)",
+            (sport, market_type, forecaster, row["version"], utcnow()),
+        ).fetchone()
+        out.append({
+            "version": row["version"],
+            "fitted_utc": row["fitted_utc"],
+            "n_train": row["n_train"],
+            "slope": row["slope"],
+            "intercept": row["intercept"],
+            "status": row["status"],
+            "active_from": row["active_from"],
+            "in_sample": {
+                "brier_raw": row["train_brier_raw"],
+                "brier_corrected": row["train_brier_corrected"],
+                # Said in the payload, not only in a comment, because this
+                # figure is the one most likely to be quoted as if it meant
+                # something it does not.
+                "label": "in-sample: measured on the rows it was fitted from",
+            },
+            "holdout": {
+                "n": row["holdout_n"],
+                "brier_raw": row["holdout_brier_raw"],
+                "brier_corrected": row["holdout_brier_corrected"],
+                "label": ("a thin forward-shaped check on the most recent "
+                          "rows, not proof"),
+            },
+            "forward": {
+                "n": forward["n"] or 0,
+                "brier_shown": (round(forward["brier_shown"], 6)
+                                if forward["brier_shown"] is not None else None),
+                "brier_raw": (round(forward["brier_raw"], 6)
+                              if forward["brier_raw"] is not None else None),
+                "label": "measured on predictions written under this version",
+            },
+        })
+    return out
