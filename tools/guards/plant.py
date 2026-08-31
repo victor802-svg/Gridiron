@@ -900,17 +900,21 @@ def plant_a_why_that_disagrees_with_its_contributions() -> Result:
     }
     said = _lang.why_sentences(item, phrases)
     top = phrases["mlb_starter_rolling_perf"]
-    names_top = said and said[0].lower().startswith(top.lower())
-    right_way = said and "helps the pick" in said[0]
-    # ...and the flipped side must reverse it rather than repeat it
+    # The LEAD names the largest contributor, whichever way it points.
+    names_top = bool(said) and top.lower() in said[0].lower()
+    # The SECOND sentence is where direction shows: the park pulls against the
+    # pick here, so it must be introduced as opposing rather than agreeing.
+    opposes = len(said) > 1 and said[1].startswith("Pulling the other way:")
+    # ...and taking the other side must REVERSE that, not repeat it.
     flipped = _lang.why_sentences(dict(item, model_side="lose"), phrases)
-    reverses = flipped and "works against it" in flipped[0]
-    caught = bool(names_top and right_way and reverses)
+    reverses = len(flipped) > 1 and "points the same way" in flipped[1]
+    caught = bool(names_top and opposes and reverses)
     return Result(
         "WORDS FOLLOW THE NUMBERS",
         "let a pick's prose name a different driver than its arithmetic",
         "language.why_sentences", caught,
-        f"largest contribution leads and its sign sets the direction: {said[0]!r}"
+        f"largest contribution leads, and its sign sets how the second is "
+        f"introduced: {said[1]!r}"
         if caught else
         f"NOT CAUGHT - prose was {said!r}",
     )

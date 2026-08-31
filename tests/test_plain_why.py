@@ -87,9 +87,14 @@ def test_the_reasons_are_ordered_by_size_of_contribution():
         ("mlb_starter_rolling_perf", 0.90),
         ("mlb_bullpen_recent_load", 0.30),
     ]), PHRASES)
-    assert said[0].startswith("The starting pitching matchup")
-    assert said[1].startswith("How hard the bullpens")
-    assert said[2].startswith("How much scoring this park")
+    # R2 old -> new: THREE sentences, and lead-in grammar. The composer used
+    # to bolt a verb onto the front of a long noun clause -- "How good the two
+    # teams have been, adjusted for who they played helps the pick" -- which
+    # read as a spreadsheet talking.
+    assert "the starting pitching matchup" in said[0]
+    assert said[0].startswith("Mostly it comes down to")
+    assert "how hard the bullpens have been worked lately" in said[1].lower()
+    assert len(said) == 2, "only two factors fit; the third slot is the market"
 
 
 def test_the_direction_of_each_sentence_is_the_sign_of_its_contribution():
@@ -97,8 +102,9 @@ def test_the_direction_of_each_sentence_is_the_sign_of_its_contribution():
         ("mlb_starter_rolling_perf", 0.90),
         ("mlb_park_factor", -0.40),
     ]), PHRASES)
-    assert "helps the pick" in said[0]
-    assert "works against it" in said[1]
+    # R2 old -> new: direction reads as grammar, not as a verb phrase.
+    assert said[0].startswith("Mostly it comes down to")
+    assert said[1].startswith("Pulling the other way:")
 
 
 def test_taking_the_no_side_flips_every_direction():
@@ -108,25 +114,29 @@ def test_taking_the_no_side_flips_every_direction():
     contribs = [("mlb_starter_rolling_perf", 0.90), ("mlb_park_factor", -0.40)]
     yes = language.why_sentences(_item(contribs, side="win"), PHRASES)
     no = language.why_sentences(_item(contribs, side="lose"), PHRASES)
-    assert "helps the pick" in yes[0] and "works against it" in no[0]
-    assert "works against it" in yes[1] and "helps the pick" in no[1]
+    # The LEAD is the same factor either way -- it is the largest -- but the
+    # SECOND sentence swaps between agreeing and opposing.
+    assert yes[1].startswith("Pulling the other way:")
+    assert no[1].startswith("How much scoring this park allows points the same way")
 
 
-def test_at_most_four_sentences():
+def test_at_most_three_sentences():
     said = language.why_sentences(_item([
         ("mlb_starter_rolling_perf", 0.9), ("mlb_park_factor", 0.8),
         ("mlb_bullpen_recent_load", 0.7), ("mlb_team_rest_travel", 0.6),
         ("mlb_team_offense_rolling", 0.5), ("mlb_starter_rest_days", 0.4),
     ]), PHRASES)
-    assert len(said) == language.WHY_MAX_SENTENCES == 4
+    # Two factor sentences plus the market, never more (ruling 2026-08-31).
+    assert language.WHY_MAX_SENTENCES == 3
+    assert len(said) == 2, "factor sentences; the third slot is the market"
 
 
 def test_the_largest_reason_is_named_as_such():
     said = language.why_sentences(_item([
         ("mlb_starter_rolling_perf", 5.0), ("mlb_park_factor", 0.1),
     ]), PHRASES)
-    assert "the biggest reason" in said[0]
-    assert "the biggest reason" not in said[1]
+    assert "and it is the main thing" in said[0]
+    assert "and it is the main thing" not in said[1]
 
 
 def test_a_factor_with_no_template_is_skipped_rather_than_printed_raw():
@@ -143,9 +153,11 @@ def test_an_absent_factor_becomes_one_clause():
         {"absent_factors": ["mlb_starter_rolling_perf", "mlb_park_factor"]},
         PHRASES,
     )
+    # R2 old -> new: a CLAUSE, parenthesised, attached to the reasons rather
+    # than competing with them for one of the three sentences.
     assert clause == (
-        "The starting pitching matchup and how much scoring this park allows "
-        "could not be measured for this game."
+        "(the starting pitching matchup and how much scoring this park allows "
+        "couldn't be measured for this game.)"
     )
 
 
@@ -161,7 +173,7 @@ def test_the_market_clause_appears_only_where_a_line_exists():
         "market_implied_prob": 0.48, "team_names": {"TB": "Tampa Bay Rays"},
     })
     assert "Tampa Bay Rays at 48%" in with_line
-    assert "heavier" in with_line
+    assert "leans harder on its own reading" in with_line
     assert language.why_market({
         "subject": "TB", "market_type": "moneyline", "model_prob": 0.57,
         "market_implied_prob": None,
@@ -185,9 +197,21 @@ def _agrees(item, sentences):
     if not phrase:
         return False
     first = sentences[0]
-    named = first.lower().startswith(phrase.lower())
+    # The lead names the largest contributor whichever way it points; the
+    # SECOND sentence is where direction shows, so the check reads both.
+    named = phrase.lower() in first.lower()
     signed = top["contribution"] * (-1 if language.why_is_flipped(item) else 1)
-    directed = ("helps the pick" in first) == (signed > 0)
+    if len(sentences) > 1:
+        opposing = sentences[1].startswith("Pulling the other way:")
+        second = [c for c in contribs
+                  if c["factor"] != top["factor"]]
+        if second:
+            nxt = max(second, key=lambda c: abs(c["contribution"]))
+            nxt_signed = nxt["contribution"] * (
+                -1 if language.why_is_flipped(item) else 1)
+            if opposing != (nxt_signed < 0):
+                return False
+    directed = signed != 0
     return named and directed
 
 
@@ -203,10 +227,19 @@ def test_a_planted_mismatch_is_caught():
     sound = language.why_sentences(item, PHRASES)
     assert _agrees(item, sound)
 
-    wrong_factor = ["How much scoring this park allows helps the pick — the biggest reason."]
+    wrong_factor = [
+        "Mostly it comes down to how much scoring this park allows, and it is "
+        "the main thing.",
+        "Pulling the other way: the starting pitching matchup, and it counts "
+        "for a lot.",
+    ]
     assert not _agrees(item, wrong_factor), "prose naming the wrong factor passed"
 
-    wrong_direction = [sound[0].replace("helps the pick", "works against it")]
+    wrong_direction = [
+        sound[0],
+        sound[1].replace("Pulling the other way: ",
+                         "").replace(",", " points the same way,", 1),
+    ]
     assert not _agrees(item, wrong_direction), "prose with the sign flipped passed"
 
 

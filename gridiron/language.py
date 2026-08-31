@@ -303,17 +303,17 @@ def _signed(value) -> str:
 # is a measured fact that changes on a refit, and prose that hardcoded it would
 # go quietly wrong the way `mlb_batter_rate` went backwards for a day.
 
-#: At most this many factor sentences. Four is what fits in a paragraph a
-#: person will actually read; the rest are on the Factors page.
-WHY_MAX_SENTENCES = 4
+#: AT MOST THREE SENTENCES (ruling, 2026-08-31). One reason, one counterweight
+#: or second reason, and the market. Four was a paragraph; three is a thought.
+WHY_MAX_SENTENCES = 3
 
 #: How a contribution's share of the total movement becomes words. Bands, not a
 #: number: "0.42 of the log-odds" is the thing this replaced.
 WHY_SIZE_BANDS = (
-    (0.45, "the biggest reason"),
-    (0.25, "a good deal"),
-    (0.10, "some"),
-    (0.00, "a little"),
+    (0.45, "and it is the main thing"),
+    (0.25, "and it counts for a lot"),
+    (0.10, "and it counts for something"),
+    (0.00, "though only a little"),
 )
 
 
@@ -321,7 +321,26 @@ def _size_words(share: float) -> str:
     for floor, words in WHY_SIZE_BANDS:
         if share >= floor:
             return words
-    return "a little"
+    return "though only a little"
+
+
+def _lead(phrase: str, size: str) -> str:
+    """The first sentence: what drove it, and how much.
+
+    LEAD-IN GRAMMAR RATHER THAN A PREDICATE. The composer used to write
+    "{Phrase} helps the pick — the biggest reason", which read as a spreadsheet
+    talking: the phrases are long noun clauses and bolting a verb onto the
+    front of one produces "How good the two teams have been, adjusted for who
+    they played helps the pick".
+    """
+    return f"Mostly it comes down to {phrase}, {size}."
+
+
+def _second(phrase: str, helps: bool, size: str) -> str:
+    """The second sentence: another reason, or the thing pulling against it."""
+    if helps:
+        return f"{phrase[:1].upper()}{phrase[1:]} points the same way, {size}."
+    return f"Pulling the other way: {phrase}, {size}."
 
 
 #: The side each market's question was FORMED as. A contribution is signed
@@ -335,8 +354,8 @@ def why_is_flipped(item: dict) -> bool:
     THIS IS THE K1 BUG'S SHAPE, in prose rather than in a verb table. A
     contribution is signed toward the YES side -- "does the home club win" --
     and the model frequently takes the other one. Without this, a pick for
-    Colorado renders as "Why Atlanta Braves" with every reason "working against
-    it": each sentence individually true about the yes side, and the paragraph
+    Colorado renders as "Why Atlanta Braves" with every reason working against
+    it: each sentence individually true about the yes side, and the paragraph
     as a whole describing the opposite of the forecast above it.
     """
     yes = WHY_YES_SIDE.get(item.get("market_type"))
@@ -345,13 +364,16 @@ def why_is_flipped(item: dict) -> bool:
 
 
 def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
-    """The plain-English reasons for one pick, strongest first.
+    """The plain-English reasons for one pick, at most three sentences.
 
-    `item` is a rendered prediction carrying `contributions` (the same list the
-    decomposition uses) and optionally `absent_factors`. `factors` maps a factor
-    name to its declared WHY phrase; passed in so this module never imports the
-    registry, which would put the factor code inside the humaniser's blast
-    radius for no reason.
+    ONE: the biggest reason. TWO: the second reason, OR the strongest thing
+    pulling the other way when that is larger than the second supporter --
+    because a reader who is only told what agrees with the pick is being sold
+    to. THREE: the market, and only where a line exists.
+
+    `item` carries `contributions` (the same list the decomposition uses);
+    `factors` maps a factor name to its declared WHY phrase, passed in so this
+    module never imports the registry.
     """
     contributions = item.get("contributions") or []
     known = factors or {}
@@ -378,13 +400,23 @@ def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
     scored.sort(key=lambda t: -t[0])
     total = sum(t[0] for t in scored) or 1.0
 
-    out = []
-    for magnitude, value, phrase in scored[:WHY_MAX_SENTENCES]:
-        direction = "helps the pick" if value > 0 else "works against it"
-        size = _size_words(magnitude / total)
-        # "The starting pitching matchup helps the pick — the biggest reason."
-        joiner = " — " if size == "the biggest reason" else " "
-        out.append(f"{phrase[:1].upper()}{phrase[1:]} {direction}{joiner}{size}.")
+    magnitude, value, phrase = scored[0]
+    out = [_lead(phrase, _size_words(magnitude / total))]
+
+    rest = scored[1:]
+    if rest:
+        supporters = [t for t in rest if t[1] > 0]
+        opposers = [t for t in rest if t[1] < 0]
+        # The strongest OPPOSER wins the slot when it is larger than the next
+        # supporter: a reader told only what agrees with the pick is being sold
+        # to rather than informed.
+        pick = rest[0]
+        if opposers and (not supporters or opposers[0][0] > supporters[0][0]):
+            pick = opposers[0]
+        elif supporters:
+            pick = supporters[0]
+        out.append(_second(pick[2], pick[1] > 0, _size_words(pick[0] / total)))
+
     return out
 
 
@@ -414,7 +446,10 @@ def why_absent(item: dict, factors: dict | None = None) -> str | None:
         subject = f"{phrases[0]}, {phrases[1]} and {phrases[2]}"
     more = len(names) - len(phrases)
     tail = f", and {more} other thing{'s' if more > 1 else ''}" if more else ""
-    return f"{subject[:1].upper()}{subject[1:]}{tail} could not be measured for this game."
+    # A CLAUSE, not a sentence (ruling). It attaches to the reasons rather than
+    # competing with them: what the model could not see is context for the
+    # three sentences above, not a fourth reason.
+    return f"({subject}{tail} couldn't be measured for this game.)"
 
 
 def why_market(item: dict) -> str | None:
@@ -427,14 +462,22 @@ def why_market(item: dict) -> str | None:
     model = item.get("model_prob")
     if implied is None or model is None:
         return None
+    # NAME THE SIDE THE MODEL TOOK. `implied` is already the market's
+    # probability for THAT side, so naming the subject instead produced "the
+    # market has Atlanta Braves at 34%" under a pick for Colorado -- the K1
+    # defect once more, in the one sentence that quotes a number back to the
+    # reader. Same flip the heading uses, so the two cannot name different
+    # clubs.
     subject = strip_market_suffix(item.get("subject"), item.get("prop_type"))
     if item.get("market_type") in ("moneyline", "spread"):
+        if (item.get("market_type") == "moneyline"
+                and item.get("model_side") == "lose"
+                and item.get("opponent")):
+            subject = item["opponent"]
         subject = team_name(subject, item.get("team_names"))
-    lean = "heavier" if model > implied else "lighter"
-    return (
-        f"The market has {subject} at {round(implied * 100)}%; "
-        f"the model weighs the same evidence {lean}."
-    )
+    lean = ("leans harder on its own reading" if model > implied
+            else "is the more cautious of the two")
+    return f"The market has {subject} at {round(implied * 100)}%; the model {lean}."
 
 
 def why_block(item: dict, factors: dict | None = None) -> dict:
@@ -457,6 +500,12 @@ def why_block(item: dict, factors: dict | None = None) -> dict:
             picked = item["opponent"]
         picked = team_name(picked, item.get("team_names"))
     sentences = why_sentences(item, factors)
+    # THE MARKET IS SENTENCE THREE, where a line exists. Where none does it is
+    # omitted rather than replaced by a hedge: the budget is a ceiling, not a
+    # quota to fill.
+    market = why_market(item)
+    if market and len(sentences) < WHY_MAX_SENTENCES:
+        sentences = sentences + [market]
     return {
         "heading": f"Why {picked}" if picked else "Why this pick",
         "sentences": sentences,

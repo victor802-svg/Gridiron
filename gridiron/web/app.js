@@ -969,11 +969,12 @@ const Gridiron = (function () {
       w.sentences.forEach(sentence => {
         why.appendChild(document.createTextNode(' ' + sentence));
       });
+      // THE MARKET IS SENTENCE THREE now, inside `sentences`. Appending it
+      // here as well printed it twice -- the server took over a job the
+      // renderer was still doing, which is the two-implementations smell in
+      // its smallest form.
       if (w.absent) {
         why.appendChild(el('span', 'why-absent', ' ' + w.absent));
-      }
-      if (w.market) {
-        why.appendChild(el('span', 'why-market', ' ' + w.market));
       }
     } else if (c.reasoning) {
       // A pick whose factors carry no declared phrase still says something
