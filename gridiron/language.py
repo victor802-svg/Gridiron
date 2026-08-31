@@ -437,12 +437,23 @@ def _lead(phrase: str, share: float) -> str:
     return f"{_band(WHY_LEAD_BANDS, share)} {phrase}."
 
 
+#: Past this many words, a supporting phrase goes AFTER the verb instead of
+#: before it. Read aloud, "how good the two teams have been, adjusted for who
+#: they played points the same way" is a garden path: by the time "points"
+#: arrives the reader has been inside a subordinate clause for eight words and
+#: takes it for a noun. The opposer sentence never had this problem because it
+#: already leads with the direction, so the long phrase lands at the end.
+WHY_LONG_SUBJECT_WORDS = 6
+
+
 def _second(phrase: str, helps: bool, share: float) -> str:
     """The second sentence: another reason, or the thing pulling against it."""
     size = _band(WHY_SECOND_BANDS, share)
-    if helps:
-        return f"{phrase[:1].upper()}{phrase[1:]} points the same way{size}."
-    return f"Pulling the other way{size}: {phrase}."
+    if not helps:
+        return f"Pulling the other way{size}: {phrase}."
+    if len(phrase.split()) > WHY_LONG_SUBJECT_WORDS:
+        return f"Pointing the same way{size}: {phrase}."
+    return f"{phrase[:1].upper()}{phrase[1:]} points the same way{size}."
 
 
 #: The side each market's question was FORMED as. A contribution is signed

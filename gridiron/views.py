@@ -1160,7 +1160,11 @@ def _resolved_story(r, gap, team_names: dict | None = None) -> str | None:
         story += (f" · {winner} won {max(r['home_score'], r['away_score'])}"
                   f"-{min(r['home_score'], r['away_score'])}")
     if gap is not None:
-        story += f" · gap was {gap * 100:+.0f}"
+        # ROUND BEFORE SIGNING. `{-0.004:+.0f}` is "-0", and a signed zero on a
+        # resolved row reads as a rendering fault rather than as a gap too
+        # small to show. Four rows said "gap was -0" and one said "gap was +0".
+        points = round(gap * 100)
+        story += f" · gap was {points:+.0f}" if points else " · gap was nil"
     return story
 
 
