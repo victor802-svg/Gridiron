@@ -1224,18 +1224,30 @@ const Gridiron = (function () {
     table(document.getElementById('factors-table'),
       [{ label: 'Factor' }, { label: 'Added' }, { label: 'Applies to' },
        { label: 'N' }, { label: 'Rows measured' }, { label: 'Δ Brier' },
-       { label: 'Mean |effect|' }, { label: 'Verdict' },
+       { label: 'Effect' }, { label: 'Verdict' },
        { label: 'Why it was declared', cls: 'wide' }],
       data.factors.map(f => {
         requireN(f, 'factor row ' + f.factor);
-        const name = el('span', '', f.factor);
+        // THE PLAIN NAME LEADS, the code goes underneath small. This page is
+        // allowed to be dense; it is still read by a person, and the phrase a
+        // pick card uses for a factor is what that factor is called.
+        const name = el('div', 'factor-name');
+        name.appendChild(el('div', '', f.plain_name || f.factor));
+        name.appendChild(el('div', 'factor-code', f.factor));
         if (!f.active) name.appendChild(el('span', 'tag warn', 'inactive'));
         return [
           name, (f.added_utc || '').slice(0, 10), f.applies_to.join(', '),
           int(f.n), int(f.training_rows_measured),
           (f.delta_brier === null || f.delta_brier === undefined)
             ? el('span', 'absent', 'nothing resolved yet') : signed(f.delta_brier, 5),
-          num(f.mean_abs_contribution, 4), f.verdict,
+          // The effect in WORDS with its sample beside it, and the raw figure
+          // kept in the title for anyone auditing.
+          (() => {
+            const cell = el('span', '', f.earned_words || '');
+            cell.title = 'mean |effect| ' + num(f.mean_abs_contribution, 4).textContent;
+            return cell;
+          })(),
+          f.verdict,
           f.note ? f.rationale + ' — NOTE: ' + f.note : f.rationale
         ];
       }));
@@ -1293,7 +1305,8 @@ const Gridiron = (function () {
 
     const columns = [{ label: 'Prediction', cls: 'wide' }, { label: 'Date' },
                      { label: 'Week' }, { label: 'Model' },
-                     { label: 'Market then' }, { label: 'Result' }];
+                     { label: 'Market then' }, { label: 'Tier' },
+                     { label: 'Result' }];
     if (showForecaster) columns.splice(3, 0, { label: 'Forecaster' });
 
     table(document.getElementById('history-table'), columns,
@@ -1310,6 +1323,10 @@ const Gridiron = (function () {
           (i.market_implied_prob === null || i.market_implied_prob === undefined)
             ? el('span', 'absent', 'no line')
             : pct(i.market_implied_prob, 1),
+          // The tier it was CLAIMED at, beside how it turned out. The Record
+          // tab grades the tiers now, so a settled row should say which one it
+          // belongs to without being opened.
+          tierChip(i.tier),
           resultChip(i)
         ];
         if (showForecaster) row.splice(3, 0, i.predictor);
@@ -1456,7 +1473,12 @@ const Gridiron = (function () {
     data.tasks.forEach(t => {
       const card = el('div', 'sched' + (t.silent ? ' sched-warn' : ''));
       const head = el('div', 'sched-head');
-      head.appendChild(el('strong', '', t.task));
+      // WORDS, not the task id. "predict:mlb" looks like English and is a
+      // colon-joined key, which is the most dangerous kind of identifier to
+      // leave on screen: it reads as though it were already plain.
+      const label = el('strong', '', t.task_label || t.task);
+      label.title = t.task;
+      head.appendChild(label);
       head.appendChild(el('span', 'sched-result ' + 'r-' + (t.last_result || 'never'),
                           t.last_result || 'never run'));
       card.appendChild(head);

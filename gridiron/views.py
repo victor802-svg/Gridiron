@@ -565,6 +565,17 @@ def history(
                 "void_reason": voided.get(r["id"]),
                 "degraded": r["degraded"],
                 "factor_set_version": r["factor_set_version"],
+                # THE TIER CHIP, on every history row (R3). The Record tab now
+                # grades the tiers, so a reader looking at a settled pick should
+                # be able to see which tier it was claimed at without opening it.
+                # Derived from the same bucket the chip and the table use.
+                "tier": calibration.tier_from_bucket(
+                    calibration.bucket_record(
+                        conn, r["model_prob"], sport=sport,
+                        market_type=r["market_type"], prop_type=r["prop_type"],
+                        predictor=r["predictor"],
+                    )
+                ),
         }
         # PLAIN WORDS, built once on the server. The same sentence appears on a
         # card, in this table and in the digest; three copies of the humanising
@@ -645,8 +656,43 @@ def factors(conn: sqlite3.Connection, sport: str) -> dict:
         if row:
             entry["recorded_added_utc"] = row["added_utc"]
             entry["deactivated_utc"] = row["deactivated_utc"]
+        # THE PLAIN-WORDS NAME leads the row; the code goes underneath, small.
+        # This is the one page allowed to be dense, and it is still read by a
+        # person: the same phrase the pick cards use is what a factor is called.
+        entry["plain_name"] = _why_phrases().get(entry["factor"])
+        # "helps a little · 412 picks" -- the earned figure in words, with its
+        # sample beside it. A verdict with no N is a claim (LAW 4).
+        entry["earned_words"] = _factor_earned_words(entry)
     calibration.assert_every_figure_has_n(report)
     return report
+
+
+#: How a factor's measured effect reads in words. Bands rather than a number,
+#: because "mean |effect| 0.0412" is not a thing anybody can act on.
+FACTOR_EFFECT_BANDS = (
+    (0.30, "moves the answer a lot"),
+    (0.10, "moves the answer a fair amount"),
+    (0.02, "moves the answer a little"),
+    (0.00, "barely moves the answer"),
+)
+
+
+def _factor_earned_words(entry: dict) -> str:
+    """The factor's effect and its sample, in words.
+
+    Below the gate it says so instead of grading, for the same reason a tier
+    row does: an effect measured on nine resolutions is not a measurement.
+    """
+    n = entry.get("n") or 0
+    effect = entry.get("mean_abs_contribution")
+    if effect is None:
+        return f"nothing resolved yet · {n} picks" if not n else f"not measured · {n} picks"
+    words = FACTOR_EFFECT_BANDS[-1][1]
+    for floor, said in FACTOR_EFFECT_BANDS:
+        if effect >= floor:
+            words = said
+            break
+    return f"{words} · {n} picks"
 
 
 # ---------------------------------------------------------------------------

@@ -25,7 +25,7 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from . import config, db
+from . import config, db, language
 
 #: The tasks the scheduler knows how to run, and how often each is expected.
 #: `silent_after_hours` is when the panel starts complaining; it is deliberately
@@ -417,6 +417,10 @@ def status(conn: sqlite3.Connection) -> dict:
 
         entry = {
             "task": spec.name,
+            # The panel says whether the machine is alive; a reader should not
+            # need to know a colon-joined key to read it. The id stays in the
+            # payload for anything matching against task_runs.
+            "task_label": language.task_name(spec.name),
             "what": spec.what,
             "every_hours": spec.every_hours,
             "last_run_utc": last["started_utc"] if last else None,

@@ -57,6 +57,9 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # fetches at all -- the loader re-parses what is already stored.
     ("mlb_pitcher_starts", "strike_outs", "INTEGER"),
     ("mlb_pitcher_starts", "home_runs_allowed", "INTEGER"),
+    # The CITY form of a club's name. Prose reads "the market has St. Louis at
+    # 48%"; a heading reads "St. Louis Cardinals". Both come from the feed.
+    ("teams", "location", "TEXT"),
 )
 
 

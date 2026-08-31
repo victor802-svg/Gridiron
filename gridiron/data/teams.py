@@ -95,27 +95,35 @@ def load_teams(conn: sqlite3.Connection, sport: str, season: int,
             continue
         conn.execute(
             "INSERT INTO teams (sport, tricode, espn_abbrev, display_name,"
-            " short_name, source_url, fetched_utc)"
-            " VALUES (?,?,?,?,?,?,?)"
+            " short_name, location, source_url, fetched_utc)"
+            " VALUES (?,?,?,?,?,?,?,?)"
             " ON CONFLICT(sport, tricode) DO UPDATE SET"
             " display_name=excluded.display_name,"
-            " short_name=excluded.short_name,"
+            " short_name=excluded.short_name, location=excluded.location,"
             " espn_abbrev=excluded.espn_abbrev,"
             " source_url=excluded.source_url, fetched_utc=excluded.fetched_utc",
             (sport, _alias(sport, abbrev), abbrev.upper(), display,
-             team.get("shortDisplayName") or team.get("name"), ref, now),
+             team.get("shortDisplayName") or team.get("name"),
+             team.get("location"), ref, now),
         )
         written += 1
     conn.commit()
     return {"written": written, "source": url, "fetched_utc": now}
 
 
-def names(conn: sqlite3.Connection, sport: str) -> dict[str, str]:
-    """tricode -> display name, for one sport. Empty when nothing is loaded."""
+def names(conn: sqlite3.Connection, sport: str) -> dict[str, dict]:
+    """tricode -> {"full": ..., "city": ...}. Empty when nothing is loaded.
+
+    TWO FORMS, because prose and headings want different ones: "the market has
+    St. Louis at 48%" reads naturally, "the market has St. Louis Cardinals at
+    48%" does not, and a heading wants the whole name. Both come from the feed
+    -- `displayName` and `location` -- so neither is composed here.
+    """
     return {
-        r["tricode"]: r["display_name"]
+        r["tricode"]: {"full": r["display_name"], "city": r["location"]}
         for r in conn.execute(
-            "SELECT tricode, display_name FROM teams WHERE sport = ?", (sport,)
+            "SELECT tricode, display_name, location FROM teams WHERE sport = ?",
+            (sport,),
         )
     }
 

@@ -590,7 +590,12 @@ canvas { display: block; max-width: 100%; }
   margin-bottom: 12px;
   background: var(--card);
 }
-.sched-warn { border-color: var(--accent); }
+/* A task that has never run, or that failed, is NOT a positive state, and
+   `--accent` is green. This drew a green border and a green chip around
+   "NEVER RUN" -- the one colour the conventions reserve for interactive and
+   positive, spent on the panel's alarm. Pre-existing; found by looking at the
+   page rather than by any test, because no test asserts what a colour MEANS. */
+.sched-warn { border-color: var(--red); }
 .sched-head { display: flex; align-items: baseline; gap: 10px; }
 .sched-what { color: var(--ink-2); font-size: 13px; margin: 2px 0 10px; }
 .sched-result {
@@ -598,7 +603,7 @@ canvas { display: block; max-width: 100%; }
   color: var(--ink-2); border: 1px solid var(--rule-2);
   border-radius: 999px; padding: 1px 8px;
 }
-.sched-result.r-failed, .sched-result.r-never { color: var(--accent); border-color: var(--accent); }
+.sched-result.r-failed, .sched-result.r-never { color: var(--red); border-color: var(--red); }
 .sched-grid {
   display: grid; grid-template-columns: max-content 1fr;
   gap: 2px 14px; font-size: 13px;
@@ -615,8 +620,9 @@ canvas { display: block; max-width: 100%; }
   display: flex; gap: 12px; align-items: baseline;
   padding: 8px 0; border-bottom: 1px solid var(--rule-1);
 }
-.sched-stale.sched-warn strong { color: var(--accent); }
-.caption.warn { color: var(--accent); }
+.sched-stale.sched-warn strong { color: var(--red); }
+/* Same reason as .sched-warn: a caption marked `warn` is not a positive. */
+.caption.warn { color: var(--red); }
 .subhead { font-size: 14px; margin-top: 22px; }
 
 @media (max-width: 430px) {
@@ -1069,3 +1075,12 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    .controls rule spaces them for a page header and left a dead band between
    the sentence and the filter. */
 .panel .controls { margin: 6px 0 4px; }
+
+/* The Factors page is the one page allowed to be dense. The plain name leads
+   and the code sits under it, small, for anyone matching a row against the
+   registry. */
+.factor-name > div:first-child { color: var(--chrome); }
+.factor-code {
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+  margin-top: 2px;
+}

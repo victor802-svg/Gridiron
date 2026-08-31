@@ -330,6 +330,7 @@ CREATE TABLE IF NOT EXISTS teams (
     espn_abbrev  TEXT,              -- what the feed called it, kept for audit
     display_name TEXT NOT NULL,
     short_name   TEXT,
+    location     TEXT,              -- the CITY form: "St. Louis", "Chicago"
     source_url   TEXT NOT NULL,
     fetched_utc  TEXT NOT NULL,
     PRIMARY KEY (sport, tricode)

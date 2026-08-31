@@ -72,8 +72,22 @@ def humanise(name: str | None) -> str:
     return MARKET_WORDS.get(name, str(name).replace("_", " "))
 
 
-def team_name(code: str | None, names: dict | None) -> str:
-    """A club's display name if one was FETCHED, otherwise its tricode.
+#: WHICH FORM OF A CLUB'S NAME EACH PLACE USES, and the rule lives here so
+#: there is one place it lives.
+#:
+#:   FULL  ("St. Louis Cardinals") for a heading or a row -- a label, where the
+#:         whole name identifies the club at a glance.
+#:   CITY  ("St. Louis") inside a sentence -- "the market has St. Louis at 48%"
+#:         reads the way a person says it; the full name reads like a form
+#:         being filled in.
+#:
+#: Both come from the feed (`displayName` and `location`); neither is composed
+#: here, and a club with no row keeps its tricode in both forms.
+NAME_FORMS = ("full", "city")
+
+
+def team_name(code: str | None, names: dict | None, form: str = "full") -> str:
+    """A club's name in the requested form, or its tricode when none was fetched.
 
     The fallback is the point. `names` comes from the `teams` table, which is
     populated from the feed and carries the URL and date it came from; a club
@@ -83,7 +97,14 @@ def team_name(code: str | None, names: dict | None) -> str:
     """
     if not code:
         return ""
-    return (names or {}).get(code) or code
+    entry = (names or {}).get(code)
+    if not entry:
+        return code
+    # Tolerates the older flat {code: "Full Name"} shape as well as the two-form
+    # dict, so a caller holding either does not have to know which.
+    if isinstance(entry, str):
+        return entry
+    return entry.get(form) or entry.get("full") or code
 
 
 def strip_market_suffix(subject: str | None, market: str | None) -> str:
@@ -140,8 +161,13 @@ def half_unit_phrase(subject: str, market: str, side: str) -> str | None:
 YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over"}
 
 
-def side_named(item: dict) -> tuple[str, float | None]:
+def side_named(item: dict, form: str = "full") -> tuple[str, float | None]:
     """WHO the pick is on, and the probability OF THAT SIDE. The one door.
+
+    `form` chooses how a club is named: "full" for a heading or a row, "city"
+    inside a sentence. That rule lives HERE rather than at each call site, for
+    the same reason the flip does -- a rule with four copies is a rule with
+    four chances to be applied inconsistently.
 
     THIS EXISTS BECAUSE THE SAME DEFECT HAPPENED THREE TIMES, in three places
     that each reached for `subject` on their own:
@@ -178,7 +204,7 @@ def side_named(item: dict) -> tuple[str, float | None]:
         # team being forecast AGAINST.
         if market_type == "moneyline" and side == "lose" and item.get("opponent"):
             name = item["opponent"]
-        name = team_name(name, item.get("team_names"))
+        name = team_name(name, item.get("team_names"), form)
 
     return name, item.get("model_prob")
 
@@ -547,7 +573,10 @@ def why_market(item: dict) -> str | None:
     # defect once more, in the one sentence that quotes a number back to the
     # reader. Same flip the heading uses, so the two cannot name different
     # clubs.
-    subject, _prob = side_named(item)
+    # PROSE takes the city form: "the market has St. Louis at 48%" is what a
+    # person says. The heading above it uses the full name, and both come from
+    # the same door.
+    subject, _prob = side_named(item, form="city")
     lean = ("leans harder on its own reading" if model > implied
             else "is the more cautious of the two")
     return f"The market has {subject} at {round(implied * 100)}%; the model {lean}."
@@ -584,3 +613,28 @@ def why_block(item: dict, factors: dict | None = None) -> dict:
         "more_href": "#/factors",
         "n_factors": len(item.get("contributions") or []),
     }
+
+#: WHAT EACH SCHEDULED TASK IS CALLED, in words. "predict:mlb" is an internal
+#: identifier that happens to be readable, which is the most dangerous kind: it
+#: LOOKS like English and is a colon-joined key. A reader should not have to
+#: know the code to read the panel that says whether the machine is alive.
+TASK_WORDS = {
+    "refresh": "Fetch results",
+    "resolve": "Settle picks",
+    "predict:nfl": "Predict football",
+    "predict:mlb": "Predict baseball",
+    "predict:nba": "Predict basketball",
+    "catch-up": "Catch up after a sleep",
+}
+
+
+def task_name(task: str | None) -> str:
+    """"predict:mlb" -> "Predict baseball". Falls back to opened-out words."""
+    if not task:
+        return ""
+    if task in TASK_WORDS:
+        return TASK_WORDS[task]
+    # A task added later and forgotten still must not render as a key.
+    head, _, tail = str(task).partition(":")
+    words = head.replace("_", " ").replace("-", " ").strip().capitalize()
+    return f"{words} {tail}".strip() if tail else words

@@ -530,8 +530,15 @@ def test_the_schedule_panel_renders_every_task(page):
         f"rendered {len(cards)}"
     )
     text = page.inner_text("#view-schedule")
+    # R3 old -> new: the panel shows the task in WORDS. Asserting the raw id
+    # appeared was asserting the identifier reached the reader, which is the
+    # thing the plain-words law forbids -- the test was enforcing the defect.
+    from gridiron import language as _lang
+
     for task in _tasks.TASKS:
-        assert task in text, f"{task} is declared but not shown on the panel"
+        label = _lang.task_name(task)
+        assert label in text, f"{task} ({label}) is declared but not shown"
+        assert task not in text, f"{task}: the raw task id reached the reader"
 
 
 def test_a_task_that_never_ran_says_so_in_the_browser(page):
@@ -707,7 +714,11 @@ def test_the_daily_glance_answers_did_it_run(phone):
     phone.evaluate("location.hash = '#/schedule'")
     phone.wait_for_selector("#schedule-tasks .sched", timeout=10000)
     text = phone.inner_text("#view-schedule")
-    assert "resolve" in text
+    # R3 old -> new: the panel names tasks in WORDS. Asserting "resolve"
+    # appeared was asserting the task id reached the reader.
+    from gridiron import language as _lang
+
+    assert _lang.task_name("resolve") in text
     for signal in ("last ran", "next due"):
         assert signal in text.lower(), f"the panel does not say {signal!r}"
     assert _overflow(phone) <= 0
