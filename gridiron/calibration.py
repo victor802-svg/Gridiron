@@ -951,6 +951,46 @@ def prop_type_of(sport: str, market: str) -> str | None:
     return market if market in config.SPORT_PROP_MARKETS.get(sport, ()) else None
 
 
+#: A factor's effect may order a sentence only when it rests on at least this
+#: many settled predictions -- the same gate the tier table uses for a bucket.
+#: Reused rather than invented: a second small-sample threshold with a
+#: different number would be two answers to one question.
+RANK_MIN_SETTLED = TIER_MIN_SETTLED
+
+
+def _rank_changes(changes: dict, effects: dict) -> tuple[dict, str]:
+    """Order a set's joined factors by measured effect, IF the record allows.
+
+    "The two most consequential changes" needs consequence to be measured, and
+    the only measurement here is a factor's effect on the record. Today every
+    sport is at 2 to 25 settled predictions per factor; ordering by an effect
+    computed on two is not a ranking, it is noise with a sort applied, and the
+    sentence that came out of it would claim the two named mattered most.
+
+    So the gate is explicit and the caller is TOLD which happened: with enough
+    behind every candidate the list is sorted by |effect| and the line may say
+    "the two that moved the answer most"; without it the declaration order
+    stands and the line claims nothing about size.
+    """
+    joined = changes.get("joined") or []
+    if not joined:
+        return changes, "declaration"
+
+    scored = []
+    for item in joined:
+        row = effects.get(item.get("name")) or {}
+        n = row.get("n") or 0
+        size = row.get("mean_abs_contribution")
+        if n < RANK_MIN_SETTLED or size is None:
+            return changes, "declaration"
+        scored.append((abs(float(size)), item))
+
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    ranked = dict(changes)
+    ranked["joined"] = [item for _size, item in scored]
+    return ranked, "effect"
+
+
 def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
     """Every factor set that has produced predictions FOR THIS SPORT."""
     require_sport(sport, "calibration.version_comparison")
@@ -968,6 +1008,12 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
     # Each set's window runs from its own activation to the NEXT one's, so
     # "what changed" is read straight out of the registry rather than kept as a
     # hand-written changelog beside the version constant.
+    # What each factor has actually been worth, for ordering the change lines.
+    # Read once for the sport rather than per version: it is the same report.
+    effects = {
+        f["factor"]: f
+        for f in (factor_report(conn, sport=sport).get("factors") or [])
+    }
     starts = {v: (config.FACTOR_SET_ACTIVATED.get(v) or "")[:10] for v in versions}
     ordered = sorted([v for v in versions if starts.get(v)], key=lambda v: starts[v])
 
@@ -1007,6 +1053,7 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
         pos = ordered.index(version) if version in ordered else None
         nxt = ordered[pos + 1] if pos is not None and pos + 1 < len(ordered) else None
         changes = registry.set_changes(sport, start, starts.get(nxt)) if start else {}
+        changes, ranked_by = _rank_changes(changes, effects)
 
         entry = {
             "version": version,
@@ -1014,9 +1061,19 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
             # WHAT changed, not only when: derived from the registry's own
             # dates, so the line cannot drift from the factors it describes.
             "changed": (language.set_change_line(
-                changes, first=(pos == 0),
+                changes, first=(pos == 0), ranked_by=ranked_by,
                 sport_label=config.SPORT_LABELS.get(sport, sport))
                 if start else None),
+            # THE FULL LIST, under the summary line. The line names two; the
+            # ruling says the rest stays on the page rather than being lost to
+            # a count, so it is carried here rather than left to the reader to
+            # go and find on another page.
+            "changed_detail": {
+                "ranked_by": ranked_by,
+                "joined": changes.get("joined") or [],
+                "left": changes.get("left") or [],
+                "tried_and_dropped": changes.get("tried_and_dropped") or [],
+            } if start else None,
             "status": "current" if is_current else "closed",
             "n": n_resolved,
             "predictions_written": total,

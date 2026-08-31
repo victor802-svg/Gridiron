@@ -570,7 +570,12 @@ def mlb_pitcher_prop_rest(ctx) -> float | None:
     sport="mlb",
     applies_to=("prop",),
     markets=ALL_PROP_MARKETS,
-    why="how much scoring this park allows",
+    # DISTINCT FROM THE MONEYLINE FACTOR'S PHRASE, which is the same
+    # measurement asked of a different question. Both said "how much
+    # scoring this park allows", and the Versions page listed the line
+    # twice with nothing to tell them apart -- which reads as a
+    # rendering fault. A plain name has to identify ONE factor.
+    why="the park's effect on his numbers",
     rationale=(
         "The park's run environment relative to the league, measured over PRIOR "
         "seasons only, exactly as the moneyline factor measures it. Parks differ by "

@@ -202,7 +202,11 @@ def set_changes(sport: str, start: str | None, end: str | None) -> dict:
         return (f.added_utc, f.name)
 
     def words(fs):
-        return [f.why or f.name for f in sorted(fs, key=key)]
+        # NAME AND PHRASE TOGETHER. The caller ranks these by measured effect
+        # where the record supports it, and an effect is keyed by the factor's
+        # name -- so the phrase alone is not enough to carry out of here.
+        return [{"name": f.name, "phrase": f.why or f.name}
+                for f in sorted(fs, key=key)]
 
     return {
         "joined": words(joined),

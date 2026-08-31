@@ -365,3 +365,34 @@ def test_a_sport_absent_from_a_set_does_not_read_as_a_records_gap():
         {"joined": [], "left": [], "in_force": 0}, sport_label="MLB")
     assert "MLB was not being forecast" in line, line
     assert "nothing recorded" not in line, line
+
+
+def test_no_two_factors_in_a_sport_share_a_plain_name():
+    """A plain name has to identify ONE factor.
+
+    `mlb_park_factor` and `mlb_prop_park_factor` both said "how much scoring
+    this park allows" -- the same measurement asked of two different questions,
+    one for the moneyline and one for a player's line. Each is right in its own
+    sentence, and a pick card can only ever use one of them, so nothing on a
+    card was wrong.
+
+    The Versions page is where it showed: its list of a set's changes prints
+    plain names with no market beside them, so the same line appeared twice in
+    one list, which reads as a rendering fault rather than as two factors.
+
+    Found by looking at the page. Across sports is fine -- NFL's `home_field`
+    and NBA's `nba_home_court` describe the same idea in two records that LAW 6
+    keeps apart, and they are never listed together.
+    """
+    import collections
+    from gridiron.factors import registry, context, mlb, nba  # noqa: F401
+
+    seen = collections.defaultdict(list)
+    for f in registry.REGISTRY.values():
+        seen[(f.sport, (f.why or "").strip().lower())].append(f.name)
+
+    clashes = {k: v for k, v in seen.items() if len(v) > 1}
+    assert not clashes, (
+        "these factors share a plain name inside one sport, so a list that "
+        f"shows the name alone cannot tell them apart: {clashes}"
+    )

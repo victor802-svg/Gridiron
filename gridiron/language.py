@@ -634,39 +634,54 @@ TASK_WORDS = {
 }
 
 
-#: How many reasons a change line names before it says "and N more". Three is
-#: what fits in a line a person reads without stopping; the rest is a count,
-#: which is honest and short.
-CHANGE_NAMES_SHOWN = 3
+#: How many reasons a change line names before it counts the rest. TWO, by
+#: ruling on 2026-08-31: the line is a summary and the full list lives on the
+#: page under it, so naming three or four made it an inventory that a reader
+#: skips without gaining anything the list below does not already give.
+CHANGE_NAMES_SHOWN = 2
 
 
-def _names_then_count(phrases: list[str]) -> str:
-    """"a, b and c" -- or "a, b, c and 4 more" once the list stops being read.
+def _names_then_count(phrases: list[str], *, rest_word: str = "more") -> str:
+    """"a and b" -- or "a, b and 18 smaller changes" once the list runs on.
 
     A list of twenty-three noun phrases is not a sentence, it is an inventory,
-    and a reader skips it. The count is not a truncation of the fact: the whole
-    list is on the Factors page, one row each, which is where an inventory
-    belongs.
+    and a reader skips it. The count is not a truncation of the fact: the full
+    list is rendered directly beneath this line.
+
+    `rest_word` is how the remainder is described, and it is NOT cosmetic.
+    "smaller changes" is a claim about size and may only be used when the two
+    named ones were actually ranked by a measured effect; otherwise the
+    remainder is "more", which claims nothing.
     """
     shown = [p for p in phrases[:CHANGE_NAMES_SHOWN] if p]
     rest = len(phrases) - len(shown)
     if not shown:
         return ""
     if rest > 0:
-        return ", ".join(shown) + f" and {rest} more"
+        return ", ".join(shown) + f" and {rest} {rest_word}"
     if len(shown) == 1:
         return shown[0]
     return ", ".join(shown[:-1]) + " and " + shown[-1]
 
 
 def set_change_line(changes: dict, *, first: bool = False,
-                    sport_label: str | None = None) -> str:
+                    sport_label: str | None = None,
+                    ranked_by: str = "declaration") -> str:
     """One line on WHAT changed in a factor set, in words.
 
     The page names each set by the date it began, which answers "when" and
     leaves "what" to whoever remembers. This is the answer, composed from what
     `registry.set_changes` read out of the registry -- so the sentence cannot
     say a factor joined that the registry does not carry.
+
+    `ranked_by` IS A HONESTY SWITCH, not a formatting option. The ruling asks
+    for "the two most consequential" changes, and consequence is a measured
+    quantity: this project has one, the factor's effect on the record. Where
+    the sample behind that effect is too thin to order by -- which is every
+    sport today, at 2 to 25 settled -- the two named are simply the first two
+    DECLARED, and the sentence must not imply otherwise. So "the two that moved
+    the answer most" and "and 18 smaller changes" are said only under
+    `ranked_by="effect"`; otherwise it is a plain list and a plain count.
 
     THREE SENTENCES THIS GOT WRONG on the first reading, all of them by
     treating a real distinction as a missing one:
@@ -681,14 +696,23 @@ def set_change_line(changes: dict, *, first: bool = False,
         a feature vector: it must not read as a records gap.
       * "Began with 7 more reasons" about a sport's FIRST seven.
     """
-    joined = [p for p in (changes.get("joined") or []) if p]
-    left = [p for p in (changes.get("left") or []) if p]
-    both = [p for p in (changes.get("tried_and_dropped") or []) if p]
-    later = [p for p in (changes.get("joined_after_it_began") or []) if p]
+    def phrases(key):
+        return [c.get("phrase") for c in (changes.get(key) or []) if c.get("phrase")]
+
+    joined = phrases("joined")
+    left = phrases("left")
+    both = phrases("tried_and_dropped")
+    later = phrases("joined_after_it_began")
 
     if not changes.get("in_force"):
         who = sport_label or "This sport"
         return f"{who} was not being forecast under this set."
+
+    by_effect = ranked_by == "effect"
+    rest = "smaller changes" if by_effect else "more"
+
+    def named(items):
+        return _names_then_count(items, rest_word=rest)
 
     # THE SPORT'S OWN FIRST SET, which is not always the first set overall:
     # baseball and basketball both begin at the second one. Nothing "changed"
@@ -698,9 +722,12 @@ def set_change_line(changes: dict, *, first: bool = False,
     parts = []
     if first:
         n = len(joined) + len(both)
-        opening = [p for p in joined] or both
-        parts.append(f"Where the model started: {n} {_reasons(n)} declared at "
-                     f"once, {_names_then_count(opening)}")
+        opening = joined or both
+        lead = ("Where the model started: "
+                f"{n} {_reasons(n)} declared at once, ")
+        lead += (f"the two that moved the answer most being {named(opening)}"
+                 if by_effect else named(opening))
+        parts.append(lead)
         if later:
             # Not padding. A factor added after the set opened is scored from
             # ITS date, not the set's (LAW 2), so it has a shorter record than
@@ -709,25 +736,21 @@ def set_change_line(changes: dict, *, first: bool = False,
                          f"their record is shorter than its date suggests")
     elif joined:
         began = len(joined) - len(later)
-        # A factor that joined AFTER the set began is a real distinction and is
-        # kept: its record starts on its own date (LAW 2), not the set's, so
-        # folding it in would imply a longer track record than it has.
         if later and began > 0:
-            parts.append(f"Began with {began} more -- "
-                         f"{_names_then_count(joined[:began])} -- then "
-                         f"{len(later)} {_reasons(len(later))} joined later, "
-                         f"{_names_then_count(later)}")
+            parts.append(f"Began with {began} more -- {named(joined[:began])} "
+                         f"-- then {len(later)} {_reasons(len(later))} joined "
+                         f"later, {named(later)}")
         elif later:
             parts.append(f"{len(later)} {_reasons(len(later))} joined after it "
-                         f"began: {_names_then_count(later)}")
+                         f"began: {named(later)}")
         else:
-            parts.append(f"Added {_names_then_count(joined)}")
+            parts.append(f"Added {named(joined)}")
 
     if both:
-        parts.append(f"{_names_then_count(both)} {_was(len(both))} declared and "
+        parts.append(f"{named(both)} {_was(len(both))} declared and "
                      f"withdrawn the same day, once measured")
     if left:
-        parts.append(f"retired {_names_then_count(left)}")
+        parts.append(f"retired {named(left)}")
     elif joined and not both:
         # Said out loud because the absence is the informative half: a set that
         # only ever adds is a set nobody has pruned.

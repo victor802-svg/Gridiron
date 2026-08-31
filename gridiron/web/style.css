@@ -1128,3 +1128,17 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   flex: 0 0 100%; margin: 4px 0 2px;
   font-size: 13px; line-height: 1.5; color: var(--faint); max-width: 72ch;
 }
+
+/* The full list of a set's changes, under the line that summarises two of
+   them. Dense on purpose: it is a reference, read once when a reader wants to
+   know what "and 17 more" was. */
+.set-detail { margin: 2px 0 12px; }
+.set-detail-head {
+  font-family: var(--cond); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-3); margin-top: 8px;
+}
+.set-detail-list {
+  margin: 3px 0 0; padding-left: 18px;
+  font-size: 13px; line-height: 1.5; color: var(--ink-2);
+}
+.set-detail-list li { margin: 1px 0; }

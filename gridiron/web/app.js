@@ -1157,6 +1157,9 @@ const Gridiron = (function () {
       // WHAT changed, not only when. Composed server-side from the registry's
       // own dates, so this line cannot disagree with the Factors page.
       if (v.changed) card.appendChild(el('p', 'set-changed', v.changed));
+      // THE FULL LIST, under the summary. The line above names two and counts
+      // the rest; the count must not be where the rest goes to die.
+      if (v.changed_detail) card.appendChild(changeList(v.changed_detail));
       if (v.message) {
         card.appendChild(el('div', 'empty', v.message));
       } else {
@@ -1180,6 +1183,33 @@ const Gridiron = (function () {
     host.appendChild(el('p', 'footnote',
       'No combined total is shown, and none will be: these are different ' +
       'forecasters, and their sum describes nobody.'));
+  }
+
+  // Every change in a set, in full, under the sentence that summarises two of
+  // them. Each group is labelled by what happened rather than by a field name,
+  // and each entry is the factor's plain phrase with its code in the tooltip --
+  // the same pairing the Factors table uses.
+  const CHANGE_GROUPS = [
+    ['joined', 'Added'],
+    ['tried_and_dropped', 'Declared and withdrawn the same day'],
+    ['left', 'Retired']
+  ];
+
+  function changeList(detail) {
+    const host = el('div', 'set-detail');
+    CHANGE_GROUPS.forEach(pair => {
+      const items = detail[pair[0]] || [];
+      if (!items.length) return;
+      host.appendChild(el('div', 'set-detail-head', pair[1] + ' (' + items.length + ')'));
+      const list = el('ul', 'set-detail-list');
+      items.forEach(item => {
+        const li = el('li', '', item.phrase || item.name || '');
+        li.title = item.name || '';
+        list.appendChild(li);
+      });
+      host.appendChild(list);
+    });
+    return host;
   }
 
   // --- FACTORS ------------------------------------------------------------
