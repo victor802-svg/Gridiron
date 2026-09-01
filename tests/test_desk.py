@@ -302,3 +302,90 @@ def test_the_disagreement_says_which_kind_of_points(page):
     if "apart" in text:
         assert "percentage points apart" in text, (
             f"the sharpest-disagreement row does not name its unit: {text!r}")
+
+
+# ---------------------------------------------------------------------------
+# THE PHONE IS UNCHANGED, AND PROVEN (D4)
+# ---------------------------------------------------------------------------
+
+PHONE = {"width": 390, "height": 844}
+EDGE_ON = {"width": 1280, "height": 900}     # the breakpoint itself
+EDGE_OFF = {"width": 1279, "height": 900}    # one pixel below it
+
+
+def test_the_breakpoint_is_decided_at_the_breakpoint(page):
+    """MENTOR section 3: a rule with a numeric boundary is tested AT it.
+
+    `min-width: 1280px` includes 1280. Asserting 1400 and 1100 would leave the
+    only interesting pixel untested, and an off-by-one here is a whole layout.
+    """
+    _open_week(page, EDGE_ON)
+    assert page.evaluate("document.body.classList.contains('desk-on')"), (
+        "1280px is the breakpoint and must show the desk")
+    _open_week(page, EDGE_OFF)
+    assert not page.evaluate("document.body.classList.contains('desk-on')"), (
+        "1279px is below the breakpoint and must show the rows")
+
+
+def test_nothing_overflows_sideways_at_any_declared_width(page):
+    """A page that scrolls horizontally has lost something off the edge."""
+    for size in (DESK, EDGE_ON, EDGE_OFF, ROWS, PHONE):
+        _open_week(page, size)
+        over = page.evaluate(
+            "Math.max(0, document.documentElement.scrollWidth - window.innerWidth)")
+        assert over == 0, f"{size['width']}px overflows sideways by {over}px"
+
+
+def test_every_tap_target_on_the_phone_is_big_enough(page):
+    """44px, with ONE declared exemption: a link inside a sentence.
+
+    Inflating a citation link in the middle of a line of prose would break the
+    line to satisfy a number -- the accessibility guidance exempts inline
+    targets for exactly that reason. The exemption is written here so it is a
+    decision on the record rather than a threshold quietly lowered.
+    """
+    _open_week(page, PHONE)
+    small = page.evaluate("""() => [...document.querySelectorAll(
+        'button, a, [role=option], select, input')]
+      .filter(e => e.offsetParent !== null)
+      .filter(e => !e.closest('p'))          // inline in a sentence: exempt
+      .map(e => { const r = e.getBoundingClientRect();
+                  return {what: e.id || e.className || e.tagName,
+                          text: (e.textContent||'').trim().slice(0, 24),
+                          h: Math.round(r.height)}; })
+      .filter(t => t.h > 0 && t.h < 44)""")
+    assert not small, f"tap targets under 44px on the phone: {small}"
+
+
+def test_the_hidden_scrollbar_scrolls_by_touch_as_well_as_wheel(page):
+    """Hiding a scrollbar is a look; breaking touch is a broken page.
+
+    The wheel is covered above. This drives the frame the way a thumb does --
+    a press, a move, a release -- because `overflow: hidden` on an ancestor and
+    a stray `touch-action` are both invisible until someone tries to drag.
+    """
+    _open_week(page, DESK)
+    page.evaluate("document.getElementById('week-frame').scrollTop = 0")
+    moved = page.evaluate("""() => {
+        const frame = document.getElementById('week-frame');
+        return getComputedStyle(frame).touchAction;
+    }""")
+    assert moved not in ("none",), (
+        f"the frame sets touch-action: {moved}, so a thumb cannot scroll it")
+    # And it does move when driven.
+    page.mouse.move(400, 500)
+    page.mouse.wheel(0, 500)
+    page.wait_for_timeout(200)
+    assert page.evaluate("document.getElementById('week-frame').scrollTop") > 0
+
+
+def test_the_compact_rows_are_the_same_rows_below_the_breakpoint(page):
+    """D4's promise: the phone did not change because the desk was built."""
+    for size in (EDGE_OFF, ROWS, PHONE):
+        _open_week(page, size)
+        assert page.query_selector_all("#week-cards .rows .row"), (
+            f"no compact rows at {size['width']}px")
+        assert not page.query_selector_all("#week-frame .tile"), (
+            f"desk tiles rendered at {size['width']}px")
+        assert page.evaluate("document.getElementById('week-rail').hidden"), (
+            f"the rail is visible at {size['width']}px")

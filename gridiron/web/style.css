@@ -883,6 +883,13 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .brand {
   font-weight: 700; letter-spacing: 0.04em; font-size: 15px;
   text-decoration: none; flex: none;
+  /* A 44px TAP TARGET, made of padding rather than type size. The brand is a
+     link to the slate and a finger has to be able to hit it; at 79x22 it was
+     half a target. The height comes from the line box so the bar's layout is
+     unchanged -- this is the hit area growing, not the logo. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 .brand-a { color: var(--text); }
 .brand-b { color: var(--green); }
