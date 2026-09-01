@@ -120,6 +120,55 @@ class MigrationRefused(RuntimeError):
     """A widening migration could not be completed safely, so nothing changed."""
 
 
+#: Tables whose `sport` CHECK must admit every declared sport, and which carry
+#: no law that a rebuild could violate. `predictions` is NOT here: it is
+#: append-only, its rebuild is verified row-for-row, and it has its own path.
+WIDEN_ON_SIGHT = ("session_seen",)
+
+
+def widen_sport_checks(conn: sqlite3.Connection) -> list[str]:
+    """Rebuild small tables whose sport CHECK predates a newly declared sport.
+
+    SQLite applies a CHECK when the table is created and never revisits it, so
+    adding a sport to `config.SPORTS` and to `schema.sql` leaves every EXISTING
+    database refusing it. That has now bitten three times in one build: the
+    live record accepted 892 college games, then refused the first prediction
+    about one, then served a 500 on the college digest because the
+    session-marker table had the old list too.
+
+    These tables hold no forecast and no claim -- `session_seen` records when a
+    browser last looked -- so the rebuild is a plain copy rather than the
+    verified one `predictions` gets. What matters is that it happens at all.
+    """
+    from . import config
+
+    done = []
+    for table in WIDEN_ON_SIGHT:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        if not row or "sport IN" not in (row[0] or ""):
+            continue
+        stored = row[0]
+        if all(f"'{sport}'" in stored for sport in config.SPORTS):
+            continue
+        columns = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+        joined = ", ".join(columns)
+        conn.execute("PRAGMA legacy_alter_table = ON")
+        conn.execute(f"ALTER TABLE {table} RENAME TO {table}_narrow")
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        conn.execute(
+            f"INSERT OR IGNORE INTO {table} ({joined})"
+            f" SELECT {joined} FROM {table}_narrow"
+        )
+        conn.execute(f"DROP TABLE {table}_narrow")
+        conn.commit()
+        done.append(table)
+    return done
+
+
 def _needs_market_type_widening(conn: sqlite3.Connection) -> bool:
     """Whether the stored `predictions` table is narrower than the schema.
 
@@ -223,6 +272,7 @@ def db_columns(conn: sqlite3.Connection, table: str) -> list[str]:
 def init(conn: sqlite3.Connection) -> None:
     """Create the schema. Idempotent — every object is IF NOT EXISTS."""
     _migrate(conn)
+    widen_sport_checks(conn)
     widening = _widen_market_type(conn) if _needs_market_type_widening(conn) else None
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     if widening is not None:

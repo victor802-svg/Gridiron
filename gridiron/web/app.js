@@ -715,6 +715,109 @@ const Gridiron = (function () {
   const shownProb = (c) => (c.shown_prob === null || c.shown_prob === undefined)
     ? c.model_prob : c.shown_prob;
 
+  // THE DESK (D2). One breakpoint, declared once, read by everything that
+  // needs to know which layout is live. 1280 matches the mockup and the CSS;
+  // a second literal somewhere else is how the two would drift apart.
+  const DESK_MIN_WIDTH = 1280;
+  const isDesk = () => window.innerWidth >= DESK_MIN_WIDTH;
+
+  // A tile. Every string on it was written by the server: the matchup, the
+  // short pick line, the label under the percentage. The renderer places
+  // them and computes no words of its own (ruling, 2026-08-31).
+  function pickTile(c, rank) {
+    const tile = el('button', 'tile');
+    tile.type = 'button';
+    tile.dataset.id = c.prediction_id;
+    tile.setAttribute('role', 'option');
+    tile.setAttribute('aria-selected', 'false');
+    // The tier as a class token, lowered where it is used so it reads as the
+    // CSS token it is. (The prose scan exempts a class token by POSITION, and
+    // it is right to: lowering a value into a variable first is how a word
+    // being shaped for a reader would look.)
+    if ((c.tier || {}).tier) tile.classList.add('t-' + c.tier.tier.toLowerCase());
+
+    const top = el('div', 'tile-top');
+    top.appendChild(el('div', 'tile-match', c.row_title || c.matchup || ''));
+    // The rank is the position in the CURRENT sort, so it renumbers when the
+    // toggle moves. A rank that survived a re-sort would be a different
+    // ordering's opinion left lying on the page.
+    top.appendChild(el('span', 'tile-rank', rank == null ? '' : String(rank)));
+    tile.appendChild(top);
+
+    const pick = el('div', 'tile-pick');
+    pick.appendChild(el('b', '', c.tile_line || c.phrase || ''));
+    // `start_local` is the UTC instant; the BROWSER applies the reader's
+    // timezone, which is the one thing it knows better than the server.
+    // `localTime` is the same helper the compact rows use -- without it
+    // the tile printed '2026-09-05T16:00:00Z' at a reader.
+    if (c.start_local) {
+      pick.appendChild(document.createTextNode(' · ' + localTime(c.start_local)));
+    }
+    tile.appendChild(pick);
+
+    const bottom = el('div', 'tile-bottom');
+    const mkt = el('div', 'tile-mkt');
+    if (c.market_implied_prob === null || c.market_implied_prob === undefined) {
+      mkt.textContent = 'no line';
+    } else {
+      mkt.appendChild(document.createTextNode('market '));
+      mkt.appendChild(el('b', '', pct(c.market_implied_prob, 0)));
+      mkt.appendChild(el('br'));
+      mkt.appendChild(document.createTextNode('gap '));
+      mkt.appendChild(el('b', '', (c.gap * 100 >= 0 ? '+' : '') + (c.gap * 100).toFixed(0)));
+    }
+    bottom.appendChild(mkt);
+
+    const p = el('div', 'tile-pct');
+    p.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
+    p.appendChild(el('i', '', '%'));
+    p.appendChild(el('small', '', c.tile_label || ''));
+    bottom.appendChild(p);
+    tile.appendChild(bottom);
+
+    tile.addEventListener('click', () => selectTile(tile));
+    return tile;
+  }
+
+  //: Which tile the rail is describing. D3 fills the rail; D2 only has to
+  //: make the selection exist, be visible, and never move the frame.
+  let selectedTile = null;
+
+  function selectTile(tile) {
+    if (!tile) return;
+    // THE FRAME MUST NOT MOVE. Selecting a pick is not navigation, and a
+    // reader half way down a 177-pick slate who loses their place has been
+    // punished for looking at something. Asserted in the browser tests.
+    const frame = document.getElementById('week-frame');
+    const keep = frame ? frame.scrollTop : 0;
+    document.querySelectorAll('.tile[aria-selected="true"]')
+      .forEach(t => t.setAttribute('aria-selected', 'false'));
+    tile.setAttribute('aria-selected', 'true');
+    selectedTile = tile;
+    if (typeof paintRail === 'function') paintRail(tile);
+    if (frame) frame.scrollTop = keep;
+  }
+
+  // Arrow keys walk the grid, Enter and Space select. Three across, so up and
+  // down move by three -- the same distance the eye moves.
+  function deskKeys(event) {
+    if (!isDesk()) return;
+    const tiles = [...document.querySelectorAll('#week-frame .tile')];
+    if (!tiles.length) return;
+    const here = tiles.indexOf(document.activeElement);
+    const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3 }[event.key];
+    if (step === undefined) {
+      if ((event.key === 'Enter' || event.key === ' ') && here >= 0) {
+        event.preventDefault();
+        selectTile(tiles[here]);
+      }
+      return;
+    }
+    event.preventDefault();
+    const next = tiles[Math.min(tiles.length - 1, Math.max(0, (here < 0 ? 0 : here) + step))];
+    if (next) next.focus();
+  }
+
   // --- the pick card ------------------------------------------------------
   // Rebuilt to docs/mockup/gridiron_dark.html. The order is the order the
   // questions arrive in: who is playing, what the model thinks, how sure, where
@@ -1081,9 +1184,24 @@ const Gridiron = (function () {
     }
 
     if (open.length) {
-      const list = el('div', 'rows');
-      open.forEach((c, i) => list.appendChild(pickRow(c, i + 1)));
-      host.appendChild(list);
+      // ONE GRID, NO SECTIONS, on the desk. The mockup has no confidence
+      // headings: the sort toggle already says how the slate is ordered, and a
+      // section label would be a second, quieter claim about the same thing.
+      // Below the breakpoint the compact rows render exactly as they did.
+      if (isDesk()) {
+        const grid = el('div', 'tiles');
+        grid.setAttribute('role', 'listbox');
+        grid.setAttribute('aria-label', 'Picks on this slate');
+        open.forEach((c, i) => grid.appendChild(pickTile(c, i + 1)));
+        host.appendChild(grid);
+        // The rail is always populated, so the first tile is selected on
+        // arrival rather than leaving an empty panel asking to be clicked.
+        selectTile(grid.querySelector('.tile'));
+      } else {
+        const list = el('div', 'rows');
+        open.forEach((c, i) => list.appendChild(pickRow(c, i + 1)));
+        host.appendChild(list);
+      }
     }
     // A market the slate asked nothing in says so, rather than leaving a gap
     // that reads as a failure to find questions.
@@ -1789,6 +1907,27 @@ const Gridiron = (function () {
     }
   }
 
+  // WHICH LAYOUT IS LIVE, on the body, so CSS can pin the page only when the
+  // desk is actually on. Recomputed on resize because a window dragged across
+  // 1280px must change layout, and the tiles and rows are different DOM --
+  // a media query alone cannot swap them.
+  function applyDeskClass() {
+    document.body.classList.toggle('desk-on', isDesk() && state.view === 'week');
+  }
+
+  let deskWasOn = null;
+  window.addEventListener('resize', () => {
+    applyDeskClass();
+    const now = isDesk();
+    if (deskWasOn !== null && now !== deskWasOn && state.view === 'week') {
+      // Crossing the breakpoint changes which elements exist, not just how
+      // they look, so the slate is rendered again rather than restyled.
+      renderWeek();
+    }
+    deskWasOn = now;
+  });
+  document.addEventListener('keydown', deskKeys);
+
   const ROUTES = {
     record: renderRecord,
     week: renderWeek,
@@ -1838,6 +1977,7 @@ const Gridiron = (function () {
     // warning.
     state.view = view;
     applyRouteVisibility();
+    applyDeskClass();
     document.getElementById('view-' + view).hidden = false;
     document.querySelectorAll('nav a').forEach(a => {
       a.classList.toggle('active', a.dataset.route === view);

@@ -981,6 +981,14 @@ _JS_CLASS_ARG = __import__("re").compile(
 _JS_DIAGNOSTIC = __import__("re").compile(r"""requireN\s*\(""")
 
 
+#: The OTHER place a class token is set. `classList.add('t-' + tier.toLowerCase())`
+#: is the same act as passing it to `el()` -- a token for CSS, never a word a
+#: reader sees -- and the scan has to know both shapes or it flags correct code
+#: for using the wrong one of two equivalent APIs.
+_JS_CLASSLIST = __import__("re").compile(
+    r"""classList\s*\.\s*(?:add|remove|toggle)\s*\(""")
+
+
 def _exempt_from_js_prose(body: str) -> bool:
     """Two shapes this scan must not flag, each for a stated reason.
 
@@ -989,7 +997,8 @@ def _exempt_from_js_prose(body: str) -> bool:
     argument of `el(`, a diagnostic is inside `requireN(`, and prose is
     anywhere else.
     """
-    return bool(_JS_CLASS_ARG.search(body) or _JS_DIAGNOSTIC.search(body))
+    return bool(_JS_CLASS_ARG.search(body) or _JS_DIAGNOSTIC.search(body)
+                or _JS_CLASSLIST.search(body))
 
 
 def check_js_composes_no_prose(path: Path | None = None) -> None:
@@ -1193,6 +1202,7 @@ SCANNER_FIXTURES: dict[str, tuple[str, str]] = {
     "_JS_CLASS_ARG": ("el('span', 'tier ' + t.tier.toLowerCase(), t.tier)",
                       "el('span', 'tier', t.tier)"),
     "_JS_DIAGNOSTIC": ("requireN(c, 'category')", "require(c)"),
+    "_JS_CLASSLIST": ("tile.classList.add('t-' + tier)", "list.append(x)"),
     "_SQL_TABLE": ("SELECT x FROM predictions p JOIN games g",
                    "WHERE active_from IS NOT NULL"),
     "_SQL_START": ("SELECT 1 FROM predictions", "a docstring about SELECT"),

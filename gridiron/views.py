@@ -420,6 +420,13 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # reason it says the humanising rules live in ONE place: the history
         # table was fixed in C1 and the card was left building its own.
         cards[-1]["phrase"] = language.phrase(cards[-1])
+        # THE TILE'S TEXT, composed here like every other sentence (ruling,
+        # 2026-08-31). A tile is 124px and three across, so it gets the
+        # shortest honest form of the pick plus a label saying what its
+        # percentage is a percentage OF -- both from the same `is_no_side`, so
+        # the number and the word underneath cannot disagree.
+        cards[-1]["tile_line"] = language.tile_line(cards[-1])
+        cards[-1]["tile_label"] = language.tile_label(cards[-1])
         cards[-1]["player"] = language.strip_market_suffix(
             cards[-1]["subject"], cards[-1]["market"]
         )

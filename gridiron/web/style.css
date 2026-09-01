@@ -1149,3 +1149,133 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   margin: 6px 0 2px; font-size: 13px; line-height: 1.5;
   color: var(--faint); max-width: 68ch;
 }
+
+/* ===========================================================================
+   THE DESK (D2). At 1280px and up the PAGE does not scroll -- the frame does.
+   ===========================================================================
+
+   Everything below is inside a min-width query, so the phone and the compact
+   rows are untouched by construction rather than by care: no rule here can
+   apply under 1280px, which is what D4 has to prove.
+
+   The mockup is docs/mockup/gridiron_desk.html and the numbers come from it:
+   a 440px rail, ~124px tiles three across, a 3px tier edge, a 48px fade. */
+
+@media (min-width: 1280px) {
+  /* THE DESK IS WIDER THAN THE READING COLUMN. The app is 1120px because that
+     is a comfortable measure for rows of prose; the desk is a grid of tiles
+     plus a 440px rail, and at 1120 the frame came out 618px wide -- three
+     195px tiles, too narrow for a matchup without wrapping. The mockup uses
+     1720. Only the desk's own containers widen; every other page keeps its
+     reading measure. */
+  body.desk-on .bar-inner,
+  body.desk-on main { max-width: 1720px; }
+
+  /* The page is pinned. Only the frame and the rail scroll, so the controls
+     and the rail stay put while a 177-pick slate moves under them.
+     BOTH ELEMENTS, and `height: 100%` with them: `overflow: hidden` on body
+     alone left the document scrolling 414px, because the viewport scroll is
+     the root element's and body was still free to be taller than it. The
+     mockup pins html and body together for the same reason. */
+  html:has(body.desk-on), body.desk-on { height: 100%; overflow: hidden; }
+
+  .desk-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 440px;
+    gap: 22px;
+    align-items: start;
+    height: calc(100vh - var(--bar-h, 52px) - 24px);
+  }
+
+  .desk-frame {
+    height: 100%;
+    overflow-y: auto;
+    padding-bottom: 40px;
+    /* NO VISIBLE SCROLLBAR ON ANY ENGINE, and the fade is the cue instead.
+       Firefox takes `scrollbar-width`, WebKit and Blink take the pseudo
+       element, and old Edge takes `-ms-overflow-style`. Hiding it in one
+       engine only would leave the layout shifting between browsers. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+  }
+  .desk-frame::-webkit-scrollbar { display: none; }
+
+  /* The controls ride at the top of the frame, not the page. */
+  .desk-frame .controls {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg);
+    margin: 0 0 12px;
+    padding: 2px 0 10px;
+  }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+
+  .tile {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    gap: 6px;
+    min-height: 124px;
+    padding: 16px 18px 14px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+  }
+  .tile:hover { background: var(--panel); }
+  .tile[aria-selected="true"] { background: var(--panel); border-color: var(--rule-2); }
+  .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* The tier, as a 3px edge. NOT a colour that means good or bad: white is
+     the most confident band and the faintest is the least, which is a
+     brightness ramp and not the green the colour law reserves. */
+  .tile::before {
+    content: "";
+    position: absolute; left: 0; top: 14px; bottom: 14px;
+    width: 3px; border-radius: 0 2px 2px 0;
+    background: var(--rule-2);
+  }
+  .tile.t-strong::before { background: var(--chrome); }
+  .tile.t-solid::before  { background: var(--muted); }
+  .tile.t-lean::before   { background: var(--rule-2); }
+
+  .tile-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .tile-match {
+    font-family: var(--cond); font-weight: 700; font-size: 20px;
+    letter-spacing: .03em; text-transform: uppercase; line-height: 1.05;
+  }
+  .tile-rank { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .tile-pick { font-size: 13px; color: var(--muted); }
+  .tile-pick b { color: var(--chrome); font-weight: 600; }
+  .tile-bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+  .tile-mkt { font-family: var(--mono); font-size: 11px; color: var(--faint); line-height: 1.5; }
+  .tile-mkt b { color: var(--muted); font-weight: 500; }
+  .tile-pct { font-family: var(--mono); font-weight: 600; font-size: 26px; line-height: 1; text-align: right; }
+  .tile-pct i { font-style: normal; color: var(--faint); font-size: 14px; }
+  .tile-pct small {
+    display: block; margin-top: 3px;
+    font-size: 9px; font-weight: 400; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--faint);
+  }
+
+  /* NO TRUNCATION ANYWHERE IN THE FRAME. A tile that ellipsises has told the
+     reader there is something it is not showing and then not shown it; the
+     tile grows instead. A test asserts no element in the frame carries
+     text-overflow: ellipsis. */
+  .desk-frame * { text-overflow: clip; }
+  .tile-match, .tile-pick { overflow-wrap: anywhere; }
+}
+
+/* Below the breakpoint the desk does not exist at all. */
+@media (max-width: 1279px) {
+  .desk-grid { display: block; }
+  .desk-rail { display: none; }
+}

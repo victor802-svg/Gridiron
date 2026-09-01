@@ -930,6 +930,75 @@ def corrections_note(active: bool, min_train: int, version: int | None = None,
             f"(version {version}{when}{n}).")
 
 
+#: The two-word label under a tile's percentage. It answers "per cent of
+#: WHAT", which a bare number does not.
+TILE_LABELS = {
+    "spread": ("covers", "misses"),
+    "moneyline": ("wins", "loses"),
+    "total": ("over", "under"),
+    "prop": ("over", "under"),
+}
+
+
+def tile_label(item: dict) -> str:
+    """What the tile's percentage is a percentage OF, in one or two words.
+
+    Composed here rather than in the renderer, per the 2026-08-31 ruling. It is
+    the same question `chance_clause` answers at length, said short enough to
+    sit under a number in a 124px tile -- and derived from the same side, so
+    the two cannot disagree.
+    """
+    yes, no = TILE_LABELS.get(item.get("market_type") or "", ("over", "under"))
+    return no if is_no_side(item) else yes
+
+
+def tile_line(item: dict) -> str:
+    """The pick in its shortest honest form, for a tile.
+
+    "Alabama -30.5", "Under 55.5 total", "Tulsa to win". The full sentence
+    lives on the card and in the rail; this is the version that fits three
+    across without truncating, which the frame forbids.
+
+    THE SIDE IS RESOLVED BY `side_named` LIKE EVERYTHING ELSE. A short form is
+    exactly where the wrong-side defect would reappear -- there is less room
+    for the reader to notice it.
+    """
+    market_type = item.get("market_type")
+    line = item.get("line_asked")
+    subject, _prob = side_named(item, form="city")
+
+    if market_type == "total":
+        word = "Under" if is_no_side(item) else "Over"
+        return f"{word} {_number(line)} total"
+
+    if market_type == "moneyline":
+        return f"{subject} to win"
+
+    if market_type == "spread":
+        if line is None:
+            return subject
+        # THE NUMBER IS NOT FLIPPED, and the first version of this flipped it.
+        # `side_named` does not swap the club on a spread the way it does on a
+        # moneyline, so negating the line produced "Alabama +30.5" for a pick
+        # AGAINST Alabama -- which reads as Alabama receiving the points, the
+        # inversion in miniature and in the one place a reader has least room
+        # to notice it.
+        #
+        # The rung is the question, so it is printed as asked; the LABEL
+        # underneath carries the side ("covers" / "misses"), and the two are
+        # derived from the same `is_no_side`.
+        return f"{subject} {float(line):+.1f}"
+
+    # A prop: the person, the side, the number, the stat.
+    market = item.get("prop_type") or item.get("market")
+    if line is not None and float(line) == 0.5:
+        said = half_unit_phrase(subject, market, item.get("model_side"))
+        if said:
+            return said
+    word = SIDE_WORDS.get(item.get("model_side"), "over")
+    return f"{subject} {word} {_number(line)} {humanise(market)}".strip()
+
+
 def task_name(task: str | None) -> str:
     """"predict:mlb" -> "Predict baseball". Falls back to opened-out words."""
     if not task:

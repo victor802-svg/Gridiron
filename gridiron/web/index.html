@@ -120,7 +120,16 @@
       </div>
       <p class="why" id="week-sort"></p>
     </details>
-    <div id="week-cards"></div>
+    <!-- THE DESK GRID (D2). At >= 1280px this is two columns: a scrolling
+         frame of tiles and a fixed rail. Below it, `.desk-grid` is a plain
+         block and `#week-cards` renders the compact rows exactly as before --
+         the desk is additive, not a replacement. -->
+    <div class="desk-grid">
+      <div id="week-frame" class="desk-frame">
+        <div id="week-cards"></div>
+      </div>
+      <aside id="week-rail" class="desk-rail" hidden></aside>
+    </div>
   </section>
 
   <section id="view-factors" class="view" hidden>

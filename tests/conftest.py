@@ -7,12 +7,22 @@ nflverse data are marked `slow` and say so.
 
 from __future__ import annotations
 
+import socket
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from gridiron import db
+from gridiron import api, auth, db, resolve, run
+from gridiron.factors import store
+from gridiron.model import baseline
+
+try:                                   # the browser suite is optional
+    from playwright import sync_api as playwright_api
+except ImportError:                    # pragma: no cover
+    playwright_api = None
 
 TEAMS = ["KC", "BUF", "SF", "PHI", "DAL", "MIA", "SEA", "GB"]
 
@@ -476,3 +486,97 @@ def pytest_runtest_makereport(item, call):
         "how a renamed selector went unnoticed. Fix the selector or the fixture, "
         "or add the reason to ALLOWED_SKIP_REASONS with a note saying why."
     )
+
+# ---------------------------------------------------------------------------
+# THE BROWSER FIXTURES
+# ---------------------------------------------------------------------------
+#
+# They lived in `test_smoke.py` until the desk suite needed them. A fixture
+# defined in a test module is visible only inside that module, so a second file
+# asking for `page` errors with "fixture not found" -- which reads like a
+# missing dependency and is really a scoping rule.
+#
+# `served` builds a synthetic league, trains it, runs two weeks and resolves
+# them, then serves the real app against it. It is the most expensive fixture
+# in the suite and function-scoped on purpose: a browser test that mutated
+# shared state would otherwise decide what the next one sees.
+
+SMOKE_TOKEN = "smoke-token-for-the-browser-suite"
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+@pytest.fixture(scope="function")
+def served(league, db_path, monkeypatch):
+    import uvicorn
+
+    monkeypatch.setenv(auth.TOKEN_VAR, SMOKE_TOKEN)
+
+    store.sync_registry(league)
+    # Six markets: the spread plus each prop type, fitted separately.
+    baseline.train_all(league, (2025,), l2=1.0, note="smoke", min_rows=20)
+    run.run_week(league, 2025, 7, include_props=True, use_llm=False)
+    run.run_week(league, 2025, 8, include_props=True, use_llm=False)
+    resolve.resolve_all(league)
+    # A slate that has NOT been played, so the picks tab has live cards. The
+    # rail, the pick sentence and the tier chip only exist before a result:
+    # a settled card shows its verdict instead, per the approved mockup.
+    run.run_week(league, 2025, 18, include_props=True, use_llm=False)
+    league.commit()
+
+    api.set_database(db_path)
+    port = _free_port()
+    server = uvicorn.Server(
+        uvicorn.Config(api.app, host="127.0.0.1", port=port, log_level="error")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    deadline = time.time() + 20
+    while time.time() < deadline and not server.started:
+        time.sleep(0.05)
+    if not server.started:
+        pytest.fail("the server did not start within 20s")
+
+    yield f"http://127.0.0.1:{port}"
+
+    server.should_exit = True
+    thread.join(timeout=10)
+    api.set_database(None)
+
+
+@pytest.fixture
+def page(served):
+    with playwright_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as exc:  # noqa: BLE001
+            pytest.skip(f"chromium unavailable: {exc}; run `playwright install chromium`")
+        # 1120, NOT 1280, and the number matters. 1280 is exactly the desk
+        # breakpoint, so this fixture sat on the boundary: the moment the
+        # desk shipped, eight tests written about the COMPACT ROWS were
+        # handed a grid of tiles and failed on markup they were never
+        # about. The row suite runs at a row width; `test_desk.py` sets
+        # its own viewport for the desk, and D4 renders both.
+        context = browser.new_context(viewport={"width": 1120, "height": 900})
+        page = context.new_page()
+        page.console_errors = []
+        page.page_errors = []
+        page.on("console", lambda m: page.console_errors.append(m.text)
+                if m.type == "error" else None)
+        page.on("pageerror", lambda e: page.page_errors.append(str(e)))
+        # Sign in the way a person does, through the real login page. Every
+        # route is behind the gate (P3), so without this the browser lands on
+        # /login and every assertion below fails for the wrong reason. It also
+        # means the login flow is exercised by every browser test rather than
+        # only by the one that names it.
+        page.goto(served + "/login", wait_until="networkidle")
+        page.fill("#token", SMOKE_TOKEN)
+        page.click("#submit")
+        page.wait_for_url(served + "/", timeout=15000)
+        page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+        yield page
+        browser.close()
