@@ -92,6 +92,7 @@ def step_2_guards() -> bool:
         ("the renderer composes no prose", audit.check_js_composes_no_prose),
         ("the correction sees claims only", audit.check_correction_is_isolated),
         ("the second look is a second look", audit.check_the_second_look_is_fresh),
+        ("no rankings in college football", audit.check_no_rankings),
         ("no silent defaults (v2)", audit.check_no_silent_defaults),
         ("not a betting tool (LAW 5)", audit.check_not_a_betting_tool),
         ("no offline data caching", audit.check_no_offline_data_caching),

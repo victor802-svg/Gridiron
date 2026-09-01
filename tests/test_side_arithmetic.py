@@ -31,7 +31,19 @@ def logistic(x: float) -> float:
 
 #: Which side the question was FORMED as, per market type. `model_prob` is
 #: confidence in `model_side`, which is this side or its complement.
-YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over"}
+#:
+#: IMPORTED, NOT COPIED, and the copy is why: this file had its own literal
+#: `{"spread": "cover", "moneyline": "win", "prop": "over"}`. When college
+#: football's `total` market arrived, `language.YES_SIDE` gained an entry and
+#: this one did not, so every totals card was read as though its stated side
+#: were the NO side -- and the guard reported 40-odd cards "disagreeing with
+#: their own decomposition" when the rows were self-consistent and the test
+#: was wrong.
+#:
+#: Two implementations of one map is a MENTOR section 3 red flag, and this is
+#: what it costs: a guard that cries wolf about correct data is worse than no
+#: guard, because the next real failure gets explained away.
+from gridiron.language import YES_SIDE
 
 
 def displayed_chance_matches_arithmetic(row: dict) -> tuple[bool, float, float]:

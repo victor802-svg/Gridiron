@@ -194,6 +194,16 @@ def side_named(item: dict, form: str = "full") -> tuple[str, float | None]:
     side = item.get("model_side")
     name = strip_market_suffix(item.get("subject"), item.get("prop_type"))
 
+    if market_type == "total":
+        # A TOTALS QUESTION NAMES NO TEAM. Its stored subject is the matchup
+        # ("AKR @ WAKE"), which is a pair of tricodes, and putting that through
+        # the team-naming path produced "Why AKR @ WAKE" as a heading and "the
+        # market has AKR @ WAKE at 71%" in the prose -- raw identifiers in a
+        # sentence, and the wrong framing besides: nobody is backing Akron.
+        #
+        # The side IS the answer here, so that is what gets named.
+        return ("the over" if side != "under" else "the under"), item.get("model_prob")
+
     if market_type in ("moneyline", "spread"):
         # THE FLIP. A moneyline's subject is the home club; taking the NO side
         # is a pick for the visitors, and naming the home club would name the
@@ -308,6 +318,16 @@ def chance_clause(item: dict) -> str:
     # right needs a table of which names take which verb, which is a hundred
     # and twenty judgements typed from memory: the exact thing the teams table
     # exists to avoid. The tricode takes the singular verb and always has.
+
+    if market_type == "total":
+        # A TOTAL IS NOT A "COVERS" QUESTION, and it read as one: the label
+        # under a totals card said "IDST @ USU COVERS", which is the verb from
+        # the spread branch applied to a question about the combined score.
+        # The same shape as the two defects this function was written to end,
+        # arriving through a market type that did not exist when it was.
+        #
+        # It names no team on purpose -- the question is about the game.
+        return f"the game goes {'under' if side == 'under' else 'over'}"
 
     if market_type == "prop":
         market = item.get("prop_type") or item.get("market")

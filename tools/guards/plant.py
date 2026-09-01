@@ -1008,6 +1008,100 @@ def _plant_correction(extra: str, what: str, needle: str,
                                   "NOT CAUGHT - " + what + " passed the scan")
 
 
+def plant_a_rankings_factor() -> Result:
+    """Give a college football factor a poll to read (ruling R-D).
+
+    The exclusion is structural -- the context carries no poll field -- so a
+    rankings factor has to invent one, and that is what this plants.
+    """
+    root = Path(audit.__file__).resolve().parent
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        pkg = Path(tmp)
+        (pkg / "factors").mkdir(parents=True)
+        (pkg / "sports").mkdir(parents=True)
+        (pkg / "sports" / "cfb.py").write_text("SPORT = 'cfb'\n", encoding="utf-8")
+        (pkg / "factors" / "cfb.py").write_text(chr(10).join([
+            "def cfb_ap_rank_diff(ctx):",
+            '    """A planted factor that reads the AP poll."""',
+            "    return ctx.home_ap_rank - ctx.away_ap_rank",
+            "",
+        ]), encoding="utf-8")
+        try:
+            audit.check_no_rankings(pkg)
+        except audit.LawViolation as exc:
+            return Result("RANKINGS ARE NOT A FACTOR",
+                          "let a college factor read the AP poll",
+                          "audit.check_no_rankings", True,
+                          str(exc).splitlines()[-1])
+        return Result("RANKINGS ARE NOT A FACTOR",
+                      "let a college factor read the AP poll",
+                      "audit.check_no_rankings", False,
+                      "NOT CAUGHT - a poll reached the model")
+
+
+def plant_a_totals_curve_merged_with_margins() -> Result:
+    """Score a totals question inside a spread category.
+
+    A total is a question about the two teams' COMBINED score. It is right and
+    wrong for different reasons than a margin, and the market prices it
+    separately, so pooling the two would let one dilute the other -- the merge
+    LAW 4 forbids, applied to market types within a sport.
+    """
+    from gridiron import calibration as _cal
+
+    payload = {"category": "spread+total / statistical", "n": 40,
+               "market": None, "predictor": "statistical"}
+    try:
+        _cal.assert_no_merged_categories([payload])
+    except Exception as exc:
+        return Result("A TOTAL IS NOT A MARGIN",
+                      "score totals inside the spread category",
+                      "calibration.assert_no_merged_categories", True,
+                      str(exc).splitlines()[0][:96])
+    return Result("A TOTAL IS NOT A MARGIN",
+                  "score totals inside the spread category",
+                  "calibration.assert_no_merged_categories", False,
+                  "NOT CAUGHT - a merged totals/spread curve passed")
+
+
+def plant_an_undated_cfb_sd() -> Result:
+    """Ask for a totals SD that carries no measurement.
+
+    `total_sd` has no fallback for the same reason `margin_sd` has none: a
+    sport quietly receiving another's number is how NBA's market comparison
+    was wrong for a day, and totals measure a different quantity again.
+    """
+    from gridiron.market import lines as _lines
+
+    try:
+        _lines.total_sd("nfl")
+    except _lines.UnmeasuredMarginSD as exc:
+        return Result("NO UNDATED STANDARD DEVIATIONS",
+                      "compare a totals market with no measured SD",
+                      "lines.total_sd", True, str(exc).splitlines()[0][:96])
+    return Result("NO UNDATED STANDARD DEVIATIONS",
+                  "compare a totals market with no measured SD",
+                  "lines.total_sd", False,
+                  "NOT CAUGHT - an unmeasured totals SD was served")
+
+
+def plant_a_cross_sport_cfb_query() -> Result:
+    """Ask for a college football figure without saying which sport."""
+    from gridiron import config as _config
+
+    try:
+        _config.require_sport(None, "cfb scorecard")
+    except _config.CrossSportAggregation as exc:
+        return Result("LAW 6 COVERS THE NEW SPORT",
+                      "read a college football record with no sport named",
+                      "config.require_sport", True,
+                      str(exc).splitlines()[0][:96])
+    return Result("LAW 6 COVERS THE NEW SPORT",
+                  "read a college football record with no sport named",
+                  "config.require_sport", False,
+                  "NOT CAUGHT - a sportless query was served")
+
+
 def plant_a_second_look_served_from_cache() -> Result:
     """Set the near-start window to the live cache window.
 
@@ -2069,6 +2163,10 @@ def main() -> int:
     results.append(plant_a_why_that_disagrees_with_its_contributions())
     results.append(plant_a_factor_with_no_why_template())
     results.append(plant_a_view_that_names_the_side_itself())
+    results.append(plant_a_rankings_factor())
+    results.append(plant_a_totals_curve_merged_with_margins())
+    results.append(plant_an_undated_cfb_sd())
+    results.append(plant_a_cross_sport_cfb_query())
     results.append(plant_a_second_look_served_from_cache())
     results.append(plant_an_active_correction_below_the_gate())
     results.append(plant_a_correction_that_does_not_help())

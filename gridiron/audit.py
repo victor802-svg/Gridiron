@@ -1238,3 +1238,75 @@ def check_scanners_can_see() -> None:
 # pytest is still blind in every other process -- including the ones that run
 # `verify.py` and the ones a person runs by hand to check something.
 check_scanners_can_see()
+
+
+# ---------------------------------------------------------------------------
+# NO RANKINGS IN COLLEGE FOOTBALL (ruling R-D)
+# ---------------------------------------------------------------------------
+#
+# The AP and coaches' polls are the obvious thing to reach for in this sport
+# and they are excluded on purpose: they are votes. They lag results, they
+# carry preseason expectation for weeks after it has been refuted, and they are
+# influenced by who plays on television. A model reading them is partly
+# modelling sportswriters, and when it beats the market nobody will be able to
+# say which part did it.
+#
+# The exclusion is structural rather than remembered: the context a factor sees
+# carries no poll field, so a rankings factor has nothing to read. This scan
+# keeps it that way, and it deliberately looks at the CONTEXT and the FACTOR
+# BODIES rather than at prose -- the registry's own docstring explains at
+# length why rankings are absent, and explaining is not violating.
+
+#: Words that name a poll or a ranking. Matched against context field names and
+#: the code of cfb factor functions, never against comments or docstrings.
+RANKING_WORDS = ("rank", "ranking", "poll", "ap_top", "coaches_poll",
+                 "cfp_rank", "top25", "top_25")
+
+
+def ranking_reaches(package: Path | None = None) -> list[str]:
+    """Context fields or factor code that would let a poll into the model."""
+    import ast as _ast
+
+    root = Path(__file__).resolve().parent if package is None else Path(package)
+    hits = []
+    for name in ("sports/cfb.py", "factors/cfb.py"):
+        path = root / name
+        if not path.exists():
+            continue
+        tree = _ast.parse(path.read_text(encoding="utf-8"))
+        exempt = _docstring_nodes(tree)
+        for node in _ast.walk(tree):
+            text = None
+            if isinstance(node, _ast.Name):
+                text = node.id
+            elif isinstance(node, _ast.Attribute):
+                text = node.attr
+            elif isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                text = node.name
+            elif isinstance(node, _ast.arg):
+                text = node.arg
+            elif isinstance(node, _ast.Constant) and isinstance(node.value, str):
+                if id(node) in exempt:
+                    continue
+                text = node.value
+            if not text:
+                continue
+            low = text.lower()
+            for word in RANKING_WORDS:
+                if word in low:
+                    hits.append(f"{name}: {text[:48]!r} names {word!r}")
+    return sorted(set(hits))
+
+
+def check_no_rankings(package: Path | None = None) -> None:
+    hits = ranking_reaches(package)
+    if hits:
+        raise LawViolation(
+            "RANKINGS ARE NOT A FACTOR (ruling R-D): a poll is a vote, it lags "
+            "the results it is meant to summarise, and a model that reads one "
+            "is partly modelling sportswriters. Everything a poll knows about "
+            "a team's results, the opponent-adjusted margin knows sooner and "
+            "without the opinions. The exclusion is structural -- the context "
+            "carries no poll field -- and this is what keeps it that way:"
+            + _NL2 + _NL2.join(hits[:10])
+        )

@@ -197,3 +197,43 @@ the bowls and playoff are a separate question this build does not answer:
 so whether they are their own calibration category. Deciding it in December,
 with the regular season's forward record in hand, is a better position than
 deciding it now.
+
+---
+
+## The new-market checklist, ticked
+
+`docs/NEW_MARKET_CHECKLIST.md`, item by item, with evidence. Three market
+families: **spread**, **moneyline**, **total**.
+
+| # | Item | Evidence |
+|---|---|---|
+| 1 | `mean_vs_line` and volatility declared | **spread:** `cfb_asked_line` (spread only — a moneyline is asked at no rung, and declaring it there would have been a broken instrument on every row). **total:** `cfb_total_vs_form` and `cfb_total_volatility`. **moneyline:** neither applies — there is no line and no subject average; the question is binary. |
+| 2 | `fit.constant` / `fit.dropped` checked and empty | Empty in all three markets on the final fit. **NOT empty on the first:** `cfb_wind_mph` was dropped, measured on 0 of 720 rows, because the forecast source has no past. Fixed with the provider's archive; now 700 of 720. |
+| 3 | Alias round-trip measured against both feeds | **Not applicable, and measured to be so.** Schedule, scores and lines all come from ESPN in one id space: 260 of 260 sampled events carry both team ids inline. 138 FBS abbreviations measured distinct; a collision with a lower-division code REFUSES the load rather than picking a winner. |
+| 4 | Cross-checks between related numbers | The probe's line coverage (spread 98–100%, moneyline 87%/73%) was measured twice by different code paths — reading odds documents directly, and reading what the snapshot step stored — and the two agree exactly. The disagreement between them is what exposed the UTC/US date-boundary bug. |
+| 5 | Missing data explicit-absent; presence recorded | Every factor returns `None` rather than a default: no rating without prior games, no travel without both venues placed, no wind for an indoor or unknown venue, no total where either side has no scoring history (3 of 60 on Saturday). Presence is recorded per row in the feature vector. |
+| 6 | Own category, own gate, never merged | The Record tab lists `point spread`, `moneyline` and `total` as separate categories, each at "0 of 100". A planted merged totals/spread curve is caught by `assert_no_merged_categories`. |
+| 7 | VOID rules written before the first prediction | Above, in this file, committed in `cfb 2` — before any CFB prediction existed. Includes the one that does NOT void: a line that vanishes before kickoff leaves the forecast standing. |
+| 8 | Resolution source verified; loader loud on empty | 888 of 888 sampled 2025 events carry final scores. `EmptyLoad` raises separately for no teams, no events, and nothing written — three different failures with three different messages. |
+| 9 | Inside the lead horizon; cadence stated | Saturday's slate written 5 days ahead, against a 21-day limit. Cadence stated: a slate is a DAY, `predict:cfb` runs daily and writes whichever slate is next, because a college week is three slates. |
+| 10 | Dated activation; backtest labelled; gate respected | Factors dated 2026-08-31. The fits are labelled pipeline sanity, with the hit rates explicitly discounted as the FBS-vs-FCS schedule rather than skill. Nothing claims an edge; the edge panel reads "0 resolved disagreements of the 100 required". |
+
+---
+
+## The new-market checklist, ticked
+
+`docs/NEW_MARKET_CHECKLIST.md`, item by item, with evidence. Three market
+families: **spread**, **moneyline**, **total**.
+
+| # | Item | Evidence |
+|---|---|---|
+| 1 | `mean_vs_line` and volatility declared | **spread:** `cfb_asked_line` (spread only — a moneyline is asked at no rung, and declaring it there would have been a broken instrument on every row). **total:** `cfb_total_vs_form` and `cfb_total_volatility`. **moneyline:** neither applies — there is no line and no subject average; the question is binary. |
+| 2 | `fit.constant` / `fit.dropped` checked and empty | Empty in all three markets on the final fit. **NOT empty on the first:** `cfb_wind_mph` was dropped, measured on 0 of 720 rows, because the forecast source has no past. Fixed with the provider's archive; now 700 of 720. |
+| 3 | Alias round-trip measured against both feeds | **Not applicable, and measured to be so.** Schedule, scores and lines all come from ESPN in one id space: 260 of 260 sampled events carry both team ids inline. 138 FBS abbreviations measured distinct; a collision with a lower-division code REFUSES the load rather than picking a winner. |
+| 4 | Cross-checks between related numbers | The probe's line coverage (spread 98–100%, moneyline 87%/73%) was measured twice by different code paths — reading odds documents directly, and reading what the snapshot step stored — and the two agree exactly. The disagreement between them is what exposed the UTC/US date-boundary bug. |
+| 5 | Missing data explicit-absent; presence recorded | Every factor returns `None` rather than a default: no rating without prior games, no travel without both venues placed, no wind for an indoor or unknown venue, no total where either side has no scoring history (3 of 60 on Saturday). Presence is recorded per row in the feature vector. |
+| 6 | Own category, own gate, never merged | The Record tab lists `point spread`, `moneyline` and `total` as separate categories, each at "0 of 100". A planted merged totals/spread curve is caught by `assert_no_merged_categories`. |
+| 7 | VOID rules written before the first prediction | Above, in this file, committed in `cfb 2` — before any CFB prediction existed. Includes the one that does NOT void: a line that vanishes before kickoff leaves the forecast standing. |
+| 8 | Resolution source verified; loader loud on empty | 888 of 888 sampled 2025 events carry final scores. `EmptyLoad` raises separately for no teams, no events, and nothing written — three different failures with three different messages. |
+| 9 | Inside the lead horizon; cadence stated | Saturday's slate written 5 days ahead, against a 21-day limit. Cadence stated: a slate is a DAY, `predict:cfb` runs daily and writes whichever slate is next, because a college week is three slates. |
+| 10 | Dated activation; backtest labelled; gate respected | Factors dated 2026-08-31. The fits are labelled pipeline sanity, with the hit rates explicitly discounted as the FBS-vs-FCS schedule rather than skill. Nothing claims an edge; the edge panel reads "0 resolved disagreements of the 100 required". |
