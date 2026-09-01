@@ -98,6 +98,7 @@ def step_2_guards() -> bool:
         ("no tile truncates", audit.check_no_truncation_in_the_frame),
         ("selecting leaves the frame alone",
          audit.check_selection_leaves_the_frame_alone),
+        ("every side has words", audit.check_every_side_has_words),
         ("no silent defaults (v2)", audit.check_no_silent_defaults),
         ("not a betting tool (LAW 5)", audit.check_not_a_betting_tool),
         ("no offline data caching", audit.check_no_offline_data_caching),

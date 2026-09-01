@@ -270,6 +270,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     "slate_word": config.SPORT_SLATE_WORD.get(sport, "week"),
                     "line_source": lines.line_source_for(sport),
                     "glance": _glance(conn, sport, []),
+                    "slate_title": language.slate_title(
+                        season, None, config.SPORT_SLATE_WORD.get(sport, "week")),
                     "sorted_by": "size of disagreement with the market"}
         season, wk = latest["season"], latest["week"]
         rows = fetch(season, wk)
@@ -440,9 +442,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # WHERE IT IS PLAYED, for the selected-pick subline. None when the
         # venue was never recorded, and the subline simply has one fewer part.
         cards[-1]["venue"] = venues.get(r["home"])
-        cards[-1]["side_word"] = language.SIDE_WORDS.get(
-            r["model_side"], r["model_side"] or ""
-        )
+        cards[-1]["side_word"] = language.side_word_or_side(r["model_side"])
 
     # Sorted by disagreement size, because that is where anything interesting
     # lives. Cards with no market comparison sort last rather than first.
@@ -455,6 +455,11 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         "season": season,
         "week": wk,
         "slate_word": config.SPORT_SLATE_WORD.get(sport, "week"),
+        # WHAT TO CALL THIS SLATE, in words, composed here like every other
+        # visible phrase. The renderer used to glue "Season " + season +
+        # ", week " + week, which put the raw eight-digit key on the page.
+        "slate_title": language.slate_title(
+            season, wk, config.SPORT_SLATE_WORD.get(sport, "week")),
         "n": len(cards),
         "cards": cards,
         "line_source": lines.line_source_for(sport),
@@ -606,7 +611,13 @@ def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
 def available_weeks(conn: sqlite3.Connection, sport: str) -> list[dict]:
     calibration.require_sport(sport, "views.available_weeks")
     return [
-        {"season": r["season"], "week": r["week"], "n": r["n"]}
+        {"season": r["season"], "week": r["week"], "n": r["n"],
+         # THE CHOOSER'S OWN WORDS. It was built in the browser as
+         # `w.season + ' week ' + w.week`, which is both prose composed in the
+         # renderer and the eight-digit key on the page.
+         "label": language.slate_option(
+             r["season"], r["week"], r["n"],
+             config.SPORT_SLATE_WORD.get(sport, "week"))}
         for r in conn.execute(
             "SELECT g.season, g.week, COUNT(*) AS n FROM predictions p"
             " JOIN games g ON g.id = p.game_id WHERE p.sport = ?"

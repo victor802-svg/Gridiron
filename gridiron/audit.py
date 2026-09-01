@@ -498,7 +498,24 @@ def plain_words_violations(text: str) -> list[str]:
         if match in SNAKE_ALLOWED or any(match in h for h in hits):
             continue
         hits.append(f"snake_case {match!r} is visible to a reader")
+    # A SLATE KEY IS NOT A DATE A PERSON READS. The day-keyed sports store
+    # their slate as YYYYMMDD -- an integer that orders the record perfectly
+    # -- and "Season 2026, week 20260905" sat above every college slate until
+    # E1. Eight digits a reader has to parse into a date is an identifier
+    # wearing a number's clothes, which is the same defect as snake_case in a
+    # label and harder to notice.
+    for match in DATE_KEY.findall(text):
+        hits.append(
+            f"the slate key {match!r} is visible to a reader -- say the date "
+            f"in words")
     return sorted(set(hits))
+
+
+#: An eight-digit run starting with a plausible year: 20260905, not 12345678
+#: and not a four-digit season. Bounded so a long ordinary number -- a token, a
+#: byte count -- is not mistaken for a date.
+DATE_KEY = re.compile(r"(?<![0-9])(?:19|20|21)[0-9]{2}(?:0[1-9]|1[0-2])"
+                      r"(?:0[1-9]|[12][0-9]|3[01])(?![0-9])")
 
 
 def check_plain_words(text: str, where: str = "the page") -> None:
@@ -1206,6 +1223,8 @@ SCANNER_FIXTURES: dict[str, tuple[str, str]] = {
     "_SQL_TABLE": ("SELECT x FROM predictions p JOIN games g",
                    "WHERE active_from IS NOT NULL"),
     "_SQL_START": ("SELECT 1 FROM predictions", "a docstring about SELECT"),
+    # The key that shipped, and a season that must NOT trip it.
+    "DATE_KEY": ("Season 2026, week 20260905", "Season 2026, Week 1"),
 }
 
 
@@ -1596,3 +1615,85 @@ def _check_the_desk_scanners_can_see() -> None:
 
 
 _check_the_desk_scanners_can_see()
+
+
+# ---------------------------------------------------------------------------
+# THE PICK SAYS THE PICK (ruling E1)
+# ---------------------------------------------------------------------------
+#
+# The fourth appearance of one defect, and the first to get past `side_named`.
+# On 2026-09-01 nine live college spread cards read "Nebraska Cornhuskers
+# covers -24.5" over a stored prediction that Nebraska would FAIL to cover.
+# The name was right. The VERB was wrong: college football stores that side as
+# "fail to cover", `SIDE_WORDS` had only "not_cover", and the lookup was
+# `SIDE_WORDS.get(side, "covers")` -- so an unrecognised side silently became
+# the other side's claim, on the card, at high confidence.
+#
+# Every standing scan passed while that shipped, because they all check that
+# prose goes THROUGH the humaniser. None checked that the humaniser had words
+# for what it was handed. These two do.
+
+
+def sides_without_words(sides) -> list[str]:
+    """Stored sides the humaniser has no verb for. Empty is the only pass."""
+    from . import language
+    return [
+        f"the stored side {side!r} has no entry in SIDE_WORDS, so any sentence "
+        f"about it is guessing -- and the guess used to be the opposite side's "
+        f"verb"
+        for side in sorted(set(sides))
+        if side and side not in language.SIDE_WORDS
+    ]
+
+
+def pick_disagrees_with_its_label(cards) -> list[str]:
+    """Cards whose pick line and confidence label name different sides.
+
+    A TILE IS TWO CLAIMS ABOUT ONE PICK -- the line across the middle and the
+    word under the percentage -- and they are derived separately. "Alabama
+    -24.5 ... 76% MISSES" is both of them being individually defensible and
+    jointly telling a reader to work out the inversion themselves.
+    """
+    from . import language
+    faults = []
+    for card in cards:
+        if card.get("market_type") not in ("spread", "moneyline"):
+            continue
+        # AGAINST THE ONE DOOR, not against a second opinion. Asking whether
+        # the label is the "negative" word cannot work now that the flip makes
+        # both words positive -- and a guard whose passing depends on the
+        # defect still existing is not a guard. So this asks the humaniser
+        # what this card should say and compares.
+        expected_line = language.tile_line(card)
+        expected_label = language.tile_label(card)
+        if card.get("tile_line") != expected_line:
+            faults.append(
+                f"the tile shows {card.get('tile_line')!r} where the pick is "
+                f"{expected_line!r} -- the line on the tile is not the side "
+                f"the record stored")
+        if card.get("tile_label") != expected_label:
+            faults.append(
+                f"{card.get('tile_line')!r} carries the label "
+                f"{card.get('tile_label')!r} where the pick is "
+                f"{expected_label!r}: the line names one side and the label "
+                f"bets against it")
+    return faults
+
+
+def check_every_side_has_words(conn=None) -> None:
+    """Every side in the record, and every side any sport can produce."""
+    from . import config
+    sides = set()
+    if conn is not None:
+        sides |= {r[0] for r in conn.execute(
+            "SELECT DISTINCT model_side FROM predictions")}
+    for market_type, yes in (("spread", "cover"), ("moneyline", "win"),
+                             ("total", "over"), ("prop", "over")):
+        sides.add(yes)
+    faults = sides_without_words(sides)
+    if faults:
+        raise LawViolation(
+            "A SIDE WITH NO WORDS. The humaniser was handed a stored side it "
+            "has no verb for, and its old behaviour was to print another "
+            "side's verb -- which put the opposite of the forecast on nine "
+            "cards for three days:" + _NL2 + _NL2.join(faults))

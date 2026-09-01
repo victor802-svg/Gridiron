@@ -1240,8 +1240,9 @@ const Gridiron = (function () {
     const data = await fetchJSON(withSport('/api/week' + qs));
     const market = document.getElementById('week-market').value;
 
-    document.getElementById('week-title').textContent =
-      data.week === null ? 'This week' : ('Season ' + data.season + ', week ' + data.week);
+    // PLACED, NOT COMPOSED. The server names the slate in words; this used to
+    // glue the season to the raw key and print "Season 2026, week 20260905".
+    document.getElementById('week-title').textContent = data.slate_title || '';
     // The standing note, in the mockup's words. Agreeing with the market is
     // not a finding, which is why disagreement is the default order.
     document.getElementById('week-sort').textContent =
@@ -1332,7 +1333,7 @@ const Gridiron = (function () {
     const picker = document.getElementById('week-picker');
     picker.innerHTML = '';
     data.weeks.forEach(w => {
-      const o = el('option', '', w.season + ' week ' + w.week + ' (' + w.n + ')');
+      const o = el('option', '', w.label);
       o.value = JSON.stringify({ season: w.season, week: w.week });
       picker.appendChild(o);
     });

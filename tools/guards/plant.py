@@ -721,6 +721,52 @@ def cfb_spread_rung(game_id, expected_margin=None):
 """
 
 
+def plant_a_pick_line_that_disagrees_with_its_label() -> Result:
+    """A tile naming one side across the middle and the other underneath.
+
+    THIS IS THE TILE THAT SHIPPED: "Alabama -24.5 ... 76% MISSES". Both halves
+    were individually defensible -- the rung is the question as asked, the
+    label is the side as stored -- and together they made a reader do the
+    inversion on every tile to find out that the pick was East Carolina.
+    """
+    planted = [{
+        "market_type": "spread",
+        "model_side": "fail to cover",     # the model is AGAINST Alabama
+        "line_asked": -24.5,
+        "subject": "ALA",
+        "opponent": "ECU",
+        "team_names": {"ALA": {"full": "Alabama Crimson Tide", "city": "Alabama"},
+                       "ECU": {"full": "East Carolina Pirates",
+                               "city": "East Carolina"}},
+        # ... and the tile says the opposite of all of that.
+        "tile_line": "Alabama -24.5",
+        "tile_label": "misses",
+    }]
+    faults = audit.pick_disagrees_with_its_label(planted)
+    return _desk_plant(faults, "name one side on the tile and bet against it "
+                               "in the label",
+                       "audit.pick_disagrees_with_its_label")
+
+
+def plant_a_side_with_no_words() -> Result:
+    """Hand the humaniser a stored side it has no verb for.
+
+    The defect this replaces did not look like a defect: `SIDE_WORDS.get(side,
+    "covers")` reads as a sensible fallback and produced a perfectly formed
+    sentence stating the opposite of nine forecasts.
+    """
+    faults = audit.sides_without_words(["cover", "fail to score", "win"])
+    return _desk_plant(faults, "render a side the humaniser has no words for",
+                       "audit.sides_without_words")
+
+
+def plant_a_slate_key_on_the_page() -> Result:
+    """Put the raw eight-digit slate key where a reader can see it."""
+    faults = audit.plain_words_violations("Season 2026, week 20260905")
+    return _desk_plant(faults, "show the raw slate key instead of the date",
+                       "audit.plain_words_violations")
+
+
 def plant_a_tile_that_truncates() -> Result:
     """Cut a tile's matchup off with an ellipsis.
 
@@ -2268,6 +2314,9 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_pick_line_that_disagrees_with_its_label())
+    results.append(plant_a_side_with_no_words())
+    results.append(plant_a_slate_key_on_the_page())
     results.append(plant_a_tile_that_truncates())
     results.append(plant_a_selection_that_moves_the_frame())
     results.append(plant_a_rail_panel_that_writes_its_own_prose())

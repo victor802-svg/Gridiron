@@ -53,11 +53,64 @@ MARKET_WORDS = {
 SIDE_WORDS = {
     "cover": "covers",
     "not_cover": "does not cover",
+    # COLLEGE FOOTBALL STORES THIS SIDE AS "fail to cover", not "not_cover",
+    # and for three days that one missing key put the opposite of the forecast
+    # on nine live cards. `SIDE_WORDS.get(side, "covers")` fell through to its
+    # default, so a prediction that Nebraska would FAIL to cover rendered as
+    # "Nebraska Cornhuskers covers -24.5" -- the fourth appearance of the
+    # wrong-side defect, and the first to get past `side_named`, because the
+    # name was right and the VERB was wrong.
+    #
+    # Both strings are kept. The record is append-only (LAW 3): nine rows say
+    # "fail to cover" and will say it forever, so the words have to meet them
+    # where they are rather than the record being tidied to suit the table.
+    "fail to cover": "does not cover",
     "over": "over",
     "under": "under",
     "win": "to win",
     "lose": "to lose",
 }
+
+
+def side_word_or_side(side: str | None) -> str:
+    """The verb, falling back to the SIDE'S OWN NAME rather than another's.
+
+    The distinction that matters: an unrecognised side printed as itself reads
+    oddly and is TRUE. An unrecognised side printed as another side's verb
+    reads perfectly and is FALSE. Where a sentence must be produced no matter
+    what, this is the honest degradation; where it need not, `side_word`
+    raises instead.
+    """
+    try:
+        return side_word(side)
+    except UnknownSide:
+        return side or ""
+
+
+class UnknownSide(KeyError):
+    """A stored side this module has no words for. Raised, never defaulted."""
+
+
+def side_word(side: str | None) -> str:
+    """The verb for a stored side, or a loud failure.
+
+    THE DEFAULT WAS THE BUG. `SIDE_WORDS.get(side, "covers")` turns a side
+    nobody has written words for into a confident claim about the opposite
+    one, and it does it silently, on the card, at high confidence. A sport
+    added later with a new label string inherits the defect automatically --
+    which is exactly how college football got it.
+
+    Raising means a new sport fails at the first card rather than shipping a
+    lie, and the failure names the string it did not recognise.
+    """
+    word = SIDE_WORDS.get(side)
+    if word is None:
+        raise UnknownSide(
+            f"no words for the stored side {side!r}. Add it to SIDE_WORDS -- "
+            f"do NOT let it fall through to another side's verb, which is how "
+            f"nine college spreads came to state the opposite of themselves."
+        )
+    return word
 
 #: A settled prediction's verdict, in the card language.
 RESULT_WORDS = {
@@ -205,10 +258,24 @@ def side_named(item: dict, form: str = "full") -> tuple[str, float | None]:
         return ("the over" if side != "under" else "the under"), item.get("model_prob")
 
     if market_type in ("moneyline", "spread"):
-        # THE FLIP. A moneyline's subject is the home club; taking the NO side
-        # is a pick for the visitors, and naming the home club would name the
-        # team being forecast AGAINST.
-        if market_type == "moneyline" and side == "lose" and item.get("opponent"):
+        # THE FLIP, ON BOTH MARKETS NOW (ruling E1). A game market's subject is
+        # the home club; taking the NO side is a pick for the visitors, and
+        # naming the home club would name the team being forecast AGAINST.
+        #
+        # The spread used to be excluded, and the reasoning was that the RUNG
+        # is the question so it should print as asked. That is true of the
+        # record and false of the reader: a tile reading "Alabama -24.5 ...
+        # 76% MISSES" makes a person work out that the pick is East Carolina
+        # receiving the points, every time, on every tile. The pick is
+        # "ECU +24.5", so that is what it says -- the same claim, at the same
+        # probability, in the words somebody would use.
+        #
+        # THE NUMBER MUST FLIP WITH THE NAME. Flipping one without the other
+        # is how an earlier attempt produced "Alabama +30.5" for a pick
+        # AGAINST Alabama. `tile_line` and `phrase` negate the line exactly
+        # when this function swapped the club, and both ask `is_no_side` to
+        # decide, so they cannot disagree about which happened.
+        if is_no_side(item) and item.get("opponent"):
             name = item["opponent"]
         name = team_name(name, item.get("team_names"), form)
 
@@ -240,7 +307,11 @@ def phrase(item: dict) -> str:
     # prop it already strips the stored stat suffix -- `market` and `prop_type`
     # are the same string there -- so there is nothing left for this function
     # to do to the name.
-    subject, _prob = side_named(item)
+    # THE SCHOOL FORM IN PROSE (ruling E1). "Temple Owls covers -14.5" puts a
+    # mascot in the middle of a sentence; "Temple covers +14.5" is what a
+    # person says. Headings may still carry the full name -- that is where a
+    # club's whole name belongs.
+    subject, _prob = side_named(item, form="city")
     side = item.get("model_side")
     line = item.get("line_asked")
 
@@ -251,9 +322,12 @@ def phrase(item: dict) -> str:
             said = half_unit_phrase(subject, market, side)
             if said:
                 return said
-        side_word = SIDE_WORDS.get(side, side or "over")
+        # STRICT. A prop side with no word is a defect, not a formatting
+        # choice, and defaulting to "over" is what shipped the opposite of
+        # nine forecasts on the spread.
+        word = side_word_or_side(side)
         line_text = _number(line)
-        return f"{subject} {side_word} {line_text} {humanise(market)}".strip()
+        return f"{subject} {word} {line_text} {humanise(market)}".strip()
 
     if market_type == "total":
         # NOT A TEAM AND NOT A PLAYER. A totals question is about the GAME, so
@@ -273,11 +347,12 @@ def phrase(item: dict) -> str:
         # `subject` is already the club being backed, flip included.
         if side == "lose":
             return f"{subject} to win"
-        return f"{subject} {SIDE_WORDS.get(side, 'to win')}".strip()
+        return f"{subject} {side_word(side)}".strip()
 
-    # spreads
-    side_word = SIDE_WORDS.get(side, "covers")
-    return f"{subject} {side_word} {_signed(line)}".strip()
+    # SPREADS. The subject was flipped by `side_named` when the model took the
+    # NO side, so the number flips with it and the verb is always the positive
+    # one: this sentence is about the side being backed.
+    return f"{subject} covers {_signed(flipped_line(item))}".strip()
 
 
 def chance_clause(item: dict) -> str:
@@ -631,7 +706,13 @@ def why_block(item: dict, factors: dict | None = None) -> dict:
     # Derived the same way `phrase` derives its subject, including the flip
     # that names the opponent when the model takes the NO side of a moneyline,
     # so the heading and the pick sentence cannot name different teams.
-    picked, _prob = side_named(item)
+    # THE SCHOOL FORM, matching the tile and the pick sentence (ruling E1).
+    # The heading is grammatically the subject of the sentence that follows it
+    # -- "Why Ohio: The biggest single reason is..." -- so it is prose, not a
+    # label, and E1 asks that one pick read identically in all four places it
+    # appears. "Ohio" on the tile and "Ohio Bobcats" in the rail is the same
+    # inconsistency in a smaller font.
+    picked, _prob = side_named(item, form="city")
     sentences = why_sentences(item, factors)
     # THE MARKET IS SENTENCE THREE, where a line exists. Where none does it is
     # omitted rather than replaced by a hedge: the budget is a ceiling, not a
@@ -810,6 +891,11 @@ def _reasons(n: int) -> str:
 #: API error is the only one that might be worth retrying.
 DEGRADED_WORDS = {
     "no_api_key": "no key is configured for the second forecaster",
+    # SET AND REJECTED, which is a different problem from not set at all and
+    # from a network failure: the key exists, the service answered, and the
+    # answer was no. Says what to do about it, because "could not be reached"
+    # sent the reader to look at their connection for three days.
+    "bad_api_key": "the second forecaster's key was refused -- it needs replacing",
     "sdk_missing": "the second forecaster's library is not installed",
     "daily_budget": "the day's spending cap was reached",
     "api_error": "the second forecaster could not be reached",
@@ -932,12 +1018,92 @@ def corrections_note(active: bool, min_train: int, version: int | None = None,
 
 #: The two-word label under a tile's percentage. It answers "per cent of
 #: WHAT", which a bare number does not.
+#: What the tile's percentage is a percentage OF.
+#:
+#: THE GAME MARKETS HAVE ONE WORD EACH, and that is the point of E1 rather
+#: than an oversight. `side_named` names the side the model actually took, so
+#: a spread pick always covers and a moneyline pick always wins -- there is no
+#: such thing as a tile whose headline names one team and whose label bets
+#: against them. "MISSES" under "Alabama -24.5" was that tile, and a reader had
+#: to do the inversion themselves to find out who the pick was on.
+#:
+#: Totals keep two words because a totals question names no team: over and
+#: under are the two sides, and neither is a flip of the other's subject.
 TILE_LABELS = {
-    "spread": ("covers", "misses"),
-    "moneyline": ("wins", "loses"),
+    "spread": ("covers", "covers"),
+    "moneyline": ("wins", "wins"),
     "total": ("over", "under"),
     "prop": ("over", "under"),
 }
+
+
+#: How a slate says which slate it is. A day-keyed sport stores YYYYMMDD --
+#: an integer that orders the record perfectly and means nothing to a reader.
+#: "Season 2026, week 20260905" was on the page above every college slate.
+MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+          "August", "September", "October", "November", "December")
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+            "Saturday", "Sunday")
+
+
+def _is_day_key(week: int | None) -> bool:
+    """A slate key that is really a date: 20260905, not 5."""
+    return week is not None and 19000101 <= int(week) <= 29991231
+
+
+def date_words(week: int | None) -> str | None:
+    """20260905 -> "Saturday 5 September". None when it is not a date.
+
+    The weekday is included because it is the thing a reader actually holds a
+    slate by -- "Saturday" is what a college football card IS -- and the year
+    is not, because the season is already named beside it.
+    """
+    if not _is_day_key(week):
+        return None
+    import datetime as _dt
+    text = str(int(week))
+    try:
+        day = _dt.date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+    except ValueError:
+        return None
+    return f"{WEEKDAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
+
+
+def slate_title(season: int | None, week: int | None, slate_word: str) -> str:
+    """What to call this slate at the top of the page, in words.
+
+    NEVER THE KEY. `week` is an integer that orders the record; for the
+    day-keyed sports it is a date wearing an integer's clothes, and printing
+    it produced "Season 2026, week 20260905" -- eight digits a reader has to
+    parse as a date, above a page whose entire job is being readable.
+    """
+    if week is None:
+        return "This slate"
+    words = date_words(week)
+    if words:
+        return f"{words}, {season}" if season else words
+    return f"{slate_word.title()} {week}, {season}" if season else f"{slate_word.title()} {week}"
+
+
+def slate_option(season: int | None, week: int | None, n: int,
+                 slate_word: str) -> str:
+    """One line in the slate chooser: the same words, plus how many picks."""
+    return f"{slate_title(season, week, slate_word)} ({n})"
+
+
+def flipped_line(item: dict) -> float | None:
+    """The spread as the PICK holds it, not as the question asked it.
+
+    A question asked at -24.5 that the model answers "no" is a pick on the
+    other side at +24.5. Same claim, same probability, and it is the form a
+    person says out loud. Kept in one function because the tile, the sentence
+    and the history row all need the same number, and three copies of a sign
+    flip is three chances to get a sign wrong.
+    """
+    line = item.get("line_asked")
+    if line is None:
+        return None
+    return -float(line) if is_no_side(item) else float(line)
 
 
 def tile_label(item: dict) -> str:
@@ -977,17 +1143,11 @@ def tile_line(item: dict) -> str:
     if market_type == "spread":
         if line is None:
             return subject
-        # THE NUMBER IS NOT FLIPPED, and the first version of this flipped it.
-        # `side_named` does not swap the club on a spread the way it does on a
-        # moneyline, so negating the line produced "Alabama +30.5" for a pick
-        # AGAINST Alabama -- which reads as Alabama receiving the points, the
-        # inversion in miniature and in the one place a reader has least room
-        # to notice it.
-        #
-        # The rung is the question, so it is printed as asked; the LABEL
-        # underneath carries the side ("covers" / "misses"), and the two are
-        # derived from the same `is_no_side`.
-        return f"{subject} {float(line):+.1f}"
+        # BOTH HALVES FLIP TOGETHER (ruling E1). `side_named` has already
+        # swapped the club when the model took the NO side, so the number has
+        # to swap with it or the tile reads "Alabama +30.5" for a pick against
+        # Alabama. One `is_no_side` decides both, here and in `phrase`.
+        return f"{subject} {flipped_line(item):+.1f}"
 
     # A prop: the person, the side, the number, the stat.
     market = item.get("prop_type") or item.get("market")
@@ -995,8 +1155,8 @@ def tile_line(item: dict) -> str:
         said = half_unit_phrase(subject, market, item.get("model_side"))
         if said:
             return said
-    word = SIDE_WORDS.get(item.get("model_side"), "over")
-    return f"{subject} {word} {_number(line)} {humanise(market)}".strip()
+    return (f"{subject} {side_word_or_side(item.get('model_side'))} "
+            f"{_number(line)} {humanise(market)}").strip()
 
 
 def task_name(task: str | None) -> str:

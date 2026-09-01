@@ -155,6 +155,36 @@ def ledger_summary(conn: sqlite3.Connection) -> dict:
 # the call
 # ---------------------------------------------------------------------------
 
+#: HTTP status codes that mean "your credentials are wrong", not "the network
+#: is having a bad day". 401 is an invalid or revoked key; 403 is a key that
+#: authenticated but may not do this.
+AUTH_STATUSES = (401, 403)
+
+
+def failure_reason(exc: Exception) -> str:
+    """Which KIND of unavailable this is, in one word the interface can say.
+
+    EVERY SDK FAILURE USED TO BE `api_error`, and for three days that meant the
+    Schedule page said "the second forecaster could not be reached" while the
+    log said `AuthenticationError: 401 - API key is invalid`. It had been
+    reached; it had refused. Those are not the same problem and they do not
+    have the same fix -- one is worth retrying and the other is a key somebody
+    has to set -- so the interface should not describe them with one sentence.
+    (`DEGRADED_WORDS` already made this argument in its own comment: "a missing
+    key is a setup step ... an API error is the only one that might be worth
+    retrying". An invalid key was a setup step wearing the retry label.)
+    """
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+    if status in AUTH_STATUSES:
+        return "bad_api_key"
+    if type(exc).__name__ == "AuthenticationError":
+        return "bad_api_key"
+    return "api_error"
+
+
 def _client():
     if not config.ANTHROPIC_API_KEY:
         raise LLMUnavailable("no_api_key", "ANTHROPIC_API_KEY is not set")
@@ -233,7 +263,7 @@ def reason(
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )
-    except Exception as exc:  # noqa: BLE001 - any SDK failure degrades the same way
+    except Exception as exc:  # noqa: BLE001 - any SDK failure degrades
         record_call(
             conn,
             purpose="reasoning",
@@ -245,7 +275,7 @@ def reason(
             ok=False,
             error=f"{type(exc).__name__}: {exc}",
         )
-        raise LLMUnavailable("api_error", f"{type(exc).__name__}: {exc}") from exc
+        raise LLMUnavailable(failure_reason(exc), f"{type(exc).__name__}: {exc}") from exc
 
     text = "".join(getattr(block, "text", "") for block in response.content)
     tin = int(getattr(response.usage, "input_tokens", 0))
