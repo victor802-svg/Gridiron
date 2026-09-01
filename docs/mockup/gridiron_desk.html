@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridiron — desk layout</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0A0F0C;--card:#10160F;--card-2:#151D13;--line:#1F2B1E;--chrome:#F2F5F0;--muted:#8AA08C;--faint:#6E8272;--green:#00DC82;--red:#FF6B6B;--mono:'IBM Plex Mono',monospace;--cond:'Barlow Condensed',sans-serif;--body:'Archivo',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--ink);color:var(--chrome);font-family:var(--body);font-size:13px;line-height:1.4}
+.bar{border-bottom:1px solid var(--line);background:var(--ink)}
+.bar .in{max-width:1720px;margin:0 auto;padding:0 28px;display:flex;align-items:center;gap:18px;height:52px}
+.brand{font-family:var(--cond);font-weight:700;font-size:20px;letter-spacing:.06em}
+.brand em{font-style:normal;color:var(--green)}
+.sports{display:flex;gap:2px;margin-left:6px}
+.sport{font-family:var(--cond);font-size:15px;font-weight:600;letter-spacing:.08em;padding:0 10px;height:52px;line-height:52px;color:var(--muted);border-bottom:2px solid transparent}
+.sport.on{color:var(--chrome);border-bottom-color:var(--green)}
+.sport small{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:5px;letter-spacing:0}
+.pages{margin-left:auto;display:flex;gap:14px;font-size:12px;color:var(--muted)}
+.pages .on{color:var(--chrome)}
+.desk{max-width:1720px;margin:0 auto;padding:18px 28px 0;display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:22px;align-items:start;height:calc(100vh - 52px)}
+.frame{height:100%;overflow-y:auto;padding-bottom:40px;scrollbar-width:none;-ms-overflow-style:none}
+.frame::-webkit-scrollbar{display:none}
+.frame{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 48px),transparent)}
+.frame .conf{position:sticky;top:0;background:var(--ink);padding:10px 0 8px;z-index:1;margin-top:8px}
+.frame .controls{position:sticky;top:0;background:var(--ink);z-index:2;padding:2px 0 10px;margin:0}
+body{overflow:hidden}
+.controls{display:flex;justify-content:space-between;align-items:center;margin:0 0 12px;gap:12px;flex-wrap:wrap}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{background:none;border:0;color:var(--muted);font-family:var(--body);font-size:12px;font-weight:500;padding:6px 12px;cursor:pointer}
+.seg button.on{background:var(--card-2);color:var(--green)}
+.count{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.conf{font-family:var(--cond);font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:16px 0 8px;display:flex;justify-content:space-between}
+.conf small{font-family:var(--mono);letter-spacing:0;font-weight:400;text-transform:none;font-size:11px}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px 14px;min-height:124px;position:relative;cursor:pointer;display:grid;grid-template-rows:auto auto 1fr;gap:6px}
+.tile:hover{background:var(--card-2)}
+.tile.sel{background:var(--card-2);border-color:#2C3D2B;box-shadow:inset 0 0 0 1px #2C3D2B}
+.tile::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 2px 2px 0}
+.tile.strong::before{background:var(--chrome)}.tile.solid::before{background:var(--muted)}.tile.lean::before{background:#2C3D2B}
+.tile .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.tile .m{font-family:var(--cond);font-weight:700;font-size:20px;letter-spacing:.03em;text-transform:uppercase;line-height:1.05}
+.tile .rk{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.tile .p{font-size:13px;color:var(--muted)}
+.tile .p b{color:var(--chrome);font-weight:600}
+.tile .p .a{color:var(--green);font-weight:700}
+.tile .bottom{display:flex;justify-content:space-between;align-items:flex-end}
+.tile .mk{font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.5}
+.tile .mk b{color:var(--muted);font-weight:500}
+.tile .pct{font-family:var(--mono);font-weight:600;font-size:26px;line-height:1;text-align:right}
+.tile .pct i{font-style:normal;color:var(--faint);font-size:14px}
+.tile .pct small{display:block;font-size:9px;font-weight:400;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.rail{display:grid;gap:14px;max-height:calc(100vh - 70px);overflow-y:auto;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.panel h3{font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:10px;display:flex;justify-content:space-between}
+.panel h3 small{font-family:var(--mono);letter-spacing:0;font-weight:400;text-transform:none;font-size:11px}
+.detail .m{font-family:var(--cond);font-weight:700;font-size:24px;letter-spacing:.03em;text-transform:uppercase;line-height:1.05}
+.detail .sub{font-size:12px;color:var(--muted);margin-top:3px}
+.detail .pick{margin:12px 0 2px;font-size:14px}
+.detail .pick b{color:var(--chrome);font-weight:600}
+.detail .pick .a{color:var(--green);font-weight:700}
+.prail{position:relative;height:34px;margin:14px 0 6px}
+.prail .track{position:absolute;left:0;right:0;top:16px;height:2px;background:var(--line)}
+.prail .tick{position:absolute;top:11px;height:12px;width:1px;background:#2C3D2B;left:50%}
+.prail .span{position:absolute;top:15px;height:4px;background:#3A5238;border-radius:2px}
+.dot{position:absolute;top:10px;width:13px;height:13px;border-radius:50%;transform:translateX(-50%)}
+.dot.model{background:var(--chrome)}.dot.market{background:none;border:2px solid var(--muted)}
+.lbl{position:absolute;top:-6px;transform:translateX(-50%);font-family:var(--mono);font-size:10px;color:var(--faint)}
+.meta{font-family:var(--mono);font-size:11px;color:var(--faint);display:flex;justify-content:space-between;gap:10px}
+.meta b{color:var(--chrome);font-weight:600}
+.why{margin-top:12px;color:var(--muted);font-size:13px;line-height:1.6}
+.why b{color:var(--chrome);font-weight:600}
+.tierline{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.link{color:var(--green);font-size:12px;font-weight:600;margin-top:8px;display:inline-block}
+.glance{display:grid;gap:8px}
+.krow{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--line)}
+.krow:last-child{border-bottom:0}
+.krow b{font-family:var(--mono);color:var(--chrome);font-weight:600}
+.krow .bar2{flex:1;margin:0 12px;height:4px;background:var(--line);border-radius:2px;position:relative}
+.krow .bar2 i{position:absolute;left:0;top:0;bottom:0;background:var(--muted);border-radius:2px}
+.notice b{color:var(--red);font-weight:600}
+.since b{color:var(--chrome)}
+.since .up{color:var(--green)}
+@media (max-width:1280px){body{overflow:auto}.desk{grid-template-columns:1fr;height:auto}.frame{height:auto;overflow:visible}.rail{max-height:none}.tiles{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:760px){.tiles{grid-template-columns:1fr}.pages{display:none}}
+</style>
+</head>
+<body>
+<div class="bar"><div class="in">
+  <div class="brand">GRID<em>IRON</em></div>
+  <div class="sports"><div class="sport">NFL<small>0</small></div><div class="sport">MLB<small>31</small></div><div class="sport">NBA<small>0</small></div><div class="sport on">CFB<small>0</small></div></div>
+  <div class="pages"><span class="on">Picks</span><span>Record</span><span>History</span><span>Schedule</span></div>
+</div></div>
+<div class="desk">
+  <div class="frame">
+    <div class="controls">
+      <div style="display:flex;gap:10px">
+        <div class="seg"><button class="on">By confidence</button><button>By disagreement</button></div>
+        <div class="seg"><button class="on">All</button><button>Spread</button><button>Moneyline</button><button>Total</button></div>
+      </div>
+      <span class="count">Sat Sep 5 · 60 games · 177 picks</span>
+    </div>
+    <div class="tiles">
+      <div class="tile strong sel" data-m="ECU @ Alabama" data-sub="Sat 3:30 PM · Tuscaloosa · spread" data-pick="<span class='a'>▸</span> <b>Alabama</b> −30.5" data-model="76" data-mkt="63" data-why="<b>Why Alabama:</b> Mostly it comes down to how good the two teams have been, adjusted for who they played. Pulling the other way, a little: how far ECU travelled. The market has Alabama at 63%; the model leans harder on its own reading." data-tier="STRONG tier unproven — 0 settled of 20 needed · 70–80% bucket">
+        <div class="top"><div class="m">ECU @ Alabama</div><span class="rk">1</span></div>
+        <div class="p"><span class="a">▸</span> <b>Alabama</b> −30.5 · 3:30 PM</div>
+        <div class="bottom"><div class="mk">market <b>63%</b><br>gap <b>+13</b></div><div class="pct">76<i>%</i><small>covers</small></div></div>
+      </div>
+      <div class="tile strong" data-m="Austin Peay @ Vanderbilt" data-sub="Sat 7:00 PM · Nashville · total" data-pick="<span class='a'>▸</span> <b>Under</b> 55.5 total" data-model="71" data-mkt="52" data-why="<b>Why under:</b> Mostly it comes down to how the two offences have been scoring. Pulling the other way, a little: the pace both teams play at. The market has the under at 52%; the model leans harder on its own reading." data-tier="STRONG tier unproven — 0 settled of 20 needed">
+        <div class="top"><div class="m">Austin Peay @ Vanderbilt</div><span class="rk">2</span></div>
+        <div class="p"><span class="a">▸</span> <b>Under</b> 55.5 total · 7:00 PM</div>
+        <div class="bottom"><div class="mk">market <b>52%</b><br>gap <b>+19</b></div><div class="pct">71<i>%</i><small>under</small></div></div>
+      </div>
+      <div class="tile solid" data-m="Kent State @ S. Carolina" data-sub="Sat 7:30 PM · Columbia · spread" data-pick="<span class='a'>▸</span> <b>South Carolina</b> −34.5" data-model="60" data-mkt="55" data-why="<b>Why South Carolina:</b> Mostly it comes down to how good the two teams have been, adjusted for who they played. Pulling the other way, some: which number the question was asked at. The market has South Carolina at 55%." data-tier="SOLID tier unproven — 0 settled of 20 needed">
+        <div class="top"><div class="m">Kent State @ S. Carolina</div><span class="rk">3</span></div>
+        <div class="p"><span class="a">▸</span> <b>South Carolina</b> −34.5 · 7:30 PM</div>
+        <div class="bottom"><div class="mk">market <b>55%</b><br>gap <b>+5</b></div><div class="pct">60<i>%</i><small>covers</small></div></div>
+      </div>
+      <div class="tile lean" data-m="Kent State @ S. Carolina" data-sub="Sat 7:30 PM · Columbia · total" data-pick="<span class='a'>▸</span> <b>Over</b> 52.5 total" data-model="55" data-mkt="50" data-why="<b>Why over:</b> Mostly it comes down to how the two offences have been scoring. Pulling the other way, a little: the wind expected at kickoff. The market has the over at 50%." data-tier="LEAN tier unproven — 0 settled of 20 needed">
+        <div class="top"><div class="m">Kent State @ S. Carolina</div><span class="rk">4</span></div>
+        <div class="p"><span class="a">▸</span> <b>Over</b> 52.5 total · 7:30 PM</div>
+        <div class="bottom"><div class="mk">market <b>50%</b><br>gap <b>+5</b></div><div class="pct">55<i>%</i><small>over</small></div></div>
+      </div>
+      <div class="tile lean" data-m="ECU @ Alabama" data-sub="Sat 3:30 PM · Tuscaloosa · total" data-pick="<span class='a'>▸</span> <b>Under</b> 58.5 total" data-model="54" data-mkt="49" data-why="<b>Why under:</b> Mostly it comes down to how the two offences have been scoring. Pulling the other way, a little: the pace both teams play at." data-tier="LEAN tier unproven — 0 settled of 20 needed">
+        <div class="top"><div class="m">ECU @ Alabama</div><span class="rk">5</span></div>
+        <div class="p"><span class="a">▸</span> <b>Under</b> 58.5 total · 3:30 PM</div>
+        <div class="bottom"><div class="mk">market <b>49%</b><br>gap <b>+5</b></div><div class="pct">54<i>%</i><small>under</small></div></div>
+      </div>
+      <div class="tile lean" data-m="Austin Peay @ Vanderbilt" data-sub="Sat 7:00 PM · Nashville · spread" data-pick="<span class='a'>▸</span> <b>Vanderbilt</b> −24.5" data-model="51" data-mkt="50" data-why="<b>Why Vanderbilt — barely:</b> Mostly it comes down to how good the two teams have been, adjusted for who they played. Pulling the other way, and not by a little: which number the question was asked at." data-tier="LEAN tier unproven — 0 settled of 20 needed">
+        <div class="top"><div class="m">Austin Peay @ Vanderbilt</div><span class="rk">6</span></div>
+        <div class="p"><span class="a">▸</span> <b>Vanderbilt</b> −24.5 · 7:00 PM</div>
+        <div class="bottom"><div class="mk">market <b>50%</b><br>gap <b>+1</b></div><div class="pct">51<i>%</i><small>covers</small></div></div>
+      </div>
+    </div>
+  </div>
+  <aside class="rail">
+    <div class="panel detail" id="detail">
+      <h3>Selected pick <small id="d-sub">Sat 3:30 PM · Tuscaloosa · spread</small></h3>
+      <div class="m" id="d-m">ECU @ Alabama</div>
+      <div class="pick" id="d-pick"><span class="a">▸</span> <b>Alabama</b> −30.5</div>
+      <div class="prail" id="d-rail">
+        <div class="track"></div><div class="tick"></div>
+        <div class="span" id="d-span"></div>
+        <div class="dot market" id="d-mk"></div><div class="lbl" id="d-mkl"></div>
+        <div class="dot model" id="d-md"></div><div class="lbl" id="d-mdl"></div>
+      </div>
+      <div class="meta"><span>model <b id="d-model">76%</b></span><span>market <b id="d-mkt">63%</b></span><span>gap <b id="d-gap">+13</b></span></div>
+      <div class="why" id="d-why"></div>
+      <div class="tierline" id="d-tier"></div>
+      <span class="link">How the model works →</span>
+    </div>
+    <div class="panel">
+      <h3>Saturday at a glance <small>60 games</small></h3>
+      <div class="glance">
+        <div class="krow"><span>12:00 PM</span><span class="bar2"><i style="width:30%"></i></span><b>18</b></div>
+        <div class="krow"><span>3:30 PM</span><span class="bar2"><i style="width:37%"></i></span><b>22</b></div>
+        <div class="krow"><span>7:00 PM+</span><span class="bar2"><i style="width:33%"></i></span><b>20</b></div>
+      </div>
+      <div class="glance" style="margin-top:12px">
+        <div class="krow"><span>lines · spread / total / moneyline</span><b>60 / 60 / 44</b></div>
+        <div class="krow"><span>sharpest disagreement</span><b>+19 · APSU @ VAN under</b></div>
+        <div class="krow"><span>all CFB tiers</span><b>unproven — 0 settled</b></div>
+      </div>
+    </div>
+    <div class="panel since">
+      <h3>Since you last looked</h3>
+      <div class="krow"><span>MLB resolved overnight</span><b>7 — <span class="up">4 right</span>, 3 wrong</b></div>
+      <div class="krow"><span>MLB LEAN tier</span><b>24 settled · 50%</b></div>
+      <div class="krow notice"><span>notices</span><b>none</b></div>
+    </div>
+  </aside>
+</div>
+<script>
+function show(t){
+  document.querySelectorAll('.tile').forEach(x=>x.classList.remove('sel'));t.classList.add('sel');
+  const m=+t.dataset.model, k=+t.dataset.mkt;
+  document.getElementById('d-m').textContent=t.dataset.m;
+  document.getElementById('d-sub').textContent=t.dataset.sub;
+  document.getElementById('d-pick').innerHTML=t.dataset.pick;
+  document.getElementById('d-model').textContent=m+'%';
+  document.getElementById('d-mkt').textContent=k+'%';
+  const g=m-k;document.getElementById('d-gap').textContent=(g>0?'+':'')+g;
+  document.getElementById('d-md').style.left=m+'%';document.getElementById('d-mdl').style.left=m+'%';document.getElementById('d-mdl').textContent=m;
+  document.getElementById('d-mk').style.left=k+'%';document.getElementById('d-mkl').style.left=k+'%';document.getElementById('d-mkl').textContent='MKT '+k;
+  const s=document.getElementById('d-span');s.style.left=Math.min(m,k)+'%';s.style.width=Math.abs(m-k)+'%';
+  document.getElementById('d-why').innerHTML=t.dataset.why;
+  document.getElementById('d-tier').textContent=t.dataset.tier;
+}
+document.querySelectorAll('.tile').forEach(t=>t.addEventListener('click',()=>show(t)));
+show(document.querySelector('.tile.sel'));
+</script>
+</body>
+</html>
