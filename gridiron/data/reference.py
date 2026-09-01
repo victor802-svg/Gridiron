@@ -120,6 +120,29 @@ def _eastern_offset_hours(naive: datetime) -> int:
         return -4 if dst else -5
 
 
+def eastern_hour(kickoff_utc: str | None) -> int | None:
+    """The hour of a kickoff ON THE LEAGUE'S OWN CLOCK, or None.
+
+    Deliberately not the reader's clock. Every other time in this interface is
+    rendered where the reader is, because a card saying 6:40 PM should mean
+    their evening -- but a SLATE is organised by the league: college football
+    has a noon window, a 3:30 window and a night window, and those are facts
+    about the schedule rather than about who is looking at it. Grouping a
+    Saturday by the reader's timezone would split the same broadcast window in
+    two for anyone west of Ohio.
+
+    Returns None rather than guessing when the kickoff is unknown; a game with
+    no time belongs in no window, and is counted as such.
+    """
+    if not kickoff_utc:
+        return None
+    try:
+        moment = datetime.strptime(kickoff_utc[:19], "%Y-%m-%dT%H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+    return (moment + timedelta(hours=_eastern_offset_hours(moment))).hour
+
+
 def kickoff_to_utc(gameday: str, gametime: str | None) -> str | None:
     """'2026-09-13' + '13:00' (Eastern) -> '2026-09-13T17:00:00Z'.
 

@@ -11,7 +11,7 @@ import json
 import sqlite3
 
 from . import calibration, config, db, language, sports, subjects
-from .data import repo, teams
+from .data import reference, repo, teams
 from .factors import compute as factor_compute, registry
 from .market import lines
 
@@ -218,6 +218,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     the record, and the interface prints the sport's own word for it.
     """
     calibration.require_sport(sport, "views.week")
+    venues = _venues(conn, sport)
     explicit = wk is not None
     season = season or config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
     if wk is None:
@@ -260,10 +261,15 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             (sport,),
         ).fetchone()
         if latest is None:
+            # THE GLANCE IS PRESENT ON AN EMPTY SLATE TOO. A summary panel
+            # that disappears when there is nothing on the card only works on
+            # the days a reader least needs it, and one payload shape with a
+            # sometimes-missing key is how a renderer learns to guess.
             return {"sport": sport, "season": season, "week": None, "n": 0,
                     "cards": [], "message": _empty_slate_message(conn, sport),
                     "slate_word": config.SPORT_SLATE_WORD.get(sport, "week"),
                     "line_source": lines.line_source_for(sport),
+                    "glance": _glance(conn, sport, []),
                     "sorted_by": "size of disagreement with the market"}
         season, wk = latest["season"], latest["week"]
         rows = fetch(season, wk)
@@ -431,6 +437,9 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             cards[-1]["subject"], cards[-1]["market"]
         )
         cards[-1]["market_label"] = language.market_label(cards[-1])
+        # WHERE IT IS PLAYED, for the selected-pick subline. None when the
+        # venue was never recorded, and the subline simply has one fewer part.
+        cards[-1]["venue"] = venues.get(r["home"])
         cards[-1]["side_word"] = language.SIDE_WORDS.get(
             r["model_side"], r["model_side"] or ""
         )
@@ -440,6 +449,9 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     cards.sort(key=lambda c: c["abs_gap"], reverse=True)
     return {
         "sport": sport,
+        # THE SLATE AT A GLANCE (D3), computed from the cards above rather than
+        # by asking the database the same questions a second time.
+        "glance": _glance(conn, sport, cards),
         "season": season,
         "week": wk,
         "slate_word": config.SPORT_SLATE_WORD.get(sport, "week"),
@@ -458,6 +470,136 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             else "prediction id; this sport has no line source, so there is no "
                  "disagreement to sort by"
         ),
+    }
+
+
+def _venues(conn: sqlite3.Connection, sport: str) -> dict:
+    """Home city per team, for the selected pick's subline.
+
+    ABSENT STAYS ABSENT. A team with no recorded venue contributes no city,
+    and the subline renders without one rather than printing the tricode or a
+    dash -- the same rule the factors follow, applied to a label.
+    """
+    return {
+        r["tricode"]: r["venue_city"]
+        for r in conn.execute(
+            "SELECT tricode, venue_city FROM teams"
+            " WHERE sport = ? AND venue_city IS NOT NULL", (sport,))
+    }
+
+
+def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
+    """WHAT THE WHOLE SLATE LOOKS LIKE, from the slate already in hand.
+
+    Built from `cards`, not from a second query of the same rows: two counts of
+    one slate is two chances to disagree, and the one that disagrees quietly is
+    the one on the summary panel nobody checks.
+
+    Every figure carries its N, and none of them is a rate. The one rate-shaped
+    thing here -- how much of the record is gradeable -- is stated as a count of
+    settled predictions per tier, because pooling hit rates across markets is
+    the merge LAW 4 forbids.
+    """
+    games = {}
+    for c in cards:
+        games.setdefault(c["game_id"], c["kickoff_utc"])
+
+    # --- kickoff windows, on the league's clock, GAMES not picks ------------
+    counted = {name: 0 for _, _, name in language.KICKOFF_WINDOWS}
+    unknown = 0
+    for kickoff in games.values():
+        window = language.kickoff_window(reference.eastern_hour(kickoff))
+        if window is None:
+            unknown += 1
+        else:
+            counted[window] += 1
+    most = max(counted.values()) if counted else 0
+    windows = [
+        {
+            "name": name,
+            "n": counted[name],
+            # A share OF THE BIGGEST WINDOW, not of the slate: the bars are
+            # there to show the shape of a Saturday, and scaling to the total
+            # makes three near-equal windows look like three short stubs.
+            "share": (counted[name] / most) if most else 0.0,
+            "line": language.window_line(name, counted[name]),
+        }
+        for _, _, name in language.KICKOFF_WINDOWS if counted[name]
+    ]
+
+    # --- how much of it the market priced (reported, never used to choose) --
+    asked, priced = {}, {}
+    for c in cards:
+        # `market_label` is the ONE function that decides what a market is
+        # called, so the coverage rows and the filter chips cannot end up
+        # calling the same market two different things.
+        key = c["market_label"]
+        asked[key] = asked.get(key, 0) + 1
+        if c.get("market_implied_prob") is not None:
+            priced[key] = priced.get(key, 0) + 1
+    coverage = [
+        {
+            "market": key,
+            "priced": priced.get(key, 0),
+            "asked": asked[key],
+            "line": language.coverage_line(key, priced.get(key, 0), asked[key]),
+        }
+        for key in sorted(asked)
+    ]
+
+    # --- the widest disagreement on the slate -------------------------------
+    lined = [c for c in cards if c.get("market_implied_prob") is not None]
+    sharpest = max(lined, key=lambda c: c["abs_gap"]) if lined else None
+    sharp = {
+        "line": language.sharpest_line(
+            sharpest["gap"] if sharpest else None,
+            sharpest["phrase"] if sharpest else None),
+        "prediction_id": sharpest["prediction_id"] if sharpest else None,
+    }
+
+    # --- LAW 4: how much of this sport is gradeable at all yet --------------
+    proven = tiers = fullest = 0
+    for market in config.SPORT_MARKETS.get(sport, ()):
+        # A PROP IS STORED AS market_type='prop' WITH THE STAT IN prop_type.
+        # Passing the bare stat as a market type asks for a category that has
+        # no rows, and four empty buckets come back looking like four honest
+        # unproven tiers -- so a sport with a proven spread would still report
+        # "no tier proven yet", drowned by its own phantoms.
+        is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
+        table = calibration.tier_table(
+            conn, sport=sport,
+            market_type="prop" if is_prop else market,
+            prop_type=market if is_prop else None)
+        for row in table["rows"]:
+            tiers += 1
+            proven += 1 if row["proven"] else 0
+            fullest = max(fullest, row["n"])
+
+    return {
+        "games": len(games),
+        "picks": len(cards),
+        "windows": windows,
+        "windows_unknown": unknown,
+        "windows_note": (
+            "grouped on the league's clock, not yours: a broadcast window is a "
+            "fact about the schedule"),
+        "coverage": coverage,
+        "coverage_note": (
+            "questions are formed for every game before any line is fetched "
+            "(LAW 1); this says how many the market happened to price"),
+        "sharpest": sharp,
+        # The row labels, written here like every other visible phrase.
+        "labels": {key: language.glance_label(key)
+                   for key in ("sharpest", "tiers")},
+        "tiers": {
+            "proven": proven,
+            "of": tiers,
+            "fullest": fullest,
+            "needed": calibration.TIER_MIN_SETTLED,
+            "line": language.tier_status_line(
+                config.SPORT_LABELS.get(sport, sport), proven, tiers,
+                fullest, calibration.TIER_MIN_SETTLED),
+        },
     }
 
 

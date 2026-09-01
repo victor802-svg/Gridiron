@@ -155,3 +155,150 @@ def test_arrow_keys_move_through_the_tiles(page):
         return tiles.indexOf(document.activeElement);
     }""")
     assert after_down == 4, f"ArrowDown moved to {after_down}, expected 4 (one row of three)"
+
+
+# ---------------------------------------------------------------------------
+# THE RAIL (D3)
+# ---------------------------------------------------------------------------
+
+
+def test_the_rail_describes_the_selected_pick_on_arrival(page):
+    """A panel that opens empty asks to be clicked; this one is populated."""
+    _open_week(page, DESK)
+    assert not page.evaluate("document.getElementById('week-rail').hidden")
+    match = page.evaluate("document.getElementById('rail-match').textContent")
+    assert match.strip(), "the rail's heading is empty on arrival"
+    selected = page.evaluate(
+        "document.querySelector('.tile[aria-selected=\"true\"] .tile-match').textContent")
+    assert match.strip() == selected.strip(), (
+        f"the rail says {match!r} while the selected tile says {selected!r}"
+    )
+
+
+def test_selecting_moves_the_rail_and_not_the_frame(page):
+    """The two halves of the desk's contract, in one assertion each."""
+    _open_week(page, DESK)
+    result = page.evaluate("""() => {
+        const frame = document.getElementById('week-frame');
+        frame.scrollTop = 300;
+        const before = {frame: frame.scrollTop,
+                        rail: document.getElementById('rail-match').textContent};
+        const tiles = [...document.querySelectorAll('#week-frame .tile')];
+        tiles[Math.min(7, tiles.length - 1)].click();
+        return {before, frame: frame.scrollTop,
+                rail: document.getElementById('rail-match').textContent,
+                body: document.getElementById('rail-body').textContent.trim().length};
+    }""")
+    assert result["frame"] == result["before"]["frame"], "selecting moved the frame"
+    assert result["rail"] != result["before"]["rail"], "the rail did not follow the selection"
+    assert result["body"] > 0, "the rail's detail body is empty"
+
+
+def test_the_rail_body_is_the_same_one_the_expanded_row_shows(page):
+    """One implementation, asserted by the parts it produces.
+
+    The probability rail, the bucket line and the plain why are the expanded
+    row's own elements. Finding them inside the panel is what proves the panel
+    is not a second renderer that happens to agree today.
+    """
+    _open_week(page, DESK)
+    found = page.evaluate("""() => {
+        const body = document.getElementById('rail-body');
+        return {
+            rail: !!body.querySelector('.rail .track'),
+            why: !!body.querySelector('.row-why'),
+            more: !!body.querySelector('.row-more'),
+        };
+    }""")
+    assert found["rail"], "no probability rail in the selected-pick panel"
+    assert found["why"], "no plain why in the selected-pick panel"
+    assert found["more"], "no 'How the model works' link in the selected-pick panel"
+
+
+def test_the_glance_counts_games_and_never_pools_a_rate(page):
+    """LAW 4 on the summary panel: counts, with their N, and no hit rate."""
+    _open_week(page, DESK)
+    glance = page.evaluate("""() => {
+        const text = document.getElementById('rail-facts').textContent;
+        const windows = [...document.querySelectorAll('#rail-windows .krow b')]
+            .map(b => +b.textContent);
+        const heading = document.getElementById('rail-glance-count').textContent;
+        return {text, windows, heading};
+    }""")
+    assert "game" in glance["heading"], (
+        f"the glance heading does not carry its N: {glance['heading']!r}")
+    total = int(glance["heading"].split()[0])
+    assert sum(glance["windows"]) <= total, (
+        "the kickoff windows count more games than the slate has")
+    assert " of " in glance["text"], "coverage is shown without its denominator"
+
+
+def test_there_is_exactly_one_greeting_at_both_widths(page):
+    """The greeting MOVES onto the desk; it is not copied.
+
+    Two greetings is two answers to "what happened overnight", and the one in
+    the panel nobody scrolled to is the one that would go stale unnoticed.
+    """
+    for size in (DESK, ROWS):
+        _open_week(page, size)
+        n = page.evaluate("document.querySelectorAll('#greeting').length")
+        assert n == 1, f"{n} greetings in the document at {size['width']}px"
+    # And below the breakpoint it is back where the markup put it.
+    assert page.evaluate(
+        "document.getElementById('greeting').parentElement.id") == "greeting-home"
+    _open_week(page, DESK)
+    assert page.evaluate(
+        "document.getElementById('greeting').parentElement.id") == "rail-since-host"
+
+
+def test_the_rail_is_absent_below_the_breakpoint(page):
+    _open_week(page, ROWS)
+    assert page.evaluate("document.getElementById('week-rail').hidden"), (
+        "the rail rendered below the breakpoint")
+
+
+def test_the_rail_scrolls_itself_and_leaves_the_page_pinned(page):
+    """The regression D3 introduced and the render caught.
+
+    Three panels are taller than a 900px viewport. Without a scrolling rail
+    the body grew to fit them and the whole page started scrolling again --
+    undoing D2 -- and it looked like nothing more than a rail with more in it.
+    """
+    _open_week(page, DESK)
+    state = page.evaluate("""() => {
+        const rail = document.getElementById('week-rail');
+        const frame = document.getElementById('week-frame');
+        window.scrollTo(0, 600);
+        rail.scrollTop = 100000;          // past the end; the browser clamps
+        return {
+            page: window.scrollY,
+            vh: window.innerHeight,
+            rail_bottom: rail.getBoundingClientRect().bottom,
+            frame_bottom: frame.getBoundingClientRect().bottom,
+            rail_can: rail.scrollHeight > rail.clientHeight,
+            rail_at: rail.scrollTop,
+        };
+    }""")
+    assert state["page"] == 0, f"the page scrolled {state['page']}px"
+    # THE BOTTOM OF EACH COLUMN HAS TO BE ON SCREEN. `body.scrollHeight` is the
+    # wrong thing to assert -- the frame's own scrollable content makes it
+    # exceed the viewport by design, and `overflow: hidden` means that costs
+    # nothing. What actually broke was the grid running past the window and
+    # being clipped, so the last rows of both columns could never be reached.
+    for name in ("rail_bottom", "frame_bottom"):
+        assert state[name] <= state["vh"] + 2, (
+            f"{name} is {state[name]}px in a {state['vh']}px window, so its "
+            f"last {round(state[name] - state['vh'])}px is clipped off screen "
+            f"and no amount of scrolling reaches it"
+        )
+    if state["rail_can"]:
+        assert state["rail_at"] > 0, "the rail overflows but refuses to scroll"
+
+
+def test_the_disagreement_says_which_kind_of_points(page):
+    """Percentage points, next to a spread measured in football points."""
+    _open_week(page, DESK)
+    text = page.evaluate("document.getElementById('rail-facts').textContent")
+    if "apart" in text:
+        assert "percentage points apart" in text, (
+            f"the sharpest-disagreement row does not name its unit: {text!r}")

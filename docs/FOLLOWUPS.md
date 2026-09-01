@@ -30,6 +30,17 @@ routes, neither yet measured:
   that the tiering itself becomes the place a failure hides, which is exactly
   what just happened, so whichever tier is skipped must be named in the output.
 
+**Measured again 2026-09-01 while gating the desk work: twenty-eight minutes**,
+not fifteen. And worse than slow: `verify.py` runs pytest with
+`capture_output=True`, so for the whole twenty-eight minutes there is no way to
+tell a slow suite from a hung one. The first diagnosis attempted here was "it
+is stuck" — the CPU time said six per cent utilisation — and a process was
+killed on that reading. It was wrong; the suite was fine and had in fact just
+passed. So there are two fixes, not one: make it faster, and **let it report
+progress while it runs**. A gate nobody can watch is a gate people learn to
+skip, and the wrong guess about why it was quiet cost more than the wait would
+have.
+
 Until then: **run the whole suite in one process before claiming it is green.**
 
 ### 2026-09-01 — `docs/mockup/gridiron_desk.html` is not in the repository

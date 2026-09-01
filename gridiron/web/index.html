@@ -54,13 +54,15 @@
        boxes above the picks; on a phone the first forecast started below the
        fold. Since-you-last-looked reads on the left, the notice COUNT on the
        right, and the detail opens only when asked for. -->
-  <div id="glance" class="glance" hidden>
-    <div class="glance-msg" id="greet-msg"></div>
-    <button type="button" id="notices-summary" class="glance-notices"
-            aria-expanded="false" aria-controls="notices-detail" hidden></button>
-  </div>
-  <div id="notices-detail" class="notices-detail" hidden></div>
-  <div id="greet-countdown" class="glance-countdown" hidden></div>
+  <div id="greeting-home"><div id="greeting">
+    <div id="glance" class="glance" hidden>
+      <div class="glance-msg" id="greet-msg"></div>
+      <button type="button" id="notices-summary" class="glance-notices"
+              aria-expanded="false" aria-controls="notices-detail" hidden></button>
+    </div>
+    <div id="notices-detail" class="notices-detail" hidden></div>
+    <div id="greet-countdown" class="glance-countdown" hidden></div>
+  </div></div>
   <div id="greet-settled"></div>
 
   <section id="view-record" class="view" hidden>
@@ -128,7 +130,27 @@
       <div id="week-frame" class="desk-frame">
         <div id="week-cards"></div>
       </div>
-      <aside id="week-rail" class="desk-rail" hidden></aside>
+      <!-- THE RAIL (D3). Three panels: the pick under the cursor, the shape
+           of the whole slate, and what landed while the reader was away. The
+           first two are filled from the same payload the tiles are built
+           from; the third is the greeting itself, moved here. -->
+      <aside id="week-rail" class="desk-rail" hidden>
+        <div class="panel" id="rail-detail">
+          <h3>Selected pick <small id="rail-sub"></small></h3>
+          <div class="rail-match" id="rail-match"></div>
+          <div class="rail-pick" id="rail-pick"></div>
+          <div id="rail-body"></div>
+        </div>
+        <div class="panel" id="rail-glance-panel">
+          <h3>At a glance <small id="rail-glance-count"></small></h3>
+          <div class="rail-glance" id="rail-windows"></div>
+          <div class="rail-glance" id="rail-facts"></div>
+        </div>
+        <div class="panel since" id="rail-since">
+          <h3>Since you last looked</h3>
+          <div id="rail-since-host"></div>
+        </div>
+      </aside>
     </div>
   </section>
 

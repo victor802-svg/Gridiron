@@ -1009,3 +1009,101 @@ def task_name(task: str | None) -> str:
     head, _, tail = str(task).partition(":")
     words = head.replace("_", " ").replace("-", " ").strip().capitalize()
     return f"{words} {tail}".strip() if tail else words
+
+# ---------------------------------------------------------------------------
+# THE RAIL (D3). Every string in the three desk panels is composed here.
+# ---------------------------------------------------------------------------
+
+#: The windows a slate's kickoffs fall into, on the league's clock: (first
+#: hour, last hour inclusive, what to call it). Declared rather than derived,
+#: because a window is a broadcast slot -- "the noon games" is a thing a
+#: reader already knows the shape of, and clustering the actual times would
+#: rename it every week.
+KICKOFF_WINDOWS = (
+    (0, 14, "early"),
+    (15, 18, "afternoon"),
+    (19, 23, "night"),
+)
+
+
+def kickoff_window(hour: int | None) -> str | None:
+    """Which declared window an hour belongs to. None stays None."""
+    if hour is None:
+        return None
+    for first, last, name in KICKOFF_WINDOWS:
+        if first <= hour <= last:
+            return name
+    return None
+
+
+def window_line(name: str, count: int) -> str:
+    """"afternoon · 22 games". The count is the claim, so it carries itself."""
+    return f"{name} · {count} {'game' if count == 1 else 'games'}"
+
+
+def coverage_line(market: str, priced: int, asked: int) -> str:
+    """"spread · 60 of 60 priced".
+
+    COVERAGE IS REPORTED, NEVER USED TO CHOOSE (ruling R-A, LAW 1). Questions
+    are formed blind for every game on the slate; how many of them the market
+    happened to price is a fact about the market, and it is stated here so a
+    reader can see when a comparison is thin rather than wonder why a gap
+    column is half empty.
+    """
+    return f"{market} · {priced} of {asked} priced"
+
+
+def sharpest_line(gap: float | None, phrase: str | None) -> str:
+    """"+19 percentage points apart · Temple covers -14.5" -- the widest gap.
+
+    Named "apart" rather than "edge": the number is the distance between two
+    opinions, and which of them is right is exactly what the record has not
+    established yet.
+
+    SAYS *PERCENTAGE* POINTS, and the long word is the point. The first draft
+    read "+54 points apart" next to a pick reading "covers -14.5", on a page
+    about a sport whose margins are measured in points -- two different units
+    one word apart, and the shorter word was the wrong one.
+    """
+    if gap is None or not phrase:
+        return "no market comparison on this slate"
+    points = round(gap * 100)
+    return f"{points:+d} percentage points apart · {phrase}"
+
+
+#: The left-hand labels on the glance panel's fact rows. Here rather than in
+#: the renderer because the ruling of 2026-08-31 puts every visible phrase in
+#: this module -- and because the first draft had them as JavaScript literals,
+#: which is exactly how a second vocabulary starts.
+#:
+#: "SHARPEST ON THIS SLATE" NAMES ITS SCOPE, and it has to. The greeting panel
+#: sits directly beneath this one and reports the sharpest disagreement among
+#: the predictions that arrived since the reader last looked -- a different
+#: set, a different number. Both said "sharpest disagreement" in the render,
+#: eight inches apart, disagreeing.
+GLANCE_LABELS = {
+    "sharpest": "sharpest on this slate",
+    "tiers": "graded so far",
+}
+
+
+def glance_label(key: str) -> str:
+    return GLANCE_LABELS.get(key, key)
+
+
+def tier_status_line(label: str, proven: int, tiers: int, fullest: int,
+                     needed: int) -> str:
+    """LAW 4 in one line: how much of this sport's record is gradeable yet.
+
+    Takes the sport's PRINTED label rather than its key, because this
+    module has one import and does not get a second one to look a name up
+    with -- an internal key reaching prose is the defect it exists to stop.
+
+    A COUNT, NEVER A POOLED RATE. Adding up settled predictions across markets
+    is arithmetic; adding up their hit rates would be the merge LAW 4 forbids,
+    and it would flatter, because the easy market dilutes the hard one.
+    """
+    if proven:
+        return f"{proven} of {tiers} {label} tiers proven"
+    return (f"no {label} tier proven yet · fullest has {fullest} "
+            f"of {needed} settled")

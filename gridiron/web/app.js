@@ -818,6 +818,101 @@ const Gridiron = (function () {
     if (next) next.focus();
   }
 
+  // THE RAIL'S PANELS (D3). Every string placed here was composed on the
+  // server; this positions them and computes no words of its own.
+
+  //: The cards of the slate currently rendered, by prediction id, so the rail
+  //: describes THE SAME OBJECT the tile was built from. Looking the pick up
+  //: again from the DOM would be a second source for one fact.
+  let slateCards = new Map();
+
+  function paintRail(tile) {
+    const card = slateCards.get(tile && tile.dataset.id);
+    const match = document.getElementById('rail-match');
+    if (!card || !match) return;
+
+    match.textContent = card.row_title || card.matchup || '';
+
+    // The subline is three server-written parts with a separator between
+    // them, and a part that is absent is simply not there -- no dash, no
+    // placeholder. The time is the one thing the browser is better placed to
+    // know, so it renders the instant the server sent.
+    const sub = document.getElementById('rail-sub');
+    const parts = [];
+    if (card.start_local) parts.push(localTime(card.start_local));
+    if (card.venue) parts.push(card.venue);
+    if (card.market_label) parts.push(card.market_label);
+    sub.textContent = parts.join(' \u00b7 ');
+
+    const pick = document.getElementById('rail-pick');
+    pick.innerHTML = '';
+    pick.appendChild(el('b', '', card.phrase || card.tile_line || ''));
+
+    // THE SAME BODY THE EXPANDED ROW SHOWS, from the same function: the
+    // probability rail, the gap and bucket line, the earned number where a
+    // correction moved it, the three-sentence why, the link and the tier
+    // line. A second implementation here would be a second chance to
+    // disagree with the record about what the model said.
+    buildRowBody(document.getElementById('rail-body'), card);
+  }
+
+  function paintGlance(glance) {
+    const count = document.getElementById('rail-glance-count');
+    const windows = document.getElementById('rail-windows');
+    const facts = document.getElementById('rail-facts');
+    if (!windows || !facts) return;
+    if (!glance) { windows.innerHTML = ''; facts.innerHTML = ''; return; }
+
+    count.textContent = glance.games + (glance.games === 1 ? ' game' : ' games');
+
+    windows.innerHTML = '';
+    glance.windows.forEach(w => {
+      const row = el('div', 'krow');
+      row.appendChild(el('span', '', w.name));
+      const bar = el('span', 'bar2');
+      const fill = el('i');
+      fill.style.width = Math.round(w.share * 100) + '%';
+      bar.appendChild(fill);
+      row.appendChild(bar);
+      row.appendChild(el('b', '', String(w.n)));
+      windows.appendChild(row);
+    });
+    windows.appendChild(el('div', 'rail-note', glance.windows_note));
+
+    facts.innerHTML = '';
+    // COVERAGE IS REPORTED, NEVER USED TO CHOOSE (ruling R-A). Each row is
+    // one market's priced-of-asked, and the note underneath says why the two
+    // numbers can differ at all.
+    glance.coverage.forEach(c => {
+      const row = el('div', 'krow');
+      row.appendChild(el('span', '', c.market));
+      row.appendChild(el('b', '', c.priced + ' of ' + c.asked));
+      facts.appendChild(row);
+    });
+    const sharp = el('div', 'krow');
+    sharp.appendChild(el('span', '', glance.labels.sharpest));
+    sharp.appendChild(el('b', '', glance.sharpest.line));
+    facts.appendChild(sharp);
+    const tiers = el('div', 'krow');
+    tiers.appendChild(el('span', '', glance.labels.tiers));
+    tiers.appendChild(el('b', '', glance.tiers.line));
+    facts.appendChild(tiers);
+    facts.appendChild(el('div', 'rail-note', glance.coverage_note));
+  }
+
+  // THE GREETING IS MOVED, NOT REDRAWN. On the desk the wrapper is appended
+  // into the rail's panel; below the breakpoint it goes back where the markup
+  // put it. Same nodes, same ids, same click handler -- so there is one
+  // greeting in the document and it cannot disagree with itself.
+  function placeGreeting() {
+    const greeting = document.getElementById('greeting');
+    const panel = document.getElementById('rail-since-host');
+    const home = document.getElementById('greeting-home');
+    if (!greeting || !panel || !home) return;
+    const wanted = (isDesk() && state.view === 'week') ? panel : home;
+    if (greeting.parentElement !== wanted) wanted.appendChild(greeting);
+  }
+
   // --- the pick card ------------------------------------------------------
   // Rebuilt to docs/mockup/gridiron_dark.html. The order is the order the
   // questions arrive in: who is playing, what the model thinks, how sure, where
@@ -890,7 +985,11 @@ const Gridiron = (function () {
       const md = el('div', 'dot market');
       md.style.left = market + '%';
       r.appendChild(md);
-      const ml = el('div', 'dot-label', 'MKT ' + Math.round(market));
+      // PLAIN WORDS. This label read 'MKT' until the desk put it at
+      // 24px in the rail panel and it became obvious that an
+      // abbreviation nobody defined was sitting on the page. The tile
+      // beside it has always said 'market'.
+      const ml = el('div', 'dot-label', 'market ' + Math.round(market));
       ml.style.left = market + '%';
       r.appendChild(ml);
     }
@@ -1152,9 +1251,20 @@ const Gridiron = (function () {
 
     host.innerHTML = '';
     let cards = market ? data.cards.filter(c => c.market === market) : data.cards;
+    // Indexed BEFORE the market filter narrows the view, so the rail can still
+    // describe a pick the reader selected under a different filter.
+    slateCards = new Map(data.cards.map(c => [String(c.prediction_id), c]));
     if (state.weekSort === 'confidence') {
       cards = cards.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0));
     }
+
+    // THE RAIL. Hidden below the breakpoint, and hidden on a slate with no
+    // open picks -- an empty detail panel beside an empty frame is two ways of
+    // saying the same nothing.
+    const rail = document.getElementById('week-rail');
+    if (rail) rail.hidden = true;
+    paintGlance(isDesk() ? data.glance : null);
+    placeGreeting();
 
     // A resolved forecast is not a pick. Split rather than filtered, so the
     // slate can show both without a reader mistaking last night for tonight.
@@ -1190,6 +1300,7 @@ const Gridiron = (function () {
       // Below the breakpoint the compact rows render exactly as they did.
       if (isDesk()) {
         const grid = el('div', 'tiles');
+        rail.hidden = false;
         grid.setAttribute('role', 'listbox');
         grid.setAttribute('aria-label', 'Picks on this slate');
         open.forEach((c, i) => grid.appendChild(pickTile(c, i + 1)));
@@ -1913,6 +2024,7 @@ const Gridiron = (function () {
   // a media query alone cannot swap them.
   function applyDeskClass() {
     document.body.classList.toggle('desk-on', isDesk() && state.view === 'week');
+    placeGreeting();
   }
 
   let deskWasOn = null;

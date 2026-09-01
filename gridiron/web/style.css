@@ -1179,12 +1179,28 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
      mockup pins html and body together for the same reason. */
   html:has(body.desk-on), body.desk-on { height: 100%; overflow: hidden; }
 
+  /* THE COLUMN FILLS WHAT IS LEFT, rather than guessing what is above it.
+     `height: calc(100vh - bar - 24px)` assumed the grid started at the header.
+     It does not: the title, the sort toggle and the week picker sit between
+     them and take 107px, so the grid ran 129px past the bottom of the window
+     and `overflow: hidden` quietly clipped it. Both columns scroll inside
+     themselves, so nothing looked broken -- the frame just had a bottom the
+     reader could never reach, and D3's third rail panel was cut in half.
+     Measuring it in flex instead means the controls can change height and the
+     grid still ends exactly at the window's edge. */
+  body.desk-on main { display: flex; flex-direction: column; min-height: 0;
+                      height: calc(100vh - var(--bar-h, 52px)); }
+  body.desk-on #view-week { display: flex; flex-direction: column;
+                            flex: 1; min-height: 0; }
+
   .desk-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 440px;
     gap: 22px;
     align-items: start;
-    height: calc(100vh - var(--bar-h, 52px) - 24px);
+    flex: 1;
+    min-height: 0;
+    padding-bottom: 12px;
   }
 
   .desk-frame {
@@ -1272,10 +1288,121 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
      text-overflow: ellipsis. */
   .desk-frame * { text-overflow: clip; }
   .tile-match, .tile-pick { overflow-wrap: anywhere; }
+
+  /* THE RAIL (D3). Three stacked panels on a 14px gutter, per the mockup.
+     `align-content: start` so a short rail sits under the header rather than
+     centring itself against a tall frame. */
+  .desk-rail {
+    display: grid;
+    gap: 14px;
+    align-content: start;
+    /* THE RAIL SCROLLS ITSELF. Three panels are taller than a 900px viewport,
+       and without this the body grew to fit them -- which un-pinned the page
+       that D2 exists to pin, silently, because a rail that runs off the
+       bottom looks like a rail that simply has more in it. Caught in the
+       render, and `test_the_page_does_not_scroll_but_the_frame_does` now has
+       a sibling that would catch it again. */
+    height: 100%;
+    overflow-y: auto;
+    padding-bottom: 24px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .desk-rail::-webkit-scrollbar { display: none; }
 }
 
 /* Below the breakpoint the desk does not exist at all. */
 @media (max-width: 1279px) {
   .desk-grid { display: block; }
   .desk-rail { display: none; }
+}
+
+/* --- the rail's panels (D3) ------------------------------------------------
+   Measurements from docs/mockup/gridiron_desk.html: a 14px gutter between
+   panels, 16/18 padding, a 12px radius, and a heading that puts its sample
+   size on the right in mono. Only the rail's `display` is scoped to the desk
+   breakpoint, above; these are inert while the rail is hidden, and keeping
+   them unscoped means one description of a panel rather than two. */
+#greeting, #greeting-home { display: contents; }
+/* Inside the panel it becomes an ordinary block again, so the three greeting
+   nodes stack rather than dissolving into the panel's own box. */
+#rail-since-host #greeting { display: block; }
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.panel h3 {
+  font-family: var(--cond);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.panel h3 small {
+  font-family: var(--mono);
+  letter-spacing: 0;
+  font-weight: 400;
+  text-transform: none;
+  font-size: 11px;
+}
+/* The panel owns the spacing, so the greeting does not also carry its own
+   page margin inside a card. */
+#rail-since-host #greeting > * { margin-left: 0; margin-right: 0; }
+
+.rail-match {
+  font-family: var(--cond);
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  color: var(--chrome);
+}
+.rail-pick { margin: 12px 0 2px; font-size: 14px; color: var(--muted); }
+.rail-pick b { color: var(--chrome); font-weight: 600; }
+
+.rail-glance { display: grid; gap: 8px; }
+.rail-glance + .rail-glance { margin-top: 12px; }
+.krow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.krow:last-child { border-bottom: 0; }
+.krow b { font-family: var(--mono); color: var(--chrome); font-weight: 600; }
+.krow .bar2 {
+  flex: 1;
+  margin: 0 12px;
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  position: relative;
+}
+.krow .bar2 i {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: var(--muted);
+  border-radius: 2px;
+}
+/* A note under a group of rows, in the weight every caption uses. These carry
+   the LAW 1 and LAW 4 caveats -- why coverage is reported rather than acted
+   on, and whose clock the windows are on -- so they are part of the claim. */
+.rail-note {
+  font-size: 11px;
+  color: var(--faint);
+  line-height: 1.5;
+  margin-top: 8px;
 }
