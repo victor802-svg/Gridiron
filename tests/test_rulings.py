@@ -213,3 +213,30 @@ def test_the_version_convention_records_the_granularity_mismatch():
     text = (Path(config.__file__)).read_text(encoding="utf-8")
     assert "ENDORSED BY THE OPERATOR 2026-08-31" in text
     assert "per sport per market" in text
+
+
+def test_every_compiled_scanner_has_a_known_positive_fixture():
+    """A scanner with no fixture is a scanner nobody has proved can see.
+
+    Ruling, 2026-08-31: the fourth instance of a `\b` arriving as a literal
+    backspace. It found a FIFTH within a minute -- `SNAKE_CASE`, which enforces
+    the plain-words law, had a backspace at both ends and had therefore been
+    matching nothing at all. The explicit INTERNAL_TERMS half kept working,
+    which is why the pages still looked scanned.
+
+    Adding a compiled pattern to `audit` without a fixture fails here.
+    """
+    import re
+    from pathlib import Path
+
+    from gridiron import audit, config
+
+    source = (Path(config.PACKAGE_ROOT) / "audit.py").read_text(encoding="utf-8")
+    declared = set(re.findall(r"^([A-Z_][A-Z0-9_]*)\s*=\s*__import__\(\"re\"\)\.compile",
+                              source, re.M))
+    missing = sorted(declared - set(audit.SCANNER_FIXTURES))
+    assert not missing, (
+        "these scanners have no known-positive fixture, so nothing proves they "
+        f"match anything: {missing}"
+    )
+    assert not audit.scanner_self_check()

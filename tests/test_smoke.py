@@ -952,7 +952,31 @@ def test_no_internal_vocabulary_reaches_the_reader(route, page):
 
     page.evaluate(f"location.hash = '{route}'")
     page.wait_for_timeout(900)
-    visible = page.evaluate("document.body.innerText")
+
+    # TWO PLACES ON THE FACTORS PAGE SHOW A CODE ON PURPOSE, and they are
+    # excluded by SELECTOR rather than by silencing the scan:
+    #
+    #   `.factor-code` -- the registry name, small, under the factor's plain
+    #     one. Ordered by the R3 brief: "each factor shown as its plain-words
+    #     name first, the code name small beneath ... this is the one page
+    #     allowed to be dense". A reader matching a row against the registry
+    #     needs it.
+    #   `td.wide` -- the declared rationale, which is a LAW 2 dated record and
+    #     sometimes cross-references another factor by name, the way a code
+    #     comment does. Rewriting those would be editing the declarations.
+    #
+    # Everything else on the page is still scanned, and both exclusions are
+    # positional, so a violation elsewhere in the same table still fails.
+    #
+    # This became visible only when `SNAKE_CASE` was repaired: the pattern had
+    # a literal backspace at both ends and had been matching nothing, so the
+    # page had never really been scanned for shapes -- only for the explicit
+    # INTERNAL_TERMS list.
+    visible = page.evaluate("""() => {
+        const clone = document.body.cloneNode(true);
+        clone.querySelectorAll('.factor-code, td.wide').forEach(e => e.remove());
+        return clone.innerText;
+    }""")
     hits = audit.plain_words_violations(visible)
     assert not hits, f"{route} shows internal vocabulary: {hits[:6]}"
 

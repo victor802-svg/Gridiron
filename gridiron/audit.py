@@ -475,7 +475,12 @@ SNAKE_ALLOWED = (
                          # grepped in a log; it is a machine fact on purpose
 )
 
-SNAKE_CASE = __import__("re").compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+")
+#: An identifier shaped like `rushing_yards`. The separators are written as
+#: explicit character classes rather than ``, because a `` in this file
+#: has now been mangled into a literal backspace FIVE times -- and this
+#: pattern is the one that enforces the plain-words law. It was blind.
+SNAKE_CASE = __import__("re").compile(
+    r"(?:^|[^A-Za-z0-9_])([a-z][a-z0-9]*(?:_[a-z0-9]+)+)(?:[^A-Za-z0-9_]|$)")
 
 
 def plain_words_violations(text: str) -> list[str]:
@@ -1154,3 +1159,82 @@ def check_the_second_look_is_fresh() -> None:
             "the whole measurement quietly describes the cache instead of the "
             "market. That shipped once and produced eight such rows."
         )
+
+
+# ---------------------------------------------------------------------------
+# EVERY SCANNER PROVES ITSELF AT IMPORT
+# ---------------------------------------------------------------------------
+#
+# Ruling, 2026-08-31, on the fourth instance of one failure: a `\b` written
+# into a generated pattern arrived as a literal backspace (0x08), so the
+# compiled regex matched NOTHING and the scan built on it reported every module
+# clean. Three guards have now been born blind that way -- the orphan scan's
+# name pattern, the JS diagnostic exemption, and the correction's table scan --
+# and each was caught by a human noticing a suspiciously tidy result, which is
+# not a control.
+#
+# So each pattern carries a string it MUST match and a string it must NOT, and
+# the pair is checked when this module is imported. A blind scanner now fails
+# at import rather than passing everything quietly. The cost is a few
+# microseconds per process; the alternative has cost three defects.
+#
+# A pattern with no fixture is itself a failure: the check walks the declared
+# list, so adding a scanner without one is caught by the test that asserts
+# every compiled pattern in this module appears here.
+
+#: pattern name -> (must match, must not match). Both halves matter: a pattern
+#: that matches everything is as broken as one that matches nothing, and only
+#: the negative case catches it.
+SCANNER_FIXTURES: dict[str, tuple[str, str]] = {
+    "SNAKE_CASE": ("rushing_yards", "rushing yards"),
+    "_JS_GLUE": ("'picked ' + subject", "a + b"),
+    "_JS_CASE": (".toUpperCase()", "toUpperCase"),
+    "_JS_TEMPLATE": ("`the model says ${p}`", "`${p}`"),
+    "_JS_CLASS_ARG": ("el('span', 'tier ' + t.tier.toLowerCase(), t.tier)",
+                      "el('span', 'tier', t.tier)"),
+    "_JS_DIAGNOSTIC": ("requireN(c, 'category')", "require(c)"),
+    "_SQL_TABLE": ("SELECT x FROM predictions p JOIN games g",
+                   "WHERE active_from IS NOT NULL"),
+    "_SQL_START": ("SELECT 1 FROM predictions", "a docstring about SELECT"),
+}
+
+
+def scanner_self_check() -> list[str]:
+    """Every declared pattern, checked against its known-positive and -negative."""
+    problems = []
+    here = globals()
+    for name, (positive, negative) in SCANNER_FIXTURES.items():
+        pattern = here.get(name)
+        if pattern is None:
+            problems.append(f"{name}: declared a fixture but no such pattern")
+            continue
+        probe = pattern.match if name == "_SQL_START" else pattern.search
+        if not probe(positive):
+            problems.append(
+                f"{name}: does not match its known-positive {positive!r} -- "
+                f"the compiled pattern is {pattern.pattern!r}, which is what a "
+                f"corrupted escape looks like"
+            )
+        if probe(negative):
+            problems.append(
+                f"{name}: matches its known-negative {negative!r}, so it will "
+                f"flag correct code"
+            )
+    return problems
+
+
+def check_scanners_can_see() -> None:
+    problems = scanner_self_check()
+    if problems:
+        raise LawViolation(
+            "A SCANNER IS BLIND: a guard's pattern does not do what it says, so "
+            "everything it scans will pass. This has happened four times, "
+            "always from an escape mangled in transit:"
+            + _NL2 + _NL2.join(problems)
+        )
+
+
+# Checked HERE, at import, not in a test. A blind scanner that only fails under
+# pytest is still blind in every other process -- including the ones that run
+# `verify.py` and the ones a person runs by hand to check something.
+check_scanners_can_see()
