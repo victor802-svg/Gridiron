@@ -1142,3 +1142,10 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-size: 13px; line-height: 1.5; color: var(--ink-2);
 }
 .set-detail-list li { margin: 1px 0; }
+
+/* The raw claim beside the shown one, in an expanded row. Present only where a
+   correction actually moved the number. */
+.earned-line {
+  margin: 6px 0 2px; font-size: 13px; line-height: 1.5;
+  color: var(--faint); max-width: 68ch;
+}

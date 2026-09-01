@@ -332,6 +332,14 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "correction_version": (r["correction_version"]
                                        if "correction_version" in r.keys()
                                        else None),
+                # None on every card today, and that is the point: a raw
+                # category must look exactly as it did before corrections
+                # existed, or the reader is told something changed when
+                # nothing did.
+                "earned_line": language.earned_number_line(
+                    r["model_prob"], shown, _correction_sample(conn, r),
+                    (r["correction_version"]
+                     if "correction_version" in r.keys() else None)),
                 "model_side": r["model_side"],
         # The side, in words, from the ONE humaniser.
         "chance_clause": language.chance_clause({
@@ -578,6 +586,10 @@ def history(
                 "subject": r["subject"],
                 "line_asked": r["line_asked"],
                 "model_prob": r["model_prob"],
+                "shown_prob": shown_prob(r),
+                "correction_version": (r["correction_version"]
+                                       if "correction_version" in r.keys()
+                                       else None),
                 "model_side": r["model_side"],
                 # The side, in words, from the ONE humaniser. The renderer used
                 # to build this and got spreads backwards on 34 cards.
@@ -648,6 +660,10 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
         "claim": (payload.get("question") or {}).get("claim"),
         "line_asked": r["line_asked"],
         "model_prob": r["model_prob"],
+        "shown_prob": shown_prob(r),
+        "correction_version": (r["correction_version"]
+                               if "correction_version" in r.keys()
+                               else None),
         "model_side": r["model_side"],
                 # The side, in words, from the ONE humaniser. The renderer used
                 # to build this and got spreads backwards on 34 cards.
@@ -759,10 +775,9 @@ def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
         "min_train": correction.MIN_TRAIN,
         "categories": out,
         "any_active": any(c["active"] for c in out),
-        # The one line the Record tab shows while everything is still raw.
-        "note": (f"Claims are shown exactly as the model made them. "
-                 f"Corrections begin at {correction.MIN_TRAIN} settled "
-                 f"predictions in a category."),
+        # Said by the humaniser, in the same voice as every other gate line.
+        "note": language.corrections_note(
+            any(c["active"] for c in out), correction.MIN_TRAIN),
     }
 
 
@@ -1193,6 +1208,23 @@ def _prose_prop_type(r, sport: str) -> str | None:
         return r["prop_type"]
     return r["prop_type"] or subjects.stat_suffix(
         r["subject"], config.SPORT_MARKETS.get(sport, ()))
+
+
+def _correction_sample(conn: sqlite3.Connection, r) -> int | None:
+    """How many settled rows the correction on this row was fitted from.
+
+    Read from the stored version rather than recomputed, so the sentence a card
+    shows cannot drift from the fit that actually produced its number.
+    """
+    version = r["correction_version"] if "correction_version" in r.keys() else None
+    if version is None:
+        return None
+    row = conn.execute(
+        "SELECT n_train FROM calibration_corrections"
+        " WHERE sport = ? AND market_type = ? AND forecaster = ? AND version = ?",
+        (r["sport"], r["market_type"], r["predictor"], version),
+    ).fetchone()
+    return int(row["n_train"]) if row else None
 
 
 def shown_prob(r) -> float:

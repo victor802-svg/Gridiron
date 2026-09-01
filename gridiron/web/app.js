@@ -478,6 +478,10 @@ const Gridiron = (function () {
       DASH + ' ' + int(t.n) + ' settled, by how sure the model said it was';
     document.getElementById('tier-headline').textContent = t.headline;
     document.getElementById('tier-bands-note').textContent = t.bands_note;
+    // One line on whether these numbers are raw or earned, in the same voice
+    // as every other gate line on the page.
+    const cn = document.getElementById('tier-corrections-note');
+    if (cn) cn.textContent = t.corrections_note || '';
 
     table(document.getElementById('tier-table'),
       [{ label: 'Tier' }, { label: 'Band' }, { label: 'Settled' },
@@ -942,6 +946,14 @@ const Gridiron = (function () {
         ? 'no line' : 'gap ' + (c.gap * 100 >= 0 ? '+' : '') + (c.gap * 100).toFixed(1)));
     line.appendChild(el('span', 'row-bucket', c.bucket_line || ''));
     body.appendChild(line);
+
+    // THE RAW CLAIM, ONE TAP AWAY. Present only where a correction actually
+    // moved the number, so a card in a raw category is byte-identical to what
+    // it was before corrections existed. The sentence is written by the
+    // server; this places it.
+    if (c.earned_line) {
+      body.appendChild(el('p', 'earned-line', c.earned_line));
+    }
 
     // THE PLAIN WHY (K3). The contribution bars and the decomposition sentence
     // that used to sit here have moved to the Factors page, which is where

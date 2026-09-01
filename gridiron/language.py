@@ -852,6 +852,47 @@ def colophon(meta: dict) -> str:
     return " · ".join(bits)
 
 
+def earned_number_line(raw: float | None, shown: float | None,
+                       settled: int | None, version: int | None) -> str | None:
+    """What the model claimed, what it is shown as, and why they differ.
+
+    None when nothing was corrected -- which is every card today. A card in a
+    raw category must look exactly as it did before corrections existed, or
+    the reader is being told something changed when nothing did.
+
+    THE RAW CLAIM IS NEVER HIDDEN. It is the model's actual output and the
+    thing the record is keeping score of; the corrected figure is what the
+    claims like it have been worth. Showing one without the other would make
+    the correction unfalsifiable to a reader.
+    """
+    if raw is None or shown is None or version is None:
+        return None
+    if abs(raw - shown) < 0.005:
+        return None
+    n = f"{settled:,}" if settled else "its"
+    return (f"The model's raw claim was {raw:.0%}; it is shown as {shown:.0%}, "
+            f"which is what claims like this have been worth over {n} settled "
+            f"predictions.")
+
+
+def corrections_note(active: bool, min_train: int, version: int | None = None,
+                     fitted: str | None = None,
+                     settled: int | None = None) -> str:
+    """The one line the Record tab shows about corrections.
+
+    Two states, and they must not read alike: numbers shown exactly as the
+    model made them, or numbers adjusted by the record with the version and
+    the sample that did the adjusting.
+    """
+    if not active:
+        return (f"Claims are shown exactly as the model made them. Corrections "
+                f"begin at {min_train} settled predictions in a category.")
+    when = f", fitted {fitted[:10]}" if fitted else ""
+    n = f", {settled:,} settled" if settled else ""
+    return (f"Shown numbers are earned: claims are adjusted by the record "
+            f"(version {version}{when}{n}).")
+
+
 def task_name(task: str | None) -> str:
     """"predict:mlb" -> "Predict baseball". Falls back to opened-out words."""
     if not task:

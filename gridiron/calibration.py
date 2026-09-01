@@ -1260,7 +1260,27 @@ def tier_table(
             "shown separately: pooling them would let the easier one lift the "
             "harder one, which is the merge LAW 4 forbids."
         ),
+        # WHICH NUMBERS THIS TABLE IS GRADING. A tier table over corrected
+        # claims and one over raw claims are different tables, and a reader
+        # comparing today's against last month's has to be told which they are
+        # looking at.
+        "corrections_note": _corrections_note(
+            conn, sport=sport, market_type=market_type, predictor=predictor),
     }
+
+
+def _corrections_note(conn: sqlite3.Connection, *, sport: str,
+                      market_type: str, predictor: str) -> str:
+    from . import correction, language
+
+    active = correction.active_correction(
+        conn, sport=sport, market_type=market_type, forecaster=predictor)
+    return language.corrections_note(
+        active is not None, correction.MIN_TRAIN,
+        version=active["version"] if active else None,
+        fitted=active["fitted_utc"] if active else None,
+        settled=active["n_train"] if active else None,
+    )
 
 
 def _tier_headline(rows: list[dict]) -> str:
