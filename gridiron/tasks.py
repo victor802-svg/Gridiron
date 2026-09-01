@@ -193,8 +193,14 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
         "                 WHERE v.prediction_id = p.id)"
     ).fetchone()[0]
 
+    # THE SECOND LOOK AT THE LINE (C3), taken here because this task already
+    # runs every four hours and already knows which games are close. It reads
+    # the market for games about to start; it touches no prediction and can
+    # change no claim.
+    drift_counts = _near_start_snapshots(conn)
+
     payload = {"sports": list(counts), "resolvable_now": became_final,
-               "warnings": warnings[:8]}
+               "warnings": warnings[:8], **drift_counts}
     if warnings:
         return ("ok" if counts else "failed",
                 f"refreshed {len(counts)} sport(s); {became_final} prediction(s) "
@@ -207,6 +213,78 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     return ("ok",
             f"re-read {len(counts)} sport(s); {became_final} prediction(s) now "
             "have a finished game waiting for the resolver", payload)
+
+
+#: How close to the start a second look at the line is taken. Two hours is
+#: late enough that most of the day's news is priced and early enough that the
+#: fetch is not racing the first pitch.
+NEAR_START_HOURS = 2.0
+
+
+def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
+    """A second look at the line for games about to start.
+
+    THE PREDICTION ALREADY EXISTS -- this only ever runs for rows that have one
+    -- so the blind structure is untouched. LAW 1 is about what the model may
+    see before it commits; this is about what the market did afterwards, which
+    the model never sees.
+
+    A game with no first snapshot gets no second one. The pair is the unit: a
+    near-start line with nothing to compare it against says nothing about
+    drift, and storing it would make the count of pairs disagree with the count
+    of rows.
+    """
+    from .market import espn, lines
+
+    now = db.utcnow()
+    horizon = _plus_hours(now, NEAR_START_HOURS)
+    rows = conn.execute(
+        "SELECT p.id FROM predictions p"
+        " JOIN games g ON g.id = p.game_id"
+        " JOIN market_snapshots o"
+        "   ON o.prediction_id = p.id AND o.kind = 'open_at_predict'"
+        " WHERE g.status = 'scheduled'"
+        "   AND g.kickoff_utc > ? AND g.kickoff_utc <= ?"
+        "   AND o.implied_prob IS NOT NULL"
+        "   AND NOT EXISTS (SELECT 1 FROM market_snapshots n"
+        "                   WHERE n.prediction_id = p.id AND n.kind = 'near_start')",
+        (now, horizon),
+    ).fetchall()
+
+    if not rows:
+        return {"near_start_taken": 0, "near_start_failed": 0,
+                "near_start_due": 0}
+
+    # RE-READ THE MARKET FIRST, AND FORCE IT PAST THE CACHE.
+    #
+    # `snapshot_prediction` reads the quote already stored in
+    # `market_lines_raw`; on its own it would copy the line captured when the
+    # prediction was written and file it as a second look. And the fetch that
+    # refills that table serves anything younger than six hours out of
+    # `http_cache`, so even calling it would have replayed the same bytes.
+    #
+    # Both were true on the first live run: eight near-start rows, four usable
+    # pairs, every one with `near` equal to `opened` to the last decimal. A
+    # market does not do that. The drift measurement would have reported "the
+    # line never moves" forever, from real-looking rows.
+    ids = [r["id"] for r in rows]
+    refreshed = lines.refresh_quotes(conn, ids, ttl=espn.NEAR_START_TTL)
+
+    taken, failed = 0, 0
+    for row in rows:
+        try:
+            lines.snapshot_prediction(conn, row["id"], kind="near_start")
+            taken += 1
+        except Exception:  # noqa: BLE001 - one bad quote must not stop the pass
+            failed += 1
+    return {"near_start_taken": taken, "near_start_failed": failed,
+            "near_start_due": len(rows), "near_start_refetched": refreshed}
+
+
+def _plus_hours(stamp: str, hours: float) -> str:
+    when = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc) + timedelta(hours=hours)
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _run_recalibrate(conn: sqlite3.Connection) -> tuple[str, str, dict]:

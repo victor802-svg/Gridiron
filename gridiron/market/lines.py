@@ -183,7 +183,8 @@ def public_percentage(conn: sqlite3.Connection, game_id: str) -> float | None:
     return None
 
 
-def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | None:
+def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int, *,
+                        kind: str = "open_at_predict") -> dict | None:
     """Attach the market to one already-written prediction.
 
     Idempotent: a prediction keeps its first snapshot. Re-running a slate does
@@ -196,6 +197,7 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
     never looked", and the interface shows the first as a missing comparison
     rather than as a missing prediction.
     """
+    ensure_snapshot_columns(conn)
     pred = conn.execute(
         # `factors_json` carries the question, and the question carries the
         # subject's id -- which is what a prop quote has to be looked up by.
@@ -208,8 +210,9 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
         raise KeyError(f"no prediction {prediction_id}")
 
     existing = conn.execute(
-        "SELECT * FROM market_snapshots WHERE prediction_id = ? ORDER BY id LIMIT 1",
-        (prediction_id,),
+        "SELECT * FROM market_snapshots WHERE prediction_id = ? AND kind = ?"
+        " ORDER BY id LIMIT 1",
+        (prediction_id, kind),
     ).fetchone()
     if existing is not None:
         return dict(existing)
@@ -221,9 +224,9 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int) -> dict | 
     def write(source: str, line, implied) -> dict:
         cur = conn.execute(
             "INSERT INTO market_snapshots (prediction_id, fetched_utc, source, line,"
-            " implied_prob, public_pct) VALUES (?,?,?,?,?,?)",
+            " implied_prob, public_pct, kind) VALUES (?,?,?,?,?,?,?)",
             (prediction_id, utcnow(), source, line, implied,
-             public_percentage(conn, pred["game_id"])),
+             public_percentage(conn, pred["game_id"]), kind),
         )
         conn.commit()
         return {"id": cur.lastrowid, "source": source, "line": line,
@@ -361,6 +364,68 @@ def ensure_lines(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
         if sport in has_props and sport in props.LEAGUE_PATH:
             out[f"{sport}:props"] = _fetch_prop_days(conn, sport, game_ids)
     return out
+
+
+#: Columns added to `market_snapshots` after the first databases were built.
+#: Applied here rather than in `db.MIGRATIONS` because this package is inside
+#: the LAW 1 quarantine and `db` is not: a module on the prediction path may
+#: not name a market table in code, and the scan enforces it.
+SNAPSHOT_MIGRATIONS = (
+    # C3, 2026-08-31: which look this was. Every row that existed before is the
+    # first look, which is exactly what the default says, so no stored row
+    # changes meaning.
+    ("kind", "TEXT NOT NULL DEFAULT 'open_at_predict'"),
+)
+
+
+def ensure_snapshot_columns(conn: sqlite3.Connection) -> list[str]:
+    """Add any missing snapshot column. Idempotent, and cheap enough to call often."""
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(market_snapshots)")}
+    if not have:
+        return []                      # fresh database; the schema defines them
+    added = []
+    for column, decl in SNAPSHOT_MIGRATIONS:
+        if column not in have:
+            conn.execute(
+                f"ALTER TABLE market_snapshots ADD COLUMN {column} {decl}")
+            added.append(column)
+    if added:
+        conn.commit()
+    return added
+
+
+def refresh_quotes(conn: sqlite3.Connection, prediction_ids: list[int],
+                   *, ttl=None) -> int:
+    """Re-read the published lines behind these predictions, past the cache.
+
+    Used by the drift pass and nowhere else. `ttl` is what makes it a genuinely
+    second look: without it the six-hour live window serves the bytes the first
+    look already stored, and the two snapshots agree by construction.
+
+    Returns how many quote rows were written, which is a fetch count and not a
+    claim about anything.
+    """
+    # Local, like every market import in this package: at module scope it
+    # would put `gridiron.market.espn` into sys.modules before the blind
+    # window opened, and the window would refuse to run.
+    from . import espn
+
+    if not prediction_ids:
+        return 0
+    placeholders = ",".join("?" for _ in prediction_ids)
+    by_sport: dict[str, list[str]] = {}
+    for r in conn.execute(
+        f"SELECT DISTINCT sport, game_id FROM predictions WHERE id IN ({placeholders})",
+        prediction_ids,
+    ):
+        by_sport.setdefault(r["sport"], []).append(r["game_id"])
+
+    written = 0
+    for sport, game_ids in by_sport.items():
+        if sport in espn.LEAGUE_PATH:
+            written += espn.fetch_for_games(conn, sport, game_ids,
+                                            ttl=ttl)["written"]
+    return written
 
 
 def _fetch_prop_days(conn: sqlite3.Connection, sport: str,

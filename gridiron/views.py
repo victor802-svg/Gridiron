@@ -673,9 +673,42 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     payload = calibration.scorecard(conn, sport=sport)
     payload["meta"] = meta(conn, sport)
     payload["corrections"] = corrections_report(conn, sport)
+    payload["drift"] = drift_report(conn, sport)
     calibration.assert_every_figure_has_n(payload)
     calibration.assert_single_sport(payload, sport)
     return payload
+
+
+def drift_report(conn: sqlite3.Connection, sport: str) -> dict:
+    """Where the line went after we disagreed with it, per market.
+
+    Reports the count for every market and a DIRECTION for none of them until
+    a market has fifty pairs. The gate is in `drift`, not here; this only
+    arranges what it returns.
+    """
+    from . import drift
+
+    calibration.require_sport(sport, "views.drift_report")
+    markets = sorted({
+        r["market_type"]
+        for r in conn.execute(
+            "SELECT DISTINCT market_type FROM predictions WHERE sport = ?",
+            (sport,))
+    })
+    per_market = [
+        drift.report(conn, sport=sport, market_type=m) for m in markets
+    ]
+    return {
+        "sport": sport,
+        "n": sum(m["n"] for m in per_market),
+        "min_pairs": drift.MIN_PAIRS,
+        "markets": per_market,
+        "question": (
+            "When the model disagrees with the published line, does the line "
+            "later move toward it or away? Two looks at the same line answer "
+            "that; one cannot."
+        ),
+    }
 
 
 def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:

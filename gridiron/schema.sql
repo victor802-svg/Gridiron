@@ -527,8 +527,26 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
     source        TEXT    NOT NULL,
     line          REAL,
     implied_prob  REAL,
-    public_pct    REAL       -- NULL when no free source is available; never a proxy
+    public_pct    REAL,      -- NULL when no free source is available; never a proxy
+    -- WHICH LOOK THIS WAS. 'open_at_predict' is the first and only snapshot
+    -- taken when the prediction was written, and its meaning is unchanged by
+    -- this column existing: it is still what the market said at that moment.
+    -- 'near_start' is a second look taken close to kickoff, for the drift
+    -- question alone.
+    --
+    -- BOTH ARE TAKEN AFTER THE PREDICTION ROW EXISTS. The blind structure is
+    -- untouched: LAW 1's triggers still reject a snapshot with no prediction
+    -- or one timestamped before it, and they apply to this kind exactly as to
+    -- the first.
+    kind          TEXT    NOT NULL DEFAULT 'open_at_predict'
+                  CHECK (kind IN ('open_at_predict', 'near_start'))
 );
+
+-- One of each kind per prediction. A second 'open_at_predict' would overwrite
+-- the meaning of the first -- the market as it was when the forecast was made
+-- -- and a second 'near_start' would make "the drift" ambiguous.
+CREATE UNIQUE INDEX IF NOT EXISTS market_snapshots_one_per_kind
+    ON market_snapshots (prediction_id, kind);
 CREATE INDEX IF NOT EXISTS snap_pred ON market_snapshots (prediction_id);
 
 

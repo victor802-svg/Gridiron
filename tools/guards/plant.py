@@ -1008,6 +1008,35 @@ def _plant_correction(extra: str, what: str, needle: str,
                                   "NOT CAUGHT - " + what + " passed the scan")
 
 
+def plant_a_second_look_served_from_cache() -> Result:
+    """Set the near-start window to the live cache window.
+
+    THIS IS THE DEFECT AS IT SHIPPED. Eight near-start snapshots were written
+    inside the six-hour cache window and every one was a byte-for-byte replay
+    of the open snapshot, so all four usable drift pairs read exactly zero
+    movement. The task reported success and the measurement was of the cache.
+    """
+    from gridiron.data import sources as _sources
+    from gridiron.market import espn as _espn
+
+    original = _espn.NEAR_START_TTL
+    try:
+        _espn.NEAR_START_TTL = _sources.LIVE_TTL
+        try:
+            audit.check_the_second_look_is_fresh()
+        except audit.LawViolation as exc:
+            return Result("THE SECOND LOOK IS A SECOND LOOK",
+                          "accept a cached quote as the near-start reading",
+                          "audit.check_the_second_look_is_fresh", True,
+                          str(exc).splitlines()[0][:96])
+        return Result("THE SECOND LOOK IS A SECOND LOOK",
+                      "accept a cached quote as the near-start reading",
+                      "audit.check_the_second_look_is_fresh", False,
+                      "NOT CAUGHT - a replayed quote passed as a second look")
+    finally:
+        _espn.NEAR_START_TTL = original
+
+
 def plant_an_active_correction_below_the_gate() -> Result:
     """Ask the engine to activate a category with too little record.
 
@@ -2040,6 +2069,7 @@ def main() -> int:
     results.append(plant_a_why_that_disagrees_with_its_contributions())
     results.append(plant_a_factor_with_no_why_template())
     results.append(plant_a_view_that_names_the_side_itself())
+    results.append(plant_a_second_look_served_from_cache())
     results.append(plant_an_active_correction_below_the_gate())
     results.append(plant_a_correction_that_does_not_help())
     results.append(plant_a_genuine_correction_refused())

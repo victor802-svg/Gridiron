@@ -1113,3 +1113,44 @@ def check_correction_is_isolated(path: Path | None = None) -> None:
             "the holdout tests on rows it trained on:"
             + _NL2 + _NL2.join(hits[:10])
         )
+
+
+# ---------------------------------------------------------------------------
+# A SECOND LOOK AT THE LINE HAS TO BE A SECOND LOOK
+# ---------------------------------------------------------------------------
+#
+# The drift question -- when the model disagrees, does the market later move
+# toward it or away? -- rests entirely on two readings of the same line being
+# taken at different times. Nothing about the code says they are: both call the
+# same fetch, and that fetch serves anything younger than `LIVE_TTL` (six
+# hours) straight out of `http_cache`.
+#
+# So the first live run recorded eight near-start snapshots that were byte-for-
+# byte replays of the open ones. Every drift pair read exactly zero movement.
+# The rows looked real, the task reported success, and the measurement was of
+# nothing. Eight rows were deleted; the mechanism got a shorter TTL.
+#
+# This asserts the one invariant that makes the second look real. It cannot
+# prove the market was re-read -- only a network can -- but the failure it
+# catches is the one that actually happened, and it costs nothing.
+
+def second_look_ttl() -> tuple[object, object]:
+    """(near-start window, live cache window). Read, not assumed."""
+    from .data import sources
+    from .market import espn
+
+    return espn.NEAR_START_TTL, sources.LIVE_TTL
+
+
+def check_the_second_look_is_fresh() -> None:
+    near, live = second_look_ttl()
+    if near >= live:
+        raise LawViolation(
+            "THE SECOND LOOK IS NOT A SECOND LOOK: the near-start snapshot "
+            f"accepts a cached quote up to {near} old, and the live cache "
+            f"window is {live}. Anything at or above that window is served "
+            "from `http_cache`, so the second reading of the line is the first "
+            "one replayed, every drift pair reads exactly zero movement, and "
+            "the whole measurement quietly describes the cache instead of the "
+            "market. That shipped once and produced eight such rows."
+        )

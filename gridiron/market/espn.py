@@ -81,24 +81,41 @@ def events_url(sport: str, yyyymmdd: str) -> str:
     return f"{CORE}/{LEAGUE_PATH[sport]}/events?dates={yyyymmdd}&limit=100"
 
 
-def _get(conn: sqlite3.Connection, url: str, *, immutable: bool) -> dict | None:
+#: How stale a quote may be and still count as a SECOND look at the line.
+#:
+#: The cache is why this exists. `http.fetch` serves anything younger than
+#: `LIVE_TTL` (six hours) straight from `http_cache`, which is right for
+#: everything else and silently fatal here: a near-start snapshot taken inside
+#: that window replays the identical bytes the first snapshot stored, so the
+#: two looks record the same implied probability and every drift pair reads
+#: exactly zero movement. The measurement would run forever and mean nothing.
+#:
+#: Caught on the first live run: four pairs, all with `near` equal to `opened`
+#: to the last decimal, which is not what a market does.
+NEAR_START_TTL = __import__("datetime").timedelta(minutes=10)
+
+
+def _get(conn: sqlite3.Connection, url: str, *, immutable: bool,
+         ttl=None) -> dict | None:
     try:
-        return json.loads(http.fetch(conn, url, immutable=immutable))
+        return json.loads(http.fetch(conn, url, immutable=immutable, ttl=ttl))
     except (http.SourceUnavailable, json.JSONDecodeError):
         return None
 
 
-def _first_odds(conn: sqlite3.Connection, competition: dict, immutable: bool) -> dict | None:
+def _first_odds(conn: sqlite3.Connection, competition: dict, immutable: bool,
+                ttl=None) -> dict | None:
     ref = (competition.get("odds") or {}).get("$ref")
     if not ref:
         return None
-    payload = _get(conn, ref, immutable=immutable)
+    payload = _get(conn, ref, immutable=immutable, ttl=ttl)
     items = (payload or {}).get("items") or []
     return items[0] if items else None
 
 
 def fetch_day(
-    conn: sqlite3.Connection, sport: str, yyyymmdd: str, *, settled: bool = True
+    conn: sqlite3.Connection, sport: str, yyyymmdd: str, *, settled: bool = True,
+    ttl=None,
 ) -> dict[str, int]:
     """Load every line ESPN publishes for one date into `market_lines_raw`.
 
@@ -109,19 +126,19 @@ def fetch_day(
         raise ValueError(f"no ESPN league path for {sport!r}")
 
     counts = {"events": 0, "with_odds": 0, "written": 0, "unmatched": 0}
-    listing = _get(conn, events_url(sport, yyyymmdd), immutable=settled)
+    listing = _get(conn, events_url(sport, yyyymmdd), immutable=settled, ttl=ttl)
     if listing is None:
         return counts
 
     for item in listing.get("items", []):
-        event = _get(conn, item["$ref"], immutable=settled)
+        event = _get(conn, item["$ref"], immutable=settled, ttl=ttl)
         if event is None:
             continue
         counts["events"] += 1
         competitions = event.get("competitions") or []
         if not competitions:
             continue
-        odds = _first_odds(conn, competitions[0], settled)
+        odds = _first_odds(conn, competitions[0], settled, ttl=ttl)
         if odds is None:
             continue
         counts["with_odds"] += 1
@@ -221,9 +238,14 @@ def _shift(date: str, days: int) -> str:
 
 
 def fetch_for_games(
-    conn: sqlite3.Connection, sport: str, game_ids: list[str]
+    conn: sqlite3.Connection, sport: str, game_ids: list[str], *, ttl=None
 ) -> dict[str, int]:
-    """Fetch lines for the dates the given games fall on."""
+    """Fetch lines for the dates the given games fall on.
+
+    `ttl` overrides how stale a cached response may be. The drift pass passes a
+    short one, because a "second look" served from the same cache entry as the
+    first is not a second look.
+    """
     if not game_ids:
         return {"days": 0, "written": 0, "unmatched": 0}
     placeholders = ",".join("?" for _ in game_ids)
@@ -242,7 +264,8 @@ def fetch_for_games(
             " AND substr(kickoff_utc, 1, 10) = ? AND status = 'scheduled'",
             (sport, day),
         ).fetchone()["n"] == 0
-        counts = fetch_day(conn, sport, day.replace("-", ""), settled=settled)
+        counts = fetch_day(conn, sport, day.replace("-", ""), settled=settled,
+                           ttl=ttl)
         totals["days"] += 1
         totals["written"] += counts["written"]
         totals["unmatched"] += counts["unmatched"]
