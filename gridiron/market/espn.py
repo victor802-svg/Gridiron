@@ -258,8 +258,19 @@ def fetch_for_games(
             game_ids,
         )
     ]
-    totals = {"days": 0, "written": 0, "unmatched": 0}
+    # THE DAY BEFORE, TOO, and a measured reason. ESPN files odds under the US
+    # calendar date; our slates are grouped by UTC date. A college game
+    # kicking off at 00:00Z on Saturday is Friday evening in America, and its
+    # odds live under Friday -- so five of Saturday 2026-09-05's sixty games
+    # were recorded as having NO LINE when the market had priced them all. A
+    # false absence caused by our own fetch is worse than a real one, because
+    # it looks identical in the record.
+    wanted = set(days)
     for day in sorted(set(days)):
+        wanted.add(_previous_day(day))
+
+    totals = {"days": 0, "written": 0, "unmatched": 0}
+    for day in sorted(wanted):
         settled = conn.execute(
             "SELECT COUNT(*) AS n FROM games WHERE sport = ?"
             " AND substr(kickoff_utc, 1, 10) = ? AND status = 'scheduled'",
@@ -271,3 +282,14 @@ def fetch_for_games(
         totals["written"] += counts["written"]
         totals["unmatched"] += counts["unmatched"]
     return totals
+
+
+def _previous_day(day: str) -> str:
+    """'2026-09-05' -> '2026-09-04'."""
+    from datetime import datetime, timedelta
+
+    try:
+        return (datetime.strptime(day, "%Y-%m-%d")
+                - timedelta(days=1)).strftime("%Y-%m-%d")
+    except ValueError:
+        return day

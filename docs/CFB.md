@@ -144,3 +144,56 @@ No factor was constant in any market. Two findings worth stating:
   after most lines have posted, which matters only for the comparison and never
   for the forecast.
 - A slate that has already started is recorded **MISSED**, never forecast late.
+
+---
+
+## The winter map — what each tab is doing, month by month
+
+Written for the operator so a quiet tab can be recognised as quiet-by-design
+rather than as something broken. Dates are the 2026-27 cycle.
+
+| | NFL | NCAAF | MLB | NBA |
+|---|---|---|---|---|
+| **Sep** | week 1 onward, weekly | **60-game Saturdays**, plus Thu/Fri/Sun | regular season ends 09-27 | preseason; nothing predicted |
+| **Oct** | weekly | weekly, full slates | **postseason — no predictions** | season opens 10-20; daily |
+| **Nov** | weekly | weekly, full slates | silent | daily |
+| **Dec** | weekly through week 18 | **regular season ends early Dec**; bowls undecided | silent | daily |
+| **Jan** | postseason — no predictions | bowls/playoff, if enabled | silent | daily |
+| **Feb** | silent | silent | silent | daily |
+| **Mar** | silent | silent | spring training; nothing predicted | daily |
+
+### What "silent" means, and what it does not
+
+A tab with no picks is **not** a failure, and the interface says which of the
+two it is: the empty state names the next scheduled game and the date it
+arrives. The one thing that would be a failure is a tab silent while games are
+being played, which is what the schedule panel's staleness line exists to
+catch.
+
+**MLB goes quiet after 2026-09-27** and its record stops growing there. Its
+correction gates (50 to fit, ~200 to apply) will therefore not be reached this
+calendar year on the moneyline market — which is worth knowing before waiting
+for them.
+
+**NBA carries the winter.** From late October it is the only sport predicting
+daily, and it is the one whose record will grow fastest between December and
+March.
+
+### The December decision, deferred with its date
+
+**College football's regular season ends in the first week of December**, and
+the bowls and playoff are a separate question this build does not answer:
+
+- they are one-off neutral-site games, so `cfb_travel_kmiles` measures a
+  distance neither team is travelling from home, and the home-field assumption
+  behind the whole margin model does not hold;
+- rosters change between the regular season and a bowl — opt-outs, transfers,
+  interim coaches — so the ratings describe teams that no longer exist;
+- there are about 40 of them against 890 regular-season games, so they would
+  arrive as a small, systematically different sample bolted onto a record
+  fitted on something else.
+
+**FOLLOWUPS, dated 2026-12-01:** decide whether to forecast bowl games, and if
+so whether they are their own calibration category. Deciding it in December,
+with the regular season's forward record in hand, is a better position than
+deciding it now.

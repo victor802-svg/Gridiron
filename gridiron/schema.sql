@@ -575,7 +575,11 @@ CREATE TABLE IF NOT EXISTS predictions (
     sport         TEXT    NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb')),
     game_id       TEXT    NOT NULL REFERENCES games (id),
     -- 'moneyline' is MLB's only market; NBA and NFL use spread + prop.
-    market_type   TEXT    NOT NULL CHECK (market_type IN ('spread', 'prop', 'moneyline')),
+    -- 'total' is college football's third question shape: the two teams'
+    -- COMBINED score, which is neither a margin nor a player prop and
+    -- gets its own calibration family.
+    market_type   TEXT    NOT NULL
+                  CHECK (market_type IN ('spread', 'prop', 'moneyline', 'total')),
     -- For props, the specific market: passing_yards, receptions, ... Each type
     -- is its own category with its own curve and its own gate; they are never
     -- merged into one "props" number.

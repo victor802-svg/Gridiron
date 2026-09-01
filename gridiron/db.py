@@ -121,10 +121,39 @@ class MigrationRefused(RuntimeError):
 
 
 def _needs_market_type_widening(conn: sqlite3.Connection) -> bool:
+    """Whether the stored `predictions` table is narrower than the schema.
+
+    TWO CHECKS HAVE NEEDED WIDENING NOW, and the second was found the hard way:
+    a sport added to `config.SPORTS` and to `schema.sql` is still refused by an
+    EXISTING database, because SQLite applies a CHECK when the table is created
+    and never revisits it. The live record accepted 892 college football games
+    and then refused the first prediction about one of them.
+
+    So this asks the general question -- does the stored definition admit
+    everything the current schema does -- rather than naming one value.
+    """
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='predictions'"
     ).fetchone()
-    return bool(row) and "moneyline" not in (row[0] or "")
+    if not row:
+        return False
+    stored = row[0] or ""
+    if "moneyline" not in stored:
+        return True
+    # Every declared sport AND every market type must appear in the stored
+    # CHECKs, or rows for the newest one cannot be written. Both were found
+    # the same way: by a prediction being refused after everything else about
+    # the sport already worked.
+    from . import config
+
+    if any(f"'{sport}'" not in stored for sport in config.SPORTS):
+        return True
+    markets = {"spread", "prop", "moneyline"}
+    for sport in config.SPORTS:
+        for market in config.SPORT_MARKETS.get(sport, ()):
+            markets.add("prop" if market in config.SPORT_PROP_MARKETS.get(sport, ())
+                        else market)
+    return any(f"'{m}'" not in stored for m in markets)
 
 
 def _widen_market_type(conn: sqlite3.Connection) -> int | None:
