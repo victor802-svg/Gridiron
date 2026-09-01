@@ -721,6 +721,66 @@ def cfb_spread_rung(game_id, expected_margin=None):
 """
 
 
+def plant_a_tile_that_truncates() -> Result:
+    """Cut a tile's matchup off with an ellipsis.
+
+    Reads as a tidy grid, which is the trouble. The frame scrolls precisely so
+    that nothing has to be cut off; an ellipsis on a tile is the interface
+    telling a reader there is more and giving them no way to see it.
+    """
+    faults = audit.frame_truncation_faults(audit.CSS_FIXTURE_POSITIVE)
+    return _desk_plant(faults, "truncate a tile with an ellipsis",
+                       "audit.frame_truncation_faults")
+
+
+def plant_a_selection_that_moves_the_frame() -> Result:
+    """Select a pick without putting the frame back where it was.
+
+    The version planted here looks completely reasonable -- it sets the
+    attribute and paints the rail. What it does not do is remember where the
+    reader was, so clicking pick 140 of 177 throws them to the top and looking
+    at something costs them their place.
+    """
+    faults = audit.selection_moves_the_frame(audit.SELECT_FIXTURE_POSITIVE)
+    return _desk_plant(faults, "select a pick and lose the reader's place",
+                       "audit.selection_moves_the_frame")
+
+
+def plant_a_rail_panel_that_writes_its_own_prose() -> Result:
+    """Build a rail sentence in the browser instead of placing one.
+
+    The fifth appearance of one defect. Prose composed in JavaScript is
+    outside the humaniser that resolves which side was taken, outside the
+    plain-words rule, and outside the Python scans -- which is exactly how a
+    card came to read "over" beside a prediction of UNDER.
+    """
+    import tempfile
+    # A LITERAL BLOCK, not escapes: five separate guards in this repository
+    # have been blinded by a backslash mangled in transit, and a planting that
+    # silently stops matching is worse than no planting.
+    planted = """
+  function paintRail(tile) {
+    const card = slateCards.get(tile.dataset.id);
+    panel.textContent = 'the model likes ' + card.subject;
+  }
+"""
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
+                                     encoding="utf-8") as handle:
+        handle.write(planted)
+        where = handle.name
+    faults = audit.js_prose_composition(where)
+    return _desk_plant(faults, "compose a rail sentence in the browser",
+                       "audit.js_prose_composition")
+
+
+def _desk_plant(faults, what: str, guard: str) -> Result:
+    if faults:
+        return Result("THE DESK", what, guard, True, faults[0])
+    return Result("THE DESK", what, guard, False,
+                  "NOT CAUGHT - the desk would break one of its own promises "
+                  "in a way nobody can see by looking")
+
+
 def plant_a_rung_chosen_by_rotation() -> Result:
     """Choose a spread rung by hashing the game id instead of by the margin.
 
@@ -2208,6 +2268,9 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_tile_that_truncates())
+    results.append(plant_a_selection_that_moves_the_frame())
+    results.append(plant_a_rail_panel_that_writes_its_own_prose())
     results.append(plant_a_rung_chosen_by_rotation())
     results.append(plant_a_rung_chosen_by_the_market())
     results.append(plant_a_home_run_bucket_below_fifty())

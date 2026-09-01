@@ -1463,3 +1463,136 @@ def _check_the_rung_scanner_can_see() -> None:
 
 
 _check_the_rung_scanner_can_see()
+
+
+# ---------------------------------------------------------------------------
+# THE DESK'S TWO PROMISES, SCANNED (D5)
+# ---------------------------------------------------------------------------
+#
+# Both are properties a person cannot check by looking. A tile that truncates
+# looks like a tile with a short name in it; a selection that moves the frame
+# looks like a page that scrolled for some reason. Each shipped once in this
+# project's short history, and each was found by measuring a render rather
+# than by reading the code.
+
+#: Selectors that live inside the scrolling frame. A truncation rule reaching
+#: any of them is the defect: the tile has told the reader there is something
+#: it is not showing, and then not shown it.
+FRAME_SELECTORS = (".tile", ".desk-frame", ".tiles")
+
+_CSS_ELLIPSIS = re.compile(r"text-overflow\s*:\s*ellipsis")
+
+
+def frame_truncation_faults(css: str) -> list[str]:
+    """Every rule that would truncate something inside the frame."""
+    faults = []
+    for block in css.split("}"):
+        if "{" not in block:
+            continue
+        selector, _, body = block.partition("{")
+        selector = selector.strip().split("*/")[-1].strip()
+        if not _CSS_ELLIPSIS.search(body):
+            continue
+        if any(part in selector for part in FRAME_SELECTORS):
+            faults.append(
+                f"{selector!r} truncates with an ellipsis, and it is inside the "
+                f"desk frame. A tile grows instead: the whole point of the "
+                f"frame is that the slate scrolls, so there is room."
+            )
+    return faults
+
+
+#: A rule that truncates a tile, and the rule that relaxes one. Checked at
+#: import like every scanner (ruling, 2026-08-31).
+CSS_FIXTURE_POSITIVE = ".tile-match { text-overflow: ellipsis; }"
+CSS_FIXTURE_NEGATIVE = ".desk-frame * { text-overflow: clip; }"
+
+
+def check_no_truncation_in_the_frame(path: Path | None = None) -> None:
+    path = (path or (config.PACKAGE_ROOT / "web" / "style.css"))
+    faults = frame_truncation_faults(Path(path).read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A TILE TRUNCATES. The frame scrolls precisely so that nothing has "
+            "to be cut off, and an ellipsis is the interface admitting it is "
+            "hiding something from a reader who cannot ask for the rest:"
+            + _NL2 + _NL2.join(faults[:8])
+        )
+
+
+#: The function that must not move the frame, and the two things it has to do:
+#: read the frame's position before changing anything, and put it back.
+_JS_KEEPS_SCROLL = re.compile(
+    r"function\s+selectTile\s*\([^)]*\)\s*\{(?P<body>.*?)\n  \}", re.S)
+
+
+def selection_moves_the_frame(js: str) -> list[str]:
+    """True-ish when selecting a pick would cost the reader their place."""
+    match = _JS_KEEPS_SCROLL.search(js)
+    if match is None:
+        return ["selectTile() is not in the renderer at all, so nothing "
+                "protects the reader's position when a pick is selected"]
+    body = match.group("body")
+    faults = []
+    if "scrollTop" not in body:
+        faults.append(
+            "selectTile() never reads the frame's scrollTop, so it cannot "
+            "restore it. Selecting a pick half way down a 177-pick slate "
+            "would throw the reader back to the top, and looking at "
+            "something would cost them their place.")
+    elif body.count("scrollTop") < 2:
+        faults.append(
+            "selectTile() reads the frame's scrollTop but never writes it "
+            "back. Reading it and discarding it is the same as not reading "
+            "it, and looks more careful.")
+    return faults
+
+
+SELECT_FIXTURE_POSITIVE = """
+  function selectTile(tile) {
+    if (!tile) return;
+    tile.setAttribute('aria-selected', 'true');
+    paintRail(tile);
+  }
+"""
+SELECT_FIXTURE_NEGATIVE = """
+  function selectTile(tile) {
+    if (!tile) return;
+    const frame = document.getElementById('week-frame');
+    const keep = frame ? frame.scrollTop : 0;
+    tile.setAttribute('aria-selected', 'true');
+    if (frame) frame.scrollTop = keep;
+  }
+"""
+
+
+def check_selection_leaves_the_frame_alone(path: Path | None = None) -> None:
+    path = (path or (config.PACKAGE_ROOT / "web" / "app.js"))
+    faults = selection_moves_the_frame(Path(path).read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "SELECTING A PICK WOULD MOVE THE SLATE. Selection is not "
+            "navigation; a reader who loses their place has been punished for "
+            "looking at something:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_desk_scanners_can_see() -> None:
+    problems = []
+    if not frame_truncation_faults(CSS_FIXTURE_POSITIVE):
+        problems.append("frame_truncation_faults misses a truncated tile")
+    if frame_truncation_faults(CSS_FIXTURE_NEGATIVE):
+        problems.append("frame_truncation_faults flags `text-overflow: clip`, "
+                        "which is the rule that FIXES truncation")
+    if not selection_moves_the_frame(SELECT_FIXTURE_POSITIVE):
+        problems.append("selection_moves_the_frame misses a selectTile that "
+                        "never touches scrollTop")
+    if selection_moves_the_frame(SELECT_FIXTURE_NEGATIVE):
+        problems.append("selection_moves_the_frame flags a selectTile that "
+                        "correctly saves and restores scrollTop")
+    if problems:
+        raise LawViolation(
+            "A SCANNER IS BLIND: a desk guard does not do what it says, so "
+            "everything it scans will pass:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_desk_scanners_can_see()
