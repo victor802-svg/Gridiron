@@ -557,7 +557,7 @@ const Gridiron = (function () {
     const rail = el('div', 'rail');
     rail.appendChild(el('div', 'rail-line'));
 
-    const model = card.model_prob;
+    const model = shownProb(card);
     const market = card.market_implied_prob;
     const at = v => (v * 100) + '%';
     const hasMarket = market !== null && market !== undefined;
@@ -703,6 +703,18 @@ const Gridiron = (function () {
     return null;
   }
 
+  // THE NUMBER TO SHOW, and there is exactly one answer per card.
+  //
+  // `shown_prob` is the corrected claim where a category has an active
+  // correction and the raw claim everywhere else; the server computes it once
+  // at write time and stores both. Reading `model_prob` here instead put a
+  // 74% headline on a card whose tier chip said SOLID, whose bucket line said
+  // 60-70%, and whose own sentence underneath said "it is shown as 62%" --
+  // four numbers describing one forecast, three of them agreeing and the
+  // biggest one not. Caught by looking at the render, not by a test.
+  const shownProb = (c) => (c.shown_prob === null || c.shown_prob === undefined)
+    ? c.model_prob : c.shown_prob;
+
   // --- the pick card ------------------------------------------------------
   // Rebuilt to docs/mockup/gridiron_dark.html. The order is the order the
   // questions arrive in: who is playing, what the model thinks, how sure, where
@@ -739,7 +751,7 @@ const Gridiron = (function () {
 
   function probBlock(c) {
     const box = el('div', 'prob');
-    box.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
+    box.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
     box.appendChild(el('span', 'pct', '%'));
     // THE VERB TABLE THAT USED TO LIVE HERE IS GONE, and its absence is the
     // fix. It hardcoded a verb per market type, so every prop read "goes over"
@@ -762,7 +774,7 @@ const Gridiron = (function () {
     r.appendChild(el('div', 'track'));
     r.appendChild(el('div', 'tick50'));
 
-    const model = clamp01(c.model_prob) * 100;
+    const model = clamp01(shownProb(c)) * 100;
     const market = (c.market_implied_prob === null || c.market_implied_prob === undefined)
       ? null : clamp01(c.market_implied_prob) * 100;
 
@@ -878,7 +890,7 @@ const Gridiron = (function () {
     head.appendChild(mid);
 
     const prob = el('div', 'prob');
-    prob.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
+    prob.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
     prob.appendChild(el('span', 'pct', '%'));
     prob.appendChild(el('small', '', c.chance_clause || ''));
     head.appendChild(prob);
@@ -1004,7 +1016,7 @@ const Gridiron = (function () {
     mid.appendChild(el('div', 'row-pick', c.resolved_story || c.phrase || ''));
     head.appendChild(mid);
     const prob = el('div', 'prob');
-    prob.appendChild(document.createTextNode(pct(c.model_prob, 0).replace('%', '')));
+    prob.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
     prob.appendChild(el('small', '', 'model'));
     head.appendChild(prob);
     // `.verdict`, matching the approved mockup's class rather than reusing the
@@ -1038,7 +1050,7 @@ const Gridiron = (function () {
     host.innerHTML = '';
     let cards = market ? data.cards.filter(c => c.market === market) : data.cards;
     if (state.weekSort === 'confidence') {
-      cards = cards.slice().sort((a, b) => (b.model_prob || 0) - (a.model_prob || 0));
+      cards = cards.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0));
     }
 
     // A resolved forecast is not a pick. Split rather than filtered, so the
@@ -1239,7 +1251,7 @@ const Gridiron = (function () {
       if (!card) { host.hidden = true; return; }
 
       document.getElementById('worked-caption').textContent =
-        DASH + ' ' + (card.phrase || '') + ', ' + pct(card.model_prob, 0);
+        DASH + ' ' + (card.phrase || '') + ', ' + pct(shownProb(card), 0);
       const bars = document.getElementById('worked-bars');
       bars.innerHTML = '';
       bars.appendChild(contributions(card));
@@ -1369,7 +1381,7 @@ const Gridiron = (function () {
           i.phrase,
           (i.created_utc || '').slice(0, 10),
           'wk ' + i.week,
-          pct(i.model_prob, 1),
+          pct(shownProb(i), 1),
           // "no line" in WORDS. A bare dash reads as an error rather than an
           // absence, and absence here is a fact about the market, not a fault.
           (i.market_implied_prob === null || i.market_implied_prob === undefined)
@@ -1589,7 +1601,7 @@ const Gridiron = (function () {
     row.appendChild(el('span', 'settled-match', s.matchup));
     row.appendChild(el('span', 'settled-pick', s.phrase || ''));
     const nums = el('span', 'settled-nums');
-    nums.textContent = 'model ' + pct(s.model_prob, 1) +
+    nums.textContent = 'model ' + pct(shownProb(s), 1) +
       (s.market_prob === null || s.market_prob === undefined
         ? ' · no line' : ' · market ' + pct(s.market_prob, 1));
     row.appendChild(nums);

@@ -200,3 +200,33 @@ def test_a_category_under_the_gate_is_recorded_with_its_shortfall_in_words(leagu
     assert report["eligible"] == 0
     status = report["categories"][0]["status"]
     assert str(C.MIN_TRAIN) in status and "6 so far" in status, status
+
+
+def test_the_renderer_never_draws_a_card_from_the_raw_claim():
+    """Every number on a card must be the number the card is claiming.
+
+    THIS SHIPPED AND WAS CAUGHT BY LOOKING AT A RENDER. A corrected card drew
+    its headline from `model_prob` while its tier chip, its bucket line and its
+    own sentence all came from the corrected figure: 74% in the big number,
+    SOLID on the chip, "60-70% bucket" beside it, and "it is shown as 62%"
+    underneath. Four numbers describing one forecast, three agreeing and the
+    largest one not -- and none of them wrong on its own, which is why no test
+    caught it.
+
+    `shownProb` is the one door. Only its own fallback may name `model_prob`.
+    """
+    import re
+    from pathlib import Path
+
+    from gridiron import config
+
+    source = (Path(config.PACKAGE_ROOT) / "web" / "app.js").read_text(encoding="utf-8")
+    offenders = []
+    for n, line in enumerate(source.split(chr(10)), 1):
+        body = re.sub(r"//.*$", "", line)
+        if re.search(r"[a-z]\.model_prob", body) and "shown_prob" not in body:
+            offenders.append(f"line {n}: {line.strip()[:70]}")
+    assert not offenders, (
+        "a card number is drawn from the raw claim instead of the shown one; "
+        f"route it through shownProb: {offenders}"
+    )

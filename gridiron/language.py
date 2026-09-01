@@ -885,8 +885,15 @@ def corrections_note(active: bool, min_train: int, version: int | None = None,
     the sample that did the adjusting.
     """
     if not active:
-        return (f"Claims are shown exactly as the model made them. Corrections "
-                f"begin at {min_train} settled predictions in a category.")
+        # TWO STAGES, SAID AS TWO. A correction is fitted and inspectable at
+        # `min_train`; it is APPLIED only once it beats the rows it was not
+        # fitted on, which needs a forty-row holdout and so about two hundred
+        # settled. Saying "corrections begin at 50" was true of the fit and
+        # false of the number on the card, and the measurement behind the
+        # holdout floor is in `correction.HOLDOUT_MIN`.
+        return (f"Claims are shown exactly as the model made them. A "
+                f"correction is fitted at {min_train} settled predictions and "
+                f"applied only once it beats the rows it was not fitted on.")
     when = f", fitted {fitted[:10]}" if fitted else ""
     n = f", {settled:,} settled" if settled else ""
     return (f"Shown numbers are earned: claims are adjusted by the record "

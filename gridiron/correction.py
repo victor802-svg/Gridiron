@@ -306,11 +306,27 @@ def record_fit(
 #: rest -- the most recent fifth -- is what the check is scored on.
 HOLDOUT_TRAIN_SHARE = 0.8
 
-#: The holdout needs enough rows to say anything at all. Ten is not many, and
-#: it is what 20% of the fifty-row gate comes to; a category at exactly the
-#: gate gets a ten-row check, which is thin and is labelled thin everywhere it
-#: is reported.
-HOLDOUT_MIN = 10
+#: THE HOLDOUT MUST BE BIG ENOUGH TO TELL THE TWO CASES APART, and this number
+#: is measured rather than assumed. 40 trials per cell, synthetic categories at
+#: two levels of miscalibration, counting how often each ACTIVATES:
+#:
+#:      settled   badly overconfident   already calibrated
+#:           50            13 of 40             11 of 40
+#:          100            19 of 40             13 of 40
+#:          200            25 of 40              5 of 40
+#:          300            25 of 40              1 of 40
+#:          400            32 of 40              1 of 40
+#:
+#: At fifty settled the check CANNOT TELL THE TWO APART -- 13 against 11 is
+#: noise -- so a ten-row holdout would activate a correction on a category that
+#: needs none about a quarter of the time, while the interface said its numbers
+#: were earned. Separation arrives around 200 and is clean by 300.
+#:
+#: So the holdout needs 40 rows of its own, which at the 80/20 split means a
+#: category is not merely fitted but ACTIVATED from about 200 settled. That is
+#: later than the brief's fifty, and it is what the measurement supports: fifty
+#: is the bar for FITTING a correction and looking at it, not for applying one.
+HOLDOUT_MIN = 40
 
 #: HOW MUCH BETTER THE HOLDOUT MUST BE, and it is not zero. Measured
 #: 2026-08-31, 60 synthetic categories of 200 rows each at three levels of
@@ -354,8 +370,9 @@ def holdout_check(rows: list[tuple[float, int, str]]) -> dict:
     train, test = rows[:cut], rows[cut:]
     if len(test) < HOLDOUT_MIN or not train:
         return {"n": len(test), "passed": False,
-                "why": (f"the holdout would be {len(test)} rows, under the "
-                        f"{HOLDOUT_MIN} needed to check anything")}
+                "why": (f"the check would rest on {len(test)} rows, under the "
+                        f"{HOLDOUT_MIN} needed to tell a correction that helps "
+                        f"from one that does not")}
 
     model = fit_platt(train)
     if model is None:
