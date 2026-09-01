@@ -1320,3 +1320,146 @@ def check_no_rankings(package: Path | None = None) -> None:
             "carries no poll field -- and this is what keeps it that way:"
             + _NL2 + _NL2.join(hits[:10])
         )
+
+
+# ---------------------------------------------------------------------------
+# THE RUNG IS CHOSEN AGAINST THE EXPECTED MARGIN (ruling R4, 2026-09-01)
+# ---------------------------------------------------------------------------
+#
+# Measured first, on the college slate of 2026-09-05, which is what produced
+# the ruling: 76% of all 177 picks claimed 70% or better, and on the spread the
+# confidence sat exactly where the rung was furthest from the answer -- 77% of
+# cross-division games claimed 90%+, against 20% of FBS-against-FBS ones. A
+# rung picked by rotation asks "does the home side cover -0.5" of a team
+# favoured by sixty, and a record full of those measures the schedule.
+#
+# So the rung is now the declared rung nearest the expected margin. Two ways
+# that could quietly come undone, and this catches both by name:
+#
+#   1. THE ROTATION COMES BACK. A hash of the game id is a perfectly good
+#      rung chooser and an easy thing to reach for; it is allowed ONLY on the
+#      path where no rating exists, which is a declared absence.
+#   2. THE MARKET CHOOSES IT. Asking at the number the book is offering is the
+#      purest form of the anchoring LAW 1 exists to prevent -- and it would
+#      not look like cheating, it would look like realism.
+
+#: Choosing a rung by hashing the game id. Named, because a reader who finds
+#: this in a diff should be told what it costs rather than what it is.
+ROTATION_CHOOSERS = ("stable_index",)
+
+
+def _is_absence_test(test: ast.expr, parameters: set[str]) -> bool:
+    """True for `<parameter> is None` -- the one branch a rotation may sit in."""
+    return (
+        isinstance(test, ast.Compare)
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Is)
+        and isinstance(test.left, ast.Name)
+        and test.left.id in parameters
+        and isinstance(test.comparators[0], ast.Constant)
+        and test.comparators[0].value is None
+    )
+
+
+def rung_selection_faults(source: str, where: str = "questions.py") -> list[str]:
+    """Every way a spread rung could stop being chosen against the margin.
+
+    Reads the source rather than calling the function, because the fault this
+    is guarding against is a shape -- a rotation on the live path -- and a
+    behavioural check would have to guess which margins to try.
+    """
+    faults: list[str] = []
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not node.name.endswith("_spread_rung"):
+            continue
+        arguments = node.args
+        parameters = {a.arg for a in
+                      (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)}
+
+        def walk(body: list[ast.stmt], guarded: bool) -> None:
+            for statement in body:
+                if isinstance(statement, ast.If):
+                    inside = guarded or _is_absence_test(statement.test, parameters)
+                    walk(statement.body, inside)
+                    walk(statement.orelse, guarded)
+                    continue
+                for inner in ast.walk(statement):
+                    if isinstance(inner, ast.If):
+                        break
+                    if (isinstance(inner, ast.Call)
+                            and isinstance(inner.func, ast.Name)
+                            and inner.func.id in ROTATION_CHOOSERS
+                            and not guarded):
+                        faults.append(
+                            f"{where}:{node.name}: chooses the rung with "
+                            f"{inner.func.id}(), a rotation, on the path where a "
+                            f"margin IS available. The rung would be picked by a "
+                            f"hash of the game id rather than by what the model "
+                            f"expects to happen, which is what made 77% of "
+                            f"cross-division spreads claim 90%+."
+                        )
+                    if isinstance(inner, ast.Name) and inner.id in FORBIDDEN_IDENTIFIERS:
+                        faults.append(
+                            f"{where}:{node.name}: names {inner.id!r}, a market "
+                            f"value. LAW 1: the question may not be formed at the "
+                            f"number the market is offering."
+                        )
+                    if (isinstance(inner, ast.Attribute)
+                            and inner.attr in FORBIDDEN_IDENTIFIERS):
+                        faults.append(
+                            f"{where}:{node.name}: reads .{inner.attr}, a market "
+                            f"value. LAW 1: the question may not be formed at the "
+                            f"number the market is offering."
+                        )
+        walk(node.body, guarded=False)
+    return faults
+
+
+#: A rung function that rotates unconditionally -- the shape this replaced --
+#: and the shape that is correct. Checked at import like every other scanner
+#: (ruling, 2026-08-31): a guard that cannot see its own known-positive passes
+#: everything, which has happened here four times.
+RUNG_FIXTURE_POSITIVE = (
+    "def cfb_spread_rung(game_id, expected_margin=None):\n"
+    "    return LADDER[stable_index(game_id, len(LADDER))]\n"
+)
+RUNG_FIXTURE_NEGATIVE = (
+    "def cfb_spread_rung(game_id, expected_margin=None):\n"
+    "    if expected_margin is None:\n"
+    "        return LADDER[stable_index(game_id, len(LADDER))]\n"
+    "    return min(LADDER, key=lambda r: abs(r + expected_margin))\n"
+)
+
+
+def check_the_rung_is_chosen_by_margin(root: Path | None = None) -> None:
+    path = (root or config.PACKAGE_ROOT) / "model" / "questions.py"
+    faults = rung_selection_faults(path.read_text(encoding="utf-8"),
+                                   where="model/questions.py")
+    if faults:
+        raise LawViolation(
+            "A RUNG IS NOT BEING CHOSEN AGAINST THE EXPECTED MARGIN (ruling "
+            "R4). The rung is the question; a question nobody could get wrong "
+            "is not a measurement of anything:"
+            + _NL2 + _NL2.join(faults[:10])
+        )
+
+
+def _check_the_rung_scanner_can_see() -> None:
+    if not rung_selection_faults(RUNG_FIXTURE_POSITIVE, where="fixture"):
+        raise LawViolation(
+            "A SCANNER IS BLIND: rung_selection_faults() does not flag an "
+            "unconditional rotation, which is the exact shape ruling R4 "
+            "replaced. Everything it scans would pass."
+        )
+    stray = rung_selection_faults(RUNG_FIXTURE_NEGATIVE, where="fixture")
+    if stray:
+        raise LawViolation(
+            "A SCANNER IS OVER-EAGER: rung_selection_faults() flags the "
+            "correct shape, so it will fail on good code: " + "; ".join(stray)
+        )
+
+
+_check_the_rung_scanner_can_see()

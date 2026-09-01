@@ -183,7 +183,12 @@ def slate_questions(conn: sqlite3.Connection, season: int, day: int,
         gid = game["id"]
         home, away = game["home"], game["away"]
 
-        rung = questions.cfb_spread_rung(gid)
+        # THE RUNG IS CHOSEN AGAINST THE EXPECTED MARGIN (ruling R4), which
+        # means the context has to be built before the spread question rather
+        # than after it. The ratings it reads are stored and blind.
+        ctx = build_context(conn, gid)
+        rung = questions.cfb_spread_rung(
+            gid, questions.cfb_expected_margin(ctx.home_rating, ctx.away_rating))
         out.append(Question(
             sport=SPORT, game_id=gid, market_type="spread", market="spread",
             subject=home, line_asked=rung,
@@ -201,7 +206,6 @@ def slate_questions(conn: sqlite3.Connection, season: int, day: int,
         # when either side has no completed games yet -- the first weekend of a
         # season, or a team new to the record. Absent is recorded as absent; it
         # is never asked at a guessed number.
-        ctx = build_context(conn, gid)
         asked = questions.cfb_total_asked(
             (ctx.home_form or {}).get("for_pg"),
             (ctx.away_form or {}).get("for_pg"),
@@ -288,13 +292,20 @@ def training_set(conn: sqlite3.Connection, seasons, market: str, *,
         if progress and i % 250 == 0:
             progress(f"cfb {market} features {i}/{len(games)}")
 
-        line = None
-        if market == "spread":
-            line = questions.cfb_spread_rung(game["id"])
         try:
-            ctx = build_context(conn, game["id"], market=market, line_asked=line)
+            ctx = build_context(conn, game["id"], market=market)
         except KeyError:
             continue
+
+        line = None
+        if market == "spread":
+            # THE SAME RULE THE FORWARD PATH USES. A training set asked at
+            # rotated rungs and a live slate asked at margin-chosen ones would
+            # be two different questions sharing a coefficient.
+            line = questions.cfb_spread_rung(
+                game["id"],
+                questions.cfb_expected_margin(ctx.home_rating, ctx.away_rating))
+            ctx.line_asked = line
 
         if market == "total":
             line = questions.cfb_total_asked(

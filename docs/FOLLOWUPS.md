@@ -128,3 +128,33 @@ from `config.SPORTS` and `tasks.TASKS`.
 - **The FCS scoring bias is unquantified.** A lower-division team enters the
   record only through its games against FBS opposition, so its scoring form is
   understated. Worth measuring once a college season has settled.
+
+## The college spread ladder is too short for its own sport
+
+Found while measuring R4 on 2026-09-01. `CFB_SPREAD_LADDER` spans -24.5 to
++6.5. Under the new nearest-margin rule, **45 of the 60 games on the 2026-09-05
+slate landed on -24.5**, the end of the ladder, because cross-division expected
+margins reach sixty points. Those questions are still lopsided — the rule
+simply has nowhere better to put them.
+
+Widening the ladder is a dated change to a declared constant and needs its own
+measurement: the distribution of expected margins across a full season, not one
+September slate, which is the most cross-division weekend of the year. Do it
+after a few slates of real margins, not from the one that prompted it.
+
+## `cfb_asked_line` now duplicates `cfb_srs_diff`
+
+Same date, same cause. The rung is chosen as a step function of the rating
+difference, so the asked line carries no information the rating does not.
+
+**Measured on the refit, rather than predicted:** neither factor was reported
+constant and neither was dropped, and the two coefficients shrank together
+(`cfb_srs_diff` +0.0851 -> +0.0655, `cfb_asked_line` +0.1003 -> +0.0802) rather
+than one absorbing the other. So the fit is stable and this is not urgent. What
+remains is that the per-factor "why" now attributes one signal across two
+names, and a reader is owed better than that.
+
+Retiring or reworking a declared factor is a LAW 2 act with a dated note, and
+**a repair is not a discovery** — whatever is written must say which this is.
+Measure the two factors' correlation on a real training set first; the answer
+may be that the asked line stays and the rating is the one that moves.

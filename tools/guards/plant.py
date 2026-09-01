@@ -711,6 +711,58 @@ def plant_a_rung_off_the_declared_ladder() -> Result:
                   "NOT CAUGHT - a question was formed at an undeclared rung")
 
 
+#: A rung function that asks at the book's number. Written as a literal block
+#: rather than with escapes, because an escaped newline has been mangled on the
+#: way into this repository five times and a guard's fixture is the last place
+#: that can be allowed to happen quietly.
+_RUNG_FROM_THE_MARKET = """
+def cfb_spread_rung(game_id, expected_margin=None):
+    return quote.spread_line
+"""
+
+
+def plant_a_rung_chosen_by_rotation() -> Result:
+    """Choose a spread rung by hashing the game id instead of by the margin.
+
+    THIS IS THE SHAPE RULING R4 REPLACED, and it is planted rather than
+    described because it did not look wrong while it was shipping. A rotation
+    spreads the five declared rungs evenly across a slate, which reads as
+    fairness; what it actually does is ask "does North Dakota State cover -0.5"
+    of a team favoured by sixty. On the college slate of 2026-09-05 that put
+    77% of cross-division spreads at 90%+ confidence, against 20% of the
+    FBS-against-FBS ones -- a record measuring the schedule.
+    """
+    return _rung_plant(
+        audit.RUNG_FIXTURE_POSITIVE,
+        "choose a spread rung by rotation on the live path",
+    )
+
+
+def plant_a_rung_chosen_by_the_market() -> Result:
+    """Form the question at the number the book is offering.
+
+    The worst of the two because it would not read as a mistake. Asking at the
+    market's line looks like realism -- everyone else is asking that question
+    -- and it produces a calibration curve that measures how well the model
+    agrees with a number it was handed. LAW 1 exists for exactly this.
+    """
+    return _rung_plant(
+        _RUNG_FROM_THE_MARKET,
+        "form the spread question at the market's own line",
+    )
+
+
+def _rung_plant(source: str, what: str) -> Result:
+    faults = audit.rung_selection_faults(source, where="planted")
+    if faults:
+        return Result("RUNG BY MARGIN", what,
+                      "audit.rung_selection_faults", True, faults[0])
+    return Result("RUNG BY MARGIN", what,
+                  "audit.rung_selection_faults", False,
+                  "NOT CAUGHT - the rung would be chosen by something other "
+                  "than what the model expects to happen")
+
+
 def plant_a_home_run_bucket_below_fifty() -> Result:
     """Check the home-run market's claims really do land in the declared buckets.
 
@@ -2156,6 +2208,8 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_rung_chosen_by_rotation())
+    results.append(plant_a_rung_chosen_by_the_market())
     results.append(plant_a_home_run_bucket_below_fifty())
     results.append(plant_a_tier_row_below_its_gate_showing_a_rate())
     results.append(plant_verdict_words_that_disagree_with_the_gap())

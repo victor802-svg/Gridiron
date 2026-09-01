@@ -70,15 +70,63 @@ CFB_TOTAL_MIN = 20.0
 CFB_TOTAL_MAX = 100.0
 
 
-def cfb_spread_rung(game_id: str) -> float:
-    """One declared rung per game, rotated by a stable hash of its id.
+#: When rung selection stopped being a rotation (ruling R4). Predictions
+#: written before this date were asked at a rotated rung and STAND AS WRITTEN
+#: (LAW 3): the 60 college spreads of 2026-09-05 are a record of what was
+#: claimed, not a draft.
+CFB_RUNG_RULE_ACTIVATED = "2026-09-01T00:00:00Z"
 
-    The same mechanism as the NFL's and for the same reason: one question per
-    game keeps the predictions independent, and rotating across games means all
-    five rungs accumulate a record over a season rather than the model choosing
-    which question it fancies.
+#: Mean home margin in college football, measured 2026-08-31 over the same
+#: 260-game sample that produced the margin SD. Used to turn a rating
+#: difference into an expected margin, which is what the rung is chosen
+#: against.
+CFB_HOME_MARGIN = 9.79
+
+
+def cfb_expected_margin(home_rating: float | None,
+                        away_rating: float | None) -> float | None:
+    """The home side's expected winning margin, from stored ratings only.
+
+    BLIND BY CONSTRUCTION and that is the whole reason it is built from
+    ratings rather than from anything better: the rung has to be chosen BEFORE
+    the model runs, because the rung is one of the model's inputs. Anything
+    that could see a published line here would make the market an input to the
+    question, which LAW 1 forbids and the closure scan would catch.
     """
-    return CFB_SPREAD_LADDER[stable_index(game_id, len(CFB_SPREAD_LADDER))]
+    if home_rating is None or away_rating is None:
+        return None
+    return (home_rating - away_rating) + CFB_HOME_MARGIN
+
+
+def cfb_spread_rung(game_id: str, expected_margin: float | None = None) -> float:
+    """The declared rung NEAREST to a coin flip for this game (ruling R4).
+
+    WHY THE ROTATION WAS REPLACED, measured on the college slate of
+    2026-09-05: 76% of all 177 picks claimed 70% or better, and on the spread
+    the confidence was concentrated exactly where the rung was furthest from
+    the answer -- 77% of cross-division games claimed 90%+, against 20% of
+    FBS-against-FBS ones. Asking "does North Dakota State cover -0.5 against
+    Fordham" when the expected margin is sixty points is not a question, and a
+    record full of them measures the schedule rather than the model.
+
+    It was NOT a scale bug. The probability path is a logistic over fitted
+    contributions and contains no standard deviation at all; the measured
+    22.46 reaches only the market comparison, where it produces a sane mean
+    implied probability of 0.739 across the same sixty games.
+
+    The rung is chosen nearest to MINUS the expected margin, because the
+    question is whether `(home - away) + line` clears zero: a home side
+    expected to win by fourteen is asked at -14.5, which is the rung that
+    actually asks something.
+
+    Falls back to the rotation ONLY when no rating exists -- the first games
+    of a team's life in the record -- and that fallback is a declared absence
+    rather than a preference.
+    """
+    if expected_margin is None:
+        return CFB_SPREAD_LADDER[stable_index(game_id, len(CFB_SPREAD_LADDER))]
+    target = -float(expected_margin)
+    return min(CFB_SPREAD_LADDER, key=lambda rung: (abs(rung - target), rung))
 
 
 def cfb_total_asked(home_ppg: float | None, away_ppg: float | None) -> float | None:
