@@ -194,8 +194,10 @@ def test_catch_up_refreshes_then_resolves_and_records_every_sport(league):
     results = tasks.catch_up(league, use_llm=False)
     assert results[0]["task"] == "refresh"
     assert results[1]["task"] == "resolve"
+    # Derived from the declared sports. The fourth literal list in this suite
+    # to go stale when a sport was added.
     assert {r["task"] for r in results} == {"refresh", "resolve"} | {
-        f"predict:{s}" for s in ("nfl", "mlb", "nba")
+        f"predict:{s}" for s in config.SPORTS
     }
     assert all(r["result"] in ("ok", "noop", "missed", "failed") for r in results)
 
@@ -226,9 +228,11 @@ def test_a_silent_task_is_reported_as_silent(league):
 def test_the_panel_carries_the_staleness_line(league):
     status = tasks.status(league)
     assert "schedule_staleness" in status
-    assert {s["sport"] for s in status["schedule_staleness"]["sports"]} == {
-        "nfl", "mlb", "nba"
-    }
+    # Derived from the declared sports, not listed. The literal went stale the
+    # moment college football was added, which is the third test in this suite
+    # to do that.
+    assert ({s["sport"] for s in status["schedule_staleness"]["sports"]}
+            == set(config.SPORTS))
 
 
 def test_every_declared_task_appears_in_the_panel(league):

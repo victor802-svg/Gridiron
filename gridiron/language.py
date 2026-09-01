@@ -153,7 +153,8 @@ def half_unit_phrase(subject: str, market: str, side: str) -> str | None:
 #: The side each market's question was FORMED as. A stored probability and a
 #: stored contribution are both signed toward this side; the model frequently
 #: takes the other one.
-YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over"}
+YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over",
+            "total": "over"}
 
 
 def side_named(item: dict, form: str = "full") -> tuple[str, float | None]:
@@ -243,6 +244,14 @@ def phrase(item: dict) -> str:
         side_word = SIDE_WORDS.get(side, side or "over")
         line_text = _number(line)
         return f"{subject} {side_word} {line_text} {humanise(market)}".strip()
+
+    if market_type == "total":
+        # NOT A TEAM AND NOT A PLAYER. A totals question is about the GAME, so
+        # the sentence names neither side: "over 52.5 total points". Routing it
+        # through the subject would produce "Ohio State over 52.5", which reads
+        # as a claim about one team's scoring and is not the question asked.
+        over = "over" if side != "under" else "under"
+        return f"{over} {_number(line)} total points"
 
     if market_type == "moneyline":
         # "ATL to lose" is arithmetic; "COL to win" is what a person says. The
@@ -625,6 +634,7 @@ def why_block(item: dict, factors: dict | None = None) -> dict:
 #: LOOKS like English and is a colon-joined key. A reader should not have to
 #: know the code to read the panel that says whether the machine is alive.
 TASK_WORDS = {
+    "predict:cfb": "Predict college football",
     "recalibrate": "Re-check the claims",
     "refresh": "Fetch results",
     "resolve": "Settle picks",

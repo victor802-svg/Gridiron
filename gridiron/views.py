@@ -485,8 +485,14 @@ def _empty_slate_message(conn: sqlite3.Connection, sport: str) -> str:
 
     upcoming = conn.execute(
         "SELECT MIN(kickoff_utc) AS first FROM games"
-        " WHERE sport = ? AND status = 'scheduled' AND kickoff_utc IS NOT NULL",
-        (sport,),
+        " WHERE sport = ? AND status = 'scheduled' AND kickoff_utc IS NOT NULL"
+        # FORWARD ONLY. Without this bound the "next scheduled game" was a
+        # game from 2024 -- one college fixture that never got a final score
+        # and so still reads as scheduled two years later. A record with any
+        # history at all will have a few of those, and pointing a reader at
+        # one as the NEXT game is worse than saying nothing.
+        "   AND kickoff_utc > ?",
+        (sport, db.utcnow()),
     ).fetchone()
     loaded = conn.execute(
         "SELECT COUNT(*) AS n FROM games WHERE sport = ?", (sport,)
@@ -844,6 +850,10 @@ SCHEDULE_URL_PATTERNS = {
     "nfl": "%nflverse-data%schedules%",
     "mlb": "%statsapi.mlb.com%schedule%",
     "nba": "%stats.nba.com%scheduleleaguev2%",
+    # CFB's schedule is fetched per TEAM -- the union of 136 schedules is the
+    # slate -- so the freshest of those requests is what "the schedule was last
+    # read" means for this sport.
+    "cfb": "%college-football%teams%events%",
 }
 
 #: Beyond this, a sport's schedule is reported stale rather than merely old.
@@ -864,7 +874,21 @@ def schedule_staleness(conn: sqlite3.Connection) -> dict:
     now = datetime.now(timezone.utc)
     out = []
     for sport in config.SPORTS:
-        newest = sources.newest_fetch(conn, SCHEDULE_URL_PATTERNS[sport])
+        pattern = SCHEDULE_URL_PATTERNS.get(sport)
+        if pattern is None:
+            # A sport with no declared schedule URL is REPORTED, not skipped
+            # and not crashed on: the panel's job is to say what it does not
+            # know, and a KeyError here took down every page that shows it.
+            out.append({
+                "sport": sport,
+                "label": config.SPORT_LABELS.get(sport, sport.upper()),
+                "fetched_utc": None,
+                "age_hours": None,
+                "stale": None,
+                "line": "no schedule source is declared for this sport",
+            })
+            continue
+        newest = sources.newest_fetch(conn, pattern)
         if newest is None:
             out.append({
                 "sport": sport,
@@ -942,7 +966,11 @@ def season_record(conn: sqlite3.Connection, sport: str) -> dict:
         "line": (
             f"{config.SPORT_LABELS.get(sport, sport.upper())} {wins}-{n - wins}"
             if n else
-            f"{config.SPORT_LABELS.get(sport, sport.upper())} nothing settled yet"
+            # "0 settled", which is the brief's own wording for a sport with
+            # no record yet, and it has to be this short: a fourth sport tab
+            # took the header's spare width, and "NCAAF nothing settled yet"
+            # needs 166px in a 139px slot. Measured, not guessed.
+            f"{config.SPORT_LABELS.get(sport, sport.upper())} 0 settled"
         ),
     }
 

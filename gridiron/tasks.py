@@ -81,6 +81,16 @@ TASKS: dict[str, TaskSpec] = {
         every_hours=24,
         silent_after_hours=36,
     ),
+    "predict:cfb": TaskSpec(
+        "predict:cfb",
+        "forecast the college football slate, blind",
+        # WEEKLY, and the slate it writes is Saturday's. College football's
+        # week is really three slates -- Saturday's 60 games, Sunday's 16,
+        # Friday's 8 -- so this runs daily and writes whichever slate is next,
+        # rather than assuming the week has one card.
+        every_hours=24,
+        silent_after_hours=36,
+    ),
 }
 
 
@@ -164,6 +174,17 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
                 from .data import nba_loader
 
                 result = nba_loader.load_all(conn, (season,))
+            elif sport == "cfb":
+                # ITS OWN LOADER, and the `else` branch below is why this
+                # matters: without this arm, college football fell through to
+                # the NFL loader and refreshed football's schedule under
+                # college football's name.
+                from .data import cfb_loader
+
+                loaded = cfb_loader.load_season(conn, season)
+                result = {"rows": {"games": loaded["games"],
+                                   "finals": loaded["finals"]},
+                          "warnings": []}
             else:
                 from .data import loader
 
@@ -180,9 +201,16 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
         try:
             from .data import teams as _teams
 
+            if sport == "cfb":
+                # `cfb_loader.load_season` already wrote the names, from group
+                # 80's teams. The generic ESPN team path has no college entry
+                # and would report a skip every four hours forever.
+                raise StopIteration
             named = _teams.load_teams(conn, sport, season)
             if named.get("skipped"):
                 warnings.append(f"{sport} team names: {named['skipped']}")
+        except StopIteration:
+            pass                    # this sport's loader named its own teams
         except Exception as exc:  # noqa: BLE001 - names are cosmetic, results are not
             warnings.append(f"{sport} team names: {type(exc).__name__}: {exc}")
 

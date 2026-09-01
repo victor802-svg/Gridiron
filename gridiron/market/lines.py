@@ -83,7 +83,56 @@ MARGIN_SD_BY_SPORT: dict[str, MarginSD] = {
         source="ESPN spread, 2025-26 season",
         assumed_before=11.5,
     ),
+    # COLLEGE FOOTBALL IS 77% WIDER THAN THE NFL, which is the single most
+    # consequential number the probe produced: a market comparison drawn with
+    # football's 12.70 would make every college line look far more confident
+    # than it is, and would inflate the market's Brier score the way NBA's
+    # understated SD once did. Measured before anything used it.
+    "cfb": MarginSD(
+        sd=22.46, n=260, measured_utc="2026-08-31T00:00:00Z",
+        source=("ESPN final scores, random sample of 260 of the 888 completed "
+                "2025 FBS regular-season games"),
+        assumed_before=None,   # nothing was assumed; the probe came first
+    ),
 }
+
+
+@dataclass(frozen=True)
+class TotalSD:
+    """The spread of actual combined scores about a published total.
+
+    ITS OWN CONSTANT, not a reuse of the margin SD, because it measures a
+    different quantity: how far a game's TOTAL POINTS land from the number the
+    market set. Borrowing the margin figure would be the same mistake as
+    borrowing football's SD for basketball -- a plausible number, used with
+    confidence, describing something else.
+    """
+
+    sd: float
+    n: int
+    measured_utc: str
+    source: str
+
+
+TOTAL_SD_BY_SPORT: dict[str, TotalSD] = {
+    "cfb": TotalSD(
+        sd=16.19, n=260, measured_utc="2026-08-31T00:00:00Z",
+        source=("ESPN final scores, random sample of 260 of the 888 completed "
+                "2025 FBS regular-season games; mean total 53.82"),
+    ),
+}
+
+
+def total_sd(sport: str) -> float:
+    """The measured total-points SD, or a NAMED failure. No fallback, ever."""
+    entry = TOTAL_SD_BY_SPORT.get(sport)
+    if entry is None:
+        raise UnmeasuredMarginSD(
+            f"no total-points SD has been measured for {sport!r}. A totals "
+            "market cannot be compared with the market without one, and the "
+            "margin SD is not a substitute: it measures a different quantity."
+        )
+    return entry.sd
 
 
 def margin_sd(sport: str) -> float:
@@ -164,6 +213,23 @@ def implied_cover_probability(
     Phi((expected_margin + line_asked) / sd).
     """
     return norm_cdf((market_spread + line_asked) / margin_sd(sport))
+
+
+def implied_over_probability(
+    market_total: float, line_asked: float, sport: str
+) -> float:
+    """P(the combined score goes OVER `line_asked`), implied by the market total.
+
+    The same normal argument as the spread, about a different quantity and with
+    its own measured SD. `total_sd` has no fallback for exactly the reason
+    `margin_sd` has none: reusing the margin figure here would be a plausible
+    number describing something else, which is how NBA's market comparison was
+    wrong for a day.
+
+    The market's total is the expected combined score, so the question "does it
+    exceed the number WE asked at" is Phi((their number - ours) / sd).
+    """
+    return norm_cdf((market_total - line_asked) / total_sd(sport))
 
 
 def raw_line(conn: sqlite3.Connection, game_id: str) -> sqlite3.Row | None:
@@ -253,6 +319,17 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int, *,
         implied_home = home_p
         implied = implied_home if pred["model_side"] == "win" else 1.0 - implied_home
         return write(row["source"], float(row["home_moneyline"]), round(implied, 6))
+
+    if pred["market_type"] == "total":
+        # A TOTALS COMPARISON USES THE TOTALS SD, never the margin one. They
+        # measure different quantities and the wrong one would make the market
+        # look far more or less certain than it is.
+        if row["total_line"] is None:
+            return None
+        implied_yes = implied_over_probability(
+            row["total_line"], pred["line_asked"], sport)
+        implied = implied_yes if pred["model_side"] == "over" else 1.0 - implied_yes
+        return write(row["source"], row["total_line"], round(implied, 6))
 
     if row["spread_line"] is None:
         return None

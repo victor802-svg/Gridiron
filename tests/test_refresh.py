@@ -122,13 +122,20 @@ def test_refresh_reports_how_many_predictions_it_unblocked(conn, monkeypatch):
 
     # No network in a test: the loaders are stubbed, so what is measured is the
     # REPORTING, which is the part that failed to communicate.
+    # EVERY sport's loader, not a list of three. When college football was
+    # added, its loader was the only one left unpatched, so the "nothing
+    # happened" test went to the network and came back with something.
+    import gridiron.data.cfb_loader as cfb_loader
+    import gridiron.data.loader as nfl_loader
     import gridiron.data.mlb_loader as mlb_loader
     import gridiron.data.nba_loader as nba_loader
-    import gridiron.data.loader as nfl_loader
 
     for mod in (mlb_loader, nba_loader, nfl_loader):
         monkeypatch.setattr(mod, "load_all",
                             lambda *a, **k: {"rows": {}, "warnings": []})
+    monkeypatch.setattr(cfb_loader, "load_season",
+                        lambda *a, **k: {"games": 0, "finals": 0,
+                                         "skipped": 0, "events": 0})
 
     result, detail, payload = tasks._run_refresh(conn)
     assert result == "ok"

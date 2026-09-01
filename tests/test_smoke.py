@@ -21,7 +21,7 @@ import time
 
 import pytest
 
-from gridiron import api, auth, resolve, run
+from gridiron import config, api, auth, resolve, run
 from gridiron.factors import store
 from gridiron.model import baseline
 
@@ -554,7 +554,12 @@ def test_the_panel_shows_data_freshness_per_sport(page):
     page.evaluate("location.hash = '#/schedule'")
     page.wait_for_selector("#schedule-staleness .sched-stale", timeout=10000)
     rows = page.query_selector_all("#schedule-staleness .sched-stale")
-    assert len(rows) == 3, "one freshness line per sport"
+    # DERIVED, never a literal. This said 3 and went stale the moment a
+    # fourth sport arrived -- the same way the schedule panel's test
+    # hardcoded four tasks and went stale when `refresh` was added.
+    assert len(rows) == len(config.SPORTS), (
+        f"one freshness line per sport: {len(config.SPORTS)} declared, "
+        f"{len(rows)} shown")
 
 
 def test_the_schedule_panel_fits_a_phone(page):
@@ -658,7 +663,9 @@ def test_no_screen_overflows_a_phone(phone, route):
 
 def test_the_sport_tabs_are_reachable_and_tappable(phone):
     tabs = phone.query_selector_all("#sport-tabs a, #sport-tabs button")
-    assert len(tabs) == 3, f"expected three sport tabs, found {len(tabs)}"
+    assert len(tabs) == len(config.SPORTS), (
+        f"expected one tab per declared sport ({len(config.SPORTS)}), "
+        f"found {len(tabs)}")
     for tab in tabs:
         box = tab.bounding_box()
         assert box["height"] >= 44, (

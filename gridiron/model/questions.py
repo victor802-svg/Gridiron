@@ -46,6 +46,73 @@ from ..data import repo
 #: Home-team spread rungs. Negative means the home side gives points.
 SPREAD_LADDER: tuple[float, ...] = (-7.5, -3.5, 0.5, 3.5)
 
+#: COLLEGE FOOTBALL'S OWN LADDER, because NFL's is far too narrow for it.
+#: Measured 2026-08-31 over 260 completed 2025 games: home-margin SD is 22.46
+#: against the NFL's 12.70, the median home margin is +10, and the quintiles of
+#: the actual margin distribution are:
+#:
+#:      20%   35%   50%   65%   80%
+#:     -7.0  +3.0  +10.0 +17.0 +29.0
+#:
+#: Asking college games at -7.5 to +3.5 would put almost every question on one
+#: side of its own answer: 39% of games are decided by 21 points or more, and
+#: only 28% by seven or fewer. These five rungs sit near those quintiles, so
+#: the four questions land across the distribution instead of bunching under
+#: it. Declared in advance and dated, like every other ladder here.
+CFB_SPREAD_LADDER: tuple[float, ...] = (-24.5, -14.5, -7.5, -0.5, 6.5)
+CFB_SPREAD_LADDER_DECLARED = "2026-08-31T00:00:00Z"
+
+#: How far a self-generated total may sit from the two teams' combined scoring
+#: form before the question is refused. The total is derived from stored
+#: scoring, so a wild value means the inputs are wrong, not that the game is
+#: unusual.
+CFB_TOTAL_MIN = 20.0
+CFB_TOTAL_MAX = 100.0
+
+
+def cfb_spread_rung(game_id: str) -> float:
+    """One declared rung per game, rotated by a stable hash of its id.
+
+    The same mechanism as the NFL's and for the same reason: one question per
+    game keeps the predictions independent, and rotating across games means all
+    five rungs accumulate a record over a season rather than the model choosing
+    which question it fancies.
+    """
+    return CFB_SPREAD_LADDER[stable_index(game_id, len(CFB_SPREAD_LADDER))]
+
+
+def cfb_total_asked(home_ppg: float | None, away_ppg: float | None) -> float | None:
+    """The total to ask about: the two teams' combined scoring form, to a half.
+
+    BLIND BY CONSTRUCTION. The only inputs are points-per-game computed from
+    our own stored results; no published total is consulted, and this module
+    cannot reach one. That is the whole difference between asking our question
+    and grading ourselves against the market's.
+
+    Returns None when either side has no scoring history yet -- the first
+    weekend of a season, or a team new to the record. An absent question is
+    recorded as absent; it is never asked at a guessed number, which would be a
+    strong claim wearing a missing value's clothes (checklist item 5).
+
+    The half-point is not decoration: a whole number can push, and a pushed
+    question has no answer to score.
+    """
+    if home_ppg is None or away_ppg is None:
+        return None
+    combined = float(home_ppg) + float(away_ppg)
+    if not CFB_TOTAL_MIN <= combined <= CFB_TOTAL_MAX:
+        return None
+    return _round_to(combined, 1.0) + 0.5
+
+
+def total_outcome(home_score: int, away_score: int, line_asked: float) -> int:
+    """1 if the combined score went OVER the total asked.
+
+    A half-point line cannot push, so there is no third state -- which is why
+    `cfb_total_asked` always returns one.
+    """
+    return 1 if (home_score + away_score) > line_asked else 0
+
 #: Prop line offsets, as a fraction of the player's rolling average.
 PROP_OFFSETS: tuple[float, ...] = (-0.30, 0.0, 0.30)
 

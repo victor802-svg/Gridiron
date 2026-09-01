@@ -96,6 +96,35 @@ LINE_SOURCES: dict[str, dict] = {
             "both moneylines present. Same unstated-licence caveat as MLB."
         ),
     },
+    "cfb": {
+        "available": True,
+        "name": "ESPN public API (sports.core.api.espn.com)",
+        "url": ("https://sports.core.api.espn.com/v2/sports/football/leagues/"
+                "college-football"),
+        "licence": (
+            "NONE STATED. Undocumented public endpoint. No published terms, no "
+            "published rate limit, and no guarantee it continues to exist."
+        ),
+        "rate_limit": (
+            "unpublished. One odds document per game, cached permanently; a "
+            "settled game is never refetched."
+        ),
+        "markets": ["spread", "moneyline", "total"],
+        "prices": "DraftKings spread, total and moneyline, republished by ESPN",
+        "note": (
+            "MEASURED 2026-08-31, twice. A random sample of 260 of the 888 "
+            "completed 2025 FBS games: 100% carry an odds document, 98% a "
+            "spread, 99% a total, 87% a moneyline. The live slate for "
+            "2026-09-05, all 60 games: spread and total 100%, moneyline 73%. "
+            "THE MISSING MONEYLINES ARE THE BLOWOUTS -- median absolute spread "
+            "is 8.5 where one exists and 34.5 where it does not, 96% coverage "
+            "under 28 points and 43% at or above -- so a game with no "
+            "moneyline is recorded as having no comparison, never filled in "
+            "from the spread. NO PLAYER PROPS EXIST: zero rows on completed "
+            "and upcoming games alike, and a CFB event carries exactly one "
+            "provider whose propBets endpoint 404s."
+        ),
+    },
 }
 
 #: Prop markets with no free line source at all. Named rather than left to be

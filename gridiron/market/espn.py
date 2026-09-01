@@ -33,6 +33,7 @@ CORE = "https://sports.core.api.espn.com/v2/sports"
 LEAGUE_PATH = {
     "mlb": "baseball/leagues/mlb",
     "nba": "basketball/leagues/nba",
+    "cfb": "football/leagues/college-football",
 }
 
 SOURCE_NAME = {sport: f"espn/{sport}" for sport in LEAGUE_PATH}

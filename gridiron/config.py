@@ -47,9 +47,11 @@ PORT = int(os.environ.get("GRIDIRON_PORT", "8848"))
 # --- the sports ------------------------------------------------------------
 # Order is display order in the interface. NFL first because it is the sport
 # the project was built for; MLB second because it is the one resolving daily.
-SPORTS: tuple[str, ...] = ("nfl", "mlb", "nba")
+SPORTS: tuple[str, ...] = ("nfl", "mlb", "nba", "cfb")
 
-SPORT_LABELS = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA"}
+#: "NCAAF" rather than "CFB" because it is what the tab says everywhere
+#: else in the sport and what a reader will recognise beside NFL.
+SPORT_LABELS = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA", "cfb": "NCAAF"}
 
 
 class CrossSportAggregation(RuntimeError):
@@ -89,7 +91,12 @@ def require_sport(sport: str | None, where: str) -> str:
 
 #: What a sport calls one slate. NFL and NBA number weeks; a baseball slate is
 #: a day's card, so MLB's slate ordinal is a day.
-SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week"}
+#: CFB's slate is a DAY, not a week, and the probe is why: `week` is null
+#: on every 2026 event, so slates are derived from dates. Saturday carries
+#: 60 games, Friday 8, Sunday 16 -- three different slates a week-shaped
+#: ordinal would merge.
+SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week",
+                    "cfb": "day"}
 
 #: The markets each sport asks about. MLB is moneyline only: there is no run
 #: line question worth asking that the moneyline does not already ask better.
@@ -99,6 +106,16 @@ SPORT_MARKETS: dict[str, tuple[str, ...]] = {
     "mlb": ("moneyline", "batter_hits", "batter_total_bases",
             "batter_home_runs", "pitcher_strikeouts"),
     "nba": ("spread", "points", "rebounds", "assists", "threes"),
+    # THREE TEAM MARKETS AND NO PROPS. The probe found zero prop rows on
+    # completed and upcoming games alike, and a CFB event carries exactly one
+    # odds provider whose propBets endpoint 404s -- there is no second one to
+    # fall back to. Player game stats exist and would resolve props; the gap is
+    # the lines. See docs/CFB_FEASIBILITY.md section 6.
+    #
+    # `total` is a NEW QUESTION SHAPE for this project: over/under on the two
+    # teams' combined score, which is not a margin and shares no calibration
+    # family with one.
+    "cfb": ("spread", "moneyline", "total"),
 }
 
 #: Which of a sport's markets are player props (the rest are game markets).
@@ -108,6 +125,7 @@ SPORT_PROP_MARKETS: dict[str, tuple[str, ...]] = {
     "mlb": ("batter_hits", "batter_total_bases", "batter_home_runs",
             "pitcher_strikeouts"),
     "nba": ("points", "rebounds", "assists", "threes"),
+    "cfb": (),          # measured, not assumed: no prop lines exist
 }
 
 #: MLB's four, in descending order of liquidity -- which is also descending
@@ -123,7 +141,24 @@ SPORT_CURRENT_SEASON = {
     "mlb": int(os.environ.get("GRIDIRON_MLB_SEASON", "2026")),
     # NBA seasons are named by their starting year: 2026 is 2026-27.
     "nba": int(os.environ.get("GRIDIRON_NBA_SEASON", "2026")),
+    "cfb": int(os.environ.get("GRIDIRON_CFB_SEASON", "2026")),
 }
+
+#: Which of a sport's markets are TOTALS -- a question about the two teams'
+#: combined score rather than about which of them wins or by how much.
+#:
+#: Its own family, and never pooled with margins. A totals question is right or
+#: wrong for different reasons than a spread: weather, pace and both offences
+#: move it, and the market prices it separately. LAW 4's reasoning about not
+#: merging an easy market with a hard one applies exactly here.
+SPORT_TOTAL_MARKETS: dict[str, tuple[str, ...]] = {
+    "cfb": ("total",),
+}
+
+
+# (A helper that reads this table arrives in B6, with the guard that needs it.
+#  Writing it now would ship a function nothing calls, which is what the orphan
+#  scan exists to catch -- and did, within a minute of it being added.)
 
 #: Seasons MLB player-level rows are fetched for: lineups and per-batter game
 #: logs. Narrower than SPORT_LOAD_SEASONS because these are the expensive part
@@ -145,6 +180,12 @@ SPORT_LOAD_SEASONS = {
     "nfl": tuple(range(2016, 2027)),
     "mlb": tuple(range(2021, 2027)),
     "nba": tuple(range(2021, 2027)),
+    # FOUR SEASONS, and the cost is why. A CFB season is ~890 games and each
+    # game's scores sit behind two further fetches, so a season is roughly
+    # 2,700 requests before team stats. Four gives a walk-forward fit three
+    # seasons to train on and one to test, which is the shape B4 needs, without
+    # a first load measured in hours.
+    "cfb": tuple(range(2023, 2027)),
 }
 
 
