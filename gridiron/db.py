@@ -32,6 +32,17 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 #: nothing here drops or rewrites a column, because a migration that could
 #: rewrite `predictions` would be a way around LAW 3.
 MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("teams", "is_fbs", "INTEGER"),
+    # B3: where a college team plays, and the coordinates the weather
+    # and travel factors need. `teams` is reference data, not market
+    # data, so this migration may live here.
+    ("teams", "venue_name", "TEXT"),
+    ("teams", "venue_city", "TEXT"),
+    ("teams", "venue_state", "TEXT"),
+    ("teams", "venue_indoor", "INTEGER"),
+    ("teams", "venue_lat", "REAL"),
+    ("teams", "venue_lon", "REAL"),
+    ("teams", "venue_geocoded_utc", "TEXT"),
     # A MARKET TABLE'S MIGRATION CANNOT LIVE HERE. `db` is on every
     # sport's prediction path, and LAW 1's closure scan rejects a
     # module on that path for NAMING a market table in code -- which it

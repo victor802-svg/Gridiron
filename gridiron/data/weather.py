@@ -102,3 +102,22 @@ def fetch_week(conn: sqlite3.Connection, season: int, week: int) -> dict[str, in
 
     conn.commit()
     return counts
+
+
+def wind_at(conn: sqlite3.Connection, lat: float, lon: float,
+            kickoff_utc: str) -> float | None:
+    """Forecast wind in mph at one place and hour, or None.
+
+    Used by college football, whose venues are geocoded rather than read from a
+    published coordinate table. Returns None for a kickoff outside the forecast
+    horizon or a fetch that failed -- an absent forecast, which the feature
+    vector records as absent. It is never zero: "no wind" and "no reading" are
+    different facts and a fit told the wrong one would learn from calm days
+    that never happened.
+    """
+    try:
+        payload = json.loads(sources.fetch(conn, _forecast_url(lat, lon)))
+    except (sources.SourceUnavailable, json.JSONDecodeError):
+        return None
+    _temp, wind, _precip = _nearest_hour(payload, kickoff_utc)
+    return None if wind is None else float(wind)

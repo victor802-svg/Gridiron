@@ -110,8 +110,21 @@ def load_teams(conn: sqlite3.Connection, season: int, *, progress=None) -> dict:
         if code in seen and seen[code]["name"] != name:
             collisions.setdefault(code, [seen[code]["name"]]).append(name)
             continue
+        venue = team.get("venue") or {}
+        if isinstance(venue, dict) and venue.get("$ref"):
+            venue = _get(conn, venue["$ref"], immutable=settled) or {}
+        address = (venue.get("address") or {}) if isinstance(venue, dict) else {}
         seen[code] = {"name": name, "location": team.get("location"),
-                      "espn_id": team.get("id"), "ref": ref}
+                      "espn_id": team.get("id"), "ref": ref,
+                      # The venue carries no coordinates -- see cfb_venues --
+                      # so what is stored is the city, the state and whether it
+                      # is indoors. The lat/lon arrive from the geocoder.
+                      "venue_name": venue.get("fullName") if isinstance(venue, dict) else None,
+                      "venue_city": address.get("city"),
+                      "venue_state": address.get("state"),
+                      "venue_indoor": (1 if venue.get("indoor") else 0)
+                                      if isinstance(venue, dict) and venue.get("indoor") is not None
+                                      else None}
         if progress and i % 25 == 0:
             progress(f"cfb {season} teams {i}")
 
@@ -125,14 +138,20 @@ def load_teams(conn: sqlite3.Connection, season: int, *, progress=None) -> dict:
     for code, info in seen.items():
         conn.execute(
             "INSERT INTO teams (sport, tricode, espn_abbrev, display_name,"
-            " short_name, location, source_url, fetched_utc)"
-            " VALUES ('cfb',?,?,?,?,?,?,?)"
+            " short_name, location, source_url, fetched_utc, is_fbs)"
+            " VALUES ('cfb',?,?,?,?,?,?,?,1)"
             " ON CONFLICT(sport, tricode) DO UPDATE SET"
             " display_name=excluded.display_name,"
             " location=excluded.location, source_url=excluded.source_url,"
-            " fetched_utc=excluded.fetched_utc",
+            " fetched_utc=excluded.fetched_utc, is_fbs=1",
             (code, code, info["name"], info["name"], info["location"],
              info["ref"], now),
+        )
+        conn.execute(
+            "UPDATE teams SET venue_name = ?, venue_city = ?, venue_state = ?,"
+            " venue_indoor = ? WHERE sport = 'cfb' AND tricode = ?",
+            (info["venue_name"], info["venue_city"], info["venue_state"],
+             info["venue_indoor"], code),
         )
     conn.commit()
     return {"season": season, "teams": len(seen)}
@@ -250,13 +269,54 @@ def _slate_ordinal(event: dict) -> int:
 
 
 def _team_code(conn, competitor: dict, *, immutable: bool) -> str | None:
-    """The competitor's abbreviation, from its team document."""
+    """The competitor's abbreviation, and its venue if we have never seen it.
+
+    OPPONENTS FROM LOWER DIVISIONS ARE RECORDED HERE and nowhere else. The
+    loader walks FBS schedules, so an FCS school never appears in the team
+    list -- but it does appear as a competitor, and its team document is
+    already being fetched to get its code. Recording it costs nothing extra.
+
+    It matters because half of an early-September slate is FBS-vs-FCS: 30 of
+    Saturday's 60 games. Without this the travel factor is absent for every one
+    of them, not because the distance is unknowable but because we never wrote
+    down where the visitors were coming from.
+
+    `is_fbs` still distinguishes them -- that reads the FBS flag, not mere
+    presence -- so a lower-division team gaining a row here does not quietly
+    become an FBS team.
+    """
     ref = (competitor.get("team") or {}).get("$ref")
     if not ref:
         return None
     team = _get(conn, ref, immutable=immutable) or {}
     code = (team.get("abbreviation") or "").upper()
-    return code or None
+    if not code:
+        return None
+
+    known = conn.execute(
+        "SELECT 1 FROM teams WHERE sport = 'cfb' AND tricode = ?", (code,)
+    ).fetchone()
+    if known is None:
+        venue = team.get("venue") or {}
+        if isinstance(venue, dict) and venue.get("$ref"):
+            venue = _get(conn, venue["$ref"], immutable=immutable) or {}
+        address = (venue.get("address") or {}) if isinstance(venue, dict) else {}
+        conn.execute(
+            "INSERT INTO teams (sport, tricode, espn_abbrev, display_name,"
+            " short_name, location, source_url, fetched_utc, is_fbs,"
+            " venue_name, venue_city, venue_state, venue_indoor)"
+            " VALUES ('cfb',?,?,?,?,?,?,?,0,?,?,?,?)"
+            " ON CONFLICT(sport, tricode) DO NOTHING",
+            (code, code, team.get("displayName") or code,
+             team.get("displayName") or code, team.get("location"), ref,
+             utcnow(),
+             venue.get("fullName") if isinstance(venue, dict) else None,
+             address.get("city"), address.get("state"),
+             (1 if venue.get("indoor") else 0)
+             if isinstance(venue, dict) and venue.get("indoor") is not None
+             else None),
+        )
+    return code
 
 
 def _status(conn, competition: dict, *, immutable: bool) -> str:

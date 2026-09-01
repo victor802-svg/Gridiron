@@ -50,6 +50,8 @@ from dataclasses import dataclass, field
 
 from .. import config
 from ..data import cfb_repo as repo
+from ..data import cfb_venues as venues
+from ..data import weather
 from ..factors import compute
 from ..model import questions
 from ..model.question import Question
@@ -82,6 +84,17 @@ class CfbContext:
     away_form: dict = field(default_factory=dict)
     home_rest: int | None = None
     away_rest: int | None = None
+    #: Opponent-adjusted scoring margin, from games completed before kickoff.
+    home_rating: float | None = None
+    away_rating: float | None = None
+    #: Great-circle miles between the two schools. None when either venue
+    #: could not be placed -- absent, never zero.
+    travel_miles: float | None = None
+    #: Mean game-to-game swing in each side's combined score (totals market).
+    home_swing: float | None = None
+    away_swing: float | None = None
+    #: Forecast wind at kickoff, outdoor venues only.
+    wind_mph: float | None = None
     #: A game against a lower division is a different question, and saying so
     #: is more honest than letting a factor average it in silently.
     home_is_fbs: bool = True
@@ -99,6 +112,7 @@ def build_context(conn: sqlite3.Connection, game_id: str,
     if not kickoff:
         raise KeyError(f"CFB game {game_id!r} has no kickoff time")
 
+    rating = repo.ratings(conn, game["season"], before_utc=kickoff)
     return CfbContext(
         game_id=game_id,
         season=game["season"],
@@ -115,7 +129,37 @@ def build_context(conn: sqlite3.Connection, game_id: str,
         away_rest=repo.days_rest(conn, game["away"], before_utc=kickoff),
         home_is_fbs=repo.is_fbs(conn, game["home"]),
         away_is_fbs=repo.is_fbs(conn, game["away"]),
+        home_rating=rating.get(game["home"]),
+        away_rating=rating.get(game["away"]),
+        travel_miles=_travel(conn, game["home"], game["away"]),
+        home_swing=repo.score_swing(conn, game["home"], before_utc=kickoff),
+        away_swing=repo.score_swing(conn, game["away"], before_utc=kickoff),
+        wind_mph=_wind(conn, game["home"], kickoff),
     )
+
+
+def _travel(conn: sqlite3.Connection, home: str, away: str) -> float | None:
+    """Miles the visitors travelled, or None when either venue is unplaced."""
+    here, there = venues.site(conn, home), venues.site(conn, away)
+    if here is None or there is None:
+        return None
+    return venues.miles_between(here, there)
+
+
+def _wind(conn: sqlite3.Connection, home: str, kickoff: str) -> float | None:
+    """Forecast wind at an OUTDOOR venue, or None.
+
+    None covers three different situations on purpose, and all three are
+    absences rather than calm: the venue is indoors, we do not know whether it
+    is indoors, or no forecast exists for that kickoff. Returning 0 for any of
+    them would put a real number about the wrong thing into the fit.
+    """
+    if venues.indoor(conn, home) is not False:
+        return None
+    site = venues.site(conn, home)
+    if site is None:
+        return None
+    return weather.wind_at(conn, site[0], site[1], kickoff)
 
 
 def slate_questions(conn: sqlite3.Connection, season: int, day: int,

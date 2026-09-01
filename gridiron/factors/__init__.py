@@ -18,7 +18,7 @@ from . import registry  # noqa: F401  (defines the decorator and NFL's factors)
 
 def _register_sport_factors() -> None:
     """Import each sport's declarations for their side effect on the registry."""
-    from . import mlb, nba  # noqa: F401
+    from . import cfb, mlb, nba  # noqa: F401
 
 
 _register_sport_factors()

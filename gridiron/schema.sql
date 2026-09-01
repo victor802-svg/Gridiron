@@ -333,6 +333,21 @@ CREATE TABLE IF NOT EXISTS teams (
     location     TEXT,              -- the CITY form: "St. Louis", "Chicago"
     source_url   TEXT NOT NULL,
     fetched_utc  TEXT NOT NULL,
+    -- WHERE THIS TEAM PLAYS. ESPN's college venue documents carry no
+    -- coordinates, so the city and state come from the feed and the
+    -- lat/lon from Open-Meteo's geocoder WITH A STATE FILTER -- 23 of
+    -- 136 FBS venues resolve to the wrong state without one. A venue
+    -- that cannot be placed keeps NULLs and its factors go absent.
+    -- 1 for a team the FBS group listed, 0 for a lower-division school
+    -- seen only as an opponent. Both get rows; only one is FBS.
+    is_fbs             INTEGER,
+    venue_name         TEXT,
+    venue_city         TEXT,
+    venue_state        TEXT,
+    venue_indoor       INTEGER,
+    venue_lat          REAL,
+    venue_lon          REAL,
+    venue_geocoded_utc TEXT,
     PRIMARY KEY (sport, tricode)
 );
 
