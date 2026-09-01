@@ -52,6 +52,7 @@ from .. import config
 from ..data import cfb_repo as repo
 from ..data import cfb_venues as venues
 from ..data import weather
+from .. import db
 from ..factors import compute
 from ..model import questions
 from ..model.question import Question
@@ -159,6 +160,13 @@ def _wind(conn: sqlite3.Connection, home: str, kickoff: str) -> float | None:
     site = venues.site(conn, home)
     if site is None:
         return None
+    # A PAST KICKOFF GETS THE OBSERVATION, A FUTURE ONE THE FORECAST. The
+    # forecast endpoint has no history, so without this the factor is measured
+    # on zero training rows and dropped by the fit while being present on the
+    # live slate -- an instrument that exists only forward. See
+    # `weather.wind_observed` for why that trade is stated rather than hidden.
+    if kickoff < db.utcnow():
+        return weather.wind_observed(conn, site[0], site[1], kickoff)
     return weather.wind_at(conn, site[0], site[1], kickoff)
 
 
@@ -254,14 +262,73 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
     return outcome if pred["model_side"] == yes else 1 - outcome
 
 
-def training_set(conn: sqlite3.Connection, seasons, market: str, **kwargs):
+def training_set(conn: sqlite3.Connection, seasons, market: str, *,
+                 through_season: int | None = None,
+                 through_week: int | None = None, progress=None):
     """(rows, labels, names) for one market, by the same rules as a forecast.
 
-    Built in B4 with the factors B3 declares. Raising here rather than
-    returning an empty set: a fit on nothing would report a converged model
-    with no coefficients, which reads like a working model.
+    EVERY ROW IS BUILT THE WAY A LIVE ONE WOULD BE. The context is constructed
+    with the game's own kickoff, so the ratings, the scoring form and the rest
+    days all see exactly what a forecast made that morning would have seen and
+    nothing later. That is not a detail: computing ratings over a whole season
+    and then fitting on games inside it is the rolling-window leak that once
+    made an NBA model appear to beat the market by 14%.
+
+    `through_season` / `through_week` are the walk-forward bounds -- fit on
+    what had happened by a point, test on what came after.
     """
-    raise NotImplementedError(
-        "CFB training sets arrive with the factors in B3/B4. An empty set here "
-        "would fit a model with no coefficients and report success"
-    )
+    from ..factors import registry
+
+    if market not in ("spread", "moneyline", "total"):
+        raise ValueError(f"CFB has no {market!r} market")
+
+    games = _completed_for_training(conn, seasons, through_season, through_week)
+    rows, labels = [], []
+    for i, game in enumerate(games):
+        if progress and i % 250 == 0:
+            progress(f"cfb {market} features {i}/{len(games)}")
+
+        line = None
+        if market == "spread":
+            line = questions.cfb_spread_rung(game["id"])
+        try:
+            ctx = build_context(conn, game["id"], market=market, line_asked=line)
+        except KeyError:
+            continue
+
+        if market == "total":
+            line = questions.cfb_total_asked(
+                (ctx.home_form or {}).get("for_pg"),
+                (ctx.away_form or {}).get("for_pg"))
+            if line is None:
+                # No total could be formed for this game at the time -- the same
+                # absence a live slate would have had. Skipped, not guessed.
+                continue
+            ctx.line_asked = line
+
+        fv = compute.feature_vector(ctx, market, market)
+        home, away = int(game["home_score"]), int(game["away_score"])
+        if market == "moneyline":
+            label = 1 if home > away else 0
+        elif market == "spread":
+            label = questions.spread_outcome(home, away, line)
+        else:
+            label = questions.total_outcome(home, away, line)
+        rows.append(fv.values)
+        labels.append(label)
+
+    names = [f.name for f in registry.active_factors(SPORT, market, market)]
+    return rows, labels, names
+
+
+def _completed_for_training(conn, seasons, through_season, through_week):
+    """Completed games inside the walk-forward bound, oldest first."""
+    placeholders = ",".join("?" for _ in seasons)
+    sql = ("SELECT id, season, week, home_score, away_score FROM games"
+           f" WHERE sport = 'cfb' AND status = 'final' AND season IN ({placeholders})"
+           "   AND home_score IS NOT NULL AND away_score IS NOT NULL")
+    params = list(seasons)
+    if through_season is not None:
+        sql += " AND (season < ? OR (season = ? AND week <= ?))"
+        params += [through_season, through_season, through_week or 99999999]
+    return conn.execute(sql + " ORDER BY kickoff_utc, id", params).fetchall()
