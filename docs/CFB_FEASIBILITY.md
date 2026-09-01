@@ -1,116 +1,185 @@
 # College football — feasibility probe
 
-**STATUS: INCOMPLETE.** Phase B1 was interrupted mid-probe by the
-calibration brief (2026-08-31), which was taken up first. Everything below
-is measured, dated, and read-only against the sources. The questions still
-unmeasured are listed at the foot, by the brief's own numbering. **No CFB
-code exists and nothing has been built on any of this.**
-
 Measured 2026-08-31 against `sports.core.api.espn.com`, league path
-`football/leagues/college-football`.
+`football/leagues/college-football`. Read-only throughout; no CFB code
+existed when any of this was taken.
+
+**One market is killed by the evidence: player props.** Everything else the
+brief asked for is supported. The detail is below, item by item.
 
 ---
 
-## 1. Schedule, results, stats — PARTIALLY MEASURED
+## 1. Schedule, results and stats
 
-**The league path exists and carries completed games with scores.**
+**The league path carries the full FBS season with finals and team box
+scores.** The division split is read from the feed: group 80 is named `FBS`
+with 11 child conferences, group 81 `FCS` with 14, and each team document
+carries a `groups` ref — so "is this opponent FBS?" is answerable per team,
+never from a typed list.
 
-| what | measured |
-|---|---|
-| teams in the 2025 season feed | **807** (all divisions, not just FBS) |
-| FBS teams, via group 80 | **136**, across **11** conferences |
-| a completed game | scores, `winner`, `STATUS_FINAL`, attendance, venue |
+| | 2025 | 2026 |
+|---|---|---|
+| FBS teams, via group 80 | **136** | **138** |
+| distinct regular-season events (union of team schedules) | **888** | **892** |
 
-**The division split comes from the feed, not from a guess.** Group 80 is
-named `FBS` (11 child conferences) and group 81 is `FCS` (14). Both were
-read from `/seasons/2025/types/2/groups/{id}`, and the team's own document
-carries a `groups` ref, so "is this opponent FBS?" is answerable per team
-without a typed list.
+### The weekly endpoint is a subset and must never be used
 
-**FBS-vs-FCS games appear as ordinary events.** The first 2025 week-3 event
-returned was *Indiana State Sycamores at Indiana Hoosiers* — an FCS
-opponent, present in the schedule with scores like any other game.
+`/seasons/{y}/types/2/weeks/{n}/events` returns roughly twenty events per
+week — 23, 23, 21, 16 for weeks 1, 2, 3, 5 — with `pageCount: 1` at
+`limit=500`, so it is not pagination. Against the 888 the union finds, that
+endpoint carries under a third of the season. **Anything built on it would
+silently forecast a fraction of the slate and look complete.**
 
-### The league-wide weekly endpoint is a SUBSET, not the slate
+**The slate is the union of the 136 per-team schedules**
+(`/seasons/{y}/types/2/teams/{id}/events`), de-duplicated by event id. One
+request per team per season, permanently cacheable once a season is done.
 
-`/seasons/2025/types/2/weeks/{n}/events` returns roughly twenty events per
-week — 23, 23, 21 and 16 for weeks 1, 2, 3 and 5, with `pageCount: 1` at
-`limit=500`, so this is not pagination. A real FBS week is 60–80 games.
-**Anything built on that endpoint would silently forecast a fifth of the
-slate.**
+### Two shapes the loader must handle
 
-The full slate is the **union of per-team schedules**:
-`/seasons/2025/types/2/teams/{id}/events` returned 12 events for Auburn.
-Cost: ~136 team requests per season plus each event document, all
-permanently cacheable for completed seasons.
+- **FBS-vs-FCS games appear as ordinary events**, with scores, and resolve
+  like any other. The first week-3 event returned was *Indiana State at
+  Indiana*.
+- **`week` is `None` on 2026 events.** The week number is not populated for
+  the live season, so **slates must be derived from dates**, not from
+  `week.number`. The day groupings are unambiguous: 2026-09-05 has 60 games,
+  2026-09-06 has 16, 2026-09-04 has 8.
 
-> Not yet measured: whether the union across all 136 FBS teams reconstructs
-> a complete week, and what team game stats the box score actually carries.
-> The `competitions` document advertises `boxscoreAvailable` and
-> `hasDefensiveStats`; neither has been opened.
+### Team game statistics exist
 
-## 5. Weather — MEASURED, and it needs a guard
+Each competitor carries a `statistics` ref with ten categories including
+`passing` (attempts, completions, net yards) and `rushing` (attempts,
+yards) — enough to derive pace without a second source.
 
-**ESPN's CFB venue documents carry no coordinates.** The full venue
-document has exactly: `id`, `guid`, `fullName`, `address`
-(city / state / zipCode / country), `grass`, `indoor`, `images`. There are
-919 venues in the feed. No latitude, no longitude, at either the
-competition's embedded venue or the standalone `/venues/{id}` document.
+## 2. Lines — the R-A slate size
 
-This matters beyond weather: **travel distance needs coordinates too**, and
-NFL gets its from nflverse's published `airports.csv` (CC BY 4.0). College
-football has no equivalent in this project, and 136 stadium coordinates
-typed from memory is precisely what checklist item 3 forbids.
+**Two independent measurements agree that spreads and totals are effectively
+complete, and that the moneyline is the competitive slate only.**
 
-**Open-Meteo's geocoding API closes the gap** — same provider, same CC BY
-4.0 licence, already a declared source for the forecasts themselves.
+A random sample of **260** of the 888 completed 2025 events:
+
+| | count | share |
+|---|---|---|
+| carries an odds document | 259 | **100%** |
+| spread | 256 | **98%** |
+| total (`overUnder`) | 258 | **99%** |
+| moneyline | 227 | **87%** |
+
+The live slate for **Saturday 2026-09-05**, all 60 games:
+
+| | count | share |
+|---|---|---|
+| odds / spread / total | 60 | **100%** |
+| moneyline | 44 | **73%** |
+
+### Where the moneyline goes missing, and why
+
+The 32 games with no moneyline are not a parsing failure: their
+`homeTeamOdds` carries spread fields and no `moneyLine` key at all. They are
+the **blowouts**.
+
+| | n | median \|spread\| |
+|---|---|---|
+| games carrying a moneyline | 227 | **8.5** |
+| games without one | 29 | **34.5** |
+
+At `|spread| < 28`, 212 of 221 games carry a moneyline (**96%**). At
+`|spread| >= 28`, only 15 of 35 (**43%**).
+
+**Consequence for R-A:** spread and total questions can be asked on the whole
+slate; moneyline questions will be asked on roughly three-quarters of it, and
+the missing quarter is systematically the least competitive games. That
+absence must be recorded as an absence, never filled from the spread.
+
+## 3. Identity — single-source, no crosswalk
+
+**260 of 260** sampled events carry both competitors' team ids inline, and
+those ids are the same ESPN ids the odds documents key on. Stats, schedule
+and lines all come from one host and one id space.
+
+**Checklist item 3 is satisfied by construction for CFB**: there is no second
+feed to reconcile, so there are no aliases to reverse and no reference set to
+get wrong. This is the one thing about college football that is *easier* than
+MLB or NBA.
+
+Team names come from the feed's `displayName` (e.g. "Auburn Tigers") with
+`location` ("Auburn") beside it — which maps exactly onto the existing
+full/city split, so the school form in prose costs nothing new.
+
+## 4. Measured constants
+
+From the same 260-game sample, all with final scores:
+
+| | mean | **SD** | N |
+|---|---|---|---|
+| margin (home − away) | +9.79 | **22.46** | 260 |
+| total points | 53.82 | **16.19** | 260 |
+
+**CFB margin SD is 22.46 against NFL's 12.70** — 77% wider, which is what the
+brief expected and is now measured rather than assumed. The home-field mean
+of +9.79 is also far above the NFL's.
+
+Both constants are dated 2026-08-31 with their N, and the undated-SD guard
+extends to them.
+
+> Measured on a sample, not the full season, because each game's scores sit
+> behind two further `$ref` fetches and a full season is ~2,700 requests.
+> 260 is reported beside every figure it produced.
+
+## 5. Weather and travel — possible, with a mandatory filter
+
+**ESPN's CFB venue documents carry no coordinates.** The full document has
+`fullName`, `address` (city / state / zipCode / country), `grass`, `indoor`
+and nothing else. 919 venues. This blocks wind *and* travel distance, both of
+which NFL takes from nflverse's published airports table — for which college
+football has no equivalent, and 136 stadium coordinates typed from memory is
+what checklist item 3 exists to forbid.
+
+**Open-Meteo's geocoder closes it** — same provider and CC BY 4.0 licence as
+the forecast path already in use.
 
 | measurement | result |
 |---|---|
 | distinct FBS home venues | **136** |
-| indoor / outdoor | **4 indoor, 132 outdoor** |
-| venues whose ESPN state code is a real US state | **136 of 136** |
+| indoor / outdoor | **4 / 132** |
+| ESPN state code is a real US state | **136 of 136** |
 | geocoded to a US city **in the right state** | **136 of 136** |
-| of those, where the FIRST US result was the **wrong state** | **23 (17%)** |
+| where the FIRST US result was the **wrong state** | **23 (17%)** |
 
-**The state filter is not optional and the number proves it.** Open-Meteo
-orders results by population, so a bare name lookup for `Auburn` returns
-Auburn, **New York** (pop. 26,985) seventh-best-known ahead of Auburn,
-**Alabama** (pop. 62,059) — the wrong Auburn by about 900 miles. Twenty-three
-of the 136 FBS venues would take the wrong city that way.
+**The state filter is mandatory and the number proves it.** Open-Meteo orders
+by population, so a bare lookup for `Auburn` returns Auburn, **New York**
+ahead of Auburn, **Alabama** — the wrong Auburn by about 900 miles. Twenty-
+three of 136 venues would take the wrong city. `admin1` is the full state
+name and ESPN gives the two-letter code, so a code→name map is required; every
+code appearing in the feed was checked against it (0 unknown).
 
-`admin1` is the full state **name** ("Alabama"); ESPN gives the two-letter
-code ("AL"), so a code→name map is required. That map is 51 rows of a
-stable public standard and every code appearing in the feed was checked
-against it (0 unknown), which is a round-trip rather than a memory.
+Resolved coordinates are stored with their source and the date they were
+fetched, and a venue that does not resolve is **absent**, never defaulted to a
+state centroid.
 
-**Conclusion for the build:** wind at kickoff is feasible for CFB totals,
-and so is travel distance, but only through a geocoding step that filters
-on state and records the resolved coordinate with the source and date it
-came from. A venue that does not resolve must be **absent**, never
-defaulted to a state centroid.
+## 6. Player props — NOT AVAILABLE, and not built
+
+**Zero prop rows, on completed and upcoming games alike.**
+
+- Every 2025 event probed returns an error from
+  `/events/{id}/competitions/{id}/odds/{provider}/propBets`.
+- Every one of Saturday's 60 games returns **0 prop rows**.
+- A CFB event carries exactly **one odds provider** (100, DraftKings), and
+  that provider's `propBets` endpoint 404s. There is no second provider to
+  fall back to.
+
+Player *game statistics* do exist and would resolve props if lines existed —
+the gap is the lines, not the results.
+
+**Ruling on R-C: props are not built for CFB.** The build shrinks to the
+three team markets the evidence supports: spread, moneyline and total.
 
 ---
 
-## Still unmeasured — the rest of B1
+## What this means for the build
 
-These were not reached before the brief was switched. None is answered, and
-none should be assumed:
-
-2. **LINES.** Spread, moneyline and total (`overUnder`) coverage across a
-   real current-week slate — the fraction carrying each. This sets the
-   slate size under R-A and is the single most consequential unmeasured
-   number here. The `competitions[0].odds` ref exists on CFB events, but no
-   coverage fraction has been computed. *A first attempt returned 0 games
-   because the week filter was wrong, not because the data is absent.*
-3. **IDENTITY.** Whether stats and lines are genuinely single-source ESPN
-   ids, which would remove the crosswalk problem entirely for CFB. Strongly
-   suggested by both coming from the same host, and **not yet confirmed**.
-4. **MEASURED CONSTANTS.** CFB margin SD and total-points SD, from past
-   seasons, dated and with N. The brief expects margin SD well above NFL's
-   12.70; nothing has been computed, so nothing is claimed.
-6. **PROPS.** Whether CFB player prop lines exist at usable coverage and
-   whether player game stats can resolve them.
-
-Also open from item 1: that the per-team union reconstructs a full week,
-and what the box score carries for team game stats.
+| market | verdict | slate |
+|---|---|---|
+| **spread** | build | ~100% of games |
+| **total** | build | ~100% of games |
+| **moneyline** | build | ~73%, and the absent quarter is the blowouts |
+| **player props** | **do not build** | no lines exist at any provider |
