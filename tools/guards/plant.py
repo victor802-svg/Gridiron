@@ -721,6 +721,58 @@ def cfb_spread_rung(game_id, expected_margin=None):
 """
 
 
+def plant_a_stale_build_that_says_nothing() -> Result:
+    """A bundle behind the repository, rendering as though it were current.
+
+    THIS IS THE FAILURE THAT DOES NOT LOOK LIKE ONE. The operator's exe was
+    built 2026-08-29 and showed a live, current record through an interface
+    that predated college football, the desk and the rail. Nothing was broken.
+    The record kept filling, the window kept opening, and the screen was a
+    photograph. The only way that gets noticed is if the page says so.
+
+    Planted as a freshness report a stale build would produce, checked against
+    the words that must come out of it.
+    """
+    from gridiron import language
+
+    stale = {"from_source": False, "commit": "0e2376900000", "built_utc":
+             "2026-08-29T19:54:00Z", "behind": 4, "stale": True}
+    said = language.build_line(stale)
+    if "behind" in said and "rebuild" in said and "4" in said:
+        return Result("THE BUILD", "run a bundle four commits behind in silence",
+                      "language.build_line", True, said)
+    return Result("THE BUILD", "run a bundle four commits behind in silence",
+                  "language.build_line", False,
+                  f"NOT CAUGHT - a stale build rendered as {said!r}, which does "
+                  f"not tell the reader it is stale or what to do")
+
+
+def plant_a_bundle_missing_a_sport() -> Result:
+    """Ship a build whose hidden imports do not cover every declared sport.
+
+    The spec named nfl, mlb and nba and was written before college football
+    existed. A bundle built from it would have started, served, and forecast
+    three of four sports -- the fourth silently absent from a record that
+    already holds 194 of its predictions.
+    """
+    from gridiron import config
+    from pathlib import Path
+
+    spec = Path("desktop/gridiron.spec").read_text(encoding="utf-8")
+    # The fix derives the list; the defect hardcodes it. A spec that names any
+    # sport literally is one sport away from being wrong again.
+    hardcoded = [s for s in config.SPORTS if f'"gridiron.sports.{s}"' in spec]
+    if not hardcoded and "_SPORT_MODULES" in spec:
+        return Result("THE BUILD", "ship a bundle missing a declared sport",
+                      "desktop/gridiron.spec derives from config.SPORTS", True,
+                      "the spec derives its sport modules from config.SPORTS, "
+                      "so a new sport cannot be left out of a build")
+    return Result("THE BUILD", "ship a bundle missing a declared sport",
+                  "desktop/gridiron.spec derives from config.SPORTS", False,
+                  f"NOT CAUGHT - the spec hardcodes {hardcoded}, so the next "
+                  f"sport added ships in the record and not in the bundle")
+
+
 def plant_a_pick_line_that_disagrees_with_its_label() -> Result:
     """A tile naming one side across the middle and the other underneath.
 
@@ -2314,6 +2366,8 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_stale_build_that_says_nothing())
+    results.append(plant_a_bundle_missing_a_sport())
     results.append(plant_a_pick_line_that_disagrees_with_its_label())
     results.append(plant_a_side_with_no_words())
     results.append(plant_a_slate_key_on_the_page())

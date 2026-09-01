@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import calibration, config, db, language, sports, subjects
+from . import buildinfo, calibration, config, db, language, sports, subjects
 from .data import reference, repo, teams
 from .factors import compute as factor_compute, registry
 from .market import lines
@@ -111,6 +111,10 @@ def meta(conn: sqlite3.Connection, sport: str) -> dict:
         "last_prediction_utc": row["last"],
         "market_coverage": lines.coverage(conn, sport=sport),
         "llm_ledger": llm.ledger_summary(conn),
+        # WHICH BUILD THIS IS. Present in the payload rather than composed in
+        # the browser, and computed by the same function the launcher calls so
+        # the window and the launcher cannot disagree about how old it is.
+        "build": buildinfo.freshness(),
         "not_a_betting_tool": (
             "Gridiron states probabilities and keeps score of them. It does not "
             "size stakes, manage a bankroll, or recommend a bet, and it connects "

@@ -29,6 +29,28 @@ import sys
 from pathlib import Path
 
 REPO = Path(SPECPATH).parent
+sys.path.insert(0, str(REPO))
+
+# THE BUILD STAMPS ITSELF. Written here, at build time, because reading the
+# commit at RUN time would report whatever the repository is at now -- which is
+# the question, not the answer. See gridiron/buildinfo.py for what this is for:
+# a bundle three days behind showed a live record through an older interface
+# and nothing on the screen said so.
+from gridiron import buildinfo as _buildinfo  # noqa: E402
+
+_STAMP = REPO / "build" / "build_stamp.json"
+_STAMP.parent.mkdir(parents=True, exist_ok=True)
+_STAMP_DATA = _buildinfo.write_stamp(_STAMP, REPO)
+print(f"[gridiron] stamping build {_STAMP_DATA['commit'][:7]} "
+      f"({_STAMP_DATA['built_utc']})")
+
+# EVERY SPORT, DERIVED. This list named nfl, mlb and nba and was written before
+# college football existed, so a bundle built today would have shipped without
+# the CFB adapter and failed to forecast a sport the record already holds. The
+# same defect as the four tests that hardcoded three sports; the same fix.
+from gridiron import config as _config  # noqa: E402
+
+_SPORT_MODULES = [f"gridiron.sports.{name}" for name in _config.SPORTS]
 
 a = Analysis(
     [str(REPO / "desktop" / "launcher.py")],
@@ -39,6 +61,7 @@ a = Analysis(
     datas=[
         (str(REPO / "gridiron" / "web"), "gridiron/web"),
         (str(REPO / "gridiron" / "schema.sql"), "gridiron"),
+        (str(_STAMP), "gridiron"),
     ],
     hiddenimports=[
         "uvicorn.logging",
@@ -46,9 +69,7 @@ a = Analysis(
         "uvicorn.protocols.http.auto",
         "uvicorn.protocols.websockets.auto",
         "uvicorn.lifespan.on",
-        "gridiron.sports.nfl",
-        "gridiron.sports.mlb",
-        "gridiron.sports.nba",
+        *_SPORT_MODULES,
     ],
     hookspath=[],
     runtime_hooks=[],

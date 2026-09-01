@@ -938,6 +938,50 @@ def database_label(kind: str | None) -> str | None:
     return DATABASE_LABELS.get(kind) or f"{kind.upper()} DATABASE"
 
 
+#: Short month names for the build stamp. The footer says "built 1 Sep from
+#: 0e23769" rather than an ISO timestamp: a person reads a date, and the
+#: commit is the part that has to be exact.
+SHORT_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def build_line(freshness: dict) -> str:
+    """What this build is, in words a person can act on.
+
+    THREE STATES, AND THE THIRD IS THE ONE THAT MATTERS. Running from source
+    is the developer's ordinary case. A current build says so quietly. A build
+    that has fallen behind says HOW FAR and what to do, because the failure it
+    is warning about does not look like a failure: the record keeps filling,
+    the window keeps opening, and the screen is simply a photograph of an
+    older app. A three-day-old bundle showed a live record through an
+    interface that predated college football, the desk and the rail, and
+    nothing on the page said so.
+    """
+    if freshness.get("from_source"):
+        return "running from source"
+
+    commit = (freshness.get("commit") or "")[:7]
+    built = freshness.get("built_utc") or ""
+    when = ""
+    if len(built) >= 10:
+        try:
+            month, day = int(built[5:7]), int(built[8:10])
+            when = f"{day} {SHORT_MONTHS[month - 1]}"
+        except (ValueError, IndexError):
+            when = built[:10]
+    stamp = f"built {when} from {commit}" if when else f"built from {commit}"
+
+    behind = freshness.get("behind")
+    if behind:
+        return (f"{stamp} - this build is {behind} "
+                f"{'commit' if behind == 1 else 'commits'} behind; rebuild")
+    if behind is None:
+        # COULD NOT CHECK is not the same as UP TO DATE, and saying nothing
+        # would let the second be assumed from the first.
+        return f"{stamp} - could not check against the repository"
+    return stamp
+
+
 def colophon(meta: dict) -> str:
     """The footer line: what this record actually contains, in one sentence.
 
@@ -965,6 +1009,10 @@ def colophon(meta: dict) -> str:
     ledger = meta.get("llm_ledger") or {}
     bits.append(f"LLM spend today ${float(ledger.get('usd_spent') or 0):.4f}"
                 f" of ${float(ledger.get('usd_cap') or 0):.2f}")
+    # WHAT YOU ARE LOOKING AT, last, where a footer's provenance belongs.
+    build = meta.get("build")
+    if build:
+        bits.append(build_line(build))
     return " · ".join(bits)
 
 

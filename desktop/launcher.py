@@ -166,6 +166,23 @@ def paths_are_outside_the_bundle() -> list[str]:
 # attach first
 # ---------------------------------------------------------------------------
 
+def build_notice() -> str | None:
+    """A line to print when this bundle has fallen behind the repository.
+
+    Said HERE as well as in the footer, and both from `buildinfo.freshness()`
+    so they cannot disagree. The launcher is where somebody looks when the app
+    is behaving oddly, and "the app you are running was built from a commit
+    four behind this checkout" is the answer often enough to be worth saying
+    before the window opens rather than after they have hunted for it.
+    """
+    from gridiron import buildinfo, language
+
+    fresh = buildinfo.freshness()
+    if fresh.get("from_source") or not fresh.get("stale"):
+        return None
+    return language.build_line(fresh)
+
+
 def port_is_open(port: int, timeout: float = 0.4) -> bool:
     with socket.socket() as probe:
         probe.settimeout(timeout)
@@ -369,6 +386,13 @@ def main(argv: list[str] | None = None) -> int:
         api.set_database(config.DB_PATH)
         api.serve(port=args.port, log_level="info")
         return 0
+
+    # SAID BEFORE THE WINDOW OPENS. A stale bundle is the failure that does
+    # not look like one -- everything works and the screen is a photograph --
+    # so the launcher says it where somebody looks when the app seems odd.
+    stale = build_notice()
+    if stale:
+        print(f"Gridiron: {stale}")
 
     problems = paths_are_outside_the_bundle()
     if problems:

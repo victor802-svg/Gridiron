@@ -169,3 +169,27 @@ Retiring or reworking a declared factor is a LAW 2 act with a dated note, and
 **a repair is not a discovery** — whatever is written must say which this is.
 Measure the two factors' correlation on a real training set first; the answer
 may be that the asked line stays and the rating is the one that moves.
+
+## The rebuilt bundle could not be launched to confirm it renders
+
+2026-09-01. E0.1 asked for a rebuild "from HEAD, relaunch, and confirm the
+compact rows / desk render in the exe". The rebuild succeeded and is stamped
+`62e7f3b`; **launching it was blocked by a Windows Application Control
+policy** (`WinError 4551`), which is a security control and not something to
+work around.
+
+What was confirmed by inspection instead, and it is most of the claim:
+
+- every web asset in `dist/Gridiron/_internal/gridiron/web/` is **byte-identical**
+  to the repository's, so the bundle carries the current interface rather than
+  the 2026-08-29 one;
+- `desk-rail`, `rail-glance`, `tiles` and `slate_title` are all present in the
+  bundled assets — the desk, the rail and the date-worded slate title;
+- all four sport adapters are in the build graph, including `cfb`, which the
+  old spec would have left out;
+- the stamp file is inside the bundle and carries the commit and date.
+
+What was NOT confirmed: that the exe starts, serves, and paints those assets.
+The operator can check that by running `dist\Gridiron\Gridiron.exe` on a
+machine where the policy permits it, or by signing the binary. Until then the
+phase is PARTIAL, and it should not be reported otherwise.
