@@ -146,13 +146,23 @@ def test_a_prediction_row_exists_before_its_snapshot(trained):
         assert r["fetched_utc"] >= r["created_utc"], "LAW 1: the line arrived first"
 
 
-def test_rerunning_a_week_does_not_write_a_second_opinion(trained):
+def test_rerunning_a_week_is_refused_and_writes_nothing(trained):
+    """SILENTLY WRITING NOTHING BECAME REFUSING OUT LOUD (ruling R4).
+
+    The old behaviour was already safe -- a rerun wrote no second opinion --
+    but it was safe QUIETLY, and quiet is how `predict:nfl` running twice on
+    2026-08-29 went unnoticed for three days. (That one was the legitimate
+    exception, a changed factor set, but nothing on screen said so either.)
+
+    The guarantee this test was written for is unchanged and still asserted:
+    nothing is written.
+    """
     run.run_week(trained, 2025, 7, include_props=False, use_llm=False)
     first = trained.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
-    again = run.run_week(trained, 2025, 7, include_props=False, use_llm=False)
+    with pytest.raises(run.SlateAlreadyAnswered, match="answered once"):
+        run.run_week(trained, 2025, 7, include_props=False, use_llm=False)
     second = trained.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
-    assert second == first
-    assert again["written"] == 0
+    assert second == first, "a refused rerun wrote rows anyway"
 
 
 def test_stated_confidence_is_never_below_a_coin_flip(trained):

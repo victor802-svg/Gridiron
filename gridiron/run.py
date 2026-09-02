@@ -19,8 +19,43 @@ from __future__ import annotations
 
 import sqlite3
 
+from . import config
 from .blind import blind_window, forget_market_module
 from .model import predict
+
+
+#: A blank line between paragraphs of a refusal. Written as a name because an
+#: escape inside an f-string has collapsed into a real line break twice in this
+#: codebase, and a syntax error here stops every prediction.
+_GAP = chr(10) + chr(10)
+
+
+class SlateAlreadyAnswered(RuntimeError):
+    """A slate this factor set has already forecast, and why that is refused."""
+
+
+def already_answered(conn, sport: str, season: int, week: int) -> dict:
+    """Has this factor set already answered this slate?
+
+    THE FACTOR SET IS THE ESCAPE HATCH, deliberately. A different model asking
+    the same question is a different forecast and the record keeps both, with
+    the version on every row saying which produced which. The same model
+    asking twice is a duplicate, and only the later one counts.
+    """
+    row = conn.execute(
+        "SELECT COUNT(*) AS n, MIN(p.created_utc) AS first_written,"
+        "       MIN(p.factor_set_version) AS fsv"
+        "  FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
+        "   AND p.factor_set_version = ?",
+        (sport, season, week, config.FACTOR_SET_VERSION)).fetchone()
+    written = row["n"] or 0
+    return {
+        "written": written,
+        "first_written": row["first_written"] or "",
+        "factor_set_version": row["fsv"] or config.FACTOR_SET_VERSION,
+        "refuse": written > 0,
+    }
 
 
 def run_slate(
@@ -36,6 +71,31 @@ def run_slate(
     progress=None,
 ) -> dict:
     """Predict one slate blind, then attach the market to what was written."""
+    already = already_answered(conn, sport, season, week)
+    if already["refuse"]:
+        # A SLATE IS ANSWERED ONCE (ruling R4, 2026-09-02).
+        #
+        # `predict:nfl` ran twice on 2026-08-29 and wrote a full second set of
+        # week 1 forecasts. Nothing stopped it, nothing said so, and the
+        # duplicate surfaced days later as every game appearing twice on the
+        # Picks page. The rows are the record and stay; what changes is that
+        # it cannot happen again.
+        #
+        # A CHANGED FACTOR SET IS THE EXCEPTION, and it is a real one: a
+        # different model asking the same question is a different forecast,
+        # and the record keeps both with their versions attached.
+        raise SlateAlreadyAnswered(
+            f"{sport} {season} slate {week} already has {already['written']} "
+            f"forecasts, written {already['first_written'][:16]} under factor "
+            f"set {already['factor_set_version']!r}. A slate is answered once. "
+            f"Nothing was written." + _GAP
+            + "Re-answering it would put two forecasts on every question, and "
+            "only the later one would count -- which is what happened on "
+            "2026-08-29 and took three days to notice." + _GAP
+            + f"The exception is a changed factor set: this run is on "
+            f"{config.FACTOR_SET_VERSION!r}, the same one. If you mean to "
+            f"re-answer under a new factor set, declare it first."
+        )
     forget_market_module()
 
     with blind_window():

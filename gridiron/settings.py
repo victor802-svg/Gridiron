@@ -102,7 +102,13 @@ EDITABLE: dict[str, dict] = {
         "section": "when it runs",
         "kind": "time",
         "check": _a_time,
-        "default": "09:00",
+        # 11:00, NOT 09:00. This default was written from the mockup and never
+        # checked against the scheduler, which has held 11:00 since the tasks
+        # were installed -- `schedule_install.ps1` declares it. The settings
+        # page reported 09:00 for a task that fires at 11:00 until the OS
+        # read-back put the two side by side. Ruling of 2026-09-02: 11:00
+        # stands, because a later run sees more posted lines.
+        "default": "11:00",
         "task": "predict:nfl",
     },
     "predict_cfb_at": {
@@ -111,7 +117,10 @@ EDITABLE: dict[str, dict] = {
         "section": "when it runs",
         "kind": "time",
         "check": _a_time,
-        "default": "10:00",
+        # 09:00 by ruling of 2026-09-02, and DAILY: college football slates
+        # run Thursday to Sunday, with Saturday carrying sixty to seventy
+        # games against Friday's eight. See the note in schedule_install.ps1.
+        "default": "09:00",
         "task": "predict:cfb",
     },
     "quiet_from": {

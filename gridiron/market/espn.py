@@ -171,6 +171,17 @@ def fetch_day(
         counts["written"] += 1
 
     conn.commit()
+
+    # THE SIGN IS VERIFIED WHERE IT WAS WRITTEN (ruling R2, 2026-09-02).
+    #
+    # `_home_spread` derives the sign from ESPN's `spread` field; the payload
+    # ALSO states `homeTeamOdds.favorite` outright, and on 21 of 76 MLB rows
+    # the two disagreed. Verifying here means a freshly fetched row is checked
+    # against the explicit label immediately, rather than a repair being
+    # something somebody has to remember to run.
+    from . import lines as _lines
+
+    counts["signs"] = _lines.repair_run_line_signs(conn, sport)
     return counts
 
 

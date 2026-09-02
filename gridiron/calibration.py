@@ -151,6 +151,58 @@ def resolved(
         where.append("p.factor_set_version = ?")
         params.append(factor_set_version)
 
+    # SUPERSEDED FORECASTS ARE NOT IN THE RECORD'S ARITHMETIC (ruling R4,
+    # 2026-09-02), and they are never deleted.
+    #
+    # `predict:nfl` ran twice on 2026-08-29 -- 05:55Z and again at 07:34Z --
+    # and wrote a full second set of week 1 forecasts. Both rows are the
+    # record: LAW 3 is append-only and a prediction is never removed. But a
+    # curve that counts 26 questions twice is describing a slate that was
+    # never asked, and it counts them with correlated errors, which is worse
+    # than counting them once.
+    #
+    # THE STANDING FORECAST IS THE LATEST ONE WRITTEN, per question per
+    # forecaster -- the same rule `views.week` already applies to Picks and
+    # the same rule a revised call once followed. The earlier rows stay
+    # readable in Results and in `prediction_detail`; they are simply not
+    # arithmetic.
+    #
+    # WHAT MAKES TWO ROWS THE SAME QUESTION: the game, the market, the
+    # subject, the rung and the forecaster. `line_asked` is part of it -- the
+    # same subject asked at two different rungs is two questions, not a
+    # revision of one.
+    #
+    # `prop_type` IS DELIBERATELY NOT PART OF IT, and the reason is a data
+    # artefact worth naming. The subject already carries the stat ("Trey
+    # McBride receiving_yards"), and ten NFL rows from the earlier of the two
+    # 2026-08-29 runs left `prop_type` NULL where the later run set it. Keying
+    # on it split ten questions that are plainly the same one and counted each
+    # twice -- 88 standing instead of 78, disagreeing with the Picks page
+    # about the very same slate. One definition of "the same question", and
+    # this is it.
+    #
+    # THE SUBQUERY MIRRORS THE FILTER, and it has to. `factor_set_version` is
+    # a legitimate reason for two forecasts on one question -- a different
+    # model asking it is a different forecast, and the record keeps both with
+    # their versions attached. That is exactly what happened on 2026-08-29:
+    # fs1 at 05:55 and fs2 at 07:34.
+    #
+    # So an UNFILTERED curve takes the latest across sets, because a curve
+    # spanning two factor sets describes two models. A curve asked for ONE set
+    # takes the latest within it -- without this, asking for fs1 would match
+    # the fs2 row's id, fail the outer filter, and return nothing at all.
+    same_set = (" AND p2.factor_set_version = p.factor_set_version"
+                if factor_set_version else "")
+    standing = (
+        " AND p.id = (SELECT p2.id FROM predictions p2"
+        "              WHERE p2.game_id = p.game_id"
+        "                AND p2.market_type = p.market_type"
+        "                AND p2.subject = p.subject"
+        "                AND p2.predictor = p.predictor"
+        "                AND IFNULL(p2.line_asked, -1e9) = IFNULL(p.line_asked, -1e9)"
+        f"{same_set}"
+        "              ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)"
+    )
     rows = conn.execute(
         "SELECT p.id, p.created_utc, p.game_id, g.season, g.week, p.market_type,"
         " p.prop_type, p.predictor, p.factor_set_version, p.subject, p.line_asked,"
@@ -158,7 +210,7 @@ def resolved(
         " (SELECT s.implied_prob FROM market_snapshots s WHERE s.prediction_id = p.id"
         "  ORDER BY s.id LIMIT 1) AS implied_prob"
         f" FROM predictions p JOIN games g ON g.id = p.game_id"
-        f" WHERE {' AND '.join(where)} ORDER BY p.id",
+        f" WHERE {' AND '.join(where)}{standing} ORDER BY p.id",
         params,
     ).fetchall()
 

@@ -84,22 +84,44 @@ Dated **2026-09-02**, from every stored final MLB game.
 
 **Stable across four seasons** (4.31 to 4.59), which is what makes it usable.
 
-### A discrepancy worth recording
+### CORRECTED 2026-09-02: there is no discrepancy, and this section had one
 
-The brief says "the existing margin SD 4.71 covers the run line". Measured on
-the same 9,373 games, the **margin** SD is **4.534**, not 4.71:
+**This section originally claimed the stored margin SD of 4.71 "did not
+reproduce" against a measured 4.534. That was wrong, and the error is worth
+keeping visible because it is an easy one to repeat: I compared two different
+statistics.**
+
+- **4.71 is a RESIDUAL**: `SD(actual home margin − market spread)`, over 2,110
+  lined finals. It is what the market comparison needs, because it describes
+  how far a result lands from the line.
+- **4.534 is the RAW margin SD**: `SD(home − away)`, over 9,373 finals, with no
+  line subtracted at all.
+
+They are not the same quantity and were never going to agree.
+
+**4.71 also cannot be re-derived from this database**, which is a fact about
+the database and not about the number: `tools/measure_margin_sd.py`
+deduplicates across every database that holds lines for a sport, and this one
+holds **67** MLB games with both a final score and a run line. On those 67 the
+residual is 5.198 — a figure with an interval far too wide to correct anything
+with.
+
+**The stored 4.71 stands.** Replacing it with 4.534 would put an unconditional
+margin SD into the slot the market comparison reads, understating nothing and
+overstating the spread of results around the line — the same shape of error
+that made NBA's market look beatable by 14% in a backtest, which is why
+`MarginSD`'s own docstring exists.
+
+What the raw figures ARE good for is a build that has no fit yet, so they are
+recorded separately and dated in `config.MLB_SCORE_DISTRIBUTION`:
 
 ```
-margin (home − away): n=9,373  mean=+0.021  sd=4.534
+total  runs: n=9,373  mean=8.97   sd=4.511
+margin     : n=9,373  mean=+0.021 sd=4.534
 ```
 
-The mean margin of +0.021 runs is worth noting on its own: **home advantage in
-MLB is essentially zero in this sample**, which is not true of the other three
-sports.
-
-Whether 4.71 came from a different window, a different sport or a different
-definition is not established here. **A build must not use 4.71 without
-re-deriving it**, and the undated-SD guard should refuse it either way.
+The mean margin of +0.021 is worth noting on its own: **home advantage in MLB
+is essentially nothing**, which is not true of the other three sports.
 
 ### What the run line actually asks
 
@@ -159,7 +181,7 @@ reads `homeTeamOdds.favorite` and stops guessing.
 | Side labels present or derived? | **Present.** `favorite` / `underdog` booleans. |
 | A market missing or one-sided? | **No.** Both are present wherever either is. |
 | Total-runs SD | **4.511**, n=9,373, dated 2026-09-02. |
-| Margin SD | **4.534**, n=9,373 — *not* the 4.71 the brief cites. |
+| Margin SD (raw) | **4.534**, n=9,373. A different quantity from the stored 4.71 residual, which stands — see the correction above. |
 
 **Nothing here argues for shrinking the build.** Both markets are supported by
 the evidence, with three conditions:
@@ -168,7 +190,10 @@ the evidence, with three conditions:
 2. **Store the two prices** (`overOdds`/`underOdds`, and the run line's own
    price) — without them there is a line but no implied probability, and so no
    market comparison.
-3. **Re-derive the margin SD** rather than inheriting 4.71.
+3. **Use the right SD for the job.** The stored 4.71 residual is for the
+   market comparison; `config.MLB_SCORE_DISTRIBUTION` holds the raw margin and
+   total spreads for a model that has no fit yet. They are not
+   interchangeable.
 
 ---
 

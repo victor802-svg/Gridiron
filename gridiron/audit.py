@@ -2044,6 +2044,89 @@ def _check_the_colour_scanner_can_see() -> None:
 _check_the_colour_scanner_can_see()
 
 
+# A RUN LINE'S SIGN MUST AGREE WITH ITS MONEYLINE (ruling R2, 2026-09-02)
+# ---------------------------------------------------------------------------
+#
+# `spread_line` is stated as the expected home margin -- positive when the home
+# side is favoured. On MLB rows it was not: 21 of 76 carried the opposite sign.
+# Nothing consumed it, because Gridiron asks no run-line question yet, so no
+# figure was ever wrong. A build inheriting it would have been, and silently:
+# a market comparison drawn against a reversed line looks like a model
+# disagreeing with the market on exactly the games it agrees with.
+#
+# THE MONEYLINE IS THE CHECK because it is unambiguous and already stored. A
+# team favoured to win is the team giving runs. Where they disagree, one of
+# them is wrong and neither may be assumed.
+
+def run_line_sign_faults(rows) -> list[str]:
+    """A run line whose sign contradicts its own moneyline favourite."""
+    faults = []
+    for row in rows or []:
+        spread = row.get("spread_line")
+        home_ml, away_ml = row.get("home_moneyline"), row.get("away_moneyline")
+        if spread is None or home_ml is None or away_ml is None:
+            continue
+        if home_ml == away_ml:
+            continue                    # a true pick'em says nothing either way
+        home_favoured_by_price = home_ml < away_ml
+        home_favoured_by_line = spread > 0
+        if home_favoured_by_price != home_favoured_by_line:
+            faults.append(
+                f"{row.get('game_id')}: the run line is {spread:+.1f} -- the "
+                f"home side {'favoured' if home_favoured_by_line else 'getting runs'}"
+                f" -- while the moneyline has home {home_ml:+} and away "
+                f"{away_ml:+}, which says the opposite. One of them is wrong "
+                f"and neither may be assumed: read ESPN's own `favorite` flag.")
+    return faults
+
+
+RUN_LINE_FIXTURE_GOOD = [
+    {"game_id": "mlb_1", "spread_line": 1.5,
+     "home_moneyline": -162, "away_moneyline": 134},
+    {"game_id": "mlb_2", "spread_line": -1.5,
+     "home_moneyline": 134, "away_moneyline": -162},
+]
+RUN_LINE_FIXTURE_CONTRADICTED = [
+    {"game_id": "mlb_3", "spread_line": 1.5,
+     "home_moneyline": 168, "away_moneyline": -180},
+]
+
+
+def check_run_line_signs(conn, sport: str = "mlb") -> None:
+    """Every stored run line for a sport, against its own moneyline."""
+    # ONLY THE ROWS THAT CLAIM A VERIFIED SIGN. A row marked 'contradicted'
+    # is a KNOWN unknown -- ESPN's own flag and its own price disagree -- and
+    # it is recorded that way rather than silently passing a check it cannot
+    # meet. A build must refuse those rows; it must not read them as correct.
+    rows = [dict(r) for r in conn.execute(
+        "SELECT r.game_id, r.spread_line, r.home_moneyline, r.away_moneyline"
+        "  FROM market_lines_raw r JOIN games g ON g.id = r.game_id"
+        " WHERE g.sport = ? AND r.spread_line IS NOT NULL"
+        "   AND COALESCE(r.spread_sign_source, 'unverified') = 'espn-flag'",
+        (sport,))]
+    faults = run_line_sign_faults(rows)
+    if faults:
+        raise LawViolation(
+            "A RUN LINE CONTRADICTS ITS OWN MONEYLINE:"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+def _check_the_run_line_scanner_can_see() -> None:
+    problems = []
+    if run_line_sign_faults(RUN_LINE_FIXTURE_GOOD):
+        problems.append("run_line_sign_faults flags a consistent run line")
+    if not run_line_sign_faults(RUN_LINE_FIXTURE_CONTRADICTED):
+        problems.append("run_line_sign_faults misses a reversed sign")
+    if run_line_sign_faults([{"game_id": "x", "spread_line": 1.5,
+                              "home_moneyline": -105, "away_moneyline": -105}]):
+        problems.append("run_line_sign_faults flags a true pick'em")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_run_line_scanner_can_see()
+
+
 # FOUR PAGES, AND EVERY OLD ADDRESS STILL LANDS (GRIDIRON_13 P5)
 # ---------------------------------------------------------------------------
 #

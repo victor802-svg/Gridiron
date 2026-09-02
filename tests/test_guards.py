@@ -1050,3 +1050,160 @@ def test_a_removed_route_left_to_404_is_caught_by_name():
 
 def test_the_shipped_nav_is_the_four_ruled_pages():
     audit.check_the_nav_is_four_pages()          # must not raise
+
+
+# ---------------------------------------------------------------------------
+# A RUN LINE'S SIGN MUST AGREE WITH ITS MONEYLINE (ruling R2, 2026-09-02)
+# ---------------------------------------------------------------------------
+
+def test_a_run_line_contradicting_its_moneyline_is_caught_by_name():
+    faults = audit.run_line_sign_faults(audit.RUN_LINE_FIXTURE_CONTRADICTED)
+    assert faults and "says the opposite" in faults[0]
+
+
+def test_a_consistent_run_line_is_not_flagged():
+    assert not audit.run_line_sign_faults(audit.RUN_LINE_FIXTURE_GOOD)
+
+
+def test_a_true_pickem_says_nothing_either_way():
+    """Equal prices name no favourite, so the line cannot contradict them."""
+    assert not audit.run_line_sign_faults(
+        [{"game_id": "x", "spread_line": 1.5,
+          "home_moneyline": -105, "away_moneyline": -105}])
+
+
+def test_the_repair_never_guesses_a_contradicted_sign(tmp_path):
+    """ESPN CAN CONTRADICT ITSELF on a near-pick'em: mlb_823010 is priced
+    home -101, away -120 and its `favorite` flag says home. Neither source
+    wins, so the row is marked and its sign is left exactly as it was."""
+    from gridiron import db as _db
+    from gridiron.market import lines as _lines
+
+    conn = _db.open_db(tmp_path / "r.db")
+    conn.execute(
+        "INSERT INTO games (id, season, week, game_type, kickoff_utc, home,"
+        " away, status, sport) VALUES ('mlb_x', 2026, 1, 'REG',"
+        " '2026-09-01T18:00:00Z', 'AAA', 'BBB', 'scheduled', 'mlb')")
+    conn.execute(
+        "INSERT INTO market_lines_raw (game_id, fetched_utc, source,"
+        " spread_line, home_moneyline, away_moneyline)"
+        " VALUES ('mlb_x', '2026-09-01T18:00:00Z', 'test', 1.5, -101, -120)")
+    # A cached payload whose flag says HOME, against a price that says away.
+    conn.execute(
+        "INSERT INTO http_cache (url, body, fetched_utc, etag)"
+        " VALUES ('https://x/baseball/odds', ?, '2026-09-01T18:00:00Z', '')",
+        (json.dumps({"homeTeamOdds": {"favorite": True, "moneyLine": -101},
+                     "awayTeamOdds": {"favorite": False, "moneyLine": -120},
+                     "spread": 1.5}),))
+    conn.commit()
+
+    counts = _lines.repair_run_line_signs(conn, "mlb")
+    assert counts["contradicted"] == 1, counts
+    row = conn.execute(
+        "SELECT spread_line, spread_sign_source FROM market_lines_raw"
+        " WHERE game_id = 'mlb_x'").fetchone()
+    assert row["spread_sign_source"] == "contradicted"
+    assert row["spread_line"] == 1.5, "a contradicted sign was changed anyway"
+
+
+def test_every_verified_run_line_in_the_record_agrees_with_its_price():
+    """The shipped database, not a fixture. Rows marked 'contradicted' are
+    known unknowns and are excluded -- they must not be read as correct."""
+    from gridiron import db as _db
+
+    conn = _db.connect()
+    audit.check_run_line_signs(conn, "mlb")          # must not raise
+
+
+# ---------------------------------------------------------------------------
+# A SLATE IS ANSWERED ONCE (ruling R4, 2026-09-02)
+# ---------------------------------------------------------------------------
+
+def test_superseded_forecasts_are_not_in_the_arithmetic():
+    """`predict:nfl` ran twice on 2026-08-29. Both rows stay -- LAW 3 -- but a
+    curve that counts 26 questions twice describes a slate nobody asked."""
+    from gridiron import calibration as _cal, db as _db
+
+    conn = _db.connect()
+    standing = conn.execute("""
+      SELECT COUNT(*) FROM predictions p WHERE p.sport='nfl'
+         AND p.id = (SELECT p2.id FROM predictions p2
+                      WHERE p2.game_id=p.game_id AND p2.market_type=p.market_type
+                        AND p2.subject=p.subject AND p2.predictor=p.predictor
+                        AND IFNULL(p2.line_asked,-1e9)=IFNULL(p.line_asked,-1e9)
+                      ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)
+    """).fetchone()[0]
+    written = conn.execute(
+        "SELECT COUNT(*) FROM predictions WHERE sport='nfl'").fetchone()[0]
+    assert standing < written, "the double slate is not being deduplicated"
+    # And the Picks page must agree, because there is one definition of "the
+    # same question" and both read it.
+    from gridiron import views as _views
+
+    assert _views.week(conn, "nfl")["n"] + _views.week(conn, "nfl")["superseded"] \
+        == conn.execute("SELECT COUNT(*) FROM predictions p JOIN games g"
+                        " ON g.id=p.game_id WHERE p.sport='nfl'"
+                        " AND p.predictor='statistical'").fetchone()[0]
+
+
+def test_a_factor_set_query_still_returns_its_own_rows():
+    """THE SUBQUERY MIRRORS THE FILTER. Without that, asking for fs1 matches
+    the fs2 row's id, fails the outer filter and returns nothing at all."""
+    from gridiron import db as _db
+
+    conn = _db.connect()
+    for fsv, expected in (("fs1", 48), ("fs2", 56)):
+        got = conn.execute(f"""
+          SELECT COUNT(*) FROM predictions p
+           WHERE p.sport='nfl' AND p.factor_set_version='{fsv}'
+             AND p.id = (SELECT p2.id FROM predictions p2
+                          WHERE p2.game_id=p.game_id
+                            AND p2.market_type=p.market_type
+                            AND p2.subject=p.subject
+                            AND p2.predictor=p.predictor
+                            AND IFNULL(p2.line_asked,-1e9)=IFNULL(p.line_asked,-1e9)
+                            AND p2.factor_set_version=p.factor_set_version
+                          ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)
+        """).fetchone()[0]
+        assert got == expected, f"{fsv}: {got} of {expected}"
+
+
+def test_answering_a_slate_twice_is_refused(tmp_path):
+    from gridiron import config as _config, db as _db, run as _run
+
+    conn = _db.open_db(tmp_path / "a.db")
+    conn.execute(
+        "INSERT INTO games (id, season, week, game_type, kickoff_utc, home,"
+        " away, status, sport) VALUES ('nfl_x', 2026, 1, 'REG',"
+        " '2026-09-13T17:00:00Z', 'AAA', 'BBB', 'scheduled', 'nfl')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', 'spread', 'AAA',"
+        " -3.5, 0.53, 'cover', 'statistical', ?, '{}', 'x')",
+        (_config.FACTOR_SET_VERSION,))
+    conn.commit()
+    with pytest.raises(_run.SlateAlreadyAnswered, match="answered once"):
+        _run.run_slate(conn, "nfl", 2026, 1, snapshot=False, use_llm=False)
+
+
+def test_a_changed_factor_set_is_still_allowed(tmp_path):
+    """THE EXCEPTION IS REAL. A different model asking the same question is a
+    different forecast, and that is what happened on 2026-08-29: fs1 at 05:55,
+    fs2 at 07:34."""
+    from gridiron import db as _db, run as _run
+
+    conn = _db.open_db(tmp_path / "b.db")
+    conn.execute(
+        "INSERT INTO games (id, season, week, game_type, kickoff_utc, home,"
+        " away, status, sport) VALUES ('nfl_x', 2026, 1, 'REG',"
+        " '2026-09-13T17:00:00Z', 'AAA', 'BBB', 'scheduled', 'nfl')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', 'spread', 'AAA',"
+        " -3.5, 0.53, 'cover', 'statistical', 'an-older-set', '{}', 'x')")
+    conn.commit()
+    assert not _run.already_answered(conn, "nfl", 2026, 1)["refuse"]

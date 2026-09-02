@@ -139,6 +139,17 @@ def step_1_tests(quick: bool, parallel: int = 0) -> tuple[bool, tuple[str, ...]]
     return result.returncode == 0, skipped
 
 
+def _record_conn():
+    """A read handle on the live record, for the scans that check stored rows.
+
+    Opened lazily so a machine with no database still runs every scan that
+    does not need one.
+    """
+    from gridiron import db
+
+    return db.connect()
+
+
 def step_2_guards() -> bool:
     rule("STEP 2 — planted violations")
     result = subprocess.run(
@@ -189,6 +200,8 @@ def step_2_guards() -> bool:
          audit.check_the_calls_feature_stayed_withdrawn),
         ("four pages, and every old address lands",
          audit.check_the_nav_is_four_pages),
+        ("every run line agrees with its own price",
+         lambda: audit.check_run_line_signs(_record_conn(), "mlb")),
         ("forecasters are never merged",
          lambda: audit.check_forecasters_are_never_merged(
              __import__("gridiron.views", fromlist=["views"]).scorecard(

@@ -73,6 +73,22 @@ MARGIN_SD_BY_SPORT: dict[str, MarginSD] = {
         source="nflverse closing lines, 1999-2025 completed games",
         assumed_before=13.2,
     ),
+    # 4.71 STANDS, and the 2026-09-02 ruling to replace it with 4.534 does not
+    # apply to this entry, because the two numbers measure different things.
+    #
+    # THIS IS A RESIDUAL: SD(actual home margin - market spread), which is what
+    # the market comparison needs. 4.534 is the RAW SD of the home margin with
+    # no line subtracted. The feasibility probe reported them as a discrepancy
+    # and they are not one; that was my error and the probe now says so.
+    #
+    # IT CANNOT BE RE-DERIVED FROM THIS DATABASE. `measure_margin_sd.py`
+    # deduplicates across every database that holds lines for a sport, and
+    # 2,110 lined finals came from that union. This one holds 67. That is not
+    # a reason to distrust it and not a reason to overwrite it with a number
+    # that would be silently wrong in the direction the docstring above
+    # describes -- understating a residual SD is how NBA's market comparison
+    # produced a backtest in which the model appeared to beat the market by
+    # 14%.
     "mlb": MarginSD(
         sd=4.71, n=2110, measured_utc="2026-08-29T20:51:30Z",
         source="ESPN run line, 2025 season plus live fetches",
@@ -469,6 +485,137 @@ def ensure_snapshot_columns(conn: sqlite3.Connection) -> list[str]:
     if added:
         conn.commit()
     return added
+
+
+#: Columns added to `market_lines_raw` after the first databases were built.
+#: Same quarantine argument as `SNAPSHOT_MIGRATIONS` above.
+RAW_MIGRATIONS = (
+    # R2, 2026-09-02: WHERE THE SIGN CAME FROM.
+    #
+    # `spread_line` is stated as the expected home margin -- positive when the
+    # home side is favoured. On MLB rows it was not: 21 of 76 carried the
+    # opposite sign, with the moneyline flatly contradicting them. Nothing
+    # consumed it (Gridiron asks no run-line question yet), so no figure was
+    # ever wrong; a run-line build inheriting it would have been.
+    #
+    # 'espn-flag' means the sign was set from `homeTeamOdds.favorite`, which
+    # ESPN states outright. 'unknown' means the raw payload is no longer
+    # retained and the sign was NOT guessed. The default is 'unverified': what
+    # every row written before this migration is, honestly.
+    ("spread_sign_source", "TEXT NOT NULL DEFAULT 'unverified'"),
+)
+
+
+def ensure_raw_columns(conn: sqlite3.Connection) -> list[str]:
+    """Add any missing `market_lines_raw` column. Idempotent."""
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(market_lines_raw)")}
+    if not have:
+        return []
+    added = []
+    for column, decl in RAW_MIGRATIONS:
+        if column not in have:
+            conn.execute(
+                f"ALTER TABLE market_lines_raw ADD COLUMN {column} {decl}")
+            added.append(column)
+    if added:
+        conn.commit()
+    return added
+
+
+def _cached_favourite_flags(conn: sqlite3.Connection) -> dict:
+    """ESPN's own `favorite` flag, keyed by the moneyline pair it came with.
+
+    THE MONEYLINE PAIR IS THE JOIN, because ESPN's event ids share nothing with
+    MLB's gamePk and the match made at fetch time was never retained. A pair
+    like (+134, -162) is distinctive enough that all 76 stored rows matched
+    exactly one payload and none matched two -- checked before this was
+    trusted, and a pair that matches two DIFFERENT answers is dropped rather
+    than resolved.
+    """
+    import collections
+    import json
+
+    seen = collections.defaultdict(set)
+    for row in conn.execute(
+            "SELECT body FROM http_cache"
+            " WHERE url LIKE '%baseball%' AND body LIKE '%homeTeamOdds%'"):
+        try:
+            data = json.loads(row["body"])
+        except (ValueError, TypeError):
+            continue
+        for odds in (data.get("items") or [data]):
+            if not isinstance(odds, dict):
+                continue
+            home = odds.get("homeTeamOdds") or {}
+            away = odds.get("awayTeamOdds") or {}
+            if "favorite" not in home or home.get("moneyLine") is None:
+                continue
+            seen[(home.get("moneyLine"), away.get("moneyLine"))].add(
+                bool(home.get("favorite")))
+    return {pair: next(iter(flags)) for pair, flags in seen.items()
+            if len(flags) == 1}
+
+
+def repair_run_line_signs(conn: sqlite3.Connection, sport: str = "mlb") -> dict:
+    """Recompute a stored run-line sign from ESPN's explicit side label.
+
+    NEVER GUESSED. A row whose raw payload is no longer retained is marked
+    'unknown' and left exactly as it is -- the same rule the crosswalk follows
+    when two players share a normalised name, and the same rule the prop side
+    labels follow when a pair cannot be separated from a one-sided quote.
+    """
+    ensure_raw_columns(conn)
+    flags = _cached_favourite_flags(conn)
+    counts = {"checked": 0, "corrected": 0, "confirmed": 0, "unknown": 0,
+              "contradicted": 0}
+    for row in conn.execute(
+            "SELECT r.game_id, r.spread_line, r.home_moneyline, r.away_moneyline"
+            "  FROM market_lines_raw r JOIN games g ON g.id = r.game_id"
+            " WHERE g.sport = ? AND r.spread_line IS NOT NULL", (sport,)).fetchall():
+        counts["checked"] += 1
+        pair = (row["home_moneyline"], row["away_moneyline"])
+        if pair not in flags:
+            conn.execute(
+                "UPDATE market_lines_raw SET spread_sign_source = 'unknown'"
+                " WHERE game_id = ?", (row["game_id"],))
+            counts["unknown"] += 1
+            continue
+        # ESPN CAN CONTRADICT ITSELF ON A NEAR-PICK'EM, and this is where that
+        # was found: mlb_823010 is priced home -101, away -120 -- the away
+        # side is the favourite by price -- and the `favorite` flag says home.
+        # Three rows do it, all of them within twenty cents of even.
+        #
+        # NEITHER SOURCE WINS. The flag is explicit and the price is
+        # unambiguous, and when they disagree the honest answer is that this
+        # row's side is not known. The sign is LEFT AS IT IS and marked, the
+        # same rule the player crosswalk follows when two names normalise
+        # alike and the same rule a prop pair follows when it cannot be
+        # separated from a one-sided quote.
+        home_favoured_by_price = None
+        if (row["home_moneyline"] is not None
+                and row["away_moneyline"] is not None
+                and row["home_moneyline"] != row["away_moneyline"]):
+            home_favoured_by_price = row["home_moneyline"] < row["away_moneyline"]
+        if (home_favoured_by_price is not None
+                and home_favoured_by_price != flags[pair]):
+            conn.execute(
+                "UPDATE market_lines_raw SET spread_sign_source = 'contradicted'"
+                " WHERE game_id = ?", (row["game_id"],))
+            counts["contradicted"] += 1
+            continue
+
+        # nflverse convention: POSITIVE when the home side is favoured.
+        correct = abs(row["spread_line"]) * (1 if flags[pair] else -1)
+        if abs(correct - row["spread_line"]) > 1e-9:
+            counts["corrected"] += 1
+        else:
+            counts["confirmed"] += 1
+        conn.execute(
+            "UPDATE market_lines_raw SET spread_line = ?,"
+            "       spread_sign_source = 'espn-flag' WHERE game_id = ?",
+            (correct, row["game_id"]))
+    conn.commit()
+    return counts
 
 
 def refresh_quotes(conn: sqlite3.Connection, prediction_ids: list[int],

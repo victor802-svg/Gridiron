@@ -871,6 +871,54 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
+def plant_a_slate_answered_twice() -> Result:
+    """Forecast a slate this factor set has already answered.
+
+    `predict:nfl` ran twice on 2026-08-29. Nothing stopped it, nothing said
+    so, and it surfaced days later as every game appearing twice on Picks. A
+    changed factor set is the exception and stays one -- a different model
+    asking the same question is a different forecast.
+    """
+    from gridiron import db as _db, run as _run
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    conn.execute(
+        "INSERT INTO games (id, season, week, game_type, kickoff_utc, home,"
+        " away, status, sport) VALUES ('nfl_x', 2026, 1, 'REG',"
+        " '2026-09-13T17:00:00Z', 'AAA', 'BBB', 'scheduled', 'nfl')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', 'spread', 'AAA',"
+        " -3.5, 0.53, 'cover', 'statistical', ?, '{}', 'x')",
+        (_run.config.FACTOR_SET_VERSION,))
+    conn.commit()
+    try:
+        _run.run_slate(conn, "nfl", 2026, 1, snapshot=False, use_llm=False)
+    except _run.SlateAlreadyAnswered as exc:
+        return Result("LAW 3", "answer a slate twice with the same factor set",
+                      "run.already_answered", True, str(exc).splitlines()[0])
+    return Result("LAW 3", "answer a slate twice with the same factor set",
+                  "run.already_answered", False,
+                  "a second full set of forecasts was written")
+
+
+def plant_a_run_line_contradicting_its_moneyline() -> Result:
+    """Store a run line whose sign says the opposite of its own price.
+
+    21 of 76 MLB rows did this. Nothing consumed it -- Gridiron asks no
+    run-line question yet -- so no figure was ever wrong. A build inheriting
+    it would have been, and silently: a market comparison drawn against a
+    reversed line shows the model disagreeing with the market on exactly the
+    games where it agrees.
+    """
+    faults = audit.run_line_sign_faults(audit.RUN_LINE_FIXTURE_CONTRADICTED)
+    return _desk_plant(faults, "store a run line that contradicts its price",
+                       "audit.run_line_sign_faults")
+
+
 def plant_a_fifth_nav_item() -> Result:
     """Add a fifth page to the nav.
 
@@ -2979,6 +3027,8 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
+    results.append(plant_a_slate_answered_twice())
+    results.append(plant_a_run_line_contradicting_its_moneyline())
     results.append(plant_a_fifth_nav_item())
     results.append(plant_an_old_route_left_to_404())
     results.append(plant_a_pick_on_the_login_page())

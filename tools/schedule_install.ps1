@@ -52,7 +52,10 @@
 [CmdletBinding()]
 param(
     [switch]$Remove,
-    [string]$Time = "11:00"
+    [string]$Time = "11:00",
+    # College football gets its own hour: its slates start earlier in the day
+    # than baseball's, and 09:00 is the operator's ruling of 2026-09-02.
+    [string]$CfbTime = "09:00"
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,6 +70,7 @@ $TaskNames = @(
     "$($Prefix)Predict-MLB",
     "$($Prefix)Predict-NFL",
     "$($Prefix)Predict-NBA",
+    "$($Prefix)Predict-CFB",
     "$($Prefix)CatchUp"
 )
 
@@ -148,6 +152,40 @@ New-GridironTask -Name "$($Prefix)Predict-NFL" -TaskArg "predict:nfl" `
 New-GridironTask -Name "$($Prefix)Predict-NBA" -TaskArg "predict:nba" `
     -Trigger (New-ScheduledTaskTrigger -Daily -At $Time) `
     -Description "Forecast today's NBA slate, blind. A logged no-op out of season."
+
+# predict:cfb — DAILY, and the reason is the shape of a college week.
+#
+# The operator's ruling of 2026-09-02 says "Friday 09:00". The hour is kept;
+# the WEEKLY part is not, and this is the note saying why rather than a silent
+# substitution.
+#
+# A college week is three different slates. September 2026, as stored:
+#
+#     Thu 03 Sep    6 games
+#     Fri 04 Sep    8 games
+#     Sat 05 Sep   60 games      <-- the week
+#     Sun 06 Sep   16 games
+#
+# A Friday-only task forecasts the eight and misses the seventy-six. It cannot
+# pick them up later either: `predict` refuses a slate that has already
+# started, records it MISSED with its reason, and never forecasts late -- which
+# is correct, and which would mean Saturday was recorded MISSED every week of
+# the season.
+#
+# `tasks.TASKS["predict:cfb"]` also declares `every_hours=24, silent_after=36`,
+# so a weekly trigger would leave the health panel reporting the task silent
+# six days in seven and the failure channel firing on it. The two would
+# disagree permanently.
+#
+# The same conclusion is already recorded in docs/closeouts/2026-09-01-cfb.md:
+# "a weekly task would ask one question of three different cards."
+#
+# A day with no college football is a logged no-op, exactly as Predict-NBA is
+# out of season. To make it Friday-only anyway, change -Daily to
+# `-Weekly -DaysOfWeek Friday`.
+New-GridironTask -Name "$($Prefix)Predict-CFB" -TaskArg "predict:cfb" `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At $CfbTime) `
+    -Description "Forecast today's college football slate, blind. A logged no-op on a day with no games."
 
 # The logon trigger is scoped to THIS user on purpose. Without -User it applies
 # to every account on the machine, which Windows treats as a system-wide change

@@ -148,6 +148,35 @@ def require_sport(sport: str | None, where: str) -> str:
 SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week",
                     "cfb": "day"}
 
+#: HOW MLB SCORES ARE DISTRIBUTED, measured 2026-09-02 on every stored final.
+#:
+#: These are RAW distributions -- no line subtracted, no model expectation
+#: removed -- and they are what a run-line or totals build starts from before
+#: it has a fit of its own. They are NOT interchangeable with
+#: `market.lines.MARGIN_SD_BY_SPORT`, which holds RESIDUALS for the market
+#: comparison. Confusing the two is how the feasibility probe came to report a
+#: discrepancy between 4.71 and 4.534 that does not exist.
+#:
+#: Dated and carrying their N, because the undated-SD guard refuses a
+#: plausible-looking number that nobody measured.
+MLB_SCORE_DISTRIBUTION = {
+    "measured_utc": "2026-09-02T00:00:00Z",
+    "n": 9373,
+    "source": "every stored MLB final, seasons 2023-2026",
+    # SD of (home runs + away runs). Stable across four seasons: 4.31 to 4.59.
+    "total_sd": 4.511,
+    "total_mean": 8.97,
+    # SD of (home runs - away runs), and a mean of +0.021: home advantage in
+    # MLB is essentially nothing, which is not true of the other three sports.
+    "margin_sd": 4.534,
+    "margin_mean": 0.021,
+    # What the run line actually asks. 28% of games are decided by one run, so
+    # the +/-1.5 question is "does this land outside the one-run band".
+    "home_by_2_or_more": 0.358,
+    "away_by_2_or_more": 0.362,
+    "one_run_games": 0.280,
+}
+
 #: MEASUREMENTS THAT MUST NOT BE READ EARLY, with the date they open.
 #:
 #: `docs/MLB_PROPS.md` records one day of rung claims and draws no conclusion
