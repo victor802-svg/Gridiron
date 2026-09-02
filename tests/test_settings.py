@@ -14,7 +14,11 @@ import os
 
 import pytest
 
+from pathlib import Path
+
 from gridiron import config
+
+REPO = Path(__file__).resolve().parent.parent
 
 
 def test_a_setting_file_is_read_whole(tmp_path):
@@ -118,3 +122,63 @@ def test_no_setting_value_is_ever_logged():
     source = inspect.getsource(config.read_env_file)
     for leak in ("print(", "logging", "logger", "warn("):
         assert leak not in source, f"read_env_file contains {leak!r}"
+
+
+def test_writing_one_secret_preserves_the_others(tmp_path, monkeypatch):
+    """THE DEFECT THIS CATCHES LOCKED THE OPERATOR OUT OF THEIR OWN RECORD.
+
+    `write_env` gained a `name` parameter so it could write the ntfy topic as
+    well as the access token. The line that filters out the old value was not
+    updated with it -- it still removed `GRIDIRON_ACCESS_TOKEN=` whatever was
+    being written -- so creating the push topic DELETED the access token. The
+    server then started normally and reported "no access token configured".
+
+    Nothing failed at the time. Dropping a line from a settings file is silent
+    until something reads it, which is why this is a test rather than a
+    comment.
+    """
+    import importlib.util
+
+    from gridiron import auth, config
+
+    env = tmp_path / ".env"
+    env.write_text("GRIDIRON_ACCESS_TOKEN=keep-me\n", encoding="utf-8")
+    monkeypatch.setattr(auth, "ENV_FILE", env)
+
+    spec = importlib.util.spec_from_file_location(
+        "gridiron_make_token", REPO / "tools" / "make_token.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    module.write_env("topic-value", module.NTFY_VAR)
+    values = config.read_env_file(env)
+    assert values["GRIDIRON_ACCESS_TOKEN"] == "keep-me", (
+        "writing the push topic deleted the access token")
+    assert values[module.NTFY_VAR] == "topic-value"
+
+    # And writing the token back must not delete the topic.
+    module.write_env("new-token", auth.TOKEN_VAR)
+    values = config.read_env_file(env)
+    assert values[module.NTFY_VAR] == "topic-value"
+    assert values["GRIDIRON_ACCESS_TOKEN"] == "new-token"
+
+
+def test_rewriting_a_secret_replaces_rather_than_duplicates(tmp_path, monkeypatch):
+    """Two lines with the same name is a file whose meaning depends on which
+    one the parser reaches first."""
+    import importlib.util
+
+    from gridiron import auth, config
+
+    env = tmp_path / ".env"
+    monkeypatch.setattr(auth, "ENV_FILE", env)
+    spec = importlib.util.spec_from_file_location(
+        "gridiron_make_token2", REPO / "tools" / "make_token.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    module.write_env("first", auth.TOKEN_VAR)
+    module.write_env("second", auth.TOKEN_VAR)
+    text = env.read_text(encoding="utf-8")
+    assert text.count("GRIDIRON_ACCESS_TOKEN=") == 1
+    assert config.read_env_file(env)["GRIDIRON_ACCESS_TOKEN"] == "second"

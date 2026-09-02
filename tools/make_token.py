@@ -30,12 +30,23 @@ def write_env(token: str, name: str = auth.TOKEN_VAR) -> None:
     same file for the same reason -- it sits outside the bundle, so a rebuild
     cannot delete them -- and neither is ever logged.
     """
+    # FILTERED ON `name`, NOT ON THE TOKEN'S NAME.
+    #
+    # This line read `startswith(f"{auth.TOKEN_VAR}=")` after `name` was added,
+    # so writing the ntfy topic DELETED THE ACCESS TOKEN and appended the
+    # topic. The server then started and reported "no access token
+    # configured", which locked the operator out of their own record until the
+    # token was restored by hand.
+    #
+    # The parameter was added and the one line that had to change with it was
+    # not -- and nothing failed at the time, because dropping a line from a
+    # settings file is silent until something reads it.
     lines: list[str] = []
     if auth.ENV_FILE.exists():
         lines = [
             line
             for line in auth.ENV_FILE.read_text(encoding="utf-8").splitlines()
-            if not line.strip().startswith(f"{auth.TOKEN_VAR}=")
+            if not line.strip().startswith(f"{name}=")
         ]
     lines.append(f"{name}={token}")
     auth.ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
