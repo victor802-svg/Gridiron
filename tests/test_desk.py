@@ -230,12 +230,16 @@ def test_the_rail_body_is_the_same_one_the_expanded_row_shows(page):
     found = page.evaluate("""() => {
         const body = document.getElementById('rail-body');
         return {
-            rail: !!body.querySelector('.rail .track'),
+            rail: !!body.querySelector('.row-numbers'),
             why: !!body.querySelector('.row-why'),
             more: !!body.querySelector('.row-more'),
         };
     }""")
-    assert found["rail"], "no probability rail in the selected-pick panel"
+    # `.rail .track` until 2026-09-02: the graphic went with GRIDIRON_16
+    # R3 and `.row-numbers` states the same three numbers as a sentence.
+    # What this test really asserts is unchanged -- the rail panel and the
+    # expanded row are built by ONE function, so they cannot drift apart.
+    assert found["rail"], "the selected-pick panel does not state its numbers"
     assert found["why"], "no plain why in the selected-pick panel"
     assert found["more"], "no 'How the model works' link in the selected-pick panel"
 
@@ -462,3 +466,63 @@ def test_the_live_mark_is_never_green(page):
     for colour in colours:
         assert green.lower() not in colour.lower().replace(' ', ''), (
             f"the live mark is drawn in the accent colour: {colour}")
+
+
+def test_the_layout_is_decided_by_the_breakpoint_and_nothing_else(page):
+    """THE JS AND THE CSS MUST AGREE, ALWAYS (GRIDIRON_16 R6).
+
+    `isDesk()` compared window.innerWidth to 1280 while the stylesheet used
+    its own `@media (min-width: 1280px)`. Two mechanisms deciding one thing,
+    in step only while resize events kept arriving. When they disagreed the
+    renderer built the desk's TILES and the media query withheld every tile
+    rule, so the slate rendered as unstyled boxes with empty-looking rail
+    panels -- which is what "the desk did not engage for a daily sport"
+    looked like from outside, and why it was read as a per-sport bug.
+
+    This asserts the two answers are the same answer at every width, which is
+    the property that makes the sport irrelevant.
+    """
+    page.evaluate("location.hash = '#/week'")
+    page.wait_for_selector("#week-cards", timeout=10000)
+    for width, height in ((1440, 900), (1280, 860), (1279, 860), (390, 844)):
+        page.set_viewport_size({"width": width, "height": height})
+        page.wait_for_timeout(350)
+        agree = page.evaluate(
+            """() => ({
+                css: window.matchMedia('(min-width: 1280px)').matches,
+                js: document.body.classList.contains('desk-on'),
+                tiles: document.querySelectorAll('#week-cards .tile').length,
+                rows: document.querySelectorAll('#week-cards .row').length,
+            })"""
+        )
+        assert agree["css"] == agree["js"], (
+            f"at {width}px the stylesheet says desk={agree['css']} and the "
+            f"renderer says {agree['js']}")
+        if agree["css"]:
+            assert agree["tiles"] > 0, f"desk at {width}px drew no tiles"
+        else:
+            assert agree["rows"] > 0, f"phone at {width}px drew no rows"
+            assert agree["tiles"] == 0, (
+                f"at {width}px the renderer built desk tiles the stylesheet "
+                f"will not style")
+
+
+def test_the_breakpoint_is_declared_once(page):
+    """One number. A second literal is how the two would drift apart."""
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    js = (repo / "gridiron" / "web" / "app.js").read_text(encoding="utf-8")
+    # CODE, NOT PROSE. The comments above the declaration explain the number
+    # and quote the media query; counting those would make the rule
+    # impossible to satisfy without deleting the explanation.
+    in_code = 0
+    for line in js.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("//", "*", "/*")):
+            continue
+        in_code += line.split("//")[0].count("1280")
+    assert in_code == 1, (
+        f"1280 appears {in_code} times in app.js code; the breakpoint is "
+        f"declared once and read through DESK_QUERY")
+    assert "matchMedia" in js, "the renderer no longer reads the media query"

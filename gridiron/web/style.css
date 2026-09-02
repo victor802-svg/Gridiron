@@ -378,44 +378,15 @@ table.grid td.wide {
   margin-left: auto;
 }
 
-/* THE RAIL. 0-100, a tick at 50, the model solid and the market hollow, with
-   the disagreement shaded between them. Model and market are told apart by
-   FORM, not hue, so the two colours stay reserved for value. */
-.dumbbell { margin: 0; }
-.rail { position: relative; height: 34px; margin: 14px 0 6px; }
-.rail .track {
-  position: absolute; left: 0; right: 0; top: 16px; height: 2px;
-  background: var(--line);
-}
-.rail .tick50 {
-  position: absolute; top: 11px; height: 12px; width: 1px;
-  background: var(--line-lit); left: 50%;
-}
-.rail .span {
-  position: absolute; top: 15px; height: 4px; border-radius: 2px;
-  background: linear-gradient(90deg, var(--line-lit), var(--span-far));
-}
-.dot {
-  position: absolute; top: 10px; width: 14px; height: 14px;
-  border-radius: 50%; transform: translateX(-50%);
-}
-.dot.model { background: var(--chrome); box-shadow: 0 0 0 3px var(--model-halo); }
-.dot.market { background: none; border: 2px solid var(--muted); }
-.dot-label {
-  position: absolute; top: -6px; transform: translateX(-50%);
-  font-family: var(--mono); font-size: 10px; color: var(--faint);
-  white-space: nowrap;
-}
-.rail .zero, .rail .hundred {
-  position: absolute; top: 22px; font-family: var(--mono);
-  font-size: 9px; color: var(--faintest);
-}
-.rail .hundred { right: 0; }
-/* No market line: the model dot stands alone and the absence is stated. There
-   is never a second dot at an invented number. */
-.rail-noline {
-  font-size: var(--t-caption); color: var(--faint); margin-top: 2px;
-}
+/* THE RAIL GRAPHIC IS GONE (GRIDIRON_16 R3). It drew 0-100 with a tick at 50,
+   the model solid and the market hollow, and the disagreement shaded between
+   them. It showed three numbers and made the reader estimate two of them off
+   a 100-pixel track, which is a worse way to read a percentage than reading
+   the percentage. `language.rail_numbers_line` states them instead.
+
+   `.rail-legend` and `.dumbbell` below are the RECORD page's larger version
+   and are untouched: that page is about comparing many picks at once, which
+   is what a graphic is actually good for. */
 
 .gap-chip {
   font-family: var(--mono); font-size: var(--t-caption);
@@ -1067,6 +1038,12 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 
 /* --- THE EXPANDED BODY ---------------------------------------------------- */
 .row-body { padding: 4px 14px 16px 54px; }
+/* The sentence that replaced the graphic. Sits directly under the pick, in
+   body text, because it is a sentence. */
+.row-numbers {
+  margin: 12px 0 6px; font-size: var(--t-body); color: var(--muted);
+}
+
 .row-stats {
   display: flex; justify-content: space-between; gap: 12px;
   font-family: var(--mono); font-size: 11px; color: var(--faint);
@@ -1338,15 +1315,32 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   .tile-rank { font-family: var(--mono); font-size: 11px; color: var(--faint); }
   .tile-pick { font-size: 13px; color: var(--muted); }
   .tile-pick b { color: var(--chrome); font-weight: 600; }
-  .tile-bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
-  .tile-mkt { font-family: var(--mono); font-size: 11px; color: var(--faint); line-height: 1.5; }
-  .tile-mkt b { color: var(--muted); font-weight: 500; }
-  .tile-pct { font-family: var(--mono); font-weight: 600; font-size: 26px; line-height: 1; text-align: right; }
-  .tile-pct i { font-style: normal; color: var(--faint); font-size: 14px; }
-  .tile-pct small {
+  /* TWO NUMBERS, SAME SIZE, SAME FONT (GRIDIRON_16 R3). What the model says
+     and what the market says, side by side and directly comparable. The tile
+     used to draw the model at 26px and the market at 11px in the far corner,
+     which answered "how sure is the model" and left "is that more than the
+     market thinks" to be worked out across the width of the tile. The gap is
+     not here at all: it is the subtraction a reader can now do by eye. */
+  .tile-score {
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+    line-height: 1.5; min-height: 0;
+  }
+  .tile-score b { color: var(--muted); font-weight: 500; }
+  .tile-numbers { display: flex; gap: 22px; align-items: flex-end; }
+  .tile-num {
+    font-family: var(--mono); font-weight: 600; font-size: 26px; line-height: 1;
+  }
+  .tile-num i { font-style: normal; color: var(--faint); font-size: 14px; }
+  .tile-num small {
     display: block; margin-top: 3px;
     font-size: 9px; font-weight: 400; letter-spacing: .08em;
     text-transform: uppercase; color: var(--faint);
+  }
+  /* "no line" IN WORDS, at the size of the number it stands in for, so the
+     absence occupies the space rather than leaving a hole. */
+  .tile-num-absent {
+    font-size: 13px; font-weight: 400; color: var(--faint);
+    letter-spacing: .02em; padding-bottom: 4px;
   }
 
   /* NO TRUNCATION ANYWHERE IN THE FRAME. A tile that ellipsises has told the
@@ -1450,20 +1444,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 .krow:last-child { border-bottom: 0; }
 .krow b { font-family: var(--mono); color: var(--chrome); font-weight: 600; }
-.krow .bar2 {
-  flex: 1;
-  margin: 0 12px;
-  height: 4px;
-  background: var(--line);
-  border-radius: 2px;
-  position: relative;
-}
-.krow .bar2 i {
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  background: var(--muted);
-  border-radius: 2px;
-}
 /* A note under a group of rows, in the weight every caption uses. These carry
    the LAW 1 and LAW 4 caveats -- why coverage is reported rather than acted
    on, and whose clock the windows are on -- so they are part of the claim. */

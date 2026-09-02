@@ -19,6 +19,8 @@ import socket
 import threading
 import time
 
+import re
+
 import pytest
 
 from gridiron import config, api, auth, resolve, run
@@ -133,7 +135,7 @@ def test_every_screen_renders(page):
     for route, selector in (
         ("#/week", "#week-cards .row"),
         ("#/factors", "#factors-table tbody tr"),
-        ("#/history", "#history-table tbody tr"),
+        ("#/results", "#history-table tbody tr"),
         # R1 old -> new: the Record tab leads with THE TIER TABLE. The bucket
         # table and the calibration chart moved to "How the model works".
         ("#/record", "#tier-table tbody tr"),
@@ -178,58 +180,45 @@ def test_the_track_record_is_the_default_screen(page):
 
 # --- D4 visuals -------------------------------------------------------------
 
-def test_the_dumbbell_renders(page):
-    # K2 old -> new: the rail moved behind a tap, so the row must be OPENED
-    # before it exists in the DOM at all.
+def test_the_pick_states_model_market_and_gap_in_words(page):
+    """THE GRAPHIC IS GONE FROM PICKS (GRIDIRON_16 R3).
+
+    A dot-and-span rail drew the model, the market and the disagreement on a
+    100-pixel track until 2026-09-02. It showed three numbers and made the
+    reader estimate two of them off the track, which is a worse way to read a
+    percentage than reading the percentage.
+
+    This asserts the replacement is a real sentence with the numbers in it --
+    not that an element merely exists, which is what the old geometry test
+    would have kept passing on if the rail had silently emptied.
+    """
     _open_first_card(page)
-    # T1 old -> new: `.rail-dot` became `.dot`, and the rail now exists only on
-    # a PENDING card — a settled one shows its verdict and final probabilities
-    # instead, per the approved mockup. The selector targets a card that still
-    # has a rail rather than blindly taking the first.
-    page.wait_for_selector("#week-cards .row .dumbbell", timeout=10000)
-    geometry = page.eval_on_selector_all(
-        "#week-cards .row:has(.dumbbell) .dot",
-        """dots => dots.map(d => {
-            const rail = d.parentElement.getBoundingClientRect();
-            const r = d.getBoundingClientRect();
-            return { kind: d.className, left: r.left - rail.left,
-                     width: r.width, railWidth: rail.width };
-        })""",
-    )
-    assert geometry, "no dots on the probability rail"
-    for dot in geometry:
-        assert dot["width"] > 6, "a dumbbell dot has no size"
-        assert -8 <= dot["left"] <= dot["railWidth"] + 8, "a dot sits off its rail"
+    page.wait_for_selector("#week-cards .row .row-numbers", timeout=10000)
+    text = page.eval_on_selector(
+        "#week-cards .row .row-numbers", "el => el.textContent.trim()")
+    assert "The model says" in text, text
+    assert re.search(r"\d+%", text), f"no percentage in the line: {text!r}"
+    # Either a market comparison or the absence stated in words -- never a
+    # bare dash, which reads as an error rather than an absence.
+    assert ("The market implies" in text
+            or "no line to compare" in text), text
+    assert "—" not in text and " - " not in text, (
+        f"an em-dash or bare dash stands in for a missing number: {text!r}")
 
 
-def test_model_and_market_are_told_apart_by_form_not_colour(page):
-    """Colour is reserved for the value of the gap, so the two dots differ in
-    fill. A reader who cannot see the hue can still read the chart."""
-    # The compact screen hides the detail until a row is tapped, so this
-    # opens one before looking for anything inside it.
+def test_no_graph_is_drawn_anywhere_on_picks(page):
+    """R3: no graphs on Picks, in the tiles or behind the expansion."""
     _open_first_card(page)
-    page.wait_for_selector("#week-cards .row .dumbbell", timeout=10000)
-    styles = page.evaluate(
+    page.wait_for_selector("#week-cards .row .row-numbers", timeout=10000)
+    graphics = page.evaluate(
         """() => {
-            /* T1 old -> new: `.rail-dot` became `.dot`. With the old selector
-               this test found nothing and SKIPPED, which reads green and
-               asserts nothing at all. */
-            const model = document.querySelector('.dot.model');
-            const market = document.querySelector('.dot.market');
-            if (!model || !market) return null;
-            const a = getComputedStyle(model), b = getComputedStyle(market);
-            return { modelBorder: a.borderTopWidth, marketBorder: b.borderTopWidth,
-                     modelFill: a.backgroundColor, marketFill: b.backgroundColor };
+            const scope = document.getElementById('view-week');
+            const found = scope.querySelectorAll(
+                'canvas, svg, .dumbbell, .rail, .dot, .contrib-bar, .bar2');
+            return [...found].map(e => e.tagName.toLowerCase() + '.' + e.className);
         }"""
     )
-    if styles is None:
-        pytest.skip("no card on this slate carries a market comparison")
-    assert styles["modelBorder"] != styles["marketBorder"], (
-        "the two dots are distinguished by colour alone"
-    )
-    # The model is filled, the market is an outline: told apart by FORM, so the
-    # two colours stay reserved for value.
-    assert styles["marketBorder"] != "0px", "the market dot has no outline"
+    assert graphics == [], f"Picks is drawing a graphic: {graphics}"
 
 
 def test_the_contribution_bars_render_signed(page):
@@ -268,10 +257,13 @@ def test_a_card_expands_and_shows_its_detail(page):
     assert detail.is_visible(), "the card did not expand"
     assert detail.bounding_box()["height"] > 40
     # The DECOMPOSITION moved to the Factors page (K3): a card carries the
-    # rail, the gap, the bucket line and the reasoning, and the table of
+    # numbers, the bucket line and the reasoning, and the table of
     # coefficients belongs where someone auditing goes looking for it.
+    #
+    # `.dumbbell` was asserted here until 2026-09-02. The graphic went with
+    # GRIDIRON_16 R3 and the sentence replaced it.
     assert card.locator(".row-why").count() == 1
-    assert card.locator(".dumbbell").count() == 1
+    assert card.locator(".row-numbers").count() == 1
     assert card.locator(".row-more").count() == 1, "the link to the Factors page"
 
 
@@ -495,28 +487,33 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     )
     assert not overflow, "the page scrolls sideways on a phone"
 
-    # K2 old -> new: the rail lives behind a tap, so it has to be opened
+    # K2 old -> new: the detail lives behind a tap, so it has to be opened
     # before it can be measured. And it must not overflow AFTER opening
     # either -- an expanded row is still a phone screen.
     page.locator("#week-cards .row .row-head").first.click()
-    page.wait_for_selector("#week-cards .row .rail", timeout=5000)
+    page.wait_for_selector("#week-cards .row .row-numbers", timeout=5000)
     overflow_open = page.evaluate(
         "() => document.documentElement.scrollWidth > window.innerWidth + 1"
     )
     assert not overflow_open, "an expanded row scrolls sideways on a phone"
-    rail = page.evaluate(
+    # THE SENTENCE MUST FIT AND WRAP, which is the phone-shaped version of
+    # what the rail geometry used to assert. A graphic could collapse to a
+    # 40px stub and still "be there"; a sentence that does not fit pushes the
+    # page sideways, which the check above already catches -- so what is left
+    # to prove is that it is actually on screen and not clipped away.
+    box = page.evaluate(
         """() => {
-            const r = document.querySelector('.rail');
-            if (!r) return null;
-            const box = r.getBoundingClientRect();
-            const dots = [...r.querySelectorAll('.dot')].map(d =>
-                d.getBoundingClientRect().left - box.left);
-            return { width: box.width, dots: dots };
+            const n = document.querySelector('#week-cards .row .row-numbers');
+            if (!n) return null;
+            const r = n.getBoundingClientRect();
+            return { width: r.width, height: r.height,
+                     right: r.right, text: n.textContent.trim().length };
         }"""
     )
-    assert rail and rail["width"] > 120, "the dumbbell collapsed on a phone"
-    for offset in rail["dots"]:
-        assert -8 <= offset <= rail["width"] + 8
+    assert box, "no numbers line in the expanded row"
+    assert box["width"] > 120, "the numbers line collapsed on a phone"
+    assert box["height"] > 0 and box["text"] > 20
+    assert box["right"] <= 375 + 1, "the numbers line runs off a phone screen"
     context.close()
 
 
@@ -653,7 +650,7 @@ def _overflow(page) -> int:
 
 
 @pytest.mark.parametrize(
-    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/history", "#/schedule"]
+    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/results", "#/schedule"]
 )
 def test_no_screen_overflows_a_phone(phone, route):
     """Sideways scroll on a phone is the single most common way a dense layout
@@ -794,7 +791,7 @@ def _open_first_card(page):
     page.wait_for_selector("#week-cards .row", timeout=10000)
     head = page.locator("#week-cards .row .row-head").first
     head.click()
-    page.wait_for_selector("#week-cards .row .row-body .dumbbell", timeout=5000)
+    page.wait_for_selector("#week-cards .row .row-body .row-numbers", timeout=5000)
 
 
 def test_a_pending_row_shows_five_things_and_hides_the_rest(page):
@@ -822,68 +819,57 @@ def test_a_pending_row_shows_five_things_and_hides_the_rest(page):
 
     row.locator(".row-head").click()
     assert body.is_visible(), "the row did not expand"
-    assert row.locator(".dumbbell").count() == 1
+    # `.dumbbell` until 2026-09-02; the graphic went with GRIDIRON_16 R3.
+    assert row.locator(".row-numbers").count() == 1
     assert row.locator(".row-bucket").count() == 1
 
 
-def test_a_card_with_no_market_line_says_so_and_draws_one_dot(page):
-    """Never a second dot at a number nobody published."""
+def test_a_card_with_no_market_line_says_so_in_words(page):
+    """Never a number nobody published, and never a bare dash for the absence.
+
+    This asserted a DOT COUNT until 2026-09-02 -- one model dot, no market
+    dot. The graphic went with GRIDIRON_16 R3 and the sentence took over the
+    job, so the assertion moved with it: what matters was never how many dots
+    were drawn, it was that the absence is stated rather than invented.
+    """
     _open_first_card(page)
-    found = page.evaluate("""() => {
-        const cards = [...document.querySelectorAll('#week-cards .row')];
-        const hit = cards.find(c => c.querySelector('.rail-noline'));
-        if (!hit) return null;
-        return {
-            text: hit.querySelector('.rail-noline').textContent,
-            model: hit.querySelectorAll('.dot.model').length,
-            market: hit.querySelectorAll('.dot.market').length
-        };
-    }""")
-    if found is None:
-        # Every card on this slate has a line; assert the inverse holds instead.
-        counts = page.evaluate("""() => [...document.querySelectorAll(
-            '#week-cards .row:has(.dumbbell)')].map(c => c.querySelectorAll('.dot.market').length)""")
-        assert counts and all(c == 1 for c in counts)
-        return
-    assert "no line available" in found["text"]
-    assert found["model"] == 1 and found["market"] == 0
+    lines = page.eval_on_selector_all(
+        "#week-cards .row .row-numbers", "els => els.map(e => e.textContent.trim())")
+    assert lines, "no card states its numbers"
+    absent = [t for t in lines if "no line to compare" in t]
+    present = [t for t in lines if "The market implies" in t]
+    assert absent or present, lines
+    for text in absent:
+        assert "%" in text, f"the model's own number went missing: {text!r}"
+        assert "The market implies" not in text
+    for text in present:
+        assert text.count("%") >= 2, f"only one number in a comparison: {text!r}"
 
 
-def test_a_resolved_card_shows_a_verdict_and_no_rail(page):
-    """History does not compete with the thing still to happen.
+def test_a_resolved_pick_is_shown_on_results_not_on_picks(page):
+    """WHERE A SETTLED PICK LIVES, and it is one place (GRIDIRON_16 R4).
 
-    The default slate is the UNPLAYED one, so this navigates to a week that has
-    results. The first draft skipped when it found no settled card — with an
-    allowlisted reason, which would have slipped past the very guard added this
-    session. A test that cannot find its subject must go looking for it, not
-    excuse itself.
+    This used to navigate Picks to a played week and assert the settled cards
+    there carried a verdict and no rail. Picks no longer carries a resolved
+    section at all -- it answers "what does the model say about tonight", and
+    a list of what already happened underneath it answered a different
+    question and grew by a slate a day.
+
+    So the assertion splits in two: Picks shows none, Results shows them with
+    their verdicts.
     """
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row", timeout=10000)
-    moved = page.evaluate("""() => {
-        const picker = document.getElementById('week-picker');
-        const played = [...picker.options].find(o => {
-            const v = JSON.parse(o.value); return v.week === 7;
-        });
-        if (!played) return false;
-        picker.value = played.value;
-        picker.dispatchEvent(new Event('change'));
-        return true;
-    }""")
-    if not moved:
-        options = page.evaluate(
-            "[...document.getElementById('week-picker').options].map(o => o.value)")
-        raise AssertionError(f"no played week in the picker; it offers {options}")
-    page.wait_for_selector("#week-cards .row-done", timeout=10000)
-    shape = page.evaluate("""() => {
-        const c = document.querySelector('#week-cards .row-done');
-        return { verdict: (c.querySelector('.verdict') || {}).textContent,
-                 rails: c.querySelectorAll('.rail').length,
-                 story: (c.querySelector('.row-pick') || {}).textContent };
-    }""")
-    assert shape["verdict"] in ("WIN", "LOSS")
-    assert shape["rails"] == 0, "a settled card drew a probability rail"
-    assert "picked" in shape["story"]
+    page.wait_for_selector("#week-cards .row, #week-cards .tile", timeout=10000)
+    assert page.locator("#view-week .row-done").count() == 0, (
+        "a settled pick is still listed on Picks")
+
+    _open_route(page, "#/results")
+    page.wait_for_selector("#history-table tbody tr", timeout=10000)
+    verdicts = page.eval_on_selector_all(
+        "#history-table tbody tr .verdict, #history-table tbody tr .result-chip",
+        "els => els.map(e => e.textContent.trim())")
+    assert verdicts, "Results lists no settled pick"
+    assert any(v in ("WIN", "LOSS", "VOID") for v in verdicts), verdicts
 
 
 def test_the_greeting_strip_leads_the_page(page):
@@ -948,7 +934,7 @@ def test_each_dark_screen_renders_on_a_phone(route, page):
 
 @pytest.mark.parametrize(
     "route", ["#/record", "#/week", "#/factors", "#/versions",
-              "#/history", "#/schedule", "#/digest"]
+              "#/results", "#/schedule", "#/digest"]
 )
 def test_no_internal_vocabulary_reaches_the_reader(route, page):
     """Scanned on the RENDERED page, not in the source. Labels are only half of
@@ -989,7 +975,7 @@ def test_no_internal_vocabulary_reaches_the_reader(route, page):
 def test_no_data_cell_renders_a_bare_dash(page):
     """A dash means nothing to a reader and looks like an error. Every absence
     says what is absent: "no line", "not played"."""
-    page.evaluate("location.hash = '#/history'")
+    page.evaluate("location.hash = '#/results'")
     page.wait_for_selector("#history-table tbody tr", timeout=10000)
     bare = page.evaluate("""() => {
         const cells = [...document.querySelectorAll('#history-table tbody td')];
@@ -1000,7 +986,7 @@ def test_no_data_cell_renders_a_bare_dash(page):
 
 
 def test_the_history_row_is_one_sentence_and_the_market_appears_once(page):
-    page.evaluate("location.hash = '#/history'")
+    page.evaluate("location.hash = '#/results'")
     page.wait_for_selector("#history-table tbody tr", timeout=10000)
     headers = page.eval_on_selector_all(
         "#history-table thead th", "els => els.map(e => e.textContent.trim())")
@@ -1012,7 +998,7 @@ def test_the_history_row_is_one_sentence_and_the_market_appears_once(page):
 
 
 def test_the_result_reads_as_a_word_not_as_open(page):
-    page.evaluate("location.hash = '#/history'")
+    page.evaluate("location.hash = '#/results'")
     page.wait_for_selector("#history-table tbody tr", timeout=10000)
     chips = page.eval_on_selector_all(
         "#history-table tbody .result-chip", "els => els.map(e => e.textContent)")
@@ -1048,7 +1034,7 @@ def test_the_greeting_is_on_the_home_tab_only(page):
     _open_route(page, "#/record")
     assert page.locator("#glance").is_visible(), "the home tab does not greet"
 
-    for route in ("#/factors", "#/history", "#/schedule"):
+    for route in ("#/factors", "#/results", "#/schedule"):
         _open_route(page, route)
         # K2 old -> new: the greeting and the notices are ONE strip now, and
         # this test's own docstring is why the assertion had to move. "One
@@ -1073,7 +1059,7 @@ def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
 
 
 @pytest.mark.parametrize(
-    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/history"]
+    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/results"]
 )
 def test_no_bare_dash_stands_in_for_a_value(route, page):
     """A dash in a data cell reads as a rendering fault. Every absence names
@@ -1131,3 +1117,30 @@ def test_each_tab_carries_its_own_record_and_never_a_total(page):
         f"change: {labels}")
 
 
+
+
+def test_the_nav_says_results_and_the_old_route_redirects(page):
+    """History became RESULTS (GRIDIRON_16 R4). A bookmark still works."""
+    labels = page.eval_on_selector_all(
+        "nav a", "els => els.map(e => e.textContent.trim())")
+    assert "Results" in labels, labels
+    assert "History" not in labels, labels
+
+    # THE OLD ROUTE, on purpose. A bulk rename of "#/history" to "#/results"
+    # across this file reached in here and quietly turned the redirect test
+    # into a test that navigating to #/results lands on #/results.
+    page.evaluate("location.hash = '#/history'")
+    page.wait_for_function(
+        "() => location.hash === '#/results'", timeout=5000)
+    assert page.locator("#view-results").is_visible(), (
+        "the old route redirected but the page did not render")
+
+
+def test_picks_carries_no_resolved_section(page):
+    """Settled rows live in Results and only there (R4)."""
+    page.evaluate("location.hash = '#/week'")
+    page.wait_for_selector("#week-cards", timeout=10000)
+    labels = page.eval_on_selector_all(
+        "#view-week .section-label", "els => els.map(e => e.textContent.trim())")
+    assert "Resolved" not in labels, labels
+    assert page.locator("#view-week .rows-done").count() == 0

@@ -1376,6 +1376,33 @@ def slate_title(season: int | None, week: int | None, slate_word: str,
     return f"{slate_word.title()} {week}, {season}" if season else f"{slate_word.title()} {week}"
 
 
+def rail_numbers_line(model_prob: float, market_prob: float | None,
+                      gap: float | None) -> str:
+    """"The model says 53%. The market implies 41% -- a 12 point disagreement."
+
+    IN WORDS, NOT A PICTURE (GRIDIRON_16 R3). A dot-and-span graphic stood
+    here until 2026-09-02. It showed the same three numbers and made the
+    reader estimate two of them off a 100-pixel track, which is a worse way to
+    read a percentage than reading the percentage.
+
+    "no line" stays in words when the market has none, never an em-dash: a
+    dash reads as an error rather than an absence.
+    """
+    model = f"The model says {round(model_prob * 100)}%."
+    if market_prob is None:
+        return f"{model} There is no line to compare it with."
+    market = f"The market implies {round(market_prob * 100)}%"
+    if gap is None:
+        return f"{model} {market}."
+    points = abs(round(gap * 100))
+    if points == 0:
+        return f"{model} {market} -- the same call."
+    # "a 12 points disagreement" was the first phrasing and is not English.
+    # Apart reads naturally at every count and needs no article.
+    word = "point" if points == 1 else "points"
+    return f"{model} {market} -- {points} {word} apart."
+
+
 def no_picks_from(label: str, others: list[tuple[str, int]]) -> str:
     """Why the slate is empty for the forecaster the reader chose.
 

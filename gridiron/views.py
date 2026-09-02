@@ -563,6 +563,15 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         cards[-1]["verdict"] = language.verdict_word(
             r["outcome"], voided=r["id"] in voided)
 
+        # MODEL, MARKET AND GAP AS A SENTENCE (R3), composed here like every
+        # other visible string. The rail drew these three numbers as a
+        # dot-and-span graphic until 2026-09-02 and made the reader estimate
+        # two of them off a 100-pixel track.
+        cards[-1]["rail_line"] = language.rail_numbers_line(
+            cards[-1].get("shown_prob") if cards[-1].get("shown_prob") is not None
+            else r["model_prob"],
+            implied,
+            cards[-1].get("gap"))
         # WHERE IT IS PLAYED, for the selected-pick subline. None when the
         # venue was never recorded, and the subline simply has one fewer part.
         cards[-1]["venue"] = venues.get(r["home"])

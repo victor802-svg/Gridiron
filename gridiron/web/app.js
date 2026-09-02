@@ -761,7 +761,25 @@ const Gridiron = (function () {
   // needs to know which layout is live. 1280 matches the mockup and the CSS;
   // a second literal somewhere else is how the two would drift apart.
   const DESK_MIN_WIDTH = 1280;
-  const isDesk = () => window.innerWidth >= DESK_MIN_WIDTH;
+
+  // THE JS AND THE CSS ASK THE SAME QUESTION (GRIDIRON_16 R6).
+  //
+  // `isDesk` compared `window.innerWidth` to the number while the stylesheet
+  // used its own `@media (min-width: 1280px)`. Two mechanisms deciding one
+  // thing, and they agreed only as long as a `resize` event arrived to keep
+  // them in step. When they disagreed the failure was ugly and confusing:
+  // the renderer built the desk's TILES while the media query withheld every
+  // tile rule, so the slate came out as unstyled boxes and the rail panels
+  // looked empty -- which is what "the desk did not engage" looks like from
+  // the outside, and why it was mistaken for a per-sport bug.
+  //
+  // `matchMedia` reads the SAME breakpoint the CSS does, from the same
+  // number, and its `change` event fires exactly when the CSS state flips --
+  // including the cases a resize listener misses. The layout is now decided
+  // by the breakpoint and by nothing else: never by the sport, never by the
+  // slate's shape, and never by whether an event happened to arrive.
+  const DESK_QUERY = window.matchMedia('(min-width: ' + DESK_MIN_WIDTH + 'px)');
+  const isDesk = () => DESK_QUERY.matches;
 
   // A tile. Every string on it was written by the server: the matchup, the
   // short pick line, the label under the percentage. The renderer places
@@ -797,20 +815,29 @@ const Gridiron = (function () {
     }
     tile.appendChild(pick);
 
-    const bottom = el('div', 'tile-bottom');
-    // THE CORNER SHOWS THE MARKET UNTIL THERE IS A GAME TO SHOW INSTEAD.
-    // Once the ball is in the air the disagreement with the market is the
-    // less interesting number on the tile, and the score is the one a reader
-    // came back for. Both are strings the server wrote.
-    const mkt = el('div', 'tile-mkt');
-    paintTileCorner(mkt, c);
-    bottom.appendChild(mkt);
+    // THE SCORE, when there is a game to show instead of a forecast. Its own
+    // row above the numbers rather than in place of the market, so the two
+    // percentages sit in the same position on every tile on the slate.
+    const score = el('div', 'tile-score');
+    paintTileCorner(score, c);
+    tile.appendChild(score);
 
-    const p = el('div', 'tile-pct');
-    p.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
-    p.appendChild(el('i', '', '%'));
-    p.appendChild(el('small', '', c.tile_label || ''));
-    bottom.appendChild(p);
+    // TWO NUMBERS, SAME SIZE, SAME FONT (GRIDIRON_16 R3): what the model
+    // says and what the market says, each under a small label. The gap is
+    // NOT here -- it is arithmetic the reader can do between two numbers
+    // that are finally side by side, and a third number was the one most
+    // often mistaken for a probability.
+    const bottom = el('div', 'tile-numbers');
+    bottom.appendChild(tileNumber(pct(shownProb(c), 0).replace('%', ''),
+                                  c.tile_label || 'model'));
+    const market = (c.market_implied_prob === null ||
+                    c.market_implied_prob === undefined)
+      ? null : pct(c.market_implied_prob, 0).replace('%', '');
+    // "no line" IN WORDS, never an em-dash: a dash reads as an error rather
+    // than an absence.
+    bottom.appendChild(market === null
+      ? el('div', 'tile-num tile-num-absent', 'no line')
+      : tileNumber(market, 'market'));
     tile.appendChild(bottom);
 
     applyTileState(tile, c);
@@ -881,6 +908,14 @@ const Gridiron = (function () {
   // changes state re-renders in place rather than being rebuilt -- the grid
   // must not re-sort while a slate is in progress, because sorting live games
   // by confidence shuffles the screen under somebody who is reading it.
+  function tileNumber(value, label) {
+    const n = el('div', 'tile-num');
+    n.appendChild(document.createTextNode(value));
+    n.appendChild(el('i', '', '%'));
+    n.appendChild(el('small', '', label));
+    return n;
+  }
+
   function paintTileCorner(host, c) {
     host.innerHTML = '';
     const state = c.tile_state || 'upcoming';
@@ -892,15 +927,8 @@ const Gridiron = (function () {
       }
       return;
     }
-    if (c.market_implied_prob === null || c.market_implied_prob === undefined) {
-      host.textContent = 'no line';
-      return;
-    }
-    host.appendChild(document.createTextNode('market '));
-    host.appendChild(el('b', '', pct(c.market_implied_prob, 0)));
-    host.appendChild(el('br'));
-    host.appendChild(document.createTextNode('gap '));
-    host.appendChild(el('b', '', (c.gap * 100 >= 0 ? '+' : '') + (c.gap * 100).toFixed(0)));
+    // THE MARKET MOVED DOWN to sit beside the model's number (R3), and the
+    // gap left the tile entirely. This row now carries the score or nothing.
   }
 
   function applyTileState(tile, c) {
@@ -1044,13 +1072,12 @@ const Gridiron = (function () {
 
     windows.innerHTML = '';
     glance.windows.forEach(w => {
+      // NO GRAPHS ON PICKS (GRIDIRON_16 R3). A proportional bar sat between
+      // the name and the count until 2026-09-02, drawing the same number the
+      // row already printed -- and drawing it less precisely. The count is
+      // the fact; the bar was a second, vaguer copy of it.
       const row = el('div', 'krow');
       row.appendChild(el('span', '', w.name));
-      const bar = el('span', 'bar2');
-      const fill = el('i');
-      fill.style.width = Math.round(w.share * 100) + '%';
-      bar.appendChild(fill);
-      row.appendChild(bar);
       row.appendChild(el('b', '', String(w.n)));
       windows.appendChild(row);
     });
@@ -1143,54 +1170,6 @@ const Gridiron = (function () {
   // THE RAIL. 0-100 with a tick at 50; the model solid, the market hollow, the
   // disagreement shaded between them. Where no market line exists there is one
   // dot and a sentence — never a second dot at a number nobody published.
-  function rail(c) {
-    const wrap = el('div', 'dumbbell');
-    const r = el('div', 'rail');
-    r.appendChild(el('div', 'track'));
-    r.appendChild(el('div', 'tick50'));
-
-    const model = clamp01(shownProb(c)) * 100;
-    const market = (c.market_implied_prob === null || c.market_implied_prob === undefined)
-      ? null : clamp01(c.market_implied_prob) * 100;
-
-    if (market !== null) {
-      const span = el('div', 'span');
-      span.style.left = Math.min(model, market) + '%';
-      span.style.width = Math.abs(model - market) + '%';
-      r.appendChild(span);
-
-      const md = el('div', 'dot market');
-      md.style.left = market + '%';
-      r.appendChild(md);
-      // PLAIN WORDS. This label read 'MKT' until the desk put it at
-      // 24px in the rail panel and it became obvious that an
-      // abbreviation nobody defined was sitting on the page. The tile
-      // beside it has always said 'market'.
-      const ml = el('div', 'dot-label', 'market ' + Math.round(market));
-      ml.style.left = market + '%';
-      r.appendChild(ml);
-    }
-
-    const dot = el('div', 'dot model');
-    dot.style.left = model + '%';
-    r.appendChild(dot);
-    const label = el('div', 'dot-label', String(Math.round(model)));
-    label.style.left = model + '%';
-    r.appendChild(label);
-
-    r.appendChild(el('span', 'zero', '0'));
-    r.appendChild(el('span', 'hundred', '100'));
-    wrap.appendChild(r);
-
-    if (market === null) {
-      wrap.appendChild(el('div', 'rail-noline',
-        'no line available' +
-        (c.line_availability && c.line_availability.reason
-          ? ' — ' + c.line_availability.reason : '')));
-    }
-    return wrap;
-  }
-
   function clamp01(v) {
     return Math.max(0, Math.min(1, typeof v === 'number' ? v : 0.5));
   }
@@ -1329,12 +1308,15 @@ const Gridiron = (function () {
 
   function buildRowBody(body, c) {
     body.innerHTML = '';
-    body.appendChild(rail(c));
+
+    // MODEL, MARKET AND GAP AS TEXT (GRIDIRON_16 R3). A dot-and-span graphic
+    // stood here until 2026-09-02: it showed these three numbers and made the
+    // reader estimate two of them off a 100-pixel track, which is a worse way
+    // to read a percentage than reading the percentage. The sentence is
+    // written by `language.rail_numbers_line`; this places it.
+    body.appendChild(el('p', 'row-numbers', c.rail_line || ''));
 
     const line = el('div', 'row-stats');
-    line.appendChild(el('span', 'row-gap',
-      c.gap === null || c.gap === undefined
-        ? 'no line' : 'gap ' + (c.gap * 100 >= 0 ? '+' : '') + (c.gap * 100).toFixed(1)));
     line.appendChild(el('span', 'row-bucket', c.bucket_line || ''));
     body.appendChild(line);
 
@@ -1685,12 +1667,10 @@ const Gridiron = (function () {
     (data.quiet_markets || []).forEach(q =>
       host.appendChild(el('div', 'quiet-market', q)));
 
-    if (done.length) {
-      host.appendChild(el('div', 'section-label', 'Resolved'));
-      const list = el('div', 'rows rows-done');
-      done.forEach(c => list.appendChild(resolvedRow(c)));
-      host.appendChild(list);
-    }
+    // NO RESOLVED SECTION ON PICKS (GRIDIRON_16 R4). Settled rows live in
+    // Results and only there. Picks answers "what does the model say about
+    // tonight"; a list of what already happened underneath it answers a
+    // different question and made the page longer every day of the season.
   }
 
   async function loadWeekPicker() {
@@ -1950,7 +1930,7 @@ const Gridiron = (function () {
     return chip;
   }
 
-  async function renderHistory() {
+  async function renderResults() {
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
     requireN(data, 'history');
     state.historyTotal = data.n;
@@ -2386,25 +2366,33 @@ const Gridiron = (function () {
     placeGreeting();
   }
 
-  let deskWasOn = null;
-  window.addEventListener('resize', () => {
+  // ON THE QUERY, NOT ON RESIZE. The media query changes state exactly when
+  // the stylesheet does, so the class can no longer be stale with respect to
+  // the rules that style it.
+  DESK_QUERY.addEventListener('change', () => {
     applyDeskClass();
-    const now = isDesk();
-    if (deskWasOn !== null && now !== deskWasOn && state.view === 'week') {
+    if (state.view === 'week') {
       // Crossing the breakpoint changes which elements exist, not just how
       // they look, so the slate is rendered again rather than restyled.
       renderWeek();
     }
-    deskWasOn = now;
   });
   document.addEventListener('keydown', deskKeys);
+
+  //: Where a renamed route now lives. A redirect rather than a second entry
+  //: in ROUTES, so there is exactly one name for the page and the address bar
+  //: says which one it is.
+  const RENAMED = { history: 'results' };
 
   const ROUTES = {
     record: renderRecord,
     week: renderWeek,
     factors: renderFactors,
     versions: renderVersions,
-    history: renderHistory,
+    // RESULTS, renamed from History on 2026-09-02 (GRIDIRON_16 R4). Settled
+    // rows live here and only here; Picks no longer carries a resolved
+    // section. `#/history` still resolves -- see the redirect in `route`.
+    results: renderResults,
     schedule: renderSchedule,
     digest: renderDigest
   };
@@ -2436,7 +2424,13 @@ const Gridiron = (function () {
 
   async function route() {
     clearError();
-    const name = (location.hash.replace('#/', '') || 'record');
+    let name = (location.hash.replace('#/', '') || 'record');
+    // OLD ROUTES REDIRECT, they do not 404 (R4). A link somebody bookmarked
+    // or a note they wrote down still lands where the page went.
+    if (RENAMED[name]) {
+      location.replace('#/' + RENAMED[name]);
+      return;
+    }
     const view = ROUTES[name] ? name : 'record';
     document.querySelectorAll('.view').forEach(v => { v.hidden = true; });
     // The strip leads the FRONT page. On the digest route the same content is
@@ -2507,15 +2501,15 @@ const Gridiron = (function () {
     ['history-q', 'history-market', 'history-predictor', 'history-outcome'].forEach(id =>
       document.getElementById(id).addEventListener('input', () => {
         state.historyOffset = 0;
-        renderHistory().catch(showError);
+        renderResults().catch(showError);
       }));
     document.getElementById('history-prev').addEventListener('click', () => {
       state.historyOffset = Math.max(0, state.historyOffset - 100);
-      renderHistory().catch(showError);
+      renderResults().catch(showError);
     });
     document.getElementById('history-next').addEventListener('click', () => {
       state.historyOffset += 100;
-      renderHistory().catch(showError);
+      renderResults().catch(showError);
     });
 
     await route();
