@@ -671,3 +671,81 @@ def test_the_withdrawal_scan_exemption_is_one_file():
 def test_the_shipped_code_is_free_of_the_withdrawn_feature():
     audit.check_the_calls_feature_stayed_withdrawn()      # must not raise
     audit.check_picks_shows_tonight()                     # must not raise
+
+
+# ---------------------------------------------------------------------------
+# HOW CLOSE A GATE IS (GRIDIRON_13 P1)
+# ---------------------------------------------------------------------------
+
+def test_a_progress_line_stating_a_percentage_is_caught():
+    """A share of the way to a verdict reads as a probability on a page whose
+    whole subject is probabilities -- and it hides the N."""
+    faults = audit.progress_faults(audit.PROGRESS_FIXTURE_PERCENT)
+    assert faults and "COUNTS" in faults[0]
+
+
+def test_a_gate_line_without_its_n_is_caught():
+    faults = audit.progress_faults(audit.PROGRESS_FIXTURE_NO_N)
+    assert faults and "LAW 4" in faults[0]
+
+
+def test_a_green_progress_bar_is_caught_twice():
+    """In the payload and in the stylesheet. A filling bar is not a win."""
+    assert audit.progress_faults(audit.PROGRESS_FIXTURE_GREEN)
+    assert audit.colour_law_faults(".gate-bar i { background: var(--win); }")
+
+
+def test_a_correct_gate_line_is_not_flagged():
+    assert not audit.progress_faults(audit.PROGRESS_FIXTURE_GOOD)
+
+
+def test_every_gate_in_the_real_scorecard_counts(resolved_league):
+    """The guard runs inside `views.scorecard`, so this is the payload the
+    API would serve."""
+    from gridiron import views
+
+    payload = views.scorecard(resolved_league, sport="nfl")
+    audit.check_progress_is_counted(payload)          # must not raise
+    rows = payload["tier_table"]["rows"]
+    assert rows and all("progress" in r for r in rows)
+    for r in rows:
+        p = r["progress"]
+        assert p["n"] == p["done"]
+        assert "%" not in p["line"] and "%" not in (p["note"] or "")
+
+
+def test_a_tier_past_its_verdict_gate_points_at_the_edge_gate():
+    """"36 of 20" is arithmetic nobody needs. Once a gate is behind you the
+    next one is the thing standing between this tier and an edge claim."""
+    from gridiron import language
+
+    below = language.gate_progress(14, 20, 100)
+    assert below["stage"] == "verdict" and below["line"] == "14 of 20 settled"
+    past = language.gate_progress(36, 20, 100)
+    assert past["stage"] == "edge"
+    assert past["line"] == "36 of 100 settled"
+    assert "verdict earned" in past["note"]
+    way_past = language.gate_progress(140, 20, 100)
+    assert way_past["line"] == "140 settled", "a count exceeded its own target"
+
+
+def test_pace_refuses_to_estimate_below_a_week_of_history():
+    """An estimate from three days is a number with an interval wider than
+    the thing it estimates."""
+    from gridiron import language
+
+    assert "pace unknown" in language.pace_clause(6, 3.0, 3)
+    assert "pace unknown" in language.pace_clause(6, None, 30)
+    assert "about 2 slates" in language.pace_clause(6, 3.0, 14)
+    assert "about a slate" in language.pace_clause(2, 3.0, 14)
+
+
+def test_a_dated_read_window_counts_in_days():
+    from gridiron import language
+
+    g = language.date_gate("2026-08-31", "2026-09-14", today="2026-09-02")
+    assert g["line"] == "2 of 14 days"
+    assert "read on Monday 14 September" in g["note"] and "12 days" in g["note"]
+    assert not audit.progress_faults(g)
+    open_now = language.date_gate("2026-08-31", "2026-09-14", today="2026-09-20")
+    assert open_now["cleared"] and "window is open" in open_now["note"]

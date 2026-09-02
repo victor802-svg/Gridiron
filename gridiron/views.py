@@ -1177,7 +1177,18 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     payload["meta"] = meta(conn, sport)
     payload["corrections"] = corrections_report(conn, sport)
     payload["drift"] = drift_report(conn, sport)
+    # DATED READING WINDOWS (GRIDIRON_13 P1). A measurement that must not be
+    # read early is a gate like any other, and until now the only place the
+    # date existed was a sentence in a design document.
+    payload["read_windows"] = [
+        dict(window, key=key,
+             progress=language.date_gate(window["declared"], window["opens"]))
+        for key, window in config.READ_WINDOWS.items()
+        if window.get("sport") == sport
+    ]
     calibration.assert_every_figure_has_n(payload)
+    # EVERY GATE ON THIS PAGE COUNTS, and none of them renders a share (P1).
+    audit.check_progress_is_counted(payload)
     calibration.assert_single_sport(payload, sport)
     return payload
 
@@ -1245,16 +1256,32 @@ def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
         versions = correction.version_report(
             conn, sport=sport, market_type=market_type, forecaster=forecaster)
         latest = versions[-1] if versions else None
+        # HOW CLOSE THIS CATEGORY IS to its first correction (P1). The same
+        # component the tier rows use: counts, an N, and no percentage.
+        settled = conn.execute(
+            "SELECT COUNT(*) FROM predictions WHERE sport = ?"
+            "   AND market_type = ? AND predictor = ?"
+            "   AND resolved_utc IS NOT NULL",
+            (sport, market_type, forecaster)).fetchone()[0]
         out.append({
             "market_type": market_type,
             "forecaster": forecaster,
-            "label": f"{language.humanise(market_type)}, {forecaster}",
+            # THE FORECASTER'S OWN LABEL, not the stored key. This read
+            # "moneyline, llm" on the page -- a lowercase identifier where a
+            # name belongs, and the Record tab two panels above it says "LLM".
+            "label": (f"{language.humanise(market_type)}, "
+                      f"{config.FORECASTER_LABELS.get(forecaster, forecaster)}"),
             "active": bool(latest and latest["active_from"]),
             "status": (latest["status"] if latest else
                        f"corrections begin at {correction.MIN_TRAIN} settled "
                        "- nothing settled yet"),
             "versions": versions,
             "n": len(versions),
+            "settled": settled,
+            "progress": language.progress(
+                settled, correction.MIN_TRAIN,
+                cleared_note="fitted - applied only where it beat the rows it "
+                             "was not fitted on"),
         })
     return {
         "sport": sport,

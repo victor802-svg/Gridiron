@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from . import config
+from . import config, language
 
 #: Drift pairs needed in a category before any direction is reported.
 MIN_PAIRS = 50
@@ -113,6 +113,12 @@ def report(conn: sqlite3.Connection, *, sport: str, market_type: str,
         "n": n,
         "min_pairs": MIN_PAIRS,
         "min_disagreement": MIN_DISAGREEMENT,
+        # HOW CLOSE THIS MARKET IS to having a direction worth reporting
+        # (GRIDIRON_13 P1). The same component the tier rows and the
+        # correction gates use, so "close" means one thing on this page.
+        "progress": language.progress(
+            n, MIN_PAIRS, noun="pairs",
+            cleared_note="enough pairs to report a direction"),
     }
     if n < MIN_PAIRS:
         base["line"] = (

@@ -322,6 +322,10 @@ const Gridiron = (function () {
     // operator's own informed calls, stood here until 2026-09-02.)
     renderForecasterPicker(sc);
     renderTierTable(sc.tier_table);
+    // CALLED WITH THE WHOLE SCORECARD, not smuggled through the tier table:
+    // the corrections, the drift pairs and the read windows are siblings of
+    // that table, not part of it.
+    renderOtherGates(sc);
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
     const market = document.getElementById('chart-market').value || 'spread';
@@ -511,6 +515,68 @@ const Gridiron = (function () {
     // from `operator_tier_table`, a payload key that no longer exists.
   }
 
+  // HOW CLOSE A GATE IS (GRIDIRON_13 P1). ONE COMPONENT, used by the tier
+  // rows, the correction gates, the drift pairs and the dated read windows.
+  // A second implementation would be a second opinion about what "close"
+  // means, and they would disagree the first time a gate moved.
+  //
+  // The words are the SERVER'S -- `language.progress` writes the line and the
+  // note. This draws a bar from the two counts and places the text. It
+  // computes no share of its own: the width is a geometry, not a figure, and
+  // the figures on the page are the counts beside it.
+  function gateLine(p) {
+    const wrap = el('div', 'gate');
+    if (!p) return wrap;
+    const bar = el('div', 'gate-bar');
+    const fill = el('i');
+    // CHROME ON HAIRLINE, never green: a filling bar is not a win (R2).
+    fill.style.width = (p.needed
+      ? Math.max(0, Math.min(100, (p.done / p.needed) * 100))
+      : 0) + '%';
+    bar.appendChild(fill);
+    wrap.appendChild(bar);
+    const words = el('div', 'gate-words');
+    words.appendChild(el('b', '', p.line || ''));
+    if (p.note) words.appendChild(el('span', '', ' · ' + p.note));
+    wrap.appendChild(words);
+    return wrap;
+  }
+
+  // EVERY OTHER GATE ON THE PAGE, through the same component. The
+  // corrections need 50 settled before one is fitted; the drift question
+  // needs 50 pairs before a direction is reported; a dated window opens on a
+  // day. All three used to state only that they had not been reached.
+  function renderOtherGates(sc) {
+    const host = document.getElementById('other-gates-list');
+    const panel = document.getElementById('other-gates');
+    const count = document.getElementById('other-gates-n');
+    if (!host || !panel) return;
+    host.innerHTML = '';
+    const entries = [];
+    ((sc && sc.corrections && sc.corrections.categories) || []).forEach(c => {
+      if (c.progress) entries.push({ name: 'A correction for ' + c.label,
+                                     progress: c.progress });
+    });
+    ((sc && sc.drift && sc.drift.markets) || []).forEach(m => {
+      if (m.progress) entries.push({
+        name: 'Where the line went after ' + marketLabel(m.market_type),
+        progress: m.progress });
+    });
+    ((sc && sc.read_windows) || []).forEach(w => {
+      if (w.progress) entries.push({ name: 'Reading ' + w.label,
+                                     progress: w.progress, why: w.why });
+    });
+    entries.forEach(e => {
+      const row = el('div', 'gate-row');
+      row.appendChild(el('div', 'gate-name', e.name));
+      row.appendChild(gateLine(e.progress));
+      if (e.why) row.appendChild(el('div', 'gate-why', e.why));
+      host.appendChild(row);
+    });
+    if (count) count.textContent = entries.length + ' gates';
+    panel.hidden = entries.length === 0;
+  }
+
   function renderTierTable(t) {
     if (!t) return;
     document.getElementById('tier-caption').textContent =
@@ -539,9 +605,29 @@ const Gridiron = (function () {
           r.proven ? int(r.right) : blank(),
           r.proven ? pct(r.claimed, 0) : blank(),
           r.proven ? pct(r.actual, 0) : blank(),
-          el('span', r.proven ? 'verdict-words' : 'absent', r.verdict)
+          (() => {
+            const cell = el('div', 'verdict-cell');
+            cell.appendChild(
+              el('div', r.proven ? 'verdict-words' : 'absent', r.verdict));
+            cell.appendChild(gateLine(r.progress));
+            return cell;
+          })()
         ];
       }));
+
+    // CLOSEST TO A VERDICT, at the top of the tab. Which gate is nearest and
+    // roughly how many slates that is -- the sentence is the server's, pace
+    // labelled an estimate, and "pace unknown" below a week of history.
+    const closest = document.getElementById('closest-verdict');
+    if (closest) {
+      const c = t.closest || {};
+      closest.innerHTML = '';
+      if (c.line) {
+        closest.appendChild(el('div', 'lead', c.line));
+        if (c.note) closest.appendChild(el('div', 'sub', c.note));
+      }
+      closest.hidden = !c.line;
+    }
   }
 
   async function loadTierMarkets(current) {

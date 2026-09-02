@@ -871,6 +871,40 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
+def plant_a_progress_line_showing_a_percentage() -> Result:
+    """Say "70% of the way to a verdict" instead of "14 of 20".
+
+    On a page whose whole subject is probabilities, a share will be read as
+    one. It also hides the sample size, which LAW 4 requires beside every
+    figure -- and the count IS the sample size here, so the percentage
+    replaces the very number the law is about.
+    """
+    faults = audit.progress_faults(audit.PROGRESS_FIXTURE_PERCENT)
+    return _desk_plant(faults, "state a gate as a percentage of the way there",
+                       "audit.progress_faults")
+
+
+def plant_a_gate_line_without_its_n() -> Result:
+    """Report progress toward a verdict with no sample size."""
+    faults = audit.progress_faults(audit.PROGRESS_FIXTURE_NO_N)
+    return _desk_plant(faults, "show a gate line with no N",
+                       "audit.progress_faults")
+
+
+def plant_a_green_progress_bar() -> Result:
+    """Fill the progress bar with the colour that means a pick won.
+
+    A FILLING BAR IS NOT A WIN. All it means is that more questions have been
+    answered; the tier may still turn out to be badly calibrated when the
+    verdict finally lands. Green would tell a reader the opposite, and would
+    do it before there is any verdict at all.
+    """
+    payload = audit.progress_faults(audit.PROGRESS_FIXTURE_GREEN)
+    css = audit.colour_law_faults(".gate-bar i { background: var(--win); }")
+    return _desk_plant(payload + css, "fill the progress bar with the win colour",
+                       "audit.progress_faults + audit.colour_law_faults")
+
+
 def plant_a_resolved_row_on_picks() -> Result:
     """List last night's settled picks underneath tonight's.
 
@@ -2738,6 +2772,9 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
+    results.append(plant_a_progress_line_showing_a_percentage())
+    results.append(plant_a_gate_line_without_its_n())
+    results.append(plant_a_green_progress_bar())
     results.append(plant_a_resolved_row_on_picks())
     results.append(plant_a_surviving_calls_symbol())
     results.append(plant_a_green_link())

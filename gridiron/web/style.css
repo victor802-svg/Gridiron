@@ -1572,3 +1572,43 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    does not jump when the data lands. */
 .skeleton-tile { height: 124px; border-radius: 12px; }
 
+
+/* --- HOW CLOSE A GATE IS (GRIDIRON_13 P1) ---------------------------------
+   One component for every gate on the Record page: the tier rows, the
+   correction gates, the drift pairs, the dated read windows.
+
+   CHROME ON HAIRLINE, NEVER GREEN. A filling bar is not a win. Green means a
+   pick won (GRIDIRON_16 R2), and a bar that goes green as it fills tells a
+   reader the model is doing well when all it has done is answer more
+   questions. `audit.colour_law_faults` fails the build if this rule is
+   broken here, because `.gate-bar` is not a verdict selector. */
+.gate { margin-top: 6px; display: grid; gap: 4px; }
+.gate-bar {
+  height: 2px;
+  background: var(--line);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.gate-bar i {
+  display: block;
+  height: 100%;
+  background: var(--chrome);
+  opacity: 0.55;
+}
+.gate-words {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  letter-spacing: .01em;
+}
+.gate-words b { color: var(--muted); font-weight: 600; }
+.verdict-cell { display: grid; gap: 2px; min-width: 180px; }
+.gate-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.gate-row:last-child { border-bottom: 0; }
+.gate-name { font-size: 13px; color: var(--muted); }
+.gate-why {
+  margin-top: 4px; font-size: 11px; color: var(--faint); max-width: 62ch;
+}

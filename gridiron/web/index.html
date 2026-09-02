@@ -74,6 +74,9 @@
 
   <section id="view-record" class="view" hidden>
     <div id="record-headline" class="headline"></div>
+    <!-- CLOSEST TO A VERDICT (GRIDIRON_13 P1). Which gate is nearest and
+         roughly how long, per sport. Every word comes from the server. -->
+    <div class="panel" id="closest-verdict" hidden></div>
     <!-- TWO FORECASTERS. One table at a time; there is no option that shows
          both at once. A third -- the operator's own informed calls -- stood
          here from GRIDIRON_12 until it was withdrawn on 2026-09-02. -->
@@ -99,6 +102,14 @@
       <div class="table-scroll"><table id="tier-table" class="grid"></table></div>
       <p class="footnote" id="tier-bands-note"></p>
       <p class="footnote" id="tier-corrections-note"></p>
+    </section>
+
+    <!-- THE OTHER GATES (GRIDIRON_13 P1). The corrections, the drift pairs
+         and any dated reading window, each drawn by the same component the
+         tier rows use, so "how close" means one thing on this page. -->
+    <section class="panel" id="other-gates" hidden>
+      <h3>What else is still counting <small id="other-gates-n"></small></h3>
+      <div id="other-gates-list"></div>
     </section>
 
     <div id="record-edge"></div>

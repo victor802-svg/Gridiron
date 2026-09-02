@@ -148,6 +148,27 @@ def require_sport(sport: str | None, where: str) -> str:
 SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week",
                     "cfb": "day"}
 
+#: MEASUREMENTS THAT MUST NOT BE READ EARLY, with the date they open.
+#:
+#: `docs/MLB_PROPS.md` records one day of rung claims and draws no conclusion
+#: from it: "one day is not two weeks, the ruling says four days is not
+#: evidence, and the `rungs` command refuses to read a verdict out of a window
+#: that has not closed." The date lived only in that prose and in FOLLOWUPS,
+#: which meant the interface could not show a reader how long the wait was.
+#: Declared here, dated, so the Record page can count it down like every other
+#: gate (GRIDIRON_13 P1).
+READ_WINDOWS: dict[str, dict] = {
+    "mlb_prop_rungs": {
+        "label": "the rung distribution",
+        "declared": "2026-08-31",
+        "opens": "2026-09-14",
+        "sport": "mlb",
+        "why": ("Two weeks of offered rungs. Below-floor claims clustering at "
+                "60-69 near the mean rung would mean the floor is working as "
+                "designed rather than the ladder being mis-set."),
+    },
+}
+
 #: WHAT EACH FORECASTER IS CALLED, in one place because two places disagree.
 #:
 #: The Record tab has named these since GRIDIRON_12 and the Picks list needed

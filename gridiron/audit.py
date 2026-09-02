@@ -2044,6 +2044,92 @@ def _check_the_colour_scanner_can_see() -> None:
 _check_the_colour_scanner_can_see()
 
 
+# HOW CLOSE A GATE IS, IN COUNTS (GRIDIRON_13 P1)
+# ---------------------------------------------------------------------------
+#
+# A progress line says how far a gate has to go. Three ways it could lie, and
+# this scan refuses all three:
+#
+#   A PERCENTAGE INSTEAD OF A COUNT. "70% of the way to a verdict" on a page
+#   whose whole subject is probabilities is a number that will be read as one,
+#   and it hides the sample size LAW 4 requires be beside every figure.
+#
+#   NO N. Same law, same reason: 14 of 20 is a claim about a sample.
+#
+#   GREEN. A filling bar is not a win. Green means a pick won (GRIDIRON_16
+#   R2), and a bar that goes green as it fills tells a reader the model is
+#   doing well when all it has done is answer more questions. The colour law
+#   scan catches this in the stylesheet; this catches it in a payload.
+
+_PERCENT = re.compile(r"[0-9]+(?:\.[0-9]+)?\s*%")
+
+
+def progress_faults(payload: dict, path: str = "$") -> list[str]:
+    """A progress line that states a share instead of a count."""
+    faults = []
+    if isinstance(payload, dict):
+        looks_like_progress = {"done", "needed"} <= payload.keys()
+        if looks_like_progress:
+            if "n" not in payload:
+                faults.append(
+                    f"{path} reports progress without an 'n'. A gate line is a "
+                    f"claim about a sample, and LAW 4 puts the sample size "
+                    f"beside every figure.")
+            for key in ("line", "note"):
+                text = str(payload.get(key) or "")
+                if _PERCENT.search(text):
+                    faults.append(
+                        f"{path}.{key} states a percentage ({text!r}). A "
+                        f"progress line carries COUNTS: a share of the way to "
+                        f"a verdict reads as a probability on a page about "
+                        f"probabilities, and it hides the N.")
+            for key in ("colour", "color", "tone"):
+                if str(payload.get(key) or "").lower() in ("win", "green", "good"):
+                    faults.append(
+                        f"{path}.{key} paints the progress bar the colour that "
+                        f"means a pick won. A filling bar is not a win -- it "
+                        f"means more questions were answered (R2).")
+        for key, value in payload.items():
+            faults += progress_faults(value, f"{path}.{key}")
+    elif isinstance(payload, list):
+        for i, value in enumerate(payload):
+            faults += progress_faults(value, f"{path}[{i}]")
+    return faults
+
+
+PROGRESS_FIXTURE_PERCENT = {"done": 14, "needed": 20, "n": 14,
+                            "line": "70% of the way to a verdict"}
+PROGRESS_FIXTURE_NO_N = {"done": 14, "needed": 20, "line": "14 of 20 settled"}
+PROGRESS_FIXTURE_GREEN = {"done": 14, "needed": 20, "n": 14,
+                          "line": "14 of 20 settled", "colour": "win"}
+PROGRESS_FIXTURE_GOOD = {"done": 14, "needed": 20, "n": 14,
+                         "line": "14 of 20 settled", "note": "6 more settled"}
+
+
+def check_progress_is_counted(payload: dict) -> None:
+    faults = progress_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A PROGRESS LINE IS NOT COUNTING:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_progress_scanner_can_see() -> None:
+    problems = []
+    if not progress_faults(PROGRESS_FIXTURE_PERCENT):
+        problems.append("progress_faults misses a percentage in a gate line")
+    if not progress_faults(PROGRESS_FIXTURE_NO_N):
+        problems.append("progress_faults misses a gate line with no N")
+    if not progress_faults(PROGRESS_FIXTURE_GREEN):
+        problems.append("progress_faults misses a green progress bar")
+    if progress_faults(PROGRESS_FIXTURE_GOOD):
+        problems.append("progress_faults flags a correct gate line")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_progress_scanner_can_see()
+
+
 # PICKS SHOWS TONIGHT (GRIDIRON_16 R4)
 # ---------------------------------------------------------------------------
 #

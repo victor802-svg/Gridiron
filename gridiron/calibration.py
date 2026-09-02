@@ -1244,6 +1244,12 @@ def tier_table(
             "proven": proven,
             "needed": TIER_MIN_SETTLED,
             "verdict": tier_verdict(claimed, actual, n),
+            # HOW CLOSE THIS ROW IS (GRIDIRON_13 P1). The verdict gate at 20,
+            # and once that is behind it the edge gate at 100. Counts only --
+            # `audit.progress_faults` refuses a share of the way to a verdict,
+            # because a percentage on this page reads as a probability.
+            "progress": language.gate_progress(
+                n, TIER_MIN_SETTLED, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
         })
 
     return {
@@ -1266,7 +1272,61 @@ def tier_table(
         # looking at.
         "corrections_note": _corrections_note(
             conn, sport=sport, market_type=market_type, predictor=predictor),
+        # WHICH GATE IS NEAREST, named once at the top rather than left for a
+        # reader to work out by comparing four rows.
+        "closest": _closest_verdict(conn, rows, sport=sport),
     }
+
+
+def _closest_verdict(conn: sqlite3.Connection, rows: list, *, sport: str) -> dict:
+    """The tier nearest a verdict, and roughly how many slates that is.
+
+    PACE IS AN ESTIMATE AND SAYS SO. It divides what settled in the last
+    fourteen days by the number of days that actually carried a settlement,
+    which is the closest thing to "a slate" this record holds. Below a week of
+    history it refuses to estimate at all rather than dividing by two days and
+    calling the answer a forecast.
+    """
+    from . import language
+
+    waiting = [r for r in rows if not r["proven"]]
+    if not waiting:
+        return {"n": sum(r["n"] for r in rows), "tier": None,
+                "line": language.closest_verdict_line(None, 0, ""),
+                "pace_known": False}
+    nearest = min(waiting, key=lambda r: r["needed"] - r["n"])
+    remaining = nearest["needed"] - nearest["n"]
+
+    cutoff = _days_ago_iso(language.PACE_WINDOW_DAYS)
+    recent = conn.execute(
+        "SELECT COUNT(*) AS n, COUNT(DISTINCT substr(resolved_utc, 1, 10)) AS days"
+        " FROM predictions WHERE sport = ? AND resolved_utc IS NOT NULL"
+        "   AND resolved_utc >= ?",
+        (sport, cutoff)).fetchone()
+    days = recent["days"] or 0
+    per_slate = (recent["n"] / days) if days else None
+    return {
+        "n": nearest["n"],
+        "tier": nearest["tier"],
+        "remaining": remaining,
+        "settled_recently": recent["n"] or 0,
+        "days_of_history": days,
+        "pace_known": days >= language.PACE_MIN_DAYS and bool(per_slate),
+        "line": language.closest_verdict_line(
+            nearest["tier"], remaining,
+            language.pace_clause(remaining, per_slate, days)),
+        "note": (
+            f"pace from the last {language.PACE_WINDOW_DAYS} days - an "
+            f"estimate, not a promise - {sport.upper()} only, because sports "
+            f"are never added together"),
+    }
+
+
+def _days_ago_iso(days: int) -> str:
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
 
 
 def _corrections_note(conn: sqlite3.Connection, *, sport: str,

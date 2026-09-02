@@ -1376,6 +1376,152 @@ def slate_title(season: int | None, week: int | None, slate_word: str,
     return f"{slate_word.title()} {week}, {season}" if season else f"{slate_word.title()} {week}"
 
 
+# ---------------------------------------------------------------------------
+# HOW CLOSE A GATE IS (GRIDIRON_13 P1)
+# ---------------------------------------------------------------------------
+#
+# Every gate in this app used to state only that it had not been cleared:
+# "unproven -- 14 of 20 settled" and nothing about the shape of the wait. A
+# reader could not tell 19-of-20 from 1-of-20 without doing the arithmetic,
+# and the two are completely different situations -- one is next week, the
+# other is next season.
+#
+# ONE COMPONENT, used by every counter on the page: the tier gates, the
+# correction gate, the drift pairs, the rung window. A second implementation
+# would be a second opinion about what "close" means.
+#
+# COUNTS, NEVER A PERCENTAGE. "70%" of the way to a verdict is a number that
+# invites being read as a probability on a page whose whole subject is
+# probabilities, and it hides the N that LAW 4 requires. The bar is drawn from
+# the counts; the words are the counts.
+
+def progress(done: int, needed: int, *, noun: str = "settled",
+             cleared_note: str | None = None) -> dict:
+    """How far along a gate is, in counts and in words.
+
+    `n` is present because LAW 4's walker requires it beside any claim, and
+    because the count IS the sample size here -- there is no other number this
+    could be.
+    """
+    done = max(0, int(done))
+    needed = max(0, int(needed))
+    cleared = needed and done >= needed
+    remaining = max(0, needed - done)
+    if not needed:
+        line = f"{done} {noun}"
+        note = ""
+    elif cleared:
+        # NOT "140 of 100". Once a gate is behind you the denominator has
+        # stopped being the point, and a count that exceeds its own target
+        # reads as an error.
+        line = f"{done} {noun}"
+        note = cleared_note or "cleared"
+    else:
+        line = f"{done} of {needed} {noun}"
+        note = f"{remaining} more {noun}"
+    return {
+        "done": done,
+        "needed": needed,
+        "remaining": remaining,
+        "cleared": bool(cleared),
+        "n": done,
+        "line": line,
+        "note": note,
+    }
+
+
+def gate_progress(done: int, first_gate: int, second_gate: int) -> dict:
+    """A gate with a gate behind it: the verdict at 20, the edge at 100.
+
+    TWO STAGES, ONE LINE AT A TIME. Showing "36 of 20" once a gate is cleared
+    is arithmetic nobody needs; what a reader wants at that point is the NEXT
+    thing standing between this tier and a claim about an edge. So the line
+    re-points at the second gate the moment the first is behind it, and says
+    which one it is talking about.
+    """
+    if done < first_gate:
+        out = progress(done, first_gate)
+        out["stage"] = "verdict"
+        out["toward"] = "a verdict"
+        return out
+    out = progress(done, second_gate, cleared_note="past the edge figure")
+    out["stage"] = "edge"
+    out["toward"] = "the edge figure"
+    if not out["cleared"]:
+        out["note"] = (f"verdict earned - {done} of {second_gate} toward the "
+                       f"edge figure")
+    return out
+
+
+def date_gate(declared: str, opens: str, today: str | None = None) -> dict:
+    """A window that opens on a date, counted in days.
+
+    THE SAME SHAPE AS EVERY OTHER GATE, deliberately: `done`, `needed`, `n`, a
+    line and a note. A reader should not have to learn two ways of reading
+    "how much longer" on one page, and a scan that checks progress lines for
+    percentages should cover this one too.
+    """
+    from datetime import date
+
+    def _d(text):
+        return date(int(text[0:4]), int(text[5:7]), int(text[8:10]))
+
+    start, end = _d(declared), _d(opens)
+    now = _d(today) if today else date.today()
+    total = max(1, (end - start).days)
+    elapsed = max(0, min(total, (now - start).days))
+    remaining = max(0, (end - now).days)
+    day_word = "day" if remaining == 1 else "days"
+    return {
+        "done": elapsed,
+        "needed": total,
+        "remaining": remaining,
+        "cleared": remaining == 0,
+        "n": elapsed,
+        "opens": opens,
+        "line": (f"{elapsed} of {total} days"),
+        "note": ("the window is open - read it"
+                 if remaining == 0
+                 else f"read on {date_words_from_iso(opens)} - {remaining} "
+                      f"{day_word}"),
+    }
+
+
+#: How many days of history a pace estimate needs before it is worth stating.
+#: Below this the honest answer is that the pace is unknown -- an estimate
+#: from three days of one sport is a number with a confidence interval wider
+#: than the thing it estimates.
+PACE_MIN_DAYS = 7
+PACE_WINDOW_DAYS = 14
+
+
+def pace_clause(remaining: int, per_slate: float | None,
+                days_of_history: int) -> str:
+    """"about 2 slates at the current pace", or that the pace is unknown."""
+    if days_of_history < PACE_MIN_DAYS or not per_slate:
+        return "pace unknown -- too little history to estimate one"
+    slates = remaining / per_slate
+    if slates < 1:
+        return "about a slate at the current pace"
+    rounded = int(round(slates))
+    word = "slate" if rounded == 1 else "slates"
+    return f"about {rounded} {word} at the current pace"
+
+
+def closest_verdict_line(name: str | None, remaining: int,
+                         pace: str) -> str:
+    """The line at the top of Record: which gate is nearest, and how near.
+
+    NAMED, NOT RANKED. It says which one is closest and how far, and stops --
+    it does not order the others into a league table, because the second
+    closest gate is not information anybody acts on.
+    """
+    if name is None:
+        return "Every tier has settled enough for a verdict."
+    return (f"Closest to a verdict: {name} -- {remaining} more settled, "
+            f"{pace}.")
+
+
 def rail_numbers_line(model_prob: float, market_prob: float | None,
                       gap: float | None) -> str:
     """"The model says 53%. The market implies 41% -- a 12 point disagreement."
