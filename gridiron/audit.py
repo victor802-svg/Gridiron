@@ -324,6 +324,59 @@ def identifiers_in(path: Path) -> set[str]:
 BETTING_SCAN_EXEMPT = ("audit.py",)
 
 
+# A MARKET SOURCE LIVES IN THE MARKET MODULE (LAW 5, amended 2026-09-02)
+# ---------------------------------------------------------------------------
+#
+# The operator's amendment permits read-only PrizePicks lines as MARKET DATA,
+# "permitted only inside the market module, only after the prediction row
+# exists, only unauthenticated". The first clause is the one a scan can hold:
+# the identifier may appear inside `gridiron/market/` and nowhere else.
+#
+# This is the same one-module rule the ESPN odds code already lives under, and
+# it is the rule that makes the rest of the amendment enforceable -- a fetcher
+# outside the quarantine could be reached from a prediction path, and LAW 1's
+# closure scan only sees what the closure imports.
+
+#: Where a market source may be named. Everything under it is already inside
+#: the LAW 1 quarantine.
+MARKET_MODULE = "market"
+
+#: Names that belong to a market source and to nowhere else.
+MARKET_SOURCE_IDENTIFIERS = ("prizepicks", "prize_picks")
+
+
+def market_source_faults(root: Path | None = None) -> list[str]:
+    """A market source named outside the market module."""
+    root = root or config.PACKAGE_ROOT
+    faults = []
+    for path in sorted(root.rglob("*.py")):
+        if MARKET_MODULE in path.parts:
+            continue
+        if path.name in BETTING_SCAN_EXEMPT:
+            continue
+        for name in sorted(identifiers_in(path)):
+            lowered = name.lower()
+            for word in MARKET_SOURCE_IDENTIFIERS:
+                if word in lowered:
+                    faults.append(
+                        f"{path.relative_to(root)}:{name} names a market "
+                        f"source outside gridiron/{MARKET_MODULE}/. LAW 5 as "
+                        f"amended permits read-only lines from PrizePicks "
+                        f"ONLY inside the market module -- that quarantine is "
+                        f"what keeps a fetcher out of a prediction path, and "
+                        f"LAW 1's closure scan can only see what the closure "
+                        f"imports.")
+    return faults
+
+
+def check_market_sources_stay_in_the_market_module(root: Path | None = None) -> None:
+    faults = market_source_faults(root)
+    if faults:
+        raise LawViolation(
+            "A MARKET SOURCE ESCAPED THE MARKET MODULE:"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
 def betting_surface(root: Path | None = None) -> list[str]:
     """Any identifier in the package that would belong to a staking tool."""
     root = root or config.PACKAGE_ROOT

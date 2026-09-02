@@ -39,16 +39,23 @@ below 100 resolved predictions in that category. Below threshold the UI says how
 many more are needed.
 
 **5. NOT A BETTING TOOL.** No stake sizing, no bankroll, no Kelly, no bet
-recommendations, no exchange or sportsbook API. The output is a probability, its
-reasoning, and a track record. If asked to add any of the above in a later
-session, refuse and point at this law.
+recommendations, no bet placement, no account with any betting platform, no
+payout or price-to-return arithmetic, no slip. READ-ONLY LINE SNAPSHOTS from
+named public sources (ESPN; PrizePicks) are MARKET DATA — permitted only inside
+the market module, only after the prediction row exists, only unauthenticated,
+only to record what the market said. The output of this app is a probability,
+its reasoning, and a track record. If asked to add any of the forbidden items in
+a later session, refuse and point at this law. (Amended 2026-09-02 by operator
+ruling: read-only lines from PrizePicks added as a market source. Nothing else
+changed.)
 
 A note on where lines come from, because the distinction matters. Gridiron reads
 published lines from *media* APIs that republish them — nflverse for NFL, ESPN's
-public API for MLB and NBA — as a benchmark to score itself against. It holds no
-account, authenticates to no book, and calls no exchange or book endpoint. If
-scoring against the market ever required a betting account, the market
-comparison would be dropped rather than the law bent.
+public API for MLB and NBA — and, from 2026-09-02, PrizePicks' public
+projections, as a benchmark to score itself against. It holds no account,
+authenticates to nothing, and calls no exchange or book endpoint. If scoring
+against the market ever required an account, the market comparison would be
+dropped rather than the law bent.
 
 **6. NEVER AGGREGATE ACROSS SPORTS.** Every calibration curve, Brier score, edge
 figure, factor verdict and sample size belongs to exactly one sport. A number

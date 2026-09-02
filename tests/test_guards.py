@@ -1217,3 +1217,60 @@ def test_a_changed_factor_set_is_still_allowed(tmp_path):
         " -3.5, 0.53, 'cover', 'statistical', 'an-older-set', '{}', 'x')")
     conn.commit()
     assert not _run.already_answered(conn, "nfl", 2026, 1)["refuse"]
+
+
+# ---------------------------------------------------------------------------
+# A MARKET SOURCE LIVES IN THE MARKET MODULE (LAW 5, amended 2026-09-02)
+# ---------------------------------------------------------------------------
+
+def test_a_market_source_named_outside_the_market_module_is_caught(tmp_path):
+    """LAW 5 as amended permits read-only PrizePicks lines "only inside the
+    market module". LAW 1's closure scan sees only what a closure IMPORTS, so
+    a module that merely names a source is invisible to it."""
+    import shutil
+
+    from gridiron import config as _config
+
+    root = tmp_path / "gridiron"
+    shutil.copytree(_config.PACKAGE_ROOT, root,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.db"))
+    victim = root / "sports" / "mlb.py"
+    leak = (chr(10) + chr(10) + "def _leak():" + chr(10)
+            + "    prizepicks_line = 1" + chr(10)
+            + "    return prizepicks_line" + chr(10))
+    victim.write_text(victim.read_text(encoding="utf-8") + leak, encoding="utf-8")
+
+    faults = audit.market_source_faults(root)
+    assert faults and "outside gridiron/market/" in faults[0]
+    with pytest.raises(audit.LawViolation, match="ESCAPED THE MARKET MODULE"):
+        audit.check_market_sources_stay_in_the_market_module(root)
+
+
+def test_the_market_module_may_name_its_own_sources(tmp_path):
+    """The quarantine is a boundary, not a ban: inside it the name is the
+    point."""
+    import shutil
+
+    from gridiron import config as _config
+
+    root = tmp_path / "gridiron"
+    shutil.copytree(_config.PACKAGE_ROOT, root,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.db"))
+    inside = root / "market" / "prizepicks_probe.py"
+    inside.write_text(
+        "def prizepicks_lines():" + chr(10) + "    return []" + chr(10),
+        encoding="utf-8")
+    assert not audit.market_source_faults(root)
+
+
+def test_the_shipped_package_names_no_market_source_outside_the_module():
+    audit.check_market_sources_stay_in_the_market_module()   # must not raise
+
+
+def test_law_five_still_forbids_everything_it_forbade():
+    """The amendment ADDED a permitted market source. It removed nothing, and
+    the identifier scan is unchanged."""
+    for word in ("kelly", "bankroll", "stake", "wager", "sizing",
+                 "recommend_bet", "sportsbook", "roi"):
+        assert word in audit.BETTING_IDENTIFIERS
+    audit.check_not_a_betting_tool()          # must not raise

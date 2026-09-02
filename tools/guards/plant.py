@@ -914,6 +914,42 @@ def plant_a_slate_answered_twice() -> Result:
                   "a second full set of forecasts was written")
 
 
+def plant_a_market_source_outside_the_market_module() -> Result:
+    """Name PrizePicks from a prediction-path module.
+
+    LAW 5 as amended (2026-09-02) permits read-only PrizePicks lines as market
+    data, "only inside the market module". That quarantine is not decoration:
+    it is what keeps a fetcher out of a prediction path. LAW 1's closure scan
+    can only see what the closure IMPORTS, so a module that merely NAMES a
+    source is invisible to it -- this scan is what catches that.
+
+    Planted for real: the identifier is written into a copy of a real
+    prediction-path module and the scan is run against the tree holding it.
+    """
+    from gridiron import audit as _audit
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.db"))
+        victim = root / "sports" / "mlb.py"
+        # A NAME, not a string literal: `identifiers_in` reads the AST, and a
+        # string is deliberately not a name -- prose may discuss a source, code
+        # may not reach for one.
+        leak = (
+            chr(10) + chr(10)
+            + "def _leak():" + chr(10)
+            + "    prizepicks_line = 1" + chr(10)
+            + "    return prizepicks_line" + chr(10)
+        )
+        victim.write_text(
+            victim.read_text(encoding="utf-8") + leak, encoding="utf-8")
+        faults = _audit.market_source_faults(root)
+
+    return _desk_plant(faults, "name a market source in a prediction path",
+                       "audit.market_source_faults")
+
+
 def plant_a_clamped_rung_beyond_the_ladder() -> Result:
     """Ask a sixty-point mismatch at the ladder's end rung anyway.
 
@@ -3159,6 +3195,7 @@ def main() -> int:
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
     results.append(plant_a_slate_answered_twice())
+    results.append(plant_a_market_source_outside_the_market_module())
     results.append(plant_a_clamped_rung_beyond_the_ladder())
     results.append(plant_a_run_line_rung_off_the_market())
     results.append(plant_a_total_asked_from_a_market_value())

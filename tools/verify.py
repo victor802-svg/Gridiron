@@ -200,6 +200,8 @@ def step_2_guards() -> bool:
          audit.check_the_calls_feature_stayed_withdrawn),
         ("four pages, and every old address lands",
          audit.check_the_nav_is_four_pages),
+        ("a market source stays in the market module",
+         audit.check_market_sources_stay_in_the_market_module),
         ("every run line agrees with its own price",
          lambda: audit.check_run_line_signs(_record_conn(), "mlb")),
         ("forecasters are never merged",
