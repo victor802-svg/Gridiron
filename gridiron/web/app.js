@@ -557,20 +557,10 @@ const Gridiron = (function () {
     const count = document.getElementById('other-gates-n');
     if (!host || !panel) return;
     host.innerHTML = '';
-    const entries = [];
-    ((sc && sc.corrections && sc.corrections.categories) || []).forEach(c => {
-      if (c.progress) entries.push({ name: 'A correction for ' + c.label,
-                                     progress: c.progress });
-    });
-    ((sc && sc.drift && sc.drift.markets) || []).forEach(m => {
-      if (m.progress) entries.push({
-        name: 'Where the line went after ' + marketLabel(m.market_type),
-        progress: m.progress });
-    });
-    ((sc && sc.read_windows) || []).forEach(w => {
-      if (w.progress) entries.push({ name: 'Reading ' + w.label,
-                                     progress: w.progress, why: w.why });
-    });
+    // NAMED BY THE SERVER. These names were glued together here -- a label
+    // plus a market field -- until `check_js_composes_no_prose` refused it on
+    // the first gate run. `language.gate_name` writes them now.
+    const entries = (sc && sc.gates) || [];
     entries.forEach(e => {
       const row = el('div', 'gate-row');
       row.appendChild(el('div', 'gate-name', e.name));

@@ -1570,6 +1570,26 @@ def schedule_disagreement(label: str, recorded: str, os_state: dict) -> str | No
     return None
 
 
+def gate_name(kind: str, subject: str) -> str:
+    """What a gate on the Record page is called, in words.
+
+    COMPOSED HERE, NOT IN THE BROWSER. The renderer built these by gluing a
+    label onto a data field -- "Where the line went after " + a market name --
+    and `audit.check_js_composes_no_prose` caught it on the first gate run.
+    That guard exists because `'picked ' + String(s.subject).toUpperCase()`
+    once shipped a raw identifier to a reader; a sentence assembled in the
+    browser is outside the plain-words scan, outside the side resolver and
+    outside the tests.
+    """
+    if kind == "correction":
+        return f"A correction for {subject}"
+    if kind == "drift":
+        return f"Where the line went after {subject}"
+    if kind == "read_window":
+        return f"Reading {subject}"
+    return subject
+
+
 def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
     """"Wednesday 2 September - 5 right, 2 wrong, 1 void".
 

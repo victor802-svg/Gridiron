@@ -650,7 +650,8 @@ def _overflow(page) -> int:
 
 
 @pytest.mark.parametrize(
-    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/results", "#/schedule"]
+    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/results",
+              "#/schedule", "#/settings"]
 )
 def test_no_screen_overflows_a_phone(phone, route):
     """Sideways scroll on a phone is the single most common way a dense layout
@@ -934,7 +935,7 @@ def test_each_dark_screen_renders_on_a_phone(route, page):
 
 @pytest.mark.parametrize(
     "route", ["#/record", "#/week", "#/factors", "#/versions",
-              "#/results", "#/schedule", "#/digest"]
+              "#/results", "#/schedule", "#/digest", "#/settings"]
 )
 def test_no_internal_vocabulary_reaches_the_reader(route, page):
     """Scanned on the RENDERED page, not in the source. Labels are only half of
@@ -1034,7 +1035,7 @@ def test_the_greeting_is_on_the_home_tab_only(page):
     _open_route(page, "#/record")
     assert page.locator("#glance").is_visible(), "the home tab does not greet"
 
-    for route in ("#/factors", "#/results", "#/schedule"):
+    for route in ("#/factors", "#/results", "#/schedule", "#/settings"):
         _open_route(page, route)
         # K2 old -> new: the greeting and the notices are ONE strip now, and
         # this test's own docstring is why the assertion had to move. "One
@@ -1059,7 +1060,8 @@ def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
 
 
 @pytest.mark.parametrize(
-    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/results"]
+    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/results",
+              "#/settings"]
 )
 def test_no_bare_dash_stands_in_for_a_value(route, page):
     """A dash in a data cell reads as a rendering fault. Every absence names

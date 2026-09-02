@@ -1426,6 +1426,21 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
         for key, window in config.READ_WINDOWS.items()
         if window.get("sport") == sport
     ]
+    # ONE LIST OF GATES, NAMED HERE. The renderer used to build these names
+    # by gluing a label onto a market field, which `check_js_composes_no_prose`
+    # refuses: a sentence assembled in the browser is outside the plain-words
+    # scan, outside the side resolver and outside the tests.
+    payload["gates"] = (
+        [{"name": language.gate_name("correction", c["label"]),
+          "progress": c["progress"], "n": c["progress"]["n"]}
+         for c in payload["corrections"]["categories"] if c.get("progress")]
+        + [{"name": language.gate_name("drift", language.humanise(m["market_type"])),
+            "progress": m["progress"], "n": m["progress"]["n"]}
+           for m in payload["drift"]["markets"] if m.get("progress")]
+        + [{"name": language.gate_name("read_window", w["label"]),
+            "progress": w["progress"], "why": w["why"], "n": w["progress"]["n"]}
+           for w in payload["read_windows"] if w.get("progress")]
+    )
     calibration.assert_every_figure_has_n(payload)
     # EVERY GATE ON THIS PAGE COUNTS, and none of them renders a share (P1).
     audit.check_progress_is_counted(payload)
