@@ -217,3 +217,16 @@ exactly here, and a page that scrolls sideways has lost something off the edge.
 
 Do it with the nav's existing "more" affordance rather than another font-size
 reduction; the tabs are already at 8px padding and 10px record type.
+
+## The slate clock's "in progress" state cannot be reached yet
+
+Found 2026-09-01 while rendering E3's three countdown states. `games.status`
+carries a CHECK constraint permitting only `'scheduled'` and `'final'`, so a
+game cannot be marked as under way and the middle state — "in progress · 12 of
+60 final" — is unreachable. "upcoming" and "complete" both render (the latter
+seeded on a COPY of the database; the live record was not touched).
+
+This is not a defect to fix on its own: live status arrives with the L1 live
+poll, which is the thing that would set it. **L1 must widen that constraint**,
+and the seeded render of the middle state belongs in L1's QA rather than being
+left as a gap here. Noted so the phase that needs it finds it.

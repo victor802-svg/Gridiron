@@ -380,7 +380,19 @@ def chance_clause(item: dict) -> str:
     side = item.get("model_side")
     # THE ONE DOOR, for the game markets. A prop's subject is a person's name
     # and needs only its stored stat suffix removed.
-    subject, _prob = side_named(item)
+    # THE SCHOOL FORM, which settles the argument the note below was having
+    # with itself. That note defends the tricode on two grounds: a full name
+    # wraps in a narrow column, and a club name is PLURAL, so "Colorado
+    # Rockies wins" is wrong while "TB wins" is right.
+    #
+    # The school form answers both without the tricode. "Ohio covers", "East
+    # Carolina covers", "Toledo wins" -- singular, short, and a name rather
+    # than a code. The spread branch was using the FULL form and producing
+    # "OHIO BOBCATS COVERS", which is the exact plural disagreement the note
+    # warns about, while the moneyline branch beside it said "TOL WINS": one
+    # team, two notations, on adjacent rows of the same slate (seen in the
+    # 390px render, E3).
+    subject, _prob = side_named(item, form="city")
     if market_type == "prop":
         subject = strip_market_suffix(item.get("subject"), item.get("prop_type"))
     # THE TRICODE STAYS HERE, deliberately, and the mockup agrees: the pick line
@@ -426,10 +438,18 @@ def chance_clause(item: dict) -> str:
         # club to name, and "TB wins" under a pick AGAINST Tampa would be the
         # very inversion this function exists to prevent. Say "TB loses"
         # instead -- clumsier, and true.
-        raw = strip_market_suffix(item.get("subject"), item.get("prop_type"))
+        raw = team_name(strip_market_suffix(item.get("subject"),
+                                            item.get("prop_type")),
+                        item.get("team_names"), "city")
         if side == "lose":
             if item.get("opponent"):
-                return f"{item['opponent']} wins"
+                # THROUGH THE NAME LOOKUP, like every other club here. Left
+                # raw, this printed "TOL wins" beside "Tulsa wins" on the same
+                # slate -- one notation for the side that was flipped and
+                # another for the side that was not, which is the reader doing
+                # the work of noticing they are the same kind of thing.
+                return (f"{team_name(item['opponent'], item.get('team_names'), 'city')}"
+                        f" wins")
             return f"{raw} loses"
         return f"{raw} wins"
 

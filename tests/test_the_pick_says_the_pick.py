@@ -136,3 +136,33 @@ def test_the_plain_words_scan_now_catches_a_slate_key():
     assert not audit.plain_words_violations("Saturday 5 September, 2026")
     # A season is four digits and must not trip it.
     assert not audit.plain_words_violations("Season 2026, Week 1")
+
+
+def test_the_chance_clause_uses_one_notation_for_every_side():
+    """Found in the 390px render: "TOL wins" beside "Tulsa wins".
+
+    The clause defended the tricode on two grounds -- a full name wraps in a
+    narrow column, and a club name is plural, so "Colorado Rockies wins" is
+    wrong. The school form answers both: singular, short, and a name rather
+    than a code. What it must not do is use one notation for the side that got
+    flipped and another for the side that did not.
+    """
+    yes = {"market_type": "moneyline", "model_side": "win", "subject": "TLSA",
+           "opponent": "OKST", "team_names": {
+               "TLSA": {"full": "Tulsa Golden Hurricane", "city": "Tulsa"},
+               "OKST": {"full": "Oklahoma State Cowboys", "city": "Oklahoma State"}},
+           "model_prob": 0.7}
+    no = dict(yes, model_side="lose")
+    assert language.chance_clause(yes) == "Tulsa wins"
+    assert language.chance_clause(no) == "Oklahoma State wins"
+    # Neither says a tricode.
+    assert "TLSA" not in language.chance_clause(no)
+    assert "OKST" not in language.chance_clause(no)
+
+
+def test_the_chance_clause_takes_the_singular_verb():
+    """"Ohio covers", never "Ohio Bobcats covers"."""
+    card = _spread("fail to cover")
+    clause = language.chance_clause(card)
+    assert clause == "East Carolina covers"
+    assert "Pirates" not in clause, "the plural mascot form is back"
