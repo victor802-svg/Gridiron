@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridiron — four pages</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0A0F0C;--card:#10160F;--card-2:#151D13;--line:#1F2B1E;--chrome:#F2F5F0;--muted:#8AA08C;--faint:#6E8272;--green:#00DC82;--red:#FF6B6B;--mono:'IBM Plex Mono',monospace;--cond:'Barlow Condensed',sans-serif;--body:'Archivo',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ink);color:var(--chrome);font-family:var(--body);font-size:13px;line-height:1.45;padding-bottom:60px}
+.bar{border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--ink);z-index:2}
+.bar .in{max-width:1160px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:18px;height:52px}
+.brand{font-family:var(--cond);font-weight:700;font-size:20px;letter-spacing:.06em;display:flex;align-items:center;gap:8px}
+.brand em{font-style:normal;color:var(--green)}
+.mark{width:18px;height:10px;position:relative}.mark::before{content:"";position:absolute;left:0;right:0;top:4px;height:2px;background:var(--faint)}.mark i{position:absolute;top:1px;width:8px;height:8px;border-radius:50%}.mark .a{left:0;background:var(--chrome)}.mark .b{right:0;border:2px solid var(--muted)}
+.sports{display:flex;gap:2px;margin-left:6px}
+.sport{font-family:var(--cond);font-size:15px;font-weight:600;letter-spacing:.08em;padding:0 10px;height:52px;line-height:52px;color:var(--muted);border-bottom:2px solid transparent}
+.sport.on{color:var(--chrome);border-bottom-color:var(--green)}
+.sport small{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:5px;letter-spacing:0}
+.pages{margin-left:auto;display:flex;gap:16px;font-size:12px;color:var(--muted)}
+.pages span{cursor:pointer}.pages .on{color:var(--chrome)}
+.wrap{max-width:1160px;margin:0 auto;padding:22px 24px}
+.hidden{display:none}
+h2{font-family:var(--cond);font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:26px 0 8px;display:flex;justify-content:space-between}
+h2 small{font-family:var(--mono);letter-spacing:0;font-weight:400;text-transform:none;font-size:11px}
+h2:first-child{margin-top:0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.lead{font-size:15px;color:var(--chrome)}
+.lead b{font-weight:600}
+.sub{font-size:12px;color:var(--faint);margin-top:4px;font-family:var(--mono)}
+table{width:100%;border-collapse:collapse}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13px}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+.tier{font-family:var(--cond);font-weight:700;font-size:12px;letter-spacing:.14em;padding:3px 8px;border-radius:5px;display:inline-block;min-width:64px;text-align:center}
+.tier.lean{color:var(--faint);border:1px solid var(--line)}.tier.solid{color:var(--chrome);border:1px solid var(--muted)}.tier.strong{color:var(--ink);background:var(--chrome)}
+.verdict{color:var(--muted)}
+.verdict.good{color:var(--chrome)}
+.prog{height:3px;background:var(--line);border-radius:2px;position:relative;margin-top:6px}
+.prog i{position:absolute;left:0;top:0;bottom:0;background:var(--muted);border-radius:2px}
+.prog.done i{background:var(--chrome)}
+.plabel{font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:3px}
+.note{font-size:12px;color:var(--faint);margin-top:10px;line-height:1.6}
+.link{color:var(--green);font-weight:600;font-size:12px;cursor:pointer}
+.search{width:100%;background:var(--card-2);border:1px solid var(--line);border-radius:8px;color:var(--chrome);font-family:var(--body);font-size:13px;padding:9px 12px;margin-bottom:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.fcard .nm{font-weight:600;font-size:14px;color:var(--chrome)}
+.fcard .what{color:var(--muted);font-size:12.5px;margin-top:4px;line-height:1.5}
+.fcard .pull{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:8px}
+.fcard .pull b{color:var(--muted);font-weight:500}
+.fcard code{font-family:var(--mono);font-size:10px;color:#3E4F41;display:block;margin-top:6px}
+.cal{display:grid;grid-template-columns:repeat(14,1fr);gap:4px}
+.day{aspect-ratio:1;border:1px solid var(--line);border-radius:4px;font-family:var(--mono);font-size:9.5px;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer}
+.day.up{background:rgba(0,220,130,.12);color:var(--green);border-color:rgba(0,220,130,.25)}
+.day.down{background:rgba(255,107,107,.12);color:var(--red);border-color:rgba(255,107,107,.25)}
+.day.even{background:var(--card-2);color:var(--muted)}
+.day.today{outline:1px solid var(--chrome);outline-offset:1px}
+.day.sel{box-shadow:0 0 0 2px var(--chrome)}
+.months{display:grid;grid-template-columns:repeat(14,1fr);font-family:var(--mono);font-size:9px;color:var(--faint);margin-bottom:4px}
+.chip{font-family:var(--cond);font-weight:700;font-size:12px;letter-spacing:.12em;padding:2px 8px;border-radius:5px}
+.chip.win{color:var(--green);background:rgba(0,220,130,.10)}.chip.loss{color:var(--red);background:rgba(255,107,107,.10)}
+.set{display:grid;grid-template-columns:220px 1fr;gap:12px 24px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.set:last-child{border-bottom:0}
+.set .k{color:var(--chrome);font-weight:600}
+.set .k small{display:block;color:var(--faint);font-weight:400;font-size:11.5px;margin-top:2px}
+.set .v{display:flex;gap:10px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--muted);flex-wrap:wrap}
+.tog{width:34px;height:18px;border-radius:9px;background:var(--line);position:relative;cursor:pointer}
+.tog i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--faint)}
+.tog.on{background:rgba(0,220,130,.25)}.tog.on i{left:18px;background:var(--green)}
+.inp{background:var(--card-2);border:1px solid var(--line);border-radius:6px;color:var(--chrome);font-family:var(--mono);font-size:12px;padding:5px 8px;width:90px}
+.ro{color:var(--faint)}
+.lock{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.health td{font-family:var(--mono);font-size:12px}
+.ok{color:var(--muted)}.bad{color:var(--red);font-weight:600}
+.login{min-height:70vh;display:grid;place-items:center}
+.lbox{width:340px;text-align:center}
+.lbox .brand{justify-content:center;font-size:28px;margin-bottom:26px}
+.lbox input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:8px;color:var(--chrome);font-family:var(--mono);font-size:13px;padding:12px 14px;text-align:center}
+.lbox button{margin-top:10px;width:100%;background:var(--green);color:var(--ink);border:0;border-radius:8px;font-family:var(--body);font-weight:700;font-size:13px;padding:11px;cursor:pointer}
+.lbox .tease{margin-top:26px;font-family:var(--mono);font-size:11.5px;color:var(--faint);line-height:1.9}
+.lbox .tease b{color:var(--muted);font-weight:500}
+</style>
+</head>
+<body>
+<div class="bar"><div class="in">
+  <div class="brand"><span class="mark"><i class="a"></i><i class="b"></i></span>GRID<em>IRON</em></div>
+  <div class="sports"><div class="sport">NFL<small>0 settled</small></div><div class="sport on">MLB<small>33–18</small></div><div class="sport">NBA<small>0 settled</small></div><div class="sport">CFB<small>0 settled</small></div></div>
+  <div class="pages" id="nav"><span data-p="picks">Picks</span><span data-p="record" class="on">Record</span><span data-p="history">History</span><span data-p="settings">Settings</span><span data-p="login" style="color:var(--faint)">· login preview</span></div>
+</div></div>
+<div class="wrap page" id="record">
+  <div class="panel">
+    <div class="lead">Closest to a verdict: <b>LEAN — 14 of 20 settled</b>, about 3 slates at the current pace.</div>
+    <div class="sub">pace from the last 14 days · an estimate, not a promise · MLB only — sports are never added together</div>
+  </div>
+  <h2>How good is each tier <small>MLB · statistical · all markets</small></h2>
+  <div class="panel" style="padding:4px 6px">
+    <table>
+      <tr><th>Tier</th><th>Band</th><th class="n">Settled</th><th class="n">Right</th><th class="n">Claimed</th><th class="n">Actual</th><th>Verdict</th></tr>
+      <tr><td><span class="tier lean">LEAN</span></td><td class="ro">50–60%</td><td class="n">36</td><td class="n">21</td><td class="n">55%</td><td class="n">58%</td><td><div class="verdict good">about as good as it claims</div><div class="prog done"><i style="width:100%"></i></div><div class="plabel">verdict earned · 36 of 100 toward the edge figure</div></td></tr>
+      <tr><td><span class="tier solid">SOLID</span></td><td class="ro">60–70%</td><td class="n">14</td><td class="n ro">—</td><td class="n ro">—</td><td class="n ro">—</td><td><div class="verdict">unproven — 14 of 20</div><div class="prog"><i style="width:70%"></i></div><div class="plabel">6 more settled</div></td></tr>
+      <tr><td><span class="tier strong">STRONG</span></td><td class="ro">70–80%</td><td class="n">1</td><td class="n ro">—</td><td class="n ro">—</td><td class="n ro">—</td><td><div class="verdict">unproven — 1 of 20</div><div class="prog"><i style="width:5%"></i></div><div class="plabel">19 more settled</div></td></tr>
+      <tr><td><span class="tier strong">STRONG</span></td><td class="ro">80%+</td><td class="n">0</td><td class="n ro">—</td><td class="n ro">—</td><td class="n ro">—</td><td><div class="verdict">unproven — 0 of 20</div><div class="prog"><i style="width:0"></i></div><div class="plabel">nothing settled in this band</div></td></tr>
+    </table>
+  </div>
+  <div class="note">LEAN picks have been right 58% of the time over 36 — about as good as they claim. That is the largest gap on this page; the best row is never the one shown here.</div>
+  <h2>Against the market <small>same 51 picks</small></h2>
+  <div class="panel">
+    <div class="lead">So far the market has been closer than the model — by <b>1.9 points</b> on 51 picks.</div>
+    <div class="sub">model Brier 0.2224 · market 0.2035 · big disagreements: 6 of 100 settled — 94 more before that figure is shown</div>
+  </div>
+  <h2>Record <small>model · all time</small></h2>
+  <div class="panel" style="padding:4px 6px">
+    <table>
+      <tr><th>Market</th><th class="n">Won</th><th class="n">Lost</th><th class="n">Void</th><th class="n">Settled</th></tr>
+      <tr><td>Moneyline</td><td class="n">24</td><td class="n">20</td><td class="n ro">6</td><td class="n">44</td></tr>
+      <tr><td>Batter home runs</td><td class="n">5</td><td class="n">1</td><td class="n ro">0</td><td class="n">6</td></tr>
+      <tr><td>Batter hits</td><td class="n">1</td><td class="n">0</td><td class="n ro">0</td><td class="n">1</td></tr>
+    </table>
+  </div>
+  <div class="note">Win rate alone cannot tell you whether the probabilities are honest — a high rate on heavy favourites can sit beside badly calibrated numbers.</div>
+  <h2>How the model works <small>MLB · 8 factors</small></h2>
+  <input class="search" placeholder="search factors — try 'bullpen' or 'park'">
+  <div class="cards">
+    <div class="fcard"><div class="nm">The starting pitching matchup</div><div class="what">Runs the probable starter has allowed per start, over his last ten.</div><div class="pull">pulls <b>the most</b> · 51 picks</div><code>mlb_starter_rolling_perf</code></div>
+    <div class="fcard"><div class="nm">How the offence has been scoring</div><div class="what">Runs scored per game over the last fifteen.</div><div class="pull">helps <b>some</b> · 51 picks</div><code>mlb_team_offense_rolling</code></div>
+    <div class="fcard"><div class="nm">How tired the bullpen is</div><div class="what">Relief innings thrown over the last three days.</div><div class="pull">helps <b>a little</b> · 51 picks</div><code>mlb_bullpen_recent_load</code></div>
+    <div class="fcard"><div class="nm">How much scoring the park allows</div><div class="what">A fixed factor per ballpark, from published park data.</div><div class="pull"><b>unproven</b> · 51 picks · too few to say</div><code>mlb_park_factor</code></div>
+    <div class="fcard"><div class="nm">Days since the starter last pitched</div><div class="what">Rest for the probable starter; capped so an outlier can't dominate.</div><div class="pull"><b>unproven</b> · 51 picks</div><code>mlb_starter_rest_days</code></div>
+    <div class="fcard"><div class="nm">Which price the question was asked at</div><div class="what">Tells the model which rung of the ladder it is answering.</div><div class="pull">helps <b>some</b> · 51 picks</div><code>mlb_asked_line</code></div>
+  </div>
+  <div class="note">What changed, when: <b style="color:var(--muted)">Aug 30</b> — the batter rate window widened to 60 games, and the ladder floor was declared · <span class="link">and 3 smaller changes</span></div>
+</div>
+<div class="wrap page hidden" id="history">
+  <h2>The season so far <small>MLB · model · click a day</small></h2>
+  <div class="panel">
+    <div class="months"><span>Aug 20</span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span>Aug 30</span><span></span><span>Sep 1</span><span></span></div>
+    <div class="cal">
+      <div class="day"></div><div class="day"></div><div class="day"></div><div class="day"></div><div class="day"></div><div class="day"></div><div class="day"></div><div class="day"></div><div class="day"></div>
+      <div class="day up">3–2</div><div class="day down">2–4</div><div class="day up sel">5–2</div><div class="day even">4–4</div><div class="day today up">6–3</div>
+    </div>
+    <div class="note" style="margin-top:12px">Green when more right than wrong that day, red when fewer, grey when even. Voids are not counted either way. <span class="link">clear selection</span></div>
+  </div>
+  <h2>Aug 31 <small>7 settled · 5 right</small></h2>
+  <div class="panel" style="padding:4px 6px">
+    <table>
+      <tr><th>Prediction</th><th class="n">Model</th><th class="n">Market then</th><th>Tier</th><th>Result</th></tr>
+      <tr><td>Washington to win · MIA @ WSH</td><td class="n">51%</td><td class="n">49%</td><td><span class="tier lean">LEAN</span></td><td><span class="chip win">WIN</span></td></tr>
+      <tr><td>Tatis Jr. under 1.5 hits · SD @ TB</td><td class="n">72%</td><td class="n">73%</td><td><span class="tier strong">STRONG</span></td><td><span class="chip win">WIN</span></td></tr>
+      <tr><td>Colorado to win · COL @ ATL</td><td class="n">52%</td><td class="n">32%</td><td><span class="tier lean">LEAN</span></td><td><span class="chip loss">LOSS</span></td></tr>
+      <tr><td>Soto no home run · NYM vs HOU</td><td class="n">87%</td><td class="n ro">no line</td><td><span class="tier strong">STRONG</span></td><td><span class="chip win">WIN</span></td></tr>
+    </table>
+  </div>
+</div>
+<div class="wrap page hidden" id="settings">
+  <h2>When it runs</h2>
+  <div class="panel">
+    <div class="set"><div class="k">Predict MLB<small>daily, after most probable starters post</small></div><div class="v"><input class="inp" value="11:00"> local</div></div>
+    <div class="set"><div class="k">Predict CFB<small>weekly, once lines have posted</small></div><div class="v"><input class="inp" value="Fri 09:00"></div></div>
+    <div class="set"><div class="k">Settle picks<small>every 4 hours, after results refresh</small></div><div class="v"><span class="ro">every 4h</span> <span class="lock">from the OS scheduler</span></div></div>
+  </div>
+  <h2>Notifications</h2>
+  <div class="panel">
+    <div class="set"><div class="k">When results land<small>counts and team names only, never a line</small></div><div class="v"><span class="tog on"><i></i></span> phone · <span class="tog on"><i></i></span> PC</div></div>
+    <div class="set"><div class="k">When something breaks<small>a missed slate, a silent task, a red gate</small></div><div class="v"><span class="tog on"><i></i></span> on</div></div>
+    <div class="set"><div class="k">Quiet hours<small>results queue and arrive at the end</small></div><div class="v"><input class="inp" value="23:00"> to <input class="inp" value="07:00"></div></div>
+  </div>
+  <h2>Health <small>what the appliance did</small></h2>
+  <div class="panel health" style="padding:4px 6px">
+    <table>
+      <tr><th>Task</th><th>Last ran</th><th>Result</th><th>Next</th></tr>
+      <tr><td>Fetch results</td><td class="ok">1h ago</td><td class="ok">ok · 14 games updated</td><td class="ok">18:00</td></tr>
+      <tr><td>Settle picks</td><td class="ok">1h ago</td><td class="ok">ok · 7 settled</td><td class="ok">19:00</td></tr>
+      <tr><td>Predict MLB</td><td class="ok">this morning</td><td class="ok">ok · 14 written, 6 below the floor</td><td class="ok">tomorrow 11:00</td></tr>
+      <tr><td>Predict NFL</td><td class="bad">has never run</td><td class="ok">first slate Wed Sep 2</td><td class="ok">Wed 09:00</td></tr>
+      <tr><td>Live scores</td><td class="ok">not in a game window</td><td class="ok">0 requests today</td><td class="ok">Sat 12:00</td></tr>
+    </table>
+  </div>
+  <h2>Access</h2>
+  <div class="panel">
+    <div class="set"><div class="k">Login token<small>paste once per device · 30-day sessions</small></div><div class="v"><span class="ro">••••••••••••</span> <span class="link">rotate</span> · <span class="link">sign out everywhere</span></div></div>
+    <div class="set"><div class="k">Phone push topic<small>anyone holding it can read the counts</small></div><div class="v"><span class="ro">ntfy · ••••••</span> <span class="link">rotate</span></div></div>
+    <div class="set"><div class="k">This build<small>the footer shows it too</small></div><div class="v"><span class="ro">built Sep 2 from 3b9c1e2 · current</span></div></div>
+  </div>
+  <h2>Rulings in force <small>shown, not edited here</small></h2>
+  <div class="panel">
+    <div class="set"><div class="k">Props confidence floor<small>ruled 2026-08-30</small></div><div class="v"><span class="ro">70%</span> <span class="lock">a ruling — change it in config with a dated note</span></div></div>
+    <div class="set"><div class="k">Tier verdict gate<small>ruled 2026-08-31</small></div><div class="v"><span class="ro">20 settled</span> <span class="lock">a ruling</span></div></div>
+    <div class="set"><div class="k">Margin spread, CFB<small>measured 2026-09-01 · 1,762 games</small></div><div class="v"><span class="ro">22.46 points</span> <span class="lock">measured, not assumed</span></div></div>
+  </div>
+</div>
+<div class="wrap page hidden" id="login">
+  <div class="login"><div class="lbox">
+    <div class="brand"><span class="mark"><i class="a"></i><i class="b"></i></span>GRID<em>IRON</em></div>
+    <input placeholder="access token">
+    <button>Open</button>
+    <div class="tease">MLB <b>33–18</b> · CFB <b>60 picks tonight</b> · NFL <b>starts Sep 10</b><br>first kickoff in <b>3d 4h</b></div>
+  </div></div>
+</div>
+<div class="wrap page hidden" id="picks"><div class="panel"><div class="lead">Picks — the desk you already approved lives here.</div><div class="sub">this mockup shows the other three pages and the login</div></div></div>
+<script>
+document.querySelectorAll('#nav span').forEach(s=>s.addEventListener('click',()=>{
+  document.querySelectorAll('#nav span').forEach(x=>x.classList.remove('on'));s.classList.add('on');
+  document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));
+  document.getElementById(s.dataset.p).classList.remove('hidden');
+}));
+document.querySelectorAll('.day').forEach(d=>d.addEventListener('click',()=>{document.querySelectorAll('.day').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');}));
+document.querySelectorAll('.tog').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
+</script>
+</body>
+</html>
