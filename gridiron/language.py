@@ -1681,6 +1681,22 @@ def factor_what(rationale: str | None,
     return (text[:150].rstrip() + "...") if len(text) > 160 else text
 
 
+def least_tested_tier_line(tier: str, settled: int, gate: int) -> str | None:
+    """"STRONG is the least-tested tier so far - 3 settled."
+
+    None once the band has cleared its gate, because the sentence is a caveat
+    and a caveat that outlives its reason is furniture. Picks opens on STRONG
+    (ruling R2, 2026-09-02), which puts the app's most confident claims in
+    front of a reader first -- and the tier with the fewest settled rows
+    behind it. Saying so is the whole point: the default is a convenience, not
+    a verdict.
+    """
+    if settled >= gate:
+        return None
+    return (f"{tier} is the least-tested tier so far - {settled} settled of "
+            f"{gate} needed before it earns a verdict.")
+
+
 def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
     """"Wednesday 2 September - 5 right, 2 wrong, 1 void".
 

@@ -977,7 +977,13 @@ const Gridiron = (function () {
       const tile = document.querySelector(
         '#week-frame .tile[data-id="' + pick.prediction_id + '"]');
       if (tile) {
-        paintTileCorner(tile.querySelector('.tile-mkt'), card);
+        // '.tile-score', NOT '.tile-mkt'. The corner was renamed in
+        // bd7ac2f ("picks: tonight, two numbers") and this call site was
+        // missed, so every live tick threw here -- and because the throw
+        // escaped the forEach above, ONE tile stopped the score update for
+        // every pick after it on the slate. `audit.dead_selector_faults`
+        // now fails on a selector naming a class the code never builds.
+        paintTileCorner(tile.querySelector('.tile-score'), card);
         applyTileState(tile, card);
       }
       const selected = selectedTile && selectedTile.dataset.id ===
@@ -1466,8 +1472,32 @@ const Gridiron = (function () {
   // fourteen browser tests timing out on a selector.
   const tierChoice = new Map();
 
+  //: WHICH TIER PICKS OPENS ON (ruling R2, 2026-09-02). The server declares
+  //: it; this places it. A reader's first question is what the model is most
+  //: sure of, and a slate sorted by disagreement puts fifty LEAN picks in
+  //: front of that.
+  //:
+  //: REMEMBERED FOR THE SESSION, per sport, in memory only -- the same rule
+  //: the choice already followed. A filter a reader forgot they set is a
+  //: slate that looks emptier than it is, and one that outlives the session
+  //: is worse.
+  let defaultTier = 'STRONG';
+
   function currentTier() {
-    return tierChoice.get(state.sport) || '';
+    const chosen = tierChoice.get(state.sport);
+    return chosen === undefined ? defaultTier : chosen;
+  }
+
+  //: THE DEFAULT IS A CONVENIENCE, NOT A CLAIM. On a slate with no STRONG
+  //: picks on it, opening on STRONG would show an empty list under a filter
+  //: the reader never chose -- which reads as "nothing was forecast tonight"
+  //: and is the opposite of true. So the default applies only where the band
+  //: actually exists; a reader's OWN choice is honoured either way, empty
+  //: result included, because that is a question they asked.
+  function effectiveTier(cards) {
+    const chosen = tierChoice.get(state.sport);
+    if (chosen !== undefined) return chosen;
+    return cards.some(c => tierOf(c) === defaultTier) ? defaultTier : '';
   }
 
   function setTier(tier) {
@@ -1487,7 +1517,7 @@ const Gridiron = (function () {
   // Built from the tiers actually present on this slate, plus an "all" that is
   // always first. A tier button for a tier with no picks on it would be a
   // control that does nothing, which is worse than one that is absent.
-  function renderTierFilter(cards) {
+  function renderTierFilter(cards, active) {
     const host = document.getElementById('week-tier-seg');
     if (!host) return;
     const present = [];
@@ -1496,7 +1526,7 @@ const Gridiron = (function () {
       if (t && present.indexOf(t) < 0) present.push(t);
     });
     host.innerHTML = '';
-    const chosen = currentTier();
+    const chosen = active === undefined ? currentTier() : active;
     [['', 'All tiers']].concat(present.map(t => [t, t])).forEach(pair => {
       const b = el('button', '', pair[1]);
       b.type = 'button';
@@ -1616,6 +1646,7 @@ const Gridiron = (function () {
       qs += (qs ? '&' : '?') + 'forecaster=' + encodeURIComponent(picksForecaster);
     }
     const data = await fetchJSON(withSport('/api/week' + qs));
+    if (data.default_tier) defaultTier = data.default_tier;
     const market = document.getElementById('week-market').value;
 
     // PLACED, NOT COMPOSED. The server names the slate in words; this used to
@@ -1641,8 +1672,8 @@ const Gridiron = (function () {
     // reports both the part and the whole -- four picks looks like a thin
     // slate rather than a narrow filter unless the denominator is beside it.
     const wholeSlate = cards.length;
-    const tier = currentTier();
-    renderTierFilter(cards);
+    const tier = effectiveTier(cards);
+    renderTierFilter(cards, tier);
     if (tier) cards = cards.filter(c => tierOf(c) === tier);
     if (state.weekSort === 'confidence') {
       cards = cards.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0));
@@ -1692,11 +1723,24 @@ const Gridiron = (function () {
       const bits = [data.slate_word === 'day' ? 'tonight' : 'this week',
                     lines[(market || '') + '|' + tier] ||
                     lines['|' + tier] || ''];
+      // `tier` is what was APPLIED, not what was defaulted to, so a slate with
+      // no STRONG on it reads "45 picks" rather than naming a band nobody saw.
       if (data.below_floor) {
         bits.push(data.below_floor + ' below the ' +
                   Math.round((data.floor || 0.7) * 100) + '% floor');
       }
       counts.textContent = bits.filter(Boolean).join(' · ');
+    }
+
+    // THE CAVEAT UNDER THE FILTER. Opening on STRONG puts the most confident
+    // claims first AND the tier with the fewest settled rows behind them;
+    // saying so is the point. The server writes the sentence and stops
+    // sending it once the band earns its verdict.
+    const caveat = document.getElementById('tier-caveat');
+    if (caveat) {
+      const show = data.tier_caveat && tier === (data.default_tier || '');
+      caveat.textContent = show ? data.tier_caveat : '';
+      caveat.hidden = !show;
     }
 
     if (!open.length) {

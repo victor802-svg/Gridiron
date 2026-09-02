@@ -914,6 +914,76 @@ def plant_a_slate_answered_twice() -> Result:
                   "a second full set of forecasts was written")
 
 
+def plant_a_selector_for_a_class_nothing_builds() -> Result:
+    """Rename the class the desk tile's corner is fetched by.
+
+    This is the bug that actually shipped, replanted. `applyLive` fetched
+    `.tile-mkt` after the element had been renamed `.tile-score`, so every
+    live tick threw -- and the throw escaped the forEach, stopping the score
+    update for every pick after that tile. `querySelector` answers null rather
+    than raising, which is why nothing caught it: the suite was green and the
+    scores simply stopped moving.
+
+    Planted for real against the shipped files.
+    """
+    from gridiron import audit as _audit
+
+    web = config.PACKAGE_ROOT / "web"
+    js = (web / "app.js").read_text(encoding="utf-8")
+    html = (web / "index.html").read_text(encoding="utf-8")
+    css = (web / "style.css").read_text(encoding="utf-8")
+
+    live = "tile.querySelector('.tile-score')"
+    if js.count(live) != 1:
+        return Result("a selector for a class nothing builds", False,
+                      "the live tile's corner is no longer fetched by name; "
+                      "re-point this planting at whatever replaced it")
+    broken = js.replace(live, "tile.querySelector('.tile-mkt')", 1)
+    faults = _audit.dead_selector_faults(broken, html, css)
+
+    if _audit.dead_selector_faults(js, html, css):
+        return Result("a selector for a class nothing builds", False,
+                      "the scan fires on the shipped files too")
+
+    return _desk_plant(faults, "a selector for a class nothing builds",
+                       "audit.dead_selector_faults")
+
+
+def plant_a_default_tier_that_hides_the_count() -> Result:
+    """Compose a filtered count line with no denominator.
+
+    Picks opens on STRONG (ruling R2, 2026-09-02) rather than on the whole
+    slate, which makes the count line the sentence carrying the filter. A
+    reader who never chose that filter has no other way to tell a narrow band
+    from a thin night. This plants the failure for real: the composer's own
+    output is used, and the payload it builds is run past the scan.
+    """
+    from gridiron import audit as _audit
+    from gridiron import language as _language
+
+    shown, total = 4, 46
+    # THE HIDING: a count line built from the part alone. Not a hand-written
+    # string -- the composer's own output for an UNFILTERED slate of 4, which
+    # is exactly what a filtered line degrades into when the whole is dropped.
+    whole = _language.tier_filter_line(None, total, total)
+    hidden = _language.tier_filter_line(None, shown, shown)
+    payload = {"default_tier": "STRONG",
+               "glance": {"count_lines": {"|": whole, "|STRONG": hidden}}}
+    faults = _audit.tier_count_faults(payload)
+
+    honest = {"default_tier": "STRONG",
+              "glance": {"count_lines": {
+                  "|": whole,
+                  "|STRONG": _language.tier_filter_line("STRONG", shown, total),
+              }}}
+    if _audit.tier_count_faults(honest):
+        return Result("a default tier that hides the count", False,
+                      "the scan fires on an honest count line too")
+
+    return _desk_plant(faults, "a default tier that hides the count",
+                       "audit.tier_count_faults")
+
+
 def plant_a_market_source_outside_the_market_module() -> Result:
     """Name PrizePicks from a prediction-path module.
 
@@ -3196,6 +3266,8 @@ def main() -> int:
     results.append(plant_a_day_key_in_visible_text())
     results.append(plant_a_slate_answered_twice())
     results.append(plant_a_market_source_outside_the_market_module())
+    results.append(plant_a_default_tier_that_hides_the_count())
+    results.append(plant_a_selector_for_a_class_nothing_builds())
     results.append(plant_a_clamped_rung_beyond_the_ladder())
     results.append(plant_a_run_line_rung_off_the_market())
     results.append(plant_a_total_asked_from_a_market_value())

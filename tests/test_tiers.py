@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from gridiron import calibration, config, db, views
+from gridiron import audit, calibration, config, db, language, views
 
 
 def _seed_bucket(conn, sport, n, hits, prob=0.75):
@@ -141,3 +141,80 @@ def test_the_card_payload_carries_a_tier_and_no_stake(mlb_league):
         assert "tier" in card
         for banned in ("stake", "units", "bankroll", "payout"):
             assert banned not in repr(card).lower()
+
+
+# ---------------------------------------------------------------------------
+# STRONG BY DEFAULT (ruling R2, 2026-09-02)
+#
+# Picks opens on the most confident band rather than on the whole slate. That
+# is a convenience with a cost: the band a reader lands on is also the one
+# with the fewest settled rows behind it, and a filter nobody chose is the
+# kind that misreads as a thin night. Both halves are tested here -- the count
+# line that names what it narrowed, and the caveat that says the band is
+# young until it stops being true.
+# ---------------------------------------------------------------------------
+
+
+def test_picks_opens_on_the_strongest_band(mlb_league):
+    assert config.PICKS_DEFAULT_TIER == "STRONG"
+    payload = views.week(mlb_league, "mlb")
+    assert payload["default_tier"] == "STRONG"
+
+
+def test_the_default_never_hides_what_it_filtered(mlb_league):
+    """The count line names the whole slate, not only the band."""
+    assert audit.tier_count_faults(views.week(mlb_league, "mlb")) == []
+
+    # And the composer itself, on a slate that HAS bands to filter: four
+    # STRONG picks out of forty-six is the example ruling R2 gives.
+    cards = ([{"market": "moneyline", "tier": {"tier": "STRONG"}}] * 4
+             + [{"market": "moneyline", "tier": {"tier": "LEAN"}}] * 42)
+    lines = views._count_lines(cards)
+    assert lines["|STRONG"] == "STRONG · 4 of 46 picks"
+    assert lines["|"] == "46 picks"
+    assert audit.tier_count_faults(
+        {"default_tier": "STRONG", "glance": {"count_lines": lines}}) == []
+
+
+def test_a_count_line_with_no_denominator_is_caught_by_name():
+    payload = {"default_tier": "STRONG",
+               "glance": {"count_lines": {"|STRONG": "4 picks"}}}
+    faults = audit.tier_count_faults(payload)
+    assert len(faults) == 1
+    assert "names no denominator" in faults[0]
+    assert "'|STRONG'" in faults[0]
+
+
+def test_a_part_larger_than_its_whole_is_caught():
+    payload = {"default_tier": "STRONG",
+               "glance": {"count_lines": {"|STRONG": "STRONG - 9 of 4 picks"}}}
+    faults = audit.tier_count_faults(payload)
+    assert len(faults) == 1
+    assert "cannot exceed its whole" in faults[0]
+
+
+def test_an_unfiltered_count_needs_no_denominator():
+    """"45 picks" hides nothing -- there is no whole behind it to name."""
+    payload = {"default_tier": "STRONG",
+               "glance": {"count_lines": {"|": "45 picks"}}}
+    assert audit.tier_count_faults(payload) == []
+
+
+def test_the_caveat_names_the_band_and_the_shortfall():
+    said = language.least_tested_tier_line("STRONG", 3, 20)
+    assert said is not None
+    assert "STRONG" in said and "3" in said and "20" in said
+    assert "%" not in said, "a caveat about sample size stated a rate"
+
+
+def test_the_caveat_disappears_once_the_band_earns_its_verdict():
+    """A caveat that outlives its reason is furniture."""
+    assert language.least_tested_tier_line("STRONG", 20, 20) is None
+    assert language.least_tested_tier_line("STRONG", 41, 20) is None
+
+
+def test_the_caveat_goes_when_the_band_clears_its_gate(mlb_league):
+    """Seeded through the record, not asserted about the composer."""
+    assert views.week(mlb_league, "mlb")["tier_caveat"] is not None
+    _seed_bucket(mlb_league, "mlb", calibration.TIER_MIN_SETTLED, 15, prob=0.78)
+    assert views.week(mlb_league, "mlb")["tier_caveat"] is None

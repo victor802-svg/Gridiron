@@ -303,6 +303,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     # ONE PAYLOAD SHAPE. A key that is present on a full slate
                     # and missing on an empty one is how a renderer learns to
                     # guess, which is the rule the glance already follows.
+                    "default_tier": config.PICKS_DEFAULT_TIER,
+                    "tier_caveat": _least_tested_line(conn, sport),
                     "forecaster": forecaster or config.PICKS_DEFAULT_FORECASTER,
                     "forecasters": [],
                     "forecaster_message": None,
@@ -607,6 +609,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # WHOSE PICKS THESE ARE, and who else has some. Named on the payload
         # rather than inferred by the renderer from the cards: a list that
         # cannot say who made it is a list nobody can check.
+        # PICKS OPENS ON STRONG (ruling R2, 2026-09-02), which puts the most
+        # confident claims first -- and the tier with the fewest settled rows
+        # behind them. The caveat says so, and disappears once the band earns
+        # its verdict.
+        "default_tier": config.PICKS_DEFAULT_TIER,
+        "tier_caveat": _least_tested_line(conn, sport),
         "forecaster": chosen,
         "forecasters": available,
         "forecaster_message": forecaster_message,
@@ -634,6 +642,28 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # test. This one fired on the real slate the day it was written.
     audit.check_one_forecaster_per_list(payload)
     return payload
+
+
+def _least_tested_line(conn: sqlite3.Connection, sport: str) -> str | None:
+    """How much has actually settled in the tier Picks opens on.
+
+    Counted from the record rather than from the slate: a reader wants to know
+    what stands behind the band, not how many picks are in it tonight.
+    """
+    tier = config.PICKS_DEFAULT_TIER
+    settled = conn.execute(
+        "SELECT COUNT(*) FROM predictions"
+        " WHERE sport = ? AND resolved_utc IS NOT NULL"
+        "   AND calibrated_prob IS NOT NULL"
+        "   AND calibrated_prob >= ?",
+        (sport, config.PROPS_MIN_CLAIM)).fetchone()[0]
+    if not settled:
+        settled = conn.execute(
+            "SELECT COUNT(*) FROM predictions"
+            " WHERE sport = ? AND resolved_utc IS NOT NULL AND model_prob >= ?",
+            (sport, config.PROPS_MIN_CLAIM)).fetchone()[0]
+    return language.least_tested_tier_line(
+        tier, settled, calibration.TIER_MIN_SETTLED)
 
 
 def _venues(conn: sqlite3.Connection, sport: str) -> dict:

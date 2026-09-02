@@ -207,6 +207,19 @@ READ_WINDOWS: dict[str, dict] = {
 #: -- stood beside them from GRIDIRON_12 until it was withdrawn on 2026-09-02.
 FORECASTER_LABELS = {"statistical": "statistical", "llm": "LLM"}
 
+#: WHICH TIER PICKS OPENS ON (ruling R2, 2026-09-02).
+#:
+#: STRONG, for every sport. The reader's first question is what the model is
+#: most sure of, and a slate sorted by disagreement puts fifty LEAN picks in
+#: front of that. The toggle to SOLID, LEAN or all tiers is one tap away and
+#: is remembered for the session.
+#:
+#: THE FILTER NEVER HIDES WHAT IT HID: the count line reads "STRONG - 13 of 45
+#: picks", so a reader can always see the denominator the default is narrowing.
+#: A filter that quietly shrinks a slate is a filter that makes a thin night
+#: look like a selective one.
+PICKS_DEFAULT_TIER = "STRONG"
+
 #: Which forecaster the Picks list opens on. The statistical model answers
 #: every question on every slate; the LLM runs on one sport and skips rows
 #: when it is degraded, so it is a choice a reader makes rather than the one

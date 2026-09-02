@@ -19,8 +19,8 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (auth, buildinfo, calibration, config, db, language, settings,
-               views)
+from . import (audit, auth, buildinfo, calibration, config, db, language,
+               settings, views)
 
 WEB_DIR = config.PACKAGE_ROOT / "web"
 
@@ -408,7 +408,15 @@ def week(sport: str | None = None, season: int | None = None,
     forecaster's empty list and says whose picks are missing, which is the
     honest answer to a question about a forecaster that made none.
     """
-    return views.week(get_conn(), _sport(sport), season, week, forecaster)
+    payload = views.week(get_conn(), _sport(sport), season, week, forecaster)
+    # PICKS OPENS FILTERED (R2), so the count line is the only thing telling a
+    # reader the slate is bigger than what they see. A loud 500 beats a page
+    # that makes a narrow band look like a quiet night -- the same trade LAW
+    # 4's sample-size check already makes on the routes above.
+    faults = audit.tier_count_faults(payload)
+    if faults:
+        raise HTTPException(status_code=500, detail="; ".join(faults))
+    return payload
 
 
 @app.get("/api/live")

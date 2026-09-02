@@ -2017,6 +2017,50 @@ _INTERACTIVE_SELECTOR = re.compile(
 _CSS_RULE = re.compile(r"(?P<selector>[^{}]+)\{(?P<body>[^{}]*)\}")
 
 
+_FILTERED_COUNT = re.compile(r"\b(\d+)\s+of\s+(\d+)\b")
+
+
+def tier_count_faults(payload: dict) -> list[str]:
+    """A filtered count line that does not say what it filtered OUT of.
+
+    PICKS NOW OPENS FILTERED (ruling R2, 2026-09-02): STRONG by default rather
+    than the whole slate. That makes this the highest-consequence sentence on
+    the page, because the reader did not choose the filter and may not notice
+    it. "4 picks" on a 46-pick night reads as a quiet Tuesday; "STRONG - 4 of
+    46 picks" reads as a narrow band, which is what it is.
+
+    So the rule is structural rather than a habit of composition: every count
+    line keyed to a tier must name TWO numbers, the part and the whole, and the
+    whole must not be smaller than the part. An unfiltered line names one
+    number and is left alone -- there is nothing hidden behind it.
+    """
+    faults = []
+    default = payload.get("default_tier") or ""
+    lines = (payload.get("glance") or {}).get("count_lines") or {}
+    for key, line in sorted(lines.items()):
+        tier = key.split("|", 1)[-1]
+        if not tier:
+            continue
+        found = _FILTERED_COUNT.search(line or "")
+        if not found:
+            why = ("Picks opens on this band by default, so a reader who "
+                   "never chose a filter sees this number as the size of the "
+                   "slate."
+                   if tier == default else
+                   "A reader who taps a band still needs to know what they "
+                   "narrowed it out of.")
+            faults.append(
+                f"the count line for {key!r} reads {line!r}, which names no "
+                f"denominator. {why} Say what it is part of.")
+            continue
+        shown, total = int(found.group(1)), int(found.group(2))
+        if shown > total:
+            faults.append(
+                f"the count line for {key!r} reads {line!r}: {shown} shown out "
+                f"of {total}. A part cannot exceed its whole.")
+    return faults
+
+
 def colour_law_faults(css: str) -> list[str]:
     """Every rule that paints something a value colour without a value."""
     faults = []
@@ -2070,6 +2114,83 @@ COLOUR_LAW_FIXTURE_NEGATIVE = """
 .verdict.loss { color: var(--loss); background: var(--loss-wash); }
 .row-more { color: var(--chrome); text-decoration: none; }
 """
+
+
+_JS_CLASS_SELECTOR = re.compile(
+    r"""querySelector(?:All)?\(\s*['"]([^'"]+)['"]""")
+_CLASS_IN_SELECTOR = re.compile(r"\.([A-Za-z][A-Za-z0-9_-]*)")
+
+
+def dead_selector_faults(js: str, html: str, css: str) -> list[str]:
+    """A class the browser is asked for that nothing in the app ever builds.
+
+    THIS IS NOT HYPOTHETICAL. The desk tile's corner was renamed `tile-mkt` ->
+    `tile-score` in bd7ac2f and one call site kept the old name, so
+    `applyLive` fetched null and threw on EVERY live tick. The throw escaped
+    the surrounding forEach, which meant one tile stopped the score update for
+    every pick after it on the slate. Nothing failed: the suite was green, the
+    page rendered, and the scores simply stopped moving.
+
+    A dead selector is invisible in exactly this way -- `querySelector` answers
+    null rather than raising, so the mistake surfaces as silence or as a
+    TypeError one line later in a function that did nothing wrong. The scan
+    reads every class the JS asks for and fails on any the app never creates,
+    in the markup, the stylesheet, or a class= / classList / el() call.
+    """
+    built = set(re.findall(r"class=['\"]([^'\"]+)['\"]", html))
+    made = set()
+    for group in built:
+        made.update(group.split())
+    made.update(re.findall(r"\.([A-Za-z][A-Za-z0-9_-]*)", css))
+    # Every class the JS itself builds: el('div', 'tile-num tile-num-absent'),
+    # classList.add('x'), className = 'y', and class= in a template string.
+    made.update(re.findall(r"classList\.(?:add|toggle|remove)\(\s*['\"]([^'\"]+)['\"]", js))
+    for literal in re.findall(r"el\(\s*['\"][^'\"]*['\"]\s*,\s*['\"]([^'\"]*)['\"]", js):
+        made.update(literal.split())
+    for literal in re.findall(r"className\s*=\s*['\"]([^'\"]+)['\"]", js):
+        made.update(literal.split())
+    for literal in re.findall(r"class=['\"]([^'\"]+)['\"]", js):
+        made.update(literal.split())
+
+    faults = []
+    for selector in sorted(set(_JS_CLASS_SELECTOR.findall(js))):
+        for name in _CLASS_IN_SELECTOR.findall(selector):
+            if name not in made:
+                faults.append(
+                    f"querySelector({selector!r}) asks for a class '{name}' "
+                    f"that nothing in the app builds. It will answer null "
+                    f"forever, silently or one TypeError later.")
+    return faults
+
+
+def check_no_dead_selectors(root: Path | None = None) -> None:
+    web = (root or config.PACKAGE_ROOT) / "web"
+    faults = dead_selector_faults(
+        (web / "app.js").read_text(encoding="utf-8"),
+        (web / "index.html").read_text(encoding="utf-8"),
+        (web / "style.css").read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A SELECTOR NAMES A CLASS NOTHING BUILDS -- querySelector answers "
+            "null rather than raising, so this fails as silence:"
+            + _NL2 + _NL2.join(faults))
+
+
+def check_the_default_never_hides_the_count(conn=None) -> None:
+    """Every sport's slate, as Picks opens it (R2, 2026-09-02)."""
+    from gridiron import db as _db
+    from gridiron import views as _views
+
+    conn = conn or _db.connect()
+    faults = []
+    for sport in config.SPORTS:
+        for fault in tier_count_faults(_views.week(conn, sport)):
+            faults.append(f"{sport}: {fault}")
+    if faults:
+        raise LawViolation(
+            "PICKS OPENS ON A FILTER NOBODY CHOSE, and a count line does not "
+            "say what it narrowed:"
+            + _NL2 + _NL2.join(faults))
 
 
 def check_the_colour_law(path: Path | None = None) -> None:

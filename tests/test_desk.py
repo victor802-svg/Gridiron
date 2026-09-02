@@ -7,7 +7,11 @@ the eye cannot check reliably on a 177-pick slate, so each is asserted.
 
 from __future__ import annotations
 
+import re
+
 import pytest
+
+from gridiron import audit
 
 DESK = {"width": 1400, "height": 900}
 ROWS = {"width": 1100, "height": 900}
@@ -526,3 +530,235 @@ def test_the_breakpoint_is_declared_once(page):
         f"1280 appears {in_code} times in app.js code; the breakpoint is "
         f"declared once and read through DESK_QUERY")
     assert "matchMedia" in js, "the renderer no longer reads the media query"
+
+
+# ---------------------------------------------------------------------------
+# STRONG BY DEFAULT (ruling R2, 2026-09-02), in the browser
+#
+# Picks opens on a filter the reader did not choose. That makes three things
+# load-bearing, and all three are asserted here rather than eyeballed: the
+# band that is pressed on arrival, the count line that names what the band
+# was taken out of, and the way out.
+# ---------------------------------------------------------------------------
+
+TIER_SEG = "#week-tier-seg"
+
+
+def _pressed_tier(page):
+    """Which band the segmented filter is showing as active, '' for all."""
+    return page.evaluate(
+        """() => {
+            const host = document.querySelector('#week-tier-seg');
+            if (!host) return null;
+            const on = host.querySelector('[aria-pressed="true"]');
+            return on ? on.dataset.tier : null;
+        }""")
+
+
+def _tiers_offered(page):
+    return page.evaluate(
+        """() => Array.from(
+            document.querySelectorAll('#week-tier-seg button'))
+            .map(b => b.dataset.tier)""")
+
+
+def test_picks_arrives_on_strong(page):
+    """The reader chose nothing; the page still opens on the strongest band."""
+    _open_week(page, DESK)
+    if "STRONG" not in _tiers_offered(page):
+        pytest.skip("no STRONG picks on this slate; the default yields by "
+                    "design and test_the_default_yields_on_a_slate_without_it "
+                    "covers that case")
+    assert _pressed_tier(page) == "STRONG", (
+        "Picks did not open on the band ruling R2 named"
+    )
+
+
+def test_the_way_out_of_the_default_is_on_the_page(page):
+    """A filter nobody chose must not be a filter nobody can leave."""
+    _open_week(page, DESK)
+    offered = _tiers_offered(page)
+    if _pressed_tier(page):
+        assert "" in offered, "no 'all tiers' button beside an active filter"
+        assert not page.evaluate(
+            "document.querySelector('#week-tier-seg').hidden"), (
+            "the filter is active and its control is hidden"
+        )
+
+
+def test_the_arrival_count_says_what_it_narrowed(page):
+    _open_week(page, DESK)
+    said = page.text_content("#week-counts") or ""
+    if not _pressed_tier(page):
+        return
+    assert "STRONG" in said, f"the count line does not name the band: {said!r}"
+    assert re.search(r"\d+\s+of\s+\d+", said), (
+        f"the count line names no denominator: {said!r}. A reader who never "
+        f"chose a filter reads this as the size of the slate."
+    )
+
+
+def test_the_caveat_names_its_shortfall_and_never_a_rate(page):
+    _open_week(page, DESK)
+    said = (page.text_content("#tier-caveat") or "").strip()
+    hidden = page.evaluate("document.getElementById('tier-caveat').hidden")
+    if hidden:
+        # The band cleared its gate, or the default yielded. Both are the
+        # sentence's own disappearing conditions, not a missing element.
+        assert said == ""
+        return
+    assert "STRONG" in said and "settled" in said
+    assert "%" not in said, "a caveat about sample size stated a rate"
+
+
+def test_the_caveat_goes_when_the_reader_leaves_the_default(page):
+    """It explains the DEFAULT. Under a band the reader picked it is noise."""
+    _open_week(page, DESK)
+    if _pressed_tier(page) != "STRONG":
+        pytest.skip("the default did not engage on this slate")
+    page.click('#week-tier-seg button[data-tier=""]')
+    page.wait_for_function(
+        "() => document.getElementById('tier-caveat').hidden === true",
+        timeout=5000)
+
+
+def test_the_toggle_is_remembered_for_the_session(page):
+    """Chosen once, kept across a re-render of the same sport."""
+    _open_week(page, DESK)
+    if _pressed_tier(page) != "STRONG":
+        pytest.skip("the default did not engage on this slate")
+    page.click('#week-tier-seg button[data-tier=""]')
+    page.wait_for_function(
+        """() => {
+            const on = document.querySelector(
+                '#week-tier-seg [aria-pressed="true"]');
+            return on && on.dataset.tier === '';
+        }""", timeout=5000)
+    page.evaluate("location.hash = '#/record'")
+    page.wait_for_timeout(200)
+    _open_week(page, DESK)
+    assert _pressed_tier(page) == "", (
+        "the filter reverted to the default after the reader had changed it"
+    )
+
+
+def test_the_default_holds_at_390(page):
+    """Same band, same sentence, no desk."""
+    _open_week(page, PHONE)
+    if "STRONG" not in _tiers_offered(page):
+        pytest.skip("no STRONG picks on this slate")
+    assert _pressed_tier(page) == "STRONG"
+    said = page.text_content("#week-counts") or ""
+    assert "STRONG" in said and re.search(r"\d+\s+of\s+\d+", said), said
+
+
+def test_the_default_yields_on_a_slate_without_it(page):
+    """A default that empties the page is a defect, not a convenience.
+
+    Driven through the real render: the slate is served with its STRONG cards
+    removed, which is what a night of nothing but LEAN picks looks like. The
+    page must open on every tier rather than on an empty band.
+    """
+    def _drop_strong(route):
+        response = route.fetch()
+        payload = response.json()
+        payload["cards"] = [
+            c for c in payload.get("cards", [])
+            if ((c.get("tier") or {}).get("tier") or "") != "STRONG"]
+        route.fulfill(response=response, json=payload)
+
+    page.route("**/api/week*", _drop_strong)
+    try:
+        _open_week(page, DESK)
+        assert page.eval_on_selector_all(
+            "#week-frame .tile", "els => els.length") > 0, (
+            "the page opened empty on a slate with no STRONG picks; the "
+            "default filtered out everything the reader came to see"
+        )
+        assert _pressed_tier(page) == "", (
+            "the default engaged on a band that has no picks on this slate"
+        )
+        assert page.evaluate(
+            "document.getElementById('tier-caveat').hidden") is True, (
+            "the caveat explains a default that did not engage"
+        )
+    finally:
+        page.unroute("**/api/week*")
+
+
+# ---------------------------------------------------------------------------
+# THE LIVE TICK REACHES THE TILE
+#
+# `applyLive` fetched the tile's corner by a class that had been renamed out
+# of existence (bd7ac2f). querySelector answered null, paintTileCorner threw,
+# and the throw escaped the forEach around it -- so one tile stopped the score
+# update for every pick after it. Nothing failed: the suite was green, the
+# page rendered, and the scores simply stopped moving.
+#
+# Every existing desk test asserted on the FIRST render. This one asserts that
+# a tick lands, which is the assertion that was missing.
+# ---------------------------------------------------------------------------
+
+
+def test_a_live_tick_reaches_the_tile_without_throwing(page):
+    """Drive one real poll through applyLive and watch for a throw.
+
+    Both routes are served rather than stubbed in the page: the slate says it
+    is in progress (which is what starts the poll at all -- a complete slate
+    never ticks, which is why no existing test reached this code), and the
+    poll answers with the tile the reader can see.
+    """
+    seen = {"ids": []}
+
+    def _in_progress(route):
+        response = route.fetch()
+        payload = response.json()
+        glance = payload.get("glance") or {}
+        glance["state"] = "in_progress"
+        payload["glance"] = glance
+        seen["ids"] = [c.get("prediction_id") for c in payload.get("cards", [])
+                       if c.get("prediction_id")]
+        route.fulfill(response=response, json=payload)
+
+    def _one_final_pick(route):
+        route.fulfill(json={
+            "picks": [{"prediction_id": seen["ids"][0],
+                       "tile_state": "final",
+                       "score_line": "TST 7 - TST 3"}] if seen["ids"] else [],
+            "games": [],
+            "any_live": False,
+        })
+
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.route("**/api/week*", _in_progress)
+    page.route("**/api/live*", _one_final_pick)
+    try:
+        _open_week(page, DESK)
+        if not seen["ids"]:
+            pytest.skip("no picks on this slate to tick")
+        page.wait_for_timeout(1200)
+        assert not errors, (
+            f"a live tick threw: {errors}. The throw escapes the loop over "
+            f"picks, so every pick after this one stops updating and the "
+            f"scores freeze with nothing on the page saying so."
+        )
+        # And the tick actually LANDED -- a test that only proves nothing threw
+        # would also pass on a poll that never ran.
+        painted = page.evaluate(
+            """(id) => {
+                const tile = document.querySelector(
+                    '#week-frame .tile[data-id="' + id + '"]');
+                return tile ? (tile.textContent || '') : null;
+            }""", str(seen["ids"][0]))
+        assert painted and "TST 7 - TST 3" in painted, (
+            f"the live score never reached the tile: {painted!r}"
+        )
+    finally:
+        page.unroute("**/api/week*")
+        page.unroute("**/api/live*")
+
+
+def test_every_class_the_page_asks_for_is_a_class_it_builds():
+    """The scan, run against the shipped files (mechanism, not habit)."""
+    audit.check_no_dead_selectors()
