@@ -465,10 +465,27 @@ def result_word(item: dict) -> str:
     return RESULT_WORDS.get(item.get("outcome"), "PENDING")
 
 
+#: WHAT A SPORT CALLS ITS OWN MARKETS. A handicap is a "point spread" in
+#: football and a "run line" in baseball, and a reader who follows one sport
+#: does not translate. The generic humaniser called MLB's run line a "point
+#: spread", which is a sentence about the wrong sport.
+SPORT_MARKET_WORDS = {
+    ("mlb", "spread"): "run line",
+    ("mlb", "total"): "total runs",
+    ("nfl", "total"): "total points",
+    ("nba", "total"): "total points",
+    ("cfb", "total"): "total points",
+}
+
+
 def market_label(item: dict) -> str:
     """What to call this market in a filter or a heading."""
-    return humanise(item.get("prop_type") or item.get("market")
-                    or item.get("market_type"))
+    kind = item.get("prop_type") or item.get("market") or item.get("market_type")
+    sport = item.get("sport")
+    named = SPORT_MARKET_WORDS.get((sport, kind))
+    if named:
+        return named
+    return humanise(kind)
 
 
 #: What to say instead of a dash. A dash means nothing to a reader and looks

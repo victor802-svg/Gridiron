@@ -537,6 +537,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         cards[-1]["player"] = language.strip_market_suffix(
             cards[-1]["subject"], cards[-1]["market"]
         )
+        cards[-1]["sport"] = sport
+        # THE SPORT NAMES ITS OWN MARKETS. Without this the label falls
+        # back to the generic humaniser, which called a baseball run
+        # line a "point spread" -- a sentence about the wrong sport.
         cards[-1]["market_label"] = language.market_label(cards[-1])
         # --- the game in flight (L2) ------------------------------------
         # Composed here like every other visible string. The renderer swaps
@@ -1398,6 +1402,7 @@ def history(
         # came to have two columns both called "Market".
         item["phrase"] = language.phrase(item)
         item["result"] = language.result_word(item)
+        item["sport"] = sport
         item["market_label"] = language.market_label(item)
         item["player"] = language.strip_market_suffix(item["subject"], item["market"])
         items.append(item)

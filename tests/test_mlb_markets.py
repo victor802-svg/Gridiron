@@ -130,3 +130,35 @@ def test_a_contradicted_run_line_sign_yields_no_comparison():
     if row is None:
         pytest.skip("no contradicted row in this database")
     assert lines._sign_column(row) == "contradicted"
+
+
+# --- the sport names its own markets ---------------------------------------
+
+def test_a_run_line_is_not_called_a_point_spread():
+    """A handicap is a "point spread" in football and a "run line" in
+    baseball, and a reader who follows one sport does not translate. The
+    generic humaniser called MLB's run line a point spread -- a sentence about
+    the wrong sport."""
+    from gridiron import language
+
+    assert language.market_label({"sport": "mlb", "market": "spread"}) == "run line"
+    assert language.market_label({"sport": "mlb", "market": "total"}) == "total runs"
+    assert language.market_label({"sport": "nfl", "market": "spread"}) == "point spread"
+    assert language.market_label({"sport": "cfb", "market": "total"}) == "total points"
+
+
+def test_every_card_carries_its_sport_so_the_label_can_use_it():
+    """Without the sport on the card the label falls back to the generic
+    humaniser, which is how the wrong-sport wording reached the page."""
+    from gridiron import views
+
+    conn = db.connect()
+    payload = views.week(conn, "mlb")
+    assert payload["cards"], "no cards to check"
+    for card in payload["cards"]:
+        assert card.get("sport") == "mlb"
+    labels = {c["market_type"]: c["market_label"] for c in payload["cards"]}
+    if "spread" in labels:
+        assert labels["spread"] == "run line"
+    if "total" in labels:
+        assert labels["total"] == "total runs"
