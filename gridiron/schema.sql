@@ -53,11 +53,34 @@ CREATE TABLE IF NOT EXISTS games (
     league_date   TEXT,
     home          TEXT    NOT NULL,
     away          TEXT    NOT NULL,
-    status        TEXT    NOT NULL           -- scheduled | final
-                  CHECK (status IN ('scheduled', 'final')),
+    -- scheduled | in | final. 'in' arrived with the live poll (L1): a game
+    -- that has started and not finished is a state this table could not
+    -- previously express, so the countdown could only ever say "upcoming" or
+    -- "complete" and a running game looked unstarted.
+    status        TEXT    NOT NULL
+                  CHECK (status IN ('scheduled', 'in', 'final')),
     home_score    INTEGER,
     away_score    INTEGER,
-    CHECK ((status = 'final') = (home_score IS NOT NULL AND away_score IS NOT NULL))
+    -- --- what the live poll writes, and nothing else -----------------------
+    -- Prefixed `live_` so the LAW 1 closure scan can name them precisely. A
+    -- column called `period` or `clock` would collide with ordinary words in
+    -- the prediction path and the scan would have to guess; these cannot be
+    -- read from a forecasting module by accident or on purpose.
+    --
+    -- They describe a game IN FLIGHT. Nothing here settles anything: only the
+    -- resolve task writes an outcome (LAW 3), and a game marked final by the
+    -- poller leaves its predictions open until it runs.
+    live_period      TEXT,                   -- "3rd", "Top 6th", "OT"
+    live_clock       TEXT,                   -- "8:41"; absent for baseball
+    live_updated_utc TEXT,                   -- when the poll last saw it
+
+    -- A GAME THAT HAS STARTED HAS A SCORE, including 0-0. The old form of this
+    -- said scores exist if and only if the game is FINAL, which a live game
+    -- breaks by existing. A table-level CHECK must follow every column, and
+    -- the first draft of this sat above the three above -- SQLite reports that
+    -- as a syntax error at the first column name, which is a confusing place
+    -- to be sent when the fault is the line above it.
+    CHECK ((status = 'scheduled') = (home_score IS NULL AND away_score IS NULL))
 );
 CREATE INDEX IF NOT EXISTS games_season_week ON games (sport, season, week);
 CREATE INDEX IF NOT EXISTS games_sport_status ON games (sport, status);
@@ -934,3 +957,18 @@ BEGIN
         'GRIDIRON LAW 2: a factor may be deactivated but never deleted; '
         || 'its history stays');
 END;
+
+-- WHAT THE LIVE POLL ASKED FOR, every time it ran (L1). Rate honesty: a
+-- poller that cannot say how many requests it made is a poller nobody can
+-- hold to a rate, and "it only runs during games" is a claim about code until
+-- there is a row per run to count. Append-only in practice; nothing reads it
+-- but the schedule panel.
+CREATE TABLE IF NOT EXISTS live_polls (
+    id            INTEGER PRIMARY KEY,
+    polled_utc    TEXT    NOT NULL,
+    sport         TEXT    NOT NULL,
+    requests      INTEGER NOT NULL,
+    games_seen    INTEGER NOT NULL,
+    games_changed INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS live_polls_when ON live_polls (polled_utc DESC);

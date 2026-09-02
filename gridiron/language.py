@@ -1047,6 +1047,43 @@ def tier_filter_line(tier: str | None, shown: int, total: int) -> str:
     return f"{tier} · {shown} of {total} {noun}"
 
 
+def live_rate_line(requests: int, polls: int, hours: int) -> str:
+    """"41 requests over 41 polls in the last 24 hours".
+
+    THE COUNT, NOT A RATE PER SE. "0.4 requests an hour" averages a Saturday
+    of college football against six quiet days and describes neither -- the
+    same objection LAW 6 makes about mixing sports, in miniature. The raw
+    counts and the window let a reader do the division they actually want.
+    """
+    if not polls:
+        return f"no live poll in the last {hours} hours"
+    return (f"{requests} {'request' if requests == 1 else 'requests'} over "
+            f"{polls} {'poll' if polls == 1 else 'polls'} in the last "
+            f"{hours} hours")
+
+
+def live_not_followed_line(sports: list[str]) -> str | None:
+    """Which sports the live poll cannot follow, and that it is identity.
+
+    Named rather than silently absent: a panel showing live figures for two
+    sports and nothing for the other two invites the reader to conclude the
+    poll is broken, when what is missing is a measured way to match one feed's
+    game to another's.
+    """
+    if not sports:
+        return None
+    named = ", ".join(SPORT_LABELS.get(s, s.upper()) for s in sports)
+    return (f"{named} are not followed live: their game ids come from other "
+            f"feeds, and matching them needs a measured bridge rather than a "
+            f"guess")
+
+
+#: Printed labels per sport, for the few phrases here that name one. Kept as a
+#: literal rather than imported from config, because this module deliberately
+#: has one import and an internal key must never reach prose.
+SPORT_LABELS = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA", "cfb": "NCAAF"}
+
+
 def build_line(freshness: dict) -> str:
     """What this build is, in words a person can act on.
 

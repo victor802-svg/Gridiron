@@ -44,7 +44,14 @@ def prediction_entrypoints() -> dict[str, str]:
     return {"shared": PREDICTION_ENTRYPOINT, **sports.entrypoints()}
 
 #: Packages the prediction closure may not contain.
-FORBIDDEN_MODULES = ("gridiron.market",)
+#: Modules the prediction path may not reach, transitively.
+#:
+#: `gridiron.live` joined `gridiron.market` on 2026-09-01 (L1). The argument is
+#: the same one LAW 1 makes about a line, only sharper: a market line is
+#: somebody else's opinion about the game, and a live score is THE ANSWER. A
+#: forecast that could see either is not a forecast, and the one that can see
+#: the score is not even wrong -- it is just reading off the result.
+FORBIDDEN_MODULES = ("gridiron.market", "gridiron.live")
 
 #: Identifiers and literal fragments that name market DATA.
 #:
@@ -68,6 +75,13 @@ FORBIDDEN_IDENTIFIERS = (
     "away_moneyline",
     "implied_prob",
     "public_pct",
+    # THE LIVE COLUMNS (L1). Prefixed `live_` in the schema precisely so they
+    # can be named here without catching an ordinary variable: a column called
+    # `period` or `clock` would collide with a dozen innocent locals and this
+    # list would have to guess.
+    "live_period",
+    "live_clock",
+    "live_updated_utc",
 )
 
 

@@ -81,6 +81,18 @@ TASKS: dict[str, TaskSpec] = {
         every_hours=24,
         silent_after_hours=36,
     ),
+    "live": TaskSpec(
+        "live",
+        "follow the games that are on right now",
+        # NOT AN INTERVAL LIKE THE OTHERS. This one runs every 90 seconds while
+        # a window is open and not at all otherwise, so "every_hours" is a
+        # fiction for the panel's benefit. What matters for the silence check
+        # is that a whole day with no poll is unremarkable -- most days have
+        # no games in most sports -- so it never reports as silent. The rate
+        # figures beside it are what say whether it is alive.
+        every_hours=24.0,
+        silent_after_hours=24.0 * 365,
+    ),
     "predict:cfb": TaskSpec(
         "predict:cfb",
         "forecast the college football slate, blind",
@@ -119,6 +131,8 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
             result, detail, payload = _run_recalibrate(conn)
         elif task == "resolve":
             result, detail, payload = _run_resolve(conn)
+        elif task == "live":
+            result, detail, payload = _run_live(conn)
         else:
             result, detail, payload = _run_predict(
                 conn, task.split(":", 1)[1], use_llm=use_llm
@@ -346,6 +360,36 @@ def _run_resolve(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     if n == 0:
         return "noop", "no prediction had a finished game waiting", payload
     return "ok", f"settled {n} prediction(s)", payload
+
+
+def _run_live(conn: sqlite3.Connection) -> tuple[str, str, dict]:
+    """Follow whatever is on. Makes no request when nothing is.
+
+    Reports "noop" on a quiet day rather than "ok", so the panel can tell the
+    difference between a poll that ran and found nothing on and a poll that
+    ran and updated nothing -- those look identical in a request count and
+    mean opposite things about whether the scheduler is alive.
+
+    THE RESOLVER IS PASSED IN, not called from inside the poller. `live` does
+    not import `resolve`, so there is no path by which live status could
+    settle anything; what there is, is this line handing the poll the ONE
+    idempotent resolver to call when a game ends, so a result lands in a
+    minute rather than waiting up to four hours for the schedule.
+    """
+    from . import live, resolve
+
+    live.ensure_live_columns(conn)
+    report = live.poll(conn, resolver=resolve.resolve_all)
+    if not report["windows"]:
+        return "noop", "nothing is on; no request made", report
+    settled = (report.get("resolved") or {}).get("settled")
+    detail = (f"{report['requests']} request(s), {report['seen']} game(s) seen, "
+              f"{report['changed']} updated")
+    if report["finals"]:
+        detail += f", {report['finals']} final"
+    if settled:
+        detail += f", {settled} settled"
+    return "ok", detail, report
 
 
 def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tuple[str, str, dict]:
@@ -599,7 +643,25 @@ def status(conn: sqlite3.Connection) -> dict:
         "any_silent": any(t["silent"] for t in out),
         "any_missed": any(t["missed"] for t in out),
         "schedule_staleness": views.schedule_staleness(conn),
+        # RATE HONESTY (L1). The live poll runs on a 90-second cadence inside a
+        # window and not at all outside one, so "last ran" alone says nothing
+        # about whether it is behaving: a poll that ran once and a poll that
+        # ran four hundred times look identical by that measure. The request
+        # count is the figure that can be held to a rate.
+        "live_poll": _live_rate(conn),
     }
+
+
+def _live_rate(conn: sqlite3.Connection) -> dict:
+    from . import language, live
+
+    figures = live.rate(conn, hours=24)
+    figures["line"] = language.live_rate_line(
+        figures["requests"], figures["polls"], figures["hours"])
+    figures["sports"] = list(live.LIVE_SPORTS)
+    figures["not_followed"] = language.live_not_followed_line(
+        [s for s in config.SPORTS if s not in live.LIVE_SPORTS])
+    return figures
 
 
 def _degradations(last: sqlite3.Row | None) -> list[str]:

@@ -721,6 +721,123 @@ def cfb_spread_rung(game_id, expected_margin=None):
 """
 
 
+def _scan_planted_module(source: str) -> list[str]:
+    """Run the real closure scanners over a planted module.
+
+    Written to a FILE and scanned from there, because that is what the guard
+    does in earnest -- `market_identifiers_in` parses a path, and a planting
+    that exercised some other entry point would be proving a different thing
+    than the one that runs.
+    """
+    import tempfile
+    from pathlib import Path
+
+    faults = []
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "planted.py"
+        path.write_text(source, encoding="utf-8")
+        for word, line in audit.market_identifiers_in(path):
+            faults.append(f"planted.py:{line} names {word!r}")
+        tree = __import__("ast").parse(source)
+        for node in __import__("ast").walk(tree):
+            names = []
+            if isinstance(node, __import__("ast").Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, __import__("ast").ImportFrom) and node.module:
+                names = [node.module]
+            for name in names:
+                for banned in audit.FORBIDDEN_MODULES:
+                    if name == banned or name.startswith(banned + "."):
+                        faults.append(f"planted.py imports {name!r}")
+    return faults
+
+
+def plant_a_live_import_in_a_prediction_path() -> Result:
+    """Import the live poller from a sport's forecasting module.
+
+    THE SHARPEST VERSION OF LAW 1. A market line is somebody else's opinion
+    about the game; a live score is THE ANSWER. A forecast that could reach it
+    is not anchored, it is copying -- and it would produce a calibration curve
+    of astonishing quality.
+    """
+    planted = (
+        "import gridiron.live" + chr(10) +
+        "def build_features(conn, q, cache=None):" + chr(10) +
+        "    return gridiron.live.open_windows(conn)" + chr(10)
+    )
+    hits = _scan_planted_module(planted)
+    if hits:
+        return Result("LAW 1", "import the live scores into a prediction path",
+                      "audit.imported_modules / market_identifiers_in", True,
+                      hits[0])
+    return Result("LAW 1", "import the live scores into a prediction path",
+                  "audit.imported_modules / market_identifiers_in", False,
+                  "NOT CAUGHT - a forecasting module could read the score")
+
+
+def plant_a_live_column_read_in_a_prediction_path() -> Result:
+    """Read the live clock from a module that writes forecasts."""
+    planted = (
+        "def build_features(conn, q, cache=None):" + chr(10) +
+        "    row = conn.execute('SELECT live_period, live_clock FROM games')" + chr(10) +
+        "    return row" + chr(10)
+    )
+    hits = _scan_planted_module(planted)
+    if hits:
+        return Result("LAW 1", "read the live clock from a prediction path",
+                      "audit.market_identifiers_in", True, hits[0])
+    return Result("LAW 1", "read the live clock from a prediction path",
+                  "audit.market_identifiers_in", False,
+                  "NOT CAUGHT - the live columns are reachable from a forecast")
+
+
+def plant_a_poller_that_settles_a_prediction() -> Result:
+    """Let live status write an outcome without the resolver.
+
+    Marking a game final is a fact about the game. Settling a prediction is a
+    claim about a forecast, and the record must have exactly one path to one.
+    Proven behaviourally: a poll handed no resolver leaves every prediction
+    open however finished the game is.
+    """
+    from gridiron import db as _db, live as _live
+
+    conn = _db.open_db(":memory:")
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+        " home, away, status) VALUES ('cfb_p','cfb',2026,20260905,'REG',"
+        " '2026-09-05T16:00:00Z','AAA','BBB','scheduled')")
+    conn.execute(
+        "INSERT INTO predictions (sport, game_id, created_utc, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('cfb','cfb_p',?, 'spread','AAA',-3.5,0.61,'cover','statistical',"
+        " 'v1','{}','planted')", (_db.utcnow(),))
+    conn.commit()
+    import datetime as _dt
+    _live.poll(
+        conn,
+        now=_dt.datetime(2026, 9, 5, 18, 0, tzinfo=_dt.timezone.utc),
+        fetcher=lambda *a, **k: [{"game_id": "cfb_p", "event_id": "p",
+                                  "status": "final", "home_score": 28,
+                                  "away_score": 10, "period": "4",
+                                  "clock": "0:00"}],
+        resolver=None,
+    )
+    open_rows = conn.execute(
+        "SELECT COUNT(*) FROM predictions WHERE resolved_utc IS NULL"
+    ).fetchone()[0]
+    final = conn.execute(
+        "SELECT status FROM games WHERE id='cfb_p'").fetchone()[0]
+    if final == "final" and open_rows == 1:
+        return Result("LAW 3", "settle a prediction from live status alone",
+                      "live.poll leaves resolution to resolve_all", True,
+                      "the game is final and its prediction is still open; "
+                      "only the resolver settles")
+    return Result("LAW 3", "settle a prediction from live status alone",
+                  "live.poll leaves resolution to resolve_all", False,
+                  f"NOT CAUGHT - game={final!r}, still-open={open_rows}")
+
+
 def plant_a_summed_record_on_the_tabs() -> Result:
     """Put a combined win-loss figure where the per-sport tabs go.
 
@@ -2386,6 +2503,9 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_live_import_in_a_prediction_path())
+    results.append(plant_a_live_column_read_in_a_prediction_path())
+    results.append(plant_a_poller_that_settles_a_prediction())
     results.append(plant_a_summed_record_on_the_tabs())
     results.append(plant_a_stale_build_that_says_nothing())
     results.append(plant_a_bundle_missing_a_sport())
