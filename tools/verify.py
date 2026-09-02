@@ -48,21 +48,85 @@ from gridiron.model import baseline  # noqa: E402
 from dbcopy import FACT_TABLES, copy_facts  # noqa: E402,F401
 
 
+def summarise(outcomes: dict, skipped=()) -> tuple[int, list[str]]:
+    """The verdict, and why. A SKIPPED TIER IS NEVER A PASS.
+
+    Kept as a pure function so a test can hold it to that: hand it a set of
+    outcomes that all passed plus one skipped tier, and it must still refuse.
+    The failure this guards against is not a bug so much as a habit -- running
+    the quick tier, seeing four green rows, and carrying the word "green" into
+    a commit message that will outlive the memory of which tier it came from.
+    """
+    lines = [f"  {'PASS' if ok else 'FAIL'}  {name}"
+             for name, ok in outcomes.items()]
+    for tier in skipped:
+        lines.append(f"  SKIPPED  {tier} -- {TIERS.get(tier, 'an unnamed tier')}")
+
+    if skipped:
+        lines += [
+            "",
+            "INCOMPLETE. " + str(len(skipped)) + " tier(s) above were not run, "
+            "so the rows that",
+            "passed describe less than the gate does. This is not a pass and is "
+            "not",
+            "reported as one; run `python tools/verify.py` with no flags for the "
+            "gate.",
+        ]
+        return 1, lines
+
+    lines += [
+        "",
+        "Step 3 is retrospective and proves the pipeline works. Step 4 is the",
+        "only step that could ever become evidence of an edge, and it will not",
+        "be evidence of anything until it has a season behind it.",
+    ]
+    return (0 if all(outcomes.values()) else 1), lines
+
+
 def rule(title: str) -> None:
     print("\n" + "=" * 72)
     print(title)
     print("=" * 72)
 
 
-def step_1_tests(quick: bool) -> bool:
+#: THE TIERS THIS SUITE CAN BE RUN IN, and what each one is worth. Named here
+#: so that skipping one is a thing the output has to SAY rather than a silence.
+#:
+#: `--quick` exists for the middle of a change, when the fast tier answers the
+#: question you actually have. It is not a gate, and the summary says so in
+#: those words rather than printing a row of PASSes that mean something
+#: narrower than they appear to.
+TIERS = {
+    "browser": "the browser suite -- 77 tests driving a real Chromium",
+    "slow": "tests that fetch real data over the network",
+    "tests": "the entire test suite (--skip-tests)",
+    "end to end": "steps 3 and 4, which need a real database to replay",
+}
+
+
+def step_1_tests(quick: bool) -> tuple[bool, tuple[str, ...]]:
+    """Run the suite. Returns (passed, tiers that were NOT run).
+
+    STREAMED, NOT CAPTURED, and that is the point of this phase. The previous
+    version passed `capture_output=True` and printed the last three lines when
+    it finished -- so for the whole run there was nothing on screen at all, and
+    a suite that was merely slow looked exactly like one that had hung. On
+    2026-09-01 that cost a wrong diagnosis: the run was killed as "stuck" on
+    the evidence of a CPU reading, and it was fine, and had in fact just
+    passed. Progress you cannot see is progress you end up guessing about.
+    """
     rule("STEP 1 — the full test suite")
     args = [sys.executable, "-m", "pytest", "-q"]
+    skipped: tuple[str, ...] = ()
     if quick:
         args += ["-m", "not browser and not slow"]
-    result = subprocess.run(args, cwd=str(REPO), capture_output=True, text=True)
-    tail = [ln for ln in result.stdout.strip().splitlines() if ln.strip()][-3:]
-    print("\n".join(tail))
-    return result.returncode == 0
+        skipped = ("browser", "slow")
+        print("QUICK MODE. Not running: "
+              + "; ".join(f"{t} ({TIERS[t]})" for t in skipped))
+        print("This cannot pass the gate -- see the summary.\n")
+    # No capture: pytest writes straight to this terminal, dots and all.
+    result = subprocess.run(args, cwd=str(REPO))
+    return result.returncode == 0, skipped
 
 
 def step_2_guards() -> bool:
@@ -277,27 +341,36 @@ def main() -> int:
     args = parser.parse_args()
 
     outcomes: dict[str, bool] = {}
-    if not args.skip_tests:
-        outcomes["1. test suite"] = step_1_tests(args.quick)
+    # EVERY WAY A TIER CAN GO UNRUN IS COLLECTED HERE. Each of these used to be
+    # a line of prose in the middle of the output and nothing at all in the
+    # verdict, so the summary could print four PASSes after skipping the whole
+    # browser suite -- true about far less than it appeared to be.
+    skipped: list[str] = []
+    if args.skip_tests:
+        skipped.append("tests")
+    else:
+        passed, tier_skips = step_1_tests(args.quick)
+        outcomes["1. test suite"] = passed
+        skipped.extend(tier_skips)
     outcomes["2. planted violations"] = step_2_guards()
 
     source = Path(args.source)
     if source.exists():
         outcomes["3. one week end to end"] = step_3_one_week_end_to_end(source)
     else:
-        print(f"\nno database at {source}; skipping steps 3 and 4")
+        # chr(10) rather than a backslash-n: this file has now lost that
+        # escape in transit twice, and the second time it produced an
+        # unterminated f-string three hundred lines from where it was typed.
+        print(chr(10) + f"no database at {source}; skipping steps 3 and 4")
+        skipped.append("end to end")
 
     outcomes["4. live forward week"] = step_4_live_forward_week()
 
     rule("VERIFICATION SUMMARY")
-    for name, ok in outcomes.items():
-        print(f"  {'PASS' if ok else 'FAIL'}  {name}")
-    print(
-        "\nStep 3 is retrospective and proves the pipeline works. Step 4 is the"
-        "\nonly step that could ever become evidence of an edge, and it will not"
-        "\nbe evidence of anything until it has a season behind it."
-    )
-    return 0 if all(outcomes.values()) else 1
+    code, lines = summarise(outcomes, skipped)
+    for line in lines:
+        print(line)
+    return code
 
 
 if __name__ == "__main__":
