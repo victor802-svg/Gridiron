@@ -23,6 +23,7 @@ from datetime import date, timedelta
 
 from .. import config
 from ..data import mlb_repo as repo
+from ..model import questions
 from ..factors import compute
 from ..model.question import Question
 
@@ -602,6 +603,51 @@ def slate_questions(
             )
         )
 
+        # THE RUN LINE, at the market's own rung and asked blind (STEP 3).
+        #
+        # -1.5 FROM THE HOME SIDE, EVERY GAME. Which club the market makes the
+        # favourite is not consulted: that would be the market choosing our
+        # question, which LAW 1 forbids. The rung itself is a declared
+        # constant measured from history -- every MLB run line ESPN carries is
+        # +/-1.5, 71 of 71 in the probe -- so asking at it is asking the
+        # market's question without reading the market.
+        out.append(
+            Question(
+                sport=SPORT,
+                game_id=game["id"],
+                market_type="spread",
+                market="run_line",
+                subject=game["home"],
+                line_asked=-questions.MLB_RUN_LINE,
+                claim=(f"{game['home']} (home) beat {game['away']} by two runs "
+                       f"or more"),
+                yes_label="cover",
+                no_label="not_cover",
+            )
+        )
+
+        # THE TOTAL, at a number we generate ourselves.
+        #
+        # Absent when either side has no scoring history: an absent question is
+        # recorded absent and never asked at a guessed number (item 5).
+        asked = questions.mlb_total_asked(
+            *_combined_form(conn, game))
+        if asked is not None:
+            out.append(
+                Question(
+                    sport=SPORT,
+                    game_id=game["id"],
+                    market_type="total",
+                    market="total",
+                    subject=f"{game['away']} at {game['home']}",
+                    line_asked=asked,
+                    claim=(f"{game['away']} at {game['home']} produces more "
+                           f"than {asked} runs between them"),
+                    yes_label="over",
+                    no_label="under",
+                )
+            )
+
     if not include_props:
         return out
 
@@ -644,6 +690,17 @@ PROP_WORDS = {
 }
 
 
+def _combined_form(conn: sqlite3.Connection, game) -> tuple:
+    """Both sides' runs per game, from stored results strictly before today.
+
+    The same numbers `build_context` puts on the context, read once here so
+    the asked total and the factor that measures it against the form cannot
+    come from two different windows.
+    """
+    ctx = build_context(conn, game["id"])
+    return ctx.home_runs_pg, ctx.away_runs_pg
+
+
 def build_features(conn: sqlite3.Connection, q: Question, cache=None):
     if q.market_type == "prop":
         ctx = build_prop_context(
@@ -651,6 +708,11 @@ def build_features(conn: sqlite3.Connection, q: Question, cache=None):
         )
         return compute.feature_vector(ctx, "prop", q.stat), ctx
     ctx = build_context(conn, q.game_id)
+    # THE ASKED TOTAL IS PART OF THE QUESTION, so it has to be in the context
+    # the factors read: `mlb_total_vs_line` is the rounding residual between
+    # the two sides' combined form and the number we asked at.
+    if q.line_asked is not None:
+        ctx.line_asked = q.line_asked
     return compute.feature_vector(ctx, q.market_type), ctx
 
 
@@ -672,7 +734,7 @@ def training_set(
             through_season=through_season, through_week=through_week,
             progress=progress,
         )
-    if market != "moneyline":
+    if market not in ("moneyline", "spread", "total"):
         raise ValueError(f"MLB has no {market!r} market")
 
     placeholders = ",".join("?" for _ in seasons)
@@ -696,16 +758,43 @@ def training_set(
             ctx = build_context(conn, g["id"])
         except KeyError:
             continue
-        fv = compute.feature_vector(ctx, "moneyline")
         scores = conn.execute(
             "SELECT home_score, away_score FROM games WHERE id = ?", (g["id"],)
         ).fetchone()
-        if scores["home_score"] is None or scores["away_score"] == scores["home_score"]:
-            continue          # no ties in baseball; a NULL is a data gap
-        rows.append(fv.values)
-        labels.append(1 if scores["home_score"] > scores["away_score"] else 0)
+        if scores["home_score"] is None:
+            continue          # a NULL is a data gap, not a result
+        home, away = scores["home_score"], scores["away_score"]
 
-    names = [f.name for f in registry.active_factors(SPORT, "moneyline")]
+        if market == "total":
+            # THE TRAINING ROW IS ASKED THE SAME WAY THE LIVE ONE IS. The
+            # total is self-generated, so a fit trained against a fixed number
+            # would be fitting a different question from the one asked. A game
+            # whose sides have no form yet produces no question, live or in
+            # training -- the same rule, so the fit sees the same population.
+            asked = questions.mlb_total_asked(ctx.home_runs_pg, ctx.away_runs_pg)
+            if asked is None:
+                continue
+            ctx.line_asked = asked
+            fv = compute.feature_vector(ctx, "total")
+            rows.append(fv.values)
+            labels.append(questions.total_outcome(home, away, asked))
+            continue
+
+        if market == "spread":
+            ctx.line_asked = -questions.MLB_RUN_LINE
+            fv = compute.feature_vector(ctx, "spread")
+            rows.append(fv.values)
+            labels.append(questions.run_line_outcome(
+                home, away, -questions.MLB_RUN_LINE))
+            continue
+
+        if away == home:
+            continue          # no ties in baseball
+        fv = compute.feature_vector(ctx, "moneyline")
+        rows.append(fv.values)
+        labels.append(1 if home > away else 0)
+
+    names = [f.name for f in registry.active_factors(SPORT, market)]
     return rows, labels, names
 
 
@@ -733,6 +822,20 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
             f"{pred['game_id']} finished level, which a completed baseball game "
             "cannot do; the row is not trustworthy enough to settle"
         )
+
+    if pred["market_type"] == "spread":
+        # THE LEAGUE'S RULING IS THE ANSWER, including a game called early.
+        # A rain-shortened game that is official has an official score, and
+        # inventing a second standard would mean the record disagreed with the
+        # sport. Written before the first prediction; see `questions.py`.
+        covered = questions.run_line_outcome(
+            game["home_score"], game["away_score"], pred["line_asked"])
+        return covered if pred["model_side"] == "cover" else 1 - covered
+
+    if pred["market_type"] == "total":
+        over = questions.total_outcome(
+            game["home_score"], game["away_score"], pred["line_asked"])
+        return over if pred["model_side"] == "over" else 1 - over
 
     home_won = 1 if game["home_score"] > game["away_score"] else 0
     subject_is_home = pred["subject"] == game["home"]

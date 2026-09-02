@@ -81,18 +81,43 @@ def test_the_vig_is_removed_proportionally_and_that_is_an_assumption():
 # --- the shape of the question ----------------------------------------------
 
 def test_a_moneyline_question_asks_no_line(mlb_league):
+    """The run line and the total joined the slate on 2026-09-02, so this
+    filters to the market it is about rather than assuming there is one."""
     questions = list(mlb_sport.slate_questions(mlb_league, 2025, 20, include_props=False))
-    assert questions
-    for q in questions:
-        assert q.market_type == "moneyline"
+    moneylines = [q for q in questions if q.market_type == "moneyline"]
+    assert moneylines
+    for q in moneylines:
         assert q.line_asked is None, "a moneyline has no rungs to choose between"
+
+
+def test_the_run_line_is_always_asked_at_the_same_rung(mlb_league):
+    """The market's rung is fixed at +/-1.5, so ours is too -- declared, not
+    fetched. Asked from the HOME side every game: letting the market pick the
+    side would be the market choosing our question."""
+    questions = list(mlb_sport.slate_questions(mlb_league, 2025, 20, include_props=False))
+    run_lines = [q for q in questions if q.market_type == "spread"]
+    assert run_lines
+    for q in run_lines:
+        assert q.line_asked == -1.5
+        assert q.yes_label == "cover" and q.no_label == "not_cover"
+
+
+def test_a_total_is_asked_at_our_own_number_or_not_at_all(mlb_league):
+    """Self-generated from the two sides' form, always on a half so it cannot
+    push, and absent when either side has no form yet."""
+    questions = list(mlb_sport.slate_questions(mlb_league, 2025, 20, include_props=False))
+    totals = [q for q in questions if q.market_type == "total"]
+    for q in totals:
+        assert q.line_asked % 1 == 0.5, f"a total that can push: {q.line_asked}"
+        assert q.yes_label == "over" and q.no_label == "under"
 
 
 def test_one_question_per_game_and_the_subject_is_the_home_club(mlb_league):
     """Asking 'does the away team win' as well would be the exact complement of
     the home question, so the model would learn a mirror of itself and every
     game would be counted twice in the record."""
-    questions = list(mlb_sport.slate_questions(mlb_league, 2025, 20, include_props=False))
+    questions = [q for q in mlb_sport.slate_questions(
+        mlb_league, 2025, 20, include_props=False) if q.market_type == "moneyline"]
     games = [q.game_id for q in questions]
     assert len(games) == len(set(games))
     for q in questions:
@@ -106,8 +131,12 @@ def test_mlb_declares_a_moneyline_and_four_player_props():
     """Baseball asked only a moneyline until 2026-08-30, when the four player
     prop markets were declared. The moneyline stays first: it is the game
     market, and the props are additions to the sport rather than replacements."""
+    # The run line and the total joined on 2026-09-02, on the evidence in
+    # docs/MLB_RUNLINE_FEASIBILITY.md. The moneyline stays first: it is the
+    # game market, and the others are additions rather than replacements.
     assert config.SPORT_MARKETS["mlb"] == (
-        "moneyline", "batter_hits", "batter_total_bases", "batter_home_runs",
+        "moneyline", "spread", "total",
+        "batter_hits", "batter_total_bases", "batter_home_runs",
         "pitcher_strikeouts",
     )
     assert config.SPORT_PROP_MARKETS["mlb"] == (
@@ -132,16 +161,28 @@ def test_every_mlb_factor_is_namespaced_and_carries_a_rationale():
     mlb_factors = [f for f in registry.all_factors() if f.sport == "mlb"]
     moneyline = [f for f in mlb_factors if f.applies_to == ("moneyline",)]
     props = [f for f in mlb_factors if f.applies_to == ("prop",)]
+    run_line = [f for f in mlb_factors if f.applies_to == ("spread",)]
+    totals = [f for f in mlb_factors if f.applies_to == ("total",)]
     assert len(moneyline) == 7
     assert sum(f.active for f in moneyline) == 6, (
         "mlb_home_away is deactivated as a constant; see its note"
     )
     assert len(props) == 13
-    assert len(mlb_factors) == len(moneyline) + len(props)
+    # DECLARED FOR THEIR OWN MARKETS on 2026-09-02, not widened from the
+    # moneyline's: the same quantity can matter differently to two questions,
+    # and sharing one declaration would date both from the earlier market.
+    assert len(run_line) == 5
+    assert len(totals) == 6
+    assert all(f.added_utc.startswith("2026-09-02") for f in run_line + totals)
+    assert len(mlb_factors) == len(moneyline) + len(props) + len(run_line) + len(totals)
     for f in mlb_factors:
         assert f.name.startswith("mlb_"), f"{f.name} would collide across sports"
         assert len(f.rationale) > 80, f"{f.name} has a token rationale"
-        assert f.applies_to in (("moneyline",), ("prop",))
+        # ONE MARKET EACH, and that is the point: a factor declared for two
+        # markets would date from the earlier one and mix two measured
+        # effects into a single number.
+        assert f.applies_to in (("moneyline",), ("prop",), ("spread",), ("total",))
+        assert len(f.applies_to) == 1, f"{f.name} spans two markets"
 
 
 def test_the_batter_and_pitcher_markets_get_disjoint_instruments():

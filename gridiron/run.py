@@ -34,7 +34,8 @@ class SlateAlreadyAnswered(RuntimeError):
     """A slate this factor set has already forecast, and why that is refused."""
 
 
-def already_answered(conn, sport: str, season: int, week: int) -> dict:
+def already_answered(conn, sport: str, season: int, week: int,
+                     *, include_props: bool = True) -> dict:
     """Has this factor set already answered this slate?
 
     THE FACTOR SET IS THE ESCAPE HATCH, deliberately. A different model asking
@@ -42,19 +43,44 @@ def already_answered(conn, sport: str, season: int, week: int) -> dict:
     the version on every row saying which produced which. The same model
     asking twice is a duplicate, and only the later one counts.
     """
-    row = conn.execute(
-        "SELECT COUNT(*) AS n, MIN(p.created_utc) AS first_written,"
-        "       MIN(p.factor_set_version) AS fsv"
+    rows = conn.execute(
+        "SELECT p.market_type, COUNT(*) AS n, MIN(p.created_utc) AS first_written"
         "  FROM predictions p JOIN games g ON g.id = p.game_id"
         " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
-        "   AND p.factor_set_version = ?",
-        (sport, season, week, config.FACTOR_SET_VERSION)).fetchone()
-    written = row["n"] or 0
+        "   AND p.factor_set_version = ?"
+        " GROUP BY p.market_type",
+        (sport, season, week, config.FACTOR_SET_VERSION)).fetchall()
+    answered = {r["market_type"]: r["n"] for r in rows}
+    written = sum(answered.values())
+
+    # PER MARKET, NOT PER SLATE, and the difference is a market that does not
+    # exist yet. The run line and the total were added on 2026-09-02 to slates
+    # whose moneyline had already been answered that morning; refusing the
+    # whole slate would have meant a new market could never be asked about a
+    # day the old ones had covered, which is not what "answered once" means.
+    #
+    # `predict` already skips a question that has a row, so a run that adds
+    # only a new market writes only the new market.
+    from . import sports
+
+    # WHAT THIS RUN WOULD ASK, not what the sport declares. A run with
+    # `include_props=False` asks no props, so an unanswered prop market is not
+    # a gap it could fill -- counting it as one would mean such a run could
+    # never be refused, however many times it repeated itself.
+    expected = set()
+    for market in sports.get(sport).markets():
+        is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
+        if is_prop and not include_props:
+            continue
+        expected.add("prop" if is_prop else market)
+    missing = sorted(expected - set(answered))
     return {
         "written": written,
-        "first_written": row["first_written"] or "",
-        "factor_set_version": row["fsv"] or config.FACTOR_SET_VERSION,
-        "refuse": written > 0,
+        "by_market": answered,
+        "missing": missing,
+        "first_written": min((r["first_written"] for r in rows), default=""),
+        "factor_set_version": config.FACTOR_SET_VERSION,
+        "refuse": written > 0 and not missing,
     }
 
 
@@ -71,7 +97,8 @@ def run_slate(
     progress=None,
 ) -> dict:
     """Predict one slate blind, then attach the market to what was written."""
-    already = already_answered(conn, sport, season, week)
+    already = already_answered(conn, sport, season, week,
+                               include_props=include_props)
     if already["refuse"]:
         # A SLATE IS ANSWERED ONCE (ruling R4, 2026-09-02).
         #
@@ -86,8 +113,10 @@ def run_slate(
         # and the record keeps both with their versions attached.
         raise SlateAlreadyAnswered(
             f"{sport} {season} slate {week} already has {already['written']} "
-            f"forecasts, written {already['first_written'][:16]} under factor "
-            f"set {already['factor_set_version']!r}. A slate is answered once. "
+            f"forecasts in every market it asks "
+            f"({', '.join(sorted(already['by_market']))}), written "
+            f"{already['first_written'][:16]} under factor set "
+            f"{already['factor_set_version']!r}. A slate is answered once. "
             f"Nothing was written." + _GAP
             + "Re-answering it would put two forecasts on every question, and "
             "only the later one would count -- which is what happened on "

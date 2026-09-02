@@ -131,6 +131,22 @@ class TotalSD:
 
 
 TOTAL_SD_BY_SPORT: dict[str, TotalSD] = {
+    # MEASURED BEFORE THE MARKET WAS BUILT, on every stored MLB final rather
+    # than a sample: 9,373 games across 2023-2026, and stable across all four
+    # seasons (4.31 to 4.59), which is what makes it usable. The measurement
+    # is in docs/MLB_RUNLINE_FEASIBILITY.md and the raw figures are also
+    # recorded in `config.MLB_SCORE_DISTRIBUTION`.
+    #
+    # THIS IS NOT THE MARGIN SD. `MARGIN_SD_BY_SPORT["mlb"]` is 4.71, a
+    # RESIDUAL against the run line; this is the spread of the TOTAL. They are
+    # close in value and measure different things, which is exactly the
+    # confusion that produced a false discrepancy in the first draft of the
+    # probe -- so they are declared apart, dated apart, and named apart.
+    "mlb": TotalSD(
+        sd=4.511, n=9373, measured_utc="2026-09-02T00:00:00Z",
+        source=("every stored MLB final, seasons 2023-2026; mean total 8.97, "
+                "median 8.0"),
+    ),
     "cfb": TotalSD(
         sd=16.19, n=260, measured_utc="2026-08-31T00:00:00Z",
         source=("ESPN final scores, random sample of 260 of the 888 completed "
@@ -248,6 +264,14 @@ def implied_over_probability(
     return norm_cdf((market_total - line_asked) / total_sd(sport))
 
 
+def _sign_column(row) -> str:
+    """`spread_sign_source`, tolerating a row from before the column existed."""
+    try:
+        return row["spread_sign_source"] or "unverified"
+    except (IndexError, KeyError):
+        return "unverified"
+
+
 def raw_line(conn: sqlite3.Connection, game_id: str) -> sqlite3.Row | None:
     return conn.execute(
         "SELECT * FROM market_lines_raw WHERE game_id = ?", (game_id,)
@@ -348,6 +372,16 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int, *,
         return write(row["source"], row["total_line"], round(implied, 6))
 
     if row["spread_line"] is None:
+        return None
+    # A CONTRADICTED SIGN IS NOT A COMPARISON (ruling R2, 2026-09-02).
+    #
+    # Three MLB rows carry a run line whose direction ESPN's own `favorite`
+    # flag and its own price disagree about. The number is there and reading
+    # it would produce a confident probability pointing the wrong way on a
+    # coin-flip game -- which is worse than having no comparison, because a
+    # missing one is visible and a reversed one is not. The market's own
+    # uncertainty about the side is recorded as our not having a line.
+    if _sign_column(row) == "contradicted":
         return None
     implied_yes = implied_cover_probability(row["spread_line"], pred["line_asked"], sport)
     implied = implied_yes if pred["model_side"] == "cover" else 1.0 - implied_yes

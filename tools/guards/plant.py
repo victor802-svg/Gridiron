@@ -887,13 +887,22 @@ def plant_a_slate_answered_twice() -> Result:
         "INSERT INTO games (id, season, week, game_type, kickoff_utc, home,"
         " away, status, sport) VALUES ('nfl_x', 2026, 1, 'REG',"
         " '2026-09-13T17:00:00Z', 'AAA', 'BBB', 'scheduled', 'nfl')")
-    conn.execute(
-        "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
-        " subject, line_asked, model_prob, model_side, predictor,"
-        " factor_set_version, factors_json, reasoning)"
-        " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', 'spread', 'AAA',"
-        " -3.5, 0.53, 'cover', 'statistical', ?, '{}', 'x')",
-        (_run.config.FACTOR_SET_VERSION,))
+    # EVERY MARKET THE SPORT ASKS, because the refusal is per market now: a
+    # slate missing one is a slate a new market can still be added to, which
+    # is how the run line reached a day the moneyline had already covered.
+    from gridiron import config as _config, sports as _sports
+
+    for market in _sports.get("nfl").markets():
+        kind = ("prop" if market in _config.SPORT_PROP_MARKETS.get("nfl", ())
+                else market)
+        conn.execute(
+            "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
+            " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+            " factor_set_version, factors_json, reasoning)"
+            " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', ?, ?, ?,"
+            " -3.5, 0.53, 'cover', 'statistical', ?, '{}', 'x')",
+            (kind, market if kind == "prop" else None, f"AAA {market}",
+             _run.config.FACTOR_SET_VERSION))
     conn.commit()
     try:
         _run.run_slate(conn, "nfl", 2026, 1, snapshot=False, use_llm=False)
@@ -903,6 +912,103 @@ def plant_a_slate_answered_twice() -> Result:
     return Result("LAW 3", "answer a slate twice with the same factor set",
                   "run.already_answered", False,
                   "a second full set of forecasts was written")
+
+
+def plant_a_run_line_rung_off_the_market() -> Result:
+    """Ask the run line at a rung the market does not offer.
+
+    Every MLB run line ESPN carries is +/-1.5 -- 71 of 71 in the probe. A
+    question asked at -2.5 is incomparable with the market AND with the rest
+    of its own category, which is the same objection the prop ladder answers.
+    """
+    from gridiron.model import questions as _q
+
+    asked = -_q.MLB_RUN_LINE
+    caught = abs(asked) == 1.5
+    return Result("NEW MARKET", "ask the run line at a rung the market never offers",
+                  "questions.MLB_RUN_LINE", caught,
+                  f"the rung is a declared constant, {asked:+.1f}, not a per-game fetch"
+                  if caught else f"the rung is {asked}, which the market does not offer")
+
+
+def plant_a_total_asked_from_a_market_value() -> Result:
+    """Form the asked total from a published total instead of our own form.
+
+    THE WHOLE OF LAW 1 IN ONE FUNCTION. `mlb_total_asked` takes runs per game
+    and nothing else; it cannot reach a market module, and a total asked at
+    the market's number would make every comparison a comparison with itself.
+    """
+    import inspect
+
+    from gridiron.model import questions as _q
+
+    # THE CODE, NOT THE DOCSTRING. The first version scanned the whole source
+    # and tripped on the docstring, which explains the rule by naming what it
+    # forbids -- the same trap that made LAW 5 flag its own guard.
+    source = inspect.getsource(_q.mlb_total_asked)
+    body = source.split('"""')[-1] if '"""' in source else source
+    reaches_market = any(word in body for word in
+                         ("market", "total_line", "overUnder", "espn"))
+    params = list(inspect.signature(_q.mlb_total_asked).parameters)
+    caught = not reaches_market and params == ["home_rpg", "away_rpg"]
+    return Result("LAW 1", "ask a total at the market's own number",
+                  "questions.mlb_total_asked", caught,
+                  f"takes {params} and names no market" if caught
+                  else "the asked total can reach a published one")
+
+
+def plant_a_total_merged_with_the_moneyline_curve() -> Result:
+    """Score the total inside the moneyline's category.
+
+    Two markets in one curve is the merge LAW 4 forbids: a total and a
+    moneyline are different questions with different base rates -- 45.1% and
+    roughly 54% -- and one number over both describes neither.
+    """
+    faults = audit.merged_curve_faults({
+        "categories": [{
+            "sport": "mlb", "n": 10,
+            "filters": {"market_type": "moneyline", "prop_type": "all",
+                        "predictor": "statistical"},
+        }],
+    }) if hasattr(audit, "merged_curve_faults") else []
+    if not faults:
+        # The real guard is `calibration.assert_no_merged_categories`, which
+        # runs inside `scorecard()`. Exercise it rather than a lookalike.
+        from gridiron import calibration as _cal
+
+        payload = {"sport": "mlb", "categories": [
+            {"sport": "mlb", "n": 10,
+             "filters": {"market_type": "all", "prop_type": "all",
+                         "predictor": "statistical"}}]}
+        try:
+            _cal.assert_no_merged_categories(payload)
+        except Exception as exc:  # noqa: BLE001 - the guard is the catcher
+            return Result("LAW 4", "score the total in the moneyline's curve",
+                          "calibration.assert_no_merged_categories", True,
+                          str(exc)[:150])
+        return Result("LAW 4", "score the total in the moneyline's curve",
+                      "calibration.assert_no_merged_categories", False,
+                      "a merged category was accepted")
+    return _desk_plant(faults, "score the total in the moneyline's curve",
+                       "calibration.assert_no_merged_categories")
+
+
+def plant_an_undated_total_sd() -> Result:
+    """Use a totals SD for a sport that never measured one.
+
+    `total_sd` has no fallback and says so: a plausible-looking number nobody
+    measured is how NBA's market comparison came to be wrong for a day.
+    """
+    from gridiron.market import lines as _lines
+
+    try:
+        _lines.total_sd("nba")
+    except _lines.UnmeasuredMarginSD as exc:
+        return Result("NEW MARKET", "compare a total against an unmeasured SD",
+                      "lines.total_sd", True, str(exc)[:150])
+    return Result("NEW MARKET", "compare a total against an unmeasured SD",
+                  "lines.total_sd", False,
+                  "an unmeasured SD was served without complaint")
 
 
 def plant_a_run_line_contradicting_its_moneyline() -> Result:
@@ -3028,6 +3134,10 @@ def main() -> int:
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
     results.append(plant_a_slate_answered_twice())
+    results.append(plant_a_run_line_rung_off_the_market())
+    results.append(plant_a_total_asked_from_a_market_value())
+    results.append(plant_a_total_merged_with_the_moneyline_curve())
+    results.append(plant_an_undated_total_sd())
     results.append(plant_a_run_line_contradicting_its_moneyline())
     results.append(plant_a_fifth_nav_item())
     results.append(plant_an_old_route_left_to_404())

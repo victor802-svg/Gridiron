@@ -153,6 +153,96 @@ def cfb_total_asked(home_ppg: float | None, away_ppg: float | None) -> float | N
     return _round_to(combined, 1.0) + 0.5
 
 
+# ---------------------------------------------------------------------------
+# MLB run line and totals (GRIDIRON_16 STEP 3, built 2026-09-02)
+# ---------------------------------------------------------------------------
+#
+# THE VOID RULES ARE WRITTEN HERE, BEFORE THE FIRST PREDICTION (checklist item
+# 7). Deciding after seeing results which non-answers count is choosing which
+# losses to keep.
+#
+#   * A GAME THAT NEVER FINISHED -> VOID once it is clearly not going to. A
+#     postponement is the ordinary case in baseball and it is not a loss: the
+#     question was never answered.
+#
+#   * A GAME SHORTENED BEFORE REGULATION -> resolves by THE LEAGUE'S RULING,
+#     which is the score in the record. A rain-shortened game called after five
+#     innings is an official game with an official result; both the run line
+#     and the total are settled against it exactly as a nine-inning game is.
+#     This is the one rule that could reasonably have gone the other way, and
+#     it goes this way because the league's own answer is the answer: inventing
+#     a second standard would mean the record disagreed with the sport.
+#
+#   * A SUSPENDED GAME COMPLETED ON A LATER DATE -> settles on the final score
+#     whenever it is completed, on the same rule: the league's ruling is the
+#     answer. It does not become a different question for having taken two
+#     days.
+#
+#   * A GAME WITH NO SCORE RECORDED after it is final -> VOID with the reason
+#     stated. An unreadable result is not a zero.
+#
+# The bound on "never going to finish" is the same four days the prop rules
+# use, so the two cannot drift apart and disagree about when a game is gone.
+
+#: The market's rung, and it is FIXED. Every MLB run line ESPN carries is
+#: +/-1.5 -- 71 of 71 in the feasibility probe, no exceptions. So the question
+#: is asked at exactly the rung the market asks at, without consulting the
+#: market to find it: the number is declared here, dated, from measured
+#: history, exactly as a prop ladder is (LAW 1).
+MLB_RUN_LINE = 1.5
+MLB_RUN_LINE_DECLARED = "2026-09-02T00:00:00Z"
+
+#: Bounds on a self-generated total, so an absurd one is refused rather than
+#: asked. From `config.MLB_SCORE_DISTRIBUTION`: mean 8.97, sd 4.511 over 9,373
+#: games. These are roughly the mean +/- three standard deviations, rounded
+#: outward to whole runs, and a combined form outside them means the inputs are
+#: wrong rather than the game being remarkable.
+MLB_TOTAL_MIN = 4.0
+MLB_TOTAL_MAX = 18.0
+
+
+def mlb_total_asked(home_rpg: float | None, away_rpg: float | None) -> float | None:
+    """The total to ask about: the two sides' combined scoring form, to a half.
+
+    BLIND BY CONSTRUCTION, exactly as `cfb_total_asked` is. The only inputs are
+    runs per game computed from our own stored results; no published total is
+    consulted and this module cannot reach one. That is the whole difference
+    between asking our question and grading ourselves against the market's.
+
+    Returns None when either side has no scoring history -- the first days of a
+    season, or a club new to the record. An absent question is recorded absent;
+    it is never asked at a guessed number, which would be a strong claim
+    wearing a missing value's clothes (checklist item 5).
+
+    THE HALF IS NOT DECORATION. The probe found 39 of 71 published MLB totals
+    are whole numbers, which can push: 8 runs against a total of 8 is neither
+    over nor under, and a pushed question has no answer to score. Asking at a
+    half means this question always has one.
+    """
+    if home_rpg is None or away_rpg is None:
+        return None
+    combined = float(home_rpg) + float(away_rpg)
+    if not MLB_TOTAL_MIN <= combined <= MLB_TOTAL_MAX:
+        return None
+    return float(int(combined)) + 0.5
+
+
+def run_line_outcome(home_score: int, away_score: int, line_asked: float) -> int:
+    """1 if the home side covered the run line it was asked to give.
+
+    `line_asked` is the home team's handicap: -1.5 means the home side gives a
+    run and a half, so it covers by winning by two or more. A half-run line
+    cannot push, which is why the market uses one and why this has no third
+    state.
+
+    THE QUESTION IS ALWAYS ASKED FROM THE HOME SIDE, at -1.5, for every game.
+    Which team the MARKET makes the favourite is not consulted -- that would
+    be the market choosing our question, and LAW 1 forbids it. The market's
+    own side is read afterwards, when the comparison is drawn.
+    """
+    return 1 if (home_score - away_score) + line_asked > 0 else 0
+
+
 def total_outcome(home_score: int, away_score: int, line_asked: float) -> int:
     """1 if the combined score went OVER the total asked.
 

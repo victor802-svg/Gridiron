@@ -616,3 +616,254 @@ def mlb_prop_park_factor(ctx) -> float | None:
 # Confidence spread, which is what NFL's ladder buys, comes free here: a
 # moneyline sits anywhere from about 35% to 70%, so the calibration buckets fill
 # without a ladder to fill them.
+
+
+# ---------------------------------------------------------------------------
+# THE RUN LINE AND THE TOTAL (GRIDIRON_16 STEP 3, declared 2026-09-02)
+# ---------------------------------------------------------------------------
+#
+# DECLARED FOR THEIR OWN MARKETS, not widened from the moneyline's. A factor
+# carries the date it was added and is scored from it (LAW 2), and the same
+# quantity can matter differently to two questions: park run environment
+# nudges a moneyline by compressing the gap between clubs, and drives a TOTAL
+# directly. Sharing one declaration would mix two measured effects into one
+# number and date both from the earlier market.
+#
+# WIND IS NOT DECLARED, and the reason is the evidence. The brief asks for
+# wind at first pitch for outdoor parks through the existing Open-Meteo path.
+# That path exists but `weather_forecasts` holds NINE rows, all football: there
+# is no stored history for a fit to see, so the factor would be absent on
+# essentially every training row. Declaring it would produce exactly the
+# broken instrument the constant-factor check and the missing-data rule exist
+# to catch. Recorded in FOLLOWUPS with its reason instead.
+
+MARKETS_ADDED = "2026-09-02T00:00:00Z"
+
+
+# --- the run line ----------------------------------------------------------
+#
+# The question is "does the home side win by two or more", asked at the fixed
+# -1.5 rung for every game. What moves it is not quite what moves a moneyline:
+# a run line is won by MARGIN, so anything that widens the distribution of
+# margins matters as much as anything that shifts its centre.
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("spread",),
+    why="how much better tonight's starter is than the other one",
+    rationale=(
+        "The starting pitchers are the largest single input to a baseball "
+        "margin, and the run line is a question about margin. Measured as the "
+        "difference in runs allowed per nine over each starter's rolling ten "
+        "starts, home minus away, so a positive value means the home side has "
+        "the worse starter and is less likely to win by two. Declared for the "
+        "run line on 2026-09-02, separately from the moneyline's version of "
+        "the same input, because a margin question and a win question weight "
+        "it differently."
+    ),
+)
+def mlb_runline_starter_edge(ctx) -> float | None:
+    if ctx.home_starter_ra9 is None or ctx.away_starter_ra9 is None:
+        return None
+    return float(ctx.home_starter_ra9) - float(ctx.away_starter_ra9)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("spread",),
+    why="how much better one offence has been than the other",
+    rationale=(
+        "Runs per game over the rolling window, home minus away. A club that "
+        "scores more than its opponent concedes wins by more, and winning by "
+        "MORE is the whole of the run line question. Declared 2026-09-02."
+    ),
+)
+def mlb_runline_offense_edge(ctx) -> float | None:
+    if ctx.home_runs_pg is None or ctx.away_runs_pg is None:
+        return None
+    return float(ctx.home_runs_pg) - float(ctx.away_runs_pg)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("spread",),
+    why="which bullpen is more tired",
+    rationale=(
+        "Relief innings thrown over the last three days, home minus away. A "
+        "tired bullpen concedes late runs, and late runs are where one-run "
+        "games become three-run games. 28% of MLB games are decided by a "
+        "single run (measured 2026-09-02 over 9,373 finals), so what happens "
+        "at the edge of that band decides the run line. Declared 2026-09-02."
+    ),
+)
+def mlb_runline_bullpen_edge(ctx) -> float | None:
+    if ctx.home_bullpen_innings is None or ctx.away_bullpen_innings is None:
+        return None
+    return float(ctx.home_bullpen_innings) - float(ctx.away_bullpen_innings)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("spread",),
+    why="how much this park widens the margin",
+    rationale=(
+        "A high-scoring park widens the distribution of margins: more runs "
+        "means more variance, and more variance means more games decided by "
+        "two or more. This is the same measured quantity the moneyline uses "
+        "and a DIFFERENT claim about it -- there it compresses the gap "
+        "between clubs, here it widens the margin. Measured as runs per game "
+        "at this venue in PRIOR seasons relative to the league, which is "
+        "cutoff-safe by construction. Declared 2026-09-02."
+    ),
+)
+def mlb_runline_park(ctx) -> float | None:
+    if ctx.park_runs_pg is None or not ctx.league_runs_pg:
+        return None
+    return (float(ctx.park_runs_pg) - float(ctx.league_runs_pg)) / float(ctx.league_runs_pg)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("spread",),
+    why="how much scoring the two sides produce together",
+    rationale=(
+        "THE VOLATILITY INSTRUMENT for this market (checklist item 1). The "
+        "combined run environment of the two clubs: more total scoring means "
+        "a wider margin distribution and more two-run wins, independently of "
+        "WHO is better. A margin question needs a measure of spread as well "
+        "as one of centre, and this is it. Declared 2026-09-02."
+    ),
+)
+def mlb_runline_volatility(ctx) -> float | None:
+    if ctx.home_runs_pg is None or ctx.away_runs_pg is None:
+        return None
+    return float(ctx.home_runs_pg) + float(ctx.away_runs_pg)
+
+
+# --- the total -------------------------------------------------------------
+#
+# The asked total is SELF-GENERATED from the two sides' scoring form, rounded
+# to a half. So `mlb_total_vs_line` is not a comparison against somebody
+# else's number -- it is the rounding residual, which is real and bounded and
+# tells the fit where inside the half-run band the question was asked.
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("total",),
+    why="where the asked total sits against the two sides' form",
+    rationale=(
+        "THE ASKED-LINE INSTRUMENT for this market (checklist item 1). The "
+        "total is asked at the combined scoring form rounded DOWN to a half, "
+        "so this is the rounding residual: how far above the asked number the "
+        "raw form actually sat, between 0 and 1 runs. It is not a comparison "
+        "against a published total -- the question is ours and no market is "
+        "consulted to form it (LAW 1). It matters because a question asked at "
+        "8.5 off a form of 8.6 is a very different question from one asked at "
+        "8.5 off a form of 9.4. Declared 2026-09-02."
+    ),
+)
+def mlb_total_vs_line(ctx) -> float | None:
+    if ctx.home_runs_pg is None or ctx.away_runs_pg is None:
+        return None
+    if ctx.line_asked is None:
+        return None
+    return (float(ctx.home_runs_pg) + float(ctx.away_runs_pg)) - float(ctx.line_asked)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("total",),
+    why="how much the two offences have been scoring",
+    rationale=(
+        "Combined runs per game over the rolling window: the single largest "
+        "input to how many runs a game produces. Declared for the total on "
+        "2026-09-02, separately from the moneyline's one-sided version, "
+        "because a total is about the SUM and a moneyline about the "
+        "difference."
+    ),
+)
+def mlb_total_combined_offense(ctx) -> float | None:
+    if ctx.home_runs_pg is None or ctx.away_runs_pg is None:
+        return None
+    return float(ctx.home_runs_pg) + float(ctx.away_runs_pg)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("total",),
+    why="how well the two starters have been suppressing runs",
+    rationale=(
+        "Both starters' runs allowed per nine, added. Two starters who have "
+        "been giving up runs produce a higher-scoring game whichever side is "
+        "better, which is precisely what a total asks and what a moneyline "
+        "does not. Declared 2026-09-02."
+    ),
+)
+def mlb_total_starter_suppression(ctx) -> float | None:
+    if ctx.home_starter_ra9 is None or ctx.away_starter_ra9 is None:
+        return None
+    return float(ctx.home_starter_ra9) + float(ctx.away_starter_ra9)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("total",),
+    why="how tired both bullpens are",
+    rationale=(
+        "Relief innings thrown by BOTH sides over the last three days. Two "
+        "tired bullpens concede more late runs, and late runs are runs. Added "
+        "rather than differenced, because a total does not care which side "
+        "scores them. Declared 2026-09-02."
+    ),
+)
+def mlb_total_bullpen_load(ctx) -> float | None:
+    if ctx.home_bullpen_innings is None or ctx.away_bullpen_innings is None:
+        return None
+    return float(ctx.home_bullpen_innings) + float(ctx.away_bullpen_innings)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("total",),
+    why="how much this park adds to the score",
+    rationale=(
+        "The most direct input a total has: parks differ by about a third in "
+        "the run environment they produce between the extremes. Measured as "
+        "runs per game at this venue in PRIOR seasons relative to the league, "
+        "cutoff-safe by construction. Declared for the total 2026-09-02."
+    ),
+)
+def mlb_total_park_factor(ctx) -> float | None:
+    if ctx.park_runs_pg is None or not ctx.league_runs_pg:
+        return None
+    return (float(ctx.park_runs_pg) - float(ctx.league_runs_pg)) / float(ctx.league_runs_pg)
+
+
+@factor(
+    added=MARKETS_ADDED,
+    sport="mlb",
+    applies_to=("total",),
+    why="how uneven the two offences are",
+    rationale=(
+        "THE VOLATILITY INSTRUMENT for this market (checklist item 1). The "
+        "absolute difference between the two clubs' scoring rates. Two evenly "
+        "matched offences produce a tighter total than a mismatch does, "
+        "because a lopsided game can end early in effect -- a side ahead by "
+        "eight stops pressing and the other stops facing its best relievers. "
+        "A spread instrument, not a centre one. Declared 2026-09-02."
+    ),
+)
+def mlb_total_volatility(ctx) -> float | None:
+    if ctx.home_runs_pg is None or ctx.away_runs_pg is None:
+        return None
+    return abs(float(ctx.home_runs_pg) - float(ctx.away_runs_pg))

@@ -218,7 +218,11 @@ PICKS_DEFAULT_FORECASTER = "statistical"
 SPORT_MARKETS: dict[str, tuple[str, ...]] = {
     "nfl": ("spread", "passing_yards", "receiving_yards", "rushing_yards",
             "receptions", "passing_tds"),
-    "mlb": ("moneyline", "batter_hits", "batter_total_bases",
+    # THE RUN LINE AND THE TOTAL joined 2026-09-02 (GRIDIRON_16 STEP 3), on
+    # the evidence in docs/MLB_RUNLINE_FEASIBILITY.md: ESPN carries both on
+    # every priced game, at a rung fixed at +/-1.5, with explicit side labels.
+    "mlb": ("moneyline", "spread", "total",
+            "batter_hits", "batter_total_bases",
             "batter_home_runs", "pitcher_strikeouts"),
     "nba": ("spread", "points", "rebounds", "assists", "threes"),
     # THREE TEAM MARKETS AND NO PROPS. The probe found zero prop rows on

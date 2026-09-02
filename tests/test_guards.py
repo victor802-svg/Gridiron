@@ -1176,13 +1176,23 @@ def test_answering_a_slate_twice_is_refused(tmp_path):
         "INSERT INTO games (id, season, week, game_type, kickoff_utc, home,"
         " away, status, sport) VALUES ('nfl_x', 2026, 1, 'REG',"
         " '2026-09-13T17:00:00Z', 'AAA', 'BBB', 'scheduled', 'nfl')")
-    conn.execute(
-        "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
-        " subject, line_asked, model_prob, model_side, predictor,"
-        " factor_set_version, factors_json, reasoning)"
-        " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', 'spread', 'AAA',"
-        " -3.5, 0.53, 'cover', 'statistical', ?, '{}', 'x')",
-        (_config.FACTOR_SET_VERSION,))
+    # EVERY MARKET THE SPORT ASKS. The refusal is per market since the run
+    # line and the total were added: a slate missing one is a slate a new
+    # market can still be added to, which is how those two reached a day
+    # the moneyline had already covered.
+    from gridiron import config as _config, sports as _sports
+
+    for _market in _sports.get("nfl").markets():
+        _kind = ("prop" if _market in _config.SPORT_PROP_MARKETS.get("nfl", ())
+                 else _market)
+        conn.execute(
+            "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
+            " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+            " factor_set_version, factors_json, reasoning)"
+            " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', ?, ?, ?, -3.5,"
+            " 0.53, 'cover', 'statistical', ?, '{}', 'x')",
+            (_kind, _market if _kind == "prop" else None, f"AAA {_market}",
+             _config.FACTOR_SET_VERSION))
     conn.commit()
     with pytest.raises(_run.SlateAlreadyAnswered, match="answered once"):
         _run.run_slate(conn, "nfl", 2026, 1, snapshot=False, use_llm=False)

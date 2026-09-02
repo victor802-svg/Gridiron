@@ -370,3 +370,19 @@ python tools/make_token.py --ntfy --rotate
   greeting, and a particular day is a click on the Results calendar. If a
   day-by-day narrative is wanted back, it is a new page rather than a
   restoration.
+
+## 2026-09-02 — the MLB run line and totals
+
+- **Wind at first pitch is not a declared totals factor.** The Open-Meteo path
+  exists but `weather_forecasts` holds nine rows, all football: there is no
+  stored history for a fit to see, so the factor would be absent on essentially
+  every training row and would be the broken instrument the constant-factor
+  check exists to catch. Revisit once MLB kickoff forecasts are being stored.
+- **The rolling combined form runs about 5% high** as an estimate of actual
+  game scoring: asking the total at that form, rounded down to a half, still
+  goes over only 45.1% of the time over 7,211 games. The fit's intercept
+  absorbs it. Worth re-measuring once the totals category has a settled record.
+- **Run-line and totals PRICES are not stored.** ESPN carries them
+  (`overOdds`, `underOdds`, `homeTeamOdds.open.spread`) and the comparison
+  currently derives an implied probability from the LINE plus a measured SD
+  instead. Storing the prices would give a second, independent comparison.
