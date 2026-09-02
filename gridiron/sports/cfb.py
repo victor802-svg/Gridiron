@@ -187,14 +187,25 @@ def slate_questions(conn: sqlite3.Connection, season: int, day: int,
         # means the context has to be built before the spread question rather
         # than after it. The ratings it reads are stored and blind.
         ctx = build_context(conn, gid)
-        rung = questions.cfb_spread_rung(
-            gid, questions.cfb_expected_margin(ctx.home_rating, ctx.away_rating))
-        out.append(Question(
-            sport=SPORT, game_id=gid, market_type="spread", market="spread",
-            subject=home, line_asked=rung,
-            claim=f"{home} covers {rung:+.1f} against {away}",
-            yes_label="cover", no_label="fail to cover",
-        ))
+        # A MISMATCH THE LADDER CANNOT REACH ASKS NOTHING (ruling CFB-1). The
+        # rung chooser refuses rather than clamping, and the absence is
+        # recorded as an absence -- the same treatment a total gets when
+        # neither side has scoring form yet. About 5% of college games are
+        # this lopsided; answering them at the end rung is what put 45 of 60
+        # on one number.
+        try:
+            rung = questions.cfb_spread_rung(
+                gid,
+                questions.cfb_expected_margin(ctx.home_rating, ctx.away_rating))
+        except questions.RungOffTheLadder:
+            rung = None
+        if rung is not None:
+            out.append(Question(
+                sport=SPORT, game_id=gid, market_type="spread", market="spread",
+                subject=home, line_asked=rung,
+                claim=f"{home} covers {rung:+.1f} against {away}",
+                yes_label="cover", no_label="fail to cover",
+            ))
         out.append(Question(
             sport=SPORT, game_id=gid, market_type="moneyline",
             market="moneyline", subject=home, line_asked=None,
@@ -302,9 +313,15 @@ def training_set(conn: sqlite3.Connection, seasons, market: str, *,
             # THE SAME RULE THE FORWARD PATH USES. A training set asked at
             # rotated rungs and a live slate asked at margin-chosen ones would
             # be two different questions sharing a coefficient.
-            line = questions.cfb_spread_rung(
-                game["id"],
-                questions.cfb_expected_margin(ctx.home_rating, ctx.away_rating))
+            # THE TRAINING SET SKIPS WHAT THE LIVE SLATE WOULD SKIP. A fit
+            # trained on games the forward path refuses would be fitting a
+            # population that never reaches the record.
+            try:
+                line = questions.cfb_spread_rung(
+                    game["id"],
+                    questions.cfb_expected_margin(ctx.home_rating, ctx.away_rating))
+            except questions.RungOffTheLadder:
+                continue
             ctx.line_asked = line
 
         if market == "total":

@@ -386,3 +386,25 @@ python tools/make_token.py --ntfy --rotate
   (`overOdds`, `underOdds`, `homeTeamOdds.open.spread`) and the comparison
   currently derives an implied probability from the LINE plus a measured SD
   instead. Storing the prices would give a second, independent comparison.
+
+## 2026-09-02 — the CFB ladder
+
+- **BLOCKED, by design: what `cfb_asked_line` is FOR.** Under the
+  nearest-margin rung rule the asked line is a coarsened function of
+  `cfb_srs_diff` — the rung is chosen from the expected margin, which is
+  computed from the rating difference — so the factor carries almost nothing
+  the ratings do not, and **its coefficient cannot be read as an independent
+  effect**. Whether it should be retired, kept as the question's own label, or
+  replaced by the residual between the rung and the expected margin is an
+  operator ruling. Documented on the factor's note and here; not changed. The
+  2026-09-02 extension changed the coarseness, not the dependency.
+- **The college spread base rate is 0.371, not 0.5.** The rung is chosen AT
+  the expected margin, so a well-calibrated expectation should cover about
+  half the time. It covers 37%, which means `cfb_expected_margin` runs high —
+  the home side wins by less than the ratings say. Worth measuring properly
+  once the college record has settled rows; the fit's intercept absorbs it in
+  the meantime.
+- **4.9% of college games are refused as beyond the ladder** and recorded
+  absent rather than clamped. That is the ruling working, but it is also 80
+  games a season with no spread question. If that proves too many, the answer
+  is another dated extension, not a wider tolerance.

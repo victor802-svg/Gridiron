@@ -109,10 +109,27 @@ def cfb_srs_diff(ctx) -> float | None:
     rationale=(
         "CHECKLIST ITEM 1: the model must be told which rung it was asked at, "
         "or it averages several different questions into one answer. College "
-        "football's ladder spans -24.5 to +6.5 because its margins do -- 39% "
+        "football's ladder spans -41.5 to +6.5 because its margins do -- 39% "
         "of games are decided by 21 or more -- so the rungs are further apart "
         "here than in any other sport in this record, and a model blind to "
         "which one it was given would be answering a question it cannot see."
+    ),
+    note=(
+        "DOCUMENTED 2026-09-02, NOT CHANGED (ruling CFB-2, deliberately "
+        "BLOCKED). Under the nearest-margin rung rule this factor is a "
+        "COARSENED FUNCTION OF `cfb_srs_diff`: the rung is chosen as the "
+        "ladder entry nearest minus the expected margin, and the expected "
+        "margin is computed from the rating difference. So `cfb_asked_line` "
+        "carries almost no information the ratings do not already carry -- it "
+        "is the rating difference, rounded to one of seven values. "
+        "ITS COEFFICIENT CANNOT BE READ AS AN INDEPENDENT EFFECT, and a "
+        "reader comparing it against `cfb_srs_diff` is looking at two views "
+        "of one quantity. What this factor is FOR under the nearest-margin "
+        "rule -- whether it should be retired, kept as the question's own "
+        "label, or replaced by the residual between the rung and the expected "
+        "margin -- is an OPERATOR RULING and is not taken here. The ladder "
+        "extension of 2026-09-02 changed the coarseness (five rungs to seven) "
+        "and not the dependency."
     ),
 )
 def cfb_asked_line(ctx) -> float | None:

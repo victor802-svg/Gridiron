@@ -914,6 +914,31 @@ def plant_a_slate_answered_twice() -> Result:
                   "a second full set of forecasts was written")
 
 
+def plant_a_clamped_rung_beyond_the_ladder() -> Result:
+    """Ask a sixty-point mismatch at the ladder's end rung anyway.
+
+    THE FAILURE THE EXTENSION WAS RULED ON. Under the old ladder the top rung
+    was chosen for 27% of college games, and 45 of the 58 rated games on
+    2026-09-05 -- every mismatch past it collapsed onto one number, so the
+    record measured the schedule rather than the model.
+
+    Extending the ladder moves the wall; it does not remove it. A game beyond
+    the new top must be REFUSED and recorded absent, because clamping it would
+    store a confident claim about a number nobody chose, on exactly the games
+    where the model is least tested.
+    """
+    from gridiron.model import questions as _q
+
+    try:
+        rung = _q.cfb_spread_rung("plant", 60.0)
+    except _q.RungOffTheLadder as exc:
+        return Result("LAW 1", "clamp a rung beyond the declared ladder",
+                      "questions.cfb_spread_rung", True, str(exc)[:150])
+    return Result("LAW 1", "clamp a rung beyond the declared ladder",
+                  "questions.cfb_spread_rung", False,
+                  f"a 60-point mismatch was silently asked at {rung:+.1f}")
+
+
 def plant_a_run_line_rung_off_the_market() -> Result:
     """Ask the run line at a rung the market does not offer.
 
@@ -3134,6 +3159,7 @@ def main() -> int:
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
     results.append(plant_a_slate_answered_twice())
+    results.append(plant_a_clamped_rung_beyond_the_ladder())
     results.append(plant_a_run_line_rung_off_the_market())
     results.append(plant_a_total_asked_from_a_market_value())
     results.append(plant_a_total_merged_with_the_moneyline_curve())

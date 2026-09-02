@@ -59,8 +59,44 @@ SPREAD_LADDER: tuple[float, ...] = (-7.5, -3.5, 0.5, 3.5)
 #: only 28% by seven or fewer. These five rungs sit near those quintiles, so
 #: the four questions land across the distribution instead of bunching under
 #: it. Declared in advance and dated, like every other ladder here.
-CFB_SPREAD_LADDER: tuple[float, ...] = (-24.5, -14.5, -7.5, -0.5, 6.5)
+#: EXTENDED 2026-09-02, and the old ladder is kept here rather than replaced
+#: in silence.
+#:
+#:     declared 2026-08-31:  (-24.5, -14.5, -7.5, -0.5, 6.5)
+#:     extended 2026-09-02:  (-41.5, -31.5, -24.5, -14.5, -7.5, -0.5, 6.5)
+#:
+#: WHY. Measured over 1,618 completed 2024-25 games with a rating on both
+#: sides, the expected home margin has mean +12.49 and SD 13.84, and its
+#: percentiles run +23.2 at the 80th, +30.2 at the 90th and +37.1 at the 95th.
+#: Against the old ladder the top rung was chosen for 27.1% of games -- more
+#: than a quarter of the record asked the same question -- and on the college
+#: slate of 2026-09-05 it was 45 of 60.
+#:
+#: A rung reached by a quarter of games is not a rung, it is a wall: every
+#: mismatch past it collapses onto one number, so the record stops measuring
+#: how well the model separates a 25-point favourite from a 45-point one.
+#:
+#: Two rungs were ADDED and none moved. The top rung is now reached by 5.5%
+#: of games, under the 10% the ruling asks for. Moving an existing rung would
+#: have made a slightly more even spread (21.4% on the busiest rung against
+#: 24.2%) at the cost of retiring numbers that predictions were already asked
+#: at -- and those rows stand (LAW 3), so the ladder they were asked against
+#: stays on it.
+CFB_SPREAD_LADDER: tuple[float, ...] = (
+    -41.5, -31.5, -24.5, -14.5, -7.5, -0.5, 6.5)
 CFB_SPREAD_LADDER_DECLARED = "2026-08-31T00:00:00Z"
+CFB_SPREAD_LADDER_EXTENDED = "2026-09-02T00:00:00Z"
+
+#: How far past the top rung a game may sit before it is REFUSED rather than
+#: clamped. A mismatch the ladder cannot reach is not a question the ladder
+#: can ask, and silently answering it at the nearest rung would record a
+#: confident claim about a number nobody chose. Half the widest gap, so a
+#: game inside the ladder's own resolution is still asked.
+CFB_RUNG_TOLERANCE = 5.0
+
+
+class RungOffTheLadder(ValueError):
+    """An expected margin the declared ladder cannot ask about."""
 
 #: How far a self-generated total may sit from the two teams' combined scoring
 #: form before the question is refused. The total is derived from stored
@@ -126,7 +162,21 @@ def cfb_spread_rung(game_id: str, expected_margin: float | None = None) -> float
     if expected_margin is None:
         return CFB_SPREAD_LADDER[stable_index(game_id, len(CFB_SPREAD_LADDER))]
     target = -float(expected_margin)
-    return min(CFB_SPREAD_LADDER, key=lambda rung: (abs(rung - target), rung))
+    nearest = min(CFB_SPREAD_LADDER, key=lambda rung: (abs(rung - target), rung))
+    # FAIL LOUDLY, NEVER CLAMP (ruling CFB-1, 2026-09-02). A game the ladder
+    # cannot reach is refused and recorded absent; clamping it to the end rung
+    # would store a confident claim about a number nobody chose, and would do
+    # it precisely on the games where the model is least tested.
+    if abs(nearest - target) > CFB_RUNG_TOLERANCE:
+        raise RungOffTheLadder(
+            f"{game_id}: an expected margin of {expected_margin:+.1f} wants a "
+            f"rung near {target:+.1f}, and the declared ladder's nearest is "
+            f"{nearest:+.1f} -- {abs(nearest - target):.1f} away. The ladder "
+            f"runs {CFB_SPREAD_LADDER[0]:+.1f} to {CFB_SPREAD_LADDER[-1]:+.1f} "
+            f"and is extended by a dated declaration, never stretched to fit "
+            f"one game. No spread question is asked here."
+        )
+    return nearest
 
 
 def cfb_total_asked(home_ppg: float | None, away_ppg: float | None) -> float | None:
