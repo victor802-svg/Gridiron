@@ -104,7 +104,7 @@ TIERS = {
 }
 
 
-def step_1_tests(quick: bool) -> tuple[bool, tuple[str, ...]]:
+def step_1_tests(quick: bool, parallel: int = 0) -> tuple[bool, tuple[str, ...]]:
     """Run the suite. Returns (passed, tiers that were NOT run).
 
     STREAMED, NOT CAPTURED, and that is the point of this phase. The previous
@@ -117,6 +117,16 @@ def step_1_tests(quick: bool) -> tuple[bool, tuple[str, ...]]:
     """
     rule("STEP 1 — the full test suite")
     args = [sys.executable, "-m", "pytest", "-q"]
+    if parallel:
+        # OPT-IN, NOT THE MECHANISM (ruling, 2026-09-02). The suite runs in
+        # about three minutes serially, and the fewest moving parts that clear
+        # the target is the right answer: parallel workers cost determinism in
+        # ordering, make a failure harder to reproduce, and add a dependency
+        # for a gate that does not need one. The flag stays because a slower
+        # machine may need it.
+        args += ["-n", str(parallel)]
+        print(f"PARALLEL: {parallel} workers. Ordering is not deterministic;")
+        print("Reproduce a failure without this flag." + chr(10))
     skipped: tuple[str, ...] = ()
     if quick:
         args += ["-m", "not browser and not slow"]
@@ -337,6 +347,13 @@ def main() -> int:
     parser.add_argument("--quick", action="store_true",
                         help="skip browser and slow tests in step 1")
     parser.add_argument("--skip-tests", action="store_true")
+    parser.add_argument(
+        "--parallel", type=int, default=0, metavar="N",
+        help="OPT-IN: run the suite across N processes with pytest-xdist. Not "
+             "the default -- the suite takes about three minutes serially, and "
+             "parallel workers cost deterministic ordering and easy "
+             "reproduction. Use it on a slow machine; reproduce failures "
+             "without it.")
     parser.add_argument("--source", default=str(config.DEFAULT_DB))
     args = parser.parse_args()
 
@@ -349,7 +366,7 @@ def main() -> int:
     if args.skip_tests:
         skipped.append("tests")
     else:
-        passed, tier_skips = step_1_tests(args.quick)
+        passed, tier_skips = step_1_tests(args.quick, args.parallel)
         outcomes["1. test suite"] = passed
         skipped.extend(tier_skips)
     outcomes["2. planted violations"] = step_2_guards()

@@ -7,6 +7,7 @@ nflverse data are marked `slow` and say so.
 
 from __future__ import annotations
 
+import os
 import socket
 import sqlite3
 import threading
@@ -45,8 +46,7 @@ def _iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-@pytest.fixture
-def league(conn) -> sqlite3.Connection:
+def seed_league(conn) -> sqlite3.Connection:
     """A synthetic 8-team season: weeks 1-16 played, weeks 17-18 scheduled.
 
     Sixteen played weeks is enough for `baseline.train` to accept the sample,
@@ -198,6 +198,12 @@ def league(conn) -> sqlite3.Connection:
     )
     conn.commit()
     return conn
+
+
+@pytest.fixture
+def league(conn) -> sqlite3.Connection:
+    """The synthetic league, built per test."""
+    return seed_league(conn)
 
 
 @pytest.fixture
@@ -509,8 +515,103 @@ def _free_port() -> int:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
 
+# ---------------------------------------------------------------------------
+# THE BROWSER SUITE'S SHARED WORLD
+# ---------------------------------------------------------------------------
+#
+# MEASURED 2026-09-01: seventy-seven tests take a browser fixture, and every
+# one of them rebuilt the entire world first -- a sixteen-week synthetic
+# league, six fitted models, three slates of predictions, a resolution pass, a
+# uvicorn server, a fresh Chromium and a login. The assertions were never the
+# cost. The setup was, seventy-seven times over.
+#
+# So the expensive half is built ONCE per session and the cheap half stays per
+# test. What each test still gets entirely to itself:
+#
+#   * a fresh browser CONTEXT -- its own cookies, its own storage, its own
+#     session id. That is what actually isolates one browser test from the
+#     next, and it costs milliseconds rather than seconds.
+#   * the API's database pointer, re-asserted before every test. This is the
+#     shared state the audit was for: `api.set_database` is a MODULE-LEVEL
+#     GLOBAL, and `test_api` and `test_auth` legitimately point it at their
+#     own databases and then at None. Without re-asserting, a browser test
+#     that happened to run after one of those would talk to a server pointing
+#     at nothing, and fail a long way from the cause.
+#
+# A test that needs to CHANGE the world asks for `served_fresh`, which is the
+# old fixture unchanged -- so needing isolation is said out loud.
+
+
+def _build_world(conn) -> None:
+    """The seeding every browser test used to do for itself."""
+    store.sync_registry(conn)
+    # Six markets: the spread plus each prop type, fitted separately.
+    baseline.train_all(conn, (2025,), l2=1.0, note="smoke", min_rows=20)
+    run.run_week(conn, 2025, 7, include_props=True, use_llm=False)
+    run.run_week(conn, 2025, 8, include_props=True, use_llm=False)
+    resolve.resolve_all(conn)
+    # A slate that has NOT been played, so the picks tab has live cards. The
+    # rail, the pick sentence and the tier chip only exist before a result:
+    # a settled card shows its verdict instead, per the approved mockup.
+    run.run_week(conn, 2025, 18, include_props=True, use_llm=False)
+    conn.commit()
+
+
+def _serve(db_file):
+    """A uvicorn server on its own port, and the thread running it."""
+    import uvicorn
+
+    api.set_database(db_file)
+    port = _free_port()
+    server = uvicorn.Server(
+        uvicorn.Config(api.app, host="127.0.0.1", port=port, log_level="error")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 20
+    while time.time() < deadline and not server.started:
+        time.sleep(0.05)
+    if not server.started:
+        pytest.fail("the server did not start within 20s")
+    return f"http://127.0.0.1:{port}", server, thread
+
+
+@pytest.fixture(scope="session")
+def _shared_world(tmp_path_factory):
+    """One league, one database, one server, for the whole browser suite."""
+    db_file = tmp_path_factory.mktemp("browser") / "test.db"
+    previous = os.environ.get(auth.TOKEN_VAR)
+    os.environ[auth.TOKEN_VAR] = SMOKE_TOKEN
+    conn = db.open_db(db_file)
+    seed_league(conn)
+    _build_world(conn)
+    base, server, thread = _serve(db_file)
+    yield {"base": base, "db": db_file}
+    server.should_exit = True
+    thread.join(timeout=10)
+    conn.close()
+    api.set_database(None)
+    if previous is None:
+        os.environ.pop(auth.TOKEN_VAR, None)
+    else:
+        os.environ[auth.TOKEN_VAR] = previous
+
+
+@pytest.fixture
+def served(_shared_world):
+    """The shared server's URL, with the database pointer re-asserted."""
+    api.set_database(_shared_world["db"])
+    os.environ[auth.TOKEN_VAR] = SMOKE_TOKEN
+    return _shared_world["base"]
+
+
 @pytest.fixture(scope="function")
-def served(league, db_path, monkeypatch):
+def served_fresh(league, db_path, monkeypatch):
+    """A world of its own, for a test that needs to change it.
+
+    This is the fixture every browser test used to get, kept unchanged for the
+    ones that genuinely need an untouched database.
+    """
     import uvicorn
 
     monkeypatch.setenv(auth.TOKEN_VAR, SMOKE_TOKEN)
@@ -548,35 +649,157 @@ def served(league, db_path, monkeypatch):
     api.set_database(None)
 
 
-@pytest.fixture
-def page(served):
+@pytest.fixture(scope="session")
+def _browser():
+    """ONE CHROMIUM for the whole suite.
+
+    Launching a browser costs about a second and seventy-seven of them cost a
+    minute and a half of pure process startup. A CONTEXT is what isolates two
+    tests from each other -- separate cookies, storage and session id -- and a
+    context costs milliseconds. So the browser is shared and the context is
+    not.
+    """
+    if playwright_api is None:
+        pytest.skip("playwright is not installed")
     with playwright_api.sync_playwright() as p:
         try:
             browser = p.chromium.launch()
         except Exception as exc:  # noqa: BLE001
             pytest.skip(f"chromium unavailable: {exc}; run `playwright install chromium`")
-        # 1120, NOT 1280, and the number matters. 1280 is exactly the desk
-        # breakpoint, so this fixture sat on the boundary: the moment the
-        # desk shipped, eight tests written about the COMPACT ROWS were
-        # handed a grid of tiles and failed on markup they were never
-        # about. The row suite runs at a row width; `test_desk.py` sets
-        # its own viewport for the desk, and D4 renders both.
-        context = browser.new_context(viewport={"width": 1120, "height": 900})
-        page = context.new_page()
-        page.console_errors = []
-        page.page_errors = []
-        page.on("console", lambda m: page.console_errors.append(m.text)
-                if m.type == "error" else None)
-        page.on("pageerror", lambda e: page.page_errors.append(str(e)))
-        # Sign in the way a person does, through the real login page. Every
-        # route is behind the gate (P3), so without this the browser lands on
-        # /login and every assertion below fails for the wrong reason. It also
-        # means the login flow is exercised by every browser test rather than
-        # only by the one that names it.
-        page.goto(served + "/login", wait_until="networkidle")
-        page.fill("#token", SMOKE_TOKEN)
-        page.click("#submit")
-        page.wait_for_url(served + "/", timeout=15000)
-        page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
-        yield page
+        yield browser
         browser.close()
+
+
+@pytest.fixture
+def page(served, _browser):
+    browser = _browser
+    # 1120, NOT 1280, and the number matters. 1280 is exactly the desk
+    # breakpoint, so this fixture sat on the boundary: the moment the
+    # desk shipped, eight tests written about the COMPACT ROWS were
+    # handed a grid of tiles and failed on markup they were never
+    # about. The row suite runs at a row width; `test_desk.py` sets
+    # its own viewport for the desk, and D4 renders both.
+    context = browser.new_context(viewport={"width": 1120, "height": 900})
+    page = context.new_page()
+    page.console_errors = []
+    page.page_errors = []
+    page.on("console", lambda m: page.console_errors.append(m.text)
+            if m.type == "error" else None)
+    page.on("pageerror", lambda e: page.page_errors.append(str(e)))
+    # Sign in the way a person does, through the real login page. Every
+    # route is behind the gate (P3), so without this the browser lands on
+    # /login and every assertion below fails for the wrong reason. It also
+    # means the login flow is exercised by every browser test rather than
+    # only by the one that names it.
+    page.goto(served + "/login", wait_until="networkidle")
+    page.fill("#token", SMOKE_TOKEN)
+    page.click("#submit")
+    page.wait_for_url(served + "/", timeout=15000)
+    page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+    yield page
+    # THE CONTEXT CLOSES, NOT THE BROWSER. Closing the context is what
+    # discards this test's cookies, storage and signed-in session; the
+    # browser process is the expensive part and is reused.
+    context.close()
+
+# ---------------------------------------------------------------------------
+# THE NETWORK IS SHUT UNLESS A TEST SAYS OTHERWISE
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS, and it is not a hypothetical. Two tests in `test_refresh.py`
+# stubbed three sports' loaders and not the fourth, so every run fetched an
+# entire college football season from ESPN. They took 416 and 353 seconds --
+# between them, three quarters of the whole suite. Nothing failed. Nothing was
+# marked slow. They simply took six and a half minutes each, for weeks.
+#
+# The test directly above them stubs all four loaders and carries a comment
+# explaining exactly this trap, written when it was found the first time. The
+# lesson was recorded in prose and applied by hand to one of the three places
+# it belonged. So this is the mechanism version: a test cannot reach the
+# network at all unless it says it needs to, and the ones that say so are
+# NAMED in the run's output rather than blending in.
+#
+# Loopback stays open. The browser suite drives a real uvicorn server over
+# 127.0.0.1, and that is not "the network" in any sense this guard cares
+# about -- it is the app under test.
+
+_LOOPBACK = {"127.0.0.1", "::1", "localhost", "0.0.0.0"}
+
+#: Tests that declared `@pytest.mark.network` and therefore ran with the
+#: outside world reachable. Reported at the end of the session.
+_WENT_OUTSIDE: list[str] = []
+
+
+class NetworkBlocked(RuntimeError):
+    """A test reached for the network without saying it would."""
+
+
+def _is_loopback(host) -> bool:
+    if isinstance(host, bytes):
+        host = host.decode("utf-8", "replace")
+    return str(host) in _LOOPBACK
+
+
+@pytest.fixture(autouse=True)
+def _no_network(request, monkeypatch):
+    """Shut the network for every test that has not declared it needs it."""
+    if request.node.get_closest_marker("network"):
+        _WENT_OUTSIDE.append(request.node.nodeid)
+        return
+
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+    real_create = socket.create_connection
+
+    def _refuse(where, address):
+        raise NetworkBlocked(
+            f"{request.node.nodeid} tried to reach {address} through {where}. "
+            f"Tests run with the network shut: stub the source, or mark the "
+            f"test `@pytest.mark.network` if it genuinely needs the outside "
+            f"world. Two tests that quietly fetched a whole football season "
+            f"cost this suite thirteen minutes a run."
+        )
+
+    def guarded_connect(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if not _is_loopback(host):
+            _refuse("socket.connect", address)
+        return real_connect(self, address, *args, **kwargs)
+
+    def guarded_connect_ex(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if not _is_loopback(host):
+            _refuse("socket.connect_ex", address)
+        return real_connect_ex(self, address, *args, **kwargs)
+
+    def guarded_create(address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if not _is_loopback(host):
+            _refuse("socket.create_connection", address)
+        return real_create(address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
+    monkeypatch.setattr(socket, "create_connection", guarded_create)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "network: this test genuinely reaches the outside world. It will be "
+        "named in the run's summary.",
+    )
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """NAME the tests that went outside. A count would not be enough.
+
+    The gate's own rule is that a tier which was not run has to be named
+    rather than merely counted; the same applies to tests that left the
+    building. If this list grows, it should grow visibly.
+    """
+    if not _WENT_OUTSIDE:
+        return
+    terminalreporter.write_sep("-", "tests that reached the network")
+    for node in sorted(set(_WENT_OUTSIDE)):
+        terminalreporter.write_line(f"  {node}")

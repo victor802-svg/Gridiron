@@ -65,6 +65,16 @@ sees it.
   reported "overconfident by 3.0 points" beside a limit of 3. The tests
   passed: they checked 0 and 10. A boundary nobody tests is decided by
   representation error rather than by the declared number.
+- A COMMENT IS NOT A MECHANISM — a lesson recorded in prose and applied
+  by hand will be applied to *some* of the places it belongs. Two tests
+  fetched a whole football season on every run for weeks, taking 416
+  and 353 seconds, because they stubbed three sports' loaders and not
+  the fourth. The test directly above them stubbed all four and carried
+  a comment explaining that exact trap, written the first time it was
+  found. The fix that holds is the one a machine applies: derive the
+  list from `config.SPORTS`, assert the coverage, shut the network by
+  default. Once a lesson is worth writing down, ask what would enforce
+  it, and write that instead.
 
 ## 4. Ruling precedents (apply these without asking; cite them)
 

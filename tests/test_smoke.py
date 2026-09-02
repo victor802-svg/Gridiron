@@ -144,9 +144,34 @@ def test_every_screen_renders(page):
     assert page.console_errors == [], f"console errors while navigating: {page.console_errors}"
 
 
+def _open_route(target, route):
+    """Navigate and WAIT FOR THE VIEW, not for a duration.
+
+    Thirteen fixed sleeps in this file waited between 200ms and 900ms for a
+    render that usually finished in a fraction of it. A clock is also the
+    flakier choice: it is simultaneously too long on a fast machine and too
+    short on a loaded one, and the failure it produces on the loaded one looks
+    like a broken assertion rather than a race.
+
+    The condition is the thing each test is about to assert on -- the view for
+    this route is actually on screen -- so waiting for it is both faster and
+    more honest.
+    """
+    target.evaluate(f"location.hash = '{route}'")
+    name = (route.rsplit("/", 1)[-1] or "record")
+    target.wait_for_function(
+        """(id) => {
+            if (document.body.dataset.ready !== 'true') return false;
+            const el = document.getElementById(id);
+            return !!el && !el.hidden;
+        }""",
+        arg=f"view-{name}",
+        timeout=15000,
+    )
+
+
 def test_the_track_record_is_the_default_screen(page):
-    page.evaluate("location.hash = ''")
-    page.wait_for_timeout(400)
+    _open_route(page, "")
     assert page.locator("#view-record").is_visible()
     assert not page.locator("#view-week").is_visible()
 
@@ -236,7 +261,10 @@ def test_a_card_expands_and_shows_its_detail(page):
     assert not detail.is_visible(), "the card starts open"
 
     card.locator(".row-head").click()
-    page.wait_for_timeout(400)
+    # WAIT FOR THE THING THE NEXT LINE ASSERTS. A clock here would pass on a
+    # fast machine and fail on a loaded one, and the failure would read as
+    # "the card did not expand" rather than "we did not wait long enough".
+    detail.wait_for(state="visible", timeout=10000)
     assert detail.is_visible(), "the card did not expand"
     assert detail.bounding_box()["height"] > 40
     # The DECOMPOSITION moved to the Factors page (K3): a card carries the
@@ -276,8 +304,7 @@ def test_the_bucket_line_never_shows_an_accuracy_without_its_n(page):
 
 
 def test_the_weekly_strip_renders_with_hit_targets(page):
-    page.evaluate("location.hash = '#/record'")
-    page.wait_for_timeout(700)
+    _open_route(page, "#/record")
     info = page.evaluate(
         """() => {
             const c = document.getElementById('overtime');
@@ -387,112 +414,110 @@ def test_every_moving_thing_is_inside_the_motion_vocabulary(page):
                 f"page to be laid out again on every frame")
 
 
-def test_nothing_moves_under_reduced_motion(served):
-    with playwright_api.sync_playwright() as p:
-        try:
-            browser = p.chromium.launch()
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"chromium unavailable: {exc}")
-        # 1120 for the same reason as the shared fixture: this test is about
-        # the compact row's expansion animation, and at 1280 it would be handed
-        # the desk, which has no rows to expand.
-        context = browser.new_context(
-            viewport={"width": 1120, "height": 900}, reduced_motion="reduce"
-        )
-        page = context.new_page()
-        errors: list[str] = []
-        page.on("pageerror", lambda e: errors.append(str(e)))
-        # Sign in the way a person does, through the real login page. Every
-        # route is behind the gate (P3), so without this the browser lands on
-        # /login and every assertion below fails for the wrong reason. It also
-        # means the login flow is exercised by every browser test rather than
-        # only by the one that names it.
-        page.goto(served + "/login", wait_until="networkidle")
-        page.fill("#token", SMOKE_TOKEN)
-        page.click("#submit")
-        page.wait_for_url(served + "/", timeout=15000)
-        page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
-        page.evaluate("location.hash = '#/week'")
-        page.wait_for_selector("#week-cards .row", timeout=10000)
+def test_nothing_moves_under_reduced_motion(served, _browser):
+    browser = _browser
+    # 1120 for the same reason as the shared fixture: this test is about
+    # the compact row's expansion animation, and at 1280 it would be handed
+    # the desk, which has no rows to expand.
+    context = browser.new_context(
+        viewport={"width": 1120, "height": 900}, reduced_motion="reduce"
+    )
+    page = context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    # Sign in the way a person does, through the real login page. Every
+    # route is behind the gate (P3), so without this the browser lands on
+    # /login and every assertion below fails for the wrong reason. It also
+    # means the login flow is exercised by every browser test rather than
+    # only by the one that names it.
+    page.goto(served + "/login", wait_until="networkidle")
+    page.fill("#token", SMOKE_TOKEN)
+    page.click("#submit")
+    page.wait_for_url(served + "/", timeout=15000)
+    page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+    page.evaluate("location.hash = '#/week'")
+    page.wait_for_selector("#week-cards .row", timeout=10000)
 
-        assert page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches")
-        durations = page.evaluate(
-            """() => {
-                const out = [];
-                document.querySelectorAll('*').forEach(e => {
-                    const s = getComputedStyle(e);
-                    if (s.transitionDuration && s.transitionDuration !== '0s')
-                        out.push(e.className + ':' + s.transitionDuration);
-                    if (s.animationName && s.animationName !== 'none')
-                        out.push(e.className + ':' + s.animationName);
-                });
-                return out;
-            }"""
-        )
-        assert durations == [], f"motion survived prefers-reduced-motion: {durations}"
+    assert page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches")
+    durations = page.evaluate(
+        """() => {
+            const out = [];
+            document.querySelectorAll('*').forEach(e => {
+                const s = getComputedStyle(e);
+                if (s.transitionDuration && s.transitionDuration !== '0s')
+                    out.push(e.className + ':' + s.transitionDuration);
+                if (s.animationName && s.animationName !== 'none')
+                    out.push(e.className + ':' + s.animationName);
+            });
+            return out;
+        }"""
+    )
+    assert durations == [], f"motion survived prefers-reduced-motion: {durations}"
 
-        # ...and the card still opens, because motion is decoration not mechanism
-        page.locator("#week-cards .row .row-head").first.click()
-        page.wait_for_timeout(200)
-        assert page.locator("#week-cards .row").first.evaluate(
-            "e => e.classList.contains('open')"
-        )
-        assert errors == []
-        browser.close()
+    # ...and the card still opens, because motion is decoration not mechanism
+    page.locator("#week-cards .row .row-head").first.click()
+    page.wait_for_function(
+        """() => {
+            const row = document.querySelector('#week-cards .row');
+            return !!row && row.classList.contains('open');
+        }""",
+        timeout=10000,
+    )
+    assert page.locator("#week-cards .row").first.evaluate(
+        "e => e.classList.contains('open')"
+    )
+    assert errors == []
+    context.close()
 
 
-def test_the_phone_layout_does_not_overflow(served):
-    with playwright_api.sync_playwright() as p:
-        try:
-            browser = p.chromium.launch()
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"chromium unavailable: {exc}")
-        context = browser.new_context(viewport={"width": 375, "height": 812})
-        page = context.new_page()
-        # Sign in the way a person does, through the real login page. Every
-        # route is behind the gate (P3), so without this the browser lands on
-        # /login and every assertion below fails for the wrong reason. It also
-        # means the login flow is exercised by every browser test rather than
-        # only by the one that names it.
-        page.goto(served + "/login", wait_until="networkidle")
-        page.fill("#token", SMOKE_TOKEN)
-        page.click("#submit")
-        page.wait_for_url(served + "/", timeout=15000)
-        page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
-        page.evaluate("location.hash = '#/week'")
-        page.wait_for_selector("#week-cards .row", timeout=10000)
+def test_the_phone_layout_does_not_overflow(served, _browser):
+    browser = _browser
+    context = browser.new_context(viewport={"width": 375, "height": 812})
+    page = context.new_page()
+    # Sign in the way a person does, through the real login page. Every
+    # route is behind the gate (P3), so without this the browser lands on
+    # /login and every assertion below fails for the wrong reason. It also
+    # means the login flow is exercised by every browser test rather than
+    # only by the one that names it.
+    page.goto(served + "/login", wait_until="networkidle")
+    page.fill("#token", SMOKE_TOKEN)
+    page.click("#submit")
+    page.wait_for_url(served + "/", timeout=15000)
+    page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+    page.evaluate("location.hash = '#/week'")
+    page.wait_for_selector("#week-cards .row", timeout=10000)
 
-        # The COLLAPSED list must not scroll sideways -- that is the state a
-        # reader arrives in, and it is the state the 84px and 78px regressions
-        # were found in.
-        overflow = page.evaluate(
-            "() => document.documentElement.scrollWidth > window.innerWidth + 1"
-        )
-        assert not overflow, "the page scrolls sideways on a phone"
+    # The COLLAPSED list must not scroll sideways -- that is the state a
+    # reader arrives in, and it is the state the 84px and 78px regressions
+    # were found in.
+    overflow = page.evaluate(
+        "() => document.documentElement.scrollWidth > window.innerWidth + 1"
+    )
+    assert not overflow, "the page scrolls sideways on a phone"
 
-        # K2 old -> new: the rail lives behind a tap, so it has to be opened
-        # before it can be measured. And it must not overflow AFTER opening
-        # either -- an expanded row is still a phone screen.
-        page.locator("#week-cards .row .row-head").first.click()
-        page.wait_for_selector("#week-cards .row .rail", timeout=5000)
-        overflow_open = page.evaluate(
-            "() => document.documentElement.scrollWidth > window.innerWidth + 1"
-        )
-        assert not overflow_open, "an expanded row scrolls sideways on a phone"
-        rail = page.evaluate(
-            """() => {
-                const r = document.querySelector('.rail');
-                if (!r) return null;
-                const box = r.getBoundingClientRect();
-                const dots = [...r.querySelectorAll('.dot')].map(d =>
-                    d.getBoundingClientRect().left - box.left);
-                return { width: box.width, dots: dots };
-            }"""
-        )
-        assert rail and rail["width"] > 120, "the dumbbell collapsed on a phone"
-        for offset in rail["dots"]:
-            assert -8 <= offset <= rail["width"] + 8
-        browser.close()
+    # K2 old -> new: the rail lives behind a tap, so it has to be opened
+    # before it can be measured. And it must not overflow AFTER opening
+    # either -- an expanded row is still a phone screen.
+    page.locator("#week-cards .row .row-head").first.click()
+    page.wait_for_selector("#week-cards .row .rail", timeout=5000)
+    overflow_open = page.evaluate(
+        "() => document.documentElement.scrollWidth > window.innerWidth + 1"
+    )
+    assert not overflow_open, "an expanded row scrolls sideways on a phone"
+    rail = page.evaluate(
+        """() => {
+            const r = document.querySelector('.rail');
+            if (!r) return null;
+            const box = r.getBoundingClientRect();
+            const dots = [...r.querySelectorAll('.dot')].map(d =>
+                d.getBoundingClientRect().left - box.left);
+            return { width: box.width, dots: dots };
+        }"""
+    )
+    assert rail and rail["width"] > 120, "the dumbbell collapsed on a phone"
+    for offset in rail["dots"]:
+        assert -8 <= offset <= rail["width"] + 8
+    context.close()
 
 
 # --- the schedule panel -----------------------------------------------------
@@ -561,72 +586,64 @@ def test_the_schedule_panel_fits_a_phone(page):
 
 # --- the auth walk, in a real browser ---------------------------------------
 
-def test_a_fresh_browser_is_sent_to_login_and_can_sign_in(served):
+def test_a_fresh_browser_is_sent_to_login_and_can_sign_in(served, _browser):
     """Fresh session -> redirected -> sign in -> full app. Walked in a real
     browser rather than asserted against a test client, because the cookie
     flags that matter are enforced by the browser, not by the server's opinion
     of them."""
-    with playwright_api.sync_playwright() as p:
-        try:
-            browser = p.chromium.launch()
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"chromium unavailable: {exc}")
-        context = browser.new_context(viewport={"width": 1120, "height": 900})
-        page = context.new_page()
+    browser = _browser
+    context = browser.new_context(viewport={"width": 1120, "height": 900})
+    page = context.new_page()
 
-        # 1. a fresh browser cannot see the app
-        page.goto(served + "/", wait_until="networkidle")
-        assert page.url.endswith("/login"), f"landed on {page.url} without signing in"
-        assert "access token" in page.inner_text("body").lower()
+    # 1. a fresh browser cannot see the app
+    page.goto(served + "/", wait_until="networkidle")
+    assert page.url.endswith("/login"), f"landed on {page.url} without signing in"
+    assert "access token" in page.inner_text("body").lower()
 
-        # 2. the wrong token is refused, in the page
-        page.fill("#token", "not-the-token")
-        page.click("#submit")
-        page.wait_for_selector(".msg.bad", timeout=10000)
-        assert page.url.endswith("/login")
+    # 2. the wrong token is refused, in the page
+    page.fill("#token", "not-the-token")
+    page.click("#submit")
+    page.wait_for_selector(".msg.bad", timeout=10000)
+    assert page.url.endswith("/login")
 
-        # 3. the right one opens it
-        page.fill("#token", SMOKE_TOKEN)
-        page.click("#submit")
-        page.wait_for_url(served + "/", timeout=15000)
-        page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
-        assert page.query_selector("#sport-tabs")
+    # 3. the right one opens it
+    page.fill("#token", SMOKE_TOKEN)
+    page.click("#submit")
+    page.wait_for_url(served + "/", timeout=15000)
+    page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+    assert page.query_selector("#sport-tabs")
 
-        # 4. the session cookie is not readable from JavaScript
-        visible = page.evaluate("document.cookie")
-        assert auth.COOKIE_NAME not in visible, (
-            "the session cookie is readable from JavaScript, so it is not HttpOnly"
-        )
-        assert SMOKE_TOKEN not in visible
+    # 4. the session cookie is not readable from JavaScript
+    visible = page.evaluate("document.cookie")
+    assert auth.COOKIE_NAME not in visible, (
+        "the session cookie is readable from JavaScript, so it is not HttpOnly"
+    )
+    assert SMOKE_TOKEN not in visible
 
-        browser.close()
+    context.close()
 
 # --- the phone pass ---------------------------------------------------------
 
 @pytest.fixture
-def phone(served):
+def phone(served, _browser):
     """A 390px viewport, signed in. 390 is the iPhone 14/15 width and the
     narrowest thing most people will hold; 375 is covered separately because it
     is what an SE still is."""
-    with playwright_api.sync_playwright() as p:
-        try:
-            browser = p.chromium.launch()
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"chromium unavailable: {exc}")
-        context = browser.new_context(
-            viewport={"width": 390, "height": 844},
-            device_scale_factor=3,
-            is_mobile=True,
-            has_touch=True,
-        )
-        page = context.new_page()
-        page.goto(served + "/login", wait_until="networkidle")
-        page.fill("#token", SMOKE_TOKEN)
-        page.click("#submit")
-        page.wait_for_url(served + "/", timeout=15000)
-        page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
-        yield page
-        browser.close()
+    browser = _browser
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844},
+        device_scale_factor=3,
+        is_mobile=True,
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(served + "/login", wait_until="networkidle")
+    page.fill("#token", SMOKE_TOKEN)
+    page.click("#submit")
+    page.wait_for_url(served + "/", timeout=15000)
+    page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+    yield page
+    context.close()
 
 
 def _overflow(page) -> int:
@@ -641,8 +658,7 @@ def _overflow(page) -> int:
 def test_no_screen_overflows_a_phone(phone, route):
     """Sideways scroll on a phone is the single most common way a dense layout
     breaks, and it hides content without any sign that it has."""
-    phone.evaluate(f"location.hash = '{route}'")
-    phone.wait_for_timeout(400)
+    _open_route(phone, route)
     assert _overflow(phone) <= 0, f"{route} overflows by {_overflow(phone)}px at 390"
 
 
@@ -873,8 +889,7 @@ def test_a_resolved_card_shows_a_verdict_and_no_rail(page):
 def test_the_greeting_strip_leads_the_page(page):
     """It is the first thing on the page because it answers the first
     question: was I right last night."""
-    page.evaluate("location.hash = '#/record'")
-    page.wait_for_timeout(600)
+    _open_route(page, "#/record")
     box = page.evaluate("""() => {
         const g = document.getElementById('glance');
         if (!g || g.hidden) return null;
@@ -921,8 +936,7 @@ def test_the_calibration_chart_is_not_drawn_in_the_page_colour(page):
 @pytest.mark.parametrize("route", ["#/week", "#/record", "#/digest", "#/schedule"])
 def test_each_dark_screen_renders_on_a_phone(route, page):
     page.set_viewport_size({"width": 390, "height": 844})
-    page.evaluate(f"location.hash = '{route}'")
-    page.wait_for_timeout(700)
+    _open_route(page, route)
     overflow = page.evaluate(
         "document.documentElement.scrollWidth - document.documentElement.clientWidth"
     )
@@ -942,8 +956,7 @@ def test_no_internal_vocabulary_reaches_the_reader(route, page):
     VALUE carried the identifier, and no scan of the markup would have seen it."""
     from gridiron import audit
 
-    page.evaluate(f"location.hash = '{route}'")
-    page.wait_for_timeout(900)
+    _open_route(page, route)
 
     # TWO PLACES ON THE FACTORS PAGE SHOW A CODE ON PURPOSE, and they are
     # excluded by SELECTOR rather than by silencing the scan:
@@ -1023,7 +1036,7 @@ def test_notices_collapse_into_one_bar_that_expands(page):
     assert page.locator("#notices-detail").is_visible() is False
 
     summary.click()
-    page.wait_for_timeout(250)
+    page.locator("#notices-detail").wait_for(state="visible", timeout=10000)
     assert page.locator("#notices-detail").is_visible(), "it does not expand"
     full = page.locator("#notices-detail").inner_text()
     # Every sentence survives; the bar is a summary of them, not a replacement.
@@ -1032,13 +1045,11 @@ def test_notices_collapse_into_one_bar_that_expands(page):
 
 def test_the_greeting_is_on_the_home_tab_only(page):
     """One page greets; every page warns."""
-    page.evaluate("location.hash = '#/record'")
-    page.wait_for_timeout(700)
+    _open_route(page, "#/record")
     assert page.locator("#glance").is_visible(), "the home tab does not greet"
 
     for route in ("#/factors", "#/history", "#/schedule"):
-        page.evaluate(f"location.hash = '{route}'")
-        page.wait_for_timeout(400)
+        _open_route(page, route)
         # K2 old -> new: the greeting and the notices are ONE strip now, and
         # this test's own docstring is why the assertion had to move. "One
         # page greets; every page warns" cannot both hold if the notices live
@@ -1053,8 +1064,7 @@ def test_the_greeting_is_on_the_home_tab_only(page):
 
 
 def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
-    page.evaluate("location.hash = '#/record'")
-    page.wait_for_timeout(500)
+    _open_route(page, "#/record")
     note = page.locator("#sport-note")
     assert "never" in note.inner_text().lower()
     inside_footer = page.evaluate(
@@ -1068,8 +1078,7 @@ def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
 def test_no_bare_dash_stands_in_for_a_value(route, page):
     """A dash in a data cell reads as a rendering fault. Every absence names
     itself: "no line", "not played", "nothing resolved yet"."""
-    page.evaluate(f"location.hash = '{route}'")
-    page.wait_for_timeout(800)
+    _open_route(page, route)
     bare = page.evaluate("""() => {
         const cells = [...document.querySelectorAll('td, .v, .chip-sub')];
         return cells.map(c => c.textContent.trim())

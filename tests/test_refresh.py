@@ -112,6 +112,70 @@ def test_once_the_game_is_marked_final_the_same_resolver_settles_it(conn):
     assert resolve.resolve_all(conn)["settled"] == 1
 
 
+#: Every sport's loader, and what a no-op stub of it returns.
+#:
+#: DERIVED AGAINST `config.SPORTS`, not typed out and hoped over. This exact
+#: mistake has now been made twice: when college football was added, one test
+#: stubbed the other three loaders and went to the network for a whole college
+#: season. That was noticed, fixed IN THAT ONE TEST, and written up in a
+#: comment -- and the two tests beside it kept the three-sport list and kept
+#: fetching. They cost 416 and 353 seconds, which was most of the suite.
+#:
+#: A comment is not a mechanism. `_stub_every_loader` asserts it has covered
+#: every declared sport, so the next sport added breaks these tests loudly
+#: instead of quietly making them slow.
+LOADERS = {
+    "nfl": ("gridiron.data.loader", "load_all",
+            lambda *a, **k: {"rows": {}, "warnings": []}),
+    "mlb": ("gridiron.data.mlb_loader", "load_all",
+            lambda *a, **k: {"rows": {}, "warnings": []}),
+    "nba": ("gridiron.data.nba_loader", "load_all",
+            lambda *a, **k: {"rows": {}, "warnings": []}),
+    "cfb": ("gridiron.data.cfb_loader", "load_season",
+            lambda *a, **k: {"games": 0, "finals": 0, "skipped": 0,
+                             "events": 0}),
+}
+
+
+def _stub_every_loader(monkeypatch, **overrides):
+    """Patch out the network for every sport. Returns nothing, asserts a lot.
+
+    `overrides` takes a sport name and a replacement, for the tests that want
+    one source to fail on purpose.
+    """
+    import importlib
+
+    missing = set(config.SPORTS) - set(LOADERS)
+    assert not missing, (
+        f"{sorted(missing)} has no loader stub, so any test using this helper "
+        f"would go to the network for it -- which is how two tests here came "
+        f"to take six and a half minutes each"
+    )
+    for sport, (module_name, attr, stub) in LOADERS.items():
+        module = importlib.import_module(module_name)
+        monkeypatch.setattr(module, attr, overrides.get(sport, stub))
+
+    # THE LOADERS WERE NOT THE ONLY WAY OUT. `_run_refresh` also takes a second
+    # look at the market for games about to start, which is a fetch of its own
+    # -- and the test below asserted "noop" while that call was quietly going
+    # to the network and, once the network was shut, warning its way to "ok".
+    # Found by the socket guard, not by reading: the comment in this file said
+    # "No network in a test" and had been wrong in two separate ways.
+    monkeypatch.setattr(tasks, "_near_start_snapshots", lambda *a, **k: {})
+
+    # AND A FOURTH WAY OUT: refresh re-reads each sport's TEAM NAMES. Three
+    # more requests, from a different module again.
+    #
+    # The count is the point. Reading this task's code and stubbing what looked
+    # like "the loaders" was how the original mistake was made, and it would
+    # have been made again here -- the socket guard found each of these in turn
+    # and none of them by inspection. That is the argument for the guard rather
+    # than for more careful reading.
+    import gridiron.data.teams as teams_module
+    monkeypatch.setattr(teams_module, "load_teams",
+                        lambda *a, **k: {"written": 0, "skipped": 0})
+
+
 def test_refresh_reports_how_many_predictions_it_unblocked(conn, monkeypatch):
     """`ok` vs `noop` has to mean something. A refresh that unblocks nothing
     says so; one that unblocks work says how much, because "ran successfully"
@@ -125,17 +189,7 @@ def test_refresh_reports_how_many_predictions_it_unblocked(conn, monkeypatch):
     # EVERY sport's loader, not a list of three. When college football was
     # added, its loader was the only one left unpatched, so the "nothing
     # happened" test went to the network and came back with something.
-    import gridiron.data.cfb_loader as cfb_loader
-    import gridiron.data.loader as nfl_loader
-    import gridiron.data.mlb_loader as mlb_loader
-    import gridiron.data.nba_loader as nba_loader
-
-    for mod in (mlb_loader, nba_loader, nfl_loader):
-        monkeypatch.setattr(mod, "load_all",
-                            lambda *a, **k: {"rows": {}, "warnings": []})
-    monkeypatch.setattr(cfb_loader, "load_season",
-                        lambda *a, **k: {"games": 0, "finals": 0,
-                                         "skipped": 0, "events": 0})
+    _stub_every_loader(monkeypatch)
 
     result, detail, payload = tasks._run_refresh(conn)
     assert result == "ok"
@@ -144,13 +198,7 @@ def test_refresh_reports_how_many_predictions_it_unblocked(conn, monkeypatch):
 
 
 def test_refresh_says_noop_when_nothing_became_resolvable(conn, monkeypatch):
-    import gridiron.data.mlb_loader as mlb_loader
-    import gridiron.data.nba_loader as nba_loader
-    import gridiron.data.loader as nfl_loader
-
-    for mod in (mlb_loader, nba_loader, nfl_loader):
-        monkeypatch.setattr(mod, "load_all",
-                            lambda *a, **k: {"rows": {}, "warnings": []})
+    _stub_every_loader(monkeypatch)
 
     result, detail, payload = tasks._run_refresh(conn)
     assert result == "noop"
@@ -159,17 +207,10 @@ def test_refresh_says_noop_when_nothing_became_resolvable(conn, monkeypatch):
 
 def test_one_sport_failing_does_not_stop_the_others(conn, monkeypatch):
     """An outage at one source is not an outage of the appliance."""
-    import gridiron.data.mlb_loader as mlb_loader
-    import gridiron.data.nba_loader as nba_loader
-    import gridiron.data.loader as nfl_loader
-
     def boom(*a, **k):
         raise RuntimeError("source is down")
 
-    monkeypatch.setattr(nfl_loader, "load_all", boom)
-    for mod in (mlb_loader, nba_loader):
-        monkeypatch.setattr(mod, "load_all",
-                            lambda *a, **k: {"rows": {}, "warnings": []})
+    _stub_every_loader(monkeypatch, nfl=boom)
 
     result, detail, payload = tasks._run_refresh(conn)
     assert "mlb" in payload["sports"] and "nba" in payload["sports"]

@@ -14,9 +14,34 @@ ROWS = {"width": 1100, "height": 900}
 
 
 def _open_week(page, size):
+    """Open the slate at a width and WAIT FOR IT, not for a duration.
+
+    This slept for 900ms and was called twenty-eight times in this file --
+    twenty-five seconds of the suite spent waiting for a render that usually
+    finished in a fraction of it. A fixed sleep is also the flakier choice: it
+    is simultaneously too long on a fast machine and too short on a loaded
+    one, and the failure it produces on the loaded one looks like a broken
+    assertion rather than a race.
+
+    The condition is the thing the tests are about to assert on -- the layout
+    for this width has actually rendered -- so waiting for it is both faster
+    and more honest than waiting for a clock.
+    """
     page.set_viewport_size(size)
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_timeout(900)
+    page.wait_for_function(
+        """() => {
+            if (document.body.dataset.ready !== 'true') return false;
+            const desk = document.body.classList.contains('desk-on');
+            const tiles = document.querySelectorAll('#week-frame .tile').length;
+            const rows = document.querySelectorAll('#week-cards .rows .row').length;
+            // The layout that BELONGS at this width has to be the one present:
+            // during a resize both can exist for a frame, and asserting then
+            // is what a fixed sleep was accidentally avoiding.
+            return desk ? (tiles > 0 && rows === 0) : (rows > 0 && tiles === 0);
+        }""",
+        timeout=15000,
+    )
 
 
 def test_the_desk_appears_only_at_the_declared_breakpoint(page):
