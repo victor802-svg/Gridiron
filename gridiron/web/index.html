@@ -126,6 +126,14 @@
            here, so a tier added later appears without editing markup. -->
       <div class="seg" id="week-tier-seg" role="group"
            aria-label="Show one confidence tier"></div>
+      <!-- ONE FORECASTER IN ONE RANKING (GRIDIRON_14). The same segmented
+           control the Record tab uses, filled from the payload rather than
+           written here, and hidden when the slate has only one forecaster on
+           it -- a chooser with one choice is furniture. There is deliberately
+           no option that shows both: they rank against each other and can
+           name opposite sides of the same game. -->
+      <div class="seg" id="week-forecaster-seg" role="group"
+           aria-label="Whose picks to show" hidden></div>
       <div class="slate-counts" id="week-counts"></div>
     </div>
     <!-- THE COUNTDOWN (R3). One line, three states: how long until the first

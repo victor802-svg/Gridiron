@@ -541,6 +541,17 @@ def plain_words_violations(text: str) -> list[str]:
         hits.append(
             f"the slate key {match!r} is visible to a reader -- say the date "
             f"in words")
+    # THE KEY'S OTHER DISGUISE, and the first version of this rule missed it.
+    # Catching the eight-digit form left "Day 159, 2026" standing at the top
+    # of every baseball slate: not eight digits, just as much an internal
+    # ordinal, and read by nobody. A WEEK NUMBER IS DIFFERENT -- "Week 2" is
+    # how football organises itself and how a reader refers to a slate, so it
+    # stays. No baseball fan has ever called a date "Day 159".
+    for match in DAY_KEY.findall(text):
+        hits.append(
+            f"the slate key 'Day {match}' is visible to a reader -- a day "
+            f"ordinal means nothing outside this database; say the date in "
+            f"words")
     return sorted(set(hits))
 
 
@@ -549,6 +560,11 @@ def plain_words_violations(text: str) -> list[str]:
 #: byte count -- is not mistaken for a date.
 DATE_KEY = re.compile(r"(?<![0-9])(?:19|20|21)[0-9]{2}(?:0[1-9]|1[0-2])"
                       r"(?:0[1-9]|[12][0-9]|3[01])(?![0-9])")
+
+#: The ordinal form: "Day 159". One to three digits, so a year is not caught,
+#: and the word must stand on its own -- "30-day sliding" and "14 days" are
+#: ordinary English and say nothing about a slate.
+DAY_KEY = re.compile(r"(?<![A-Za-z0-9])[Dd]ay\s+([0-9]{1,3})(?![0-9])")
 
 
 def check_plain_words(text: str, where: str = "the page") -> None:
@@ -2245,3 +2261,107 @@ def _check_the_forecaster_scanner_can_see() -> None:
 
 
 _check_the_forecaster_scanner_can_see()
+
+
+# ONE FORECASTER IN ONE RANKING (GRIDIRON_14)
+# ---------------------------------------------------------------------------
+#
+# The Record tab has kept the forecasters apart since GRIDIRON_12. THE PICKS
+# LIST DID NOT, and the result was on screen: the slate carried the
+# statistical row and the LLM row for the same game, unlabelled, adjacent, and
+# each sorted on its own disagreement -- so Toronto at Cleveland appeared
+# twice, once as "Cleveland to win 53%" and once as "Toronto to win 53%". Two
+# contradictory picks, both presented as the pick, with nothing on either
+# saying which forecaster said it.
+#
+# That is the merge LAW 4 forbids in a curve, committed in a LIST instead. A
+# ranking is a claim that these are the picks in order; two forecasters in one
+# ranking are ranked against each other, and the top of the list is then
+# decided by which model happened to disagree with the market harder.
+
+def one_forecaster_faults(payload: dict) -> list[str]:
+    """More than one forecaster inside a single picks list."""
+    faults = []
+    declared = str(payload.get("forecaster") or "")
+    cards = payload.get("cards") or []
+    seen = {str(c.get("predictor")) for c in cards if c.get("predictor")}
+    if len(seen) > 1:
+        # NAME A GAME THAT CARRIES BOTH. A fault a reader can look up is one
+        # they can believe; "the list is mixed" is a sentence they have to
+        # take on trust.
+        grouped: dict = {}
+        for c in cards:
+            grouped.setdefault(
+                (c.get("game_id"), c.get("market_type")), set()).add(
+                    str(c.get("predictor")))
+        example = next((k for k, v in grouped.items() if len(v) > 1), None)
+        where = f", and {example[0]} carries both" if example else ""
+        faults.append(
+            f"the picks list mixes {len(seen)} forecasters "
+            f"({', '.join(sorted(seen))}){where}. A ranking says these are the "
+            f"picks in order; two forecasters in one ranking rank against each "
+            f"other and can state opposite sides of the same game."
+        )
+    if declared and seen and seen != {declared}:
+        faults.append(
+            f"the picks list says it is showing {declared!r} but its cards "
+            f"carry {', '.join(sorted(seen))}. A label that disagrees with the "
+            f"rows beneath it is worse than no label at all."
+        )
+    if declared.lower() in MERGED_FORECASTERS:
+        faults.append(
+            f"the picks list is labelled {declared!r}, which can only be a "
+            f"pool of two or more forecasters."
+        )
+    return faults
+
+
+def check_one_forecaster_per_list(payload: dict) -> None:
+    faults = one_forecaster_faults(payload)
+    if faults:
+        raise LawViolation(
+            "TWO FORECASTERS IN ONE RANKING:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_picks_scanner_can_see() -> None:
+    """The scanner is proven against the defect it was written for."""
+    problems = []
+    mixed = {
+        "forecaster": "statistical",
+        "cards": [
+            {"game_id": "mlb_1", "market_type": "moneyline",
+             "predictor": "statistical", "model_side": "win"},
+            {"game_id": "mlb_1", "market_type": "moneyline",
+             "predictor": "llm", "model_side": "lose"},
+        ],
+    }
+    if not one_forecaster_faults(mixed):
+        problems.append("one_forecaster_faults misses two forecasters naming "
+                        "opposite sides of one game")
+    clean = {
+        "forecaster": "statistical",
+        "cards": [
+            {"game_id": "mlb_1", "market_type": "moneyline",
+             "predictor": "statistical"},
+            {"game_id": "mlb_2", "market_type": "moneyline",
+             "predictor": "statistical"},
+        ],
+    }
+    if one_forecaster_faults(clean):
+        problems.append("one_forecaster_faults flags a single-forecaster list")
+    if not one_forecaster_faults({"forecaster": "all", "cards": []}):
+        problems.append("one_forecaster_faults misses an 'all' label")
+    mislabelled = {
+        "forecaster": "llm",
+        "cards": [{"game_id": "mlb_1", "market_type": "moneyline",
+                   "predictor": "statistical"}],
+    }
+    if not one_forecaster_faults(mislabelled):
+        problems.append("one_forecaster_faults misses a label that disagrees "
+                        "with its own rows")
+    if problems:
+        raise LawViolation(
+            "A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_picks_scanner_can_see()

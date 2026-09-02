@@ -1590,6 +1590,40 @@ const Gridiron = (function () {
     host.hidden = present.length < 2;
   }
 
+  // ONE FORECASTER IN ONE RANKING (GRIDIRON_14).
+  //
+  //: Whose picks the slate is showing. Memory only and not remembered across
+  //: sessions, for the same reason the Record tab's choice is not: a reader
+  //: opening the page should see the model that answers every question, not
+  //: whichever list they left open.
+  let picksForecaster = null;
+
+  // Built from the forecasters actually on this slate, exactly as the tier
+  // filter is built from the tiers actually on it, and hidden below two --
+  // a chooser with one choice is furniture. THERE IS NO "BOTH": two
+  // forecasters in one ranking rank against each other, and the same game
+  // then appears twice naming opposite sides.
+  function renderForecasterFilter(data) {
+    const host = document.getElementById('week-forecaster-seg');
+    if (!host) return;
+    const options = data.forecasters || [];
+    host.innerHTML = '';
+    options.forEach(f => {
+      const b = el('button', '', f.label);
+      b.type = 'button';
+      b.dataset.forecaster = f.forecaster;
+      b.setAttribute('aria-pressed',
+        String(f.forecaster === (data.forecaster || '')));
+      b.addEventListener('click', () => {
+        if (picksForecaster === f.forecaster) return;
+        picksForecaster = f.forecaster;
+        renderWeek();
+      });
+      host.appendChild(b);
+    });
+    host.hidden = options.length < 2;
+  }
+
   // THE COUNTDOWN (R3). The words come from the server; the DIGITS are worked
   // out here, because they tick and the browser is the thing that knows what
   // time it is now -- the same reason kickoff times are rendered locally.
@@ -1656,7 +1690,13 @@ const Gridiron = (function () {
 
     const picker = document.getElementById('week-picker');
     const chosen = picker.value ? JSON.parse(picker.value) : {};
-    const qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
+    let qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
+    // WHOSE PICKS. Absent on the first load, so the server applies its own
+    // default rather than the browser having a second opinion about which
+    // forecaster leads.
+    if (picksForecaster) {
+      qs += (qs ? '&' : '?') + 'forecaster=' + encodeURIComponent(picksForecaster);
+    }
     const data = await fetchJSON(withSport('/api/week' + qs));
     const market = document.getElementById('week-market').value;
 
@@ -1670,6 +1710,7 @@ const Gridiron = (function () {
         ? 'Sorted by how sure the model is. ' + data.n + ' forecasts.'
         : 'Agreeing confidently with the market is not a finding.';
     paintClock(data.glance, data.slate_title);
+    renderForecasterFilter(data);
     startLivePolling(data);
 
     host.innerHTML = '';
@@ -1738,7 +1779,11 @@ const Gridiron = (function () {
     }
 
     if (!open.length && !done.length) {
-      host.appendChild(el('div', 'empty', data.message ||
+      // WHOSE picks are missing, when that is why the list is empty. "No
+      // forecasts recorded for this slate yet" is false on a slate that has
+      // 23 of them from the other forecaster, and a reader who just changed
+      // the selector would read it as a broken page.
+      host.appendChild(el('div', 'empty', data.forecaster_message || data.message ||
         (market ? 'No ' + marketLabel(market) + ' forecasts on this slate.'
                 : 'No forecasts recorded for this slate yet.')));
       (data.quiet_markets || []).forEach(q =>

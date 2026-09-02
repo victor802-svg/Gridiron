@@ -816,6 +816,61 @@ def plant_a_merged_forecaster_view() -> Result:
                        "audit.merged_forecaster_faults")
 
 
+def plant_two_forecasters_in_one_picks_list() -> Result:
+    """Rank the statistical and the LLM picks together, unlabelled.
+
+    NOT HYPOTHETICAL. This is what the MLB slate did until GRIDIRON_14: both
+    forecasters in one ranking, each sorted on its own disagreement with the
+    market, nothing on either card saying who said it. Toronto at Cleveland
+    appeared twice -- "Cleveland to win 53%" and, seven rows down, "Toronto to
+    win 53%". Two contradictory picks, both presented as the pick.
+
+    The merge LAW 4 forbids in a curve, committed in a LIST instead, where it
+    is harder to see: nothing is averaged, so nothing looks pooled.
+    """
+    faults = audit.one_forecaster_faults({
+        "forecaster": "statistical",
+        "cards": [
+            {"game_id": "mlb_824441", "market_type": "moneyline",
+             "predictor": "statistical", "model_side": "win"},
+            {"game_id": "mlb_824441", "market_type": "moneyline",
+             "predictor": "llm", "model_side": "lose"},
+        ],
+    })
+    return _desk_plant(faults, "rank two forecasters in one picks list",
+                       "audit.one_forecaster_faults")
+
+
+def plant_a_picks_list_labelled_for_the_wrong_forecaster() -> Result:
+    """Say the list is the LLM's while showing the statistical model's rows.
+
+    The quieter half of the same guard. Nothing on screen contradicts itself,
+    so a reader has no way to notice -- they simply attribute one forecaster's
+    picks to the other, and any judgement they form about either is wrong.
+    """
+    faults = audit.one_forecaster_faults({
+        "forecaster": "llm",
+        "cards": [{"game_id": "mlb_824441", "market_type": "moneyline",
+                   "predictor": "statistical"}],
+    })
+    return _desk_plant(faults, "label a picks list for the wrong forecaster",
+                       "audit.one_forecaster_faults")
+
+
+def plant_a_day_key_in_visible_text() -> Result:
+    """Put "Day 159, 2026" at the top of the slate.
+
+    The slate key's second disguise, and the first version of the rule missed
+    it. Catching the eight-digit form -- "week 20260905" -- left the ORDINAL
+    standing above every baseball slate: not eight digits, just as much an
+    internal number, and read by nobody. No baseball fan calls a date
+    "Day 159".
+    """
+    faults = audit.plain_words_violations("Day 159, 2026")
+    return _desk_plant(faults, "print a day key where a date belongs",
+                       "audit.plain_words_violations")
+
+
 def plant_an_unlabelled_operator_record() -> Result:
     """Show the operator's numbers without saying they were informed.
 
@@ -2723,6 +2778,9 @@ def main() -> int:
     results.append(plant_a_notification_carrying_a_line())
     results.append(plant_a_results_message_on_an_empty_run())
     results.append(plant_a_merged_forecaster_view())
+    results.append(plant_two_forecasters_in_one_picks_list())
+    results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
+    results.append(plant_a_day_key_in_visible_text())
     results.append(plant_an_unlabelled_operator_record())
     results.append(plant_a_stake_field_on_a_call())
     results.append(plant_a_call_after_kickoff())

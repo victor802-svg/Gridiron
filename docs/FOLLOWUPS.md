@@ -318,3 +318,29 @@ footnote is a 700MB copy taken beforehand. Two traps, both now written into
 **Any future table rebuild takes a copy first, and runs `PRAGMA
 foreign_key_check` before it commits to anything.** The check is what turns
 "it looked fine" into evidence.
+
+## The phone has not received a push yet
+
+2026-09-02, from GRIDIRON_12 phase O5. The ntfy channel is built and the POST
+is accepted — `HTTP 200` from ntfy.sh, recorded in `notifications` — but
+**nothing has arrived on a phone, because no device is subscribed to the topic
+yet.** The operator has not installed the app.
+
+The distinction is the whole point of recording it: the channel is proven as
+far as the server and unproven past it. A `200` means ntfy accepted the
+message for a topic; it says nothing about whether anyone was listening.
+
+To finish it:
+
+1. Install ntfy (Android, iOS, or ntfy.sh in a browser).
+2. Subscribe to the topic in `.env` under `GRIDIRON_NTFY_TOPIC`.
+3. Trigger a real send — the next resolve run that settles anything will do
+   it, or force one outside quiet hours.
+
+**The topic should be rotated first.** It was printed to a terminal during
+this session and is therefore in the session transcript. Anyone holding it can
+read the messages — counts and team names only, but still.
+
+```
+python tools/make_token.py --ntfy --rotate
+```

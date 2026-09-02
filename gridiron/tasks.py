@@ -140,6 +140,13 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
     except Exception as exc:  # noqa: BLE001 - a failed task must be recorded, not raised away
         result, detail = "failed", f"{type(exc).__name__}: {exc}"
         payload = {"traceback": traceback.format_exc()[-2000:]}
+        # A FAILED TASK IS EXACTLY WHEN THE SECOND CHANNEL EXISTS (ruling R4).
+        # Checked here rather than on a schedule of its own, which could go
+        # silent in the same way the thing it watches did.
+        try:
+            notify_failures(conn)
+        except Exception:  # noqa: BLE001 - the notifier must never mask the fault
+            pass
 
     conn.execute(
         "INSERT INTO task_runs (task, started_utc, finished_utc, result, detail,"
@@ -354,8 +361,17 @@ def _run_resolve(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     schedule safe."""
     from . import resolve
 
+    from . import notify
+
+    # ANYTHING THAT QUEUED OVERNIGHT GOES OUT FIRST. The resolve task runs
+    # every four hours, so it is the natural thing to carry the morning's
+    # message -- no separate scheduled job that could itself go silent.
+    held = notify.flush_queue(conn)
+
     settled = resolve.resolve_all(conn)
     n = settled["settled"]
+    if held:
+        settled["queued_sent"] = held
     payload = {k: v for k, v in settled.items() if not isinstance(v, list)}
     if n == 0:
         # NO MESSAGE ON A QUIET RUN. A notification saying "0 settled" is a

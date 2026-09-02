@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import (buildinfo, calibration, calls, config, db, language,
+from . import (audit, buildinfo, calibration, calls, config, db, language,
                sports, subjects)
 from .data import reference, repo, teams
 from .factors import compute as factor_compute, registry
@@ -242,7 +242,7 @@ def _absent_factors(payload: dict) -> list[dict]:
 
 
 def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
-         wk: int | None = None) -> dict:
+         wk: int | None = None, forecaster: str | None = None) -> dict:
     """THE SLATE: one card per forecast, sorted by disagreement with the market.
 
     "Week" is the slate key. NFL and NBA number weeks; MLB numbers days, since
@@ -300,6 +300,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             # sometimes-missing key is how a renderer learns to guess.
             return {"sport": sport, "season": season, "week": None, "n": 0,
                     "cards": [], "message": _empty_slate_message(conn, sport),
+                    # ONE PAYLOAD SHAPE. A key that is present on a full slate
+                    # and missing on an empty one is how a renderer learns to
+                    # guess, which is the rule the glance already follows.
+                    "forecaster": forecaster or config.PICKS_DEFAULT_FORECASTER,
+                    "forecasters": [],
+                    "forecaster_message": None,
                     "slate_word": config.SPORT_SLATE_WORD.get(sport, "week"),
                     "line_source": lines.line_source_for(sport),
                     "glance": _glance(conn, sport, []),
@@ -308,6 +314,66 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     "sorted_by": "size of disagreement with the market"}
         season, wk = latest["season"], latest["week"]
         rows = fetch(season, wk)
+
+    # ONE FORECASTER IN ONE RANKING (GRIDIRON_14).
+    #
+    # THE SLATE IS CHOSEN FROM EVERY PREDICTION ON IT AND FILTERED AFTER, not
+    # filtered first. Filtering first would let a forecaster that skipped
+    # today pull the page back to whatever day it last ran, so changing the
+    # selector would silently change the DATE as well as the forecaster.
+    #
+    # Before this, both forecasters were listed together, unlabelled and each
+    # sorted on its own disagreement with the market, so one game could appear
+    # twice naming opposite sides -- "Cleveland to win 53%" four rows above
+    # "Toronto to win 53%", with nothing on either saying who said it.
+    counts: dict[str, int] = {}
+    for r in rows:
+        counts[r["predictor"]] = counts.get(r["predictor"], 0) + 1
+    chosen = forecaster or config.PICKS_DEFAULT_FORECASTER
+    available = [
+        {"forecaster": name,
+         "label": config.FORECASTER_LABELS.get(name, name),
+         "n": counts[name]}
+        for name in sorted(
+            counts, key=lambda n: (n != config.PICKS_DEFAULT_FORECASTER, n))
+    ]
+    # AN ABSENT FORECASTER IS NOT QUIETLY SWAPPED for one that has rows: the
+    # page would then show a ranking under a name that did not produce it,
+    # which is the same lie as mixing them, told more quietly.
+    rows = [r for r in rows if r["predictor"] == chosen]
+
+    # ONE CARD PER QUESTION, and the second reason a game appeared twice.
+    #
+    # `predict:nfl` ran twice on 2026-08-29 -- 05:55Z and again at 07:34Z --
+    # and wrote a full second set of forecasts for week 1. Both rows are the
+    # record and both stay: LAW 3 is append-only and a prediction is never
+    # deleted, so 26 of the 52 NFL questions legitimately hold two forecasts.
+    # THE SLATE IS NOT THE RECORD, though. A picks list showing both says the
+    # model has two opinions about one question and offers no way to tell
+    # which is standing.
+    #
+    # The latest one written is, by the same rule `calls.latest` already
+    # applies to a revised call: a later forecast supersedes an earlier one
+    # and the earlier stays in History. Nothing here changes what is scored --
+    # both rows remain in every curve, which is why the double run is a
+    # RECORD problem reported in the close-out and not something a display
+    # filter may quietly paper over.
+    standing: dict = {}
+    for r in rows:
+        key = (r["game_id"], r["market_type"], r["subject"], r["line_asked"])
+        seen = standing.get(key)
+        if seen is None or (r["created_utc"], r["id"]) > (seen["created_utc"], seen["id"]):
+            standing[key] = r
+    superseded = len(rows) - len(standing)
+    rows = sorted(standing.values(), key=lambda r: r["id"])
+
+    forecaster_message = None
+    if not rows and available:
+        forecaster_message = language.no_picks_from(
+            config.FORECASTER_LABELS.get(chosen, chosen),
+            [(f["label"], f["n"]) for f in available
+             if f["forecaster"] != chosen])
+
     ids = [r["id"] for r in rows]
     snapshots = lines.snapshots_for(conn, ids)
     voided = _voids_for(conn, ids)
@@ -533,7 +599,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # Sorted by disagreement size, because that is where anything interesting
     # lives. Cards with no market comparison sort last rather than first.
     cards.sort(key=lambda c: c["abs_gap"], reverse=True)
-    return {
+    payload = {
         "sport": sport,
         # THE SLATE AT A GLANCE (D3), computed from the cards above rather than
         # by asking the database the same questions a second time.
@@ -553,6 +619,17 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                  None)),
         "n": len(cards),
         "cards": cards,
+        # WHOSE PICKS THESE ARE, and who else has some. Named on the payload
+        # rather than inferred by the renderer from the cards: a list that
+        # cannot say who made it is a list nobody can check.
+        "forecaster": chosen,
+        "forecasters": available,
+        "forecaster_message": forecaster_message,
+        # HOW MANY EARLIER FORECASTS THIS SLATE IS HIDING. Stated rather than
+        # silent: a reader comparing the slate count against the record count
+        # is owed the difference, and it is how the operator finds out a
+        # prediction task ran twice.
+        "superseded": superseded,
         "line_source": lines.line_source_for(sport),
         # A THIN SLATE HAS TO EXPLAIN ITSELF. Eight picks on a fourteen-game
         # card reads as a failure until the floor is named, and the floor
@@ -567,6 +644,11 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                  "disagreement to sort by"
         ),
     }
+    # THE MERGE CANNOT REACH THE API, which is the same place the curve check
+    # runs for the same reason: a guard that only runs in a test protects the
+    # test. This one fired on the real slate the day it was written.
+    audit.check_one_forecaster_per_list(payload)
+    return payload
 
 
 def _venues(conn: sqlite3.Connection, sport: str) -> dict:

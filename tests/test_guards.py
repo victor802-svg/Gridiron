@@ -450,3 +450,111 @@ def test_every_new_guard_is_in_the_planted_harness():
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"
+
+
+# ---------------------------------------------------------------------------
+# ONE FORECASTER IN ONE RANKING (GRIDIRON_14)
+# ---------------------------------------------------------------------------
+
+def test_two_forecasters_in_one_picks_list_are_caught_by_name():
+    """THE DEFECT THIS WAS WRITTEN FOR WAS ON SCREEN, not hypothetical.
+
+    The MLB slate listed the statistical row and the LLM row for the same
+    game, unlabelled and adjacent, each sorted on its own disagreement -- so
+    Toronto at Cleveland appeared twice, once as "Cleveland to win 53%" and
+    once as "Toronto to win 53%". Two contradictory picks, both presented as
+    the pick.
+    """
+    payload = {
+        "forecaster": "statistical",
+        "cards": [
+            {"game_id": "mlb_824441", "market_type": "moneyline",
+             "predictor": "statistical", "model_side": "win"},
+            {"game_id": "mlb_824441", "market_type": "moneyline",
+             "predictor": "llm", "model_side": "lose"},
+        ],
+    }
+    with pytest.raises(audit.LawViolation, match="TWO FORECASTERS IN ONE RANKING"):
+        audit.check_one_forecaster_per_list(payload)
+    # The fault NAMES the game carrying both, so it can be looked up.
+    assert "mlb_824441" in audit.one_forecaster_faults(payload)[0]
+
+
+def test_a_picks_list_labelled_for_the_wrong_forecaster_is_caught():
+    """Nothing on screen contradicts itself, which is what makes it worse."""
+    payload = {
+        "forecaster": "llm",
+        "cards": [{"game_id": "mlb_1", "market_type": "moneyline",
+                   "predictor": "statistical"}],
+    }
+    faults = audit.one_forecaster_faults(payload)
+    assert faults and "does not match" in faults[0].replace("disagrees with", "does not match")
+
+
+def test_a_combined_forecaster_option_on_picks_is_caught():
+    assert audit.one_forecaster_faults({"forecaster": "all", "cards": []})
+
+
+def test_the_real_slate_carries_one_forecaster(resolved_league):
+    """The guard runs inside `views.week`, so this is the payload the API
+    would actually serve -- not a fixture built to pass."""
+    from gridiron import views
+    payload = views.week(resolved_league, sport="nfl")
+    audit.check_one_forecaster_per_list(payload)          # must not raise
+    predictors = {c["predictor"] for c in payload["cards"]}
+    assert len(predictors) <= 1, predictors
+    assert payload["forecaster"] == config.PICKS_DEFAULT_FORECASTER
+
+
+def test_a_day_key_in_visible_text_is_caught_by_name():
+    """The slate key's other disguise. Catching "week 20260905" left
+    "Day 159, 2026" standing above every baseball slate."""
+    hits = audit.plain_words_violations("Day 159, 2026")
+    assert hits and "Day 159" in hits[0]
+    with pytest.raises(audit.LawViolation, match="PLAIN WORDS"):
+        audit.check_plain_words("Day 159, 2026")
+
+
+def test_a_week_number_is_not_mistaken_for_a_day_key():
+    """"Week 2" is how football organises itself and how a reader refers to a
+    slate. The first version of the date fix replaced BOTH and quietly renamed
+    "Week 2, 2026" to a date nobody asked for."""
+    assert not audit.plain_words_violations("Week 2, 2026")
+    assert not audit.plain_words_violations("Wednesday 2 September, 2026")
+    # Ordinary English that happens to contain the word.
+    assert not audit.plain_words_violations("sessions are 30-day sliding")
+    assert not audit.plain_words_violations("settled 14 days ago")
+
+
+def test_one_card_per_question_when_a_task_ran_twice(resolved_league):
+    """A second prediction run must not put every game on the slate twice.
+
+    `predict:nfl` ran twice on 2026-08-29 and wrote a full second set of
+    forecasts for week 1. Both rows stay in the record -- LAW 3 is
+    append-only -- but the slate shows the STANDING one, by the same rule
+    `calls.latest` applies to a revised call.
+    """
+    from gridiron import views
+
+    payload = views.week(resolved_league, sport="nfl")
+    seen = [(c["game_id"], c["market_type"], c["subject"], c["line_asked"])
+            for c in payload["cards"]]
+    assert len(seen) == len(set(seen)), "the slate lists one question twice"
+    assert "superseded" in payload, (
+        "the slate must say how many earlier forecasts it is not showing")
+
+
+def test_the_superseded_count_is_the_rows_the_slate_hid(resolved_league):
+    """The count is stated so a reader comparing the slate against the record
+    is owed the difference -- and so a task that ran twice is discoverable."""
+    from gridiron import views
+
+    payload = views.week(resolved_league, sport="nfl")
+    written = resolved_league.execute(
+        "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport = 'nfl' AND g.season = ? AND g.week = ?"
+        "   AND p.predictor = 'statistical'"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)",
+        (payload["season"], payload["week"])).fetchone()[0]
+    assert payload["n"] + payload["superseded"] == written

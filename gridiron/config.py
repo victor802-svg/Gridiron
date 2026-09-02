@@ -148,6 +148,22 @@ def require_sport(sport: str | None, where: str) -> str:
 SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week",
                     "cfb": "day"}
 
+#: WHAT EACH FORECASTER IS CALLED, in one place because two places disagree.
+#:
+#: The Record tab has named these since GRIDIRON_12 and the Picks list needed
+#: the same names in GRIDIRON_14; a second literal would have been a second
+#: chance for the two pages to call the same forecaster different things.
+#: The operator is NOT here: they call on questions, they do not generate a
+#: slate, so they are a forecaster on the record and not an option on Picks.
+#: Their label lives in `calls.FORECASTER_LABEL`.
+FORECASTER_LABELS = {"statistical": "statistical", "llm": "LLM"}
+
+#: Which forecaster the Picks list opens on. The statistical model answers
+#: every question on every slate; the LLM runs on one sport and skips rows
+#: when it is degraded, so it is a choice a reader makes rather than the one
+#: they are given.
+PICKS_DEFAULT_FORECASTER = "statistical"
+
 #: The markets each sport asks about. MLB is moneyline only: there is no run
 #: line question worth asking that the moneyline does not already ask better.
 SPORT_MARKETS: dict[str, tuple[str, ...]] = {

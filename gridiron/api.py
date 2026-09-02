@@ -347,8 +347,14 @@ def versions(sport: str | None = None) -> dict:
 
 @app.get("/api/week")
 def week(sport: str | None = None, season: int | None = None,
-         week: int | None = None) -> dict:
-    return views.week(get_conn(), _sport(sport), season, week)
+         week: int | None = None, forecaster: str | None = None) -> dict:
+    """The slate, from ONE forecaster's point of view (GRIDIRON_14).
+
+    An unknown name is not corrected to the default: `views.week` returns that
+    forecaster's empty list and says whose picks are missing, which is the
+    honest answer to a question about a forecaster that made none.
+    """
+    return views.week(get_conn(), _sport(sport), season, week, forecaster)
 
 
 @app.get("/api/live")

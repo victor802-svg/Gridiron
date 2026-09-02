@@ -144,8 +144,19 @@ def void_prediction(conn: sqlite3.Connection, prediction_id: int, reason: str) -
         " VALUES (?,?,?)",
         (prediction_id, utcnow(), reason),
     )
+    # A VOIDED PREDICTION VOIDS ITS CALLS, for the same reason and by the same
+    # act: the question was never answered, so nothing anyone said about it can
+    # be right or wrong. Left UNRESOLVED rather than marked lost -- exactly the
+    # treatment the prediction itself gets.
+    open_calls = calls.void_for(conn, prediction_id)
     conn.commit()
+    if open_calls:
+        _voided_calls[prediction_id] = open_calls
     return cur.rowcount == 1
+
+
+#: How many of the operator's calls each void took with it, for the report.
+_voided_calls: dict[int, int] = {}
 
 
 def resolve_all(conn: sqlite3.Connection, *, progress=None) -> dict:

@@ -1454,6 +1454,22 @@ def slate_title(season: int | None, week: int | None, slate_word: str,
     return f"{slate_word.title()} {week}, {season}" if season else f"{slate_word.title()} {week}"
 
 
+def no_picks_from(label: str, others: list[tuple[str, int]]) -> str:
+    """Why the slate is empty for the forecaster the reader chose.
+
+    An empty list with no explanation reads as a broken page. It is not: the
+    LLM runs on one sport and stands down when it is degraded, and a slate
+    with no LLM picks on it is the system working. So the sentence says who
+    made none AND who made some, with the counts, rather than leaving a reader
+    to guess which of the two happened.
+    """
+    head = f"{label} made no picks on this slate."
+    if not others:
+        return head
+    rest = "; ".join(f"{lab} made {n}" for lab, n in others)
+    return f"{head} {rest}."
+
+
 def date_words_from_iso(day: str | None) -> str | None:
     """"2026-09-27" -> "Sunday 27 September". None when there is no date."""
     if not day or len(day) < 10:
