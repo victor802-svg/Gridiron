@@ -187,6 +187,8 @@ def step_2_guards() -> bool:
              audit.PROGRESS_FIXTURE_GOOD)),
         ("the withdrawn feature left nothing behind",
          audit.check_the_calls_feature_stayed_withdrawn),
+        ("four pages, and every old address lands",
+         audit.check_the_nav_is_four_pages),
         ("forecasters are never merged",
          lambda: audit.check_forecasters_are_never_merged(
              __import__("gridiron.views", fromlist=["views"]).scorecard(

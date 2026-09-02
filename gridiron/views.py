@@ -1625,6 +1625,11 @@ def factors(conn: sqlite3.Connection, sport: str) -> dict:
         # "helps a little · 412 picks" -- the earned figure in words, with its
         # sample beside it. A verdict with no N is a claim (LAW 4).
         entry["earned_words"] = _factor_earned_words(entry)
+        # ONE LINE FOR THE CARD (GRIDIRON_13 P5). The full declaration is a
+        # LAW 2 dated record and stays in the table below; a card answers
+        # "what is this" at a glance.
+        entry["what"] = language.factor_what(
+            entry.get("rationale"), _why_phrases())
     calibration.assert_every_figure_has_n(report)
     return report
 

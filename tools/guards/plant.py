@@ -871,6 +871,36 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
+def plant_a_fifth_nav_item() -> Result:
+    """Add a fifth page to the nav.
+
+    A nav grows ONE LINK AT A TIME, each defensible on its own, which is how
+    this one got to seven: Picks, Record, Results, Settings, Schedule,
+    Factors, Versions, Digest. Every addition was reasonable and the total was
+    a page a reader had to make a decision about before they could ask a
+    question. Four is the ruling (GRIDIRON_13 R4).
+    """
+    good = ("const RENAMED = { history: 'results', factors: 'record',"
+            " versions: 'record', schedule: 'settings', digest: 'week' };")
+    faults = audit.nav_faults(good, audit.NAV_FIXTURE_A_FIFTH_ITEM)
+    return _desk_plant(faults, "add a fifth page to the nav",
+                       "audit.nav_faults")
+
+
+def plant_an_old_route_left_to_404() -> Result:
+    """Remove a route and leave nothing where it was.
+
+    A link somebody bookmarked or wrote down still has to land. A 404 tells
+    them the app lost something; a redirect tells them where it went, and the
+    address bar says so.
+    """
+    good_nav = "".join(
+        f'<a href="#/{p}" data-route="{p}">x</a>' for p in audit.NAV_PAGES)
+    faults = audit.nav_faults(audit.NAV_FIXTURE_A_DEAD_LINK, good_nav)
+    return _desk_plant(faults, "leave a removed route to 404",
+                       "audit.nav_faults")
+
+
 def plant_a_pick_on_the_login_page() -> Result:
     """Put a side on the sign-in screen.
 
@@ -2949,6 +2979,8 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
+    results.append(plant_a_fifth_nav_item())
+    results.append(plant_an_old_route_left_to_404())
     results.append(plant_a_pick_on_the_login_page())
     results.append(plant_a_silent_attach_to_an_older_build())
     results.append(plant_a_model_constant_made_editable())

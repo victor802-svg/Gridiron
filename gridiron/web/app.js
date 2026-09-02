@@ -1944,6 +1944,8 @@ const Gridiron = (function () {
     document.getElementById('factors-method').textContent = data.method;
     await renderWorkedExample();
 
+    renderFactorCards(data.factors);
+
     table(document.getElementById('factors-table'),
       [{ label: 'Factor' }, { label: 'Added' }, { label: 'Applies to' },
        { label: 'N' }, { label: 'Rows measured' }, { label: 'Δ Brier' },
@@ -1978,6 +1980,68 @@ const Gridiron = (function () {
           f.note ? f.rationale + ' — NOTE: ' + f.note : f.rationale
         ];
       }));
+  }
+
+  // ONE CARD PER FACTOR (GRIDIRON_13 P5). Every string is the server's: the
+  // plain name, the one-line "what it measures" (`language.factor_what`), and
+  // the earned pull in words WITH ITS N. The renderer places them and filters.
+  let factorCards = [];
+
+  function renderFactorCards(factors) {
+    factorCards = factors || [];
+    const host = document.getElementById('factors-cards');
+    const box = document.getElementById('factors-search');
+    if (!host) return;
+    if (box && !box.dataset.wired) {
+      box.dataset.wired = '1';
+      box.addEventListener('input', () => paintFactorCards(box.value));
+    }
+    paintFactorCards(box ? box.value : '');
+  }
+
+  function paintFactorCards(query) {
+    const host = document.getElementById('factors-cards');
+    const note = document.getElementById('factors-search-note');
+    if (!host) return;
+    // BY PLAIN NAME, which is the name a reader has. Searching the code would
+    // only help somebody who already knows the identifier, and they have the
+    // table underneath.
+    //
+    // A CASE-INSENSITIVE REGEX RATHER THAN `.toLowerCase()`. The renderer
+    // scan refuses a case change on a value, because
+    // `String(s.subject).toUpperCase()` once shouted a raw identifier at a
+    // reader -- and it cannot tell a comparison from a display. Matching with
+    // a flag transforms nothing at all, which is both what the rule is
+    // protecting and simply the better way to do it.
+    const needle = String(query || '').trim();
+    const pattern = needle
+      ? new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      : null;
+    const shown = pattern
+      ? factorCards.filter(f => pattern.test(String(f.plain_name || f.factor)))
+      : factorCards;
+    host.innerHTML = '';
+    shown.forEach(f => {
+      const card = el('div', 'fcard');
+      card.appendChild(el('div', 'fcard-name', f.plain_name || f.factor));
+      card.appendChild(el('div', 'fcard-what', f.what || ''));
+      // THE N IS IN THE WORDS the server wrote -- "moves the answer a lot ·
+      // 18 picks" -- so LAW 4 is satisfied by the sentence, not by a number
+      // this renderer decided to append.
+      card.appendChild(el('div', 'fcard-pull', f.earned_words || ''));
+      if (!f.active) card.appendChild(el('span', 'tag', 'inactive'));
+      // THE ONE SANCTIONED CODE, small beneath, excluded from the plain-words
+      // scan by position because a reader matching a row against the registry
+      // needs the literal.
+      card.appendChild(el('div', 'factor-code', f.factor));
+      host.appendChild(card);
+    });
+    if (note) {
+      note.textContent = pattern
+        ? shown.length + ' of ' + factorCards.length + ' factors match'
+        : '';
+      note.hidden = !pattern;
+    }
   }
 
   // --- HISTORY ------------------------------------------------------------

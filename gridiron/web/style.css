@@ -1718,3 +1718,37 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    identifier stamped on a prediction. Excluded from the plain-words scan by
    position, exactly as `.factor-code` is. */
 .code-literal { font-family: var(--mono); color: var(--muted); }
+
+/* --- FACTOR CARDS (GRIDIRON_13 P5) ---------------------------------------
+   The reader's view of the model: what each factor is, in a phrase, with how
+   hard it pulls and over how many picks. The measurements in full live in the
+   table behind the details below, for somebody auditing rather than reading. */
+.search {
+  width: 100%; max-width: 420px; margin: 14px 0 12px;
+  background: var(--card-2); border: 1px solid var(--line);
+  color: var(--chrome); font-family: var(--body); font-size: 13px;
+  padding: 8px 11px; border-radius: 8px; box-sizing: border-box;
+}
+.search:focus-visible { outline: 2px solid var(--chrome); outline-offset: 1px; }
+.fcards {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.fcard {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 13px 14px;
+}
+.fcard-name {
+  font-size: 15px; color: var(--chrome); font-weight: 600; line-height: 1.25;
+}
+.fcard-what {
+  margin-top: 5px; font-size: 12px; color: var(--muted); line-height: 1.45;
+}
+.fcard-pull {
+  margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--faint);
+}
+.fcard .factor-code { margin-top: 6px; }
+.factors-detail { margin-top: 22px; }
+.factors-detail summary {
+  cursor: pointer; font-size: 13px; color: var(--muted); padding: 6px 0;
+}

@@ -2044,6 +2044,89 @@ def _check_the_colour_scanner_can_see() -> None:
 _check_the_colour_scanner_can_see()
 
 
+# FOUR PAGES, AND EVERY OLD ADDRESS STILL LANDS (GRIDIRON_13 P5)
+# ---------------------------------------------------------------------------
+#
+# Seven nav entries was one more decision about where a thing lived every time
+# a reader wanted something. Four is the ruling, and a fifth would not announce
+# itself -- a nav grows one link at a time, each defensible on its own.
+#
+# AND NO DEAD LINKS. A route that was removed must REDIRECT, not 404: a link
+# somebody bookmarked or wrote down still has to land, and the address bar is
+# what tells them where the page went.
+
+#: The nav, as ruled. Order included: it is the order the questions come in.
+NAV_PAGES = ("week", "record", "results", "settings")
+
+#: Every route that was removed, and where it went.
+REDIRECTED = {
+    "history": "results",
+    "factors": "record",
+    "versions": "record",
+    "schedule": "settings",
+    "digest": "week",
+}
+
+
+def nav_faults(js: str, html: str) -> list[str]:
+    """A nav that is not the four ruled pages, or an old route left to 404."""
+    faults = []
+    links = re.findall(r'data-route="([a-z-]+)"', html)
+    if tuple(links) != NAV_PAGES:
+        faults.append(
+            f"the nav is {links}, not {list(NAV_PAGES)}. Four pages is the "
+            f"ruling (GRIDIRON_13 R4); a nav grows one link at a time, each "
+            f"defensible on its own, which is how it got to seven.")
+    for old, new in REDIRECTED.items():
+        if not re.search(rf"{old}\s*:\s*'{new}'", js):
+            faults.append(
+                f"#/{old} does not redirect to #/{new}. A removed route must "
+                f"land, not 404: somebody bookmarked it or wrote it down, and "
+                f"the address bar is what tells them where the page went.")
+    return faults
+
+
+NAV_FIXTURE_A_FIFTH_ITEM = (
+    '<a href="#/week" data-route="week">Picks</a>'
+    '<a href="#/record" data-route="record">Record</a>'
+    '<a href="#/results" data-route="results">Results</a>'
+    '<a href="#/settings" data-route="settings">Settings</a>'
+    '<a href="#/digest" data-route="digest">Digest</a>'
+)
+NAV_FIXTURE_A_DEAD_LINK = "const RENAMED = { history: 'results' };"
+
+
+def check_the_nav_is_four_pages(js_path=None, html_path=None) -> None:
+    js_path = js_path or (config.PACKAGE_ROOT / "web" / "app.js")
+    html_path = html_path or (config.PACKAGE_ROOT / "web" / "index.html")
+    html = Path(html_path).read_text(encoding="utf-8")
+    nav = re.search(r'<nav id="nav".*?</nav>', html, re.S)
+    faults = nav_faults(Path(js_path).read_text(encoding="utf-8"),
+                        nav.group(0) if nav else html)
+    if faults:
+        raise LawViolation(
+            "THE NAV IS NOT WHAT WAS RULED:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_nav_scanner_can_see() -> None:
+    problems = []
+    good_js = ("const RENAMED = { history: 'results', factors: 'record',"
+               " versions: 'record', schedule: 'settings', digest: 'week' };")
+    good_nav = "".join(
+        f'<a href="#/{p}" data-route="{p}">x</a>' for p in NAV_PAGES)
+    if nav_faults(good_js, good_nav):
+        problems.append("nav_faults flags the four ruled pages")
+    if not nav_faults(good_js, NAV_FIXTURE_A_FIFTH_ITEM):
+        problems.append("nav_faults misses a fifth nav item")
+    if not nav_faults(NAV_FIXTURE_A_DEAD_LINK, good_nav):
+        problems.append("nav_faults misses a removed route left to 404")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_nav_scanner_can_see()
+
+
 # THE SIGN-IN SCREEN SHOWS COUNTS, NOT PICKS (GRIDIRON_13 P6)
 # ---------------------------------------------------------------------------
 #

@@ -1633,6 +1633,37 @@ def signed_out_line(devices: int | None) -> str:
     return f"Signed out on {devices} {thing}."
 
 
+def factor_what(rationale: str | None,
+                plain_names: dict | None = None) -> str:
+    """One line saying what a factor measures, from its declared rationale.
+
+    THE FIRST SENTENCE, and no more. A factor card answers "what is this" at a
+    glance; the full declaration is a LAW 2 dated record and stays in the
+    table underneath, where somebody auditing goes looking for it. Composed
+    here rather than in the browser, like every other visible string.
+
+    A DECLARATION MAY NAME ANOTHER FACTOR BY ITS CODE, the way a code comment
+    does -- and one does: a rationale mentioning `short_week_diff` put that
+    identifier straight onto a card, where the plain-words scan found it. The
+    audit table is allowed to be dense and is exempt by position; a CARD is a
+    reading surface and is not. So the codes are swapped for the names those
+    factors already have, rather than editing a dated declaration to suit the
+    page showing it.
+    """
+    if not rationale:
+        return ""
+    text = str(rationale).strip()
+    for code, plain in sorted((plain_names or {}).items(),
+                              key=lambda kv: -len(kv[0])):
+        if plain and code in text:
+            text = text.replace(code, plain)
+    for stop in (". ", " -- ", "; "):
+        cut = text.find(stop)
+        if 0 < cut < 160:
+            return text[:cut + 1].strip().rstrip(".") + "."
+    return (text[:150].rstrip() + "...") if len(text) > 160 else text
+
+
 def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
     """"Wednesday 2 September - 5 right, 2 wrong, 1 void".
 

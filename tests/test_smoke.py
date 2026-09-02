@@ -139,7 +139,10 @@ def test_the_calibration_chart_refuses_a_bucket_with_no_n(page):
 def test_every_screen_renders(page):
     for route, selector in (
         ("#/week", "#week-cards .row"),
-        ("#/record", "#factors-table tbody tr"),
+        # THE CARDS, not the table: the measurements in full sit behind a
+        # collapsed <details> now (P5), so their rows exist and are not
+        # visible. The cards are what a reader sees on this page.
+        ("#/record", "#factors-cards .fcard"),
         ("#/results", "#history-table tbody tr"),
         # R1 old -> new: the Record tab leads with THE TIER TABLE. The bucket
         # table and the calibration chart moved to "How the model works".
@@ -1278,3 +1281,52 @@ def test_the_sign_in_screen_shows_the_record_but_no_pick(served, _browser):
             assert tell not in body, f"the sign-in screen shows {tell!r}"
     finally:
         context.close()
+
+
+def test_the_model_section_shows_a_card_per_factor_with_its_n(page):
+    """ONE CARD PER FACTOR (GRIDIRON_13 P5): the plain name, one line on what
+    it measures, the earned pull in words WITH ITS N, and the code beneath."""
+    _open_route(page, "#/record")
+    page.wait_for_selector("#factors-cards .fcard", timeout=15000)
+    cards = page.eval_on_selector_all(
+        "#factors-cards .fcard",
+        """els => els.map(e => ({
+            name: (e.querySelector('.fcard-name') || {}).textContent || '',
+            what: (e.querySelector('.fcard-what') || {}).textContent || '',
+            pull: (e.querySelector('.fcard-pull') || {}).textContent || '',
+            code: (e.querySelector('.factor-code') || {}).textContent || '',
+        }))"""
+    )
+    assert cards, "no factor cards"
+    for c in cards:
+        assert c["name"].strip(), "a card has no name"
+        assert c["code"].strip(), "a card has no code beneath it"
+        # LAW 4 on every card: the pull is stated with the sample it is over.
+        assert re.search(r"\d+", c["pull"]), (
+            f"a factor card states a pull with no N: {c}")
+
+
+def test_the_factor_search_filters_by_plain_name(page):
+    """By the name a reader HAS. Searching the code would only help somebody
+    who already knows the identifier."""
+    _open_route(page, "#/record")
+    page.wait_for_selector("#factors-cards .fcard", timeout=15000)
+    before = page.locator("#factors-cards .fcard").count()
+    first = page.eval_on_selector(
+        "#factors-cards .fcard .fcard-name", "e => e.textContent.trim()")
+    word = [w for w in first.split() if len(w) > 4][0]
+
+    page.fill("#factors-search", word)
+    page.wait_for_function(
+        "(n) => document.querySelectorAll('#factors-cards .fcard').length < n",
+        arg=before, timeout=5000)
+    after = page.locator("#factors-cards .fcard").count()
+    assert 0 < after < before, f"{word!r} filtered {before} cards to {after}"
+    names = page.eval_on_selector_all(
+        "#factors-cards .fcard .fcard-name", "els => els.map(e => e.textContent)")
+    assert all(word.lower() in n.lower() for n in names), names
+
+    page.fill("#factors-search", "")
+    page.wait_for_function(
+        "(n) => document.querySelectorAll('#factors-cards .fcard').length === n",
+        arg=before, timeout=5000)

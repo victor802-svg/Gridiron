@@ -1031,3 +1031,22 @@ def test_the_launcher_never_attaches_to_a_different_build():
     # app unopenable for a reason nobody could act on.
     assert _launcher.attach_decision("a", None) == _launcher.ATTACH
     assert _launcher.attach_decision(None, "b") == _launcher.ATTACH
+
+
+def test_a_fifth_nav_item_is_caught_by_name():
+    """A nav grows one link at a time, each defensible on its own."""
+    good = ("const RENAMED = { history: 'results', factors: 'record',"
+            " versions: 'record', schedule: 'settings', digest: 'week' };")
+    faults = audit.nav_faults(good, audit.NAV_FIXTURE_A_FIFTH_ITEM)
+    assert faults and "Four pages is the ruling" in faults[0]
+
+
+def test_a_removed_route_left_to_404_is_caught_by_name():
+    good_nav = "".join(
+        f'<a href="#/{p}" data-route="{p}">x</a>' for p in audit.NAV_PAGES)
+    faults = audit.nav_faults(audit.NAV_FIXTURE_A_DEAD_LINK, good_nav)
+    assert faults and "must land, not 404" in faults[0]
+
+
+def test_the_shipped_nav_is_the_four_ruled_pages():
+    audit.check_the_nav_is_four_pages()          # must not raise
