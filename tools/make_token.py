@@ -23,8 +23,13 @@ sys.path.insert(0, str(REPO))
 from gridiron import auth, config, db  # noqa: E402
 
 
-def write_env(token: str) -> None:
-    """Write the token to .env, preserving anything else already there."""
+def write_env(token: str, name: str = auth.TOKEN_VAR) -> None:
+    """Write a secret to .env by name, preserving anything else already there.
+
+    `name` was added for the ntfy topic (GRIDIRON_12). Both secrets live in the
+    same file for the same reason -- it sits outside the bundle, so a rebuild
+    cannot delete them -- and neither is ever logged.
+    """
     lines: list[str] = []
     if auth.ENV_FILE.exists():
         lines = [
@@ -32,7 +37,7 @@ def write_env(token: str) -> None:
             for line in auth.ENV_FILE.read_text(encoding="utf-8").splitlines()
             if not line.strip().startswith(f"{auth.TOKEN_VAR}=")
         ]
-    lines.append(f"{auth.TOKEN_VAR}={token}")
+    lines.append(f"{name}={token}")
     auth.ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
     # Owner-only where the OS honours it. On Windows this is advisory; the file
     # still sits in a user-profile directory, which is the real boundary.
@@ -42,12 +47,57 @@ def write_env(token: str) -> None:
         pass
 
 
+#: The name the push topic lives under, in the same file as the access token.
+NTFY_VAR = "GRIDIRON_NTFY_TOPIC"
+
+
+def _make_ntfy_topic(rotate: bool = False) -> int:
+    """A random ntfy topic, written to .env and printed once.
+
+    ANYONE HOLDING THE TOPIC CAN READ THE MESSAGES. ntfy has no accounts on the
+    free tier -- the topic IS the secret, which is why it is 32 random
+    characters rather than "gridiron-results", and why the messages carry
+    counts and team names and nothing else. A topic somebody guesses gives them
+    last night's scores, which are public; it must never give them more.
+    """
+    existing = config.setting(NTFY_VAR)
+    if existing and not rotate:
+        print(f"A push topic already exists in {auth.ENV_FILE}.")
+        print("It is not printed again. To replace it: --ntfy --rotate")
+        return 0
+
+    topic = secrets.token_urlsafe(24)[:32]
+    write_env(topic, NTFY_VAR)
+    print()
+    print("=" * 68)
+    print("  PHONE PUSH TOPIC - shown once. Subscribe to it on your phone.")
+    print("=" * 68)
+    print()
+    print(f"  {topic}")
+    print()
+    print("  1. Install the ntfy app (Android, iOS, or ntfy.sh in a browser).")
+    print("  2. Subscribe to that topic name exactly.")
+    print("  3. Results and failures arrive there.")
+    print()
+    print("  ANYONE WITH THIS TOPIC CAN READ THE MESSAGES. They carry counts")
+    print("  and team names only -- never a probability, a line, or reasoning.")
+    print(f"  written to {auth.ENV_FILE}")
+    print()
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rotate", action="store_true",
                     help="replace an existing token and end every open session")
+    ap.add_argument("--ntfy", action="store_true",
+                    help="create the phone push topic instead of the access "
+                         "token (GRIDIRON_NTFY_TOPIC)")
     args = ap.parse_args()
+
+    if args.ntfy:
+        return _make_ntfy_topic(rotate=args.rotate)
 
     existing = auth.read_token()
     if existing and not args.rotate:

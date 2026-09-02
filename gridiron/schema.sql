@@ -1040,3 +1040,18 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 3: call already resolved; resolution is idempotent');
 END;
+
+-- WHAT WAS SENT, AND WHETHER IT ARRIVED (GRIDIRON_12). The schedule panel
+-- reads the last row: a push that silently failed is worse than no push
+-- channel at all, because the operator believes they are covered.
+CREATE TABLE IF NOT EXISTS notifications (
+    id            INTEGER PRIMARY KEY,
+    queued_utc    TEXT    NOT NULL,
+    sent_utc      TEXT,
+    kind          TEXT    NOT NULL CHECK (kind IN ('results', 'failure')),
+    title         TEXT    NOT NULL,
+    body          TEXT    NOT NULL,
+    state         TEXT    NOT NULL CHECK (state IN ('queued','sent','failed')),
+    channels_json TEXT
+);
+CREATE INDEX IF NOT EXISTS notifications_when ON notifications (id DESC);

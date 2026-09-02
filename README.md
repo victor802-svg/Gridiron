@@ -487,3 +487,36 @@ available and is better than a manufactured one.
 
 See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for what would have to be true
 before any of it counted as evidence.
+
+## Getting results on your phone
+
+Gridiron can push results and failures to a phone through
+[ntfy](https://ntfy.sh), which needs no account.
+
+```bash
+python tools/make_token.py --ntfy
+```
+
+That prints a random 32-character topic once and writes it to `.env`. Install
+the ntfy app (Android, iOS, or the website), subscribe to that exact topic,
+and results arrive there.
+
+**Anyone holding the topic can read the messages.** ntfy's free tier has no
+accounts — the topic *is* the secret, which is why it is random rather than
+`gridiron-results`. That is also why the messages carry only counts, team
+names and task names: never a probability, never a line, never any reasoning.
+A guard refuses to send a message containing any of those, and a planted
+violation proves it fires.
+
+Two kinds of message arrive:
+
+- **Results**, from the resolve task, only when something actually settled.
+  One message per run, each sport in its own clause, never summed together.
+  Inside quiet hours (23:00–07:00 local) they queue and arrive as a single
+  message in the morning.
+- **Failures**, on by default — a missed slate, a task silent for more than 36
+  hours, a red gate. These do **not** queue: a stalled appliance at 02:00 is
+  still stalled at 07:00. Switch them off with `GRIDIRON_NOTIFY_FAILURES=0`.
+
+The Windows toast needs nothing installed; it uses PowerShell and the built-in
+notification API.

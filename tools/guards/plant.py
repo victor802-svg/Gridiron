@@ -752,6 +752,55 @@ def _scan_planted_module(source: str) -> list[str]:
     return faults
 
 
+def plant_a_notification_carrying_a_probability() -> Result:
+    """Put a percentage in a push notification.
+
+    A push lands on a lock screen, and the ntfy topic is readable by anyone
+    holding it -- there are no accounts on the free tier, the topic IS the
+    secret. A probability there is a tip, whatever the field is called.
+    """
+    from gridiron import notify as _notify
+
+    faults = _notify.message_faults("MLB: 7 settled - model 62% right")
+    return _desk_plant(faults, "put a probability in a notification",
+                       "notify.message_faults")
+
+
+def plant_a_notification_carrying_a_line() -> Result:
+    """Put a spread in a push notification.
+
+    THE ONE THE FIRST VERSION OF THE GUARD MISSED. `\b[-+]` cannot match after
+    a space -- a word boundary needs a word character on one side and both
+    ' ' and '-' are non-word -- so "Alabama -24.5" walked straight through the
+    check whose entire purpose is that no line leaves the building.
+    """
+    from gridiron import notify as _notify
+
+    faults = _notify.message_faults("CFB: Alabama -24.5 settled")
+    return _desk_plant(faults, "put a line in a notification",
+                       "notify.message_faults")
+
+
+def plant_a_results_message_on_an_empty_run() -> Result:
+    """Send a results notification when nothing settled.
+
+    Every four hours, forever. A notification that says nothing happened is a
+    notification that teaches its reader to stop opening them, which disarms
+    the channel that matters -- the failure one -- by habit rather than by
+    code.
+    """
+    from gridiron import notify as _notify
+
+    said = _notify.results_message({"mlb": {"settled": 0, "right": 0}})
+    if said is None:
+        return Result("NOTIFICATIONS", "message the operator about nothing",
+                      "notify.results_message", True,
+                      "a run that settled nothing produces no message")
+    return Result("NOTIFICATIONS", "message the operator about nothing",
+                  "notify.results_message", False,
+                  f"NOT CAUGHT - it would have sent {said!r}")
+
+
 def plant_a_merged_forecaster_view() -> Result:
     """Offer an "all forecasters" option on the record.
 
@@ -2670,6 +2719,9 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_notification_carrying_a_probability())
+    results.append(plant_a_notification_carrying_a_line())
+    results.append(plant_a_results_message_on_an_empty_run())
     results.append(plant_a_merged_forecaster_view())
     results.append(plant_an_unlabelled_operator_record())
     results.append(plant_a_stake_field_on_a_call())

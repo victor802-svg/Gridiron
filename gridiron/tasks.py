@@ -358,8 +358,57 @@ def _run_resolve(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     n = settled["settled"]
     payload = {k: v for k, v in settled.items() if not isinstance(v, list)}
     if n == 0:
+        # NO MESSAGE ON A QUIET RUN. A notification saying "0 settled" is a
+        # notification that teaches its reader to stop reading them, and this
+        # task runs every four hours whether or not anything finished.
         return "noop", "no prediction had a finished game waiting", payload
+
+    payload["notified"] = _notify_results(conn)
     return "ok", f"settled {n} prediction(s)", payload
+
+
+def _notify_results(conn: sqlite3.Connection) -> dict:
+    """Tell the operator what landed, per sport, never summed (LAW 6).
+
+    Counted from the record AFTER the resolver has written, rather than from
+    its return value: the message then describes what is actually settled
+    rather than what one pass happened to touch, which is the difference that
+    matters if a pass is interrupted and resumed.
+    """
+    from . import notify
+
+    by_sport = {}
+    for sport in config.SPORTS:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(outcome), 0) AS right_"
+            " FROM predictions WHERE sport = ? AND resolved_utc >= ?",
+            (sport, _since_last_notification(conn))).fetchone()
+        calls_row = conn.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(c.outcome), 0) AS right_"
+            " FROM operator_calls c JOIN predictions p ON p.id = c.prediction_id"
+            " WHERE p.sport = ? AND c.resolved_utc >= ?",
+            (sport, _since_last_notification(conn))).fetchone()
+        by_sport[sport] = {
+            "settled": row["n"] or 0, "right": row["right_"] or 0,
+            "calls_settled": calls_row["n"] or 0,
+            "calls_right": calls_row["right_"] or 0,
+        }
+    body = notify.results_message(by_sport)
+    if not body:
+        return {"sent": False, "reason": "nothing settled since the last message"}
+    try:
+        return notify.send(conn, "results", body)
+    except notify.Blocked as exc:
+        # REFUSED RATHER THAN SENT. A message carrying a number somebody could
+        # act on is not softened, it is stopped, and the reason is recorded.
+        return {"sent": False, "reason": str(exc)}
+
+
+def _since_last_notification(conn: sqlite3.Connection) -> str:
+    row = conn.execute(
+        "SELECT MAX(queued_utc) AS last FROM notifications WHERE kind='results'"
+    ).fetchone()
+    return (row["last"] if row and row["last"] else "0000-01-01T00:00:00Z")
 
 
 def _run_live(conn: sqlite3.Connection) -> tuple[str, str, dict]:
@@ -649,7 +698,61 @@ def status(conn: sqlite3.Connection) -> dict:
         # ran four hundred times look identical by that measure. The request
         # count is the figure that can be held to a rate.
         "live_poll": _live_rate(conn),
+        # WHAT WAS SENT, AND WHETHER IT ARRIVED. A push that silently failed
+        # is worse than having no push channel: the operator believes they are
+        # covered, which is the precise state this whole feature exists to
+        # end.
+        "last_notification": _last_notification(conn),
     }
+
+
+def _last_notification(conn: sqlite3.Connection) -> dict | None:
+    from . import notify
+
+    last = notify.last_sent(conn)
+    if last is None:
+        return None
+    return {
+        "kind": last["kind"],
+        "state": last["state"],
+        "sent_utc": last["sent_utc"],
+        "queued_utc": last["queued_utc"],
+        # The body is shown: it carries counts and team names by construction,
+        # and a panel that hides what it sent cannot be checked.
+        "body": last["body"],
+        "channels": last["channels"],
+    }
+
+
+def notify_failures(conn: sqlite3.Connection) -> dict:
+    """The second channel (ruling R4), on by default.
+
+    THE CASE THIS EXISTS FOR ALREADY HAPPENED. The appliance sat stalled for
+    two days with every screen green -- `resolve` ran every four hours and
+    truthfully reported nothing to settle, because nothing was updating
+    `games.status`. No task failed. No error was logged. A push is the only
+    surface that reaches somebody who is not looking at a screen.
+    """
+    from . import notify
+
+    if config.setting("GRIDIRON_NOTIFY_FAILURES", "1") != "1":
+        return {"sent": False, "reason": "failure notices are switched off"}
+
+    state = status(conn)
+    problems = []
+    for task in state["tasks"]:
+        if task.get("silent"):
+            problems.append(f"{language.task_name(task['task'])} has not run "
+                            f"in {int(task.get('hours_since') or 0)} hours")
+        if task.get("missed"):
+            problems.append(f"{language.task_name(task['task'])} missed a slate")
+    body = notify.failure_message(problems)
+    if not body:
+        return {"sent": False, "reason": "nothing is wrong"}
+    try:
+        return notify.send(conn, "failure", body, title="Gridiron needs a look")
+    except notify.Blocked as exc:
+        return {"sent": False, "reason": str(exc)}
 
 
 def _live_rate(conn: sqlite3.Connection) -> dict:
