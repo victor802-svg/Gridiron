@@ -344,3 +344,17 @@ read the messages — counts and team names only, but still.
 ```
 python tools/make_token.py --ntfy --rotate
 ```
+
+## 2026-09-02 — GRIDIRON_16
+
+- **NFL week 1 holds two prediction sets.** `predict:nfl` ran twice on
+  2026-08-29 (05:55Z and 07:34Z) and wrote a full second set: 104 written,
+  78 standing, 26 superseded. Both rows count in calibration, so week 1
+  counts 26 questions twice. LAW 3 forbids deleting either. Needs a ruling
+  on whether a duplicate run should be refused or flagged at write time.
+- **`dumbbell()` in `app.js` has no call sites.** Exported for tests only.
+  Pre-existing; left alone under GRIDIRON_16 R3 because it is not on Picks.
+- **Rotate the ntfy topic and the Anthropic API key.** Both appeared in a
+  session transcript.
+- **The ntfy push is ready but unreceived.** The phone app is not set up.
+  Carried from BRIEF A phase O5 item 3, which STEP 0 stopped.
