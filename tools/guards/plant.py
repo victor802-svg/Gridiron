@@ -871,6 +871,89 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
+def plant_a_model_constant_made_editable() -> Result:
+    """Put the props floor in the settings form.
+
+    THE FENCE. Operational knobs are preferences: getting one wrong costs a
+    late slate. The props floor is not -- every figure already written was
+    produced under the old value, and a curve computed across a change nobody
+    recorded describes two different models at once. So changing it is a
+    ruling made in config.py with a dated note, and this page refuses it BY
+    NAME rather than by not drawing a box.
+    """
+    from gridiron import db as _db, settings as _settings
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    try:
+        _settings.set_value(conn, "PROPS_MIN_CLAIM", "0.50")
+    except _settings.SettingRefused as exc:
+        return Result("SETTINGS", "edit a model constant from the settings page",
+                      "settings.set_value", True, str(exc))
+    return Result("SETTINGS", "edit a model constant from the settings page",
+                  "settings.set_value", False,
+                  "the props floor was written from the settings page")
+
+
+def plant_a_setting_updated_in_place() -> Result:
+    """Rewrite a settings row instead of appending a new one.
+
+    A settings row records a DECISION -- at 21:40 the operator moved the
+    baseball slate. Updating in place destroys the only evidence of when a
+    schedule changed and what from, which is exactly what somebody wants when
+    a slate is missed and nobody remembers whether the time moved.
+    """
+    from gridiron import db as _db
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    conn.execute("INSERT INTO settings (changed_utc, name, value)"
+                 " VALUES ('2026-09-02T00:00:00Z','predict_mlb_at','11:00')")
+    try:
+        conn.execute("UPDATE settings SET value = '09:00'"
+                     " WHERE name = 'predict_mlb_at'")
+    except Exception as exc:  # noqa: BLE001 - the trigger is the guard
+        return Result("LAW 3", "rewrite a settings row in place",
+                      "settings_no_update", True, str(exc))
+    return Result("LAW 3", "rewrite a settings row in place",
+                  "settings_no_update", False,
+                  "a settings row was edited after the fact")
+
+
+def plant_a_schedule_change_claimed_without_a_read_back() -> Result:
+    """Report a task moved without asking the OS whether it did.
+
+    An exit code says the command was accepted, not that the task moved. A
+    settings page saying 11:05 over a scheduler still firing at 11:00 is worse
+    than not offering the setting: the operator now believes something false
+    and has a screen agreeing with them.
+    """
+    faults = audit.schedule_claim_faults(audit.SCHEDULE_FIXTURE_NO_READBACK)
+    faults += audit.schedule_claim_faults(audit.SCHEDULE_FIXTURE_DISAGREES)
+    return _desk_plant(faults, "claim a schedule change without confirming it",
+                       "audit.schedule_claim_faults")
+
+
+def plant_an_unauthenticated_settings_write() -> Result:
+    """POST a settings change with no session.
+
+    The route is closed because `require_session` closes everything not on the
+    open list -- so it is protected because it was added, not because somebody
+    remembered to protect it.
+    """
+    from fastapi.testclient import TestClient
+
+    from gridiron import api as _api
+
+    client = TestClient(_api.app)
+    got = client.post("/api/settings",
+                      json={"name": "predict_mlb_at", "value": "03:00"})
+    caught = got.status_code in (401, 403, 503)
+    return Result("SETTINGS", "change a setting with no session",
+                  "api.require_session", caught,
+                  f"HTTP {got.status_code}")
+
+
 def plant_a_calendar_that_merges_sports() -> Result:
     """Put a football day into the baseball calendar.
 
@@ -2809,6 +2892,10 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
+    results.append(plant_a_model_constant_made_editable())
+    results.append(plant_a_setting_updated_in_place())
+    results.append(plant_a_schedule_change_claimed_without_a_read_back())
+    results.append(plant_an_unauthenticated_settings_write())
     results.append(plant_a_calendar_that_merges_sports())
     results.append(plant_a_void_counted_as_a_loss())
     results.append(plant_a_square_tinted_against_its_balance())

@@ -992,6 +992,55 @@ CREATE INDEX IF NOT EXISTS live_polls_when ON live_polls (polled_utc DESC);
 -- the not_cover / "fail to cover" unification that a call's side validation
 -- first forced into one place.
 
+-- ---------------------------------------------------------------------------
+-- OPERATIONAL SETTINGS (GRIDIRON_13 P3)
+-- ---------------------------------------------------------------------------
+--
+-- APPEND-ONLY, on the same terms as `predictions`, and for a related reason.
+-- A settings row is a record of a DECISION: at 21:40 on a Tuesday the operator
+-- moved the baseball prediction to 11:05 local. Updating a row in place would
+-- destroy the only evidence of when a schedule changed and what it changed
+-- from -- which is exactly the evidence somebody wants when a slate is missed
+-- and nobody can remember whether the time moved.
+--
+-- WHAT MAY LIVE HERE IS FENCED IN `gridiron/settings.py`: operational knobs
+-- only -- when tasks run, quiet hours, which notifications are on. MODEL AND
+-- LAW CONSTANTS ARE NOT SETTINGS. The props floor, the ladders, the sample
+-- gates, the factor sets and the margin SDs are declared in `config.py` with
+-- dated notes, because changing one is a ruling with a reason, not a
+-- preference with a text box. A planting proves the page cannot edit them.
+--
+-- SECRETS DO NOT LIVE HERE EITHER. The access token and the ntfy topic stay
+-- in `.env`, outside the database and outside any backup of it.
+CREATE TABLE IF NOT EXISTS settings (
+    id          INTEGER PRIMARY KEY,
+    changed_utc TEXT    NOT NULL,
+    name        TEXT    NOT NULL,
+    value       TEXT    NOT NULL,
+    -- WHAT IT WAS, stored on the row rather than derived by looking at the
+    -- previous one. A history that has to be reconstructed by ordering is a
+    -- history that reads differently after a clock skew.
+    previous    TEXT,
+    note        TEXT
+);
+CREATE INDEX IF NOT EXISTS settings_current
+    ON settings (name, changed_utc DESC);
+
+CREATE TRIGGER IF NOT EXISTS settings_no_update
+BEFORE UPDATE ON settings
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a setting is append-only. Changing one writes a NEW row; '
+        || 'the old value stays and the change is shown in recent changes');
+END;
+
+CREATE TRIGGER IF NOT EXISTS settings_no_delete
+BEFORE DELETE ON settings
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a setting is append-only and cannot be deleted');
+END;
+
 -- WHAT WAS SENT, AND WHETHER IT ARRIVED (GRIDIRON_12). The schedule panel
 -- reads the last row: a push that silently failed is worse than no push
 -- channel at all, because the operator believes they are covered.

@@ -106,6 +106,40 @@ def read_token() -> str | None:
     return config.read_env_file(ENV_FILE).get(TOKEN_VAR) or None
 
 
+# ---------------------------------------------------------------------------
+# CSRF, per form (GRIDIRON_13 P3)
+# ---------------------------------------------------------------------------
+#
+# The session cookie is SameSite=Strict, which already refuses a cross-site
+# POST in every browser that honours it. This is the second lock, and it is
+# here because the first one is a promise made by somebody else's software:
+# a settings write changes when the appliance runs, and "the browser will not
+# send the cookie" is not a sentence this project wants to be the whole of its
+# defence.
+#
+# DERIVED FROM THE SESSION, not stored. A token table would be a third thing
+# to expire and clean up; an HMAC of the session id under the access token is
+# stateless, unforgeable without the token, and dies with the session.
+
+CSRF_HEADER = "X-Gridiron-Form"
+
+
+def csrf_token(session_id: str | None) -> str | None:
+    """The form token for this session. None when there is no session."""
+    secret = read_token()
+    if not session_id or not secret:
+        return None
+    return hmac.new(secret.encode("utf-8"), session_id.encode("utf-8"),
+                    "sha256").hexdigest()[:32]
+
+
+def csrf_is_valid(session_id: str | None, candidate: str | None) -> bool:
+    expected = csrf_token(session_id)
+    if not expected or not candidate:
+        return False
+    return hmac.compare_digest(expected, candidate)
+
+
 def token_matches(candidate: str) -> bool:
     """Constant-time comparison. `==` on a secret leaks its prefix through
     timing, which is a small leak on a fast local network and a free one to

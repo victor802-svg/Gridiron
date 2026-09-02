@@ -2118,6 +2118,252 @@ const Gridiron = (function () {
     return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
   }
 
+  // SETTINGS (GRIDIRON_13 P3).
+  //
+  // EVERY LABEL, EVERY REASON AND EVERY REFUSAL IS THE SERVER'S. This places
+  // controls and posts values; it decides nothing about what may be changed.
+  // The fence lives in `settings.EDITABLE`, so a control that should not
+  // exist cannot be created by editing this file.
+  let csrfToken = null;
+
+  async function renderSettings() {
+    const data = await fetchJSON('/api/settings');
+    csrfToken = data.csrf || csrfToken;
+    document.getElementById('settings-caption').textContent =
+      int(data.n) + ' settings you can change';
+
+    const host = document.getElementById('settings-sections');
+    host.innerHTML = '';
+    (data.sections || []).forEach(section => {
+      const panel = el('section', 'panel');
+      panel.appendChild(el('h3', '', section.name));
+      section.settings.forEach(s => panel.appendChild(settingRow(s)));
+      host.appendChild(panel);
+    });
+
+    renderAccess(data.access);
+    renderHealthPanel(data.health);
+    renderFenced(data);
+    renderRulings(data.rulings);
+    renderRecentChanges(data.recent);
+  }
+
+  function settingRow(s) {
+    const row = el('div', 'set');
+    const key = el('div', 'set-k');
+    key.appendChild(el('b', '', s.label));
+    key.appendChild(el('small', '', s.why || ''));
+    // WHEN THE APP AND THE SCHEDULER DISAGREE, the sentence sits with the
+    // control rather than in a banner elsewhere on the page.
+    if (s.disagreement) key.appendChild(el('div', 'set-warn', s.disagreement));
+    row.appendChild(key);
+
+    const val = el('div', 'set-v');
+    let input;
+    if (s.kind === 'switch') {
+      input = el('button', 'set-switch');
+      input.type = 'button';
+      const on = s.value === '1';
+      input.textContent = on ? 'on' : 'off';
+      input.setAttribute('aria-pressed', String(on));
+      input.addEventListener('click', () => {
+        const next = input.getAttribute('aria-pressed') === 'true' ? '0' : '1';
+        saveSetting(s.name, next, row);
+      });
+    } else {
+      input = el('input', 'inp');
+      input.value = s.value;
+      input.setAttribute('aria-label', s.label);
+      input.addEventListener('change', () => saveSetting(s.name, input.value, row));
+    }
+    val.appendChild(input);
+    if (s.kind === 'hour') val.appendChild(document.createTextNode(' :00 local'));
+    else if (s.kind === 'time') val.appendChild(document.createTextNode(' local'));
+    row.appendChild(val);
+    return row;
+  }
+
+  async function saveSetting(name, value, row) {
+    let said = row.querySelector('.set-said');
+    if (!said) { said = el('div', 'set-said'); row.appendChild(said); }
+    said.textContent = 'saving...';
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'X-Gridiron-Form': csrfToken || '' },
+        body: JSON.stringify({ name: name, value: value }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        // THE SERVER'S OWN WORDS. It refuses a model constant and says why;
+        // inventing a friendlier message here would hide which rule stopped
+        // it, and the reason is the whole point of the fence.
+        said.textContent = body.detail || 'that change was not recorded';
+        return;
+      }
+      said.textContent = body.line || 'saved';
+      renderRecentChanges(body.recent);
+    } catch (err) {
+      said.textContent = 'the change did not reach the appliance';
+    }
+  }
+
+  function renderAccess(access) {
+    const host = document.getElementById('settings-access');
+    if (!host || !access) return;
+    host.innerHTML = '';
+    ['token', 'topic'].forEach(k => {
+      const a = access[k];
+      if (!a) return;
+      const row = el('div', 'set');
+      const key = el('div', 'set-k');
+      key.appendChild(el('b', '', a.label));
+      key.appendChild(el('small', '', a.why));
+      row.appendChild(key);
+      const val = el('div', 'set-v');
+      // MASKED, NEVER SHOWN. The server sends four characters at each end and
+      // the length; it does not send the secret.
+      val.appendChild(el('code', '', a.masked));
+      val.appendChild(el('div', 'set-how', 'rotate: ' + a.how));
+      row.appendChild(val);
+      host.appendChild(row);
+    });
+    if (access.build && access.build.line) {
+      host.appendChild(el('div', 'set-how', 'this build: ' + access.build.line));
+    }
+  }
+
+  // HEALTH IS THE SCHEDULE PANEL'S DATA, drawn by the schedule panel's own
+  // renderer. One implementation with the rail notices, as P3 requires: a
+  // second one would be a second opinion about whether a task is late.
+  function renderHealthPanel(health) {
+    const host = document.getElementById('settings-health');
+    if (!host) return;
+    host.innerHTML = '';
+    if (!health) return;
+    (health.tasks || []).forEach(t => {
+      const row = el('div', 'set');
+      const key = el('div', 'set-k');
+      key.appendChild(el('b', '', t.task_label || t.task));
+      key.appendChild(el('small', '', t.what || ''));
+      // A TASK THAT HAS GONE QUIET SAYS SO, and a missed slate is named
+      // rather than counted. Weight and position, never red: a late task is
+      // not a pick that lost (GRIDIRON_16 R2).
+      if (t.silent) {
+        key.appendChild(el('div', 'set-warn',
+          'This has not run for ' + Math.round(t.age_hours) +
+          ' hours, which is longer than it should ever be quiet.'));
+      }
+      (t.missed || []).forEach(m => key.appendChild(el('div', 'set-warn',
+        typeof m === 'string' ? m : (m.line || ''))));
+      row.appendChild(key);
+
+      const val = el('div', 'set-v');
+      // EVERY CELL COMES FROM `task_runs`. No string on this page is copied
+      // out of the mockup: `last_result` is what the run recorded, and
+      // `last_detail` is what it said about itself.
+      val.appendChild(el('code', '', t.last_result || 'never run'));
+      if (t.last_run_utc) {
+        val.appendChild(el('div', 'set-how',
+          'last ran ' + localDateTime(t.last_run_utc)));
+      }
+      if (t.next_due_utc) {
+        val.appendChild(el('div', 'set-how',
+          'next due ' + localDateTime(t.next_due_utc)));
+      }
+      if (t.last_detail) {
+        val.appendChild(el('div', 'set-how', t.last_detail));
+      }
+      row.appendChild(val);
+      host.appendChild(row);
+    });
+    // STALENESS PER SPORT, side by side and never summed (LAW 6). The
+    // server already says so in `side_by_side_sports`; this places its notes.
+    ((health.schedule_staleness || {}).sports || []).forEach(sp => {
+      host.appendChild(el('div', 'set-how',
+        (sp.label || sp.sport) + ': ' + (sp.note || '')));
+    });
+    if (health.live_poll && health.live_poll.line) {
+      host.appendChild(el('div', 'set-how', health.live_poll.line));
+    }
+    // THE LAST NOTIFICATION AND WHETHER IT ARRIVED. A push that silently
+    // failed is worse than no push channel, because the operator believes
+    // they are covered -- so the channel results are shown, not just the fact
+    // that something was sent.
+    const last = health.last_notification;
+    if (last) {
+      const channels = (last.channels || [])
+        .map(c => c.channel + ' ' + (c.ok ? 'delivered' : 'failed: ' + (c.detail || '')))
+        .join(' · ');
+      host.appendChild(el('div', 'set-how',
+        'last message (' + (last.state || '') + '): ' + (last.body || '') +
+        (channels ? ' — ' + channels : '')));
+    }
+  }
+
+  function renderFenced(data) {
+    const host = document.getElementById('settings-fenced');
+    const note = document.getElementById('settings-fenced-note');
+    if (!host) return;
+    if (note) note.textContent = data.fenced_note || '';
+    host.innerHTML = '';
+    (data.fenced || []).forEach(f => {
+      const row = el('div', 'set set-fenced');
+      const key = el('div', 'set-k');
+      key.appendChild(el('b', '', f.label));
+      key.appendChild(el('small', '', f.what));
+      row.appendChild(key);
+      const val = el('div', 'set-v');
+      // READ-ONLY, AND NOT AN INPUT AT ALL. A disabled text box invites a
+      // reader to go looking for the thing that would enable it.
+      val.appendChild(el('code', '', f.value));
+      val.appendChild(el('div', 'set-how', 'declared ' + (f.declared || '')));
+      row.appendChild(val);
+      host.appendChild(row);
+    });
+  }
+
+  function renderRulings(rulings) {
+    const host = document.getElementById('settings-rulings');
+    if (!host) return;
+    host.innerHTML = '';
+    (rulings || []).forEach(r => {
+      const row = el('div', 'set set-fenced');
+      const key = el('div', 'set-k');
+      key.appendChild(el('b', '', r.name));
+      key.appendChild(el('small', '', r.what));
+      row.appendChild(key);
+      host.appendChild(row);
+    });
+  }
+
+  function renderRecentChanges(recent) {
+    const host = document.getElementById('settings-recent');
+    const count = document.getElementById('settings-recent-n');
+    if (!host) return;
+    host.innerHTML = '';
+    if (count) count.textContent = (recent || []).length + ' recorded';
+    if (!(recent || []).length) {
+      host.appendChild(el('div', 'empty', 'Nothing has been changed yet.'));
+      return;
+    }
+    recent.forEach(c => {
+      const row = el('div', 'change');
+      row.appendChild(el('span', 'change-when', localDateTime(c.when)));
+      row.appendChild(el('span', '', c.label + ': ' +
+        (c.previous ? c.previous + ' → ' : '') + c.value));
+      if (c.note) row.appendChild(el('span', 'change-note', ' ' + c.note));
+      host.appendChild(row);
+    });
+  }
+
+  function localDateTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d) ? iso : d.toLocaleString();
+  }
+
   async function renderResults() {
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
     requireN(data, 'history');
@@ -2587,6 +2833,7 @@ const Gridiron = (function () {
     // rows live here and only here; Picks no longer carries a resolved
     // section. `#/history` still resolves -- see the redirect in `route`.
     results: renderResults,
+    settings: renderSettings,
     schedule: renderSchedule,
     digest: renderDigest
   };

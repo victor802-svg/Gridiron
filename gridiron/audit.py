@@ -2044,6 +2044,83 @@ def _check_the_colour_scanner_can_see() -> None:
 _check_the_colour_scanner_can_see()
 
 
+# A SCHEDULE CHANGE IS NOT DONE UNTIL THE OS SAYS SO (GRIDIRON_13 P3)
+# ---------------------------------------------------------------------------
+#
+# Changing a task's time from the app is two acts: ask the OS to change it,
+# and then ASK THE OS WHAT IT NOW HAS. Reporting success on an exit code is
+# how an appliance ends up with a settings page saying 11:05 and a scheduler
+# still firing at 11:00 -- worse than not offering the setting, because the
+# operator now believes something false and has a screen agreeing with them.
+#
+# This project has already lived the general version: two days stalled with
+# every screen green, because every screen reported what it had been told
+# rather than what was true.
+
+def schedule_claim_faults(payload: dict) -> list[str]:
+    """A schedule change reported without reading the scheduler back."""
+    faults = []
+    if not isinstance(payload, dict):
+        return faults
+    if "changed" not in payload or "task" not in payload:
+        return faults
+    read_back = payload.get("read_back")
+    if not isinstance(read_back, dict):
+        faults.append(
+            f"the change to {payload.get('task')!r} is reported without "
+            f"reading the scheduler back. An exit code says the command was "
+            f"accepted, not that the task moved; the only evidence that "
+            f"counts is what the OS holds afterwards.")
+        return faults
+    if payload.get("changed") and read_back.get("found"):
+        asked, held = payload.get("asked"), read_back.get("at")
+        if asked and held and asked != held:
+            faults.append(
+                f"the change to {payload.get('task')!r} is reported as done, "
+                f"but the scheduler holds {held} and {asked} was asked for. A "
+                f"page that says 11:05 over a scheduler firing at 11:00 is "
+                f"worse than no setting at all.")
+    return faults
+
+
+SCHEDULE_FIXTURE_NO_READBACK = {
+    "task": "predict:mlb", "asked": "11:05", "changed": True,
+    "line": "Gridiron-Predict-MLB now runs at 11:05.",
+}
+SCHEDULE_FIXTURE_DISAGREES = {
+    "task": "predict:mlb", "asked": "11:05", "changed": True,
+    "read_back": {"found": True, "at": "11:00"},
+}
+SCHEDULE_FIXTURE_GOOD = {
+    "task": "predict:mlb", "asked": "11:05", "changed": True,
+    "read_back": {"found": True, "at": "11:05"},
+}
+
+
+def check_a_schedule_change_was_read_back(payload: dict) -> None:
+    faults = schedule_claim_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A SCHEDULE CHANGE WAS CLAIMED, NOT CONFIRMED:"
+            + _NL2 + _NL2.join(faults))
+
+
+def _check_the_schedule_scanner_can_see() -> None:
+    problems = []
+    if not schedule_claim_faults(SCHEDULE_FIXTURE_NO_READBACK):
+        problems.append("schedule_claim_faults misses a change with no read-back")
+    if not schedule_claim_faults(SCHEDULE_FIXTURE_DISAGREES):
+        problems.append("schedule_claim_faults misses a read-back that "
+                        "disagrees with what was asked")
+    if schedule_claim_faults(SCHEDULE_FIXTURE_GOOD):
+        problems.append("schedule_claim_faults flags a confirmed change")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_schedule_scanner_can_see()
+
+
 # THE SEASON AS A SHAPE (GRIDIRON_13 P2)
 # ---------------------------------------------------------------------------
 #

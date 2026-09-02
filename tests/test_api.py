@@ -45,18 +45,27 @@ def test_no_route_can_write_to_the_record():
     a separate handle, and they are named here so a third POST cannot appear
     without this test failing and someone having to justify it.
 
-    THAT HAPPENED ONCE, on 2026-09-02: `POST /api/calls` was added for the
-    operator's own calls, argued for in this docstring, and listed here. The
-    feature was withdrawn the same day (GRIDIRON_16 R1) and the route went
-    with it, so the list is back to the two session paths. A third POST still
-    has to come back here and argue for itself.
+    THAT HAS HAPPENED TWICE, and both arguments live here.
+
+    `POST /api/calls` was added on 2026-09-02 for the operator's own calls and
+    withdrawn the same day (GRIDIRON_16 R1); the route went with it.
+
+    `POST /api/settings` is the standing one. It writes to `settings` -- when
+    tasks run, quiet hours, which notifications are on -- and it CANNOT reach
+    the record: it is given `get_settings_conn`, a handle whose only caller
+    refuses every name outside `settings.EDITABLE`, while the interface's own
+    handle stays `query_only`. The `settings` table has its own append-only
+    triggers, and the test below proves `predictions` is unmoved by every
+    write route the app has.
+
+    A FOURTH POST still has to come back here and argue for itself.
     """
     writers = sorted(
         route.path
         for route in api.app.routes
         if set(getattr(route, "methods", set()) or set()) - {"GET", "HEAD"}
     )
-    assert writers == ["/auth/login", "/auth/logout"], (
+    assert writers == ["/api/settings", "/auth/login", "/auth/logout"], (
         f"a write verb appeared outside the sign-in paths: {writers}"
     )
 

@@ -1662,3 +1662,55 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: var(--chrome); font-family: var(--body); font-size: 12px;
   text-decoration: underline; cursor: pointer;
 }
+
+/* --- SETTINGS (GRIDIRON_13 P3) --------------------------------------------
+   Two columns: what the setting is on the left, its value on the right. The
+   fenced rows use the same shape with no control at all -- a DISABLED input
+   invites a reader to go looking for the thing that would enable it. */
+.set {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.set:last-child { border-bottom: 0; }
+.set-k b { display: block; font-size: 13px; color: var(--chrome); font-weight: 600; }
+.set-k small {
+  display: block; margin-top: 3px;
+  font-size: 11px; color: var(--faint); max-width: 62ch;
+}
+.set-v { text-align: right; font-family: var(--mono); font-size: 12px; }
+.set-v code { color: var(--muted); }
+.set-how { margin-top: 4px; font-size: 10px; color: var(--faint); }
+.set-said { grid-column: 1 / -1; font-family: var(--mono); font-size: 11px;
+            color: var(--muted); }
+/* A DISAGREEMENT IS NOT A LOSS (GRIDIRON_16 R2), so it carries weight and a
+   left edge rather than red. */
+.set-warn {
+  margin-top: 6px; padding-left: 8px;
+  border-left: 2px solid var(--line-lit);
+  font-size: 11px; color: var(--chrome); max-width: 62ch;
+}
+.inp {
+  background: var(--card-2); border: 1px solid var(--line);
+  color: var(--chrome); font-family: var(--mono); font-size: 12px;
+  padding: 5px 8px; border-radius: 6px; width: 72px; text-align: center;
+}
+.inp:focus-visible { outline: 2px solid var(--chrome); outline-offset: 1px; }
+.set-switch {
+  background: var(--card-2); border: 1px solid var(--line);
+  color: var(--chrome); font-family: var(--mono); font-size: 12px;
+  padding: 5px 14px; border-radius: 6px; cursor: pointer;
+}
+.set-switch[aria-pressed="true"] { border-color: var(--muted); }
+.set-fenced .set-v code { color: var(--chrome); }
+.change {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding: 7px 0; border-bottom: 1px solid var(--line);
+  font-size: 12px; color: var(--muted);
+}
+.change:last-child { border-bottom: 0; }
+.change-when { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.change-note { color: var(--faint); font-style: italic; }

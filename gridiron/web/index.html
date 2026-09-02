@@ -38,6 +38,7 @@
       <a href="#/week" data-route="week">Picks</a>
       <a href="#/record" data-route="record">Record</a>
       <a href="#/results" data-route="results">Results</a>
+      <a href="#/settings" data-route="settings">Settings</a>
       <a href="#/schedule" data-route="schedule">Schedule</a>
       <a href="#/factors" data-route="factors" class="nav-more">Factors</a>
       <a href="#/versions" data-route="versions" class="nav-more">Versions</a>
@@ -272,6 +273,41 @@
     <p class="footnote">This record is read-only. The API exposes no verb that writes to it.</p>
     <div class="table-scroll"><table id="history-table" class="grid"></table></div>
     <div class="pager"><button id="history-prev">Previous</button><span id="history-range"></span><button id="history-next">Next</button></div>
+  </section>
+
+  <!-- SETTINGS (GRIDIRON_13 P3). Operational knobs are editable here; model
+       and law constants are SHOWN, read-only, with the date they were
+       declared. The fence is in `settings.EDITABLE` and a planting proves a
+       model constant cannot be written from this page. -->
+  <section id="view-settings" class="view" hidden>
+    <h2>Settings <span id="settings-caption" class="caption"></span></h2>
+    <div id="settings-sections"></div>
+
+    <section class="panel">
+      <h3>Access</h3>
+      <div id="settings-access"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Health <small>what the appliance actually did</small></h3>
+      <div id="settings-health"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Model and law <small>shown here, changed by ruling</small></h3>
+      <p class="footnote" id="settings-fenced-note"></p>
+      <div id="settings-fenced"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Rulings in force <small>read-only</small></h3>
+      <div id="settings-rulings"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Recent changes <small id="settings-recent-n"></small></h3>
+      <div id="settings-recent"></div>
+    </section>
   </section>
 
   <section id="view-schedule" class="view" hidden>

@@ -986,6 +986,163 @@ def _empty_slate_message(conn: sqlite3.Connection, sport: str) -> str:
     )
 
 
+def settings_page(conn: sqlite3.Connection) -> dict:
+    """Everything the Settings page shows, in the sections it shows it in.
+
+    THE FENCE IS VISIBLE, not merely enforced. The model and law constants are
+    listed beside the editable knobs, read-only, each with the date it was
+    declared and the sentence saying that changing it is a ruling. Hiding them
+    would make the page look complete while leaving a reader wondering where
+    the props floor is; showing them without the fence would invite an edit
+    the app must refuse.
+    """
+    from . import scheduler, settings as settings_mod, tasks
+
+    values = settings_mod.current(conn)
+    sections: dict[str, list] = {}
+    for name, spec in settings_mod.EDITABLE.items():
+        entry = {
+            "name": name,
+            "label": spec["label"],
+            "why": spec["why"],
+            "kind": spec["kind"],
+            "value": values[name],
+            "default": spec["default"],
+        }
+        if spec.get("task"):
+            # WHAT THE OS ACTUALLY HOLDS, beside what the app has recorded.
+            # These can disagree -- a change that did not take, a machine
+            # where the tasks were never installed -- and the page says so
+            # rather than showing the stored value twice.
+            entry["task"] = spec["task"]
+            entry["scheduler"] = scheduler.read_os(spec["task"])
+            # WHEN THE TWO DISAGREE, SAY SO IN WORDS. This is not an edge
+            # case: on the machine this was built on, the app had recorded
+            # 09:00 for football while the scheduler held 11:00, and no
+            # college football task was installed at all. A page that shows
+            # only the stored value would have said 09:00 and been wrong,
+            # confidently, forever.
+            entry["disagreement"] = language.schedule_disagreement(
+                spec["label"], entry["value"], entry["scheduler"])
+        sections.setdefault(spec["section"], []).append(entry)
+
+    return {
+        "sections": [{"name": key, "settings": rows}
+                     for key, rows in sections.items()],
+        "fenced": settings_mod.fenced(),
+        "fenced_note": settings_mod.FENCED_NOTE,
+        "recent": settings_mod.history(conn),
+        "n": len(settings_mod.EDITABLE),
+        # HEALTH IS THE SCHEDULE PANEL, not a second implementation of it
+        # (P3). Every cell comes from `task_runs`; no string on this page is
+        # copied out of the mockup.
+        "health": tasks.status(conn),
+        "access": _access_panel(),
+        "rulings": _rulings_in_force(),
+    }
+
+
+def change_setting(conn: sqlite3.Connection, *, name: str, raw: str) -> dict:
+    """Record a change, and where it drives the OS, CONFIRM it there.
+
+    A setting that moves a scheduled task is not done when the row is written.
+    The row is what the app believes; the scheduler is what will actually
+    happen, and only one of those wakes up at 11:05.
+    """
+    from . import scheduler, settings as settings_mod
+
+    result = settings_mod.set_value(conn, name, raw)
+    spec = settings_mod.EDITABLE[name]
+    if spec.get("task") and result["changed"]:
+        applied = scheduler.apply_time(spec["task"], result["value"])
+        # THE CLAIM CANNOT LEAVE WITHOUT ITS EVIDENCE.
+        audit.check_a_schedule_change_was_read_back(applied)
+        result["scheduler"] = applied
+        result["line"] = result["line"] + " " + applied["line"]
+    result["recent"] = settings_mod.history(conn)
+    return result
+
+
+def _access_panel() -> dict:
+    """The secrets, MASKED, and what may be done to them.
+
+    NEITHER VALUE IS RETURNED. The token is the whole of the app's security
+    and the ntfy topic is readable by anyone holding it; a page that shows
+    either is a page that puts them in a screenshot.
+    """
+    from . import auth, config as cfg
+
+    token = auth.read_token()
+    topic = cfg.setting("GRIDIRON_NTFY_TOPIC")
+    return {
+        "token": {
+            "label": "Access token",
+            "state": ("set" if token else "not configured"),
+            "masked": _mask(token),
+            "how": "python tools/make_token.py",
+            "why": ("Rotating it signs out every device. The token is never "
+                    "shown, here or anywhere: it is compared server-side and "
+                    "exchanged for a session."),
+        },
+        "topic": {
+            "label": "Push topic",
+            "state": ("set" if topic else "not configured"),
+            "masked": _mask(topic),
+            "how": "python tools/make_token.py --ntfy",
+            "why": ("Anyone holding the topic can read the messages, which is "
+                    "why they carry counts and team names and nothing else."),
+        },
+        "build": buildinfo.freshness(),
+    }
+
+
+def _mask(secret: str | None) -> str:
+    """"KYOn...HZKE", or that there is nothing to mask.
+
+    ENOUGH TO TELL TWO APART, not enough to use. Four characters at each end
+    of a 43-character random string identifies which token is installed
+    without meaningfully narrowing a guess at it.
+    """
+    if not secret:
+        return "not set"
+    if len(secret) <= 12:
+        return "set"
+    return f"{secret[:4]}...{secret[-4:]} ({len(secret)} characters)"
+
+
+def _rulings_in_force() -> list[dict]:
+    """The laws, shown where somebody might look for a switch.
+
+    READ-ONLY AND SAID SO. This is the part of the settings page that exists
+    to answer "can I turn this off" with "no, and here is why", rather than
+    leaving a reader to search the codebase for a flag that does not exist.
+    """
+    return [
+        {"name": "Blind first",
+         "what": ("The probability is written before any market line is "
+                  "fetched. Structural: the prediction row exists before the "
+                  "line request is made.")},
+        {"name": "Declared factors only",
+         "what": ("Every factor is declared in advance with its rationale and "
+                  "scored from the date it was added, never backfitted.")},
+        {"name": "Append-only",
+         "what": ("A prediction cannot be edited, deleted or re-scored. "
+                  "Resolution writes an outcome and never rewrites a "
+                  "probability.")},
+        {"name": "No sample, no claim",
+         "what": ("Nothing claims an edge below 100 resolved predictions in "
+                  "that category, and every figure is shown with its N.")},
+        {"name": "Not a betting tool",
+         "what": ("No stake sizing, no bankroll, no bet recommendations. The "
+                  "output is a probability, its reasoning and a track "
+                  "record.")},
+        {"name": "Never aggregate across sports",
+         "what": ("Every curve, score, edge figure and sample size belongs to "
+                  "exactly one sport. The functions that read the record take "
+                  "the sport as a required argument.")},
+    ]
+
+
 def results_calendar(conn: sqlite3.Connection, *, sport: str,
                      days: int = 120) -> dict:
     """THE SEASON AS A SHAPE: one square per day, its balance inside.

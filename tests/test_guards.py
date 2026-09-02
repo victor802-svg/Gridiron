@@ -9,6 +9,7 @@ test in this file runs it and requires every planting to be caught.
 
 from __future__ import annotations
 
+import json
 import shutil
 import sqlite3
 import subprocess
@@ -803,3 +804,110 @@ def test_the_calendar_note_says_voids_are_neither():
 
     note = language.calendar_note()
     assert "neither" in note and "never answered is not a loss" in note
+
+
+# ---------------------------------------------------------------------------
+# SETTINGS, AND THE FENCE AROUND THEM (GRIDIRON_13 P3)
+# ---------------------------------------------------------------------------
+
+def test_a_model_constant_cannot_be_written_from_the_settings_page(tmp_path):
+    """Operational knobs are preferences; the props floor is not. Every figure
+    already written was produced under the old value."""
+    from gridiron import db as _db, settings as _settings
+
+    conn = _db.open_db(tmp_path / "t.db")
+    for name in ("PROPS_MIN_CLAIM", "MLB_PROP_LADDER",
+                 "MIN_SAMPLE_FOR_EDGE_CLAIM", "FACTOR_SET_VERSION"):
+        with pytest.raises(_settings.SettingRefused, match="not an operational"):
+            _settings.set_value(conn, name, "0.5")
+
+
+def test_the_fence_names_what_the_page_may_change(tmp_path):
+    """A refusal that does not say what IS allowed sends the operator to the
+    source code to find out."""
+    from gridiron import db as _db, settings as _settings
+
+    conn = _db.open_db(tmp_path / "t.db")
+    with pytest.raises(_settings.SettingRefused) as caught:
+        _settings.set_value(conn, "PROPS_MIN_CLAIM", "0.5")
+    said = str(caught.value)
+    assert "quiet hours" in said and "when tasks run" in said
+    assert "ruling" in said and "config.py" in said
+
+
+def test_a_setting_is_append_only(tmp_path):
+    from gridiron import db as _db, settings as _settings
+
+    conn = _db.open_db(tmp_path / "t.db")
+    _settings.set_value(conn, "predict_mlb_at", "11:05")
+    _settings.set_value(conn, "predict_mlb_at", "11:10")
+    rows = conn.execute("SELECT COUNT(*) FROM settings").fetchone()[0]
+    assert rows == 2, "a change overwrote its predecessor"
+    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+        conn.execute("UPDATE settings SET value = '09:00'")
+    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+        conn.execute("DELETE FROM settings")
+
+
+def test_a_setting_records_what_it_changed_from(tmp_path):
+    """A history reconstructed by ordering reads differently after a clock
+    skew. The previous value is stored on the row."""
+    from gridiron import db as _db, settings as _settings
+
+    conn = _db.open_db(tmp_path / "t.db")
+    _settings.set_value(conn, "predict_mlb_at", "11:05")
+    entry = _settings.history(conn)[0]
+    assert entry["previous"] == "11:00" and entry["value"] == "11:05"
+    assert entry["label"] == "Predict MLB"
+
+
+def test_a_bad_time_is_refused_in_words(tmp_path):
+    from gridiron import db as _db, settings as _settings
+
+    conn = _db.open_db(tmp_path / "t.db")
+    for bad in ("25:00", "11:60", "eleven", "11"):
+        with pytest.raises(_settings.SettingRefused, match="time of day"):
+            _settings.set_value(conn, "predict_mlb_at", bad)
+
+
+def test_a_schedule_change_claimed_without_a_read_back_is_caught():
+    faults = audit.schedule_claim_faults(audit.SCHEDULE_FIXTURE_NO_READBACK)
+    assert faults and "reading the scheduler back" in faults[0]
+
+
+def test_a_read_back_that_disagrees_with_the_change_is_caught():
+    """The case this exists for: the command succeeded and the task did not
+    move."""
+    faults = audit.schedule_claim_faults(audit.SCHEDULE_FIXTURE_DISAGREES)
+    assert faults and "11:00" in faults[0] and "11:05" in faults[0]
+
+
+def test_a_confirmed_schedule_change_is_not_flagged():
+    assert not audit.schedule_claim_faults(audit.SCHEDULE_FIXTURE_GOOD)
+
+
+def test_the_csrf_token_is_bound_to_the_session():
+    from gridiron import auth as _auth
+
+    token = _auth.csrf_token("session-one")
+    assert token and _auth.csrf_is_valid("session-one", token)
+    assert not _auth.csrf_is_valid("session-two", token)
+    assert not _auth.csrf_is_valid("session-one", "not-the-token")
+    assert not _auth.csrf_is_valid(None, token)
+
+
+def test_neither_secret_is_returned_by_the_settings_page():
+    """The token is the whole of the app's security and the topic is readable
+    by anyone holding it. A page that shows either puts it in a screenshot."""
+    from gridiron import auth as _auth, config as _config, views as _views
+
+    panel = _views._access_panel()
+    blob = json.dumps(panel)
+    token = _auth.read_token()
+    topic = _config.setting("GRIDIRON_NTFY_TOPIC")
+    if token:
+        assert token not in blob, "the access token was serialised to the page"
+    if topic:
+        assert topic not in blob, "the ntfy topic was serialised to the page"
+    assert "..." in panel["token"]["masked"] or panel["token"]["masked"] in (
+        "not set", "set")

@@ -1549,6 +1549,27 @@ def rail_numbers_line(model_prob: float, market_prob: float | None,
     return f"{model} {market} -- {points} {word} apart."
 
 
+def schedule_disagreement(label: str, recorded: str, os_state: dict) -> str | None:
+    """When the app and the scheduler disagree about a task, say which is which.
+
+    None when they agree, so a settled row carries no noise. The wording names
+    BOTH values and which one will actually happen, because "out of sync" is
+    a status, not something a person can act on.
+    """
+    if not os_state or not os_state.get("available"):
+        return None
+    if not os_state.get("found"):
+        return (f"{label} is not installed on this machine, so nothing will "
+                f"run at {recorded}. Install the scheduled tasks to use this "
+                f"setting.")
+    held = os_state.get("at")
+    if held and recorded and held != recorded:
+        return (f"{label} is recorded as {recorded} here, but the scheduler "
+                f"holds {held} -- and the scheduler is what actually wakes up. "
+                f"Set the time again to move it.")
+    return None
+
+
 def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
     """"Wednesday 2 September - 5 right, 2 wrong, 1 void".
 

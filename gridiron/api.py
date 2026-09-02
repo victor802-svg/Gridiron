@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, calibration, config, db, language, views
+from . import auth, calibration, config, db, language, settings, views
 
 WEB_DIR = config.PACKAGE_ROOT / "web"
 
@@ -71,12 +71,33 @@ def get_auth_conn() -> sqlite3.Connection:
     return conn
 
 
+def get_settings_conn() -> sqlite3.Connection:
+    """A WRITABLE handle, used only to append an operational setting.
+
+    Same argument as `get_auth_conn`, and the same boundary. The record's
+    handle stays `query_only`, so the interface cannot write a prediction even
+    by accident (LAW 3). A settings row is not the record: it is when the
+    baseball task runs and whether failure notifications are on.
+
+    THE FENCE IS IN `settings.EDITABLE`, not here. This connection could write
+    anything the schema allows; what stops it is that the only code given it
+    refuses every name outside a closed list, and the `settings` table's own
+    triggers refuse an UPDATE or a DELETE on what it has already written.
+    """
+    conn = getattr(_local, "settings_conn", None)
+    if conn is None:
+        conn = db.open_db(_database)
+        _local.settings_conn = conn
+    return conn
+
+
 def set_database(path: Path | str | None) -> None:
     """Point the app at a database. Used by the launcher and by tests."""
     global _database
     _database = Path(path) if path is not None else None
     _local.conn = None
     _local.auth_conn = None
+    _local.settings_conn = None
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +383,51 @@ def live_slate(sport: str | None = None, season: int | None = None,
                week: int | None = None) -> dict:
     """The scores only. Small enough to ask for every sixty seconds."""
     return views.live_slate(get_conn(), _sport(sport), season, week)
+
+
+@app.get("/api/settings")
+def read_settings(request: Request) -> dict:
+    """The settings page: what may be changed, what may only be read.
+
+    AUTHENTICATED BECAUSE IT WAS ADDED. `require_session` closes every path
+    not on `auth.path_is_open`, so this is protected by default rather than by
+    somebody remembering.
+    """
+    payload = views.settings_page(get_conn())
+    # THE FORM TOKEN TRAVELS WITH THE FORM. Derived from the session under the
+    # access token, so it is unforgeable without the token and dies with the
+    # session -- no table to expire and clean up.
+    payload["csrf"] = auth.csrf_token(request.cookies.get(auth.COOKIE_NAME))
+    return payload
+
+
+@app.post("/api/settings")
+async def write_setting(request: Request) -> dict:
+    """Change one operational setting, and say what actually happened.
+
+    THREE LOCKS, and each is here for its own reason. The SESSION closes the
+    route (the middleware, by default). The CSRF token closes a cross-site
+    POST that a browser might otherwise send with the cookie attached --
+    SameSite=Strict already refuses that, and this is the lock that does not
+    depend on somebody else's software honouring a promise. The FENCE in
+    `settings.EDITABLE` closes everything that is not an operational knob.
+    """
+    session_id = request.cookies.get(auth.COOKIE_NAME)
+    body = await request.json()
+    if not auth.csrf_is_valid(session_id, request.headers.get(auth.CSRF_HEADER)):
+        raise HTTPException(
+            status_code=403,
+            detail=("This form is out of date. Reload the page and try again "
+                    "-- the app refuses a settings change that did not come "
+                    "from a form it issued."))
+    name = str(body.get("name") or "")
+    raw = str(body.get("value") if body.get("value") is not None else "")
+    try:
+        return views.change_setting(get_settings_conn(), name=name, raw=raw)
+    except settings.SettingRefused as exc:
+        # 409: well formed, and the app will not take it. The operator reads
+        # the reason in the words it was written in.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/weeks")
