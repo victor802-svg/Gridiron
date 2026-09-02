@@ -509,7 +509,7 @@ SNAKE_ALLOWED = (
 )
 
 #: An identifier shaped like `rushing_yards`. The separators are written as
-#: explicit character classes rather than ``, because a `` in this file
+#: explicit character classes rather than `\b`, because a `\b` in this file
 #: has now been mangled into a literal backspace FIVE times -- and this
 #: pattern is the one that enforces the plain-words law. It was blind.
 SNAKE_CASE = __import__("re").compile(
@@ -1926,7 +1926,125 @@ _check_the_motion_scanner_can_see()
 #: jobs -- a game being played is neither good news nor a control. Red is a
 #: negative value. A live mark drawn in either is the interface having an
 #: opinion about a game that has not finished.
-RESERVED_COLOURS = ("--green", "--red")
+# THE COLOUR LAW (GRIDIRON_16 R2)
+# ---------------------------------------------------------------------------
+#
+# GREEN MEANS A PICK WON. RED MEANS A PICK LOST. Nothing else may wear either.
+#
+# The tokens were called `--green` and `--red` until 2026-09-02, and a colour
+# named after its hue is a colour anyone can reach for when they want
+# something to look important -- which is what happened. Green was ALSO the
+# interactive accent: the active tab, every link, every focus ring, the
+# pressed segment. Red was ALSO every warning: a failed task, a stale feed, a
+# notice border, the error box.
+#
+# The cost is not aesthetic. When the accent and the positive value share a
+# colour, a page full of controls reads as a page full of wins, and the one
+# place the colour carries information is the place it is least noticed. The
+# rename to `--win` and `--loss` makes the misuse visible in the source, and
+# this scan makes it fail.
+
+#: The value tokens and their aliases. `--pos` and `--neg` are the older
+#: names, still used by the pages built before the dark theme.
+_WIN_TOKENS = ("--win", "--win-wash", "--pos")
+_LOSS_TOKENS = ("--loss", "--loss-wash", "--neg")
+
+#: A selector that is allowed to say "won" / "lost". `up` is the count of
+#: picks that went the model's way in since-you-last-looked -- those ARE wins.
+_WIN_SELECTOR = re.compile(r"\.win\b|v-win\b|\.up\b|\.pos\b")
+_LOSS_SELECTOR = re.compile(r"\.loss\b|v-loss\b|\.neg\b")
+
+#: Anything a person clicks, focuses or navigates by. These may never carry a
+#: value colour, whatever their class happens to be called.
+_INTERACTIVE_SELECTOR = re.compile(
+    r":hover|:focus|:focus-visible|:active|\[aria-pressed|"
+    r"(?:^|[\s,>])(?:a|button|nav|summary|select|input)\b|"
+    r"\.seg\b|\.tab\b|\.expand\b|\.row-more\b|\.pager\b")
+
+_CSS_RULE = re.compile(r"(?P<selector>[^{}]+)\{(?P<body>[^{}]*)\}")
+
+
+def colour_law_faults(css: str) -> list[str]:
+    """Every rule that paints something a value colour without a value."""
+    faults = []
+    for match in _CSS_RULE.finditer(css):
+        selector = match.group("selector")
+        # A selector spanning a comment or an at-rule preamble is not a rule.
+        selector = selector.split("*/")[-1].strip()
+        if not selector or selector.startswith("@"):
+            continue
+        # `:root` DECLARES the tokens; it does not paint anything with them.
+        # The legacy aliases `--pos` and `--neg` are defined there in terms of
+        # `--win` and `--loss`, which is the one place those names may appear
+        # without a verdict beside them.
+        if selector == ":root" or selector.endswith(":root"):
+            continue
+        body = match.group("body")
+        used_win = [t for t in _WIN_TOKENS if f"var({t})" in body]
+        used_loss = [t for t in _LOSS_TOKENS if f"var({t})" in body]
+        if not (used_win or used_loss):
+            continue
+        one_line = " ".join(selector.split())
+        if _INTERACTIVE_SELECTOR.search(selector):
+            faults.append(
+                f"{one_line!r} is interactive and paints itself "
+                f"{', '.join(f'var({t})' for t in used_win + used_loss)}. "
+                f"Green means a pick won and red means a pick lost; a link, a "
+                f"tab, a focus ring and a pressed segment are none of those. "
+                f"Interactive is chrome (R2).")
+            continue
+        if used_win and not _WIN_SELECTOR.search(selector):
+            faults.append(
+                f"{one_line!r} uses {', '.join(used_win)} but says nothing "
+                f"about a pick that won. GREEN MEANS A PICK WON, and nothing "
+                f"else may wear it (R2).")
+        if used_loss and not _LOSS_SELECTOR.search(selector):
+            faults.append(
+                f"{one_line!r} uses {', '.join(used_loss)} but says nothing "
+                f"about a pick that lost. A warning, an error and a stale feed "
+                f"are not losses; they carry weight and position instead (R2).")
+    return faults
+
+
+#: A green LINK and a red WARNING BORDER: the two misuses the rename ended,
+#: and the two the plantings reproduce.
+COLOUR_LAW_FIXTURE_POSITIVE = """
+.row-more { color: var(--win); text-decoration: none; }
+.notices-summary { border-left: 2px solid var(--loss); }
+"""
+COLOUR_LAW_FIXTURE_NEGATIVE = """
+.verdict.win { color: var(--win); background: var(--win-wash); }
+.verdict.loss { color: var(--loss); background: var(--loss-wash); }
+.row-more { color: var(--chrome); text-decoration: none; }
+"""
+
+
+def check_the_colour_law(path: Path | None = None) -> None:
+    path = path or (config.PACKAGE_ROOT / "web" / "style.css")
+    faults = colour_law_faults(Path(path).read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "THE COLOUR LAW WAS BROKEN -- green means a pick won, red means a "
+            "pick lost, and nothing else wears either:"
+            + _NL2 + _NL2.join(faults))
+
+
+def _check_the_colour_scanner_can_see() -> None:
+    problems = []
+    hits = colour_law_faults(COLOUR_LAW_FIXTURE_POSITIVE)
+    if len(hits) < 2:
+        problems.append(
+            "colour_law_faults misses a green link or a red warning border")
+    if colour_law_faults(COLOUR_LAW_FIXTURE_NEGATIVE):
+        problems.append("colour_law_faults flags a correct verdict chip")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_colour_scanner_can_see()
+
+
+RESERVED_COLOURS = ("--win", "--loss")
 
 _CSS_LIVE_MARK = re.compile(
     r"\.tile-live\s*\{(?P<body>[^}]*)\}", re.S)
@@ -1940,16 +2058,16 @@ def live_mark_faults(css: str) -> list[str]:
         for token in RESERVED_COLOURS:
             if token in body:
                 faults.append(
-                    f".tile-live uses var({token}), which is reserved: green is "
-                    f"the positive value and the interactive accent, red is a "
-                    f"negative value. A game in progress is none of those, and "
+                    f".tile-live uses var({token}), which is reserved: green "
+                    f"means a pick WON and red means a pick LOST (R2). A game "
+                    f"in progress is neither -- it has not finished -- and "
                     f"colouring it so tells a reader the model is winning "
                     f"before anything has been settled.")
     return faults
 
 
-#: A green live mark, and the chrome one that is correct.
-LIVE_MARK_FIXTURE_POSITIVE = ".tile-live { background: var(--green); }"
+#: A live mark in the win colour, and the chrome one that is correct.
+LIVE_MARK_FIXTURE_POSITIVE = ".tile-live { background: var(--win); }"
 LIVE_MARK_FIXTURE_NEGATIVE = ".tile-live { background: var(--chrome); }"
 
 

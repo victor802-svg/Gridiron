@@ -21,12 +21,12 @@
      Approved mockup: docs/mockup/gridiron_dark.html. Dark is the only theme
      now, not a preference-dependent variant: two themes is two sets of
      contrast ratios to keep true, and only one of them was ever designed. */
-  --ink: #0A0F0C;            /* page: black with a green undertone */
-  --card: #10160F;           /* elevated card */
-  --card-2: #151D13;         /* hover, inner wells */
-  --line: #1F2B1E;           /* hairline */
+  --ink: #050705;            /* page: near-black with a green undertone */
+  --card: #0B0F0B;           /* elevated card */
+  --card-2: #10150F;         /* raised: hover, inner wells */
+  --line: #1A211A;           /* hairline */
   --line-lit: #2C3D2B;       /* hairline, hover and the 50 tick */
-  --resolved: #0D120C;       /* a settled card sits lower than a live one */
+  --resolved: #080B08;       /* a settled card sits lower than a live one */
 
   /* ---- ink --------------------------------------------------------------
      Three weights of text and no more: chrome for headings and primary
@@ -41,16 +41,30 @@
   --faint: #6F8471;
   --faintest: #3A4A3C;       /* rail end labels only */
 
-  /* ---- the two colours, and their two jobs -------------------------------
-     GREEN is the interactive accent AND the positive value. Those are its
-     only jobs: it never decorates a heading, a border or a tab that is not
-     selected, and it never marks a number simply to make it feel important.
-     RED is a negative value only. Confidence escalates by WEIGHT, not hue —
-     see .tier — precisely so green keeps its meaning. */
-  --green: #00DC82;
-  --red: #FF6B6B;
-  --green-wash: rgba(0, 220, 130, 0.10);
-  --red-wash: rgba(255, 107, 107, 0.10);
+  /* ---- the two colours, and their ONE job each (GRIDIRON_16 R2) ---------
+     THE NAMES ARE THE RULE. `--win` is the colour of a pick that won.
+     `--loss` is the colour of a pick that lost. Neither has any other job,
+     and they were called `--green` and `--red` until 2026-09-02 precisely
+     because a colour named after its hue can be reached for by anyone who
+     wants something to look important.
+
+     Green WAS also the interactive accent -- the active tab, links, buttons,
+     focus rings, the pressed segment. That is the misuse this rename exists
+     to end: when the accent and the positive value are the same colour, a
+     page full of controls reads as a page full of wins, and the one place
+     the colour carries information is the place it is least noticed.
+     INTERACTIVE IS WHITE now, in `--chrome`.
+
+     Red WAS also every warning: a failed task, a stale feed, a notice
+     border. A warning is not a loss. Warnings now carry weight and position
+     instead, and `audit.colour_law_faults` fails the build on either misuse.
+
+     Confidence still escalates by WEIGHT, not hue -- see .tier -- for the
+     same reason. */
+  --win: #00DC82;
+  --loss: #FF6B6B;
+  --win-wash: rgba(0, 220, 130, 0.10);
+  --loss-wash: rgba(255, 107, 107, 0.10);
   --model-halo: rgba(242, 245, 240, 0.12);
   --span-far: #3A5238;       /* the lit end of the disagreement span */
 
@@ -73,14 +87,18 @@
   --rule-2: var(--line-lit);
   --ink-2: var(--muted);
   --ink-3: var(--faint);
-  --accent: var(--green);
-  --pos: var(--green);
-  --neg: var(--red);
+  /* THE ACCENT IS NO LONGER A COLOUR. It aliased --green, which is how the
+     positive value came to paint every link and focus ring on the page. */
+  --accent: var(--chrome);
+  --pos: var(--win);
+  --neg: var(--loss);
   --band: rgba(242, 245, 240, 0.07);
   --rule-1: var(--card-2);
-  --warn-bg: rgba(255, 107, 107, 0.08);
-  --warn-ink: var(--red);
-  --warn-rule: var(--red);
+  /* A WARNING IS NOT A LOSS (R2). These were red; a stale feed and a pick
+     that lost are different things and must not share a colour. */
+  --warn-bg: rgba(242, 245, 240, 0.06);
+  --warn-ink: var(--chrome);
+  --warn-rule: var(--line-lit);
 
   /* ---- type -------------------------------------------------------------
      NOT SELF-HOSTED, and that is a deliberate refusal rather than an
@@ -161,7 +179,7 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
 }
 /* The wordmark lives in the masthead, which already had one. A second copy in
    the sport bar was a duplicate on screen, not a design. */
-.masthead .brand em { font-style: normal; color: var(--green); }
+.masthead .brand em { font-style: normal; color: var(--chrome); }
 /* A degraded run says so quietly. It is a fact about the forecast, not an
    alarm: the statistical prediction stands and is scored normally. */
 .degraded-note {
@@ -188,7 +206,7 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
 /* Green underlines the ACTIVE tab only. An unselected tab gets no accent:
    the accent means "this is the thing you are looking at or can act on". */
 #sport-tabs button[aria-current="true"] {
-  color: var(--chrome); border-bottom-color: var(--green);
+  color: var(--chrome); border-bottom-color: var(--chrome);
 }
 #sport-tabs .tab-n {
   font-family: var(--mono); font-size: 10px; font-weight: 400;
@@ -313,7 +331,7 @@ table.grid td.wide {
    is the fact a person came for, said in words they would use out loud. */
 .pick { margin-top: 8px; font-size: 13px; color: var(--muted); }
 .pick b { color: var(--chrome); font-weight: 600; letter-spacing: 0.02em; }
-.pick .arrow { color: var(--green); font-weight: 700; }
+.pick .arrow { color: var(--chrome); font-weight: 700; }
 /* Below 53% the sentence says "— barely". The app never oversells a coin flip. */
 .pick .barely { color: var(--faint); }
 
@@ -426,11 +444,11 @@ table.grid td.wide {
 }
 .card.open .reason, .card.open .card-body { display: block; }
 .expand {
-  margin-top: 10px; background: none; border: 0; color: var(--green);
+  margin-top: 10px; background: none; border: 0; color: var(--chrome);
   font-family: var(--body); font-size: var(--t-caption); font-weight: 600;
   cursor: pointer; padding: 0; min-height: 44px; text-align: left;
 }
-.expand:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.expand:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
 
 /* --- resolved ------------------------------------------------------------
    A settled card sits lower and quieter than a live one: it is history, and
@@ -441,8 +459,8 @@ table.grid td.wide {
   font-family: var(--cond); font-weight: 700; font-size: 15px;
   letter-spacing: 0.12em; padding: 3px 10px; border-radius: 6px;
 }
-.verdict.win { color: var(--green); background: var(--green-wash); }
-.verdict.loss { color: var(--red); background: var(--red-wash); }
+.verdict.win { color: var(--win); background: var(--win-wash); }
+.verdict.loss { color: var(--loss); background: var(--loss-wash); }
 .final { font-family: var(--mono); font-size: var(--t-caption); color: var(--muted); }
 
 .section-label {
@@ -458,7 +476,7 @@ table.grid td.wide {
   font-size: 13px; font-weight: 500; padding: 7px 14px; cursor: pointer;
   min-height: 44px;
 }
-.seg button[aria-pressed="true"] { background: var(--card-2); color: var(--green); }
+.seg button[aria-pressed="true"] { background: var(--card-2); color: var(--chrome); }
 .controls {
   display: flex; justify-content: space-between; align-items: center;
   margin: 22px 0 6px; flex-wrap: wrap; gap: 8px;
@@ -490,8 +508,12 @@ table.grid td.wide {
   width: 1px; background: var(--rule-2);
 }
 .contrib-bar { position: absolute; top: 2px; height: 8px; border-radius: 2px; }
-.contrib-bar.pos { background: var(--pos); }
-.contrib-bar.neg { background: var(--neg); }
+/* NOT THE VALUE COLOURS (R2). A factor pushing toward the pick is not a pick
+   that won. The track already draws a centre line, so which side of it a bar
+   sits on carries the sign; colour was saying it a second time in the two
+   hues that mean something else. */
+.contrib-bar.pos { background: var(--chrome); }
+.contrib-bar.neg { background: var(--muted); }
 .contrib-value { text-align: right; font-size: var(--t-caption); color: var(--ink-2); }
 .contrib-more {
   background: none; border: 0; padding: 4px 0; margin-top: 4px;
@@ -571,9 +593,11 @@ canvas { display: block; max-width: 100%; }
 .pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .pager button:disabled { opacity: 0.35; cursor: default; }
 
+/* AN ERROR IS NOT A LOSS (R2). This was drawn in the negative value colour,
+   which put a failed fetch and a pick that lost in the same red. */
 .error {
-  border: 1px solid var(--neg); border-left-width: 3px; background: var(--panel);
-  color: var(--neg); padding: 13px 16px; border-radius: var(--radius);
+  border: 1px solid var(--line-lit); border-left-width: 3px; background: var(--panel);
+  color: var(--chrome); padding: 13px 16px; border-radius: var(--radius);
   margin-top: 18px; font-size: var(--t-caption); white-space: pre-wrap;
 }
 
@@ -641,7 +665,7 @@ canvas { display: block; max-width: 100%; }
    "NEVER RUN" -- the one colour the conventions reserve for interactive and
    positive, spent on the panel's alarm. Pre-existing; found by looking at the
    page rather than by any test, because no test asserts what a colour MEANS. */
-.sched-warn { border-color: var(--red); }
+.sched-warn { border-color: var(--line-lit); }
 .sched-head { display: flex; align-items: baseline; gap: 10px; }
 .sched-what { color: var(--ink-2); font-size: 13px; margin: 2px 0 10px; }
 .sched-result {
@@ -649,7 +673,9 @@ canvas { display: block; max-width: 100%; }
   color: var(--ink-2); border: 1px solid var(--rule-2);
   border-radius: 999px; padding: 1px 8px;
 }
-.sched-result.r-failed, .sched-result.r-never { color: var(--red); border-color: var(--red); }
+.sched-result.r-failed, .sched-result.r-never {
+  color: var(--chrome); border-color: var(--line-lit); font-weight: 600;
+}
 .sched-grid {
   display: grid; grid-template-columns: max-content 1fr;
   gap: 2px 14px; font-size: 13px;
@@ -664,16 +690,16 @@ canvas { display: block; max-width: 100%; }
    reaching for the accent whenever a rule needed emphasis. */
 .sched-alarm, .sched-missed {
   margin-top: 8px; padding: 8px 10px; font-size: 13px;
-  border-left: 2px solid var(--red); color: var(--chrome);
+  border-left: 2px solid var(--line-lit); color: var(--chrome);
   background: var(--rule-1);
 }
 .sched-stale {
   display: flex; gap: 12px; align-items: baseline;
   padding: 8px 0; border-bottom: 1px solid var(--rule-1);
 }
-.sched-stale.sched-warn strong { color: var(--red); }
+.sched-stale.sched-warn strong { color: var(--chrome); }
 /* Same reason as .sched-warn: a caption marked `warn` is not a positive. */
-.caption.warn { color: var(--red); }
+.caption.warn { color: var(--chrome); font-weight: 600; }
 .subhead { font-size: 14px; margin-top: 22px; }
 
 @media (max-width: 430px) {
@@ -688,7 +714,7 @@ canvas { display: block; max-width: 100%; }
   /* It shows ONLY when the browser is offline -- `bar.hidden = navigator.onLine`
      -- so it is never a positive state, and it was painted in the positive
      colour. Loud is right; green is not. */
-  background: var(--red);
+  background: var(--chrome);
   color: var(--bg);
   font-size: 13px;
   line-height: 1.5;
@@ -744,7 +770,7 @@ button {
 }
 .greet .msg { color: var(--muted); }
 .greet .msg b { color: var(--chrome); font-weight: 600; }
-.greet .msg .up { color: var(--green); }
+.greet .msg .up { color: var(--win); }
 .greet .mono-inline { font-family: var(--mono); font-size: var(--t-caption); }
 .countdown {
   font-family: var(--mono); font-size: var(--t-caption); color: var(--faint);
@@ -756,7 +782,7 @@ button {
   margin-top: 8px; padding: 9px 14px; border-radius: 8px;
   font-size: var(--t-caption); line-height: 1.5;
   background: var(--card); border: 1px solid var(--line);
-  border-left: 2px solid var(--red); color: var(--muted);
+  border-left: 2px solid var(--line-lit); color: var(--muted);
 }
 .greet-warn.stale { border-left-color: var(--muted); }
 
@@ -769,8 +795,8 @@ button {
   font-family: var(--cond); font-weight: 700; font-size: 12px;
   letter-spacing: 0.12em; padding: 1px 7px; border-radius: 4px;
 }
-.settled-row.win .settled-verdict { color: var(--green); background: var(--green-wash); }
-.settled-row.loss .settled-verdict { color: var(--red); background: var(--red-wash); }
+.settled-row.win .settled-verdict { color: var(--win); background: var(--win-wash); }
+.settled-row.loss .settled-verdict { color: var(--loss); background: var(--loss-wash); }
 .settled-match {
   font-family: var(--cond); font-weight: 700; font-size: 15px;
   letter-spacing: 0.04em; text-transform: uppercase; color: var(--chrome);
@@ -796,7 +822,7 @@ select, input[type="date"], input[type="search"], input[type="text"] {
 }
 select:hover, input:hover { border-color: var(--line-lit); }
 select:focus-visible, input:focus-visible {
-  outline: 2px solid var(--green); outline-offset: 1px;
+  outline: 2px solid var(--chrome); outline-offset: 1px;
 }
 label { color: var(--muted); font-size: var(--t-caption); }
 
@@ -832,8 +858,8 @@ table.grid tr:hover td { background: var(--card-2); }
   letter-spacing: 0.12em; padding: 2px 8px; border-radius: 4px;
   display: inline-block;
 }
-.result-chip.win { color: var(--green); background: var(--green-wash); }
-.result-chip.loss { color: var(--red); background: var(--red-wash); }
+.result-chip.win { color: var(--win); background: var(--win-wash); }
+.result-chip.loss { color: var(--loss); background: var(--loss-wash); }
 .result-chip.pending { color: var(--muted); border: 1px solid var(--line); }
 .result-chip.void { color: var(--faint); border: 1px dashed var(--line); }
 
@@ -854,14 +880,14 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .notices-summary {
   width: 100%; text-align: left; cursor: pointer;
   background: var(--card); border: 1px solid var(--line);
-  border-left: 2px solid var(--red); border-radius: 8px;
+  border-left: 2px solid var(--line-lit); border-radius: 8px;
   padding: 9px 14px; min-height: 44px;
   font-family: var(--body); font-size: var(--t-caption);
   color: var(--muted); line-height: 1.5;
 }
-.notices-summary:hover { border-color: var(--line-lit); border-left-color: var(--red); }
-.notices-summary:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.notices-count { color: var(--red); font-weight: 600; }
+.notices-summary:hover { border-color: var(--line-lit); border-left-color: var(--chrome); }
+.notices-summary:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
+.notices-count { color: var(--chrome); font-weight: 700; }
 .notices-detail { margin-top: 6px; }
 .notices-detail[hidden] { display: none; }
 
@@ -926,7 +952,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   min-height: 44px;
 }
 .brand-a { color: var(--text); }
-.brand-b { color: var(--green); }
+.brand-b { color: var(--chrome); }
 
 .bar #sport-tabs { display: flex; gap: 14px; flex: none; }
 .bar #sport-tabs button {
@@ -936,7 +962,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   border-bottom: 2px solid transparent;
 }
 .bar #sport-tabs button[aria-pressed="true"] {
-  color: var(--text); border-bottom-color: var(--green);
+  color: var(--text); border-bottom-color: var(--chrome);
 }
 .bar #sport-tabs .tab-n {
   font-family: var(--mono); font-size: 10px; color: var(--faint);
@@ -1017,7 +1043,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 .row-head:hover { background: var(--card-hi, rgba(255,255,255,0.02)); }
 .row-head:focus-visible {
-  outline: 2px solid var(--green); outline-offset: -2px;
+  outline: 2px solid var(--chrome); outline-offset: -2px;
 }
 .row.open .row-head { background: var(--card-hi, rgba(255,255,255,0.02)); }
 
@@ -1035,7 +1061,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-size: 13px; color: var(--muted); margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.row-caret { color: var(--green); margin-right: 5px; }
+.row-caret { color: var(--chrome); margin-right: 5px; }
 .row-phrase { color: var(--text); font-weight: 600; }
 .row-when { color: var(--faint); }
 
@@ -1050,7 +1076,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .row-why b { color: var(--text); }
 .row-more {
   display: inline-block; margin-top: 10px;
-  color: var(--green); text-decoration: none; font-size: 13px;
+  color: var(--chrome); text-decoration: none; font-size: 13px;
 }
 .row-more:hover { text-decoration: underline; }
 .row-tierline {
@@ -1068,7 +1094,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-weight: 700; font-size: 12px; letter-spacing: 0.12em;
   padding: 3px 9px; border-radius: 5px; min-width: 64px; text-align: center;
 }
-.verdict.win { color: var(--green); background: rgba(0, 220, 130, 0.10); }
+.verdict.win { color: var(--win); background: var(--win-wash); }
 .verdict.loss { color: #ff6b6b; background: rgba(255, 107, 107, 0.10); }
 .verdict.void { color: var(--faint); border: 1px solid var(--line); }
 .chip-none { border: 0; }
@@ -1512,8 +1538,8 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px;
 }
-.tile-verdict.v-win { color: var(--green); background: rgba(0, 220, 130, 0.10); }
-.tile-verdict.v-loss { color: #ff6b6b; background: rgba(255, 107, 107, 0.10); }
+.tile-verdict.v-win { color: var(--win); background: var(--win-wash); }
+.tile-verdict.v-loss { color: var(--loss); background: var(--loss-wash); }
 .tile-verdict.v-void { color: var(--faint); border: 1px solid var(--line); }
 .tile[data-state="final"] .tile-rank { opacity: 0; }
 

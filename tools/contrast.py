@@ -84,11 +84,17 @@ PAIRS = [
     ("faint", "ink", "captions and sample sizes on the page", False),
     ("faint", "card", "captions and sample sizes on a card", False),
     ("faint", "resolved", "captions on a settled card", False),
-    ("green", "ink", "the accent on the page", False),
-    ("green", "card", "the accent on a card", False),
-    ("green", "card-2", "the selected segment", False),
-    ("red", "ink", "a negative value on the page", False),
-    ("red", "card", "a negative value on a card", False),
+    # RENAMED WITH THE TOKENS (GRIDIRON_16 R2). These were "the accent on the
+    # page" and "the selected segment" -- both now chrome, because green is no
+    # longer the interactive accent. What is left is the two value colours,
+    # measured on every ground a verdict chip actually sits on.
+    ("win", "ink", "a pick that won, on the page", False),
+    ("win", "card", "a pick that won, on a card", False),
+    ("win", "card-2", "a pick that won, on a raised well", False),
+    ("loss", "ink", "a pick that lost, on the page", False),
+    ("loss", "card", "a pick that lost, on a card", False),
+    ("loss", "card-2", "a pick that lost, on a raised well", False),
+    ("chrome", "card-2", "the pressed segment and every focus ring", False),
     ("ink", "chrome", "the STRONG tier chip: dark on white", False),
 ]
 

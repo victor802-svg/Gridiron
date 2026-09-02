@@ -204,11 +204,18 @@ const Gridiron = (function () {
 
     drawn.forEach(b => {
       const x = X(b.claimed), y = Y(clamp(b.actual));
-      // Green ONLY where the bucket sits inside the acceptable band, red where
-      // it does not. This is the positive/negative semantic doing its one job:
-      // "this bucket is calibrated" is a value, not decoration.
+      // NOT GREEN AND RED (GRIDIRON_16 R2). This drew the inside-band points
+      // green and the rest red until 2026-09-02, which read as "these buckets
+      // won" -- and under the colour law green means a PICK won and nothing
+      // else. A calibrated bucket is not a won pick.
+      //
+      // The encoding is EMPHASIS instead, and it points the right way round:
+      // a bucket sitting inside the band is the expected state and is drawn
+      // quietly, while one outside it is what the reader came to find and is
+      // drawn in full chrome. The old colouring made the unremarkable points
+      // the loudest thing on the chart.
       const inside = Math.abs(b.actual - b.claimed) <= ACCEPTABLE;
-      ctx.fillStyle = inside ? css('--green') : css('--red');
+      ctx.fillStyle = inside ? css('--muted') : css('--chrome');
       ctx.beginPath(); ctx.arc(x, y, b.provisional ? 3.5 : 5.5, 0, Math.PI * 2); ctx.fill();
       // A provisional point is drawn hollow: below the sample floor it is a
       // position, not a finding.

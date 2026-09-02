@@ -558,3 +558,64 @@ def test_the_superseded_count_is_the_rows_the_slate_hid(resolved_league):
         "                   WHERE v.prediction_id = p.id)",
         (payload["season"], payload["week"])).fetchone()[0]
     assert payload["n"] + payload["superseded"] == written
+
+
+# ---------------------------------------------------------------------------
+# THE COLOUR LAW (GRIDIRON_16 R2)
+# ---------------------------------------------------------------------------
+
+def test_a_green_link_is_caught_by_name():
+    """Green was the interactive accent AND the positive value until
+    2026-09-02, so every link and focus ring wore the colour that means a
+    pick won."""
+    faults = audit.colour_law_faults(
+        ".row-more { color: var(--win); text-decoration: none; }")
+    assert faults and "interactive" in faults[0]
+
+
+def test_the_colour_law_check_refuses_a_stylesheet_that_breaks_it(tmp_path):
+    """The CHECK, not just the scanner: a stylesheet with a green link must
+    stop the gate, naming the rule."""
+    sheet = tmp_path / "style.css"
+    sheet.write_text(
+        """
+.row-more { color: var(--win); text-decoration: none; }
+.notices-summary { border-left: 2px solid var(--loss); }
+""",
+        encoding="utf-8")
+    with pytest.raises(audit.LawViolation, match="THE COLOUR LAW WAS BROKEN"):
+        audit.check_the_colour_law(sheet)
+
+
+def test_a_red_warning_border_is_caught_by_name():
+    """A warning is not a loss. Red was every failed task and stale feed."""
+    faults = audit.colour_law_faults(
+        ".notices-summary { border-left: 2px solid var(--loss); }")
+    assert faults and "not losses" in faults[0]
+
+
+def test_a_verdict_chip_may_wear_its_colour():
+    """The one thing each colour is for."""
+    assert not audit.colour_law_faults(
+        ".verdict.win { color: var(--win); background: var(--win-wash); }")
+    assert not audit.colour_law_faults(
+        ".verdict.loss { color: var(--loss); background: var(--loss-wash); }")
+    assert not audit.colour_law_faults(
+        ".tile-verdict.v-win { color: var(--win); }")
+
+
+def test_the_real_stylesheet_obeys_the_colour_law():
+    """The scan runs over the shipped stylesheet, not a fixture."""
+    audit.check_the_colour_law()          # must not raise
+
+
+def test_the_tokens_are_named_for_their_meaning_not_their_hue():
+    """`--green` and `--red` are gone: a colour named after its hue is one
+    anyone can reach for when they want something to look important."""
+    css = (config.PACKAGE_ROOT / "web" / "style.css").read_text(encoding="utf-8")
+    rules = "\n".join(
+        line for line in css.splitlines() if not line.strip().startswith(("/*", "*", "--green", "--red"))
+    )
+    assert "var(--green)" not in rules
+    assert "var(--red)" not in rules
+    assert "--win:" in css and "--loss:" in css

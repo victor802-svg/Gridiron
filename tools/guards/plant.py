@@ -871,6 +871,35 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
+def plant_a_green_link() -> Result:
+    """Paint a link in the win colour.
+
+    THE MISUSE THE RENAME ENDED. Green was the interactive accent AND the
+    positive value until 2026-09-02, so every link, tab, focus ring and
+    pressed segment on the page was drawn in the colour that means a pick
+    won. A page full of controls read as a page full of wins, and the one
+    place the colour carried information was the place it was least noticed.
+    """
+    faults = [f for f in audit.colour_law_faults(
+        ".row-more { color: var(--win); text-decoration: none; }")]
+    return _desk_plant(faults, "paint a link in the colour that means won",
+                       "audit.colour_law_faults")
+
+
+def plant_a_red_warning_border() -> Result:
+    """Draw a notice border in the loss colour.
+
+    The other half. Red was every warning -- a failed task, a stale feed, an
+    error box -- which put "this fetch did not work" and "this pick lost" in
+    the same colour. A warning is not a loss; it carries weight and position
+    instead (R2).
+    """
+    faults = audit.colour_law_faults(
+        ".notices-summary { border-left: 2px solid var(--loss); }")
+    return _desk_plant(faults, "draw a warning border in the colour that "
+                               "means lost", "audit.colour_law_faults")
+
+
 def plant_a_green_live_mark() -> Result:
     """Draw the live mark in the accent colour.
 
@@ -2682,6 +2711,8 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
+    results.append(plant_a_green_link())
+    results.append(plant_a_red_warning_border())
     results.append(plant_a_green_live_mark())
     results.append(plant_a_re_sort_during_a_live_slate())
     results.append(plant_a_bouncing_chip())

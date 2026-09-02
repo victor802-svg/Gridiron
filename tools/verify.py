@@ -178,8 +178,8 @@ def step_2_guards() -> bool:
          audit.check_the_live_mark_is_not_an_opinion),
         ("a score arriving does not move the slate",
          audit.check_a_live_update_does_not_reorder),
-        ("a call is a confidence, not a stake",
-         audit.check_a_call_is_not_a_stake),
+        ("green means a pick won, and nothing else",
+         audit.check_the_colour_law),
         ("forecasters are never merged",
          lambda: audit.check_forecasters_are_never_merged(
              __import__("gridiron.views", fromlist=["views"]).scorecard(
