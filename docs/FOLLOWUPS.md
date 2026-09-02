@@ -408,3 +408,14 @@ python tools/make_token.py --ntfy --rotate
   absent rather than clamped. That is the ruling working, but it is also 80
   games a season with no spread question. If that proves too many, the answer
   is another dated extension, not a wider tolerance.
+- **A dead selector shipped and nothing failed.** `applyLive` fetched
+  `.tile-mkt` after the class was renamed `.tile-score` (bd7ac2f), so every
+  live tick threw and the desk's scores silently stopped moving. Fixed
+  2026-09-02, with `audit.dead_selector_faults` and a browser test that drives
+  a real poll. **The lesson is the coverage shape, not the typo**: every desk
+  test asserted on the FIRST render, and a complete slate never polls — so the
+  live path had no coverage from either direction. Worth asking which other
+  paths are only ever exercised at first paint.
+- **NCAAF puts 15 of 17 picks in STRONG (88%), NFL 24 of 78.** Under ruling R2
+  Picks opens on STRONG, so an over-confident college model is now the first
+  thing a reader sees. Same root cause as the 0.371 base rate above.
