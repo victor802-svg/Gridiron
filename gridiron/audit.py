@@ -2044,6 +2044,161 @@ def _check_the_colour_scanner_can_see() -> None:
 _check_the_colour_scanner_can_see()
 
 
+# PICKS SHOWS TONIGHT (GRIDIRON_16 R4)
+# ---------------------------------------------------------------------------
+#
+# Settled rows live in Results and only there. Picks answers "what does the
+# model say about tonight"; a list of what already happened underneath it
+# answers a different question, and it grew by a slate a day all season.
+
+#: What a resolved-row section looks like in the renderer.
+_RESOLVED_ON_PICKS = ("row-done", "rows-done", "resolvedRow")
+
+
+def picks_resolved_faults(js: str) -> list[str]:
+    """A settled pick rendered on the Picks page."""
+    faults = []
+    for token in _RESOLVED_ON_PICKS:
+        # Prose may name the withdrawn section; code may not build it.
+        for line in js.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            if token in line.split("//")[0]:
+                faults.append(
+                    f"the renderer builds {token!r}, a resolved row on the "
+                    f"Picks page. Settled picks live in Results and only there "
+                    f"(R4): Picks answers what the model says about tonight, "
+                    f"and a list of what already happened underneath it "
+                    f"answers a different question.")
+                break
+    return faults
+
+
+PICKS_RESOLVED_FIXTURE_POSITIVE = """
+    if (done.length) {
+      const list = el('div', 'rows rows-done');
+      done.forEach(c => list.appendChild(resolvedRow(c)));
+    }
+"""
+
+
+def check_picks_shows_tonight(path: Path | None = None) -> None:
+    path = path or (config.PACKAGE_ROOT / "web" / "app.js")
+    faults = picks_resolved_faults(Path(path).read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A SETTLED PICK IS ON THE PICKS PAGE:" + _NL2 + _NL2.join(faults))
+
+
+# A WITHDRAWN FEATURE LEAVES NOTHING BEHIND (GRIDIRON_16 R1)
+# ---------------------------------------------------------------------------
+#
+# The operator's calls were withdrawn on 2026-09-02 by SURGERY rather than
+# revert, because the notifier shipped in the same brief and had to survive.
+# Surgery leaves stumps. This scan is what makes "removed entirely" checkable
+# a month from now, when the only memory of the feature is a comment.
+#
+# It scans CODE, not prose: DECISIONS_MADE.md, the brief, and the comments
+# that record what went and why are the account of the removal and must
+# outlive it.
+
+#: Identifiers the withdrawn feature owned. None may reappear in code.
+WITHDRAWN_CALLS_SYMBOLS = (
+    "operator_calls", "operator_tier_table", "call_comparison",
+    "paintCall", "callDraft", "submitCall", "call_state_line",
+    "call_side_label", "calls_since_line", "call_comparison_line",
+    "CallRefused", "TIER_CLAIM", "call_stake_faults", "/api/calls",
+)
+
+
+def withdrawn_calls_faults(text: str, *, comment: str = "#") -> list[str]:
+    """Any symbol from the withdrawn operator-calls feature, in code.
+
+    THE DROP LIST IS NOT A STUMP. `db.WITHDRAWN` names `operator_calls`
+    because naming it is how the table gets dropped from a database that
+    still has one -- it is the instrument of the removal, not a survival of
+    it. Those lines are skipped by structure rather than by exempting the
+    whole of `db.py`, so anything else that file grew would still be caught.
+    """
+    faults = []
+    in_drop_list = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("WITHDRAWN") and stripped.endswith("("):
+            in_drop_list = True
+            continue
+        if in_drop_list:
+            if stripped.startswith(")"):
+                in_drop_list = False
+            continue
+        if stripped.startswith(comment) or stripped.startswith("*"):
+            continue
+        if stripped[:3] in ('"""', "'" * 3):
+            continue
+        code = line.split(comment)[0]
+        for symbol in WITHDRAWN_CALLS_SYMBOLS:
+            if symbol in code:
+                faults.append(
+                    f"{symbol!r} is back in the code. Operator calls were "
+                    f"withdrawn on 2026-09-02 by ruling (GRIDIRON_16 R1) and "
+                    f"the removal was surgery, not a revert -- a surviving "
+                    f"symbol is a stump, and the next reader cannot tell one "
+                    f"from a live feature.")
+    return faults
+
+
+WITHDRAWN_CALLS_FIXTURE_POSITIVE = """
+const block = el('div', 'call-block');
+paintCall(card, block);
+"""
+
+
+#: THE SCANNER HOLDS THE FORBIDDEN WORDS, so the scanner trips over itself.
+#: Exactly the situation `BETTING_SCAN_EXEMPT` was written for a fortnight
+#: ago, and the same answer: ONE file, named, with a test pinning the list to
+#: that length so the exemption cannot quietly grow into a way to hide a stump.
+WITHDRAWN_SCAN_EXEMPT = ("audit.py",)
+
+
+def check_the_calls_feature_stayed_withdrawn() -> None:
+    faults = []
+    for path in sorted(config.PACKAGE_ROOT.glob("*.py")):
+        if path.name in WITHDRAWN_SCAN_EXEMPT:
+            continue
+        faults += withdrawn_calls_faults(
+            path.read_text(encoding="utf-8"), comment="#")
+    web = config.PACKAGE_ROOT / "web"
+    for name in ("app.js", "index.html"):
+        target = web / name
+        if target.exists():
+            faults += withdrawn_calls_faults(
+                target.read_text(encoding="utf-8"), comment="//")
+    if faults:
+        raise LawViolation(
+            "THE WITHDRAWN FEATURE LEFT SOMETHING BEHIND:"
+            + _NL2 + _NL2.join(sorted(set(faults))))
+
+
+def _check_the_withdrawal_scanners_can_see() -> None:
+    problems = []
+    if not picks_resolved_faults(PICKS_RESOLVED_FIXTURE_POSITIVE):
+        problems.append("picks_resolved_faults misses a resolved row on Picks")
+    if picks_resolved_faults("const list = el('div', 'rows');"):
+        problems.append("picks_resolved_faults flags an ordinary row list")
+    if not withdrawn_calls_faults(WITHDRAWN_CALLS_FIXTURE_POSITIVE, comment="//"):
+        problems.append("withdrawn_calls_faults misses a reinstated call block")
+    if withdrawn_calls_faults("// operator_calls was withdrawn on 2026-09-02",
+                              comment="//"):
+        problems.append("withdrawn_calls_faults flags the comment recording "
+                        "the removal, which must outlive it")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_withdrawal_scanners_can_see()
+
+
 RESERVED_COLOURS = ("--win", "--loss")
 
 _CSS_LIVE_MARK = re.compile(

@@ -180,6 +180,10 @@ def step_2_guards() -> bool:
          audit.check_a_live_update_does_not_reorder),
         ("green means a pick won, and nothing else",
          audit.check_the_colour_law),
+        ("picks shows tonight, not last night",
+         audit.check_picks_shows_tonight),
+        ("the withdrawn feature left nothing behind",
+         audit.check_the_calls_feature_stayed_withdrawn),
         ("forecasters are never merged",
          lambda: audit.check_forecasters_are_never_merged(
              __import__("gridiron.views", fromlist=["views"]).scorecard(

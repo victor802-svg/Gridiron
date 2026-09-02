@@ -1062,9 +1062,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 
 /* --- RESOLVED ------------------------------------------------------------- */
-.rows-done .row-head { cursor: default; }
-.rows-done { opacity: 0.72; }
-.row-done .row-title { font-weight: 600; }
 /* The verdict, per the approved mockup: tinted rather than filled, so a WIN
    does not shout louder than the forecast it settles. */
 .verdict {

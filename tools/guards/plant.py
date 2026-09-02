@@ -871,6 +871,33 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
+def plant_a_resolved_row_on_picks() -> Result:
+    """List last night's settled picks underneath tonight's.
+
+    Picks answers "what does the model say about tonight". A resolved section
+    underneath answers a different question, and it grew by a slate a day all
+    season -- which is why settled rows now live in Results and only there
+    (GRIDIRON_16 R4).
+    """
+    faults = audit.picks_resolved_faults(audit.PICKS_RESOLVED_FIXTURE_POSITIVE)
+    return _desk_plant(faults, "list resolved picks on the Picks page",
+                       "audit.picks_resolved_faults")
+
+
+def plant_a_surviving_calls_symbol() -> Result:
+    """Put the operator's call block back into the renderer.
+
+    THE STUMP TEST. Operator calls were withdrawn by surgery rather than
+    revert, because the notifier shipped in the same brief and had to
+    survive. Surgery leaves stumps, and a stump is worse than the feature: a
+    reader a month from now cannot tell one from something still live.
+    """
+    faults = audit.withdrawn_calls_faults(
+        audit.WITHDRAWN_CALLS_FIXTURE_POSITIVE, comment="//")
+    return _desk_plant(faults, "reinstate the withdrawn call block",
+                       "audit.withdrawn_calls_faults")
+
+
 def plant_a_green_link() -> Result:
     """Paint a link in the win colour.
 
@@ -2711,6 +2738,8 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
+    results.append(plant_a_resolved_row_on_picks())
+    results.append(plant_a_surviving_calls_symbol())
     results.append(plant_a_green_link())
     results.append(plant_a_red_warning_border())
     results.append(plant_a_green_live_mark())

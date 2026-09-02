@@ -76,6 +76,25 @@ sees it.
   default. Once a lesson is worth writing down, ask what would enforce
   it, and write that instead.
 
+- **A deletion bounded by "the next function" takes whatever sits
+  between.** Removing `resolvedRow` on 2026-09-02 by cutting from its
+  own `function` line to the following one also removed
+  `const tierChoice = new Map()`, which lived in the gap. Nothing
+  failed at import and the syntax check passed: the name is read only
+  when a slate renders, so the ReferenceError surfaced as a blank Picks
+  page and fourteen browser tests timing out on a selector, three
+  commits downstream of the cause. Delete a named span, then read what
+  now abuts the cut — or let the tests run before the change is
+  reasoned about, because they found this in one run and I did not
+  find it in six.
+
+- **When a page renders nothing and the console is silent, find the
+  element the app puts its errors in before theorising.** Six probes
+  went into narrowing why `#week-cards` was empty; every one read
+  `#error-box`, which does not exist. The id is `#error`, and it had
+  been holding the exact message — "tierChoice is not defined" — since
+  the first probe.
+
 ## 4. Ruling precedents (apply these without asking; cite them)
 
 - TIGHTENING IS A REFLEX, LOOSENING IS A DECISION: risk down,

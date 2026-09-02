@@ -504,14 +504,11 @@ const Gridiron = (function () {
       });
       host.appendChild(b);
     });
-    const note = document.getElementById('forecaster-note');
-    if (note) {
-      const chosen = (sc.forecasters || []).find(
-        f => f.forecaster === forecasterChoice) || {};
-      note.textContent = chosen.informed
-        ? (sc.operator_tier_table || {}).informed_note || '' : '';
-      note.hidden = !note.textContent;
-    }
+    // THE INFORMED-FORECASTER NOTE went with the operator's calls
+    // (GRIDIRON_16 R1). It said, under the operator's own table, that those
+    // forecasts had seen the model and the market first. No forecaster is
+    // informed any more, so the note could only ever be empty -- and it read
+    // from `operator_tier_table`, a payload key that no longer exists.
   }
 
   function renderTierTable(t) {
@@ -1368,27 +1365,6 @@ const Gridiron = (function () {
     }
   }
 
-  function resolvedRow(c) {
-    const row = el('div', 'row row-done');
-    const head = el('div', 'row-head');
-    head.appendChild(el('div', 'row-rank', ''));
-    const mid = el('div', 'row-mid');
-    mid.appendChild(el('div', 'row-title', c.matchup || ''));
-    mid.appendChild(el('div', 'row-pick', c.resolved_story || c.phrase || ''));
-    head.appendChild(mid);
-    const prob = el('div', 'prob');
-    prob.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
-    prob.appendChild(el('small', '', 'model'));
-    head.appendChild(prob);
-    // `.verdict`, matching the approved mockup's class rather than reusing the
-    // tier chip: a verdict and a confidence tier are different things and
-    // sharing a class invites them to be styled alike.
-    const word = c.voided ? 'VOID' : (c.outcome === 1 ? 'WIN' : 'LOSS');
-    head.appendChild(el('span', 'verdict ' + word.toLowerCase(), word));
-    row.appendChild(head);
-    return row;
-  }
-
   // THE TIER FILTER (R2). A fourth segmented control beside sort and market.
   //
   // REMEMBERED IN MEMORY ONLY, per sport. The choice should survive switching
@@ -1396,6 +1372,13 @@ const Gridiron = (function () {
   // reader forgot they set is a slate that looks emptier than it is, and the
   // one thing worse than a hidden filter is a hidden filter that outlives the
   // session. No storage API is touched.
+  //
+  // THIS DECLARATION WAS DELETED BY ACCIDENT on 2026-09-02 and restored the
+  // same day. `resolvedRow` was removed by cutting from its `function` line
+  // to the next one, and this const sat between the two -- so the cut took it
+  // as well. Nothing failed at import: `tierChoice` is only read once the
+  // slate renders, and the ReferenceError surfaced as a blank Picks page with
+  // fourteen browser tests timing out on a selector.
   const tierChoice = new Map();
 
   function currentTier() {
@@ -1601,7 +1584,10 @@ const Gridiron = (function () {
     const slateRunning = (data.glance || {}).state === 'live';
     const settled = c => c.resolved_utc !== null || c.voided;
     const open = slateRunning ? cards : cards.filter(c => !settled(c));
-    const done = slateRunning ? [] : cards.filter(settled);
+    // COUNTED, NOT LISTED (GRIDIRON_16 R4). Settled picks live in Results.
+    // They are still counted here for one reason: a slate that has finished
+    // must say so, rather than rendering nothing at all.
+    const settledCount = slateRunning ? 0 : cards.filter(settled).length;
 
     // THE CONTROLS LINE. A thin slate has to explain itself: eight picks on a
     // fourteen-game card looks like a failure until the floor is named.
@@ -1628,7 +1614,24 @@ const Gridiron = (function () {
       counts.textContent = bits.filter(Boolean).join(' · ');
     }
 
-    if (!open.length && !done.length) {
+    if (!open.length) {
+      // A FINISHED SLATE SAYS SO AND POINTS AT RESULTS.
+      //
+      // This tested `!open.length && !done.length` while a resolved section
+      // still rendered underneath. With that section gone (R4) the same
+      // condition left a slate whose games had all finished showing NOTHING
+      // AT ALL: no picks, and no sentence either, because `done` was not
+      // empty. A blank page is the one answer a reader cannot act on.
+      if (settledCount) {
+        const finished = el('div', 'empty');
+        finished.appendChild(document.createTextNode(
+          'Every pick on this slate has been settled. '));
+        const link = el('a', '', 'See them in Results →');
+        link.href = '#/results';
+        finished.appendChild(link);
+        host.appendChild(finished);
+        return;
+      }
       // WHOSE picks are missing, when that is why the list is empty. "No
       // forecasts recorded for this slate yet" is false on a slate that has
       // 23 of them from the other forecaster, and a reader who just changed

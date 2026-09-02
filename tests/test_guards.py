@@ -619,3 +619,55 @@ def test_the_tokens_are_named_for_their_meaning_not_their_hue():
     assert "var(--green)" not in rules
     assert "var(--red)" not in rules
     assert "--win:" in css and "--loss:" in css
+
+
+# ---------------------------------------------------------------------------
+# THE WITHDRAWAL LEFT NOTHING BEHIND (GRIDIRON_16 R1, R4)
+# ---------------------------------------------------------------------------
+
+def test_a_resolved_row_on_picks_is_caught_by_name():
+    faults = audit.picks_resolved_faults(audit.PICKS_RESOLVED_FIXTURE_POSITIVE)
+    assert faults and "Results" in faults[0]
+
+
+def test_an_ordinary_row_list_is_not_mistaken_for_a_resolved_one():
+    assert not audit.picks_resolved_faults("const list = el('div', 'rows');")
+
+
+def test_a_reinstated_call_block_is_caught_by_name():
+    faults = audit.withdrawn_calls_faults(
+        audit.WITHDRAWN_CALLS_FIXTURE_POSITIVE, comment="//")
+    assert faults and "withdrawn" in faults[0]
+
+
+def test_the_record_of_the_removal_outlives_it():
+    """The comments and docs that say what went and why must NOT trip the
+    scan. A guard that forces the explanation to be deleted has made the
+    codebase harder to read in the name of tidiness."""
+    assert not audit.withdrawn_calls_faults(
+        "// operator_calls was withdrawn on 2026-09-02", comment="//")
+    assert not audit.withdrawn_calls_faults(
+        "#: `operator_calls` went 2026-09-02 by ruling.", comment="#")
+
+
+def test_the_drop_list_may_name_what_it_drops():
+    """`db.WITHDRAWN` names the table because naming it is HOW the table gets
+    dropped. It is the instrument of the removal, not a survival of it."""
+    from gridiron import db
+
+    source = (config.PACKAGE_ROOT / "db.py").read_text(encoding="utf-8")
+    assert "operator_calls" in source, "the drop list lost its subject"
+    assert not audit.withdrawn_calls_faults(source, comment="#")
+    assert any(name == "operator_calls" for _, name in db.WITHDRAWN)
+
+
+def test_the_withdrawal_scan_exemption_is_one_file():
+    """The scanner holds the forbidden words, so it trips over itself -- the
+    same situation BETTING_SCAN_EXEMPT was written for. Pinned to one file so
+    the exemption cannot grow into a way to hide a stump."""
+    assert audit.WITHDRAWN_SCAN_EXEMPT == ("audit.py",)
+
+
+def test_the_shipped_code_is_free_of_the_withdrawn_feature():
+    audit.check_the_calls_feature_stayed_withdrawn()      # must not raise
+    audit.check_picks_shows_tonight()                     # must not raise
