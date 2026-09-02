@@ -1549,6 +1549,31 @@ def rail_numbers_line(model_prob: float, market_prob: float | None,
     return f"{model} {market} -- {points} {word} apart."
 
 
+def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
+    """"Wednesday 2 September - 5 right, 2 wrong, 1 void".
+
+    THE WHOLE DAY IN ONE SENTENCE, because the square shows "5-2" and a
+    reader hovering it deserves the rest -- particularly the voids, which the
+    square deliberately does not fold into either number.
+    """
+    when = date_words_from_iso(day) or day
+    if not (won or lost or void):
+        return f"{when} - nothing settled"
+    parts = []
+    if won or lost:
+        parts.append(f"{won} right, {lost} wrong")
+    if void:
+        parts.append(f"{void} void" if void == 1 else f"{void} void")
+    return f"{when} - " + ", ".join(parts)
+
+
+def calendar_note() -> str:
+    """What the colours mean, said once under the calendar."""
+    return ("Green when more went right than wrong that day, red when fewer, "
+            "grey when even. Voids are counted separately and are neither: a "
+            "question that was never answered is not a loss.")
+
+
 def no_picks_from(label: str, others: list[tuple[str, int]]) -> str:
     """Why the slate is empty for the forecaster the reader chose.
 

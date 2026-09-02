@@ -986,6 +986,75 @@ def _empty_slate_message(conn: sqlite3.Connection, sport: str) -> str:
     )
 
 
+def results_calendar(conn: sqlite3.Connection, *, sport: str,
+                     days: int = 120) -> dict:
+    """THE SEASON AS A SHAPE: one square per day, its balance inside.
+
+    ONE SPORT, ALWAYS (LAW 6). A calendar mixing baseball and football would
+    show a "day" that is two different slates from two different records, and
+    the tint would average them. `require_sport` is the same tripwire every
+    other reader of the record passes through.
+
+    VOIDS ARE COUNTED AND ARE NEITHER. A void is a question that was never
+    answered -- it is not a loss, and a day that voided four games and won
+    three is not a 3-4 day. They are carried separately so the square can say
+    so, and the balance that tints it never sees them.
+
+    THE TINT IS THE DAY'S BALANCE AND NOTHING ELSE. Not the model's
+    confidence that day, not how big the disagreements were, not a streak: a
+    square that is green for any other reason is a square that says a day went
+    well when it did not.
+    """
+    calibration.require_sport(sport, "views.results_calendar")
+    rows = conn.execute(
+        "SELECT g.league_date AS day,"
+        "       SUM(CASE WHEN v.prediction_id IS NULL AND p.outcome = 1"
+        "                THEN 1 ELSE 0 END) AS won,"
+        "       SUM(CASE WHEN v.prediction_id IS NULL AND p.outcome = 0"
+        "                THEN 1 ELSE 0 END) AS lost,"
+        "       SUM(CASE WHEN v.prediction_id IS NOT NULL THEN 1 ELSE 0 END) AS void"
+        "  FROM predictions p"
+        "  JOIN games g ON g.id = p.game_id"
+        "  LEFT JOIN prediction_voids v ON v.prediction_id = p.id"
+        " WHERE p.sport = ?"
+        "   AND (p.resolved_utc IS NOT NULL OR v.prediction_id IS NOT NULL)"
+        "   AND g.league_date IS NOT NULL"
+        " GROUP BY g.league_date"
+        " ORDER BY g.league_date DESC"
+        " LIMIT ?",
+        (sport, days)).fetchall()
+
+    out = []
+    for r in rows:
+        won, lost, void = r["won"] or 0, r["lost"] or 0, r["void"] or 0
+        settled = won + lost
+        out.append({
+            "day": r["day"],
+            "won": won,
+            "lost": lost,
+            "void": void,
+            "settled": settled,
+            "n": settled,
+            "sport": sport,
+            # THE BALANCE, and the only thing that may tint the square.
+            "balance": ("up" if won > lost else
+                        "down" if lost > won else "even"),
+            "label": f"{won}-{lost}" if settled else "",
+            "words": language.calendar_day_line(r["day"], won, lost, void),
+        })
+    out.reverse()
+    payload = {
+        "sport": sport,
+        "days": out,
+        "n": sum(d["settled"] for d in out),
+        "void": sum(d["void"] for d in out),
+        "note": language.calendar_note(),
+    }
+    # THE MERGE CANNOT REACH THE API, the same place every other guard runs.
+    audit.check_the_calendar_says_what_it_shows(payload)
+    return payload
+
+
 def history(
     conn: sqlite3.Connection,
     *,
@@ -995,6 +1064,7 @@ def history(
     prop_type: str | None = None,
     predictor: str | None = None,
     outcome: str | None = None,
+    day: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> dict:
@@ -1016,6 +1086,13 @@ def history(
     if predictor:
         where.append("p.predictor = ?")
         params.append(predictor)
+    if day:
+        # THE CALENDAR'S OWN FILTER (GRIDIRON_13 P2). The LEAGUE date, not the
+        # UTC one: a game starting at 02:00 UTC is the previous evening where
+        # it is played, and a square that filtered on UTC would show a
+        # different set of games than the one it counted.
+        where.append("g.league_date = ?")
+        params.append(day)
     if outcome == "resolved":
         where.append("p.resolved_utc IS NOT NULL")
     elif outcome == "open":
@@ -1030,8 +1107,14 @@ def history(
         )
 
     clause = " AND ".join(where)
+    # THE COUNT JOINS `games` TOO. It did not, and the day filter added in P2
+    # names `g.league_date` -- so the rows query worked and the count threw
+    # "no such column". The join is on a foreign key and is 1:1, so it cannot
+    # change what is counted; the two queries now filter on the same columns,
+    # which is the only way the total can be trusted to describe the rows.
     total = conn.execute(
-        f"SELECT COUNT(*) FROM predictions p WHERE {clause}", params
+        f"SELECT COUNT(*) FROM predictions p"
+        f" JOIN games g ON g.id = p.game_id WHERE {clause}", params
     ).fetchone()[0]
     rows = conn.execute(
         f"SELECT p.*, g.season, g.week, g.home, g.away, g.status"

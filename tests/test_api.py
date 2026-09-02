@@ -78,7 +78,14 @@ def test_no_route_can_touch_a_prediction(client):
             " FROM predictions").fetchone()
 
     before = snapshot()
-    client.post("/auth/login", json={"token": "not-the-token"})
+    # `/auth/logout` ONLY, and the omission is deliberate. Posting a bad token
+    # at `/auth/login` exercises the other write route, but a failed sign-in
+    # is RECORDED -- that is the whole point of the backoff, which is stored
+    # rather than held in memory so a restart is not a way around it. Doing it
+    # here left a failure behind that
+    # `test_auth.py::test_the_backoff_survives_a_restart` then measured,
+    # and it failed in the full suite while passing alone. `test_auth.py`
+    # covers the login route against the record directly.
     client.post("/auth/logout")
     after = snapshot()
     assert (before["n"], before["sum_"]) == (after["n"], after["sum_"])

@@ -1612,3 +1612,53 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .gate-why {
   margin-top: 4px; font-size: 11px; color: var(--faint); max-width: 62ch;
 }
+
+/* --- THE SEASON AS A SHAPE (GRIDIRON_13 P2) -------------------------------
+   One square per day. Weeks are ROWS, so a column is a weekday and the shape
+   of a season is readable at a glance.
+
+   THE TINT IS THE DAY'S BALANCE AND NOTHING ELSE. `.day.up` and `.day.down`
+   are verdict selectors under the colour law -- these squares are days on
+   which more picks won or lost, which is exactly what green and red mean
+   (GRIDIRON_16 R2). A square tinted for any other reason is caught by
+   `audit.calendar_faults` before it can be drawn. */
+.cal {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  max-width: 380px;
+}
+.cal-months {
+  display: flex; justify-content: space-between;
+  max-width: 380px; margin-bottom: 6px;
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+}
+.day {
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--muted);
+  background: none;
+  padding: 0;
+  cursor: default;
+}
+/* An empty day is a hairline square: it says nothing happened, which is not
+   the same as saying nothing is known. */
+.day.empty { opacity: 0.35; }
+.day.has-result { cursor: pointer; color: var(--chrome); }
+.day.up { background: var(--win-wash); border-color: var(--win); }
+.day.down { background: var(--loss-wash); border-color: var(--loss); }
+.day.even { background: var(--card-2); }
+.day.today { outline: 1px solid var(--muted); outline-offset: 1px; }
+.day.sel { outline: 2px solid var(--chrome); outline-offset: 1px; }
+.day .voids {
+  position: absolute; margin-top: -22px; margin-left: 22px;
+  width: 3px; height: 3px; border-radius: 50%; background: var(--faint);
+}
+.cal-clear {
+  margin-left: 10px; background: none; border: 0; padding: 0;
+  color: var(--chrome); font-family: var(--body); font-size: 12px;
+  text-decoration: underline; cursor: pointer;
+}

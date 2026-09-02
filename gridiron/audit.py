@@ -1949,10 +1949,10 @@ _check_the_motion_scanner_can_see()
 _WIN_TOKENS = ("--win", "--win-wash", "--pos")
 _LOSS_TOKENS = ("--loss", "--loss-wash", "--neg")
 
-#: A selector that is allowed to say "won" / "lost". `up` is the count of
-#: picks that went the model's way in since-you-last-looked -- those ARE wins.
+#: A selector that is allowed to say "won" / "lost". `up` and `down` are
+#: the counts of picks that went the model's way and against it -- in
 _WIN_SELECTOR = re.compile(r"\.win\b|v-win\b|\.up\b|\.pos\b")
-_LOSS_SELECTOR = re.compile(r"\.loss\b|v-loss\b|\.neg\b")
+_LOSS_SELECTOR = re.compile(r"\.loss\b|v-loss\b|\.neg\b|\.down\b")
 
 #: Anything a person clicks, focuses or navigates by. These may never carry a
 #: value colour, whatever their class happens to be called.
@@ -2042,6 +2042,110 @@ def _check_the_colour_scanner_can_see() -> None:
 
 
 _check_the_colour_scanner_can_see()
+
+
+# THE SEASON AS A SHAPE (GRIDIRON_13 P2)
+# ---------------------------------------------------------------------------
+#
+# A results calendar is the densest claim this app makes: one square carries a
+# whole day's record, and a reader takes it in without reading a number. Three
+# ways it could lie, and this scan refuses all three.
+#
+#   MERGED SPORTS. A square holding a baseball day and a football day is two
+#   records averaged into one colour. LAW 6, in the place it would be least
+#   visible -- nobody checks the sport of a green square.
+#
+#   A VOID COUNTED AS A LOSS. A void is a question that was never answered. A
+#   day that voided four and won three is not a 3-4 day, and tinting it red
+#   says the model was wrong about games it never got to be wrong about.
+#
+#   A TINT FROM ANYTHING BUT THE BALANCE. Confidence that day, the size of the
+#   disagreements, a streak -- any of them would make a square green for a
+#   reason other than "more went right than wrong", which is the one thing a
+#   reader will believe it means.
+
+def calendar_faults(payload: dict) -> list[str]:
+    """A calendar square that could mislead."""
+    faults = []
+    sport = payload.get("sport")
+    for i, day in enumerate(payload.get("days") or []):
+        where = f"day {day.get('day', i)!r}"
+        if day.get("sport") and sport and day["sport"] != sport:
+            faults.append(
+                f"{where} carries sport {day['sport']!r} inside a {sport!r} "
+                f"calendar. LAW 6: a square holding two sports is two records "
+                f"averaged into one colour, in the place it is least visible.")
+        won, lost = day.get("won") or 0, day.get("lost") or 0
+        void = day.get("void") or 0
+        if day.get("settled") is not None and day["settled"] != won + lost:
+            faults.append(
+                f"{where} reports {day['settled']} settled against {won} right "
+                f"and {lost} wrong. A void is not a loss and must not be "
+                f"counted into either.")
+        expected = "up" if won > lost else "down" if lost > won else "even"
+        if day.get("balance") and day["balance"] != expected:
+            faults.append(
+                f"{where} is tinted {day['balance']!r} on {won} right and "
+                f"{lost} wrong, which is {expected!r}. A square is tinted by "
+                f"the day's balance and by nothing else -- not confidence, not "
+                f"the size of the disagreements, not a streak.")
+        if void and day.get("label") and str(won + void) in str(day["label"]).split("-")[:1]:
+            faults.append(
+                f"{where} folds {void} void into its win count.")
+        if "n" not in day:
+            faults.append(f"{where} has no N (LAW 4).")
+    return faults
+
+
+CALENDAR_FIXTURE_GOOD = {
+    "sport": "mlb",
+    "days": [{"day": "2026-09-01", "won": 5, "lost": 2, "void": 1,
+              "settled": 7, "n": 7, "sport": "mlb", "balance": "up",
+              "label": "5-2"}],
+}
+CALENDAR_FIXTURE_MERGED = {
+    "sport": "mlb",
+    "days": [{"day": "2026-09-01", "won": 5, "lost": 2, "void": 0,
+              "settled": 7, "n": 7, "sport": "nfl", "balance": "up",
+              "label": "5-2"}],
+}
+CALENDAR_FIXTURE_VOID_AS_LOSS = {
+    "sport": "mlb",
+    "days": [{"day": "2026-09-01", "won": 3, "lost": 4, "void": 4,
+              "settled": 11, "n": 11, "sport": "mlb", "balance": "down",
+              "label": "3-4"}],
+}
+CALENDAR_FIXTURE_WRONG_TINT = {
+    "sport": "mlb",
+    "days": [{"day": "2026-09-01", "won": 2, "lost": 5, "void": 0,
+              "settled": 7, "n": 7, "sport": "mlb", "balance": "up",
+              "label": "2-5"}],
+}
+
+
+def check_the_calendar_says_what_it_shows(payload: dict) -> None:
+    faults = calendar_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A CALENDAR SQUARE IS MISLEADING:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_calendar_scanner_can_see() -> None:
+    problems = []
+    if calendar_faults(CALENDAR_FIXTURE_GOOD):
+        problems.append("calendar_faults flags a correct day")
+    if not calendar_faults(CALENDAR_FIXTURE_MERGED):
+        problems.append("calendar_faults misses a square from another sport")
+    if not calendar_faults(CALENDAR_FIXTURE_VOID_AS_LOSS):
+        problems.append("calendar_faults misses voids counted into settled")
+    if not calendar_faults(CALENDAR_FIXTURE_WRONG_TINT):
+        problems.append("calendar_faults misses a square tinted against its "
+                        "own balance")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_calendar_scanner_can_see()
 
 
 # HOW CLOSE A GATE IS, IN COUNTS (GRIDIRON_13 P1)

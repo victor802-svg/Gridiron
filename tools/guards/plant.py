@@ -871,6 +871,43 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
+def plant_a_calendar_that_merges_sports() -> Result:
+    """Put a football day into the baseball calendar.
+
+    LAW 6 in the place it is least visible: nobody checks the sport of a green
+    square. One square holding two records is two records averaged into one
+    colour, and the reader takes it in without reading a number.
+    """
+    faults = audit.calendar_faults(audit.CALENDAR_FIXTURE_MERGED)
+    return _desk_plant(faults, "put another sport's day on the calendar",
+                       "audit.calendar_faults")
+
+
+def plant_a_void_counted_as_a_loss() -> Result:
+    """Fold a day's voids into its settled count.
+
+    A void is a question that was never answered. A day that voided four and
+    won three is not a 3-4 day, and tinting it red says the model was wrong
+    about games it never got to be wrong about.
+    """
+    faults = audit.calendar_faults(audit.CALENDAR_FIXTURE_VOID_AS_LOSS)
+    return _desk_plant(faults, "count a void as a loss on the calendar",
+                       "audit.calendar_faults")
+
+
+def plant_a_square_tinted_against_its_balance() -> Result:
+    """Tint a losing day green.
+
+    The tint is the day's balance and nothing else -- not the model's
+    confidence that day, not the size of its disagreements, not a streak. Any
+    of those would make a square green for a reason other than "more went
+    right than wrong", which is the one thing a reader will believe it means.
+    """
+    faults = audit.calendar_faults(audit.CALENDAR_FIXTURE_WRONG_TINT)
+    return _desk_plant(faults, "tint a calendar square against its own balance",
+                       "audit.calendar_faults")
+
+
 def plant_a_progress_line_showing_a_percentage() -> Result:
     """Say "70% of the way to a verdict" instead of "14 of 20".
 
@@ -2772,6 +2809,9 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
+    results.append(plant_a_calendar_that_merges_sports())
+    results.append(plant_a_void_counted_as_a_loss())
+    results.append(plant_a_square_tinted_against_its_balance())
     results.append(plant_a_progress_line_showing_a_percentage())
     results.append(plant_a_gate_line_without_its_n())
     results.append(plant_a_green_progress_bar())

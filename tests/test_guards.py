@@ -749,3 +749,57 @@ def test_a_dated_read_window_counts_in_days():
     assert not audit.progress_faults(g)
     open_now = language.date_gate("2026-08-31", "2026-09-14", today="2026-09-20")
     assert open_now["cleared"] and "window is open" in open_now["note"]
+
+
+# ---------------------------------------------------------------------------
+# THE SEASON AS A SHAPE (GRIDIRON_13 P2)
+# ---------------------------------------------------------------------------
+
+def test_a_calendar_merging_sports_is_caught_by_name():
+    faults = audit.calendar_faults(audit.CALENDAR_FIXTURE_MERGED)
+    assert faults and "LAW 6" in faults[0]
+
+
+def test_a_void_counted_as_a_loss_is_caught_by_name():
+    faults = audit.calendar_faults(audit.CALENDAR_FIXTURE_VOID_AS_LOSS)
+    assert faults and "void is not a loss" in faults[0]
+
+
+def test_a_square_tinted_against_its_balance_is_caught():
+    faults = audit.calendar_faults(audit.CALENDAR_FIXTURE_WRONG_TINT)
+    assert faults and "balance" in faults[0]
+
+
+def test_a_correct_calendar_day_is_not_flagged():
+    assert not audit.calendar_faults(audit.CALENDAR_FIXTURE_GOOD)
+
+
+def test_the_real_calendar_carries_one_sport_and_no_void_as_a_loss(resolved_league):
+    """The guard runs inside `views.results_calendar`, so this is the payload
+    the API would serve."""
+    from gridiron import views
+
+    payload = views.results_calendar(resolved_league, sport="nfl")
+    audit.check_the_calendar_says_what_it_shows(payload)      # must not raise
+    for day in payload["days"]:
+        assert day["sport"] == "nfl"
+        assert day["settled"] == day["won"] + day["lost"], (
+            "a void was counted into the day's settled total")
+        assert "n" in day
+
+
+def test_a_calendar_day_states_its_voids_in_words():
+    from gridiron import language
+
+    line = language.calendar_day_line("2026-08-31", 14, 4, 4)
+    assert "14 right, 4 wrong" in line and "4 void" in line
+    assert "Monday 31 August" in line
+    quiet = language.calendar_day_line("2026-08-31", 0, 0, 0)
+    assert "nothing settled" in quiet
+
+
+def test_the_calendar_note_says_voids_are_neither():
+    from gridiron import language
+
+    note = language.calendar_note()
+    assert "neither" in note and "never answered is not a loss" in note

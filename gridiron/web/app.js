@@ -87,7 +87,12 @@ const Gridiron = (function () {
     // Disagreement is the default order, and the note under the control
     // says why. Confidence-first would put the model's easiest calls on top.
     weekSort: 'disagreement', sport: 'nfl', sports: [], meta: null, scorecard: null,
-                  markets: ['spread'], historyOffset: 0, historyTotal: 0 };
+                  markets: ['spread'], historyOffset: 0, historyTotal: 0,
+    // WHICH DAY THE CALENDAR HAS SELECTED, or null for the whole season.
+    // Declared here rather than left to spring into existence on first click:
+    // an undefined that behaves like null until it does not is the kind of
+    // state nobody can reason about.
+    calendarDay: null };
 
   function withSport(path, extra) {
     const p = new URLSearchParams(extra || {});
@@ -1993,6 +1998,8 @@ const Gridiron = (function () {
     if (pr) p.set('predictor', pr);
     const o = document.getElementById('history-outcome').value;
     if (o) p.set('outcome', o);
+    // THE CALENDAR'S SELECTION (GRIDIRON_13 P2). One day, or the season.
+    if (state.calendarDay) p.set('day', state.calendarDay);
     p.set('limit', '100');
     p.set('offset', String(state.historyOffset));
     return p.toString();
@@ -2019,12 +2026,106 @@ const Gridiron = (function () {
     return chip;
   }
 
+  // THE SEASON AS A SHAPE (GRIDIRON_13 P2).
+  //
+  // WEEKS ARE ROWS, so a column is a weekday and a season has a readable
+  // shape. Every square's words -- the balance, the label, the sentence a
+  // reader gets on hover -- are written by the server; this places them and
+  // decides nothing about what a day means.
+  //
+  // A DAY WITH NO RESULT IS A HAIRLINE SQUARE, not a gap: "nothing settled
+  // here" and "nothing is known here" look identical as empty space, and
+  // only one of them is true.
+  async function renderCalendar() {
+    const panel = document.getElementById('calendar-panel');
+    const grid = document.getElementById('calendar-grid');
+    const months = document.getElementById('calendar-months');
+    const note = document.getElementById('calendar-note');
+    const caption = document.getElementById('calendar-caption');
+    if (!panel || !grid) return;
+
+    const data = await fetchJSON(withSport('/api/calendar'));
+    const days = data.days || [];
+    grid.innerHTML = '';
+    months.innerHTML = '';
+    if (!days.length) { panel.hidden = true; return; }
+    panel.hidden = false;
+
+    // Pad to the start of the week so the columns line up as weekdays.
+    const first = new Date(days[0].day + 'T00:00:00');
+    const lead = (first.getDay() + 6) % 7;          // Monday-first
+    for (let i = 0; i < lead; i++) {
+      grid.appendChild(el('div', 'day empty'));
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    days.forEach(d => {
+      const cell = el('button', 'day');
+      cell.type = 'button';
+      cell.dataset.day = d.day;
+      // THE TINT IS THE DAY'S BALANCE and the server computed it. The
+      // renderer does not compare won against lost -- a second opinion about
+      // which way a day went is exactly what `audit.calendar_faults` exists
+      // to stop reaching a reader.
+      if (d.settled) {
+        cell.classList.add('has-result', d.balance);
+        cell.textContent = d.label;
+      } else {
+        cell.classList.add('empty');
+      }
+      if (d.day === today) cell.classList.add('today');
+      if (d.day === state.calendarDay) cell.classList.add('sel');
+      cell.title = d.words || '';
+      if (d.void) {
+        const dot = el('span', 'voids');
+        dot.title = d.void + ' void';
+        cell.appendChild(dot);
+      }
+      if (d.settled) {
+        cell.addEventListener('click', () => {
+          state.calendarDay = (state.calendarDay === d.day) ? null : d.day;
+          state.historyOffset = 0;
+          renderResults().catch(showError);
+        });
+      }
+      grid.appendChild(cell);
+    });
+
+    months.appendChild(el('span', '', dateWords(days[0].day)));
+    months.appendChild(el('span', '', dateWords(days[days.length - 1].day)));
+    if (note) note.textContent = data.note || '';
+    if (caption) {
+      caption.textContent = '';
+      caption.appendChild(document.createTextNode(
+        int(data.n) + ' settled over ' + days.length + ' days'));
+      if (state.calendarDay) {
+        const clear = el('button', 'cal-clear', 'show the whole season');
+        clear.type = 'button';
+        clear.addEventListener('click', () => {
+          state.calendarDay = null;
+          state.historyOffset = 0;
+          renderResults().catch(showError);
+        });
+        caption.appendChild(clear);
+      }
+    }
+  }
+
+  // "2026-09-01" -> "1 Sep". The calendar's month strip only.
+  function dateWords(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+
   async function renderResults() {
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
     requireN(data, 'history');
     state.historyTotal = data.n;
     document.getElementById('history-caption').textContent =
-      int(data.n) + ' predictions match';
+      int(data.n) + ' predictions match' +
+      (state.calendarDay ? ' on ' + state.calendarDay : '');
+    await renderCalendar();
 
     // The forecaster column appears ONLY when both are being shown. A column
     // that always says "statistical" is a column of noise.
@@ -2120,6 +2221,10 @@ const Gridiron = (function () {
     if (sport === state.sport) return;
     state.sport = sport;
     state.historyOffset = 0;
+    // A DAY SELECTED IN ONE SPORT MEANS NOTHING IN ANOTHER (LAW 6). Carrying
+    // it across would filter a football table to a baseball date and show an
+    // empty page that looks like a missing record.
+    state.calendarDay = null;
     document.querySelectorAll('#sport-tabs button').forEach(b => {
       const on = b.dataset.sport === sport;
       b.setAttribute('aria-current', on ? 'true' : 'false');

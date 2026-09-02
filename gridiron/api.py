@@ -429,6 +429,12 @@ def factors(sport: str | None = None) -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/calendar")
+def calendar(sport: str | None = None) -> dict:
+    """The season as a shape: one square per day, for ONE sport (LAW 6)."""
+    return views.results_calendar(get_conn(), sport=_sport(sport))
+
+
 @app.get("/api/history")
 def history(
     sport: str | None = None,
@@ -437,6 +443,7 @@ def history(
     prop_type: str | None = None,
     predictor: str | None = None,
     outcome: str | None = None,
+    day: str | None = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> dict:
@@ -448,6 +455,7 @@ def history(
         prop_type=prop_type,
         predictor=predictor,
         outcome=outcome,
+        day=day,
         limit=limit,
         offset=offset,
     )

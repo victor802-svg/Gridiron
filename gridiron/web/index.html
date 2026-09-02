@@ -253,6 +253,16 @@
 
   <section id="view-results" class="view" hidden>
     <h2>Results <span id="history-caption" class="caption"></span></h2>
+    <!-- THE SEASON AS A SHAPE (GRIDIRON_13 P2). One square per day with a
+         settled result, its balance inside. Click a day to filter the table
+         below to it. One sport only -- a square holding two records would
+         average them into one colour. -->
+    <section class="panel" id="calendar-panel" hidden>
+      <h3>The season so far <small id="calendar-caption"></small></h3>
+      <div class="cal-months" id="calendar-months"></div>
+      <div class="cal" id="calendar-grid"></div>
+      <p class="footnote" id="calendar-note"></p>
+    </section>
     <div class="filters">
       <input id="history-q" type="search" placeholder="search subject, game or reasoning" autocomplete="off">
       <select id="history-market"><option value="">all markets</option></select>
