@@ -2,12 +2,12 @@
   "name": "Gridiron",
   "short_name": "Gridiron",
   "description": "A multi-sport forecaster that grades itself. Not a betting tool.",
-  "start_url": "/",
+  "start_url": "/#/week",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0A0F0C",
-  "theme_color": "#0A0F0C",
+  "background_color": "#050705",
+  "theme_color": "#050705",
   "icons": [
     {
       "src": "/static/icon.svg",

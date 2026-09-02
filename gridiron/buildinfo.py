@@ -52,6 +52,28 @@ def stamp(root: Path | None = None) -> dict | None:
     return data
 
 
+def build_id(root: Path | None = None) -> str:
+    """A short, stable name for the build that is running (GRIDIRON_13 P6).
+
+    THE LAUNCHER COMPARES THIS ACROSS A SOCKET, so it has to mean the same
+    thing on both sides and survive being carried in JSON. A frozen build
+    answers with its stamped commit; running from source answers with the
+    working tree's HEAD, and "source" when there is not even that.
+
+    IT IS NOT A SECRET AND IT IS NOT DATA. `/api/health` is the one route that
+    answers before authentication, and it carries no counts, no staleness and
+    no paths for exactly that reason. A build identifier is the same class of
+    thing as the version string already there: it says which code is running,
+    which is what the caller has to know in order to notice it is the wrong
+    code.
+    """
+    stamped = stamp(root)
+    if stamped and stamped.get("commit"):
+        return str(stamped["commit"])[:12]
+    head = repository_head()
+    return str(head)[:12] if head else "source"
+
+
 def _git(repo: Path, *args: str) -> str | None:
     """One git command, or None. Never raises -- see GIT_TIMEOUT."""
     try:

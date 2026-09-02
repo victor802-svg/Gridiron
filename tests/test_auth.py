@@ -91,7 +91,15 @@ def test_health_leaks_nothing(client):
     record's kind, not counts, not staleness. An open endpoint that reports
     what is in the database is a data leak with a reassuring name."""
     body = client.get("/api/health").json()
-    assert set(body) == {"ok", "version"}
+    # `build` JOINED THE SHAPE ON 2026-09-02 (GRIDIRON_13 P6) and had to argue
+    # for itself here, which is what this test is for. The launcher compares
+    # the running server's build against its own before attaching, because
+    # attaching to an older one opens an app that works perfectly and is not
+    # the code that was built -- a photograph, with nothing on screen saying
+    # so. A build identifier is the same class of thing as the version string
+    # already here: it says which code is answering. It is not data ABOUT THE
+    # RECORD, which is what the leak rule below is actually about.
+    assert set(body) == {"ok", "version", "build"}
     blob = repr(body).lower()
     for leak in ("database", "path", ".db", "kind", "sport", "stale", "n="):
         assert leak not in blob, f"/api/health leaked {leak!r}: {body}"

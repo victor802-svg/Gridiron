@@ -59,6 +59,11 @@ SESSION_HOURS = 24 * 30
 #:   /static/login.css, /static/app.css  so the login page is not unstyled
 OPEN_PATHS = frozenset({
     "/api/health",
+    # THE SIGN-IN SCREEN'S OWN NUMBERS (GRIDIRON_13 P6). Counts and records
+    # only -- `audit.check_the_login_page_shows_no_pick` refuses a side, a
+    # probability, a team with a line and a rate, and it runs inside the view
+    # rather than at the route, so there is no way to serve one.
+    "/api/login-glance",
     "/login",
     "/auth/login",
     "/auth/handoff",
@@ -162,6 +167,11 @@ def _iso(when: datetime) -> str:
     return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _parse(text: str) -> datetime:
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc)
+
+
 def create_session(conn: sqlite3.Connection, *, user_agent: str | None = None) -> str:
     session_id = secrets.token_urlsafe(32)
     conn.execute(
@@ -178,19 +188,58 @@ def create_session(conn: sqlite3.Connection, *, user_agent: str | None = None) -
     return session_id
 
 
+#: How much of the window has to have elapsed before a session is extended.
+#: Writing on every request would be a write per page view for no benefit; a
+#: tenth of the window means at most ten extensions across thirty days.
+SLIDE_AFTER = 0.1
+
+
 def session_is_valid(conn: sqlite3.Connection, session_id: str | None) -> bool:
+    """Is this session live -- and if so, SLIDE it (GRIDIRON_13 P6).
+
+    THIRTY DAYS FROM LAST USE, not from sign-in. A fixed expiry logs the
+    operator out on a schedule that has nothing to do with whether they were
+    using the app: open it every day for a month and it still throws you out
+    on day thirty, at which point the token has to come out of wherever it is
+    kept. Sliding means it expires only after a real absence.
+    """
     if not session_id:
         return False
     row = conn.execute(
         "SELECT expires_utc FROM sessions WHERE id = ?", (session_id,)
     ).fetchone()
-    return bool(row) and row["expires_utc"] > _iso(_now())
+    now = _now()
+    if not row or row["expires_utc"] <= _iso(now):
+        return False
+    full = timedelta(hours=SESSION_HOURS)
+    remaining = _parse(row["expires_utc"]) - now
+    if remaining < full * (1 - SLIDE_AFTER):
+        conn.execute(
+            "UPDATE sessions SET expires_utc = ? WHERE id = ?",
+            (_iso(now + full), session_id))
+        conn.commit()
+    return True
 
 
 def drop_session(conn: sqlite3.Connection, session_id: str | None) -> None:
     if session_id:
         conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         conn.commit()
+
+
+def drop_all_sessions(conn: sqlite3.Connection) -> int:
+    """Sign out everywhere. Returns how many devices were signed out.
+
+    THE ANSWER TO "I LEFT IT OPEN SOMEWHERE". A thirty-day sliding session is
+    convenient exactly because it does not expire while it is in use, which
+    means a device left signed in stays signed in -- so the app has to offer
+    the other half of that bargain. Rotating the token does the same thing,
+    but this does not require the operator to have the token to hand.
+    """
+    count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+    conn.execute("DELETE FROM sessions")
+    conn.commit()
+    return count
 
 
 # ---------------------------------------------------------------------------

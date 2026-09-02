@@ -18,30 +18,50 @@
   }
   .signin input {
     width: 100%; box-sizing: border-box; padding: 11px 12px; font-size: 15px;
-    font-family: inherit; color: var(--ink); background: var(--card);
+    font-family: inherit; color: var(--chrome); background: var(--card);
     border: 1px solid var(--rule-2); border-radius: 6px;
   }
-  .signin input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .signin input:focus { outline: 2px solid var(--chrome); outline-offset: 1px; }
+  /* THE BUTTON WENT INVISIBLE, and this is the note about why.
+     `--ink` is the GROUND in the palette; in the stylesheet this page
+     inherited it once meant the TEXT. So `background: var(--ink)` painted the
+     button the colour of the page and `color: var(--bg)` painted the label
+     the same -- a sign-in button nobody could see, on the one screen a person
+     cannot get past. It is the same name collision `style.css` documents at
+     length, resurfacing on the page that was written before the fix.
+     Chrome on ink, spelled with the names that mean what they say. */
   .signin button {
     width: 100%; margin-top: 14px; padding: 11px 12px; font-size: 15px;
-    font-family: inherit; cursor: pointer; color: var(--bg);
-    background: var(--ink); border: 0; border-radius: 6px;
+    font-family: inherit; cursor: pointer; color: var(--ink);
+    background: var(--chrome); border: 0; border-radius: 6px;
+    font-weight: 600;
     min-height: 44px;
   }
   .signin button:disabled { opacity: .55; cursor: default; }
   .msg { min-height: 20px; margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
-  .msg.bad { color: var(--accent); }
+  /* A failed sign-in is not a pick that lost (GRIDIRON_16 R2): chrome and
+     weight, never the loss colour. */
+  .msg.bad { color: var(--chrome); font-weight: 600; }
   .signin .note {
     margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--rule-1);
     color: var(--ink-2); font-size: 13px; line-height: 1.55;
   }
   .signin code { font-size: 12px; }
+  .brand-b { color: var(--chrome); }
+  .glance {
+    margin-top: 26px; padding-top: 16px;
+    border-top: 1px solid var(--rule-1);
+    font-family: var(--mono); font-size: 12px; color: var(--ink-2);
+    display: grid; gap: 6px;
+  }
+  .glance b { color: var(--chrome); font-weight: 600; }
+  .glance .never { font-family: var(--body); font-size: 11px; color: var(--ink-3); }
 </style>
 </head>
 <body>
 
 <main class="signin">
-  <h1>Gridiron</h1>
+  <h1><span class="brand-b">GRID</span>IRON</h1>
   <p class="sub">A multi-sport forecaster that grades itself.</p>
 
   <form id="login" autocomplete="off">
@@ -52,14 +72,46 @@
     <p class="msg" id="msg" role="status" aria-live="polite"></p>
   </form>
 
+  <!-- THE RECORD, BEFORE YOU SIGN IN (GRIDIRON_13 P6). Counts and records
+       only: it says the appliance is alive and working, which is most of what
+       somebody opens it to find out. A side, a probability, a team with a
+       line or a rate would make it worth reading to a stranger, and
+       `audit.check_the_login_page_shows_no_pick` refuses all four. -->
+  <div class="glance" id="glance" hidden></div>
+
   <p class="note">
-    The token was printed once, by <code>tools/make_token.py</code>. It is not
+    The token was printed once, by <code class="code-literal">tools/make_token.py</code>. It is not
     stored in this browser: signing in exchanges it for a session cookie that
     JavaScript cannot read.
   </p>
 </main>
 
 <script>
+  // THE GLANCE. Every string is the server's -- `language.login_glance_line`
+  // writes them -- so this page composes no prose either, and the same scan
+  // that guards the app guards the door.
+  (async () => {
+    try {
+      const res = await fetch('/api/login-glance');
+      if (!res.ok) return;
+      const data = await res.json();
+      const host = document.getElementById('glance');
+      if (!host || !(data.sports || []).length) return;
+      data.sports.forEach(s => {
+        const row = document.createElement('div');
+        row.textContent = s.line;
+        host.appendChild(row);
+      });
+      const note = document.createElement('div');
+      note.className = 'never';
+      note.textContent = data.never_summed;
+      host.appendChild(note);
+      host.hidden = false;
+    } catch (err) {
+      // A sign-in screen that cannot reach its own numbers still signs you in.
+    }
+  })();
+
   const form = document.getElementById('login');
   const msg = document.getElementById('msg');
   const submit = document.getElementById('submit');

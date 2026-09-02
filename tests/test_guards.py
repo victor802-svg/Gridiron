@@ -911,3 +911,123 @@ def test_neither_secret_is_returned_by_the_settings_page():
         assert topic not in blob, "the ntfy topic was serialised to the page"
     assert "..." in panel["token"]["masked"] or panel["token"]["masked"] in (
         "not set", "set")
+
+
+# ---------------------------------------------------------------------------
+# THE DOOR (GRIDIRON_13 P6)
+# ---------------------------------------------------------------------------
+
+def test_a_pick_on_the_login_page_is_caught_by_name():
+    """The sign-in screen faces somebody who has not signed in."""
+    faults = audit.login_glance_faults(audit.LOGIN_FIXTURE_A_PICK)
+    assert faults and "PICK" in faults[0]
+
+
+def test_a_probability_on_the_login_page_is_caught():
+    faults = audit.login_glance_faults(audit.LOGIN_FIXTURE_A_PROBABILITY)
+    assert faults and "PROBABILITY" in faults[0]
+
+
+def test_a_rate_on_the_login_page_is_caught():
+    """A percentage is the model's claim about something. Counts only."""
+    faults = audit.login_glance_faults(audit.LOGIN_FIXTURE_A_RATE)
+    assert faults and "percentage" in faults[0]
+
+
+def test_a_record_and_a_slate_size_are_allowed():
+    assert not audit.login_glance_faults(audit.LOGIN_FIXTURE_GOOD)
+
+
+def test_the_real_login_glance_carries_no_pick(resolved_league):
+    """The guard runs inside `views.login_glance`, so this is what the open
+    route would actually serve."""
+    from gridiron import views
+
+    payload = views.login_glance(resolved_league)
+    audit.check_the_login_page_shows_no_pick(payload)      # must not raise
+    blob = json.dumps(payload).lower()
+    for forbidden in ("model_prob", "model_side", "reasoning", "line_asked"):
+        assert forbidden not in blob, f"the login page carries {forbidden}"
+
+
+def test_the_login_glance_is_never_summed(resolved_league):
+    """LAW 6 on the one page a stranger can see."""
+    from gridiron import views
+
+    payload = views.login_glance(resolved_league)
+    assert "never added together" in payload["never_summed"]
+    sports = [s["sport"] for s in payload["sports"]]
+    assert len(sports) == len(set(sports)), "a sport appears twice"
+    assert "total" not in json.dumps(payload).lower()
+
+
+def test_a_session_slides_on_use(tmp_path):
+    """THIRTY DAYS FROM LAST USE, not from sign-in. A fixed expiry logs the
+    operator out on a schedule that has nothing to do with whether they were
+    using the app."""
+    import datetime as dt
+
+    from gridiron import auth as _auth, db as _db
+
+    conn = _db.open_db(tmp_path / "s.db")
+    sid = _auth.create_session(conn)
+    near = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+    conn.execute("UPDATE sessions SET expires_utc = ? WHERE id = ?", (near, sid))
+    conn.commit()
+
+    assert _auth.session_is_valid(conn, sid)
+    after = conn.execute(
+        "SELECT expires_utc FROM sessions WHERE id = ?", (sid,)).fetchone()[0]
+    assert after > near, "the session did not slide on use"
+
+
+def test_an_expired_session_does_not_slide(tmp_path):
+    """Sliding extends a LIVE session. It must not resurrect a dead one."""
+    import datetime as dt
+
+    from gridiron import auth as _auth, db as _db
+
+    conn = _db.open_db(tmp_path / "s.db")
+    sid = _auth.create_session(conn)
+    past = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+    conn.execute("UPDATE sessions SET expires_utc = ? WHERE id = ?", (past, sid))
+    conn.commit()
+    assert not _auth.session_is_valid(conn, sid)
+    still = conn.execute(
+        "SELECT expires_utc FROM sessions WHERE id = ?", (sid,)).fetchone()[0]
+    assert still == past, "an expired session was extended"
+
+
+def test_signing_out_everywhere_ends_every_session(tmp_path):
+    from gridiron import auth as _auth, db as _db
+
+    conn = _db.open_db(tmp_path / "s.db")
+    ids = [_auth.create_session(conn) for _ in range(3)]
+    assert _auth.drop_all_sessions(conn) == 3
+    for sid in ids:
+        assert not _auth.session_is_valid(conn, sid)
+
+
+def test_the_launcher_never_attaches_to_a_different_build():
+    """THE FAILURE THAT DOES NOT LOOK LIKE ONE: the app opens, every screen
+    renders, nothing errors, and the code answering is not the code that was
+    built."""
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parent.parent
+    _sys.path.insert(0, str(root / "desktop"))
+    try:
+        import launcher as _launcher
+    finally:
+        _sys.path.pop(0)
+
+    assert _launcher.attach_decision("a", "b") == _launcher.ASK
+    assert _launcher.attach_decision("a", "b", confirmed=True) == _launcher.RESTART
+    assert _launcher.attach_decision("a", "a") == _launcher.ATTACH
+    # UNKNOWN IS NOT MISMATCH: refusing on missing information would make the
+    # app unopenable for a reason nobody could act on.
+    assert _launcher.attach_decision("a", None) == _launcher.ATTACH
+    assert _launcher.attach_decision(None, "b") == _launcher.ATTACH

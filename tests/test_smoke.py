@@ -68,6 +68,9 @@ def test_there_are_zero_console_errors(page):
 
 
 def test_the_canvas_is_not_blank(page):
+    # The calibration chart lives in Record's model section, and Picks is the
+    # landing page now (P6), so this navigates rather than assuming.
+    _open_route(page, "#/record")
     painted = page.evaluate(
         """() => {
             const c = document.getElementById('calibration');
@@ -81,12 +84,14 @@ def test_the_canvas_is_not_blank(page):
 
 
 def test_the_dom_is_not_blank(page):
+    _open_route(page, "#/record")
     assert page.locator("#bucket-table tbody tr").count() == 4
     assert page.locator(".score-card").count() >= 3
     assert page.inner_text("#record-headline").strip()
 
 
 def test_every_bucket_row_shows_its_sample_size(page):
+    _open_route(page, "#/record")
     rows = page.eval_on_selector_all(
         "#bucket-table tbody tr",
         "rows => rows.map(r => [...r.cells].map(c => c.textContent))",
@@ -160,7 +165,11 @@ def _open_route(target, route):
     more honest.
     """
     target.evaluate(f"location.hash = '{route}'")
-    name = (route.rsplit("/", 1)[-1] or "record")
+    # THE EMPTY ROUTE IS PICKS since GRIDIRON_13 P6, and this helper had its
+    # own copy of the default -- so `_open_route(page, "")` waited for a view
+    # the app no longer opens on. A default written down twice is a default
+    # that goes stale in one of the two places.
+    name = (route.rsplit("/", 1)[-1] or "week")
     target.wait_for_function(
         """(id) => {
             if (document.body.dataset.ready !== 'true') return false;
@@ -172,10 +181,16 @@ def _open_route(target, route):
     )
 
 
-def test_the_track_record_is_the_default_screen(page):
+def test_picks_is_the_default_screen(page):
+    """PICKS, not Record, since GRIDIRON_13 P6.
+
+    The first question on opening a forecaster is what it says about tonight,
+    not how it did. The record is one click away and is not going anywhere;
+    the slate is the thing with a deadline on it.
+    """
     _open_route(page, "")
-    assert page.locator("#view-record").is_visible()
-    assert not page.locator("#view-week").is_visible()
+    assert page.locator("#view-week").is_visible()
+    assert not page.locator("#view-record").is_visible()
 
 
 # --- D4 visuals -------------------------------------------------------------
@@ -1210,3 +1225,56 @@ def test_the_model_section_lives_on_the_record_page(page):
     assert page.locator("#model-section").is_visible()
     for part in ("#factors-table", "#versions-list", "#chart-market"):
         assert page.locator(part).count() == 1, f"{part} did not move to Record"
+
+
+def test_the_sign_in_button_is_visible(served, _browser):
+    """THE BUTTON WENT INVISIBLE and nothing failed.
+
+    `--ink` is the GROUND in this palette; in the stylesheet the login page
+    inherited it once meant the TEXT. `background: var(--ink)` painted the
+    button the colour of the page and `color: var(--bg)` painted the label to
+    match -- a sign-in button nobody could see, on the one screen a person
+    cannot get past. The suite was green and the page rendered.
+    """
+    context = _browser.new_context(viewport={"width": 900, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(served + "/login")
+        page.wait_for_selector("#submit", timeout=10000)
+        seen = page.evaluate(
+            """() => {
+                const b = document.getElementById('submit');
+                const s = getComputedStyle(b);
+                const body = getComputedStyle(document.body);
+                return {bg: s.backgroundColor, fg: s.color,
+                        page: body.backgroundColor,
+                        w: b.offsetWidth, h: b.offsetHeight};
+            }"""
+        )
+        assert seen["w"] > 0 and seen["h"] >= 44, seen
+        assert seen["bg"] != seen["page"], (
+            f"the sign-in button is the colour of the page: {seen}")
+        assert seen["fg"] != seen["bg"], (
+            f"the sign-in button's label is the colour of the button: {seen}")
+    finally:
+        context.close()
+
+
+def test_the_sign_in_screen_shows_the_record_but_no_pick(served, _browser):
+    """Counts and records only (GRIDIRON_13 P6)."""
+    import re as _re
+
+    context = _browser.new_context(viewport={"width": 900, "height": 700})
+    try:
+        page = context.new_page()
+        page.goto(served + "/login")
+        page.wait_for_selector("#glance div", timeout=10000)
+        text = page.inner_text("#glance")
+        assert "never added together" in text
+        assert _re.search(r"\d+", text), "no counts on the sign-in screen"
+        # Nothing worth reading to somebody who has not signed in.
+        body = page.inner_text("body")
+        for tell in ("covers", "to win", "%"):
+            assert tell not in body, f"the sign-in screen shows {tell!r}"
+    finally:
+        context.close()

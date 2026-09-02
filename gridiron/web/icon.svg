@@ -1,19 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img"
      aria-label="Gridiron">
-  <!-- Drawn in code, not exported from a design tool: the repository holds the
-       source of everything it ships, and a binary nobody can diff is a thing
-       nobody can check. The mark is a calibration plot — the diagonal a
-       forecaster is trying to sit on, and four points scattered around it. -->
-  <rect width="512" height="512" rx="96" fill="#0A0F0C"/>
-  <g stroke="#3d4450" stroke-width="10" stroke-linecap="round">
-    <path d="M112 400h288M112 400V112"/>
-  </g>
-  <path d="M112 400 400 112" stroke="#5b6472" stroke-width="10"
-        stroke-linecap="round" stroke-dasharray="22 20"/>
-  <g fill="#00DC82">
-    <circle cx="184" cy="336" r="20"/>
-    <circle cx="256" cy="252" r="20"/>
-    <circle cx="328" cy="196" r="20"/>
-    <circle cx="376" cy="150" r="20"/>
-  </g>
+  <!-- THE DUMBBELL MARK (GRIDIRON_13 P6/R8), drawn in code and not exported
+       from a design tool: the repository holds the source of everything it
+       ships, and a binary nobody can diff is a thing nobody can check.
+
+       It is the app's own picture of what it does. A rail from 0 to 100 with
+       a tick at the midpoint; the model's probability as a FILLED dot and the
+       market's as a HOLLOW one, with the disagreement shaded between them.
+       Model and market are told apart by FORM, never by hue, so the two value
+       colours stay reserved for a pick that won and a pick that lost
+       (GRIDIRON_16 R2) — which is why this mark carries neither.
+
+       Palette v2: ink #050705, hairline #1A211A, chrome #F2F5F0. -->
+  <rect width="512" height="512" rx="96" fill="#050705"/>
+
+  <!-- the rail -->
+  <rect x="88" y="250" width="336" height="12" rx="6" fill="#1A211A"/>
+  <!-- the tick at 50, the number every forecast starts from -->
+  <rect x="252" y="222" width="8" height="68" rx="4" fill="#2C3D2B"/>
+
+  <!-- the disagreement, shaded between the two -->
+  <rect x="176" y="250" width="176" height="12" rx="6" fill="#3A5238"/>
+
+  <!-- the market: hollow, an outline -->
+  <circle cx="176" cy="256" r="34" fill="#050705" stroke="#8AA08C"
+          stroke-width="12"/>
+  <!-- the model: filled, with the halo it carries on the page -->
+  <circle cx="352" cy="256" r="46" fill="#F2F5F0" opacity="0.12"/>
+  <circle cx="352" cy="256" r="34" fill="#F2F5F0"/>
 </svg>

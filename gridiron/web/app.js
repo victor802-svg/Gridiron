@@ -2229,6 +2229,37 @@ const Gridiron = (function () {
       row.appendChild(val);
       host.appendChild(row);
     });
+    // SIGN OUT EVERYWHERE. The other half of a thirty-day sliding session:
+    // it does not expire while it is in use, so a device left signed in stays
+    // signed in, and the app has to offer a way to end that without needing
+    // the token to hand.
+    const out = el('div', 'set');
+    const outKey = el('div', 'set-k');
+    outKey.appendChild(el('b', '', 'Sign out everywhere'));
+    outKey.appendChild(el('small', '',
+      'Ends every session on every device, including this one.'));
+    out.appendChild(outKey);
+    const outVal = el('div', 'set-v');
+    const outBtn = el('button', 'set-switch', 'sign out');
+    outBtn.type = 'button';
+    outBtn.addEventListener('click', async () => {
+      const said = el('div', 'set-said');
+      out.appendChild(said);
+      said.textContent = 'signing out...';
+      try {
+        const res = await fetch('/auth/logout?everywhere=true', {
+          method: 'POST', headers: { 'X-Gridiron-Form': csrfToken || '' } });
+        const body = await res.json();
+        said.textContent = body.line || 'signed out';
+        setTimeout(() => { location.href = '/login'; }, 900);
+      } catch (err) {
+        said.textContent = 'that did not reach the appliance';
+      }
+    });
+    outVal.appendChild(outBtn);
+    out.appendChild(outVal);
+    host.appendChild(out);
+
     if (access.build && access.build.line) {
       host.appendChild(el('div', 'set-how', 'this build: ' + access.build.line));
     }
@@ -2766,14 +2797,16 @@ const Gridiron = (function () {
 
   async function route() {
     clearError();
-    let name = (location.hash.replace('#/', '') || 'record');
+    // PICKS IS THE LANDING PAGE (GRIDIRON_13 P6). The first question on
+    // opening a forecaster is what it says about tonight, not how it did.
+    let name = (location.hash.replace('#/', '') || 'week');
     // OLD ROUTES REDIRECT, they do not 404 (R4). A link somebody bookmarked
     // or a note they wrote down still lands where the page went.
     if (RENAMED[name]) {
       location.replace('#/' + RENAMED[name]);
       return;
     }
-    const view = ROUTES[name] ? name : 'record';
+    const view = ROUTES[name] ? name : 'week';
     document.querySelectorAll('.view').forEach(v => { v.hidden = true; });
     // The strip leads the FRONT page. On the digest route the same content is
     // the page itself, and showing both put two identical panels on screen.

@@ -2044,6 +2044,99 @@ def _check_the_colour_scanner_can_see() -> None:
 _check_the_colour_scanner_can_see()
 
 
+# THE SIGN-IN SCREEN SHOWS COUNTS, NOT PICKS (GRIDIRON_13 P6)
+# ---------------------------------------------------------------------------
+#
+# The login page carries a per-sport record and how many questions are open,
+# because that tells the operator the appliance is alive and working before
+# they have typed anything -- which is most of what they open it to find out.
+#
+# It is also THE ONE PLACE THE RECORD FACES SOMEBODY WHO HAS NOT SIGNED IN.
+# So it is written to be worth nothing to them: a win-loss count and a slate
+# size. Four things would change that, and this refuses all four -- a
+# prediction, a side, a team with a line beside it, and a probability. A count
+# is not a tip; any of those is.
+
+_A_PROBABILITY_FIELD = ("prob", "probability", "model_prob", "shown_prob",
+                        "claimed", "implied", "market_implied_prob")
+_A_PICK_FIELD = ("model_side", "side", "pick", "phrase", "tile_line",
+                 "row_title", "reasoning", "line_asked", "subject",
+                 "prediction_id", "market_line", "spread")
+
+
+def login_glance_faults(payload, path: str = "$") -> list[str]:
+    """Anything on the sign-in screen that is worth reading to a stranger."""
+    faults = []
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            lowered = str(key).lower()
+            if lowered in _A_PICK_FIELD:
+                faults.append(
+                    f"{path}.{key} puts a PICK on the sign-in screen. That "
+                    f"page faces somebody who has not signed in; a win-loss "
+                    f"count is worth nothing to them and a side is not.")
+            elif lowered in _A_PROBABILITY_FIELD:
+                faults.append(
+                    f"{path}.{key} puts a PROBABILITY on the sign-in screen. "
+                    f"Counts and records only (GRIDIRON_13 P6).")
+            faults += login_glance_faults(value, f"{path}.{key}")
+        for text in (payload.get("line"), payload.get("note")):
+            if text and _A_PERCENT_ON_LOGIN.search(str(text)):
+                faults.append(
+                    f"{path} states a percentage ({text!r}). The sign-in "
+                    f"screen carries counts, not rates -- a percentage is the "
+                    f"model's claim about something.")
+    elif isinstance(payload, list):
+        for i, value in enumerate(payload):
+            faults += login_glance_faults(value, f"{path}[{i}]")
+    return faults
+
+
+_A_PERCENT_ON_LOGIN = re.compile(r"[0-9]+(?:\.[0-9]+)?\s*%")
+
+LOGIN_FIXTURE_GOOD = {
+    "sports": [{"sport": "mlb", "label": "MLB", "settled": 70, "won": 45,
+                "lost": 25, "open": 46, "n": 70,
+                "line": "MLB 45-25 - 46 picks tonight"}],
+}
+LOGIN_FIXTURE_A_PICK = {
+    "sports": [{"sport": "mlb", "label": "MLB", "n": 70,
+                "model_side": "win", "line": "Cleveland to win"}],
+}
+LOGIN_FIXTURE_A_PROBABILITY = {
+    "sports": [{"sport": "mlb", "label": "MLB", "n": 70,
+                "line": "MLB 45-25", "model_prob": 0.53}],
+}
+LOGIN_FIXTURE_A_RATE = {
+    "sports": [{"sport": "mlb", "label": "MLB", "n": 70,
+                "line": "MLB has been right 64% of the time"}],
+}
+
+
+def check_the_login_page_shows_no_pick(payload) -> None:
+    faults = login_glance_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A PICK IS ON THE SIGN-IN SCREEN:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_login_scanner_can_see() -> None:
+    problems = []
+    if login_glance_faults(LOGIN_FIXTURE_GOOD):
+        problems.append("login_glance_faults flags a correct record line")
+    if not login_glance_faults(LOGIN_FIXTURE_A_PICK):
+        problems.append("login_glance_faults misses a side on the login page")
+    if not login_glance_faults(LOGIN_FIXTURE_A_PROBABILITY):
+        problems.append("login_glance_faults misses a probability")
+    if not login_glance_faults(LOGIN_FIXTURE_A_RATE):
+        problems.append("login_glance_faults misses a percentage in a line")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_login_scanner_can_see()
+
+
 # A SCHEDULE CHANGE IS NOT DONE UNTIL THE OS SAYS SO (GRIDIRON_13 P3)
 # ---------------------------------------------------------------------------
 #

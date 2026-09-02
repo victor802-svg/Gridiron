@@ -1604,6 +1604,35 @@ def results_caption(n: int, day: str | None) -> str:
     return f"{n} {thing}, played on {words}"
 
 
+def login_glance_line(label: str, won: int, lost: int, open_now: int,
+                      slate_word: str) -> str:
+    """"MLB 45-25 - 46 picks tonight". COUNTS ONLY, and never a total.
+
+    The sign-in screen is the one place the record faces somebody who has not
+    signed in, so this is written to be worth nothing to them: a win-loss
+    record and how many questions are open. No side, no team, no price, no
+    probability -- a count is not a tip.
+    """
+    parts = []
+    if won or lost:
+        parts.append(f"{won}-{lost}")
+    if open_now:
+        when = "tonight" if slate_word == "day" else "this week"
+        thing = "pick" if open_now == 1 else "picks"
+        parts.append(f"{open_now} {thing} {when}")
+    if not parts:
+        return f"{label} nothing settled yet"
+    return f"{label} " + " · ".join(parts)
+
+
+def signed_out_line(devices: int | None) -> str:
+    """"Signed out on 3 devices." The count, because it is the reassurance."""
+    if not devices:
+        return "Signed out. No other device was signed in."
+    thing = "device" if devices == 1 else "devices"
+    return f"Signed out on {devices} {thing}."
+
+
 def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
     """"Wednesday 2 September - 5 right, 2 wrong, 1 void".
 

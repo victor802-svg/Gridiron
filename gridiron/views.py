@@ -986,6 +986,60 @@ def _empty_slate_message(conn: sqlite3.Connection, sport: str) -> str:
     )
 
 
+def login_glance(conn: sqlite3.Connection) -> dict:
+    """What the login page may show: COUNTS AND RECORDS, and nothing else.
+
+    THIS IS THE ONE PLACE THE RECORD FACES AN UNAUTHENTICATED READER, and the
+    operator ruled it deliberately (GRIDIRON_13 P6): a sign-in screen that
+    says "MLB 45-25 - 46 picks tonight" tells you the appliance is alive and
+    working before you have typed anything, which is most of what you open it
+    to find out.
+
+    WHAT IT MAY NOT CARRY is everything that would make it worth reading to
+    somebody who should not be reading it: no prediction, no side, no team
+    with a line beside it, no probability. A count is not a tip.
+    `audit.login_glance_faults` refuses all four, and a planting proves it.
+
+    NEVER SUMMED (LAW 6). One clause per sport, no total anywhere.
+    """
+    out = []
+    for sport in config.SPORTS:
+        row = conn.execute(
+            "SELECT COUNT(*) AS settled,"
+            "       COALESCE(SUM(outcome), 0) AS won"
+            "  FROM predictions WHERE sport = ? AND resolved_utc IS NOT NULL",
+            (sport,)).fetchone()
+        settled = row["settled"] or 0
+        won = row["won"] or 0
+        tonight = conn.execute(
+            "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
+            " WHERE p.sport = ? AND p.resolved_utc IS NULL"
+            "   AND g.status <> 'final'"
+            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                   WHERE v.prediction_id = p.id)",
+            (sport,)).fetchone()[0]
+        if not (settled or tonight):
+            continue
+        out.append({
+            "sport": sport,
+            "label": config.SPORT_LABELS.get(sport, sport.upper()),
+            "settled": settled,
+            "won": won,
+            "lost": settled - won,
+            "open": tonight,
+            "n": settled,
+            "line": language.login_glance_line(
+                config.SPORT_LABELS.get(sport, sport.upper()),
+                won, settled - won, tonight,
+                config.SPORT_SLATE_WORD.get(sport, "week")),
+        })
+    payload = {"sports": out, "n": sum(s["settled"] for s in out),
+               "never_summed": ("Each sport is its own record. They are never "
+                                "added together.")}
+    audit.check_the_login_page_shows_no_pick(payload)
+    return payload
+
+
 def settings_page(conn: sqlite3.Connection) -> dict:
     """Everything the Settings page shows, in the sections it shows it in.
 

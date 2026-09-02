@@ -123,7 +123,11 @@ def test_health_answers_liveness_only(client):
     moved to /api/meta and /api/schedule, both behind the gate."""
     body = client.get("/api/health").json()
     assert body["ok"] is True
-    assert set(body) == {"ok", "version"}
+    # `build` was added in GRIDIRON_13 P6 so the launcher can refuse to attach
+    # to a server from an older build. See the note in
+    # test_auth.py::test_health_leaks_nothing, which is where the leak rule
+    # actually lives.
+    assert set(body) == {"ok", "version", "build"}
 
 
 # --- the scorecard ---------------------------------------------------------

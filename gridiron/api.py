@@ -19,7 +19,8 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, calibration, config, db, language, settings, views
+from . import (auth, buildinfo, calibration, config, db, language, settings,
+               views)
 
 WEB_DIR = config.PACKAGE_ROOT / "web"
 
@@ -154,6 +155,19 @@ def service_worker() -> FileResponse:
     )
 
 
+@app.get("/api/login-glance")
+def login_glance() -> dict:
+    """COUNTS AND RECORDS for the sign-in screen, and nothing else.
+
+    OPEN BY DESIGN and named in `auth.OPEN_PATHS`, which is a decision rather
+    than an oversight: it tells the operator the appliance is alive and
+    working before they type anything. `audit.check_the_login_page_shows_no_pick`
+    runs inside `views.login_glance`, so a side, a probability, a team with a
+    line or a rate cannot reach this route.
+    """
+    return views.login_glance(get_conn())
+
+
 @app.get("/login")
 def login_page() -> FileResponse:
     return FileResponse(WEB_DIR / "login.html")
@@ -217,8 +231,22 @@ async def handoff(request: Request, n: str = Query(default="")):
 
 @app.post("/auth/logout")
 async def logout(request: Request) -> JSONResponse:
-    auth.drop_session(get_auth_conn(), request.cookies.get(auth.COOKIE_NAME))
-    response = JSONResponse(content={"ok": True})
+    """Sign out. `everywhere=true` drops every session, not just this one.
+
+    Still ONE write route (`/auth/logout`), so the count in
+    `test_no_route_can_write_to_the_record` does not move: signing out
+    everywhere is the same act on a wider scope, not a new power.
+    """
+    conn = get_auth_conn()
+    everywhere = request.query_params.get("everywhere") == "true"
+    dropped = (auth.drop_all_sessions(conn) if everywhere else None)
+    if not everywhere:
+        auth.drop_session(conn, request.cookies.get(auth.COOKIE_NAME))
+    response = JSONResponse(content={
+        "ok": True,
+        "line": (language.signed_out_line(dropped) if everywhere
+                 else "Signed out on this device."),
+    })
     response.delete_cookie(auth.COOKIE_NAME, path="/")
     return response
 
@@ -258,7 +286,12 @@ def health() -> dict:
     # gate into /api/schedule, which is where a person looks anyway. An open
     # endpoint that reports what is in the database is a data leak with a
     # reassuring name.
-    return {"ok": True, "version": app.version}
+    # THE BUILD, so the launcher can notice it is about to attach to an older
+    # one (GRIDIRON_13 P6). Same class of thing as the version already here:
+    # it says which code is answering, and that is precisely what a caller
+    # must know in order to refuse to trust it.
+    return {"ok": True, "version": app.version,
+            "build": buildinfo.build_id()}
 
 
 DEFAULT_SPORT = config.SPORTS[0]

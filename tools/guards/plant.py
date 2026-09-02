@@ -871,6 +871,63 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
+def plant_a_pick_on_the_login_page() -> Result:
+    """Put a side on the sign-in screen.
+
+    The login page carries a per-sport record and a slate size, because that
+    says the appliance is alive and working before anybody types anything. It
+    is also THE ONE PLACE THE RECORD FACES SOMEBODY WHO HAS NOT SIGNED IN, so
+    it is written to be worth nothing to them. A count is not a tip; a side
+    is.
+    """
+    faults = audit.login_glance_faults(audit.LOGIN_FIXTURE_A_PICK)
+    faults += audit.login_glance_faults(audit.LOGIN_FIXTURE_A_PROBABILITY)
+    faults += audit.login_glance_faults(audit.LOGIN_FIXTURE_A_RATE)
+    return _desk_plant(faults, "show a pick on the sign-in screen",
+                       "audit.login_glance_faults")
+
+
+def plant_a_silent_attach_to_an_older_build() -> Result:
+    """Attach to a server from a different build without asking.
+
+    THE FAILURE THAT DOES NOT LOOK LIKE ONE. The app opens, every screen
+    renders, nothing errors -- and the code answering is not the code that was
+    just built. The launcher shows a photograph and the operator has no reason
+    to doubt it.
+
+    Run rather than read: this calls the launcher's own decision function with
+    a mismatch and checks it does not say "attach". Reading the source for a
+    comparison would pass the moment somebody moved the comparison.
+    """
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parent.parent.parent
+    _sys.path.insert(0, str(root / "desktop"))
+    try:
+        import launcher as _launcher
+    finally:
+        _sys.path.pop(0)
+
+    decision = _launcher.attach_decision("built-today", "built-in-august")
+    caught = decision != _launcher.ATTACH
+    detail = (
+        f"a mismatched build gives {decision!r}, not 'attach': the launcher "
+        f"asks before it opens code nobody built"
+        if caught else
+        "the launcher attached to a server from a different build without "
+        "asking. The app would open, work, and show a photograph of an older "
+        "commit.")
+    # The other two directions, so a decision that simply never attaches -- and
+    # would therefore also 'pass' -- is not mistaken for a working guard.
+    if caught and _launcher.attach_decision("same", "same") != _launcher.ATTACH:
+        caught, detail = False, "the launcher refuses to attach to its OWN build"
+    if caught and _launcher.attach_decision("a", "b", confirmed=True) != _launcher.RESTART:
+        caught, detail = False, "a mismatch the operator confirmed does not restart"
+    return Result("THE DESK", "attach silently to an older build",
+                  "launcher.attach_decision", caught, detail)
+
+
 def plant_a_model_constant_made_editable() -> Result:
     """Put the props floor in the settings form.
 
@@ -2892,6 +2949,8 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
+    results.append(plant_a_pick_on_the_login_page())
+    results.append(plant_a_silent_attach_to_an_older_build())
     results.append(plant_a_model_constant_made_editable())
     results.append(plant_a_setting_updated_in_place())
     results.append(plant_a_schedule_change_claimed_without_a_read_back())

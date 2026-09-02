@@ -183,6 +183,64 @@ def build_notice() -> str | None:
     return language.build_line(fresh)
 
 
+def running_build(port: int, timeout: float = 2.0) -> str | None:
+    """Which build is answering on that port, or None if nothing is.
+
+    `/api/health` carries the build for exactly this reason (GRIDIRON_13 P6):
+    a caller has to know which code is answering before it can decide to trust
+    it.
+    """
+    try:
+        with urllib.request.urlopen(
+            f"http://{HOST}:{port}/api/health", timeout=timeout
+        ) as response:
+            body = json.loads(response.read())
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    build = body.get("build")
+    return str(build) if build else None
+
+
+#: Newlines for the dialogs. Written as names because an escape inside an
+#: f-string in this file has twice been collapsed into a real line break by a
+#: careless edit, which is a syntax error at import and stops the app opening.
+NL = chr(10)
+NL2 = NL + NL
+
+#: What the launcher may do when it finds a server already listening.
+ATTACH = "attach"
+ASK = "ask"
+RESTART = "restart"
+
+
+def attach_decision(mine: str | None, theirs: str | None,
+                    *, confirmed: bool = False) -> str:
+    """Attach, ask, or restart -- decided here so it can be tested and planted.
+
+    THE FAILURE THIS EXISTS TO END. The launcher attached to whatever was
+    healthy on the port. When that was a server from an older build, the app
+    opened, worked, and showed a PHOTOGRAPH: every screen rendered, nothing
+    errored, and the code answering was not the code that had just been built.
+    A stale bundle is the failure that does not look like one.
+
+    SILENCE IS NOT AN OPTION ON MISMATCH. It returns ASK, and only a caller
+    that has actually asked -- `confirmed=True` -- gets RESTART. There is no
+    path from "the builds differ" to "attach anyway", which is what
+    `audit.stale_attach_faults` checks by running this function rather than by
+    reading the launcher's source.
+
+    UNKNOWN IS NOT MISMATCH. A server too old to report a build at all, or a
+    launcher that cannot read its own, attaches: refusing on missing
+    information would make the app unopenable for a reason nobody could act
+    on.
+    """
+    if not mine or not theirs:
+        return ATTACH
+    if mine == theirs:
+        return ATTACH
+    return RESTART if confirmed else ASK
+
+
 def port_is_open(port: int, timeout: float = 0.4) -> bool:
     with socket.socket() as probe:
         probe.settimeout(timeout)
@@ -309,7 +367,69 @@ def error_dialog(title: str, message: str) -> None:
         tk.Button(root, text="Close", command=root.destroy, width=12).pack(pady=(0, 10))
         root.mainloop()
     except Exception:  # noqa: BLE001 - a dialog that cannot open must still report
-        print(f"{title}\n{body}", file=sys.stderr)
+        print(title + chr(10) + body, file=sys.stderr)
+
+
+def ask_yes_no(title: str, message: str) -> bool:
+    """A yes/no dialog. NO when it cannot ask.
+
+    A frozen app has no console, so a question nobody can see must not be
+    treated as agreement: refusing to restart leaves the operator with a
+    working app and a printed line, which is recoverable. Silently stopping a
+    server on the strength of a dialog that never opened is not.
+    """
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        answer = messagebox.askyesno(title, message)
+        root.destroy()
+        return bool(answer)
+    except Exception:  # noqa: BLE001 - no display, no console, no assumption
+        print(title + chr(10) + message + chr(10)
+              + "(could not ask; leaving it running)", file=sys.stderr)
+        return False
+
+
+def _my_build() -> str | None:
+    try:
+        from gridiron import buildinfo
+
+        return buildinfo.build_id()
+    except Exception:  # noqa: BLE001 - an unknown build attaches, see the rule
+        return None
+
+
+def stop_server(port: int, timeout: float = 10.0) -> bool:
+    """Stop whatever Gridiron is on that port, and wait until it is gone.
+
+    ONLY AFTER THE OPERATOR SAID YES. `attach_decision` never returns RESTART
+    without confirmation, so this is unreachable from an unattended path.
+    """
+    import subprocess as sp
+
+    if sys.platform != "win32":
+        return False
+    found = sp.run(["netstat", "-ano"], capture_output=True, text=True,
+                   timeout=timeout, stdin=sp.DEVNULL)
+    pids = {
+        line.split()[-1]
+        for line in (found.stdout or "").splitlines()
+        if f"{HOST}:{port}" in line and "LISTENING" in line
+    }
+    if not pids:
+        return False
+    for pid in pids:
+        sp.run(["taskkill", "/PID", pid, "/F"], capture_output=True,
+               text=True, timeout=timeout, stdin=sp.DEVNULL)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not port_is_open(port):
+            return True
+        time.sleep(0.3)
+    return not port_is_open(port)
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +528,42 @@ def main(argv: list[str] | None = None) -> int:
     server: subprocess.Popen | None = None
 
     if gridiron_is_healthy(args.port):
-        print(f"attaching to the Gridiron already on {HOST}:{args.port}")
+        # WHOSE BUILD IS THAT? (GRIDIRON_13 P6.) Attaching to a server from an
+        # older build opens an app that works perfectly and is not the code
+        # that was just built -- and nothing on screen says so.
+        mine = _my_build()
+        theirs = running_build(args.port)
+        decision = attach_decision(mine, theirs)
+        if decision == ASK:
+            confirmed = ask_yes_no(
+                "Gridiron - an older build is running",
+                "A Gridiron from a different build is already listening on "
+                f"{HOST}:{args.port}." + NL2
+                + f"  running: {theirs}" + NL
+                + f"  this one: {mine}" + NL2
+                + "Attaching to it would open an app that works and is not "
+                  "the code you just built. Stop it and start this one?")
+            decision = attach_decision(mine, theirs, confirmed=confirmed)
+        if decision == RESTART:
+            if not stop_server(args.port):
+                error_dialog(
+                    "Gridiron - could not stop the older server",
+                    f"The server on {HOST}:{args.port} did not stop. Close it "
+                    f"yourself, or start this build on another port with "
+                    f"--port.")
+                return 2
+            server = start_server(args.port)
+            started_by_us = True
+            if not wait_for_health(args.port, time.time() + HEALTH_TIMEOUT):
+                server.terminate()
+                error_dialog(
+                    "Gridiron - the server did not start",
+                    f"No healthy response from "
+                    f"http://{HOST}:{args.port}/api/health within "
+                    f"{HEALTH_TIMEOUT:.0f} seconds.")
+                return 1
+        else:
+            print(f"attaching to the Gridiron already on {HOST}:{args.port}")
     elif port_is_open(args.port):
         error_dialog(
             "Gridiron — port in use",
