@@ -92,19 +92,18 @@ def read_token() -> str | None:
     Never logged and never returned to a client. The only thing done with it is
     a constant-time comparison.
     """
+    # ONE PARSER. This function used to carry its own, which is how `.env`
+    # came to be a file that held exactly one recognised name: anything else
+    # written in it was read by nothing. `config.setting` reads the whole file
+    # and keeps the same precedence -- process environment first.
+    #
+    # Re-read rather than using the value cached at import, because the token
+    # can be rotated while the server is running and the next request should
+    # see the new one.
     from_env = os.environ.get(TOKEN_VAR)
     if from_env:
         return from_env.strip() or None
-    if not ENV_FILE.exists():
-        return None
-    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        if key.strip() == TOKEN_VAR:
-            return value.strip().strip('"').strip("'") or None
-    return None
+    return config.read_env_file(ENV_FILE).get(TOKEN_VAR) or None
 
 
 def token_matches(candidate: str) -> bool:

@@ -35,6 +35,56 @@ STATE_DIR = Path(
         (Path.home() / ".gridiron" if FROZEN else REPO_ROOT / "var"))
 )
 
+#: The installation's settings file. It has always existed and has always held
+#: the access token; until 2026-09-01 it was read ONLY for that one name, by a
+#: parser inside `auth` that looked for `GRIDIRON_ACCESS_TOKEN` and ignored
+#: every other line.
+#:
+#: That is a trap rather than a limitation. An `ANTHROPIC_API_KEY=` line added
+#: here would have sat in the file looking entirely correct and been read by
+#: nobody -- a worse failure than the one it was meant to fix, because it
+#: looks fixed. So the file is now read whole.
+ENV_FILE = HOME / ".env"
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    """Every `KEY=value` in a settings file. Missing or unreadable is empty.
+
+    Deliberately small: no interpolation, no multi-line values, no `export`
+    prefix. A settings file for one appliance does not need a language, and
+    every feature here would be a way for the file to mean something other
+    than what it appears to say.
+
+    NEVER LOGGED. The values are secrets; this returns them and says nothing.
+    """
+    values: dict[str, str] = {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return values
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+_FILE_SETTINGS = read_env_file(ENV_FILE)
+
+
+def setting(name: str, default: str = "") -> str:
+    """A setting from the process environment, then `.env`, then the default.
+
+    THE PROCESS ENVIRONMENT WINS, and that order is the useful one: a variable
+    set for one run -- a different key, a different database -- overrides the
+    file without editing it, and the file is what persists. The reverse would
+    make a stale file silently beat an explicit instruction.
+    """
+    return os.environ.get(name) or _FILE_SETTINGS.get(name, default)
+
+
 # --- storage ---------------------------------------------------------------
 DEFAULT_DB = STATE_DIR / "gridiron.db"
 DB_PATH = Path(os.environ.get("GRIDIRON_DB", DEFAULT_DB))
@@ -274,7 +324,11 @@ MIN_SAMPLE_FOR_BUCKET_POINT = 20
 EDGE_DISAGREEMENT_THRESHOLD = 0.05
 
 # --- LLM budget ledger (G3) ------------------------------------------------
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY") or ""
+#: Read from the process environment OR from `.env`, so the key can live with
+#: the installation the way the access token does rather than with a Windows
+#: account -- it survives a machine move, and a rebuild cannot delete it
+#: because `.env` deliberately sits outside the bundle.
+ANTHROPIC_API_KEY = setting("ANTHROPIC_API_KEY")
 LLM_DAILY_USD_CAP = float(os.environ.get("GRIDIRON_LLM_DAILY_USD", "2.00"))
 LLM_REASONING_MODEL = os.environ.get("GRIDIRON_LLM_REASONING_MODEL", "claude-sonnet-4-5")
 LLM_CHEAP_MODEL = os.environ.get("GRIDIRON_LLM_CHEAP_MODEL", "claude-haiku-4-5-20251001")
