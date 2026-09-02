@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import buildinfo, calibration, config, db, language, sports, subjects
+from . import (buildinfo, calibration, calls, config, db, language,
+               sports, subjects)
 from .data import reference, repo, teams
 from .factors import compute as factor_compute, registry
 from .market import lines
@@ -316,6 +317,16 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # One bucket record per (market, predictor, bucket) rather than one per
     # card: the same lookup would otherwise run once for every pick on the slate.
     bucket_cache: dict[tuple, dict] = {}
+    # ONE QUERY FOR THE WHOLE SLATE, not one per card: the same rule the
+    # bucket cache follows two lines up.
+    calls_by_prediction = {
+        r["prediction_id"]: dict(r) for r in conn.execute(
+            "SELECT c.* FROM operator_calls c"
+            " JOIN predictions p ON p.id = c.prediction_id"
+            " WHERE p.sport = ? AND c.id IN ("
+            "   SELECT MAX(id) FROM operator_calls GROUP BY prediction_id)",
+            (sport,))
+    }
 
     cards = []
     for r in rows:
@@ -495,6 +506,25 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             if r["market_type"] == "total" else None)
         cards[-1]["verdict"] = language.verdict_word(
             r["outcome"], voided=r["id"] in voided)
+
+        # --- the operator's own call (GRIDIRON_12) ----------------------
+        # Present on every card whether or not one was made: the block has to
+        # know it can be filled, and "no call" is a state rather than an
+        # absence of data. Nothing about the model's own display changes.
+        call = calls_by_prediction.get(r["id"])
+        started = language.tile_state(r["status"]) != "upcoming"
+        cards[-1]["call"] = call
+        cards[-1]["call_open"] = not started
+        cards[-1]["call_state_line"] = language.call_state_line(
+            call, started, call.get("outcome") if call else None)
+        cards[-1]["call_verdict"] = (
+            language.verdict_word(call["outcome"]) if call
+            and call.get("outcome") is not None else "")
+        cards[-1]["call_sides"] = [
+            {"side": side, "label": language.call_side_label(cards[-1], side)}
+            for side in calls.sides_for(r["market_type"], r["model_side"])
+        ]
+        cards[-1]["call_tiers"] = list(calls.TIERS)
         # WHERE IT IS PLAYED, for the selected-pick subline. None when the
         # venue was never recorded, and the subline simply has one fewer part.
         cards[-1]["venue"] = venues.get(r["home"])

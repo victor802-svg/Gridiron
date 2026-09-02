@@ -206,3 +206,61 @@ def test_only_the_scanner_itself_is_exempt_from_the_staking_scan():
     assert audit.BETTING_SCAN_EXEMPT == ("audit.py",)
     assert audit.betting_surface() == [], (
         "a staking identifier reached the package outside the scanner itself")
+
+
+def test_a_side_button_never_shows_a_stored_identifier(conn):
+    """The buttons are the one place a person CHOOSES a side.
+
+    Which makes them the worst place for a second vocabulary: a button reading
+    "not_cover" would put the stored identifier in front of a reader, and one
+    naming the wrong team would record the opposite of what was clicked.
+    """
+    from gridiron import language
+
+    names = {"ALA": {"full": "Alabama Crimson Tide", "city": "Alabama"},
+             "ECU": {"full": "East Carolina Pirates", "city": "East Carolina"}}
+    card = {"market_type": "spread", "model_side": "cover", "line_asked": -24.5,
+            "subject": "ALA", "opponent": "ECU", "team_names": names}
+    labels = [language.call_side_label(card, s)
+              for s in calls.sides_for("spread", "cover")]
+    assert labels == ["Alabama -24.5", "East Carolina +24.5"]
+    for label in labels:
+        assert "_" not in label, f"a stored identifier reached a button: {label}"
+
+
+def test_the_total_does_not_flip_its_number():
+    """Both sides of a total are asked at the same number.
+
+    `flipped_line` negates for a no-side because a spread's other team
+    RECEIVES the points. That is true of a spread and nonsense here: the first
+    version of this button read "the under -51.5".
+    """
+    from gridiron import language
+
+    card = {"market_type": "total", "model_side": "over", "line_asked": 51.5,
+            "subject": "ECU @ ALA"}
+    assert language.call_side_label(card, "over") == "the over 51.5"
+    assert language.call_side_label(card, "under") == "the under 51.5"
+
+
+def test_the_block_says_which_of_its_four_states_it_is_in():
+    from gridiron import language
+
+    assert language.call_state_line(None, started=False) == "your call"
+    assert language.call_state_line(None, started=True) == "no call on this one"
+    assert "revise" in language.call_state_line({"tier": "LEAN"}, started=False)
+    locked = language.call_state_line({"tier": "LEAN"}, started=True)
+    assert "called before kickoff" in locked, (
+        "a locked call must say WHEN it was locked -- that is the fact that "
+        "makes it a forecast rather than a report")
+
+
+def test_the_comparison_line_is_silent_below_its_gate():
+    """LAW 4, and the most persuasive misleading number this page could show,
+    because it is about the reader themselves."""
+    from gridiron import language
+
+    assert language.call_comparison_line(6, 4, 3, 3, gate=20) is None
+    said = language.call_comparison_line(24, 14, 13, 12, gate=20)
+    assert said.startswith("On the 24 picks you called")
+    assert "58%" in said
