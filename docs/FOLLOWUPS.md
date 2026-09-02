@@ -8,7 +8,7 @@ through close-outs and are gathered below with their original dates.
 
 ## Open
 
-### 2026-09-01 — THE SUITE IS TOO SLOW TO RUN WHOLE, AND THAT HID A FAILURE
+### ~~2026-09-01 — THE SUITE IS TOO SLOW TO RUN WHOLE~~ — CLOSED 2026-09-02
 
 The full suite takes about fifteen minutes. To fit inside a command timeout it
 was being split — browser tests in one run, everything else in another — and
@@ -41,7 +41,19 @@ progress while it runs**. A gate nobody can watch is a gate people learn to
 skip, and the wrong guess about why it was quiet cost more than the wait would
 have.
 
-Until then: **run the whole suite in one process before claiming it is green.**
+**CLOSED 2026-09-02.** The full gate is 6.87 minutes and the suite is 3.16,
+serially, with nothing deferred. Neither route in this item was the answer:
+parallelism was not needed, and the tiering was built only as a safety net
+that names a skipped tier rather than as a mode anything uses.
+
+The cause was two tests fetching a whole college football season on every run
+-- 416s and 353s -- because they stubbed three sports' loaders and not the
+fourth. Shutting the network by default for every unmarked test then cut the
+suite from 14.58 minutes to 3.16, so the silent fetching went well beyond
+those two. See `gate: 28 minutes to under 7` and MENTOR section 3.
+
+Still true, and now cheap: **run the whole suite in one process before claiming
+it is green.**
 
 ### 2026-09-01 — `docs/mockup/gridiron_desk.html` is not in the repository
 
