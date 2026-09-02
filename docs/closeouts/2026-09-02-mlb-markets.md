@@ -16,7 +16,7 @@ Commits: `d501e9d` the probe · `5ee58cd` the build.
 | **M-BUILD** run line | **DONE** | Asked at a declared ±1.5 from the home side, 9 live on the 2026-09-02 slate. Base rate 0.356 reproduces the measured 35.8%. |
 | **M-BUILD** totals | **DONE** | Self-generated from combined form, always on a half, 9 live. Measured SD 4.511 declared under the undated-SD guard. |
 | **M-BUILD** wind factor | **SKIPPED, by evidence** | `weather_forecasts` holds nine rows, all football. See below. |
-| **M-BUILD** market filter | **NOT DONE** | See below. |
+| **M-BUILD** market filter | **DONE** | `515dbd0`. Not the label the brief asked for but the defect underneath it: MLB's run line rendered as "point spread". |
 | **M-QA** | **DONE** | Suite green, `verify.py` 4/4 EXIT=0, 123/123 plantings, four new. |
 
 ## 2. What the brief asked for that is not here
