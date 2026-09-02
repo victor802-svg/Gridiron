@@ -984,6 +984,44 @@ def plant_a_default_tier_that_hides_the_count() -> Result:
                        "audit.tier_count_faults")
 
 
+def plant_payout_arithmetic_against_a_market_source() -> Result:
+    """LAW 5 as amended: read the line, never price it.
+
+    The amendment (2026-09-02) admits PrizePicks as MARKET DATA -- "only to
+    record what the market said". The line between reading a line and pricing
+    one is the whole of the law, and it is thinner here than with ESPN,
+    because a projections feed is shaped like an invitation to compute a
+    return from it.
+
+    So the failure is planted in the form it would actually take: a helper
+    in the market module that turns a stored line into a payout. It must be
+    caught even though it sits where market code is ALLOWED to sit -- the
+    quarantine says where a source may be read, not that anything goes there.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.db"))
+        (root / "market" / "entries.py").write_text(
+            "# PLANTED VIOLATION\n"
+            "def prizepicks_payout(line_count, entry_amount):\n"
+            "    return entry_amount * (2 ** line_count)\n",
+            encoding="utf-8")
+        try:
+            audit.check_not_a_betting_tool(root=root)
+        except audit.LawViolation as exc:
+            return Result(
+                "LAW 5", "price a market source's line into a payout",
+                "audit.check_not_a_betting_tool", True, str(exc))
+    return Result(
+        "LAW 5", "price a market source's line into a payout",
+        "audit.check_not_a_betting_tool", False,
+        "a payout function was added to the market module and nothing "
+        "objected. Reading a line and pricing one are different acts; the "
+        "quarantine says WHERE a source may be read, not that anything goes "
+        "there.")
+
+
 def plant_a_market_source_outside_the_market_module() -> Result:
     """Name PrizePicks from a prediction-path module.
 
@@ -3266,6 +3304,7 @@ def main() -> int:
     results.append(plant_a_day_key_in_visible_text())
     results.append(plant_a_slate_answered_twice())
     results.append(plant_a_market_source_outside_the_market_module())
+    results.append(plant_payout_arithmetic_against_a_market_source())
     results.append(plant_a_default_tier_that_hides_the_count())
     results.append(plant_a_selector_for_a_class_nothing_builds())
     results.append(plant_a_clamped_rung_beyond_the_ladder())

@@ -286,6 +286,33 @@ BETTING_IDENTIFIERS = (
     "exchange_api",
     "expected_value",
     "roi",
+    # PRICING A LINE, as distinct from recording one (LAW 5, and the words are
+    # the law's own: "no payout or price-to-return arithmetic ... no slip").
+    # The list had none of them until 2026-09-02, when a planting put a
+    # `prizepicks_payout` in the market module and nothing objected -- the
+    # law's TEXT forbade it and the law's MECHANISM did not.
+    #
+    # This matters more with a projections feed than with a scoreboard API. A
+    # feed of lines with no prices is shaped like an invitation to compute a
+    # return from them, and the market module is exactly where someone would
+    # reasonably put that: the quarantine says WHERE a source may be read, not
+    # that anything goes there.
+    #
+    # `vig` and `odds` are deliberately absent. `devig_pair` removes the
+    # market's margin to recover a fair probability, and a stored price is
+    # what the market SAID -- both are reading, which the law permits. The
+    # forbidden act is turning either into money.
+    "payout",
+    "payoff",
+    "price_to_return",
+    "parlay",
+    "entry_fee",
+    "entry_amount",
+    "profit",
+    # "bet_slip", not a bare "slip": the law's word is "slip", but a bare
+    # substring would fire on any future identifier that merely contains it,
+    # and a guard that cries wolf is a guard that gets an allowlist entry.
+    "bet_slip",
 )
 
 
