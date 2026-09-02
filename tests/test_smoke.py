@@ -321,8 +321,20 @@ def test_the_bucket_chip_refuses_to_render_without_n(page):
     assert "LAW 4" in result["message"]
 
 
-def test_only_the_card_expansion_animates(page):
-    # Cards must be on the page for their transition to be observable at all.
+def test_every_moving_thing_is_inside_the_motion_vocabulary(page):
+    """The vocabulary, checked in the BROWSER rather than in the stylesheet.
+
+    THIS REPLACES "only the card expansion animates", which was written when
+    the page was cards and nothing else. The desk deliberately animates tiles,
+    segmented buttons, verdict chips and the rail's panels -- so the rule is no
+    longer "one thing may move" but "everything moves the same way", and that
+    is a rule about durations and curves rather than about selectors.
+
+    Computed styles rather than source text, because this catches whatever the
+    browser actually resolved -- including anything a later stylesheet, a
+    media query or an inline style composed at runtime, none of which
+    `audit.motion_faults` can see.
+    """
     page.evaluate("location.hash = '#/week'")
     page.wait_for_selector("#week-cards .row", timeout=10000)
     moving = page.evaluate(
@@ -330,21 +342,49 @@ def test_only_the_card_expansion_animates(page):
             const out = [];
             document.querySelectorAll('*').forEach(e => {
                 const s = getComputedStyle(e);
-                if (s.transitionDuration !== '0s' && s.transitionDuration !== '')
-                    out.push('transition:' + (e.className || e.tagName));
-                if (s.animationName && s.animationName !== 'none')
-                    out.push('animation:' + (e.className || e.tagName));
+                const name = e.className || e.tagName;
+                s.transitionDuration.split(',').forEach((d, i) => {
+                    d = d.trim();
+                    if (!d || d === '0s') return;
+                    out.push({what: name, kind: 'transition', duration: d,
+                              ease: (s.transitionTimingFunction.split(',')[i] ||
+                                     s.transitionTimingFunction).trim(),
+                              prop: (s.transitionProperty.split(',')[i] || '').trim()});
+                });
+                if (s.animationName && s.animationName !== 'none') {
+                    out.push({what: name, kind: 'animation',
+                              duration: s.animationDuration,
+                              ease: s.animationTimingFunction,
+                              prop: s.animationName});
+                }
             });
-            return [...new Set(out)];
+            return out;
         }"""
     )
-    # T1 old -> new: the card gains a border-COLOUR transition on hover from
-    # the approved mockup, and the detail is a display toggle rather than a
-    # max-height animation. Nothing MOVES and nothing resizes, so the rule the
-    # project set itself still holds; the assertion now names what may
-    # transition instead of forbidding every transition.
-    unexpected = [m for m in moving if not m.startswith('transition:card')]
-    assert not unexpected, f"something else moves: {unexpected}"
+
+    def seconds(text):
+        text = text.strip()
+        return float(text[:-2]) if text.endswith("ms") else float(text.rstrip("s")) * 1000
+
+    allowed = {"opacity", "transform", "background-color", "border-color", "color"}
+    for item in moving:
+        if item["kind"] == "animation":
+            assert item["prop"] == "live-pulse", (
+                f"{item['what']} runs an animation that is not the live pulse: "
+                f"{item['prop']}")
+            # The pulse has a FLOOR, not a ceiling: 200ms would be a strobe.
+            assert seconds(item["duration"]) >= 1000, (
+                f"the live mark pulses every {item['duration']} -- a strobe")
+            continue
+        assert seconds(item["duration"]) <= 200, (
+            f"{item['what']} transitions over {item['duration']}, past the "
+            f"200ms ceiling")
+        assert "ease-out" in item["ease"] or item["ease"] in ("ease", "linear"), (
+            f"{item['what']} uses a second easing curve: {item['ease']}")
+        if item["prop"] and item["prop"] not in ("all", "none"):
+            assert item["prop"] in allowed, (
+                f"{item['what']} animates {item['prop']!r}, which forces the "
+                f"page to be laid out again on every frame")
 
 
 def test_nothing_moves_under_reduced_motion(served):

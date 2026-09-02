@@ -255,3 +255,95 @@ def test_any_live_is_false_when_nothing_is_on(conn):
         payload = views.live_slate(conn, sport)
         states = {p["tile_state"] for p in payload["picks"]}
         assert payload["any_live"] == ("live" in states)
+
+
+# ---------------------------------------------------------------------------
+# ONE MOTION VOCABULARY (L3)
+# ---------------------------------------------------------------------------
+
+
+def test_the_shipped_stylesheet_stays_inside_the_vocabulary():
+    audit.check_motion_vocabulary()
+
+
+def test_a_long_animation_is_a_fault():
+    """Past about a fifth of a second, motion stops saying "this changed" and
+    becomes something a reader waits for."""
+    faults = audit.motion_faults(".x { transition: opacity 400ms ease-out; }")
+    assert faults and "400ms" in faults[0]
+
+
+def test_animating_a_layout_property_is_a_fault():
+    """Height and width force the page to be laid out again on every frame --
+    the classic janky animation, and the one that already existed here."""
+    for prop in ("max-height", "height", "width", "top"):
+        faults = audit.motion_faults(f".x {{ transition: {prop} 150ms ease-out; }}")
+        assert faults, f"{prop} was allowed to animate"
+
+
+def test_a_second_easing_curve_is_a_fault():
+    """One curve, so everything on the page arrives the same way."""
+    assert audit.motion_faults(".x { transition: opacity 150ms ease-in; }")
+    assert audit.motion_faults(".x { transition: opacity 150ms cubic-bezier(0,0,1,1); }")
+    assert not audit.motion_faults(".x { transition: opacity 150ms ease-out; }")
+
+
+def test_the_only_keyframe_is_the_live_pulse():
+    assert audit.motion_faults("@keyframes shake { 50% { opacity: 0; } }")
+    assert not audit.motion_faults("@keyframes live-pulse { 50% { opacity: 0.35; } }")
+
+
+def test_the_pulse_has_a_floor_and_everything_else_has_a_ceiling():
+    """The two faults are opposite, and a ceiling alone would miss the strobe.
+
+    A transition is a change completing, and a slow one is the fault. A pulse
+    is a loop saying "still happening", and a FAST one is the fault: 200ms is
+    5Hz, which is visually horrible and a hazard for photosensitive readers.
+    """
+    assert audit.motion_faults(audit.MOTION_FIXTURE_STROBE)
+    assert not audit.motion_faults(
+        ".tile-live { animation: live-pulse 1.6s ease-out infinite; }")
+    assert audit.MOTION_PULSE_MIN_MS >= 1000
+
+
+def test_polling_starts_and_stops_with_the_window(conn):
+    """POLL HONESTY, both edges, with a fetcher that counts.
+
+    The quiet-day test proves zero requests when nothing is on. This proves
+    the other half: that the poll starts when a game does and stops when the
+    window closes -- a poller that never stopped would be indistinguishable
+    from one that never started, by request count alone.
+    """
+    kickoff = dt.datetime(2026, 9, 5, 16, 0, tzinfo=dt.timezone.utc)
+    _game(conn, "cfb_win", kickoff.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    calls = []
+
+    def counting(conn_, sport, day):
+        calls.append((sport, day))
+        return []
+
+    hours = live.GAME_HOURS["cfb"]
+    before = kickoff - dt.timedelta(hours=2)
+    during = kickoff + dt.timedelta(hours=1)
+    after = kickoff + dt.timedelta(hours=hours + 1)
+
+    live.poll(conn, now=before, fetcher=counting)
+    assert calls == [], "the poll ran two hours before kickoff"
+
+    live.poll(conn, now=during, fetcher=counting)
+    assert len(calls) == 1, "the poll did not run during the game"
+
+    live.poll(conn, now=after, fetcher=counting)
+    assert len(calls) == 1, (
+        "the poll ran after the window closed; a poller that never stops is "
+        "indistinguishable from one that never started")
+
+
+def test_the_live_mark_states_no_opinion():
+    audit.check_the_live_mark_is_not_an_opinion()
+    assert audit.live_mark_faults(audit.LIVE_MARK_FIXTURE_POSITIVE)
+
+
+def test_a_score_arriving_does_not_move_the_slate():
+    audit.check_a_live_update_does_not_reorder()
+    assert audit.live_update_faults(audit.LIVE_UPDATE_FIXTURE_POSITIVE)

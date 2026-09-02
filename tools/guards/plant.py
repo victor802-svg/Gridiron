@@ -752,6 +752,59 @@ def _scan_planted_module(source: str) -> list[str]:
     return faults
 
 
+def plant_a_green_live_mark() -> Result:
+    """Draw the live mark in the accent colour.
+
+    Green has exactly two jobs here: it is the positive value and it is the
+    interactive accent. A game being played is neither -- it has not finished
+    and there is nothing to click -- so a green mark tells a reader the model
+    is winning before anything has been settled.
+    """
+    faults = audit.live_mark_faults(audit.LIVE_MARK_FIXTURE_POSITIVE)
+    return _desk_plant(faults, "draw the live mark in the accent colour",
+                       "audit.live_mark_faults")
+
+
+def plant_a_re_sort_during_a_live_slate() -> Result:
+    """Rebuild the whole slate when a score arrives.
+
+    It looks like the obvious implementation -- new data, re-render -- and it
+    re-sorts: by confidence the finished games climb over the ones still being
+    played, so the tile somebody is reading slides away under them, every
+    sixty seconds, for the length of the slate.
+    """
+    faults = audit.live_update_faults(audit.LIVE_UPDATE_FIXTURE_POSITIVE)
+    return _desk_plant(faults, "re-render the slate when a score arrives",
+                       "audit.live_update_faults")
+
+
+def plant_a_bouncing_chip() -> Result:
+    """A 400ms bounce on the verdict chip.
+
+    THE MOST TEMPTING ANIMATION IN THE WHOLE INTERFACE, which is why it is the
+    planted one. A win that springs into place feels good, and that is the
+    objection: this project reports a probability and keeps score of it, so a
+    loss has to look exactly like a win at 150ms, quietly. Anything that
+    celebrates one outcome is the interface having an opinion about the
+    record.
+    """
+    faults = audit.motion_faults(audit.MOTION_FIXTURE_POSITIVE)
+    return _desk_plant(faults, "bounce the verdict chip for 400ms",
+                       "audit.motion_faults")
+
+
+def plant_a_strobing_live_mark() -> Result:
+    """The same guard's other direction: the one allowed loop, run too fast.
+
+    A ceiling alone would have passed this, and a 200ms pulse is a 5Hz strobe
+    -- visually horrible and a real hazard for photosensitive readers. The
+    live mark has a FLOOR for that reason, and the two faults are opposite.
+    """
+    faults = audit.motion_faults(audit.MOTION_FIXTURE_STROBE)
+    return _desk_plant(faults, "strobe the live mark at 200ms",
+                       "audit.motion_faults")
+
+
 def plant_a_live_import_in_a_prediction_path() -> Result:
     """Import the live poller from a sport's forecasting module.
 
@@ -2503,6 +2556,10 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_green_live_mark())
+    results.append(plant_a_re_sort_during_a_live_slate())
+    results.append(plant_a_bouncing_chip())
+    results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())
     results.append(plant_a_poller_that_settles_a_prediction())

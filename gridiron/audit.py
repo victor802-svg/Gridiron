@@ -1694,6 +1694,307 @@ def summed_records(summary: dict) -> list[str]:
     return faults
 
 
+# ---------------------------------------------------------------------------
+# ONE MOTION VOCABULARY (L3)
+# ---------------------------------------------------------------------------
+#
+# Motion on this page has one job: to say that something CHANGED, so a reader
+# who looked away knows where to look. Everything else it could do here is a
+# way of editorialising -- a bounce on a win, a glow on a big number, a shake
+# on a loss -- and this project reports a probability and keeps score of it.
+# A loss has to look like a loss, quietly.
+#
+# The vocabulary is deliberately small enough to hold in your head, which is
+# also what makes it scannable: two durations, one curve, four properties, one
+# keyframe. Anything else is a fault by definition rather than by judgement.
+
+#: Properties that may be animated. Each of these can be composited without
+#: laying the page out again; `height`, `width`, `max-height` and `top` cannot,
+#: which is why an expanding box is the classic janky animation and why the
+#: one that already existed here was removed rather than retimed.
+ANIMATABLE = frozenset({
+    "opacity", "transform", "background-color", "border-color", "color",
+})
+
+#: The longest anything may take. 150ms is at the edge of registering as
+#: instant; 200ms is for a panel replacing its whole contents.
+MOTION_MAX_MS = 200
+
+#: The one curve, and the one keyframe.
+MOTION_EASE = "ease-out"
+ALLOWED_KEYFRAMES = frozenset({"live-pulse"})
+
+#: THE CEILING GOVERNS CHANGES; THE PULSE HAS A FLOOR INSTEAD.
+#:
+#: This distinction was forced by the scan flagging the live pulse itself on
+#: its first run, and it is a real difference rather than an exemption. A
+#: transition is a change COMPLETING: past about a fifth of a second it stops
+#: reading as instant and becomes something a reader waits for. A pulse is a
+#: loop saying "still happening", and a 200ms loop is a 5Hz strobe -- visually
+#: horrible, and a genuine hazard for photosensitive readers.
+#:
+#: So the one repeating animation on the page is required to be SLOW. The
+#: fault the guard looks for there is a pulse that is too fast, which is the
+#: opposite of the fault it looks for everywhere else.
+MOTION_PULSE_MIN_MS = 1000
+
+_CSS_TOKEN = re.compile(r"--([a-z0-9-]+)\s*:\s*([^;]+);")
+_CSS_TRANSITION = re.compile(r"transition(?:-duration|-property|-timing-function)?"
+                             r"\s*:\s*([^;}]+)")
+_CSS_ANIMATION = re.compile(r"animation(?:-duration|-timing-function)?\s*:\s*([^;}]+)")
+_CSS_KEYFRAMES = re.compile(r"@keyframes\s+([A-Za-z0-9_-]+)")
+_CSS_MS = re.compile(r"([0-9.]+)(ms|s)\b")
+_CSS_CURVE = re.compile(r"cubic-bezier\([^)]*\)|\bease-in-out\b|\bease-in\b|"
+                        r"\bease-out\b|\blinear\b|\bease\b|\bsteps\([^)]*\)")
+
+
+def _resolve_tokens(css: str) -> dict:
+    """The `--name: value` declarations, so `var(--motion-state)` can be read.
+
+    Without this the scan would see `var(--motion-state)` and have no idea
+    whether it is 150ms or four seconds -- which is the state a guard is in
+    when it checks the shape of a declaration rather than its meaning.
+    """
+    tokens = {}
+    for name, value in _CSS_TOKEN.findall(css):
+        tokens[name] = value.strip()
+    # One pass of substitution is enough for a vocabulary one level deep, and
+    # a deeper one would be a reason to simplify the vocabulary.
+    for name, value in list(tokens.items()):
+        for other, other_value in tokens.items():
+            value = value.replace(f"var(--{other})", other_value)
+        tokens[name] = value
+    return tokens
+
+
+def _expand(value: str, tokens: dict) -> str:
+    for name, token_value in tokens.items():
+        value = value.replace(f"var(--{name})", token_value)
+    return value
+
+
+def motion_faults(css: str) -> list[str]:
+    """Every animation on the page that is outside the declared vocabulary."""
+    tokens = _resolve_tokens(css)
+    faults = []
+
+    def check_duration(where: str, value: str) -> None:
+        for amount, unit in _CSS_MS.findall(value):
+            ms = float(amount) * (1000 if unit == "s" else 1)
+            if ms > MOTION_MAX_MS:
+                faults.append(
+                    f"{where}: {amount}{unit} is longer than the {MOTION_MAX_MS}ms "
+                    f"ceiling. Motion here says that something changed; past "
+                    f"about a fifth of a second it becomes something to wait for.")
+
+    def check_curve(where: str, value: str) -> None:
+        for curve in _CSS_CURVE.findall(value):
+            if curve.strip() != MOTION_EASE:
+                faults.append(
+                    f"{where}: {curve!r} is a second easing curve. One curve, "
+                    f"{MOTION_EASE!r}, so that everything on the page arrives "
+                    f"the same way.")
+
+    for match in _CSS_TRANSITION.finditer(css):
+        value = _expand(match.group(1).strip(), tokens)
+        where = f"transition {match.group(1).strip()[:48]!r}"
+        check_duration(where, value)
+        check_curve(where, value)
+        for part in value.split(","):
+            prop = part.strip().split()[0] if part.strip() else ""
+            if (prop and not prop[0].isdigit() and prop not in ("all", "none")
+                    and not prop.startswith("var(")
+                    and not _CSS_MS.match(prop) and prop not in ANIMATABLE
+                    and not _CSS_CURVE.fullmatch(prop)):
+                faults.append(
+                    f"{where}: {prop!r} may not be animated. Animating it "
+                    f"forces the page to be laid out again on every frame; "
+                    f"the vocabulary is {sorted(ANIMATABLE)}.")
+
+    for match in _CSS_ANIMATION.finditer(css):
+        value = _expand(match.group(1).strip(), tokens)
+        where = f"animation {match.group(1).strip()[:48]!r}"
+        check_curve(where, value)
+        pulse = any(name in value for name in ALLOWED_KEYFRAMES)
+        if not pulse:
+            check_duration(where, value)
+            continue
+        # The one repeating animation, held to its floor rather than the
+        # ceiling. See MOTION_PULSE_MIN_MS.
+        for amount, unit in _CSS_MS.findall(value):
+            ms = float(amount) * (1000 if unit == "s" else 1)
+            if ms < MOTION_PULSE_MIN_MS:
+                faults.append(
+                    f"{where}: a {amount}{unit} pulse is a strobe. The live "
+                    f"mark loops at {MOTION_PULSE_MIN_MS}ms or slower -- it "
+                    f"says a game is being played, it does not flash for "
+                    f"attention.")
+
+    for name in _CSS_KEYFRAMES.findall(css):
+        if name not in ALLOWED_KEYFRAMES:
+            faults.append(
+                f"@keyframes {name!r} is not in the vocabulary. The only thing "
+                f"on this page that repeats is the mark saying a game is being "
+                f"played right now; anything else that loops is decoration.")
+    return faults
+
+
+#: A 400ms bounce on a chip, and the same chip done correctly. Checked at
+#: import like every scanner (ruling, 2026-08-31).
+MOTION_FIXTURE_POSITIVE = """
+@keyframes bounce { 50% { transform: scale(1.4); } }
+.tile-verdict { animation: bounce 400ms ease-in-out; }
+"""
+#: And the other direction: the one allowed keyframe, run fast enough to
+#: strobe. Both are faults; they are opposite faults.
+MOTION_FIXTURE_STROBE = """
+.tile-live { animation: live-pulse 200ms ease-out infinite; }
+"""
+MOTION_FIXTURE_NEGATIVE = """
+:root { --motion-state: 150ms; --motion-ease: ease-out; }
+.tile-verdict { transition: opacity var(--motion-state) var(--motion-ease); }
+"""
+
+
+def check_motion_vocabulary(path: Path | None = None) -> None:
+    path = path or (config.PACKAGE_ROOT / "web" / "style.css")
+    faults = motion_faults(Path(path).read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "MOTION OUTSIDE THE VOCABULARY. Movement on this page says that "
+            "something changed and nothing else -- it never celebrates a win "
+            "or softens a loss, because the record has to read the same "
+            "whichever it is:" + _NL2 + _NL2.join(faults[:8]))
+
+
+def _check_the_motion_scanner_can_see() -> None:
+    problems = []
+    found = motion_faults(MOTION_FIXTURE_POSITIVE)
+    if not found:
+        problems.append("motion_faults misses a 400ms bounce on a chip")
+    if not motion_faults(MOTION_FIXTURE_STROBE):
+        problems.append("motion_faults misses a live mark strobing at 200ms")
+    stray = motion_faults(MOTION_FIXTURE_NEGATIVE)
+    if stray:
+        problems.append(f"motion_faults flags correct motion: {stray}")
+    if problems:
+        raise LawViolation(
+            "A SCANNER IS BLIND: the motion guard does not do what it says:"
+            + _NL2 + _NL2.join(problems))
+
+
+_check_the_motion_scanner_can_see()
+
+
+#: Tokens that mean something other than "this is happening now". Green is the
+#: positive value AND the interactive accent, and it has exactly those two
+#: jobs -- a game being played is neither good news nor a control. Red is a
+#: negative value. A live mark drawn in either is the interface having an
+#: opinion about a game that has not finished.
+RESERVED_COLOURS = ("--green", "--red")
+
+_CSS_LIVE_MARK = re.compile(
+    r"\.tile-live\s*\{(?P<body>[^}]*)\}", re.S)
+
+
+def live_mark_faults(css: str) -> list[str]:
+    """A live mark drawn in a colour that already means something else."""
+    faults = []
+    for match in _CSS_LIVE_MARK.finditer(css):
+        body = match.group("body")
+        for token in RESERVED_COLOURS:
+            if token in body:
+                faults.append(
+                    f".tile-live uses var({token}), which is reserved: green is "
+                    f"the positive value and the interactive accent, red is a "
+                    f"negative value. A game in progress is none of those, and "
+                    f"colouring it so tells a reader the model is winning "
+                    f"before anything has been settled.")
+    return faults
+
+
+#: A green live mark, and the chrome one that is correct.
+LIVE_MARK_FIXTURE_POSITIVE = ".tile-live { background: var(--green); }"
+LIVE_MARK_FIXTURE_NEGATIVE = ".tile-live { background: var(--chrome); }"
+
+
+def check_the_live_mark_is_not_an_opinion(path: Path | None = None) -> None:
+    path = path or (config.PACKAGE_ROOT / "web" / "style.css")
+    faults = live_mark_faults(Path(path).read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "THE LIVE MARK HAS AN OPINION:" + _NL2 + _NL2.join(faults))
+
+
+#: What the live updater must NOT do. Re-rendering the slate would re-sort it,
+#: and sorting a slate while it is being played shuffles the screen under
+#: somebody reading it -- by confidence, the finished games climb over the ones
+#: still on.
+RESORT_CALLS = ("renderWeek", ".sort(")
+
+
+def live_update_faults(js: str) -> list[str]:
+    """A live update that rebuilds or reorders the grid instead of patching."""
+    match = re.search(r"function\s+applyLive\s*\([^)]*\)\s*\{(?P<body>.*?)\n  \}",
+                      js, re.S)
+    if match is None:
+        return ["applyLive() is not in the renderer, so nothing patches a tile "
+                "in place when a score arrives"]
+    body = match.group("body")
+    faults = []
+    for call in RESORT_CALLS:
+        if call in body:
+            faults.append(
+                f"applyLive() calls {call!r}: a score arriving would rebuild "
+                f"or reorder the grid. A tile changing state re-renders IN "
+                f"PLACE -- the reader is part way down a slate and the thing "
+                f"they were looking at must not move.")
+    return faults
+
+
+LIVE_UPDATE_FIXTURE_POSITIVE = """
+  function applyLive(live) {
+    (live.picks || []).forEach(p => Object.assign(slateCards.get(p.id), p));
+    renderWeek();
+  }
+"""
+LIVE_UPDATE_FIXTURE_NEGATIVE = """
+  function applyLive(live) {
+    (live.picks || []).forEach(pick => {
+      const tile = document.querySelector('.tile[data-id]');
+      if (tile) applyTileState(tile, pick);
+    });
+  }
+"""
+
+
+def check_a_live_update_does_not_reorder(path: Path | None = None) -> None:
+    path = path or (config.PACKAGE_ROOT / "web" / "app.js")
+    faults = live_update_faults(Path(path).read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A SCORE ARRIVING WOULD MOVE THE SLATE:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_live_scanners_can_see() -> None:
+    problems = []
+    if not live_mark_faults(LIVE_MARK_FIXTURE_POSITIVE):
+        problems.append("live_mark_faults misses a green live mark")
+    if live_mark_faults(LIVE_MARK_FIXTURE_NEGATIVE):
+        problems.append("live_mark_faults flags the chrome mark, which is right")
+    if not live_update_faults(LIVE_UPDATE_FIXTURE_POSITIVE):
+        problems.append("live_update_faults misses an applyLive that re-renders")
+    if live_update_faults(LIVE_UPDATE_FIXTURE_NEGATIVE):
+        problems.append("live_update_faults flags an applyLive that patches in place")
+    if problems:
+        raise LawViolation(
+            "A SCANNER IS BLIND: a live guard does not do what it says:"
+            + _NL2 + _NL2.join(problems))
+
+
+_check_the_live_scanners_can_see()
+
+
 def sides_without_words(sides) -> list[str]:
     """Stored sides the humaniser has no verb for. Empty is the only pass."""
     from . import language

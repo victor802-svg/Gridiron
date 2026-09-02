@@ -101,7 +101,26 @@
 
   --radius: 12px;
   --radius-sm: 8px;
-  --ease: 150ms cubic-bezier(0.2, 0, 0.2, 1);
+  /* --- THE MOTION VOCABULARY (L3) ---------------------------------------
+     Two durations and ONE curve, and nothing on this page may use anything
+     else. The scan in `audit.motion_faults` reads these tokens and fails the
+     build on a third duration, a second curve, a disallowed property or a
+     keyframe that is not the live pulse.
+
+     WHY SO NARROW. Motion here has one job: to say that something CHANGED,
+     so a reader who looked away knows where to look. It is never used to
+     make a result feel good or bad -- a loss looks like a loss, quietly --
+     and it is never long enough to be waited for. 150ms is at the edge of
+     what registers as instant; 200ms is for a panel swapping its whole
+     contents, where a hard cut reads as a flicker.
+
+     `ease-out` because motion that decelerates into place reads as something
+     arriving. The previous token was `cubic-bezier(0.2, 0, 0.2, 1)`, which is
+     the same shape drawn by hand; one named curve is easier to hold to. */
+  --motion-state: 150ms;
+  --motion-panel: 200ms;
+  --motion-ease: ease-out;
+  --ease: var(--motion-state) var(--motion-ease);
 }
 
 * { box-sizing: border-box; }
@@ -501,7 +520,14 @@ table.grid td.wide {
 /* expansion: the only motion on the page */
 .card-detail {
   max-height: 0; overflow: hidden;
-  transition: max-height var(--ease);
+  /* NO TRANSITION. This animated `max-height`, which the L3 vocabulary
+     forbids: animating a box's height forces layout on every frame, and it is
+     the classic janky one. The rule is left in place because it still
+     describes a collapsed box, but the motion is gone.
+     (`.card` / `.card-detail` are not referenced by the current renderer at
+     all -- they predate the rows-and-tiles layout. They belong to the
+     dead-but-named sweep that has its own FOLLOWUPS entry; removing the
+     violation is this phase's business, removing the rule is not.) */
   border-top: 1px solid transparent;
 }
 .card.open .card-detail {
@@ -586,9 +612,17 @@ canvas { display: block; max-width: 100%; }
   table.grid th, table.grid td { padding: 6px 7px; }
 }
 
+/* EVERY TRANSITION TO ZERO, and every state still changes -- instantly. The
+   distinction matters: this is not "turn the features off", it is "arrive
+   without travelling". A reader who asks for reduced motion still gets the
+   verdict chip, the live mark and the selected tile; what they do not get is
+   anything moving on the way in.
+
+   The live pulse becomes a STATIC mark rather than disappearing, because it
+   is the only thing on the page saying a game is being played right now. */
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; animation: none !important; }
-  .card-detail { transition: none; }
+  * { transition-duration: 0ms !important; animation: none !important; }
+  .tile-live { animation: none; opacity: 1; }
 }
 
 /* --- the schedule panel --------------------------------------------------
@@ -1492,3 +1526,45 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   margin-left: 8px; font-weight: 600; letter-spacing: 0.06em;
   color: var(--chrome);
 }
+
+/* --- motion, and only this motion (L3) -------------------------------------
+   Every transition on the page is one of these two lines. They are written
+   out rather than hidden behind a shorthand so that `audit.motion_faults` --
+   and a person reading the stylesheet -- can see the whole vocabulary in one
+   place. */
+
+/* A STATE CHANGE: a tile being selected, a filter moving, a chip arriving. */
+.tile,
+.seg button,
+.tile-verdict,
+.krow {
+  transition: background-color var(--motion-state) var(--motion-ease),
+              border-color var(--motion-state) var(--motion-ease),
+              opacity var(--motion-state) var(--motion-ease);
+}
+
+/* A PANEL SWAPPING ITS CONTENTS, which is a bigger change and gets the longer
+   of the two durations. A hard cut here reads as a flicker. */
+#rail-body,
+#rail-match,
+#rail-pick {
+  transition: opacity var(--motion-panel) var(--motion-ease);
+}
+
+/* THE FINAL FLIP. The chip fades in and the tile's ground settles to the
+   resolved shade. No bounce, no confetti, no sound: a loss looks like a loss,
+   quietly, and a win gets exactly the same 150ms. */
+.tile-verdict { opacity: 1; }
+
+/* THE ONE KEYFRAME. A game being played is the only thing on this page that
+   repeats, because it is the only thing that is still happening. It pulses
+   between full and half opacity -- no scale, no colour change, no glow. */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.tile-live { animation: live-pulse 1.6s var(--motion-ease) infinite; }
+
+/* Skeleton tiles: hairline shapes in the grid's own geometry, so the layout
+   does not jump when the data lands. */
+.skeleton-tile { height: 124px; border-radius: 12px; }

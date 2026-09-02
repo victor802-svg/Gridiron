@@ -230,3 +230,79 @@ This is not a defect to fix on its own: live status arrives with the L1 live
 poll, which is the thing that would set it. **L1 must widen that constraint**,
 and the seeded render of the middle state belongs in L1's QA rather than being
 left as a gap here. Noted so the phase that needs it finds it.
+
+## The phone shows nothing live
+
+Found 2026-09-01 in L4's 390px render. L1–L3 gave the desk three game states —
+upcoming, live, final — with scores, clocks and verdict chips on the tiles and
+in the rail. **The compact rows below the breakpoint have none of them.** A
+reader following a slate on a phone sees the same card at kickoff, at half
+time and an hour after the final whistle.
+
+This is a scope boundary rather than an oversight: the L2 brief is written
+entirely in terms of tiles and the rail, and D4's promise was that the phone
+renders exactly as it did before. Extending the row was not asked for, and
+doing it unasked would have been a redesign of the primary surface tucked
+inside a verification phase.
+
+But it is a hole. The row already has a corner (it shows the chance clause,
+"TOLEDO WINS"), and the three states are composed server-side on every card —
+`score_line`, `clock_line`, `running_total`, `verdict` are all present in the
+payload the phone already receives. So this is placing existing strings, not
+building anything: an afternoon, not a phase.
+
+Decide whether the phone follows a live slate. If it should, the row's corner
+is where it goes.
+
+## Live scores for basketball and football need an identity bridge
+
+2026-09-01, from L1. The live poll follows college football and baseball
+because their game ids match the feed exactly — a college id IS the ESPN event
+id, and a baseball id is statsapi's `gamePk` with a prefix. The other two do
+not match at all:
+
+| sport | our id | feed id |
+|---|---|---|
+| nba | `nba_0022200001` | an NBA-stats id |
+| nfl | `2016_01_CAR_DEN` | an nflverse key |
+
+Following them means bridging by team and date. This project has built exactly
+one identity bridge — the ESPN-to-MLB player crosswalk — and the rule it set
+was that a bridge is **measured**, stored with both match rates, and refuses
+ambiguous pairs, because a wrong match attaches a live score to the wrong game
+and nothing downstream notices. That is a phase, not a line.
+
+Until then the schedule panel names the two sports and says why, rather than
+showing them with blank figures.
+
+## Drift arrows wait for their snapshots
+
+2026-09-01, deferred deliberately by the live brief. `gridiron/drift.py` needs
+`MIN_PAIRS = 50` pairs at `MIN_DISAGREEMENT = 0.05` before it can say anything,
+and the near-start snapshots only began being taken for real after the
+freshness fix. **Revisit once the record holds fifty usable pairs** — count
+them before designing anything, because the arrow is only worth drawing if
+there is something behind it.
+
+## Team pages are a separate design
+
+2026-09-01, named by the live brief as out of scope. Not deferred for lack of
+data: the record holds ratings, schedules, venues and per-team results for four
+sports. It is deferred because "a page about one team" is a design question
+(what is it FOR — checking a pick, or browsing?) and answering it inside a
+phase about live scores would have produced whatever was easiest to build from
+the tables that happened to be open.
+
+## A backup before every schema rebuild
+
+2026-09-01, the lesson from L1 rather than a task. Widening `games` emptied a
+live 21,527-row table twice before it worked, and the only reason that is a
+footnote is a 700MB copy taken beforehand. Two traps, both now written into
+`live.ensure_live_columns`:
+
+- `ALTER TABLE ... RENAME` follows the rename into every child's foreign key;
+- `executescript()` commits, so BEGIN/ROLLBACK around it protects nothing.
+
+**Any future table rebuild takes a copy first, and runs `PRAGMA
+foreign_key_check` before it commits to anything.** The check is what turns
+"it looked fine" into evidence.

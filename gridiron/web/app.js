@@ -1467,7 +1467,18 @@ const Gridiron = (function () {
 
   async function renderWeek() {
     const host = document.getElementById('week-cards');
-    skeleton(host, 'skeleton-card', 3);
+    // HAIRLINE SHAPES IN THE GRID'S OWN GEOMETRY, so the layout does not jump
+    // when the data lands a frame later. On the desk that means a real
+    // three-across grid: nine skeletons stacked in a column would be a bigger
+    // jump than the one this is meant to avoid.
+    if (isDesk()) {
+      host.innerHTML = '';
+      const grid = el('div', 'tiles');
+      for (let i = 0; i < 9; i++) grid.appendChild(el('div', 'skeleton skeleton-tile'));
+      host.appendChild(grid);
+    } else {
+      skeleton(host, 'skeleton-card', 3);
+    }
 
     const picker = document.getElementById('week-picker');
     const chosen = picker.value ? JSON.parse(picker.value) : {};
