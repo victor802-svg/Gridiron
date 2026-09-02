@@ -206,8 +206,9 @@ def half_unit_phrase(subject: str, market: str, side: str) -> str | None:
 #: The side each market's question was FORMED as. A stored probability and a
 #: stored contribution are both signed toward this side; the model frequently
 #: takes the other one.
-YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over",
-            "total": "over"}
+#: Re-exported, not redefined -- it moved to `subjects.py` so the prediction
+#: path can reach it without importing this module, which names market columns.
+YES_SIDE = _subjects.YES_SIDE
 
 
 def side_named(item: dict, form: str = "full") -> tuple[str, float | None]:

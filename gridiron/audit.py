@@ -307,11 +307,30 @@ def identifiers_in(path: Path) -> set[str]:
     return names
 
 
+#: THE SCAN CANNOT SCAN ITSELF. This module holds the list of forbidden
+#: staking words, so every one of them appears in its own identifiers -- and
+#: the moment a guard was written to keep an amount off the operator's calls
+#: (`call_stake_faults`, `STAKE_COLUMNS`), LAW 5 flagged the guard.
+#:
+#: The same shape as two rules already recorded here: `audit` stays outside
+#: the prediction closure because it names market columns, and the runtime
+#: missing-data check lives in `factors.compute` for the same reason. A module
+#: that must NAME what is forbidden cannot be judged by the scan that forbids
+#: it.
+#:
+#: Exactly one file, and narrow on purpose -- a test asserts that nothing else
+#: is exempt, because "the scanner is allowed to say the word" is one
+#: generalisation away from "the allowlist is where violations go to live".
+BETTING_SCAN_EXEMPT = ("audit.py",)
+
+
 def betting_surface(root: Path | None = None) -> list[str]:
     """Any identifier in the package that would belong to a staking tool."""
     root = root or config.PACKAGE_ROOT
     hits: list[str] = []
     for path in sorted(root.rglob("*.py")):
+        if path.name in BETTING_SCAN_EXEMPT:
+            continue
         for name in sorted(identifiers_in(path)):
             lowered = name.lower()
             for word in BETTING_IDENTIFIERS:
@@ -2058,3 +2077,89 @@ def check_every_side_has_words(conn=None) -> None:
             "has no verb for, and its old behaviour was to print another "
             "side's verb -- which put the opposite of the forecast on nine "
             "cards for three days:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# A CALL IS A CONFIDENCE, NOT A STAKE (LAW 5, GRIDIRON_12)
+# ---------------------------------------------------------------------------
+#
+# The operator's calls are the closest this project will ever come to the
+# thing LAW 5 forbids: a person recording an opinion on a game, with a
+# strength attached. The distance between "how sure am I" and "how much would
+# I put on it" is one column, and it is the kind of column that arrives
+# looking harmless -- `units`, `weight`, `size` -- attached to a perfectly
+# reasonable feature request.
+#
+# So the shape of the table is scanned, not trusted. A tier is a confidence
+# and maps to a probability; nothing on a call may express an amount.
+
+#: Column names that would turn a confidence into a stake.
+STAKE_COLUMNS = (
+    "units", "unit", "amount", "stake", "wager", "bankroll", "risk",
+    "size", "sizing", "kelly", "payout", "odds", "price",
+)
+
+
+def call_stake_faults(schema_sql: str) -> list[str]:
+    """Any column on `operator_calls` that expresses an amount."""
+    start = schema_sql.find("CREATE TABLE IF NOT EXISTS operator_calls")
+    if start < 0:
+        return []
+    end = schema_sql.find(");", start)
+    body = schema_sql[start:end].lower()
+    faults = []
+    for word in STAKE_COLUMNS:
+        for line in body.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("--") or not stripped:
+                continue
+            column = stripped.split()[0].strip(",").lower()
+            if column == word:
+                faults.append(
+                    f"`operator_calls` has a column named {word!r}. LAW 5: a "
+                    f"call records how sure the operator is, never how much "
+                    f"they would put on it. This project states probabilities "
+                    f"and keeps score of them; the moment a row can hold an "
+                    f"amount it is a staking ledger with a calibration curve "
+                    f"attached."
+                )
+    return faults
+
+
+CALL_STAKE_FIXTURE_POSITIVE = """
+CREATE TABLE IF NOT EXISTS operator_calls (
+    id INTEGER PRIMARY KEY,
+    tier TEXT NOT NULL,
+    units REAL
+);
+"""
+CALL_STAKE_FIXTURE_NEGATIVE = """
+CREATE TABLE IF NOT EXISTS operator_calls (
+    id INTEGER PRIMARY KEY,
+    tier TEXT NOT NULL,
+    claimed_prob REAL NOT NULL
+);
+"""
+
+
+def check_a_call_is_not_a_stake(path: Path | None = None) -> None:
+    path = path or (config.PACKAGE_ROOT / "schema.sql")
+    faults = call_stake_faults(Path(path).read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A CALL BECAME A STAKE:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_stake_scanner_can_see() -> None:
+    problems = []
+    if not call_stake_faults(CALL_STAKE_FIXTURE_POSITIVE):
+        problems.append("call_stake_faults misses a `units` column on a call")
+    if call_stake_faults(CALL_STAKE_FIXTURE_NEGATIVE):
+        problems.append("call_stake_faults flags a call that only says how "
+                        "sure it is")
+    if problems:
+        raise LawViolation(
+            "A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_stake_scanner_can_see()

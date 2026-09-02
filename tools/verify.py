@@ -178,6 +178,8 @@ def step_2_guards() -> bool:
          audit.check_the_live_mark_is_not_an_opinion),
         ("a score arriving does not move the slate",
          audit.check_a_live_update_does_not_reorder),
+        ("a call is a confidence, not a stake",
+         audit.check_a_call_is_not_a_stake),
         ("no silent defaults (v2)", audit.check_no_silent_defaults),
         ("not a betting tool (LAW 5)", audit.check_not_a_betting_tool),
         ("no offline data caching", audit.check_no_offline_data_caching),

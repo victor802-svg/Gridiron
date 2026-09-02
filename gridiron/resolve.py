@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import subjects
+from . import calls, subjects
 from .db import utcnow
 from .model import questions
 
@@ -151,6 +151,7 @@ def void_prediction(conn: sqlite3.Connection, prediction_id: int, reason: str) -
 def resolve_all(conn: sqlite3.Connection, *, progress=None) -> dict:
     """Settle every open prediction whose game has finished."""
     settled = 0
+    calls_settled = 0
     already = 0
     voided = 0
     void_reasons: list[str] = []
@@ -173,6 +174,13 @@ def resolve_all(conn: sqlite3.Connection, *, progress=None) -> dict:
             " WHERE id = ? AND resolved_utc IS NULL",
             (utcnow(), outcome, pred["id"]),
         )
+        if cur.rowcount == 1:
+            # THE OPERATOR'S CALL SETTLES IN THE SAME PASS, by the same code,
+            # at the same instant (GRIDIRON_12). A separate resolver for calls
+            # would be a second thing that decides what happened, and the two
+            # would eventually disagree about a game.
+            calls_settled += calls.resolve_for(
+                conn, pred["id"], outcome, pred["model_side"])
         conn.commit()          # settle one at a time; a crash resumes cleanly
         if cur.rowcount == 1:
             settled += 1
@@ -187,6 +195,10 @@ def resolve_all(conn: sqlite3.Connection, *, progress=None) -> dict:
     ).fetchone()[0]
     return {
         "settled": settled,
+        # Reported separately and never added to `settled`: one is the model's
+        # record and the other is the operator's, and they are different
+        # forecasters (ruling R2).
+        "calls_settled": calls_settled,
         "already_resolved": already,
         "voided": voided,
         "void_reasons": void_reasons[:20],

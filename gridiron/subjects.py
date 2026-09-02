@@ -64,3 +64,15 @@ def stat_suffix(subject: str | None, known) -> str | None:
         if text.endswith(name):
             return name
     return None
+
+
+#: WHICH SIDE OF EACH QUESTION IS THE "YES". Moved here from `language` on
+#: 2026-09-02 for the reason this module exists: `gridiron.calls` needs it to
+#: know what sides a question has, the resolver imports `calls`, and importing
+#: the humaniser to reach one dict would drag a market-naming module into that
+#: closure. The scan caught it within seconds of the change, twice in a row --
+#: first through `calibration`, then through `language`.
+#:
+#: `language` re-exports it, so every existing caller is unchanged.
+YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over",
+            "total": "over"}

@@ -972,3 +972,71 @@ CREATE TABLE IF NOT EXISTS live_polls (
     games_changed INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS live_polls_when ON live_polls (polled_utc DESC);
+
+-- ---------------------------------------------------------------------------
+-- THE OPERATOR'S OWN CALLS (GRIDIRON_12)
+-- ---------------------------------------------------------------------------
+--
+-- A THIRD FORECASTER, and never merged with the other two. The operator sees
+-- the model's probability and the market's line before calling, so these are
+-- INFORMED forecasts and are labelled that way everywhere they appear. Mixing
+-- them into the blind record would destroy the only thing that makes the
+-- blind record worth keeping (LAW 1), and pooling them with the model's would
+-- be the merge LAW 6 already forbids across sports, applied across
+-- forecasters -- which is how `statistical` and `llm` are already kept apart.
+--
+-- A CALL IS A CONFIDENCE, NOT A STAKE (LAW 5). There is no unit column, no
+-- amount, no bankroll, and there never will be: `audit.check_not_a_betting_
+-- tool` scans identifiers, and a planting adds one to prove the scan fires.
+CREATE TABLE IF NOT EXISTS operator_calls (
+    id            INTEGER PRIMARY KEY,
+    created_utc   TEXT    NOT NULL,
+    prediction_id INTEGER NOT NULL REFERENCES predictions (id),
+    side          TEXT    NOT NULL,
+    tier          TEXT    NOT NULL CHECK (tier IN ('LEAN', 'SOLID', 'STRONG')),
+    -- THE CLAIM IS STORED, NOT LOOKED UP LATER. The tier-to-probability map is
+    -- a dated constant; storing what it said at the time means changing the
+    -- map later cannot rewrite what the operator was recorded as claiming.
+    -- The same reason `predictions` stores `factor_set_version`.
+    claimed_prob  REAL    NOT NULL CHECK (claimed_prob > 0 AND claimed_prob < 1),
+    resolved_utc  TEXT,
+    outcome       INTEGER CHECK (outcome IN (0, 1)),
+    CHECK ((resolved_utc IS NULL) = (outcome IS NULL))
+);
+CREATE INDEX IF NOT EXISTS operator_calls_pred
+    ON operator_calls (prediction_id, created_utc DESC);
+CREATE INDEX IF NOT EXISTS operator_calls_open
+    ON operator_calls (resolved_utc);
+
+-- APPEND-ONLY, on the same terms as `predictions`. A call is a claim with a
+-- timestamp; editing one after the fact is the same act as editing a
+-- forecast, and LAW 3 does not care which forecaster made it.
+CREATE TRIGGER IF NOT EXISTS operator_calls_no_delete
+BEFORE DELETE ON operator_calls
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a call is append-only and cannot be deleted');
+END;
+
+CREATE TRIGGER IF NOT EXISTS operator_calls_no_update
+BEFORE UPDATE ON operator_calls
+FOR EACH ROW
+WHEN OLD.created_utc   IS NOT NEW.created_utc
+  OR OLD.prediction_id IS NOT NEW.prediction_id
+  OR OLD.side          IS NOT NEW.side
+  OR OLD.tier          IS NOT NEW.tier
+  OR OLD.claimed_prob  IS NOT NEW.claimed_prob
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a call cannot be edited. Revising a call writes a '
+        || 'NEW row before kickoff; the old one stays and the chain is shown');
+END;
+
+CREATE TRIGGER IF NOT EXISTS operator_calls_resolve_once
+BEFORE UPDATE OF resolved_utc, outcome ON operator_calls
+FOR EACH ROW
+WHEN OLD.resolved_utc IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: call already resolved; resolution is idempotent');
+END;
