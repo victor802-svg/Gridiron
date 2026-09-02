@@ -358,3 +358,15 @@ python tools/make_token.py --ntfy --rotate
   session transcript.
 - **The ntfy push is ready but unreceived.** The phone app is not set up.
   Carried from BRIEF A phase O5 item 3, which STEP 0 stopped.
+
+## 2026-09-02 — GRIDIRON_13
+
+- **The app and the OS scheduler disagree about football.** `predict:nfl` is
+  recorded as 09:00 and the Windows scheduler holds 11:00, and no
+  `predict:cfb` task is installed on this machine at all. Both facts are
+  stated in words on Settings > When it runs. Which one is right is an
+  operator decision, not a bug to be quietly reconciled.
+- **The digest's own page is gone** (GRIDIRON_13 P5). Its data still feeds the
+  greeting, and a particular day is a click on the Results calendar. If a
+  day-by-day narrative is wanted back, it is a new page rather than a
+  restoration.
