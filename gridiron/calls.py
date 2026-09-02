@@ -251,3 +251,15 @@ def record_summary(conn: sqlite3.Connection, sport: str) -> dict:
 #: this category and the other two.
 FORECASTER = "operator"
 FORECASTER_LABEL = "you (informed)"
+
+# THE REPORTING TABLES LIVE IN `views`, NOT HERE, and the scan is why.
+#
+# `calls` is imported by the resolver, which puts it inside a prediction
+# closure. A tier table needs `calibration` (for the gate and the verdict
+# wording) and a model-versus-operator comparison needs `market_snapshots` --
+# and either import drags market column names into that closure, which LAW 1
+# refuses. The scan caught both within seconds, as it has now caught three
+# other attempts to reach out of this module for one convenient thing.
+#
+# So this module writes, reads and resolves calls; `views.operator_tier_table`
+# and `views.call_comparison` report on them.

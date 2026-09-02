@@ -2163,3 +2163,85 @@ def _check_the_stake_scanner_can_see() -> None:
 
 
 _check_the_stake_scanner_can_see()
+
+
+# ---------------------------------------------------------------------------
+# THREE FORECASTERS, NEVER ONE (GRIDIRON_12, ruling R2)
+# ---------------------------------------------------------------------------
+#
+# The operator sees the model's probability and the market's line before
+# calling, so their calls are INFORMED. Pooling them with the blind record
+# would destroy the property that makes the blind record worth keeping, and
+# pooling them with the model's would be the merge LAW 4 already forbids --
+# applied across forecasters rather than across sports, exactly as
+# `statistical` and `llm` are already kept apart.
+#
+# The tempting version is an "all" or "combined" option in the selector. It
+# would look like a convenience and would be the one number on the page that
+# describes nothing: the model answers every question on a slate, the operator
+# answers the ones they chose.
+
+#: Selector values that could only mean a merge.
+MERGED_FORECASTERS = ("all", "combined", "everyone", "total", "overall", "both")
+
+
+def merged_forecaster_faults(payload: dict) -> list[str]:
+    """A forecaster option that pools two of them, or an unlabelled operator."""
+    faults = []
+    for entry in payload.get("forecasters") or []:
+        name = str(entry.get("forecaster", "")).lower()
+        if name in MERGED_FORECASTERS:
+            faults.append(
+                f"the forecaster selector offers {name!r}, which can only be a "
+                f"pool of two or more. The model answers every question on a "
+                f"slate and the operator answers the ones they chose; one "
+                f"number over both describes neither."
+            )
+        if entry.get("informed") and "informed" not in str(entry.get("label", "")):
+            faults.append(
+                f"the informed forecaster is labelled {entry.get('label')!r}, "
+                f"which does not say it saw the model and the market first. "
+                f"That fact is the whole difference between this category and "
+                f"the other two (ruling R2)."
+            )
+    return faults
+
+
+MERGED_FORECASTER_FIXTURE_POSITIVE = {
+    "forecasters": [
+        {"forecaster": "statistical", "label": "statistical"},
+        {"forecaster": "all", "label": "everything together"},
+    ]
+}
+MERGED_FORECASTER_FIXTURE_NEGATIVE = {
+    "forecasters": [
+        {"forecaster": "statistical", "label": "statistical", "informed": False},
+        {"forecaster": "operator", "label": "you (informed)", "informed": True},
+    ]
+}
+
+
+def check_forecasters_are_never_merged(payload: dict) -> None:
+    faults = merged_forecaster_faults(payload)
+    if faults:
+        raise LawViolation(
+            "FORECASTERS WERE MERGED:" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_forecaster_scanner_can_see() -> None:
+    problems = []
+    if not merged_forecaster_faults(MERGED_FORECASTER_FIXTURE_POSITIVE):
+        problems.append("merged_forecaster_faults misses an 'all' option")
+    if merged_forecaster_faults(MERGED_FORECASTER_FIXTURE_NEGATIVE):
+        problems.append("merged_forecaster_faults flags a correct selector")
+    unlabelled = {"forecasters": [
+        {"forecaster": "operator", "label": "you", "informed": True}]}
+    if not merged_forecaster_faults(unlabelled):
+        problems.append("merged_forecaster_faults misses an operator whose "
+                        "label does not say it was informed")
+    if problems:
+        raise LawViolation(
+            "A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_forecaster_scanner_can_see()

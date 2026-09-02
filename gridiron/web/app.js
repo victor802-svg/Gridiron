@@ -309,7 +309,20 @@ const Gridiron = (function () {
     const sc = state.scorecard;
     // THE TIER TABLE LEADS. Rendered first and unconditionally: the charts
     // below it now live on the Factors page and may not be on screen at all.
-    renderTierTable(sc.tier_table);
+    // THREE FORECASTERS, ONE AT A TIME (ruling R2). The selector swaps which
+    // table is shown; there is no option that shows two at once, because the
+    // only thing a combined table could report is a merge.
+    renderForecasterPicker(sc);
+    renderTierTable(forecasterChoice === 'operator'
+                    ? sc.operator_tier_table : sc.tier_table);
+    const compare = document.getElementById('call-comparison');
+    if (compare) {
+      // Silent below the gate: the server sends no line until 20 have
+      // settled, and an absent line is left absent rather than filled with a
+      // placeholder that reads like a result.
+      compare.textContent = (sc.call_comparison || {}).line || '';
+      compare.hidden = !compare.textContent;
+    }
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
     const market = document.getElementById('chart-market').value || 'spread';
@@ -472,6 +485,36 @@ const Gridiron = (function () {
   // and the tiers "the same partition"; they are not -- STRONG spans 70-80%
   // and 80%+, and pooling them would let the easier band lift the harder one,
   // which is the merge LAW 4 forbids.
+  //: Which forecaster's table the Record tab is showing. Memory only, and
+  //: deliberately not remembered across sessions: a reader returning to the
+  //: page should see the model's record, not whichever table they left open.
+  let forecasterChoice = 'statistical';
+
+  function renderForecasterPicker(sc) {
+    const host = document.getElementById('forecaster-picker');
+    if (!host) return;
+    host.innerHTML = '';
+    (sc.forecasters || []).forEach(f => {
+      const b = el('button', '', f.label);
+      b.type = 'button';
+      b.dataset.forecaster = f.forecaster;
+      b.setAttribute('aria-pressed', String(f.forecaster === forecasterChoice));
+      b.addEventListener('click', () => {
+        forecasterChoice = f.forecaster;
+        renderRecord();
+      });
+      host.appendChild(b);
+    });
+    const note = document.getElementById('forecaster-note');
+    if (note) {
+      const chosen = (sc.forecasters || []).find(
+        f => f.forecaster === forecasterChoice) || {};
+      note.textContent = chosen.informed
+        ? (sc.operator_tier_table || {}).informed_note || '' : '';
+      note.hidden = !note.textContent;
+    }
+  }
+
   function renderTierTable(t) {
     if (!t) return;
     document.getElementById('tier-caption').textContent =
@@ -2255,6 +2298,14 @@ const Gridiron = (function () {
       }
     } else {
       msg.textContent = data.headline;
+    }
+
+    // THE OPERATOR'S OWN RESULTS, on their own line beneath the model's.
+    // Placed, not composed: `calls.line` is None when nothing of theirs has
+    // settled, and an absent line is an absent line rather than "0 right".
+    if (data.calls && data.calls.line) {
+      msg.appendChild(el('br'));
+      msg.appendChild(el('span', 'greet-calls', data.calls.line));
     }
 
     const counts = hosts.countdown;

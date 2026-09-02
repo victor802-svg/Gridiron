@@ -752,6 +752,36 @@ def _scan_planted_module(source: str) -> list[str]:
     return faults
 
 
+def plant_a_merged_forecaster_view() -> Result:
+    """Offer an "all forecasters" option on the record.
+
+    The tempting version, because it looks like a convenience. It would be the
+    one number on the page that describes nothing: the model answers every
+    question on a slate, the operator answers the ones they chose, and the LLM
+    answers whichever it was asked. One figure over all three is the merge
+    LAW 4 forbids, wearing a selector.
+    """
+    faults = audit.merged_forecaster_faults(
+        audit.MERGED_FORECASTER_FIXTURE_POSITIVE)
+    return _desk_plant(faults, "offer one combined forecaster on the record",
+                       "audit.merged_forecaster_faults")
+
+
+def plant_an_unlabelled_operator_record() -> Result:
+    """Show the operator's numbers without saying they were informed.
+
+    The same guard's other half. These calls were made after seeing the
+    model's probability and the market's line; a label reading just "you"
+    invites the reader to compare them with a blind record, which is the one
+    comparison they cannot support (ruling R2).
+    """
+    faults = audit.merged_forecaster_faults(
+        {"forecasters": [{"forecaster": "operator", "label": "you",
+                          "informed": True}]})
+    return _desk_plant(faults, "show the operator's record unlabelled",
+                       "audit.merged_forecaster_faults")
+
+
 def plant_a_stake_field_on_a_call() -> Result:
     """Give the operator's call a `units` column.
 
@@ -2640,6 +2670,8 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_merged_forecaster_view())
+    results.append(plant_an_unlabelled_operator_record())
     results.append(plant_a_stake_field_on_a_call())
     results.append(plant_a_call_after_kickoff())
     results.append(plant_an_edited_call())

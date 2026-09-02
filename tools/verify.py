@@ -180,6 +180,11 @@ def step_2_guards() -> bool:
          audit.check_a_live_update_does_not_reorder),
         ("a call is a confidence, not a stake",
          audit.check_a_call_is_not_a_stake),
+        ("forecasters are never merged",
+         lambda: audit.check_forecasters_are_never_merged(
+             __import__("gridiron.views", fromlist=["views"]).scorecard(
+                 __import__("gridiron.db", fromlist=["db"]).connect(),
+                 __import__("gridiron.config", fromlist=["config"]).SPORTS[0]))),
         ("no silent defaults (v2)", audit.check_no_silent_defaults),
         ("not a betting tool (LAW 5)", audit.check_not_a_betting_tool),
         ("no offline data caching", audit.check_no_offline_data_caching),

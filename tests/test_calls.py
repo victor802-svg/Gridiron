@@ -264,3 +264,52 @@ def test_the_comparison_line_is_silent_below_its_gate():
     said = language.call_comparison_line(24, 14, 13, 12, gate=20)
     assert said.startswith("On the 24 picks you called")
     assert "58%" in said
+
+
+def test_the_record_offers_three_forecasters_and_no_merge(conn):
+    """R2: side by side, never added together."""
+    from gridiron import views
+
+    sc = views.scorecard(conn, "nfl")
+    names = [f["forecaster"] for f in sc["forecasters"]]
+    assert names == ["statistical", "llm", "operator"]
+    audit.check_forecasters_are_never_merged(sc)
+    for bad in ("all", "combined", "overall"):
+        assert bad not in names
+
+
+def test_the_operators_numbers_always_say_they_were_informed(conn):
+    """The whole difference between this category and the other two."""
+    from gridiron import views
+
+    sc = views.scorecard(conn, "nfl")
+    operator = [f for f in sc["forecasters"] if f["informed"]][0]
+    assert "informed" in operator["label"]
+    assert "informed" in sc["operator_tier_table"]["informed_note"]
+    assert "never added to the blind record" in (
+        sc["operator_tier_table"]["informed_note"])
+
+
+def test_the_operators_tiers_use_the_same_gate_as_the_model(conn):
+    """Neither forecaster is held to an easier standard."""
+    from gridiron import calibration, views
+
+    table = views.operator_tier_table(conn, "nfl")
+    assert table["minimum"] == calibration.TIER_MIN_SETTLED
+    for row in table["rows"]:
+        assert row["needed"] == calibration.TIER_MIN_SETTLED
+        if not row["proven"]:
+            assert row["actual"] is None, (
+                "an unproven tier showed a hit rate")
+            assert "unproven" in row["verdict"]
+
+
+def test_the_comparison_is_over_the_same_games(conn):
+    """The model answers every question; the operator answers the ones they
+    chose. A full-slate model figure beside a selective operator figure would
+    be two different sets of games in one sentence."""
+    from gridiron import views
+
+    comp = views.call_comparison(conn, "nfl")
+    assert comp["n"] == 0
+    assert comp["line"] is None, "a comparison appeared with nothing settled"
