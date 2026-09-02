@@ -36,7 +36,7 @@ from __future__ import annotations
 import re
 import sqlite3
 
-from . import config
+from . import config, language
 from .db import utcnow
 
 
@@ -178,8 +178,11 @@ def fenced() -> list[dict]:
         {
             "name": "MLB_PROP_LADDER",
             "label": "The baseball prop ladders",
+            # HUMANISED, like everything else a reader sees. This printed the
+            # stored keys -- "batter_hits: 0.5/1.5/2.5" -- and the plain-words
+            # scan caught all three the first time the page was scanned.
             "value": ", ".join(
-                f"{stat}: {'/'.join(str(r) for r in rungs)}"
+                f"{language.humanise(stat)}: {'/'.join(str(r) for r in rungs)}"
                 for stat, rungs in list(config.MLB_PROP_LADDER.items())[:3]),
             "declared": config.MLB_PROP_LADDER_DECLARED[:10],
             "what": ("The rungs a question may be asked at. A question formed "
@@ -206,7 +209,13 @@ def fenced() -> list[dict]:
         {
             "name": "FACTOR_SET_VERSION",
             "label": "The factor set in force",
+            # THE CODE IS THE VALUE HERE. A factor set has no plain name -- it
+            # is an identifier stamped onto every prediction so a curve can
+            # say which model produced it, and a reader matching a row against
+            # `predictions.factor_set_version` needs the literal. Marked as
+            # sanctioned code so it renders as one.
             "value": config.FACTOR_SET_VERSION,
+            "literal": True,
             "declared": config.FACTOR_SET_ACTIVATED.get(
                 config.FACTOR_SET_VERSION, "")[:10],
             "what": ("LAW 2: factors are declared in advance with a rationale "

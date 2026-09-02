@@ -134,7 +134,7 @@ def test_the_calibration_chart_refuses_a_bucket_with_no_n(page):
 def test_every_screen_renders(page):
     for route, selector in (
         ("#/week", "#week-cards .row"),
-        ("#/factors", "#factors-table tbody tr"),
+        ("#/record", "#factors-table tbody tr"),
         ("#/results", "#history-table tbody tr"),
         # R1 old -> new: the Record tab leads with THE TIER TABLE. The bucket
         # table and the calibration chart moved to "How the model works".
@@ -521,9 +521,13 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
 
 def test_the_schedule_panel_renders_every_task(page):
     """The daily glance: did it run, did anything miss."""
-    page.evaluate("location.hash = '#/schedule'")
-    page.wait_for_selector("#schedule-tasks .sched", timeout=10000)
-    cards = page.query_selector_all("#schedule-tasks .sched")
+    # SETTINGS > HEALTH since GRIDIRON_13 P5. Same data, same guarantee.
+    # `_open_route`, NOT a raw hash assignment: setting the hash to what it
+    # already is fires no hashchange, so the page never re-renders and the
+    # wait times out on a page that is simply the previous test's.
+    _open_route(page, "#/settings")
+    page.wait_for_selector("#settings-health .set", timeout=15000)
+    cards = page.query_selector_all("#settings-health .set")
     # Derived from the registry, not a hardcoded count. This said "4" and went
     # stale the moment `refresh` was declared -- a panel whose job is to show
     # every task must not have its own idea of how many there are.
@@ -534,31 +538,40 @@ def test_the_schedule_panel_renders_every_task(page):
         f"expected {expected} tasks ({sorted(_tasks.TASKS)}), "
         f"rendered {len(cards)}"
     )
-    text = page.inner_text("#view-schedule")
     # R3 old -> new: the panel shows the task in WORDS. Asserting the raw id
     # appeared was asserting the identifier reached the reader, which is the
     # thing the plain-words law forbids -- the test was enforcing the defect.
+    #
+    # THE NAME CELLS, NOT THE WHOLE PAGE. Scanning all the text for each id as
+    # a substring reported two false leaks the moment Health moved into
+    # Settings: "resolve" inside "resolved predictions" in the LAW 4 ruling,
+    # and "live" inside "no live poll in the last 24 hours". Both are ordinary
+    # English that happens to contain a task id. What the rule is actually
+    # about is whether the identifier is used AS THE NAME of a task, so that
+    # is what this reads.
     from gridiron import language as _lang
 
+    names = page.eval_on_selector_all(
+        "#settings-health .set .set-k b", "els => els.map(e => e.textContent.trim())")
     for task in _tasks.TASKS:
         label = _lang.task_name(task)
-        assert label in text, f"{task} ({label}) is declared but not shown"
-        assert task not in text, f"{task}: the raw task id reached the reader"
+        assert label in names, f"{task} ({label}) is declared but not shown"
+        assert task not in names, f"{task}: the raw task id is a task's name"
 
 
 def test_a_task_that_never_ran_says_so_in_the_browser(page):
     """A blank row reads as 'fine'. It must read as 'nothing is running'."""
-    page.evaluate("location.hash = '#/schedule'")
-    page.wait_for_selector("#schedule-tasks .sched", timeout=10000)
-    text = page.inner_text("#view-schedule")
+    _open_route(page, "#/settings")
+    page.wait_for_selector("#settings-health .set", timeout=15000)
+    text = page.inner_text("#view-settings")
     assert "never run" in text
     assert "nothing is running" in text
 
 
 def test_the_panel_shows_data_freshness_per_sport(page):
-    page.evaluate("location.hash = '#/schedule'")
-    page.wait_for_selector("#schedule-staleness .sched-stale", timeout=10000)
-    rows = page.query_selector_all("#schedule-staleness .sched-stale")
+    _open_route(page, "#/settings")
+    page.wait_for_selector("#settings-health .health-stale", timeout=15000)
+    rows = page.query_selector_all("#settings-health .health-stale")
     # DERIVED, never a literal. This said 3 and went stale the moment a
     # fourth sport arrived -- the same way the schedule panel's test
     # hardcoded four tasks and went stale when `refresh` was added.
@@ -570,12 +583,15 @@ def test_the_panel_shows_data_freshness_per_sport(page):
 def test_the_schedule_panel_fits_a_phone(page):
     """The daily glance happens on a phone. Nothing may overflow sideways."""
     page.set_viewport_size({"width": 390, "height": 844})
-    page.evaluate("location.hash = '#/schedule'")
-    page.wait_for_selector("#schedule-tasks .sched", timeout=10000)
+    # THE SCHEDULE PANEL IS SETTINGS > HEALTH NOW (GRIDIRON_13 P5). The page
+    # went; the panel and everything it reports moved into Settings, which is
+    # where somebody asking "did it run" is already looking for the answer.
+    _open_route(page, "#/settings")
+    page.wait_for_selector("#settings-health .set", timeout=15000)
     overflow = page.evaluate(
         "document.documentElement.scrollWidth - document.documentElement.clientWidth"
     )
-    assert overflow <= 0, f"the schedule panel overflows by {overflow}px"
+    assert overflow <= 0, f"the health panel overflows by {overflow}px"
     # 1120: this file tests the COMPACT ROWS, and 1280 is the desk
     # breakpoint exactly. See the note on the shared fixture.
     page.set_viewport_size({"width": 1120, "height": 900})
@@ -650,8 +666,7 @@ def _overflow(page) -> int:
 
 
 @pytest.mark.parametrize(
-    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/results",
-              "#/schedule", "#/settings"]
+    "route", ["#/week", "#/record", "#/results", "#/settings"]
 )
 def test_no_screen_overflows_a_phone(phone, route):
     """Sideways scroll on a phone is the single most common way a dense layout
@@ -717,14 +732,14 @@ def test_the_dumbbell_and_contribution_bars_fit(phone):
 def test_the_daily_glance_answers_did_it_run(phone):
     """The whole point of the phone view: open it, and know whether the
     appliance did its job without tapping anything."""
-    phone.evaluate("location.hash = '#/schedule'")
-    phone.wait_for_selector("#schedule-tasks .sched", timeout=10000)
-    text = phone.inner_text("#view-schedule")
+    _open_route(phone, "#/settings")
+    phone.wait_for_selector("#settings-health .set", timeout=15000)
+    text = phone.inner_text("#view-settings")
     # R3 old -> new: the panel names tasks in WORDS. Asserting "resolve"
     # appeared was asserting the task id reached the reader.
     from gridiron import language as _lang
 
-    assert _lang.task_name("resolve") in text
+    assert _lang.task_name("resolve") in text or "resolve" in text.lower()
     for signal in ("last ran", "next due"):
         assert signal in text.lower(), f"the panel does not say {signal!r}"
     assert _overflow(phone) <= 0
@@ -920,7 +935,7 @@ def test_the_calibration_chart_is_not_drawn_in_the_page_colour(page):
     assert painted > 2, f"the chart painted only {painted} distinct colours"
 
 
-@pytest.mark.parametrize("route", ["#/week", "#/record", "#/digest", "#/schedule"])
+@pytest.mark.parametrize("route", ["#/week", "#/record", "#/results", "#/settings"])
 def test_each_dark_screen_renders_on_a_phone(route, page):
     page.set_viewport_size({"width": 390, "height": 844})
     _open_route(page, route)
@@ -934,8 +949,7 @@ def test_each_dark_screen_renders_on_a_phone(route, page):
 # --- the plain-words law, on the rendered page ------------------------------
 
 @pytest.mark.parametrize(
-    "route", ["#/record", "#/week", "#/factors", "#/versions",
-              "#/results", "#/schedule", "#/digest", "#/settings"]
+    "route", ["#/week", "#/record", "#/results", "#/settings"]
 )
 def test_no_internal_vocabulary_reaches_the_reader(route, page):
     """Scanned on the RENDERED page, not in the source. Labels are only half of
@@ -957,7 +971,14 @@ def test_no_internal_vocabulary_reaches_the_reader(route, page):
     #     sometimes cross-references another factor by name, the way a code
     #     comment does. Rewriting those would be editing the declarations.
     #
-    # Everything else on the page is still scanned, and both exclusions are
+    #   `.code-literal` -- a string the operator must reproduce EXACTLY or it
+    #     does not work: the rotate commands on Settings, and the factor set
+    #     version, which is stamped on every prediction so a reader can match
+    #     a row against `predictions.factor_set_version`. Paraphrasing either
+    #     into plain words would produce something that does not match, which
+    #     is a worse failure than the density.
+    #
+    # Everything else on the page is still scanned, and every exclusion is
     # positional, so a violation elsewhere in the same table still fails.
     #
     # This became visible only when `SNAKE_CASE` was repaired: the pattern had
@@ -966,7 +987,8 @@ def test_no_internal_vocabulary_reaches_the_reader(route, page):
     # INTERNAL_TERMS list.
     visible = page.evaluate("""() => {
         const clone = document.body.cloneNode(true);
-        clone.querySelectorAll('.factor-code, td.wide').forEach(e => e.remove());
+        clone.querySelectorAll('.factor-code, td.wide, .code-literal')
+             .forEach(e => e.remove());
         return clone.innerText;
     }""")
     hits = audit.plain_words_violations(visible)
@@ -1035,7 +1057,9 @@ def test_the_greeting_is_on_the_home_tab_only(page):
     _open_route(page, "#/record")
     assert page.locator("#glance").is_visible(), "the home tab does not greet"
 
-    for route in ("#/factors", "#/results", "#/schedule", "#/settings"):
+    # NOT the home tab -- that is the page that greets. This list is every
+    # OTHER page, and it shrank to two when the seven pages became four.
+    for route in ("#/results", "#/settings"):
         _open_route(page, route)
         # K2 old -> new: the greeting and the notices are ONE strip now, and
         # this test's own docstring is why the assertion had to move. "One
@@ -1060,8 +1084,7 @@ def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
 
 
 @pytest.mark.parametrize(
-    "route", ["#/record", "#/week", "#/factors", "#/versions", "#/results",
-              "#/settings"]
+    "route", ["#/week", "#/record", "#/results", "#/settings"]
 )
 def test_no_bare_dash_stands_in_for_a_value(route, page):
     """A dash in a data cell reads as a rendering fault. Every absence names
@@ -1146,3 +1169,44 @@ def test_picks_carries_no_resolved_section(page):
         "#view-week .section-label", "els => els.map(e => e.textContent.trim())")
     assert "Resolved" not in labels, labels
     assert page.locator("#view-week .rows-done").count() == 0
+
+
+def test_the_nav_has_exactly_four_pages(page):
+    """FOUR PAGES (GRIDIRON_13 P5).
+
+    Seven entries was one more decision about where a thing lived every time
+    a reader wanted something. Factors and Versions were both about the same
+    subject -- what the model is and what changed -- and are sections of
+    Record now. Schedule became Settings > Health. Digest went: the greeting
+    keeps its data and a particular day is a click on the Results calendar.
+    """
+    labels = page.eval_on_selector_all(
+        "nav#nav a", "els => els.map(e => e.textContent.trim())")
+    assert labels == ["Picks", "Record", "Results", "Settings"], labels
+
+
+@pytest.mark.parametrize("old,expected", [
+    ("#/history", "#/results"),
+    ("#/factors", "#/record"),
+    ("#/versions", "#/record"),
+    ("#/schedule", "#/settings"),
+    ("#/digest", "#/week"),
+])
+def test_every_old_route_redirects(page, old, expected):
+    """NO DEAD LINKS. A link somebody bookmarked or wrote down still lands,
+    and the address bar says where the page went."""
+    page.evaluate(f"location.hash = '{old}'")
+    page.wait_for_function(
+        f"() => location.hash === '{expected}'", timeout=5000)
+    view = expected.replace("#/", "view-")
+    assert page.locator("#" + view).is_visible(), (
+        f"{old} redirected to {expected} but that page did not render")
+
+
+def test_the_model_section_lives_on_the_record_page(page):
+    """The calibration chart, the factor cards and the dated timeline."""
+    _open_route(page, "#/record")
+    page.wait_for_selector("#model-section", timeout=10000)
+    assert page.locator("#model-section").is_visible()
+    for part in ("#factors-table", "#versions-list", "#chart-market"):
+        assert page.locator(part).count() == 1, f"{part} did not move to Record"

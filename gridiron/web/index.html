@@ -39,10 +39,6 @@
       <a href="#/record" data-route="record">Record</a>
       <a href="#/results" data-route="results">Results</a>
       <a href="#/settings" data-route="settings">Settings</a>
-      <a href="#/schedule" data-route="schedule">Schedule</a>
-      <a href="#/factors" data-route="factors" class="nav-more">Factors</a>
-      <a href="#/versions" data-route="versions" class="nav-more">Versions</a>
-      <a href="#/digest" data-route="digest" class="nav-more">Digest</a>
     </nav>
     <!-- THE SEASON-RECORD STRIP WAS HERE, and the tab records replaced it
          (E2/R1). Measured before removing: with each tab carrying its own
@@ -116,10 +112,69 @@
     <div id="record-edge"></div>
     <div id="record-scores"></div>
     <p class="footnote" id="separation-note"></p>
-    <p class="footnote">
-      The calibration chart, the drift over time and the Brier detail live on
-      <a href="#/factors">How the model works</a>.
-    </p>
+
+    <!-- HOW THE MODEL WORKS (GRIDIRON_13 P5). The Factors page and the
+         Versions page were two more places to go and one more decision to
+         make about where a thing lived. Both were about the same subject --
+         what the model is and what changed -- and both are now sections of
+         the Record, which is the page a reader is already on when the
+         question occurs to them. #/factors and #/versions redirect here. -->
+    <section id="model-section">
+      <h2>How the model works</h2>
+
+    <h2>Factors <span id="factors-caption" class="caption"></span></h2>
+    <p class="footnote" id="factors-method"></p>
+
+    <!-- THE DECOMPOSITION LIVES HERE NOW (K3). It used to sit on every pick
+         card, in log-odds and raw factor names, above three rationale essays.
+         A reader wants which few things drove the pick and how hard; somebody
+         AUDITING the model wants the arithmetic, and this is where they come
+         looking for it. One worked example, from a real forecast on the
+         current slate, so the numbers are checkable rather than illustrative. -->
+    <div class="chart-block">
+      <h2>Calibration <span id="chart-caption" class="caption"></span></h2>
+      <div class="chart-controls">
+        <label>Market
+          <select id="chart-market"></select>
+        </label>
+        <label>Forecaster
+          <select id="chart-predictor">
+            <option value="statistical">statistical</option>
+            <option value="llm">LLM</option>
+          </select>
+        </label>
+      </div>
+      <div class="chart-frame">
+        <canvas id="calibration" width="640" height="440" role="img"
+                aria-label="Calibration chart: claimed confidence against observed frequency"></canvas>
+      </div>
+      <p class="footnote" id="largest-gap-prose"></p>
+      <div class="table-scroll"><table id="bucket-table" class="grid"></table></div>
+    </div>
+
+    <div class="chart-block">
+      <h2>Calibration over time <span id="overtime-caption" class="caption"></span></h2>
+      <div class="chart-frame" id="overtime-frame">
+        <canvas id="overtime" width="640" height="180" role="img"
+                aria-label="Weekly calibration gap, one point per week"></canvas>
+      </div>
+      <p class="footnote" id="overtime-note"></p>
+    </div>
+
+    <section id="factors-worked" class="worked" hidden>
+      <h3>A worked example <span id="worked-caption" class="caption"></span></h3>
+      <div id="worked-bars"></div>
+      <p class="footnote" id="worked-sentence"></p>
+    </section>
+
+    <div class="table-scroll"><table id="factors-table" class="grid"></table></div>
+
+      <!-- WHAT CHANGED, WHEN. The Versions page, as a dated timeline. -->
+
+    <h2>Factor set versions <span id="versions-caption" class="caption"></span></h2>
+    <p class="footnote" id="versions-note"></p>
+    <div id="versions-list"></div>
+    </section>
   </section>
 
   <section id="view-week" class="view" hidden>
@@ -197,61 +252,6 @@
     </div>
   </section>
 
-  <section id="view-factors" class="view" hidden>
-    <h2>Factors <span id="factors-caption" class="caption"></span></h2>
-    <p class="footnote" id="factors-method"></p>
-
-    <!-- THE DECOMPOSITION LIVES HERE NOW (K3). It used to sit on every pick
-         card, in log-odds and raw factor names, above three rationale essays.
-         A reader wants which few things drove the pick and how hard; somebody
-         AUDITING the model wants the arithmetic, and this is where they come
-         looking for it. One worked example, from a real forecast on the
-         current slate, so the numbers are checkable rather than illustrative. -->
-    <div class="chart-block">
-      <h2>Calibration <span id="chart-caption" class="caption"></span></h2>
-      <div class="chart-controls">
-        <label>Market
-          <select id="chart-market"></select>
-        </label>
-        <label>Forecaster
-          <select id="chart-predictor">
-            <option value="statistical">statistical</option>
-            <option value="llm">LLM</option>
-          </select>
-        </label>
-      </div>
-      <div class="chart-frame">
-        <canvas id="calibration" width="640" height="440" role="img"
-                aria-label="Calibration chart: claimed confidence against observed frequency"></canvas>
-      </div>
-      <p class="footnote" id="largest-gap-prose"></p>
-      <div class="table-scroll"><table id="bucket-table" class="grid"></table></div>
-    </div>
-
-    <div class="chart-block">
-      <h2>Calibration over time <span id="overtime-caption" class="caption"></span></h2>
-      <div class="chart-frame" id="overtime-frame">
-        <canvas id="overtime" width="640" height="180" role="img"
-                aria-label="Weekly calibration gap, one point per week"></canvas>
-      </div>
-      <p class="footnote" id="overtime-note"></p>
-    </div>
-
-    <section id="factors-worked" class="worked" hidden>
-      <h3>A worked example <span id="worked-caption" class="caption"></span></h3>
-      <div id="worked-bars"></div>
-      <p class="footnote" id="worked-sentence"></p>
-    </section>
-
-    <div class="table-scroll"><table id="factors-table" class="grid"></table></div>
-  </section>
-
-  <section id="view-versions" class="view" hidden>
-    <h2>Factor set versions <span id="versions-caption" class="caption"></span></h2>
-    <p class="footnote" id="versions-note"></p>
-    <div id="versions-list"></div>
-  </section>
-
   <section id="view-results" class="view" hidden>
     <h2>Results <span id="history-caption" class="caption"></span></h2>
     <!-- THE SEASON AS A SHAPE (GRIDIRON_13 P2). One square per day with a
@@ -308,31 +308,6 @@
       <h3>Recent changes <small id="settings-recent-n"></small></h3>
       <div id="settings-recent"></div>
     </section>
-  </section>
-
-  <section id="view-schedule" class="view" hidden>
-    <h2>Schedule <span id="schedule-caption" class="caption"></span></h2>
-    <p class="footnote">
-      What the appliance has actually done, not what it was configured to do. A
-      task that has gone quiet says so. A slate that started without being
-      forecast is recorded as missed and is never forecast late.
-    </p>
-    <div id="schedule-tasks"></div>
-    <h3 class="subhead">Data freshness</h3>
-    <div id="schedule-staleness"></div>
-  </section>
-
-  <section id="view-digest" class="view" hidden>
-    <h2>Digest <span id="digest-caption" class="caption"></span></h2>
-    <p class="footnote">
-      What happened, day by day. The strip at the top of the page moves its
-      marker when you read it; this page does not, so a day can be linked and
-      read again.
-    </p>
-    <div class="filters">
-      <label>Day <input id="digest-day" type="date"></label>
-    </div>
-    <div id="digest-body"></div>
   </section>
 
   <div id="error" class="error" hidden></div>

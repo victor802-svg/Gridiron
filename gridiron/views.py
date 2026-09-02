@@ -1347,7 +1347,10 @@ def history(
         item["market_label"] = language.market_label(item)
         item["player"] = language.strip_market_suffix(item["subject"], item["market"])
         items.append(item)
-    return {"n": total, "returned": len(items), "offset": offset, "items": items}
+    return {"n": total, "returned": len(items), "offset": offset, "items": items,
+            # WHAT THIS LIST IS, in words, composed here like every other
+            # visible string. The renderer used to glue " on " onto a date.
+            "caption": language.results_caption(total, day)}
 
 
 def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | None:

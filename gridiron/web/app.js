@@ -327,6 +327,10 @@ const Gridiron = (function () {
     // operator's own informed calls, stood here until 2026-09-02.)
     renderForecasterPicker(sc);
     renderTierTable(sc.tier_table);
+    // THE MODEL SECTION IS PART OF THIS PAGE NOW (P5): the calibration
+    // chart, the factor cards and the dated "what changed, when" timeline.
+    renderFactors().catch(showError);
+    renderVersions().catch(showError);
     // CALLED WITH THE WHOLE SCORECARD, not smuggled through the tier table:
     // the corrections, the drift pairs and the read windows are siblings of
     // that table, not part of it.
@@ -2215,7 +2219,13 @@ const Gridiron = (function () {
       // MASKED, NEVER SHOWN. The server sends four characters at each end and
       // the length; it does not send the secret.
       val.appendChild(el('code', '', a.masked));
-      val.appendChild(el('div', 'set-how', 'rotate: ' + a.how));
+      // A COMMAND THE OPERATOR TYPES, marked as the literal it is. The
+      // plain-words scan excludes sanctioned code by POSITION, and a rotate
+      // command must be reproduced exactly or it does not work.
+      const how = el('div', 'set-how');
+      how.appendChild(document.createTextNode('rotate: '));
+      how.appendChild(el('code', 'code-literal', a.how));
+      val.appendChild(how);
       row.appendChild(val);
       host.appendChild(row);
     });
@@ -2240,11 +2250,11 @@ const Gridiron = (function () {
       // A TASK THAT HAS GONE QUIET SAYS SO, and a missed slate is named
       // rather than counted. Weight and position, never red: a late task is
       // not a pick that lost (GRIDIRON_16 R2).
-      if (t.silent) {
-        key.appendChild(el('div', 'set-warn',
-          'This has not run for ' + Math.round(t.age_hours) +
-          ' hours, which is longer than it should ever be quiet.'));
-      }
+      // THE SERVER'S OWN WARNING, placed. It reads "has never run. If the
+      // scheduler is installed, it has not fired yet; if it is not, nothing
+      // is running." -- which is the sentence that makes a blank row read as
+      // "nothing is running" instead of "fine".
+      if (t.warning) key.appendChild(el('div', 'set-warn', t.warning));
       (t.missed || []).forEach(m => key.appendChild(el('div', 'set-warn',
         typeof m === 'string' ? m : (m.line || ''))));
       row.appendChild(key);
@@ -2254,14 +2264,16 @@ const Gridiron = (function () {
       // out of the mockup: `last_result` is what the run recorded, and
       // `last_detail` is what it said about itself.
       val.appendChild(el('code', '', t.last_result || 'never run'));
-      if (t.last_run_utc) {
-        val.appendChild(el('div', 'set-how',
-          'last ran ' + localDateTime(t.last_run_utc)));
-      }
-      if (t.next_due_utc) {
-        val.appendChild(el('div', 'set-how',
-          'next due ' + localDateTime(t.next_due_utc)));
-      }
+      // ALWAYS BOTH LINES, EVEN WHEN THERE IS NOTHING TO PUT IN THEM. These
+      // were written only when a timestamp existed, so a task that had never
+      // run showed no "last ran" line at all -- and an absent line reads as
+      // "no information" where "last ran: never" is a fact. That is the same
+      // failure a blank row makes: it reads as fine.
+      val.appendChild(el('div', 'set-how',
+        'last ran ' + (t.last_run_utc ? localDateTime(t.last_run_utc) : 'never')));
+      val.appendChild(el('div', 'set-how',
+        'next due ' + (t.next_due_utc ? localDateTime(t.next_due_utc)
+                                      : 'not scheduled')));
       if (t.last_detail) {
         val.appendChild(el('div', 'set-how', t.last_detail));
       }
@@ -2271,8 +2283,10 @@ const Gridiron = (function () {
     // STALENESS PER SPORT, side by side and never summed (LAW 6). The
     // server already says so in `side_by_side_sports`; this places its notes.
     ((health.schedule_staleness || {}).sports || []).forEach(sp => {
-      host.appendChild(el('div', 'set-how',
-        (sp.label || sp.sport) + ': ' + (sp.note || '')));
+      const row = el('div', 'set-how health-stale');
+      row.appendChild(el('b', '', sp.label || sp.sport));
+      row.appendChild(document.createTextNode(' ' + (sp.note || '')));
+      host.appendChild(row);
     });
     if (health.live_poll && health.live_poll.line) {
       host.appendChild(el('div', 'set-how', health.live_poll.line));
@@ -2307,7 +2321,12 @@ const Gridiron = (function () {
       const val = el('div', 'set-v');
       // READ-ONLY, AND NOT AN INPUT AT ALL. A disabled text box invites a
       // reader to go looking for the thing that would enable it.
-      val.appendChild(el('code', '', f.value));
+      //
+      // A `literal` value is an identifier a reader must be able to match
+      // against a stored one -- the factor set version is stamped on every
+      // prediction -- so it is marked as sanctioned code rather than
+      // paraphrased into something that would not match.
+      val.appendChild(el('code', f.literal ? 'code-literal' : '', f.value));
       val.appendChild(el('div', 'set-how', 'declared ' + (f.declared || '')));
       row.appendChild(val);
       host.appendChild(row);
@@ -2358,9 +2377,10 @@ const Gridiron = (function () {
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
     requireN(data, 'history');
     state.historyTotal = data.n;
-    document.getElementById('history-caption').textContent =
-      int(data.n) + ' predictions match' +
-      (state.calendarDay ? ' on ' + state.calendarDay : '');
+    // PLACED, NOT COMPOSED. This glued " on " onto a date, which is the
+    // renderer writing a sentence -- the thing `check_js_composes_no_prose`
+    // exists to refuse. The server says which day it filtered to.
+    document.getElementById('history-caption').textContent = data.caption || '';
     await renderCalendar();
 
     // The forecaster column appears ONLY when both are being shown. A column
@@ -2507,84 +2527,6 @@ const Gridiron = (function () {
   // rendered as a blank row: it says it has never run, and says what that
   // means. The one thing this panel must never do is look calm when the
   // appliance has stopped.
-  async function renderSchedule() {
-    const data = await fetchJSON('/api/schedule');
-    const host = document.getElementById('schedule-tasks');
-    host.innerHTML = '';
-
-    const caption = document.getElementById('schedule-caption');
-    const problems = data.tasks.filter(t => t.silent).length;
-    const missed = data.tasks.reduce((n, t) => n + t.missed.length, 0);
-    caption.textContent = problems || missed
-      ? problems + ' quiet · ' + missed + ' missed'
-      : 'all tasks reporting';
-    caption.className = 'caption' + (problems || missed ? ' warn' : '');
-
-    data.tasks.forEach(t => {
-      const card = el('div', 'sched' + (t.silent ? ' sched-warn' : ''));
-      const head = el('div', 'sched-head');
-      // WORDS, not the task id. "predict:mlb" looks like English and is a
-      // colon-joined key, which is the most dangerous kind of identifier to
-      // leave on screen: it reads as though it were already plain.
-      const label = el('strong', '', t.task_label || t.task);
-      label.title = t.task;
-      head.appendChild(label);
-      head.appendChild(el('span', 'sched-result ' + 'r-' + (t.last_result || 'never'),
-                          t.last_result || 'never run'));
-      card.appendChild(head);
-      card.appendChild(el('div', 'sched-what', t.what));
-
-      const rows = [
-        ['last ran', t.last_run_utc ? t.last_run_utc.replace('T', ' ') +
-          '  (' + t.age_hours + 'h ago)' : 'never'],
-        ['next due', t.next_due_utc ? t.next_due_utc.replace('T', ' ') : 'unknown'],
-        ['every', t.every_hours + 'h'],
-        ['failures all time', String(t.failures_all_time)]
-      ];
-      const dl = el('div', 'sched-grid');
-      rows.forEach(([k, v]) => {
-        dl.appendChild(el('span', 'sched-k', k));
-        dl.appendChild(el('span', 'sched-v', v));
-      });
-      card.appendChild(dl);
-
-      if (t.last_detail) card.appendChild(el('div', 'sched-detail', t.last_detail));
-      (t.degraded || []).forEach(d => {
-        card.appendChild(el('div', 'sched-alarm',
-          'ran degraded: ' + d + ' — the statistical forecaster stood alone'));
-      });
-      if (t.warning) card.appendChild(el('div', 'sched-alarm', t.warning));
-      t.missed.forEach(m => {
-        card.appendChild(el('div', 'sched-missed',
-          'MISSED ' + m.started_utc.replace('T', ' ') + ' — ' + m.detail));
-      });
-      host.appendChild(card);
-    });
-
-    const stale = document.getElementById('schedule-staleness');
-    stale.innerHTML = '';
-    data.schedule_staleness.sports.forEach(s => {
-      const row = el('div', 'sched-stale' + (s.stale ? ' sched-warn' : ''));
-      row.appendChild(el('strong', '', s.label));
-      row.appendChild(el('span', 'sched-detail', s.note));
-      stale.appendChild(row);
-    });
-  }
-
-  // --- since you last looked ------------------------------------------------
-  // Leads the page. The first question on opening a forecaster is not "what do
-  // you think tonight" — it is "was I right last night".
-
-  // THE FIFTH INSTANCE of the wrong-side defect lived on the line this
-  // replaces: `'picked ' + String(s.subject).toUpperCase()`. On a moneyline
-  // the subject is the HOME club, so every pick against the home side named
-  // the team the model forecast AGAINST -- and it shouted the stored
-  // identifier, so a prop read "FERNANDO TATIS JR. BATTER_HITS".
-  //
-  // It survived the guard that catches the other four because that guard reads
-  // Python and this is JavaScript. The structural answer is the one the rest of
-  // the interface already uses: the server writes the sentence, the renderer
-  // places it. `s.phrase` comes from `language.phrase`, flip included.
   function settledRow(s) {
     const row = el('div', 'settled-row' + (s.correct ? ' win' : ' loss'));
     row.appendChild(el('span', 'settled-verdict', s.correct ? 'WIN' : 'LOSS'));
@@ -2748,49 +2690,6 @@ const Gridiron = (function () {
 
   // The permanent page. Reads WITHOUT moving the marker, so a day can be
   // linked, shared and read twice.
-  async function renderDigest() {
-    const picker = document.getElementById('digest-day');
-    // Defaults to TODAY rather than "since you last looked". The strip at the
-    // top of the page moves the marker when it is read, so by the time anybody
-    // opens this page that window is empty by construction — and an empty
-    // permanent page is not a permanent page.
-    if (picker && !picker.value) {
-      picker.value = new Date().toISOString().slice(0, 10);
-    }
-    const day = picker && picker.value ? picker.value : null;
-    const url = day
-      ? withSport('/api/digest') + '&day=' + encodeURIComponent(day)
-      : withSport('/api/digest') + '&peek=true';
-    const data = await fetchJSON(url);
-
-    document.getElementById('digest-caption').textContent =
-      data.day ? data.day : 'since you last looked';
-
-    const host = document.getElementById('digest-body');
-    host.innerHTML = '';
-    const strip = el('section', 'greet');
-    const msg = el('div', 'msg');
-    const countdown = el('div', 'countdown');
-    strip.appendChild(msg);
-    strip.appendChild(countdown);
-    host.appendChild(strip);
-
-    const warnings = el('div');
-    const settled = el('div');
-    host.appendChild(warnings);
-    host.appendChild(settled);
-    paintDigest(data, { msg, countdown, warnings, settled });
-
-    if (!data.n && !data.day) {
-      host.appendChild(el('div', 'footnote',
-        'Pick a day above to read any past digest.'));
-    }
-  }
-
-  // WHICH LAYOUT IS LIVE, on the body, so CSS can pin the page only when the
-  // desk is actually on. Recomputed on resize because a window dragged across
-  // 1280px must change layout, and the tiles and rows are different DOM --
-  // a media query alone cannot swap them.
   function applyDeskClass() {
     document.body.classList.toggle('desk-on', isDesk() && state.view === 'week');
     placeGreeting();
@@ -2812,20 +2711,32 @@ const Gridiron = (function () {
   //: Where a renamed route now lives. A redirect rather than a second entry
   //: in ROUTES, so there is exactly one name for the page and the address bar
   //: says which one it is.
-  const RENAMED = { history: 'results' };
+  //: FOUR PAGES (GRIDIRON_13 P5), and every old address still lands.
+  //:
+  //: `factors` and `versions` were two more places to go and one more
+  //: decision about where a thing lived; both were about the same subject --
+  //: what the model is and what changed -- and both are sections of Record
+  //: now. `schedule` became Settings > Health. `digest` went: the greeting
+  //: keeps its data, and a particular day is a filter on Results.
+  //:
+  //: REDIRECTS, NOT 404s. A link somebody bookmarked or wrote down still
+  //: works, and the address bar says where the page went.
+  const RENAMED = {
+    history: 'results',
+    factors: 'record',
+    versions: 'record',
+    schedule: 'settings',
+    digest: 'week',
+  };
 
   const ROUTES = {
     record: renderRecord,
     week: renderWeek,
-    factors: renderFactors,
-    versions: renderVersions,
     // RESULTS, renamed from History on 2026-09-02 (GRIDIRON_16 R4). Settled
     // rows live here and only here; Picks no longer carries a resolved
     // section. `#/history` still resolves -- see the redirect in `route`.
     results: renderResults,
-    settings: renderSettings,
-    schedule: renderSchedule,
-    digest: renderDigest
+    settings: renderSettings
   };
 
   // MERGING THE GREETING AND THE NOTICES PUT TWO RULES ON ONE ELEMENT, and
@@ -2918,9 +2829,9 @@ const Gridiron = (function () {
     }
 
     wireSortToggle();
-    const dayPicker = document.getElementById('digest-day');
-    if (dayPicker) dayPicker.addEventListener('change', () =>
-      renderDigest().catch(showError));
+    // THE DIGEST'S DAY PICKER went with the page (P5). Choosing a particular
+    // day is now a click on the Results calendar, which shows the same day's
+    // record with its balance rather than making a reader type a date.
     window.addEventListener('hashchange', route);
     ['chart-market', 'chart-predictor'].forEach(id =>
       document.getElementById(id).addEventListener('change', () => {

@@ -1714,3 +1714,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .change:last-child { border-bottom: 0; }
 .change-when { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .change-note { color: var(--faint); font-style: italic; }
+/* A string the operator must reproduce exactly: a rotate command, an
+   identifier stamped on a prediction. Excluded from the plain-words scan by
+   position, exactly as `.factor-code` is. */
+.code-literal { font-family: var(--mono); color: var(--muted); }

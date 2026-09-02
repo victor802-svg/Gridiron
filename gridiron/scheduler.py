@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import time
 
 #: The installer's naming, which is the only reason these are predictable.
 #: `tools/schedule_install.ps1` registers "Gridiron-Predict-MLB" and friends.
@@ -67,7 +68,28 @@ _STATUS = re.compile(r"^\s*(?:Scheduled Task State|Status):\s*(.+?)\s*$", re.M |
 _NEXT_RUN = re.compile(r"^\s*Next Run Time:\s*(.+?)\s*$", re.M | re.I)
 
 
-def read_os(task: str) -> dict:
+#: A SHORT CACHE, because the settings page reads every scheduled task and
+#: each read is a subprocess. Three of them made the page slow enough that a
+#: browser test read it before the health panel had rendered -- which is a
+#: real reader waiting, not just a flaky test.
+#:
+#: THIRTY SECONDS, and a write clears it. The scheduler changes when this app
+#: changes it or when a person opens Task Scheduler; the first invalidates the
+#: entry, and the second is worth up to half a minute of staleness against
+#: three subprocess spawns on every page load.
+CACHE_SECONDS = 30.0
+_cache: dict[str, tuple[float, dict]] = {}
+
+
+def forget(task: str | None = None) -> None:
+    """Drop what was cached. Called after a change, so the read-back is real."""
+    if task is None:
+        _cache.clear()
+    else:
+        _cache.pop(task, None)
+
+
+def read_os(task: str, *, fresh: bool = False) -> dict:
     """What the scheduler holds for this task, right now.
 
     HONEST WHEN IT CANNOT LOOK. A missing task, a non-Windows machine and a
@@ -78,6 +100,10 @@ def read_os(task: str) -> dict:
         return {"available": False, "found": False, "task": task,
                 "line": ("This machine has no Windows Task Scheduler, so the "
                          "app cannot say what is registered.")}
+    if not fresh:
+        cached = _cache.get(task)
+        if cached and (time.monotonic() - cached[0]) < CACHE_SECONDS:
+            return cached[1]
     name = os_task_name(task)
     try:
         done = subprocess.run(
@@ -96,7 +122,7 @@ def read_os(task: str) -> dict:
     status = _STATUS.search(text)
     nxt = _NEXT_RUN.search(text)
     at = _to_24h(start.group(1)) if start else None
-    return {
+    answer = {
         "available": True,
         "found": True,
         "task": task,
@@ -107,6 +133,8 @@ def read_os(task: str) -> dict:
         "line": (f"The scheduler holds {name} at {at}."
                  if at else f"The scheduler holds {name}."),
     }
+    _cache[task] = (time.monotonic(), answer)
+    return answer
 
 
 def _to_24h(text: str) -> str | None:
@@ -171,7 +199,11 @@ def apply_time(task: str, at: str) -> dict:
                          f"{type(exc).__name__}. The setting is recorded but "
                          f"the task still runs at its old time.")}
 
-    read_back = read_os(task)
+    # FRESH, ALWAYS. A read-back served from a cache written before the change
+    # would confirm the old value and call it success -- which is precisely
+    # the lie this function exists to prevent.
+    forget(task)
+    read_back = read_os(task, fresh=True)
     if done.returncode != 0:
         detail = (done.stderr or done.stdout or "").strip().splitlines()
         why = detail[-1][:160] if detail else "no reason given"

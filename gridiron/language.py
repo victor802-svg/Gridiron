@@ -1590,6 +1590,20 @@ def gate_name(kind: str, subject: str) -> str:
     return subject
 
 
+def results_caption(n: int, day: str | None) -> str:
+    """"22 predictions, resolved on Monday 31 August" -- or the whole season.
+
+    THE DAY IN WORDS, not the stored key. The renderer glued " on " onto
+    "2026-08-31" until 2026-09-02, which put a date key in front of a reader
+    and composed a sentence in the browser -- two rules at once.
+    """
+    thing = "prediction" if n == 1 else "predictions"
+    if not day:
+        return f"{n} {thing}"
+    words = date_words_from_iso(day) or day
+    return f"{n} {thing}, played on {words}"
+
+
 def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
     """"Wednesday 2 September - 5 right, 2 wrong, 1 void".
 
