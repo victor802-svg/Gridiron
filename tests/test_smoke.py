@@ -1049,29 +1049,36 @@ def test_each_notice_keeps_its_task_name_in_the_summary(page):
     assert len(parts) == len(set(parts)), f"the summary repeats itself: {parts}"
 
 
-def test_the_header_record_follows_the_selected_sport(page):
-    """One sport at a time.
+def test_each_tab_carries_its_own_record_and_never_a_total(page):
+    """One sport at a time, on the tab itself (E2/R1).
 
-    The strip needed 264px in a 213px slot, so it was clipped at every width
-    and the `flex: none` hiding that clipping pushed the whole page 35-56px
-    wide. The fix cut "this season", not the sport label -- cutting the label
-    first was wrong, and THIS TEST is what caught it: with no label, two sports
-    that have both settled nothing produce the same strip, so switching sports
-    changed nothing on screen.
+    THIS REPLACES the header record strip, and the replacement was forced by a
+    measurement rather than chosen. With each tab carrying its own record the
+    header is saturated, and the strip was being given 4px for 67px of content
+    at EVERY width: present in the layout, invisible to a reader, and asserted
+    by this test. The tabs say strictly more -- every sport's record rather
+    than only the active one's -- and the season figure remains at
+    /api/record-line and on the Record page.
 
-    So the assertion below is now three: the record follows the sport, it still
-    names it, and it fits the slot it is given.
+    What the old test caught must still be caught: a record that does not name
+    its sport makes two empty sports look identical, so switching between them
+    changes nothing on screen. Hence the label assertion below.
     """
-    before = page.locator("#record-line").inner_text()
-    page.evaluate("document.querySelector('#sport-tabs button[data-sport=mlb]').click()")
-    page.wait_for_timeout(1800)
-    after = page.locator("#record-line").inner_text()
-    assert after.startswith("MLB"), f"the header still reads {after!r}"
-    assert after != before, f"the header did not follow the sport: {after!r}"
-    assert "this season" not in after, (
-        f"the long form is back and will clip the strip again: {after!r}")
-    # It must still fit the slot it is given, whatever it says.
-    clipped = page.evaluate(
-        "() => { const e = document.getElementById('record-line');"
-        " return e.scrollWidth > e.clientWidth + 1; }")
-    assert not clipped, f"the record strip is clipped: {after!r}"
+    tabs = page.evaluate("""() => [...document.querySelectorAll('#sport-tabs button')]
+        .map(b => ({sport: b.dataset.sport, text: b.textContent,
+                    title: b.title,
+                    clipped: b.scrollWidth > b.clientWidth + 1}))""")
+    assert len(tabs) >= 2, "the tabs did not render"
+    for tab in tabs:
+        assert tab["sport"].upper() in tab["text"].upper() or tab["text"], (
+            f"the {tab['sport']} tab carries no label: {tab['text']!r}")
+        assert not tab["clipped"], f"the {tab['sport']} tab is clipped: {tab['text']!r}"
+        assert tab["title"], f"the {tab['sport']} tab has no detail on hover"
+
+    # LAW 6: no tab's record may name another sport, and there is no total.
+    labels = [t["text"] for t in tabs]
+    assert len(set(labels)) == len(labels), (
+        f"two tabs read identically, so switching between them shows no "
+        f"change: {labels}")
+
+

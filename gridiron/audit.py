@@ -614,14 +614,33 @@ def _public_functions(root: Path) -> dict[str, str]:
 
 
 def _caller_sources(root: Path) -> dict[str, str]:
-    """Every file whose calls count: the package, plus `tools/`. Never tests."""
+    """Every file whose calls count: the package, `tools/`, `desktop/`.
+
+    NEVER TESTS -- a function reached only by its own unit test is precisely
+    what this scan is for.
+
+    `desktop/` was added 2026-09-01, when the build stamper was reported as an
+    orphan. It is called by the PyInstaller spec, which is how the bundle is
+    built: shipped code that runs in earnest, by the same argument that
+    admitted `tools/`. Widening the definition of a caller is a mute button
+    when it is done to silence a finding; here the finding was wrong, and the
+    fix is the rule catching up with where shipped code lives.
+
+    A `.spec` IS PYTHON and is globbed as such. Without that this widening
+    would have passed for the wrong reason entirely: the scan counts a bare
+    identifier anywhere in a counted file, so the sentence above naming the
+    function WAS the call site it found. A guard satisfied by a comment about
+    the guard is worse than the finding it silenced.
+    """
     out: dict[str, str] = {}
     roots = [root]
-    tools = root.parent / "tools"
-    if tools.is_dir():
-        roots.append(tools)
+    for name in ("tools", "desktop"):
+        extra = root.parent / name
+        if extra.is_dir():
+            roots.append(extra)
+    patterns = ("*.py", "*.spec")
     for base in roots:
-        for path in sorted(base.rglob("*.py")):
+        for path in sorted(q for pattern in patterns for q in base.rglob(pattern)):
             if "__pycache__" in path.parts:
                 continue
             try:
@@ -1632,6 +1651,33 @@ _check_the_desk_scanners_can_see()
 # Every standing scan passed while that shipped, because they all check that
 # prose goes THROUGH the humaniser. None checked that the humaniser had words
 # for what it was handed. These two do.
+
+
+def summed_records(summary: dict) -> list[str]:
+    """A record spanning two sports, anywhere in the tab payload (LAW 6).
+
+    The tabs are where a combined figure would be most tempting and most
+    wrong. Each tab's line must name its own sport and no other, and the
+    payload must carry no total: a number mixing NFL spreads with MLB
+    moneylines describes neither, and it flatters reliably, because the easy
+    sport dilutes the hard one.
+    """
+    faults = []
+    for key in summary:
+        if key.lower() in ("total", "combined", "overall", "all_sports"):
+            faults.append(
+                f"the tab payload carries {key!r}, which can only be a figure "
+                f"spanning sports -- LAW 6 forbids it and it would be the "
+                f"first number a reader saw")
+    labels = {s.get("label") for s in summary.get("sports", [])}
+    for sport in summary.get("sports", []):
+        line = sport.get("record_line") or ""
+        for other in labels - {sport.get("label")}:
+            if other and other in line:
+                faults.append(
+                    f"the {sport.get('label')} tab reads {line!r}, which names "
+                    f"{other} as well -- one tab, one sport")
+    return faults
 
 
 def sides_without_words(sides) -> list[str]:

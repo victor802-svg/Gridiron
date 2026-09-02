@@ -43,7 +43,14 @@
       <a href="#/versions" data-route="versions" class="nav-more">Versions</a>
       <a href="#/digest" data-route="digest" class="nav-more">Digest</a>
     </nav>
-    <div class="season-record" id="record-line"></div>
+    <!-- THE SEASON-RECORD STRIP WAS HERE, and the tab records replaced it
+         (E2/R1). Measured before removing: with each tab carrying its own
+         record the header is exactly saturated, and the strip was being given
+         4px for 67px of content at EVERY width -- present in the layout,
+         invisible to a reader, and still asserted by two tests. The tabs say
+         strictly more: every sport's record rather than the active one's, with
+         the settled, written and void counts on the hover. The season figure
+         remains at /api/record-line and on the Record page. -->
   </div>
 </header>
 
@@ -108,7 +115,18 @@
         <button type="button" data-sort="disagreement" aria-pressed="true">By disagreement</button>
         <button type="button" data-sort="confidence" aria-pressed="false">By confidence</button>
       </div>
+      <!-- THE TIER FILTER (R2), a fourth segmented control beside the sort.
+           The buttons are filled from the declared tiers rather than written
+           here, so a tier added later appears without editing markup. -->
+      <div class="seg" id="week-tier-seg" role="group"
+           aria-label="Show one confidence tier"></div>
       <div class="slate-counts" id="week-counts"></div>
+    </div>
+    <!-- THE COUNTDOWN (R3). One line, three states: how long until the first
+         kickoff, how far through the slate is, or that it is complete. -->
+    <div class="slate-clock" id="week-clock" hidden>
+      <span id="week-clock-line"></span>
+      <span class="slate-clock-when" id="week-clock-when"></span>
     </div>
     <details class="week-more">
       <summary id="week-title">This week</summary>

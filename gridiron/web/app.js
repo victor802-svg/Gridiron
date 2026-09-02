@@ -863,7 +863,15 @@ const Gridiron = (function () {
     if (!windows || !facts) return;
     if (!glance) { windows.innerHTML = ''; facts.innerHTML = ''; return; }
 
-    count.textContent = glance.games + (glance.games === 1 ? ' game' : ' games');
+    count.textContent = glance.games_line;
+    // THE PANEL STATES FACTS; IT DOES NOT NARRATE ITS OWN DESIGN (ruling E2).
+    // Two sentences explaining why the windows use the league's clock and why
+    // coverage can differ from the slate sat in the middle of the numbers they
+    // were about. They are still said -- a caveat that vanishes is a caveat
+    // dropped -- but on the heading, where somebody who wants them looks.
+    const panel = document.getElementById('rail-glance-panel');
+    const heading = panel ? panel.querySelector('h3') : null;
+    if (heading) heading.title = glance.notes;
 
     windows.innerHTML = '';
     glance.windows.forEach(w => {
@@ -877,7 +885,7 @@ const Gridiron = (function () {
       row.appendChild(el('b', '', String(w.n)));
       windows.appendChild(row);
     });
-    windows.appendChild(el('div', 'rail-note', glance.windows_note));
+
 
     facts.innerHTML = '';
     // COVERAGE IS REPORTED, NEVER USED TO CHOOSE (ruling R-A). Each row is
@@ -897,7 +905,7 @@ const Gridiron = (function () {
     tiers.appendChild(el('span', '', glance.labels.tiers));
     tiers.appendChild(el('b', '', glance.tiers.line));
     facts.appendChild(tiers);
-    facts.appendChild(el('div', 'rail-note', glance.coverage_note));
+
   }
 
   // THE GREETING IS MOVED, NOT REDRAWN. On the desk the wrapper is appended
@@ -1230,6 +1238,106 @@ const Gridiron = (function () {
     return row;
   }
 
+  // THE TIER FILTER (R2). A fourth segmented control beside sort and market.
+  //
+  // REMEMBERED IN MEMORY ONLY, per sport. The choice should survive switching
+  // to Record and back, and should NOT survive closing the app: a filter a
+  // reader forgot they set is a slate that looks emptier than it is, and the
+  // one thing worse than a hidden filter is a hidden filter that outlives the
+  // session. No storage API is touched.
+  const tierChoice = new Map();
+
+  function currentTier() {
+    return tierChoice.get(state.sport) || '';
+  }
+
+  function setTier(tier) {
+    tierChoice.set(state.sport, tier || '');
+    renderWeek();
+  }
+
+  function tierOf(card) {
+    // NO CASE CHANGE. The server sends the tier already in the form it is
+    // displayed in, and re-casing a stored value in the browser is the exact
+    // move the prose tripwire watches for -- it is how
+    // `String(s.subject).toUpperCase()` came to shout a raw identifier at a
+    // reader. Compared as sent, shown as sent.
+    return (card.tier || {}).tier || '';
+  }
+
+  // Built from the tiers actually present on this slate, plus an "all" that is
+  // always first. A tier button for a tier with no picks on it would be a
+  // control that does nothing, which is worse than one that is absent.
+  function renderTierFilter(cards) {
+    const host = document.getElementById('week-tier-seg');
+    if (!host) return;
+    const present = [];
+    cards.forEach(c => {
+      const t = tierOf(c);
+      if (t && present.indexOf(t) < 0) present.push(t);
+    });
+    host.innerHTML = '';
+    const chosen = currentTier();
+    [['', 'All tiers']].concat(present.map(t => [t, t])).forEach(pair => {
+      const b = el('button', '', pair[1]);
+      b.type = 'button';
+      b.dataset.tier = pair[0];
+      b.setAttribute('aria-pressed', pair[0] === chosen ? 'true' : 'false');
+      b.addEventListener('click', () => setTier(pair[0]));
+      host.appendChild(b);
+    });
+    host.hidden = present.length < 2;
+  }
+
+  // THE COUNTDOWN (R3). The words come from the server; the DIGITS are worked
+  // out here, because they tick and the browser is the thing that knows what
+  // time it is now -- the same reason kickoff times are rendered locally.
+  let clockTimer = null;
+
+  function paintClock(glance, slateTitle) {
+    const host = document.getElementById('week-clock');
+    const line = document.getElementById('week-clock-line');
+    const when = document.getElementById('week-clock-when');
+    if (!host || !line) return;
+    if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+    if (!glance) { host.hidden = true; return; }
+
+    if (glance.state_line) {
+      // In progress or complete: a fact that does not change until a game
+      // ends, so it is written once by the server and placed here.
+      line.textContent = glance.state_line;
+      when.textContent = '';
+      host.hidden = false;
+      return;
+    }
+    if (!glance.first_kickoff_utc) { host.hidden = true; return; }
+
+    const kickoff = new Date(glance.first_kickoff_utc);
+    // THE SLATE'S OWN DATE, from the server, not the reader's rendering of the
+    // first kickoff instant. Those disagree: a midnight-UTC kickoff is the
+    // previous evening in America, so the page read "Saturday 5 September" at
+    // the top and "Friday, September 4" directly underneath, about one slate.
+    // The date a slate IS belongs to the slate; only the countdown ticks.
+    when.textContent = slateTitle || '';
+    const tick = () => {
+      const left = kickoff - new Date();
+      if (left <= 0) { line.textContent = glance.state_word; return; }
+      const mins = Math.floor(left / 60000);
+      const days = Math.floor(mins / 1440);
+      const hours = Math.floor((mins % 1440) / 60);
+      const rest = mins % 60;
+      const span = days ? days + 'd ' + hours + 'h'
+                 : hours ? hours + 'h ' + rest + 'm'
+                 : rest + 'm';
+      line.textContent = glance.state_word + ' in ' + span;
+    };
+    tick();
+    // Once a minute: the smallest unit shown is a minute, so anything faster
+    // is repainting the same string.
+    clockTimer = setInterval(tick, 60000);
+    host.hidden = false;
+  }
+
   async function renderWeek() {
     const host = document.getElementById('week-cards');
     skeleton(host, 'skeleton-card', 3);
@@ -1249,12 +1357,21 @@ const Gridiron = (function () {
       state.weekSort === 'confidence'
         ? 'Sorted by how sure the model is. ' + data.n + ' forecasts.'
         : 'Agreeing confidently with the market is not a finding.';
+    paintClock(data.glance, data.slate_title);
 
     host.innerHTML = '';
     let cards = market ? data.cards.filter(c => c.market === market) : data.cards;
-    // Indexed BEFORE the market filter narrows the view, so the rail can still
+    // Indexed BEFORE the filters narrow the view, so the rail can still
     // describe a pick the reader selected under a different filter.
     slateCards = new Map(data.cards.map(c => [String(c.prediction_id), c]));
+
+    // THE TIER FILTER NARROWS AFTER THE MARKET ONE, and the count line below
+    // reports both the part and the whole -- four picks looks like a thin
+    // slate rather than a narrow filter unless the denominator is beside it.
+    const wholeSlate = cards.length;
+    const tier = currentTier();
+    renderTierFilter(cards);
+    if (tier) cards = cards.filter(c => tierOf(c) === tier);
     if (state.weekSort === 'confidence') {
       cards = cards.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0));
     }
@@ -1276,13 +1393,25 @@ const Gridiron = (function () {
     // fourteen-game card looks like a failure until the floor is named.
     const counts = document.getElementById('week-counts');
     if (counts) {
+      // ONE WRITER FOR THIS ELEMENT. A second one was added here for the tier
+      // filter and the two fought over the same node: the page threw
+      // "Identifier 'counts' has already been declared" and never became
+      // ready -- the loudest possible version of a duplicate, and by far the
+      // kindest, because a silent second writer would have won a race
+      // intermittently.
+      //
+      // LOOKED UP, NOT COMPOSED: the server wrote a line for every
+      // combination of the two filters, so the count and its denominator are
+      // its words rather than a sentence glued together here.
+      const lines = (data.glance || {}).count_lines || {};
       const bits = [data.slate_word === 'day' ? 'tonight' : 'this week',
-                    open.length + (open.length === 1 ? ' pick' : ' picks')];
+                    lines[(market || '') + '|' + tier] ||
+                    lines['|' + tier] || ''];
       if (data.below_floor) {
         bits.push(data.below_floor + ' below the ' +
                   Math.round((data.floor || 0.7) * 100) + '% floor');
       }
-      counts.textContent = bits.join(' \u00B7 ');
+      counts.textContent = bits.filter(Boolean).join(' · ');
     }
 
     if (!open.length && !done.length) {
@@ -1653,24 +1782,6 @@ const Gridiron = (function () {
     });
   }
 
-  async function renderRecordLine() {
-    const host = document.getElementById('record-line');
-    if (!host) return;
-    try {
-      const data = await fetchJSON(withSport('/api/record-line'));
-      // The record is what this strip is for. The freshness time moves to the
-      // tooltip because the two together never fit the slot -- see the note in
-      // views.record_line -- and the Schedule page carries "last ran" in full
-      // for anyone who needs the real answer.
-      host.textContent = data.line;
-      host.title = (data.label || '') + ' ' + (data.season || '') +
-        ' season to date' + (data.updated_utc
-          ? ', last updated ' + new Date(data.updated_utc).toLocaleString()
-          : '; nothing settled yet');
-    } catch (err) {
-      host.textContent = '';
-    }
-  }
 
   async function loadSports() {
     const data = await fetchJSON('/api/sports');
@@ -1679,14 +1790,18 @@ const Gridiron = (function () {
     host.innerHTML = '';
     data.sports.forEach(sp => {
       const b = el('button', '', sp.label);
-      // LAW 4 in the navigation: the count rides on the tab, so an empty
-      // record is visible before the tab is clicked rather than after. The bar
-      // is 52px now, so it is the NUMBER with the word in the title -- the law
-      // wants the count present, not a particular notation, and the tooltip
-      // keeps the noun for anyone who wants it.
-      const n = el('span', 'tab-n', String(int(sp.n)));
-      b.appendChild(n);
-      b.title = sp.label + ': ' + int(sp.n) + ' settled';
+      // LAW 4 IN THE NAVIGATION, and LAW 6 beside it: each tab carries its own
+      // record and there is no total anywhere. The line and the hover are both
+      // written by the server -- this used to glue `sp.label + ': ' + sp.n +
+      // ' settled'` together here, which is prose composed in the browser.
+      // TWO SPANS, so the trailing word can give way at narrow widths while
+      // the count never does. Both strings come from the server; this places
+      // them and decides nothing about the wording.
+      b.appendChild(el('span', 'tab-n', sp.record_parts[0]));
+      if (sp.record_parts[1]) {
+        b.appendChild(el('span', 'tab-word', sp.record_parts[1]));
+      }
+      b.title = sp.record_detail;
       b.setAttribute('aria-pressed', sp.sport === state.sport ? 'true' : 'false');
       b.setAttribute('aria-current', sp.sport === state.sport ? 'true' : 'false');
       b.dataset.sport = sp.sport;
@@ -1706,8 +1821,7 @@ const Gridiron = (function () {
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     try {
-      await renderRecordLine();
-      await renderGreeting();
+      await      await renderGreeting();
       state.meta = await fetchJSON(withSport('/api/meta'));
       renderBanner(state.meta);
       renderColophon(state.meta);
@@ -2123,8 +2237,7 @@ const Gridiron = (function () {
     skeleton(document.getElementById('week-cards'), 'skeleton-card', 3);
     try {
       await loadSports();
-      await renderRecordLine();
-      await renderGreeting();
+      await      await renderGreeting();
       state.meta = await fetchJSON(withSport('/api/meta'));
       renderBanner(state.meta);
       renderColophon(state.meta);

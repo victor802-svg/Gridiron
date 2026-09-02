@@ -721,6 +721,26 @@ def cfb_spread_rung(game_id, expected_margin=None):
 """
 
 
+def plant_a_summed_record_on_the_tabs() -> Result:
+    """Put a combined win-loss figure where the per-sport tabs go.
+
+    The most tempting number in the whole interface: one line saying how the
+    model is doing. It would describe nothing -- NFL spreads and MLB
+    moneylines are different questions -- and it would flatter, because
+    whichever sport is easiest lifts the rest.
+    """
+    planted = {
+        "sports": [
+            {"label": "NFL", "record_line": "NFL 0 settled"},
+            {"label": "MLB", "record_line": "MLB 33-18"},
+        ],
+        "total": "33-18 across all sports",
+    }
+    faults = audit.summed_records(planted)
+    return _desk_plant(faults, "show one combined record across the sports",
+                       "audit.summed_records")
+
+
 def plant_a_stale_build_that_says_nothing() -> Result:
     """A bundle behind the repository, rendering as though it were current.
 
@@ -2366,6 +2386,7 @@ def main() -> int:
     results.append(plant_an_ambiguous_crosswalk_match())
     results.append(plant_a_constant_prop_factor())
     results.append(plant_a_rung_off_the_declared_ladder())
+    results.append(plant_a_summed_record_on_the_tabs())
     results.append(plant_a_stale_build_that_says_nothing())
     results.append(plant_a_bundle_missing_a_sport())
     results.append(plant_a_pick_line_that_disagrees_with_its_label())

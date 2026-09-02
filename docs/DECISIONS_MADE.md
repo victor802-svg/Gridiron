@@ -183,3 +183,33 @@ permitted **only** inside an `if <parameter> is None` branch — the declared
 absence, for a team with no rating yet. Two plantings fire by name:
 `plant_a_rung_chosen_by_rotation` and `plant_a_rung_chosen_by_the_market`. The
 scanner checks its own known-positive and known-negative at import.
+
+---
+
+## E2/R1 — the tab records replaced the header's season-record strip
+
+**Decided 2026-09-01, forced by a measurement rather than chosen.**
+
+The brief asked for per-sport records on the tabs ("MLB 33-18"). Adding them
+saturates the header exactly: the separate `.season-record` strip, which showed
+the ACTIVE sport's current-season record, was left with **4px of width for 67px
+of content at every width** — present in the layout, invisible to a reader, and
+still asserted by two browser tests.
+
+Two figures about MLB sitting adjacent with different scopes and no labels
+distinguishing them would have been confusing even with room for both.
+
+**So the strip is gone from the header.** The tabs say strictly more: every
+sport's record rather than only the active one's, all time, with settled,
+written and void counts on the hover. `views.season_record` and
+`/api/record-line` remain — the season figure is still available and is shown
+on the Record page — so this removes a surface, not a fact.
+
+A previous session fought to keep that strip (it cut the words "this season"
+to make it fit), so this is recorded rather than left in a diff. **Reversible:**
+restore `#record-line` in `index.html` and `renderRecordLine` in `app.js`, and
+the tab records would have to give back about 150px to make room.
+
+The old test's real finding is preserved: it caught that a record with no sport
+label makes two empty sports look identical, so switching between them changes
+nothing on screen. The replacement test asserts every tab is distinct.

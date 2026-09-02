@@ -193,3 +193,27 @@ What was NOT confirmed: that the exe starts, serves, and paints those assets.
 The operator can check that by running `dist\Gridiron\Gridiron.exe` on a
 machine where the policy permits it, or by signing the binary. Until then the
 phase is PARTIAL, and it should not be reported otherwise.
+
+## The header does not fit between 640px and 900px
+
+Measured 2026-09-01 while adding the tab records (E2/R1), and **pre-existing**:
+before that change the header needed 941px of content, and it overflowed the
+page at 900px and below. Afterwards it needs 892px — slightly better, with the
+records added — but the band between the phone breakpoint (640px) and about
+900px still pushes the document sideways rather than clipping.
+
+| width | page overflow, before E2 | after E2 |
+|---|---|---|
+| 1100 | 0 | 0 |
+| 1000 | 0 | 0 |
+| 900 | 49px | 45px |
+| 800 | 149px | 145px |
+
+A brand, four sport tabs carrying records, and four page links do not fit in
+that band. The phone breakpoint already collapses the nav for 640px and below;
+what is missing is the intermediate step. Not urgent — the declared widths
+(1440, 1280, 1279, 1100, 390) all pass — but a tablet in portrait lands
+exactly here, and a page that scrolls sideways has lost something off the edge.
+
+Do it with the nav's existing "more" affordance rather than another font-size
+reduction; the tabs are already at 8px padding and 10px record type.

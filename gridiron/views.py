@@ -24,12 +24,23 @@ def sports_summary(conn: sqlite3.Connection) -> dict:
     tab that looks the same whether it holds a season or nothing is a tab that
     hides an empty record (LAW 4 and LAW 6 together).
     """
+    # ALL TIME, RESOLVED, NON-VOID, and one row per sport -- never a total.
+    # The wins are summed inside the sport's own row precisely so that no
+    # query in this function can produce a figure spanning two of them.
     rows = {
         r["sport"]: r
         for r in conn.execute(
-            "SELECT sport, COUNT(*) AS written,"
-            " SUM(CASE WHEN resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
-            " FROM predictions GROUP BY sport"
+            "SELECT p.sport, COUNT(*) AS written,"
+            " SUM(CASE WHEN p.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved,"
+            " SUM(CASE WHEN p.resolved_utc IS NOT NULL"
+            "          AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                          WHERE v.prediction_id = p.id)"
+            "     THEN 1 ELSE 0 END) AS settled,"
+            " SUM(CASE WHEN p.resolved_utc IS NOT NULL"
+            "          AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                          WHERE v.prediction_id = p.id)"
+            "     THEN COALESCE(p.outcome, 0) ELSE 0 END) AS wins"
+            " FROM predictions p GROUP BY p.sport"
         )
     }
     voided = {
@@ -48,12 +59,28 @@ def sports_summary(conn: sqlite3.Connection) -> dict:
             " FROM games WHERE sport = ?",
             (sport,),
         ).fetchone()
+        label = config.SPORT_LABELS.get(sport, sport.upper())
+        settled = (row["settled"] if row else 0) or 0
+        wins = (row["wins"] if row else 0) or 0
+        written = (row["written"] if row else 0) or 0
         out.append({
             "sport": sport,
-            "label": config.SPORT_LABELS.get(sport, sport.upper()),
+            "label": label,
             "n": (row["resolved"] if row else 0) or 0,
-            "written": (row["written"] if row else 0) or 0,
+            "written": written,
             "voided": voided.get(sport, 0),
+            "settled": settled,
+            "wins": wins,
+            "losses": settled - wins,
+            # THE TAB'S OWN RECORD, in words, written here. The renderer used
+            # to glue `sp.label + ': ' + sp.n + ' settled'` together itself.
+            "record_line": language.sport_record_line(
+                label, wins, settled - wins, settled),
+            "record_parts": language.sport_record_parts(
+                wins, settled - wins, settled),
+            "record_detail": language.sport_record_detail(
+                label, wins, settled - wins, settled, written,
+                voided.get(sport, 0)),
             "games_loaded": games["n"] or 0,
             "games_final": games["final"] or 0,
             "markets": list(config.SPORT_MARKETS.get(sport, ())),
@@ -497,6 +524,31 @@ def _venues(conn: sqlite3.Connection, sport: str) -> dict:
     }
 
 
+def _count_lines(cards: list[dict]) -> dict:
+    """"<market>|<tier>" -> "STRONG - 4 of 61 picks", for every combination.
+
+    The denominator is always the slate as the OTHER filter left it, because a
+    count with no whole beside it is the quietly misleading kind: four picks
+    reads as a thin slate rather than a narrow filter, and nothing on the page
+    tells the reader which they are looking at.
+    """
+    markets = {""} | {c.get("market") or "" for c in cards}
+    tiers = {""} | {(c.get("tier") or {}).get("tier") or "" for c in cards}
+    tiers.discard("")
+    tiers.add("")
+    out = {}
+    for market in markets:
+        in_market = [c for c in cards
+                     if not market or (c.get("market") or "") == market]
+        for tier in tiers:
+            shown = [c for c in in_market
+                     if not tier
+                     or ((c.get("tier") or {}).get("tier") or "") == tier]
+            out[f"{market}|{tier}"] = language.tier_filter_line(
+                tier or None, len(shown), len(in_market))
+    return out
+
+
 def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
     """WHAT THE WHOLE SLATE LOOKS LIKE, from the slate already in hand.
 
@@ -584,11 +636,56 @@ def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
             proven += 1 if row["proven"] else 0
             fullest = max(fullest, row["n"])
 
+    # WHAT STATE THE SLATE IS IN (R3). Counted from the games this slate's
+    # cards belong to, so it cannot disagree with the tiles about how many
+    # have finished.
+    game_states = {}
+    for c in cards:
+        # `game_status`, which is what the card calls it. Reading `status` here
+        # returned None for every card, so a finished slate would have counted
+        # as upcoming and the countdown would have counted down to a kickoff
+        # that had already happened.
+        game_states.setdefault(c["game_id"], c.get("game_status"))
+    done = sum(1 for st in game_states.values() if st == "final")
+    running = sum(1 for st in game_states.values()
+                  if st not in (None, "scheduled", "final"))
+    if done and done == len(game_states):
+        state = "complete"
+    elif done or running:
+        state = "live"
+    else:
+        state = "upcoming"
+    kickoffs = [c["kickoff_utc"] for c in cards if c.get("kickoff_utc")]
+
     return {
         "games": len(games),
         "picks": len(cards),
+        "state": state,
+        "first_kickoff_utc": min(kickoffs) if kickoffs else None,
+        "final": done,
+        "in_progress": running,
+        # The countdown's digits tick, so the browser renders them from the
+        # instant above; every word around them is written here.
+        "state_word": language.SLATE_STATES.get(state, state),
+        "state_line": language.slate_state_line(state, done, len(game_states)),
+        # EVERY COUNT LINE THE CONTROLS CAN PRODUCE, written here rather than
+        # assembled in the browser. The pair of filters is small enough to
+        # enumerate -- a handful of markets times a handful of tiers -- so the
+        # renderer looks one up instead of gluing a sentence together, which
+        # is what the 2026-08-31 ruling asks and what the JS tripwire checks.
+        "count_lines": _count_lines(cards),
         "windows": windows,
         "windows_unknown": unknown,
+        "games_line": f"{len(games)} {'game' if len(games) == 1 else 'games'}",
+        # BOTH CAVEATS, JOINED, for the heading's tooltip. Still said, because
+        # a caveat that vanishes is a caveat dropped -- LAW 1's reason for
+        # reporting coverage rather than acting on it does not stop mattering
+        # because the panel got tidier.
+        "notes": (
+            "Kickoff windows are grouped on the league's clock, not yours: a "
+            "broadcast window is a fact about the schedule. Questions are "
+            "formed for every game before any line is fetched (LAW 1), so the "
+            "coverage figures say how many the market happened to price."),
         "windows_note": (
             "grouped on the league's clock, not yours: a broadcast window is a "
             "fact about the schedule"),

@@ -945,6 +945,88 @@ SHORT_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
+def sport_record_line(label: str, wins: int, losses: int, settled: int) -> str:
+    """"MLB 33-18", or "NCAAF 0 settled" for a sport with nothing graded.
+
+    ALWAYS ONE SPORT (LAW 6). There is no combined figure anywhere and there
+    must not be: a number mixing NFL spreads with MLB moneylines describes
+    neither, and it flatters reliably because the easy sport dilutes the hard
+    one. Each tab carries its own record and they sit side by side.
+
+    A sport with nothing settled says so rather than showing "0-0", which
+    reads as a record of no wins rather than an absence of games (LAW 4).
+    """
+    if not settled:
+        return f"{label} 0 settled"
+    return f"{label} {wins}-{losses}"
+
+
+def sport_record_parts(wins: int, losses: int, settled: int) -> tuple[str, str]:
+    """The record split into the part that always shows and the part that may not.
+
+    ("33-18", "") for a graded sport, ("0", "settled") for one with nothing
+    yet. Below the desk width the header has four tabs, four page links and a
+    brand to fit, and the trailing word is what gives way -- LAW 4 wants the
+    COUNT present, not a particular notation, and the hover carries the full
+    sentence at every width. The number never goes.
+    """
+    if not settled:
+        return "0", "settled"
+    return f"{wins}-{losses}", ""
+
+
+def sport_record_detail(label: str, wins: int, losses: int, settled: int,
+                        written: int, voided: int) -> str:
+    """The hover: what the tab's number is made of, including the voids.
+
+    Voids are named because they are the difference between "written" and
+    "settled" that nothing else on the tab explains, and an unexplained gap
+    invites the reader to assume the worse of the two possible causes.
+    """
+    parts = [f"{label}: {settled} settled of {written} written"]
+    if settled:
+        parts.append(f"{wins} right, {losses} wrong")
+    if voided:
+        parts.append(f"{voided} void")
+    return " · ".join(parts)
+
+
+#: The three states a slate can be in, and what each one leads with. The
+#: countdown's own digits are formatted in the browser -- it ticks, and the
+#: browser is the thing that knows what time it is now -- but every WORD
+#: around them is written here.
+SLATE_STATES = {
+    "upcoming": "first kickoff",
+    "live": "in progress",
+    "complete": "complete",
+}
+
+
+def slate_state_line(state: str, final: int, games: int) -> str | None:
+    """"in progress - 12 of 60 final". None while the slate is still ahead.
+
+    None rather than an empty string for the upcoming case, because that line
+    is a countdown the browser has to keep re-rendering and this one is a
+    fact that does not change until a game ends.
+    """
+    if state == "upcoming":
+        return None
+    return f"{SLATE_STATES.get(state, state)} · {final} of {games} final"
+
+
+def tier_filter_line(tier: str | None, shown: int, total: int) -> str:
+    """"STRONG - 4 of 177 picks". Says the whole as well as the part.
+
+    A filtered count with no denominator is the most quietly misleading
+    number an interface can show: four picks looks like a thin slate rather
+    than a narrow filter, and the reader has no way to tell which.
+    """
+    noun = "pick" if total == 1 else "picks"
+    if not tier:
+        return f"{total} {noun}"
+    return f"{tier} · {shown} of {total} {noun}"
+
+
 def build_line(freshness: dict) -> str:
     """What this build is, in words a person can act on.
 

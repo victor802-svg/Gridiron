@@ -1413,3 +1413,47 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   line-height: 1.5;
   margin-top: 8px;
 }
+
+/* --- the tier filter and the slate clock (E2) ------------------------------
+   The tier control is a fourth segmented group beside the sort, styled by the
+   same `.seg` rules; only its hidden state and the clock are new here. */
+#week-tier-seg[hidden] { display: none; }
+
+.slate-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--chrome);
+  padding: 2px 0 10px;
+}
+.slate-clock[hidden] { display: none; }
+.slate-clock-when { color: var(--faint); }
+
+/* THE CONTROLS ROW WRAPS RATHER THAN PUSHING THE PAGE. A fourth segmented
+   control (the tier filter) put the row 1px over at 1100 and further over
+   below it, and a flex row that cannot fit does not clip -- it widens the
+   document, so the whole PAGE scrolls sideways to accommodate a control.
+   Measured at 1100: 1px. Small, and the same failure mode as the 78px one the
+   phone breakpoint already exists for. */
+.controls { flex-wrap: wrap; row-gap: 8px; }
+.controls > * { min-width: 0; }
+
+/* Between the phone breakpoint and the desk the header has four sport tabs
+   carrying records, four page links and a brand. Tighten the tabs rather than
+   let the bar push the page wider. */
+@media (max-width: 1180px) {
+  #sport-tabs button { padding: 8px 8px 10px; letter-spacing: 0.04em; }
+  #sport-tabs { gap: 0; }
+}
+
+/* The tab's trailing word ("settled") rides with the count and gives way
+   first when the header runs out of room. The count itself never does: LAW 4
+   wants the number present, and the hover carries the whole sentence at every
+   width. */
+#sport-tabs .tab-word {
+  font-family: var(--mono); font-size: 10px; font-weight: 400;
+  color: var(--faint); letter-spacing: 0; margin-left: 3px;
+}
+@media (max-width: 1180px) { #sport-tabs .tab-word { display: none; } }
