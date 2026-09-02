@@ -1457,3 +1457,38 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: var(--faint); letter-spacing: 0; margin-left: 3px;
 }
 @media (max-width: 1180px) { #sport-tabs .tab-word { display: none; } }
+
+/* --- a game in flight (L2) -------------------------------------------------
+   THE LIVE MARK IS CHROME, NOT GREEN. Green is the positive value and the
+   interactive accent, and it has exactly those two jobs; a game being played
+   is neither good news nor a control. A small filled dot in the text colour
+   says "now" without claiming anything about the pick. */
+.tile-live {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--chrome); flex: none; margin-left: 6px;
+}
+.tile-clock { color: var(--faint); }
+
+/* A finished tile settles onto the resolved ground and takes a verdict chip.
+   The chip does the job the tier edge does on a live tile: it is the first
+   thing the eye lands on, and by then the tier is beside the point. */
+.tile[data-state="final"] { background: var(--resolved); }
+.tile-verdict {
+  position: absolute; top: 8px; right: 8px;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px;
+}
+.tile-verdict.v-win { color: var(--green); background: rgba(0, 220, 130, 0.10); }
+.tile-verdict.v-loss { color: #ff6b6b; background: rgba(255, 107, 107, 0.10); }
+.tile-verdict.v-void { color: var(--faint); border: 1px solid var(--line); }
+.tile[data-state="final"] .tile-rank { opacity: 0; }
+
+.rail-score {
+  margin-top: 8px; font-family: var(--mono); font-size: 12px;
+  color: var(--muted);
+}
+.rail-score b { color: var(--chrome); }
+.rail-verdict {
+  margin-left: 8px; font-weight: 600; letter-spacing: 0.06em;
+  color: var(--chrome);
+}

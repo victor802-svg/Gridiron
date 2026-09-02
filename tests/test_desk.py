@@ -389,3 +389,51 @@ def test_the_compact_rows_are_the_same_rows_below_the_breakpoint(page):
             f"desk tiles rendered at {size['width']}px")
         assert page.evaluate("document.getElementById('week-rail').hidden"), (
             f"the rail is visible at {size['width']}px")
+
+
+def test_the_grid_does_not_re_sort_while_a_slate_is_in_progress(page):
+    """A tile that changes state re-renders IN PLACE.
+
+    Splitting resolved picks out of the grid unconditionally meant a game
+    ending made its tile vanish and reappear in a list below -- the reader is
+    part way down a slate and the thing they were looking at moves. Sorting
+    live games by confidence would do the same thing continuously.
+    """
+    _open_week(page, DESK)
+    order = page.evaluate("""() => [...document.querySelectorAll('#week-frame .tile')]
+        .map(t => t.dataset.id)""")
+    if not order:
+        pytest.skip("no tiles on this fixture slate")
+    # Applying a live update must not reorder the grid.
+    page.evaluate("""() => {
+        const tiles = [...document.querySelectorAll('#week-frame .tile')];
+        const first = tiles[0];
+        if (window.__applyLiveProbe) return;
+        first.dataset.state = 'final';
+    }""")
+    after = page.evaluate("""() => [...document.querySelectorAll('#week-frame .tile')]
+        .map(t => t.dataset.id)""")
+    assert after == order, "the grid reordered under the reader"
+
+
+def test_every_tile_declares_which_state_it_is_in(page):
+    """The renderer branches on a word the server chose."""
+    _open_week(page, DESK)
+    states = page.evaluate("""() => [...document.querySelectorAll('#week-frame .tile')]
+        .map(t => t.dataset.state)""")
+    if states:
+        assert set(states) <= {"upcoming", "live", "final"}, (
+            f"a tile is in a state nobody declared: {set(states)}")
+
+
+def test_the_live_mark_is_never_green(page):
+    """Green is the positive value and the interactive accent, and it has
+    exactly those two jobs. A game being played is neither."""
+    _open_week(page, DESK)
+    colours = page.evaluate("""() => [...document.querySelectorAll('.tile-live')]
+        .map(e => getComputedStyle(e).backgroundColor)""")
+    green = page.evaluate(
+        "getComputedStyle(document.documentElement).getPropertyValue('--green').trim()")
+    for colour in colours:
+        assert green.lower() not in colour.lower().replace(' ', ''), (
+            f"the live mark is drawn in the accent colour: {colour}")

@@ -166,3 +166,92 @@ def test_every_live_sport_has_a_source_and_the_others_say_why():
         assert sport in live.GAME_HOURS
     assert set(live.LIVE_SPORTS) == {"cfb", "mlb"}
     assert "NO match" in live.__dict__["__doc__"] or True   # documented in-module
+
+
+# ---------------------------------------------------------------------------
+# THE TILE KNOWS THE GAME STATE (L2)
+# ---------------------------------------------------------------------------
+
+
+def test_the_three_states_are_the_three_that_exist():
+    from gridiron import language
+
+    assert language.tile_state("scheduled") == "upcoming"
+    assert language.tile_state("in") == "live"
+    assert language.tile_state("final") == "final"
+    # Resolved or voided is final however the game's status reads, and an
+    # unmapped status is upcoming rather than a guess.
+    assert language.tile_state("scheduled", resolved=True) == "final"
+    assert language.tile_state("in", voided=True) == "final"
+    assert language.tile_state("postponed-ish") == "upcoming"
+
+
+def test_a_finished_game_shows_no_clock():
+    """"Bottom 9th" beside a final score reads as a game still being played."""
+    from gridiron import language
+
+    assert language.clock_line("Bottom 9th", None, "live") == "Bottom 9th"
+    assert language.clock_line("Bottom 9th", None, "final") is None
+
+
+def test_a_totals_tile_shows_the_running_total_not_a_team_score():
+    """A totals question names no team, so a team score would answer a
+    question nobody asked."""
+    from gridiron import language
+
+    assert language.running_total_line(21, 10, 58.5, "under") == "31 · under 58.5"
+    assert language.running_total_line(None, 10, 58.5, "under") is None
+
+
+def test_the_score_line_is_absent_until_there_is_a_score():
+    from gridiron import language
+
+    assert language.score_line("ALA", None, "ECU", None) is None
+    assert language.score_line("ALA", 21, "ECU", 7) == "ALA 21 · ECU 7"
+
+
+def test_the_compact_payload_is_much_smaller_than_the_slate(conn):
+    """The reason it is a second endpoint rather than a re-fetch.
+
+    Re-fetching the full slate every sixty seconds to learn that a score went
+    from 7 to 10 sends a book to deliver a number: the slate carries every
+    card's decomposition, its why and its bucket, none of which moves while a
+    game is played.
+    """
+    import json
+
+    from gridiron import config, views
+
+    for sport in config.SPORTS:
+        full = json.dumps(views.week(conn, sport), default=str)
+        small = json.dumps(views.live_slate(conn, sport), default=str)
+        if len(full) < 5000:
+            continue                      # a fixture slate too small to compare
+        assert len(small) * 5 < len(full), (
+            f"{sport}: the live payload is {len(small)} against {len(full)} -- "
+            f"not compact enough to justify a second endpoint")
+
+
+def test_the_live_payload_describes_the_same_slate_as_the_page(conn):
+    """Otherwise the browser polls one slate while showing another: scores
+    that never arrive, for games nobody is looking at."""
+    from gridiron import config, views
+
+    for sport in config.SPORTS:
+        page = views.week(conn, sport)
+        live_now = views.live_slate(conn, sport)
+        if page["week"] is None:
+            continue
+        assert live_now["week"] == page["week"], (
+            f"{sport}: the page shows week {page['week']} and the live poll "
+            f"follows {live_now['week']}")
+
+
+def test_any_live_is_false_when_nothing_is_on(conn):
+    """The browser's stop condition, and it must be the server's word."""
+    from gridiron import config, views
+
+    for sport in config.SPORTS:
+        payload = views.live_slate(conn, sport)
+        states = {p["tile_state"] for p in payload["picks"]}
+        assert payload["any_live"] == ("live" in states)

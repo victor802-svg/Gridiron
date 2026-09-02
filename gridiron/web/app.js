@@ -756,16 +756,12 @@ const Gridiron = (function () {
     tile.appendChild(pick);
 
     const bottom = el('div', 'tile-bottom');
+    // THE CORNER SHOWS THE MARKET UNTIL THERE IS A GAME TO SHOW INSTEAD.
+    // Once the ball is in the air the disagreement with the market is the
+    // less interesting number on the tile, and the score is the one a reader
+    // came back for. Both are strings the server wrote.
     const mkt = el('div', 'tile-mkt');
-    if (c.market_implied_prob === null || c.market_implied_prob === undefined) {
-      mkt.textContent = 'no line';
-    } else {
-      mkt.appendChild(document.createTextNode('market '));
-      mkt.appendChild(el('b', '', pct(c.market_implied_prob, 0)));
-      mkt.appendChild(el('br'));
-      mkt.appendChild(document.createTextNode('gap '));
-      mkt.appendChild(el('b', '', (c.gap * 100 >= 0 ? '+' : '') + (c.gap * 100).toFixed(0)));
-    }
+    paintTileCorner(mkt, c);
     bottom.appendChild(mkt);
 
     const p = el('div', 'tile-pct');
@@ -775,8 +771,127 @@ const Gridiron = (function () {
     bottom.appendChild(p);
     tile.appendChild(bottom);
 
+    applyTileState(tile, c);
     tile.addEventListener('click', () => selectTile(tile));
     return tile;
+  }
+
+  // FOLLOWING A SLATE THAT IS ON (L2).
+  //
+  // Sixty seconds, and ONLY while something is live. `any_live` comes from the
+  // server and is the whole of the stop condition: a slate that finished
+  // hours ago is polled zero times, which is the browser-side half of the
+  // rule the poller itself follows. The compact payload is about 3KB against
+  // 190KB for the full slate, which is why this is a second endpoint rather
+  // than a re-fetch.
+  const LIVE_POLL_MS = 60000;
+  let livePollTimer = null;
+
+  function stopLivePolling() {
+    if (livePollTimer) { clearInterval(livePollTimer); livePollTimer = null; }
+  }
+
+  function startLivePolling(data) {
+    stopLivePolling();
+    if (!data || !(data.glance || {}).state || data.glance.state === 'complete') return;
+    const tick = async () => {
+      if (state.view !== 'week') { stopLivePolling(); return; }
+      let live;
+      try {
+        live = await fetchJSON(withSport('/api/live?season=' + data.season +
+                                         '&week=' + data.week));
+      } catch (err) {
+        // A POLL THAT FAILS IS NOT A REASON TO STOP FOLLOWING. The next tick
+        // tries again; what must not happen is the scores silently freezing
+        // with no sign that they have.
+        console.error('live poll failed:', err);
+        return;
+      }
+      applyLive(live);
+      if (!live.any_live) stopLivePolling();
+    };
+    tick();
+    livePollTimer = setInterval(tick, LIVE_POLL_MS);
+  }
+
+  // A TILE CHANGING STATE RE-RENDERS IN PLACE. The grid is NOT rebuilt and
+  // NOT re-sorted: re-sorting a slate while it is being played shuffles the
+  // screen under a reader who is part way down it, and by confidence the
+  // finished games would climb over the ones still on.
+  function applyLive(live) {
+    (live.picks || []).forEach(pick => {
+      const card = slateCards.get(String(pick.prediction_id));
+      if (!card) return;
+      Object.assign(card, pick);
+      const tile = document.querySelector(
+        '#week-frame .tile[data-id="' + pick.prediction_id + '"]');
+      if (tile) {
+        paintTileCorner(tile.querySelector('.tile-mkt'), card);
+        applyTileState(tile, card);
+      }
+      const selected = selectedTile && selectedTile.dataset.id ===
+        String(pick.prediction_id);
+      if (selected) paintRail(selectedTile);
+    });
+  }
+
+  // THE THREE STATES A TILE CAN BE IN, in one function so a tile that
+  // changes state re-renders in place rather than being rebuilt -- the grid
+  // must not re-sort while a slate is in progress, because sorting live games
+  // by confidence shuffles the screen under somebody who is reading it.
+  function paintTileCorner(host, c) {
+    host.innerHTML = '';
+    const state = c.tile_state || 'upcoming';
+    if (state !== 'upcoming' && (c.score_line || c.running_total)) {
+      host.appendChild(el('b', '', c.running_total || c.score_line));
+      if (c.clock_line) {
+        host.appendChild(el('br'));
+        host.appendChild(el('span', 'tile-clock', c.clock_line));
+      }
+      return;
+    }
+    if (c.market_implied_prob === null || c.market_implied_prob === undefined) {
+      host.textContent = 'no line';
+      return;
+    }
+    host.appendChild(document.createTextNode('market '));
+    host.appendChild(el('b', '', pct(c.market_implied_prob, 0)));
+    host.appendChild(el('br'));
+    host.appendChild(document.createTextNode('gap '));
+    host.appendChild(el('b', '', (c.gap * 100 >= 0 ? '+' : '') + (c.gap * 100).toFixed(0)));
+  }
+
+  function applyTileState(tile, c) {
+    const state = c.tile_state || 'upcoming';
+    tile.dataset.state = state;
+    tile.classList.toggle('t-live', state === 'live');
+    tile.classList.toggle('t-final', state === 'final');
+    let chip = tile.querySelector('.tile-verdict');
+    if (state === 'final' && c.verdict) {
+      if (!chip) {
+        chip = el('span', 'tile-verdict');
+        tile.appendChild(chip);
+      }
+      chip.textContent = c.verdict;
+      // classList, not className: building a class string with a re-cased
+      // value is the shape the prose tripwire watches for, and it caught this
+      // on the first run. The value is a modifier here, never a word a reader
+      // sees -- the text above it is what they read.
+      ['v-win', 'v-loss', 'v-void'].forEach(k => chip.classList.remove(k));
+      chip.classList.add('v-' + c.verdict.toLowerCase());
+    } else if (chip) {
+      chip.remove();
+    }
+    let mark = tile.querySelector('.tile-live');
+    if (state === 'live' && !mark) {
+      // A MARK, NOT A COLOUR. Green means a win and means interactive; a live
+      // game is neither, so the mark is chrome and says what it is on hover.
+      mark = el('span', 'tile-live');
+      mark.title = 'this game is being played now';
+      tile.querySelector('.tile-top').appendChild(mark);
+    } else if (state !== 'live' && mark) {
+      mark.remove();
+    }
   }
 
   //: Which tile the rail is describing. D3 fills the rail; D2 only has to
@@ -847,6 +962,18 @@ const Gridiron = (function () {
     const pick = document.getElementById('rail-pick');
     pick.innerHTML = '';
     pick.appendChild(el('b', '', card.phrase || card.tile_line || ''));
+    // THE SCORE UNDER THE PICK, once there is one. The rail mirrors the tile's
+    // three states rather than having its own idea of them: both read the
+    // same fields off the same card object.
+    if (card.tile_state && card.tile_state !== 'upcoming') {
+      const score = el('div', 'rail-score');
+      score.appendChild(el('b', '', card.score_line || ''));
+      if (card.clock_line) {
+        score.appendChild(document.createTextNode(' · ' + card.clock_line));
+      }
+      if (card.verdict) score.appendChild(el('span', 'rail-verdict', card.verdict));
+      pick.appendChild(score);
+    }
 
     // THE SAME BODY THE EXPANDED ROW SHOWS, from the same function: the
     // probability rail, the gap and bucket line, the earned number where a
@@ -1358,6 +1485,7 @@ const Gridiron = (function () {
         ? 'Sorted by how sure the model is. ' + data.n + ' forecasts.'
         : 'Agreeing confidently with the market is not a finding.';
     paintClock(data.glance, data.slate_title);
+    startLivePolling(data);
 
     host.innerHTML = '';
     let cards = market ? data.cards.filter(c => c.market === market) : data.cards;
@@ -1386,8 +1514,18 @@ const Gridiron = (function () {
 
     // A resolved forecast is not a pick. Split rather than filtered, so the
     // slate can show both without a reader mistaking last night for tonight.
-    const open = cards.filter(c => c.resolved_utc === null && !c.voided);
-    const done = cards.filter(c => c.resolved_utc !== null || c.voided);
+    // A RESOLVED FORECAST IS NOT A PICK -- except while its own slate is
+    // still being played. Splitting them unconditionally meant a game ending
+    // made its tile VANISH from the grid and reappear in a list below, which
+    // is precisely the shuffle L2 forbids: the reader is part way down a
+    // slate and the thing they were looking at moves. While the slate is in
+    // progress every pick keeps its place and the finished ones take a
+    // verdict chip; once the slate is complete the old split returns, so
+    // last night and tonight are still never mixed.
+    const slateRunning = (data.glance || {}).state === 'live';
+    const settled = c => c.resolved_utc !== null || c.voided;
+    const open = slateRunning ? cards : cards.filter(c => !settled(c));
+    const done = slateRunning ? [] : cards.filter(settled);
 
     // THE CONTROLS LINE. A thin slate has to explain itself: eight picks on a
     // fourteen-game card looks like a failure until the floor is named.

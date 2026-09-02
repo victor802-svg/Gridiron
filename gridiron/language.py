@@ -1047,6 +1047,90 @@ def tier_filter_line(tier: str | None, shown: int, total: int) -> str:
     return f"{tier} · {shown} of {total} {noun}"
 
 
+# ---------------------------------------------------------------------------
+# A GAME IN FLIGHT (L2). Every string a live or finished tile shows.
+# ---------------------------------------------------------------------------
+
+
+def score_line(home: str, home_score, away: str, away_score) -> str | None:
+    """"ALA 21 · ECU 7". None until there is a score to show.
+
+    HOME FIRST, which is the opposite order to the matchup heading above it
+    ("ECU @ ALA") and is deliberate: the heading is a fixture and reads as
+    "visitor at host", while a score is read aloud host-first. Both orders are
+    conventional in their own place, and the tile shows each in its own.
+    """
+    if home_score is None or away_score is None:
+        return None
+    return f"{home} {int(home_score)} \u00b7 {away} {int(away_score)}"
+
+
+def clock_line(period: str | None, clock: str | None,
+               state: str | None = None) -> str | None:
+    """"3rd · 8:41", or "Top 6th" for a sport with no clock at all.
+
+    Absent stays absent: a game with no period recorded shows nothing here
+    rather than a dash, and baseball shows the inning alone because that is
+    the whole of what the sport has to say about how far along it is.
+    """
+    if state == "final":
+        # A FINISHED GAME HAS NO CLOCK. "Bottom 9th" beside a final score
+        # reads as a game still being played, and the tile already carries a
+        # verdict chip saying it is over.
+        return None
+    if not period and not clock:
+        return None
+    if not clock:
+        return period
+    if not period:
+        return clock
+    return f"{period} \u00b7 {clock}"
+
+
+def running_total_line(home_score, away_score, line, side: str | None) -> str | None:
+    """"31 · under 58.5" -- where the combined score stands against the ask.
+
+    A TOTALS TILE HAS NO TEAM TO SHOW A SCORE FOR, so it shows the number the
+    question is actually about. Naming the side as well means the reader can
+    see at a glance whether 31 with a quarter left is comfortable or not,
+    which is the only reason to put a running number on a card at all.
+    """
+    if home_score is None or away_score is None or line is None:
+        return None
+    return (f"{int(home_score) + int(away_score)} \u00b7 "
+            f"{side or 'over'} {_number(line)}")
+
+
+#: What a settled tile says about how the forecast did. VOID is not a verdict
+#: about the model -- the question was never answered -- so it is named
+#: separately rather than folded into a loss.
+VERDICT_WORDS = {1: "WIN", 0: "LOSS", None: ""}
+
+
+def verdict_word(outcome, voided: bool = False) -> str:
+    return "VOID" if voided else VERDICT_WORDS.get(outcome, "")
+
+
+#: The three states a tile can be in. Declared so the renderer branches on a
+#: word the server chose rather than inferring one from a status string.
+TILE_STATES = ("upcoming", "live", "final")
+
+
+def tile_state(status: str | None, resolved: bool = False,
+               voided: bool = False) -> str:
+    """Which of the three a card is in. Unknown statuses read as upcoming.
+
+    A status nobody mapped must not light a live mark on a tile: the same
+    rule the poller follows when it declines to write an unmapped state, seen
+    from the other end.
+    """
+    if voided or resolved or status == "final":
+        return "final"
+    if status == "in":
+        return "live"
+    return "upcoming"
+
+
 def live_rate_line(requests: int, polls: int, hours: int) -> str:
     """"41 requests over 41 polls in the last 24 hours".
 
@@ -1256,26 +1340,50 @@ def date_words(week: int | None) -> str | None:
     return f"{WEEKDAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
 
 
-def slate_title(season: int | None, week: int | None, slate_word: str) -> str:
+def slate_title(season: int | None, week: int | None, slate_word: str,
+                league_date: str | None = None) -> str:
     """What to call this slate at the top of the page, in words.
 
-    NEVER THE KEY. `week` is an integer that orders the record; for the
-    day-keyed sports it is a date wearing an integer's clothes, and printing
-    it produced "Season 2026, week 20260905" -- eight digits a reader has to
-    parse as a date, above a page whose entire job is being readable.
+    NEVER THE KEY, and the key comes in two disguises. College football stores
+    a slate as 20260905 -- a date wearing an integer's clothes -- which
+    produced "Season 2026, week 20260905". Baseball stores an ORDINAL, and
+    the first fix missed it: the page then read "Day 158, 2026", which is not
+    eight digits but is just as much an internal number a reader cannot use.
+
+    So a key that IS a date is read as one, and a key that is not defers to
+    the slate's actual calendar date. Only when neither is available does the
+    number appear at all, and then with its own word beside it.
     """
     if week is None:
         return "This slate"
+    # A WEEK NUMBER IS A NAME; A DAY NUMBER IS NOT. "Week 2" is how football
+    # organises itself and how a reader refers to a slate, so it stays. The
+    # day-keyed sports store an ordinal that means nothing outside this
+    # database -- baseball's "Day 158" -- and those defer to the calendar.
+    # The first version of this fix replaced BOTH, which quietly renamed
+    # "Week 2, 2026" to a date nobody asked for.
     words = date_words(week)
+    if not words and slate_word == "day":
+        words = date_words_from_iso(league_date)
     if words:
         return f"{words}, {season}" if season else words
     return f"{slate_word.title()} {week}, {season}" if season else f"{slate_word.title()} {week}"
 
 
+def date_words_from_iso(day: str | None) -> str | None:
+    """"2026-09-27" -> "Sunday 27 September". None when there is no date."""
+    if not day or len(day) < 10:
+        return None
+    try:
+        return date_words(int(day[:4] + day[5:7] + day[8:10]))
+    except (ValueError, TypeError):
+        return None
+
+
 def slate_option(season: int | None, week: int | None, n: int,
-                 slate_word: str) -> str:
+                 slate_word: str, league_date: str | None = None) -> str:
     """One line in the slate chooser: the same words, plus how many picks."""
-    return f"{slate_title(season, week, slate_word)} ({n})"
+    return f"{slate_title(season, week, slate_word, league_date)} ({n})"
 
 
 def flipped_line(item: dict) -> float | None:

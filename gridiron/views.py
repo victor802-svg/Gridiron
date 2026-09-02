@@ -269,7 +269,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         if w is None:
             return []
         return conn.execute(
-            "SELECT p.*, g.home, g.away, g.kickoff_utc, g.status, g.home_score,"
+            "SELECT p.*, g.home, g.away, g.kickoff_utc, g.status,"
+            " g.live_period, g.live_clock, g.home_score, g.league_date,"
             " g.away_score FROM predictions p JOIN games g ON g.id = p.game_id"
             " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
             "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
@@ -470,6 +471,30 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             cards[-1]["subject"], cards[-1]["market"]
         )
         cards[-1]["market_label"] = language.market_label(cards[-1])
+        # --- the game in flight (L2) ------------------------------------
+        # Composed here like every other visible string. The renderer swaps
+        # which of them it shows; it writes none of them.
+        state = language.tile_state(
+            r["status"], resolved=r["resolved_utc"] is not None,
+            voided=r["id"] in voided)
+        cards[-1]["tile_state"] = state
+        # The slate's calendar date, so a sport whose slate key is an ordinal
+        # can still be named by its date rather than by "Day 158".
+        cards[-1]["league_date"] = r["league_date"]
+        # THE TRICODE, which is what the column already holds. A score line
+        # is read at a glance beside a 124px tile; "Alabama 21 · East Carolina
+        # 7" is a sentence, and "ALA 21 · ECU 7" is a score.
+        cards[-1]["score_line"] = language.score_line(
+            r["home"], r["home_score"], r["away"], r["away_score"])
+        cards[-1]["clock_line"] = language.clock_line(
+            r["live_period"], r["live_clock"], state)
+        cards[-1]["running_total"] = (
+            language.running_total_line(
+                r["home_score"], r["away_score"], r["line_asked"],
+                language.tile_label(cards[-1]))
+            if r["market_type"] == "total" else None)
+        cards[-1]["verdict"] = language.verdict_word(
+            r["outcome"], voided=r["id"] in voided)
         # WHERE IT IS PLAYED, for the selected-pick subline. None when the
         # venue was never recorded, and the subline simply has one fewer part.
         cards[-1]["venue"] = venues.get(r["home"])
@@ -490,7 +515,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # visible phrase. The renderer used to glue "Season " + season +
         # ", week " + week, which put the raw eight-digit key on the page.
         "slate_title": language.slate_title(
-            season, wk, config.SPORT_SLATE_WORD.get(sport, "week")),
+            season, wk, config.SPORT_SLATE_WORD.get(sport, "week"),
+            # The slate's own calendar date, for the sports whose key is an
+            # ordinal rather than a date. Taken from the cards so it costs no
+            # query, and absent on an empty slate, which is honest.
+            next((c.get("league_date") for c in cards if c.get("league_date")),
+                 None)),
         "n": len(cards),
         "cards": cards,
         "line_source": lines.line_source_for(sport),
@@ -706,6 +736,93 @@ def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
                 config.SPORT_LABELS.get(sport, sport), proven, tiers,
                 fullest, calibration.TIER_MIN_SETTLED),
         },
+    }
+
+
+def live_slate(conn: sqlite3.Connection, sport: str, season: int | None = None,
+               wk: int | None = None) -> dict:
+    """THE COMPACT ONE. What changed about the games, and nothing else.
+
+    The slate payload is large -- every card carries its decomposition, its
+    why, its bucket -- and none of that moves while a game is being played.
+    Re-fetching it every sixty seconds to learn that a score went from 7 to 10
+    would be sending a book to deliver a number.
+
+    So this is the number: per prediction, the state its game is in and the
+    strings that describe it, all written by the same humaniser the full
+    payload uses. `any_live` is the field the browser actually acts on -- it
+    stops polling when nothing is on, rather than polling forever at a slate
+    that finished hours ago.
+    """
+    calibration.require_sport(sport, "views.live_slate")
+    season = season or config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
+    if wk is None:
+        wk = repo.next_unplayed_week(conn, season, sport=sport)
+    # THE SAME SLATE THE PAGE IS SHOWING. `week()` falls back to the most
+    # recent slate that has predictions when the next unplayed one has none,
+    # and without the same fallback here the browser would poll one slate
+    # while displaying another -- scores that never arrive, for games nobody
+    # is looking at. The caller normally passes the week it is rendering;
+    # this is for when it does not.
+    if wk is not None and not conn.execute(
+            "SELECT 1 FROM predictions p JOIN games g ON g.id = p.game_id"
+            " WHERE p.sport = ? AND g.season = ? AND g.week = ? LIMIT 1",
+            (sport, season, wk)).fetchone():
+        latest = conn.execute(
+            "SELECT g.season, g.week FROM predictions p"
+            " JOIN games g ON g.id = p.game_id WHERE p.sport = ?"
+            " ORDER BY g.season DESC, g.week DESC LIMIT 1", (sport,)).fetchone()
+        if latest:
+            season, wk = latest["season"], latest["week"]
+    if wk is None:
+        return {"sport": sport, "season": season, "week": wk, "any_live": False,
+                "live": 0, "picks": []}
+
+    voided = {r["prediction_id"] for r in conn.execute(
+        "SELECT v.prediction_id FROM prediction_voids v JOIN predictions p"
+        " ON p.id = v.prediction_id WHERE p.sport = ?", (sport,))}
+    rows = conn.execute(
+        "SELECT p.id, p.market_type, p.line_asked, p.model_side, p.outcome,"
+        " p.resolved_utc, g.id AS game_id, g.home, g.away, g.status,"
+        " g.home_score, g.away_score, g.live_period, g.live_clock,"
+        " g.live_updated_utc"
+        " FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport = ? AND g.season = ? AND g.week = ?",
+        (sport, season, wk)).fetchall()
+
+    picks, live_now = [], 0
+    for r in rows:
+        state = language.tile_state(
+            r["status"], resolved=r["resolved_utc"] is not None,
+            voided=r["id"] in voided)
+        if state == "live":
+            live_now += 1
+        picks.append({
+            "prediction_id": r["id"],
+            "tile_state": state,
+            "score_line": language.score_line(
+                r["home"], r["home_score"], r["away"], r["away_score"]),
+            "clock_line": language.clock_line(
+                r["live_period"], r["live_clock"], state),
+            "running_total": (
+                language.running_total_line(
+                    r["home_score"], r["away_score"], r["line_asked"],
+                    language.tile_label({"market_type": r["market_type"],
+                                         "model_side": r["model_side"]}))
+                if r["market_type"] == "total" else None),
+            "verdict": language.verdict_word(
+                r["outcome"], voided=r["id"] in voided),
+        })
+    return {
+        "sport": sport,
+        "season": season,
+        "week": wk,
+        # WHAT THE BROWSER ACTS ON. Polling stops when this is false, which is
+        # the client-side half of the same rule the poller follows: nothing on,
+        # no requests.
+        "any_live": live_now > 0,
+        "live": live_now,
+        "picks": picks,
     }
 
 

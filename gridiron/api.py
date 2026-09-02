@@ -351,6 +351,13 @@ def week(sport: str | None = None, season: int | None = None,
     return views.week(get_conn(), _sport(sport), season, week)
 
 
+@app.get("/api/live")
+def live_slate(sport: str | None = None, season: int | None = None,
+               week: int | None = None) -> dict:
+    """The scores only. Small enough to ask for every sixty seconds."""
+    return views.live_slate(get_conn(), _sport(sport), season, week)
+
+
 @app.get("/api/weeks")
 def weeks(sport: str | None = None) -> dict:
     chosen = _sport(sport)
