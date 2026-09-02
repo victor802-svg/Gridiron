@@ -74,12 +74,12 @@
 
   <section id="view-record" class="view" hidden>
     <div id="record-headline" class="headline"></div>
-    <!-- THREE FORECASTERS (GRIDIRON_12). One table at a time; there is no
-         option that shows two at once. -->
+    <!-- TWO FORECASTERS. One table at a time; there is no option that shows
+         both at once. A third -- the operator's own informed calls -- stood
+         here from GRIDIRON_12 until it was withdrawn on 2026-09-02. -->
     <div class="seg" id="forecaster-picker" role="group"
          aria-label="Whose record to show"></div>
     <p class="why" id="forecaster-note" hidden></p>
-    <p class="why" id="call-comparison" hidden></p>
 
     <!-- THE TIER TABLE LEADS. The Record tab used to open with a calibration
          chart, which is the right shape for auditing the model and the wrong
@@ -172,10 +172,6 @@
           <div class="rail-match" id="rail-match"></div>
           <div class="rail-pick" id="rail-pick"></div>
           <div id="rail-body"></div>
-          <!-- YOUR CALL (GRIDIRON_12). Present on every selected pick; the
-               model's own display above it does not change whether a call
-               exists or not. -->
-          <div class="call-block" id="rail-call"></div>
         </div>
         <div class="panel" id="rail-glance-panel">
           <h3>At a glance <small id="rail-glance-count"></small></h3>

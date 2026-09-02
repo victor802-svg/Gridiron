@@ -41,49 +41,46 @@ def client(league, db_path, monkeypatch):
 def test_no_route_can_write_to_the_record():
     """History is "searchable, never editable" because nothing can be called.
 
-    P3 added two POSTs, and the guarantee had to be restated rather than
-    weakened: the RECORD is still unreachable by any verb. `/auth/login` and
-    `/auth/logout` write a session row and nothing else, on a separate handle,
-    and they are named here so a third POST cannot appear without this test
-    failing and someone having to justify it.
+    `/auth/login` and `/auth/logout` write a session row and nothing else, on
+    a separate handle, and they are named here so a third POST cannot appear
+    without this test failing and someone having to justify it.
 
-    THAT HAPPENED on 2026-09-02, and this is the justification.
-    `POST /api/calls` writes the OPERATOR'S OWN CALL -- a different table,
-    `operator_calls`, with its own append-only triggers, its own
-    resolve-once trigger, and a structural refusal after kickoff. It cannot
-    touch `predictions`: the test below proves the record is still unwritable
-    through any route, which is the guarantee this test was really making.
-    A fourth POST still has to come back here and argue for itself.
+    THAT HAPPENED ONCE, on 2026-09-02: `POST /api/calls` was added for the
+    operator's own calls, argued for in this docstring, and listed here. The
+    feature was withdrawn the same day (GRIDIRON_16 R1) and the route went
+    with it, so the list is back to the two session paths. A third POST still
+    has to come back here and argue for itself.
     """
     writers = sorted(
         route.path
         for route in api.app.routes
         if set(getattr(route, "methods", set()) or set()) - {"GET", "HEAD"}
     )
-    assert writers == ["/api/calls", "/auth/login", "/auth/logout"], (
-        f"a write verb appeared outside the sign-in and call paths: {writers}"
+    assert writers == ["/auth/login", "/auth/logout"], (
+        f"a write verb appeared outside the sign-in paths: {writers}"
     )
 
 
 def test_no_route_can_touch_a_prediction(client):
     """THE GUARANTEE THE TEST ABOVE IS ACTUALLY MAKING.
 
-    Counting POSTs is a proxy; this is the thing itself. The call route writes
-    to `operator_calls` and must leave `predictions` exactly as it found it --
-    LAW 3 does not soften because a new table arrived next to it.
+    Counting POSTs is a proxy for the thing that matters; this is the thing
+    itself. Every write route the app has is exercised, and `predictions` must
+    be exactly as it was found -- LAW 3 does not soften because a route was
+    added next to it.
     """
     from gridiron import api as _api
 
     conn = _api.get_conn()
-    before = conn.execute(
-        "SELECT COUNT(*) AS n, COALESCE(SUM(outcome), -1) AS sum_"
-        " FROM predictions").fetchone()
-    # A call on a question that does not exist: refused, and nothing moves.
-    client.post("/api/calls", json={"prediction_id": 999999,
-                                    "side": "cover", "tier": "LEAN"})
-    after = conn.execute(
-        "SELECT COUNT(*) AS n, COALESCE(SUM(outcome), -1) AS sum_"
-        " FROM predictions").fetchone()
+    def snapshot():
+        return conn.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(outcome), -1) AS sum_"
+            " FROM predictions").fetchone()
+
+    before = snapshot()
+    client.post("/auth/login", json={"token": "not-the-token"})
+    client.post("/auth/logout")
+    after = snapshot()
     assert (before["n"], before["sum_"]) == (after["n"], after["sum_"])
 
 

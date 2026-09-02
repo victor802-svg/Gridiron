@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import calls, auth, calibration, config, db, language, views
+from . import auth, calibration, config, db, language, views
 
 WEB_DIR = config.PACKAGE_ROOT / "web"
 
@@ -362,48 +362,6 @@ def live_slate(sport: str | None = None, season: int | None = None,
                week: int | None = None) -> dict:
     """The scores only. Small enough to ask for every sixty seconds."""
     return views.live_slate(get_conn(), _sport(sport), season, week)
-
-
-@app.post("/api/calls")
-async def make_call(request: Request) -> dict:
-    """Record the operator's own call on one question.
-
-    AUTHENTICATED BY DEFAULT and not by decoration: `require_session` closes
-    every path that is not on `auth.path_is_open`, so this route is protected
-    because it was added, not because somebody remembered to protect it. A
-    planting posts here without a session and expects a refusal.
-
-    Refuses after kickoff, in `calls.record` rather than here -- the rule
-    belongs with the record, not with the transport, so the CLI and any future
-    caller get it too.
-    """
-    body = await request.json()
-    try:
-        prediction_id = int(body["prediction_id"])
-        side = str(body["side"])
-        tier = str(body["tier"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="a call needs a prediction, a side and a tier") from exc
-    try:
-        return {"call": calls.record(get_conn(), prediction_id, side, tier)}
-    except calls.CallRefused as exc:
-        # 409: the request was well formed and the record would not take it.
-        # The reason is the operator's to read, in the words it was written in.
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@app.get("/api/calls")
-def read_calls(prediction_id: int) -> dict:
-    """The call that counts on this question, and the chain behind it."""
-    conn = get_conn()
-    return {
-        "prediction_id": prediction_id,
-        "latest": calls.latest(conn, prediction_id),
-        "chain": calls.chain(conn, prediction_id),
-        "tiers": [{"tier": t, "claims": c} for t, c in calls.TIER_CLAIM.items()],
-    }
 
 
 @app.get("/api/weeks")

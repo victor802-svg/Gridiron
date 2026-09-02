@@ -85,6 +85,78 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+#: WITHDRAWN FEATURES, dropped forward so a database that already holds a
+#: withdrawn table comes into line with the schema instead of keeping a table
+#: nothing reads. `operator_calls` went 2026-09-02 by ruling (GRIDIRON_16 R1).
+#:
+#: DELIBERATELY NOT A GENERAL "RUN THIS SQL" HOOK. It drops NAMED objects and
+#: nothing else, and `_PROTECTED` refuses the record's own tables by name --
+#: because a migration that could drop `predictions` would be the way around
+#: LAW 3 that every trigger in this schema exists to prevent. Adding a row
+#: here is a deliberate act with a dated note, exactly as adding a factor is.
+WITHDRAWN: tuple[tuple[str, str], ...] = (
+    ("TABLE", "operator_calls"),
+    ("INDEX", "operator_calls_pred"),
+    ("INDEX", "operator_calls_open"),
+    ("TRIGGER", "operator_calls_no_delete"),
+    ("TRIGGER", "operator_calls_no_update"),
+    ("TRIGGER", "operator_calls_resolve_once"),
+)
+
+class WithdrawalRefused(RuntimeError):
+    """A withdrawal that would have touched something still in the schema."""
+
+
+def _schema_defines(name: str, schema_sql: str) -> bool:
+    """Does the schema script still create this object?"""
+    lowered = schema_sql.lower()
+    for kind in ("table", "index", "trigger", "view"):
+        if f"create {kind} if not exists {name.lower()}" in lowered:
+            return True
+        if f"create {kind} {name.lower()}" in lowered:
+            return True
+    return False
+
+
+def _withdraw(conn: sqlite3.Connection) -> list[str]:
+    """Drop what has been withdrawn. Idempotent; silent when already gone.
+
+    THE RULE NAMES NOTHING, and that is deliberate twice over.
+
+    A withdrawal may only drop an object THE SCHEMA NO LONGER DEFINES. Deleting
+    the CREATE statement is therefore the act that authorises the drop, and the
+    two cannot drift: while `predictions` is still created by `schema.sql` --
+    which it always will be -- no entry here can touch it. That is the check
+    that keeps this from becoming the way around LAW 3.
+
+    The first version listed the record's tables explicitly instead, and LAW
+    1's closure scan rejected the module within one run: `db` is on every
+    sport's prediction path, so naming a market table here is exactly the
+    thing the scan exists to catch. The rule that names nothing is both safer
+    and shorter, which is usually how that goes.
+    """
+    schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
+    dropped = []
+    for kind, name in WITHDRAWN:
+        if kind not in ("TABLE", "INDEX", "TRIGGER", "VIEW"):
+            raise WithdrawalRefused(f"unknown object kind {kind!r}")
+        if _schema_defines(name, schema_sql):
+            raise WithdrawalRefused(
+                f"WITHDRAWAL REFUSED: {name!r} is still created by schema.sql, "
+                f"so it is part of the live schema and not a withdrawn "
+                f"feature. Remove the CREATE statement first -- that deletion "
+                f"is what authorises this drop, and requiring it is what keeps "
+                f"a withdrawal from becoming a way to drop the record."
+            )
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?",
+            (kind.lower(), name)).fetchone()
+        if exists:
+            conn.execute(f"DROP {kind} IF EXISTS {name}")
+            dropped.append(f"{kind.lower()} {name}")
+    return dropped
+
+
 def _migrate(conn: sqlite3.Connection) -> list[str]:
     """Widen existing tables before the schema script runs.
 
@@ -272,6 +344,9 @@ def db_columns(conn: sqlite3.Connection, table: str) -> list[str]:
 def init(conn: sqlite3.Connection) -> None:
     """Create the schema. Idempotent — every object is IF NOT EXISTS."""
     _migrate(conn)
+    # AFTER the widenings and BEFORE the schema script, so a withdrawn object
+    # is gone before anything tries to recreate it.
+    _withdraw(conn)
     widen_sport_checks(conn)
     widening = _widen_market_type(conn) if _needs_market_type_widening(conn) else None
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))

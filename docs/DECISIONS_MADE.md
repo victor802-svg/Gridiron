@@ -213,3 +213,51 @@ the tab records would have to give back about 150px to make room.
 The old test's real finding is preserved: it caught that a record with no sport
 label makes two empty sports look identical, so switching between them changes
 nothing on screen. The replacement test asserts every tab is distinct.
+
+---
+
+## Operator calls withdrawn 2026-09-02 by ruling; notifications retained
+
+`operator_calls` — the operator's own side-and-tier calls on questions the
+model had already answered — was built on 2026-09-02 (GRIDIRON_12,
+`docs/briefs/2026-09-02-calls.md`) and withdrawn the same day by operator
+ruling (GRIDIRON_16 R1). It stood for four phases: schema and rules, entry on
+the desk and the phone, a third forecaster on the Record tab, and the notifier.
+
+**Removed by surgery, not by revert**, because the notifier shipped in the same
+brief and had to survive: the table and its three append-only triggers, both
+`/api/calls` routes, the rail block, the row-expansion block, the tile marks,
+the "you (informed)" forecaster and its tier table, the model-versus-operator
+comparison line, and the digest's calls line.
+
+**Kept, because each earned its place independently of the feature that
+prompted it:**
+
+- The **notifier** (`gridiron/notify.py`, the `notifications` table, both
+  channels, quiet hours). It answers a question the calls feature did not
+  raise: the appliance once sat stalled for two days with every screen green.
+  Its results message lost the operator clause — `", you 2 of 3"` — and
+  nothing else.
+- **`subjects.py`'s canonical side map**, including the `not_cover` /
+  `"fail to cover"` unification. A call's side validation is what first forced
+  the two spellings into one place; the record still holds both, and the door
+  that names a side is still `side_named`.
+- The **forecaster selector mechanism**, which now carries Picks as well as
+  Record (GRIDIRON_16 R5).
+
+**Two guards were withdrawn with it**, and the reasoning is worth keeping
+because it will come up again. `audit.call_stake_faults` scanned
+`operator_calls` for a column expressing an amount — the LAW 5 tripwire on the
+closest thing this project ever built to a stake. `merged_forecaster_faults`
+carried a rule that an informed forecaster's label must say "informed". Both
+now guard something that does not exist, so both could only ever pass. **A
+guard that cannot fail is a guard on faith**, and leaving them would have
+reported a clean scan forever while proving nothing. LAW 5's general identifier
+scan is untouched, and `STAKE_COLUMNS` survives because that scan reads it.
+
+**Reversible**, but not cheaply: the brief at `docs/briefs/2026-09-02-calls.md`
+stays as the record of what was built, and `db.WITHDRAWN` drops the table
+forward, so a live database that held calls no longer holds them. Restoring the
+feature means restoring the rows too, and there are none.
+
+**The one row that existed was a test's.** Nothing a person recorded was lost.

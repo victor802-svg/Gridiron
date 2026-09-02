@@ -871,105 +871,6 @@ def plant_a_day_key_in_visible_text() -> Result:
                        "audit.plain_words_violations")
 
 
-def plant_an_unlabelled_operator_record() -> Result:
-    """Show the operator's numbers without saying they were informed.
-
-    The same guard's other half. These calls were made after seeing the
-    model's probability and the market's line; a label reading just "you"
-    invites the reader to compare them with a blind record, which is the one
-    comparison they cannot support (ruling R2).
-    """
-    faults = audit.merged_forecaster_faults(
-        {"forecasters": [{"forecaster": "operator", "label": "you",
-                          "informed": True}]})
-    return _desk_plant(faults, "show the operator's record unlabelled",
-                       "audit.merged_forecaster_faults")
-
-
-def plant_a_stake_field_on_a_call() -> Result:
-    """Give the operator's call a `units` column.
-
-    THE CLOSEST THIS PROJECT COMES TO WHAT LAW 5 FORBIDS. A call already
-    records a side and a strength; the distance to a staking ledger is one
-    column, and it is the kind that arrives looking like a small convenience
-    -- `units`, `weight`, `size` -- attached to a reasonable request.
-    """
-    faults = audit.call_stake_faults(audit.CALL_STAKE_FIXTURE_POSITIVE)
-    return _desk_plant(faults, "put an amount on the operator's call",
-                       "audit.call_stake_faults")
-
-
-def plant_a_call_after_kickoff() -> Result:
-    """Record a call on a game that has already started.
-
-    Not a forecast at that point -- a report. The bound is structural and
-    lives with the record rather than with the transport, so a CLI or any
-    future caller meets it too.
-    """
-    import datetime as _dt
-
-    from gridiron import calls as _calls, db as _db
-
-    conn = _db.open_db(":memory:")
-    past = (_dt.datetime.now(_dt.timezone.utc)
-            - _dt.timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    conn.execute(
-        "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
-        " home, away, status) VALUES ('cfb_p','cfb',2026,20260905,'REG',?,"
-        " 'AAA','BBB','scheduled')", (past,))
-    conn.execute(
-        "INSERT INTO predictions (sport, game_id, created_utc, market_type,"
-        " subject, line_asked, model_prob, model_side, predictor,"
-        " factor_set_version, factors_json, reasoning) VALUES"
-        " ('cfb','cfb_p',?,'spread','AAA',-3.5,0.61,'cover','statistical',"
-        " 'v1','{}','planted')", (_db.utcnow(),))
-    conn.commit()
-    pid = conn.execute("SELECT id FROM predictions").fetchone()[0]
-    try:
-        _calls.record(conn, pid, "cover", "LEAN")
-    except _calls.CallRefused as exc:
-        return Result("LAW 1 (blind first)", "call a game that already started",
-                      "calls.record", True, str(exc))
-    return Result("LAW 1 (blind first)", "call a game that already started",
-                  "calls.record", False,
-                  "NOT CAUGHT - a call was recorded after the first pitch")
-
-
-def plant_an_edited_call() -> Result:
-    """Rewrite a call instead of superseding it.
-
-    LAW 3 does not care which forecaster made the claim. Revising is a new row
-    before kickoff; the old one stays and the chain is shown.
-    """
-    import sqlite3 as _sqlite3
-
-    from gridiron import calls as _calls, db as _db
-
-    conn = _db.open_db(":memory:")
-    conn.execute(
-        "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
-        " home, away, status) VALUES ('cfb_e','cfb',2026,20260905,'REG',"
-        " '2099-01-01T00:00:00Z','AAA','BBB','scheduled')")
-    conn.execute(
-        "INSERT INTO predictions (sport, game_id, created_utc, market_type,"
-        " subject, line_asked, model_prob, model_side, predictor,"
-        " factor_set_version, factors_json, reasoning) VALUES"
-        " ('cfb','cfb_e',?,'spread','AAA',-3.5,0.61,'cover','statistical',"
-        " 'v1','{}','planted')", (_db.utcnow(),))
-    conn.commit()
-    pid = conn.execute("SELECT id FROM predictions").fetchone()[0]
-    call = _calls.record(conn, pid, "cover", "LEAN")
-    try:
-        conn.execute("UPDATE operator_calls SET tier = 'STRONG' WHERE id = ?",
-                     (call["id"],))
-    except _sqlite3.IntegrityError as exc:
-        return Result("LAW 3", "edit a call instead of superseding it",
-                      "operator_calls_no_update", True, str(exc))
-    return Result("LAW 3", "edit a call instead of superseding it",
-                  "operator_calls_no_update", False,
-                  "NOT CAUGHT - a recorded call was rewritten")
-
-
 def plant_a_green_live_mark() -> Result:
     """Draw the live mark in the accent colour.
 
@@ -2781,10 +2682,6 @@ def main() -> int:
     results.append(plant_two_forecasters_in_one_picks_list())
     results.append(plant_a_picks_list_labelled_for_the_wrong_forecaster())
     results.append(plant_a_day_key_in_visible_text())
-    results.append(plant_an_unlabelled_operator_record())
-    results.append(plant_a_stake_field_on_a_call())
-    results.append(plant_a_call_after_kickoff())
-    results.append(plant_an_edited_call())
     results.append(plant_a_green_live_mark())
     results.append(plant_a_re_sort_during_a_live_slate())
     results.append(plant_a_bouncing_chip())

@@ -108,7 +108,7 @@ def in_quiet_hours(now: datetime | None = None) -> bool:
 
 
 def results_message(settled_by_sport: dict) -> str | None:
-    """"MLB: 7 settled - model 4 right, you 2 of 3. CFB: 60 settled..."
+    """"MLB: 7 settled - model 4 right. CFB: 60 settled - model 33 right."
 
     NEVER SUMMED ACROSS SPORTS (LAW 6), and the sentence is built so that it
     could not be: each sport is its own clause with its own counts, and there
@@ -123,11 +123,13 @@ def results_message(settled_by_sport: dict) -> str | None:
         if not row or not row.get("settled"):
             continue
         label = config.SPORT_LABELS.get(sport, sport.upper())
-        clause = f"{label}: {row['settled']} settled - model {row['right']} right"
-        calls_settled = row.get("calls_settled") or 0
-        if calls_settled:
-            clause += f", you {row.get('calls_right', 0)} of {calls_settled}"
-        parts.append(clause)
+        # THE OPERATOR'S CLAUSE WENT WITH THE FEATURE. This read
+        # ", you 2 of 3" until operator calls were withdrawn on 2026-09-02
+        # (GRIDIRON_16 R1); the notifier itself was kept, because it earned
+        # its place answering a different question -- an appliance that sat
+        # stalled for two days with every screen green.
+        parts.append(
+            f"{label}: {row['settled']} settled - model {row['right']} right")
     if not parts:
         return None
     return ". ".join(parts) + "."

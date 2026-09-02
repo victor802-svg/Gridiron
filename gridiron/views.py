@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import (audit, buildinfo, calibration, calls, config, db, language,
+from . import (audit, buildinfo, calibration, config, db, language,
                sports, subjects)
 from .data import reference, repo, teams
 from .factors import compute as factor_compute, registry
@@ -352,9 +352,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # model has two opinions about one question and offers no way to tell
     # which is standing.
     #
-    # The latest one written is, by the same rule `calls.latest` already
-    # applies to a revised call: a later forecast supersedes an earlier one
-    # and the earlier stays in History. Nothing here changes what is scored --
+    # The latest one written is the standing one: a later forecast supersedes
+    # an earlier one and the earlier stays in the results. (The withdrawn
+    # operator-calls feature applied the same rule to a revised call, which is
+    # where the precedent came from.) Nothing here changes what is scored --
     # both rows remain in every curve, which is why the double run is a
     # RECORD problem reported in the close-out and not something a display
     # filter may quietly paper over.
@@ -383,17 +384,6 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # One bucket record per (market, predictor, bucket) rather than one per
     # card: the same lookup would otherwise run once for every pick on the slate.
     bucket_cache: dict[tuple, dict] = {}
-    # ONE QUERY FOR THE WHOLE SLATE, not one per card: the same rule the
-    # bucket cache follows two lines up.
-    calls_by_prediction = {
-        r["prediction_id"]: dict(r) for r in conn.execute(
-            "SELECT c.* FROM operator_calls c"
-            " JOIN predictions p ON p.id = c.prediction_id"
-            " WHERE p.sport = ? AND c.id IN ("
-            "   SELECT MAX(id) FROM operator_calls GROUP BY prediction_id)",
-            (sport,))
-    }
-
     cards = []
     for r in rows:
         payload = json.loads(r["factors_json"] or "{}")
@@ -573,24 +563,6 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         cards[-1]["verdict"] = language.verdict_word(
             r["outcome"], voided=r["id"] in voided)
 
-        # --- the operator's own call (GRIDIRON_12) ----------------------
-        # Present on every card whether or not one was made: the block has to
-        # know it can be filled, and "no call" is a state rather than an
-        # absence of data. Nothing about the model's own display changes.
-        call = calls_by_prediction.get(r["id"])
-        started = language.tile_state(r["status"]) != "upcoming"
-        cards[-1]["call"] = call
-        cards[-1]["call_open"] = not started
-        cards[-1]["call_state_line"] = language.call_state_line(
-            call, started, call.get("outcome") if call else None)
-        cards[-1]["call_verdict"] = (
-            language.verdict_word(call["outcome"]) if call
-            and call.get("outcome") is not None else "")
-        cards[-1]["call_sides"] = [
-            {"side": side, "label": language.call_side_label(cards[-1], side)}
-            for side in calls.sides_for(r["market_type"], r["model_side"])
-        ]
-        cards[-1]["call_tiers"] = list(calls.TIERS)
         # WHERE IT IS PLAYED, for the selected-pick subline. None when the
         # venue was never recorded, and the subline simply has one fewer part.
         cards[-1]["venue"] = venues.get(r["home"])
@@ -1192,11 +1164,7 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
         {"forecaster": "statistical", "label": "statistical",
          "informed": False},
         {"forecaster": "llm", "label": "LLM", "informed": False},
-        {"forecaster": calls.FORECASTER, "label": calls.FORECASTER_LABEL,
-         "informed": True},
     ]
-    payload["operator_tier_table"] = operator_tier_table(conn, sport)
-    payload["call_comparison"] = call_comparison(conn, sport)
     payload["meta"] = meta(conn, sport)
     payload["corrections"] = corrections_report(conn, sport)
     payload["drift"] = drift_report(conn, sport)
@@ -1507,24 +1475,6 @@ def digest(
     """
     calibration.require_sport(sport, "views.digest")
 
-    def _calls_since(window):
-        """The operator's own settled calls in this window, counted apart.
-
-        A separate line rather than a column in the model's: "7 resolved, 4
-        correct" is about the model, and folding the operator's two into it
-        would be the merge R2 forbids in the one place a reader is least
-        likely to look twice.
-        """
-        row = conn.execute(
-            "SELECT COUNT(*) AS n, COALESCE(SUM(c.outcome), 0) AS right_"
-            " FROM operator_calls c JOIN predictions p ON p.id = c.prediction_id"
-            " WHERE p.sport = ? AND c.resolved_utc > ? AND c.resolved_utc <= ?",
-            (sport, window[0], window[1])).fetchone()
-        n = row["n"] or 0
-        right = row["right_"] or 0
-        return {"settled": n, "right": right, "wrong": n - right,
-                "line": language.calls_since_line(right, n - right)}
-
     if day:
         window = (f"{day}T00:00:00Z", f"{day}T23:59:59Z")
         scope = f"on {day}"
@@ -1623,7 +1573,6 @@ def digest(
         "wrong": n - correct,
         # THE OPERATOR'S OWN, on their own line and never folded into the
         # counts above: "7 resolved, 4 correct" is about the model.
-        "calls": _calls_since(window),
         "brier": brier,
         "headline": headline,
         "settled": settled,
@@ -2025,107 +1974,3 @@ def mark_seen(
     )
     conn.commit()
     return previous
-
-
-def operator_tier_table(conn: sqlite3.Connection, sport: str) -> dict:
-    """The operator's calibration, one sport, graded by TIER directly.
-
-    A CALL IS ALREADY IN A BUCKET. The model's tiers are a label over its
-    claimed-probability buckets, because a model produces a continuous number
-    and something has to group it. The operator produces a tier, so there is
-    nothing to group -- LEAN is the bucket. Reconstructing a bucket from a
-    claim that was only ever a tier would be arithmetic pretending to be a
-    measurement.
-
-    THE GATE IS THE SAME ONE. `TIER_MIN_SETTLED` decides here exactly as it
-    does for the model, so "unproven -- 3 of 20" means the same thing on both
-    tables and neither is held to an easier standard than the other.
-    """
-    calibration.require_sport(sport, "views.operator_tier_table")
-    rows = []
-    for tier in calls.TIERS:
-        row = conn.execute(
-            "SELECT COUNT(*) AS n, COALESCE(SUM(c.outcome), 0) AS right_"
-            " FROM operator_calls c JOIN predictions p ON p.id = c.prediction_id"
-            " WHERE p.sport = ? AND c.tier = ? AND c.resolved_utc IS NOT NULL",
-            (sport, tier)).fetchone()
-        n = row["n"] or 0
-        right = row["right_"] or 0
-        proven = n >= calibration.TIER_MIN_SETTLED
-        claimed = calls.TIER_CLAIM[tier]
-        actual = (right / n) if n else None
-        rows.append({
-            "tier": tier,
-            "band": f"{round(claimed * 100)}% claimed",
-            "n": n,
-            "settled": n,
-            "right": right if proven else None,
-            "claimed": claimed if proven else None,
-            "actual": actual if proven else None,
-            "proven": proven,
-            "needed": calibration.TIER_MIN_SETTLED,
-            "verdict": calibration.tier_verdict(
-                claimed if proven else None, actual if proven else None, n),
-        })
-    return {
-        "sport": sport,
-        "forecaster": calls.FORECASTER,
-        "label": calls.FORECASTER_LABEL,
-        "rows": rows,
-        "n": sum(r["n"] for r in rows),
-        "minimum": calibration.TIER_MIN_SETTLED,
-        # SAID ON THE TABLE ITSELF, not only in the selector above it. A
-        # screenshot of this table has to carry the fact that these calls saw
-        # the model and the market first (ruling R2) -- without it the numbers
-        # invite comparison with a blind record.
-        "informed_note": (
-            "Your own calls, made after seeing the model's probability and "
-            "the market's line. They are informed forecasts and are never "
-            "added to the blind record."),
-    }
-
-
-def call_comparison(conn: sqlite3.Connection, sport: str) -> dict:
-    """How the operator did against the model, on the picks THEY called.
-
-    THE SAME GAMES, or it is not a comparison. The model answered every
-    question on the slate and the operator answered the ones they chose, so a
-    full-slate model figure beside a selective operator figure would be two
-    different sets of games wearing one sentence.
-
-    The market's column appears only when EVERY one of those picks carried a
-    line, for the same reason: a market percentage over the subset that
-    happened to be priced is a third set of games again.
-    """
-    calibration.require_sport(sport, "views.call_comparison")
-    rows = conn.execute(
-        "SELECT c.outcome AS you, p.outcome AS model, s.implied_prob"
-        " FROM operator_calls c"
-        " JOIN predictions p ON p.id = c.prediction_id"
-        " LEFT JOIN market_snapshots s"
-        "        ON s.prediction_id = p.id AND s.kind = 'open_at_predict'"
-        " WHERE p.sport = ? AND c.resolved_utc IS NOT NULL"
-        "   AND p.resolved_utc IS NOT NULL", (sport,)).fetchall()
-
-    n = len(rows)
-    priced = [r for r in rows if r["implied_prob"] is not None]
-    market_right = None
-    if n and len(priced) == n:
-        market_right = sum(
-            1 for r in rows
-            if (r["implied_prob"] >= 0.5) == (r["model"] == 1))
-    return {
-        "sport": sport,
-        "n": n,
-        "you_right": sum(1 for r in rows if r["you"] == 1),
-        "model_right": sum(1 for r in rows if r["model"] == 1),
-        "market_right": market_right,
-        "gate": calibration.TIER_MIN_SETTLED,
-        "label": calls.FORECASTER_LABEL,
-        "line": language.call_comparison_line(
-            n,
-            sum(1 for r in rows if r["you"] == 1),
-            sum(1 for r in rows if r["model"] == 1),
-            market_right,
-            calibration.TIER_MIN_SETTLED),
-    }

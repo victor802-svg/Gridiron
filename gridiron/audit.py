@@ -2096,89 +2096,27 @@ def check_every_side_has_words(conn=None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# A CALL IS A CONFIDENCE, NOT A STAKE (LAW 5, GRIDIRON_12)
+# A CALL IS A CONFIDENCE, NOT A STAKE -- GUARD WITHDRAWN WITH ITS FEATURE
 # ---------------------------------------------------------------------------
 #
-# The operator's calls are the closest this project will ever come to the
-# thing LAW 5 forbids: a person recording an opinion on a game, with a
-# strength attached. The distance between "how sure am I" and "how much would
-# I put on it" is one column, and it is the kind of column that arrives
-# looking harmless -- `units`, `weight`, `size` -- attached to a perfectly
-# reasonable feature request.
+# `call_stake_faults` scanned `operator_calls` for a column that expressed an
+# amount, because the operator's own calls were the closest this project came
+# to what LAW 5 forbids: a person recording an opinion with a strength
+# attached, one column away from a stake.
 #
-# So the shape of the table is scanned, not trusted. A tier is a confidence
-# and maps to a probability; nothing on a call may express an amount.
+# The feature was withdrawn on 2026-09-02 (GRIDIRON_16 R1) and the guard went
+# with it, because a guard over a table that no longer exists passes for the
+# wrong reason -- it would report a clean scan forever while proving nothing.
+# LAW 5's general scan is untouched: `check_not_a_betting_tool` still walks
+# every identifier in the package, and `STAKE_COLUMNS` lives on below because
+# that scan uses the same vocabulary.
 
-#: Column names that would turn a confidence into a stake.
+#: Names that would turn a measurement into a stake. Read by the LAW 5
+#: identifier scan, which is why this outlived the call-specific guard.
 STAKE_COLUMNS = (
     "units", "unit", "amount", "stake", "wager", "bankroll", "risk",
     "size", "sizing", "kelly", "payout", "odds", "price",
 )
-
-
-def call_stake_faults(schema_sql: str) -> list[str]:
-    """Any column on `operator_calls` that expresses an amount."""
-    start = schema_sql.find("CREATE TABLE IF NOT EXISTS operator_calls")
-    if start < 0:
-        return []
-    end = schema_sql.find(");", start)
-    body = schema_sql[start:end].lower()
-    faults = []
-    for word in STAKE_COLUMNS:
-        for line in body.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("--") or not stripped:
-                continue
-            column = stripped.split()[0].strip(",").lower()
-            if column == word:
-                faults.append(
-                    f"`operator_calls` has a column named {word!r}. LAW 5: a "
-                    f"call records how sure the operator is, never how much "
-                    f"they would put on it. This project states probabilities "
-                    f"and keeps score of them; the moment a row can hold an "
-                    f"amount it is a staking ledger with a calibration curve "
-                    f"attached."
-                )
-    return faults
-
-
-CALL_STAKE_FIXTURE_POSITIVE = """
-CREATE TABLE IF NOT EXISTS operator_calls (
-    id INTEGER PRIMARY KEY,
-    tier TEXT NOT NULL,
-    units REAL
-);
-"""
-CALL_STAKE_FIXTURE_NEGATIVE = """
-CREATE TABLE IF NOT EXISTS operator_calls (
-    id INTEGER PRIMARY KEY,
-    tier TEXT NOT NULL,
-    claimed_prob REAL NOT NULL
-);
-"""
-
-
-def check_a_call_is_not_a_stake(path: Path | None = None) -> None:
-    path = path or (config.PACKAGE_ROOT / "schema.sql")
-    faults = call_stake_faults(Path(path).read_text(encoding="utf-8"))
-    if faults:
-        raise LawViolation(
-            "A CALL BECAME A STAKE:" + _NL2 + _NL2.join(faults))
-
-
-def _check_the_stake_scanner_can_see() -> None:
-    problems = []
-    if not call_stake_faults(CALL_STAKE_FIXTURE_POSITIVE):
-        problems.append("call_stake_faults misses a `units` column on a call")
-    if call_stake_faults(CALL_STAKE_FIXTURE_NEGATIVE):
-        problems.append("call_stake_faults flags a call that only says how "
-                        "sure it is")
-    if problems:
-        raise LawViolation(
-            "A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
-
-
-_check_the_stake_scanner_can_see()
 
 
 # ---------------------------------------------------------------------------
@@ -2202,7 +2140,14 @@ MERGED_FORECASTERS = ("all", "combined", "everyone", "total", "overall", "both")
 
 
 def merged_forecaster_faults(payload: dict) -> list[str]:
-    """A forecaster option that pools two of them, or an unlabelled operator."""
+    """A forecaster option that could only be a pool of two or more.
+
+    This also carried an "is the informed forecaster labelled as informed"
+    rule until 2026-09-02. It went with the operator's calls (GRIDIRON_16 R1)
+    and for the reason the call-stake guard went: no forecaster is informed
+    any more, so the branch could only ever pass, and a guard that cannot
+    fail is a guard on faith.
+    """
     faults = []
     for entry in payload.get("forecasters") or []:
         name = str(entry.get("forecaster", "")).lower()
@@ -2212,13 +2157,6 @@ def merged_forecaster_faults(payload: dict) -> list[str]:
                 f"pool of two or more. The model answers every question on a "
                 f"slate and the operator answers the ones they chose; one "
                 f"number over both describes neither."
-            )
-        if entry.get("informed") and "informed" not in str(entry.get("label", "")):
-            faults.append(
-                f"the informed forecaster is labelled {entry.get('label')!r}, "
-                f"which does not say it saw the model and the market first. "
-                f"That fact is the whole difference between this category and "
-                f"the other two (ruling R2)."
             )
     return faults
 
@@ -2232,7 +2170,7 @@ MERGED_FORECASTER_FIXTURE_POSITIVE = {
 MERGED_FORECASTER_FIXTURE_NEGATIVE = {
     "forecasters": [
         {"forecaster": "statistical", "label": "statistical", "informed": False},
-        {"forecaster": "operator", "label": "you (informed)", "informed": True},
+        {"forecaster": "llm", "label": "LLM", "informed": False},
     ]
 }
 
@@ -2250,11 +2188,6 @@ def _check_the_forecaster_scanner_can_see() -> None:
         problems.append("merged_forecaster_faults misses an 'all' option")
     if merged_forecaster_faults(MERGED_FORECASTER_FIXTURE_NEGATIVE):
         problems.append("merged_forecaster_faults flags a correct selector")
-    unlabelled = {"forecasters": [
-        {"forecaster": "operator", "label": "you", "informed": True}]}
-    if not merged_forecaster_faults(unlabelled):
-        problems.append("merged_forecaster_faults misses an operator whose "
-                        "label does not say it was informed")
     if problems:
         raise LawViolation(
             "A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))

@@ -153,9 +153,8 @@ SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week",
 #: The Record tab has named these since GRIDIRON_12 and the Picks list needed
 #: the same names in GRIDIRON_14; a second literal would have been a second
 #: chance for the two pages to call the same forecaster different things.
-#: The operator is NOT here: they call on questions, they do not generate a
-#: slate, so they are a forecaster on the record and not an option on Picks.
-#: Their label lives in `calls.FORECASTER_LABEL`.
+#: Two forecasters, both blind. A third -- the operator's own informed calls
+#: -- stood beside them from GRIDIRON_12 until it was withdrawn on 2026-09-02.
 FORECASTER_LABELS = {"statistical": "statistical", "llm": "LLM"}
 
 #: Which forecaster the Picks list opens on. The statistical model answers

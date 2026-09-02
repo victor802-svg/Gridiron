@@ -70,12 +70,22 @@ def test_nothing_settled_sends_nothing():
     assert notify.results_message({}) is None
 
 
-def test_the_operators_calls_appear_only_when_they_made_some():
-    with_calls = notify.results_message(
+def test_the_results_message_carries_no_operator_clause():
+    """The operator's clause went with the feature (GRIDIRON_16 R1).
+
+    This read ", you 2 of 3" until operator calls were withdrawn on
+    2026-09-02. The notifier itself was kept -- it answers a different
+    question, one an appliance stalled for two days with every screen green
+    had already asked -- so the message keeps its per-sport counts and loses
+    only the half that described a forecaster that no longer exists.
+    """
+    body = notify.results_message({"mlb": {"settled": 7, "right": 4}})
+    assert body == "MLB: 7 settled - model 4 right."
+    assert "you" not in body
+    # A stale caller passing the old keys must not resurrect the clause.
+    stale = notify.results_message(
         {"mlb": {"settled": 7, "right": 4, "calls_settled": 3, "calls_right": 2}})
-    assert "you 2 of 3" in with_calls
-    without = notify.results_message({"mlb": {"settled": 7, "right": 4}})
-    assert "you" not in without
+    assert stale == "MLB: 7 settled - model 4 right."
 
 
 def test_quiet_hours_are_the_operators_night():

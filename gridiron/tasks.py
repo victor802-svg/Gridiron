@@ -399,15 +399,8 @@ def _notify_results(conn: sqlite3.Connection) -> dict:
             "SELECT COUNT(*) AS n, COALESCE(SUM(outcome), 0) AS right_"
             " FROM predictions WHERE sport = ? AND resolved_utc >= ?",
             (sport, _since_last_notification(conn))).fetchone()
-        calls_row = conn.execute(
-            "SELECT COUNT(*) AS n, COALESCE(SUM(c.outcome), 0) AS right_"
-            " FROM operator_calls c JOIN predictions p ON p.id = c.prediction_id"
-            " WHERE p.sport = ? AND c.resolved_utc >= ?",
-            (sport, _since_last_notification(conn))).fetchone()
         by_sport[sport] = {
             "settled": row["n"] or 0, "right": row["right_"] or 0,
-            "calls_settled": calls_row["n"] or 0,
-            "calls_right": calls_row["right_"] or 0,
         }
     body = notify.results_message(by_sport)
     if not body:

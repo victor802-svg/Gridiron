@@ -531,8 +531,8 @@ def test_one_card_per_question_when_a_task_ran_twice(resolved_league):
 
     `predict:nfl` ran twice on 2026-08-29 and wrote a full second set of
     forecasts for week 1. Both rows stay in the record -- LAW 3 is
-    append-only -- but the slate shows the STANDING one, by the same rule
-    `calls.latest` applies to a revised call.
+    append-only -- but the slate shows the STANDING one: the latest forecast
+    written supersedes the earlier, which stays in the results.
     """
     from gridiron import views
 

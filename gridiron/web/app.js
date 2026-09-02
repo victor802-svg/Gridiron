@@ -309,20 +309,12 @@ const Gridiron = (function () {
     const sc = state.scorecard;
     // THE TIER TABLE LEADS. Rendered first and unconditionally: the charts
     // below it now live on the Factors page and may not be on screen at all.
-    // THREE FORECASTERS, ONE AT A TIME (ruling R2). The selector swaps which
-    // table is shown; there is no option that shows two at once, because the
-    // only thing a combined table could report is a merge.
+    // TWO FORECASTERS, ONE AT A TIME. The selector swaps which table is
+    // shown; there is no option that shows both at once, because the only
+    // thing a combined table could report is a merge. (A third, the
+    // operator's own informed calls, stood here until 2026-09-02.)
     renderForecasterPicker(sc);
-    renderTierTable(forecasterChoice === 'operator'
-                    ? sc.operator_tier_table : sc.tier_table);
-    const compare = document.getElementById('call-comparison');
-    if (compare) {
-      // Silent below the gate: the server sends no line until 20 have
-      // settled, and an absent line is left absent rather than filled with a
-      // placeholder that reads like a result.
-      compare.textContent = (sc.call_comparison || {}).line || '';
-      compare.hidden = !compare.textContent;
-    }
+    renderTierTable(sc.tier_table);
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
     const market = document.getElementById('chart-market').value || 'spread';
@@ -925,22 +917,6 @@ const Gridiron = (function () {
     } else if (chip) {
       chip.remove();
     }
-    let called = tile.querySelector('.tile-called');
-    if (c.call && !called) {
-      called = el('span', 'tile-called');
-      called.title = 'you called this one';
-      tile.querySelector('.tile-top').appendChild(called);
-    } else if (!c.call && called) {
-      called.remove();
-    }
-    let yours = tile.querySelector('.tile-verdict-yours');
-    if (c.call_verdict && !yours) {
-      yours = el('span', 'tile-verdict tile-verdict-yours');
-      yours.textContent = c.call_verdict;
-      yours.classList.add('v-' + c.call_verdict.toLowerCase());
-      tile.appendChild(yours);
-    }
-
     let mark = tile.querySelector('.tile-live');
     if (state === 'live' && !mark) {
       // A MARK, NOT A COLOUR. Green means a win and means interactive; a live
@@ -1040,114 +1016,6 @@ const Gridiron = (function () {
     // line. A second implementation here would be a second chance to
     // disagree with the record about what the model said.
     buildRowBody(document.getElementById('rail-body'), card);
-    paintCall(card);
-  }
-
-  // YOUR CALL (GRIDIRON_12). Every string here was written by the server --
-  // the side labels, the state line, the tier names. The renderer places them
-  // and decides nothing about the wording, which matters more here than
-  // anywhere: these are BUTTONS, and a button that named the wrong side would
-  // record the opposite of what was clicked.
-  let callDraft = { side: null, tier: null };
-
-  function paintCall(card, host) {
-    // THE HOST IS PASSED IN. The rail has one panel and the compact rows have
-    // one per expanded card; writing into a fixed id worked for the first and
-    // would have made every row's block fight over the same node -- the same
-    // duplicate-writer defect that stopped the page rendering in E2.
-    host = host || document.getElementById('rail-call');
-    if (!host) return;
-    host.innerHTML = '';
-    if (!card) return;
-
-    const head = el('div', 'call-head');
-    head.appendChild(el('b', '', card.call_state_line || ''));
-    if (card.call_verdict) {
-      const chip = el('span', 'tile-verdict');
-      chip.textContent = card.call_verdict;
-      chip.classList.add('v-' + card.call_verdict.toLowerCase());
-      head.appendChild(chip);
-    }
-    host.appendChild(head);
-
-    // A settled or locked call is shown, not offered.
-    if (!card.call_open) {
-      if (card.call) host.appendChild(el('div', 'call-made', card.call.side));
-      return;
-    }
-
-    callDraft = { side: (card.call || {}).side || null,
-                  tier: (card.call || {}).tier || null };
-
-    const sides = el('div', 'seg call-sides');
-    (card.call_sides || []).forEach(s => {
-      const b = el('button', '', s.label);
-      b.type = 'button';
-      b.dataset.side = s.side;
-      b.setAttribute('aria-pressed', String(callDraft.side === s.side));
-      b.addEventListener('click', () => {
-        callDraft.side = s.side;
-        sides.querySelectorAll('button').forEach(x =>
-          x.setAttribute('aria-pressed', String(x.dataset.side === s.side)));
-      });
-      sides.appendChild(b);
-    });
-    host.appendChild(sides);
-
-    const tiers = el('div', 'seg call-tiers');
-    (card.call_tiers || []).forEach(t => {
-      const b = el('button', '', t);
-      b.type = 'button';
-      b.dataset.tier = t;
-      b.setAttribute('aria-pressed', String(callDraft.tier === t));
-      b.addEventListener('click', () => {
-        callDraft.tier = t;
-        tiers.querySelectorAll('button').forEach(x =>
-          x.setAttribute('aria-pressed', String(x.dataset.tier === t)));
-      });
-      tiers.appendChild(b);
-    });
-    host.appendChild(tiers);
-
-    const go = el('button', 'call-go', card.call ? 'Revise' : 'Call it');
-    go.type = 'button';
-    go.addEventListener('click', () => submitCall(card, go));
-    host.appendChild(go);
-    const said = el('div', 'call-said');
-    host.appendChild(said);
-  }
-
-  async function submitCall(card, button) {
-    const said = button.parentElement.querySelector('.call-said');
-    if (!callDraft.side || !callDraft.tier) {
-      // Said rather than silently ignored: a button that does nothing when
-      // pressed is worse than one that says what it is waiting for.
-      said.textContent = 'pick a side and how sure you are first';
-      return;
-    }
-    button.disabled = true;
-    try {
-      const res = await fetch('/api/calls', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prediction_id: card.prediction_id,
-                               side: callDraft.side, tier: callDraft.tier }),
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        // THE SERVER'S OWN WORDS. It refuses a call after kickoff and says
-        // why; inventing a friendlier message here would hide which rule
-        // stopped it.
-        said.textContent = body.detail || 'that call was not recorded';
-        button.disabled = false;
-        return;
-      }
-      card.call = body.call;
-      renderWeek();
-    } catch (err) {
-      said.textContent = 'the call did not reach the appliance';
-      button.disabled = false;
-    }
   }
 
   function paintGlance(glance) {
@@ -1504,13 +1372,6 @@ const Gridiron = (function () {
       ((w && w.more_label) || 'How the model works') + ' \u2192');
     more.href = (w && w.more_href) || '#/factors';
     body.appendChild(more);
-
-    // THE SAME BLOCK ON THE PHONE, from the same function. A second
-    // implementation for the narrow layout would be a second thing that
-    // decides what a side is called.
-    const rowCall = el('div', 'call-block');
-    paintCall(c, rowCall);
-    body.appendChild(rowCall);
 
     if (c.tier && c.tier.message) {
       body.appendChild(el('div', 'row-tierline',
