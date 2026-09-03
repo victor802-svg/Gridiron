@@ -914,6 +914,197 @@ def plant_a_slate_answered_twice() -> Result:
                   "a second full set of forecasts was written")
 
 
+LAW_TIMING = "TWO PASSES, ONE STANDING ROW"
+
+_PLANT_FACTORS = '{"values": {}, "present": [], "absent": []}'
+
+
+def _iso_shift(stamp: str, seconds: int) -> str:
+    """An ISO timestamp moved by `seconds`, in the project's Z format."""
+    moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    return (moment + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _timing_world(tmp):
+    """A throwaway league, and one finished NFL game to forecast twice.
+
+    ITS OWN DATABASE, and the reason is a guard firing on me. The first
+    version of these plantings wrote into the shared harness database and
+    deleted the rows afterwards; LAW 3 refused the delete by name, which is
+    exactly right -- a prediction cannot be removed. Rows that cannot be
+    cleaned up must not be written where anything else will read them.
+    """
+    conn = seeded_database(Path(tmp) / "timing.db")
+    game = conn.execute(
+        "SELECT id, kickoff_utc FROM games WHERE sport='nfl'"
+        "   AND kickoff_utc IS NOT NULL LIMIT 1").fetchone()
+    if game is None:
+        return conn, None, None
+    conn.execute(
+        "UPDATE games SET status='final', home_score=30, away_score=20"
+        " WHERE id = ?", (game["id"],))
+    conn.commit()
+    return conn, game["id"], game["kickoff_utc"]
+
+
+def _plant_pair(conn, game_id: str, subject: str, rows) -> None:
+    """Write one early and one final forecast of the same question."""
+    for pass_kind, created, prob in rows:
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning,"
+            " resolved_utc, outcome)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
+            (created, "nfl", game_id, "spread", subject, -3.5, prob,
+             "cover", "statistical", pass_kind, config.FACTOR_SET_VERSION,
+             _PLANT_FACTORS, "planted", db.utcnow()))
+    conn.commit()
+
+
+def _graded_claims(conn, subject: str) -> list:
+    """The claims the record actually grades for one planted question."""
+    return sorted(round(r.model_prob, 4)
+                  for r in calibration.resolved(conn, sport="nfl")
+                  if r.subject == subject)
+
+
+def plant_two_standing_rows_for_one_question() -> Result:
+    """Write an early and a final forecast, and demand exactly one is graded.
+
+    THE WHOLE MECHANISM RESTS ON THIS. Two passes are the point; two STANDING
+    rows would be the 2026-08-29 duplicate bug wearing a new name -- every
+    game twice on the Picks page, and a calibration curve counting each
+    question twice.
+    """
+    what = "two standing rows for one question"
+    with tempfile.TemporaryDirectory() as tmp:
+        conn, game_id, kickoff = _timing_world(tmp)
+        if game_id is None:
+            conn.close()
+            return Result(LAW_TIMING, what, "calibration.resolved", False,
+                          "no dated game to plant against")
+        _plant_pair(conn, game_id, "PLANTPAIR", [
+            ("early", _iso_shift(kickoff, -86400), 0.58),
+            ("final", _iso_shift(kickoff, -3600), 0.71),
+        ])
+        claims = _graded_claims(conn, "PLANTPAIR")
+        conn.close()
+
+    if len(claims) != 1:
+        return Result(
+            LAW_TIMING, what, "calibration.resolved", False,
+            f"{len(claims)} rows were graded for one question (claims "
+            f"{claims}); exactly one forecast stands per question")
+    if claims != [0.71]:
+        return Result(
+            LAW_TIMING, what, "calibration.resolved", False,
+            f"the EARLY row was graded ({claims}); the standing forecast is "
+            f"the latest one written before start")
+    return Result(LAW_TIMING, what, "calibration.resolved", True,
+                  "exactly one row was graded, and it was the later one")
+
+
+def plant_a_final_pass_writing_after_start() -> Result:
+    """A forecast written after kickoff must not become the standing one.
+
+    MISSED IS RECORDED, NEVER CAUGHT UP LATE (MENTOR 4). The task refuses to
+    write at all; this is the second lock, on the READING side -- a row that
+    somehow exists still cannot be the one the record is graded on. A 0.99
+    claim written an hour into the game would otherwise grade as a triumph.
+    """
+    what = "a final pass writing after start"
+    with tempfile.TemporaryDirectory() as tmp:
+        conn, game_id, kickoff = _timing_world(tmp)
+        if game_id is None:
+            conn.close()
+            return Result(LAW_TIMING, what, "calibration.resolved", False,
+                          "no dated game to plant against")
+        _plant_pair(conn, game_id, "PLANTLATE", [
+            ("early", _iso_shift(kickoff, -3600), 0.58),
+            ("final", _iso_shift(kickoff, +3600), 0.99),
+        ])
+        claims = _graded_claims(conn, "PLANTLATE")
+        conn.close()
+
+    if 0.99 in claims:
+        return Result(
+            LAW_TIMING, what, "calibration.resolved", False,
+            "a forecast written AFTER kickoff became the standing row; a "
+            "question answered once the game has started is not a forecast")
+    if claims != [0.58]:
+        return Result(
+            LAW_TIMING, what, "calibration.resolved", False,
+            f"expected the pre-kickoff row alone to stand; graded {claims}")
+    return Result(LAW_TIMING, what, "calibration.resolved", True,
+                  "the post-kickoff row was refused and the earlier one stands")
+
+
+def plant_an_early_row_entering_calibration() -> Result:
+    """A superseded early row must not reach the record.
+
+    Distinct from the pair planting above: that one asks how MANY rows are
+    graded, this one asks WHICH. A record that graded early rows would be
+    measuring a forecast the app no longer shows anyone.
+    """
+    what = "an early row entering calibration"
+    with tempfile.TemporaryDirectory() as tmp:
+        conn, game_id, kickoff = _timing_world(tmp)
+        if game_id is None:
+            conn.close()
+            return Result(LAW_TIMING, what, "calibration.resolved", False,
+                          "no dated game to plant against")
+        _plant_pair(conn, game_id, "PLANTEARLY", [
+            ("early", _iso_shift(kickoff, -86400), 0.55),
+            ("final", _iso_shift(kickoff, -3600), 0.80),
+        ])
+        claims = _graded_claims(conn, "PLANTEARLY")
+        conn.close()
+
+    if 0.55 in claims:
+        return Result(
+            LAW_TIMING, what, "calibration.resolved", False,
+            "a superseded early forecast was graded; the record would be "
+            "measuring a forecast the app no longer shows")
+    if claims != [0.8]:
+        return Result(LAW_TIMING, what, "calibration.resolved", False,
+                      f"expected the final row alone to stand; graded {claims}")
+    return Result(LAW_TIMING, what, "calibration.resolved", True,
+                  "only the final row reached the record")
+
+
+def plant_a_final_pass_inside_the_market_closure() -> Result:
+    """Import the market module from the final pass's own code path.
+
+    LAW 1 IS NOT RELAXED BY RUNNING LATER, and a late pass is exactly where
+    anchoring would be most tempting: the line is up by then and it is right
+    there. The final pass runs the same prediction path inside the same blind
+    window, so the same closure scan governs it -- this proves that, rather
+    than asserting it in a comment.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.db"))
+        victim = root / "model" / "predict.py"
+        victim.write_text(
+            victim.read_text(encoding="utf-8")
+            + chr(10) + chr(10)
+            + "from gridiron.market import lines as _late_lines" + chr(10)
+            + "def _late_peek():" + chr(10)
+            + "    return _late_lines" + chr(10),
+            encoding="utf-8")
+        try:
+            audit.check_prediction_closure(root=root)
+        except audit.LawViolation as exc:
+            return Result("LAW 1", "the final pass imports the market module",
+                          "audit.check_prediction_closure", True, str(exc))
+    return Result("LAW 1", "the final pass imports the market module",
+                  "audit.check_prediction_closure", False,
+                  "NOT CAUGHT - the late pass could read the line it is "
+                  "meant to be blind to")
+
+
 def plant_a_selector_for_a_class_nothing_builds() -> Result:
     """Rename the class the desk tile's corner is fetched by.
 
@@ -3307,6 +3498,10 @@ def main() -> int:
     results.append(plant_payout_arithmetic_against_a_market_source())
     results.append(plant_a_default_tier_that_hides_the_count())
     results.append(plant_a_selector_for_a_class_nothing_builds())
+    results.append(plant_a_final_pass_inside_the_market_closure())
+    results.append(plant_two_standing_rows_for_one_question())
+    results.append(plant_a_final_pass_writing_after_start())
+    results.append(plant_an_early_row_entering_calibration())
     results.append(plant_a_clamped_rung_beyond_the_ladder())
     results.append(plant_a_run_line_rung_off_the_market())
     results.append(plant_a_total_asked_from_a_market_value())
