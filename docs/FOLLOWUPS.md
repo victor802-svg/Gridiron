@@ -419,3 +419,22 @@ python tools/make_token.py --ntfy --rotate
 - **NCAAF puts 15 of 17 picks in STRONG (88%), NFL 24 of 78.** Under ruling R2
   Picks opens on STRONG, so an over-confident college model is now the first
   thing a reader sees. Same root cause as the 0.371 base rate above.
+- **A prose claim nobody tests is where my bugs land.** Three of six bugs in the
+  2026-09-03 timing build were caught by looking, not by a test, and all three
+  were sentences: a note claiming a forecast had been superseded when none
+  existed, an installer comment claiming two MLB passes where one was
+  registered, and a time that read plausibly and was after most first pitches.
+  The suite checked behaviour; nothing checked what the prose asserted about it.
+  Worth a scan that pairs a claim with the thing it claims.
+- **The NFL `injuries` table has no timestamp column.** 55,554 rows, none dated,
+  so NFL report timing cannot be measured and the final-pass time for football
+  is a judgement rather than a measurement. One `fetched_utc` column plus the
+  loader writing it makes it measurable within a week of games.
+- **A daily MLB final pass cannot serve a 7.47-hour card.** At 14:30 local the
+  afternoon games have started, so roughly the 10:00-local cluster (1,101 games
+  in the record) is out of its reach and keeps its early forecast. The proper
+  fix is a per-game trigger rather than a daily one.
+- **Live lineup captures are buried under backfill.** 6,902 of 6,958 stored MLB
+  lineups came from one historical load on 2026-08-30; only 39 are real
+  pre-game captures. A `source` column separating a live capture from a
+  backfill would keep the measurable rows findable as they accumulate.

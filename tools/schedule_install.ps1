@@ -71,6 +71,10 @@ $TaskNames = @(
     "$($Prefix)Predict-NFL",
     "$($Prefix)Predict-NBA",
     "$($Prefix)Predict-CFB",
+    "$($Prefix)Final-MLB",
+    "$($Prefix)Final-NFL",
+    "$($Prefix)Final-NBA",
+    "$($Prefix)Final-CFB",
     "$($Prefix)CatchUp"
 )
 
@@ -186,6 +190,56 @@ New-GridironTask -Name "$($Prefix)Predict-NBA" -TaskArg "predict:nba" `
 New-GridironTask -Name "$($Prefix)Predict-CFB" -TaskArg "predict:cfb" `
     -Trigger (New-ScheduledTaskTrigger -Daily -At $CfbTime) `
     -Description "Forecast today's college football slate, blind. A logged no-op on a day with no games."
+
+# ---------------------------------------------------------------------------
+# THE SECOND, LATER PASS (2026-09-03)
+# ---------------------------------------------------------------------------
+#
+# Every sport is forecast twice: once when the slate is first seen, and again
+# close to start on what is known by then. The LATER row is the one the record
+# is graded on; the early row is kept and labelled.
+#
+# WHY THIS MATTERS ENOUGH TO ADD FOUR TASKS. Measured lead times before this
+# existed: MLB 7.7h, CFB 108h, NFL 371h, and NBA 1,325 HOURS -- 55 days. A
+# forecast written 55 days out is made before rosters settle and before any
+# injury is known. Whether forecasting later actually scores better is NOT
+# assumed: `early_vs_final` measures it, gated at 50 paired games.
+#
+# ONLY ONE OF THESE TIMES WAS MEASURED. docs/TIMING_FEASIBILITY.md records
+# why the other three could not be -- the NFL injuries table carries no
+# timestamp at all, no college injury data is stored, and the NBA table holds
+# about 75 rows. MLB's T-1h30m comes from 39 real lineup captures: 85% were up
+# by then against 46% at the 2h30m originally proposed.
+#
+# 14:30 LOCAL, AND IT SERVES THE EVENING CARD ONLY. Measured first pitches,
+# on this machine's clock (UTC-7): 16:00 local carries 2,382 games and 15:00
+# local 1,288 -- the two biggest clusters by a distance. T-1h30m before 16:00
+# is 14:30.
+#
+# THE DAY GAMES ARE NOT COVERED BY IT, and saying so is the point. A baseball
+# night spreads 7.47 hours from first pitch to last (docs/TIMING_FEASIBILITY
+# section 6), so ONE daily pass cannot sit close to every game: at 14:30 the
+# 10:00 local games have been under way for four hours, and the final pass
+# correctly writes nothing for them -- their early forecast stands and is
+# labelled as the only one they got.
+#
+# Fixing that properly means a per-game trigger rather than a daily one, which
+# is a bigger change than this brief asked for and is recorded as such.
+New-GridironTask -Name "$($Prefix)Final-MLB" -TaskArg "final:mlb" `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At "14:30") `
+    -Description "Re-forecast today's baseball slate close to first pitch, on what is known then."
+
+New-GridironTask -Name "$($Prefix)Final-NFL" -TaskArg "final:nfl" `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At "08:00") `
+    -Description "Re-forecast the football slate on the morning of the games."
+
+New-GridironTask -Name "$($Prefix)Final-NBA" -TaskArg "final:nba" `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At "15:00") `
+    -Description "Re-forecast tonight's basketball slate after the league's injury report window."
+
+New-GridironTask -Name "$($Prefix)Final-CFB" -TaskArg "final:cfb" `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At "08:00") `
+    -Description "Re-forecast the college football slate on the morning of the games."
 
 # The logon trigger is scoped to THIS user on purpose. Without -User it applies
 # to every account on the machine, which Windows treats as a system-wide change

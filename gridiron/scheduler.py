@@ -39,6 +39,15 @@ OS_TASK_NAMES = {
     "predict:nfl": "Predict-NFL",
     "predict:nba": "Predict-NBA",
     "predict:cfb": "Predict-CFB",
+    # THE SECOND, LATER PASS PER SPORT (2026-09-03). Named here so the
+    # settings page can READ whether the machine holds them -- and, until the
+    # installer is run, say plainly that it does not. A mechanism nothing
+    # fires is a mechanism that does not run, and the panel should say so
+    # rather than showing four tasks that look installed.
+    "final:mlb": "Final-MLB",
+    "final:nfl": "Final-NFL",
+    "final:nba": "Final-NBA",
+    "final:cfb": "Final-CFB",
     "live": "Live",
 }
 
