@@ -166,10 +166,19 @@ def test_the_coverage_line_names_the_absences_rather_than_counting_them():
 
 
 def test_at_most_two_absences_are_named():
-    """A card listing nine absences is an inventory a reader skips."""
-    said = language.what_it_knew(2, ["a", "b", "c", "d"])
+    """A card listing nine absences is an inventory a reader skips.
+
+    THE FIRST VERSION OF THIS TEST WAS WRONG, not the code: it asserted the
+    letter "c" was absent from the sentence, and "c" occurs in "factors". A
+    test that fails on a substring of its own furniture proves nothing about
+    the thing it names -- the phrases here are distinctive on purpose.
+    """
+    said = language.what_it_knew(
+        2, ["the wind", "the travel", "the rest", "the surface"])
     assert "2 others" in said
-    assert "c" not in said.replace("couldn't", "")
+    assert "the wind" in said and "the travel" in said
+    assert "the rest" not in said, "a third absence was named"
+    assert "the surface" not in said, "a fourth absence was named"
 
 
 def test_a_complete_forecast_says_so_without_a_caveat():
