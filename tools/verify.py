@@ -202,6 +202,8 @@ def step_2_guards() -> bool:
          audit.check_the_nav_is_four_pages),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
+        ("the launcher refuses to attach to another build",
+         audit.check_the_launcher_refuses_a_stale_attach),
         ("no selector asks for a class nothing builds",
          audit.check_no_dead_selectors),
         ("the tier Picks opens on says what it filtered",

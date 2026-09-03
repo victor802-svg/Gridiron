@@ -1027,10 +1027,25 @@ def test_the_launcher_never_attaches_to_a_different_build():
     assert _launcher.attach_decision("a", "b") == _launcher.ASK
     assert _launcher.attach_decision("a", "b", confirmed=True) == _launcher.RESTART
     assert _launcher.attach_decision("a", "a") == _launcher.ATTACH
-    # UNKNOWN IS NOT MISMATCH: refusing on missing information would make the
-    # app unopenable for a reason nobody could act on.
-    assert _launcher.attach_decision("a", None) == _launcher.ATTACH
+
+    # A SERVER THAT CANNOT REPORT A BUILD IS STALE, NOT UNKNOWN (2026-09-03).
+    #
+    # This line asserted ATTACH until the carve-out it encoded cost the
+    # operator an hour. `/api/health` has carried the build since GRIDIRON_13
+    # P6, so a server answering without one is provably older than that --
+    # a definite answer, and the answer is "not this build". The app attached
+    # to exactly such a server, showed seven nav pages where the current app
+    # has four, no sport tabs at all, and looked perfectly healthy while being
+    # thirty-five commits behind.
+    assert _launcher.attach_decision("a", None) == _launcher.ASK
+    assert _launcher.attach_decision("a", None, confirmed=True) == _launcher.RESTART
+
+    # A LAUNCHER THAT CANNOT READ ITS OWN BUILD still attaches: nothing has
+    # been learned about the server, and refusing there would make the app
+    # unopenable for a reason nobody could act on. That is what the carve-out
+    # was actually for.
     assert _launcher.attach_decision(None, "b") == _launcher.ATTACH
+    assert _launcher.attach_decision(None, None) == _launcher.ATTACH
 
 
 def test_a_fifth_nav_item_is_caught_by_name():

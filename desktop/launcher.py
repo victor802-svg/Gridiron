@@ -229,13 +229,29 @@ def attach_decision(mine: str | None, theirs: str | None,
     `audit.stale_attach_faults` checks by running this function rather than by
     reading the launcher's source.
 
-    UNKNOWN IS NOT MISMATCH. A server too old to report a build at all, or a
-    launcher that cannot read its own, attaches: refusing on missing
-    information would make the app unopenable for a reason nobody could act
-    on.
+    THE TWO UNKNOWNS ARE NOT THE SAME THING, and treating them as one is what
+    let the photograph happen anyway on 2026-09-03.
+
+    A server that CANNOT REPORT A BUILD is not an open question. `/api/health`
+    has carried the build since GRIDIRON_13 P6, so a server answering without
+    one is provably older than that -- which is a definite answer, and the
+    answer is "stale". The app on 8848 that day reported `build: None`, this
+    function read it as missing information, and the launcher attached in
+    silence: seven nav pages, no sport tabs, thirty-five commits behind, every
+    screen rendering perfectly. Exactly the failure the paragraphs above
+    describe, reached through the one door left open.
+
+    A LAUNCHER THAT CANNOT READ ITS OWN BUILD is a real unknown and still
+    attaches. Nothing has been learned about the server in that case, and
+    refusing would make the app unopenable for a reason the operator cannot
+    act on -- which is what that carve-out was for.
     """
-    if not mine or not theirs:
+    if not mine:
+        # Nothing was learned about the server. Attach.
         return ATTACH
+    if not theirs:
+        # Answered, but with no build: older than the build stamp itself.
+        return RESTART if confirmed else ASK
     if mine == theirs:
         return ATTACH
     return RESTART if confirmed else ASK

@@ -1094,15 +1094,36 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
      pushes the page instead. The tabs become the flexible item and scroll
      inside themselves; the nav keeps its size because four short words are
      what a reader navigates by. */
+  /* THE TABS GET THEIR OWN ROW ON A PHONE (2026-09-03), because the fix
+     above solved the wrong half of the problem. Making the strip scrollable
+     stopped the PAGE overflowing -- and then hid two sports.
+
+     Measured at 390px before this change: the strip was 129px wide holding
+     246px of content, so NFL and MLB were visible and NBA and NCAAF sat
+     outside it, reachable only by swiping a strip whose scrollbar is
+     deliberately invisible (`scrollbar-width: none`, three lines below where
+     it used to be). The operator reported it as "i cant see mlb or any of the
+     sports tabs", which is exactly what it looked like.
+
+     A SCROLLBAR NOBODY CAN SEE IS NOT AN AFFORDANCE. Wrapping costs one row
+     of height on a phone and shows all four sports at once, which is what a
+     tab strip is for. The bar's height becomes automatic; it stays sticky. */
+  .bar { height: auto; }
+  .bar-inner {
+    flex-wrap: wrap;
+    align-items: center;
+    padding-top: 6px; padding-bottom: 6px;
+    row-gap: 2px;
+  }
   .bar-inner > * { min-width: 0; }
   .bar #sport-tabs {
-    flex: 1 1 auto;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    order: 3;
+    flex: 1 0 100%;
+    overflow: visible;
+    justify-content: space-between;
+    gap: 4px;
   }
   .bar #nav { flex: 0 1 auto; overflow-x: auto; scrollbar-width: none; }
-  .bar #sport-tabs::-webkit-scrollbar,
   .bar #nav::-webkit-scrollbar { display: none; }
   .bar #nav a, .bar #sport-tabs button { white-space: nowrap; }
 

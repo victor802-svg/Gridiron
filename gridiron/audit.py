@@ -2203,6 +2203,81 @@ def check_no_dead_selectors(root: Path | None = None) -> None:
             + _NL2 + _NL2.join(faults))
 
 
+#: THE DECISIONS THE LAUNCHER MAY MAKE ON FINDING A SERVER ALREADY RUNNING,
+#: as (launcher build, server build, what it must do). Declared here rather
+#: than read off the launcher's source, because the whole point is to run the
+#: real function and check its answer.
+#:
+#: WHY THIS SCAN EXISTS AT ALL. `attach_decision` has said in its own docstring
+#: since it was written that "audit.stale_attach_faults checks by running this
+#: function rather than by reading the launcher's source" -- and no such
+#: function existed. The comment described a guard nobody had written, which is
+#: the shape MENTOR 3 names: a docstring asserting a past change is a claim
+#: requiring a test. On 2026-09-03 the missing guard cost a real hour: the app
+#: attached to a server reporting no build at all, showed seven nav pages and
+#: no sport tabs, and looked entirely healthy while being thirty-five commits
+#: behind.
+STALE_ATTACH_CASES: tuple[tuple[str | None, str | None, str, str], ...] = (
+    ("abc123", "abc123", "attach",
+     "the same build is answering; there is nothing to warn about"),
+    ("abc123", "def456", "ask",
+     "the builds differ, which is the case the guard was written for"),
+    ("abc123", None, "ask",
+     "a server that cannot report a build is OLDER THAN THE BUILD STAMP, "
+     "which is a definite answer and the answer is stale -- not an unknown"),
+    (None, "def456", "attach",
+     "the launcher cannot read its own build, so nothing is known about the "
+     "server; refusing here would make the app unopenable for a reason "
+     "nobody could act on"),
+    (None, None, "attach",
+     "neither is known; the same reasoning"),
+)
+
+
+def stale_attach_faults() -> list[str]:
+    """Run the launcher's own decision function against every case.
+
+    BY RUNNING IT, NOT BY READING IT. A scan that grepped the launcher for the
+    word ATTACH would pass on a function that returned it for the wrong
+    reason, which is exactly what happened: the code was readable, the comment
+    was confident, and the decision was wrong for one input out of five.
+    """
+    faults: list[str] = []
+    try:
+        from desktop import launcher
+    except Exception as exc:  # noqa: BLE001 - a missing launcher is a fault
+        return [f"the launcher could not be imported to check it: "
+                f"{type(exc).__name__}: {exc}"]
+
+    for mine, theirs, expected, why in STALE_ATTACH_CASES:
+        got = launcher.attach_decision(mine, theirs)
+        if got != expected:
+            faults.append(
+                f"launcher build {mine!r} against server build {theirs!r}: "
+                f"expected {expected!r}, got {got!r}. {why}.")
+        # AND NO PATH FROM "THEY DIFFER" TO "ATTACH ANYWAY". A caller that has
+        # asked gets RESTART; it must never get ATTACH, or the confirmation
+        # dialog would be a formality in front of the very failure it exists
+        # to prevent.
+        if expected == "ask":
+            confirmed = launcher.attach_decision(mine, theirs, confirmed=True)
+            if confirmed == "attach":
+                faults.append(
+                    f"launcher build {mine!r} against server build {theirs!r}: "
+                    f"confirming the mismatch returned 'attach'. There is no "
+                    f"path from 'the builds differ' to 'attach anyway'.")
+    return faults
+
+
+def check_the_launcher_refuses_a_stale_attach() -> None:
+    faults = stale_attach_faults()
+    if faults:
+        raise LawViolation(
+            "THE LAUNCHER WOULD SHOW A PHOTOGRAPH -- attaching to a server "
+            "that is not running this build, silently:"
+            + _NL2 + _NL2.join(faults))
+
+
 def check_the_default_never_hides_the_count(conn=None) -> None:
     """Every sport's slate, as Picks opens it (R2, 2026-09-02)."""
     from gridiron import db as _db

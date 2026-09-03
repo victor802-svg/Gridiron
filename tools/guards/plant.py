@@ -1076,6 +1076,168 @@ def plant_an_early_row_entering_calibration() -> Result:
                   "only the final row reached the record")
 
 
+LAW_ASKED = "THE ASKED LINE IS A DISTANCE"
+
+
+def plant_an_asked_line_that_is_not_a_distance() -> Result:
+    """Compute the asked-line factor from the rung alone, as it used to be.
+
+    THIS IS THE BUG THE RULING REPAIRED, replanted. Under nearest-expected-
+    margin rungs the rung IS the rating, coarsened: it is chosen as the ladder
+    point nearest minus the expected margin, so handing it to the model as a
+    factor tells the model the rating a second time. Measured before the
+    repair: |corr| 0.9816 between `cfb_asked_line` and `cfb_srs_diff`.
+
+    A guard cannot read a coefficient's meaning, so this measures the thing
+    that made it meaningless -- correlation with the rating on real rows.
+    Anything above 0.5 is not an independent instrument.
+    """
+    from gridiron import config as _config
+    from gridiron import sports as _sports
+    from gridiron.model import questions as _q
+
+    def corr(a, b):
+        n = len(a)
+        if n < 3:
+            return None
+        ma, mb = sum(a) / n, sum(b) / n
+        va = sum((x - ma) ** 2 for x in a)
+        vb = sum((x - mb) ** 2 for x in b)
+        if va <= 0 or vb <= 0:
+            return None
+        return sum((a[i] - ma) * (b[i] - mb) for i in range(n)) / ((va * vb) ** 0.5)
+
+    conn = db.connect()
+    seasons = _config.SPORT_LOAD_SEASONS.get("cfb", _config.DEFAULT_LOAD_SEASONS)
+    rows, _labels, _names = _sports.get("cfb").training_set(conn, seasons, "spread")
+    conn.close()
+
+    pres = [r for r in rows
+            if "cfb_srs_diff" in r and "cfb_asked_distance" in r]
+    if len(pres) < 100:
+        return Result(LAW_ASKED, "an asked line computed from the rung alone",
+                      "correlation with the rating", False,
+                      f"only {len(pres)} rows to measure on")
+
+    rating = [r["cfb_srs_diff"] for r in pres]
+    good = [r["cfb_asked_distance"] for r in pres]
+    # THE PLANTED VERSION: the rung itself, reconstructed exactly. The shipped
+    # factor is `-rung - expected`, and the expected margin is recoverable
+    # from the rating, so `rung = -(distance + expected)` is the old factor
+    # to the last decimal rather than a lookalike.
+    bad = []
+    for r in pres:
+        expected = _q.cfb_expected_margin(r["cfb_srs_diff"], 0.0)
+        bad.append(-(r["cfb_asked_distance"] + expected))
+
+    c_bad = abs(corr(bad, rating) or 0.0)
+    c_good = abs(corr(good, rating) or 0.0)
+
+    if c_bad < 0.5:
+        return Result(
+            LAW_ASKED, "an asked line computed from the rung alone",
+            "correlation with the rating", False,
+            f"the planted copy correlates only {c_bad:.4f} with the rating, so "
+            f"this planting no longer reproduces the defect it was written for")
+    if c_good >= 0.5:
+        return Result(
+            LAW_ASKED, "an asked line computed from the rung alone",
+            "correlation with the rating", False,
+            f"the SHIPPED factor correlates {c_good:.4f} with the rating -- it "
+            f"is a coarsened copy of it, and its coefficient cannot be read as "
+            f"an independent effect")
+    return Result(
+        LAW_ASKED, "an asked line computed from the rung alone",
+        "correlation with the rating", True,
+        f"the rung alone correlates {c_bad:.4f} with the rating; the shipped "
+        f"distance correlates {c_good:.4f}")
+
+
+def plant_a_market_value_in_the_asked_line_path() -> Result:
+    """Reach for a market line inside the factor that sets the asked line.
+
+    LAW 1. The rung is chosen BEFORE the model runs and is one of its inputs,
+    so a market value reaching this path would make the market an input to
+    the question itself -- not merely to the probability. The closure scan is
+    what stops it, and this proves the scan covers the new code.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.db"))
+        victim = root / "model" / "questions.py"
+        victim.write_text(
+            victim.read_text(encoding="utf-8")
+            + chr(10) + chr(10)
+            + "def _peek_at_the_line(conn, game_id):" + chr(10)
+            + "    row = conn.execute(" + chr(10)
+            + "        'SELECT spread_line FROM market_lines_raw WHERE game_id = ?'," + chr(10)
+            + "        (game_id,)).fetchone()" + chr(10)
+            + "    return row['spread_line'] if row else None" + chr(10),
+            encoding="utf-8")
+        try:
+            audit.check_prediction_closure(root=root)
+        except audit.LawViolation as exc:
+            return Result("LAW 1", "a market value in the asked-line path",
+                          "audit.check_prediction_closure", True, str(exc))
+    return Result("LAW 1", "a market value in the asked-line path",
+                  "audit.check_prediction_closure", False,
+                  "NOT CAUGHT - the rung could be chosen from the market's "
+                  "own number, which would make the market an input to the "
+                  "question and not merely to the answer")
+
+
+def plant_a_launcher_attaching_to_an_older_build() -> Result:
+    """Restore the carve-out that showed a photograph on 2026-09-03.
+
+    THIS ONE HAPPENED, to the operator, in the middle of a session. The app
+    opened on a server reporting no build at all: seven nav pages where the
+    current app has four, no sport tabs, thirty-five commits behind, and every
+    screen rendering perfectly. `attach_decision` read "no build" as missing
+    information and attached in silence -- the exact failure its own docstring
+    describes, reached through the one door left open.
+
+    Planted by monkeypatching the real decision function back to the old rule
+    and running the real scan against it, so this proves the SCAN fires rather
+    than that a copied lookalike does.
+    """
+    from desktop import launcher as _launcher
+
+    original = _launcher.attach_decision
+
+    def old_rule(mine, theirs, *, confirmed=False):
+        # THE CARVE-OUT AS IT WAS: either unknown means attach.
+        if not mine or not theirs:
+            return _launcher.ATTACH
+        if mine == theirs:
+            return _launcher.ATTACH
+        return _launcher.RESTART if confirmed else _launcher.ASK
+
+    _launcher.attach_decision = old_rule
+    try:
+        faults = audit.stale_attach_faults()
+    finally:
+        _launcher.attach_decision = original
+
+    if not faults:
+        return Result(
+            "A STALE ATTACH IS A PHOTOGRAPH",
+            "attach to a server that cannot report its build",
+            "audit.stale_attach_faults", False,
+            "NOT CAUGHT - the launcher would open on an older build in "
+            "silence, which is how the operator spent an hour looking for "
+            "sport tabs that had shipped five days earlier")
+    if audit.stale_attach_faults():
+        return Result(
+            "A STALE ATTACH IS A PHOTOGRAPH",
+            "attach to a server that cannot report its build",
+            "audit.stale_attach_faults", False,
+            "the scan fires on the SHIPPED launcher too")
+    return Result("A STALE ATTACH IS A PHOTOGRAPH",
+                  "attach to a server that cannot report its build",
+                  "audit.stale_attach_faults", True, faults[0])
+
+
 def plant_a_final_pass_inside_the_market_closure() -> Result:
     """Import the market module from the final pass's own code path.
 
@@ -3502,6 +3664,9 @@ def main() -> int:
     results.append(plant_a_default_tier_that_hides_the_count())
     results.append(plant_a_selector_for_a_class_nothing_builds())
     results.append(plant_a_final_pass_inside_the_market_closure())
+    results.append(plant_a_launcher_attaching_to_an_older_build())
+    results.append(plant_an_asked_line_that_is_not_a_distance())
+    results.append(plant_a_market_value_in_the_asked_line_path())
     results.append(plant_two_standing_rows_for_one_question())
     results.append(plant_a_final_pass_writing_after_start())
     results.append(plant_an_early_row_entering_calibration())

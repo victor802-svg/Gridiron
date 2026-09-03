@@ -616,6 +616,35 @@ def why_is_flipped(item: dict) -> bool:
     return is_no_side(item)
 
 
+#: The factors whose value is a signed distance in points, per sport. Named
+#: rather than pattern-matched: a name that merely ENDS in "asked_distance"
+#: could be anything, and this list is short enough to say out loud.
+ASKED_DISTANCE_FACTORS = ("asked_distance", "nba_asked_distance",
+                          "cfb_asked_distance")
+
+
+def asked_distance_phrase(name: str, value) -> str | None:
+    """"the question sits 6 points above what the model expects".
+
+    None for any other factor, so the caller falls back to the declared WHY
+    phrase. ROUNDED TO WHOLE POINTS because half a point of rounding residual
+    is not a thing a reader needs four decimals of, and "sits 0.4 points
+    above" reads as precision nobody claimed.
+
+    AT ZERO IT SAYS SO PLAINLY rather than "0 points above", which reads as a
+    measurement that failed.
+    """
+    if name not in ASKED_DISTANCE_FACTORS or value is None:
+        return None
+    points = round(float(value))
+    if points == 0:
+        return "the question sits about where the model expects"
+    word = "above" if points > 0 else "below"
+    unit = "point" if abs(points) == 1 else "points"
+    return (f"the question sits {abs(points)} {unit} {word} what the model "
+            f"expects")
+
+
 def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
     """The plain-English reasons for one pick, at most three sentences.
 
@@ -639,7 +668,12 @@ def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
         value = c.get("contribution")
         if not name or value is None or c.get("missing"):
             continue
-        phrase = known.get(name)
+        # A VALUE-AWARE PHRASE WHERE THE VALUE IS THE POINT (B3, 2026-09-03).
+        # "How far the question sits from what the model expects" is a label;
+        # "the question sits 6 points above what the model expects" is the
+        # thing itself, and the distance factors are the only ones whose
+        # value is already in the reader's own units -- points.
+        phrase = asked_distance_phrase(name, c.get("value")) or known.get(name)
         if not phrase:
             # A factor with no declared phrase is SKIPPED rather than rendered
             # as its identifier. A test fails on any such factor, so this is a

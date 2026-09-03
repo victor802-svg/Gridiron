@@ -698,11 +698,37 @@ def test_the_sport_tabs_are_reachable_and_tappable(phone):
     assert len(tabs) == len(config.SPORTS), (
         f"expected one tab per declared sport ({len(config.SPORTS)}), "
         f"found {len(tabs)}")
+    # THE LABELS THE REAL APP PRODUCES, not the ones this world happens to
+    # have. Every sport in the synthetic league is empty, so its tabs read
+    # "NFL" where the operator's read "MLB 85-49" -- and a strip that clips
+    # the real labels fits the short ones perfectly. That is why the earlier
+    # version of this test passed while two sports sat off the screen.
+    #
+    # The counts are stretched to the longest realistic form and the layout is
+    # asked to cope. This tests the LAYOUT, which is what was broken.
+    phone.evaluate("""() => {
+        document.querySelectorAll('#sport-tabs .tab-n').forEach(n => {
+            n.textContent = '00-00';
+        });
+    }""")
+    phone.wait_for_timeout(120)
+
+    width = phone.evaluate("window.innerWidth")
     for tab in tabs:
         box = tab.bounding_box()
         assert box["height"] >= 44, (
             f"a sport tab is {box['height']:.0f}px tall; 44 is the smallest "
             "target a thumb reliably hits"
+        )
+        # REACHABLE MEANS ON THE SCREEN, which this test did not check until
+        # 2026-09-03. The tabs sat in a 129px strip holding 246px of content
+        # with its scrollbar deliberately hidden, so NBA and NCAAF were
+        # outside the viewport and this test passed anyway -- it measured the
+        # buttons and never asked where they were.
+        assert box["x"] >= -0.5 and box["x"] + box["width"] <= width + 0.5, (
+            f"the {tab.text_content().strip()[:12]!r} tab spans "
+            f"{box['x']:.0f}..{box['x'] + box['width']:.0f}px on a {width}px "
+            f"screen. A tab a reader cannot see is a sport they cannot find."
         )
 
 
