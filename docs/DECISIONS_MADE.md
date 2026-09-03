@@ -261,3 +261,82 @@ forward, so a live database that held calls no longer holds them. Restoring the
 feature means restoring the rows too, and there are none.
 
 **The one row that existed was a test's.** Nothing a person recorded was lost.
+
+---
+
+## 2026-09-02 — PrizePicks is UNAVAILABLE BY EVIDENCE
+
+**Ruling (operator):** the LAW 5 amendment stands. The source is unavailable by
+evidence. **No proxies, no bypass.**
+
+**The evidence**, measured 2026-09-02 and recorded in
+`docs/PRIZEPICKS_FEASIBILITY.md`: `GET https://api.prizepicks.com/projections`
+answers **HTTP 403 with a DataDome CAPTCHA challenge** on the first request
+from a clean client with an honest User-Agent. `api.prizepicks.com/robots.txt`
+returns the same challenge — the host will not serve its own robots file.
+
+**Unavailable by evidence, not by policy, and the distinction is the point.**
+Nothing about PrizePicks was judged; a measurement was taken and it came back
+403. If an official or documented feed appears, this becomes ordinary work and
+the law already permits it — the amendment names the source, and the
+one-module quarantine (`audit.market_source_faults`, planted and caught) is a
+real guard that will hold when a lawful source arrives.
+
+**What "no proxies, no bypass" forecloses**, written down so a later session
+does not rediscover it as a clever idea: no rotating identities, no browser-
+shaped User-Agent, no headless browser driven at the endpoint, no third-party
+scraping service, no residential proxy. Each of those defeats the challenge
+rather than satisfying it, and "unauthenticated, read-only, public" means
+nothing if the first two words are engineered.
+
+**The roster is rebuilt on a different axis.** The brief's ranking was volume ×
+data availability, and volume was the half only PrizePicks could supply.
+`docs/MARKET_ROSTER.md` is now built from **what our own loaders can already
+resolve**, ranked by resolution data × per-slate count — both halves measured
+here, neither guessed. Markets are built one per session from it.
+
+---
+
+## 2026-09-02 — NCAAF's 88% STRONG band: no change
+
+**Ruling (operator):** no change. The extended ladder and the asked-line
+redeclaration (GRIDIRON_18, 18B) are the fixes; **the record judges them.**
+
+College football puts 15 of 17 picks in STRONG — 88% of a slate in the most
+confident band, which distinguishes almost nothing. The measured cause is
+recorded in `docs/closeouts/2026-09-02-cfb-ladder.md`: the college spread base
+rate is **0.371, not 0.5**, so `cfb_expected_margin` runs high and the
+probabilities it feeds run confident.
+
+**Nothing is tuned to make the band look better.** A tier distribution adjusted
+until it reads well is a distribution that describes the adjustment. The ladder
+extension (2026-09-02, top rung 27.1% → 3.5%) and 18B's asked-line
+redeclaration are changes with reasons; whether they worked is a question for
+settled rows, and college football has **0 settled** so far.
+
+Under ruling R2 this over-confidence is the first thing a reader sees, because
+Picks opens on STRONG. That is the ruling working — the weakest band is in
+front of the operator rather than buried three taps down.
+
+---
+
+## 2026-09-02 — the 119/119 correction stands; pushed history is never rewritten
+
+**Ruling (operator):** the correction stands as recorded. **Never rewrite
+pushed history.**
+
+Commit `3fe3179` claims "120/120 plantings (three new)". The true figures were
+**119/119, two new**. The error was mine, in a commit message, on a commit that
+had already been pushed.
+
+It was corrected **in the close-out**, in prose, rather than by amending or
+force-pushing the commit. That is now the standing rule for this repository: a
+wrong commit message is corrected forward, in a document that says what was
+wrong and what is true. Rewriting the commit would make the record of the
+mistake disappear along with the mistake, and a project whose whole claim is
+"it keeps score of itself honestly" cannot edit its own history to look better
+at it.
+
+The same rule covers the amended-then-superseded, the miscounted, and the
+mistaken: **append the correction, never revise the original.** It is LAW 3
+applied to the repository rather than to the predictions.
