@@ -119,7 +119,8 @@ def write_prediction(
         " AND subject = ? AND predictor = ? AND factor_set_version = ?"
         "   AND pass_kind = ?",
         (q.game_id, q.market_type, q.subject, predictor,
-         config.FACTOR_SET_VERSION, "final" if final else "early"),
+         config.factor_set_version(q.sport, q.market_type),
+         "final" if final else "early"),
     ).fetchone()
     # MIRRORS THE UNIQUE INDEX, `pass_kind` included (2026-09-03). A check that
     # does not match the constraint it stands in for is worse than none: it
@@ -166,7 +167,10 @@ def write_prediction(
             side,
             predictor,
             "final" if final else "early",
-            config.FACTOR_SET_VERSION,
+            # PER MARKET (2026-09-03). A spread row written today carries fs3
+            # and an MLB moneyline row still carries fs2, because only the
+            # spread factor sets changed.
+            config.factor_set_version(q.sport, q.market_type),
             json.dumps(payload),
             reasoning,
             degraded,

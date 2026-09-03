@@ -105,6 +105,8 @@ def cfb_srs_diff(ctx) -> float | None:
     # every single moneyline row -- which is checklist item 2's broken
     # instrument: not a weak signal, nothing to fit at all.
     applies_to=("spread",),
+    active=False,
+    deactivated="2026-09-03T00:00:00Z",
     why="which number the question was asked at",
     rationale=(
         "CHECKLIST ITEM 1: the model must be told which rung it was asked at, "
@@ -115,8 +117,22 @@ def cfb_srs_diff(ctx) -> float | None:
         "which one it was given would be answering a question it cannot see."
     ),
     note=(
-        "DOCUMENTED 2026-09-02, NOT CHANGED (ruling CFB-2, deliberately "
-        "BLOCKED). Under the nearest-margin rung rule this factor is a "
+        "RETIRED 2026-09-03 by operator ruling and REPLACED, not refuted. "
+        "Its successor is `cfb_asked_distance`: the SIGNED DISTANCE between "
+        "the rung and the expected margin, which is what this factor was "
+        "reaching for and could not express while it carried the rung's "
+        "absolute value. A NEW NAME RATHER THAN A NEW DATE ON THE OLD ONE, "
+        "because LAW 2's registry refuses to move a factor's activation date "
+        "and is right to: the instrument changed, so its forward record "
+        "starts today rather than inheriting a score earned by a different "
+        "measurement. Rows already written under this factor stand, with "
+        "their factor-set version attached. The measured before-and-after "
+        "correlation is in docs/closeouts/2026-09-03-asked-line.md. "
+        "WHAT FOLLOWS IS THE 2026-09-02 DIAGNOSIS THAT LED HERE, kept "
+        "verbatim because the ruling it asked for has now been made. "
+        "DOCUMENTED 2026-09-02, NOT CHANGED at the time (ruling CFB-2, "
+        "deliberately BLOCKED). Under the nearest-margin rung rule this "
+        "factor is a "
         "COARSENED FUNCTION OF `cfb_srs_diff`: the rung is chosen as the "
         "ladder entry nearest minus the expected margin, and the expected "
         "margin is computed from the rating difference. So `cfb_asked_line` "
@@ -134,6 +150,23 @@ def cfb_srs_diff(ctx) -> float | None:
 )
 def cfb_asked_line(ctx) -> float | None:
     return None if ctx.line_asked is None else float(ctx.line_asked)
+
+
+@factor(
+    added="2026-09-03T00:00:00Z",
+    sport="cfb",
+    applies_to=("spread",),
+    why="how far the question sits from what the model expects",
+    rationale=(
+        "HOW FAR THE QUESTION SITS FROM WHAT THE MODEL EXPECTS, in points: the margin the rung demands minus the margin the ratings imply. A home side expected to win by fourteen, asked at -14.5, reads +0.5 -- the question wants half a point more than the model does. Positive means the question asks for MORE than expected, negative means it is easier than expected. Declared 2026-09-03 by operator ruling, replacing the rung itself. WHY THE RUNG ITSELF HAD TO GO. Under the nearest-expected-margin rule the rung is CHOSEN as the ladder point nearest minus the expected margin, so asking the model which rung it was given told it the rating difference a second time, coarsened -- measured at a correlation of -0.94 with cfb_srs_diff. Its coefficient could not be read as an independent effect, because it was not one. WHY THIS IS ORTHOGONAL BY CONSTRUCTION AND NOT BY LUCK: what remains after subtracting the expectation is the ROUNDING RESIDUAL of the ladder's own choice. It carries how far the ladder had to round and nothing about how good the teams are, which is precisely the quantity a model needs in order to know whether it was handed an easy question or a hard one. This is the same instrument mlb_prop_mean_vs_line already is for props: the question's distance from the model's own expectation. ABSENT, not zero, when either rating is missing -- a game with no expected margin has no distance from one, and a zero would read as 'the question sits exactly where the model expects', which is a claim."
+    ),
+)
+def cfb_asked_distance(ctx) -> float | None:
+    from ..model import questions
+
+    return questions.asked_distance(
+        ctx.line_asked,
+        questions.cfb_expected_margin(ctx.home_rating, ctx.away_rating))
 
 
 @factor(

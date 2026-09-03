@@ -1191,8 +1191,12 @@ def test_answering_a_slate_twice_is_refused(tmp_path):
             " factor_set_version, factors_json, reasoning)"
             " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', ?, ?, ?, -3.5,"
             " 0.53, 'cover', 'statistical', ?, '{}', 'x')",
+            # PER MARKET (2026-09-03). Seeding every row with the global
+            # default made the spread rows fs2 while the guard now looks for
+            # fs3, so the slate read as unanswered and the guard could not
+            # fire -- which is exactly what this test exists to catch.
             (_kind, _market if _kind == "prop" else None, f"AAA {_market}",
-             _config.FACTOR_SET_VERSION))
+             _config.factor_set_version("nfl", _kind)))
     conn.commit()
     with pytest.raises(_run.SlateAlreadyAnswered, match="answered once"):
         _run.run_slate(conn, "nfl", 2026, 1, snapshot=False, use_llm=False)

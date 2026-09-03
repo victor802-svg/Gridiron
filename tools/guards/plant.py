@@ -901,8 +901,11 @@ def plant_a_slate_answered_twice() -> Result:
             " factor_set_version, factors_json, reasoning)"
             " VALUES ('2026-08-29T05:55:46Z', 'nfl_x', 'nfl', ?, ?, ?,"
             " -3.5, 0.53, 'cover', 'statistical', ?, '{}', 'x')",
+            # PER MARKET (2026-09-03). Seeding every row with the global
+            # default leaves the spread rows on fs2 while the guard looks for
+            # fs3, so the slate reads as unanswered and the guard cannot fire.
             (kind, market if kind == "prop" else None, f"AAA {market}",
-             _run.config.FACTOR_SET_VERSION))
+             _run.config.factor_set_version("nfl", kind)))
     conn.commit()
     try:
         _run.run_slate(conn, "nfl", 2026, 1, snapshot=False, use_llm=False)

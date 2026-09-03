@@ -44,12 +44,20 @@ def already_answered(conn, sport: str, season: int, week: int,
     asking twice is a duplicate, and only the later one counts.
     """
     rows = conn.execute(
-        "SELECT p.market_type, COUNT(*) AS n, MIN(p.created_utc) AS first_written"
+        "SELECT p.market_type, p.factor_set_version,"
+        "       COUNT(*) AS n, MIN(p.created_utc) AS first_written"
         "  FROM predictions p JOIN games g ON g.id = p.game_id"
         " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
-        "   AND p.factor_set_version = ?"
-        " GROUP BY p.market_type",
-        (sport, season, week, config.FACTOR_SET_VERSION)).fetchall()
+        " GROUP BY p.market_type, p.factor_set_version",
+        (sport, season, week)).fetchall()
+    # PER MARKET (2026-09-03). A slate is answered once PER FACTOR SET, and
+    # the spread's set is no longer the same string as the props'. Matched in
+    # Python rather than in a CASE expression: the version a market belongs to
+    # is a fact about configuration, and a SQL CASE built by string-joining it
+    # was both unreadable and wrong on its first outing.
+    rows = [r for r in rows
+            if r["factor_set_version"]
+            == config.factor_set_version(sport, r["market_type"])]
     answered = {r["market_type"]: r["n"] for r in rows}
     written = sum(answered.values())
 

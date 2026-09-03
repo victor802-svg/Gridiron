@@ -38,13 +38,26 @@ def test_the_spread_ladder_never_pushes():
         assert abs(rung * 2) % 2 == 1, f"{rung} can push"
 
 
-def test_the_ladder_is_wider_than_footballs():
+def test_the_ladder_is_spaced_for_basketball_not_copied_from_football():
     """A four-point NBA spread is close to a coin flip where a four-point NFL
-    spread is not, so the rungs are spaced for the sport rather than copied."""
+    spread is not, so the rungs are spaced for the sport rather than copied.
+
+    THE TEST CHANGED ON 2026-09-03 AND THE PROPERTY DID NOT. It used to assert
+    that the NBA ladder reached further than football's, which stopped being
+    true when football's was extended to -15.5 for the same rule. Reach was
+    never the point -- both ladders now reach as far as their own sport's
+    expected margins go. What distinguishes them is SPACING, and the NBA's is
+    still the wider of the two.
+    """
     from gridiron.model import questions as nfl_questions
 
-    assert max(abs(r) for r in nba.SPREAD_LADDER) > max(
-        abs(r) for r in nfl_questions.SPREAD_LADDER
+    def widest_gap(ladder):
+        rungs = sorted(ladder)
+        return max(b - a for a, b in zip(rungs, rungs[1:]))
+
+    assert widest_gap(nba.SPREAD_LADDER) >= widest_gap(nfl_questions.SPREAD_LADDER)
+    assert nba.SPREAD_LADDER != nfl_questions.SPREAD_LADDER, (
+        "the NBA ladder is football's, copied"
     )
 
 
@@ -241,8 +254,11 @@ def test_a_renamed_arena_is_not_a_neutral_site(conn):
 
 def test_every_nba_factor_is_namespaced_and_carries_a_rationale():
     factors = [f for f in registry.all_factors() if f.sport == "nba"]
-    assert len(factors) == 16
-    assert len([f for f in factors if "spread" in f.applies_to]) == 9
+    # 17 and 10 from 2026-09-03: `nba_asked_distance` was declared and
+    # `nba_asked_line` retired in its place, so the spread set gains a factor
+    # and the ACTIVE count stays where it was.
+    assert len(factors) == 17
+    assert len([f for f in factors if "spread" in f.applies_to]) == 10
     assert len([f for f in factors if "prop" in f.applies_to]) == 7
     assert sum(f.active for f in factors) == 15, (
         "nba_back_to_back is deactivated in favour of nba_b2b_either"

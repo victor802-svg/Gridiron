@@ -360,3 +360,15 @@ def _completed_for_training(conn, seasons, through_season, through_week):
         sql += " AND (season < ? OR (season = ? AND week <= ?))"
         params += [through_season, through_season, through_week or 99999999]
     return conn.execute(sql + " ORDER BY kickoff_utc, id", params).fetchall()
+
+
+def markets() -> tuple[str, ...]:
+    """The markets this sport asks about.
+
+    ADDED 2026-09-03. `run.already_answered` has called this on every sport
+    since the duplicate-slate guard was written (ruling R4, 2026-09-02), and
+    neither this module nor the NBA's defined it -- so the guard raised
+    AttributeError before it could refuse anything. The protection that stopped
+    NFL week 1 being forecast twice has never covered these two sports.
+    """
+    return config.SPORT_MARKETS[SPORT]

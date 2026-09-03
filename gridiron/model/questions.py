@@ -44,7 +44,30 @@ from .. import config
 from ..data import repo
 
 #: Home-team spread rungs. Negative means the home side gives points.
-SPREAD_LADDER: tuple[float, ...] = (-7.5, -3.5, 0.5, 3.5)
+#:
+#: EXTENDED 2026-09-03 from `(-7.5, -3.5, 0.5, 3.5)` when the operator's
+#: ruling brought NFL and NBA under the nearest-expected-margin rule (R4).
+#: Four rungs were enough while the rung was chosen by hashing the game id --
+#: any four numbers are, because the choice carried no meaning. Chosen by
+#: nearest margin they have to REACH, and measured against the fitted
+#: expected margins they did not:
+#:
+#:            refused as beyond the ladder     busiest rung
+#:   old (4)        NFL 2.28%  NBA 7.83%       NFL 35.1%  NBA 25.4%
+#:   new (11)       NFL 0.26%  NBA 0.60%       NFL 20.2%  NBA 15.2%
+#:
+#: SEVEN RUNGS WERE ADDED AND NONE WAS MOVED, which is the rule CFB-1 settled
+#: on 2026-09-02: predictions already stand at -7.5, -3.5, +0.5 and +3.5, so
+#: those numbers stay on the ladder they were asked against (LAW 3). A
+#: re-spacing would have read slightly better and would have retired four
+#: rungs the record already uses.
+SPREAD_LADDER: tuple[float, ...] = (
+    -15.5, -11.5, -9.5, -7.5, -5.5, -3.5, -1.5, 0.5, 3.5, 5.5, 7.5,
+)
+
+#: When the ladder above was extended, and what it was before.
+SPREAD_LADDER_DECLARED = "2026-09-03T00:00:00Z"
+SPREAD_LADDER_BEFORE: tuple[float, ...] = (-7.5, -3.5, 0.5, 3.5)
 
 #: COLLEGE FOOTBALL'S OWN LADDER, because NFL's is far too narrow for it.
 #: Measured 2026-08-31 over 260 completed 2025 games: home-margin SD is 22.46
@@ -117,6 +140,102 @@ CFB_RUNG_RULE_ACTIVATED = "2026-09-01T00:00:00Z"
 #: difference into an expected margin, which is what the rung is chosen
 #: against.
 CFB_HOME_MARGIN = 9.79
+
+
+#: WHAT THE MODEL EXPECTS THE HOME SIDE TO WIN BY, per sport (2026-09-03).
+#:
+#: `expected margin = intercept + slope x (home rating - away rating)`, both
+#: numbers MEASURED by least squares of the actual margin on the rating
+#: difference, over every completed game in the loaded seasons.
+#:
+#:   nfl  +1.932 + 0.4426 x rating_diff   n=2725  R^2 0.095  resid sd 13.50
+#:   nba  +2.078 + 0.5963 x rating_diff   n=4841  R^2 0.148  resid sd 14.29
+#:   cfb  +4.848 + 0.9351 x rating_diff   n=1625  R^2 0.357  resid sd 17.39
+#:
+#: THE SLOPE IS THE PART THAT MATTERS, and assuming it is 1.0 is what went
+#: wrong before. A rating difference of ten points does not buy ten points of
+#: margin: it buys 4.4 in the NFL and 6.0 in the NBA, because a rating is an
+#: average over a season and any single game regresses hard toward it. An
+#: instrument built on slope 1.0 expects blowouts that do not arrive, picks a
+#: rung too far out, and asks a question the favourite quietly fails.
+#:
+#: THIS IS NOT FACTOR DISCOVERY (LAW 2). It calibrates the instrument that
+#: CHOOSES THE QUESTION -- which rung to ask at -- and never touches a
+#: probability. Two numbers per sport, declared in advance and dated, with no
+#: search over variants: the same act as measuring CFB_HOME_MARGIN, carried
+#: one term further.
+#:
+#: CFB'S ENTRY IS RECORDED AND NOT YET USED. `cfb_expected_margin` still runs
+#: on its original slope of 1.0 and intercept of 9.79, and changing it would
+#: change which questions college football asks -- a bigger act than this
+#: ruling authorises. The measurement above is the first quantification of the
+#: defect already recorded in FOLLOWUPS (spread base rate 0.371, not 0.5): the
+#: intercept is roughly double what the data says and the slope is 6% high.
+#: It needs an operator ruling, not a quiet edit.
+EXPECTED_MARGIN_FIT: dict[str, tuple[float, float]] = {
+    "nfl": (1.932, 0.4426),
+    "nba": (2.078, 0.5963),
+    "cfb": (4.848, 0.9351),
+}
+
+#: When the fit above was measured.
+EXPECTED_MARGIN_FIT_DECLARED = "2026-09-03T00:00:00Z"
+
+
+def expected_margin(sport: str, home_rating: float | None,
+                    away_rating: float | None) -> float | None:
+    """The home side's expected winning margin, from stored ratings only.
+
+    BLIND BY CONSTRUCTION, and that is why it is built from ratings rather
+    than from anything better: the rung has to be chosen BEFORE the model
+    runs, because the rung is one of the model's inputs. Anything that could
+    see a published line here would make the market an input to the question,
+    which LAW 1 forbids and the closure scan would catch.
+
+    ABSENT, not zero, when either rating is missing. A game with no rating has
+    no expected margin, and a zero would read as "an even game" -- which is a
+    claim, and the wrong one.
+    """
+    if home_rating is None or away_rating is None:
+        return None
+    fit = EXPECTED_MARGIN_FIT.get(sport)
+    if fit is None:
+        return None
+    intercept, slope = fit
+    return intercept + slope * (home_rating - away_rating)
+
+
+def asked_distance(line_asked: float | None,
+                   expected: float | None) -> float | None:
+    """How far the question sits from what the model expects, in points.
+
+    THE SIGN CONVENTION, WRITTEN DOWN BECAUSE GUESSING IT IS THE CLASSIC
+    FAILURE HERE. A rung is a spread from the home side's view: the question
+    is whether `(home - away) + rung` clears zero, so a rung of -14.5 asks
+    "does the home side win by more than 14.5". The margin the question
+    DEMANDS is therefore `-rung`.
+
+        distance = (margin demanded) - (margin expected) = -rung - expected
+
+    Positive means the question asks for MORE than the model expects, so the
+    model should lean to the under side of it; negative means the question is
+    easier than the model's own expectation. A home side expected to win by
+    14, asked at -14.5, gives +0.5: the question sits half a point above the
+    expectation, which is exactly the rounding the ladder imposes.
+
+    WHY THIS IS ORTHOGONAL TO THE RATING, by construction rather than by
+    luck: the rung is CHOSEN as the ladder point nearest `-expected`, so this
+    quantity is the rounding residual of that choice. It carries how far the
+    ladder had to round, and nothing about how good the teams are. Under the
+    old definition -- the rung itself -- it carried the rating twice, once as
+    `srs_diff` and once coarsened, which is what `cfb_asked_line` had become.
+
+    This is the same instrument `mlb_prop_mean_vs_line` already is for props:
+    the question's distance from the model's own expectation.
+    """
+    if line_asked is None or expected is None:
+        return None
+    return -float(line_asked) - float(expected)
 
 
 def cfb_expected_margin(home_rating: float | None,
@@ -325,8 +444,52 @@ def stable_index(key: str, modulus: int) -> int:
     return zlib.crc32(key.encode("utf-8")) % modulus
 
 
-def spread_rung(game_id: str) -> float:
-    return SPREAD_LADDER[stable_index(game_id, len(SPREAD_LADDER))]
+def spread_rung(game_id: str, expected: float | None = None,
+                ladder: tuple[float, ...] | None = None) -> float:
+    """The declared rung nearest to a coin flip for this game.
+
+    R4 EXTENDED TO NFL AND NBA by operator ruling, 2026-09-03. The rung is
+    chosen nearest to MINUS the expected margin, because the question is
+    whether `(home - away) + rung` clears zero: a home side expected to win
+    by fourteen is asked at -14.5, which is the rung that actually asks
+    something. College football has worked this way since 2026-09-02 and this
+    is the same rule, on the same reasoning, for the other two.
+
+    WHAT THE ROTATION WAS DOING WRONG. Hashing the game id spreads questions
+    evenly across the ladder, which sounds fair and is not: it asks "does the
+    home side cover -7.5" as often of a team expected to lose as of one
+    expected to win by twenty. Those are not hard questions, they are
+    unbalanced ones, and a record full of them measures the fixture list.
+
+    Falls back to the rotation ONLY when no expected margin exists -- a team
+    with no rating yet -- and that fallback is a declared absence rather than
+    a preference.
+    """
+    # EACH SPORT ON ITS OWN LADDER. Basketball's rungs are spaced for
+    # basketball -- a four-point NBA spread is a coin flip where a four-point
+    # NFL one is not -- and routing the NBA through football's ladder would
+    # undo a deliberate choice. The default is football's because this
+    # function has always been football's.
+    rungs = SPREAD_LADDER if ladder is None else ladder
+    if expected is None:
+        return rungs[stable_index(game_id, len(rungs))]
+    target = -float(expected)
+    nearest = min(rungs, key=lambda rung: (abs(rung - target), rung))
+    # FAIL LOUDLY, NEVER CLAMP (ruling CFB-1, 2026-09-02), and the same
+    # exception type college football raises. A game the ladder cannot reach
+    # is refused and recorded absent; clamping it to the end rung would store
+    # a confident claim about a number nobody chose, precisely on the games
+    # where the model is least tested. Measured refusal rate on the extended
+    # ladder: 0.26% of NFL games and 0.60% of NBA ones.
+    if abs(nearest - target) > CFB_RUNG_TOLERANCE:
+        raise RungOffTheLadder(
+            f"{game_id}: an expected margin of {expected:+.1f} wants a rung "
+            f"near {target:+.1f}, and the declared ladder's nearest is "
+            f"{nearest:+.1f} -- {abs(nearest - target):.1f} away. The ladder "
+            f"runs {rungs[0]:+.1f} to {rungs[-1]:+.1f} and is "
+            f"not stretched to fit a game beyond it."
+        )
+    return nearest
 
 
 def spread_outcome(home_score: int, away_score: int, line_asked: float) -> int:

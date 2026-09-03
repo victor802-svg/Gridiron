@@ -180,7 +180,9 @@ def test_the_stored_prediction_carries_its_factors_and_explanation(trained):
     assert payload["values"], "the factor values must be on the record"
     assert "contributions" in payload
     assert row["reasoning"].strip()
-    assert row["factor_set_version"] == config.FACTOR_SET_VERSION
+    # PER MARKET from 2026-09-03: a spread row carries the spread's version,
+    # which is no longer the same string as the props'.
+    assert row["factor_set_version"] == config.factor_set_version("nfl", "spread")
 
 
 def test_predicting_without_a_fitted_model_skips_loudly(league):

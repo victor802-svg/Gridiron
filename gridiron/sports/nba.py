@@ -36,7 +36,25 @@ SLATE_WORD = "week"
 #: Home-team spread rungs, in points. Wider than football's because basketball
 #: margins are wider: a four-point NBA spread is a coin flip, a fourteen-point
 #: one is a heavy favourite. Every rung ends in .5 so nothing can push.
-SPREAD_LADDER: tuple[float, ...] = (-9.5, -4.5, 0.5, 5.5)
+#:
+#: EXTENDED 2026-09-03, when the operator's ruling brought the NBA under the
+#: nearest-expected-margin rule (R4). Four rungs were enough while the rung
+#: was chosen by hashing the game id; chosen by nearest margin they have to
+#: REACH, and against the fitted expected margins the old four did not:
+#:
+#:                  refused as beyond the ladder     busiest rung
+#:     old (4)                    3.84%                  31.4%
+#:     new (12)                   0.12%                  18.8%
+#:
+#: EIGHT RUNGS ADDED, NONE MOVED -- the rule CFB-1 settled on 2026-09-02.
+#: The original four stay on the ladder they were asked against (LAW 3).
+SPREAD_LADDER: tuple[float, ...] = (
+    -19.5, -14.5, -11.5, -9.5, -7.5, -4.5, -2.5, 0.5, 3.5, 5.5, 8.5, 10.5,
+)
+
+#: When the ladder above was extended, and what it was before.
+SPREAD_LADDER_DECLARED = "2026-09-03T00:00:00Z"
+SPREAD_LADDER_BEFORE: tuple[float, ...] = (-9.5, -4.5, 0.5, 5.5)
 
 #: A club needs this many completed games before its rolling form is a number.
 MIN_TEAM_HISTORY = 5
@@ -387,7 +405,19 @@ def slate_questions(
     games = repo.games_in_week(conn, season, week)
     out: list[Question] = []
     for game in games:
-        line = SPREAD_LADDER[questions.stable_index(game["id"], len(SPREAD_LADDER))]
+        # THE RUNG IS CHOSEN AGAINST THE EXPECTED MARGIN (R4, extended to the
+        # NBA by operator ruling 2026-09-03). The context is built first
+        # because the rung now depends on it; the ratings it reads are stored
+        # and blind.
+        ctx = build_context(conn, game["id"])
+        expected = questions.expected_margin(
+            SPORT, ctx.home_net_rating, ctx.away_net_rating)
+        try:
+            line = questions.spread_rung(game["id"], expected, SPREAD_LADDER)
+        except questions.RungOffTheLadder:
+            # Refused, not clamped (CFB-1). Measured at 0.60% of NBA games on
+            # the extended ladder.
+            continue
         sign = "+" if line > 0 else ""
         out.append(
             Question(
@@ -598,11 +628,22 @@ def _spread_training_set(conn, seasons, through_season, through_week, progress):
     for i, g in enumerate(games):
         if progress and i % 500 == 0:
             progress(f"nba spread features {i}/{len(games)}")
-        line = SPREAD_LADDER[questions.stable_index(g["id"], len(SPREAD_LADDER))]
+        # THE SAME RULE THE FORWARD PATH USES (R4, 2026-09-03). A training set
+        # asked at rotated rungs and a live slate asked at margin-chosen ones
+        # would be two different questions sharing a coefficient. The context
+        # comes first because the rung now depends on it.
         try:
-            ctx = build_context(conn, g["id"], line_asked=line)
+            ctx = build_context(conn, g["id"])
         except KeyError:
             continue
+        expected = questions.expected_margin(
+            SPORT, ctx.home_net_rating, ctx.away_net_rating)
+        try:
+            line = questions.spread_rung(g["id"], expected, SPREAD_LADDER)
+        except questions.RungOffTheLadder:
+            # The training set skips what the live slate would skip.
+            continue
+        ctx.line_asked = line
         fv = compute.feature_vector(ctx, "spread")
         score = conn.execute(
             "SELECT home_score, away_score FROM games WHERE id = ?", (g["id"],)
@@ -719,3 +760,15 @@ def _player_of(pred: sqlite3.Row) -> int | None:
         return None
     player = (payload.get("question") or {}).get("player_id")
     return int(player) if player else None
+
+
+def markets() -> tuple[str, ...]:
+    """The markets this sport asks about.
+
+    ADDED 2026-09-03. `run.already_answered` has called this on every sport
+    since the duplicate-slate guard was written (ruling R4, 2026-09-02), and
+    neither this module nor the NBA's defined it -- so the guard raised
+    AttributeError before it could refuse anything. The protection that stopped
+    NFL week 1 being forecast twice has never covered these two sports.
+    """
+    return config.SPORT_MARKETS[SPORT]

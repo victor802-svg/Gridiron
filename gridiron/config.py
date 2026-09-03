@@ -460,6 +460,47 @@ SPORT_LOAD_SEASONS = {
 # cheaper before a single-sport bump is ever needed than after.
 FACTOR_SET_VERSION = "fs2"
 
+#: PER MARKET, FROM 2026-09-03 -- the fix FOLLOWUPS asked for, made at the
+#: moment it stopped being free.
+#:
+#: The note above says it plainly: "the string is global, factor sets are per
+#: sport per market, so a change to one NBA prop factor would bump the version
+#: for every MLB market too and split records nothing touched... it is much
+#: cheaper before a single-sport bump is ever needed than after." This is that
+#: bump. The asked-line redeclaration touches the SPREAD factor sets of three
+#: sports and nothing else.
+#:
+#: MEASURED BEFORE DECIDING. Settled rows at the time of the bump:
+#:
+#:      spread, all sports          8   (MLB run line only)
+#:      NOT spread                126   (MLB moneyline 80, props 38, total 8)
+#:
+#: A global bump to fs3 would have split that 126 -- including the project's
+#: largest single record -- for a change that touched none of it.
+#:
+#: MLB's spread is DELIBERATELY ABSENT. Its run line is asked at a fixed
+#: plus-or-minus 1.5 and has no asked-line factor at all, so nothing about it
+#: changed and its eight settled rows stay on fs2.
+FACTOR_SET_VERSIONS: dict[tuple[str, str], str] = {
+    ("nfl", "spread"): "fs3",
+    ("nba", "spread"): "fs3",
+    ("cfb", "spread"): "fs3",
+}
+
+
+def factor_set_version(sport: str | None = None,
+                       market_type: str | None = None) -> str:
+    """Which factor set a question belongs to.
+
+    Falls back to the global default, so a market with no entry keeps the
+    version it has always had and its record is not split by somebody else's
+    change. Called with neither argument it IS the default, which is what the
+    display surfaces want.
+    """
+    if sport is None or market_type is None:
+        return FACTOR_SET_VERSION
+    return FACTOR_SET_VERSIONS.get((sport, market_type), FACTOR_SET_VERSION)
+
 #: Every factor set that has ever produced predictions, oldest first. A version
 #: is CLOSED, never erased: its record stands as recorded and is reported beside
 #: the current one rather than merged into it.

@@ -237,6 +237,11 @@ def sports() -> list[str]:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    active=False,
+    deactivated="2026-09-03T00:00:00Z",
+    note=(
+        "RETIRED 2026-09-03 by operator ruling and REPLACED, not refuted. Under the nearest-expected-margin rung rule this factor became a coarsened copy of the rating difference: the rung is chosen as the ladder entry nearest minus the expected margin, and the expected margin is computed from the ratings, so the model was handed the same quantity twice. Measured correlation with the sport's rating factor before retirement is recorded in docs/closeouts/2026-09-03-asked-line.md. ITS SUCCESSOR IS THE SIGNED DISTANCE between the rung and the expected margin, which is what this factor was reaching for and could not express while it carried the rung's absolute value. A NEW NAME RATHER THAN A NEW DATE ON THE OLD ONE, because LAW 2's registry refuses to move a factor's activation date and is right to: the instrument changed, so its forward record starts today rather than inheriting a score earned by a different measurement. Rows already written under this factor stand, with their factor-set version attached."
+    ),
     why="which number the question was asked at",
     rationale=(
         "The question's own reference point. Our spread questions rotate across "
@@ -250,6 +255,21 @@ def asked_line(ctx) -> float | None:
     if ctx.line_asked is None:
         return None
     return ctx.line_asked / 7.0
+
+
+@factor(
+    added="2026-09-03T00:00:00Z",
+    applies_to=("spread",),
+    why="how far the question sits from what the model expects",
+    rationale=(
+        "HOW FAR THE QUESTION SITS FROM WHAT THE MODEL EXPECTS, in points: the margin the rung demands minus the margin the ratings imply. A home side expected to win by fourteen, asked at -14.5, reads +0.5 -- the question wants half a point more than the model does. Positive means the question asks for MORE than expected, negative means it is easier than expected. Declared 2026-09-03 by operator ruling, replacing the rung itself. WHY THE RUNG ITSELF HAD TO GO. Under the nearest-expected-margin rule the rung is CHOSEN as the ladder point nearest minus the expected margin, so asking the model which rung it was given told it the rating difference a second time, coarsened -- measured at a correlation of -0.94 with cfb_srs_diff. Its coefficient could not be read as an independent effect, because it was not one. WHY THIS IS ORTHOGONAL BY CONSTRUCTION AND NOT BY LUCK: what remains after subtracting the expectation is the ROUNDING RESIDUAL of the ladder's own choice. It carries how far the ladder had to round and nothing about how good the teams are, which is precisely the quantity a model needs in order to know whether it was handed an easy question or a hard one. This is the same instrument mlb_prop_mean_vs_line already is for props: the question's distance from the model's own expectation. ABSENT, not zero, when either rating is missing -- a game with no expected margin has no distance from one, and a zero would read as 'the question sits exactly where the model expects', which is a claim."
+    ),
+)
+def asked_distance(ctx) -> float | None:
+    from ..model import questions
+
+    return questions.asked_distance(
+        ctx.line_asked, questions.expected_margin("nfl", ctx.home_srs, ctx.away_srs))
 
 @factor(
     added="2026-08-28T00:00:00Z",

@@ -33,7 +33,20 @@ def slate_questions(
     games = repo.games_for_week(conn, season, week, sport=SPORT)
     out: list[Question] = []
     for game in games:
-        line = questions.spread_rung(game["id"])
+        # THE RUNG IS CHOSEN AGAINST THE EXPECTED MARGIN (R4, extended to the
+        # NFL by operator ruling 2026-09-03), which means the context has to
+        # be built before the spread question rather than after it. The
+        # ratings it reads are stored and blind.
+        ctx = context.build_game_context(conn, game["id"])
+        expected = questions.expected_margin(
+            SPORT, ctx.home_srs, ctx.away_srs)
+        try:
+            line = questions.spread_rung(game["id"], expected)
+        except questions.RungOffTheLadder:
+            # A MISMATCH THE LADDER CANNOT REACH ASKS NOTHING (CFB-1). The
+            # absence is recorded as an absence rather than clamped to the end
+            # rung. Measured at 0.26% of NFL games on the extended ladder.
+            continue
         sign = "+" if line > 0 else ""
         out.append(
             Question(

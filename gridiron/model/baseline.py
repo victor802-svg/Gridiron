@@ -44,9 +44,26 @@ def spread_training_set(
     uses; leaving it off trains on everything available.
     """
     placeholders = ",".join("?" for _ in seasons)
+    # LAW 6, AND IT WAS BROKEN HERE SINCE 9c0bc64 ("s1: multi-sport").
+    #
+    # This query had no `sport` filter. `games` holds every sport, so the NFL
+    # spread model was trained on 18,715 games of which 2,639 -- FOURTEEN PER
+    # CENT -- were football. The other 16,076 were baseball, basketball and
+    # college games, each handed the NFL's factor vector and asked whether the
+    # home side covered an NFL rung.
+    #
+    # It was invisible because nothing failed: the fit converged, the row
+    # count looked healthy, and a bigger training set reads as a better one.
+    # What gave it away was the base rate -- 0.4265 where a nearest-margin
+    # rung should sit near 0.500, against NBA's 0.4983 on the same rule.
+    #
+    # LAW 6 exists for exactly this: "a number that mixes NFL spreads with MLB
+    # moneylines describes neither, and it flatters reliably, because the easy
+    # sport dilutes the hard one."
     sql = (
         f"SELECT id, season, week, home_score, away_score FROM games"
-        f" WHERE status = 'final' AND game_type = 'REG' AND season IN ({placeholders})"
+        f" WHERE sport = 'nfl' AND status = 'final' AND game_type = 'REG'"
+        f"   AND season IN ({placeholders})"
     )
     params: list = list(seasons)
     if through_season is not None:
@@ -62,8 +79,20 @@ def spread_training_set(
     for i, g in enumerate(games):
         if progress and i % 250 == 0:
             progress(f"features {i}/{len(games)}")
-        line = questions.spread_rung(g["id"])
-        ctx = context.build_game_context(conn, g["id"], cache, line_asked=line)
+        # THE SAME RULE THE FORWARD PATH USES (R4, 2026-09-03). A training set
+        # asked at rotated rungs and a live slate asked at margin-chosen ones
+        # would be two different questions sharing a coefficient. The context
+        # is built first because the rung now depends on it.
+        ctx = context.build_game_context(conn, g["id"], cache)
+        expected = questions.expected_margin(ctx.sport, ctx.home_srs, ctx.away_srs)
+        try:
+            line = questions.spread_rung(g["id"], expected)
+        except questions.RungOffTheLadder:
+            # THE TRAINING SET SKIPS WHAT THE LIVE SLATE WOULD SKIP. A fit
+            # trained on games the forward path refuses would be fitting a
+            # population that never reaches the record.
+            continue
+        ctx.line_asked = line
         # Weeks 1-2 have no in-season sample and a prior-season fallback that is
         # a different kind of estimate; they are still included, because
         # excluding them would train a model that never sees the situation it
@@ -230,7 +259,7 @@ def train(
         (
             sport,
             utcnow(),
-            config.FACTOR_SET_VERSION,
+            config.factor_set_version(sport, market_type),
             market_type,
             through,
             fitted.n,
@@ -279,12 +308,14 @@ def load_fit(
         "SELECT coefficients_json FROM model_fits"
         " WHERE sport = ? AND market_type = ? AND factor_set_version = ?"
         " ORDER BY id DESC LIMIT 1",
-        (sport, market_type, factor_set_version or config.FACTOR_SET_VERSION),
+        (sport, market_type,
+         factor_set_version or config.factor_set_version(sport, market_type)),
     ).fetchone()
     if row is None:
         raise NotTrained(
             f"no fitted {key} model for factor set "
-            f"{factor_set_version or config.FACTOR_SET_VERSION}; run `train` first"
+            f"{factor_set_version or config.factor_set_version(sport, market_type)}"
+            f"; run `train` first"
         )
     return logistic.Fit.from_json(json.loads(row["coefficients_json"]))
 
