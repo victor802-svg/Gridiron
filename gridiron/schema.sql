@@ -1077,3 +1077,84 @@ CREATE TABLE IF NOT EXISTS notifications (
     channels_json TEXT
 );
 CREATE INDEX IF NOT EXISTS notifications_when ON notifications (id DESC);
+
+-- ---------------------------------------------------------------------------
+-- UFC (U2, 2026-09-03). THE DATA LAYER ONLY.
+--
+-- `ufc` is deliberately NOT in config.SPORTS yet. Declaring a fifth sport
+-- touches the sport CHECK on four tables, the adapter contract, the factor
+-- registry, questions, resolve, the tabs, the scheduler and every test that
+-- counts sports -- and a half-integrated sport is worse than none. These
+-- tables let the loader and the rating be built and tested first, and the
+-- bouts are mirrored into `games` when the sport goes live.
+--
+-- WHY BOUTS ARE NOT `games` ROWS YET: `games` requires a sport the CHECK
+-- allows, and widening that CHECK is the act that makes the sport live.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS ufc_events (
+    id            TEXT PRIMARY KEY,        -- ESPN event id, the card
+    name          TEXT NOT NULL,
+    event_utc     TEXT,                    -- ISO-8601 Z; NULL if TBD
+    season        INTEGER NOT NULL,
+    fetched_utc   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ufc_bouts (
+    id            TEXT PRIMARY KEY,        -- ESPN competition id
+    event_id      TEXT NOT NULL REFERENCES ufc_events (id),
+    bout_utc      TEXT,
+    -- HOW LONG THE BOUT IS SCHEDULED FOR, 3 or 5. The rounds and distance
+    -- markets are meaningless without it: "goes the distance" is a different
+    -- question in a three-round bout than in a five.
+    scheduled_rounds INTEGER,
+    weight_class  TEXT,
+    -- ORDER ON THE CARD, from the source. NEVER position in the list: the
+    -- card is ordered from the bottom and competitions[0] is a prelim, which
+    -- cost this probe twenty requests to notice.
+    card_segment  TEXT,
+    match_number  INTEGER,
+    -- The two sides. ESPN labels them home/away and MMA has neither; the
+    -- names are kept as the source gives them and NOTHING in the interface
+    -- may say home or away about a fight.
+    fighter_a     TEXT NOT NULL,           -- ESPN athlete id, the 'home' side
+    fighter_b     TEXT NOT NULL,
+    status        TEXT NOT NULL,           -- scheduled | in | final
+    -- THE RESULT, and the three markets read exactly these three columns.
+    winner        TEXT,                    -- athlete id, or NULL for a draw/NC
+    method        TEXT,                    -- ESPN's own vocabulary, verbatim
+    end_round     INTEGER,
+    end_clock     REAL,                    -- seconds elapsed in that round
+    fetched_utc   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ufc_bouts_event ON ufc_bouts (event_id);
+CREATE INDEX IF NOT EXISTS ufc_bouts_when  ON ufc_bouts (bout_utc);
+
+CREATE TABLE IF NOT EXISTS ufc_fighters (
+    id            TEXT PRIMARY KEY,        -- ESPN athlete id
+    name          TEXT NOT NULL,
+    -- Measured attributes, straight from the source. Reach and stance are why
+    -- no second source is needed (docs/UFC_FEASIBILITY.md section 5).
+    reach         REAL,
+    height        REAL,
+    weight        REAL,
+    stance        TEXT,
+    born          TEXT,
+    fetched_utc   TEXT NOT NULL
+);
+
+-- THE RATING, COMPUTED WALK-FORWARD AND STORED PER BOUT.
+--
+-- One row per fighter per bout, holding the rating they carried INTO it. A
+-- rating recomputed at read time would be a rating that has seen the result,
+-- which is the leak every rolling window in this project is shaped to avoid.
+CREATE TABLE IF NOT EXISTS ufc_ratings (
+    bout_id       TEXT NOT NULL REFERENCES ufc_bouts (id),
+    fighter_id    TEXT NOT NULL REFERENCES ufc_fighters (id),
+    rating_before REAL NOT NULL,
+    bouts_before  INTEGER NOT NULL,
+    k_factor      REAL NOT NULL,
+    computed_utc  TEXT NOT NULL,
+    PRIMARY KEY (bout_id, fighter_id)
+);
