@@ -25,3 +25,29 @@ B3 — The synthetic re-ask of the last slate for the close-out only;
 B4 — Plantings: an asked_line computed from anything but rung minus
      expected margin; a market value in its path. Full suite,
      verify.py, /closeout, push.
+
+---
+
+## AMENDMENT — operator ruling, 2026-09-03, mid-session
+
+Received after B1 measurement began and before any factor was changed.
+Recorded verbatim:
+
+> Ruling: apply R4 (nearest-expected-margin rungs) to NFL and NBA
+> spreads in this session, dated today. NFL week 1 rows stand (Law 3);
+> week 2 onward uses the rule. NBA has no standing rows — free. Then
+> redeclare asked_line for all three sports as rung minus the model's
+> expected margin per 18B, and prove the dependency break on CFB
+> (before/after correlation) and the *independence* on NFL/NBA (the
+> new factor should correlate with the rating far less than the old
+> rotation-based one did with nothing — report both). Refit all three,
+> standardised coefficients, nothing constant or dropped, synthetic
+> re-ask for the close-out only. Version the spread factor sets;
+> existing rows keep their version.
+
+**Why the amendment was needed, measured before it arrived:** NFL and NBA
+choose their spread rung by `stable_index(game_id, ...)` — a hash of the game
+id over `SPREAD_LADDER`. Their asked line is therefore independent of the
+rating *by construction*, so the dependency B2 sets out to break does not
+exist there. The ruling extends R4 to those sports so all three share one rule,
+and asks for the independence to be reported rather than assumed.
