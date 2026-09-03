@@ -2377,6 +2377,98 @@ def _quiet_markets(conn: sqlite3.Connection, sport: str, season: int,
     ]
 
 
+#: How long a forecaster may write nothing before the front page says so.
+#:
+#: TWENTY-FOUR HOURS, because every sport that runs daily forecasts at least
+#: once inside it and the weekly ones still have their slate written. A
+#: forecaster that has produced no row in a day, on a machine that has been
+#: forecasting, has stopped.
+FORECASTER_SILENT_AFTER_HOURS = 24.0
+
+
+def _silent_forecasters(conn: sqlite3.Connection) -> list[dict]:
+    """A forecaster that used to write rows and has stopped.
+
+    THIS EXISTS BECAUSE IT HAPPENED AND NOTHING SAID SO. The LLM forecaster
+    wrote 23 rows on 2026-09-02 between 06:02 and 06:04 and never again; every
+    predict run since recorded `llm_unavailable:bad_api_key` in its
+    degradations, and the front page -- which warns about silent tasks, missed
+    slates and stale schedules -- said nothing at all. The statistical model
+    kept writing, so every screen looked healthy while half the forecasters
+    were gone.
+
+    A DEGRADATION RECORDED ONCE PER RUN IS A FOOTNOTE. A forecaster absent for
+    a day is a defect, and this is the difference.
+
+    Not sport-scoped, and that is not a LAW 6 problem: this is a fact about
+    the appliance, not about any sport's record.
+    """
+    from . import config
+
+    now = _parse_utc(db.utcnow())
+    out: list[dict] = []
+    for predictor in ("statistical", "llm"):
+        row = conn.execute(
+            "SELECT COUNT(*) AS n, MAX(created_utc) AS last"
+            "  FROM predictions WHERE predictor = ?", (predictor,)).fetchone()
+        if not row or not row["n"]:
+            # NEVER HAVING WRITTEN IS NOT THE SAME AS HAVING STOPPED. A
+            # forecaster with no rows at all may simply not be switched on,
+            # and warning about it every day would train a reader to ignore
+            # the panel.
+            continue
+        last = _parse_utc(row["last"])
+        if last is None:
+            continue
+        hours = (now - last).total_seconds() / 3600.0
+        if hours < FORECASTER_SILENT_AFTER_HOURS:
+            continue
+
+        reason = _latest_degradation(conn, predictor)
+        out.append({
+            "kind": "forecaster-silent",
+            "predictor": predictor,
+            "hours": round(hours, 1),
+            "text": language.forecaster_silent_line(
+                predictor, hours, row["n"], reason),
+        })
+    return out
+
+
+def _latest_degradation(conn: sqlite3.Connection, predictor: str) -> str | None:
+    """The reason the most recent run recorded, if it recorded one.
+
+    THE APP ALREADY KNEW WHY. Every predict run stores its degradations, and
+    `llm_unavailable:bad_api_key` sat in that column for thirty hours without
+    reaching a single screen. Reading it here is the whole repair.
+    """
+    if predictor != "llm":
+        return None
+    for row in conn.execute(
+            "SELECT payload_json FROM task_runs"
+            "  WHERE task LIKE 'predict:%' OR task LIKE 'final:%'"
+            "  ORDER BY started_utc DESC LIMIT 12"):
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except ValueError:
+            continue
+        for key in (payload.get("degradations") or {}):
+            if str(key).startswith("llm_unavailable:"):
+                return str(key).split(":", 1)[1]
+    return None
+
+
+def _parse_utc(text):
+    from datetime import datetime as _dt
+
+    if not text:
+        return None
+    try:
+        return _dt.fromisoformat(str(text).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _front_page_warnings(conn: sqlite3.Connection) -> list[dict]:
     """MISSED slates, silent tasks and stale schedules, on the front page.
 
@@ -2397,6 +2489,9 @@ def _front_page_warnings(conn: sqlite3.Connection) -> list[dict]:
                 "text": f"{task['task']} MISSED {missed['started_utc']}: "
                         f"{missed['detail'][:160]}",
             })
+    # A FORECASTER THAT HAS STOPPED WRITING (S4, 2026-09-03). The LLM was
+    # absent for thirty hours with the reason sitting unread in task_runs.
+    out.extend(_silent_forecasters(conn))
     for entry in status["schedule_staleness"]["sports"]:
         if entry["stale"]:
             out.append({

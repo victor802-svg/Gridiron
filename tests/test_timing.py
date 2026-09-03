@@ -234,3 +234,60 @@ def test_the_settings_page_says_which_times_were_measured():
     assert "(not measured)" not in rows["FINAL_PASS[mlb]"]["value"]
     for sport in ("nfl", "cfb", "nba"):
         assert "(not measured)" in rows[f"FINAL_PASS[{sport}]"]["value"], sport
+
+
+# ---------------------------------------------------------------------------
+# A FORECASTER THAT STOPS IS A DEFECT, NOT A FOOTNOTE (S4, 2026-09-03)
+# ---------------------------------------------------------------------------
+
+def _seed_forecaster_rows(conn, predictor, created, n=3):
+    game = conn.execute(
+        "SELECT id FROM games WHERE sport='nfl' LIMIT 1").fetchone()["id"]
+    for i in range(n):
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning)"
+            " VALUES (?,?,?,?,?,?,?,?,?,'early',?,?,?)",
+            (created, "nfl", game, "spread", f"SEED{predictor}{i}", -3.5,
+             0.6, "cover", predictor, config.FACTOR_SET_VERSION,
+             '{"values": {}, "present": [], "absent": []}', "seeded"))
+    conn.commit()
+
+
+def test_a_forecaster_that_stopped_writing_reaches_the_front_page(league):
+    """The LLM was absent for thirty hours and every screen looked healthy."""
+    _seed_forecaster_rows(league, "llm", "2020-01-01T00:00:00Z")
+    warnings = views._front_page_warnings(league)
+    silent = [w for w in warnings if w.get("kind") == "forecaster-silent"]
+    assert silent, (
+        "a forecaster with rows on the record and nothing recent did not "
+        "reach the front page"
+    )
+    said = silent[0]["text"]
+    assert "reasoning pass" in said, "the panel named an internal identifier"
+    assert "llm" not in said.lower().replace("reasoning", "")
+    assert "3 forecasts" in said
+
+
+def test_a_forecaster_writing_today_is_not_reported_silent(league):
+    _seed_forecaster_rows(league, "llm", db.utcnow())
+    silent = [w for w in views._front_page_warnings(league)
+              if w.get("kind") == "forecaster-silent"]
+    assert not silent, "a forecaster that wrote today was reported as stopped"
+
+
+def test_a_forecaster_that_never_wrote_is_not_reported_silent(league):
+    """Never having written is not the same as having stopped."""
+    silent = [w for w in views._front_page_warnings(league)
+              if w.get("kind") == "forecaster-silent"]
+    assert not silent
+
+
+def test_the_silence_reason_is_in_plain_words():
+    said = language.forecaster_silent_line("llm", 40.0, 23, "bad_api_key")
+    assert "its key was refused" in said
+    assert "bad_api_key" not in said, "an internal token reached the sentence"
+    # An unknown reason degrades to no reason rather than to the raw token.
+    plain = language.forecaster_silent_line("llm", 40.0, 23, "something_new")
+    assert "something_new" not in plain

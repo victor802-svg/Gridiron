@@ -863,6 +863,44 @@ def early_vs_final_line(record: dict) -> str:
             f"scored better on {better}.")
 
 
+#: What each forecaster is called in front of a reader. "The reasoning pass"
+#: rather than "the LLM", which is an acronym for a thing a reader did not ask
+#: about; "the model" rather than "statistical", which is a column value.
+FORECASTER_WORDS = {
+    "statistical": "the model",
+    "llm": "the reasoning pass",
+}
+
+#: Why a forecaster stopped, in words. The stored reasons are internal tokens
+#: and none of them may reach a page.
+SILENCE_REASONS = {
+    "bad_api_key": "its key was refused",
+    "no_api_key": "it has no key",
+    "api_error": "the service returned an error",
+    "budget": "it had spent its daily budget",
+}
+
+
+def forecaster_silent_line(predictor: str, hours: float, wrote: int,
+                           reason: str | None) -> str:
+    """"The reasoning pass has written nothing for 31 hours..."
+
+    A FORECASTER THAT STOPS IS A DEFECT, NOT A FOOTNOTE. It wrote 23 rows on
+    one morning and none since; every run recorded why, in a column nobody
+    reads, while every screen looked healthy because the other forecaster kept
+    working.
+    """
+    who = FORECASTER_WORDS.get(predictor, predictor)
+    days = hours / 24.0
+    when = (f"{round(hours)} hours" if hours < 48
+            else f"{round(days)} days")
+    said = SILENCE_REASONS.get(reason or "")
+    because = f" -- {said}." if said else "."
+    return (f"{who.capitalize()} has written nothing for {when}{because} "
+            f"It has {wrote} forecasts on the record and is not adding to "
+            f"them, so nothing it would have said is being scored.")
+
+
 def pass_mark(pass_kind: str | None) -> str:
     """"final" or "early only", for a settled row (A3).
 
