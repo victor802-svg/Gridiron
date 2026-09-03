@@ -1187,6 +1187,150 @@ def plant_a_market_value_in_the_asked_line_path() -> Result:
                   "question and not merely to the answer")
 
 
+def plant_a_training_set_spanning_two_sports() -> Result:
+    """Hand a training loader games from four sports and watch it refuse.
+
+    THIS SHIPPED FOR DAYS. `spread_training_set` lost its `sport` filter in a
+    commit about something else, so the NFL spread model trained on 18,715
+    games of which 2,639 were football. Nothing failed; the fit converged and
+    a bigger training set reads as a better one.
+    """
+    from gridiron.model import baseline as _baseline
+
+    conn = db.connect()
+    games = conn.execute(
+        "SELECT id, sport FROM games"
+        " WHERE sport IN ('nfl','mlb','nba','cfb') AND status = 'final'"
+        " GROUP BY sport").fetchall()
+    conn.close()
+    sports_seen = {g["sport"] for g in games}
+    if len(sports_seen) < 2:
+        return Result("LAW 6", "a training set spanning two sports",
+                      "baseline.assert_one_sport", False,
+                      f"only {sports_seen} in the record to plant with")
+
+    try:
+        _baseline.assert_one_sport(games, "nfl", "a planted loader")
+    except _baseline.TrainingSetSpansSports as exc:
+        # AND THE HONEST CASE MUST PASS: a genuine single-sport selection is
+        # not flagged, or the guard would refuse every real fit.
+        clean = [g for g in games if g["sport"] == "nfl"]
+        try:
+            _baseline.assert_one_sport(clean, "nfl", "a planted loader")
+        except _baseline.TrainingSetSpansSports as wrong:
+            return Result("LAW 6", "a training set spanning two sports",
+                          "baseline.assert_one_sport", False,
+                          f"the guard fires on a clean NFL selection: {wrong}")
+        return Result("LAW 6", "a training set spanning two sports",
+                      "baseline.assert_one_sport", True, str(exc))
+    return Result("LAW 6", "a training set spanning two sports",
+                  "baseline.assert_one_sport", False,
+                  "NOT CAUGHT - a loader may hand four sports to one model "
+                  "and the fit will converge on them")
+
+
+def plant_a_sport_adapter_missing_markets() -> Result:
+    """An adapter without `markets()` must fail when loaded, not when called.
+
+    IT FAILED AT FIRST USE FOR A DAY. `run.already_answered` calls
+    `markets()`, and neither the NBA nor the college football adapter defined
+    it, so ruling R4's duplicate-slate guard raised AttributeError before it
+    could refuse anything -- for two sports out of four. First use of that
+    path is a scheduled predict run, where the failure is a task-runs row
+    nobody reads until they go looking.
+    """
+    import types
+
+    from gridiron import sports as _sports
+
+    victim = types.ModuleType("gridiron.sports.planted")
+    victim.SPORT = "planted"
+    victim.slate_questions = lambda *a, **k: []
+    victim.next_slate = lambda *a, **k: None
+    victim.resolve_outcome = lambda *a, **k: 0
+    victim.training_set = lambda *a, **k: ([], [], [])
+    # markets() deliberately absent -- the exact gap that shipped.
+
+    try:
+        _sports._check_adapter("planted", victim)
+    except _sports.AdapterIncomplete as exc:
+        if "markets" not in str(exc):
+            return Result("A SPORT ADAPTER IS COMPLETE OR IT IS NOT LOADED",
+                          "an adapter with no markets()",
+                          "sports._check_adapter", False,
+                          f"caught, but did not name `markets`: {exc}")
+        # AND EVERY REAL ADAPTER STILL LOADS.
+        for sport in config.SPORTS:
+            try:
+                _sports.get(sport)
+            except Exception as wrong:  # noqa: BLE001
+                return Result("A SPORT ADAPTER IS COMPLETE OR IT IS NOT LOADED",
+                              "an adapter with no markets()",
+                              "sports._check_adapter", False,
+                              f"the check rejects the real {sport} adapter: "
+                              f"{type(wrong).__name__}: {wrong}")
+        return Result("A SPORT ADAPTER IS COMPLETE OR IT IS NOT LOADED",
+                      "an adapter with no markets()",
+                      "sports._check_adapter", True, str(exc))
+    return Result("A SPORT ADAPTER IS COMPLETE OR IT IS NOT LOADED",
+                  "an adapter with no markets()",
+                  "sports._check_adapter", False,
+                  "NOT CAUGHT - the gap surfaces at first use, inside a "
+                  "scheduled run, as an AttributeError nobody reads")
+
+
+def plant_a_docstring_promising_a_guard_that_does_not_exist() -> Result:
+    """Write a reference to a guard that does not exist into a real docstring.
+
+    A COMMENT MAY NOT PROMISE A MECHANISM THAT IS NOT THERE. One did:
+    `attach_decision` claimed a scan checked it, no such function existed, and
+    the carve-out the sentence was describing went on to open the app on a
+    five-day-old build.
+
+    THIS DOCSTRING NAMES NO GUARD, deliberately. The first version spelled the
+    phantom out in full and tripped the very scan it plants -- the same shape
+    as `audit.py` being unable to scan itself for betting identifiers. The
+    project already answers that with a narrow exemption; here it costs
+    nothing to simply not write the name, so the scan keeps zero exemptions
+    and this planting builds the name at runtime instead.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.db"))
+        victim = root / "correction.py"
+        text = victim.read_text(encoding="utf-8")
+        marker = '"""'
+        head, sep, tail = text.partition(marker)
+        if not sep:
+            return Result("A COMMENT IS NOT A MECHANISM",
+                          "a docstring naming a guard that does not exist",
+                          "audit.docstring_reference_faults", False,
+                          "no module docstring to plant in")
+        planted = (head + sep
+                   + "Checked by " + "audit." + "check_nothing_at_all"
+                   + ", which is a sentence and not a guard."
+                   + chr(10) + chr(10)
+                   + tail)
+        victim.write_text(planted, encoding="utf-8")
+        faults = audit.docstring_reference_faults(root)
+
+    if not faults:
+        return Result("A COMMENT IS NOT A MECHANISM",
+                      "a docstring naming a guard that does not exist",
+                      "audit.docstring_reference_faults", False,
+                      "NOT CAUGHT - a docstring may promise a guard nobody "
+                      "wrote, which is how one went unwritten for a week")
+    if audit.docstring_reference_faults():
+        return Result("A COMMENT IS NOT A MECHANISM",
+                      "a docstring naming a guard that does not exist",
+                      "audit.docstring_reference_faults", False,
+                      "the scan fires on the shipped tree too")
+    return Result("A COMMENT IS NOT A MECHANISM",
+                  "a docstring naming a guard that does not exist",
+                  "audit.docstring_reference_faults", True, faults[0])
+
+
 def plant_a_launcher_attaching_to_an_older_build() -> Result:
     """Restore the carve-out that showed a photograph on 2026-09-03.
 
@@ -3665,6 +3809,9 @@ def main() -> int:
     results.append(plant_a_selector_for_a_class_nothing_builds())
     results.append(plant_a_final_pass_inside_the_market_closure())
     results.append(plant_a_launcher_attaching_to_an_older_build())
+    results.append(plant_a_training_set_spanning_two_sports())
+    results.append(plant_a_sport_adapter_missing_markets())
+    results.append(plant_a_docstring_promising_a_guard_that_does_not_exist())
     results.append(plant_an_asked_line_that_is_not_a_distance())
     results.append(plant_a_market_value_in_the_asked_line_path())
     results.append(plant_two_standing_rows_for_one_question())

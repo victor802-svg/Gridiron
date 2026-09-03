@@ -2234,6 +2234,93 @@ STALE_ATTACH_CASES: tuple[tuple[str | None, str | None, str, str], ...] = (
 )
 
 
+#: A reference to an audit function inside prose: `audit.check_something`,
+#: with or without the backticks. Bounded to identifier characters so a
+#: sentence ending "see audit.py" or "gridiron.audit." is not read as a name.
+_AUDIT_REFERENCE = re.compile(r"\baudit\.([a-z_][a-z0-9_]*)\b")
+
+#: Names on `audit` that are not functions and are legitimately referenced in
+#: prose -- the module's own constants and exception types. A docstring may
+#: name these without promising a mechanism.
+_AUDIT_PROSE_EXEMPT = frozenset({"py", "LawViolation", "MissingDataDefaulted"})
+
+
+def docstring_reference_faults(root: Path | None = None) -> list[str]:
+    """A docstring that names `audit.<name>` where no such name exists.
+
+    A COMMENT MAY NOT PROMISE A MECHANISM THAT IS NOT THERE, and this rule
+    exists because one did. `launcher.attach_decision` said in its own
+    docstring that "audit.stale_attach_faults checks by running this function
+    rather than by reading the launcher's source" -- and there was no
+    `stale_attach_faults`. The sentence read like a guarantee, the reviewer
+    who wrote it believed it, and the carve-out it was describing went on to
+    let the app open on a five-day-old build.
+
+    That is the shape MENTOR 3 names: "a docstring or comment asserts a past
+    change -- treat as a claim requiring a test." This is that test, and it is
+    mechanical: every `audit.<name>` written in prose anywhere in the package,
+    the tools or the desktop launcher must resolve to something that actually
+    exists on `gridiron.audit`.
+
+    READ FROM THE AST, not from the raw text, so a name inside a STRING that
+    happens to look like a reference is not confused with a docstring -- and,
+    more usefully, so this scan does not fire on its own regex above.
+    """
+    from gridiron import audit as _audit
+
+    root = root or config.PACKAGE_ROOT
+    trees = [root]
+    for extra in (root.parent / "tools", root.parent / "desktop"):
+        if extra.is_dir():
+            trees.append(extra)
+
+    faults: list[str] = []
+    for tree in trees:
+        for path in sorted(tree.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            try:
+                parsed = ast.parse(path.read_text(encoding="utf-8"),
+                                   filename=str(path))
+            except SyntaxError:
+                continue
+            for node in ast.walk(parsed):
+                if not isinstance(node, (ast.Module, ast.ClassDef,
+                                         ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                text = ast.get_docstring(node)
+                if not text:
+                    continue
+                # A NAME WRAPPED ACROSS A LINE IS STILL ONE NAME. Prose in
+                # this project is hard-wrapped, so `audit.check_correction_is_
+                # isolated` arrives split at the underscore and would read as
+                # a promise of `check_correction_is_` -- a phantom invented by
+                # the scanner rather than by the author. The join is the first
+                # thing this scan learned.
+                text = re.sub(r"_[ \t]*\n[ \t]*", "_", text)
+                for name in sorted(set(_AUDIT_REFERENCE.findall(text))):
+                    if name in _AUDIT_PROSE_EXEMPT:
+                        continue
+                    if hasattr(_audit, name):
+                        continue
+                    where = getattr(node, "name", "<module>")
+                    faults.append(
+                        f"{path.name}:{where} promises `audit.{name}`, which "
+                        f"does not exist. A comment may not name a mechanism "
+                        f"that is not there: the sentence reads as a guarantee "
+                        f"and there is nothing behind it."
+                    )
+    return faults
+
+
+def check_docstrings_name_real_guards(root: Path | None = None) -> None:
+    faults = docstring_reference_faults(root)
+    if faults:
+        raise LawViolation(
+            "A DOCSTRING PROMISES A GUARD THAT DOES NOT EXIST:"
+            + _NL2 + _NL2.join(faults))
+
+
 def stale_attach_faults() -> list[str]:
     """Run the launcher's own decision function against every case.
 
