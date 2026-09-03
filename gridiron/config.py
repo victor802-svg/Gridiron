@@ -263,6 +263,10 @@ class FinalPass:
     basis: str
 
 
+#: When the final-pass times were declared. Shown beside each on the settings
+#: page, so a reader can see how old the judgement is.
+FINAL_PASS_DECLARED = "2026-09-03"
+
 #: Dated 2026-09-03. See docs/TIMING_FEASIBILITY.md for every figure.
 FINAL_PASS: dict[str, FinalPass] = {
     "mlb": FinalPass(

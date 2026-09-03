@@ -888,6 +888,12 @@ const Gridiron = (function () {
 
     const pick = el('div', 'tile-pick');
     pick.appendChild(el('b', '', c.tile_line || c.phrase || ''));
+    // THE EARLY VIEW SAYS SO ON EVERY ROW (A3). The sentence is composed
+    // by the server; the browser places it. Only a row a later forecast
+    // actually replaced carries one.
+    if (c.is_early_view && c.pass_note) {
+      pick.appendChild(el('div', 'footnote', c.pass_note));
+    }
     // `start_local` is the UTC instant; the BROWSER applies the reader's
     // timezone, which is the one thing it knows better than the server.
     // `localTime` is the same helper the compact rows use -- without it
@@ -1332,6 +1338,11 @@ const Gridiron = (function () {
     pick.appendChild(el('span', 'row-phrase', c.phrase || ''));
     const tail = rowTail(c);
     if (tail) pick.appendChild(el('span', 'row-when', ' \u00B7 ' + tail));
+    // THE EARLY VIEW SAYS SO ON EVERY ROW (A3). Composed by the server,
+    // placed here. Only a row a later forecast actually replaced carries one.
+    if (c.is_early_view && c.pass_note) {
+      mid.appendChild(el('div', 'footnote', c.pass_note));
+    }
     mid.appendChild(pick);
     head.appendChild(mid);
 
@@ -1546,6 +1557,37 @@ const Gridiron = (function () {
   //: whichever list they left open.
   let picksForecaster = null;
 
+  //: Whether Picks is showing the earlier forecast instead of the standing
+  //: one. Never both at once: they are two answers to one question and
+  //: ranking them together names the same game twice.
+  let showEarlyView = false;
+
+  // Built only when a game on this slate actually HAS both forecasts. A
+  // control that switches between one list and the same list is furniture,
+  // which is the rule the tier and forecaster segments already follow.
+  function renderPassFilter(data) {
+    const host = document.getElementById('week-pass-seg');
+    if (!host) return;
+    host.innerHTML = '';
+    if (!data.has_early_view) {
+      host.hidden = true;
+      showEarlyView = false;
+      return;
+    }
+    [[false, 'Final forecast'], [true, 'Early view']].forEach(pair => {
+      const b = el('button', '', pair[1]);
+      b.type = 'button';
+      b.dataset.early = pair[0] ? 'true' : 'false';
+      b.setAttribute('aria-pressed', pair[0] === showEarlyView ? 'true' : 'false');
+      b.addEventListener('click', () => {
+        showEarlyView = pair[0];
+        renderWeek();
+      });
+      host.appendChild(b);
+    });
+    host.hidden = false;
+  }
+
   // Built from the forecasters actually on this slate, exactly as the tier
   // filter is built from the tiers actually on it, and hidden below two --
   // a chooser with one choice is furniture. THERE IS NO "BOTH": two
@@ -1645,6 +1687,11 @@ const Gridiron = (function () {
     if (picksForecaster) {
       qs += (qs ? '&' : '?') + 'forecaster=' + encodeURIComponent(picksForecaster);
     }
+    //: WHICH FORECAST (A3). Off by default: Picks shows the standing row, the
+    //: one the record is graded on. Session-only, like the tier and the
+    //: forecaster -- a reader who left the early view open yesterday should
+    //: not find yesterday's forecasts waiting for them today.
+    if (showEarlyView) qs += (qs ? '&' : '?') + 'early_view=true';
     const data = await fetchJSON(withSport('/api/week' + qs));
     if (data.default_tier) defaultTier = data.default_tier;
     const market = document.getElementById('week-market').value;
@@ -1672,6 +1719,7 @@ const Gridiron = (function () {
     // reports both the part and the whole -- four picks looks like a thin
     // slate rather than a narrow filter unless the denominator is beside it.
     const wholeSlate = cards.length;
+    renderPassFilter(data);
     const tier = effectiveTier(cards);
     renderTierFilter(cards, tier);
     if (tier) cards = cards.filter(c => tierOf(c) === tier);

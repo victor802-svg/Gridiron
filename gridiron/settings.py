@@ -171,9 +171,41 @@ FENCED_NOTE = ("Changing this is a ruling. Edit config.py with a dated note "
                "and say why in the commit.")
 
 
+def _final_pass_rows() -> list[dict]:
+    """When each sport takes its second, later look -- and what that rests on.
+
+    FENCED RATHER THAN EDITABLE, and deliberately. Three of these four times
+    were NOT measured (docs/TIMING_FEASIBILITY.md), and one was; a page that
+    let either be typed over would erase the difference between a measurement
+    and a judgement, which is the whole thing a reader needs from this row.
+    Moving one is a ruling, like moving a ladder rung.
+
+    The unmeasured ones say so IN THE VALUE, not in a footnote, because a
+    reader scanning a settings page reads values and skips notes.
+    """
+    rows = []
+    for sport in config.SPORTS:
+        spec = config.FINAL_PASS[sport]
+        when = (f"{spec.minutes_before_first} minutes before the first game"
+                if spec.minutes_before_first is not None
+                else " and ".join(spec.at_local) + " local")
+        rows.append({
+            "name": f"FINAL_PASS[{sport}]",
+            # THE SAME WORDS THE HEALTH PANEL USES, from the same table.
+            # Composing a second phrase here would be two names for one task,
+            # and the two would drift.
+            "label": language.task_name(f"final:{sport}"),
+            "value": when + ("" if spec.measured else "  (not measured)"),
+            "declared": config.FINAL_PASS_DECLARED[:10],
+            "what": spec.basis,
+            "note": FENCED_NOTE,
+        })
+    return rows
+
+
 def fenced() -> list[dict]:
     """The model and law constants, with their dates. Read-only, always."""
-    return [
+    return _final_pass_rows() + [
         {
             "name": "PROPS_MIN_CLAIM",
             "label": "The props floor",

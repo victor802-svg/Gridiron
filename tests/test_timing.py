@@ -14,7 +14,7 @@ import sqlite3
 
 import pytest
 
-from gridiron import calibration, config, db, language, run, tasks
+from gridiron import calibration, config, db, language, run, tasks, views
 from gridiron.model import predict
 
 
@@ -136,3 +136,101 @@ def test_the_later_row_is_the_standing_one(league):
     )
     assert mine[0].id == rows[-1]["id"], "the EARLY row was graded"
     assert abs(mine[0].model_prob - 0.71) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# the surfaces (A3)
+# ---------------------------------------------------------------------------
+
+def _two_passes(conn, sport="nfl"):
+    """One question, forecast early and again close to start."""
+    game = conn.execute(
+        "SELECT id, season, week, kickoff_utc FROM games"
+        " WHERE sport = ? AND kickoff_utc IS NOT NULL LIMIT 1",
+        (sport,)).fetchone()
+    for pass_kind, shift, prob in (("early", -86400, 0.58), ("final", -3600, 0.71)):
+        created = _shift(game["kickoff_utc"], shift)
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (created, sport, game["id"], "spread", "TWOPASS", -3.5, prob,
+             "cover", "statistical", pass_kind, config.FACTOR_SET_VERSION,
+             '{"values": {}, "present": [], "absent": []}', "seeded"))
+    conn.commit()
+    return game
+
+
+def _shift(stamp, seconds):
+    from datetime import datetime, timedelta
+    moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    return (moment + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_picks_shows_one_card_per_question_when_both_passes_ran(league):
+    """The duplicate-slate defect of 2026-08-29, arriving by a different road."""
+    game = _two_passes(league)
+    payload = views.week(league, "nfl", game["season"], game["week"])
+    mine = [c for c in payload["cards"] if c["subject"] == "TWOPASS"]
+    assert len(mine) == 1, (
+        f"{len(mine)} cards for one question; the final pass writes a second "
+        f"forecast, so an unfiltered Picks list shows every game twice"
+    )
+    assert abs(mine[0]["model_prob"] - 0.71) < 1e-9, "Picks showed the EARLY row"
+    assert mine[0]["is_early_view"] is False
+
+
+def test_the_early_view_shows_the_other_row_and_labels_it(league):
+    game = _two_passes(league)
+    payload = views.week(league, "nfl", game["season"], game["week"],
+                         early_view=True)
+    mine = [c for c in payload["cards"] if c["subject"] == "TWOPASS"]
+    assert len(mine) == 1
+    assert abs(mine[0]["model_prob"] - 0.58) < 1e-9, "the early view showed the final row"
+    assert mine[0]["is_early_view"] is True
+    assert "Early view" in (mine[0]["pass_note"] or "")
+    assert "stands in its place" in (mine[0]["pass_note"] or "")
+
+
+def test_picks_offers_the_early_view_only_when_one_exists(league):
+    game = _two_passes(league)
+    assert views.week(league, "nfl", game["season"], game["week"])["has_early_view"] is True
+
+
+def test_an_unreplaced_early_row_is_not_called_an_early_view(league):
+    """MISSED: the early row IS the forecast, and must not read as superseded."""
+    game = league.execute(
+        "SELECT id, season, week, kickoff_utc FROM games WHERE sport='nfl'"
+        "   AND kickoff_utc IS NOT NULL LIMIT 1").fetchone()
+    league.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (_shift(game["kickoff_utc"], -86400), "nfl", game["id"], "spread",
+         "ONLYEARLY", -3.5, 0.6, "cover", "statistical", "early",
+         config.FACTOR_SET_VERSION,
+         '{"values": {}, "present": [], "absent": []}', "seeded"))
+    league.commit()
+    payload = views.week(league, "nfl", game["season"], game["week"])
+    mine = [c for c in payload["cards"] if c["subject"] == "ONLYEARLY"][0]
+    assert mine["is_early_view"] is False
+    assert "stands in its place" not in (mine["pass_note"] or ""), (
+        "an early row nothing replaced was told it had been replaced"
+    )
+    assert "this one stands" in (mine["pass_note"] or "")
+
+
+def test_the_results_mark_says_which_forecast_was_graded():
+    assert language.pass_mark("final") == "final"
+    assert language.pass_mark("early") == "early only"
+    assert language.pass_mark(None) == "early only"
+
+
+def test_the_settings_page_says_which_times_were_measured():
+    from gridiron import settings
+    rows = {r["name"]: r for r in settings.fenced()}
+    assert "(not measured)" not in rows["FINAL_PASS[mlb]"]["value"]
+    for sport in ("nfl", "cfb", "nba"):
+        assert "(not measured)" in rows[f"FINAL_PASS[{sport}]"]["value"], sport

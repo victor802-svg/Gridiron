@@ -829,6 +829,18 @@ def early_vs_final_line(record: dict) -> str:
             f"scored better on {better}.")
 
 
+def pass_mark(pass_kind: str | None) -> str:
+    """"final" or "early only", for a settled row (A3).
+
+    "EARLY ONLY" RATHER THAN "EARLY", because on the Results page the row IS
+    the record -- it was the forecast that got graded. Marking it merely
+    "early" would read as though a better one existed and this was the wrong
+    one shown. What actually happened is that no later pass ran, usually
+    because the slate had already started, and the early forecast stood.
+    """
+    return STANDING_VIEW if (pass_kind or "early") == "final" else "early only"
+
+
 def early_view_note(created_utc: str, kickoff_utc: str | None,
                     *, superseded: bool) -> str:
     """"Early view - written 15 days before kickoff." Says when, not whether.

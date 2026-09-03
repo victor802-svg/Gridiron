@@ -242,7 +242,8 @@ def _absent_factors(payload: dict) -> list[dict]:
 
 
 def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
-         wk: int | None = None, forecaster: str | None = None) -> dict:
+         wk: int | None = None, forecaster: str | None = None,
+         early_view: bool = False) -> dict:
     """THE SLATE: one card per forecast, sorted by disagreement with the market.
 
     "Week" is the slate key. NFL and NBA number weeks; MLB numbers days, since
@@ -276,7 +277,31 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
             "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
             "                   WHERE v.prediction_id = p.id)"
-            " ORDER BY p.id",
+            # ONE ROW PER QUESTION ON THE PICKS LIST (2026-09-03).
+            #
+            # The final pass writes a second forecast of every question, so
+            # without this every game would appear TWICE -- which is precisely
+            # the duplicate-slate defect of 2026-08-29 that took three days to
+            # notice, arriving by a different road. The early row is not
+            # hidden: `early_view=True` asks for it instead, and it is
+            # labelled when shown.
+            #
+            # The rule matches calibration's: the standing forecast is the
+            # latest row before start. Picks and the record must never
+            # disagree about which forecast is the live one.
+            + ("   AND p.pass_kind = 'early'" if early_view else
+               "   AND NOT EXISTS (SELECT 1 FROM predictions later"
+               "                   WHERE later.game_id = p.game_id"
+               "                     AND later.market_type = p.market_type"
+               "                     AND later.subject = p.subject"
+               "                     AND later.predictor = p.predictor"
+               "                     AND later.factor_set_version"
+               "                         = p.factor_set_version"
+               "                     AND IFNULL(later.line_asked, -1e9)"
+               "                         = IFNULL(p.line_asked, -1e9)"
+               "                     AND later.created_utc > p.created_utc"
+               "                     AND later.created_utc <= g.kickoff_utc)")
+            + " ORDER BY p.id",
             (sport, s, w),
         ).fetchall()
 
@@ -307,6 +332,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     # ONE PAYLOAD SHAPE. A key that is present on a full slate
                     # and missing on an empty one is how a renderer learns to
                     # guess, which is the rule the glance already follows.
+                    "early_view": early_view,
+                    "has_early_view": False,
                     "default_tier": config.PICKS_DEFAULT_TIER,
                     "tier_caveat": _least_tested_line(conn, sport),
                     "forecaster": forecaster or config.PICKS_DEFAULT_FORECASTER,
@@ -629,6 +656,13 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # confident claims first -- and the tier with the fewest settled rows
         # behind them. The caveat says so, and disappears once the band earns
         # its verdict.
+        # THE EARLY VIEW IS A SEPARATE LIST, NEVER A MIXED ONE (A3). Two
+        # forecasts of one game ranked against each other would put the
+        # same matchup twice in one ordering, naming a side twice -- the
+        # shape the one-forecaster-per-list rule already forbids for the
+        # LLM.
+        "early_view": early_view,
+        "has_early_view": bool(replaced_ids),
         "default_tier": config.PICKS_DEFAULT_TIER,
         "tier_caveat": _least_tested_line(conn, sport),
         "forecaster": chosen,
@@ -1913,7 +1947,7 @@ def digest(
 
     rows = conn.execute(
         "SELECT p.id, p.subject, p.model_prob, p.model_side, p.outcome,"
-        " p.resolved_utc, p.market_type, p.prop_type, p.predictor,"
+        " p.resolved_utc, p.market_type, p.prop_type, p.predictor, p.pass_kind,"
         " p.line_asked, p.factors_json,"
         " g.home, g.away, g.home_score, g.away_score,"
         " s.implied_prob"
@@ -1955,6 +1989,11 @@ def digest(
             "prediction_id": r["id"],
             "matchup": f"{r['away']} @ {r['home']}",
             "subject": r["subject"],
+            # WHICH FORECAST THIS RESULT GRADED (A3, 2026-09-03). "final" when
+            # a later pass wrote it, "early only" when the early row was the
+            # only one this game got -- which is the MISSED case, and a reader
+            # of the record is entitled to know which they are looking at.
+            "pass_mark": language.pass_mark(r["pass_kind"]),
             # What the pick WAS, in words, with the flip applied.
             "phrase": language.phrase(item),
             # The same three-sentence reason the expanded pick rows carry, so a
