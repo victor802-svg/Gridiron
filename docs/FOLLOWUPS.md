@@ -438,3 +438,21 @@ python tools/make_token.py --ntfy --rotate
   lineups came from one historical load on 2026-08-30; only 39 are real
   pre-game captures. A `source` column separating a live capture from a
   backfill would keep the measurable rows findable as they accumulate.
+- **CFB's expected margin is measurably wrong, and now has a number on it.**
+  `cfb_expected_margin` uses slope 1.0 and intercept 9.79; least squares over
+  1,625 completed games says **+4.848 + 0.9351 x rating_diff**. The intercept is
+  nearly double what the data supports, which is the documented 0.371 spread
+  base rate expressed as a coefficient. Not changed on 2026-09-03: correcting it
+  changes which questions college football asks, which needs an operator ruling.
+- **A rating difference does not buy its own value in margin.** Measured
+  2026-09-03: ten points of rating difference buys 4.4 points of margin in the
+  NFL (n=2,725) and 6.0 in the NBA (n=4,841). Any future instrument that assumes
+  a slope of 1.0 will expect blowouts that do not arrive.
+- **`precipitation` is still constant on the NFL spread fit** (760 rows, one
+  value). DIAGNOSIS recorded it as a broken instrument; the LAW 6 training-set
+  repair of 2026-09-03 made it more visible rather than fixing it. It is a
+  data-loading job.
+- **NBA's `nba_asked_distance` correlates 0.2908 with the rating**, the highest
+  of the three sports and worth re-measuring once the NBA record has settled
+  rows. The residual still tracks the rating slightly through the ladder's
+  uneven spacing at the extremes.
