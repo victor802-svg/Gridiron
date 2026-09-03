@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -206,6 +207,96 @@ READ_WINDOWS: dict[str, dict] = {
 #: Two forecasters, both blind. A third -- the operator's own informed calls
 #: -- stood beside them from GRIDIRON_12 until it was withdrawn on 2026-09-02.
 FORECASTER_LABELS = {"statistical": "statistical", "llm": "LLM"}
+
+# ---------------------------------------------------------------------------
+# THE FINAL PASS (2026-09-03) -- forecasting close to start, not days before it
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS. The model's confident disagreements lose (55.6% on n=207,
+# docs/DIAGNOSIS.md), and D1 could not test whether that is because the market
+# knows late news -- no free source publishes an opening line for those
+# seasons. What the record CAN show is that the model guarantees itself the
+# disadvantage by asking early. Measured lead times, live rows only:
+#
+#     MLB    median   7.7h      NFL    median  371h  (15.5 days)
+#     CFB    median 108.5h      NBA    median 1325h  (55 DAYS)
+#
+# A forecast written 55 days out is written before rosters settle, before any
+# injury is known, and before most factors have a current value.
+#
+# SO EVERY SPORT GETS A SECOND, LATE PASS. It writes NEW rows (LAW 3 --
+# append-only, the early rows stand), and the LATEST ROW BEFORE START is the
+# standing forecast for grading, calibration, Picks and Results. The early row
+# is kept and labelled, never graded. Whether the late pass is actually better
+# is not assumed here: `calibration.early_vs_final` measures it, and the
+# number decides on its date.
+#
+# THE TIMES, AND THE HONEST PROVENANCE OF EACH. Only one of these is measured.
+# docs/TIMING_FEASIBILITY.md records why the other three could not be:
+#
+#   MLB  MEASURED. 39 live lineup captures (2026-09-01/02) land at a median
+#        1h45m before first pitch. T-2h30m would have caught 18 of 39 (46%);
+#        T-1h30m catches 33 of 39 (85%). n=39 over two days is thin and is
+#        not seasonal -- it is the only evidence that exists.
+#   NFL  NOT MEASURED. The `injuries` table carries no timestamp at all, so
+#        report timing cannot be recovered from what we hold.
+#   CFB  NOT MEASURED. No college injury or depth-chart table exists.
+#   NBA  NOT MEASURED. Rests on the league's published 5:30 ET report window;
+#        we hold no dated record of receiving it.
+#
+# A time that was not measured is labelled `measured=False` and says so
+# wherever it is shown. That is the same rule the ladders follow: a declared
+# constant may be a judgement, but it may not look like a measurement.
+
+
+@dataclass(frozen=True)
+class FinalPass:
+    """When a sport's late pass runs, and what stands behind the time."""
+
+    #: Minutes before the slate's FIRST start. None for a wall-clock time.
+    minutes_before_first: int | None
+    #: Local wall-clock times (HH:MM) the pass runs at, when not T-minus.
+    at_local: tuple[str, ...]
+    #: Was this time chosen from a measurement, or declared?
+    measured: bool
+    #: What the time rests on, in plain words, for Settings and the close-out.
+    basis: str
+
+
+#: Dated 2026-09-03. See docs/TIMING_FEASIBILITY.md for every figure.
+FINAL_PASS: dict[str, FinalPass] = {
+    "mlb": FinalPass(
+        minutes_before_first=90,
+        at_local=(),
+        measured=True,
+        basis=("1h30m before the first pitch. Measured on 39 lineups that "
+               "posted before their game: 85% were up by then, and only 46% "
+               "were up 2h30m out."),
+    ),
+    "nfl": FinalPass(
+        minutes_before_first=None,
+        at_local=("08:00", "14:00"),
+        measured=False,
+        basis=("08:00 for the Sunday card and 14:00 for a standalone night "
+               "game. Not measured: the injury table carries no timestamp, so "
+               "we cannot say when a report arrives."),
+    ),
+    "cfb": FinalPass(
+        minutes_before_first=None,
+        at_local=("08:00", "14:00"),
+        measured=False,
+        basis=("08:00 on a Saturday and 14:00 for a weeknight game. Not "
+               "measured: no college injury or depth-chart data is stored."),
+    ),
+    "nba": FinalPass(
+        minutes_before_first=None,
+        at_local=("15:00",),
+        measured=False,
+        basis=("15:00, after the league's 5:30 ET injury report window. Not "
+               "measured: we hold no dated record of receiving that report."),
+    ),
+}
+
 
 #: WHICH TIER PICKS OPENS ON (ruling R2, 2026-09-02).
 #:

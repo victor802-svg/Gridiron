@@ -781,7 +781,89 @@ TASK_WORDS = {
     "predict:mlb": "Predict baseball",
     "predict:nba": "Predict basketball",
     "catch-up": "Catch up after a sleep",
+    # THE FINAL PASS (2026-09-03). "Take one more look" rather than "final
+    # pass", because a reader of the Health panel is being told what the
+    # machine does, not what the code calls it. The early pass keeps its own
+    # name: from a reader's side there is one forecast a day and then a
+    # second, closer look at it.
+    "final:cfb": "Take one more look at college football",
+    "final:nfl": "Take one more look at football",
+    "final:mlb": "Take one more look at baseball",
+    "final:nba": "Take one more look at basketball",
 }
+
+
+#: WHAT AN EARLY ROW IS CALLED WHEREVER IT APPEARS (2026-09-03).
+#:
+#: The word is "early view" and it is never "superseded", "stale" or
+#: "obsolete". The early row was a real forecast, made honestly on what was
+#: known days before the game; calling it stale would imply it was wrong, and
+#: whether the later one is actually better is the open question
+#: `calibration.early_vs_final` exists to answer. Until that number arrives,
+#: the interface says WHEN it was made and nothing about its quality.
+EARLY_VIEW = "early view"
+STANDING_VIEW = "final"
+
+
+def early_vs_final_line(record: dict) -> str:
+    """"The later look changed the pick on 9 of 62 games and scored better on 41."
+
+    BELOW THE GATE, THE COUNT AND NOTHING ELSE. A Brier comparison on eleven
+    pairs is not a finding, and printing one would invite the reader to
+    conclude something the sample cannot support -- LAW 4's rule, applied to
+    a smaller question than an edge claim.
+    """
+    n = record.get("n") or 0
+    gate = record.get("gate") or 0
+    if not n:
+        return ("No game yet has both an early and a later forecast, so there "
+                "is nothing to compare.")
+    games = "game" if n == 1 else "games"
+    if not record.get("proven"):
+        return (f"{n} {games} so far have both an early and a later forecast. "
+                f"{gate} are needed before this can say whether forecasting "
+                f"later helped.")
+    changed = record.get("changed_side") or 0
+    better = record.get("final_better") or 0
+    return (f"The later look changed the pick on {changed} of {n} {games} and "
+            f"scored better on {better}.")
+
+
+def early_view_note(created_utc: str, kickoff_utc: str | None,
+                    *, superseded: bool) -> str:
+    """"Early view - written 15 days before kickoff." Says when, not whether.
+
+    `superseded` IS NOT OPTIONAL AND IS NOT INFERRED. An early row is only an
+    "early view" if a later forecast actually exists to stand in its place.
+    Where the final pass has not run -- or ran after the game had started and
+    correctly wrote nothing -- the early row IS the standing forecast, and
+    telling a reader it had been replaced would be false.
+
+    That was a real bug for about a minute: the first version said "a later
+    forecast stands in its place" on every row in a record that contained no
+    final rows at all."""
+    tail = (" A later forecast stands in its place." if superseded else
+            " No later forecast was made, so this one stands.")
+    if not kickoff_utc:
+        return (f"{EARLY_VIEW.capitalize()} - an earlier forecast of this "
+                f"game.{tail}")
+    from datetime import datetime
+
+    def _dt(text):
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+    try:
+        hours = (_dt(kickoff_utc) - _dt(created_utc)).total_seconds() / 3600.0
+    except (ValueError, AttributeError):
+        return (f"{EARLY_VIEW.capitalize()} - an earlier forecast of this "
+                f"game.{tail}")
+    if hours >= 48:
+        when = f"{round(hours / 24)} days"
+    elif hours >= 2:
+        when = f"{round(hours)} hours"
+    else:
+        when = f"{max(1, round(hours * 60))} minutes"
+    return f"{EARLY_VIEW.capitalize()} - written {when} before the game.{tail}"
 
 
 #: How many reasons a change line names before it counts the rest. TWO, by

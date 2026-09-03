@@ -84,6 +84,89 @@ CrossSportAggregation = config.CrossSportAggregation
 require_sport = config.require_sport
 
 
+#: HOW MANY EARLY/FINAL PAIRS BEFORE THE COMPARISON SAYS ANYTHING (A2).
+#:
+#: Fifty, and it is deliberately not the 100 of MIN_SAMPLE_FOR_EDGE_CLAIM,
+#: because this is not an edge claim. It compares two forecasts of the SAME
+#: game against the same outcome, so the pairing removes most of the variance
+#: an edge estimate has to fight through -- the games are identical and only
+#: the information differs. Below fifty the panel shows the COUNT and no
+#: verdict, which is LAW 4's shape applied to a smaller question.
+MIN_PAIRS_FOR_TIMING_VERDICT = 50
+
+
+def early_vs_final(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """Did forecasting later actually help? The number, not an opinion.
+
+    THIS IS THE POINT OF THE WHOLE MECHANISM. Moving the graded forecast close
+    to start is a bet that the market's edge on our confident disagreements
+    (55.6% on n=207, docs/DIAGNOSIS.md) is partly an information gap we are
+    inflicting on ourselves by asking early. That bet might be wrong. A later
+    forecast could be a worse one -- more news is not automatically more
+    signal, and a lineup can push a model around for no gain.
+
+    So nothing here assumes it. On every resolved question that has BOTH a
+    row from the early pass and one from the final pass, this reports how
+    often the side changed, how far the claim moved, and which pass scored
+    better by Brier. The number decides, on its date.
+
+    LAW 6: one sport, required.
+    """
+    require_sport(sport, "early_vs_final")
+    rows = conn.execute(
+        "SELECT e.game_id, e.market_type, e.subject, e.predictor,"
+        "       e.model_prob AS early_prob, e.model_side AS early_side,"
+        "       f.model_prob AS final_prob, f.model_side AS final_side,"
+        "       e.outcome"
+        "  FROM predictions e"
+        "  JOIN predictions f"
+        "    ON f.game_id = e.game_id AND f.market_type = e.market_type"
+        "   AND f.subject = e.subject AND f.predictor = e.predictor"
+        "   AND f.factor_set_version = e.factor_set_version"
+        "   AND IFNULL(f.line_asked, -1e9) = IFNULL(e.line_asked, -1e9)"
+        "   AND f.pass_kind = 'final'"
+        " WHERE e.sport = ? AND e.pass_kind = 'early'"
+        # BOTH ROWS RESOLVED, and to the same outcome. They are two forecasts
+        # of one question, so a disagreement about what happened would be a
+        # resolution bug rather than a timing finding.
+        "   AND e.resolved_utc IS NOT NULL AND f.resolved_utc IS NOT NULL"
+        "   AND e.outcome = f.outcome",
+        (sport,)).fetchall()
+
+    pairs = len(rows)
+    changed = sum(1 for r in rows if r["early_side"] != r["final_side"])
+    moved = [abs(r["final_prob"] - r["early_prob"]) for r in rows]
+    early_better = final_better = 0
+    early_brier = final_brier = 0.0
+    for r in rows:
+        # Brier against the row's OWN stated side: each pass is scored on the
+        # claim it actually made, which is the only fair comparison when the
+        # two passes may have named opposite sides.
+        e = (r["early_prob"] - float(r["outcome"])) ** 2
+        f = (r["final_prob"] - float(r["outcome"])) ** 2
+        early_brier += e
+        final_brier += f
+        if f < e:
+            final_better += 1
+        elif e < f:
+            early_better += 1
+
+    out = {
+        "n": pairs,
+        "sport": sport,
+        "gate": MIN_PAIRS_FOR_TIMING_VERDICT,
+        "proven": pairs >= MIN_PAIRS_FOR_TIMING_VERDICT,
+        "changed_side": changed,
+        "final_better": final_better,
+        "early_better": early_better,
+        "mean_move": round(sum(moved) / pairs, 4) if pairs else None,
+        "early_brier": round(early_brier / pairs, 4) if pairs else None,
+        "final_brier": round(final_brier / pairs, 4) if pairs else None,
+    }
+    out["says"] = language.early_vs_final_line(out)
+    return out
+
+
 def assert_every_figure_has_n(payload, path: str = "$") -> None:
     """Walk a payload and refuse any claim standing without its sample size."""
     if isinstance(payload, dict):
@@ -193,14 +276,42 @@ def resolved(
     # the fs2 row's id, fail the outer filter, and return nothing at all.
     same_set = (" AND p2.factor_set_version = p.factor_set_version"
                 if factor_set_version else "")
+    # THE LATEST ROW **BEFORE START**, not simply the latest (2026-09-03).
+    #
+    # The final pass (config.FINAL_PASS) writes a second forecast close to
+    # kickoff, so "which row is the standing one" stopped being a duplicate
+    # question and became the ordinary case. A row written AFTER the game
+    # began is not a forecast -- the MISSED rule already refuses to write one,
+    # and this is the second lock: even if one existed, it could not become
+    # the row the record is graded on. A backtest is the case that proves it
+    # matters, because every backtest row is written after its game.
+    #
+    # `g2.kickoff_utc IS NULL` keeps a game with no scheduled time eligible
+    # rather than silently dropping every question about it.
     standing = (
         " AND p.id = (SELECT p2.id FROM predictions p2"
+        "              JOIN games g2 ON g2.id = p2.game_id"
         "              WHERE p2.game_id = p.game_id"
         "                AND p2.market_type = p.market_type"
         "                AND p2.subject = p.subject"
         "                AND p2.predictor = p.predictor"
         "                AND IFNULL(p2.line_asked, -1e9) = IFNULL(p.line_asked, -1e9)"
         f"{same_set}"
+        "                AND (g2.kickoff_utc IS NULL"
+        "                     OR p2.created_utc <= g2.kickoff_utc"
+        # A SLATE OF ROWS ALL WRITTEN AFTER START is a backtest, and a
+        # backtest still has to produce a curve. When nothing was written
+        # before kickoff the latest row stands, because refusing them all
+        # would report an empty record rather than a retrospective one.
+        "                     OR NOT EXISTS (SELECT 1 FROM predictions p3"
+        "                                    JOIN games g3 ON g3.id = p3.game_id"
+        "                                    WHERE p3.game_id = p2.game_id"
+        "                                      AND p3.market_type = p2.market_type"
+        "                                      AND p3.subject = p2.subject"
+        "                                      AND p3.predictor = p2.predictor"
+        "                                      AND IFNULL(p3.line_asked, -1e9)"
+        "                                          = IFNULL(p2.line_asked, -1e9)"
+        "                                      AND p3.created_utc <= g3.kickoff_utc))"
         "              ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)"
     )
     rows = conn.execute(

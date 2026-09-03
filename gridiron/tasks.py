@@ -106,6 +106,25 @@ TASKS: dict[str, TaskSpec] = {
 }
 
 
+# THE FINAL PASS, ONE PER SPORT (2026-09-03). Derived from config.SPORTS
+# rather than typed out four times: a sport added later gets its late pass
+# automatically, and cannot be the one that was forgotten. The lesson is
+# recorded in MENTOR 3 and this is it applied -- two tests fetched a whole
+# season for weeks because a list of sports was written by hand and one arm
+# was missed.
+for _sport in config.SPORTS:
+    _spec = config.FINAL_PASS[_sport]
+    TASKS[f"final:{_sport}"] = TaskSpec(
+        f"final:{_sport}",
+        f"re-forecast the {_sport} slate close to start, on what is known then",
+        # Same cadence as the sport's own early pass: a weekly sport gets a
+        # weekly late pass, a daily one a daily late pass.
+        every_hours=TASKS[f"predict:{_sport}"].every_hours,
+        silent_after_hours=TASKS[f"predict:{_sport}"].silent_after_hours,
+    )
+del _sport, _spec
+
+
 # ---------------------------------------------------------------------------
 # running
 # ---------------------------------------------------------------------------
@@ -121,7 +140,7 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
     # missed yesterday would go unrecorded on every day that had one pending,
     # which is every day. The panel would have shown an unbroken run of
     # successes with a hole in the record behind it.
-    if task.startswith("predict:"):
+    if task.startswith("predict:") or task.startswith("final:"):
         _record_missed_slates(conn, task.split(":", 1)[1])
 
     try:
@@ -133,6 +152,10 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
             result, detail, payload = _run_resolve(conn)
         elif task == "live":
             result, detail, payload = _run_live(conn)
+        elif task.startswith("final:"):
+            result, detail, payload = _run_final_pass(
+                conn, task.split(":", 1)[1], use_llm=use_llm
+            )
         else:
             result, detail, payload = _run_predict(
                 conn, task.split(":", 1)[1], use_llm=use_llm
@@ -508,6 +531,107 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
             payload,
         )
     return "ok", f"wrote {written} prediction(s) for slate {week}{floor_note}", payload
+
+
+def _refresh_one_sport(conn: sqlite3.Connection, sport: str) -> str:
+    """Re-read ONE sport's current season, immediately before forecasting it.
+
+    THE FINAL PASS IS POINTLESS WITHOUT THIS, and the probe is what showed it
+    (docs/TIMING_FEASIBILITY.md section 8). `_run_predict` reads stored rows;
+    it does not fetch. So a pass scheduled ninety minutes before first pitch
+    reads whatever the last `refresh` happened to leave behind, and if that
+    ran six hours ago the lineup is not there -- however long ago the league
+    posted it.
+
+    The 39 lineups we hold from before their games are the illustration: they
+    appeared in our database at 17:00 and 21:00 UTC because that is when we
+    looked, not because that is when they posted. Moving the prediction
+    without moving the fetch buys nothing at all.
+
+    One sport, not all four, because this runs on a clock tied to one sport's
+    slate and the other three have their own.
+    """
+    season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
+    try:
+        if sport == "mlb":
+            from .data import mlb_loader
+            mlb_loader.load_all(conn, (season,))
+        elif sport == "nba":
+            from .data import nba_loader
+            nba_loader.load_all(conn, (season,))
+        elif sport == "cfb":
+            from .data import cfb_loader
+            cfb_loader.load_season(conn, season)
+        else:
+            from .data import loader
+            loader.load_all(conn, (season,))
+    except Exception as exc:  # noqa: BLE001
+        # A FETCH THAT FAILED IS NOT A REASON NOT TO FORECAST. The slate still
+        # starts, and a forecast on slightly older inputs beats none at all --
+        # but the run says so, so a pattern of failures is visible rather than
+        # showing up as a final pass that mysteriously never improves on the
+        # early one.
+        return f"the pre-pass fetch failed ({type(exc).__name__}: {exc})"
+    return ""
+
+
+def _run_final_pass(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tuple[str, str, dict]:
+    """Forecast the next slate AGAIN, close to start (config.FINAL_PASS).
+
+    The rows this writes supersede the early ones as the standing forecast.
+    The early rows are kept and labelled; nothing is edited or deleted.
+    """
+    from . import run, sports
+
+    season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
+    adapter = sports.get(sport)
+    week = adapter.next_slate(conn, season)
+    if week is None:
+        # MISSED, UNCHANGED (MENTOR 4): a pass whose slate has already begun
+        # writes nothing. The early row remains the standing forecast for
+        # those games and is labelled as the only one there was.
+        missed = _missed_slate(conn, sport, season)
+        if missed:
+            return ("missed",
+                    f"the {sport} slate {missed['week']} began at "
+                    f"{missed['first']} and the final pass did not run before "
+                    f"it. Nothing was written: a forecast made after the game "
+                    f"started is not a forecast. The early forecast stands as "
+                    f"the only one this slate got.",
+                    missed)
+        return "noop", f"no upcoming {sport} slate to re-forecast", {}
+
+    early = conn.execute(
+        "SELECT COUNT(*) AS n FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport = ? AND g.season = ? AND g.week = ?",
+        (sport, season, week)).fetchone()["n"]
+    if not early:
+        return ("noop",
+                f"the {sport} slate {week} has no early forecast to improve "
+                f"on; the early pass writes first and this one revises it",
+                {"week": week})
+
+    fetch_note = _refresh_one_sport(conn, sport)
+    result = run.run_slate(conn, sport, season, week, use_llm=use_llm, final=True)
+    written = result.get("written", 0)
+    payload = {
+        "week": week,
+        "written": written,
+        "early_rows": early,
+        "snapshots": result.get("snapshots"),
+        "absent_starters": _absent_starters(conn, sport, season, week),
+        "fetch_note": fetch_note or None,
+    }
+    if written == 0:
+        return ("noop",
+                f"the final pass found nothing new to write for slate {week}"
+                + (f"; {fetch_note}" if fetch_note else ""),
+                payload)
+    return ("ok",
+            f"re-forecast {written} question(s) for slate {week} close to "
+            f"start; these supersede the early rows"
+            + (f"; {fetch_note}" if fetch_note else ""),
+            payload)
 
 
 def _record_missed_slates(conn: sqlite3.Connection, sport: str) -> list[dict]:

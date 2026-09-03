@@ -81,10 +81,18 @@ def write_prediction(
     reasoning: str,
     extra: dict | None = None,
     degraded: str | None = None,
+    final: bool = False,
 ) -> WrittenPrediction | None:
     """Insert one prediction row. Returns None if this exact question has
     already been answered by this predictor under this factor set — a rerun of
-    the slate is a no-op, never a second opinion."""
+    the slate is a no-op, never a second opinion.
+
+    `final=True` IS THE ONE SECOND OPINION THAT IS ALLOWED (2026-09-03): the
+    late pass answers a question the early pass already answered, deliberately
+    and close to start, and the newer row supersedes the older as the standing
+    forecast. Both rows are kept (LAW 3) and the early one is labelled rather
+    than hidden.
+    """
     side, confidence = baseline.stated_side(prob_yes, q.yes_label, q.no_label)
     payload = fv.to_json_dict()
     payload["prob_yes"] = round(prob_yes, 6)
@@ -108,9 +116,15 @@ def write_prediction(
     # constraint is a bug, and the two must not return the same thing.
     already = conn.execute(
         "SELECT 1 FROM predictions WHERE game_id = ? AND market_type = ?"
-        " AND subject = ? AND predictor = ? AND factor_set_version = ?",
-        (q.game_id, q.market_type, q.subject, predictor, config.FACTOR_SET_VERSION),
+        " AND subject = ? AND predictor = ? AND factor_set_version = ?"
+        "   AND pass_kind = ?",
+        (q.game_id, q.market_type, q.subject, predictor,
+         config.FACTOR_SET_VERSION, "final" if final else "early"),
     ).fetchone()
+    # MIRRORS THE UNIQUE INDEX, `pass_kind` included (2026-09-03). A check that
+    # does not match the constraint it stands in for is worse than none: it
+    # lets a write through and turns a clean no-op into an IntegrityError,
+    # which is exactly how the final pass failed the first time it ran.
     if already:
         return None
 
@@ -137,9 +151,9 @@ def write_prediction(
     cur = conn.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
         " prop_type, subject, line_asked, model_prob, model_side, predictor,"
-        " factor_set_version, factors_json, reasoning, degraded,"
+        " pass_kind, factor_set_version, factors_json, reasoning, degraded,"
         " calibrated_prob, correction_version)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             utcnow(),
             q.sport,
@@ -151,6 +165,7 @@ def write_prediction(
             claimed,
             side,
             predictor,
+            "final" if final else "early",
             config.FACTOR_SET_VERSION,
             json.dumps(payload),
             reasoning,
@@ -186,8 +201,14 @@ def predict_slate(
     use_llm: bool = True,
     llm_client=None,
     progress=None,
+    final: bool = False,
 ) -> BlindRun:
-    """Steps 1-4, for one slate of one sport. No line is fetched or reachable."""
+    """Steps 1-4, for one slate of one sport. No line is fetched or reachable.
+
+    `final=True` is the late pass: the same prediction path, the same blind
+    window, run again close to start so the forecast is made on what is known
+    then rather than on what was known days earlier.
+    """
     adapter = sports.get(sport)
     run = BlindRun(sport=sport, season=season, week=week)
     cache = context.WeekCache()
@@ -322,6 +343,7 @@ def predict_slate(
         written = write_prediction(
             conn,
             q,
+            final=final,
             predictor="statistical",
             prob_yes=stat["prob_yes"],
             fv=fv,
@@ -364,6 +386,7 @@ def predict_slate(
         llm_written = write_prediction(
             conn,
             q,
+            final=final,
             predictor="llm",
             prob_yes=result.probability,
             fv=fv,

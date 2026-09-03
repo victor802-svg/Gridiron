@@ -95,11 +95,26 @@ def run_slate(
     llm_client=None,
     snapshot: bool = True,
     progress=None,
+    final: bool = False,
 ) -> dict:
-    """Predict one slate blind, then attach the market to what was written."""
+    """Predict one slate blind, then attach the market to what was written.
+
+    `final=True` is THE LATE PASS (config.FINAL_PASS, 2026-09-03). It answers
+    a slate the early pass already answered, on purpose, and the rows it
+    writes supersede the early ones as the standing forecast.
+
+    THAT IS AN EXCEPTION TO RULING R4 (2026-09-02, "a slate is answered
+    once"), and it is a narrow one. R4 exists because `predict:nfl` ran twice
+    by accident on 2026-08-29 and nobody noticed for three days. The guard
+    still catches that -- an ordinary rerun is refused exactly as before. What
+    changes is that a pass which DECLARES itself the final one is allowed
+    through, because a second forecast written deliberately close to kickoff
+    is the thing this whole mechanism is for. The early rows stand (LAW 3);
+    they are labelled, kept, and never graded.
+    """
     already = already_answered(conn, sport, season, week,
                                include_props=include_props)
-    if already["refuse"]:
+    if already["refuse"] and not final:
         # A SLATE IS ANSWERED ONCE (ruling R4, 2026-09-02).
         #
         # `predict:nfl` ran twice on 2026-08-29 and wrote a full second set of
@@ -124,6 +139,10 @@ def run_slate(
             + f"The exception is a changed factor set: this run is on "
             f"{config.FACTOR_SET_VERSION!r}, the same one. If you mean to "
             f"re-answer under a new factor set, declare it first."
+            + _GAP
+            + "The other exception is the FINAL PASS, which answers a slate "
+            "again on purpose close to start. It is a different act with a "
+            "different name and it says so; it is not what this run is."
         )
     forget_market_module()
 
@@ -133,6 +152,7 @@ def run_slate(
             sport,
             season,
             week,
+            final=final,
             include_props=include_props,
             use_llm=use_llm,
             llm_client=llm_client,

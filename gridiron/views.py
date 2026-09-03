@@ -281,6 +281,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         ).fetchall()
 
     rows = fetch(season, wk)
+    # NOT `superseded` -- that name is already a COUNT further down this
+    # function (line ~371), and shadowing it would have made a set of ids
+    # and an integer take turns under one name.
+    replaced_ids = _superseded_ids(conn, sport)
     if not rows and not explicit:
         # The upcoming week may not be forecast yet (or this may be a backtest
         # database with no upcoming week at all). Fall back to the most recent
@@ -428,6 +432,18 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "prop_type": _prose_prop_type(r, sport),
                 "market": _prose_prop_type(r, sport) or r["market_type"],
                 "predictor": r["predictor"],
+                # WHICH PASS WROTE THIS ROW (2026-09-03). The card carries
+                # the fact and the sentence; the browser never composes
+                # either. `pass_kind` is an internal word and never
+                # reaches the page -- `pass_note` is what a reader sees.
+                "is_early_view": ((r["pass_kind"] or "early") == "early"
+                                  and r["id"] in replaced_ids),
+                "pass_note": (
+                    language.early_view_note(
+                        r["created_utc"], r["kickoff_utc"],
+                        superseded=r["id"] in replaced_ids)
+                    if (r["pass_kind"] or "early") == "early" else None
+                ),
                 "subject": r["subject"],
                 "claim": (payload.get("question") or {}).get("claim"),
                 "line_asked": r["line_asked"],
@@ -664,6 +680,31 @@ def _least_tested_line(conn: sqlite3.Connection, sport: str) -> str | None:
             (sport, config.PROPS_MIN_CLAIM)).fetchone()[0]
     return language.least_tested_tier_line(
         tier, settled, calibration.TIER_MIN_SETTLED)
+
+
+def _superseded_ids(conn: sqlite3.Connection, sport: str) -> set:
+    """Early rows that a final pass actually replaced.
+
+    An early row is only an "early view" if a later forecast exists to stand
+    in its place. Where the final pass never ran, or ran after the game began
+    and correctly wrote nothing, the early row IS the standing forecast and
+    must not be labelled as superseded.
+    """
+    return {
+        r["id"] for r in conn.execute(
+            "SELECT e.id FROM predictions e"
+            " WHERE e.sport = ? AND e.pass_kind = 'early'"
+            "   AND EXISTS (SELECT 1 FROM predictions f"
+            "               WHERE f.game_id = e.game_id"
+            "                 AND f.market_type = e.market_type"
+            "                 AND f.subject = e.subject"
+            "                 AND f.predictor = e.predictor"
+            "                 AND f.factor_set_version = e.factor_set_version"
+            "                 AND IFNULL(f.line_asked, -1e9)"
+            "                     = IFNULL(e.line_asked, -1e9)"
+            "                 AND f.pass_kind = 'final')",
+            (sport,))
+    }
 
 
 def _venues(conn: sqlite3.Connection, sport: str) -> dict:

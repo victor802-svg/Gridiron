@@ -32,6 +32,11 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 #: nothing here drops or rewrites a column, because a migration that could
 #: rewrite `predictions` would be a way around LAW 3.
 MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    # WHICH PASS WROTE A PREDICTION (2026-09-03). Every existing row is an
+    # 'early' one by definition -- they were all written before the late pass
+    # existed -- which is exactly what the column default says, so the
+    # migration needs no backfill and rewrites no history.
+    ("predictions", "pass_kind", "TEXT NOT NULL DEFAULT 'early'"),
     ("teams", "is_fbs", "INTEGER"),
     # B3: where a college team plays, and the coordinates the weather
     # and travel factors need. `teams` is reference data, not market

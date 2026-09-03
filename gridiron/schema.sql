@@ -615,6 +615,21 @@ CREATE TABLE IF NOT EXISTS predictions (
     model_prob    REAL    NOT NULL CHECK (model_prob > 0.0 AND model_prob < 1.0),
     model_side    TEXT    NOT NULL,   -- 'cover' | 'not_cover' | 'over' | 'under'
     predictor     TEXT    NOT NULL CHECK (predictor IN ('statistical', 'llm')),
+    -- WHICH PASS WROTE THIS ROW (2026-09-03).
+    --
+    -- 'early' is the forecast made when the slate is first seen -- days out
+    -- for a weekly sport, and a median of 55 days out for NBA. 'final' is the
+    -- second pass, run close to start on what is known then.
+    --
+    -- It is part of the uniqueness key below rather than a loose label,
+    -- because "two passes, one standing row" has to be structural. With the
+    -- key as it was, a question could hold exactly one row and the late pass
+    -- was impossible; without the column in the key at all, a loop could
+    -- write fifty. Two named passes means at most two rows, and which is
+    -- which is a fact about the row rather than an inference from its
+    -- timestamp.
+    pass_kind     TEXT    NOT NULL DEFAULT 'early'
+                  CHECK (pass_kind IN ('early', 'final')),
     factor_set_version TEXT NOT NULL,
     factors_json  TEXT    NOT NULL,
     -- THE NUMBER ACTUALLY SHOWN, when a correction was in force at write time.
@@ -635,12 +650,19 @@ CREATE TABLE IF NOT EXISTS predictions (
 CREATE INDEX IF NOT EXISTS pred_game     ON predictions (game_id);
 CREATE INDEX IF NOT EXISTS pred_created  ON predictions (created_utc);
 CREATE INDEX IF NOT EXISTS pred_open     ON predictions (resolved_utc) WHERE resolved_utc IS NULL;
--- One answer per question, per predictor, per factor set. Re-running a week is
--- a no-op rather than a second opinion, and a predictor cannot quietly change
--- its mind by writing a row for the other side (LAW 3).
+-- One answer per question, per predictor, per factor set, PER PASS. Re-running
+-- a week is a no-op rather than a second opinion, and a predictor cannot
+-- quietly change its mind by writing a row for the other side (LAW 3).
+--
+-- `pass_kind` joined the key on 2026-09-03 so the late pass can write the one
+-- extra row it is entitled to and no more. The old index is dropped by name:
+-- an index that still enforced the single-row rule would make the final pass
+-- fail with an IntegrityError, which is exactly how this was found.
 DROP INDEX IF EXISTS pred_unique;
-CREATE UNIQUE INDEX IF NOT EXISTS pred_one_answer_per_question
-    ON predictions (game_id, market_type, subject, predictor, factor_set_version);
+DROP INDEX IF EXISTS pred_one_answer_per_question;
+CREATE UNIQUE INDEX IF NOT EXISTS pred_one_answer_per_question_per_pass
+    ON predictions (game_id, market_type, subject, predictor,
+                    factor_set_version, pass_kind);
 CREATE INDEX IF NOT EXISTS pred_sport ON predictions (sport, market_type, prop_type);
 
 -- Factor names are globally unique across sports, not merely unique within
