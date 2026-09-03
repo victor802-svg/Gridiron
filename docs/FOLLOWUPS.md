@@ -456,3 +456,22 @@ python tools/make_token.py --ntfy --rotate
   of the three sports and worth re-measuring once the NBA record has settled
   rows. The residual still tracks the rating slightly through the ladder's
   uneven spacing at the extremes.
+- **The reasoning pass stopped writing on 2026-09-02 and the key is BLOCKED.**
+  23 rows, all in three minutes that morning; every run since records
+  `llm_unavailable:bad_api_key`. The front page now says so (2026-09-03); the
+  key itself lives in `.env` and needs the operator.
+- **`injuries` holds nothing for 2026.** Newest row is 2025 week 22, so the
+  current season has no injury data and the injury factors have nothing to read
+  on a live slate. Found 2026-09-03 while building the capture pass.
+- **UFC is loaded but not declared.** 2,482 bouts, 954 fighters and a fitted
+  Elo (K=80) are stored; `ufc` is deliberately absent from `config.SPORTS`
+  because declaring it touches ~8 config tables, the adapter contract, factors,
+  questions, resolve, the tabs, the scheduler and 12 test files. U3-U6 are the
+  next session's work.
+- **ESPN carries an OPENING moneyline for UFC.** DIAGNOSIS records H1a as NOT
+  TESTABLE because no free source publishes opening lines for the NFL seasons we
+  hold. In UFC it is testable, on 52 cards a year. Nothing acts on this yet.
+- **The weather repair is unfinished by design.** `weather_observed` exists and
+  is deliberately empty: no observed-weather source is wired. Until one is, the
+  college wind coefficient is still fitted on observed and applied to forecasts.
+  S5's fourth planting waits on the same thing.
