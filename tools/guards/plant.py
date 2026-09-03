@@ -1443,6 +1443,57 @@ def plant_a_capture_that_stores_nothing_and_reports_success() -> Result:
                   "eligible and reported success")
 
 
+def plant_a_what_it_knew_line_that_disagrees_with_its_row() -> Result:
+    """Say a forecast rested on more factors than the row records.
+
+    THE LINE IS A CLAIM ABOUT THE ROW, and a claim about a row that the row
+    does not support is the most quietly misleading thing an interface can
+    say: it reads as provenance and is a decoration. A reader deciding whether
+    to trust a pick made without the starter has only this sentence to go on.
+    """
+    from gridiron import language as _language
+
+    absent = ["the starter had not been announced"]
+    honest = _language.what_it_knew(7, absent)
+    if "7 of 8" not in honest:
+        return Result("WHAT IT KNEW", "a coverage line disagreeing with its row",
+                      "language.what_it_knew", False,
+                      f"the honest line does not name its own totals: {honest!r}")
+
+    # THE PLANTED VERSION: the same row, described as complete.
+    planted = _language.what_it_knew(8, [])
+    if "8 of 8" not in planted:
+        return Result("WHAT IT KNEW", "a coverage line disagreeing with its row",
+                      "language.what_it_knew", False,
+                      "the planted line did not come out as a complete claim")
+
+    # A card carrying the planted line alongside a row with an absence is the
+    # disagreement, and it is detectable by comparing the two -- which is what
+    # `audit.coverage_line_faults` does.
+    faults = audit.coverage_line_faults([
+        {"what_it_knew": planted,
+         "factors_json": '{"present": ["a","b","c","d","e","f","g"],'
+                         ' "absent": ["h"]}'},
+    ])
+    if not faults:
+        return Result("WHAT IT KNEW", "a coverage line disagreeing with its row",
+                      "audit.coverage_line_faults", False,
+                      "NOT CAUGHT - a card said it rested on everything while "
+                      "its own row recorded an absence")
+
+    clean = audit.coverage_line_faults([
+        {"what_it_knew": honest,
+         "factors_json": '{"present": ["a","b","c","d","e","f","g"],'
+                         ' "absent": ["h"]}'},
+    ])
+    if clean:
+        return Result("WHAT IT KNEW", "a coverage line disagreeing with its row",
+                      "audit.coverage_line_faults", False,
+                      f"the scan fires on an honest card too: {clean[0]}")
+    return Result("WHAT IT KNEW", "a coverage line disagreeing with its row",
+                  "audit.coverage_line_faults", True, faults[0])
+
+
 def plant_a_launcher_attaching_to_an_older_build() -> Result:
     """Restore the carve-out that showed a photograph on 2026-09-03.
 
@@ -3921,6 +3972,7 @@ def main() -> int:
     results.append(plant_a_selector_for_a_class_nothing_builds())
     results.append(plant_a_final_pass_inside_the_market_closure())
     results.append(plant_a_launcher_attaching_to_an_older_build())
+    results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())
     results.append(plant_a_capture_that_stores_nothing_and_reports_success())

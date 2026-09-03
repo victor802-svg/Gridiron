@@ -416,6 +416,10 @@ def week(sport: str | None = None, season: int | None = None,
     # that makes a narrow band look like a quiet night -- the same trade LAW
     # 4's sample-size check already makes on the routes above.
     faults = audit.tier_count_faults(payload)
+    # THE COVERAGE LINE IS A CLAIM ABOUT THE ROW (S2). A card that says it
+    # rested on everything while its own vector records an absence is
+    # provenance a reader would act on, and it would be false.
+    faults += audit.coverage_line_faults(payload.get("cards") or [])
     if faults:
         raise HTTPException(status_code=500, detail="; ".join(faults))
     return payload

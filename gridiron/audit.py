@@ -19,6 +19,7 @@ but it may not name `spread_line` in a string that could become SQL.
 from __future__ import annotations
 
 import ast
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -2045,6 +2046,51 @@ _CSS_RULE = re.compile(r"(?P<selector>[^{}]+)\{(?P<body>[^{}]*)\}")
 
 
 _FILTERED_COUNT = re.compile(r"\b(\d+)\s+of\s+(\d+)\b")
+
+
+_COVERAGE_COUNTS = re.compile(r"Rested on (\d+) of (\d+)")
+
+
+def coverage_line_faults(cards) -> list[str]:
+    """A "what it knew" line that does not match the row it describes.
+
+    The line is a claim ABOUT THE ROW. A card saying it rested on everything
+    while its own factor vector records an absence reads as provenance and is
+    a decoration, and a reader deciding whether to trust a pick made without
+    the starter has only that sentence to go on.
+    """
+    faults = []
+    for card in cards:
+        said = (card or {}).get("what_it_knew") or ""
+        found = _COVERAGE_COUNTS.search(said)
+        if not found:
+            continue
+        counts = (card or {}).get("factor_counts")
+        if isinstance(counts, dict):
+            present = int(counts.get("present") or 0)
+            total = int(counts.get("total") or 0)
+        else:
+            # A raw row rather than a card. The planting uses this shape, and
+            # so would anything checking the record directly.
+            try:
+                payload = json.loads((card or {}).get("factors_json") or "{}")
+            except ValueError:
+                continue
+            present = len(payload.get("present") or [])
+            total = present + len(payload.get("absent") or [])
+        if not total:
+            # NOTHING TO COMPARE AGAINST is not a disagreement. A card that
+            # carries a sentence and no counts is checked by the plain-words
+            # scan, not by this one, and inventing a verdict here would fire
+            # on every card in the record -- which it did, on first run.
+            continue
+        claimed_present, claimed_total = int(found.group(1)), int(found.group(2))
+        if (claimed_present, claimed_total) != (present, total):
+            faults.append(
+                f"a card says {said.split('.')[0]!r} while its row records "
+                f"{present} of {total}. The line is a claim about the row, and "
+                f"this one is not true of it.")
+    return faults
 
 
 def tier_count_faults(payload: dict) -> list[str]:

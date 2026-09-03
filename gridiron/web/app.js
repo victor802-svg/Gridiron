@@ -894,6 +894,9 @@ const Gridiron = (function () {
     if (c.is_early_view && c.pass_note) {
       pick.appendChild(el('div', 'footnote', c.pass_note));
     }
+    if (c.what_it_knew) {
+      pick.appendChild(el('div', 'footnote', c.what_it_knew));
+    }
     // `start_local` is the UTC instant; the BROWSER applies the reader's
     // timezone, which is the one thing it knows better than the server.
     // `localTime` is the same helper the compact rows use -- without it
@@ -1342,6 +1345,11 @@ const Gridiron = (function () {
     // placed here. Only a row a later forecast actually replaced carries one.
     if (c.is_early_view && c.pass_note) {
       mid.appendChild(el('div', 'footnote', c.pass_note));
+    }
+    // WHAT IT KNEW (S2). One line saying how much of the model could be
+    // measured for this game, and how old the newest thing behind it is.
+    if (c.what_it_knew) {
+      mid.appendChild(el('div', 'footnote', c.what_it_knew));
     }
     mid.appendChild(pick);
     head.appendChild(mid);

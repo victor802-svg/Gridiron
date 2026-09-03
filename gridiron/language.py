@@ -905,6 +905,60 @@ def forecaster_silent_line(predictor: str, hours: float, wrote: int,
             f"them, so nothing it would have said is being scored.")
 
 
+def what_it_knew(present: int, absent_phrases: list, data_age_hours=None) -> str:
+    """"Rested on 7 of 9 factors; the starter wasn't announced yet."
+
+    WHY A CARD SAYS THIS AT ALL. Every prediction row already records which
+    factors it could measure and which it could not -- it has since the
+    missing-data rule replaced silent zeroes -- and none of it reached a
+    reader. A forecast made without the starter and one made with him look
+    identical on the page, and the reader has no way to tell which kind of
+    claim they are being shown.
+
+    THE ABSENCES ARE NAMED, not counted. "Rested on 7 of 9" tells a reader
+    something is missing; saying WHICH is the difference between a caveat and
+    an explanation, and the declared WHY phrase is already the plain-words
+    version of every factor.
+
+    AT MOST TWO ARE NAMED. A card that lists nine absences is an inventory a
+    reader skips, which is the same ruling the change line follows.
+    """
+    total = present + len(absent_phrases)
+    if not total:
+        return ""
+    noun = "factor" if total == 1 else "factors"
+    said = f"Rested on {present} of {total} {noun}"
+    if absent_phrases:
+        named = list(absent_phrases[:2])
+        rest = len(absent_phrases) - len(named)
+        joined = " and ".join(named) if len(named) == 2 else named[0]
+        if rest:
+            joined += f", and {rest} other{'s' if rest > 1 else ''}"
+        said += f"; {joined} couldn't be measured"
+    said += "."
+    if data_age_hours is not None:
+        said += " " + data_age_line(data_age_hours)
+    return said
+
+
+def data_age_line(hours: float) -> str:
+    """"Data as of 2 hours before first pitch."
+
+    THE AGE OF THE NEWEST THING BEHIND THE FORECAST. A pick made ninety
+    minutes out and one made fifteen days out are different claims, and the
+    only place that difference currently appears is a timestamp nobody reads.
+    """
+    if hours is None:
+        return ""
+    if hours < 0:
+        return "Data from after the game had started."
+    if hours < 2:
+        return f"Data as of {max(1, round(hours * 60))} minutes before it starts."
+    if hours < 48:
+        return f"Data as of {round(hours)} hours before it starts."
+    return f"Data as of {round(hours / 24)} days before it starts."
+
+
 def pass_mark(pass_kind: str | None) -> str:
     """"final" or "early only", for a settled row (A3).
 

@@ -153,3 +153,50 @@ def test_the_capture_task_is_registered_with_a_plain_name():
     assert "capture" not in said.lower(), (
         "the Health panel would show the task's internal name"
     )
+
+
+# ---------------------------------------------------------------------------
+# S2: what it knew
+# ---------------------------------------------------------------------------
+
+def test_the_coverage_line_names_the_absences_rather_than_counting_them():
+    said = language.what_it_knew(7, ["the starter had not been announced"])
+    assert "7 of 8" in said
+    assert "the starter had not been announced" in said
+
+
+def test_at_most_two_absences_are_named():
+    """A card listing nine absences is an inventory a reader skips."""
+    said = language.what_it_knew(2, ["a", "b", "c", "d"])
+    assert "2 others" in said
+    assert "c" not in said.replace("couldn't", "")
+
+
+def test_a_complete_forecast_says_so_without_a_caveat():
+    said = language.what_it_knew(9, [])
+    assert said == "Rested on 9 of 9 factors."
+
+
+def test_the_data_age_is_stated_in_units_a_reader_uses():
+    assert "minutes" in language.data_age_line(0.5)
+    assert "hours" in language.data_age_line(6.0)
+    assert "days" in language.data_age_line(372.0)
+    assert "after the game had started" in language.data_age_line(-1.0)
+
+
+def test_a_line_that_disagrees_with_its_row_is_caught(league):
+    from gridiron import audit
+    honest = {"factor_counts": {"present": 7, "total": 8},
+              "what_it_knew": language.what_it_knew(7, ["x"])}
+    assert audit.coverage_line_faults([honest]) == []
+    lying = {"factor_counts": {"present": 7, "total": 8},
+             "what_it_knew": language.what_it_knew(8, [])}
+    faults = audit.coverage_line_faults([lying])
+    assert faults and "not true of it" in faults[0]
+
+
+def test_a_card_with_no_counts_is_not_judged():
+    """Nothing to compare against is not a disagreement."""
+    from gridiron import audit
+    assert audit.coverage_line_faults(
+        [{"what_it_knew": "Rested on 7 of 8 factors."}]) == []

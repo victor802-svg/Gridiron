@@ -463,6 +463,23 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 # the fact and the sentence; the browser never composes
                 # either. `pass_kind` is an internal word and never
                 # reaches the page -- `pass_note` is what a reader sees.
+                # WHAT IT KNEW (S2, 2026-09-03). Every row already
+                # records which factors it could measure; none of it
+                # reached a reader, so a forecast made without the
+                # starter looked identical to one made with him.
+                # THE NUMBERS THE SENTENCE ABOVE CLAIMS, carried beside it so
+                # a scan can check the two agree rather than trusting the
+                # composer. `audit.coverage_line_faults` reads exactly this.
+                "factor_counts": {
+                    "present": len(payload.get("present") or []),
+                    "total": (len(payload.get("present") or [])
+                              + len(payload.get("absent") or [])),
+                },
+                "what_it_knew": language.what_it_knew(
+                    len(payload.get("present") or []),
+                    [_why_phrases().get(name) or language.humanise(name)
+                     for name in (payload.get("absent") or [])],
+                    _hours_before(r["created_utc"], r["kickoff_utc"])),
                 "is_early_view": ((r["pass_kind"] or "early") == "early"
                                   and r["id"] in replaced_ids),
                 "pass_note": (
@@ -714,6 +731,24 @@ def _least_tested_line(conn: sqlite3.Connection, sport: str) -> str | None:
             (sport, config.PROPS_MIN_CLAIM)).fetchone()[0]
     return language.least_tested_tier_line(
         tier, settled, calibration.TIER_MIN_SETTLED)
+
+
+def _hours_before(created_utc, kickoff_utc):
+    """How far ahead of the start the forecast was made, in hours.
+
+    None when either end is missing -- an age nobody can compute is not
+    reported as zero, which would read as "made at the bell".
+    """
+    from datetime import datetime as _dt
+
+    if not created_utc or not kickoff_utc:
+        return None
+    try:
+        made = _dt.fromisoformat(str(created_utc).replace("Z", "+00:00"))
+        start = _dt.fromisoformat(str(kickoff_utc).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (start - made).total_seconds() / 3600.0
 
 
 def _superseded_ids(conn: sqlite3.Connection, sport: str) -> set:
