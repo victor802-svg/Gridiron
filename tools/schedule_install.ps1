@@ -75,6 +75,7 @@ $TaskNames = @(
     "$($Prefix)Final-NFL",
     "$($Prefix)Final-NBA",
     "$($Prefix)Final-CFB",
+    "$($Prefix)Capture",
     "$($Prefix)CatchUp"
 )
 
@@ -240,6 +241,25 @@ New-GridironTask -Name "$($Prefix)Final-NBA" -TaskArg "final:nba" `
 New-GridironTask -Name "$($Prefix)Final-CFB" -TaskArg "final:cfb" `
     -Trigger (New-ScheduledTaskTrigger -Daily -At "08:00") `
     -Description "Re-forecast the college football slate on the morning of the games."
+
+# ---------------------------------------------------------------------------
+# WHAT WAS KNOWABLE, WHEN (S1, 2026-09-03)
+# ---------------------------------------------------------------------------
+#
+# Every four hours, stamping the injury report and any posted lineup into
+# append-only tables. The point is the SEQUENCE: a player appearing as
+# questionable and later as out is the thing a timing probe needs, and a daily
+# capture would record the end of that story and none of it.
+#
+# WHY IT EXISTS AT ALL. The timing probe of 2026-09-02 could not measure three
+# sports out of four -- not because the data was missing, but because it
+# carried no capture time. 55,554 injury rows, not one dated; 6,902 of 6,958
+# lineups from a single backfill. Averaging those said lineups post "10,592
+# hours before first pitch", which is 441 days AFTER the game.
+New-GridironTask -Name "$($Prefix)Capture" -TaskArg "capture" `
+    -Trigger (New-ScheduledTaskTrigger -Once -At "00:15" `
+        -RepetitionInterval (New-TimeSpan -Hours 4)) `
+    -Description "Stamp the injury report and tonight's lineups, so what was knowable when becomes data."
 
 # The logon trigger is scoped to THIS user on purpose. Without -User it applies
 # to every account on the machine, which Windows treats as a system-wide change

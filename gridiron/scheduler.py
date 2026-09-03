@@ -48,6 +48,10 @@ OS_TASK_NAMES = {
     "final:nfl": "Final-NFL",
     "final:nba": "Final-NBA",
     "final:cfb": "Final-CFB",
+    # S1's four-hourly capture. Named here so Settings can read whether the
+    # machine holds it -- and, until the installer is run again, say plainly
+    # that it does not.
+    "capture": "Capture",
     "live": "Live",
 }
 
