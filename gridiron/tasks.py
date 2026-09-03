@@ -81,6 +81,17 @@ TASKS: dict[str, TaskSpec] = {
         every_hours=24,
         silent_after_hours=36,
     ),
+    "capture": TaskSpec(
+        "capture",
+        "stamp the injury report and tonight's lineups, so what was knowable "
+        "when becomes data",
+        # EVERY FOUR HOURS IN SEASON, per S1. The point is the SEQUENCE -- a
+        # player appearing as questionable and later as out is the thing a
+        # timing probe needs, and a daily capture would record the end of that
+        # story and none of it.
+        every_hours=4.0,
+        silent_after_hours=12.0,
+    ),
     "live": TaskSpec(
         "live",
         "follow the games that are on right now",
@@ -152,6 +163,8 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
             result, detail, payload = _run_resolve(conn)
         elif task == "live":
             result, detail, payload = _run_live(conn)
+        elif task == "capture":
+            result, detail, payload = _run_capture(conn)
         elif task.startswith("final:"):
             result, detail, payload = _run_final_pass(
                 conn, task.split(":", 1)[1], use_llm=use_llm
@@ -471,6 +484,25 @@ def _run_live(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     if settled:
         detail += f", {settled} settled"
     return "ok", detail, report
+
+
+def _run_capture(conn: sqlite3.Connection) -> tuple[str, str, dict]:
+    """Stamp what is knowable now, so it can be measured later (S1)."""
+    from . import capture
+
+    try:
+        counts = capture.run(conn)
+    except capture.NothingCaptured as exc:
+        return "failed", str(exc), {}
+    total = sum(counts.values())
+    if not total:
+        return ("noop",
+                "nothing to capture: no injury report and no posted lineup",
+                counts)
+    return ("ok",
+            f"stamped {counts['injuries']} injury row(s) and "
+            f"{counts['lineups']} lineup slot(s)",
+            counts)
 
 
 def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tuple[str, str, dict]:

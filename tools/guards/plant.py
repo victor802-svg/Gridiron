@@ -1331,6 +1331,118 @@ def plant_a_docstring_promising_a_guard_that_does_not_exist() -> Result:
                   "audit.docstring_reference_faults", True, faults[0])
 
 
+LAW_KNOWABLE = "WHAT WAS KNOWABLE, WHEN"
+
+
+def plant_an_injury_row_without_a_capture_time() -> Result:
+    """Store an injury observation with no stamp on it.
+
+    THIS IS THE STATE THE PROJECT WAS IN. `injuries` holds 55,554 rows and not
+    one of them carries a timestamp, which is why the timing probe could not
+    measure NFL report timing at all -- not thinly, not approximately, not at
+    all. An undated observation answers every question except the one about
+    time, and looks complete while doing it.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(Path(tmp) / "capture.db")
+        try:
+            conn.execute(
+                "INSERT INTO injury_reports (sport, season, week, team,"
+                " player_name, captured_utc)"
+                " VALUES ('nfl', 2026, 1, 'KC', 'A. Player', NULL)")
+        except sqlite3.IntegrityError as exc:
+            return Result(LAW_KNOWABLE, "an injury row with no capture time",
+                          "schema: injury_reports.captured_utc NOT NULL",
+                          True, str(exc))
+        finally:
+            conn.close()
+    return Result(LAW_KNOWABLE, "an injury row with no capture time",
+                  "schema: injury_reports.captured_utc NOT NULL", False,
+                  "NOT CAUGHT - an undated observation was stored, which is "
+                  "the state that made three sports unmeasurable")
+
+
+def plant_a_backfilled_lineup_posing_as_live() -> Result:
+    """Store a lineup capture whose source is neither live nor backfill.
+
+    THE DISTINCTION IS THE MEASUREMENT. 6,902 of the 6,958 lineups this
+    project holds came from one historical load, and averaging them with the
+    39 real captures produced "lineups post 10,592 hours before first pitch"
+    -- which is 441 days AFTER the game. A capture that will not say which it
+    is puts that back.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(Path(tmp) / "capture.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " status) VALUES ('g1','mlb',2026,1,'REG','AAA','BBB','scheduled')")
+        try:
+            conn.execute(
+                "INSERT INTO lineup_captures (game_id, side, slot, player_id,"
+                " captured_utc, source) VALUES ('g1','home',1,1,?,'live-ish')",
+                (db.utcnow(),))
+        except sqlite3.IntegrityError as exc:
+            # AND THE HONEST VALUES MUST STILL BE ACCEPTED.
+            for good in ("live", "backfill"):
+                try:
+                    conn.execute(
+                        "INSERT INTO lineup_captures (game_id, side, slot,"
+                        " player_id, captured_utc, source)"
+                        " VALUES ('g1','home',?,1,?,?)",
+                        (2 if good == "live" else 3, db.utcnow(), good))
+                except sqlite3.IntegrityError as wrong:
+                    conn.close()
+                    return Result(
+                        LAW_KNOWABLE, "a lineup that will not say what it is",
+                        "schema: lineup_captures.source CHECK", False,
+                        f"the check rejects the honest value {good!r}: {wrong}")
+            conn.close()
+            return Result(LAW_KNOWABLE, "a lineup that will not say what it is",
+                          "schema: lineup_captures.source CHECK", True, str(exc))
+        conn.close()
+    return Result(LAW_KNOWABLE, "a lineup that will not say what it is",
+                  "schema: lineup_captures.source CHECK", False,
+                  "NOT CAUGHT - a capture stored a source nobody can read as "
+                  "either live or backfill, and the two must never merge")
+
+
+def plant_a_capture_that_stores_nothing_and_reports_success() -> Result:
+    """Run a capture pass with rows eligible and every writer returning zero.
+
+    A SILENT ZERO IS THE FAILURE THIS PROJECT KEEPS FINDING. A resolver ran
+    for two days against a table nobody refreshed, reporting `noop` truthfully
+    every time, and nothing failed. A capture that stores nothing while there
+    was something to store is the same shape.
+    """
+    from gridiron import capture as _capture
+
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(Path(tmp) / "capture.db")
+        season = config.SPORT_CURRENT_SEASON.get("nfl", config.CURRENT_SEASON)
+        conn.execute(
+            "INSERT INTO injuries (season, week, team, player_name,"
+            " report_status) VALUES (?,1,'KC','A. Player','Out')", (season,))
+        conn.commit()
+
+        real_injuries = _capture.capture_injuries
+        real_lineups = _capture.capture_lineups
+        _capture.capture_injuries = lambda *a, **k: 0
+        _capture.capture_lineups = lambda *a, **k: 0
+        try:
+            _capture.run(conn)
+        except _capture.NothingCaptured as exc:
+            return Result(LAW_KNOWABLE, "a capture that stores nothing quietly",
+                          "capture.run", True, str(exc))
+        finally:
+            _capture.capture_injuries = real_injuries
+            _capture.capture_lineups = real_lineups
+            conn.close()
+    return Result(LAW_KNOWABLE, "a capture that stores nothing quietly",
+                  "capture.run", False,
+                  "NOT CAUGHT - a capture pass wrote nothing with rows "
+                  "eligible and reported success")
+
+
 def plant_a_launcher_attaching_to_an_older_build() -> Result:
     """Restore the carve-out that showed a photograph on 2026-09-03.
 
@@ -3809,6 +3921,9 @@ def main() -> int:
     results.append(plant_a_selector_for_a_class_nothing_builds())
     results.append(plant_a_final_pass_inside_the_market_closure())
     results.append(plant_a_launcher_attaching_to_an_older_build())
+    results.append(plant_an_injury_row_without_a_capture_time())
+    results.append(plant_a_backfilled_lineup_posing_as_live())
+    results.append(plant_a_capture_that_stores_nothing_and_reports_success())
     results.append(plant_a_training_set_spanning_two_sports())
     results.append(plant_a_sport_adapter_missing_markets())
     results.append(plant_a_docstring_promising_a_guard_that_does_not_exist())

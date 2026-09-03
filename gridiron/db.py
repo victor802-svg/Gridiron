@@ -37,6 +37,11 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # existed -- which is exactly what the column default says, so the
     # migration needs no backfill and rewrites no history.
     ("predictions", "pass_kind", "TEXT NOT NULL DEFAULT 'early'"),
+    # A BACKFILL MAY NEVER POSE AS A LIVE CAPTURE (S1, 2026-09-03). Every
+    # lineup row that exists today came from a historical load, which is
+    # exactly what the default says -- so the migration needs no backfill of
+    # its own and rewrites nothing.
+    ("mlb_lineups", "source", "TEXT NOT NULL DEFAULT 'backfill'"),
     ("teams", "is_fbs", "INTEGER"),
     # B3: where a college team plays, and the coordinates the weather
     # and travel factors need. `teams` is reference data, not market

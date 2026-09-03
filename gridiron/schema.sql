@@ -294,6 +294,18 @@ CREATE TABLE IF NOT EXISTS mlb_lineups (
     player_id   INTEGER NOT NULL,
     player_name TEXT,
     recorded_utc TEXT   NOT NULL,
+    -- A BACKFILL MAY NEVER POSE AS A LIVE CAPTURE (S1, 2026-09-03). Defaulted
+    -- to 'backfill' because every row that existed when this column was added
+    -- came from one historical load on 2026-08-30 -- 6,902 of 6,958 games --
+    -- so the default is the truth about them rather than a placeholder.
+    --
+    -- THE MIGRATION AND THIS DECLARATION MUST BOTH EXIST. `_migrate` skips a
+    -- table it has not seen, so a fresh database builds this table from here
+    -- alone; adding the column to only one of the two places gives a live
+    -- database the column and a new one nothing, which is how the tests found
+    -- this within a minute of being written.
+    source      TEXT    NOT NULL DEFAULT 'backfill'
+                CHECK (source IN ('live', 'backfill')),
     PRIMARY KEY (game_id, side, slot)
 );
 CREATE INDEX IF NOT EXISTS mlb_lineups_player ON mlb_lineups (player_id);
@@ -1157,4 +1169,90 @@ CREATE TABLE IF NOT EXISTS ufc_ratings (
     k_factor      REAL NOT NULL,
     computed_utc  TEXT NOT NULL,
     PRIMARY KEY (bout_id, fighter_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- WHAT WAS KNOWABLE, WHEN (S1, 2026-09-03)
+--
+-- The timing probe of 2026-09-02 could not measure three sports out of four,
+-- and the reason was not that the data was missing: it was that the data
+-- carried no capture time, or was backfilled after the fact and looked
+-- identical to a live capture.
+--
+--   injuries          55,554 rows, NOT ONE OF THEM DATED
+--   mlb_lineups       99.4% written by one backfill on 2026-08-30
+--   weather_forecasts one row per game, overwritten
+--
+-- These tables are ADDITIVE rather than rebuilds. `injuries`, `mlb_lineups`
+-- and `weather_forecasts` keep their shape and their meaning -- current state,
+-- which is what the factors read. What was missing is HISTORY, and history
+-- gets its own tables, append-only and stamped, so a row can never be
+-- overwritten by a later capture of the same thing.
+--
+-- WHY NOT WIDEN THE PRIMARY KEYS INSTEAD: it would rebuild a 55,554-row table
+-- to answer a question about rows written from today onward, and every row
+-- already in it would carry a captured_utc that was a guess.
+-- ---------------------------------------------------------------------------
+
+-- THE INJURY REPORT'S OWN HISTORY. One row per player per capture, so the
+-- report becomes a sequence rather than a snapshot: when a player first
+-- appeared as questionable, and when that became out, is the thing a timing
+-- probe needs and nothing currently records.
+CREATE TABLE IF NOT EXISTS injury_reports (
+    sport         TEXT    NOT NULL,
+    season        INTEGER NOT NULL,
+    week          INTEGER NOT NULL,
+    team          TEXT    NOT NULL,
+    player_name   TEXT    NOT NULL,
+    player_id     TEXT,
+    position      TEXT,
+    report_status TEXT,
+    practice_status TEXT,
+    -- WHEN WE SAW IT, not when the league published it. The distinction is
+    -- the one the timing probe had to make about lineups: our storage time is
+    -- an upper bound on the publication time, and where our own cadence is
+    -- the binding constraint the measurement describes us.
+    captured_utc  TEXT    NOT NULL,
+    PRIMARY KEY (sport, season, week, team, player_name, captured_utc)
+);
+CREATE INDEX IF NOT EXISTS injury_reports_when
+    ON injury_reports (sport, captured_utc);
+
+-- A LINEUP AS IT LOOKED AT A MOMENT. `mlb_lineups` holds the latest and is
+-- what the factors read; this holds every capture, stamped.
+CREATE TABLE IF NOT EXISTS lineup_captures (
+    game_id      TEXT    NOT NULL REFERENCES games (id),
+    side         TEXT    NOT NULL CHECK (side IN ('home', 'away')),
+    slot         INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 9),
+    player_id    INTEGER NOT NULL,
+    player_name  TEXT,
+    captured_utc TEXT    NOT NULL,
+    -- 'live' or 'backfill', and a backfill may NEVER pose as a live capture.
+    -- 6,902 of the 6,958 lineups this project holds came from one historical
+    -- load, and averaging them produced "10,592 hours before first pitch",
+    -- which is 441 days AFTER it.
+    source       TEXT    NOT NULL CHECK (source IN ('live', 'backfill')),
+    PRIMARY KEY (game_id, side, slot, captured_utc)
+);
+CREATE INDEX IF NOT EXISTS lineup_captures_when
+    ON lineup_captures (game_id, captured_utc);
+
+-- WHAT THE WEATHER WAS EXPECTED TO BE, AND WHAT IT TURNED OUT TO BE.
+--
+-- `weather_forecasts` is the FORECAST as of when it was fetched -- its name
+-- has always said so. This table is the later reading, kept separately so the
+-- two can never be confused for one another.
+--
+-- THE DEFECT THIS ADDRESSES, already named in a close-out: the college wind
+-- coefficient is fitted on OBSERVED weather and applied to FORECASTS. A model
+-- fitted on hindsight and asked to predict from a forecast is being scored on
+-- a question it was never asked.
+CREATE TABLE IF NOT EXISTS weather_observed (
+    game_id      TEXT    NOT NULL REFERENCES games (id),
+    observed_utc TEXT    NOT NULL,
+    source       TEXT    NOT NULL,
+    temp_f       REAL,
+    wind_mph     REAL,
+    precip_pct   REAL,
+    PRIMARY KEY (game_id, observed_utc)
 );

@@ -815,6 +815,10 @@ TASK_WORDS = {
     "predict:mlb": "Predict baseball",
     "predict:nba": "Predict basketball",
     "catch-up": "Catch up after a sleep",
+    # "Note what is known" rather than "capture": a reader is being told
+    # what the machine does, and nothing on this panel is named after a
+    # table.
+    "capture": "Note what is known right now",
     # THE FINAL PASS (2026-09-03). "Take one more look" rather than "final
     # pass", because a reader of the Health panel is being told what the
     # machine does, not what the code calls it. The early pass keeps its own
