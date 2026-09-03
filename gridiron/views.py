@@ -565,6 +565,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 # implementation means the chip on this card and the point on
                 # the calibration chart cannot disagree.
                 "tier": calibration.tier_from_bucket(bucket_cache[key]),
+                # THE MODEL'S WORST BAND, BESIDE THIS PICK'S BAND (S3). The
+                # record page has always led with the largest gap -- "the
+                # sentence at the top of the track record is always the worst
+                # thing the record says" -- and a reader looking at one pick
+                # never saw it. One sport, never pooled (LAW 6).
+                "worst_band": _worst_band(conn, sport),
                 "market_fetched_utc": snap.get("fetched_utc"),
                 "factor_set_version": r["factor_set_version"],
                 # --- the compact row (K2) -------------------------------------
@@ -731,6 +737,31 @@ def _least_tested_line(conn: sqlite3.Connection, sport: str) -> str | None:
             (sport, config.PROPS_MIN_CLAIM)).fetchone()[0]
     return language.least_tested_tier_line(
         tier, settled, calibration.TIER_MIN_SETTLED)
+
+
+_WORST_BAND_CACHE: dict = {}
+
+
+def _worst_band(conn: sqlite3.Connection, sport: str) -> str:
+    """The largest gap in this sport's own record, in one sentence.
+
+    Cached per slate render: the sentence is the same for every card on a
+    page, and recomputing a whole curve per card would count one record
+    eighty times.
+
+    ONE SPORT, NEVER POOLED. LAW 6 is why this takes `sport` at all -- a worst
+    band drawn across sports would describe none of them and would flatter,
+    because the easy sport dilutes the hard one.
+    """
+    if sport in _WORST_BAND_CACHE:
+        return _WORST_BAND_CACHE[sport]
+    try:
+        curve = calibration.curve(conn, sport=sport)
+        said = calibration.largest_gap_sentence(curve.get("buckets") or [])
+    except Exception:  # noqa: BLE001 - a missing curve is not a broken card
+        said = ""
+    _WORST_BAND_CACHE[sport] = said
+    return said
 
 
 def _hours_before(created_utc, kickoff_utc):

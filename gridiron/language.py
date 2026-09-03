@@ -1905,6 +1905,26 @@ def factor_what(rationale: str | None,
     return (text[:150].rstrip() + "...") if len(text) > 160 else text
 
 
+def tier_record_line(tier: str, settled: int, needed: int,
+                     earned: float | None) -> str:
+    """"STRONG - 8 settled, not yet proven." The band names itself.
+
+    BELOW THE GATE IT SAYS THE HONEST THING AND NAMES THE BAND. The old
+    sentence read "tier unproven - 8 settled of 20 needed", which is true and
+    made a reader carry the band in their head from the chip beside it. Saying
+    STRONG here costs nothing and means the line survives being read on its
+    own -- in a digest, in a notification, anywhere the chip is not.
+
+    ABOVE THE GATE IT REPORTS THE EARNED RATE, with its N beside it, because
+    LAW 4 permits a figure exactly when the sample is there and not before.
+    """
+    if earned is not None and settled >= needed:
+        return f"{tier} hits {round(earned * 100)}% over {settled} settled"
+    noun = "settled" if settled != 1 else "settled pick"
+    return (f"{tier} - {settled} {noun}, not yet proven; "
+            f"{needed} needed before it earns a verdict")
+
+
 def least_tested_tier_line(tier: str, settled: int, gate: int) -> str | None:
     """"STRONG is the least-tested tier so far - 3 settled."
 

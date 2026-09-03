@@ -1469,9 +1469,18 @@ const Gridiron = (function () {
     more.href = (w && w.more_href) || '#/factors';
     body.appendChild(more);
 
+    // PLACED, NOT COMPOSED (S3). This used to build the sentence here --
+    // `tier.tier + ' tier ' + message.replace(/^tier /, '')` -- which is the
+    // renderer writing prose, and it broke the moment the server's message
+    // started naming its own band: it would have read "STRONG tier STRONG -
+    // 8 settled". The server writes the whole sentence now.
     if (c.tier && c.tier.message) {
-      body.appendChild(el('div', 'row-tierline',
-        (c.tier.tier || '') + ' tier ' + c.tier.message.replace(/^tier /, '')));
+      body.appendChild(el('div', 'row-tierline', c.tier.message));
+    }
+    // THE MODEL'S WORST BAND, beside this pick's band, so a reader sees what
+    // the record says at its weakest and not only what this chip says.
+    if (c.worst_band) {
+      body.appendChild(el('div', 'footnote', c.worst_band));
     }
   }
 

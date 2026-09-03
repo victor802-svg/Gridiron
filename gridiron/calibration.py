@@ -927,11 +927,12 @@ def tier_from_bucket(bucket: dict) -> dict:
         "proven": proven,
         "earned": bucket.get("actual") if proven else None,
     }
-    entry["message"] = (
-        f"this tier hits {round((entry['earned'] or 0) * 100)}% over {n} settled"
-        if proven
-        else f"tier unproven - {n} settled of {TIER_MIN_SETTLED} needed"
-    )
+    # THE LABEL TELLS ITS OWN RECORD (S3, 2026-09-03), and says the tier's
+    # NAME while doing it. "tier unproven - 19 settled of 20 needed" made a
+    # reader carry the band in their head from the chip beside it; "STRONG --
+    # 19 settled, not yet proven" is the same fact and needs nothing carried.
+    entry["message"] = language.tier_record_line(
+        tier, n, TIER_MIN_SETTLED, entry["earned"])
     return entry
 
 

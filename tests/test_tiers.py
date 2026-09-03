@@ -53,7 +53,12 @@ def test_a_tier_below_the_gate_states_the_shortfall_not_a_hit_rate(mlb_league):
     assert tier["n"] == 19
     assert tier["proven"] is False
     assert tier["earned"] is None, "a tier stated a hit rate below its gate"
-    assert tier["message"] == "tier unproven - 19 settled of 20 needed"
+    # THE LINE NAMES ITS BAND from 2026-09-03 (S3), so it survives being read
+    # away from the chip -- in a digest, a notification, anywhere. The property
+    # this test guards is unchanged: no hit rate below the gate.
+    assert tier["message"] == (
+        "STRONG - 19 settled, not yet proven; 20 needed before it earns a "
+        "verdict")
     assert "%" not in tier["message"]
 
 
@@ -67,7 +72,7 @@ def test_exactly_twenty_flips_the_tier_to_its_earned_figure(mlb_league):
     assert tier["n"] == 20
     assert tier["proven"] is True
     assert tier["earned"] == round(13 / 20, 4)
-    assert tier["message"] == "this tier hits 65% over 20 settled"
+    assert tier["message"] == "STRONG hits 65% over 20 settled"
 
 
 def test_the_tier_figure_is_the_record_pages_own_bucket_maths(mlb_league):

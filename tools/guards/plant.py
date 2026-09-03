@@ -3833,7 +3833,14 @@ def plant_a_tier_hit_rate_below_the_gate() -> Result:
         thin["earned"] is None
         and thin["proven"] is False
         and "%" not in thin["message"]
-        and "9 settled of 20 needed" in thin["message"]
+        # THE WORDING CHANGED ON 2026-09-03 (S3) AND THE PROPERTY DID NOT.
+        # The line now names its own band -- "STRONG - 9 settled, not yet
+        # proven; 20 needed..." -- so it survives being read away from the
+        # chip. What this planting guards is unchanged: no rate below the
+        # gate, and the shortfall stated in full.
+        and "9 settled" in thin["message"]
+        and "20 needed" in thin["message"]
+        and "not yet proven" in thin["message"]
     )
     return Result(
         "LAW 4", "render a tier hit rate below its sample gate",
