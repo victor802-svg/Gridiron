@@ -29,6 +29,54 @@ class NotTrained(RuntimeError):
 # training
 # ---------------------------------------------------------------------------
 
+class TrainingSetSpansSports(RuntimeError):
+    """A training loader selected games from more than one sport (LAW 6)."""
+
+
+def assert_one_sport(games, sport: str, where: str) -> None:
+    """Every game a training loader selected belongs to `sport`. LAW 6.
+
+    THIS IS PLANTED BECAUSE IT HAPPENED. `spread_training_set` had no `sport`
+    filter from 9c0bc64 until 2026-09-03, so the NFL spread model trained on
+    18,715 games of which 2,639 -- fourteen per cent -- were football. The rest
+    were baseball, basketball and college games, each handed the NFL's factor
+    vector and asked whether the home side covered an NFL rung.
+
+    NOTHING FAILED, which is the point. The fit converged, the row count looked
+    healthy, and a bigger training set reads as a better one. It surfaced only
+    as a base rate 0.06 away from where a nearest-margin rung should sit, and
+    only because a separate ruling put that number in front of somebody.
+
+    A FILTER IS A CONVENTION; THIS IS A MECHANISM. The query can lose its
+    `WHERE sport = ?` again -- the same way it lost it the first time, in a
+    commit about something else entirely -- and this will refuse the fit rather
+    than quietly train on four sports.
+
+    Rows with no `sport` column are passed over rather than guessed at: a
+    loader that does not select the column is not thereby proven wrong, and
+    inventing a verdict about it would be its own failure.
+    """
+    seen = set()
+    for game in games:
+        try:
+            value = game["sport"]
+        except (KeyError, IndexError, TypeError):
+            return
+        if value is not None:
+            seen.add(value)
+    if not seen:
+        return
+    if seen != {sport}:
+        others = ", ".join(sorted(s for s in seen if s != sport)) or "nothing"
+        raise TrainingSetSpansSports(
+            f"GRIDIRON LAW 6 VIOLATED: the {sport} training set in {where} "
+            f"selected games from {len(seen)} sports -- {', '.join(sorted(seen))}. "
+            f"A model trained on {others} and scored as {sport} describes "
+            f"neither, and it flatters reliably, because the easy sport "
+            f"dilutes the hard one. The loader has lost its sport filter."
+        )
+
+
 def spread_training_set(
     conn: sqlite3.Connection,
     seasons: tuple[int, ...],
@@ -61,7 +109,7 @@ def spread_training_set(
     # moneylines describes neither, and it flatters reliably, because the easy
     # sport dilutes the hard one."
     sql = (
-        f"SELECT id, season, week, home_score, away_score FROM games"
+        f"SELECT id, sport, season, week, home_score, away_score FROM games"
         f" WHERE sport = 'nfl' AND status = 'final' AND game_type = 'REG'"
         f"   AND season IN ({placeholders})"
     )
@@ -72,6 +120,7 @@ def spread_training_set(
     sql += " ORDER BY season, week, id"
 
     games = conn.execute(sql, params).fetchall()
+    assert_one_sport(games, "nfl", "baseline.spread_training_set")
     cache = context.WeekCache()
     rows: list[dict[str, float]] = []
     labels: list[int] = []

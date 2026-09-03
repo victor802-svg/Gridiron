@@ -71,10 +71,28 @@ def test_an_absent_rating_falls_back_to_the_rotation_and_says_so():
 
 
 def test_the_expected_margin_carries_the_home_field():
-    """Two evenly rated sides are not a coin flip; the home one is favoured."""
-    assert questions.cfb_expected_margin(0.0, 0.0) == questions.CFB_HOME_MARGIN
-    assert questions.cfb_expected_margin(10.0, 3.0) == pytest.approx(
-        7.0 + questions.CFB_HOME_MARGIN)
+    """Two evenly rated sides are not a coin flip; the home one is favoured.
+
+    THE CONSTANTS BECAME MEASURED ON 2026-09-03 and the property did not
+    change. This asserted `== CFB_HOME_MARGIN` and a slope of exactly 1.0 --
+    both of which were assumptions the data did not support. What the test is
+    actually about is that home advantage is carried and that a rating edge
+    moves the expectation in the right direction, and it says that now.
+    """
+    intercept, slope = questions.EXPECTED_MARGIN_FIT["cfb"]
+
+    level = questions.cfb_expected_margin(0.0, 0.0)
+    assert level == pytest.approx(intercept)
+    assert level > 0, "the home side is not favoured between equal teams"
+
+    better = questions.cfb_expected_margin(10.0, 3.0)
+    assert better == pytest.approx(intercept + slope * 7.0)
+    assert better > level, "a seven-point rating edge did not raise the margin"
+
+    # A RATING EDGE DOES NOT BUY ITS OWN VALUE IN MARGIN, which is the thing
+    # the old assumption got wrong: seven points of rating buys less than
+    # seven points of expected margin.
+    assert better - level < 7.0
 
 
 def test_the_guard_catches_a_rotation_on_the_live_path():

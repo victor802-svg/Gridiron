@@ -26,6 +26,7 @@ from datetime import date
 from .. import config
 from ..data import nba_repo as repo
 from ..factors import compute
+from ..model import baseline
 from ..model import questions
 from ..model.question import Question
 from .. import subjects
@@ -609,14 +610,17 @@ def training_set(
 def _completed_games(conn, seasons, through_season, through_week):
     placeholders = ",".join("?" for _ in seasons)
     sql = (
-        f"SELECT id, season, week FROM games WHERE sport = 'nba' AND status = 'final'"
+        f"SELECT id, sport, season, week FROM games"
+        f" WHERE sport = 'nba' AND status = 'final'"
         f" AND season IN ({placeholders})"
     )
     params: list = list(seasons)
     if through_season is not None:
         sql += " AND (season < ? OR (season = ? AND week <= ?))"
         params += [through_season, through_season, through_week or 999]
-    return conn.execute(sql + " ORDER BY season, week, id", params).fetchall()
+    games = conn.execute(sql + " ORDER BY season, week, id", params).fetchall()
+    baseline.assert_one_sport(games, "nba", "nba._completed_games")
+    return games
 
 
 def _spread_training_set(conn, seasons, through_season, through_week, progress):

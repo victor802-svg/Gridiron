@@ -135,11 +135,27 @@ CFB_TOTAL_MAX = 100.0
 #: claimed, not a draft.
 CFB_RUNG_RULE_ACTIVATED = "2026-09-01T00:00:00Z"
 
-#: Mean home margin in college football, measured 2026-08-31 over the same
-#: 260-game sample that produced the margin SD. Used to turn a rating
-#: difference into an expected margin, which is what the rung is chosen
-#: against.
-CFB_HOME_MARGIN = 9.79
+#: RETIRED 2026-09-03 as an input, kept as a record of what was assumed.
+#:
+#: 9.79 was the mean home margin over a 260-game sample, used as the INTERCEPT
+#: of the expected margin with an ASSUMED SLOPE OF 1.0 -- that a ten-point
+#: rating edge buys ten points of margin. Neither number reproduced when both
+#: were measured together over 1,625 games:
+#:
+#:      assumed    margin = 9.790 + 1.0000 x rating_diff
+#:      measured   margin = 4.848 + 0.9351 x rating_diff   (R^2 0.357)
+#:
+#: THE INTERCEPT WAS NEARLY DOUBLE what the data supports, which is the whole
+#: of the defect recorded in FOLLOWUPS as "the college spread base rate is
+#: 0.371, not 0.5". A rung chosen against an expectation that runs five points
+#: high is a rung the favourite quietly fails, and the record filled with them.
+#:
+#: THE ASSUMED PAIR DID NOT REPRODUCE. It is kept here in the same words the
+#: registry uses for a retired factor, because a reader who finds 9.79 in an
+#: old commit needs to know it was a measurement of the wrong thing rather
+#: than a number somebody invented.
+CFB_HOME_MARGIN_ASSUMED = 9.79
+CFB_HOME_MARGIN_ASSUMED_SLOPE = 1.0
 
 
 #: WHAT THE MODEL EXPECTS THE HOME SIDE TO WIN BY, per sport (2026-09-03).
@@ -242,15 +258,19 @@ def cfb_expected_margin(home_rating: float | None,
                         away_rating: float | None) -> float | None:
     """The home side's expected winning margin, from stored ratings only.
 
+    MEASURED, NOT ASSUMED, from 2026-09-03 by operator ruling. It now reads
+    the same `EXPECTED_MARGIN_FIT` table the other two sports use, so college
+    football is no longer the one sport running on a slope nobody measured.
+    `CFB_HOME_MARGIN_ASSUMED` above records what it used to be and why that
+    did not reproduce.
+
     BLIND BY CONSTRUCTION and that is the whole reason it is built from
     ratings rather than from anything better: the rung has to be chosen BEFORE
     the model runs, because the rung is one of the model's inputs. Anything
     that could see a published line here would make the market an input to the
     question, which LAW 1 forbids and the closure scan would catch.
     """
-    if home_rating is None or away_rating is None:
-        return None
-    return (home_rating - away_rating) + CFB_HOME_MARGIN
+    return expected_margin("cfb", home_rating, away_rating)
 
 
 def cfb_spread_rung(game_id: str, expected_margin: float | None = None) -> float:

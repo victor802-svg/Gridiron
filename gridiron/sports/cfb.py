@@ -54,6 +54,7 @@ from ..data import cfb_venues as venues
 from ..data import weather
 from .. import db
 from ..factors import compute
+from ..model import baseline
 from ..model import questions
 from ..model.question import Question
 
@@ -352,14 +353,16 @@ def training_set(conn: sqlite3.Connection, seasons, market: str, *,
 def _completed_for_training(conn, seasons, through_season, through_week):
     """Completed games inside the walk-forward bound, oldest first."""
     placeholders = ",".join("?" for _ in seasons)
-    sql = ("SELECT id, season, week, home_score, away_score FROM games"
+    sql = ("SELECT id, sport, season, week, home_score, away_score FROM games"
            f" WHERE sport = 'cfb' AND status = 'final' AND season IN ({placeholders})"
            "   AND home_score IS NOT NULL AND away_score IS NOT NULL")
     params = list(seasons)
     if through_season is not None:
         sql += " AND (season < ? OR (season = ? AND week <= ?))"
         params += [through_season, through_season, through_week or 99999999]
-    return conn.execute(sql + " ORDER BY kickoff_utc, id", params).fetchall()
+    games = conn.execute(sql + " ORDER BY kickoff_utc, id", params).fetchall()
+    baseline.assert_one_sport(games, "cfb", "cfb._completed_for_training")
+    return games
 
 
 def markets() -> tuple[str, ...]:
