@@ -291,7 +291,7 @@ def predict_slate(
             progress(f"{sport} {q.game_id} {q.market} {q.subject}")
 
         # --- the statistical path ------------------------------------------
-        stat = baseline.predict(fits[q.market_key], fv)
+        stat = baseline.predict(fits[q.market_key], fv, rung=q.line_asked)
 
         # THE PROPS CONFIDENCE FLOOR (config.PROPS_MIN_CLAIM, declared
         # 2026-08-30). A player-prop question whose answer the model is not at
@@ -354,7 +354,16 @@ def predict_slate(
             reasoning=baseline.explain(stat["contributions"], absent=stat["absent"]),
             extra={
                 "contributions": stat["contributions"],
-                "log_odds": round(stat["log_odds"], 6),
+                # A RATE MODEL HAS NO LOG-ODDS. It works in log RATE, and the
+                # two are not the same quantity -- storing one under the
+                # other's name would be a number a later reader could not
+                # interpret. None is stored, and the rate is stored beside it.
+                "log_odds": (round(stat["log_odds"], 6)
+                             if stat.get("log_odds") is not None else None),
+                "expected_count": (round(stat["expected_count"], 4)
+                                   if stat.get("expected_count") is not None
+                                   else None),
+                "model_form": stat.get("model_form"),
                 "absent_detail": stat["absent_detail"],
             },
             degraded=llm_off if use_llm else None,

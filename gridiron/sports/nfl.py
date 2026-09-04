@@ -103,12 +103,24 @@ def build_features(conn: sqlite3.Connection, q: Question, cache=None):
     return compute.feature_vector(ctx, q.market_type), ctx
 
 
-def training_set(conn: sqlite3.Connection, seasons, market: str, **kwargs):
+def training_set(conn: sqlite3.Connection, seasons, market: str, *,
+                 with_counts: bool = False, **kwargs):
+    """`with_counts` adds the ACTUAL COUNT behind each label, for a rate model.
+
+    Declared in the signature rather than swallowed by `**kwargs` because a
+    caller checks for it there. A spread has no count, so asking for one is
+    refused by name rather than answered with a silent logistic.
+    """
     from ..model import baseline
 
     if market == "spread":
+        if with_counts:
+            raise ValueError(
+                "nfl 'spread' is not a count market; there is no count behind "
+                "its label to return")
         return baseline.spread_training_set(conn, seasons, **kwargs)
-    return baseline.prop_training_set(conn, seasons, market, **kwargs)
+    return baseline.prop_training_set(
+        conn, seasons, market, with_counts=with_counts, **kwargs)
 
 
 def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:

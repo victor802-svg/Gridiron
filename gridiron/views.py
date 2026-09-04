@@ -475,6 +475,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     "total": (len(payload.get("present") or [])
                               + len(payload.get("absent") or [])),
                 },
+                # THE RATE, FOR A COUNT MARKET (C3). "The model expects
+                # about 0.9 home runs; clearing 0.5 is about 60%." A
+                # logistic has no rate and gets an empty string.
+                "rate_line": language.rate_line(
+                    payload.get("expected_count"), r["line_asked"],
+                    r["model_prob"], _prose_prop_type(r, sport)),
                 "what_it_knew": language.what_it_knew(
                     len(payload.get("present") or []),
                     [_why_phrases().get(name) or language.humanise(name)

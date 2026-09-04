@@ -520,6 +520,21 @@ FACTOR_SET_VERSION = "fs2"
 #: plus-or-minus 1.5 and has no asked-line factor at all, so nothing about it
 #: changed and its eight settled rows stay on fs2.
 FACTOR_SET_VERSIONS: dict[tuple[str, str], str] = {
+    # THE COUNT MARKETS CHANGED MODEL FORM on 2026-09-03 (Session C): a
+    # logistic became a Poisson or negative-binomial rate. That is a bigger
+    # change than a factor moving -- the same inputs now reach the answer
+    # through a different link -- so the rows before and after are not one
+    # record and must not share a curve.
+    #
+    # THE MARKET KEY CARRIES THE STAT because the version is per market and a
+    # count market's key is 'prop:passing_tds', not 'prop'. Versioning 'prop'
+    # would split every NFL prop, including the yardage markets this ruling
+    # did not touch.
+    ("nfl", "prop:passing_tds"): "fs3-rate",
+    ("nfl", "prop:receptions"): "fs3-rate",
+    ("mlb", "prop:batter_home_runs"): "fs3-rate",
+    ("mlb", "prop:batter_hits"): "fs3-rate",
+    ("mlb", "prop:pitcher_strikeouts"): "fs3-rate",
     ("nfl", "spread"): "fs3",
     ("nba", "spread"): "fs3",
     ("cfb", "spread"): "fs3",

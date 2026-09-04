@@ -935,6 +935,30 @@ def forecaster_silent_line(predictor: str, hours: float, wrote: int,
             f"them, so nothing it would have said is being scored.")
 
 
+def rate_line(expected: float | None, rung: float | None,
+              probability: float | None, market: str | None = None) -> str:
+    """"The model expects about 0.9 home runs; clearing 0.5 is about 60%."
+
+    C3, 2026-09-03. A count market answers in two steps and a reader is
+    entitled to both: the RATE the model actually predicts, and the
+    probability of clearing the rung that follows from it. The logistic form
+    it replaced had only the second, which is why an overconfident claim had
+    nothing a reader could check it against -- "72%" says nothing about
+    whether the model thinks he throws one touchdown or three.
+
+    ROUNDED TO ONE DECIMAL, because a rate carried to four is precision the
+    fit does not have and a reader would read as certainty.
+    """
+    if expected is None or probability is None:
+        return ""
+    thing = humanise(market) if market else "of them"
+    said = f"The model expects about {expected:.1f} {thing}"
+    if rung is None:
+        return said + "."
+    return (f"{said}; clearing {rung:g} is about "
+            f"{round(probability * 100)}%.")
+
+
 def what_it_knew(present: int, absent_phrases: list, data_age_hours=None) -> str:
     """"Rested on 7 of 9 factors; the starter wasn't announced yet."
 

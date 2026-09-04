@@ -18,7 +18,7 @@ from .. import config
 from ..db import utcnow
 from ..data import repo
 from ..factors import compute, context, registry
-from . import logistic, questions
+from . import counts, logistic, questions
 
 
 class NotTrained(RuntimeError):
@@ -311,7 +311,37 @@ def train(
             f"only {len(rows)} training rows for {sport}:{market_type}; refusing "
             f"to fit a model on fewer than {min_rows}"
         )
-    fitted = logistic.fit(rows, labels, names, l2=l2)
+
+    # A COUNT IS FITTED AS A RATE (Session C, 2026-09-03), and only where the
+    # walk-forward said so. The declared list is `counts.COUNT_MARKETS`; a
+    # market outside it keeps the logistic it has always had.
+    # THE ADAPTER MUST BE ABLE TO SUPPLY THE COUNTS, and a market that cannot
+    # get them is REFUSED rather than quietly handed back the logistic. The
+    # first version of this check fell back silently, which is worse than the
+    # TypeError it was written to avoid: a market declared as a rate would have
+    # shipped scored by the very path Session C measured as overconfident, and
+    # nothing on the card would have said so. A count market whose adapter is
+    # not ready is a build error, said here, by name.
+    import inspect
+
+    if counts.is_count_market(stat):
+        if "with_counts" not in inspect.signature(
+                adapter.training_set).parameters:
+            raise NotTrained(
+                f"{sport}:{market_type} is declared a count market in "
+                f"counts.COUNT_MARKETS, but the {sport} adapter's training_set "
+                f"cannot return the counts a rate model needs. Either teach it "
+                f"with_counts or take the market out of the declared list -- "
+                f"it may not silently fall back to the logistic.")
+        form, dispersion = counts.form_for(stat)
+        rows, labels, names, extras = adapter.training_set(
+            conn, seasons, market, through_season=through_season,
+            through_week=through_week, progress=progress, with_counts=True)
+        fitted = counts.fit_rate(
+            rows, [e["count"] for e in extras], names,
+            l2=l2, form=form, dispersion=dispersion)
+    else:
+        fitted = logistic.fit(rows, labels, names, l2=l2)
 
     through = (
         f"season:{through_season} week:{through_week}"
@@ -382,25 +412,54 @@ def load_fit(
             f"{factor_set_version or config.factor_set_version(sport, market_type)}"
             f"; run `train` first"
         )
-    return logistic.Fit.from_json(json.loads(row["coefficients_json"]))
+    blob = json.loads(row["coefficients_json"])
+    # A STORED FIT SAYS WHICH FORM PRODUCED IT. Without the flag a rate model's
+    # coefficients would be read back through a logistic's link -- silently,
+    # because both are just numbers, and every probability would be wrong in a
+    # way nothing could see.
+    if blob.get("form"):
+        return counts.RateFit.from_json(blob)
+    return logistic.Fit.from_json(blob)
 
 
 # ---------------------------------------------------------------------------
 # prediction
 # ---------------------------------------------------------------------------
 
-def predict(fit: logistic.Fit, fv: compute.FeatureVector) -> dict:
+def predict(fit, fv: compute.FeatureVector, rung: float | None = None) -> dict:
     """Probability plus the decomposition that explains it.
 
     `prob_yes` is P(home covers) for a spread, P(over) for a prop. The caller
     turns that into a stated side and a stated confidence.
     """
-    prob = fit.predict(fv.values)
+    # A RATE MODEL ANSWERS A DIFFERENT WAY (Session C). It predicts the
+    # EXPECTED COUNT, and the probability of clearing the rung comes from the
+    # distribution rather than from a second squashing -- which is the whole
+    # repair. The rung has to be passed in because a rate alone cannot say
+    # what question was asked of it.
+    if isinstance(fit, counts.RateFit):
+        if rung is None:
+            raise ValueError(
+                "a rate model was asked for a probability with no rung. The "
+                "expected count is not an answer on its own -- 'about 1.4 "
+                "touchdowns' has to be asked 'more than how many?'")
+        rate = fit.expected(fv.values)
+        prob = counts.p_over(rate, rung, form=fit.form,
+                             dispersion=fit.dispersion)
+        log_odds = None
+    else:
+        prob = fit.predict(fv.values)
+        rate = None
+        log_odds = fit.log_odds(fv.values)
     contributions = fit.contributions(fv.values)
     coefficients = dict(zip(fit.names, fit.coefficients))
     return {
         "prob_yes": prob,
-        "log_odds": fit.log_odds(fv.values),
+        # THE RATE ITSELF TRAVELS, because C3's sentence needs it: "the model
+        # expects about 0.9 home runs; clearing 0.5 is about 60%."
+        "expected_count": rate,
+        "model_form": getattr(fit, "form", "logistic"),
+        "log_odds": log_odds,
         "intercept": fit.intercept,
         "contributions": [
             {

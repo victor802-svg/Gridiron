@@ -16,6 +16,21 @@ from gridiron import audit
 DESK = {"width": 1400, "height": 900}
 ROWS = {"width": 1100, "height": 900}
 
+#: A DESK-WIDTH VIEWPORT SHORT ENOUGH THAT THE FIXTURE'S SLATE OVERFLOWS IT.
+#:
+#: The three scrolling tests below need content taller than the frame, and for
+#: a while they got it by accident -- the synthetic league happened to produce
+#: enough picks. Session C then made the count markets less overconfident,
+#: fewer questions cleared the props confidence floor, and the slate came in at
+#: exactly 590px inside a 590px frame. Three layout tests failed because the
+#: MODEL had become better calibrated, which is not a layout fact.
+#:
+#: Scrolling is a property of the page, so it is tested against a viewport that
+#: guarantees overflow rather than against a fixture that happens to. The
+#: alternative was lowering the confidence floor to keep a test green, which is
+#: fitting the model to the suite.
+SCROLLABLE = {"width": 1400, "height": 420}
+
 
 def _open_week(page, size):
     """Open the slate at a width and WAIT FOR IT, not for a duration.
@@ -77,7 +92,7 @@ def test_the_page_does_not_scroll_but_the_frame_does(page):
     belongs to the root element, and the document still moved 414px. Both are
     pinned now, and this is what proves it.
     """
-    _open_week(page, DESK)
+    _open_week(page, SCROLLABLE)
     moved = page.evaluate("""() => {
         window.scrollTo(0, 600);
         const y = window.scrollY;
@@ -100,8 +115,8 @@ def test_the_hidden_scrollbar_does_not_break_scrolling(page):
     Hiding the bar is a look; breaking the wheel is a broken page, and the two
     are one property apart.
     """
-    _open_week(page, DESK)
-    page.mouse.move(400, 500)
+    _open_week(page, SCROLLABLE)
+    page.mouse.move(400, 300)          # inside the shorter viewport
     page.mouse.wheel(0, 600)
     page.wait_for_timeout(200)
     assert page.evaluate("document.getElementById('week-frame').scrollTop") > 0, (
@@ -397,7 +412,7 @@ def test_the_hidden_scrollbar_scrolls_by_touch_as_well_as_wheel(page):
     a press, a move, a release -- because `overflow: hidden` on an ancestor and
     a stray `touch-action` are both invisible until someone tries to drag.
     """
-    _open_week(page, DESK)
+    _open_week(page, SCROLLABLE)
     page.evaluate("document.getElementById('week-frame').scrollTop = 0")
     moved = page.evaluate("""() => {
         const frame = document.getElementById('week-frame');
@@ -406,7 +421,7 @@ def test_the_hidden_scrollbar_scrolls_by_touch_as_well_as_wheel(page):
     assert moved not in ("none",), (
         f"the frame sets touch-action: {moved}, so a thumb cannot scroll it")
     # And it does move when driven.
-    page.mouse.move(400, 500)
+    page.mouse.move(400, 300)          # inside the shorter viewport
     page.mouse.wheel(0, 500)
     page.wait_for_timeout(200)
     assert page.evaluate("document.getElementById('week-frame').scrollTop") > 0

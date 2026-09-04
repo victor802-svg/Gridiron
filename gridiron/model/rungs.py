@@ -72,7 +72,7 @@ def claims_across_the_ladder(conn, adapter, fits, q, *, chosen_stat, baseline):
         else:
             try:
                 fv, _ctx = adapter.build_features(conn, replace(q, line_asked=rung), None)
-                stat = baseline.predict(fits[q.market_key], fv)
+                stat = baseline.predict(fits[q.market_key], fv, rung=q.line_asked)
             except (KeyError, ValueError):
                 # A rung whose features cannot be built is ABSENT from the log,
                 # not a zero in it: the explicit-absent rule. A gap in the

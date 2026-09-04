@@ -724,16 +724,27 @@ def training_set(
     through_season: int | None = None,
     through_week: int | None = None,
     progress=None,
+    with_counts: bool = False,
 ):
-    """One row per completed game: the factor vector, and whether home won."""
+    """One row per completed game: the factor vector, and whether home won.
+
+    `with_counts` adds a fourth return: the ACTUAL COUNT behind each label,
+    which a rate model needs and a logistic does not. Only the prop path can
+    answer it -- a moneyline has no count -- so asking for it anywhere else is
+    refused by name rather than answered with an empty list.
+    """
     from ..factors import registry
 
     if market in config.MLB_PROP_MARKETS:
         return _prop_training_set(
             conn, seasons, market,
             through_season=through_season, through_week=through_week,
-            progress=progress,
+            progress=progress, with_counts=with_counts,
         )
+    if with_counts:
+        raise ValueError(
+            f"mlb {market!r} is not a count market; there is no count behind "
+            f"its label to return")
     if market not in ("moneyline", "spread", "total"):
         raise ValueError(f"MLB has no {market!r} market")
 
@@ -855,6 +866,7 @@ def _prop_training_set(
     through_season: int | None = None,
     through_week: int | None = None,
     progress=None,
+    with_counts: bool = False,
 ):
     """One row per completed prop question, built by exactly the rules a live
     slate uses.
@@ -881,6 +893,7 @@ def _prop_training_set(
 
     rows: list[dict] = []
     labels: list[int] = []
+    extras: list[dict] = []
     is_pitcher = market == "pitcher_strikeouts"
     column = None if is_pitcher else repo.BATTER_STAT_COLUMN[market]
 
@@ -936,8 +949,13 @@ def _prop_training_set(
             fv = compute.feature_vector(ctx, "prop", market)
             rows.append(fv.values)
             labels.append(1 if float(actual) > line else 0)
+            if with_counts:
+                extras.append({"count": float(actual), "rung": line,
+                               "season": game["season"], "week": game["week"]})
 
     names = [f.name for f in registry.active_factors(SPORT, "prop", market)]
+    if with_counts:
+        return rows, labels, names, extras
     return rows, labels, names
 
 
@@ -958,7 +976,7 @@ def rung_probabilities(conn: sqlite3.Connection, fit, game_id: str,
     for rung in config.MLB_PROP_LADDER[market]:
         ctx = build_prop_context(conn, game_id, market, subject_id, rung)
         fv = compute.feature_vector(ctx, "prop", market)
-        out.append((rung, baseline.predict(fit, fv)["prob_yes"]))
+        out.append((rung, baseline.predict(fit, fv, rung=rung)["prob_yes"]))
     return out
 
 

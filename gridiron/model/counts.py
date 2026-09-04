@@ -84,6 +84,56 @@ class RateFit:
     dropped: dict = field(default_factory=dict)
     constant: dict = field(default_factory=dict)
 
+    def to_json(self) -> dict:
+        """The same envelope a logistic fit uses, plus what makes it a rate.
+
+        `form` is the flag `load_fit` reads to decide which object to rebuild.
+        A stored fit that did not say which form produced it would be read as a
+        logistic and its coefficients interpreted through the wrong link --
+        silently, because both are just numbers.
+        """
+        return {
+            "form": self.form,
+            "dispersion": self.dispersion,
+            "intercept": self.intercept,
+            "coefficients": {n: c for n, c in zip(self.names, self.coefficients)},
+            "n": self.n,
+            "l2": self.l2,
+            "converged": self.converged,
+            "iterations": self.iterations,
+            "presence": self.presence,
+            "dropped": self.dropped,
+            "constant": self.constant,
+        }
+
+    @classmethod
+    def from_json(cls, blob: dict) -> "RateFit":
+        coefficients = blob.get("coefficients") or {}
+        return cls(
+            names=list(coefficients),
+            coefficients=list(coefficients.values()),
+            intercept=blob["intercept"],
+            n=blob.get("n", 0),
+            iterations=blob.get("iterations", 0),
+            converged=blob.get("converged", False),
+            l2=blob.get("l2", 0.0),
+            form=blob.get("form", "poisson"),
+            dispersion=blob.get("dispersion", 1.0),
+            presence=blob.get("presence") or {},
+            dropped=blob.get("dropped") or {},
+            constant=blob.get("constant") or {},
+        )
+
+    def contributions(self, values: dict):
+        """Each factor's push on the LOG RATE, which is where it acts.
+
+        A rate model's contribution is additive in log space exactly as a
+        logistic's is in log-odds, so the decomposition reads the same way and
+        the "why" sentences need no special case.
+        """
+        return [(n, values.get(n, 0.0), c * values.get(n, 0.0))
+                for n, c in zip(self.names, self.coefficients) if n in values]
+
     def expected(self, values: dict) -> float:
         """The expected count for one feature vector. Always positive."""
         z = self.intercept

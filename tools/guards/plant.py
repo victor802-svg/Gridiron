@@ -4117,6 +4117,146 @@ def plant_prose_that_is_not_an_identifier() -> Result:
     )
 
 
+LAW_RATE = "A COUNT IS A RATE"
+
+
+def plant_a_count_market_scored_by_the_logistic() -> Result:
+    """Fit a declared count market through an adapter that cannot supply counts.
+
+    THIS IS A SILENT FAILURE I WROTE AND ALMOST SHIPPED. The first version of
+    the capability check fell back to the logistic when an adapter could not
+    return counts. Nothing raised and nothing was logged, so the market would
+    have gone out scored by the exact path Session C measured as overconfident
+    by 7.79 points of calibration gap -- while `COUNT_MARKETS` said it was a
+    rate, and the card's "why" said so too.
+
+    The plant is the shape that failure really takes: a NEW SPORT, or a market
+    moved to a loader that was never taught the fourth return value. The
+    adapter here is the real NFL one with `with_counts` taken off its
+    signature, which is precisely what an untaught adapter looks like.
+
+    A market declared as a rate and fitted as a logistic must be a BUILD ERROR.
+    """
+    import functools
+
+    from gridiron import sports as sport_registry
+    from gridiron.model import baseline, counts, logistic
+
+    real_get = sport_registry.get
+
+    def untaught(sport: str):
+        adapter = real_get(sport)
+        if sport != "nfl":
+            return adapter
+
+        class Untaught:
+            """The NFL adapter, minus the ability to return counts."""
+
+            def __getattr__(self, name):
+                return getattr(adapter, name)
+
+            @staticmethod
+            def training_set(conn, seasons, market, *, through_season=None,
+                             through_week=None, progress=None):
+                return adapter.training_set(
+                    conn, seasons, market, through_season=through_season,
+                    through_week=through_week, progress=progress)
+
+        return Untaught()
+
+    conn = db.connect()
+    fit = None
+    try:
+        sport_registry.get = untaught
+        # `passing_tds` is a DECLARED count market, so this asks for a rate
+        # from an adapter that cannot produce one.
+        assert counts.is_count_market("passing_tds")
+        try:
+            fit = baseline.train(
+                conn, "prop:passing_tds", config.SPORT_LOAD_SEASONS["nfl"],
+                sport="nfl", note="planted")
+        except baseline.NotTrained as exc:
+            if "count market" not in str(exc):
+                return Result(
+                    LAW_RATE, "a count market scored by the logistic path",
+                    "baseline.train count-capability refusal", False,
+                    f"it refused, but for the wrong reason: {exc}")
+            return Result(LAW_RATE, "a count market scored by the logistic path",
+                          "baseline.train count-capability refusal", True,
+                          str(exc))
+        except Exception as exc:                       # noqa: BLE001
+            return Result(LAW_RATE, "a count market scored by the logistic path",
+                          "baseline.train count-capability refusal", False,
+                          f"it failed, but not by name: "
+                          f"{type(exc).__name__}: {exc}")
+    finally:
+        sport_registry.get = real_get
+        conn.close()
+
+    kind = type(fit).__name__
+    if isinstance(fit, logistic.Fit):
+        return Result(LAW_RATE, "a count market scored by the logistic path",
+                      "baseline.train count-capability refusal", False,
+                      "NOT CAUGHT - a market declared as a rate was fitted as a "
+                      "logistic and said nothing; the card would have claimed a "
+                      "rate the model never used")
+    return Result(LAW_RATE, "a count market scored by the logistic path",
+                  "baseline.train count-capability refusal", False,
+                  f"NOT CAUGHT - the fit returned {kind} from an adapter that "
+                  f"cannot supply counts")
+
+
+def plant_a_rung_probability_that_rises_with_the_rung() -> Result:
+    """Answer a higher rung more confidently than a lower one.
+
+    CHECKLIST ITEM 4, and the one contradiction a card showing a single rung
+    can never reveal. Clearing 2.5 home runs is strictly harder than clearing
+    1.5 -- every game that does the first does the second -- so the ordering is
+    a fact about counting, not an estimate.
+
+    Planted against BOTH doors: the shared ladder assertion, and the rate
+    model's own arithmetic, which is monotone by construction and is checked
+    here rather than assumed.
+    """
+    from gridiron.sports import mlb
+    from gridiron.model import counts
+
+    # DOOR ONE: the declared-ladder guard, given a sequence that rises.
+    rising = [(0.5, 0.42), (1.5, 0.47), (2.5, 0.61)]
+    try:
+        mlb.assert_monotone_across_rungs(rising, "a planted subject")
+    except mlb.NonMonotoneLadder as exc:
+        # DOOR TWO: prove the rate model cannot produce one. If p_over ever
+        # rose with the rung the guard above would be catching a bug that the
+        # model can actually commit, which is a different and worse situation.
+        for form, dispersion in (("poisson", 1.0),
+                                 ("negative_binomial", 1.282)):
+            for rate in (0.11, 0.9, 1.45, 4.78):
+                probs = [counts.p_over(rate, r, form=form, dispersion=dispersion)
+                         for r in (0.5, 1.5, 2.5, 3.5, 4.5, 5.5)]
+                if any(b > a + 1e-12 for a, b in zip(probs, probs[1:])):
+                    return Result(
+                        LAW_RATE, "a rung probability that rises with the rung",
+                        "mlb.assert_monotone_across_rungs", False,
+                        f"the guard fires, but the {form} rate model itself "
+                        f"produced a rising sequence at rate={rate}: {probs}")
+        honest = [(0.5, 0.61), (1.5, 0.47), (2.5, 0.42)]
+        try:
+            mlb.assert_monotone_across_rungs(honest, "a planted subject")
+        except mlb.NonMonotoneLadder as wrong:
+            return Result(LAW_RATE, "a rung probability that rises with the rung",
+                          "mlb.assert_monotone_across_rungs", False,
+                          f"the guard rejects an honest falling ladder: {wrong}")
+        return Result(LAW_RATE, "a rung probability that rises with the rung",
+                      "mlb.assert_monotone_across_rungs", True,
+                      f"{exc}; and neither form can produce one -- p_over falls "
+                      f"at every rung for both the Poisson and the negative "
+                      f"binomial, because raising a rung only removes outcomes")
+    return Result(LAW_RATE, "a rung probability that rises with the rung",
+                  "mlb.assert_monotone_across_rungs", False,
+                  "NOT CAUGHT - a model said 2.5 was easier to clear than 1.5")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -4156,6 +4296,8 @@ def main() -> int:
     results.append(plant_a_rating_with_a_hand_chosen_k())
     results.append(plant_a_bout_predicted_after_its_start())
     results.append(plant_a_fighter_matched_by_guess())
+    results.append(plant_a_count_market_scored_by_the_logistic())
+    results.append(plant_a_rung_probability_that_rises_with_the_rung())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())
