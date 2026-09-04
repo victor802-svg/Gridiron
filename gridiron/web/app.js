@@ -880,6 +880,23 @@ const Gridiron = (function () {
   //: How many picks the hero steps through. Five, from the brief.
   const HERO_STEPS = 5;
 
+  // THE HERO NEVER LEADS WITH A FLAGGED METHOD (operator ruling 2,
+  // 2026-09-04). A market whose own note says it has measured a coin flip has
+  // no business in the largest type on the page, whatever the sort put first.
+  //
+  // READ OFF THE NOTE ITSELF. `method_note` is the words the server wrote; a
+  // card that has them is ineligible, and there is no second boolean that
+  // could say otherwise. The browser does not know WHY the market is flagged
+  // and does not need to.
+  //
+  // THE POOL CAN BE EMPTY, and then there is no hero at all -- on the totals
+  // tab, every card is flagged. "Never" is the ruling's word, so an empty pool
+  // hides the hero rather than promoting a flagged card with a caveat
+  // attached. The grid then opens at rank 1 and shows every one of them.
+  function heroPool(cards) {
+    return cards.filter(c => !c.method_note);
+  }
+
   function localTime(iso) {
     try {
       return new Date(iso).toLocaleTimeString([], {
@@ -955,6 +972,19 @@ const Gridiron = (function () {
     mid.appendChild(pick);
     const hint = marketHint(c);
     if (hint) mid.appendChild(hint);
+    // WHAT IS KNOWN ABOUT THIS MARKET'S METHOD, on the face and not one tap
+    // in (operator ruling 2). A caveat behind a tap is a caveat most readers
+    // never reach, and the reader taking the percentage at face value is
+    // precisely the one it is written for.
+    //
+    // IT DOES NOT BREAK R2. "One number and the word for what it is a number
+    // of" is a rule about NUMBERS on the collapsed face; this is a sentence,
+    // it names no probability of its own, and the two figures in it are
+    // labelled as walk-forward edges rather than as anything about tonight.
+    //
+    // THE SERVER WROTE IT. Nothing here decides whether a market is flagged
+    // or what the flag says.
+    if (c.method_note) mid.appendChild(el('div', 'card-note', c.method_note));
     head.appendChild(mid);
 
     head.appendChild(chanceBlock(c, 'chance-grid'));
@@ -1112,9 +1142,16 @@ const Gridiron = (function () {
     if (!cards.length) { host.hidden = true; return; }
     host.hidden = false;
 
-    const top = cards.slice(0, HERO_STEPS);
+    const top = heroPool(cards).slice(0, HERO_STEPS);
+    // EVERY CARD FLAGGED MEANS NO HERO. Not a hero with a warning on it.
+    if (!top.length) { host.hidden = true; delete host.dataset.id; return; }
     if (heroIndex >= top.length) heroIndex = 0;
     const c = top[heroIndex];
+    // WHICH PREDICTION THE HERO IS SHOWING, said in the markup the way every
+    // grid card already says it. The hero is a card; it was the only one on
+    // the page that would not tell you which one, so "is this pick on the
+    // page?" could not be asked about the largest pick on it.
+    host.dataset.id = c.prediction_id;
 
     // THE TAG SAYS WHICH QUESTION THE HERO IS ANSWERING, and it follows the
     // sort rather than asserting one: a card labelled "sharpest disagreement"
@@ -1821,7 +1858,13 @@ const Gridiron = (function () {
       renderHero(open, state.weekSort, data.hero_tags);
 
       const heading = document.getElementById('week-grid-heading');
-      const rest = open.slice(1);
+      // WHAT THE GRID DROPS IS THE CARD THE HERO LEADS WITH, by identity and
+      // never by position. `open.slice(1)` was right while the hero always
+      // took `open[0]`; once the hero can refuse a flagged top card, dropping
+      // position 0 would delete that card from the page entirely -- shown by
+      // neither. The totals tab is exactly that case, on every card.
+      const lead = heroPool(open)[0];
+      const rest = lead ? open.filter(c => c !== lead) : open.slice();
       if (heading) heading.hidden = !rest.length;
 
       const showAll = document.getElementById('week-showall');

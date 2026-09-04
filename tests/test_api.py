@@ -317,6 +317,21 @@ def test_the_page_has_no_build_step():
         "sw.js",             # P4: app shell only, never data
         "icon.svg",          # drawn in code, not exported from a design tool
         "manifest.webmanifest",
+        # VENDORED FONTS (operator ruling 4, 2026-09-04). This is the argument
+        # this test exists to demand, and it was made by the operator:
+        #
+        #   "vendor the OFL woff2 files into the repo with the licence beside
+        #    them -- that is not the kind of binary the no-committing instinct
+        #    protects against."
+        #
+        # STILL NO BUILD STEP. Two woff2 files served from this app's own
+        # origin are not a bundler, a framework or a minified artefact: they
+        # are shipped exactly as downloaded, their SHA-256s are recorded in
+        # `web/fonts/SOURCE.md`, and `audit.check_vendored_fonts` re-hashes
+        # them in the gate -- and fails on any binary in there the table does
+        # not name. That guard is what keeps "a decision somebody makes on
+        # purpose" true INSIDE the directory this line opens.
+        "fonts",
     }
     html = (web / "index.html").read_text(encoding="utf-8")
     assert "/static/app.js" in html

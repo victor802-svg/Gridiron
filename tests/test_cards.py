@@ -543,3 +543,182 @@ def test_the_default_yields_on_a_slate_without_it(page):
 # Every existing desk test asserted on the FIRST render. This one asserts that
 # a tick lands, which is the assertion that was missing.
 # ---------------------------------------------------------------------------
+
+
+
+
+# --- a flagged method (operator ruling 2, 2026-09-04) ------------------------
+#
+# The browser's half of the ruling: the note is drawn where it can be read, the
+# hero refuses a market that carries one, and THE CARD THE HERO REFUSES IS
+# STILL SHOWN. The third is why these are browser tests and not payload tests
+# -- the failure it catches renders an empty page while the payload reports a
+# full slate.
+#
+# THE PAYLOAD IS FABRICATED, and it has to be: the NFL total was declared the
+# night before and has written no rows, so no live slate carries a flagged card
+# to look at. Intercepting the real response leaves everything else real.
+#
+# FLAGGED BY RENDERED ID, NEVER BY POSITION IN THE PAYLOAD. Picks opens on
+# STRONG, so the browser draws a filtered subset of `cards` -- and a test that
+# flagged `cards[0]` could easily flag a card the page never renders and then
+# pass while asserting nothing. Each test below learns what is on the page
+# first, then flags by id.
+
+_NOTE = ("totals asked this way have been a coin flip so far "
+         "(NBA +0.001, NFL +0.002 in walk-forward) — shown for the record.")
+
+
+def _shown_ids(page):
+    """Every card id in the grid, with "show all" opened AND WAITED FOR.
+
+    `show all` does not reveal hidden markup -- its handler sets a flag and
+    calls `renderWeek()`, which RE-FETCHES and rebuilds the grid from scratch.
+    Reading the DOM straight after the click catches the page mid-render, with
+    `host.innerHTML = ''` already run and nothing appended yet.
+
+    THAT RACE MADE FOUR TESTS SKIP RATHER THAN FAIL, which is worse: each one
+    said "no cards on this slate" and passed as a skip while the slate had
+    six. A helper that reports an empty page as an empty slate turns every
+    test built on it into a test of nothing.
+    """
+    if page.evaluate("""() => {
+            const b = document.getElementById('week-showall');
+            return !!(b && !b.hidden && b.offsetParent !== null);
+        }"""):
+        with page.expect_response(lambda r: "/api/week" in r.url):
+            page.evaluate(
+                "() => document.getElementById('week-showall').click()")
+        # The post-condition, not a duration: everything is shown exactly when
+        # the control that offers to show it has nothing left to offer.
+        page.wait_for_function(
+            """() => {
+                 const b = document.getElementById('week-showall');
+                 return (!b || b.hidden) &&
+                        document.querySelectorAll('#week-cards .card').length > 0;
+               }""",
+            timeout=15000)
+    # THE HERO'S CARD COUNTS. It is not in the grid -- the grid drops the card
+    # the hero leads with -- so a helper that returned only `#week-cards` would
+    # report the largest pick on the page as absent from it.
+    return set(page.evaluate(
+        """(() => {
+             const ids = [...document.querySelectorAll('#week-cards .card')]
+                           .map(c => Number(c.dataset.id));
+             const hero = document.getElementById('week-hero');
+             if (hero && !hero.hidden && hero.dataset.id) {
+               ids.push(Number(hero.dataset.id));
+             }
+             return ids;
+           })()"""))
+
+
+def _flag_ids(page, ids):
+    """Route `/api/week` so exactly these prediction ids carry a method note."""
+    wanted = set(ids)
+
+    def handler(route):
+        response = route.fetch()
+        payload = response.json()
+        for card in payload.get("cards") or []:
+            if card.get("prediction_id") in wanted:
+                card["method_note"] = _NOTE
+        route.fulfill(response=response, json=payload)
+
+    page.route("**/api/week*", handler)
+
+
+def test_the_flagged_note_is_readable_without_a_tap(page):
+    """A caveat behind a tap is a caveat most readers never reach.
+
+    The reader taking the percentage at face value is precisely the one it is
+    written for, so the note is asserted VISIBLE AT REST -- unlike the market
+    hint beside it, which is deliberately a hover reveal.
+    """
+    _open_week(page, WIDE)
+    ids = _shown_ids(page)
+    if not ids:
+        pytest.skip("no cards on this slate to flag")
+
+    _flag_ids(page, ids)
+    _open_week(page, WIDE)
+    _shown_ids(page)
+    shown = page.evaluate(
+        """[...document.querySelectorAll('#week-cards .card')].map(c => {
+             const n = c.querySelector('.card-note');
+             return n ? { text: n.textContent.trim(),
+                          seen: n.offsetParent !== null &&
+                                getComputedStyle(n).opacity !== '0' }
+                      : null;
+           })""")
+    drawn = [s for s in shown if s]
+    assert drawn, "every card was flagged and not one drew a note"
+    assert all(s["seen"] for s in drawn), (
+        "a method note rendered and is not visible at rest, so the caveat is "
+        "absent on every glance and on every touch device")
+    assert all(s["text"] == _NOTE for s in drawn), (
+        "the note on a card is not the sentence the server wrote")
+
+
+def test_a_flagged_market_never_leads_the_page(page):
+    """Ruling 2's word is NEVER, whatever the sort put first."""
+    _open_week(page, WIDE)
+    ids = sorted(_shown_ids(page))
+    if len(ids) < 2:
+        pytest.skip("this slate is too thin to have a hero and a grid")
+
+    # Everything but one card, so a hero is still possible and the sort's
+    # first choices are all flagged.
+    _flag_ids(page, ids[:-1])
+    _open_week(page, WIDE)
+    if page.evaluate("document.getElementById('week-hero').hidden"):
+        pytest.skip("no hero survived the filter on this slate")
+    assert not page.evaluate(
+        "!!document.querySelector('#week-hero .card-note')"), (
+        "a card whose own note calls it a coin flip is drawing the hero, "
+        "which is the largest claim on the page")
+
+
+def test_the_card_the_hero_refuses_is_still_on_the_page(page):
+    """The failure that would have been worse than the one being fixed.
+
+    `open.slice(1)` was correct for as long as the hero always took `open[0]`.
+    Once the hero can REFUSE the top card, slicing position 0 deletes that card
+    from the page -- shown by neither. Asserted as a SET COMPARISON against the
+    unflagged render, so the tier filter cannot make it pass by accident.
+    """
+    _open_week(page, WIDE)
+    before = _shown_ids(page)
+    if len(before) < 2:
+        pytest.skip("this slate is too thin to tell the two apart")
+
+    # The card the hero leads with is the first of the sort; flagging the whole
+    # top of the list guarantees the hero has to refuse one.
+    _flag_ids(page, before)
+    _open_week(page, WIDE)
+    after = _shown_ids(page)
+    assert before <= after, (
+        f"{len(before - after)} card(s) are shown by neither the hero nor the "
+        f"grid once flagged: {sorted(before - after)[:5]}. The page renders "
+        f"{len(after)} of {len(before)} and reports a full slate.")
+
+
+def test_every_card_flagged_means_no_hero_at_all(page):
+    """On the totals tab every card is flagged, and NEVER is still never.
+
+    The hero hides rather than promoting a flagged card with a caveat attached,
+    and the grid then opens at rank 1 and shows every one of them.
+    """
+    _open_week(page, WIDE)
+    before = _shown_ids(page)
+    if not before:
+        pytest.skip("no cards on this slate")
+
+    _flag_ids(page, before)
+    _open_week(page, WIDE)
+    assert page.evaluate("document.getElementById('week-hero').hidden"), (
+        "every card on the slate carries a method note and the hero is still "
+        "drawing one of them")
+    assert _shown_ids(page) == before, (
+        "the hero refused every card and the grid did not take them all -- a "
+        "card refused by the hero must fall to the grid")

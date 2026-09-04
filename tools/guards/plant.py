@@ -5418,6 +5418,202 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_VENDORED = "A VENDORED BINARY IS CHECKABLE"
+
+
+def plant_a_font_swapped_for_another_file() -> Result:
+    """Replace a vendored woff2 with different bytes.
+
+    THIS REPOSITORY SHIPPED NO FONT BINARY FOR A REASON, and the reason was
+    right: a binary nobody can diff is a thing nobody can check. Operator
+    ruling 4 drew the line -- a licensed font is not what that instinct
+    protects against -- and this is the instinct being answered rather than
+    waived. A vendored file whose bytes nobody re-derives is exactly the
+    unreviewable blob the refusal was about.
+
+    Planted on a COPY of the directory, because a planting that rewrites a
+    shipped binary and restores it is one interrupted run away from leaving a
+    corrupted font in the repository.
+    """
+    from gridiron import audit as _audit
+
+    src = config.PACKAGE_ROOT / "web" / "fonts"
+    if _audit.vendored_font_faults():
+        return Result(LAW_VENDORED, "a font swapped for another file",
+                      "audit.vendored_font_faults", False,
+                      "the shipped fonts already disagree with SOURCE.md; fix "
+                      "that before trusting this planting")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "fonts"
+        shutil.copytree(src, copy)
+        victim = copy / "manrope-latin.woff2"
+        victim.write_bytes(b"wOF2" + bytes(victim.stat().st_size - 4))
+        faults = _audit.vendored_font_faults(copy)
+
+    if not faults:
+        return Result(LAW_VENDORED, "a font swapped for another file",
+                      "audit.vendored_font_faults", False,
+                      "NOT CAUGHT - the bytes in this repository are no longer "
+                      "the bytes whose provenance is written down, and the "
+                      "table saying otherwise is decoration")
+    return Result(LAW_VENDORED, "a font swapped for another file",
+                  "audit.vendored_font_faults", True, faults[0])
+
+
+def plant_a_binary_with_no_provenance() -> Result:
+    """Drop a binary into web/fonts that SOURCE.md does not name.
+
+    THE QUIET ONE OF THE FOUR. A swapped file fails a hash; a file that was
+    never recorded fails nothing at all, and looks exactly like a file that
+    belongs. This is how the ruling's exception ("not the kind of binary the
+    instinct protects against") becomes a doorway for the kind it does.
+    """
+    from gridiron import audit as _audit
+
+    src = config.PACKAGE_ROOT / "web" / "fonts"
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "fonts"
+        shutil.copytree(src, copy)
+        (copy / "unaccounted.woff2").write_bytes(b"wOF2" + bytes(64))
+        faults = _audit.vendored_font_faults(copy)
+
+    if not faults:
+        return Result(LAW_VENDORED, "a binary with no provenance",
+                      "audit.vendored_font_faults", False,
+                      "NOT CAUGHT - a binary nobody recorded sits beside the "
+                      "ones somebody did, and the table reads as though it "
+                      "described the directory")
+    return Result(LAW_VENDORED, "a binary with no provenance",
+                  "audit.vendored_font_faults", True, faults[0])
+
+
+LAW_METHOD = "A FLAGGED METHOD SAYS SO, AND NEVER LEADS"
+
+
+def plant_a_self_chosen_total_left_unflagged() -> Result:
+    """Un-declare the flag on a market still asked at its own rung.
+
+    THE FAILURE IS ENTIRELY SILENT. The card renders exactly as a moneyline
+    card does, the model is fitted, the calibration is honest, the sample size
+    is stated -- and the question underneath has almost nothing in it. Two
+    sports measured it: +0.0010 and +0.0016 walk-forward against
+    always-the-base-rate.
+
+    THE SCAN READS THE CODE THAT CHOOSES THE RUNG, not a second list of "which
+    markets are totals". STEP 4 found a declaration disagreeing with a
+    hardcoded copy of itself four times in one session, so the fifth copy is
+    not written -- `questions.<sport>_<market>_asked` takes the model's own
+    expectation, and its existence IS the fault condition.
+    """
+    from gridiron import audit as _audit
+
+    if _audit.flagged_method_faults():
+        return Result(LAW_METHOD, "a self-chosen rung left unflagged",
+                      "audit.flagged_method_faults", False,
+                      "the shipped declaration is already out of step; fix "
+                      "that before trusting this planting")
+
+    original = dict(config.FLAGGED_METHODS)
+    try:
+        config.FLAGGED_METHODS.pop(("nba", "total"), None)
+        faults = _audit.flagged_method_faults()
+    finally:
+        config.FLAGGED_METHODS.clear()
+        config.FLAGGED_METHODS.update(original)
+
+    if not faults:
+        return Result(LAW_METHOD, "a self-chosen rung left unflagged",
+                      "audit.flagged_method_faults", False,
+                      "NOT CAUGHT - the NBA total is still asked at the ladder "
+                      "rung nearest its own expectation, its card carries no "
+                      "note saying so, and a reader is shown a coin flip in "
+                      "the same type as a market that measured +0.04")
+    return Result(LAW_METHOD, "a self-chosen rung left unflagged",
+                  "audit.flagged_method_faults", True, faults[0])
+
+
+def plant_a_flagged_market_with_no_words() -> Result:
+    """Flag a market with a finding nobody wrote a sentence for.
+
+    A FLAG WITH NO WORDS RENDERS AS NO FLAG. `language.method_note` raises on
+    an unknown key, which is the right behaviour at the wrong moment -- it
+    would fire on a reader's slate rather than in the gate. The scan is what
+    moves the moment.
+
+    THIS IS THE `plant_a_side_with_no_words` SHAPE, one market along: a value
+    the system knows about and has no vocabulary for is either an exception or
+    a silent omission, and the only unacceptable answer is the third one --
+    printing the identifier.
+    """
+    from gridiron import audit as _audit
+
+    original = dict(config.FLAGGED_METHODS)
+    try:
+        config.FLAGGED_METHODS[("nba", "total")] = "measured_nothing_at_all"
+        faults = _audit.flagged_method_faults()
+    finally:
+        config.FLAGGED_METHODS.clear()
+        config.FLAGGED_METHODS.update(original)
+
+    if not faults:
+        return Result(LAW_METHOD, "a flagged market with no words",
+                      "audit.flagged_method_faults", False,
+                      "NOT CAUGHT - a market is flagged with a finding that "
+                      "has no sentence, so the gate is green and the card "
+                      "raises on the reader")
+    return Result(LAW_METHOD, "a flagged market with no words",
+                  "audit.flagged_method_faults", True, faults[0])
+
+
+def plant_a_flagged_market_leading_the_page() -> Result:
+    """Let the hero take the top card whatever its method says.
+
+    THE HERO IS THE LARGEST CLAIM ON THE PAGE and the sort has no opinion
+    about method: on a slate where a totals card happens to carry the biggest
+    disagreement with the market, the coin flip leads. Ruling 2's word is
+    NEVER.
+
+    THE SECOND HALF IS THE ONE THAT NEARLY GOT AWAY. `open.slice(1)` was
+    correct for as long as the hero always took `open[0]`. The moment the hero
+    can REFUSE the top card, slicing position 0 deletes it from the page --
+    shown by neither the hero nor the grid -- and on the totals tab that is
+    every card on the slate. A page that renders empty while reporting a full
+    one is a worse failure than the one the ruling was fixing.
+    """
+    web = config.PACKAGE_ROOT / "web"
+    js = (web / "app.js").read_text(encoding="utf-8")
+    from gridiron import audit as _audit
+
+    if _audit.hero_flag_faults(js):
+        return Result(LAW_METHOD, "a flagged market leading the page",
+                      "audit.hero_flag_faults", False,
+                      "the shipped app.js already lets one through; fix that "
+                      "before trusting this planting")
+
+    # THE PLANT: the pool stops filtering, and the grid goes back to slicing.
+    broken = js.replace("return cards.filter(c => !c.method_note);",
+                        "return cards.slice();", 1)
+    broken = broken.replace(
+        "const rest = lead ? open.filter(c => c !== lead) : open.slice();",
+        "const rest = open.slice(1);", 1)
+    if broken == js:
+        return Result(LAW_METHOD, "a flagged market leading the page",
+                      "audit.hero_flag_faults", False,
+                      "the hero pool is no longer written the way this "
+                      "planting expects; re-point it")
+    faults = _audit.hero_flag_faults(broken)
+    if len(faults) < 2:
+        return Result(LAW_METHOD, "a flagged market leading the page",
+                      "audit.hero_flag_faults", False,
+                      f"NOT CAUGHT in full - a market whose own note calls it "
+                      f"a coin flip can lead the page, or the card the hero "
+                      f"refuses is dropped by the grid as well. "
+                      f"{len(faults)} of the two halves were seen.")
+    return Result(LAW_METHOD, "a flagged market leading the page",
+                  "audit.hero_flag_faults", True, faults[0])
+
+
 LAW_DRAW = "A DRAWN GAME ANSWERS NEITHER"
 
 
@@ -5581,6 +5777,11 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_a_font_swapped_for_another_file())
+    results.append(plant_a_binary_with_no_provenance())
+    results.append(plant_a_self_chosen_total_left_unflagged())
+    results.append(plant_a_flagged_market_with_no_words())
+    results.append(plant_a_flagged_market_leading_the_page())
     results.append(plant_a_drawn_game_graded_as_a_loss())
     results.append(plant_an_unfitted_market_that_blocks_a_rerun_refusal())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())

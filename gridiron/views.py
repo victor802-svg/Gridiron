@@ -656,6 +656,19 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
             "team_names": teams.names(conn, r["sport"]),
         }),
+                # WHAT THIS MARKET'S METHOD IS KNOWN TO BE (operator ruling
+                # 2, 2026-09-04). Absent on every card whose method carries no
+                # finding, which is all of them but the totals.
+                #
+                # ONE FIELD, NOT TWO. The browser's rule is "a card with a
+                # method note is never the hero" -- read off the words
+                # themselves rather than off a second boolean that could come
+                # to disagree with them. Two switches for one state is how a
+                # card comes to be flagged according to one and eligible
+                # according to the other, which this file has already fixed
+                # once for the open/shut state.
+                "method_note": language.method_note(
+                    config.flagged_method(sport, r["market_type"])),
                 "market_line": snap.get("line"),
                 "market_implied_prob": implied,
                 "market_source": snap.get("source"),
@@ -902,6 +915,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # runs for the same reason: a guard that only runs in a test protects the
     # test. This one fired on the real slate the day it was written.
     audit.check_one_forecaster_per_list(payload)
+    # AND THE FLAG CANNOT DRIFT FROM THE CODE THAT EARNS IT (operator ruling
+    # 2). Cheap -- a walk over five sports' declared markets -- and it runs
+    # here for the same reason the merge check does: a market that started
+    # choosing its own rung and was never flagged would otherwise be found by
+    # nobody until a reader took a coin flip at face value.
+    audit.check_flagged_methods()
     return payload
 
 

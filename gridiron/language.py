@@ -1253,6 +1253,50 @@ def tier_label(tier: str | None) -> str:
     return TIER_LABELS.get(tier or "", "")
 
 
+#: WHAT A FLAGGED METHOD SAYS, in the operator's words (ruling 2, 2026-09-04).
+#:
+#: Keyed by the finding, not by the market: four sports share one finding
+#: because they share one construction, and four copies of a sentence is how
+#: three of them come to say something slightly different.
+#:
+#: THE NUMBERS ARE IN THE SENTENCE because a caveat without them is an opinion.
+#: +0.001 and +0.002 are the walk-forward edges over always-the-base-rate,
+#: rounded to the three decimals that separate them from zero, and they are the
+#: measurements the close-outs carry.
+#:
+#: "SO FAR" IS DOING WORK. It dates the claim without a date: two sports have
+#: been measured this way and the finding is about those two.
+METHOD_NOTES: dict[str, str] = {
+    "total_at_own_rung": (
+        "totals asked this way have been a coin flip so far "
+        "(NBA +0.001, NFL +0.002 in walk-forward) — shown for the record."
+    ),
+}
+
+
+def method_note(key: str | None) -> str | None:
+    """The one line a flagged market carries, or None.
+
+    THE CARD DOES NOT DECIDE WHETHER TO SAY THIS. `config.flagged_method` says
+    which finding applies and this says what it reads as, so a market is
+    flagged in exactly one place and worded in exactly one other.
+
+    AN UNKNOWN KEY IS A FAULT, not a silent absence. A market flagged with a
+    finding nobody wrote words for would render as an ordinary card, which is
+    the failure mode the flag exists to prevent -- so it raises instead.
+    """
+    if key is None:
+        return None
+    try:
+        return METHOD_NOTES[key]
+    except KeyError:
+        raise NoWordsForThisMarket(
+            f"{key!r} is declared in config.FLAGGED_METHODS and has no words "
+            f"in language.METHOD_NOTES. A flagged market with no note renders "
+            f"as an unflagged one, which is the whole thing the flag is for."
+        ) from None
+
+
 def rate_line(expected: float | None, rung: float | None,
               probability: float | None, market: str | None = None) -> str:
     """"The model expects about 0.9 home runs; clearing 0.5 is about 60%."

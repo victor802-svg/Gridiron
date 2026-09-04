@@ -24,6 +24,7 @@ could ever become evidence, and it has not happened yet.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -134,6 +135,25 @@ def step_1_tests(quick: bool, parallel: int = 0) -> tuple[bool, tuple[str, ...]]
         print("QUICK MODE. Not running: "
               + "; ".join(f"{t} ({TIERS[t]})" for t in skipped))
         print("This cannot pass the gate -- see the summary.\n")
+    # A TIER THAT IS ABSENT RATHER THAN DECLINED (2026-09-04).
+    #
+    # The browser tests skip themselves when playwright cannot be imported --
+    # `requirements-dev.txt` says so, and that is right for a contributor with
+    # no browsers installed. It is WRONG FOR THE GATE. Run under an interpreter
+    # without playwright, every browser test skips, pytest exits 0, and this
+    # step reports a pass over a suite whose entire rendering half did not run.
+    #
+    # THAT HAPPENED. On 2026-09-04 a full run was made with the system Python
+    # rather than the project's `.venv`: 31 silent skips, and four newly
+    # written browser tests among them that had never once executed. The
+    # quick-mode machinery below already exists so that "not running a tier is
+    # a thing the output has to SAY rather than a silence" -- absence by
+    # accident deserves the same treatment as absence by flag.
+    if not quick and importlib.util.find_spec("playwright") is None:
+        skipped = ("browser",)
+        print("PLAYWRIGHT IS NOT IMPORTABLE under " + sys.executable)
+        print("The browser tier skipped itself. This cannot pass the gate."
+              + chr(10))
     # No capture: pytest writes straight to this terminal, dots and all.
     result = subprocess.run(args, cwd=str(REPO))
     return result.returncode == 0, skipped
@@ -185,6 +205,15 @@ def step_2_guards() -> bool:
         # breaks on write is the worst kind for a project that mostly reads.
         ("every foreign key points at a real table",
          lambda: audit.check_no_dangling_references(_live_db())),
+        # OPERATOR RULING 2 (2026-09-04). Both halves: the declaration cannot
+        # drift from the code that earns it, and the hero cannot quietly start
+        # leading with a market whose own note calls it a coin flip.
+        # OPERATOR RULING 4 (2026-09-04). A vendored binary is checkable to
+        # exactly the extent its provenance is recorded AND enforced.
+        ("vendored fonts match their provenance", audit.check_vendored_fonts),
+        ("every self-chosen rung is flagged", audit.check_flagged_methods),
+        ("the hero refuses a flagged method",
+         audit.check_the_hero_refuses_flagged_methods),
         ("one door for the side", audit.check_side_named),
         ("no shadowed definitions", audit.check_no_shadowed_definitions),
         ("the side, in prose, anywhere", audit.check_side_named_everywhere),

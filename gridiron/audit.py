@@ -3587,3 +3587,234 @@ def _check_the_picks_scanner_can_see() -> None:
 
 
 _check_the_picks_scanner_can_see()
+
+
+# A FLAGGED METHOD SAYS SO, AND NEVER LEADS (operator ruling 2, 2026-09-04)
+# ---------------------------------------------------------------------------
+#
+# A market can be fitted, calibrated, honest about its sample, and still be
+# asking a question with almost nothing in it. Four sports declare a `total`
+# and all four choose the rung as the ladder point nearest their OWN
+# expectation, which makes P(over) one half by construction -- measured at
+# +0.0010 (NBA) and +0.0016 (NFL) walk-forward.
+#
+# THE FLAG IS DECLARED IN ONE PLACE AND WORDED IN ANOTHER, and this is what
+# stops the two drifting apart. STEP 4 found a declaration disagreeing with a
+# hardcoded list FOUR TIMES in one session, every one of them silent, so a
+# fifth copy of "which markets are totals" is not written here: the fault is
+# read off the code that actually chooses the rung.
+#
+# THE NAMING IS LOAD-BEARING and is asserted rather than assumed.
+# `questions.<sport>_<market>_asked` takes the model's own expectation and
+# returns a rung. `questions.ufc_rounds_rung` takes the BOUT'S SCHEDULED
+# LENGTH, which is not a self-chosen rung at all -- and it is named `_rung`
+# for exactly that reason. A future asker named `_asked` for a market nobody
+# flagged is the failure this scan exists to catch.
+
+def flagged_method_faults() -> list[str]:
+    """Where the method flag and the code that earns it disagree.
+
+    Three ways they can, and all three are silent in production:
+
+    1. A DECLARED MARKET ASKED AT ITS OWN RUNG AND NOT FLAGGED. The card
+       renders as any other and a reader takes a coin flip at face value.
+    2. A FLAG WITH NO WORDS. `language.method_note` raises on this at render
+       time, which is the right behaviour and the wrong moment: it would fire
+       on a reader's slate rather than in the gate.
+    3. A FLAG ON A MARKET THE SPORT DOES NOT DECLARE. Harmless today and the
+       residue of a market that was withdrawn, which is how a stale caveat
+       comes to be waiting for the market's return.
+    """
+    from . import language
+    from .model import questions
+
+    faults: list[str] = []
+
+    for sport, markets in config.SPORT_MARKETS.items():
+        for market in markets:
+            asker = getattr(questions, f"{sport}_{market}_asked", None)
+            if asker is None or not callable(asker):
+                continue
+            if config.flagged_method(sport, market) is None:
+                faults.append(
+                    f"{sport}:{market} is asked at a rung "
+                    f"`questions.{sport}_{market}_asked` chooses from the "
+                    f"model's OWN expectation, and it is not in "
+                    f"config.FLAGGED_METHODS. P(over) is one half by "
+                    f"construction on a question asked that way -- measured "
+                    f"at +0.0010 and +0.0016 in two sports -- and an unflagged "
+                    f"card says none of that.")
+
+    for (sport, market), key in sorted(config.FLAGGED_METHODS.items()):
+        if key not in language.METHOD_NOTES:
+            faults.append(
+                f"{sport}:{market} is flagged {key!r} and language."
+                f"METHOD_NOTES has no words for it. The card would raise on a "
+                f"reader's slate instead of failing here.")
+        if market not in config.SPORT_MARKETS.get(sport, ()):
+            faults.append(
+                f"{sport}:{market} is flagged and {sport} does not declare "
+                f"that market. A caveat with no card to sit on.")
+
+    return faults
+
+
+def check_flagged_methods() -> None:
+    """Raise unless every self-chosen rung is flagged and every flag has words."""
+    faults = flagged_method_faults()
+    if faults:
+        raise LawViolation(
+            "A FLAGGED METHOD SAYS SO:" + _NL2 + _NL2.join(faults))
+
+
+def hero_flag_faults(source: str) -> list[str]:
+    """Can a market whose method is flagged reach the hero?
+
+    Read off the shipped `app.js`, because that is where the refusal lives and
+    a refusal asserted in a test is a refusal that protects the test. Three
+    things have to hold together and the third is the one that was nearly
+    missed:
+
+    * the pool filters on `method_note`;
+    * the hero draws from the pool rather than from the raw list;
+    * THE GRID DROPS THE CARD THE HERO ACTUALLY LEADS WITH, by identity. While
+      the hero always took `open[0]`, `open.slice(1)` was the same thing. The
+      moment the hero can refuse the top card, slicing position 0 deletes that
+      card from the page -- shown by neither the hero nor the grid. On the
+      totals tab that is EVERY card, and the page would render empty while
+      reporting a full slate.
+    """
+    faults: list[str] = []
+    if "function heroPool" not in source:
+        faults.append("`heroPool` is gone from app.js, so nothing filters the "
+                      "hero's candidates and a flagged market can lead the page.")
+    elif not re.search(r"function heroPool[^}]*method_note", source):
+        faults.append("`heroPool` no longer filters on `method_note`, so a "
+                      "market flagged as a coin flip by construction can be "
+                      "the largest claim on the page.")
+    if not re.search(r"const top = heroPool\(", source):
+        faults.append("`renderHero` no longer draws from `heroPool`, so the "
+                      "filter exists and the hero ignores it.")
+    if re.search(r"const rest = open\.slice\(1\)", source):
+        faults.append("the grid drops position 0 rather than the card the hero "
+                      "leads with. When the hero refuses a flagged top card, "
+                      "that card is shown by neither -- and on the totals tab "
+                      "that is every card on the slate.")
+    return faults
+
+
+def check_the_hero_refuses_flagged_methods(root: Path | None = None) -> None:
+    """Raise unless the hero can still refuse a flagged market."""
+    base = (config.PACKAGE_ROOT / "web") if root is None else Path(root)
+    faults = hero_flag_faults((base / "app.js").read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A FLAGGED METHOD NEVER LEADS:" + _NL2 + _NL2.join(faults))
+
+
+# A VENDORED BINARY IS CHECKABLE (operator ruling 4, 2026-09-04)
+# ---------------------------------------------------------------------------
+#
+# This repository shipped no font binary for a reason: a binary nobody can diff
+# is a thing nobody can check, which is why the app icon is drawn in code. The
+# ruling drew the line in the right place -- a licensed font file is not what
+# that instinct protects against -- but the instinct still has to be answered,
+# and this is the answer.
+#
+# A VENDORED BINARY IS CHECKABLE TO EXACTLY THE EXTENT ITS PROVENANCE IS
+# RECORDED AND ENFORCED. `web/fonts/SOURCE.md` records where each file came
+# from, its size and its SHA-256. This re-hashes the files against that table,
+# so a substituted or truncated font is a GATE FAILURE and not something
+# noticed on a page one day.
+#
+# THE TABLE IS THE ONE DECLARATION. The hashes are not repeated here. A second
+# copy in Python would be the fifth instance this session of a declaration and
+# a hardcoded list drifting apart, and the whole point of the table is that a
+# reader can check it.
+
+_FONT_ROW = re.compile(
+    r"^\|\s*`(?P<name>[^`]+)`\s*\|\s*(?P<size>[\d,]+)\s*\|\s*`(?P<sha>[0-9a-f]{64})`\s*\|",
+    re.M)
+
+
+def vendored_font_faults(root: Path | None = None) -> list[str]:
+    """Where the vendored binaries and their recorded provenance disagree.
+
+    Four ways, and the quiet one is the last:
+
+    1. THE TABLE IS GONE, so nothing is recorded and nothing can be checked.
+    2. A FILE NAMED IN THE TABLE IS MISSING.
+    3. A FILE'S BYTES DO NOT MATCH what was recorded.
+    4. A FILE IS PRESENT AND NOT IN THE TABLE -- a binary that arrived without
+       provenance, which is the exact thing the no-committing instinct was
+       protecting against and the only one of the four that looks like nothing.
+    """
+    base = (config.PACKAGE_ROOT / "web" / "fonts") if root is None else Path(root)
+    source = base / "SOURCE.md"
+    if not source.is_file():
+        return [f"{source} is missing, so the vendored binaries beside it have "
+                f"no recorded provenance and nothing can check them."]
+
+    import hashlib
+
+    recorded = {
+        m.group("name"): (int(m.group("size").replace(",", "")), m.group("sha"))
+        for m in _FONT_ROW.finditer(source.read_text(encoding="utf-8"))
+    }
+    if not recorded:
+        return [f"{source} carries no hash table, so the files beside it are "
+                f"unchecked binaries with a document about them."]
+
+    faults: list[str] = []
+    for name, (size, sha) in sorted(recorded.items()):
+        path = base / name
+        if not path.is_file():
+            faults.append(f"{name} is recorded in SOURCE.md and is not there.")
+            continue
+        blob = path.read_bytes()
+        got = hashlib.sha256(blob).hexdigest()
+        if len(blob) != size:
+            faults.append(f"{name} is {len(blob)} bytes; SOURCE.md records "
+                          f"{size}.")
+        if got != sha:
+            faults.append(f"{name} hashes to {got[:16]}...; SOURCE.md records "
+                          f"{sha[:16]}.... The file in this repository is not "
+                          f"the file whose provenance is written down.")
+
+    for path in sorted(base.iterdir()):
+        if path.name in ("SOURCE.md",) or path.name in recorded:
+            continue
+        faults.append(f"{path.name} sits in web/fonts and is not in "
+                      f"SOURCE.md's table -- a binary that arrived without "
+                      f"provenance is the thing the table exists to prevent.")
+
+    # THE LICENCE TRAVELS WITH THE FILES, which the OFL requires and which is
+    # also what makes them checkable without leaving the repository.
+    licence = base / "OFL.txt"
+    if licence.is_file():
+        text = licence.read_text(encoding="utf-8", errors="replace")
+        if "SIL Open Font License" not in text:
+            faults.append("web/fonts/OFL.txt does not contain the SIL Open "
+                          "Font License text it is named for.")
+
+    # AND THE OFFLINE SHELL NAMES THEM. A worker that caches the stylesheet
+    # asking for a font and not the font renders the offline app in a fallback
+    # face -- the one condition where the difference is most visible.
+    sw = (config.PACKAGE_ROOT / "web" / "sw.js")
+    if sw.is_file():
+        shell = sw.read_text(encoding="utf-8")
+        for name in sorted(n for n in recorded if n.endswith(".woff2")):
+            if name not in shell:
+                faults.append(
+                    f"{name} is vendored and the service worker's SHELL does "
+                    f"not name it, so the offline app draws in a fallback "
+                    f"face while the online one does not.")
+    return faults
+
+
+def check_vendored_fonts(root: Path | None = None) -> None:
+    """Raise unless every vendored binary matches its recorded provenance."""
+    faults = vendored_font_faults(root)
+    if faults:
+        raise LawViolation(
+            "A VENDORED BINARY IS CHECKABLE:" + _NL2 + _NL2.join(faults))

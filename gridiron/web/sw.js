@@ -19,14 +19,27 @@
 
 // Bumped whenever the shell changes shape. The activate handler deletes every
 // cache that is not this one, so a bump purges the old shell.
-const SHELL_CACHE = 'gridiron-shell-v2';
+const SHELL_CACHE = 'gridiron-shell-v3';
 
+// THE FONTS ARE SHELL (operator ruling 4, 2026-09-04). They are served from
+// this app's own origin, they are part of what the page looks like, and a
+// worker that caches the stylesheet asking for them and not the files it asks
+// for would render the offline app in a fallback face -- which is the one
+// condition under which the difference is most visible and least expected.
+//
+// `addAll` IS ALL-OR-NOTHING: one 404 here fails the whole install and the app
+// silently stops working offline. That is the right behaviour -- a shell
+// missing a file it names is broken -- but it means a font renamed without
+// this list being updated is a real outage, so the gate hashes both files
+// against `web/fonts/SOURCE.md` and the audit checks this list names them.
 const SHELL = [
   '/',
   '/static/style.css',
   '/static/app.js',
   '/static/icon.svg',
-  '/static/manifest.webmanifest'
+  '/static/manifest.webmanifest',
+  '/static/fonts/manrope-latin.woff2',
+  '/static/fonts/manrope-latin-ext.woff2'
 ];
 
 self.addEventListener('install', (event) => {

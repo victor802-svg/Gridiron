@@ -435,6 +435,61 @@ SPORT_TOTAL_MARKETS: dict[str, tuple[str, ...]] = {
 #  Writing it now would ship a function nothing calls, which is what the orphan
 #  scan exists to catch -- and did, within a minute of it being added.)
 
+#: WHICH MARKETS CARRY A FINDING ABOUT THEIR OWN METHOD (operator ruling 2,
+#: 2026-09-04).
+#:
+#: A market can be fitted, calibrated, honest about its sample and still be
+#: asking a question with almost nothing in it. The two totals measured
+#: walk-forward came back at +0.0010 (NBA) and +0.0016 (NFL) against
+#: always-the-base-rate, and the close-out established WHY: the rung is chosen
+#: as the ladder point nearest the model's own expectation, so P(over) is one
+#: half by construction and the only thing left for a coefficient to find is
+#: the rounding residual.
+#:
+#: THE FINDING IS ABOUT THE METHOD, NOT THE MODEL, which is why it is declared
+#: per (sport, market) rather than derived from a Brier score. A totals model
+#: that measured +0.05 next season would still be asked at its own rung, and
+#: the flag would still be true.
+#:
+#: DERIVED FROM THE DECLARED LIST, never a hardcoded row. Every `total` this
+#: project declares is asked at a rung chosen from its own expectation --
+#: `nfl_total_asked`, `nba_total_asked`, `mlb_total_asked` and
+#: `cfb_total_asked` all take the model's expectation and return a rung, and a
+#: planting asserts that none of them escapes this map. A sixth sport
+#: declaring a total is flagged the day it is declared, which is the same rule
+#: the market tabs follow and the fix for the failure STEP 4 found four times
+#: in one session.
+#:
+#: UFC's `rounds` IS A TOTAL AND IS NOT FLAGGED. Its rung is fixed by the
+#: bout's scheduled length -- 2.5 for a three-rounder, 4.5 for a five -- so it
+#: is not chosen from the model's expectation and the construction argument
+#: does not reach it. That is a difference in method, and this table is about
+#: method.
+#:
+#: LIFTED BY SESSION E, not by time. When the blind object becomes a forecast
+#: distribution and P(over) is read off it at the MARKET's line, the question
+#: stops being asked at our own rung and the finding stops being true. Until
+#: then it stands.
+FLAGGED_METHODS: dict[tuple[str, str], str] = {
+    (sport, "total"): "total_at_own_rung"
+    for sport, markets in SPORT_MARKETS.items() if "total" in markets
+}
+FLAGGED_METHODS_DECLARED = "2026-09-04T00:00:00Z"
+
+
+def flagged_method(sport: str | None, market_type: str | None) -> str | None:
+    """The finding key this market's METHOD carries, or None.
+
+    The words live in `language.METHOD_NOTES`; this says only WHICH finding
+    applies. Split for the same reason every other plain-words split exists:
+    no sentence a reader sees is composed outside `language.py`.
+    """
+    if not sport or not market_type:
+        return None
+    return FLAGGED_METHODS.get((sport, market_type))
+
+
+
 #: Seasons MLB player-level rows are fetched for: lineups and per-batter game
 #: logs. Narrower than SPORT_LOAD_SEASONS because these are the expensive part
 #: of the request budget -- one request per batter per season, roughly 700

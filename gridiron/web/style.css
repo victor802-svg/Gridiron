@@ -1,3 +1,43 @@
+/* MANROPE, VENDORED (operator ruling 4, 2026-09-04).
+ *
+ * SIL Open Font License 1.1. The licence text ships beside the binaries at
+ * `web/fonts/OFL.txt`, which is what the OFL requires and also what makes the
+ * files checkable: a reader can see what they are allowed to do with them
+ * without leaving the repository. Provenance is in `web/fonts/SOURCE.md`.
+ *
+ * SERVED FROM THIS APP'S OWN ORIGIN, at `/static/fonts/`. No CDN, no network
+ * request off this machine, and the test that shuts the network stays exactly
+ * as strict as it was.
+ *
+ * `font-display: swap` -- the system face draws immediately and Manrope
+ * replaces it. On localhost that is imperceptible; the alternative is a page
+ * that renders blank text while a local file loads.
+ *
+ * THE UNICODE RANGES ARE GOOGLE'S OWN, copied with the files they describe. A
+ * hand-written range would either fetch both files for every page or drop a
+ * character nobody tested.
+ */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('fonts/manrope-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('fonts/manrope-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 /* Gridiron.
  *
  * Premium through restraint. The rules, and they are rules:
@@ -114,13 +154,29 @@
      sans stack -- one door, and a rule that reaches every place they were
      used, including the ones nobody would have remembered.
 
-     MANROPE IS NOT SELF-HOSTED, and that is a limitation rather than a
-     choice. The brief asks for it self-hosted; there is no font binary in
-     this repository and adding one would mean shipping a file nobody can
-     diff, while linking a CDN would put a network dependency in a local-first
-     app that a test already forbids. Manrope and Inter are named first, so a
-     reader who has either installed gets it, and the stack falls back to the
-     system face. Recorded in the close-out rather than left to be discovered.
+     MANROPE IS SELF-HOSTED (operator ruling 4, 2026-09-04). It was shipped
+     unhosted for one night, on the reasoning that a binary nobody can diff is
+     a binary nobody can check -- the same rule that has the app icon drawn in
+     code. The ruling drew the line in the right place: a licensed font file
+     is not what that instinct protects against. What it protects against is a
+     binary that CARRIES BEHAVIOUR or that stands in for work; a woff2 carries
+     glyph outlines, is served from this app's own origin, and its provenance
+     and licence sit beside it in `fonts/`.
+
+     TWO FILES, THE LATIN SUBSETS, AND WHY NOT SIX. Google publishes Manrope
+     as six unicode subsets; this ships latin and latin-ext (40KB together)
+     and not cyrillic, greek or vietnamese. Every word this interface renders
+     is composed in `language.py` in English, and the only outside text is
+     team and fighter names, which the record stores transliterated. A glyph
+     outside the two ranges falls through to the next family in the stack,
+     which is exactly what a fallback stack is for -- the alternative is 60KB
+     of outlines for characters nothing in the record contains.
+
+     THE VARIABLE FONT, NOT STATIC INSTANCES. The stylesheet asks for weight
+     640 in two places, which no static instance can answer: it would round to
+     600 or 700 silently and the difference would be invisible in review and
+     visible on the page. One axis, 200 to 800, answers every weight the
+     stylesheet uses (400, 500, 600, 640, 700, 800) out of one file.
 
      TABULAR FIGURES SURVIVE THE CHANGE. The stylesheet's own rule -- numbers
      line up so a changed digit does not move the ones beside it -- was being
@@ -1237,6 +1293,20 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 @media (hover: none) {
   /* No hover to reveal it with, so it is simply shown. */
   .card-hint { opacity: 1; }
+}
+/* WHAT IS KNOWN ABOUT THE MARKET'S METHOD (operator ruling 2, 2026-09-04).
+   NOT HOVER-REVEALED, unlike the market hint above it. The hint is a
+   convenience -- the same figure is in the body, one tap away. This is a
+   caveat on the number the reader is looking at, and a caveat that appears
+   only on hover is absent on every touch device and on every glance.
+   Italic and quiet, so it reads as a footnote to the claim rather than as a
+   second claim; `--faint` rather than `--faintest`, because a sentence a
+   reader is meant to finish is not the place for the quietest ink. */
+.card-note {
+  font: 400 italic 12px/1.45 var(--body);
+  color: var(--faint);
+  margin-top: 8px;
+  max-width: 46ch;
 }
 .card-meta { grid-area: meta; display: flex; align-items: center; gap: 8px; }
 .card-head .chance { grid-area: chance; text-align: right; }

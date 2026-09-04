@@ -327,7 +327,25 @@ def path_is_open(path: str) -> bool:
     Static assets are open because the login page needs its stylesheet, and a
     stylesheet reveals nothing. Every other path — including /docs, /redoc and
     /openapi.json, which describe the whole surface — is closed.
+
+    `.woff2` JOINED 2026-09-04, with the fonts (operator ruling 4). It is the
+    same argument one step further: the login page loads the stylesheet, the
+    stylesheet asks for a font, and a font refused with a 401 leaves the sign-in
+    screen drawn in a different face from the app behind it — while logging a
+    console error on every visit, which is how the browser smoke test found
+    this within an hour of the fonts landing.
+
+    IT REVEALS LESS THAN THE STYLESHEET DOES. `manrope-latin.woff2` is a
+    licensed open font, byte-identical to the file Google serves to anyone who
+    asks, and its SHA-256 is written down in this repository. A stylesheet at
+    least describes the shape of the interface; a font describes the shape of
+    the letter "a".
+
+    THE LIST STAYS AN EXTENSION ALLOWLIST, not a directory one. `/static/` also
+    holds `app.js` and `index.html`, and neither is open — which is the whole
+    reason this is written as "these extensions" rather than "this folder".
     """
     if path in OPEN_PATHS:
         return True
-    return path.startswith("/static/") and path.endswith((".css", ".ico", ".svg"))
+    return (path.startswith("/static/")
+            and path.endswith((".css", ".ico", ".svg", ".woff2")))

@@ -1,0 +1,22 @@
+# THE VENDORED FONTS ARE BINARY, SAID OUT LOUD (operator ruling 4, 2026-09-04).
+#
+# `core.autocrlf` is true on the machine this project is developed on, and this
+# repository had no .gitattributes at all. Git's own heuristic would almost
+# certainly spare a woff2 -- it looks for a NUL byte in the first 8000 and a
+# font is full of them -- but "almost certainly" is the wrong standard for a
+# file whose SHA-256 the gate enforces. A single CRLF conversion would corrupt
+# the outlines, fail `audit.check_vendored_fonts`, and look like a mystery.
+#
+# Declared rather than inferred, which is the rule the rest of this project
+# already follows for ladders, factors and market lists.
+*.woff2 binary
+
+# AND THE LICENCE, WHICH IS ALSO HASHED. Found the hard way, minutes after the
+# guard was written: `git stash` round-tripped OFL.txt through autocrlf, added
+# 93 bytes of carriage returns, and `audit.check_vendored_fonts` failed exactly
+# as it was built to. The line above was drawn one file too narrow.
+#
+# A LICENCE'S BYTES ARE THE LICENCE. It is not a source file this repository
+# edits; it is a document received under terms, recorded by hash, and shipped
+# unchanged. Line-ending normalisation is a modification, small and silent.
+gridiron/web/fonts/OFL.txt -text

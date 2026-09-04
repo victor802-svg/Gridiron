@@ -11,6 +11,7 @@ Serving is bound to 127.0.0.1. Not configurable to a public interface.
 
 from __future__ import annotations
 
+import mimetypes
 import sqlite3
 import threading
 from pathlib import Path
@@ -21,6 +22,15 @@ from fastapi.staticfiles import StaticFiles
 
 from . import (audit, auth, buildinfo, calibration, config, db, language,
                settings, views)
+
+# WOFF2 IS NOT IN PYTHON'S MIME TABLE (operator ruling 4, 2026-09-04).
+# `mimetypes.guess_type("a.woff2")` returns (None, None) on this machine, so
+# StaticFiles would serve a vendored font as an octet-stream. Browsers sniff
+# the `wOF2` magic and render it anyway, which is exactly why this would never
+# have been noticed -- and it is still wrong: `font/woff2` is the registered
+# type (RFC 8081), and a correct Content-Type is not something to leave to a
+# sniffer's good manners.
+mimetypes.add_type("font/woff2", ".woff2")
 
 WEB_DIR = config.PACKAGE_ROOT / "web"
 
