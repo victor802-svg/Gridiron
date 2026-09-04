@@ -13,7 +13,7 @@ it is two corrections to the roster itself**, §5 and §6.
 
 | roster # | market | verdict | edge (walk-forward) |
 |---|---|---|---|
-| **#3** | MLB batter strikeouts | **DONE** | §2 |
+| **#3** | MLB batter strikeouts | **DONE** | **+0.0200** |
 | **#18** | NFL moneyline | **DONE** | **+0.0215** |
 | **#19** | NFL total | **DONE** | **+0.0016** |
 
@@ -39,6 +39,30 @@ data does not have.
 1.3%. Planted.
 
 Fitted: **`RateFit`, n=118,451, converged, nothing dropped or constant.**
+
+Walk-forward, trained on 2024–2025 and tested on 2026, **LABELLED SANITY
+ONLY**:
+
+```
+Brier 0.2300   always-base-rate 0.2500   edge +0.0200
+hit rate 62.3%
+
+50-60%   n=19922  said 54.9%  hit 56.6%  gap +1.8
+60-70%   n=11519  said 64.2%  hit 66.4%  gap +2.3
+70-80%   n= 5279  said 74.0%  hit 73.7%  gap -0.2
+80-90%   n=  328  said 81.7%  hit 79.0%  gap -2.7
+
+weighted |gap| 1.70 points over 37,048 rows
+```
+
+**This is the strongest prop result in the record** — an edge of +0.0200 on
+37,048 out-of-sample rows, with a weighted calibration gap of 1.70 points and
+the two large buckets under-confident. The roster called it the best-balanced
+prop it measured, and out of sample it is also the best-calibrated.
+
+**15.1% of its questions clear the 70% floor** — 5,607 of 37,048. At five slots
+a day that is the binding constraint on volume, not the cap: the model has
+enough to say on roughly one question in seven.
 
 Eight factors, the shared batting vocabulary. `mlb_batter_opposing_k_rate` is
 widened to it and is the most obviously relevant input on the board — **and its

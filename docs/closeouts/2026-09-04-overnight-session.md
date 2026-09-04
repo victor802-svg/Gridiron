@@ -48,7 +48,7 @@ across five sports**:
 |---|---|
 | NBA moneyline | **+0.0415** |
 | NFL moneyline | **+0.0215** |
-| MLB batter strikeouts | rate form, fitted; walk-forward pending — §6 |
+| MLB batter strikeouts | **+0.0200** — the best prop result in the record |
 | NBA total | **+0.0010** |
 | NFL total | **+0.0016** |
 
@@ -108,12 +108,18 @@ nobody has settled yet.
 
 ## 6. What is PARTIAL, and what needs you
 
-**The batter-strikeouts walk-forward was still running when this was written.**
-The market is declared, laddered, fitted (`RateFit`, n=118,451, Poisson,
-converged, nothing dropped or constant) and proved end to end. Its
-out-of-sample number is the one thing missing, and it is a measurement rather
-than a build step — 118,000 rows through a pure-Python IRLS takes about an
-hour. **Nothing claims an edge for it in the meantime.**
+~~**The batter-strikeouts walk-forward was still running when this was
+written.**~~ **RESOLVED, minutes later.** Trained on 2024–2025 and tested on
+2026: Brier **.2300** against **.2500**, **edge +0.0200**, hit rate 62.3%,
+weighted gap **1.70 points over 37,048 out-of-sample rows**, both large buckets
+under-confident. **The strongest prop result in the record**, and the roster
+was right to call it the best-balanced prop it had measured.
+
+**15.1% of its questions clear the 70% floor**, which is the binding constraint
+on its volume rather than the daily cap: the model has enough to say on roughly
+one question in seven. Struck rather than deleted, because a close-out that
+quietly rewrites its own PARTIAL into a DONE is what the convention exists to
+prevent.
 
 **Two deviations from the cards brief**, both recorded where they were made:
 
