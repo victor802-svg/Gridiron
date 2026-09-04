@@ -2286,6 +2286,12 @@ def _row_title(r) -> str:
     prop the subject IS the headline and the fixture is a detail that belongs
     on the pick line underneath.
     """
+    # A FIGHT HAS NO HOME SIDE. "Salahdine Parnasse @ Dan Hooker" reads as a
+    # visitor at a host, and there is neither: the two corners are stored in
+    # the home/away columns because that is the shape `games` has, and the
+    # interface may never repeat it back.
+    if r["sport"] == "ufc":
+        return f"{r['home']} vs {r['away']}"
     if r["market_type"] != "prop":
         return f"{r['away']} @ {r['home']}"
     stat = _prose_prop_type(r, r["sport"])

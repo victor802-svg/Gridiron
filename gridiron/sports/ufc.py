@@ -252,7 +252,10 @@ def build_features(conn: sqlite3.Connection, q: Question, cache=None):
 
     ctx = build_context(conn, q.game_id, line_asked=q.line_asked,
                         market_type=q.market_type)
-    return compute.feature_vector(ctx, q.market_type)
+    # THE VECTOR AND THE CONTEXT, which is the contract every other adapter
+    # follows: the caller needs the context to explain the pick, not only the
+    # numbers to score it.
+    return compute.feature_vector(ctx, q.market_type), ctx
 
 
 def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:

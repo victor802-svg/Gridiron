@@ -74,5 +74,15 @@ def stat_suffix(subject: str | None, known) -> str | None:
 #: first through `calibration`, then through `language`.
 #:
 #: `language` re-exports it, so every existing caller is unchanged.
+#: THE YES SIDE OF EVERY MARKET'S QUESTION.
+#:
+#: A market missing from this map has NO yes side, so `is_no_side` returns
+#: False for every pick in it and the flip never happens -- which means the
+#: card shows the probability of one side and decomposes the other. That is
+#: exactly what UFC's two new markets did on the day they were added: 14 cards
+#: showed 0.5743 while their own contributions said 0.4257, the exact
+#: complement, and the side-arithmetic guard caught all of them by name.
+#:
+#: So a new market is added HERE at the same time it is added anywhere else.
 YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over",
-            "total": "over"}
+            "total": "over", "rounds": "over", "distance": "yes"}

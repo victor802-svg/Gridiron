@@ -1494,6 +1494,178 @@ def plant_a_what_it_knew_line_that_disagrees_with_its_row() -> Result:
                   "audit.coverage_line_faults", True, faults[0])
 
 
+LAW_UFC = "A FIGHT IS ITS OWN SPORT"
+
+
+def plant_a_ufc_query_merged_with_another_sport() -> Result:
+    """Ask for a UFC curve without naming the sport.
+
+    LAW 6. A rounds curve pooled with anything else describes neither, and UFC
+    is the easiest sport in this record to pool by accident: its moneyline has
+    the same name as baseball's and its markets sit in the same tables.
+    """
+    conn = db.connect()
+    try:
+        try:
+            calibration.resolved(conn)
+        except TypeError as exc:
+            return Result(LAW_UFC, "a UFC query with no sport",
+                          "calibration.resolved(sport=...)", True, str(exc))
+        except config.CrossSportAggregation as exc:
+            return Result(LAW_UFC, "a UFC query with no sport",
+                          "config.require_sport", True, str(exc))
+    finally:
+        conn.close()
+    return Result(LAW_UFC, "a UFC query with no sport",
+                  "calibration.resolved(sport=...)", False,
+                  "NOT CAUGHT - a curve was built across every sport at once")
+
+
+def plant_rounds_merged_with_the_moneyline_curve() -> Result:
+    """Score the rounds market against the moneyline's category.
+
+    A bout ending inside a round is right or wrong for entirely different
+    reasons than who won it. Merging them produces a curve describing neither,
+    and it flatters -- the easy market dilutes the hard one.
+    """
+    payload = {
+        "sport": "ufc",
+        "categories": [
+            {"sport": "ufc", "category": "ufc:moneyline", "market": "moneyline",
+             "n": 40, "filters": {"predictor": "statistical"}},
+            # THE MERGE: one category claiming to hold two markets.
+            {"sport": "ufc", "category": "ufc:all", "market": "all",
+             "n": 80, "filters": {"predictor": "statistical"}},
+        ],
+    }
+    try:
+        calibration.assert_no_merged_categories(payload)
+    except calibration.MergedCurve as exc:
+        honest = {"sport": "ufc", "categories": [
+            {"sport": "ufc", "category": "ufc:moneyline", "market": "moneyline",
+             "n": 40, "filters": {"predictor": "statistical"}},
+            {"sport": "ufc", "category": "ufc:rounds", "market": "rounds",
+             "n": 40, "filters": {"predictor": "statistical"}},
+        ]}
+        try:
+            calibration.assert_no_merged_categories(honest)
+        except calibration.MergedCurve as wrong:
+            return Result(LAW_UFC, "rounds merged with the moneyline curve",
+                          "calibration.assert_no_merged_categories", False,
+                          f"the guard rejects two honest categories: {wrong}")
+        return Result(LAW_UFC, "rounds merged with the moneyline curve",
+                      "calibration.assert_no_merged_categories", True, str(exc))
+    return Result(LAW_UFC, "rounds merged with the moneyline curve",
+                  "calibration.assert_no_merged_categories", False,
+                  "NOT CAUGHT - one curve claimed to describe two markets")
+
+
+def plant_a_rating_with_a_hand_chosen_k() -> Result:
+    """Trim the candidate list until the fitted K is its last entry.
+
+    A CONSTANT AT THE EDGE OF ITS OWN SWEEP HAS NOT BEEN FITTED. The first
+    real sweep stopped at 48 and 48 won, which says only that the list was too
+    short -- extending it found the turn at 80, with 96 and 120 worse on both
+    sides. This plants the trimmed list and checks the guard notices.
+    """
+    from gridiron.model import ufc_rating
+
+    real = ufc_rating.K_CANDIDATES
+    try:
+        # THE PLANT: a list that stops exactly at the answer.
+        trimmed = tuple(k for k in real if k <= ufc_rating.K_FITTED)
+        ufc_rating.K_CANDIDATES = trimmed
+        clamped = ufc_rating.K_FITTED == ufc_rating.K_CANDIDATES[-1]
+    finally:
+        ufc_rating.K_CANDIDATES = real
+
+    if not clamped:
+        return Result(LAW_UFC, "a rating whose K sits at the edge of its sweep",
+                      "K_FITTED is interior to K_CANDIDATES", False,
+                      "the planted trim did not put K at the end of the list")
+    if ufc_rating.K_FITTED == ufc_rating.K_CANDIDATES[-1]:
+        return Result(LAW_UFC, "a rating whose K sits at the edge of its sweep",
+                      "K_FITTED is interior to K_CANDIDATES", False,
+                      "the SHIPPED K is the last candidate, so it was clamped "
+                      "rather than fitted")
+    return Result(LAW_UFC, "a rating whose K sits at the edge of its sweep",
+                  "K_FITTED is interior to K_CANDIDATES", True,
+                  f"a list ending at K={ufc_rating.K_FITTED} makes the fit its "
+                  f"own last entry; the shipped list runs to "
+                  f"{ufc_rating.K_CANDIDATES[-1]} and the optimum sits inside it")
+
+
+def plant_a_bout_predicted_after_its_start() -> Result:
+    """Forecast a bout that has already begun.
+
+    MISSED IS RECORDED, NEVER CAUGHT UP LATE. A question answered after the
+    cage door shuts is not a forecast, and the standing-row rule refuses to
+    grade one even if it exists.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(Path(tmp) / "ufc.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+            " home, away, status, home_score, away_score)"
+            " VALUES ('b1','ufc',2026,20260101,'REG','2020-01-01T00:00:00Z',"
+            " 'A','B','final',1,0)")
+        for created, prob in (("2019-12-31T00:00:00Z", 0.55),
+                              ("2020-01-01T01:00:00Z", 0.99)):
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, model_prob, model_side, predictor,"
+                " pass_kind, factor_set_version, factors_json, reasoning,"
+                " resolved_utc, outcome) VALUES (?,'ufc','b1','moneyline','A',"
+                " ?,'win','statistical',?, 'fs2','{}','planted',?,1)",
+                (created, prob, "early" if prob == 0.55 else "final",
+                 db.utcnow()))
+        conn.commit()
+        graded = [r.model_prob for r in calibration.resolved(conn, sport="ufc")]
+        conn.close()
+
+    if any(abs(p - 0.99) < 1e-9 for p in graded):
+        return Result(LAW_UFC, "a bout predicted after it started",
+                      "calibration.resolved standing rule", False,
+                      "a forecast written an hour into the bout was graded, "
+                      "and it would grade as a triumph")
+    if not any(abs(p - 0.55) < 1e-9 for p in graded):
+        return Result(LAW_UFC, "a bout predicted after it started",
+                      "calibration.resolved standing rule", False,
+                      f"the honest pre-bout row was not graded either: {graded}")
+    return Result(LAW_UFC, "a bout predicted after it started",
+                  "calibration.resolved standing rule", True,
+                  "the post-start row was refused and the earlier one stands")
+
+
+def plant_a_fighter_matched_by_guess() -> Result:
+    """Build a bout whose competitor carries no id, and expect it refused.
+
+    IDENTITY IS NEVER A NAME MATCH IN UFC. Every competitor arrives with a
+    numeric athlete id, which is why the name-collision problem the brief
+    worried about does not arise -- fighters share names far more than clubs
+    do. A competitor with no id is refused rather than matched on a name.
+    """
+    from gridiron.data import ufc_loader
+
+    guessed = {"athlete": {"displayName": "Jon Jones"}}
+    got = ufc_loader._athlete_id(guessed)
+    if got is not None:
+        return Result(LAW_UFC, "a fighter identified by name",
+                      "ufc_loader._athlete_id", False,
+                      f"a competitor with no id resolved to {got!r} -- two "
+                      f"fighters sharing a name would become one")
+
+    real = {"athlete": {"$ref": "http://x/v2/sports/mma/athletes/4848646?lang=en"}}
+    if ufc_loader._athlete_id(real) != "4848646":
+        return Result(LAW_UFC, "a fighter identified by name",
+                      "ufc_loader._athlete_id", False,
+                      "a real athlete reference no longer resolves")
+    return Result(LAW_UFC, "a fighter identified by name",
+                  "ufc_loader._athlete_id", True,
+                  "a competitor without an id is refused; identity comes from "
+                  "the reference, never from a name")
+
+
 def plant_a_launcher_attaching_to_an_older_build() -> Result:
     """Restore the carve-out that showed a photograph on 2026-09-03.
 
@@ -3979,6 +4151,11 @@ def main() -> int:
     results.append(plant_a_selector_for_a_class_nothing_builds())
     results.append(plant_a_final_pass_inside_the_market_closure())
     results.append(plant_a_launcher_attaching_to_an_older_build())
+    results.append(plant_a_ufc_query_merged_with_another_sport())
+    results.append(plant_rounds_merged_with_the_moneyline_curve())
+    results.append(plant_a_rating_with_a_hand_chosen_k())
+    results.append(plant_a_bout_predicted_after_its_start())
+    results.append(plant_a_fighter_matched_by_guess())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

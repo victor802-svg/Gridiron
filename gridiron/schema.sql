@@ -614,7 +614,8 @@ CREATE TABLE IF NOT EXISTS predictions (
     -- COMBINED score, which is neither a margin nor a player prop and
     -- gets its own calibration family.
     market_type   TEXT    NOT NULL
-                  CHECK (market_type IN ('spread', 'prop', 'moneyline', 'total')),
+                  CHECK (market_type IN ('spread', 'prop', 'moneyline', 'total',
+                                        'rounds', 'distance')),
     -- For props, the specific market: passing_yards, receptions, ... Each type
     -- is its own category with its own curve and its own gate; they are never
     -- merged into one "props" number.

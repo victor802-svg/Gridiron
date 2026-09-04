@@ -330,6 +330,23 @@ def phrase(item: dict) -> str:
         line_text = _number(line)
         return f"{subject} {word} {line_text} {humanise(market)}".strip()
 
+    # A FIGHT IS NOT A GAME, and neither of its markets is a spread.
+    #
+    # "Dan Hooker vs Salahdine Parnasse covers +4.5" is what the shared spread
+    # path produced, and it is wrong twice: nobody covers anything in a fight,
+    # and the number is a count of rounds rather than points.
+    if market_type == "rounds":
+        over = "Over" if side != "under" else "Under"
+        rung = _number(line)
+        unit = "round" if str(rung) in ("0.5", "1", "1.5") else "rounds"
+        return f"{over} {rung} {unit}"
+
+    if market_type == "distance":
+        # THE QUESTION IS ABOUT THE BOUT, not about a fighter, so the sentence
+        # names neither -- the same reasoning the totals branch below follows.
+        return ("Goes the distance" if side not in ("no", "under", "not_cover")
+                else "Does not go the distance")
+
     if market_type == "total":
         # NOT A TEAM AND NOT A PLAYER. A totals question is about the GAME, so
         # the sentence names neither side: "over 52.5 total points". Routing it
@@ -678,6 +695,17 @@ def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
             # A factor with no declared phrase is SKIPPED rather than rendered
             # as its identifier. A test fails on any such factor, so this is a
             # belt to the test's braces and never the normal path.
+            continue
+        # A CONTRIBUTION OF EXACTLY ZERO IS NOT A REASON, and describing one is
+        # how a card came to say "pulling the other way: the reach difference"
+        # about two fighters with identical reach. It pulled neither way. The
+        # supporters/opposers split below classifies on a strict sign, so a
+        # zero belongs to neither list and would be picked up by the fallback
+        # and labelled as opposition it never offered.
+        #
+        # Found in UFC, where identical reach is common, and fixed here because
+        # nothing about it is UFC's: any factor can land on zero.
+        if not float(value):
             continue
         scored.append((abs(float(value)), float(value) * flip, phrase))
 
@@ -2045,6 +2073,19 @@ def tile_line(item: dict) -> str:
     if market_type == "total":
         word = "Under" if is_no_side(item) else "Over"
         return f"{word} {_number(line)} total"
+
+    # A FIGHT'S TWO OTHER MARKETS SAY THEMSELVES. Falling through to the prop
+    # branch produced "Dan Hooker vs Salahdine Parnasse over 4.5" and
+    # "... yes dist" -- the subject repeated from the heading above it, and a
+    # truncated stat name standing in for a question.
+    if market_type == "rounds":
+        word = "Under" if is_no_side(item) else "Over"
+        rung = _number(line)
+        unit = "round" if str(rung) in ("0.5", "1", "1.5") else "rounds"
+        return f"{word} {rung} {unit}"
+
+    if market_type == "distance":
+        return "Not the distance" if is_no_side(item) else "Goes the distance"
 
     if market_type == "moneyline":
         return f"{subject} to win"
