@@ -18,3 +18,4 @@ var/
 .env
 dist/
 build/
+.claude/launch.json
