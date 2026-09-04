@@ -1105,7 +1105,7 @@ const Gridiron = (function () {
   //: survived a filter change would point at a different pick than the dots.
   let heroIndex = 0;
 
-  function renderHero(cards, sortMode) {
+  function renderHero(cards, sortMode, tags) {
     const host = document.getElementById('week-hero');
     if (!host) return;
     host.innerHTML = '';
@@ -1120,8 +1120,12 @@ const Gridiron = (function () {
     // sort rather than asserting one: a card labelled "sharpest disagreement"
     // while the list is ordered by confidence is a label describing the other
     // ordering.
-    host.appendChild(el('div', 'hero-tag', sortMode === 'confidence'
-      ? 'Most confident tonight' : 'Sharpest disagreement tonight'));
+    // WRITTEN BY THE SERVER, PICKED HERE. Both wordings arrive on the
+    // payload and the sort chooses between them -- "tonight" only appears
+    // when the heading has already established that it is tonight.
+    host.appendChild(el('div', 'hero-tag',
+      (tags || {})[sortMode === 'confidence' ? 'confidence' : 'disagreement']
+      || ''));
 
     const body = el('div', 'hero-body');
     const left = el('div', 'hero-left');
@@ -1169,7 +1173,7 @@ const Gridiron = (function () {
       back.setAttribute('aria-label', 'Previous pick');
       back.addEventListener('click', () => {
         heroIndex = (heroIndex - 1 + top.length) % top.length;
-        renderHero(cards, sortMode);
+        renderHero(cards, sortMode, tags);
       });
       steps.appendChild(back);
       const dots = el('div', 'hero-dots');
@@ -1180,7 +1184,7 @@ const Gridiron = (function () {
         if (i === heroIndex) dot.setAttribute('aria-current', 'true');
         dot.addEventListener('click', () => {
           heroIndex = i;
-          renderHero(cards, sortMode);
+          renderHero(cards, sortMode, tags);
         });
         dots.appendChild(dot);
       });
@@ -1190,7 +1194,7 @@ const Gridiron = (function () {
       fwd.setAttribute('aria-label', 'Next pick');
       fwd.addEventListener('click', () => {
         heroIndex = (heroIndex + 1) % top.length;
-        renderHero(cards, sortMode);
+        renderHero(cards, sortMode, tags);
       });
       steps.appendChild(fwd);
       host.appendChild(steps);
@@ -1612,7 +1616,10 @@ const Gridiron = (function () {
   function paintClock(glance, slateTitle) {
     const host = document.getElementById('week-clock');
     const line = document.getElementById('week-clock-line');
-    const when = document.getElementById('week-clock-when');
+    // THE SLATE'S NAME IS THE HEADING NOW, so the clock no longer repeats it.
+    // Adding the H1 put "Week 18, 2025" twice within three lines -- the same
+    // words in two places, which is the duplication this project keeps having
+    // to remove (the market column, the pick sentence, the tier label).
     if (!host || !line) return;
     if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
     if (!glance) { host.hidden = true; return; }
@@ -1621,7 +1628,6 @@ const Gridiron = (function () {
       // In progress or complete: a fact that does not change until a game
       // ends, so it is written once by the server and placed here.
       line.textContent = glance.state_line;
-      when.textContent = '';
       host.hidden = false;
       return;
     }
@@ -1633,7 +1639,6 @@ const Gridiron = (function () {
     // previous evening in America, so the page read "Saturday 5 September" at
     // the top and "Friday, September 4" directly underneath, about one slate.
     // The date a slate IS belongs to the slate; only the countdown ticks.
-    when.textContent = slateTitle || '';
     const tick = () => {
       const left = kickoff - new Date();
       if (left <= 0) { line.textContent = glance.state_word; return; }
@@ -1713,6 +1718,9 @@ const Gridiron = (function () {
     // THE TABS AND THE STRIP, both fed from the same payload the cards are.
     // The tabs come from the sport's DECLARED market list (R4) and the strip
     // reports one sport's yesterday, never a total across sports.
+    // THE HEADING. Written by the server; placed here.
+    const headline = document.getElementById('week-headline');
+    if (headline) headline.textContent = data.headline || '';
     renderMarketTabs(data, state.market);
     renderYesterday(data);
 
@@ -1810,7 +1818,7 @@ const Gridiron = (function () {
       // NO CONFIDENCE HEADINGS. The sort toggle already says how the slate is
       // ordered, and a section label would be a second, quieter claim about
       // the same thing.
-      renderHero(open, state.weekSort);
+      renderHero(open, state.weekSort, data.hero_tags);
 
       const heading = document.getElementById('week-grid-heading');
       const rest = open.slice(1);

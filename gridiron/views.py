@@ -543,7 +543,14 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "prediction_id": r["id"],
                 "created_utc": r["created_utc"],
                 "game_id": r["game_id"],
-                "matchup": f"{r['away']} @ {r['home']}",
+                # FULL NAMES AND "at" (cards UI, 2026-09-04). This is the tail
+                # of a prop card's pick line -- "Josh Allen over 245.5 passing
+                # yards · Packers at Bills" -- so it is prose, and "GB @ BUF"
+                # in the middle of a sentence is two tricodes and a symbol
+                # nobody says aloud.
+                "matchup": (
+                    f"{language.team_name(r['away'], team_names, 'club')} at "
+                    f"{language.team_name(r['home'], team_names, 'club')}"),
                 # Who the pick is FOR when the model takes the NO side.
                 "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
                 "team_names": team_names,
@@ -825,6 +832,11 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # THE MARKET TABS (R4), from the sport's DECLARED list and never a
         # hardcoded row: a fifth market appears the day it is declared.
         "market_tabs": _market_tabs(sport, cards),
+        # THE HEADING AND ITS SUB-LINE, in words (cards UI). "Tonight" only
+        # when it is tonight; the slate's day otherwise. A key like
+        # "Day 159, 2026" in a heading is the database talking to itself, and
+        # this project has fixed that twice already.
+        "headline": None,     # filled in below, once slate_title is composed
         # WHAT SETTLED LAST, this sport only. LAW 6 all the way down: there is
         # no figure on this strip that describes two sports.
         "yesterday": _yesterday(conn, sport),
@@ -835,6 +847,32 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                  "disagreement to sort by"
         ),
     }
+    # THE HEADING AND ITS SUB-LINE (cards UI, 2026-09-04). Composed after the
+    # payload so both can read what it already worked out -- the slate's title
+    # in words, its glance, and how many picks the tier filter is holding back.
+    #
+    # "TONIGHT" ONLY WHEN IT IS TONIGHT. A slate five days out is not tonight,
+    # and a heading that says so is wrong in the largest type on the page.
+    _glance_now = payload.get("glance") or {}
+    payload["headline"] = language.slate_headline(
+        payload.get("slate_title"), _glance_now.get("state"),
+        _glance_now.get("first_kickoff_utc"))
+    # THE HERO'S TAG AGREES WITH THE HEADING about what today is, rather than
+    # deciding again and disagreeing. Both sorts' wording is composed here; the
+    # browser picks one, as it does with the count lines.
+    payload["hero_tags"] = language.hero_tags(payload["headline"])
+    # NO SECOND SUB-LINE. The brief asks for "13 strong picks · first pitch in
+    # 2h 14m · 15 more didn't clear the bar", and every one of those three
+    # facts is ALREADY composed and already on the page: `glance.count_lines`
+    # carries the tier-aware count ("STRONG - 24 of 78 picks"), the ticking
+    # clock carries the countdown, and `below_floor` carries the shortfall.
+    #
+    # A `slate_subline` was written here and then deleted rather than shipped.
+    # It would have been a second sentence saying what the first already says,
+    # and worse: the server cannot know which tier the reader is filtered to,
+    # so its count would have been the WRONG one whenever the filter was on.
+    # Two claims about one thing, one of them wrong, is not more information.
+
     # THE MERGE CANNOT REACH THE API, which is the same place the curve check
     # runs for the same reason: a guard that only runs in a test protects the
     # test. This one fired on the real slate the day it was written.

@@ -1037,6 +1037,15 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    decide what EXISTS; the only queries below change how many columns the same
    cards sit in. */
 
+/* --- the heading ----------------------------------------------------------- */
+.slate-headline {
+  font: 800 34px/1.15 var(--body);
+  color: var(--chrome);
+  margin: 20px 0 2px;
+  overflow-wrap: anywhere;
+}
+.slate-headline:empty { display: none; }
+
 /* --- the market tabs (R4) -------------------------------------------------- */
 .market-tabs {
   display: flex; flex-wrap: wrap; gap: 8px;
@@ -1500,7 +1509,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   padding: 2px 0 10px;
 }
 .slate-clock[hidden] { display: none; }
-.slate-clock-when { color: var(--faint); }
 
 /* THE CONTROLS ROW WRAPS RATHER THAN PUSHING THE PAGE. A fourth segmented
    control (the tier filter) put the row 1px over at 1100 and further over

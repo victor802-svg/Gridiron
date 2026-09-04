@@ -1184,6 +1184,64 @@ def sentence_case(text: str | None) -> str:
     return text[0].upper() + text[1:]
 
 
+def slate_headline(slate_title: str | None, state: str | None,
+                   first_start_utc: str | None, now: str | None = None) -> str:
+    """"Tonight", "Today", or the slate's day in words (cards UI, 2026-09-04).
+
+    THE BRIEF ASKS FOR A WORD, NOT A KEY, and the reason is the defect this
+    project has already fixed twice: "Day 159, 2026" and "Week 1, 2026" are
+    slate keys, and a key in a heading is the database talking to itself.
+
+    "Tonight" ONLY WHEN IT IS TONIGHT. A slate five days away is not tonight,
+    and a heading that says so is wrong in the largest type on the page --
+    which is worse than being dull. The word is used when the first start is
+    today, and the day's own name otherwise.
+    """
+    if not slate_title:
+        return ""
+    if not first_start_utc:
+        return slate_title
+    from datetime import date, datetime, timedelta, timezone
+
+    try:
+        start = datetime.fromisoformat(
+            first_start_utc.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return slate_title
+    today = (datetime.fromisoformat(now.replace("Z", "+00:00")).astimezone().date()
+             if now else date.today())
+    if start.date() == today:
+        # EVENING, in the reader's own clock. A 1pm start is not "tonight".
+        return "Tonight" if start.hour >= 17 else "Today"
+    if start.date() == today + timedelta(days=1):
+        return "Tomorrow"
+    return slate_title
+
+
+def hero_tags(headline: str | None) -> dict:
+    """What the hero card is answering, for each sort. Both, pre-composed.
+
+    "SHARPEST DISAGREEMENT TONIGHT" IS FALSE ON A SLATE TEN DAYS OUT, and the
+    brief's own wording assumes tonight because the brief was written about
+    tonight. A tag naming a time that is not this one is the same defect as a
+    heading naming a slate key: small, confident, and wrong.
+
+    So the word is used only when the heading has already established it. The
+    heading is the one place that decides what today is, and everything else
+    on the page agrees with it rather than working it out again.
+
+    BOTH VARIANTS ARE RETURNED because the sort toggle lives in the browser and
+    the browser composes no prose. It picks between two sentences written here,
+    exactly as it picks between the pre-composed count lines.
+    """
+    when = f" {headline.lower()}" if headline in (
+        "Tonight", "Today", "Tomorrow") else ""
+    return {
+        "disagreement": f"Sharpest disagreement{when}",
+        "confidence": f"Most confident{when}",
+    }
+
+
 def tier_label(tier: str | None) -> str:
     """"Contender Series", never 'contender'.
 

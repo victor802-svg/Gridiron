@@ -234,7 +234,6 @@
          kickoff, how far through the slate is, or that it is complete. -->
     <div class="slate-clock" id="week-clock" hidden>
       <span id="week-clock-line"></span>
-      <span class="slate-clock-when" id="week-clock-when"></span>
     </div>
     <details class="week-more">
       <summary id="week-title">This week</summary>
@@ -257,6 +256,13 @@
          ONE NUMBER PER CARD (R2). A card carries the game, the pick, the
          model's chance, the time and the tier. The market's number and the
          three sentences of reasoning are one tap away, inside the card. -->
+
+    <!-- THE HEADING, IN WORDS. "Tonight" when it is tonight, the slate's day
+         otherwise -- never the slate KEY. "Day 159, 2026" and "Week 1, 2026"
+         are keys, and a key in the largest type on the page is the database
+         talking to itself; this project has fixed that twice already.
+         Composed by `language.slate_headline`; the browser places it. -->
+    <h1 id="week-headline" class="slate-headline"></h1>
 
     <!-- MARKET TABS (R4). Filled from the sport's DECLARED market list, never
          written here: a fifth market must appear without a change to this

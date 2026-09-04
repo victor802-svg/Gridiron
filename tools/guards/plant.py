@@ -4919,6 +4919,146 @@ def _side_disagreements(conn):
     return out, checked
 
 
+LAW_CARDS = "THE CARD SHOWS ONE NUMBER, AND THE TABS ARE DERIVED"
+
+
+def plant_a_market_tab_row_that_is_hardcoded() -> Result:
+    """Write the market tabs into the renderer instead of deriving them.
+
+    R4 IS EXPLICIT: "Tabs come from the sport's declared market list -- never a
+    hardcoded row (a fifth market must appear without a UI change)."
+
+    A HARDCODED ROW IS RIGHT ON THE DAY IT IS WRITTEN, which is what makes it
+    dangerous. It goes wrong silently, later, when somebody declares a market
+    and it simply does not appear -- and the sport's own tab strip, the most
+    visible thing on the page, quietly stops describing the sport. UFC declared
+    three markets in one session and the count markets moved five more; on this
+    project's own pace that is a matter of weeks.
+
+    So the guard reads the RENDERER for a written-out list of market names, and
+    the payload builder for a list that is not `config.SPORT_MARKETS`.
+    """
+    from gridiron import views as _views
+
+    web = config.PACKAGE_ROOT / "web"
+    js = (web / "app.js").read_text(encoding="utf-8")
+
+    # THE PLANT: the row a person would write by hand.
+    hardcoded = ("const tabs = [{market: '', label: 'All'},"
+                 " {market: 'spread', label: 'Point spread'},"
+                 " {market: 'moneyline', label: 'Moneyline'},"
+                 " {market: 'total', label: 'Total'}];")
+    faults = _tab_row_faults(hardcoded)
+    if not faults:
+        return Result(LAW_CARDS, "a market tab row written into the renderer",
+                      "the tabs are derived from config.SPORT_MARKETS", False,
+                      "the scan does not notice a hardcoded row, so it would "
+                      "pass whatever the renderer did")
+    if _tab_row_faults(js):
+        return Result(LAW_CARDS, "a market tab row written into the renderer",
+                      "the tabs are derived from config.SPORT_MARKETS", False,
+                      f"the scan fires on the shipped renderer: "
+                      f"{_tab_row_faults(js)[0]}")
+
+    # AND THE REAL TABS MUST TRACK THE DECLARATION. Asserted against the
+    # config rather than against a remembered list, which is the only way to
+    # tell a derived row from a hardcoded one that happens to be right today.
+    conn = db.connect()
+    try:
+        for sport in config.SPORTS:
+            try:
+                tabs = _views._market_tabs(sport, [])
+            except Exception as exc:                         # noqa: BLE001
+                return Result(
+                    LAW_CARDS, "a market tab row written into the renderer",
+                    "views._market_tabs", False,
+                    f"the tabs for {sport} could not be built: {exc}")
+            markets = [t["market"] for t in tabs][1:]
+            if markets != list(config.SPORT_MARKETS.get(sport, ())):
+                return Result(
+                    LAW_CARDS, "a market tab row written into the renderer",
+                    "views._market_tabs", False,
+                    f"{sport}'s tabs are {markets} and its declared markets "
+                    f"are {list(config.SPORT_MARKETS.get(sport, ()))}")
+    finally:
+        conn.close()
+    return Result(LAW_CARDS, "a market tab row written into the renderer",
+                  "views._market_tabs", True,
+                  f"a written-out row is caught ({faults[0]}); and every "
+                  f"sport's real tabs equal its declared market list")
+
+
+def _tab_row_faults(js: str) -> list[str]:
+    """A list of market names written into the renderer rather than derived."""
+    written = re.findall(r"label:\s*'([^']+)'", js)
+    known = {"All", "Point spread", "Moneyline", "Total", "Run line",
+             "Rounds", "Distance", "Spread"}
+    hits = [w for w in written if w in known]
+    if len(hits) >= 2:
+        return [f"the renderer writes market labels itself: {hits[:4]}. They "
+                f"come from the sport's declared list, so a fifth market "
+                f"appears without a change to any file in web/."]
+    return []
+
+
+def plant_a_card_showing_two_numbers_collapsed() -> Result:
+    """Put the market's percentage beside the model's on a collapsed card.
+
+    R2: one number per card. The market's figure and the three sentences of
+    reasoning are ONE TAP AWAY.
+
+    TWO PERCENTAGES ON ONE CARD MAKE A READER DO ARITHMETIC to work out which
+    one is the claim -- and the one they are most likely to read is whichever
+    is larger, which has nothing to do with which is the forecast. The whole
+    point of the redesign is that a card asserts one thing.
+
+    Planted against the stylesheet, because that is where the hint's
+    concealment lives: the market hint IS in the markup by design (the brief
+    asks for a hover reveal), and what keeps the card honest at rest is that it
+    is at zero opacity until the reader asks.
+    """
+    web = config.PACKAGE_ROOT / "web"
+    css = (web / "style.css").read_text(encoding="utf-8")
+
+    shipped = _hint_faults(css)
+    if shipped:
+        return Result(LAW_CARDS, "a card showing two numbers collapsed",
+                      "the market hint is hidden until asked for", False,
+                      f"the shipped stylesheet already shows both: {shipped[0]}")
+
+    # THE PLANT: the hint revealed at rest.
+    broken = css.replace("  margin-top: 8px; opacity: 0;",
+                         "  margin-top: 8px; opacity: 1;", 1)
+    if broken == css:
+        return Result(LAW_CARDS, "a card showing two numbers collapsed",
+                      "the market hint is hidden until asked for", False,
+                      "the hint's resting opacity is no longer written the way "
+                      "this planting expects; re-point it")
+    faults = _hint_faults(broken)
+    if not faults:
+        return Result(LAW_CARDS, "a card showing two numbers collapsed",
+                      "the market hint is hidden until asked for", False,
+                      "NOT CAUGHT - the market's percentage sits beside the "
+                      "model's on a card nobody has opened, and a reader has "
+                      "to work out which of the two is the forecast")
+    return Result(LAW_CARDS, "a card showing two numbers collapsed",
+                  "the market hint is hidden until asked for", True, faults[0])
+
+
+def _hint_faults(css: str) -> list[str]:
+    """Is the market hint visible on a card at rest?"""
+    match = re.search(r"\.card-hint\s*\{(?P<body>[^}]*)\}", css)
+    if match is None:
+        return ["`.card-hint` has no rule at all, so the market's percentage "
+                "renders at full strength beside the model's."]
+    body = match.group("body")
+    if "opacity: 0" not in body:
+        return ["`.card-hint` does not start hidden, so a collapsed card shows "
+                "the market's percentage beside the model's and a reader has "
+                "to work out which one is the claim."]
+    return []
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -4969,6 +5109,8 @@ def main() -> int:
     results.append(plant_the_ufc_fetcher_inside_a_prediction_closure())
     results.append(plant_a_market_wearing_another_markets_verb())
     results.append(plant_two_sentences_naming_opposite_sides())
+    results.append(plant_a_market_tab_row_that_is_hardcoded())
+    results.append(plant_a_card_showing_two_numbers_collapsed())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())
