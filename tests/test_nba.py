@@ -61,8 +61,16 @@ def test_the_ladder_is_spaced_for_basketball_not_copied_from_football():
     )
 
 
-def test_nba_declares_a_game_market_and_four_prop_markets():
-    assert config.SPORT_MARKETS["nba"][0] == "spread"
+def test_nba_declares_two_game_markets_and_four_prop_markets():
+    """TWO GAME MARKETS from 2026-09-04: the moneyline joined the spread.
+
+    The moneyline is first in the tuple because it is the question with
+    nothing to choose -- no rung, no ladder, no floor -- and because a slate
+    whose expected margin falls off the declared ladder still gets one.
+    """
+    assert set(config.SPORT_MARKETS["nba"]) - set(
+        config.SPORT_PROP_MARKETS["nba"]) == {"spread", "moneyline"}
+    assert config.SPORT_MARKETS["nba"][0] == "moneyline"
     assert set(config.SPORT_PROP_MARKETS["nba"]) == {
         "points", "rebounds", "assists", "threes"
     }

@@ -471,6 +471,14 @@ def slate_questions(
     games = repo.games_in_week(conn, season, week)
     out: list[Question] = []
     for game in games:
+        # THE MONEYLINE IS ASKED FIRST AND ALWAYS (roster #1, 2026-09-04). It
+        # has no rung, so nothing can disqualify it -- and asking it before the
+        # spread's rung selection matters: a game whose expected margin falls
+        # off the declared ladder is skipped for the spread and still gets a
+        # moneyline. Two markets, two questions, and one of them is always
+        # answerable.
+        out.append(_moneyline_question(game))
+
         # THE RUNG IS CHOSEN AGAINST THE EXPECTED MARGIN (R4, extended to the
         # NBA by operator ruling 2026-09-03). The context is built first
         # because the rung now depends on it; the ratings it reads are stored
@@ -639,6 +647,11 @@ def select_week_props(conn: sqlite3.Connection, games) -> list[dict]:
 
 
 def build_features(conn: sqlite3.Connection, q: Question, cache=None):
+    if q.market_type == "moneyline":
+        # NO LINE. A moneyline question carries none, and passing one would
+        # put a number on the context that no factor is declared to read.
+        ctx = build_context(conn, q.game_id)
+        return compute.feature_vector(ctx, "moneyline"), ctx
     if q.market_type == "spread":
         ctx = build_context(conn, q.game_id, line_asked=q.line_asked)
         return compute.feature_vector(ctx, "spread"), ctx
@@ -661,6 +674,10 @@ def training_set(
 ):
     from ..factors import registry
 
+    if market == "moneyline":
+        return _moneyline_training_set(
+            conn, seasons, through_season, through_week, progress
+        )
     if market == "spread":
         return _spread_training_set(
             conn, seasons, through_season, through_week, progress
@@ -686,6 +703,149 @@ def _completed_games(conn, seasons, through_season, through_week):
     games = conn.execute(sql + " ORDER BY season, week, id", params).fetchall()
     baseline.assert_one_sport(games, "nba", "nba._completed_games")
     return games
+
+
+
+
+# ---------------------------------------------------------------------------
+# the moneyline (MARKET_ROSTER #1, 2026-09-04)
+# ---------------------------------------------------------------------------
+
+def _moneyline_question(game) -> Question:
+    """One question per game: does the home club win?
+
+    NO RUNG, NO LADDER, NO FLOOR. A moneyline is the only question in this
+    project with nothing to choose -- there is no line to place, so there is
+    no rung to get wrong and no ladder to fall off. Every other market's
+    hardest decision is which question to ask; this one asks the only question
+    there is.
+
+    NO CONFIDENCE FLOOR EITHER. `config.PROPS_MIN_CLAIM` exists because a
+    player-prop slate offers hundreds of questions and asking the ones the
+    model is unsure about is asking for noise. A moneyline slate offers one
+    question per game, they are the whole slate, and dropping the close ones
+    would leave a record made only of blowouts -- which is the flattering
+    selection LAW 4 exists to prevent. Every game is asked.
+    """
+    return Question(
+        sport=SPORT,
+        game_id=game["id"],
+        market_type="moneyline",
+        market="moneyline",
+        subject=game["home"],
+        line_asked=None,
+        claim=f"{game['home']} (home) beats {game['away']}",
+        yes_label="win",
+        no_label="lose",
+    )
+
+
+def _moneyline_training_set(conn, seasons, through_season, through_week,
+                            progress):
+    """One row per completed game: the factor vector, and whether home won.
+
+    THE SAME CONTEXT THE SPREAD USES, and deliberately the same factors: how
+    good the two clubs have been, how they have played lately, who is
+    available, who is rested, who travelled. Those are the things that decide a
+    basketball game, and they do not become different things because the
+    question is asked without a handicap.
+
+    WHAT IS NOT SHARED IS THE FIT. The two markets get separate coefficients,
+    separate categories and separate gates, because "does the home club win"
+    and "does it win by more than 4.5" are different questions and a curve
+    covering both would describe neither.
+
+    A DRAW IS NOT POSSIBLE. Basketball plays overtime until somebody wins, so
+    unlike a football moneyline there is no third outcome to rule on. That is
+    stated rather than assumed: the resolution path below has no draw branch
+    and this is the reason.
+    """
+    from ..factors import registry
+
+    games = _completed_games(conn, seasons, through_season, through_week)
+    rows: list[dict] = []
+    labels: list[int] = []
+    for i, g in enumerate(games):
+        if progress and i % 500 == 0:
+            progress(f"nba moneyline features {i}/{len(games)}")
+        try:
+            ctx = build_context(conn, g["id"])
+        except KeyError:
+            continue
+        # NO LINE ON THE CONTEXT. `nba_asked_distance` is declared for the
+        # spread only, so the moneyline's factor set does not contain it and
+        # nothing here has a rung to set. Leaving `line_asked` as None is what
+        # makes the absence explicit rather than incidental.
+        fv = compute.feature_vector(ctx, "moneyline")
+        score = conn.execute(
+            "SELECT home_score, away_score FROM games WHERE id = ?", (g["id"],)
+        ).fetchone()
+        if score["home_score"] is None or score["away_score"] is None:
+            continue
+        rows.append(fv.values)
+        labels.append(1 if score["home_score"] > score["away_score"] else 0)
+
+    names = [f.name for f in registry.active_factors(SPORT, "moneyline")]
+    return rows, labels, names
+
+
+class DisagreesWithTheSpread(AssertionError):
+    """The two game markets contradict each other about the same game."""
+
+
+def assert_markets_agree(win_p: float | None, cover_p: float | None,
+                         rung: float | None, label: str = "this game") -> None:
+    """CHECKLIST ITEM 4: two numbers describing one world must agree.
+
+    THE RELATION IS LOGICAL, NOT STATISTICAL, which is what makes it worth
+    asserting. Writing the margin as M:
+
+        P(home wins)   = P(M > 0)
+        P(home covers) = P(M + rung > 0) = P(M > -rung)
+
+    So a home club GIVING points -- a negative rung -- must be less likely to
+    cover than to win, because every game it covers it also wins and not the
+    other way round. A home club RECEIVING points must be more likely to cover
+    than to win, for the mirror reason. THERE IS NO ESTIMATION IN THIS. A model
+    that breaks it is contradicting itself, not being slightly off, and the
+    contradiction is invisible on a card showing one market at a time.
+
+    THIS IS THE SHAPE OF CHECK THAT CAUGHT THE ESPN SIGN ERROR: a stored spread
+    whose direction its own favourite flag denied. The second number is what
+    makes the first checkable.
+
+    A FIRST VERSION OF THIS COMPARED THE MONEYLINE TO `expected_margin` AND WAS
+    WRONG TO. That device is deliberately blind and rating-only -- it exists to
+    choose a rung before the model runs -- so it reads a different set of
+    inputs from the eight-factor moneyline. It fired on 9 of 200 real games,
+    and every one of them was two instruments legitimately disagreeing rather
+    than one being broken. A cross-check between numbers that are not
+    comparable is a check that will be silenced rather than believed.
+
+    THE TOLERANCE IS FOR ARITHMETIC, NOT FOR JUDGEMENT. Both probabilities come
+    from separately fitted logistics, so they carry independent estimation
+    error; `MARKET_AGREEMENT_SLACK` is the width at which a difference stops
+    being rounding and starts being a contradiction.
+    """
+    if win_p is None or cover_p is None or rung is None:
+        return
+    if rung < 0 and cover_p > win_p + MARKET_AGREEMENT_SLACK:
+        raise DisagreesWithTheSpread(
+            f"{label}: the home club is giving {abs(rung):g} points, so it "
+            f"cannot be likelier to cover ({cover_p:.1%}) than to win "
+            f"({win_p:.1%}). Every game it covers it also wins.")
+    if rung > 0 and cover_p < win_p - MARKET_AGREEMENT_SLACK:
+        raise DisagreesWithTheSpread(
+            f"{label}: the home club is receiving {rung:g} points, so it "
+            f"cannot be less likely to cover ({cover_p:.1%}) than to win "
+            f"({win_p:.1%}). Every game it wins it also covers.")
+
+
+#: How far the two fitted models may differ before they are contradicting each
+#: other rather than carrying independent estimation error. Five points of
+#: probability. Declared 2026-09-04, not tuned: it is the width at which a
+#: difference stops being arithmetic and starts being a claim.
+MARKET_AGREEMENT_SLACK = 0.05
 
 
 def _spread_training_set(conn, seasons, through_season, through_week, progress):
@@ -787,6 +947,20 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
             f"{pred['game_id']} is marked final but carries no score; the "
             "question has no answer and is not being given one"
         )
+
+    if pred["market_type"] == "moneyline":
+        # NO DRAW BRANCH, AND THAT IS A FACT ABOUT BASKETBALL rather than an
+        # omission: the NBA plays overtime until somebody wins, so a final
+        # score with equal points does not exist. If one ever appears it is a
+        # bad row rather than a tie, and it VOIDS -- the question would have no
+        # answer, and inventing one is what this project refuses to do.
+        if game["home_score"] == game["away_score"]:
+            raise Void(
+                f"{pred['game_id']} is final with the scores level, which the "
+                f"NBA does not produce. The row is wrong rather than the game "
+                f"being drawn, and a wrong row gets no outcome.")
+        home_won = 1 if game["home_score"] > game["away_score"] else 0
+        return home_won if pred["model_side"] == "win" else 1 - home_won
 
     if pred["market_type"] == "spread":
         outcome = questions.spread_outcome(

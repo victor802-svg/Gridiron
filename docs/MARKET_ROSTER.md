@@ -163,3 +163,17 @@ One market per session, `docs/NEW_MARKET_CHECKLIST.md` item by item, item 1
 - A lawful, documented PrizePicks feed restores the volume axis the original
   brief wanted, and this roster would be re-ranked against it rather than
   replaced by it.
+
+
+---
+
+## Build log
+
+| built | market | close-out |
+|---|---|---|
+| 2026-09-04 | **NBA moneyline** | `docs/closeouts/2026-09-04-nba-moneyline.md` |
+
+**The order is the roster's own §4(b), not its volume ranking.** The bottom
+four entries need no player identity match, no lineup and no crosswalk, and
+they resolve from a final score present for 100% of stored games. Every prop
+above them depends on a name matching a name.

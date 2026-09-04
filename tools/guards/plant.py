@@ -5059,6 +5059,129 @@ def _hint_faults(css: str) -> list[str]:
     return []
 
 
+LAW_TWO_MARKETS = "TWO MARKETS, ONE GAME, ONE WORLD"
+
+
+def plant_a_moneyline_that_contradicts_its_own_spread() -> Result:
+    """Make a home favourite likelier to cover than to win.
+
+    THE RELATION IS LOGICAL, NOT STATISTICAL. Writing the margin as M:
+
+        P(home wins)   = P(M > 0)
+        P(home covers) = P(M + rung > 0) = P(M > -rung)
+
+    A home club GIVING points -- a negative rung -- covers only in games it
+    also wins, so it cannot be likelier to cover than to win. A club RECEIVING
+    points wins only in games it also covers, so it cannot be less likely. A
+    model that breaks either is contradicting itself rather than being slightly
+    off, and the contradiction is invisible on a card showing one market at a
+    time -- which, after the cards UI, is every card.
+
+    THIS IS THE SHAPE THAT CAUGHT THE ESPN SIGN ERROR: a stored spread whose
+    direction its own favourite flag denied. The second number is what makes
+    the first checkable.
+    """
+    from gridiron.sports import nba as _nba
+
+    # A home favourite at -6.5 that is likelier to cover than to win.
+    try:
+        _nba.assert_markets_agree(0.62, 0.74, -6.5, "a planted game")
+    except _nba.DisagreesWithTheSpread as giving:
+        # And the mirror: a home underdog at +6.5 less likely to cover.
+        try:
+            _nba.assert_markets_agree(0.41, 0.30, 6.5, "a planted game")
+        except _nba.DisagreesWithTheSpread:
+            pass
+        else:
+            return Result(
+                LAW_TWO_MARKETS, "a moneyline contradicting its own spread",
+                "nba.assert_markets_agree", False,
+                "the guard catches a favourite covering too often but not an "
+                "underdog covering too rarely; half a relation is not one")
+
+        # AND THE HONEST ORDERING MUST PASS, or the guard is refusing
+        # everything and proves nothing.
+        for win_p, cover_p, rung in ((0.74, 0.62, -6.5), (0.41, 0.55, 6.5),
+                                     (0.62, 0.60, -1.5), (0.50, 0.50, -0.5)):
+            try:
+                _nba.assert_markets_agree(win_p, cover_p, rung, "an honest game")
+            except _nba.DisagreesWithTheSpread as wrong:
+                return Result(
+                    LAW_TWO_MARKETS, "a moneyline contradicting its own spread",
+                    "nba.assert_markets_agree", False,
+                    f"the guard rejects an honest ordering "
+                    f"(win {win_p}, cover {cover_p}, rung {rung}): {wrong}")
+        return Result(LAW_TWO_MARKETS,
+                      "a moneyline contradicting its own spread",
+                      "nba.assert_markets_agree", True, str(giving))
+    return Result(LAW_TWO_MARKETS, "a moneyline contradicting its own spread",
+                  "nba.assert_markets_agree", False,
+                  "NOT CAUGHT - a home club giving six and a half points is "
+                  "rated likelier to cover than to win, which no game can do")
+
+
+def plant_a_moneyline_asked_with_a_rung() -> Result:
+    """Give the moneyline question a line, and the asked-line factor with it.
+
+    A MONEYLINE HAS NO RUNG. `nba_asked_distance` measures how far the rung
+    sits from the model's own expectation, and there is no rung to be a
+    distance from -- so the factor is declared for the spread and not for the
+    moneyline, and the question carries `line_asked=None`.
+
+    THE WAY THIS GOES WRONG IS BY COPYING. The moneyline's question, features
+    and training set were each written next to the spread's, and the spread's
+    carry a line everywhere. A line that reached the moneyline would put a
+    number on a context no moneyline factor is declared to read -- and worse,
+    would make the factor set differ from the one its rationale describes.
+    """
+    from gridiron.factors import registry
+    from gridiron.sports import nba as _nba
+    import gridiron.factors.nba                              # noqa: F401
+
+    money = {f.name for f in registry.active_factors("nba", "moneyline")}
+    spread = {f.name for f in registry.active_factors("nba", "spread")}
+    if "nba_asked_distance" in money:
+        return Result(LAW_TWO_MARKETS, "a moneyline asked with a rung",
+                      "the moneyline's declared factor set", False,
+                      "NOT CAUGHT - `nba_asked_distance` applies to the "
+                      "moneyline, which has no asked line for it to measure a "
+                      "distance from")
+    if "nba_asked_distance" not in spread:
+        return Result(LAW_TWO_MARKETS, "a moneyline asked with a rung",
+                      "the moneyline's declared factor set", False,
+                      "`nba_asked_distance` has left the SPREAD as well, so "
+                      "this proves nothing about the moneyline")
+    if not money or not (money < spread):
+        return Result(LAW_TWO_MARKETS, "a moneyline asked with a rung",
+                      "the moneyline's declared factor set", False,
+                      f"the moneyline's factors are not a strict subset of the "
+                      f"spread's: only in moneyline {sorted(money - spread)}")
+
+    # AND THE QUESTION ITSELF CARRIES NO LINE.
+    conn = db.connect()
+    try:
+        game = conn.execute(
+            "SELECT id, home, away FROM games WHERE sport = 'nba' LIMIT 1"
+        ).fetchone()
+        if game is None:
+            return Result(LAW_TWO_MARKETS, "a moneyline asked with a rung",
+                          "the moneyline question carries no line", False,
+                          "no NBA game stored to build a question from")
+        question = _nba._moneyline_question(game)
+    finally:
+        conn.close()
+    if question.line_asked is not None:
+        return Result(LAW_TWO_MARKETS, "a moneyline asked with a rung",
+                      "the moneyline question carries no line", False,
+                      f"NOT CAUGHT - the moneyline question was built with "
+                      f"line_asked={question.line_asked!r}")
+    return Result(LAW_TWO_MARKETS, "a moneyline asked with a rung",
+                  "the moneyline's declared factor set", True,
+                  f"the moneyline declares {len(money)} factors and the spread "
+                  f"{len(spread)}; the one difference is `nba_asked_distance`, "
+                  f"and the question carries no line at all")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -5111,6 +5234,8 @@ def main() -> int:
     results.append(plant_two_sentences_naming_opposite_sides())
     results.append(plant_a_market_tab_row_that_is_hardcoded())
     results.append(plant_a_card_showing_two_numbers_collapsed())
+    results.append(plant_a_moneyline_that_contradicts_its_own_spread())
+    results.append(plant_a_moneyline_asked_with_a_rung())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

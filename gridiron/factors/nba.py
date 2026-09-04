@@ -28,6 +28,20 @@ from .registry import factor
 
 ADDED = "2026-08-29T00:00:00Z"
 
+#: THE MARKETS A GAME FACTOR APPLIES TO (roster #1, 2026-09-04).
+#:
+#: Named once rather than written into each decorator, so a third game market
+#: is added in one place. Eight factors carried `("spread",)` literally and the
+#: moneyline needed all eight; editing eight and forgetting the ninth is how a
+#: factor set comes to differ from the one its rationale describes.
+#:
+#: `nba_asked_distance` IS NOT IN HERE and must not be. It measures how far the
+#: rung sits from the model's own expectation, and a moneyline has no rung --
+#: there is no line to be a distance from. A factor that cannot be measured for
+#: a market does not apply to it.
+GAME_MARKETS = ("spread", "moneyline")
+
+
 
 # ---------------------------------------------------------------------------
 # the game: who is playing
@@ -36,7 +50,7 @@ ADDED = "2026-08-29T00:00:00Z"
 @factor(
     added=ADDED,
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     why="who is available to play",
     rationale=(
         "The load-management factor, and the one that matters most in this "
@@ -68,7 +82,7 @@ def nba_availability_index(ctx) -> float | None:
 @factor(
     added=ADDED,
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     active=False,
     deactivated="2026-08-29T00:00:00Z",
     note=(
@@ -108,7 +122,7 @@ def nba_back_to_back(ctx) -> float | None:
 @factor(
     added="2026-08-29T00:00:00Z",
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     why="whether either side is on a second night in a row",
     rationale=(
         "REPAIR of nba_back_to_back, which the schedule cancelled. Measures the "
@@ -131,7 +145,7 @@ def nba_b2b_either(ctx) -> float | None:
 @factor(
     added=ADDED,
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     why="the rest difference between the two clubs",
     rationale=(
         "Days since each club last played, home minus away, CLIPPED to four "
@@ -152,7 +166,7 @@ def nba_rest_days_diff(ctx) -> float | None:
 @factor(
     added=ADDED,
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     why="how much of the last fortnight each club spent away",
     rationale=(
         "How much of the last fortnight each club spent on the road, as a count "
@@ -179,7 +193,7 @@ def nba_travel_recent(ctx) -> float | None:
 @factor(
     added=ADDED,
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     why="how fast both clubs play",
     rationale=(
         "Possessions per forty-eight minutes over the last ten games, summed "
@@ -202,7 +216,7 @@ def nba_pace_rolling(ctx) -> float | None:
 @factor(
     added=ADDED,
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     note=(
         "JOINTLY FITTED WITH `nba_net_rating_rolling`, MEASURED "
         "2026-09-03. Standardised, this factor is worth +0.200 fitted "
@@ -236,7 +250,7 @@ def nba_net_rating_rolling(ctx) -> float | None:
 @factor(
     added="2026-09-03T00:00:00Z",
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     note=(
         "JOINTLY FITTED WITH `nba_net_rating_rolling`, MEASURED "
         "2026-09-03. Standardised, this factor is worth +0.200 fitted "
@@ -285,7 +299,7 @@ def nba_srs_diff(ctx) -> float | None:
 @factor(
     added=ADDED,
     sport="nba",
-    applies_to=("spread",),
+    applies_to=GAME_MARKETS,
     why="home court",
     rationale=(
         "Home court, in the only shape that can actually vary. A factor that "

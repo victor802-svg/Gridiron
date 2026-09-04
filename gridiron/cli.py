@@ -119,9 +119,76 @@ def cmd_train(args: argparse.Namespace) -> int:
         if fit.dropped:
             print(f"    DROPPED, too few measured rows: {sorted(fit.dropped)}")
         _report_ladder_check(conn, sport, market_type, fit)
+        _report_market_agreement(conn, sport, market_type, fit)
         print()
     conn.close()
     return 0
+
+
+def _report_market_agreement(conn, sport: str, market_type: str, fit) -> None:
+    """CHECKLIST ITEM 4 for the NBA moneyline: does it agree with the spread?
+
+    THE RELATION IS LOGICAL. A home club giving points must be less likely to
+    cover than to win; one receiving points must be more likely. Checked on
+    real games when the moneyline is fitted, because a check that only runs in
+    a test protects the test.
+    """
+    if sport != "nba" or market_type != "moneyline":
+        return
+
+    from .factors import compute as _compute
+    from .model import baseline as _baseline
+    from .model import questions as _questions
+    from .sports import nba as _nba
+
+    try:
+        spread_fit = _baseline.load_fit(
+            conn, _baseline.market_key("nba", "spread"))
+    except _baseline.NotTrained:
+        print("    market agreement: the spread is not fitted, so there is no "
+              "second number to check this one against")
+        return
+
+    games = conn.execute(
+        "SELECT id FROM games WHERE sport = 'nba' AND status = 'final'"
+        " ORDER BY kickoff_utc DESC LIMIT 200").fetchall()
+    checked, disagreed = 0, []
+    for row in games:
+        try:
+            ctx = _nba.build_context(conn, row["id"])
+        except KeyError:
+            continue
+        expected = _questions.expected_margin(
+            "nba", ctx.home_net_rating, ctx.away_net_rating)
+        if expected is None:
+            continue
+        try:
+            rung = _questions.spread_rung(
+                row["id"], expected, _nba.SPREAD_LADDER)
+        except _questions.RungOffTheLadder:
+            continue
+
+        win_p = _baseline.predict(
+            fit, _compute.feature_vector(ctx, "moneyline"))["prob_yes"]
+        ctx.line_asked = rung
+        cover_p = _baseline.predict(
+            spread_fit, _compute.feature_vector(ctx, "spread"))["prob_yes"]
+        checked += 1
+        try:
+            _nba.assert_markets_agree(win_p, cover_p, rung, row["id"])
+        except _nba.DisagreesWithTheSpread as exc:
+            disagreed.append(str(exc))
+
+    if not checked:
+        print("    market agreement: no completed game to evaluate against")
+        return
+    if disagreed:
+        print(f"    MARKET AGREEMENT FAILED on {len(disagreed)} of {checked} "
+              f"games. The first: {disagreed[0]}")
+        return
+    print(f"    market agreement PASSED on {checked} games: a home club "
+          f"giving points is never likelier to cover than to win, and one "
+          f"receiving points is never less likely")
 
 
 def _report_ladder_check(conn, sport: str, market_type: str, fit) -> None:
