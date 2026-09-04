@@ -1110,6 +1110,19 @@ CREATE TABLE IF NOT EXISTS ufc_events (
     name          TEXT NOT NULL,
     event_utc     TEXT,                    -- ISO-8601 Z; NULL if TBD
     season        INTEGER NOT NULL,
+    -- WHICH KIND OF CARD (E2, 2026-09-03). 'numbered', 'fight_night',
+    -- 'contender', or NULL when the name matches none of the three declared
+    -- patterns. NULL is a real answer, not a gap: the source carries no tier
+    -- field at all, so an unrecognised name is refused rather than guessed.
+    -- Such an event still feeds the rating pool and gets no forecast, because
+    -- LAW 6 inside the sport forbids a category it could join.
+    event_tier    TEXT CHECK (event_tier IS NULL OR event_tier IN
+                              ('numbered', 'fight_night', 'contender')),
+    -- IS THIS A CARD AT ALL. The Ultimate Fighter entries carry exactly one
+    -- bout each because they are weekly television episodes; no real card in
+    -- five seasons carries fewer than three. Stored rather than recomputed so
+    -- a reload cannot quietly readmit them.
+    is_card       INTEGER NOT NULL DEFAULT 1,
     fetched_utc   TEXT NOT NULL
 );
 

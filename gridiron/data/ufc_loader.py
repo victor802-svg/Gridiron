@@ -29,6 +29,7 @@ from datetime import timedelta
 
 from . import sources
 from ..db import utcnow
+from ..sports import ufc as ufc_adapter
 
 #: The one host this module talks to.
 CORE = "https://sports.core.api.espn.com/v2/sports/mma/leagues/ufc"
@@ -103,15 +104,34 @@ def load_season(conn: sqlite3.Connection, season: int) -> dict:
         if not event_id:
             continue
         when = card.get("date")
+        name = card.get("name") or "UFC"
+        bouts = card.get("competitions") or []
+        # WHICH KIND OF CARD, AND WHETHER IT IS ONE (E2, 2026-09-03). The tier
+        # is derived from the name because the payload carries no tier field --
+        # measured, see UFC_FEASIBILITY section 9.1 -- and an event whose name
+        # matches none of the three declared patterns is stamped NULL rather
+        # than guessed at. `is_card` is a fact about the event: a Ultimate
+        # Fighter television episode carries one bout and no real card in five
+        # seasons carries fewer than three.
+        tier = ufc_adapter.event_tier(name)
+        is_card = ufc_adapter.is_sanctioned_card(name, len(bouts), when, utcnow())
         conn.execute(
-            "INSERT INTO ufc_events (id, name, event_utc, season, fetched_utc)"
-            " VALUES (?,?,?,?,?)"
+            "INSERT INTO ufc_events (id, name, event_utc, season, event_tier,"
+            " is_card, fetched_utc) VALUES (?,?,?,?,?,?,?)"
             " ON CONFLICT(id) DO UPDATE SET name = excluded.name,"
-            "   event_utc = excluded.event_utc, fetched_utc = excluded.fetched_utc",
-            (event_id, card.get("name") or "UFC", when, season, utcnow()))
+            "   event_utc = excluded.event_utc, event_tier = excluded.event_tier,"
+            "   is_card = excluded.is_card, fetched_utc = excluded.fetched_utc",
+            (event_id, name, when, season, tier, 1 if is_card else 0, utcnow()))
         counts["events"] += 1
+        if not is_card:
+            # NOT A CARD, SO ITS BOUTS DO NOT ENTER THE RECORD AT ALL. Skipped
+            # here rather than filtered later, so a reload cannot readmit them
+            # and no downstream reader has to remember the rule.
+            counts.setdefault("skipped_not_a_card", 0)
+            counts["skipped_not_a_card"] += 1
+            continue
 
-        for bout in (card.get("competitions") or []):
+        for bout in bouts:
             wrote, resolved, fighters = _load_bout(
                 conn, event_id, bout, seen_fighters)
             counts["bouts"] += wrote

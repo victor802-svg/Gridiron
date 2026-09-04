@@ -16,6 +16,7 @@ method-of-victory -- it was excluded by the brief and is not smuggled in.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass, field
 
@@ -25,6 +26,131 @@ from ..model import questions
 from ..model.question import Question
 
 SPORT = "ufc"
+
+# ---------------------------------------------------------------------------
+# event tiers (E2, 2026-09-03)
+# ---------------------------------------------------------------------------
+
+#: The three tiers the operator declared, in the order a reader thinks of them.
+#:
+#: LAW 6 APPLIES INSIDE THIS SPORT. A Contender Series bout goes the distance
+#: 43.6% of the time and a numbered-card bout 58.0% -- measured over 218 and
+#: 753 settled bouts on 2026-09-03. One UFC distance curve would average those
+#: two populations and describe neither, which is the same failure the law
+#: forbids across sports, one level down.
+EVENT_TIERS = ("numbered", "fight_night", "contender")
+
+#: What a reader is shown. No internal identifier reaches the interface.
+TIER_LABELS = {
+    "numbered": "Numbered card",
+    "fight_night": "Fight Night",
+    "contender": "Contender Series",
+}
+
+TIERS_DECLARED = "2026-09-03T00:00:00Z"
+
+#: Card structure per tier, measured 2026-09-03 over 268 events. Used to check
+#: the name-derived tier against a fact about the event, and stated here so a
+#: reader can see what the check is worth.
+#:
+#:     numbered      11.8 bouts/card   1.61 five-round bouts
+#:     fight_night   11.9 bouts/card   1.00 five-round bouts
+#:     contender      4.6 bouts/card   0.00 five-round bouts
+#:
+#: The floor below which an "event" is not a card at all. No UFC card in five
+#: seasons carries fewer than three bouts; The Ultimate Fighter entries carry
+#: exactly ONE, because they are weekly television episodes rather than cards.
+MIN_BOUTS_FOR_A_CARD = 3
+
+
+class NotSanctioned(ValueError):
+    """An event that is not one of the declared tiers, named."""
+
+
+def event_tier(name: str | None) -> str | None:
+    """Which tier a card belongs to, or None when it cannot be told.
+
+    DERIVED FROM THE NAME BECAUSE THERE IS NOTHING ELSE. The E1 probe fetched
+    one event of each tier in full and compared them field by field: the
+    payload carries no `type`, no `grouping` and no tier marker, and
+    `seasonType` is identical across all three (see UFC_FEASIBILITY section
+    9.1). The name is the only carrier.
+
+    SO IT REFUSES RATHER THAN GUESSES. An event that matches none of the three
+    declared patterns returns None and is recorded UNCLASSIFIED -- it still
+    feeds the rating pool, because R1 says every sanctioned event does, but it
+    gets no forecast and no calibration category, because R2 forbids a combined
+    record and there is no category for it to join.
+
+    THE TWO NAMES THAT ARE NOT WHAT THEY LOOK LIKE, both checked against card
+    structure rather than read off the string:
+
+    - "Noche UFC" is a Fight Night. Three of them are stored, carrying 11, 14
+      and 12 bouts with one five-round bout each -- the Fight Night shape
+      exactly (11.9 and 1.00). One exception carries its own number, "UFC 306 -
+      Riyadh Season Noche UFC", and the number wins.
+    - "The Ultimate Fighter" is not a card. Seven are stored and each carries
+      exactly ONE bout; no real card in the record carries fewer than three.
+      They are weekly television episodes, and the bouts inside them are
+      tournament fights that do not appear on a professional record. THE ONE
+      BOUT IS THE MEASURED FACT; that they are unsanctioned is the reason, and
+      it is domain knowledge rather than something this probe measured.
+    """
+    if not name:
+        return None
+    text = name.strip()
+    head = text.split(":")[0].strip()
+
+    if "Contender Series" in text:
+        return "contender"
+    # A NUMBER WINS OVER EVERY OTHER PATTERN, so a sponsored or themed
+    # numbered card ("UFC 306 - Riyadh Season Noche UFC") lands where it
+    # belongs rather than in whichever tier its theme happens to name.
+    if re.match(r"^UFC\s+\d+\b", head):
+        return "numbered"
+    if head.startswith("UFC Fight Night") or head.startswith("Noche UFC"):
+        return "fight_night"
+    return None
+
+
+#: Names that are television, not cards. Matched as a prefix on the whole
+#: name, and kept as a short explicit list rather than a pattern, because the
+#: cost of being wrong in each direction is not the same: a pattern that
+#: over-reaches deletes real bouts, and this one already did.
+NOT_A_CARD_PREFIXES = ("The Ultimate Fighter",)
+
+
+def is_sanctioned_card(name: str | None, bout_count: int,
+                       event_utc: str | None = None,
+                       now: str | None = None) -> bool:
+    """Is this an event whose bouts belong in the record at all?
+
+    SEPARATE FROM `event_tier` ON PURPOSE. A card with no derivable tier is
+    still a card -- R1 says every sanctioned event feeds the record, and
+    "UFC Freedom 250" carrying seven bouts and two five-round fights is plainly
+    one even though nothing in the record says which tier it is. It goes in,
+    UNCLASSIFIED.
+
+    THE BOUT COUNT ONLY MEANS ANYTHING AFTER THE EVENT. The first version of
+    this checked `bout_count >= 3` and nothing else, and it demoted eight
+    UPCOMING cards -- five Contender Series and three Fight Nights whose bouts
+    are still being announced -- deleting eighteen real bouts along with the
+    seven it meant to. A thin card and an unannounced one look identical from
+    the bout count alone, and only the DATE tells them apart.
+
+    So the rule has two parts, and the explicit one comes first: a named
+    television series is never a card, and a card that has already happened
+    with fewer than three bouts was never one. A FUTURE EVENT IS ALWAYS A CARD,
+    because the record has not finished arriving.
+    """
+    text = (name or "").strip()
+    if any(text.startswith(prefix) for prefix in NOT_A_CARD_PREFIXES):
+        return False
+    if event_utc and now and event_utc > now:
+        return True                       # still being announced
+    if event_utc is None:
+        return True                       # no date to judge by; keep it
+    return bout_count >= MIN_BOUTS_FOR_A_CARD
 SLATE_WORD = "card"
 
 

@@ -202,3 +202,109 @@ Nothing found. For completeness, the three things that would:
   short-notice factor needs. **Not found on the bout object**; if it is not
   carried, that factor is ABSENT rather than estimated.
 - Live status shape during a bout in progress, which U5's live tile needs.
+
+---
+
+## 9. Event tiers (E1 probe, 2026-09-03)
+
+Appended for ITEM 4. Read-only; nothing here was written to the record.
+
+### 9.1 THE PAYLOAD CARRIES NO TIER FIELD. Measured, not assumed.
+
+R2 asked how the tier is identified in the payload. It is not. One event of
+each kind was fetched in full and compared field by field:
+
+| field | UFC 324 | UFC Fight Night | Contender Series |
+|---|---|---|---|
+| `seasonType` | `seasons/2026/types/2` | `seasons/2026/types/2` | `seasons/2026/types/2` |
+| `league` | `.../leagues/ufc` | `.../leagues/ufc` | `.../leagues/ufc` |
+| `season` | `seasons/2026` | `seasons/2026` | `seasons/2026` |
+| `shortName` | `UFC 324` | `UFC Fight Night` | `Dana White's Contender Series` |
+
+There is no `type`, no `grouping`, no tier marker of any kind. `seasonType` is
+identical across all three and means regular season, not card class. **The
+name is the only carrier**, and `shortName` carries it more cleanly than
+`name`.
+
+So the ruling's caution has to be honoured a different way: the tier is derived
+from the name because there is nothing else, and the derivation is then
+**validated against card structure**, which is a fact about the event rather
+than a string.
+
+### 9.2 Coverage per tier, over 268 stored events
+
+| tier | events | settled bouts |
+|---|---|---|
+| Fight Night | 140 | 1,619 |
+| numbered | 65 | 753 |
+| Contender Series | 50 | 218 |
+| **unclassified** | **13** | **48** |
+
+All three declared tiers are already in the record — the existing loader was
+never restricted to numbered cards. What was missing is the STAMP, not the
+data.
+
+### 9.3 GOES THE DISTANCE, BY TIER — and the ruling was right
+
+| tier | settled | goes the distance | three-round | five-round |
+|---|---|---|---|---|
+| Fight Night | 1,619 | **55.3%** | 56.3% (n=1,485) | 44.0% (n=134) |
+| numbered | 753 | **58.0%** | 57.9% (n=653) | 59.0% (n=100) |
+| **Contender Series** | 218 | **43.6%** | 43.6% (n=218) | — none |
+
+**Contender Series finishes 12 to 14 points more often than either other
+tier**, which is what R2 predicted and is a large enough gap to matter to every
+rounds and distance question asked on one. A single UFC distance curve would
+average a 43.6% population with a 58.0% one and describe neither.
+
+Contender Series carries **no five-round bouts at all** in five seasons — the
+format is five three-round bouts, so `ufc_scheduled_rounds` is constant within
+the tier and the ladder has exactly one rung there.
+
+### 9.4 Cadence
+
+Contender Series runs **August to October, three to five cards a month, five
+bouts a card** — consistently 4.6 to 5.3 bouts per card across 2022–2026. The
+2026 season is in progress: weeks 1–7 are complete, weeks 8–10 are scheduled.
+
+### 9.5 The 13 unclassified, resolved by structure
+
+Average bouts per card, and average five-round bouts per card, are the two
+numbers that separate the tiers:
+
+```
+numbered      11.8 bouts   1.61 five-round
+fight_night   11.9 bouts   1.00 five-round
+contender      4.6 bouts   0.00 five-round
+```
+
+Against those norms:
+
+| event | bouts | 5-round | segments | reading |
+|---|---|---|---|---|
+| Noche UFC ×3 (2023, 2025, 2026) | 11, 14, 12 | 1 each | Prelims + Main Card | **Fight Night** |
+| UFC 306 – Riyadh Season Noche UFC | 10 | 2 | Prelims + Main Card | **numbered** |
+| UFC Freedom 250 | 7 | 2 | Main Card only | numbered-like, **not certain** |
+| The Ultimate Fighter ×7 | **1 each** | 0 | Main Card | **not a card at all** |
+
+**The Ultimate Fighter entries are one bout each.** No UFC card in five seasons
+has fewer than three. These are weekly television episodes, and the bouts
+inside them are tournament fights in the TUF gym — not sanctioned bouts on a
+professional record. *The structure is measured; the reason is domain
+knowledge, and it is labelled as such.*
+
+**Seven of those bouts are currently in the rating pool**, contributing 14
+`ufc_ratings` rows. They should not be, and E2 removes them.
+
+`UFC Freedom 250` is the honest doubt: two five-round bouts says numbered, and
+seven bouts on a single Main Card says nothing in the record. It is left
+UNCLASSIFIED rather than guessed.
+
+### 9.6 What this probe did not measure
+
+- **Odds coverage per tier.** §3 measured odds on 2025 events without
+  separating them. Whether Contender Series carries the same two providers is
+  the open question for E4, and it is likely to be the weakest tier — a
+  prospect card is priced by fewer books than a pay-per-view.
+- Whether ESPN ever renames a tier mid-season, which would move an event
+  between categories. Nothing in the record suggests it has.

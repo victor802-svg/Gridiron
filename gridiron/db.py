@@ -42,6 +42,14 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # exactly what the default says -- so the migration needs no backfill of
     # its own and rewrites nothing.
     ("mlb_lineups", "source", "TEXT NOT NULL DEFAULT 'backfill'"),
+    # WHICH KIND OF UFC CARD (E2, 2026-09-03). NULL until backfilled, and NULL
+    # stays a legitimate value afterwards for a card whose tier the name does
+    # not carry -- so this migration deliberately has no default.
+    ("ufc_events", "event_tier", "TEXT"),
+    # AND WHETHER IT IS A CARD AT ALL. Defaults to 1 because every stored event
+    # was treated as one until today; the backfill demotes the seven that carry
+    # a single bout.
+    ("ufc_events", "is_card", "INTEGER NOT NULL DEFAULT 1"),
     ("teams", "is_fbs", "INTEGER"),
     # B3: where a college team plays, and the coordinates the weather
     # and travel factors need. `teams` is reference data, not market
