@@ -1348,6 +1348,13 @@ const Gridiron = (function () {
     const pick = el('div', 'row-pick');
     pick.appendChild(el('span', 'row-caret', '\u25B8'));
     pick.appendChild(el('span', 'row-phrase', c.phrase || ''));
+    // WHICH KIND OF CARD (E3). The compact row gets it too: a phone reader
+    // is owed the same context as a desk one, and the record is kept per
+    // tier for a reason a reader can only act on if they are told which
+    // tier they are looking at. Empty for every sport that does not split.
+    if (c.tier_label) {
+      pick.appendChild(el('span', 'tier-name', ' · ' + c.tier_label));
+    }
     const tail = rowTail(c);
     if (tail) pick.appendChild(el('span', 'row-when', ' \u00B7 ' + tail));
     // THE EARLY VIEW SAYS SO ON EVERY ROW (A3). Composed by the server,

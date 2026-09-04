@@ -369,12 +369,17 @@ table.grid td.wide {
   /* The server now sends this line in words ("WAS does not cover"), so it is
      as long as the subject's name. The renderer used to truncate at a magic 14
      characters in JS, which put a pixel budget in the payload; it belongs here.
-     A DEFINITE max-width is required for the ellipsis to have anything to
-     resolve against -- `100%` against a nowrap parent is its own content width,
-     which is circular and overflowed the phone by 84px. */
+
+     AND IT STILL TRUNCATED, which is the thing the whole width budget was
+     supposed to avoid. A fighter's name is longer than a tricode, so UFC read
+     "NATHANIEL W..." at 390px -- the card naming a fighter and then not
+     naming him. It WRAPS now, inside the same 20ch column: the width budget
+     was the right idea and the ellipsis was the wrong way to spend it. The
+     ancestor's `white-space: nowrap` has to be undone here or the wrap never
+     happens. */
   max-width: 20ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   margin-left: auto;
 }
 
@@ -1023,14 +1028,24 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   text-align: right;
 }
 .row-mid { min-width: 0; }
+/* THE ROW GROWS; IT DOES NOT TRUNCATE (2026-09-03).
+   Both of these carried `text-overflow: ellipsis`, so a phone read
+   "BRISSETT * PASSI..." and "SF DOES NOT..." -- the card telling a reader
+   there is something it is not showing and then not showing it, which is
+   exactly what the no-truncation law forbids. The existing scan missed it
+   because it looks at the frame at desk width, where nothing truncates.
+   Recorded in FOLLOWUPS on finding it and fixed here on the day the event
+   tier was added to the pick line, because adding to a line that already
+   truncated made it worse and deferring it then would have been a choice to
+   ship a defect I had just enlarged. */
 .row-title {
   font-weight: 700; letter-spacing: 0.04em; font-size: 14px;
   text-transform: uppercase;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .row-pick {
   font-size: 13px; color: var(--muted); margin-top: 3px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .row-caret { color: var(--chrome); margin-right: 5px; }
 .row-phrase { color: var(--text); font-weight: 600; }

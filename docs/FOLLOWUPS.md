@@ -479,7 +479,12 @@ python tools/make_token.py --ntfy --rotate
   is deliberately empty: no observed-weather source is wired. Until one is, the
   college wind coefficient is still fitted on observed and applied to forecasts.
   S5's fourth planting waits on the same thing.
-- **The compact rows truncate their own titles at 390px.** `.row-title` and
+- ~~**The compact rows truncate their own titles at 390px.**~~ **FIXED
+  2026-09-03**, on the day the event tier was added to the same pick line:
+  deferring a defect I had just enlarged was not a defence. Both that line and
+  the side name under the percentage wrap now, and a 390px render shows no
+  ellipsis element anywhere in the frame. Original entry:
+-  `.row-title` and
   `.row-pick` carry `text-overflow: ellipsis`, so a phone reader sees
   "BRISSETT · PASSI…" and "SF DOES NOT…". That is exactly what the no-tile-
   truncation law forbids — the card says there is something it is not showing

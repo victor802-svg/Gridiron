@@ -373,6 +373,10 @@ def phrase(item: dict) -> str:
     return f"{subject} covers {_signed(flipped_line(item))}".strip()
 
 
+class NoWordsForThisMarket(ValueError):
+    """A market reached the prose layer without declaring how to say it."""
+
+
 def chance_clause(item: dict) -> str:
     """What the confidence figure is a chance OF. "WAS does not cover".
 
@@ -471,8 +475,47 @@ def chance_clause(item: dict) -> str:
             return f"{raw} loses"
         return f"{raw} wins"
 
-    # spreads
-    return f"{subject} {'does not cover' if side == 'not_cover' else 'covers'}"
+    # THE FIGHT MARKETS (2026-09-03). Found by rendering a UFC card at 390px:
+    # an "Over 2.5 rounds" question read "Nathaniel Wood vs Pavel Andrusca
+    # covers". A bout does not cover, and the subject of a rounds question is
+    # the whole matchup, so the spread fallthrough produced both errors at
+    # once.
+    #
+    # THIS IS THE FOURTH TIME THIS FUNCTION HAS BEEN WRONG IN THE SAME SHAPE,
+    # and the docstring above predicted it: props read "goes over" whichever
+    # side was taken, then spreads read "covers" whichever side was taken, and
+    # now two new markets fell through to the spread verb because nothing
+    # forces a new market to claim its own words. The subject is never named
+    # here -- "the fight" is what a reader would say, and it sidesteps the
+    # plural problem the spread branch spent a session on.
+    if market_type == "rounds":
+        return f"the fight goes {'under' if side == 'under' else 'over'}"
+    if market_type == "distance":
+        return ("the fight goes the distance" if side != "no"
+                else "the fight ends early")
+
+    if market_type == "spread":
+        return (f"{subject} "
+                f"{'does not cover' if side == 'not_cover' else 'covers'}")
+
+    # A MARKET THAT HAS NOT CLAIMED ITS WORDS GETS NONE (2026-09-03).
+    #
+    # For most of this function's life the last line WAS the spread branch, so
+    # every market nobody had thought about inherited "covers" -- which is how
+    # a UFC rounds question came to read "Nathaniel Wood vs Pavel Andrusca
+    # covers", and how props read "goes over" whichever side was taken before
+    # that, and spreads read "covers" whichever side was taken before that.
+    # Three of the same mistake, each fixed by adding a branch, none of them
+    # fixed by removing the reason a fourth was possible.
+    #
+    # It is a fifth market's turn to be added at some point. It will fail
+    # LOUDLY here rather than quietly wearing a verb from a market it has
+    # nothing to do with, and `audit.check_every_side_has_words` in the gate is
+    # where that failure will land.
+    raise NoWordsForThisMarket(
+        f"{market_type!r} has no declared words in language.chance_clause, so "
+        f"there is no true sentence to put on the card. A new market claims "
+        f"its own words here; it does not inherit the spread's.")
 
 
 def result_word(item: dict) -> str:

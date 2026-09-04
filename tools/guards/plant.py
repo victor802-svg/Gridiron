@@ -4664,6 +4664,134 @@ def plant_a_foreign_key_on_a_table_that_does_not_exist() -> Result:
                   f"{len(faults)} fault(s), the first being: {faults[0]}")
 
 
+def plant_the_ufc_fetcher_inside_a_prediction_closure() -> Result:
+    """LAW 1: reach the UFC odds fetcher from the UFC adapter itself.
+
+    THE NEAREST MISS IN THE PROJECT. `gridiron.market.ufc` and
+    `gridiron.sports.ufc` describe the same bouts, are named the same thing,
+    and the adapter already imports plenty. An import written by muscle memory
+    -- or by an editor's auto-import, which does not read laws -- would put a
+    live odds request inside the path that computes the probability, and the
+    forecast would no longer be blind.
+
+    IT WOULD ALSO BE INVISIBLE. The numbers would still look like forecasts.
+    Calibration would improve, because the model would be partly reading the
+    market, and that improvement would be indistinguishable from progress --
+    which is the exact failure LAW 1 exists to make structurally impossible
+    rather than merely forbidden.
+
+    Planted on the UFC adapter specifically, because a general market import is
+    already planted elsewhere and this is the one a person would actually write.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root)
+        victim = root / "sports" / "ufc.py"
+        victim.write_text(
+            victim.read_text(encoding="utf-8")
+            + "\n\n# PLANTED VIOLATION\nfrom ..market import ufc as odds  # noqa\n",
+            encoding="utf-8",
+        )
+        try:
+            # EVERY SPORT IS ITS OWN ROOT, and the first version of this
+            # planting used the shared one -- so it walked
+            # `gridiron.model.predict`, never reached the UFC adapter, and
+            # escaped. That escape is itself worth recording: a closure scan
+            # is only as wide as the entrypoints it is given, and a sport
+            # missing from `prediction_entrypoints` would be unaudited while
+            # every other row said PASS.
+            audit.check_all_prediction_closures(root=root)
+        except audit.LawViolation as exc:
+            if "sports.ufc" not in str(exc):
+                return Result(
+                    "LAW 1", "import the UFC odds fetcher from the UFC adapter",
+                    "audit.check_all_prediction_closures", False,
+                    f"a violation was raised, but not for the UFC adapter: "
+                    f"{exc}")
+            return Result("LAW 1",
+                          "import the UFC odds fetcher from the UFC adapter",
+                          "audit.check_all_prediction_closures", True, str(exc))
+    return Result("LAW 1", "import the UFC odds fetcher from the UFC adapter",
+                  "audit.check_all_prediction_closures", False,
+                  "NOT CAUGHT - the UFC prediction path can reach the module "
+                  "that fetches UFC prices, so a forecast could read the line "
+                  "it is supposed to be blind to")
+
+
+LAW_WORDS = "EVERY MARKET CLAIMS ITS OWN WORDS"
+
+
+def plant_a_market_wearing_another_markets_verb() -> Result:
+    """Ask the prose layer about a market that never declared its words.
+
+    THIS HAS HAPPENED FOUR TIMES, in the same shape each time, and only the
+    fourth is what finally made it structural.
+
+      - every prop read "goes over" whichever side the model took
+      - every spread read "covers" whichever side the model took (34 cards
+        stated the opposite of the forecast beside them, at high confidence)
+      - a UFC rounds question read "Nathaniel Wood vs Pavel Andrusca covers"
+      - a UFC distance question did the same
+
+    Each was fixed by adding a branch. None of them was fixed by removing the
+    reason a next one was possible: the last line of `chance_clause` was the
+    SPREAD branch, so any market nobody had thought about silently inherited
+    the spread's verb and the spread's grammar.
+
+    The last line now REFUSES. This plants a market that has declared nothing
+    and checks it gets nothing, and it checks the five real markets still
+    speak, because a refusal that refuses everything proves nothing.
+    """
+    from gridiron import language as _lang
+
+    planted = {"market_type": "parlay", "model_side": "yes",
+               "subject": "Somebody", "model_prob": 0.61,
+               "home": "A", "away": "B"}
+    try:
+        said = _lang.chance_clause(planted)
+    except _lang.NoWordsForThisMarket as exc:
+        real = [
+            ({"market_type": "spread", "model_side": "cover", "subject": "SF",
+              "model_prob": 0.6, "home": "SF", "away": "LA"}, "covers"),
+            ({"market_type": "moneyline", "model_side": "win", "subject": "SF",
+              "model_prob": 0.6, "home": "SF", "away": "LA"}, "wins"),
+            ({"market_type": "total", "model_side": "over", "subject": "SF",
+              "model_prob": 0.6, "home": "SF", "away": "LA"}, "over"),
+            ({"market_type": "rounds", "model_side": "over",
+              "subject": "A vs B", "model_prob": 0.6}, "over"),
+            ({"market_type": "distance", "model_side": "yes",
+              "subject": "A vs B", "model_prob": 0.6}, "distance"),
+        ]
+        for item, expected in real:
+            try:
+                words = _lang.chance_clause(item)
+            except _lang.NoWordsForThisMarket as wrong:
+                return Result(
+                    LAW_WORDS, "a market wearing another market's verb",
+                    "language.chance_clause", False,
+                    f"a declared market was refused its own words: {wrong}")
+            if expected not in words:
+                return Result(
+                    LAW_WORDS, "a market wearing another market's verb",
+                    "language.chance_clause", False,
+                    f"{item['market_type']} says {words!r}, which does not "
+                    f"contain {expected!r}")
+            if item["market_type"] in ("rounds", "distance") and "cover" in words:
+                return Result(
+                    LAW_WORDS, "a market wearing another market's verb",
+                    "language.chance_clause", False,
+                    f"a fight market still says {words!r} -- a bout does not "
+                    f"cover anything")
+        return Result(LAW_WORDS, "a market wearing another market's verb",
+                      "language.chance_clause", True,
+                      f"{exc}; and all five declared markets still speak in "
+                      f"their own words")
+    return Result(LAW_WORDS, "a market wearing another market's verb",
+                  "language.chance_clause", False,
+                  f"NOT CAUGHT - an undeclared market was handed a sentence "
+                  f"anyway: {said!r}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -4711,6 +4839,8 @@ def main() -> int:
     results.append(plant_a_ufc_category_merged_across_tiers())
     results.append(plant_a_bout_from_another_promotion_in_the_ufc_pool())
     results.append(plant_a_foreign_key_on_a_table_that_does_not_exist())
+    results.append(plant_the_ufc_fetcher_inside_a_prediction_closure())
+    results.append(plant_a_market_wearing_another_markets_verb())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())
