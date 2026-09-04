@@ -9,7 +9,7 @@ One line per item, and the per-item close-outs carry the detail.
 | item | verdict | close-out |
 |---|---|---|
 | **ITEM 1 — UFC, declared** | **DONE** (one PARTIAL inside) | `docs/closeouts/2026-09-03-ufc.md` |
-| **ITEM 2 — count markets** | **DONE** (one PENDING inside) | `docs/closeouts/2026-09-03-count-markets.md` |
+| **ITEM 2 — count markets** | **DONE** | `docs/closeouts/2026-09-03-count-markets.md` |
 | **ITEM 3 — adjusted form** | **DONE** | `docs/closeouts/2026-09-03-adjusted-form.md` |
 
 Nothing was BLOCKED. Nothing was NOT REACHED.
@@ -26,9 +26,8 @@ exists in the market module, so no UFC card shows a market comparison.
 **ITEM 2** moved five count markets from a logistic to a Poisson or negative
 binomial rate — and found that the wiring which was supposed to deliver that
 had never worked at all. The walk-forward that decides it: passing TDs 7.79 →
-2.39 points of weighted gap, receptions 5.50 → 3.89, so it ships. **PENDING:**
-two of five markets are fitted, one landed during ITEM 3, two remain (~50
-minutes each through a pure-Python IRLS on 139,000 rows).
+2.39 points of weighted gap, receptions 5.50 → 3.89, so it ships. All five are now fitted and converged — the three MLB models
+finished during ITEM 4, at roughly fifty minutes apiece.
 
 **ITEM 3** gave the NBA an opponent-adjusted rating, found that the NFL already
 had one, and then found — in the bookkeeping the brief asked for — that the
@@ -72,7 +71,6 @@ found it.
 | what | where |
 |---|---|
 | The UFC market comparison (ITEM 1's PARTIAL) | now ITEM 4's E4 |
-| Two MLB count fits still running | ITEM 2 §10.1 |
 | Compact rows truncate their titles at 390px | `docs/FOLLOWUPS.md` |
 | `verify.py` no longer completes inside one ten-minute invocation | ITEM 2 §8 |
 | Rotate the ntfy topic and the Anthropic API key | earlier close-outs |

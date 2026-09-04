@@ -9,7 +9,7 @@ three-item unattended session.
 
 | phase | verdict | evidence |
 |---|---|---|
-| **C1** rate forecaster | **DONE** | `gridiron/model/counts.py`; five markets wired, two fitted — §2, §5. |
+| **C1** rate forecaster | **DONE** | `gridiron/model/counts.py`; all five fitted — §2, §5. |
 | **C1** negative binomial where over-dispersed | **DONE** | Measured per market, two qualify — §3. |
 | **C2** walk-forward, old vs new | **DONE** | The rate form wins both markets it could be tested on — §4. |
 | **C2** *do not ship it if it loses* | **N/A — it won** | §4. Had it lost, this row would say so. |
@@ -78,16 +78,19 @@ the same way, that is a one-line change to `COUNT_MARKETS`.
 
 ## 5. What is fitted now
 
+**All five, all converged**, added after the MLB runs finished during ITEM 4:
+
 ```
-nfl passing_tds   RateFit  n=1,299  poisson             base rate 1.514
-nfl receptions    RateFit  n=1,343  negative binomial   base rate 1.306
+nfl passing_tds         RateFit  n=  1,299  poisson             [ 68s]
+nfl receptions          RateFit  n=  1,343  negative binomial   [ 69s]
+mlb batter_home_runs    RateFit  n=118,345  poisson            [3003s]
+mlb batter_hits         RateFit  n=118,345  poisson            [3052s]
+mlb pitcher_strikeouts  RateFit  n= 11,928  negative binomial   [875s]
 ```
 
-**The three MLB count markets are still fitting.** Each is roughly 139,000 rows
-through a pure-Python IRLS, and the run outlasted this session's attention on
-them. The code path is identical to the NFL one that converged, and the fits
-land when the run finishes. So for MLB: **the wiring is DONE and the fitted
-models are PENDING** — §10.1.
+The MLB fits took fifty minutes apiece — roughly 118,000 rows through a
+pure-Python IRLS — which is why this section read PENDING when the close-out
+was first written. It is not pending any more, and §10.1 is struck.
 
 ## 6. C3, rendered
 
@@ -160,11 +163,12 @@ fitting the model to the suite.**
 
 ## 10. What is PARTIAL, and what needs you
 
-### 10.1 The MLB fits are pending, not failed
+### 10.1 The MLB fits are pending, not failed — ~~PENDING~~ RESOLVED
 
-Wiring, plantings and render are done for all five markets. The three MLB
-models are mid-fit. Nothing claims a rate it does not have — the build error in
-§2 guarantees that.
+*Struck 2026-09-03, during ITEM 4.* All three MLB rate models finished and
+converged; the numbers are in §5. Left visible rather than deleted, because a
+close-out that quietly rewrites its own PARTIAL into a DONE is exactly the
+thing the close-out convention exists to prevent.
 
 ### 10.2 Found while rendering, recorded rather than half-fixed
 
