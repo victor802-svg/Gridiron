@@ -41,6 +41,12 @@ line" and the prediction stands on its own.
   threshold for an edge claim in one category. Days assume MLB and NBA play
   daily and NFL weekly.
 
+> **THE "SLATES TO GATE" COLUMN BELOW IS UNREACHABLE AS WRITTEN.** It counts
+> qualifying subjects, not questions this project asks: a 25-a-day cap and a
+> 70% confidence floor sit between the two. Measured rate: **10 MLB prop
+> predictions a day**, with two of four declared markets writing nothing.
+> See section 6.
+
 ## 3. The ranking, as the ruling defines it
 
 | # | sport | market | per slate | resolution | score | slates to gate | ~days |
@@ -164,6 +170,43 @@ One market per session, `docs/NEW_MARKET_CHECKLIST.md` item by item, item 1
   brief wanted, and this roster would be re-ranked against it rather than
   replaced by it.
 
+
+---
+
+## 6. CORRECTION, 2026-09-04: the "slates to gate" column is unreachable
+
+**Section 3's table counts qualifying subjects. It does not count questions
+this project will ask.** Two declared limits sit between the two numbers, and
+neither is in the arithmetic:
+
+- **`config.MLB_PROPS_PER_DAY` = 25.** The whole sport asks at most 25 prop
+  questions a day, filled by round-robin across the declared prop markets, one
+  question per subject per day. **A new prop market does not add questions; it
+  takes a share of the same 25.** Adding `batter_strikeouts` moved the slate
+  from 7 / 6 / 6 / 6 to 5 / 5 / 5 / 5 / 5.
+- **`config.PROPS_MIN_CLAIM` = 0.70.** A question the model is not 70% sure of
+  is not asked at all.
+
+**Measured on the record itself**, over the five days it has been running
+live: **50 MLB prop predictions written, 10.0 a day, 86% of them settled** —
+and **two of the four declared markets have written nothing at all**
+(`batter_total_bases` and `pitcher_strikeouts` both stand at zero, because they
+do not clear the floor).
+
+So the column reading "**batter RBI · 270 per slate · 0.4 slates to gate · ~0
+days**" should be read as **270 subjects would qualify**, not as *a hundred
+settled predictions arrive within a day*. At the realised rate, one MLB prop
+market reaching its hundred takes **roughly a month of daily slates**, and only
+if it wins a fair share of the cap against the markets already there.
+
+**This does not change the build order.** The order comes from §4, which ranks
+on balance and on what needs no identity match, and §4(b)'s reasoning is
+unaffected. What it changes is the expectation of when any of these markets
+will have earned a verdict.
+
+**It applies to the NBA and NFL prop markets too**, which have their own caps
+and the same floor. The figure to plan with is the realised one, and the record
+now carries five days of it.
 
 ---
 
