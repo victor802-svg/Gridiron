@@ -134,7 +134,15 @@ LOADERS = {
     "cfb": ("gridiron.data.cfb_loader", "load_season",
             lambda *a, **k: {"games": 0, "finals": 0, "skipped": 0,
                              "events": 0}),
+    "ufc": ("gridiron.data.ufc_loader", "load_season",
+            lambda *a, **k: {"events": 0, "bouts": 0, "results": 0,
+                             "fighters": 0}),
 }
+
+#: The UFC refresh arm ALSO mirrors bouts into `games`, which is a second door
+#: out of the stub -- it reads the database rather than the network, so it is
+#: safe, but a test that patched only the loader would still walk 2,482 rows.
+UFC_MIRROR = ("gridiron.sports.ufc", "mirror_bouts", lambda *a, **k: 0)
 
 
 def _stub_every_loader(monkeypatch, **overrides):
@@ -154,6 +162,9 @@ def _stub_every_loader(monkeypatch, **overrides):
     for sport, (module_name, attr, stub) in LOADERS.items():
         module = importlib.import_module(module_name)
         monkeypatch.setattr(module, attr, overrides.get(sport, stub))
+    mirror_module, mirror_attr, mirror_stub = UFC_MIRROR
+    monkeypatch.setattr(importlib.import_module(mirror_module), mirror_attr,
+                        mirror_stub)
 
     # THE LOADERS WERE NOT THE ONLY WAY OUT. `_run_refresh` also takes a second
     # look at the market for games about to start, which is a fetch of its own

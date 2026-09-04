@@ -814,6 +814,7 @@ TASK_WORDS = {
     "predict:nfl": "Predict football",
     "predict:mlb": "Predict baseball",
     "predict:nba": "Predict basketball",
+    "predict:ufc": "Predict the fights",
     "catch-up": "Catch up after a sleep",
     # "Note what is known" rather than "capture": a reader is being told
     # what the machine does, and nothing on this panel is named after a
@@ -828,6 +829,7 @@ TASK_WORDS = {
     "final:nfl": "Take one more look at football",
     "final:mlb": "Take one more look at baseball",
     "final:nba": "Take one more look at basketball",
+    "final:ufc": "Take one more look at the fights",
 }
 
 

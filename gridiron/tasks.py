@@ -104,6 +104,16 @@ TASKS: dict[str, TaskSpec] = {
         every_hours=24.0,
         silent_after_hours=24.0 * 365,
     ),
+    "predict:ufc": TaskSpec(
+        "predict:ufc",
+        "forecast the next UFC card, blind",
+        # DAILY, and the slate it writes is the next card. UFC runs about 4.3
+        # cards a month with no season shape at all -- a weekly cadence would
+        # miss a Wednesday card entirely, and a daily run on a night with no
+        # card is a logged no-op that costs nothing.
+        every_hours=24,
+        silent_after_hours=36,
+    ),
     "predict:cfb": TaskSpec(
         "predict:cfb",
         "forecast the college football slate, blind",
@@ -231,6 +241,16 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
                 from .data import nba_loader
 
                 result = nba_loader.load_all(conn, (season,))
+            elif sport == "ufc":
+                from .data import ufc_loader
+                from .sports import ufc as ufc_adapter
+
+                loaded = ufc_loader.load_season(conn, season)
+                # THE BOUTS BECOME GAMES HERE, and only here. A prediction
+                # references `games`, so a card that is loaded but not
+                # mirrored is a card nothing can be asked about.
+                loaded["mirrored"] = ufc_adapter.mirror_bouts(conn)
+                result = {"rows": loaded, "warnings": []}
             elif sport == "cfb":
                 # ITS OWN LOADER, and the `else` branch below is why this
                 # matters: without this arm, college football fell through to

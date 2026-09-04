@@ -212,3 +212,100 @@ def summary(conn: sqlite3.Connection) -> dict:
         "correct": row["correct"] or 0,
         "hit_rate": round((row["correct"] or 0) / resolved, 4) if resolved else None,
     }
+
+
+#: Methods that decide nothing. A bout with one of these has an outcome for
+#: SOME markets and not others, which is the whole reason this is a list rather
+#: than a boolean -- see `ufc_market_outcome`.
+UFC_NO_DECISION = ("no-contest", "nocontest", "no_contest")
+UFC_DRAW = ("draw",)
+
+
+def ufc_market_outcome(bout, market: str, rung: float | None) -> int | None:
+    """1, 0, or None for VOID. The void rules, written before any prediction.
+
+    From docs/UFC_FEASIBILITY.md section 6, and every case in it appeared in a
+    94-bout sample -- a draw and a doctor's stoppage are about as common as one
+    per card and a half, so these are not defensive hypotheticals.
+
+    NO CONTEST voids EVERY market. Nothing was decided, including how long it
+    lasted: a bout stopped for an illegal blow in round one did not "end in
+    round one" in any sense a rounds question means.
+
+    A DRAW voids the MONEYLINE ONLY. Neither fighter won, so there is no
+    moneyline answer -- but the bout went its full length and that is a fact
+    about time rather than about who won. Rounds and distance resolve normally.
+
+    A DOCTOR'S STOPPAGE NEEDS NO SPECIAL CASE. The bout ended; it is a TKO in
+    the source's own vocabulary. It resolves like any other stoppage, which is
+    what this docstring exists to say out loud so nobody adds one later.
+
+    THE ROUNDS RULE, DECIDED IN WRITING rather than from the sign of a price: a
+    bout that ends BETWEEN rounds completed the round it last finished. ESPN
+    reports the round in progress when it ended, so a stoppage at the end of
+    round 2 is OVER 1.5 and UNDER 2.5. Guessing this later is exactly what the
+    no-guessed-sides rule forbids.
+    """
+    method = (bout["method"] or "").lower()
+    if any(tag in method for tag in UFC_NO_DECISION):
+        return None
+
+    if market == "moneyline":
+        if not bout["winner"] or any(tag in method for tag in UFC_DRAW):
+            return None
+        return 1 if bout["winner"] == bout["fighter_a"] else 0
+
+    end_round = bout["end_round"]
+    scheduled = bout["scheduled_rounds"]
+    if not end_round or not scheduled:
+        return None
+
+    if market == "rounds":
+        if rung is None:
+            return None
+        # OVER means the bout lasted LONGER than the rung. A three-round bout
+        # asked at 2.5 is over exactly when it reached round 3.
+        return 1 if end_round > rung else 0
+
+    if market == "distance":
+        # THE DISTANCE IS THE SCHEDULED LENGTH, and reaching the final round is
+        # not the same as finishing it -- but ESPN reports the round in
+        # progress at the end, and a decision by definition used all of it. A
+        # bout is graded as going the distance when it ENDED in its final round
+        # by a decision; a stoppage in the final round did not go the distance.
+        went = end_round >= scheduled and "decision" in method
+        return 1 if went else 0
+
+    return None
+
+
+def resolve_ufc_outcome(conn, pred) -> int:
+    """Settle one UFC prediction from the bout's own record.
+
+    Raises `Void` for the cases above, which is how every other sport's
+    resolver reports a question that cannot be answered.
+    """
+    bout = conn.execute(
+        "SELECT winner, method, end_round, scheduled_rounds, fighter_a,"
+        "       fighter_b, status FROM ufc_bouts WHERE id = ?",
+        (pred["game_id"],)).fetchone()
+    if bout is None:
+        raise Void(f"no stored bout for {pred['game_id']!r}")
+    if bout["status"] != "final":
+        raise Void(f"{pred['game_id']} has not finished")
+
+    rung = pred["line_asked"]
+    outcome = ufc_market_outcome(bout, pred["market_type"], rung)
+    if outcome is None:
+        raise Void(
+            f"{pred['game_id']}: a {bout['method'] or 'result-less'} bout has "
+            f"no {pred['market_type']} answer. Recorded as void rather than "
+            f"guessed at.")
+
+    # THE STORED SIDE DECIDES WHAT COUNTS AS RIGHT. `outcome` above is about
+    # the YES side of the question; a prediction that took the NO side is
+    # correct exactly when the yes side did not happen.
+    side = (pred["model_side"] or "").lower()
+    if side in ("lose", "under", "no", "not_cover"):
+        return 1 - outcome
+    return outcome

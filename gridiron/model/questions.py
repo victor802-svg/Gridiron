@@ -198,6 +198,46 @@ EXPECTED_MARGIN_FIT: dict[str, tuple[float, float]] = {
 EXPECTED_MARGIN_FIT_DECLARED = "2026-09-03T00:00:00Z"
 
 
+#: THE ROUNDS LADDER, one rung per bout length (2026-09-03).
+#:
+#: MEASURED over 2,482 stored bouts, on how bouts actually END rather than on
+#: what a book posted -- and the difference is stated because it matters. The
+#: probe saw an `overUnder` of 1.5 on the one bout it inspected; the
+#: distribution of POSTED lines across a season was not measured, because
+#: reaching it costs an odds fetch per bout and the outcome distribution
+#: answers the question a rung has to answer: where does this split evenly?
+#:
+#:     3-round bouts (n=2,398)   ended R1 27.9%  R2 16.6%  R3 55.5%
+#:     5-round bouts (n=240)     ended R1 16.7%  R2 16.7%  R3 9.6%
+#:                               R4 6.7%   R5 50.4%
+#:
+#: So a 3-round bout is asked at 2.5 -- "does it reach the final round" -- which
+#: the record says happens 55.5% of the time. A 5-round bout is asked at 4.5,
+#: which splits 50.4/49.6. Both are as close to a coin flip as a whole-round
+#: ladder can get, which is the entire job of a rung.
+#:
+#: NOT 1.5, though a book posted it: over 1.5 on a three-round bout is 72.1% in
+#: this record, and a rung that is right three times in four measures the
+#: schedule rather than the model.
+UFC_ROUNDS_LADDER: dict[int, float] = {3: 2.5, 5: 4.5}
+UFC_ROUNDS_LADDER_DECLARED = "2026-09-03T00:00:00Z"
+
+
+def ufc_rounds_rung(scheduled_rounds: int | None) -> float | None:
+    """The declared rung for a bout of this length, or None.
+
+    REFUSED, NOT GUESSED, for any length the ladder does not declare. The
+    stored record contains 19 bouts claiming FOUR scheduled rounds, which is
+    not a UFC bout length -- the source is wrong about them. Asking a rounds
+    question about a bout whose length we do not believe would be a confident
+    claim resting on a number nobody can defend, so those bouts get no rounds
+    question at all and the absence is recorded as an absence.
+    """
+    if scheduled_rounds is None:
+        return None
+    return UFC_ROUNDS_LADDER.get(int(scheduled_rounds))
+
+
 def expected_margin(sport: str, home_rating: float | None,
                     away_rating: float | None) -> float | None:
     """The home side's expected winning margin, from stored ratings only.

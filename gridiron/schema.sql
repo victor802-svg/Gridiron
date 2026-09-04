@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS games (
     -- LAW 6: every row belongs to exactly one sport, and nothing aggregates
     -- across them. Defaulted to 'nfl' so rows written before there was a second
     -- sport keep the only value they could have had.
-    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb')),
+    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb','ufc')),
     season        INTEGER NOT NULL,
     week          INTEGER NOT NULL,
     game_type     TEXT    NOT NULL,          -- REG | WC | DIV | CON | SB
@@ -526,7 +526,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- every record here belongs to exactly one sport (LAW 6).
 CREATE TABLE IF NOT EXISTS session_seen (
     session_id    TEXT NOT NULL,
-    sport         TEXT NOT NULL CHECK (sport IN ('nfl','mlb','nba','cfb')),
+    sport         TEXT NOT NULL CHECK (sport IN ('nfl','mlb','nba','cfb','ufc')),
     last_seen_utc TEXT NOT NULL,
     PRIMARY KEY (session_id, sport)
 );
@@ -607,7 +607,7 @@ CREATE INDEX IF NOT EXISTS snap_pred ON market_snapshots (prediction_id);
 CREATE TABLE IF NOT EXISTS predictions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     created_utc   TEXT    NOT NULL,
-    sport         TEXT    NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb')),
+    sport         TEXT    NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb','ufc')),
     game_id       TEXT    NOT NULL REFERENCES games (id),
     -- 'moneyline' is MLB's only market; NBA and NFL use spread + prop.
     -- 'total' is college football's third question shape: the two teams'
@@ -684,7 +684,7 @@ CREATE INDEX IF NOT EXISTS pred_sport ON predictions (sport, market_type, prop_t
 -- another's record by a name collision.
 CREATE TABLE IF NOT EXISTS factors (
     name          TEXT PRIMARY KEY,
-    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb')),
+    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb','ufc')),
     added_utc     TEXT NOT NULL
                   CHECK (added_utc LIKE '____-__-__T%'),
     -- LAW 2: a factor without a stated causal reason is not a factor.
@@ -697,7 +697,7 @@ CREATE TABLE IF NOT EXISTS factors (
 
 CREATE TABLE IF NOT EXISTS factor_scores (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb')),
+    sport         TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb','ufc')),
     computed_utc  TEXT NOT NULL,
     factor        TEXT NOT NULL REFERENCES factors (name),
     window        TEXT NOT NULL,        -- 'since_activation' | 'season:2026' | ...
@@ -728,7 +728,7 @@ CREATE INDEX IF NOT EXISTS llm_day ON llm_calls (day_utc);
 -- re-explained with the exact weights that produced it.
 CREATE TABLE IF NOT EXISTS model_fits (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    sport              TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb')),
+    sport              TEXT NOT NULL DEFAULT 'nfl' CHECK (sport IN ('nfl','mlb','nba','cfb','ufc')),
     fitted_utc         TEXT NOT NULL,
     factor_set_version TEXT NOT NULL,
     market_type        TEXT NOT NULL,

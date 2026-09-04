@@ -205,7 +205,21 @@ class MigrationRefused(RuntimeError):
 #: Tables whose `sport` CHECK must admit every declared sport, and which carry
 #: no law that a rebuild could violate. `predictions` is NOT here: it is
 #: append-only, its rebuild is verified row-for-row, and it has its own path.
-WIDEN_ON_SIGHT = ("session_seen",)
+#: Tables whose sport CHECK is rebuilt on sight when a sport is declared.
+#:
+#: EVERY TABLE THAT CARRIES THE CHECK IS HERE from 2026-09-03, when UFC was
+#: declared. It used to name `session_seen` alone, which is how the same
+#: defect bit three times in one build: the record accepted college games,
+#: then refused the first prediction about one, then served a 500 on the
+#: college digest. A list that has to be extended by hand every time a sport
+#: is added is a list that will be short again.
+#:
+#: `predictions` is DELIBERATELY ABSENT and is widened separately, with the
+#: row-count-and-hash verification LAW 3 deserves. Everything here holds facts
+#: or derived numbers rather than claims, so a plain verified copy is enough --
+#: but it is still verified, which the first version of this was not.
+WIDEN_ON_SIGHT = ("session_seen", "games", "factors", "factor_scores",
+                  "model_fits")
 
 
 def widen_sport_checks(conn: sqlite3.Connection) -> list[str]:
@@ -226,6 +240,20 @@ def widen_sport_checks(conn: sqlite3.Connection) -> list[str]:
 
     done = []
     for table in WIDEN_ON_SIGHT:
+        # RECOVER A REBUILD THAT DIED HALF WAY. If `<table>_narrow` is still
+        # here, a previous attempt renamed the table aside and never finished.
+        # That happened for real on 2026-09-03: `games` is referenced by seven
+        # other tables, so DROPping the renamed original tripped a foreign-key
+        # constraint after the copy, the transaction rolled back, and the
+        # database was left with an empty `games` and 21,527 rows sitting in
+        # `games_narrow`. Nothing was lost, and nothing recovered it either.
+        stale = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (f"{table}_narrow",)).fetchone()
+        if stale:
+            done.append(_finish_widening_table(conn, table))
+            continue
+
         row = conn.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
             (table,),
@@ -235,20 +263,56 @@ def widen_sport_checks(conn: sqlite3.Connection) -> list[str]:
         stored = row[0]
         if all(f"'{sport}'" in stored for sport in config.SPORTS):
             continue
-        columns = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
-        joined = ", ".join(columns)
+        expected = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         conn.execute("PRAGMA legacy_alter_table = ON")
         conn.execute(f"ALTER TABLE {table} RENAME TO {table}_narrow")
         conn.execute("PRAGMA legacy_alter_table = OFF")
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        done.append(_finish_widening_table(conn, table, expected))
+    return done
+
+
+def _finish_widening_table(conn: sqlite3.Connection, table: str,
+                           expected: int | None = None) -> str:
+    """Copy `<table>_narrow` back into the rebuilt table, verify, then drop.
+
+    FOREIGN KEYS ARE OFF FOR THE COPY, and that is not laziness. Seven tables
+    reference `games(id)`; renaming it aside repoints their constraints at
+    `games_narrow`, so the drop fails and takes the whole rebuild with it. The
+    verified `predictions` widening has done this since it was written and
+    this one did not, which is the whole of the 2026-09-03 failure.
+
+    EVERY ROW IS COUNTED. The copy uses OR IGNORE because the schema script may
+    have seeded reference rows, and OR IGNORE is exactly the construct this
+    project distrusts -- so it is checked rather than believed. A short copy
+    leaves the original in place under `<table>_narrow` and raises.
+    """
+    columns = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+    narrow = {r[1] for r in conn.execute(f"PRAGMA table_info({table}_narrow)")}
+    shared = [c for c in columns if c in narrow]
+    joined = ", ".join(shared)
+    if expected is None:
+        expected = conn.execute(
+            f"SELECT COUNT(*) FROM {table}_narrow").fetchone()[0]
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
         conn.execute(
             f"INSERT OR IGNORE INTO {table} ({joined})"
-            f" SELECT {joined} FROM {table}_narrow"
-        )
+            f" SELECT {joined} FROM {table}_narrow")
+        after = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        if after < expected:
+            conn.rollback()
+            raise MigrationRefused(
+                f"widening `{table}` would have lost rows: {expected} before, "
+                f"{after} after. The original is left in place as "
+                f"`{table}_narrow` and nothing was dropped."
+            )
         conn.execute(f"DROP TABLE {table}_narrow")
         conn.commit()
-        done.append(table)
-    return done
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+    return f"{table} ({after} rows)"
 
 
 def _needs_market_type_widening(conn: sqlite3.Connection) -> bool:

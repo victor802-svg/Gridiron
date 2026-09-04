@@ -98,11 +98,12 @@ PORT = int(os.environ.get("GRIDIRON_PORT", "8848"))
 # --- the sports ------------------------------------------------------------
 # Order is display order in the interface. NFL first because it is the sport
 # the project was built for; MLB second because it is the one resolving daily.
-SPORTS: tuple[str, ...] = ("nfl", "mlb", "nba", "cfb")
+SPORTS: tuple[str, ...] = ("nfl", "mlb", "nba", "cfb", "ufc")
 
 #: "NCAAF" rather than "CFB" because it is what the tab says everywhere
 #: else in the sport and what a reader will recognise beside NFL.
-SPORT_LABELS = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA", "cfb": "NCAAF"}
+SPORT_LABELS = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA", "cfb": "NCAAF",
+                "ufc": "UFC"}
 
 
 class CrossSportAggregation(RuntimeError):
@@ -146,7 +147,9 @@ def require_sport(sport: str | None, where: str) -> str:
 #: on every 2026 event, so slates are derived from dates. Saturday carries
 #: 60 games, Friday 8, Sunday 16 -- three different slates a week-shaped
 #: ordinal would merge.
-SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week",
+#: "card" for UFC, because that is what a night of fights is called and
+#: nothing else in the sport's vocabulary would be recognised.
+SPORT_SLATE_WORD = {"nfl": "week", "mlb": "day", "nba": "week", "ufc": "card",
                     "cfb": "day"}
 
 #: HOW MLB SCORES ARE DISTRIBUTED, measured 2026-09-02 on every stored final.
@@ -292,6 +295,19 @@ FINAL_PASS: dict[str, FinalPass] = {
         basis=("08:00 on a Saturday and 14:00 for a weeknight game. Not "
                "measured: no college injury or depth-chart data is stored."),
     ),
+    # UFC: a card is one evening and the prelims start hours before the main
+    # event, so the late pass sits before the first bout rather than before
+    # any particular one. NOT MEASURED -- no dated record of when a UFC card's
+    # information settles exists, and inventing one would be the failure
+    # docs/TIMING_FEASIBILITY.md exists to refuse.
+    "ufc": FinalPass(
+        minutes_before_first=180,
+        at_local=(),
+        measured=False,
+        basis=("3 hours before the first bout. Not measured: nothing in the "
+               "record dates when a card's line-up settles, and weigh-ins are "
+               "the day before."),
+    ),
     "nba": FinalPass(
         minutes_before_first=None,
         at_local=("15:00",),
@@ -343,6 +359,13 @@ SPORT_MARKETS: dict[str, tuple[str, ...]] = {
     # teams' combined score, which is not a margin and shares no calibration
     # family with one.
     "cfb": ("spread", "moneyline", "total"),
+    # THE OPERATOR'S THREE, IN THEIR ORDER (2026-09-03). No method-of-victory:
+    # it was excluded by the brief and is not smuggled in as a fourth.
+    #
+    # `rounds` and `distance` are the sport's own question shapes and share no
+    # calibration family with a moneyline -- a fight ending inside a round is
+    # right or wrong for entirely different reasons than who won it.
+    "ufc": ("moneyline", "rounds", "distance"),
 }
 
 #: Which of a sport's markets are player props (the rest are game markets).
@@ -353,6 +376,9 @@ SPORT_PROP_MARKETS: dict[str, tuple[str, ...]] = {
             "pitcher_strikeouts"),
     "nba": ("points", "rebounds", "assists", "threes"),
     "cfb": (),          # measured, not assumed: no prop lines exist
+    # NO PLAYER PROPS IN UFC. A bout has two competitors and the questions are
+    # about the bout, not about a person's counting stat.
+    "ufc": (),
 }
 
 #: MLB's four, in descending order of liquidity -- which is also descending
@@ -369,6 +395,9 @@ SPORT_CURRENT_SEASON = {
     # NBA seasons are named by their starting year: 2026 is 2026-27.
     "nba": int(os.environ.get("GRIDIRON_NBA_SEASON", "2026")),
     "cfb": int(os.environ.get("GRIDIRON_CFB_SEASON", "2026")),
+    # UFC seasons are plain calendar years -- the sport has no season shape at
+    # all, only a rolling calendar of cards.
+    "ufc": int(os.environ.get("GRIDIRON_UFC_SEASON", "2026")),
 }
 
 #: Which of a sport's markets are TOTALS -- a question about the two teams'
@@ -380,6 +409,10 @@ SPORT_CURRENT_SEASON = {
 #: merging an easy market with a hard one applies exactly here.
 SPORT_TOTAL_MARKETS: dict[str, tuple[str, ...]] = {
     "cfb": ("total",),
+    # THE ROUNDS MARKET IS A TOTAL: over or under a posted length. It is named
+    # `rounds` rather than `total` because a reader asked "the total" about a
+    # fight would reasonably think of points, and there are none.
+    "ufc": ("rounds",),
 }
 
 
@@ -404,6 +437,11 @@ MLB_PLAYER_SEASONS: tuple[int, ...] = tuple(
 
 #: Seasons pulled by the loader, per sport.
 SPORT_LOAD_SEASONS = {
+    # UFC: the years already loaded by ufc_loader (2022-2026). A card is 12
+    # bouts and each bout costs a status fetch, so a season is roughly 1,800
+    # requests -- five gives the Elo enough history to be worth having and
+    # keeps the loader courteous.
+    "ufc": tuple(range(2022, 2027)),
     "nfl": tuple(range(2016, 2027)),
     "mlb": tuple(range(2021, 2027)),
     "nba": tuple(range(2021, 2027)),
