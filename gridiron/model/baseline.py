@@ -209,8 +209,13 @@ def prop_training_set(
     through_season: int | None = None,
     through_week: int | None = None,
     progress=None,
-) -> tuple[list[dict[str, float]], list[int], list[str]]:
+    with_counts: bool = False,
+) -> tuple:
     """One row per selected prop question of this type, labelled over/under.
+
+    `with_counts=True` returns a fourth list carrying the ACTUAL COUNT and the
+    rung for each row. Session C needs both forms fitted on the identical
+    selection, and the default shape is unchanged so nothing else notices.
 
     Selection runs a WEEK at a time using the same capped, liquidity-ordered
     rule the live slate uses, so the model is fitted on the questions it will
@@ -224,6 +229,7 @@ def prop_training_set(
     cache = context.WeekCache()
     rows: list[dict[str, float]] = []
     labels: list[int] = []
+    extras: list[dict] = []
 
     for i, w in enumerate(weeks):
         if progress and i % 25 == 0:
@@ -249,8 +255,18 @@ def prop_training_set(
             fv = compute.feature_vector(ctx, "prop")
             rows.append(fv.values)
             labels.append(questions.prop_outcome(float(actual["v"]), pick["line_asked"]))
+            # THE COUNT AND THE RUNG, kept beside the over/under label so a
+            # rate model can be fitted on the same selection the logistic
+            # sees. Session C's whole comparison depends on the two forms
+            # being asked about identical rows -- fitting them on different
+            # selections would compare the selections.
+            extras.append({"count": float(actual["v"]),
+                           "rung": float(pick["line_asked"]),
+                           "season": w["season"], "week": w["week"]})
 
     names = [f.name for f in registry.active_factors("nfl", "prop")]
+    if with_counts:
+        return rows, labels, names, extras
     return rows, labels, names
 
 
