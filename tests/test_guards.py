@@ -1165,11 +1165,42 @@ def test_superseded_forecasts_are_not_in_the_arithmetic():
 
 def test_a_factor_set_query_still_returns_its_own_rows():
     """THE SUBQUERY MIRRORS THE FILTER. Without that, asking for fs1 matches
-    the fs2 row's id, fails the outer filter and returns nothing at all."""
+    the fs2 row's id, fails the outer filter and returns nothing at all.
+
+    THE EXPECTED COUNTS ARE READ, NOT REMEMBERED (2026-09-04). This test held
+    `("fs1", 48), ("fs2", 56)` and went red the first time the NFL moneyline
+    -- declared the night before -- actually ran: 16 new rows landed in fs2
+    and the test failed for the one reason that is not a defect, that the
+    record grew. STEP 4 corrected four tests of exactly this shape on
+    2026-09-04 and this is the fifth.
+
+    WHAT IS ACTUALLY BEING ASSERTED is that the mirrored subquery PARTITIONS:
+    every factor set returns its own standing rows, none returns zero, and
+    together they account for every question exactly once. All three are
+    computed from the record, so the next market off the roster does not need
+    this file edited -- which is the failure the numbers above were.
+    """
     from gridiron import db as _db
 
     conn = _db.connect()
-    for fsv, expected in (("fs1", 48), ("fs2", 56)):
+    sets = [r[0] for r in conn.execute(
+        "SELECT DISTINCT factor_set_version FROM predictions"
+        " WHERE sport='nfl' ORDER BY factor_set_version")]
+    assert len(sets) >= 2, (
+        "this test needs at least two factor sets in the record to say "
+        "anything; with one, the mirrored subquery cannot be got wrong")
+
+    total = 0
+    for fsv in sets:
+        # The standing row per question WITHIN this factor set, counted the
+        # long way round so it cannot share code with the query under test.
+        expected = len({
+            (r[0], r[1], r[2], r[3], r[4]) for r in conn.execute(
+                "SELECT game_id, market_type, subject, predictor,"
+                " IFNULL(line_asked, -1e9) FROM predictions"
+                " WHERE sport='nfl' AND factor_set_version = ?", (fsv,))
+        })
+        assert expected > 0
         got = conn.execute(f"""
           SELECT COUNT(*) FROM predictions p
            WHERE p.sport='nfl' AND p.factor_set_version='{fsv}'
@@ -1183,6 +1214,19 @@ def test_a_factor_set_query_still_returns_its_own_rows():
                           ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)
         """).fetchone()[0]
         assert got == expected, f"{fsv}: {got} of {expected}"
+        assert got > 0, f"{fsv} returned nothing at all, which is the defect"
+        total += got
+
+    # AND THEY PARTITION. Every question in the record is the standing row of
+    # exactly one factor set, so the parts sum to the whole -- the property
+    # that would break if the subquery stopped mirroring the outer filter.
+    whole = len({
+        (r[0], r[1], r[2], r[3], r[4], r[5]) for r in conn.execute(
+            "SELECT game_id, market_type, subject, predictor,"
+            " IFNULL(line_asked, -1e9), factor_set_version FROM predictions"
+            " WHERE sport='nfl'")
+    })
+    assert total == whole, f"{total} standing rows across {len(sets)} factor sets, {whole} questions"
 
 
 def test_answering_a_slate_twice_is_refused(tmp_path):

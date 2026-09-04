@@ -197,7 +197,23 @@ def _agrees(item, sentences):
     if not contribs or not sentences:
         return False
     top = max(contribs, key=lambda c: abs(c["contribution"]))
-    phrase = PHRASES.get(top["factor"])
+    # THE SAME DOOR THE COMPOSER USES (2026-09-04). An asked-distance factor
+    # does not render its declared WHY phrase -- `why_sentences` replaces it
+    # with the measured distance woven in, "the question sits 1 point above
+    # what the model expects", which says how far and which way where the
+    # declared phrase says only that a distance exists.
+    #
+    # THIS CHECKER LOOKED FOR THE DECLARED PHRASE and could not see the better
+    # sentence, so it read a correct card as a disagreement. It went red the
+    # first time an asked distance was the LARGEST contributor on any row in
+    # the record -- three rows, all written 2026-09-04T18:40Z -- which is a
+    # threshold nobody crossed for two weeks and had nothing to do with the
+    # words being wrong.
+    #
+    # ASKING `language` RATHER THAN KEEPING A SECOND COPY is the whole point.
+    # A checker that reimplements what it checks agrees with itself.
+    phrase = (language.asked_distance_phrase(top["factor"], top.get("value"))
+              or PHRASES.get(top["factor"]))
     if not phrase:
         return False
     first = sentences[0]
@@ -396,3 +412,49 @@ def test_no_two_factors_in_a_sport_share_a_plain_name():
         "these factors share a plain name inside one sport, so a list that "
         f"shows the name alone cannot tell them apart: {clashes}"
     )
+
+
+def test_the_checker_can_see_an_asked_distance_leading_the_reasons():
+    """REGRESSION, 2026-09-04. The one shape this checker was blind to.
+
+    An asked-distance factor renders the measured distance rather than its
+    declared WHY phrase, and for two weeks no prediction in the record had one
+    as its LARGEST contributor -- so a checker that looked only for the
+    declared phrase agreed with everything and was never asked the question it
+    could not answer. Three rows crossed that threshold and it read three
+    correct cards as disagreements.
+
+    BOTH DIRECTIONS ARE ASSERTED, because a checker relaxed until it stops
+    complaining is worse than the finding it silenced: prose naming the wrong
+    factor must still fail with an asked distance on top.
+    """
+    item = _item(
+        [("asked_distance", -0.30), ("cold", -0.10)],
+        side="not_cover", market="spread",
+    )
+    # The value the distance sentence is built from travels on the contribution.
+    item["contributions"][0]["value"] = 1.4
+
+    sentences = language.why_sentences(item, PHRASES)
+    assert sentences, "an asked distance on top produced no reasons at all"
+    assert "sits 1 point above" in sentences[0], (
+        f"the lead is not the measured distance: {sentences[0]!r}")
+    assert _agrees(item, sentences), (
+        "the checker cannot see the sentence the composer actually writes for "
+        "an asked distance, so a correct card reads as a disagreement")
+
+    wrong_factor = ["The biggest single reason is how cold it is.",
+                    "The cold points the same way, and not by a little."]
+    assert not _agrees(item, wrong_factor), (
+        "prose naming the wrong factor passed while an asked distance led -- "
+        "the checker was relaxed rather than taught")
+
+
+def test_a_zero_asked_distance_still_names_itself():
+    """"0 points above" reads as a measurement that failed, so it says so
+    plainly -- and the checker must recognise that wording too."""
+    item = _item([("asked_distance", -0.30)], side="not_cover", market="spread")
+    item["contributions"][0]["value"] = 0.2
+    sentences = language.why_sentences(item, PHRASES)
+    assert "about where the model expects" in sentences[0], sentences[0]
+    assert _agrees(item, sentences)

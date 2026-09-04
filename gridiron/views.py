@@ -498,7 +498,32 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         seen = standing.get(key)
         if seen is None or (r["created_utc"], r["id"]) > (seen["created_utc"], seen["id"]):
             standing[key] = r
-    superseded = len(rows) - len(standing)
+    # WHAT THE SLATE IS HIDING, COUNTED AGAINST THE RECORD (2026-09-04).
+    #
+    # `len(rows) - len(standing)` was the difference between two DIFFERENT
+    # definitions of "the same question" and reported only the second of them.
+    # The fetch above already drops a row that a later row of the SAME FACTOR
+    # SET replaced -- that is the door `_superseded_ids` and calibration both
+    # use -- and the dedup here drops what is left over a BROADER key, which
+    # is what catches the 2026-08-29 double run across factor set versions.
+    # Both kinds of hiding are real; only the second was ever counted.
+    #
+    # IT UNDER-REPORTED BY 16 ON THE LIVE NFL SLATE: 45 rows hidden, 29
+    # reported. This is the figure the close-out calls "how the operator finds
+    # out a prediction task ran twice", so a count that is quietly short is
+    # the one thing it must not be.
+    #
+    # COUNTED, NOT SUBTRACTED. One query over the slate, minus what the page
+    # actually shows. A second definition cannot drift from it because there
+    # is no second definition left.
+    on_slate = conn.execute(
+        "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport = ? AND g.season = ? AND g.week = ? AND p.predictor = ?"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)",
+        (sport, season, wk, chosen),
+    ).fetchone()[0]
+    superseded = max(0, on_slate - len(standing))
     rows = sorted(standing.values(), key=lambda r: r["id"])
 
     forecaster_message = None
