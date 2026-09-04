@@ -141,6 +141,22 @@ def humanise(name: str | None) -> str:
 NAME_FORMS = ("full", "city")
 
 
+def surname(name: str | None) -> str:
+    """"Salahdine Parnasse" -> "Parnasse". How a fight is billed.
+
+    A suffix travels with the surname: "Fernando Tatis Jr." is "Tatis Jr.",
+    not "Jr.". Returns the whole string when there is nothing to trim, so a
+    single-word name is left alone rather than emptied.
+    """
+    parts = (name or "").split()
+    if not parts:
+        return ""
+    if len(parts) > 2 and parts[-1].rstrip(".").lower() in (
+            "jr", "sr", "ii", "iii", "iv"):
+        return " ".join(parts[-2:])
+    return parts[-1]
+
+
 def team_name(code: str | None, names: dict | None, form: str = "full") -> str:
     """A club's name in the requested form, or its tricode when none was fetched.
 
@@ -276,7 +292,7 @@ def side_named(item: dict, form: str = "full") -> tuple[str, float | None]:
         # AGAINST Alabama. `tile_line` and `phrase` negate the line exactly
         # when this function swapped the club, and both ask `is_no_side` to
         # decide, so they cannot disagree about which happened.
-        if is_no_side(item) and item.get("opponent"):
+        if side_flips(item):
             name = item["opponent"]
         name = team_name(name, item.get("team_names"), form)
 
@@ -288,6 +304,46 @@ def is_no_side(item: dict) -> bool:
     yes = YES_SIDE.get(item.get("market_type"))
     side = item.get("model_side")
     return bool(yes and side and side != yes)
+
+
+def side_flips(item: dict) -> bool:
+    """Is this pick RESTATED as the other side, or said as it was asked?
+
+    THE ONE DOOR FOR THE FLIP ITSELF, which is a different question from
+    `is_no_side` and had been answered in three places with two different
+    answers.
+
+    Taking the NO side is not enough. Restating "Las Vegas does not cover -7.5"
+    as "Miami covers +7.5" needs SOMEBODY TO NAME, and a card whose opponent
+    was never recorded has nobody. `side_named` knew that and gated its flip on
+    the opponent; `flipped_line` did not, and negated the number anyway. On a
+    card with no opponent that produced "WAS covers +3.5" -- the original
+    subject, the flipped line, and a verb belonging to neither.
+
+    Every card in the live record carries an opponent, so the two never
+    disagreed in production. They disagreed on exactly the inputs a test writes
+    by hand, which is the worst place for a rule to differ: the fixtures that
+    are supposed to pin the behaviour were pinning a case the code never meets.
+    """
+    return is_no_side(item) and bool(item.get("opponent"))
+
+
+def spread_verb(item: dict) -> str:
+    """"covers" or "does not cover", decided ONCE.
+
+    Written out as a function rather than as an expression in two places
+    because the two places are `phrase` and `chance_clause`, they sit four
+    screens apart, and a card on which they disagree is the defect this module
+    has now produced twice. The second time, one of them had the condition
+    right and the other had it half right, and the half was invisible until a
+    layout put the two sentences beside each other.
+
+    The verb is positive when the sentence is about the side being BACKED --
+    either the model took the YES side, or it took the NO side and there was an
+    opponent to restate the pick as. It is negative only when the question
+    stands as asked and the answer is no.
+    """
+    return "covers" if (not is_no_side(item) or side_flips(item))         else "does not cover"
 
 
 def phrase(item: dict) -> str:
@@ -367,10 +423,11 @@ def phrase(item: dict) -> str:
             return f"{subject} to win"
         return f"{subject} {side_word(side)}".strip()
 
-    # SPREADS. The subject was flipped by `side_named` when the model took the
-    # NO side, so the number flips with it and the verb is always the positive
-    # one: this sentence is about the side being backed.
-    return f"{subject} covers {_signed(flipped_line(item))}".strip()
+    # SPREADS. The subject and the number flip together, decided once by
+    # `side_flips`, so the verb is the positive one whenever the sentence is
+    # about the side being backed -- and the negative one when there was no
+    # opponent to move the pick to and the question stands as asked.
+    return f"{subject} {spread_verb(item)} "           f"{_signed(flipped_line(item))}".strip()
 
 
 class NoWordsForThisMarket(ValueError):
@@ -518,7 +575,12 @@ def chance_clause(item: dict) -> str:
         # Found by rendering the new hero, which puts the pick sentence and the
         # chance clause four lines apart in large type. The old tile put them at
         # opposite corners.
-        return f"{subject} covers"
+        #
+        # AND ONLY WHERE THE NAME ACTUALLY MOVED. With no opponent recorded
+        # there is nobody to restate the pick as, so the sentence says what was
+        # asked and answers it in the negative -- which is `side_flips`, the
+        # same door `side_named` and `flipped_line` now use.
+        return f"{subject} {spread_verb(item)}"
 
     # A MARKET THAT HAS NOT CLAIMED ITS WORDS GETS NONE (2026-09-03).
     #
@@ -2262,7 +2324,10 @@ def flipped_line(item: dict) -> float | None:
     line = item.get("line_asked")
     if line is None:
         return None
-    return -float(line) if is_no_side(item) else float(line)
+    # THE NUMBER FLIPS EXACTLY WHEN THE NAME DID, and `side_flips` is the one
+    # place that decides. This used to ask `is_no_side`, which flips the line
+    # even when there is no opponent to move the pick to.
+    return -float(line) if side_flips(item) else float(line)
 
 
 def tile_label(item: dict) -> str:

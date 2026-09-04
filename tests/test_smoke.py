@@ -138,7 +138,7 @@ def test_the_calibration_chart_refuses_a_bucket_with_no_n(page):
 
 def test_every_screen_renders(page):
     for route, selector in (
-        ("#/week", "#week-cards .row"),
+        ("#/week", "#week-cards .card"),
         # THE CARDS, not the table: the measurements in full sit behind a
         # collapsed <details> now (P5), so their rows exist and are not
         # visible. The cards are what a reader sees on this page.
@@ -211,9 +211,9 @@ def test_the_pick_states_model_market_and_gap_in_words(page):
     would have kept passing on if the rail had silently emptied.
     """
     _open_first_card(page)
-    page.wait_for_selector("#week-cards .row .row-numbers", timeout=10000)
+    page.wait_for_selector("#week-cards .card .card-numbers", timeout=10000)
     text = page.eval_on_selector(
-        "#week-cards .row .row-numbers", "el => el.textContent.trim()")
+        "#week-cards .card .card-numbers", "el => el.textContent.trim()")
     assert "The model says" in text, text
     assert re.search(r"\d+%", text), f"no percentage in the line: {text!r}"
     # Either a market comparison or the absence stated in words -- never a
@@ -227,7 +227,7 @@ def test_the_pick_states_model_market_and_gap_in_words(page):
 def test_no_graph_is_drawn_anywhere_on_picks(page):
     """R3: no graphs on Picks, in the tiles or behind the expansion."""
     _open_first_card(page)
-    page.wait_for_selector("#week-cards .row .row-numbers", timeout=10000)
+    page.wait_for_selector("#week-cards .card .card-numbers", timeout=10000)
     graphics = page.evaluate(
         """() => {
             const scope = document.getElementById('view-week');
@@ -259,15 +259,15 @@ def test_the_contribution_bars_render_signed(page):
 
 def test_a_card_expands_and_shows_its_detail(page):
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row", timeout=10000)
-    card = page.locator("#week-cards .row").first
-    detail = card.locator(".row-body")
+    page.wait_for_selector("#week-cards .card", timeout=10000)
+    card = page.locator("#week-cards .card").first
+    detail = card.locator(".card-body")
     # T1 old -> new: the detail is now display:none rather than a collapsed
     # max-height, so it has NO bounding box when closed. `is_visible()` is the
     # honest check either way and does not depend on how the hiding is done.
     assert not detail.is_visible(), "the card starts open"
 
-    card.locator(".row-head").click()
+    card.locator(".card-head").click()
     # WAIT FOR THE THING THE NEXT LINE ASSERTS. A clock here would pass on a
     # fast machine and fail on a loaded one, and the failure would read as
     # "the card did not expand" rather than "we did not wait long enough".
@@ -280,9 +280,9 @@ def test_a_card_expands_and_shows_its_detail(page):
     #
     # `.dumbbell` was asserted here until 2026-09-02. The graphic went with
     # GRIDIRON_16 R3 and the sentence replaced it.
-    assert card.locator(".row-why").count() == 1
-    assert card.locator(".row-numbers").count() == 1
-    assert card.locator(".row-more").count() == 1, "the link to the Factors page"
+    assert card.locator(".card-why").count() == 1
+    assert card.locator(".card-numbers").count() == 1
+    assert card.locator(".card-more").count() == 1, "the link to the Factors page"
 
 
 def test_the_bucket_line_never_shows_an_accuracy_without_its_n(page):
@@ -299,9 +299,9 @@ def test_the_bucket_line_never_shows_an_accuracy_without_its_n(page):
     # The compact screen hides the detail until a row is tapped, so this
     # opens one before looking for anything inside it.
     _open_first_card(page)
-    page.wait_for_selector("#week-cards .row .row-bucket", timeout=10000)
+    page.wait_for_selector("#week-cards .card .card-bucket", timeout=10000)
     lines = page.eval_on_selector_all(
-        "#week-cards .row .row-bucket", "els => els.map(e => e.textContent)"
+        "#week-cards .card .card-bucket", "els => els.map(e => e.textContent)"
     )
     assert lines
     for text in lines:
@@ -373,7 +373,7 @@ def test_every_moving_thing_is_inside_the_motion_vocabulary(page):
     `audit.motion_faults` can see.
     """
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row", timeout=10000)
+    page.wait_for_selector("#week-cards .card", timeout=10000)
     moving = page.evaluate(
         """() => {
             const out = [];
@@ -446,7 +446,7 @@ def test_nothing_moves_under_reduced_motion(served, _browser):
     page.wait_for_url(served + "/", timeout=15000)
     page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row", timeout=10000)
+    page.wait_for_selector("#week-cards .card", timeout=10000)
 
     assert page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches")
     durations = page.evaluate(
@@ -465,15 +465,15 @@ def test_nothing_moves_under_reduced_motion(served, _browser):
     assert durations == [], f"motion survived prefers-reduced-motion: {durations}"
 
     # ...and the card still opens, because motion is decoration not mechanism
-    page.locator("#week-cards .row .row-head").first.click()
+    page.locator("#week-cards .card .card-head").first.click()
     page.wait_for_function(
         """() => {
-            const row = document.querySelector('#week-cards .row');
+            const row = document.querySelector('#week-cards .card');
             return !!row && row.classList.contains('open');
         }""",
         timeout=10000,
     )
-    assert page.locator("#week-cards .row").first.evaluate(
+    assert page.locator("#week-cards .card").first.evaluate(
         "e => e.classList.contains('open')"
     )
     assert errors == []
@@ -495,7 +495,7 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     page.wait_for_url(served + "/", timeout=15000)
     page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row", timeout=10000)
+    page.wait_for_selector("#week-cards .card", timeout=10000)
 
     # The COLLAPSED list must not scroll sideways -- that is the state a
     # reader arrives in, and it is the state the 84px and 78px regressions
@@ -508,8 +508,8 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     # K2 old -> new: the detail lives behind a tap, so it has to be opened
     # before it can be measured. And it must not overflow AFTER opening
     # either -- an expanded row is still a phone screen.
-    page.locator("#week-cards .row .row-head").first.click()
-    page.wait_for_selector("#week-cards .row .row-numbers", timeout=5000)
+    page.locator("#week-cards .card .card-head").first.click()
+    page.wait_for_selector("#week-cards .card .card-numbers", timeout=5000)
     overflow_open = page.evaluate(
         "() => document.documentElement.scrollWidth > window.innerWidth + 1"
     )
@@ -521,7 +521,7 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     # to prove is that it is actually on screen and not clipped away.
     box = page.evaluate(
         """() => {
-            const n = document.querySelector('#week-cards .row .row-numbers');
+            const n = document.querySelector('#week-cards .card .card-numbers');
             if (!n) return null;
             const r = n.getBoundingClientRect();
             return { width: r.width, height: r.height,
@@ -736,10 +736,10 @@ def test_every_tap_target_on_the_slate_is_big_enough(phone):
     """44px is Apple's floor and the one most people cite. Checked on the
     controls that are actually tapped, not on every element."""
     phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#week-cards .row", timeout=10000)
+    phone.wait_for_selector("#week-cards .card", timeout=10000)
     small = phone.evaluate("""
       Array.from(document.querySelectorAll(
-        'nav a, #sport-tabs a, #sport-tabs button, select, button, .row-head'
+        'nav a, #sport-tabs a, #sport-tabs button, select, button, .card-head'
       ))
         .filter(el => el.offsetParent !== null)
         .map(el => ({ tag: el.tagName + '.' + (el.className || ''),
@@ -751,19 +751,19 @@ def test_every_tap_target_on_the_slate_is_big_enough(phone):
 
 def test_a_card_still_expands_on_a_phone(phone):
     phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#week-cards .row", timeout=10000)
-    head = phone.query_selector("#week-cards .row .row-head")
+    phone.wait_for_selector("#week-cards .card", timeout=10000)
+    head = phone.query_selector("#week-cards .card .card-head")
     head.click()
-    phone.wait_for_selector("#week-cards .row .row-body", timeout=5000)
+    phone.wait_for_selector("#week-cards .card .card-body", timeout=5000)
     assert _overflow(phone) <= 0, "an expanded card overflows the phone"
 
 
 def test_the_dumbbell_and_contribution_bars_fit(phone):
     """Both are horizontal by nature and are the first things to break narrow."""
     phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#week-cards .row", timeout=10000)
-    phone.query_selector("#week-cards .row .row-head").click()
-    phone.wait_for_selector("#week-cards .row .row-body", timeout=5000)
+    phone.wait_for_selector("#week-cards .card", timeout=10000)
+    phone.query_selector("#week-cards .card .card-head").click()
+    phone.wait_for_selector("#week-cards .card .card-body", timeout=5000)
 
     wide = phone.evaluate("""
       Array.from(document.querySelectorAll('.dumbbell, .contrib, .contrib-row'))
@@ -848,10 +848,10 @@ def _open_first_card(page):
     enough when every card was fully drawn.
     """
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row", timeout=10000)
-    head = page.locator("#week-cards .row .row-head").first
+    page.wait_for_selector("#week-cards .card", timeout=10000)
+    head = page.locator("#week-cards .card .card-head").first
     head.click()
-    page.wait_for_selector("#week-cards .row .row-body .row-numbers", timeout=5000)
+    page.wait_for_selector("#week-cards .card .card-body .card-numbers", timeout=5000)
 
 
 def test_a_pending_row_shows_five_things_and_hides_the_rest(page):
@@ -861,27 +861,27 @@ def test_a_pending_row_shows_five_things_and_hides_the_rest(page):
     used to fill several screens and the reader scrolled past the picks to
     find the picks."""
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row", timeout=10000)
-    row = page.locator("#week-cards .row").first
+    page.wait_for_selector("#week-cards .card", timeout=10000)
+    row = page.locator("#week-cards .card").first
 
     # visible, collapsed
-    assert row.locator(".row-title").count() == 1
-    assert row.locator(".row-pick .row-phrase").count() == 1
-    assert row.locator(".prob").count() == 1
+    assert row.locator(".card-game").count() == 1
+    assert row.locator(".card-pick .card-phrase").count() == 1
+    assert row.locator(".chance").count() == 1
     # R1 old -> new: `.tier`, which is what the stylesheet and the mockup
     # define. K2 emitted `chip chip-lean`, for which no rule existed.
     tier = row.locator(".tier").first
     assert tier.inner_text().strip() in ("LEAN", "SOLID", "STRONG")
 
     # ...and the detail is NOT on screen until it is asked for
-    body = row.locator(".row-body")
+    body = row.locator(".card-body")
     assert not body.is_visible(), "the row starts open"
 
-    row.locator(".row-head").click()
+    row.locator(".card-head").click()
     assert body.is_visible(), "the row did not expand"
     # `.dumbbell` until 2026-09-02; the graphic went with GRIDIRON_16 R3.
-    assert row.locator(".row-numbers").count() == 1
-    assert row.locator(".row-bucket").count() == 1
+    assert row.locator(".card-numbers").count() == 1
+    assert row.locator(".card-bucket").count() == 1
 
 
 def test_a_card_with_no_market_line_says_so_in_words(page):
@@ -894,7 +894,7 @@ def test_a_card_with_no_market_line_says_so_in_words(page):
     """
     _open_first_card(page)
     lines = page.eval_on_selector_all(
-        "#week-cards .row .row-numbers", "els => els.map(e => e.textContent.trim())")
+        "#week-cards .card .card-numbers", "els => els.map(e => e.textContent.trim())")
     assert lines, "no card states its numbers"
     absent = [t for t in lines if "no line to compare" in t]
     present = [t for t in lines if "The market implies" in t]
@@ -919,8 +919,12 @@ def test_a_resolved_pick_is_shown_on_results_not_on_picks(page):
     their verdicts.
     """
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .row, #week-cards .tile", timeout=10000)
-    assert page.locator("#view-week .row-done").count() == 0, (
+    page.wait_for_selector("#week-cards .card", timeout=10000)
+    # RE-POINTED AT THE CARD'S OWN STATE. `.row-done` was a class on the
+    # compact row; a card says what it is in `data-state`, which is the same
+    # claim read off the thing that actually carries it rather than off a
+    # marker class that has to be remembered separately.
+    assert page.locator('#view-week .card[data-state="final"]').count() == 0, (
         "a settled pick is still listed on Picks")
 
     _open_route(page, "#/results")

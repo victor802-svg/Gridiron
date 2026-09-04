@@ -686,7 +686,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 # --- the compact row (K2) -------------------------------------
                 # Built here, not in the renderer. The row shows five things and
                 # every one of them is a phrase the server wrote.
-                "row_title": _row_title(r),
+                "row_title": _row_title(r, team_names),
                 # THE TIER, IN WORDS, BESIDE THE TIME (E3). "Contender Series"
                 # rather than 'contender': a reader is told which kind of card
                 # this is, because a Contender Series bout goes the distance
@@ -2407,7 +2407,7 @@ def shown_prob(r) -> float:
     return calibrated if calibrated is not None else r["model_prob"]
 
 
-def _row_title(r) -> str:
+def _row_title(r, team_names=None) -> str:
     """The row's heading: a matchup, or a subject and what is being asked.
 
     "SD @ TB" for a game market; "TATIS JR. - HITS" for a prop, because on a
@@ -2418,10 +2418,24 @@ def _row_title(r) -> str:
     # visitor at a host, and there is neither: the two corners are stored in
     # the home/away columns because that is the shape `games` has, and the
     # interface may never repeat it back.
+    # FULL NAMES, AND "at" RATHER THAN "@" (cards UI, 2026-09-04). The brief
+    # asks for "Padres at Reds", and a heading in 22px type reading "MIA @ LV"
+    # is a database talking to itself in the largest words on the page. The
+    # tricode was right for a compact row 14px tall; the card is not that.
+    #
+    # THE CLUB'S OWN NAME, NOT ITS CITY. "Padres at Reds" is what the brief
+    # writes and what a person says; `team_name(..., "club")` gives it where
+    # the crosswalk has one and falls back to the tricode where it does not,
+    # which is the same rule every other name on the page follows.
     if r["sport"] == "ufc":
-        return f"{r['home']} vs {r['away']}"
+        # A FIGHT HAS NO HOME SIDE, and surnames are how a card is billed:
+        # "Hooker vs Parnasse", not two full names in a heading.
+        return (f"{language.surname(r['home'])} vs "
+                f"{language.surname(r['away'])}")
     if r["market_type"] != "prop":
-        return f"{r['away']} @ {r['home']}"
+        names = team_names
+        return (f"{language.team_name(r['away'], names, 'club')} at "
+                f"{language.team_name(r['home'], names, 'club')}")
     stat = _prose_prop_type(r, r["sport"])
     name = language.strip_market_suffix(r["subject"], stat)
     surname = name.split()[-1] if name else name

@@ -856,6 +856,21 @@ SIDE_ALLOWLIST: dict[str, str] = {
     "side_named": "2026-08-31: this IS the door.",
     "strip_market_suffix": "2026-08-31: takes a subject as an argument; reads no item.",
     "is_no_side": "2026-08-31: reads model_side only, never a name.",
+    "side_flips": (
+        "2026-09-04: this IS the door for the FLIP, which is a different "
+        "question from `side_named`'s. It reads `opponent` to ask whether "
+        "there is anybody to restate the pick as -- it never names them. "
+        "Added because the answer was previously given in two places with two "
+        "different rules: `side_named` gated the flip on an opponent and "
+        "`flipped_line` did not, so a card with no opponent got the original "
+        "name, the flipped number and a verb belonging to neither."
+    ),
+    "spread_verb": (
+        "2026-09-04: derives the verb from `side_flips` and reads no name at "
+        "all. It exists because `phrase` and `chance_clause` each decided the "
+        "verb themselves and disagreed on 68 of 321 live cards -- one card "
+        "reading 'Miami covers +7.5' beside 'chance Miami does not cover'."
+    ),
     "chance_clause": (
         "2026-08-31: renders the TRICODE deliberately -- club names are plural "
         "and 'Colorado Rockies wins' is wrong -- but still derives it from the "
@@ -1688,49 +1703,63 @@ def check_no_truncation_in_the_frame(path: Path | None = None) -> None:
         )
 
 
-#: The function that must not move the frame, and the two things it has to do:
-#: read the frame's position before changing anything, and put it back.
-_JS_KEEPS_SCROLL = re.compile(
-    r"function\s+selectTile\s*\([^)]*\)\s*\{(?P<body>.*?)\n  \}", re.S)
+#: THE PROMISE, RE-POINTED FROM THE DESK TO THE CARDS (2026-09-04).
+#:
+#: It used to be about `selectTile`: selecting a pick filled the rail, and if
+#: the frame's scroll position was not saved and restored, a reader half way
+#: down a 177-pick slate was thrown back to the top for the crime of looking at
+#: something. There is no rail and no frame now.
+#:
+#: THE SAME PROMISE SURVIVES IN A DIFFERENT MECHANISM. A card expands IN PLACE,
+#: and the way that breaks is for the toggle to re-render the slate instead of
+#: revealing a body that is already there -- which rebuilds every node, resets
+#: the scroll, and moves the card the reader just tapped. So the guard reads
+#: the toggle and refuses a re-render inside it.
+_JS_CARD_TOGGLE = re.compile(
+    r"const\s+toggle\s*=\s*\(\)\s*=>\s*\{(?P<body>.*?)\n    \};", re.S)
+
+#: What a toggle may not do. Each of these rebuilds the slate from the payload,
+#: which is the one thing that cannot happen while a reader is mid-tap.
+_REBUILDERS = ("renderWeek(", "innerHTML")
 
 
 def selection_moves_the_frame(js: str) -> list[str]:
-    """True-ish when selecting a pick would cost the reader their place."""
-    match = _JS_KEEPS_SCROLL.search(js)
+    """True-ish when opening a card would cost the reader their place."""
+    match = _JS_CARD_TOGGLE.search(js)
     if match is None:
-        return ["selectTile() is not in the renderer at all, so nothing "
-                "protects the reader's position when a pick is selected"]
+        return ["the card's expand toggle is not in the renderer at all, so "
+                "nothing says what happens when a reader opens a pick"]
     body = match.group("body")
     faults = []
-    if "scrollTop" not in body:
+    for rebuilder in _REBUILDERS:
+        if rebuilder in body:
+            faults.append(
+                f"the card's toggle calls {rebuilder!r}, which rebuilds the "
+                f"slate rather than revealing a body that is already on the "
+                f"page. Every node is replaced, the scroll position resets, "
+                f"and the card the reader just tapped moves out from under "
+                f"them.")
+    if "classList" not in body:
         faults.append(
-            "selectTile() never reads the frame's scrollTop, so it cannot "
-            "restore it. Selecting a pick half way down a 177-pick slate "
-            "would throw the reader back to the top, and looking at "
-            "something would cost them their place.")
-    elif body.count("scrollTop") < 2:
-        faults.append(
-            "selectTile() reads the frame's scrollTop but never writes it "
-            "back. Reading it and discarding it is the same as not reading "
-            "it, and looks more careful.")
+            "the card's toggle does not toggle a class, so whatever it does "
+            "to open the card is not the in-place reveal the stylesheet is "
+            "written for.")
     return faults
 
 
 SELECT_FIXTURE_POSITIVE = """
-  function selectTile(tile) {
-    if (!tile) return;
-    tile.setAttribute('aria-selected', 'true');
-    paintRail(tile);
-  }
+    const toggle = () => {
+      state.openCard = c.prediction_id;
+      renderWeek();
+    };
 """
 SELECT_FIXTURE_NEGATIVE = """
-  function selectTile(tile) {
-    if (!tile) return;
-    const frame = document.getElementById('week-frame');
-    const keep = frame ? frame.scrollTop : 0;
-    tile.setAttribute('aria-selected', 'true');
-    if (frame) frame.scrollTop = keep;
-  }
+    const toggle = () => {
+      if (!built) { buildCardBody(body, c); built = true; }
+      const open = !card.classList.contains('open');
+      card.classList.toggle('open', open);
+      head.setAttribute('aria-expanded', String(open));
+    };
 """
 
 
@@ -1752,11 +1781,11 @@ def _check_the_desk_scanners_can_see() -> None:
         problems.append("frame_truncation_faults flags `text-overflow: clip`, "
                         "which is the rule that FIXES truncation")
     if not selection_moves_the_frame(SELECT_FIXTURE_POSITIVE):
-        problems.append("selection_moves_the_frame misses a selectTile that "
-                        "never touches scrollTop")
+        problems.append("selection_moves_the_frame misses a card toggle that "
+                        "re-renders the slate instead of expanding in place")
     if selection_moves_the_frame(SELECT_FIXTURE_NEGATIVE):
-        problems.append("selection_moves_the_frame flags a selectTile that "
-                        "correctly saves and restores scrollTop")
+        problems.append("selection_moves_the_frame flags a card toggle that "
+                        "correctly reveals a body already on the page")
     if problems:
         raise LawViolation(
             "A SCANNER IS BLIND: a desk guard does not do what it says, so "

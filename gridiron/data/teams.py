@@ -120,9 +120,16 @@ def names(conn: sqlite3.Connection, sport: str) -> dict[str, dict]:
     -- `displayName` and `location` -- so neither is composed here.
     """
     return {
-        r["tricode"]: {"full": r["display_name"], "city": r["location"]}
+        r["tricode"]: {"full": r["display_name"], "city": r["location"],
+                       # THE CLUB'S OWN NAME (cards UI, 2026-09-04). "Padres at
+                       # Reds" is what the brief writes and what a person says
+                       # aloud; the full name repeats the city on both sides of
+                       # a matchup heading and the city alone drops the club.
+                       # From `shortName` in the feed, like the other two.
+                       "club": r["short_name"]}
         for r in conn.execute(
-            "SELECT tricode, display_name, location FROM teams WHERE sport = ?",
+            "SELECT tricode, display_name, location, short_name FROM teams"
+            " WHERE sport = ?",
             (sport,),
         )
     }

@@ -1051,7 +1051,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: var(--muted);
   font: 600 13px/1 var(--body);
   cursor: pointer;
-  transition: background var(--t-quick) var(--ease),
+  transition: background-color var(--t-quick) var(--ease),
               border-color var(--t-quick) var(--ease),
               color var(--t-quick) var(--ease);
 }
@@ -1103,7 +1103,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font: 600 12px/1.4 var(--body); color: var(--faint);
 }
 .hero-right {
-  flex: 0 0 auto; text-align: right;
+  flex: 0 1 auto; min-width: 0; text-align: right;
   background: var(--card-2);
   border-radius: var(--radius-card);
   padding: 18px 20px;
@@ -1121,19 +1121,33 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   width: 30px; height: 30px; border-radius: var(--radius-pill);
   border: 1px solid var(--line); background: var(--card-2);
   color: var(--muted); font: 600 16px/1 var(--body); cursor: pointer;
-  transition: background var(--t-quick) var(--ease),
+  transition: background-color var(--t-quick) var(--ease),
               color var(--t-quick) var(--ease);
 }
 .hero-arrow:hover { background: var(--panel); color: var(--chrome); }
 .hero-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.hero-dots { display: flex; gap: 7px; }
+/* `align-items` defaults to `stretch`, so the dots grew to the height of the
+   row and rendered as bars. A dot is a dot at whatever height its neighbour
+   happens to be. */
+.hero-dots { display: flex; align-items: center; gap: 7px; }
+/* A 44px TAP TARGET WITH AN 8px MARK INSIDE IT. The dot was 8px square and
+   the page-wide minimum-target rule stretched it to 8x44 -- a bar, not a dot.
+   Shrinking the target instead would have been choosing the look over the
+   reader: the mark is what is seen and the button is what is pressed, and
+   they do not have to be the same size. */
 .hero-dot {
-  width: 8px; height: 8px; padding: 0; border-radius: var(--radius-pill);
-  border: none; background: var(--line-lit); cursor: pointer;
-  transition: background var(--t-quick) var(--ease);
+  flex: 0 0 auto;
+  width: 20px; height: 44px; padding: 0; border: none;
+  background: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.hero-dot.on { background: var(--chrome); }
-.hero-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.hero-dot::after {
+  content: ""; width: 8px; height: 8px; border-radius: var(--radius-pill);
+  background: var(--line-lit);
+  transition: background-color var(--t-quick) var(--ease);
+}
+.hero-dot.on::after { background: var(--chrome); }
+.hero-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
 
 /* --- the chance block ------------------------------------------------------
    ONE NUMBER PER CARD (R2), and the word for what it is a number OF directly
@@ -1156,7 +1170,11 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 .cards {
   display: grid; gap: 14px;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* `minmax(280px, 1fr)` FORCES 280px EVEN WHEN IT DOES NOT FIT, which is the
+     classic auto-fill overflow: at 900px the track algorithm lays three 280px
+     columns plus gaps into 852px of content box and lets them hang 28px off
+     the right. `min(280px, 100%)` lets the last column give way. */
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
 }
 .card {
   background: var(--card);
@@ -1168,14 +1186,19 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .card:hover { border-color: var(--line-lit); }
 .card-head {
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* THE CHANCE COLUMN IS BOUNDED. `auto` sizes to max-content, and the line
+     under the number is a whole sentence -- "chance Nathaniel Wood vs Pavel
+     Andrusca covers" -- so the column grew to fit it and pushed the card past
+     the viewport. Both tracks are `minmax(0, ...)` so either may shrink, which
+     is what lets `overflow-wrap` do its job. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 40%);
   grid-template-areas: "mid chance" "meta chance";
   gap: 4px 14px;
   width: 100%;
   padding: 18px;
   background: none; border: none; text-align: left; cursor: pointer;
   color: inherit; font: inherit;
-  transition: background var(--t-quick) var(--ease);
+  transition: background-color var(--t-quick) var(--ease);
 }
 .card-head:hover { background: var(--card-2); }
 .card-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -1216,7 +1239,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   border: 1px solid var(--line); border-radius: var(--radius-pill);
   background: var(--card); color: var(--muted);
   font: 600 13px/1 var(--body); cursor: pointer;
-  transition: background var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
+  transition: background-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
 }
 .show-all:hover { background: var(--card-2); color: var(--chrome); }
 .show-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1452,18 +1475,16 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: var(--faint); max-width: 68ch;
 }
 
-/* ===========================================================================
-   THE DESK (D2). At 1280px and up the PAGE does not scroll -- the frame does.
-   ===========================================================================
+/* THE DESK'S `@media (min-width: 1280px)` WRAPPER STOOD HERE and its opening
+   brace outlived the rules inside it. Everything below -- the tier filter, the
+   slate clock, the live mark, the sport tabs' width behaviour -- was left
+   nested inside a query that only matched above 1280px, so at 390px the tab
+   labels never collapsed and the header ran 73px off the edge of the page.
 
-   Everything below is inside a min-width query, so the phone and the compact
-   rows are untouched by construction rather than by care: no rule here can
-   apply under 1280px, which is what D4 has to prove.
-
-   The mockup is docs/mockup/gridiron_desk.html and the numbers come from it:
-   a 440px rail, ~124px tiles three across, a 3px tier edge, a 48px fade. */
-
-@media (min-width: 1280px) {
+   A DANGLING BRACE IS A SILENT CSS FAILURE. The stylesheet still parsed, every
+   rule still existed, and they simply stopped applying at the widths that
+   needed them most. Found by the overflow test, which is the test that exists
+   for exactly this and which the old file also ran at 390. */
 /* --- the tier filter and the slate clock (E2) ------------------------------
    The tier control is a fourth segmented group beside the sort, styled by the
    same `.seg` rules; only its hidden state and the clock are new here. */
