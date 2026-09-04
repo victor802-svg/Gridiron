@@ -690,20 +690,33 @@ def merge_jointly_read(contributions: list, joint) -> list:
     if not grouped:
         return contributions
 
-    out, sums, order = [], {}, {}
+    # ONLY WHERE THE PAIR ACTUALLY BOTH CONTRIBUTED TO THIS ROW.
+    #
+    # A prediction written before the adjusted factor existed carries only the
+    # raw one, and so does a game where the adjusted factor was absent. There
+    # is no suppression in such a row -- one factor cannot suppress a factor
+    # that is not there -- and describing it with the joint phrase would tell a
+    # reader the model weighed "who they played" when it had no such input.
+    # Rewriting what an old row knew is the reading equivalent of editing it.
+    present = {}
     for c in contributions:
         name = c.get("factor")
-        if name not in grouped or c.get("missing"):
+        if name in grouped and not c.get("missing"):
+            present[grouped[name][0]] = present.get(grouped[name][0], 0) + 1
+    live = {names for names, n in present.items() if n > 1}
+
+    out, sums = [], {}
+    for c in contributions:
+        name = c.get("factor")
+        if name not in grouped or c.get("missing") or grouped[name][0] not in live:
             out.append(c)
             continue
         names, phrase = grouped[name]
-        key = names
-        if key not in sums:
-            sums[key] = {"factor": "+".join(names), "value": None,
-                         "contribution": 0.0, "joint_phrase": phrase}
-            order[key] = len(out)
-            out.append(sums[key])
-        sums[key]["contribution"] += float(c.get("contribution") or 0.0)
+        if names not in sums:
+            sums[names] = {"factor": "+".join(names), "value": None,
+                           "contribution": 0.0, "joint_phrase": phrase}
+            out.append(sums[names])
+        sums[names]["contribution"] += float(c.get("contribution") or 0.0)
     return out
 
 

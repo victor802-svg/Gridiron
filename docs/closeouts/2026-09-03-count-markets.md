@@ -16,7 +16,7 @@ three-item unattended session.
 | **C3** the "why" speaks the rate | **DONE** | Rendered on a live card — §6. |
 | **C4** plantings | **DONE** | Two, both caught; 149/149 overall — §7. |
 | Renders | **DONE** | Desk and 390px; a continuous market shows none — §6. |
-| Gate | **DONE** | 35/35 rows PASS; suite 973 tests, 0 failures — §8. |
+| Gate | **DONE** | 34 gate rows PASS, none FAIL; suite 973 tests, 0 failures — §8. |
 
 ## 2. What was actually broken, and it was mine
 
@@ -131,7 +131,10 @@ than a contradiction.
 
 - Suite: **973 tests, 0 failures**, 0 skips.
 - Plantings: **149/149**.
-- `verify.py`: **35/35 rows PASS**, steps 2, 3 and 4 PASS.
+- `verify.py`: **34 rows PASS, none FAIL**, steps 2, 3 and 4 PASS. (The
+  35th row is the suite itself, deliberately skipped in that invocation
+  and run separately — see below. An earlier draft of this line said
+  "35/35 PASS", which counted the skip as a pass.)
 - **Step 1 was run standalone.** The full gate now exceeds the ten-minute tool
   ceiling in this environment, so the suite was run on its own (`EXIT=0`) and
   the remaining steps with `--skip-tests`. Every step passed; none was skipped

@@ -4387,10 +4387,35 @@ def plant_a_suppressed_pair_read_as_two_reasons() -> Result:
                           "language.merge_jointly_read", False,
                           f"the pair was merged but its declared joint phrase "
                           f"is not what a reader sees: {merged!r}")
+    # AND THE MERGE MUST NOT REACH BACKWARDS. A prediction written before the
+    # adjusted factor existed carries only the raw one. Describing that row
+    # with the joint phrase would tell a reader the model weighed "who they
+    # played" when it had no such input -- rewriting what an old row knew,
+    # which is the reading equivalent of editing it.
+    old_row = dict(item, contributions=[
+        {"factor": "nba_net_rating_rolling", "value": 0.9,
+         "contribution": 0.44},
+        {"factor": "nba_rest_days_diff", "value": 1.0, "contribution": 0.14},
+    ])
+    old_said = " ".join(language.why_sentences(old_row, phrases, groups))
+    for _names, phrase in groups:
+        if phrase in old_said:
+            return Result(
+                LAW_ADJUSTED, "a suppressed pair read as two reasons",
+                "language.merge_jointly_read", False,
+                f"a row written before the adjusted factor existed is being "
+                f"described as though it had one: {old_said!r}")
+    if "playing lately" not in old_said:
+        return Result(
+            LAW_ADJUSTED, "a suppressed pair read as two reasons",
+            "language.merge_jointly_read", False,
+            f"the older row lost its own reason entirely: {old_said!r}")
+
     return Result(LAW_ADJUSTED, "a suppressed pair read as two reasons",
                   "language.merge_jointly_read", True,
                   f"unmerged, the card said: {unmerged!r} -- which is false; "
-                  f"merged it says: {merged!r}")
+                  f"merged it says: {merged!r}; and a row from before the pair "
+                  f"existed keeps its own words: {old_said!r}")
 
 
 def plant_both_form_factors_active_without_a_note() -> Result:
