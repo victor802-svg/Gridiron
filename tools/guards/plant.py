@@ -5299,6 +5299,125 @@ def plant_a_total_rung_that_can_push() -> Result:
                   f"the measured band is refused rather than clamped")
 
 
+LAW_CAP = "A NEW MARKET DOES NOT ADD QUESTIONS"
+
+
+def plant_a_market_declared_but_never_asked() -> Result:
+    """Declare a market in one place and ask it in another.
+
+    THIS HAPPENED, TODAY, TWICE IN ONE MARKET. `batter_strikeouts` was added to
+    `SPORT_MARKETS` and the slate kept producing none, because the day's props
+    are filled by round-robin over `SPORT_PROP_MARKETS` -- a SEPARATE tuple --
+    and the batting loop in the adapter listed its three markets by hand. A
+    market declared in the config and absent from either of those exists
+    everywhere except on a slate.
+
+    NOTHING FAILS WHEN THIS HAPPENS. The market has a category, a gate, a
+    fitted model and a ladder; it simply never gets a question, and the only
+    symptom is a scorecard row that stays at zero forever -- which looks
+    exactly like a market nobody has settled yet.
+    """
+    from gridiron.sports import mlb as _mlb
+
+    # Every declared MLB prop market must be reachable by the day's selection.
+    missing = [m for m in config.SPORT_MARKETS["mlb"]
+               if m in config.SPORT_PROP_MARKETS["mlb"]
+               and m not in config.MLB_PROP_MARKETS]
+    if missing:
+        return Result(LAW_CAP, "a market declared but never asked",
+                      "config.MLB_PROP_MARKETS covers the declared props",
+                      False,
+                      f"NOT CAUGHT - {missing} are declared markets that the "
+                      f"day's prop selection never walks")
+
+    # And every one must have the words and the ladder a question needs.
+    for market in config.MLB_PROP_MARKETS:
+        if market not in _mlb.PROP_WORDS:
+            return Result(LAW_CAP, "a market declared but never asked",
+                          "mlb.PROP_WORDS covers the declared props", False,
+                          f"NOT CAUGHT - {market} has no plain words, so "
+                          f"building its question raises rather than asking it")
+        if market not in config.MLB_PROP_LADDER:
+            return Result(LAW_CAP, "a market declared but never asked",
+                          "config.MLB_PROP_LADDER covers the declared props",
+                          False,
+                          f"NOT CAUGHT - {market} has no declared ladder")
+
+    # THE PLANT: a market in the declared list that the selection cannot reach.
+    real = config.MLB_PROP_MARKETS
+    try:
+        config.MLB_PROP_MARKETS = tuple(
+            m for m in real if m != "batter_strikeouts")
+        still_missing = [m for m in config.SPORT_PROP_MARKETS["mlb"]
+                         if m not in config.MLB_PROP_MARKETS]
+    finally:
+        config.MLB_PROP_MARKETS = real
+    if not still_missing:
+        return Result(LAW_CAP, "a market declared but never asked",
+                      "config.MLB_PROP_MARKETS covers the declared props",
+                      False,
+                      "the planted omission was not detectable, so this check "
+                      "would pass whatever the config said")
+    return Result(LAW_CAP, "a market declared but never asked",
+                  "config.MLB_PROP_MARKETS covers the declared props", True,
+                  f"a market removed from the selection list is detected "
+                  f"({still_missing}); and all {len(real)} declared props have "
+                  f"words, a ladder and a place in the round-robin")
+
+
+def plant_a_rung_that_inherits_its_base_rate() -> Result:
+    """Declare a rung the answer is almost always the same on.
+
+    THE ROSTER'S OWN SECTION 4(a). A question that lands one way 98.7% of the
+    time produces volume and no information: a model answering "no"
+    unconditionally would look calibrated on it and would have measured
+    nothing. Triples were DISQUALIFIED on that basis at 1.3%, and doubles
+    called thin at 13.7%.
+
+    MEASURED BEFORE THE RUNGS WERE CHOSEN, over 125,298 stored batter-games:
+    over 0.5 strikeouts lands 61.7% of the time, over 1.5 lands 22.2%, and over
+    2.5 lands 4.6%. The first two are declared and the third is not, and this
+    plants the third to check the reasoning is enforced rather than merely
+    written down.
+    """
+    conn = db.connect()
+    try:
+        rows = [r[0] for r in conn.execute(
+            "SELECT strike_outs FROM mlb_batter_games"
+            " WHERE lineup_slot IS NOT NULL AND strike_outs IS NOT NULL")]
+    finally:
+        conn.close()
+    if not rows:
+        return Result(LAW_CAP, "a rung that inherits its base rate",
+                      "the declared batter_strikeouts ladder", False,
+                      "no stored batter-games to measure against")
+
+    def share(rung):
+        return sum(1 for x in rows if x > rung) / len(rows)
+
+    declared = config.MLB_PROP_LADDER["batter_strikeouts"]
+    # THE PLANT: the rung that was measured and refused.
+    planted = 2.5
+    if planted in declared:
+        return Result(LAW_CAP, "a rung that inherits its base rate",
+                      "the declared batter_strikeouts ladder", False,
+                      f"NOT CAUGHT - {planted} is declared and lands "
+                      f"{share(planted):.1%} of the time, which is the "
+                      f"one-sidedness the roster disqualifies")
+    for rung in declared:
+        got = share(rung)
+        if not 0.15 <= got <= 0.85:
+            return Result(LAW_CAP, "a rung that inherits its base rate",
+                          "the declared batter_strikeouts ladder", False,
+                          f"the declared rung {rung} lands {got:.1%} of the "
+                          f"time, which inherits its base rate as the answer")
+    return Result(LAW_CAP, "a rung that inherits its base rate",
+                  "the declared batter_strikeouts ladder", True,
+                  f"the declared rungs {list(declared)} land "
+                  f"{', '.join(f'{share(r):.1%}' for r in declared)} of the "
+                  f"time; 2.5 lands {share(planted):.1%} and is refused")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -5355,6 +5474,8 @@ def main() -> int:
     results.append(plant_a_moneyline_asked_with_a_rung())
     results.append(plant_a_total_factor_that_takes_a_difference())
     results.append(plant_a_total_rung_that_can_push())
+    results.append(plant_a_market_declared_but_never_asked())
+    results.append(plant_a_rung_that_inherits_its_base_rate())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

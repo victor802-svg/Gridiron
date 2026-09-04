@@ -210,8 +210,16 @@ def mlb_team_rest_travel(ctx) -> float | None:
 
 PROP_ADDED = "2026-08-30T00:00:00Z"
 
-#: The three batting markets, which share a subject and an instrument set.
-BATTER_MARKETS = ("batter_hits", "batter_total_bases", "batter_home_runs")
+#: The batting markets, which share a subject and an instrument set.
+#:
+#: `batter_strikeouts` JOINED 2026-09-04 (MARKET_ROSTER #3). It asks about the
+#: same man in the same plate appearances, so it reads the same instruments:
+#: how often he does the thing, how many chances he gets, where he bats, the
+#: platoon, the park. What differs is the DIRECTION each one pushes, and that
+#: is the coefficient's job -- every market is fitted separately, which is the
+#: whole reason a shared vocabulary is safe.
+BATTER_MARKETS = ("batter_hits", "batter_total_bases", "batter_home_runs",
+                  "batter_strikeouts")
 #: All four, for the two instruments every prop question needs.
 ALL_PROP_MARKETS = BATTER_MARKETS + ("pitcher_strikeouts",)
 
@@ -435,7 +443,7 @@ def mlb_batter_platoon(ctx) -> float | None:
     added=PROP_ADDED,
     sport="mlb",
     applies_to=("prop",),
-    markets=("batter_hits", "batter_total_bases"),
+    markets=("batter_hits", "batter_total_bases", "batter_strikeouts"),
     why="how often tonight's starter strikes hitters out",
     rationale=(
         "The opposing starter's strikeout rate per batter faced, over his "
@@ -445,7 +453,14 @@ def mlb_batter_platoon(ctx) -> float | None:
         "factor reads in the direction of the question: a higher value means a "
         "better night for the batter. Per batter faced rather than per nine "
         "innings, because what a hitter faces is one trip to the plate, not a "
-        "notional nine innings the starter will not pitch."
+        "notional nine innings the starter will not pitch. "
+        "DECLARED FOR `batter_strikeouts` FROM 2026-09-04, where it is the "
+        "most obviously relevant input on the board -- and where the sign "
+        "above reads the other way round. The value is unchanged; the "
+        "COEFFICIENT flips, because a high-strikeout arm is bad news for a hit "
+        "and the direct cause of a strikeout. Each market is fitted separately, "
+        "so this needs no second factor and no re-signing: what a shared "
+        "instrument means is decided by the fit, not by the name."
     ),
 )
 def mlb_batter_opposing_k_rate(ctx) -> float | None:

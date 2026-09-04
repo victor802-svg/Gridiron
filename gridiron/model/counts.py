@@ -41,6 +41,11 @@ COUNT_MARKETS: dict[str, str] = {
     "passing_tds": "poisson",
     "batter_home_runs": "poisson",
     "batter_hits": "poisson",
+    # MARKET_ROSTER #3, measured 2026-09-04 over 125,298 stored batter-games:
+    # mean 0.889, variance 0.754, ratio 0.848. UNDER-dispersed rather than
+    # over, so a Poisson is the honest form and the negative binomial would be
+    # claiming a spread the data does not have.
+    "batter_strikeouts": "poisson",
     "receptions": "negative_binomial",
     "pitcher_strikeouts": "negative_binomial",
 }
@@ -51,6 +56,7 @@ DISPERSION: dict[str, float] = {
     "passing_tds": 0.918,
     "batter_home_runs": 1.017,
     "batter_hits": 0.907,
+    "batter_strikeouts": 0.848,
     "receptions": 1.245,
     "pitcher_strikeouts": 1.282,
 }

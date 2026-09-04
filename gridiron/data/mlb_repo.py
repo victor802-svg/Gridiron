@@ -46,6 +46,10 @@ BATTER_STAT_COLUMN = {
     "batter_hits": "hits",
     "batter_total_bases": "total_bases",
     "batter_home_runs": "home_runs",
+    # MARKET_ROSTER #3, 2026-09-04. The column was already loaded and already
+    # 100% present on 125,298 batter-games -- checklist item 8 is verified by
+    # the record rather than by a new loader.
+    "batter_strikeouts": "strike_outs",
 }
 
 

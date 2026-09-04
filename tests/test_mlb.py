@@ -134,14 +134,19 @@ def test_mlb_declares_a_moneyline_and_four_player_props():
     # The run line and the total joined on 2026-09-02, on the evidence in
     # docs/MLB_RUNLINE_FEASIBILITY.md. The moneyline stays first: it is the
     # game market, and the others are additions rather than replacements.
+    # `batter_strikeouts` joined 2026-09-04 as MARKET_ROSTER #3, the
+    # best-balanced prop the roster measured (61.7% over its first rung).
     assert config.SPORT_MARKETS["mlb"] == (
         "moneyline", "spread", "total",
         "batter_hits", "batter_total_bases", "batter_home_runs",
-        "pitcher_strikeouts",
+        "batter_strikeouts", "pitcher_strikeouts",
     )
+    # THE ORDER IS THE ROUND-ROBIN ORDER. `select_day_props` fills the day's
+    # cap by walking this tuple, so a market's position decides when it is
+    # served once the cap bites.
     assert config.SPORT_PROP_MARKETS["mlb"] == (
         "batter_hits", "batter_total_bases", "batter_home_runs",
-        "pitcher_strikeouts",
+        "batter_strikeouts", "pitcher_strikeouts",
     )
     # Every prop market has a declared, dated ladder and nothing else does.
     assert set(config.MLB_PROP_LADDER) == set(config.SPORT_PROP_MARKETS["mlb"])

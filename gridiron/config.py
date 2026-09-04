@@ -347,7 +347,7 @@ SPORT_MARKETS: dict[str, tuple[str, ...]] = {
     # every priced game, at a rung fixed at +/-1.5, with explicit side labels.
     "mlb": ("moneyline", "spread", "total",
             "batter_hits", "batter_total_bases",
-            "batter_home_runs", "pitcher_strikeouts"),
+            "batter_home_runs", "batter_strikeouts", "pitcher_strikeouts"),
     # THE MONEYLINE IS FIRST (MARKET_ROSTER #1, declared 2026-09-04). It ranks
     # 20th of 21 on volume and is the most reliable entry on the list: it needs
     # no player identity match, no lineup and no crosswalk, and it resolves
@@ -378,8 +378,13 @@ SPORT_MARKETS: dict[str, tuple[str, ...]] = {
 SPORT_PROP_MARKETS: dict[str, tuple[str, ...]] = {
     "nfl": ("passing_yards", "receiving_yards", "rushing_yards",
             "receptions", "passing_tds"),
+    # `batter_strikeouts` JOINED 2026-09-04 (MARKET_ROSTER #3), and its
+    # POSITION IN THIS TUPLE MATTERS: `select_day_props` fills the day by
+    # round-robin in this order, so a market added at the end is served last
+    # when the cap bites. It sits after the batting markets and before
+    # pitcher strikeouts, which is where its liquidity puts it.
     "mlb": ("batter_hits", "batter_total_bases", "batter_home_runs",
-            "pitcher_strikeouts"),
+            "batter_strikeouts", "pitcher_strikeouts"),
     "nba": ("points", "rebounds", "assists", "threes"),
     "cfb": (),          # measured, not assumed: no prop lines exist
     # NO PLAYER PROPS IN UFC. A bout has two competitors and the questions are
@@ -690,6 +695,18 @@ MLB_PROP_LADDER: dict[str, tuple[float, ...]] = {
     # uses.
     "batter_home_runs": (0.5,),
     "pitcher_strikeouts": (3.5, 4.5, 5.5, 6.5),
+    # MARKET_ROSTER #3, declared 2026-09-04. Measured over 125,298 stored
+    # batter-games: mean 0.889 strikeouts, and the two rungs land at 61.7% and
+    # 22.2% over. TWO RUNGS RATHER THAN ONE, exactly as `batter_hits` has: at
+    # 0.5 alone the question inherits its base rate as the answer, which is
+    # the failure that disqualified triples at 1.3% and makes doubles thin at
+    # 13.7%. A second rung gives the model somewhere to disagree.
+    #
+    # 2.5 IS NOT DECLARED. It is over 4.6% of the time, which is the
+    # one-sidedness the roster's own section 4(a) rules out -- 270 of those a
+    # night would be a category a model saying "no" unconditionally would look
+    # calibrated on, having measured nothing.
+    "batter_strikeouts": (0.5, 1.5),
 }
 MLB_PROP_LADDER_DECLARED = "2026-08-30T00:00:00Z"
 

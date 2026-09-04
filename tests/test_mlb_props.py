@@ -382,7 +382,8 @@ def test_each_prop_market_gets_its_own_fitted_model():
     keys = {baseline.market_key("mlb", m) for m in config.SPORT_PROP_MARKETS["mlb"]}
     assert keys == {
         "mlb:prop:batter_hits", "mlb:prop:batter_total_bases",
-        "mlb:prop:batter_home_runs", "mlb:prop:pitcher_strikeouts",
+        "mlb:prop:batter_home_runs", "mlb:prop:batter_strikeouts",
+        "mlb:prop:pitcher_strikeouts",
     }
     assert baseline.market_key("mlb", "moneyline") == "mlb:moneyline"
 
@@ -391,6 +392,7 @@ def test_the_repo_reads_each_market_from_its_own_column():
     assert mlb_repo.BATTER_STAT_COLUMN["batter_hits"] == "hits"
     assert mlb_repo.BATTER_STAT_COLUMN["batter_total_bases"] == "total_bases"
     assert mlb_repo.BATTER_STAT_COLUMN["batter_home_runs"] == "home_runs"
+    assert mlb_repo.BATTER_STAT_COLUMN["batter_strikeouts"] == "strike_outs"
     with pytest.raises(ValueError):
         mlb_repo.batter_rolling(None, 1, "pitcher_strikeouts", "2026-05-01")
 

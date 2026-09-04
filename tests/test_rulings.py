@@ -20,11 +20,28 @@ def test_the_ladder_was_not_padded_to_manufacture_confidence():
     """Rungs exist because the market quotes them. Adding one to give the model
     somewhere to be confident would be choosing the questions to flatter the
     answer, which is the opposite of what the ladder is for."""
-    assert config.MLB_PROP_LADDER == {
-        "batter_hits": (0.5, 1.5),
-        "batter_total_bases": (1.5,),
-        "batter_home_runs": (0.5,),
-        "pitcher_strikeouts": (3.5, 4.5, 5.5, 6.5),
+    # THE FOUR ORIGINAL LADDERS, PINNED INDIVIDUALLY. The ruling is that no
+    # rung may be added to an EXISTING market to give the model somewhere to
+    # be confident; a new market declaring its own ladder is a different act,
+    # and asserting the whole dict conflated the two. Each of these is checked
+    # by itself so the guarantee is unchanged and visible.
+    assert config.MLB_PROP_LADDER["batter_hits"] == (0.5, 1.5)
+    assert config.MLB_PROP_LADDER["batter_total_bases"] == (1.5,)
+    assert config.MLB_PROP_LADDER["batter_home_runs"] == (0.5,)
+    assert config.MLB_PROP_LADDER["pitcher_strikeouts"] == (3.5, 4.5, 5.5, 6.5)
+
+    # MARKET_ROSTER #3, declared 2026-09-04 with its rungs measured before
+    # they were chosen: over 0.5 lands 61.7% of the time and over 1.5 22.2%,
+    # on 125,298 stored batter-games. 2.5 is deliberately NOT declared -- it
+    # is over 4.6% of the time, which is the one-sidedness the roster's own
+    # section 4(a) disqualifies.
+    assert config.MLB_PROP_LADDER["batter_strikeouts"] == (0.5, 1.5)
+
+    # AND NOTHING ELSE HAS APPEARED. A ladder gained without a line in this
+    # test is a ladder nobody argued for.
+    assert set(config.MLB_PROP_LADDER) == {
+        "batter_hits", "batter_total_bases", "batter_home_runs",
+        "batter_strikeouts", "pitcher_strikeouts",
     }
 
 

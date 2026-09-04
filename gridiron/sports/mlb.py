@@ -461,8 +461,14 @@ def prop_candidates(conn: sqlite3.Connection, game: sqlite3.Row) -> list[dict]:
             slot, _n = repo.batter_recent_slot(conn, row["player_id"], on_date)
             if slot is None:
                 continue
-            for market in ("batter_hits", "batter_total_bases",
-                           "batter_home_runs"):
+            # THE DECLARED BATTING MARKETS, read from config rather than
+            # written here (roster #3, 2026-09-04). `batter_strikeouts` was
+            # added on that date and this list would otherwise have had to be
+            # remembered separately -- a market declared in one place and asked
+            # in another is a market that exists in the config and never on a
+            # slate.
+            for market in [m for m in config.MLB_PROP_MARKETS
+                           if m.startswith("batter_")]:
                 mean, _sd, n = repo.batter_rolling(
                     conn, row["player_id"], market, on_date
                 )
@@ -684,6 +690,9 @@ def slate_questions(
 #: it without decoding an identifier.
 PROP_WORDS = {
     "batter_hits": "hits",
+    # "strikeouts" for the batter is the same word as for the pitcher, and the
+    # sentence around it is what disambiguates: the subject is a hitter.
+    "batter_strikeouts": "strikeouts",
     "batter_total_bases": "total bases",
     "batter_home_runs": "home runs",
     "pitcher_strikeouts": "strikeouts",
