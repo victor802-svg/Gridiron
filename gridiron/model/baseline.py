@@ -77,6 +77,65 @@ def assert_one_sport(games, sport: str, where: str) -> None:
         )
 
 
+def moneyline_training_set(
+    conn: sqlite3.Connection,
+    seasons: tuple[int, ...],
+    *,
+    through_season: int | None = None,
+    through_week: int | None = None,
+    progress=None,
+) -> tuple[list[dict[str, float]], list[int], list[str]]:
+    """One row per completed NFL game: the factor vector, and whether home won.
+
+    MARKET_ROSTER #18, 2026-09-04. The same context the spread reads and
+    deliberately the same factors: how good the two teams have been, who is
+    hurt, who is rested, the weather. Those decide a football game and do not
+    become different things because the question is asked without a handicap.
+    What is not shared is the FIT -- separate coefficients, separate category,
+    separate gate.
+
+    A DRAWN GAME IS NOT A TRAINING ROW. Ten of 2,761 stored NFL finals ended
+    level (0.36%), and "did the home side win" has no answer on those. They are
+    dropped here and VOIDED at resolution -- the same fact treated the same way
+    at both ends, rather than counted as a loss in one place and a void in the
+    other.
+    """
+    placeholders = ",".join("?" for _ in seasons)
+    # LAW 6: the sport filter, for the reason the note in `spread_training_set`
+    # gives at length -- this query's ancestor had none, and fourteen per cent
+    # of the NFL spread model's training set was football.
+    sql = (
+        f"SELECT id, sport, season, week, home_score, away_score FROM games"
+        f" WHERE sport = 'nfl' AND status = 'final' AND game_type = 'REG'"
+        f"   AND season IN ({placeholders})"
+    )
+    params: list = list(seasons)
+    if through_season is not None:
+        sql += " AND (season < ? OR (season = ? AND week <= ?))"
+        params += [through_season, through_season, through_week or 99]
+    sql += " ORDER BY season, week, id"
+
+    games = conn.execute(sql, params).fetchall()
+    assert_one_sport(games, "nfl", "baseline.moneyline_training_set")
+    cache = context.WeekCache()
+    rows: list[dict[str, float]] = []
+    labels: list[int] = []
+
+    for i, g in enumerate(games):
+        if progress and i % 250 == 0:
+            progress(f"moneyline features {i}/{len(games)}")
+        if g["home_score"] is None or g["away_score"] is None:
+            continue
+        if g["home_score"] == g["away_score"]:
+            continue                      # a draw has no answer to learn from
+        ctx = context.build_game_context(conn, g["id"], cache)
+        rows.append(compute.feature_vector(ctx, "moneyline").values)
+        labels.append(1 if g["home_score"] > g["away_score"] else 0)
+
+    names = [f.name for f in registry.active_factors("nfl", "moneyline")]
+    return rows, labels, names
+
+
 def spread_training_set(
     conn: sqlite3.Connection,
     seasons: tuple[int, ...],

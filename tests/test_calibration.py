@@ -220,13 +220,13 @@ def test_categories_are_never_merged(settled):
     labels = {c["category"] for c in payload["categories"]}
     expected = {
         f"{market} / {predictor}"
-        for market in ["spread"] + list(config.PROP_MARKETS)
+        for market in ["spread", "moneyline"] + list(config.PROP_MARKETS)
         for predictor in ("statistical", "llm")
     }
     assert labels == expected
     assert not any(c["category"].startswith("prop /") for c in payload["categories"])
     for c in payload["categories"]:
-        assert c["filters"]["market_type"] in ("spread", "prop")
+        assert c["filters"]["market_type"] in ("spread", "moneyline", "prop")
         assert c["filters"]["predictor"] in ("statistical", "llm")
         assert "voided" in c, "a void count must sit beside every curve"
 

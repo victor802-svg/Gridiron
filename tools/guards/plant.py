@@ -5418,6 +5418,111 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_DRAW = "A DRAWN GAME ANSWERS NEITHER"
+
+
+def plant_a_drawn_game_graded_as_a_loss() -> Result:
+    """Settle an NFL moneyline on a game that finished level.
+
+    TEN OF 2,761 STORED NFL FINALS ENDED LEVEL -- 0.36%, and the record names
+    them: SEA 6-6 ARI in 2016, PIT 21-21 CLE in 2018, and eight more. "Did the
+    home side win" has no answer on those, and giving one either way invents an
+    outcome.
+
+    THE BASKETBALL RULE IS THE OPPOSITE ONE AND FOR THE OPPOSITE REASON. The
+    NBA plays overtime until somebody wins, so a level NBA final is a BAD ROW
+    rather than a drawn game -- it voids too, but because the data is wrong,
+    not because the game was tied. Two sports, two reasons, the same treatment,
+    and both said out loud where the code makes the decision.
+
+    THE TRAINING SET MUST DROP THEM TOO, and this checks both ends: a fact
+    counted as a loss in one place and a void in the other is a model fitted on
+    a question the record does not grade.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(Path(tmp) / "draw.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+            " home, away, status, home_score, away_score)"
+            " VALUES ('drawn','nfl',2018,10,'REG','2018-11-11T18:00:00Z',"
+            " 'PIT','CLE','final',21,21)")
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning)"
+            " VALUES ('2018-11-10T00:00:00Z','nfl','drawn','moneyline','PIT',"
+            " 0.61,'win','statistical','early','fs3','{}','planted')")
+        conn.commit()
+        pred = conn.execute(
+            "SELECT * FROM predictions WHERE game_id = 'drawn'").fetchone()
+        try:
+            outcome = resolve.resolve_nfl_outcome(conn, pred)
+        except resolve.Void as exc:
+            conn.close()
+            return Result(LAW_DRAW, "a drawn game graded as a loss",
+                          "resolve_nfl_outcome voids a level final", True,
+                          str(exc))
+        except Exception as exc:                             # noqa: BLE001
+            conn.close()
+            return Result(LAW_DRAW, "a drawn game graded as a loss",
+                          "resolve_nfl_outcome voids a level final", False,
+                          f"it failed, but not as a void: "
+                          f"{type(exc).__name__}: {exc}")
+        conn.close()
+    return Result(LAW_DRAW, "a drawn game graded as a loss",
+                  "resolve_nfl_outcome voids a level final", False,
+                  f"NOT CAUGHT - a game that finished 21-21 was graded "
+                  f"{outcome}, so a forecast that could not be right or wrong "
+                  f"was scored as one of them")
+
+
+def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
+    """Declare a market with no fitted model and rerun the slate.
+
+    A SLATE IS ANSWERED ONCE, and `already_answered` decides that by comparing
+    what a run WOULD ask against what has rows. A market that is declared but
+    has no fitted model is skipped by `predict` every time -- so if it counts
+    as a gap, the slate is never "already answered", the refusal never fires,
+    and a rerun writes a second set of forecasts of the same questions.
+
+    THE GUARANTEE STOPS HOLDING SILENTLY, in the direction that duplicates the
+    record. It happened on 2026-09-04, the moment the NFL moneyline was
+    declared: a fixture training only the spread stopped refusing its own
+    rerun, and the only sign was one test going red.
+    """
+    from gridiron import run as _run
+    from gridiron.model import baseline as _baseline
+
+    conn = db.connect()
+    try:
+        # Every declared market a run would ask must either have a fit or be
+        # excluded from the gap calculation. Asserted on the real record.
+        for sport in config.SPORTS:
+            answered = _run.already_answered(
+                conn, sport, 2026, 1, include_props=False)
+            for market in answered["missing"]:
+                if market == "prop":
+                    continue
+                try:
+                    _baseline.load_fit(
+                        conn, _baseline.market_key(sport, market))
+                except _baseline.NotTrained:
+                    return Result(
+                        LAW_DRAW, "an unfitted market blocking a refusal",
+                        "run.already_answered ignores unfitted markets", False,
+                        f"NOT CAUGHT - {sport}:{market} is counted as a gap in "
+                        f"the slate and has no fitted model, so this slate can "
+                        f"never be 'already answered' and a rerun is never "
+                        f"refused")
+    finally:
+        conn.close()
+    return Result(LAW_DRAW, "an unfitted market blocking a refusal",
+                  "run.already_answered ignores unfitted markets", True,
+                  "no declared-but-unfitted market is counted as a gap, so the "
+                  "answered-once refusal cannot be silently disabled by "
+                  "declaring a market nobody has trained yet")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -5476,6 +5581,8 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_a_drawn_game_graded_as_a_loss())
+    results.append(plant_an_unfitted_market_that_blocks_a_rerun_refusal())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

@@ -116,6 +116,21 @@ def resolve_nfl_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
     if game is None or game["status"] != "final":
         raise Unresolvable(f"game {pred['game_id']} is not final")
 
+    if pred["market_type"] == "moneyline":
+        # A DRAWN GAME VOIDS, and unlike basketball this is not a bad row --
+        # the NFL's overtime can end level and TEN OF 2,761 STORED FINALS DID
+        # (0.36%). "Did the home side win" has no answer on those, and giving
+        # one either way would be inventing an outcome. The training set drops
+        # them for the same reason, so the fact is treated identically at both
+        # ends rather than being a loss in one place and a void in the other.
+        if game["home_score"] == game["away_score"]:
+            raise Void(
+                f"{pred['game_id']} finished level. The question was whether "
+                f"the home side would win, a drawn game answers neither yes "
+                f"nor no, and it is not being given an answer.")
+        home_won = 1 if game["home_score"] > game["away_score"] else 0
+        return home_won if pred["model_side"] == "win" else 1 - home_won
+
     if pred["market_type"] == "spread":
         yes = questions.spread_outcome(
             game["home_score"], game["away_score"], pred["line_asked"]

@@ -40,6 +40,24 @@ def slate_questions(
         ctx = context.build_game_context(conn, game["id"])
         expected = questions.expected_margin(
             SPORT, ctx.home_srs, ctx.away_srs)
+        # THE MONEYLINE IS ASKED FIRST AND ALWAYS (roster #18, 2026-09-04).
+        # No rung, so nothing can disqualify it -- and a game whose expected
+        # margin falls off the declared ladder is skipped for the spread and
+        # still gets one.
+        out.append(
+            Question(
+                sport=SPORT,
+                game_id=game["id"],
+                market_type="moneyline",
+                market="moneyline",
+                subject=game["home"],
+                line_asked=None,
+                claim=f"{game['home']} (home) beats {game['away']}",
+                yes_label="win",
+                no_label="lose",
+            )
+        )
+
         try:
             line = questions.spread_rung(game["id"], expected)
         except questions.RungOffTheLadder:
@@ -94,8 +112,12 @@ def slate_questions(
 
 
 def build_features(conn: sqlite3.Connection, q: Question, cache=None):
-    if q.market_type == "spread":
-        ctx = context.build_game_context(conn, q.game_id, cache, line_asked=q.line_asked)
+    if q.market_type in ("spread", "moneyline"):
+        # NO LINE ON A MONEYLINE. Passing one would put a number on the
+        # context that no moneyline factor is declared to read.
+        ctx = context.build_game_context(
+            conn, q.game_id, cache,
+            line_asked=q.line_asked if q.market_type == "spread" else None)
     else:
         ctx = context.build_prop_context(
             conn, q.game_id, q.player_id, q.stat, q.line_asked, cache
@@ -113,6 +135,12 @@ def training_set(conn: sqlite3.Connection, seasons, market: str, *,
     """
     from ..model import baseline
 
+    if market == "moneyline":
+        if with_counts:
+            raise ValueError(
+                "nfl 'moneyline' is not a count market; there is no count "
+                "behind its label to return")
+        return baseline.moneyline_training_set(conn, seasons, **kwargs)
     if market == "spread":
         if with_counts:
             raise ValueError(

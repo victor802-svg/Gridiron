@@ -400,7 +400,9 @@ def test_the_real_scorecard_has_no_merged_category(resolved_league):
     payload = calibration.scorecard(resolved_league, sport="nfl")
     calibration.assert_no_merged_categories(payload)     # must not raise
     markets = {c["market"] for c in payload["categories"]}
-    assert markets == {"spread", *config.PROP_MARKETS}
+    # The moneyline joined 2026-09-04 (MARKET_ROSTER #18); the set is asserted
+    # against the declared markets so a sixth appears here without an edit.
+    assert markets == set(config.SPORT_MARKETS["nfl"])
 
 
 def test_the_scorecard_refuses_to_serve_a_merged_payload(resolved_league, monkeypatch):

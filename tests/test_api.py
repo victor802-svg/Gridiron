@@ -163,8 +163,9 @@ def test_the_headline_is_the_largest_gap(client):
 
 def test_categories_are_reported_separately(client):
     payload = client.get("/api/scorecard").json()
-    # spread + five prop markets, each times two forecasters.
-    assert len(payload["categories"]) == 2 * (1 + len(config.PROP_MARKETS))
+    # spread + moneyline + five prop markets, each times two forecasters.
+    # The moneyline joined 2026-09-04 as MARKET_ROSTER #18.
+    assert len(payload["categories"]) == 2 * (2 + len(config.PROP_MARKETS))
     assert payload["markets"][0] == "spread"
     assert "never merged" in payload["separation_note"].lower()
 

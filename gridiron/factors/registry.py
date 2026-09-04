@@ -234,6 +234,28 @@ def sports() -> list[str]:
 # SPREAD FACTORS
 # ===========================================================================
 
+#: THE NFL MARKETS A GAME FACTOR APPLIES TO (roster #18, 2026-09-04).
+#:
+#: Named once rather than written into sixteen decorators, so a third game
+#: market is added in one place. `asked_distance` is NOT in here and must not
+#: be: it measures how far the rung sits from the model's own expectation, and
+#: a moneyline has no rung to be a distance from.
+NFL_GAME_MARKETS = ("spread", "moneyline")
+
+#: WHAT IS DELIBERATELY NOT ON THE MONEYLINE, recorded because an absence
+#: nobody argued for looks the same as one nobody noticed:
+#:
+#:   `asked_distance` -- there is no rung to be a distance from.
+#:   `pace_sum`, `wind`, `cold`, `precipitation` -- these are about HOW MUCH
+#:     scoring happens, not about WHICH side does it. Bad weather lowers a
+#:     total and its effect on a winner is a story about which team runs the
+#:     ball, which is a claim with no measurement behind it here. They stay on
+#:     the spread, where the margin is the question, and on the props.
+#:
+#: `travel_kmiles` IS on it: one side travelled and the other did not, which is
+#: directional by construction.
+
+
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
@@ -273,7 +295,7 @@ def asked_distance(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     why="home field",
     rationale=(
         "Home teams win more than away teams and always have: no travel, a "
@@ -289,7 +311,7 @@ def home_field(ctx) -> float:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     why="that neither side is really at home",
     rationale=(
         "Neutral-site games remove home advantage from the home-listed team "
@@ -303,7 +325,7 @@ def neutral_site(ctx) -> float:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     why="the rest difference between the two clubs",
     rationale=(
         "Recovery time is physical. An extra few days is more healing, more "
@@ -322,7 +344,7 @@ def rest_diff(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     active=False,
     deactivated="2026-08-29T00:00:00Z",
     note=(
@@ -349,7 +371,7 @@ def short_week_diff(ctx) -> float | None:
 
 @factor(
     added="2026-08-29T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     why="whether either side is on a short week",
     rationale=(
         "REPAIR of short_week_diff, which the schedule never let vary. The "
@@ -371,7 +393,7 @@ def short_week_either(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread", "prop"),
+    applies_to=NFL_GAME_MARKETS + ("prop",),
     why="how far the visitors travelled",
     rationale=(
         "Distance flown costs sleep and adds a day of logistics for the "
@@ -387,7 +409,7 @@ def travel_kmiles(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     why="the time-zone change for the visiting side",
     rationale=(
         "Crossing time zones desynchronises the body clock independently of "
@@ -403,7 +425,7 @@ def timezone_shift(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     note=(
         "JOINTLY FITTED WITH `recent_form_diff`, MEASURED 2026-09-03. "
         "Standardised, this factor is worth -0.083 fitted alone and -0.211 "
@@ -432,7 +454,7 @@ def srs_diff(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     note=(
         "JOINTLY FITTED WITH `recent_form_diff`, MEASURED 2026-09-03. "
         "Standardised, this factor is worth -0.083 fitted alone and -0.211 "
@@ -478,7 +500,7 @@ def pace_sum(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     why="who is ruled out on each side",
     rationale=(
         "Players listed Out on the final injury report do not play. This counts "
@@ -495,7 +517,7 @@ def injury_out_diff(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     why="whether a starting quarterback is out",
     rationale=(
         "Quarterback is the one position where the backup is usually a large "
@@ -512,7 +534,7 @@ def qb_out_diff(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     why="that this is a division game",
     rationale=(
         "Division opponents play twice a year with continuous film and shared "
@@ -595,7 +617,7 @@ def precipitation(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread",),
+    applies_to=NFL_GAME_MARKETS,
     active=False,
     deactivated="2026-08-28T00:00:00Z",
     note=(

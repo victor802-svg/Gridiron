@@ -75,10 +75,26 @@ def already_answered(conn, sport: str, season: int, week: int,
     # `include_props=False` asks no props, so an unanswered prop market is not
     # a gap it could fill -- counting it as one would mean such a run could
     # never be refused, however many times it repeated itself.
+    # AND NOT WHAT IT COULD NOT ANSWER. A market that is declared but has no
+    # fitted model is skipped by `predict` every time, so counting it as a gap
+    # means the slate can never be "already answered" and a rerun is never
+    # refused -- the guarantee quietly stops holding, in the direction that
+    # writes duplicate forecasts.
+    #
+    # Found on 2026-09-04, when the NFL moneyline was declared: a test fixture
+    # that trains only the spread stopped refusing its own rerun, and nothing
+    # said so. This is the same reasoning as the `include_props` line above --
+    # what this run WOULD ask, not what the sport declares.
+    from .model import baseline
+
     expected = set()
     for market in sports.get(sport).markets():
         is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
         if is_prop and not include_props:
+            continue
+        try:
+            baseline.load_fit(conn, baseline.market_key(sport, market))
+        except baseline.NotTrained:
             continue
         expected.add("prop" if is_prop else market)
     missing = sorted(expected - set(answered))
