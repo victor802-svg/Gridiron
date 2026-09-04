@@ -340,3 +340,160 @@ at it.
 The same rule covers the amended-then-superseded, the miscounted, and the
 mistaken: **append the correction, never revise the original.** It is LAW 3
 applied to the repository rather than to the predictions.
+
+---
+
+## 2026-09-04 — ruling 1: totals and spreads become DISTRIBUTIONAL (Session E)
+
+**Ruling (operator):**
+
+> The blind object stops being a yes/no at a self-chosen rung and becomes the
+> model's **forecast distribution** of the total or margin (mean + measured
+> spread), written before any line exists. Once the market line is
+> snapshotted, P(over the market's line) is **read off** that stored
+> distribution — a deterministic read-out, not a new forecast, so **LAW 1
+> holds exactly.**
+
+**Its own session (GRIDIRON_18 Session E), probe-and-design first. The design
+doc comes before any code**, and must cover: the blind object, storage,
+resolution at the market line, calibration of a distribution, and what the
+card shows when no line exists.
+
+**Why it is right, in the record's own words.** Four sports declare a total and
+all four ask it at the ladder rung nearest their own expectation. That makes
+P(over) one half *by construction*, which two walk-forwards then measured:
+
+| market | edge over always-the-base-rate |
+|---|---|
+| NBA total | **+0.0010** |
+| NFL total | **+0.0016** |
+
+The NBA's first version asked at the expectation itself and measured **+0.0006
+with every one of 2,460 test rows in the 50–60% bucket** — a question with no
+content. Quantising the ladder was the right local fix and did not touch the
+cause: we choose the rung, so we choose the answer.
+
+**What it ends.** "Asked at your own rung", and the `asked_line` dependency
+entirely — including `nfl_total_asked_distance`, `nba_asked_line`,
+`cfb_asked_line` and the 2026-09-03 asked-line redeclaration, all of which
+exist to measure *the rounding residual of our own choice*.
+
+**What it likely explains.** The spread-pair suppression. `srs_diff` and
+`recent_form_diff` mutually suppress on the NFL and CFB **spreads** and behave
+normally on both **moneylines** — a difference that has been demonstrated
+twice and explained never. A margin distribution graded at the market's number
+is the test.
+
+**Not built in this session.** The ruling names its own session and its first
+deliverable is a document. What this session owed it is this entry, so Session
+E starts from the ruling rather than from memory.
+
+---
+
+## 2026-09-04 — ruling 2: a flagged method says so on the card, and never leads
+
+**Ruling (operator):** until Session E lands, totals cards carry one line in
+words —
+
+> "totals asked this way have been a coin flip so far (NBA +0.001, NFL +0.002
+> in walk-forward) — shown for the record."
+
+— and **the hero never selects a market whose method is flagged this way.**
+
+**Built 2026-09-04.** `config.FLAGGED_METHODS` declares which (sport, market)
+pairs carry a finding; `language.METHOD_NOTES` holds the words. Split for the
+reason every plain-words split exists: nothing a reader sees is composed
+outside `language.py`.
+
+**Derived, never a written row.** The map is built from `SPORT_MARKETS`, so a
+sixth sport declaring a total is flagged the day it is declared. STEP 4 found a
+declaration disagreeing with a hardcoded copy of itself **four times in one
+session**, every one silent; a fifth copy is not written.
+
+**UFC `rounds` is a total and is NOT flagged.** Its rung is fixed by the bout's
+scheduled length — 2.5 for a three-rounder, 4.5 for a five — so it is not
+chosen from the model's expectation and the construction argument does not
+reach it. `questions.ufc_rounds_rung` is named `_rung` and every self-chosen
+one is named `_asked`; the scan reads that distinction rather than a list.
+
+**Rulings taken in the operator's absence, both recorded at the point of
+decision:**
+
+1. **The note is on the collapsed card face, not one tap in.** A caveat behind
+   a tap is a caveat most readers never reach, and the reader taking the
+   percentage at face value is exactly the one it is written for. It does not
+   break the cards brief's R2 — "one number and the word for what it is a
+   number of" is a rule about *numbers*, and this is a sentence.
+2. **Every card flagged means NO HERO**, rather than a hero with a caveat
+   attached. "Never" is the ruling's word. On the totals tab every card is
+   flagged; the hero hides and the grid opens at rank 1.
+
+---
+
+## 2026-09-04 — ruling 3: the suppressed spread pairs stay one version
+
+**Ruling (operator):** they stay, as previously ruled. **Session E is their
+test.**
+
+No code change. `config.JOINTLY_READ_FACTORS` continues to name the two
+spreads and only the two spreads, and the scope is now demonstrated in two
+sports rather than assumed from one.
+
+---
+
+## 2026-09-04 — ruling 4: the OFL font files are vendored
+
+**Ruling (operator):**
+
+> vendor the OFL woff2 files into the repo with the licence beside them — that
+> is not the kind of binary the no-committing instinct protects against.
+
+**The instinct was right and its scope was wrong.** "A binary nobody can diff
+is a thing nobody can check" is why the app icon is drawn in code. A licensed
+font carries glyph outlines, not behaviour, and the ruling draws the line
+where it belongs.
+
+**The instinct is answered rather than waived.** `web/fonts/SOURCE.md` records
+each file's origin URL, size and SHA-256; `audit.check_vendored_fonts`
+re-hashes the files against that table in the gate, and also fails on a binary
+sitting in `web/fonts` that the table does not name — which is the quiet one.
+A provenance table nobody re-derives is decoration.
+
+**Two files, not six.** Latin and latin-ext, 40KB together. Everything this
+interface renders is English composed in `language.py`; team and fighter names
+are stored transliterated. A glyph outside the ranges falls through the stack.
+
+**The variable font, not static instances.** The stylesheet asks for weight
+**640** in two places, which no static instance can answer — it would round to
+600 or 700 in silence.
+
+**`.gitattributes` now exists and declares `*.woff2 binary`.** `core.autocrlf`
+is true here and Git's heuristic would almost certainly spare a font; "almost
+certainly" is the wrong standard for a file whose hash the gate enforces.
+
+**The `--faint` deviation is accepted:** an unreadable N violates LAW 4.
+`#5F6975` measured 3.17:1 on a card and is now `--faintest`; `--faint` is a
+lighter tone and the worst pair is 5.54:1.
+
+---
+
+## 2026-09-04 — the superseded count was reporting less than it was hiding
+
+Found while executing the rulings above, on the live NFL slate. Not an
+operator ruling — a defect, and the fix is recorded here because the figure is
+one the operator reads.
+
+`views.week` held **two different definitions of "the same question"**. The
+fetch drops a row a later row of the **same factor set** replaced — the door
+`_superseded_ids` and `calibration` both use. The Python dedup then drops what
+is left over a **broader** key, which is what catches the 2026-08-29 double
+run *across* factor set versions. Both kinds of hiding are real; the reported
+count was the difference between the two definitions and so only ever counted
+the second.
+
+**On the live NFL slate it reported 29 while hiding 45.** The close-out calls
+this figure "how the operator finds out a prediction task ran twice", so a
+count that is quietly short is the one thing it must not be.
+
+**Counted, not subtracted.** One query over the slate, minus what the page
+shows. There is no second definition left to drift.
