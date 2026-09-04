@@ -122,7 +122,7 @@ def nba_back_to_back(ctx) -> float | None:
 @factor(
     added="2026-08-29T00:00:00Z",
     sport="nba",
-    applies_to=GAME_MARKETS,
+    applies_to=GAME_MARKETS + ("total",),
     why="whether either side is on a second night in a row",
     rationale=(
         "REPAIR of nba_back_to_back, which the schedule cancelled. Measures the "
@@ -193,7 +193,7 @@ def nba_travel_recent(ctx) -> float | None:
 @factor(
     added=ADDED,
     sport="nba",
-    applies_to=GAME_MARKETS,
+    applies_to=GAME_MARKETS + ("total",),
     why="how fast both clubs play",
     rationale=(
         "Possessions per forty-eight minutes over the last ten games, summed "
@@ -368,6 +368,107 @@ def nba_asked_distance(ctx) -> float | None:
 # ---------------------------------------------------------------------------
 # the props
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# the totals market (MARKET_ROSTER #2, 2026-09-04)
+# ---------------------------------------------------------------------------
+#
+# A TOTAL IS NOT A DIRECTIONAL QUESTION, and every factor below reflects that.
+# The spread and the moneyline ask which club is better and take DIFFERENCES;
+# a total asks how much basketball is going to happen and takes SUMS. Declaring
+# a difference here would be asking a question about one club in a market where
+# neither is named -- the same error `ufc_finish_rate_sum` was declared to
+# avoid, one sport over.
+#
+# `nba_home_court` IS NOT DECLARED FOR THE TOTAL, deliberately. Home advantage
+# adds points to one side and takes them off the other, so its effect on a
+# COMBINED score is close to nothing, and declaring it would be inviting a
+# coefficient to find a signal that has no mechanism.
+
+TOTAL_ONLY = ("total",)
+
+
+@factor(
+    added="2026-09-04T00:00:00Z",
+    sport="nba",
+    applies_to=TOTAL_ONLY,
+    # A DIFFERENT PLAIN NAME FROM `nba_asked_distance`'s, deliberately. Both
+    # measure a distance from an expectation and a reader seeing either name
+    # alone must be able to tell which. The scan caught them sharing one.
+    why="how far the total sits from the score the model expects",
+    rationale=(
+        "The rung the total was asked at, minus the combined score the model "
+        "expects, in points. CHECKLIST ITEM 1's mean-against-line instrument, "
+        "and it is declared as the DISTANCE rather than as the rung itself for "
+        "the reason the spread's asked-line ruling of 2026-09-03 settled: the "
+        "rung is CHOSEN as the half-point nearest the expectation, so asking "
+        "the model which rung it was given tells it the expectation a second "
+        "time, coarsened, and the coefficient measures the chooser rather than "
+        "the game. "
+        "WHAT REMAINS AFTER SUBTRACTING THE EXPECTATION is the rounding "
+        "residual of the ladder's own choice -- how far the half-point had to "
+        "move to land on a half -- which carries how hard a question the model "
+        "was handed and nothing about how good the clubs are. That is "
+        "orthogonal by construction rather than by luck. "
+        "ABSENT, not zero, when either the rung or the expectation is missing."
+    ),
+)
+def nba_total_asked_distance(ctx) -> float | None:
+    if ctx.line_asked is None or ctx.expected_total is None:
+        return None
+    return float(ctx.line_asked) - float(ctx.expected_total)
+
+
+@factor(
+    added="2026-09-04T00:00:00Z",
+    sport="nba",
+    applies_to=TOTAL_ONLY,
+    why="how much the two clubs' scoring swings about",
+    rationale=(
+        "The average of the two clubs' combined-score standard deviations, in "
+        "points, divided by ten. CHECKLIST ITEM 1's volatility instrument, and "
+        "the half of it that matters most here: two games expected to total "
+        "228 are the same question at very different odds if one club swings "
+        "by nine points a night and the other by eighteen. A model blind to "
+        "the difference prices them alike and is overconfident on exactly the "
+        "games where it should not be. "
+        "MEASURED OVER THE SAME TEN-GAME WINDOW as the scoring form, so the "
+        "mean and its spread describe the same stretch of basketball. "
+        "ABSENT when either club has fewer than two games in the window -- a "
+        "standard deviation over one game is not one, and a zero would say "
+        "the club's scoring never varies, which is a claim."
+    ),
+)
+def nba_total_volatility(ctx) -> float | None:
+    if ctx.home_total_sd is None or ctx.away_total_sd is None:
+        return None
+    return (float(ctx.home_total_sd) + float(ctx.away_total_sd)) / 2.0 / 10.0
+
+
+@factor(
+    added="2026-09-04T00:00:00Z",
+    sport="nba",
+    applies_to=TOTAL_ONLY,
+    why="how available both squads are between them",
+    rationale=(
+        "The SUM of the two clubs' availability, halved so it sits on the same "
+        "0-1 scale each of them does. `nba_availability_index` takes the "
+        "DIFFERENCE, which is the right instrument for asking who wins and the "
+        "wrong one for asking how many points get scored: two clubs each "
+        "missing three starters have a difference of zero and a combined score "
+        "well below normal. "
+        "THE MECHANISM IS NOT OBVIOUS IN SIGN, which is why it is declared "
+        "rather than assumed. Missing scorers lower a total; missing defenders "
+        "raise it; a short rotation plays slower and tires. The coefficient "
+        "decides, and it is scored from the date this factor was added. "
+        "ABSENT when either club's availability is."
+    ),
+)
+def nba_availability_sum(ctx) -> float | None:
+    if ctx.home_availability is None or ctx.away_availability is None:
+        return None
+    return (float(ctx.home_availability) + float(ctx.away_availability)) / 2.0
+
 
 @factor(
     added=ADDED,

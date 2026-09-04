@@ -5182,6 +5182,123 @@ def plant_a_moneyline_asked_with_a_rung() -> Result:
                   f"and the question carries no line at all")
 
 
+LAW_TOTALS = "A TOTAL IS A SUM, NOT A DIFFERENCE"
+
+
+def plant_a_total_factor_that_takes_a_difference() -> Result:
+    """Declare a directional factor on a market where neither side is named.
+
+    A SPREAD ASKS WHICH CLUB IS BETTER; A TOTAL ASKS HOW MUCH BASKETBALL
+    HAPPENS. The first takes differences, the second takes sums, and a
+    difference on a total is a question about one club in a market that names
+    neither.
+
+    IT WOULD LOOK FINE. Two clubs each missing three starters have an
+    availability DIFFERENCE of zero and a combined score well below normal; a
+    total model reading the difference sees an ordinary game. The coefficient
+    would come back near zero, be read as "availability does not affect
+    scoring", and the real effect would never have been measured. That is
+    worse than a wrong answer -- it is a wrong answer that looks like evidence.
+
+    The same reasoning declared `ufc_finish_rate_sum` beside
+    `ufc_finish_rate_diff` one sport over.
+    """
+    from gridiron.factors import registry
+    import gridiron.factors.nba                              # noqa: F401
+
+    total = {f.name for f in registry.active_factors("nba", "total")}
+    if not total:
+        return Result(LAW_TOTALS, "a directional factor on a totals market",
+                      "the total's declared factor set", False,
+                      "the nba total declares no factors at all")
+
+    # THE PLANT: the directional factors, named. None may be here.
+    directional = {"nba_availability_index", "nba_rest_days_diff",
+                   "nba_travel_recent", "nba_net_rating_rolling",
+                   "nba_srs_diff", "nba_home_court", "nba_asked_distance"}
+    trespassers = sorted(total & directional)
+    if trespassers:
+        return Result(LAW_TOTALS, "a directional factor on a totals market",
+                      "the total's declared factor set", False,
+                      f"NOT CAUGHT - {trespassers} are declared for the nba "
+                      f"total. Each is a home-minus-away difference, and a "
+                      f"total names neither side.")
+
+    # AND THE SUMS MUST ACTUALLY BE THERE, or this passes by the market being
+    # empty rather than by it being right.
+    for wanted in ("nba_availability_sum", "nba_total_volatility",
+                   "nba_total_asked_distance"):
+        if wanted not in total:
+            return Result(LAW_TOTALS, "a directional factor on a totals market",
+                          "the total's declared factor set", False,
+                          f"{wanted} is not declared for the total, so the "
+                          f"market is missing the instrument that replaces the "
+                          f"directional one")
+
+    # AND THE SPREAD MUST STILL HAVE ITS OWN. A guard that empties both markets
+    # would pass this and mean nothing.
+    spread = {f.name for f in registry.active_factors("nba", "spread")}
+    if not (directional & spread):
+        return Result(LAW_TOTALS, "a directional factor on a totals market",
+                      "the total's declared factor set", False,
+                      "the SPREAD has lost its directional factors too, so "
+                      "this proves nothing about the total")
+    return Result(LAW_TOTALS, "a directional factor on a totals market",
+                  "the total's declared factor set", True,
+                  f"the nba total declares {len(total)} factors and none of "
+                  f"the {len(directional)} directional ones; it takes sums "
+                  f"({sorted(total)}) while the spread keeps its differences")
+
+
+def plant_a_total_rung_that_can_push() -> Result:
+    """Ask a total at a whole number, where the score can land exactly on it.
+
+    A PUSHED QUESTION HAS NO ANSWER TO SCORE. Every rung on the declared ladder
+    is a half-point, so a combined score is strictly above or strictly below
+    it and the question always resolves -- which is the whole appeal of a
+    market that needs no player, no lineup and no crosswalk.
+
+    A whole-number rung would void on exact landings, and totals land on round
+    numbers more often than a uniform guess suggests: 220 and 230 are common
+    scores. A market whose selling point is that it always resolves, quietly
+    voiding a few times a season, is the kind of erosion nobody notices.
+    """
+    from gridiron.model import questions as _questions
+
+    ladder = _questions.NBA_TOTAL_LADDER
+    whole = [r for r in ladder if float(r).is_integer()]
+    if whole:
+        return Result(LAW_TOTALS, "a total rung that can push",
+                      "every NBA_TOTAL_LADDER rung is a half", False,
+                      f"NOT CAUGHT - these rungs are whole numbers and can be "
+                      f"landed on exactly: {whole}")
+
+    # AND THE CHOOSER MUST NEVER RETURN ONE. It picks from the ladder, so this
+    # checks the ladder is what it picks from rather than a rounding of its own.
+    for expected in (185.0, 199.4, 229.0, 229.5, 230.0, 260.2, 278.0):
+        rung = _questions.nba_total_asked(expected)
+        if rung is None:
+            continue
+        if rung not in ladder:
+            return Result(LAW_TOTALS, "a total rung that can push",
+                          "nba_total_asked picks from the declared ladder",
+                          False,
+                          f"an expectation of {expected} produced {rung}, "
+                          f"which is not on the declared ladder")
+    # And outside the band it refuses rather than clamping.
+    for outside in (184.9, 278.1, 0.0, 400.0):
+        if _questions.nba_total_asked(outside) is not None:
+            return Result(LAW_TOTALS, "a total rung that can push",
+                          "nba_total_asked refuses outside the band", False,
+                          f"an expectation of {outside} was clamped onto the "
+                          f"ladder rather than refused")
+    return Result(LAW_TOTALS, "a total rung that can push",
+                  "every NBA_TOTAL_LADDER rung is a half", True,
+                  f"all {len(ladder)} declared rungs are halves, the chooser "
+                  f"only ever returns one of them, and an expectation outside "
+                  f"the measured band is refused rather than clamped")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -5236,6 +5353,8 @@ def main() -> int:
     results.append(plant_a_card_showing_two_numbers_collapsed())
     results.append(plant_a_moneyline_that_contradicts_its_own_spread())
     results.append(plant_a_moneyline_asked_with_a_rung())
+    results.append(plant_a_total_factor_that_takes_a_difference())
+    results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

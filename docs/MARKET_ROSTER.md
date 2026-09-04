@@ -172,6 +172,9 @@ One market per session, `docs/NEW_MARKET_CHECKLIST.md` item by item, item 1
 | built | market | close-out |
 |---|---|---|
 | 2026-09-04 | **NBA moneyline** | `docs/closeouts/2026-09-04-nba-moneyline.md` |
+| 2026-09-04 | **NBA total** | `docs/closeouts/2026-09-04-nba-total.md` |
+
+**A WARNING THE ROSTER DID NOT CARRY.** The NBA total is built, balanced and always resolvable, and it measures almost nothing: a walk-forward edge of +0.0010 over always-the-base-rate. A total asked at OUR OWN rung is a coin flip by construction -- the value in a totals market is disagreeing with someone else's number, and LAW 1 forbids us seeing one before we predict. **NFL total (#19) is the same construction and should be expected to behave the same way.** See `docs/closeouts/2026-09-04-nba-total.md` section 4.
 
 **The order is the roster's own §4(b), not its volume ranking.** The bottom
 four entries need no player identity match, no lineup and no crosswalk, and

@@ -151,6 +151,17 @@ class NbaGameContext:
     away_road_games: int | None = None
     home_pace: float | None = None
     away_pace: float | None = None
+    #: SCORING FORM, for the totals market (roster #2, 2026-09-04). Points
+    #: scored and allowed per game, and how variable each club's combined
+    #: score has been. Absent, not zero, with no history.
+    home_points_for: float | None = None
+    home_points_against: float | None = None
+    away_points_for: float | None = None
+    away_points_against: float | None = None
+    home_total_sd: float | None = None
+    away_total_sd: float | None = None
+    #: The combined score the model expects, and the rung it was asked at.
+    expected_total: float | None = None
     home_net_rating: float | None = None
     away_net_rating: float | None = None
     league_pace: float | None = None
@@ -275,6 +286,12 @@ def build_context(conn: sqlite3.Connection, game_id: str, line_asked=None) -> Nb
             pace, rating, _n = repo.pace_and_rating(recent)
             setattr(ctx, f"{side}_pace", pace)
             setattr(ctx, f"{side}_net_rating", rating)
+            # SCORING FORM for the totals market. Read from the same window as
+            # the rating so the two describe the same stretch of basketball.
+            pf, pa, sd, _rows = repo.scoring_form(conn, team, on_date)
+            setattr(ctx, f"{side}_points_for", pf)
+            setattr(ctx, f"{side}_points_against", pa)
+            setattr(ctx, f"{side}_total_sd", sd)
 
     # OPPONENT-ADJUSTED RATINGS (D1, 2026-09-03). Solved over every completed
     # game this season BEFORE this one, so a rating cannot see the result it is
@@ -286,6 +303,13 @@ def build_context(conn: sqlite3.Connection, game_id: str, line_asked=None) -> Nb
     home_srs, away_srs = ratings.get(game["home"]), ratings.get(game["away"])
     if home_srs is not None and away_srs is not None:
         ctx.home_srs, ctx.away_srs = home_srs, away_srs
+
+    # THE EXPECTATION THE TOTAL IS ASKED AGAINST. Computed here so the rung
+    # and the asked-distance factor read the same number -- two derivations of
+    # one quantity is two chances to disagree about it.
+    ctx.expected_total = questions.nba_expected_total(
+        ctx.home_points_for, ctx.home_points_against,
+        ctx.away_points_for, ctx.away_points_against)
 
     ctx.league_pace = repo.league_pace(conn, game["season"])
     if ctx.neutral_site:
@@ -484,6 +508,29 @@ def slate_questions(
         # because the rung now depends on it; the ratings it reads are stored
         # and blind.
         ctx = build_context(conn, game["id"])
+
+        # THE TOTAL, asked at the half-point nearest the expected combined
+        # score and REFUSED outside the declared band (roster #2). A game whose
+        # expectation falls outside 185-278 -- the 1st and 99th percentiles of
+        # 4,920 stored games -- gets no total question and still gets the other
+        # two.
+        total_rung = questions.nba_total_asked(ctx.expected_total)
+        if total_rung is not None:
+            out.append(
+                Question(
+                    sport=SPORT,
+                    game_id=game["id"],
+                    market_type="total",
+                    market="total",
+                    subject=f"{game['away']} @ {game['home']}",
+                    line_asked=total_rung,
+                    claim=(f"{game['away']} at {game['home']} goes over "
+                           f"{total_rung:g} total points"),
+                    yes_label="over",
+                    no_label="under",
+                )
+            )
+
         expected = questions.expected_margin(
             SPORT, ctx.home_net_rating, ctx.away_net_rating)
         try:
@@ -652,6 +699,9 @@ def build_features(conn: sqlite3.Connection, q: Question, cache=None):
         # put a number on the context that no factor is declared to read.
         ctx = build_context(conn, q.game_id)
         return compute.feature_vector(ctx, "moneyline"), ctx
+    if q.market_type == "total":
+        ctx = build_context(conn, q.game_id, line_asked=q.line_asked)
+        return compute.feature_vector(ctx, "total"), ctx
     if q.market_type == "spread":
         ctx = build_context(conn, q.game_id, line_asked=q.line_asked)
         return compute.feature_vector(ctx, "spread"), ctx
@@ -674,6 +724,10 @@ def training_set(
 ):
     from ..factors import registry
 
+    if market == "total":
+        return _total_training_set(
+            conn, seasons, through_season, through_week, progress
+        )
     if market == "moneyline":
         return _moneyline_training_set(
             conn, seasons, through_season, through_week, progress
@@ -738,6 +792,45 @@ def _moneyline_question(game) -> Question:
         yes_label="win",
         no_label="lose",
     )
+
+
+def _total_training_set(conn, seasons, through_season, through_week, progress):
+    """One row per completed game whose expectation was inside the band.
+
+    THE SAME RULE THE FORWARD PATH USES. A training set asked at every game's
+    total and a live slate that refuses the ones outside 185-278 would be two
+    different questions sharing a coefficient -- and the refused ones are
+    exactly the games whose behaviour the model has least evidence about, so
+    training on them would teach it the tail it is not allowed to price.
+    """
+    from ..factors import registry
+
+    games = _completed_games(conn, seasons, through_season, through_week)
+    rows: list[dict] = []
+    labels: list[int] = []
+    for i, g in enumerate(games):
+        if progress and i % 500 == 0:
+            progress(f"nba total features {i}/{len(games)}")
+        try:
+            ctx = build_context(conn, g["id"])
+        except KeyError:
+            continue
+        rung = questions.nba_total_asked(ctx.expected_total)
+        if rung is None:
+            continue                      # refused here exactly as live
+        ctx.line_asked = rung
+        fv = compute.feature_vector(ctx, "total")
+        score = conn.execute(
+            "SELECT home_score, away_score FROM games WHERE id = ?", (g["id"],)
+        ).fetchone()
+        if score["home_score"] is None or score["away_score"] is None:
+            continue
+        combined = score["home_score"] + score["away_score"]
+        rows.append(fv.values)
+        labels.append(1 if combined > rung else 0)
+
+    names = [f.name for f in registry.active_factors(SPORT, "total")]
+    return rows, labels, names
 
 
 def _moneyline_training_set(conn, seasons, through_season, through_week,
@@ -947,6 +1040,15 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
             f"{pred['game_id']} is marked final but carries no score; the "
             "question has no answer and is not being given one"
         )
+
+    if pred["market_type"] == "total":
+        # NO PUSH IS POSSIBLE. Every rung is a half-point, so a combined score
+        # is strictly above or strictly below it and the question always has an
+        # answer. That is why the half is in `nba_total_asked` and not a
+        # rounding convenience.
+        outcome = questions.total_outcome(
+            game["home_score"], game["away_score"], pred["line_asked"])
+        return outcome if pred["model_side"] == "over" else 1 - outcome
 
     if pred["market_type"] == "moneyline":
         # NO DRAW BRANCH, AND THAT IS A FACT ABOUT BASKETBALL rather than an

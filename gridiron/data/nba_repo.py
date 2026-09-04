@@ -101,6 +101,43 @@ def league_history(conn: sqlite3.Connection, season: int,
     ).fetchall()
 
 
+def scoring_form(conn: sqlite3.Connection, team: str, before: str,
+                 limit: int = TEAM_WINDOW):
+    """Points scored and allowed per game, and how variable the two are.
+
+    THE INSTRUMENTS CHECKLIST ITEM 1 ASKS FOR, for a totals market: a mean to
+    place the question against, and a volatility to say how much the mean is
+    worth. A club averaging 228 combined points with a 9-point swing and one
+    averaging 228 with an 18-point swing are the same question asked at very
+    different odds, and a model blind to the difference prices them alike.
+
+    STRICTLY BEFORE `before`, like every other window in this project. Returns
+    `(points_for, points_against, combined_sd, n)` and (None, None, None, 0)
+    when there is no history -- an absent mean is recorded as absent and never
+    guessed at.
+    """
+    rows = conn.execute(
+        "SELECT points_for, points_against FROM nba_team_games"
+        " WHERE team = ? AND game_date < ? AND points_for IS NOT NULL"
+        " ORDER BY game_date DESC LIMIT ?",
+        (team, before, limit),
+    ).fetchall()
+    if not rows:
+        return None, None, None, 0
+    pf = [float(r["points_for"]) for r in rows]
+    pa = [float(r["points_against"]) for r in rows]
+    combined = [a + b for a, b in zip(pf, pa)]
+    mean_pf = sum(pf) / len(pf)
+    mean_pa = sum(pa) / len(pa)
+    if len(combined) < 2:
+        # A STANDARD DEVIATION OVER ONE GAME IS NOT ONE. Absent, not zero: a
+        # zero would say "this club's scoring never varies", which is a claim.
+        return mean_pf, mean_pa, None, len(rows)
+    mean_c = sum(combined) / len(combined)
+    sd = (sum((c - mean_c) ** 2 for c in combined) / (len(combined) - 1)) ** 0.5
+    return mean_pf, mean_pa, sd, len(rows)
+
+
 def team_games_between(
     conn: sqlite3.Connection, team: str, start: str, before: str
 ) -> list[sqlite3.Row]:

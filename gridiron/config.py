@@ -353,7 +353,8 @@ SPORT_MARKETS: dict[str, tuple[str, ...]] = {
     # no player identity match, no lineup and no crosswalk, and it resolves
     # from a final score that is present for 100% of 21,527 stored games. Every
     # prop above it depends on a name matching a name.
-    "nba": ("moneyline", "spread", "points", "rebounds", "assists", "threes"),
+    "nba": ("moneyline", "spread", "total", "points", "rebounds", "assists",
+            "threes"),
     # THREE TEAM MARKETS AND NO PROPS. The probe found zero prop rows on
     # completed and upcoming games alike, and a CFB event carries exactly one
     # odds provider whose propBets endpoint 404s -- there is no second one to

@@ -61,15 +61,16 @@ def test_the_ladder_is_spaced_for_basketball_not_copied_from_football():
     )
 
 
-def test_nba_declares_two_game_markets_and_four_prop_markets():
-    """TWO GAME MARKETS from 2026-09-04: the moneyline joined the spread.
+def test_nba_declares_three_game_markets_and_four_prop_markets():
+    """THREE GAME MARKETS from 2026-09-04: the moneyline and the total joined
+    the spread, as MARKET_ROSTER entries 1 and 2.
 
     The moneyline is first in the tuple because it is the question with
     nothing to choose -- no rung, no ladder, no floor -- and because a slate
     whose expected margin falls off the declared ladder still gets one.
     """
     assert set(config.SPORT_MARKETS["nba"]) - set(
-        config.SPORT_PROP_MARKETS["nba"]) == {"spread", "moneyline"}
+        config.SPORT_PROP_MARKETS["nba"]) == {"spread", "moneyline", "total"}
     assert config.SPORT_MARKETS["nba"][0] == "moneyline"
     assert set(config.SPORT_PROP_MARKETS["nba"]) == {
         "points", "rebounds", "assists", "threes"
@@ -265,13 +266,19 @@ def test_every_nba_factor_is_namespaced_and_carries_a_rationale():
     # 17 and 10 from 2026-09-03: `nba_asked_distance` was declared and
     # `nba_asked_line` retired in its place, so the spread set gains a factor
     # and the ACTIVE count stays where it was.
+    # 21 ON 2026-09-04 (roster #2): the totals market declared three of its
+    # own -- an asked-distance, a volatility and an availability SUM. A total
+    # is not a directional question, so it takes sums where the spread takes
+    # differences, and that is why they are new factors rather than the
+    # existing ones widened.
     # 18 LATER THE SAME DAY (Session D): `nba_srs_diff`, the opponent-adjusted
     # rating, declared BESIDE `nba_net_rating_rolling` rather than replacing
     # it, so this one is a genuine addition and the active count moves too.
-    assert len(factors) == 18
+    assert len(factors) == 21
     assert len([f for f in factors if "spread" in f.applies_to]) == 11
+    assert len([f for f in factors if "total" in f.applies_to]) == 5
     assert len([f for f in factors if "prop" in f.applies_to]) == 7
-    assert sum(f.active for f in factors) == 16, (
+    assert sum(f.active for f in factors) == 19, (
         "nba_back_to_back is deactivated in favour of nba_b2b_either"
     )
     for f in factors:

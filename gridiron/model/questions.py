@@ -358,6 +358,91 @@ def cfb_spread_rung(game_id: str, expected_margin: float | None = None) -> float
     return nearest
 
 
+#: THE RANGE AN NBA TOTAL QUESTION MAY BE ASKED IN (roster #2, 2026-09-04).
+#:
+#: Measured over 4,920 stored games: combined points average 229.2 with a
+#: standard deviation of 19.9; the 1st percentile is 185 and the 99th is 278,
+#: and the full range runs 152 to 351.
+#:
+#: The bounds are the 1st and 99th percentiles rather than the extremes. A
+#: question asked at 152 or 351 is a question about a game nobody could have
+#: forecast -- a triple-overtime marathon or a first-week rout -- and asking it
+#: at all would be asking the model to price the tail of a distribution it has
+#: five examples of. REFUSED, not clamped: an expectation outside the band gets
+#: no total question, and the game still gets its other two.
+NBA_TOTAL_MIN = 185.0
+NBA_TOTAL_MAX = 278.0
+NBA_TOTAL_BOUNDS_DECLARED = "2026-09-04T00:00:00Z"
+
+
+def nba_expected_total(home_pf: float | None, home_pa: float | None,
+                       away_pf: float | None, away_pa: float | None):
+    """The combined score to expect, from both clubs' own scoring form.
+
+    EACH CLUB'S EXPECTED POINTS IS THE AVERAGE OF ITS OWN OFFENCE AND THE
+    OPPONENT'S DEFENCE, which is the plainest estimator that uses both halves
+    of what is known. Using offence alone would price a good attack against a
+    good defence the same as against a bad one.
+
+    BLIND BY CONSTRUCTION. Every input is points scored and allowed in our own
+    stored results; no published total is consulted and this module cannot
+    reach one.
+
+    ABSENT, not zero, when any of the four is missing.
+    """
+    if None in (home_pf, home_pa, away_pf, away_pa):
+        return None
+    home_points = (float(home_pf) + float(away_pa)) / 2.0
+    away_points = (float(away_pf) + float(home_pa)) / 2.0
+    return home_points + away_points
+
+
+#: THE DECLARED TOTAL LADDER (roster #2, 2026-09-04). Five-point steps across
+#: the band, which is the same shape the spread ladder has and for the same
+#: reason.
+#:
+#: THE FIRST VERSION ASKED AT THE EXPECTATION ITSELF, rounded to the nearest
+#: half, and it produced a market that measured nothing: walk-forward Brier
+#: .2500 against .2506 for always-the-base-rate, a hit rate of 50.9%, and every
+#: one of 2,460 test rows in the 50-60% bucket. That is not a weak model, it is
+#: a question with no content -- if the rung IS the expectation then P(over) is
+#: one half by construction, and the only thing left for a coefficient to find
+#: is the rounding.
+#:
+#: A QUANTISED LADDER PUTS THE MODEL'S KNOWLEDGE BACK IN THE ANSWER. Asked at
+#: the nearest five-point rung, a game the model expects to total 233 is asked
+#: at 230.5 and the three points of difference are expressed as a probability
+#: rather than absorbed by the question. The spread has worked this way since
+#: 2026-09-03 and this is the same rule.
+#:
+#: FIVE POINTS, MEASURED: combined scores have a standard deviation of 19.9, so
+#: a five-point step is about a quarter of a standard deviation -- coarse
+#: enough to leave real distance in the residual, fine enough that no game is
+#: asked an absurd question.
+NBA_TOTAL_LADDER: tuple[float, ...] = tuple(
+    float(x) + 0.5 for x in range(185, 280, 5))
+NBA_TOTAL_LADDER_DECLARED = "2026-09-04T00:00:00Z"
+
+
+def nba_total_asked(expected: float | None) -> float | None:
+    """The declared rung nearest the expected combined score.
+
+    THE HALF-POINT IS NOT DECORATION. A whole number can push, and a pushed
+    question has no answer to score -- which would be a void on a market whose
+    whole appeal is that it always resolves. Every rung on the ladder is a
+    half.
+
+    Returns None outside the declared band -- refused, never clamped. A game
+    whose expectation sits beyond the 1st or 99th percentile of 4,920 stored
+    games gets no total question and still gets its other two.
+    """
+    if expected is None:
+        return None
+    if not NBA_TOTAL_MIN <= expected <= NBA_TOTAL_MAX:
+        return None
+    return min(NBA_TOTAL_LADDER, key=lambda rung: abs(rung - float(expected)))
+
+
 def cfb_total_asked(home_ppg: float | None, away_ppg: float | None) -> float | None:
     """The total to ask about: the two teams' combined scoring form, to a half.
 
