@@ -495,8 +495,30 @@ def chance_clause(item: dict) -> str:
                 else "the fight ends early")
 
     if market_type == "spread":
-        return (f"{subject} "
-                f"{'does not cover' if side == 'not_cover' else 'covers'}")
+        # THE SUBJECT IS ALREADY THE SIDE BEING BACKED, so the verb is always
+        # the positive one -- exactly as `phrase` does it, four screens up.
+        #
+        # THIS WAS A DOUBLE FLIP AND IT WAS LIVE ON 68 OF 321 CARDS. `side_named`
+        # flips the name when the model takes the NO side: a card stored on LV
+        # at -7.5 whose model_side is `not_cover` resolves to "Miami", because
+        # backing Las Vegas not to cover -7.5 IS backing Miami +7.5. This
+        # function then negated the VERB as well, so the card read "Miami does
+        # not cover" beside a pick line reading "Miami covers +7.5" -- two
+        # sentences, one card, opposite claims.
+        #
+        # HOW IT SURVIVED THE GUARDS. Both fixes were right on their own and
+        # neither knew about the other: the subject flip arrived when the
+        # moneyline started naming the club actually being backed, and the verb
+        # negation arrived when the renderer's hardcoded verb table put "WAS
+        # covers" on 34 cards that said the opposite. The docstring above
+        # records the second and could not know it had made the first
+        # redundant. ONE DOOR FOR THE SIDE means one place decides it, and the
+        # name is that place.
+        #
+        # Found by rendering the new hero, which puts the pick sentence and the
+        # chance clause four lines apart in large type. The old tile put them at
+        # opposite corners.
+        return f"{subject} covers"
 
     # A MARKET THAT HAS NOT CLAIMED ITS WORDS GETS NONE (2026-09-03).
     #
@@ -1051,6 +1073,53 @@ TIER_LABELS = {
     "fight_night": "Fight Night",
     "contender": "Contender Series",
 }
+
+
+MONTH_NAMES = ("January", "February", "March", "April", "May", "June",
+               "July", "August", "September", "October", "November", "December")
+
+
+def settled_day_label(day: str | None) -> str:
+    """"Yesterday" when it was, otherwise the day in words (cards UI).
+
+    THE RENDERER MUST NOT DECIDE THIS. Whether the latest settled day counts as
+    "yesterday" is a claim about a calendar, and the browser's calendar is the
+    reader's while the record's is UTC -- so a card could say "Yesterday" about
+    a day that, where the reader is sitting, was two days ago.
+
+    Composed here, from the record's own dates, and it says the DATE whenever
+    it is not certain the word is true.
+    """
+    if not day:
+        return ""
+    from datetime import date, timedelta
+
+    try:
+        when = date.fromisoformat(day[:10])
+    except ValueError:
+        return ""
+    today = date.today()
+    if when == today - timedelta(days=1):
+        return "Yesterday:"
+    if when == today:
+        return "Today:"
+    # BUILT FROM THE PARTS, not from a strftime directive. "%-d" strips the
+    # leading zero on Linux and is a ValueError on Windows, and this project
+    # runs on Windows -- a format string that raises on the operator's own
+    # machine is worse than no formatting.
+    return f"{when.day} {MONTH_NAMES[when.month - 1]}:"
+
+
+def sentence_case(text: str | None) -> str:
+    """"run line" -> "Run line". The FIRST letter only.
+
+    `str.title()` would give "Run Line" and, worse, "Total Bases" -- title case
+    on a label a person would write in sentence case. `capitalize()` would
+    lowercase everything after the first letter, which destroys a proper noun.
+    """
+    if not text:
+        return ""
+    return text[0].upper() + text[1:]
 
 
 def tier_label(tier: str | None) -> str:

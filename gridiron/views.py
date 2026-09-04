@@ -241,6 +241,100 @@ def _absent_factors(payload: dict) -> list[dict]:
     ]
 
 
+def _market_tabs(sport: str, cards: list) -> list[dict]:
+    """One tab per DECLARED market, with the count on this slate (R4).
+
+    NEVER A HARDCODED ROW. The tabs are `config.SPORT_MARKETS[sport]` in its
+    declared order, so a fifth market appears the day it is declared and no
+    file under `web/` changes. The renderer places what this returns and
+    chooses nothing.
+
+    ZERO-COUNT TABS STAY. "No strikeout questions on this card" is a fact
+    about the slate, and a tab that disappears when the count reaches zero
+    hides exactly the fact a reader would want. The count is beside the label
+    for the same reason every other number in this project is: unlabelled, it
+    would be a badge.
+
+    THE LABELS ARE PLAIN WORDS. `prop:pitcher_strikeouts` is a storage key;
+    "Strikeouts" is what a person says. `language.market_word` already knows
+    that a handicap is a point spread in football and a run line in baseball.
+    """
+    counts: dict[str, int] = {}
+    for card in cards:
+        key = card.get("prop_type") or card.get("market_type") or ""
+        counts[key] = counts.get(key, 0) + 1
+
+    tabs = [{"market": "", "label": "All", "n": len(cards)}]
+    for market in config.SPORT_MARKETS.get(sport, ()):
+        tabs.append({
+            "market": market,
+            # SENTENCE CASE, not the storage form's lowercase. "Run line"
+            # is what a person writes on a tab; `market_label` returns the
+            # phrase and this capitalises only its first letter, so "total
+            # bases" does not become the shouty "Total Bases".
+            "label": language.sentence_case(
+                language.market_label({"sport": sport, "market": market})),
+            "n": counts.get(market, 0),
+        })
+    return tabs
+
+
+def _yesterday(conn: sqlite3.Connection, sport: str) -> dict | None:
+    """What settled yesterday, this sport's season record, and the next verdict.
+
+    ONE SPORT, NEVER A TOTAL (LAW 6). Every figure here is filtered on `sport`
+    and the strip is rendered per sport, so there is no number on it that
+    describes two.
+
+    RETURNS None WHEN NOTHING HAS SETTLED, rather than a row of zeroes. "0
+    right, 0 wrong" reads as a bad day; the truth is that there was no day.
+    """
+    day = conn.execute(
+        "SELECT MAX(substr(p.resolved_utc, 1, 10)) AS d FROM predictions p"
+        " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL", (sport,)).fetchone()
+    if day is None or not day["d"]:
+        return None
+    latest = day["d"]
+
+    row = conn.execute(
+        "SELECT COUNT(*) AS n,"
+        "       SUM(CASE WHEN p.outcome = 1 THEN 1 ELSE 0 END) AS right_n"
+        "  FROM predictions p"
+        " WHERE p.sport = ? AND substr(p.resolved_utc, 1, 10) = ?"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)",
+        (sport, latest)).fetchone()
+    settled = row["n"] or 0
+    if not settled:
+        return None
+    right = row["right_n"] or 0
+
+    season = conn.execute(
+        "SELECT COUNT(*) AS n,"
+        "       SUM(CASE WHEN p.outcome = 1 THEN 1 ELSE 0 END) AS right_n"
+        "  FROM predictions p"
+        " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)",
+        (sport,)).fetchone()
+
+    return {
+        # THE DAY IN WORDS, composed here like every other visible string. The
+        # renderer would otherwise have to decide whether the latest settled
+        # day counts as "yesterday", which is a claim about a calendar and not
+        # a thing a renderer knows.
+        "label": language.settled_day_label(latest),
+        "right": right,
+        "wrong": settled - right,
+        "season": language.sport_record_line(
+            config.SPORT_LABELS.get(sport, sport),
+            season["right_n"] or 0,
+            (season["n"] or 0) - (season["right_n"] or 0),
+            season["n"] or 0),
+        "next_verdict": None,
+    }
+
+
 def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
          wk: int | None = None, forecaster: str | None = None,
          early_view: bool = False) -> dict:
@@ -728,6 +822,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         "below_floor": _below_floor(conn, sport, wk),
         "floor": config.PROPS_MIN_CLAIM,
         "quiet_markets": _quiet_markets(conn, sport, season, wk) if wk else [],
+        # THE MARKET TABS (R4), from the sport's DECLARED list and never a
+        # hardcoded row: a fifth market appears the day it is declared.
+        "market_tabs": _market_tabs(sport, cards),
+        # WHAT SETTLED LAST, this sport only. LAW 6 all the way down: there is
+        # no figure on this strip that describes two sports.
+        "yesterday": _yesterday(conn, sport),
         "sorted_by": (
             "size of disagreement with the market; no comparison sorts last"
             if lines.line_source_for(sport)["available"]

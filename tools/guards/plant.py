@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -1774,16 +1775,26 @@ def plant_a_selector_for_a_class_nothing_builds() -> Result:
     html = (web / "index.html").read_text(encoding="utf-8")
     css = (web / "style.css").read_text(encoding="utf-8")
 
-    live = "tile.querySelector('.tile-score')"
+    # RE-POINTED AT THE CARDS UI (2026-09-04). It anchored on
+    # `tile.querySelector('.tile-score')`, and the tiles are deleted. The
+    # failure it guards against is unchanged and the new layout can commit it
+    # exactly as the old one did: `applyCardState` fetches parts of a card by
+    # class on every live tick, and `querySelector` answers null rather than
+    # raising, so a renamed class stops the scores moving in silence.
+    #
+    # THE BRIEF SAID RE-POINT, NOT DROP, and this is what that means: the
+    # guard follows the mechanism it protects rather than retiring with the
+    # markup it happened to be written against.
+    live = "node.querySelector('.card-when')"
     if js.count(live) != 1:
-        return Result("a selector for a class nothing builds", False,
-                      "the live tile's corner is no longer fetched by name; "
-                      "re-point this planting at whatever replaced it")
-    broken = js.replace(live, "tile.querySelector('.tile-mkt')", 1)
+        return _desk_plant([], "a selector for a class nothing builds",
+                           "audit.dead_selector_faults")
+    broken = js.replace(live, "node.querySelector('.card-clock')", 1)
     faults = _audit.dead_selector_faults(broken, html, css)
 
     if _audit.dead_selector_faults(js, html, css):
-        return Result("a selector for a class nothing builds", False,
+        return Result("THE DESK", "a selector for a class nothing builds",
+                      "audit.dead_selector_faults", False,
                       "the scan fires on the shipped files too")
 
     return _desk_plant(faults, "a selector for a class nothing builds",
@@ -4792,6 +4803,122 @@ def plant_a_market_wearing_another_markets_verb() -> Result:
                   f"anyway: {said!r}")
 
 
+LAW_ONE_SIDE = "ONE CARD NAMES ONE SIDE"
+
+
+def plant_two_sentences_naming_opposite_sides() -> Result:
+    """Let the pick sentence and the chance clause disagree about the side.
+
+    THIS WAS LIVE ON 68 OF 321 CARDS and had been for some time.
+
+    `side_named` flips the name when the model takes the NO side: a spread
+    stored on LV at -7.5 whose `model_side` is `not_cover` resolves to "Miami",
+    because backing Las Vegas not to cover -7.5 IS backing Miami +7.5.
+    `chance_clause` then negated the VERB as well, so one card carried
+
+        pick:   "Miami covers +7.5"
+        chance: "Miami does not cover"
+
+    -- two sentences, four lines apart, making opposite claims, with the
+    percentage attached to the wrong one.
+
+    HOW IT SURVIVED EVERY EXISTING GUARD, which is the part worth keeping.
+    "One door for the side" passed, because both functions asked `side_named`
+    and got the same NAME. "The side, in prose, anywhere" passed, because both
+    sentences were grammatical and each was individually plausible. The two
+    fixes that combined to cause it were each correct alone and arrived
+    sessions apart: the subject flip, so a moneyline names the club actually
+    being backed, and the verb negation, after the renderer's hardcoded verb
+    table put "WAS covers" on 34 cards that said the opposite.
+
+    So this guard does not check either sentence. It checks that the two
+    AGREE -- which is the only thing neither of them could be asked alone.
+    """
+    conn = db.connect()
+    try:
+        disagreeing, checked = _side_disagreements(conn)
+    finally:
+        conn.close()
+
+    if disagreeing:
+        first = disagreeing[0]
+        return Result(LAW_ONE_SIDE, "two sentences naming opposite sides",
+                      "language.phrase agrees with language.chance_clause",
+                      False,
+                      f"NOT CAUGHT - {len(disagreeing)} of {checked} live cards "
+                      f"carry a pick sentence and a chance clause that name "
+                      f"opposite sides. The first is {first}")
+
+    # AND THE CHECK MUST BE ABLE TO FAIL. A guard that passes because it
+    # examines nothing is the shape this project has been bitten by before, so
+    # the planted card is run through the same comparison.
+    planted = {
+        "market_type": "spread", "model_side": "not_cover", "subject": "LV",
+        "line_asked": -7.5, "model_prob": 0.73,
+        "opponent": "MIA",
+        "team_names": {"LV": {"city": "Las Vegas"}, "MIA": {"city": "Miami"}},
+    }
+    from gridiron import language as _language
+
+    said = _language.phrase(planted)
+    # THE PLANT: the verb negated on top of the already-flipped subject, which
+    # is exactly what the shipped function did.
+    subject, _p = _language.side_named(planted, form="city")
+    broken = f"{subject} does not cover"
+    if _side_words_agree(said, broken):
+        return Result(LAW_ONE_SIDE, "two sentences naming opposite sides",
+                      "language.phrase agrees with language.chance_clause",
+                      False,
+                      f"the comparison cannot tell {said!r} from {broken!r}, "
+                      f"so it would pass whatever the code did")
+    if not _side_words_agree(said, _language.chance_clause(planted)):
+        return Result(LAW_ONE_SIDE, "two sentences naming opposite sides",
+                      "language.phrase agrees with language.chance_clause",
+                      False,
+                      f"the shipped pair still disagrees on the planted card: "
+                      f"{said!r} against {_language.chance_clause(planted)!r}")
+    return Result(LAW_ONE_SIDE, "two sentences naming opposite sides",
+                  "language.phrase agrees with language.chance_clause", True,
+                  f"{checked} live cards agree; and the double-flip form "
+                  f"{broken!r} is still detected as disagreeing with "
+                  f"{said!r}, so the comparison can fail")
+
+
+def _side_words_agree(pick: str, chance: str) -> bool:
+    """Do these two sentences claim the same side?
+
+    ON THE WORDS, not on a flag. A flag would be the same thing both sentences
+    were derived from, and a comparison against a shared source cannot catch a
+    disagreement between the two things derived from it.
+    """
+    def negative(text: str) -> bool:
+        return bool(re.search(
+            r"\bdoes not\b|\bunder\b|\bends early\b|\bto lose\b",
+            (text or "").lower()))
+    return negative(pick) == negative(chance)
+
+
+def _side_disagreements(conn):
+    """Every live card whose two sentences name opposite sides."""
+    from gridiron import views
+
+    out, checked = [], 0
+    for sport in config.SPORTS:
+        try:
+            week = views.week(conn, sport)
+        except Exception:                                    # noqa: BLE001
+            continue
+        for card in (week.get("cards") or []):
+            pick, chance = card.get("phrase"), card.get("chance_clause")
+            if not pick or not chance:
+                continue
+            checked += 1
+            if not _side_words_agree(pick, chance):
+                out.append(f"{sport} {card.get('row_title')!r}: "
+                           f"{pick!r} against {chance!r}")
+    return out, checked
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -4841,6 +4968,7 @@ def main() -> int:
     results.append(plant_a_foreign_key_on_a_table_that_does_not_exist())
     results.append(plant_the_ufc_fetcher_inside_a_prediction_closure())
     results.append(plant_a_market_wearing_another_markets_verb())
+    results.append(plant_two_sentences_naming_opposite_sides())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

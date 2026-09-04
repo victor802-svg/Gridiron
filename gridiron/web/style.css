@@ -21,25 +21,25 @@
      Approved mockup: docs/mockup/gridiron_dark.html. Dark is the only theme
      now, not a preference-dependent variant: two themes is two sets of
      contrast ratios to keep true, and only one of them was ever designed. */
-  --ink: #050705;            /* page: near-black with a green undertone */
-  --card: #0B0F0B;           /* elevated card */
-  --card-2: #10150F;         /* raised: hover, inner wells */
-  --line: #1A211A;           /* hairline */
-  --line-lit: #2C3D2B;       /* hairline, hover and the 50 tick */
-  --resolved: #080B08;       /* a settled card sits lower than a live one */
+  --ink: #0F1114;            /* page. Cards UI palette, 2026-09-04 */
+  --card: #171A1F;           /* elevated card */
+  --card-2: #1D2127;         /* raised: hover, inner wells */
+  --line: #262B33;           /* hairline */
+  --line-lit: #39404B;       /* hairline, hover and the 50 tick */
+  --resolved: #111419;       /* a settled card sits lower than a live one */
 
   /* ---- ink --------------------------------------------------------------
      Three weights of text and no more: chrome for headings and primary
      values, muted for secondary, faint for captions and sample sizes. */
-  --chrome: #F2F5F0;
-  --muted: #8AA08C;
+  --chrome: #F4F5F7;
+  --muted: #9AA3AF;
   /* Lightened from the mockup's #5A6B5C, which measured 3.23:1 on a card
      and failed WCAG AA. This is the token every SAMPLE SIZE is drawn in,
      and an N nobody can read is an N that is not there — LAW 4 means it
      has to be legible, not merely present. Same hue and saturation,
      lightness 0.386 -> 0.476, measured by tools/contrast.py. */
-  --faint: #6F8471;
-  --faintest: #3A4A3C;       /* rail end labels only */
+  --faint: #8892A0;
+  --faintest: #5F6975;       /* the quietest ink the palette declares */
 
   /* ---- the two colours, and their ONE job each (GRIDIRON_16 R2) ---------
      THE NAMES ARE THE RULE. `--win` is the colour of a pick that won.
@@ -61,9 +61,9 @@
 
      Confidence still escalates by WEIGHT, not hue -- see .tier -- for the
      same reason. */
-  --win: #00DC82;
+  --win: #22D37A;
   --loss: #FF6B6B;
-  --win-wash: rgba(0, 220, 130, 0.10);
+  --win-wash: rgba(34, 211, 122, 0.10);
   --loss-wash: rgba(255, 107, 107, 0.10);
   --model-halo: rgba(242, 245, 240, 0.12);
   --span-far: #3A5238;       /* the lit end of the disagreement span */
@@ -108,10 +108,28 @@
      binary nobody can diff is a thing nobody can check). The families are
      named first so they apply wherever they are installed, and every stack
      falls back to a system face with the same proportions. */
-  --body: 'Archivo', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  --cond: 'Barlow Condensed', 'Archivo Narrow', 'Segoe UI Semibold',
-          'Arial Narrow', system-ui, sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  /* ONE FAMILY (cards UI, 2026-09-04). The brief is explicit: no condensed
+     caps and no monospace anywhere in the interface. Rather than edit forty
+     rules, the two tokens that carried those faces now resolve to the same
+     sans stack -- one door, and a rule that reaches every place they were
+     used, including the ones nobody would have remembered.
+
+     MANROPE IS NOT SELF-HOSTED, and that is a limitation rather than a
+     choice. The brief asks for it self-hosted; there is no font binary in
+     this repository and adding one would mean shipping a file nobody can
+     diff, while linking a CDN would put a network dependency in a local-first
+     app that a test already forbids. Manrope and Inter are named first, so a
+     reader who has either installed gets it, and the stack falls back to the
+     system face. Recorded in the close-out rather than left to be discovered.
+
+     TABULAR FIGURES SURVIVE THE CHANGE. The stylesheet's own rule -- numbers
+     line up so a changed digit does not move the ones beside it -- was being
+     kept by the monospace face. It is now kept by `font-variant-numeric` on
+     the body, which is what that property is for. */
+  --body: 'Manrope', 'Inter', 'Segoe UI Variable Text', 'Segoe UI',
+          system-ui, sans-serif;
+  --cond: var(--body);
+  --mono: var(--body);
 
   --t-display: 28px;
   --t-body: 14px;
@@ -119,6 +137,10 @@
 
   --radius: 12px;
   --radius-sm: 8px;
+  /* CARDS UI radii, from the brief. */
+  --radius-card: 22px;
+  --radius-hero: 28px;
+  --radius-pill: 999px;
   /* --- THE MOTION VOCABULARY (L3) ---------------------------------------
      Two durations and ONE curve, and nothing on this page may use anything
      else. The scan in `audit.motion_faults` reads these tokens and fails the
@@ -1002,60 +1024,249 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .week-more > summary::after { content: " \25BE"; color: var(--faint); }
 .week-more[open] > summary::after { content: " \25B4"; }
 
-/* --- THE ROWS ------------------------------------------------------------- */
-.rows {
-  border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+/* --- THE CARDS UI (2026-09-04) ---------------------------------------------
+
+   ONE LAYOUT, EVERY WIDTH. What stood here was two: a desk (a scrolling frame
+   of tiles beside a 440px rail) inside a `min-width: 1280px` query, and a
+   separate set of compact rows below it. The comment on that media query used
+   to say the phone was "untouched by construction" -- which was true, and was
+   the problem: two layouts, two sets of rules, two things to keep in step, and
+   a whole class of bug where the JS built one while the CSS styled the other.
+
+   This grid reflows. Nothing here asks how wide the window is in order to
+   decide what EXISTS; the only queries below change how many columns the same
+   cards sit in. */
+
+/* --- the market tabs (R4) -------------------------------------------------- */
+.market-tabs {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 18px 0 14px;
+}
+.market-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
   background: var(--card);
-}
-.row + .row { border-top: 1px solid var(--line); }
-.row-head {
-  display: grid;
-  grid-template-columns: 28px 1fr auto auto;
-  align-items: center; gap: 12px;
-  padding: 12px 14px;
+  color: var(--muted);
+  font: 600 13px/1 var(--body);
   cursor: pointer;
-  /* 44px minimum tap target, phone included. */
-  min-height: 44px;
+  transition: background var(--t-quick) var(--ease),
+              border-color var(--t-quick) var(--ease),
+              color var(--t-quick) var(--ease);
 }
-.row-head:hover { background: var(--card-hi, rgba(255,255,255,0.02)); }
-.row-head:focus-visible {
-  outline: 2px solid var(--chrome); outline-offset: -2px;
+.market-tab:hover { background: var(--card-2); color: var(--chrome); }
+.market-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.market-tab.on {
+  background: var(--card-2); color: var(--chrome); border-color: var(--line-lit);
 }
-.row.open .row-head { background: var(--card-hi, rgba(255,255,255,0.02)); }
+/* THE COUNT IS BESIDE THE LABEL, NOT A BADGE. A zero-count tab stays on the
+   row because "no strikeout questions tonight" is a fact about the slate. */
+.market-tab-n { color: var(--faint); font-weight: 600; }
+.market-tab.on .market-tab-n { color: var(--muted); }
 
-.row-rank {
-  font-family: var(--mono); font-size: 12px; color: var(--faint);
-  text-align: right;
+/* --- the hero (R3) --------------------------------------------------------- */
+.hero {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-hero);
+  padding: 22px 24px 18px;
+  margin-bottom: 22px;
 }
-.row-mid { min-width: 0; }
-/* THE ROW GROWS; IT DOES NOT TRUNCATE (2026-09-03).
-   Both of these carried `text-overflow: ellipsis`, so a phone read
-   "BRISSETT * PASSI..." and "SF DOES NOT..." -- the card telling a reader
-   there is something it is not showing and then not showing it, which is
-   exactly what the no-truncation law forbids. The existing scan missed it
-   because it looks at the frame at desk width, where nothing truncates.
-   Recorded in FOLLOWUPS on finding it and fixed here on the day the event
-   tier was added to the pick line, because adding to a line that already
-   truncated made it worse and deferring it then would have been a choice to
-   ship a defect I had just enlarged. */
-.row-title {
-  font-weight: 700; letter-spacing: 0.04em; font-size: 14px;
-  text-transform: uppercase;
+.hero-tag {
+  font: 700 11px/1 var(--body);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  margin-bottom: 12px;
+}
+.hero-body { display: flex; gap: 24px; align-items: flex-start; }
+.hero-left { flex: 1 1 auto; min-width: 0; }
+.hero-game {
+  font: 800 30px/1.15 var(--body);
+  color: var(--chrome);
+  margin: 0 0 6px;
+  /* THE HERO NEVER TRUNCATES. It is the one card a reader is most likely to
+     read in full, and an ellipsis here would be the no-truncation law broken
+     in the largest type on the page. */
   overflow-wrap: anywhere;
 }
-.row-pick {
-  font-size: 13px; color: var(--muted); margin-top: 3px;
+.hero-pick {
+  font: 600 15px/1.4 var(--body); color: var(--muted); margin-bottom: 12px;
   overflow-wrap: anywhere;
 }
-.row-caret { color: var(--chrome); margin-right: 5px; }
-.row-phrase { color: var(--text); font-weight: 600; }
-.row-when { color: var(--faint); }
+.hero-why { margin: 0 0 14px; }
+.hero-sentence {
+  font: 600 14px/1.55 var(--body); color: var(--muted); margin: 0 0 6px;
+}
+.hero-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.hero-earned, .hero-when {
+  font: 600 12px/1.4 var(--body); color: var(--faint);
+}
+.hero-right {
+  flex: 0 0 auto; text-align: right;
+  background: var(--card-2);
+  border-radius: var(--radius-card);
+  padding: 18px 20px;
+  min-width: 190px;
+}
+.hero-market {
+  font: 600 12px/1.4 var(--body); color: var(--faint); margin-top: 8px;
+}
 
+.hero-steps {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.hero-arrow {
+  width: 30px; height: 30px; border-radius: var(--radius-pill);
+  border: 1px solid var(--line); background: var(--card-2);
+  color: var(--muted); font: 600 16px/1 var(--body); cursor: pointer;
+  transition: background var(--t-quick) var(--ease),
+              color var(--t-quick) var(--ease);
+}
+.hero-arrow:hover { background: var(--panel); color: var(--chrome); }
+.hero-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hero-dots { display: flex; gap: 7px; }
+.hero-dot {
+  width: 8px; height: 8px; padding: 0; border-radius: var(--radius-pill);
+  border: none; background: var(--line-lit); cursor: pointer;
+  transition: background var(--t-quick) var(--ease);
+}
+.hero-dot.on { background: var(--chrome); }
+.hero-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* --- the chance block ------------------------------------------------------
+   ONE NUMBER PER CARD (R2), and the word for what it is a number OF directly
+   under it. A percentage with no noun is the thing this project keeps having
+   to fix in prose; it would be the same defect in type. */
+.chance { line-height: 1; }
+.chance-n { font-weight: 800; color: var(--chrome); }
+.chance-pct { font-size: 0.45em; font-weight: 700; color: var(--faint); margin-left: 2px; }
+.chance-of {
+  font: 600 12px/1.35 var(--body); color: var(--faint); margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.chance-hero .chance-n { font-size: 72px; }
+.chance-grid .chance-n { font-size: 40px; }
+
+/* --- the card grid --------------------------------------------------------- */
+.grid-heading {
+  font: 700 13px/1 var(--body); letter-spacing: 0.06em;
+  color: var(--faint); margin: 0 0 12px;
+}
+.cards {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  transition: border-color var(--t-quick) var(--ease);
+}
+.card:hover { border-color: var(--line-lit); }
+.card-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "mid chance" "meta chance";
+  gap: 4px 14px;
+  width: 100%;
+  padding: 18px;
+  background: none; border: none; text-align: left; cursor: pointer;
+  color: inherit; font: inherit;
+  transition: background var(--t-quick) var(--ease);
+}
+.card-head:hover { background: var(--card-2); }
+.card-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.card.open .card-head { background: var(--card-2); }
+.card-mid { grid-area: mid; min-width: 0; }
+.card-game {
+  font: 800 22px/1.2 var(--body); color: var(--chrome); margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.card-pick {
+  font: 600 13px/1.45 var(--body); color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.card-phrase { color: var(--chrome); }
+.card-when, .tier-name { color: var(--faint); }
+/* THE MARKET'S NUMBER IS A HINT, NOT A SECOND CLAIM. Revealed on hover and on
+   keyboard focus -- a hint only a mouse can find is a hint a phone reader and
+   a keyboard reader never get. */
+.card-hint {
+  font: 600 12px/1.4 var(--body); color: var(--faint);
+  margin-top: 8px; opacity: 0;
+  transition: opacity var(--t-quick) var(--ease);
+}
+.card-head:hover .card-hint,
+.card-head:focus-visible .card-hint,
+.card.open .card-hint { opacity: 1; }
+@media (hover: none) {
+  /* No hover to reveal it with, so it is simply shown. */
+  .card-hint { opacity: 1; }
+}
+.card-meta { grid-area: meta; display: flex; align-items: center; gap: 8px; }
+.card-head .chance { grid-area: chance; text-align: right; }
+.card-body { padding: 0 18px 18px; }
+
+.show-all {
+  display: block; margin: 16px auto 0;
+  padding: 9px 18px;
+  border: 1px solid var(--line); border-radius: var(--radius-pill);
+  background: var(--card); color: var(--muted);
+  font: 600 13px/1 var(--body); cursor: pointer;
+  transition: background var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
+}
+.show-all:hover { background: var(--card-2); color: var(--chrome); }
+.show-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* --- a card in flight, and one that finished (L2) --------------------------
+   Carried across from the tiles unchanged in meaning. A MARK, NOT A COLOUR:
+   green means a pick won and means interactive, and a game being played now is
+   neither. */
+.card[data-state="final"] { background: var(--resolved); }
+.card-live {
+  width: 7px; height: 7px; border-radius: var(--radius-pill);
+  background: var(--chrome); display: inline-block;
+  animation: live-pulse 1.6s var(--motion-ease) infinite;
+}
+.card-verdict {
+  font: 700 11px/1 var(--body); letter-spacing: 0.06em;
+  padding: 4px 8px; border-radius: var(--radius-pill);
+}
+.card-verdict.v-win { color: var(--win); background: var(--win-wash); }
+.card-verdict.v-loss { color: var(--loss); background: var(--loss-wash); }
+.card-verdict.v-void { color: var(--faint); border: 1px solid var(--line); }
+
+/* --- the yesterday strip --------------------------------------------------- */
+.yesterday {
+  display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline;
+  margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line);
+  font: 600 13px/1.5 var(--body); color: var(--muted);
+}
+.yesterday-label { color: var(--faint); margin-right: 4px; }
+/* GREEN ON THE RIGHT COUNT ONLY. The wrong count is drawn in the ordinary ink:
+   `--loss` is the colour of a pick that lost, and a tally is not a pick. */
+.yesterday .win { color: var(--win); }
+.yesterday-season, .yesterday-next { color: var(--faint); }
+
+.slate-footer { margin-top: 18px; }
+
+/* THE ONE THING A WIDTH STILL CHANGES: how many columns the same cards sit in,
+   and whether the hero stacks. Nothing appears or disappears. */
+@media (max-width: 700px) {
+  .hero-body { flex-direction: column; }
+  .hero-right { width: 100%; text-align: left; min-width: 0; }
+  .hero-game { font-size: 24px; }
+  .chance-hero .chance-n { font-size: 56px; }
+  .cards { grid-template-columns: 1fr; }
+}
 /* --- THE EXPANDED BODY ---------------------------------------------------- */
-.row-body { padding: 4px 14px 16px 54px; }
+.card-body { padding: 4px 14px 16px 54px; }
 /* The sentence that replaced the graphic. Sits directly under the pick, in
    body text, because it is a sentence. */
-.row-numbers {
+.card-numbers {
   margin: 12px 0 6px; font-size: var(--t-body); color: var(--muted);
 }
 
@@ -1069,23 +1280,23 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    class of pick rather than a differently-shaped question. */
 .tier-name { color: var(--faint); }
 
-.row-rate {
+.card-rate {
   margin: 0 0 8px; font-size: var(--t-body); color: var(--faint);
 }
 
-.row-stats {
+.card-stats {
   display: flex; justify-content: space-between; gap: 12px;
   font-family: var(--mono); font-size: 11px; color: var(--faint);
   padding: 6px 0 10px;
 }
-.row-why { font-size: 13.5px; line-height: 1.55; color: var(--muted); }
-.row-why b { color: var(--text); }
-.row-more {
+.card-why { font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.card-why b { color: var(--text); }
+.card-more {
   display: inline-block; margin-top: 10px;
   color: var(--chrome); text-decoration: none; font-size: 13px;
 }
-.row-more:hover { text-decoration: underline; }
-.row-tierline {
+.card-more:hover { text-decoration: underline; }
+.card-tierline {
   font-family: var(--mono); font-size: 11px; color: var(--faint);
   margin-top: 10px;
 }
@@ -1164,7 +1375,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
     content: attr(data-rank);
     color: var(--faint); font-family: var(--mono); margin-right: 6px;
   }
-  .row-body { padding-left: 12px; }
+  .card-body { padding-left: 12px; }
   .prob small { max-width: 14ch; }
   .controls { gap: 8px; }
 }
@@ -1236,7 +1447,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 
 /* The raw claim beside the shown one, in an expanded row. Present only where a
    correction actually moved the number. */
-.earned-line {
+.card-earned {
   margin: 6px 0 2px; font-size: 13px; line-height: 1.5;
   color: var(--faint); max-width: 68ch;
 }
@@ -1253,254 +1464,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    a 440px rail, ~124px tiles three across, a 3px tier edge, a 48px fade. */
 
 @media (min-width: 1280px) {
-  /* THE DESK IS WIDER THAN THE READING COLUMN. The app is 1120px because that
-     is a comfortable measure for rows of prose; the desk is a grid of tiles
-     plus a 440px rail, and at 1120 the frame came out 618px wide -- three
-     195px tiles, too narrow for a matchup without wrapping. The mockup uses
-     1720. Only the desk's own containers widen; every other page keeps its
-     reading measure. */
-  body.desk-on .bar-inner,
-  body.desk-on main { max-width: 1720px; }
-
-  /* The page is pinned. Only the frame and the rail scroll, so the controls
-     and the rail stay put while a 177-pick slate moves under them.
-     BOTH ELEMENTS, and `height: 100%` with them: `overflow: hidden` on body
-     alone left the document scrolling 414px, because the viewport scroll is
-     the root element's and body was still free to be taller than it. The
-     mockup pins html and body together for the same reason. */
-  html:has(body.desk-on), body.desk-on { height: 100%; overflow: hidden; }
-
-  /* THE COLUMN FILLS WHAT IS LEFT, rather than guessing what is above it.
-     `height: calc(100vh - bar - 24px)` assumed the grid started at the header.
-     It does not: the title, the sort toggle and the week picker sit between
-     them and take 107px, so the grid ran 129px past the bottom of the window
-     and `overflow: hidden` quietly clipped it. Both columns scroll inside
-     themselves, so nothing looked broken -- the frame just had a bottom the
-     reader could never reach, and D3's third rail panel was cut in half.
-     Measuring it in flex instead means the controls can change height and the
-     grid still ends exactly at the window's edge. */
-  body.desk-on main { display: flex; flex-direction: column; min-height: 0;
-                      height: calc(100vh - var(--bar-h, 52px)); }
-  body.desk-on #view-week { display: flex; flex-direction: column;
-                            flex: 1; min-height: 0; }
-
-  .desk-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 440px;
-    gap: 22px;
-    align-items: start;
-    flex: 1;
-    min-height: 0;
-    padding-bottom: 12px;
-  }
-
-  .desk-frame {
-    height: 100%;
-    overflow-y: auto;
-    padding-bottom: 40px;
-    /* NO VISIBLE SCROLLBAR ON ANY ENGINE, and the fade is the cue instead.
-       Firefox takes `scrollbar-width`, WebKit and Blink take the pseudo
-       element, and old Edge takes `-ms-overflow-style`. Hiding it in one
-       engine only would leave the layout shifting between browsers. */
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
-  }
-  .desk-frame::-webkit-scrollbar { display: none; }
-
-  /* The controls ride at the top of the frame, not the page. */
-  .desk-frame .controls {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--bg);
-    margin: 0 0 12px;
-    padding: 2px 0 10px;
-  }
-
-  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-
-  .tile {
-    position: relative;
-    display: grid;
-    grid-template-rows: auto auto 1fr;
-    gap: 6px;
-    min-height: 124px;
-    padding: 16px 18px 14px;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    cursor: pointer;
-    text-align: left;
-    width: 100%;
-    font: inherit;
-    color: inherit;
-  }
-  .tile:hover { background: var(--panel); }
-  .tile[aria-selected="true"] { background: var(--panel); border-color: var(--rule-2); }
-  .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-  /* The tier, as a 3px edge. NOT a colour that means good or bad: white is
-     the most confident band and the faintest is the least, which is a
-     brightness ramp and not the green the colour law reserves. */
-  .tile::before {
-    content: "";
-    position: absolute; left: 0; top: 14px; bottom: 14px;
-    width: 3px; border-radius: 0 2px 2px 0;
-    background: var(--rule-2);
-  }
-  .tile.t-strong::before { background: var(--chrome); }
-  .tile.t-solid::before  { background: var(--muted); }
-  .tile.t-lean::before   { background: var(--rule-2); }
-
-  .tile-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-  .tile-match {
-    font-family: var(--cond); font-weight: 700; font-size: 20px;
-    letter-spacing: .03em; text-transform: uppercase; line-height: 1.05;
-  }
-  .tile-rank { font-family: var(--mono); font-size: 11px; color: var(--faint); }
-  .tile-pick { font-size: 13px; color: var(--muted); }
-  .tile-pick b { color: var(--chrome); font-weight: 600; }
-  /* TWO NUMBERS, SAME SIZE, SAME FONT (GRIDIRON_16 R3). What the model says
-     and what the market says, side by side and directly comparable. The tile
-     used to draw the model at 26px and the market at 11px in the far corner,
-     which answered "how sure is the model" and left "is that more than the
-     market thinks" to be worked out across the width of the tile. The gap is
-     not here at all: it is the subtraction a reader can now do by eye. */
-  .tile-score {
-    font-family: var(--mono); font-size: 11px; color: var(--faint);
-    line-height: 1.5; min-height: 0;
-  }
-  .tile-score b { color: var(--muted); font-weight: 500; }
-  .tile-numbers { display: flex; gap: 22px; align-items: flex-end; }
-  .tile-num {
-    font-family: var(--mono); font-weight: 600; font-size: 26px; line-height: 1;
-  }
-  .tile-num i { font-style: normal; color: var(--faint); font-size: 14px; }
-  .tile-num small {
-    display: block; margin-top: 3px;
-    font-size: 9px; font-weight: 400; letter-spacing: .08em;
-    text-transform: uppercase; color: var(--faint);
-  }
-  /* "no line" IN WORDS, at the size of the number it stands in for, so the
-     absence occupies the space rather than leaving a hole. */
-  .tile-num-absent {
-    font-size: 13px; font-weight: 400; color: var(--faint);
-    letter-spacing: .02em; padding-bottom: 4px;
-  }
-
-  /* NO TRUNCATION ANYWHERE IN THE FRAME. A tile that ellipsises has told the
-     reader there is something it is not showing and then not shown it; the
-     tile grows instead. A test asserts no element in the frame carries
-     text-overflow: ellipsis. */
-  .desk-frame * { text-overflow: clip; }
-  .tile-match, .tile-pick { overflow-wrap: anywhere; }
-
-  /* THE RAIL (D3). Three stacked panels on a 14px gutter, per the mockup.
-     `align-content: start` so a short rail sits under the header rather than
-     centring itself against a tall frame. */
-  .desk-rail {
-    display: grid;
-    gap: 14px;
-    align-content: start;
-    /* THE RAIL SCROLLS ITSELF. Three panels are taller than a 900px viewport,
-       and without this the body grew to fit them -- which un-pinned the page
-       that D2 exists to pin, silently, because a rail that runs off the
-       bottom looks like a rail that simply has more in it. Caught in the
-       render, and `test_the_page_does_not_scroll_but_the_frame_does` now has
-       a sibling that would catch it again. */
-    height: 100%;
-    overflow-y: auto;
-    padding-bottom: 24px;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .desk-rail::-webkit-scrollbar { display: none; }
-}
-
-/* Below the breakpoint the desk does not exist at all. */
-@media (max-width: 1279px) {
-  .desk-grid { display: block; }
-  .desk-rail { display: none; }
-}
-
-/* --- the rail's panels (D3) ------------------------------------------------
-   Measurements from docs/mockup/gridiron_desk.html: a 14px gutter between
-   panels, 16/18 padding, a 12px radius, and a heading that puts its sample
-   size on the right in mono. Only the rail's `display` is scoped to the desk
-   breakpoint, above; these are inert while the rail is hidden, and keeping
-   them unscoped means one description of a panel rather than two. */
-#greeting, #greeting-home { display: contents; }
-/* Inside the panel it becomes an ordinary block again, so the three greeting
-   nodes stack rather than dissolving into the panel's own box. */
-#rail-since-host #greeting { display: block; }
-
-.panel {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 18px;
-}
-.panel h3 {
-  font-family: var(--cond);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 10px;
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-.panel h3 small {
-  font-family: var(--mono);
-  letter-spacing: 0;
-  font-weight: 400;
-  text-transform: none;
-  font-size: 11px;
-}
-/* The panel owns the spacing, so the greeting does not also carry its own
-   page margin inside a card. */
-#rail-since-host #greeting > * { margin-left: 0; margin-right: 0; }
-
-.rail-match {
-  font-family: var(--cond);
-  font-weight: 700;
-  font-size: 24px;
-  letter-spacing: .03em;
-  text-transform: uppercase;
-  line-height: 1.05;
-  color: var(--chrome);
-}
-.rail-pick { margin: 12px 0 2px; font-size: 14px; color: var(--muted); }
-.rail-pick b { color: var(--chrome); font-weight: 600; }
-
-.rail-glance { display: grid; gap: 8px; }
-.rail-glance + .rail-glance { margin-top: 12px; }
-.krow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  font-size: 12.5px;
-  color: var(--muted);
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line);
-}
-.krow:last-child { border-bottom: 0; }
-.krow b { font-family: var(--mono); color: var(--chrome); font-weight: 600; }
-/* A note under a group of rows, in the weight every caption uses. These carry
-   the LAW 1 and LAW 4 caveats -- why coverage is reported rather than acted
-   on, and whose clock the windows are on -- so they are part of the claim. */
-.rail-note {
-  font-size: 11px;
-  color: var(--faint);
-  line-height: 1.5;
-  margin-top: 8px;
-}
-
 /* --- the tier filter and the slate clock (E2) ------------------------------
    The tier control is a fourth segmented group beside the sort, styled by the
    same `.seg` rules; only its hidden state and the clock are new here. */

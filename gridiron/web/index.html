@@ -248,36 +248,41 @@
       </div>
       <p class="why" id="week-sort"></p>
     </details>
-    <!-- THE DESK GRID (D2). At >= 1280px this is two columns: a scrolling
-         frame of tiles and a fixed rail. Below it, `.desk-grid` is a plain
-         block and `#week-cards` renders the compact rows exactly as before --
-         the desk is additive, not a replacement. -->
-    <div class="desk-grid">
-      <div id="week-frame" class="desk-frame">
-        <div id="week-cards"></div>
-      </div>
-      <!-- THE RAIL (D3). Three panels: the pick under the cursor, the shape
-           of the whole slate, and what landed while the reader was away. The
-           first two are filled from the same payload the tiles are built
-           from; the third is the greeting itself, moved here. -->
-      <aside id="week-rail" class="desk-rail" hidden>
-        <div class="panel" id="rail-detail">
-          <h3>Selected pick <small id="rail-sub"></small></h3>
-          <div class="rail-match" id="rail-match"></div>
-          <div class="rail-pick" id="rail-pick"></div>
-          <div id="rail-body"></div>
-        </div>
-        <div class="panel" id="rail-glance-panel">
-          <h3>At a glance <small id="rail-glance-count"></small></h3>
-          <div class="rail-glance" id="rail-windows"></div>
-          <div class="rail-glance" id="rail-facts"></div>
-        </div>
-        <div class="panel since" id="rail-since">
-          <h3>Since you last looked</h3>
-          <div id="rail-since-host"></div>
-        </div>
-      </aside>
-    </div>
+    <!-- ONE LAYOUT, EVERY WIDTH (cards UI, 2026-09-04). The desk (a scrolling
+         frame beside a fixed rail) and the compact rows below the breakpoint
+         were two layouts describing the same slate, each with its own bugs and
+         its own tests. They are deleted. What replaces them is one hero and
+         one grid of cards, which reflow rather than switch.
+
+         ONE NUMBER PER CARD (R2). A card carries the game, the pick, the
+         model's chance, the time and the tier. The market's number and the
+         three sentences of reasoning are one tap away, inside the card. -->
+
+    <!-- MARKET TABS (R4). Filled from the sport's DECLARED market list, never
+         written here: a fifth market must appear without a change to this
+         file. Zero-count tabs stay visible, because "no strikeout questions
+         tonight" is a fact about the slate and a tab that vanishes hides it. -->
+    <nav id="week-market-tabs" class="market-tabs" aria-label="Markets"></nav>
+
+    <!-- THE HERO (R3). The sharpest disagreement for the selected tab, or the
+         most confident when the sort says so. Arrows and dots step through the
+         top five. -->
+    <section id="week-hero" class="hero" hidden aria-live="polite"></section>
+
+    <h2 class="grid-heading" id="week-grid-heading" hidden>More picks</h2>
+    <div id="week-cards" class="cards"></div>
+    <button type="button" id="week-showall" class="show-all" hidden></button>
+
+    <!-- THE YESTERDAY STRIP. Three facts, side by side, never summed across
+         sports: what settled yesterday, the season record, and how far the
+         next verdict is. -->
+    <div id="week-yesterday" class="yesterday" hidden></div>
+
+    <p class="footnote slate-footer">
+      One number per card: the model&rsquo;s chance. The market and the reasons
+      are one tap away. Green marks a pick that won and nothing else. Sports are
+      reported side by side and never summed.
+    </p>
   </section>
 
   <section id="view-results" class="view" hidden>

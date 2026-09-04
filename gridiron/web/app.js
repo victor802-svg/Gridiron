@@ -92,7 +92,16 @@ const Gridiron = (function () {
     // Declared here rather than left to spring into existence on first click:
     // an undefined that behaves like null until it does not is the kind of
     // state nobody can reason about.
-    calendarDay: null };
+    calendarDay: null,
+    // THE CARDS UI (2026-09-04). Declared here for the reason the note above
+    // gives: an undefined that behaves like a default until it does not is
+    // state nobody can reason about.
+    //
+    // `market` is the selected market TAB, empty for "All". `showAllCards` is
+    // whether the grid has been expanded past its first six, and it resets on
+    // every slate, sport, sort and tab change -- a grid left expanded across a
+    // filter change shows a different number of cards than the control says.
+    market: '', showAllCards: false };
 
   function withSport(path, extra) {
     const p = new URLSearchParams(extra || {});
@@ -839,122 +848,171 @@ const Gridiron = (function () {
   const shownProb = (c) => (c.shown_prob === null || c.shown_prob === undefined)
     ? c.model_prob : c.shown_prob;
 
-  // THE DESK (D2). One breakpoint, declared once, read by everything that
-  // needs to know which layout is live. 1280 matches the mockup and the CSS;
-  // a second literal somewhere else is how the two would drift apart.
-  const DESK_MIN_WIDTH = 1280;
-
-  // THE JS AND THE CSS ASK THE SAME QUESTION (GRIDIRON_16 R6).
+  // THE BREAKPOINT MACHINERY IS GONE (cards UI, 2026-09-04).
   //
-  // `isDesk` compared `window.innerWidth` to the number while the stylesheet
-  // used its own `@media (min-width: 1280px)`. Two mechanisms deciding one
-  // thing, and they agreed only as long as a `resize` event arrived to keep
-  // them in step. When they disagreed the failure was ugly and confusing:
-  // the renderer built the desk's TILES while the media query withheld every
-  // tile rule, so the slate came out as unstyled boxes and the rail panels
-  // looked empty -- which is what "the desk did not engage" looks like from
-  // the outside, and why it was mistaken for a per-sport bug.
-  //
-  // `matchMedia` reads the SAME breakpoint the CSS does, from the same
-  // number, and its `change` event fires exactly when the CSS state flips --
-  // including the cases a resize listener misses. The layout is now decided
-  // by the breakpoint and by nothing else: never by the sport, never by the
-  // slate's shape, and never by whether an event happened to arrive.
-  const DESK_QUERY = window.matchMedia('(min-width: ' + DESK_MIN_WIDTH + 'px)');
-  const isDesk = () => DESK_QUERY.matches;
+  // `DESK_MIN_WIDTH`, `DESK_QUERY` and `isDesk` decided which of TWO layouts
+  // to build, and a long comment here explained how the JS and the CSS came to
+  // disagree about it -- the renderer building tiles while the media query
+  // withheld every tile rule, so the slate rendered as unstyled boxes and the
+  // rail looked empty. That whole class of failure is deleted with the second
+  // layout: there is one layout now, it reflows, and no code anywhere asks how
+  // wide the window is in order to decide what to build.
 
   // A tile. Every string on it was written by the server: the matchup, the
   // short pick line, the label under the percentage. The renderer places
   // them and computes no words of its own (ruling, 2026-08-31).
-  function pickTile(c, rank) {
-    const tile = el('button', 'tile');
-    tile.type = 'button';
-    tile.dataset.id = c.prediction_id;
-    tile.setAttribute('role', 'option');
-    tile.setAttribute('aria-selected', 'false');
-    // The tier as a class token, lowered where it is used so it reads as the
-    // CSS token it is. (The prose scan exempts a class token by POSITION, and
-    // it is right to: lowering a value into a variable first is how a word
-    // being shaped for a reader would look.)
-    if ((c.tier || {}).tier) tile.classList.add('t-' + c.tier.tier.toLowerCase());
+  // --- THE CARDS UI (2026-09-04) -------------------------------------------
+  //
+  // ONE LAYOUT FOR EVERY WIDTH. What stood here was two: a desk (a scrolling
+  // frame of tiles beside a fixed rail) above 1280px, and a separate list of
+  // compact rows below it. Two layouts describing one slate is two sets of
+  // bugs, two sets of tests, and two chances for a card to say something the
+  // other one does not. They are deleted -- markup, CSS and tests -- with no
+  // allowlist entries, the way the calls feature was withdrawn.
+  //
+  // NOTHING HERE BUILDS A SENTENCE. `row_title`, `phrase`, `chance_clause`,
+  // `bucket_line`, `rate_line`, `what_it_knew` and every `why` sentence arrive
+  // written from `language.py`. That is what stopped the renderer inventing a
+  // verb and getting the side backwards twice.
 
-    const top = el('div', 'tile-top');
-    top.appendChild(el('div', 'tile-match', c.row_title || c.matchup || ''));
-    // The rank is the position in the CURRENT sort, so it renumbers when the
-    // toggle moves. A rank that survived a re-sort would be a different
-    // ordering's opinion left lying on the page.
-    top.appendChild(el('span', 'tile-rank', rank == null ? '' : String(rank)));
-    tile.appendChild(top);
+  //: How many cards the grid shows before "show all". Six, from the brief.
+  const CARDS_BEFORE_SHOW_ALL = 6;
+  //: How many picks the hero steps through. Five, from the brief.
+  const HERO_STEPS = 5;
 
-    const pick = el('div', 'tile-pick');
-    pick.appendChild(el('b', '', c.tile_line || c.phrase || ''));
-    // THE EARLY VIEW SAYS SO ON EVERY ROW (A3). The sentence is composed
-    // by the server; the browser places it. Only a row a later forecast
-    // actually replaced carries one.
-    if (c.is_early_view && c.pass_note) {
-      pick.appendChild(el('div', 'footnote', c.pass_note));
-    }
-    if (c.what_it_knew) {
-      pick.appendChild(el('div', 'footnote', c.what_it_knew));
-    }
-    // `start_local` is the UTC instant; the BROWSER applies the reader's
-    // timezone, which is the one thing it knows better than the server.
-    // `localTime` is the same helper the compact rows use -- without it
-    // the tile printed '2026-09-05T16:00:00Z' at a reader.
-    // WHICH KIND OF CARD, BEFORE THE TIME (E3, 2026-09-03). "Contender Series
-    // · Tue 8:00 PM". A Contender Series bout goes the distance 43.6% of the
-    // time against 58.0% on a numbered card, and the record is kept separately
-    // for that reason -- so a reader is told which one they are looking at.
-    // Empty for every sport that does not split its record by tier.
-    if (c.tier_label) {
-      pick.appendChild(document.createTextNode(' · '));
-      pick.appendChild(el('span', 'tier-name', c.tier_label));
-    }
-    if (c.start_local) {
-      pick.appendChild(document.createTextNode(' · ' + localTime(c.start_local)));
-    }
-    tile.appendChild(pick);
-
-    // THE SCORE, when there is a game to show instead of a forecast. Its own
-    // row above the numbers rather than in place of the market, so the two
-    // percentages sit in the same position on every tile on the slate.
-    const score = el('div', 'tile-score');
-    paintTileCorner(score, c);
-    tile.appendChild(score);
-
-    // TWO NUMBERS, SAME SIZE, SAME FONT (GRIDIRON_16 R3): what the model
-    // says and what the market says, each under a small label. The gap is
-    // NOT here -- it is arithmetic the reader can do between two numbers
-    // that are finally side by side, and a third number was the one most
-    // often mistaken for a probability.
-    const bottom = el('div', 'tile-numbers');
-    bottom.appendChild(tileNumber(pct(shownProb(c), 0).replace('%', ''),
-                                  c.tile_label || 'model'));
-    const market = (c.market_implied_prob === null ||
-                    c.market_implied_prob === undefined)
-      ? null : pct(c.market_implied_prob, 0).replace('%', '');
-    // "no line" IN WORDS, never an em-dash: a dash reads as an error rather
-    // than an absence.
-    bottom.appendChild(market === null
-      ? el('div', 'tile-num tile-num-absent', 'no line')
-      : tileNumber(market, 'market'));
-    tile.appendChild(bottom);
-
-    applyTileState(tile, c);
-    tile.addEventListener('click', () => selectTile(tile));
-    return tile;
+  function localTime(iso) {
+    try {
+      return new Date(iso).toLocaleTimeString([], {
+        hour: 'numeric', minute: '2-digit'
+      });
+    } catch (e) { return ''; }
   }
 
-  // FOLLOWING A SLATE THAT IS ON (L2).
+  // What follows the pick on the line: kick-off for a game, the fixture for a
+  // prop, because on a prop the subject is the headline and the fixture is the
+  // detail.
+  function cardTail(c) {
+    if (c.market_type === 'prop') return c.matchup || '';
+    return c.start_local ? localTime(c.start_local) : '';
+  }
+
+  function tierChip(tier) {
+    if (!tier || !tier.tier) return el('span', 'tier tier-none', '');
+    const chip = el('span', 'tier ' + tier.tier.toLowerCase(), tier.tier);
+    chip.title = tier.message || '';
+    return chip;
+  }
+
+  // ONE NUMBER, AND THE WORD FOR WHAT IT IS A NUMBER OF (R2). The percentage
+  // and "chance" beneath it, and nothing else numeric on a collapsed card --
+  // the market's figure is inside, one tap away, because a card showing two
+  // percentages makes a reader work out which one is the claim.
+  function chanceBlock(c, size) {
+    const wrap = el('div', 'chance ' + size);
+    const n = el('div', 'chance-n');
+    n.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
+    n.appendChild(el('span', 'chance-pct', '%'));
+    wrap.appendChild(n);
+    // The server wrote this line; the browser places it.
+    wrap.appendChild(el('div', 'chance-of', c.chance_clause
+      ? 'chance ' + c.chance_clause : 'chance'));
+    return wrap;
+  }
+
+  // THE MARKET'S NUMBER LIVES INSIDE THE CARD. On the collapsed face it is a
+  // hover hint only; the figure itself is in the body, beside the model's, so
+  // the two are read together or not at all.
+  function marketHint(c) {
+    // `market_implied_prob`, which is what the payload calls it. Written as
+    // `market_prob` first, which is not a field: the hint silently never
+    // appeared and the hero said "no line to compare it with" on every card
+    // including the ones with a line. An undefined property is falsy and says
+    // nothing, which is why a wrong field name reads as a missing value.
+    if (c.market_implied_prob === null ||
+        c.market_implied_prob === undefined) return null;
+    return el('div', 'card-hint',
+      'market ' + pct(c.market_implied_prob, 0) + ' · tap for the why');
+  }
+
+  function pickCard(c, rank) {
+    const card = el('article', 'card');
+    card.dataset.id = c.prediction_id;
+    if ((c.tier || {}).tier) card.classList.add('t-' + c.tier.tier.toLowerCase());
+
+    const head = el('button', 'card-head');
+    head.type = 'button';
+    head.setAttribute('aria-expanded', 'false');
+
+    const mid = el('div', 'card-mid');
+    mid.appendChild(el('h3', 'card-game', c.row_title || ''));
+    const pick = el('div', 'card-pick');
+    pick.appendChild(el('span', 'card-phrase', c.phrase || ''));
+    if (c.tier_label) {
+      pick.appendChild(el('span', 'tier-name', ' · ' + c.tier_label));
+    }
+    const tail = cardTail(c);
+    if (tail) pick.appendChild(el('span', 'card-when', ' · ' + tail));
+    mid.appendChild(pick);
+    const hint = marketHint(c);
+    if (hint) mid.appendChild(hint);
+    head.appendChild(mid);
+
+    head.appendChild(chanceBlock(c, 'chance-grid'));
+
+    const meta = el('div', 'card-meta');
+    meta.appendChild(tierChip(c.tier));
+    head.appendChild(meta);
+    card.appendChild(head);
+
+    // Built once, on first open. A slate of forty would otherwise render forty
+    // decompositions and forty why-texts nobody has asked to see.
+    //
+    // ONE MECHANISM DECIDES WHETHER IT IS OPEN, and that is the `open` class.
+    // The stylesheet has hidden `.card-body` and revealed `.card.open
+    // .card-body` since long before this layout; setting `hidden` as well
+    // would be a second switch for one state, and two switches for one state
+    // is how a card comes to be open according to one of them and shut
+    // according to the other.
+    const body = el('div', 'card-body');
+    card.appendChild(body);
+
+    let built = false;
+    const toggle = () => {
+      if (!built) { buildCardBody(body, c); built = true; }
+      const open = !card.classList.contains('open');
+      card.classList.toggle('open', open);
+      head.setAttribute('aria-expanded', String(open));
+    };
+    head.addEventListener('click', toggle);
+    // THE STATE IS APPLIED ON FIRST RENDER, not only on a live tick. A card
+    // built while a game is already in flight would otherwise show a kick-off
+    // time that has passed until the next poll arrived a minute later.
+    applyCardState(card, c);
+    return card;
+  }
+
+  // --- FOLLOWING A SLATE THAT IS ON (L2) ------------------------------------
   //
   // Sixty seconds, and ONLY while something is live. `any_live` comes from the
-  // server and is the whole of the stop condition: a slate that finished
-  // hours ago is polled zero times, which is the browser-side half of the
-  // rule the poller itself follows. The compact payload is about 3KB against
-  // 190KB for the full slate, which is why this is a second endpoint rather
-  // than a re-fetch.
+  // server and is the whole of the stop condition: a slate that finished hours
+  // ago is polled zero times. The compact payload is about 3KB against 190KB
+  // for the full slate, which is why this is a second endpoint rather than a
+  // re-fetch.
+  //
+  // CARRIED ACROSS FROM THE TILES, not rebuilt from scratch, and the rule it
+  // exists to keep is unchanged: A SCORE ARRIVING DOES NOT MOVE THE SLATE. The
+  // grid is never rebuilt and never re-sorted on a tick -- re-sorting while
+  // games are being played shuffles the screen under a reader part way down
+  // it, and by confidence the finished games would climb over the ones still
+  // on.
   const LIVE_POLL_MS = 60000;
   let livePollTimer = null;
+
+  //: The cards of the slate currently rendered, by prediction id, so a live
+  //: tick can update ONE card's data without re-fetching or re-sorting the
+  //: slate. Declared here rather than springing into existence on first
+  //: assignment.
+  let slateCards = new Map();
 
   function stopLivePolling() {
     if (livePollTimer) { clearInterval(livePollTimer); livePollTimer = null; }
@@ -983,244 +1041,231 @@ const Gridiron = (function () {
     livePollTimer = setInterval(tick, LIVE_POLL_MS);
   }
 
-  // A TILE CHANGING STATE RE-RENDERS IN PLACE. The grid is NOT rebuilt and
-  // NOT re-sorted: re-sorting a slate while it is being played shuffles the
-  // screen under a reader who is part way down it, and by confidence the
-  // finished games would climb over the ones still on.
   function applyLive(live) {
     (live.picks || []).forEach(pick => {
       const card = slateCards.get(String(pick.prediction_id));
       if (!card) return;
       Object.assign(card, pick);
-      const tile = document.querySelector(
-        '#week-frame .tile[data-id="' + pick.prediction_id + '"]');
-      if (tile) {
-        // '.tile-score', NOT '.tile-mkt'. The corner was renamed in
-        // bd7ac2f ("picks: tonight, two numbers") and this call site was
-        // missed, so every live tick threw here -- and because the throw
-        // escaped the forEach above, ONE tile stopped the score update for
-        // every pick after it on the slate. `audit.dead_selector_faults`
-        // now fails on a selector naming a class the code never builds.
-        paintTileCorner(tile.querySelector('.tile-score'), card);
-        applyTileState(tile, card);
-      }
-      const selected = selectedTile && selectedTile.dataset.id ===
-        String(pick.prediction_id);
-      if (selected) paintRail(selectedTile);
+      const node = document.querySelector(
+        '.card[data-id="' + pick.prediction_id + '"]');
+      if (node) applyCardState(node, card);
     });
   }
 
-  // THE THREE STATES A TILE CAN BE IN, in one function so a tile that
-  // changes state re-renders in place rather than being rebuilt -- the grid
-  // must not re-sort while a slate is in progress, because sorting live games
-  // by confidence shuffles the screen under somebody who is reading it.
-  function tileNumber(value, label) {
-    const n = el('div', 'tile-num');
-    n.appendChild(document.createTextNode(value));
-    n.appendChild(el('i', '', '%'));
-    n.appendChild(el('small', '', label));
-    return n;
-  }
+  // THE THREE STATES A CARD CAN BE IN, in one function, so a card that changes
+  // state re-renders IN PLACE rather than being rebuilt.
+  function applyCardState(node, c) {
+    const cardState = c.tile_state || 'upcoming';
+    node.dataset.state = cardState;
+    node.classList.toggle('t-live', cardState === 'live');
+    node.classList.toggle('t-final', cardState === 'final');
 
-  function paintTileCorner(host, c) {
-    host.innerHTML = '';
-    const state = c.tile_state || 'upcoming';
-    if (state !== 'upcoming' && (c.score_line || c.running_total)) {
-      host.appendChild(el('b', '', c.running_total || c.score_line));
-      if (c.clock_line) {
-        host.appendChild(el('br'));
-        host.appendChild(el('span', 'tile-clock', c.clock_line));
-      }
-      return;
-    }
-    // THE MARKET MOVED DOWN to sit beside the model's number (R3), and the
-    // gap left the tile entirely. This row now carries the score or nothing.
-  }
+    // THE TIME SLOT CARRIES THE STATE. A card shows the game, the pick, the
+    // chance, the time and the tier and nothing else (R2), so where the
+    // kick-off time stood, a game in flight shows its clock and a settled one
+    // shows nothing new -- the verdict chip below is what says it finished.
+    const when = node.querySelector('.card-when');
+    if (when && c.live_line) when.textContent = ' · ' + c.live_line;
 
-  function applyTileState(tile, c) {
-    const state = c.tile_state || 'upcoming';
-    tile.dataset.state = state;
-    tile.classList.toggle('t-live', state === 'live');
-    tile.classList.toggle('t-final', state === 'final');
-    let chip = tile.querySelector('.tile-verdict');
-    if (state === 'final' && c.verdict) {
-      if (!chip) {
-        chip = el('span', 'tile-verdict');
-        tile.appendChild(chip);
+    const meta = node.querySelector('.card-meta');
+    let chip = node.querySelector('.card-verdict');
+    if (cardState === 'final' && c.verdict) {
+      if (!chip && meta) {
+        chip = el('span', 'card-verdict');
+        meta.appendChild(chip);
       }
-      chip.textContent = c.verdict;
-      // classList, not className: building a class string with a re-cased
-      // value is the shape the prose tripwire watches for, and it caught this
-      // on the first run. The value is a modifier here, never a word a reader
-      // sees -- the text above it is what they read.
-      ['v-win', 'v-loss', 'v-void'].forEach(k => chip.classList.remove(k));
-      chip.classList.add('v-' + c.verdict.toLowerCase());
+      if (chip) {
+        chip.textContent = c.verdict;
+        // classList, not className: building a class string out of a re-cased
+        // value is the shape the prose tripwire watches for. The value is a
+        // modifier here and never a word a reader sees.
+        ['v-win', 'v-loss', 'v-void'].forEach(k => chip.classList.remove(k));
+        chip.classList.add('v-' + c.verdict.toLowerCase());
+      }
     } else if (chip) {
       chip.remove();
     }
-    let mark = tile.querySelector('.tile-live');
-    if (state === 'live' && !mark) {
+
+    let mark = node.querySelector('.card-live');
+    if (cardState === 'live' && !mark && meta) {
       // A MARK, NOT A COLOUR. Green means a win and means interactive; a live
       // game is neither, so the mark is chrome and says what it is on hover.
-      mark = el('span', 'tile-live');
+      mark = el('span', 'card-live');
       mark.title = 'this game is being played now';
-      tile.querySelector('.tile-top').appendChild(mark);
-    } else if (state !== 'live' && mark) {
+      meta.appendChild(mark);
+    } else if (cardState !== 'live' && mark) {
       mark.remove();
     }
   }
 
-  //: Which tile the rail is describing. D3 fills the rail; D2 only has to
-  //: make the selection exist, be visible, and never move the frame.
-  let selectedTile = null;
+  // --- the hero -------------------------------------------------------------
 
-  function selectTile(tile) {
-    if (!tile) return;
-    // THE FRAME MUST NOT MOVE. Selecting a pick is not navigation, and a
-    // reader half way down a 177-pick slate who loses their place has been
-    // punished for looking at something. Asserted in the browser tests.
-    const frame = document.getElementById('week-frame');
-    const keep = frame ? frame.scrollTop : 0;
-    document.querySelectorAll('.tile[aria-selected="true"]')
-      .forEach(t => t.setAttribute('aria-selected', 'false'));
-    tile.setAttribute('aria-selected', 'true');
-    selectedTile = tile;
-    if (typeof paintRail === 'function') paintRail(tile);
-    if (frame) frame.scrollTop = keep;
-  }
+  //: Which of the top five the hero is showing. Reset whenever the slate,
+  //: the sport, the sort or the market tab changes -- a step position that
+  //: survived a filter change would point at a different pick than the dots.
+  let heroIndex = 0;
 
-  // Arrow keys walk the grid, Enter and Space select. Three across, so up and
-  // down move by three -- the same distance the eye moves.
-  function deskKeys(event) {
-    if (!isDesk()) return;
-    const tiles = [...document.querySelectorAll('#week-frame .tile')];
-    if (!tiles.length) return;
-    const here = tiles.indexOf(document.activeElement);
-    const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3 }[event.key];
-    if (step === undefined) {
-      if ((event.key === 'Enter' || event.key === ' ') && here >= 0) {
-        event.preventDefault();
-        selectTile(tiles[here]);
-      }
-      return;
+  function renderHero(cards, sortMode) {
+    const host = document.getElementById('week-hero');
+    if (!host) return;
+    host.innerHTML = '';
+    if (!cards.length) { host.hidden = true; return; }
+    host.hidden = false;
+
+    const top = cards.slice(0, HERO_STEPS);
+    if (heroIndex >= top.length) heroIndex = 0;
+    const c = top[heroIndex];
+
+    // THE TAG SAYS WHICH QUESTION THE HERO IS ANSWERING, and it follows the
+    // sort rather than asserting one: a card labelled "sharpest disagreement"
+    // while the list is ordered by confidence is a label describing the other
+    // ordering.
+    host.appendChild(el('div', 'hero-tag', sortMode === 'confidence'
+      ? 'Most confident tonight' : 'Sharpest disagreement tonight'));
+
+    const body = el('div', 'hero-body');
+    const left = el('div', 'hero-left');
+    left.appendChild(el('h2', 'hero-game', c.row_title || ''));
+    left.appendChild(el('div', 'hero-pick', c.phrase || ''));
+
+    const why = el('div', 'hero-why');
+    const w = c.why;
+    if (w && (w.sentences || []).length) {
+      w.sentences.forEach(sentence => {
+        why.appendChild(el('p', 'hero-sentence', sentence));
+      });
+    } else if (c.reasoning) {
+      why.appendChild(el('p', 'hero-sentence', c.reasoning));
     }
-    event.preventDefault();
-    const next = tiles[Math.min(tiles.length - 1, Math.max(0, (here < 0 ? 0 : here) + step))];
-    if (next) next.focus();
-  }
+    left.appendChild(why);
 
-  // THE RAIL'S PANELS (D3). Every string placed here was composed on the
-  // server; this positions them and computes no words of its own.
-
-  //: The cards of the slate currently rendered, by prediction id, so the rail
-  //: describes THE SAME OBJECT the tile was built from. Looking the pick up
-  //: again from the DOM would be a second source for one fact.
-  let slateCards = new Map();
-
-  function paintRail(tile) {
-    const card = slateCards.get(tile && tile.dataset.id);
-    const match = document.getElementById('rail-match');
-    if (!card || !match) return;
-
-    match.textContent = card.row_title || card.matchup || '';
-
-    // The subline is three server-written parts with a separator between
-    // them, and a part that is absent is simply not there -- no dash, no
-    // placeholder. The time is the one thing the browser is better placed to
-    // know, so it renders the instant the server sent.
-    const sub = document.getElementById('rail-sub');
-    const parts = [];
-    if (card.start_local) parts.push(localTime(card.start_local));
-    if (card.venue) parts.push(card.venue);
-    if (card.market_label) parts.push(card.market_label);
-    sub.textContent = parts.join(' \u00b7 ');
-
-    const pick = document.getElementById('rail-pick');
-    pick.innerHTML = '';
-    pick.appendChild(el('b', '', card.phrase || card.tile_line || ''));
-    // THE SCORE UNDER THE PICK, once there is one. The rail mirrors the tile's
-    // three states rather than having its own idea of them: both read the
-    // same fields off the same card object.
-    if (card.tile_state && card.tile_state !== 'upcoming') {
-      const score = el('div', 'rail-score');
-      score.appendChild(el('b', '', card.score_line || ''));
-      if (card.clock_line) {
-        score.appendChild(document.createTextNode(' · ' + card.clock_line));
-      }
-      if (card.verdict) score.appendChild(el('span', 'rail-verdict', card.verdict));
-      pick.appendChild(score);
+    const foot = el('div', 'hero-foot');
+    foot.appendChild(tierChip(c.tier));
+    if ((c.tier || {}).message) {
+      foot.appendChild(el('span', 'hero-earned', c.tier.message));
     }
+    const when = cardTail(c);
+    if (c.tier_label) foot.appendChild(el('span', 'hero-when', c.tier_label));
+    if (when) foot.appendChild(el('span', 'hero-when', when));
+    if (c.venue) foot.appendChild(el('span', 'hero-when', c.venue));
+    left.appendChild(foot);
+    body.appendChild(left);
 
-    // THE SAME BODY THE EXPANDED ROW SHOWS, from the same function: the
-    // probability rail, the gap and bucket line, the earned number where a
-    // correction moved it, the three-sentence why, the link and the tier
-    // line. A second implementation here would be a second chance to
-    // disagree with the record about what the model said.
-    buildRowBody(document.getElementById('rail-body'), card);
+    const right = el('div', 'hero-right');
+    right.appendChild(chanceBlock(c, 'chance-hero'));
+    // THE MARKET, WHERE THERE IS ONE. "no line" is a fact about the source and
+    // is said in words rather than left as a gap, which reads as an error.
+    right.appendChild(el('div', 'hero-market',
+      (c.market_implied_prob === null || c.market_implied_prob === undefined)
+        ? 'no line to compare it with'
+        : 'the market says ' + pct(c.market_implied_prob, 0)));
+    body.appendChild(right);
+    host.appendChild(body);
+
+    if (top.length > 1) {
+      const steps = el('div', 'hero-steps');
+      const back = el('button', 'hero-arrow', '‹');
+      back.type = 'button';
+      back.setAttribute('aria-label', 'Previous pick');
+      back.addEventListener('click', () => {
+        heroIndex = (heroIndex - 1 + top.length) % top.length;
+        renderHero(cards, sortMode);
+      });
+      steps.appendChild(back);
+      const dots = el('div', 'hero-dots');
+      top.forEach((_, i) => {
+        const dot = el('button', 'hero-dot' + (i === heroIndex ? ' on' : ''));
+        dot.type = 'button';
+        dot.setAttribute('aria-label', 'Pick ' + (i + 1) + ' of ' + top.length);
+        if (i === heroIndex) dot.setAttribute('aria-current', 'true');
+        dot.addEventListener('click', () => {
+          heroIndex = i;
+          renderHero(cards, sortMode);
+        });
+        dots.appendChild(dot);
+      });
+      steps.appendChild(dots);
+      const fwd = el('button', 'hero-arrow', '›');
+      fwd.type = 'button';
+      fwd.setAttribute('aria-label', 'Next pick');
+      fwd.addEventListener('click', () => {
+        heroIndex = (heroIndex + 1) % top.length;
+        renderHero(cards, sortMode);
+      });
+      steps.appendChild(fwd);
+      host.appendChild(steps);
+    }
   }
 
-  function paintGlance(glance) {
-    const count = document.getElementById('rail-glance-count');
-    const windows = document.getElementById('rail-windows');
-    const facts = document.getElementById('rail-facts');
-    if (!windows || !facts) return;
-    if (!glance) { windows.innerHTML = ''; facts.innerHTML = ''; return; }
+  // --- the market tabs ------------------------------------------------------
 
-    count.textContent = glance.games_line;
-    // THE PANEL STATES FACTS; IT DOES NOT NARRATE ITS OWN DESIGN (ruling E2).
-    // Two sentences explaining why the windows use the league's clock and why
-    // coverage can differ from the slate sat in the middle of the numbers they
-    // were about. They are still said -- a caveat that vanishes is a caveat
-    // dropped -- but on the heading, where somebody who wants them looks.
-    const panel = document.getElementById('rail-glance-panel');
-    const heading = panel ? panel.querySelector('h3') : null;
-    if (heading) heading.title = glance.notes;
-
-    windows.innerHTML = '';
-    glance.windows.forEach(w => {
-      // NO GRAPHS ON PICKS (GRIDIRON_16 R3). A proportional bar sat between
-      // the name and the count until 2026-09-02, drawing the same number the
-      // row already printed -- and drawing it less precisely. The count is
-      // the fact; the bar was a second, vaguer copy of it.
-      const row = el('div', 'krow');
-      row.appendChild(el('span', '', w.name));
-      row.appendChild(el('b', '', String(w.n)));
-      windows.appendChild(row);
+  // DERIVED FROM THE DECLARED LIST, NEVER WRITTEN HERE (R4). The payload
+  // carries the sport's markets because `config.SPORT_MARKETS` does; a fifth
+  // market appears on this row the day it is declared, with no change to any
+  // file in `web/`. A hardcoded row is the defect this ruling exists to
+  // prevent, and a planting checks for one.
+  function renderMarketTabs(data, active) {
+    const host = document.getElementById('week-market-tabs');
+    if (!host) return;
+    host.innerHTML = '';
+    const tabs = data.market_tabs || [];
+    if (!tabs.length) { host.hidden = true; return; }
+    host.hidden = false;
+    tabs.forEach(t => {
+      const b = el('button', 'market-tab', t.label);
+      b.type = 'button';
+      b.dataset.market = t.market || '';
+      const on = (t.market || '') === (active || '');
+      b.setAttribute('aria-pressed', String(on));
+      if (on) b.classList.add('on');
+      // ZERO-COUNT TABS STAY VISIBLE. "No strikeout questions tonight" is a
+      // fact about the slate, and a tab that disappears hides it.
+      b.appendChild(el('span', 'market-tab-n', String(t.n)));
+      b.addEventListener('click', () => {
+        heroIndex = 0;
+        state.market = t.market || '';
+        renderWeek().catch(showError);
+      });
+      host.appendChild(b);
     });
-
-
-    facts.innerHTML = '';
-    // COVERAGE IS REPORTED, NEVER USED TO CHOOSE (ruling R-A). Each row is
-    // one market's priced-of-asked, and the note underneath says why the two
-    // numbers can differ at all.
-    glance.coverage.forEach(c => {
-      const row = el('div', 'krow');
-      row.appendChild(el('span', '', c.market));
-      row.appendChild(el('b', '', c.priced + ' of ' + c.asked));
-      facts.appendChild(row);
-    });
-    const sharp = el('div', 'krow');
-    sharp.appendChild(el('span', '', glance.labels.sharpest));
-    sharp.appendChild(el('b', '', glance.sharpest.line));
-    facts.appendChild(sharp);
-    const tiers = el('div', 'krow');
-    tiers.appendChild(el('span', '', glance.labels.tiers));
-    tiers.appendChild(el('b', '', glance.tiers.line));
-    facts.appendChild(tiers);
-
   }
 
-  // THE GREETING IS MOVED, NOT REDRAWN. On the desk the wrapper is appended
-  // into the rail's panel; below the breakpoint it goes back where the markup
-  // put it. Same nodes, same ids, same click handler -- so there is one
-  // greeting in the document and it cannot disagree with itself.
+  // --- the yesterday strip --------------------------------------------------
+
+  function renderYesterday(data) {
+    const host = document.getElementById('week-yesterday');
+    if (!host) return;
+    host.innerHTML = '';
+    const y = data.yesterday;
+    if (!y) { host.hidden = true; return; }
+    host.hidden = false;
+
+    const left = el('div', 'yesterday-line');
+    left.appendChild(el('span', 'yesterday-label', y.label));
+    // GREEN ON THE RIGHT COUNT ONLY (the colour law). The wrong count is
+    // drawn in the ordinary ink: red is reserved for a pick that lost, and a
+    // tally is not a pick.
+    left.appendChild(el('b', 'win', String(y.right)));
+    left.appendChild(el('span', '', ' right, '));
+    left.appendChild(el('b', '', String(y.wrong)));
+    left.appendChild(el('span', '', ' wrong'));
+    host.appendChild(left);
+
+    if (y.season) host.appendChild(el('div', 'yesterday-season', y.season));
+    if (y.next_verdict) {
+      host.appendChild(el('div', 'yesterday-next', y.next_verdict));
+    }
+  }
+
+  // THE GREETING STAYS WHERE THE MARKUP PUT IT. It used to be MOVED into the
+  // desk rail's third panel and back again below the breakpoint -- one set of
+  // nodes living in two places depending on viewport width. The rail is gone
+  // and so is the move: there is one greeting, in one place, at every width.
   function placeGreeting() {
     const greeting = document.getElementById('greeting');
-    const panel = document.getElementById('rail-since-host');
     const home = document.getElementById('greeting-home');
-    if (!greeting || !panel || !home) return;
-    const wanted = (isDesk() && state.view === 'week') ? panel : home;
-    if (greeting.parentElement !== wanted) wanted.appendChild(greeting);
+    if (!greeting || !home) return;
+    if (greeting.parentElement !== home) home.appendChild(greeting);
   }
 
   // --- the pick card ------------------------------------------------------
@@ -1245,17 +1290,18 @@ const Gridiron = (function () {
   // This is exactly the sweep ruling 2 defers -- dead-but-named code in
   // app.js, which no scan looks at today. Recorded in FOLLOWUPS.
 
-  function tierChip(c) {
-    const t = c.tier || {};
-    if (!t.tier) return null;
-    const holder = el('div');
-    holder.appendChild(el('span', 'tier ' + t.tier.toLowerCase(), t.tier));
-    // The earned figure, or the shortfall. Never a hit rate below the gate:
-    // a tier showing an accuracy on nine settled picks reads as a track record
-    // for the pick beside it, which is the most persuasive lie available here.
-    holder.appendChild(el('span', 'tier-score', t.message));
-    return holder;
-  }
+  // A SECOND `tierChip` STOOD HERE AND HAD BEEN DEAD FOR SOME TIME. It took a
+  // CARD where the surviving one takes a TIER, and it sat earlier in the file
+  // than its namesake -- so JavaScript's last-declaration-wins rule meant it
+  // never ran, and its `null` return for a card with no tier never reached
+  // anything. Deleting the desk moved the survivor ABOVE it, at which point
+  // the dead one started winning and every tier chip on the slate became
+  // `appendChild(null)`.
+  //
+  // Found by patching `Node.prototype.appendChild` to throw on a non-node and
+  // reading the stack, which named the line in four seconds after twenty
+  // minutes of reading. Worth remembering: a shadowed duplicate is invisible
+  // until something reorders the file.
 
   function probBlock(c) {
     const box = el('div', 'prob');
@@ -1328,108 +1374,8 @@ const Gridiron = (function () {
   // `bucket_line` all arrive written from `language.py`, which is what stopped
   // the renderer inventing a verb and getting the side backwards twice.
 
-  function pickRow(c, rank) {
-    const row = el('div', 'row');
-    row.dataset.id = c.prediction_id;
 
-    const head = el('div', 'row-head');
-    head.setAttribute('role', 'button');
-    head.setAttribute('tabindex', '0');
-    head.setAttribute('aria-expanded', 'false');
-
-    head.appendChild(el('div', 'row-rank', rank == null ? '' : String(rank)));
-
-    const mid = el('div', 'row-mid');
-    const title = el('div', 'row-title', c.row_title || c.matchup || '');
-    // The phone folds the rank into this line via a CSS ::before, so the
-    // ordinal is carried on the element that survives the layout change.
-    if (rank != null) title.dataset.rank = rank;
-    mid.appendChild(title);
-    const pick = el('div', 'row-pick');
-    pick.appendChild(el('span', 'row-caret', '\u25B8'));
-    pick.appendChild(el('span', 'row-phrase', c.phrase || ''));
-    // WHICH KIND OF CARD (E3). The compact row gets it too: a phone reader
-    // is owed the same context as a desk one, and the record is kept per
-    // tier for a reason a reader can only act on if they are told which
-    // tier they are looking at. Empty for every sport that does not split.
-    if (c.tier_label) {
-      pick.appendChild(el('span', 'tier-name', ' · ' + c.tier_label));
-    }
-    const tail = rowTail(c);
-    if (tail) pick.appendChild(el('span', 'row-when', ' \u00B7 ' + tail));
-    // THE EARLY VIEW SAYS SO ON EVERY ROW (A3). Composed by the server,
-    // placed here. Only a row a later forecast actually replaced carries one.
-    if (c.is_early_view && c.pass_note) {
-      mid.appendChild(el('div', 'footnote', c.pass_note));
-    }
-    // WHAT IT KNEW (S2). One line saying how much of the model could be
-    // measured for this game, and how old the newest thing behind it is.
-    if (c.what_it_knew) {
-      mid.appendChild(el('div', 'footnote', c.what_it_knew));
-    }
-    mid.appendChild(pick);
-    head.appendChild(mid);
-
-    const prob = el('div', 'prob');
-    prob.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
-    prob.appendChild(el('span', 'pct', '%'));
-    prob.appendChild(el('small', '', c.chance_clause || ''));
-    head.appendChild(prob);
-
-    head.appendChild(tierChip(c.tier));
-    row.appendChild(head);
-
-    // Built once, on first open. A slate of 25 would otherwise render 25
-    // rails, 25 decompositions and 25 why-texts nobody has asked to see.
-    const body = el('div', 'row-body');
-    body.hidden = true;
-    row.appendChild(body);
-
-    let built = false;
-    const toggle = () => {
-      if (!built) { buildRowBody(body, c); built = true; }
-      body.hidden = !body.hidden;
-      head.setAttribute('aria-expanded', String(!body.hidden));
-      row.classList.toggle('open', !body.hidden);
-    };
-    head.addEventListener('click', toggle);
-    head.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-        toggle();
-      }
-    });
-    return row;
-  }
-
-  // What follows the pick on the line: kick-off for a game, the fixture for a
-  // prop, because on a prop the subject is the headline and the fixture is the
-  // detail.
-  function rowTail(c) {
-    if (c.market_type === 'prop') return c.matchup || '';
-    return c.start_local ? localTime(c.start_local) : '';
-  }
-
-  function localTime(iso) {
-    try {
-      return new Date(iso).toLocaleTimeString([], {
-        hour: 'numeric', minute: '2-digit'
-      });
-    } catch (e) { return ''; }
-  }
-
-  function tierChip(tier) {
-    // `.tier` with a modifier, which is what the stylesheet and the approved
-    // mockup both define. K2 emitted `chip chip-lean`, for which no rule
-    // exists -- the chips have been rendering with base styling only and
-    // nothing said so, because an unstyled element is still an element.
-    if (!tier || !tier.tier) return el('span', 'tier tier-none', '');
-    const chip = el('span', 'tier ' + tier.tier.toLowerCase(), tier.tier);
-    chip.title = tier.message || '';
-    return chip;
-  }
-
-  function buildRowBody(body, c) {
+  function buildCardBody(body, c) {
     body.innerHTML = '';
 
     // MODEL, MARKET AND GAP AS TEXT (GRIDIRON_16 R3). A dot-and-span graphic
@@ -1437,7 +1383,7 @@ const Gridiron = (function () {
     // reader estimate two of them off a 100-pixel track, which is a worse way
     // to read a percentage than reading the percentage. The sentence is
     // written by `language.rail_numbers_line`; this places it.
-    body.appendChild(el('p', 'row-numbers', c.rail_line || ''));
+    body.appendChild(el('p', 'card-numbers', c.rail_line || ''));
 
     // THE RATE, DIRECTLY UNDER THE NUMBER IT EXPLAINS (C3, 2026-09-03).
     // "The model expects about 3.9 receptions; clearing 3.5 is about 56%."
@@ -1447,11 +1393,11 @@ const Gridiron = (function () {
     // continuous market has no rate and the server sends an empty string.
     // Composed by `language.rate_line`; this places it.
     if (c.rate_line) {
-      body.appendChild(el('p', 'row-rate', c.rate_line));
+      body.appendChild(el('p', 'card-rate', c.rate_line));
     }
 
-    const line = el('div', 'row-stats');
-    line.appendChild(el('span', 'row-bucket', c.bucket_line || ''));
+    const line = el('div', 'card-stats');
+    line.appendChild(el('span', 'card-bucket', c.bucket_line || ''));
     body.appendChild(line);
 
     // THE RAW CLAIM, ONE TAP AWAY. Present only where a correction actually
@@ -1459,7 +1405,7 @@ const Gridiron = (function () {
     // it was before corrections existed. The sentence is written by the
     // server; this places it.
     if (c.earned_line) {
-      body.appendChild(el('p', 'earned-line', c.earned_line));
+      body.appendChild(el('p', 'card-earned', c.earned_line));
     }
 
     // THE PLAIN WHY (K3). The contribution bars and the decomposition sentence
@@ -1470,7 +1416,7 @@ const Gridiron = (function () {
     // Every sentence is written by `language.why_block` from the SAME
     // contributions the decomposition uses, so the prose and the arithmetic
     // cannot disagree about direction or order.
-    const why = el('div', 'row-why');
+    const why = el('div', 'card-why');
     const w = c.why;
     if (w && (w.sentences || []).length) {
       why.appendChild(el('b', '', w.heading + ':'));
@@ -1491,7 +1437,7 @@ const Gridiron = (function () {
     }
     body.appendChild(why);
 
-    const more = el('a', 'row-more',
+    const more = el('a', 'card-more',
       ((w && w.more_label) || 'How the model works') + ' \u2192');
     more.href = (w && w.more_href) || '#/factors';
     body.appendChild(more);
@@ -1502,7 +1448,7 @@ const Gridiron = (function () {
     // started naming its own band: it would have read "STRONG tier STRONG -
     // 8 settled". The server writes the whole sentence now.
     if (c.tier && c.tier.message) {
-      body.appendChild(el('div', 'row-tierline', c.tier.message));
+      body.appendChild(el('div', 'card-tierline', c.tier.message));
     }
     // THE MODEL'S WORST BAND, beside this pick's band, so a reader sees what
     // the record says at its weakest and not only what this chip says.
@@ -1710,17 +1656,9 @@ const Gridiron = (function () {
   async function renderWeek() {
     const host = document.getElementById('week-cards');
     // HAIRLINE SHAPES IN THE GRID'S OWN GEOMETRY, so the layout does not jump
-    // when the data lands a frame later. On the desk that means a real
-    // three-across grid: nine skeletons stacked in a column would be a bigger
-    // jump than the one this is meant to avoid.
-    if (isDesk()) {
-      host.innerHTML = '';
-      const grid = el('div', 'tiles');
-      for (let i = 0; i < 9; i++) grid.appendChild(el('div', 'skeleton skeleton-tile'));
-      host.appendChild(grid);
-    } else {
-      skeleton(host, 'skeleton-card', 3);
-    }
+    // when the data lands a frame later. One shape at every width, because
+    // there is one grid at every width.
+    skeleton(host, 'skeleton-card', CARDS_BEFORE_SHOW_ALL);
 
     const picker = document.getElementById('week-picker');
     const chosen = picker.value ? JSON.parse(picker.value) : {};
@@ -1771,13 +1709,12 @@ const Gridiron = (function () {
       cards = cards.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0));
     }
 
-    // THE RAIL. Hidden below the breakpoint, and hidden on a slate with no
-    // open picks -- an empty detail panel beside an empty frame is two ways of
-    // saying the same nothing.
-    const rail = document.getElementById('week-rail');
-    if (rail) rail.hidden = true;
-    paintGlance(isDesk() ? data.glance : null);
     placeGreeting();
+    // THE TABS AND THE STRIP, both fed from the same payload the cards are.
+    // The tabs come from the sport's DECLARED market list (R4) and the strip
+    // reports one sport's yesterday, never a total across sports.
+    renderMarketTabs(data, state.market);
+    renderYesterday(data);
 
     // A resolved forecast is not a pick. Split rather than filtered, so the
     // slate can show both without a reader mistaking last night for tonight.
@@ -1866,24 +1803,37 @@ const Gridiron = (function () {
     }
 
     if (open.length) {
-      // ONE GRID, NO SECTIONS, on the desk. The mockup has no confidence
-      // headings: the sort toggle already says how the slate is ordered, and a
-      // section label would be a second, quieter claim about the same thing.
-      // Below the breakpoint the compact rows render exactly as they did.
-      if (isDesk()) {
-        const grid = el('div', 'tiles');
-        rail.hidden = false;
-        grid.setAttribute('role', 'listbox');
-        grid.setAttribute('aria-label', 'Picks on this slate');
-        open.forEach((c, i) => grid.appendChild(pickTile(c, i + 1)));
-        host.appendChild(grid);
-        // The rail is always populated, so the first tile is selected on
-        // arrival rather than leaving an empty panel asking to be clicked.
-        selectTile(grid.querySelector('.tile'));
-      } else {
-        const list = el('div', 'rows');
-        open.forEach((c, i) => list.appendChild(pickRow(c, i + 1)));
-        host.appendChild(list);
+      // ONE LAYOUT, EVERY WIDTH. The hero takes the top pick for the current
+      // sort; the grid takes the rest. No branch on viewport width, because
+      // there is only one layout now and it reflows.
+      //
+      // NO CONFIDENCE HEADINGS. The sort toggle already says how the slate is
+      // ordered, and a section label would be a second, quieter claim about
+      // the same thing.
+      renderHero(open, state.weekSort);
+
+      const heading = document.getElementById('week-grid-heading');
+      const rest = open.slice(1);
+      if (heading) heading.hidden = !rest.length;
+
+      const showAll = document.getElementById('week-showall');
+      const shown = state.showAllCards
+        ? rest.length : Math.min(CARDS_BEFORE_SHOW_ALL, rest.length);
+      rest.slice(0, shown).forEach((c, i) => host.appendChild(pickCard(c, i + 2)));
+
+      if (showAll) {
+        const hidden = rest.length - shown;
+        showAll.hidden = hidden <= 0;
+        if (hidden > 0) {
+          // The count is the whole point of the control: "show all" with no
+          // number asks a reader to click to find out how much they are
+          // asking for.
+          showAll.textContent = 'show all ' + rest.length + ' →';
+          showAll.onclick = () => {
+            state.showAllCards = true;
+            renderWeek().catch(showError);
+          };
+        }
       }
     }
     // A market the slate asked nothing in says so, rather than leaving a gap
@@ -2667,6 +2617,11 @@ const Gridiron = (function () {
     seg.querySelectorAll('button').forEach(button => {
       button.addEventListener('click', () => {
         state.weekSort = button.dataset.sort;
+        // THE HERO FOLLOWS THE SORT (R3), so its step position resets: a
+        // position kept across a re-order points at a different pick than
+        // the dots say it does.
+        heroIndex = 0;
+        state.showAllCards = false;
         seg.querySelectorAll('button').forEach(b => {
           b.setAttribute('aria-pressed', b === button ? 'true' : 'false');
         });
@@ -2921,23 +2876,20 @@ const Gridiron = (function () {
 
   // The permanent page. Reads WITHOUT moving the marker, so a day can be
   // linked, shared and read twice.
+  // NOTHING TO APPLY. `applyDeskClass` put a `desk-on` class on the body so
+  // the stylesheet could tell which of two layouts the renderer had built, and
+  // a media-query listener re-rendered the slate whenever the breakpoint was
+  // crossed because CROSSING IT CHANGED WHICH ELEMENTS EXIST. One layout means
+  // crossing a width changes how things look and never what they are, which is
+  // what a stylesheet is for.
   function applyDeskClass() {
-    document.body.classList.toggle('desk-on', isDesk() && state.view === 'week');
     placeGreeting();
   }
-
-  // ON THE QUERY, NOT ON RESIZE. The media query changes state exactly when
-  // the stylesheet does, so the class can no longer be stale with respect to
-  // the rules that style it.
-  DESK_QUERY.addEventListener('change', () => {
-    applyDeskClass();
-    if (state.view === 'week') {
-      // Crossing the breakpoint changes which elements exist, not just how
-      // they look, so the slate is rendered again rather than restyled.
-      renderWeek();
-    }
-  });
-  document.addEventListener('keydown', deskKeys);
+  // `deskKeys` WENT WITH THE DESK. It moved a selection between tiles with
+  // the arrow keys, which was the desk's own affordance -- a listbox of tiles
+  // beside a rail that showed whichever was selected. A grid of cards that
+  // each expand in place needs no selection to move: every card is a button
+  // and the browser's own tab order already walks them.
 
   //: Where a renamed route now lives. A redirect rather than a second entry
   //: in ROUTES, so there is exactly one name for the page and the address bar
