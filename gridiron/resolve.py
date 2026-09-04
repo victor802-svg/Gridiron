@@ -116,6 +116,12 @@ def resolve_nfl_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
     if game is None or game["status"] != "final":
         raise Unresolvable(f"game {pred['game_id']} is not final")
 
+    if pred["market_type"] == "total":
+        # NO PUSH IS POSSIBLE: every declared rung is a half-point.
+        yes = questions.total_outcome(
+            game["home_score"], game["away_score"], pred["line_asked"])
+        return yes if pred["model_side"] == "over" else 1 - yes
+
     if pred["market_type"] == "moneyline":
         # A DRAWN GAME VOIDS, and unlike basketball this is not a bad row --
         # the NFL's overtime can end level and TEN OF 2,761 STORED FINALS DID

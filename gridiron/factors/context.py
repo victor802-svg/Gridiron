@@ -65,6 +65,18 @@ class GameContext:
     srs_basis: str = "none"          # 'season' | 'prior_season' | 'none'
     home_recent_margin: float | None = None
     away_recent_margin: float | None = None
+    #: SCORING FORM (roster #19, 2026-09-04). Absent, not zero, with no
+    #: history; the standard deviation is absent below two games, because a
+    #: spread over one game is not one.
+    home_points_for: float | None = None
+    home_points_against: float | None = None
+    away_points_for: float | None = None
+    away_points_against: float | None = None
+    home_total_sd: float | None = None
+    away_total_sd: float | None = None
+    #: The combined score the model expects, and the rung it was asked at.
+    expected_total: float | None = None
+
     home_pace: float | None = None
     away_pace: float | None = None
     home_games_played: int = 0
@@ -274,6 +286,21 @@ def build_game_context(
                 f"{side}_recent_margin",
                 sum(r["points_for"] - r["points_against"] for r in recent) / len(recent),
             )
+            # SCORING FORM, for the totals market (roster #19, 2026-09-04).
+            # The same window the margin uses, so the two describe the same
+            # stretch of football. Points scored and allowed separately,
+            # because a total needs both halves: a good offence against a good
+            # defence is a different game from one against a bad one.
+            setattr(ctx, f"{side}_points_for",
+                    sum(r["points_for"] for r in recent) / len(recent))
+            setattr(ctx, f"{side}_points_against",
+                    sum(r["points_against"] for r in recent) / len(recent))
+            combined = [r["points_for"] + r["points_against"] for r in recent]
+            if len(combined) >= 2:
+                mean_c = sum(combined) / len(combined)
+                setattr(ctx, f"{side}_total_sd", (
+                    sum((c - mean_c) ** 2 for c in combined)
+                    / (len(combined) - 1)) ** 0.5)
         paces = [r["plays"] for r in history if r["plays"]]
         if paces:
             setattr(ctx, f"{side}_pace", sum(paces) / len(paces))

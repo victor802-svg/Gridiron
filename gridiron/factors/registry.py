@@ -242,6 +242,18 @@ def sports() -> list[str]:
 #: a moneyline has no rung to be a distance from.
 NFL_GAME_MARKETS = ("spread", "moneyline")
 
+# ---------------------------------------------------------------------------
+# the NFL totals market (MARKET_ROSTER #19, 2026-09-04)
+# ---------------------------------------------------------------------------
+#
+# A TOTAL IS A SUM, NOT A DIFFERENCE -- the same rule the NBA total follows.
+# `pace_sum` and the three weather factors already take sums or describe the
+# game rather than a side, so they are widened rather than replaced; the
+# directional ones are not declared here at all.
+
+NFL_TOTAL_ONLY = ("total",)
+
+
 #: WHAT IS DELIBERATELY NOT ON THE MONEYLINE, recorded because an absence
 #: nobody argued for looks the same as one nobody noticed:
 #:
@@ -483,7 +495,7 @@ def recent_form_diff(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread", "prop"),
+    applies_to=("spread", "total", "prop"),
     why="how many plays both offences run",
     rationale=(
         "Plays from scrimmage per game sets how many chances exist for the "
@@ -552,7 +564,7 @@ def divisional(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread", "prop"),
+    applies_to=("spread", "total", "prop"),
     why="the wind",
     rationale=(
         "Wind is the weather variable that actually changes football: it moves "
@@ -571,7 +583,7 @@ def wind(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread", "prop"),
+    applies_to=("spread", "total", "prop"),
     why="the cold",
     rationale=(
         "Cold stiffens the ball and the hands and favours the running game. "
@@ -588,7 +600,7 @@ def cold(ctx) -> float | None:
 
 @factor(
     added="2026-08-28T00:00:00Z",
-    applies_to=("spread", "prop"),
+    applies_to=("spread", "total", "prop"),
     note=(
         "REPAIRED 2026-08-29. It was not inert because rain does not matter; it "
         "was inert because it was unmeasurable in 66% of games and those games "
@@ -790,3 +802,70 @@ def opponent_allowance(ctx) -> float | None:
 )
 def prop_player_status(ctx) -> float | None:
     return ctx.player_status_penalty
+
+
+@factor(
+    added="2026-09-04T00:00:00Z",
+    applies_to=NFL_TOTAL_ONLY,
+    why="how far the total sits from the score the model expects",
+    rationale=(
+        "The rung the total was asked at, minus the combined score the model "
+        "expects, in points. CHECKLIST ITEM 1's mean-against-line instrument. "
+        "Declared as the DISTANCE rather than as the rung, for the reason the "
+        "spread's asked-line ruling of 2026-09-03 settled: the rung is CHOSEN "
+        "as the ladder point nearest the expectation, so asking the model "
+        "which rung it was given tells it the expectation a second time, "
+        "coarsened, and the coefficient measures the chooser rather than the "
+        "game. What remains after subtracting is the rounding residual of the "
+        "ladder's own choice -- how hard a question the model was handed, and "
+        "nothing about how good the sides are. "
+        "ABSENT, not zero, when either the rung or the expectation is."
+    ),
+)
+def nfl_total_asked_distance(ctx) -> float | None:
+    if ctx.line_asked is None or ctx.expected_total is None:
+        return None
+    return float(ctx.line_asked) - float(ctx.expected_total)
+
+
+@factor(
+    added="2026-09-04T00:00:00Z",
+    applies_to=NFL_TOTAL_ONLY,
+    why="how much the two sides' scoring swings about",
+    rationale=(
+        "The average of the two sides' combined-score standard deviations, in "
+        "points, divided by ten. CHECKLIST ITEM 1's volatility instrument. Two "
+        "games expected to total 45 are the same question at very different "
+        "odds if one pair swings by eight points a week and the other by "
+        "twenty, and a model blind to the difference prices them alike -- "
+        "overconfident on exactly the games where it should not be. "
+        "MEASURED OVER THE SAME WINDOW as the scoring form. ABSENT when either "
+        "side has fewer than two games in it: a standard deviation over one "
+        "game is not one, and a zero would say the scoring never varies."
+    ),
+)
+def nfl_total_volatility(ctx) -> float | None:
+    if ctx.home_total_sd is None or ctx.away_total_sd is None:
+        return None
+    return (float(ctx.home_total_sd) + float(ctx.away_total_sd)) / 2.0 / 10.0
+
+
+@factor(
+    added="2026-09-04T00:00:00Z",
+    applies_to=NFL_TOTAL_ONLY,
+    why="how many players both squads are missing between them",
+    rationale=(
+        "The SUM of the two sides' players listed out, halved. "
+        "`injury_out_diff` takes the DIFFERENCE, which is the right instrument "
+        "for asking who wins and the wrong one for asking how many points get "
+        "scored: two teams each missing six starters have a difference of zero "
+        "and a game that looks nothing like a healthy one. "
+        "THE SIGN IS NOT OBVIOUS, which is why it is declared rather than "
+        "assumed -- missing scorers lower a total, missing defenders raise it. "
+        "The coefficient decides, scored from the date this was added."
+    ),
+)
+def nfl_injury_out_sum(ctx) -> float | None:
+    if ctx.home_out is None or ctx.away_out is None:
+        return None
+    return (float(ctx.home_out) + float(ctx.away_out)) / 2.0

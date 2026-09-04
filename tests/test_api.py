@@ -163,9 +163,10 @@ def test_the_headline_is_the_largest_gap(client):
 
 def test_categories_are_reported_separately(client):
     payload = client.get("/api/scorecard").json()
-    # spread + moneyline + five prop markets, each times two forecasters.
-    # The moneyline joined 2026-09-04 as MARKET_ROSTER #18.
-    assert len(payload["categories"]) == 2 * (2 + len(config.PROP_MARKETS))
+    # Every declared market, times two forecasters. Asserted against the
+    # declaration rather than a remembered count, so the next market off the
+    # roster does not need this line edited.
+    assert len(payload["categories"]) == 2 * len(config.SPORT_MARKETS["nfl"])
     assert payload["markets"][0] == "spread"
     assert "never merged" in payload["separation_note"].lower()
 

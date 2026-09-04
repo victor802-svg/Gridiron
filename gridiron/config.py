@@ -344,8 +344,8 @@ SPORT_MARKETS: dict[str, tuple[str, ...]] = {
     # needs no player identity match and resolves from a final score present
     # for every stored game. The spread stays first: it is the market this
     # sport was built on.
-    "nfl": ("spread", "moneyline", "passing_yards", "receiving_yards",
-            "rushing_yards", "receptions", "passing_tds"),
+    "nfl": ("spread", "moneyline", "total", "passing_yards",
+            "receiving_yards", "rushing_yards", "receptions", "passing_tds"),
     # THE RUN LINE AND THE TOTAL joined 2026-09-02 (GRIDIRON_16 STEP 3), on
     # the evidence in docs/MLB_RUNLINE_FEASIBILITY.md: ESPN carries both on
     # every priced game, at a rung fixed at +/-1.5, with explicit side labels.

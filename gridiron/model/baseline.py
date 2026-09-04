@@ -77,6 +77,57 @@ def assert_one_sport(games, sport: str, where: str) -> None:
         )
 
 
+def total_training_set(
+    conn: sqlite3.Connection,
+    seasons: tuple[int, ...],
+    *,
+    through_season: int | None = None,
+    through_week: int | None = None,
+    progress=None,
+) -> tuple[list[dict[str, float]], list[int], list[str]]:
+    """One row per completed NFL game whose expectation was inside the band.
+
+    THE SAME RULE THE FORWARD PATH USES: a game outside 17-80 is refused there
+    and skipped here, so the fit is on the questions the slate actually asks.
+    """
+    placeholders = ",".join("?" for _ in seasons)
+    sql = (
+        f"SELECT id, sport, season, week, home_score, away_score FROM games"
+        f" WHERE sport = 'nfl' AND status = 'final' AND game_type = 'REG'"
+        f"   AND season IN ({placeholders})"
+    )
+    params: list = list(seasons)
+    if through_season is not None:
+        sql += " AND (season < ? OR (season = ? AND week <= ?))"
+        params += [through_season, through_season, through_week or 99]
+    sql += " ORDER BY season, week, id"
+
+    games = conn.execute(sql, params).fetchall()
+    assert_one_sport(games, "nfl", "baseline.total_training_set")
+    cache = context.WeekCache()
+    rows: list[dict[str, float]] = []
+    labels: list[int] = []
+
+    for i, g in enumerate(games):
+        if progress and i % 250 == 0:
+            progress(f"total features {i}/{len(games)}")
+        if g["home_score"] is None or g["away_score"] is None:
+            continue
+        ctx = context.build_game_context(conn, g["id"], cache)
+        ctx.expected_total = questions.nfl_expected_total(
+            ctx.home_points_for, ctx.home_points_against,
+            ctx.away_points_for, ctx.away_points_against)
+        rung = questions.nfl_total_asked(ctx.expected_total)
+        if rung is None:
+            continue
+        ctx.line_asked = rung
+        rows.append(compute.feature_vector(ctx, "total").values)
+        labels.append(1 if g["home_score"] + g["away_score"] > rung else 0)
+
+    names = [f.name for f in registry.active_factors("nfl", "total")]
+    return rows, labels, names
+
+
 def moneyline_training_set(
     conn: sqlite3.Connection,
     seasons: tuple[int, ...],

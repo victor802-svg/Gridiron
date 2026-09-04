@@ -58,6 +58,28 @@ def slate_questions(
             )
         )
 
+        # THE TOTAL (roster #19), asked at the declared rung nearest the
+        # expected combined score and REFUSED outside the measured band.
+        ctx.expected_total = questions.nfl_expected_total(
+            ctx.home_points_for, ctx.home_points_against,
+            ctx.away_points_for, ctx.away_points_against)
+        total_rung = questions.nfl_total_asked(ctx.expected_total)
+        if total_rung is not None:
+            out.append(
+                Question(
+                    sport=SPORT,
+                    game_id=game["id"],
+                    market_type="total",
+                    market="total",
+                    subject=f"{game['away']} @ {game['home']}",
+                    line_asked=total_rung,
+                    claim=(f"{game['away']} at {game['home']} goes over "
+                           f"{total_rung:g} total points"),
+                    yes_label="over",
+                    no_label="under",
+                )
+            )
+
         try:
             line = questions.spread_rung(game["id"], expected)
         except questions.RungOffTheLadder:
@@ -112,12 +134,13 @@ def slate_questions(
 
 
 def build_features(conn: sqlite3.Connection, q: Question, cache=None):
-    if q.market_type in ("spread", "moneyline"):
+    if q.market_type in ("spread", "moneyline", "total"):
         # NO LINE ON A MONEYLINE. Passing one would put a number on the
         # context that no moneyline factor is declared to read.
         ctx = context.build_game_context(
             conn, q.game_id, cache,
-            line_asked=q.line_asked if q.market_type == "spread" else None)
+            line_asked=(q.line_asked
+                        if q.market_type in ("spread", "total") else None))
     else:
         ctx = context.build_prop_context(
             conn, q.game_id, q.player_id, q.stat, q.line_asked, cache
@@ -135,6 +158,12 @@ def training_set(conn: sqlite3.Connection, seasons, market: str, *,
     """
     from ..model import baseline
 
+    if market == "total":
+        if with_counts:
+            raise ValueError(
+                "nfl 'total' is not a count market; there is no count behind "
+                "its label to return")
+        return baseline.total_training_set(conn, seasons, **kwargs)
     if market == "moneyline":
         if with_counts:
             raise ValueError(

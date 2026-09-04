@@ -375,6 +375,49 @@ NBA_TOTAL_MAX = 278.0
 NBA_TOTAL_BOUNDS_DECLARED = "2026-09-04T00:00:00Z"
 
 
+#: THE NFL TOTALS BAND AND LADDER (roster #19, 2026-09-04).
+#:
+#: Measured over 2,639 stored regular-season games: combined points average
+#: 45.6 with a standard deviation of 13.9; the 1st percentile is 17 and the
+#: 99th is 80. Bounds at those percentiles, refused rather than clamped.
+#:
+#: THREE-POINT STEPS, which is a field goal and about a fifth of a standard
+#: deviation -- the same fraction the NBA ladder's five points is of its own.
+#: The quantisation is the point: a rung set exactly at the expectation makes
+#: P(over) one half by construction, which is what the NBA total measured
+#: before its ladder was declared.
+NFL_TOTAL_MIN = 17.0
+NFL_TOTAL_MAX = 80.0
+NFL_TOTAL_LADDER: tuple[float, ...] = tuple(
+    float(x) + 0.5 for x in range(17, 81, 3))
+NFL_TOTAL_DECLARED = "2026-09-04T00:00:00Z"
+
+
+def nfl_expected_total(home_pf, home_pa, away_pf, away_pa):
+    """The combined score to expect, from both sides' own scoring form.
+
+    Each side's expected points is the average of its own offence and the
+    opponent's defence -- the plainest estimator that uses both halves of what
+    is known. Blind by construction; absent, not zero, when any input is.
+    """
+    if None in (home_pf, home_pa, away_pf, away_pa):
+        return None
+    return ((float(home_pf) + float(away_pa)) / 2.0
+            + (float(away_pf) + float(home_pa)) / 2.0)
+
+
+def nfl_total_asked(expected: float | None) -> float | None:
+    """The declared rung nearest the expected combined score.
+
+    Every rung is a half-point, so nothing can push. Refused outside the band.
+    """
+    if expected is None:
+        return None
+    if not NFL_TOTAL_MIN <= expected <= NFL_TOTAL_MAX:
+        return None
+    return min(NFL_TOTAL_LADDER, key=lambda rung: abs(rung - float(expected)))
+
+
 def nba_expected_total(home_pf: float | None, home_pa: float | None,
                        away_pf: float | None, away_pa: float | None):
     """The combined score to expect, from both clubs' own scoring form.
