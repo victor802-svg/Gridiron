@@ -722,3 +722,47 @@ def test_every_card_flagged_means_no_hero_at_all(page):
     assert _shown_ids(page) == before, (
         "the hero refused every card and the grid did not take them all -- a "
         "card refused by the hero must fall to the grid")
+
+
+# --- the vendored font (operator ruling 4, 2026-09-04) ----------------------
+
+def test_manrope_actually_loads_and_is_the_face_the_page_draws_in(page):
+    """A file in the repository is not a font on the page.
+
+    Everything else about ruling 4 is checkable without a browser -- the bytes
+    hash, the licence is there, the stylesheet names files that exist. NONE OF
+    THAT PROVES THE PAGE USES IT. An `@font-face` whose `src` 401s, or whose
+    unicode-range excludes the text, fails SILENTLY: the stack falls through to
+    the system face and the page looks fine, slightly wrong, forever.
+
+    IT ALREADY FAILED ONCE THIS WAY. `auth.path_is_open` allowed `.css`, `.ico`
+    and `.svg` under `/static/` and not `.woff2`, so the sign-in screen drew in
+    a fallback face and said nothing but a console line.
+    """
+    _open_week(page, WIDE)
+    page.evaluate("() => document.fonts.ready")
+    loaded = page.evaluate(
+        """() => [...document.fonts]
+             .filter(f => f.family === 'Manrope' && f.status === 'loaded')
+             .map(f => f.unicodeRange ? 'range' : 'all')""")
+    assert loaded, (
+        "no Manrope face reached `loaded`, so the page is drawing in the "
+        "fallback stack and the vendored file is decoration")
+
+    # AND IT IS THE FACE ACTUALLY USED, not merely one that downloaded.
+    used = page.evaluate(
+        """() => {
+             const el = document.querySelector('.hero-game, .card-game, body');
+             return getComputedStyle(el).fontFamily;
+           }""")
+    assert "Manrope" in used, f"the page draws in {used!r}"
+
+
+def test_no_font_request_is_refused(page):
+    """The 401 that started §5.4, asserted rather than remembered."""
+    refused = []
+    page.on("response", lambda r: refused.append((r.status, r.url))
+            if ".woff2" in r.url and r.status >= 400 else None)
+    _open_week(page, WIDE)
+    page.evaluate("() => document.fonts.ready")
+    assert not refused, f"font requests were refused: {refused}"

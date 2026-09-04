@@ -375,6 +375,32 @@ NBA_TOTAL_MAX = 278.0
 NBA_TOTAL_BOUNDS_DECLARED = "2026-09-04T00:00:00Z"
 
 
+# SESSION E WILL END THIS WHOLE ARRANGEMENT (operator ruling 1, 2026-09-04).
+# ---------------------------------------------------------------------------
+#
+# Every totals rung below is CHOSEN BY US: `*_total_asked` takes the model's
+# own expectation and returns the ladder point nearest it. That makes P(over)
+# one half by construction, which two walk-forwards then measured -- NBA
+# +0.0010, NFL +0.0016 against always-the-base-rate. The quantised ladders
+# were the right local fix for a worse version of the same thing (the NBA's
+# first total asked at the expectation itself and measured +0.0006 with every
+# one of 2,460 test rows in a single bucket) and they did not touch the cause.
+#
+# THE RULING: the blind object stops being a yes/no at a self-chosen rung and
+# becomes the model's FORECAST DISTRIBUTION of the total or margin -- mean and
+# measured spread, written before any line exists. P(over the MARKET's line)
+# is then read off that stored distribution once the line is snapshotted: a
+# deterministic read-out, not a second forecast, so LAW 1 holds exactly.
+#
+# WHAT GOES WHEN IT LANDS: these ladders, `*_total_asked`, and the asked-line
+# dependency entirely -- including the asked-distance factors, which exist to
+# measure the rounding residual of our own choice.
+#
+# ITS OWN SESSION, AND A DESIGN DOC FIRST. Nothing here anticipates it. Read
+# `docs/DECISIONS_MADE.md`, 2026-09-04 ruling 1, before changing any of it.
+# Until then every market below is flagged in `config.FLAGGED_METHODS` and its
+# cards say so.
+
 #: THE NFL TOTALS BAND AND LADDER (roster #19, 2026-09-04).
 #:
 #: Measured over 2,639 stored regular-season games: combined points average
