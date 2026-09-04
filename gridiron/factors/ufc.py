@@ -183,6 +183,90 @@ def ufc_scheduled_rounds(ctx) -> float | None:
     return 1.0 if ctx.scheduled_rounds == 5 else 0.0
 
 
+# ---------------------------------------------------------------------------
+# which kind of card (E3, 2026-09-03)
+# ---------------------------------------------------------------------------
+#
+# TWO INDICATORS AND A REFERENCE LEVEL, which is ordinary dummy coding and is
+# spelled out because the alternative is worse in two different ways. One
+# indicator ("is it Contender Series") would have ASSUMED numbered cards and
+# Fight Nights are the same population; a single numeric code (0, 1, 2) would
+# have claimed they are ordered and evenly spaced, which is a claim about
+# nothing. Fight Night is the reference because it is the commonest tier --
+# 143 of 259 cards -- so the intercept describes the ordinary case.
+#
+# MEASURED BEFORE DECLARING, over 2,590 settled bouts on 2026-09-03:
+#
+#     tier          settled   goes the distance
+#     fight_night     1,619        55.3%
+#     numbered          753        58.0%
+#     contender         218        43.6%
+#
+# NOT DECLARED FOR THE MONEYLINE. A tier indicator is the same value for both
+# fighters in a bout, so it cannot say anything about which of them wins -- it
+# would only shift the base rate of a market that is symmetric by construction.
+# Length is a different matter, and that is what these are for.
+
+TIER_REFERENCE = "fight_night"
+
+
+@factor(
+    added="2026-09-03T00:00:00Z",
+    sport="ufc",
+    applies_to=("rounds", "distance"),
+    why="that this is a Contender Series card",
+    rationale=(
+        "One when the bout is on Dana White's Contender Series, zero on any "
+        "other card. THE TIER WITH SOMETHING TO SAY: a Contender Series bout "
+        "goes the distance 43.6% of the time against 55.3% on a Fight Night "
+        "and 58.0% on a numbered card, measured over 218, 1,619 and 753 "
+        "settled bouts. Twelve to fourteen points is far too large for one UFC "
+        "distance model to average across. "
+        "WHY IT IS TRUE is not something this factor claims to know, and the "
+        "coefficient does not need it to: prospects fighting for a contract in "
+        "front of a matchmaker have an obvious reason to seek a finish, and "
+        "that is a story rather than a measurement. What is measured is the "
+        "rate. "
+        "ABSENT, not zero, when the card carries no tier -- the source has no "
+        "tier field at all, so an unrecognised card name is refused rather "
+        "than assumed to be an ordinary one."
+    ),
+)
+def ufc_is_contender(ctx) -> float | None:
+    if ctx.event_tier is None:
+        return None
+    return 1.0 if ctx.event_tier == "contender" else 0.0
+
+
+@factor(
+    added="2026-09-03T00:00:00Z",
+    sport="ufc",
+    applies_to=("rounds", "distance"),
+    why="that this is a numbered card",
+    rationale=(
+        "One when the bout is on a numbered card, zero otherwise. Declared "
+        "BESIDE the Contender Series indicator rather than folded into it, so "
+        "that Fight Night is the reference level and the coefficient here "
+        "answers a question nobody has answered yet: does a numbered card "
+        "differ from a Fight Night at all? "
+        "THE HONEST EXPECTATION IS THAT IT BARELY DOES. The measured gap is "
+        "2.7 points -- 58.0% against 55.3% -- which is small enough that this "
+        "factor may well come back near zero, and a near-zero coefficient is a "
+        "useful answer rather than a failure. It is declared because assuming "
+        "the two tiers are one population is a claim, and an unmeasured one. "
+        "Main events on a numbered card are five rounds more often (1.61 per "
+        "card against 1.00), which `ufc_scheduled_rounds` already carries, so "
+        "what remains here is whatever else distinguishes a pay-per-view. "
+        "ABSENT, not zero, when the card carries no tier."
+    ),
+)
+def ufc_is_numbered(ctx) -> float | None:
+    if ctx.event_tier is None:
+        return None
+    return 1.0 if ctx.event_tier == "numbered" else 0.0
+
+
+
 @factor(
     added=ADDED,
     sport="ufc",

@@ -901,6 +901,15 @@ const Gridiron = (function () {
     // timezone, which is the one thing it knows better than the server.
     // `localTime` is the same helper the compact rows use -- without it
     // the tile printed '2026-09-05T16:00:00Z' at a reader.
+    // WHICH KIND OF CARD, BEFORE THE TIME (E3, 2026-09-03). "Contender Series
+    // · Tue 8:00 PM". A Contender Series bout goes the distance 43.6% of the
+    // time against 58.0% on a numbered card, and the record is kept separately
+    // for that reason -- so a reader is told which one they are looking at.
+    // Empty for every sport that does not split its record by tier.
+    if (c.tier_label) {
+      pick.appendChild(document.createTextNode(' · '));
+      pick.appendChild(el('span', 'tier-name', c.tier_label));
+    }
     if (c.start_local) {
       pick.appendChild(document.createTextNode(' · ' + localTime(c.start_local)));
     }

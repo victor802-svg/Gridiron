@@ -1048,6 +1048,12 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    quieter than it and above the bucket row, because it is context for the
    percentage rather than a second claim. No colour of its own: a count
    market is not a different KIND of pick and must not look like one. */
+/* WHICH KIND OF CARD (E3). Sits in the pick line beside the time, in the
+   same weight as the rest of it -- a tier is context, not a badge, and
+   styling it as one would make a Contender Series bout look like a different
+   class of pick rather than a differently-shaped question. */
+.tier-name { color: var(--faint); }
+
 .row-rate {
   margin: 0 0 8px; font-size: var(--t-body); color: var(--faint);
 }

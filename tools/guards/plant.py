@@ -1541,11 +1541,17 @@ def plant_rounds_merged_with_the_moneyline_curve() -> Result:
     try:
         calibration.assert_no_merged_categories(payload)
     except calibration.MergedCurve as exc:
+        # EVERY CATEGORY CARRIES ITS TIER (R2, 2026-09-03). This fixture was
+        # written before UFC's record divided three ways; without the tier it
+        # now trips the tier rule rather than passing, which would make this
+        # planting fail for a reason it is not about.
         honest = {"sport": "ufc", "categories": [
             {"sport": "ufc", "category": "ufc:moneyline", "market": "moneyline",
-             "n": 40, "filters": {"predictor": "statistical"}},
+             "event_tier": "numbered", "n": 40,
+             "filters": {"predictor": "statistical"}},
             {"sport": "ufc", "category": "ufc:rounds", "market": "rounds",
-             "n": 40, "filters": {"predictor": "statistical"}},
+             "event_tier": "numbered", "n": 40,
+             "filters": {"predictor": "statistical"}},
         ]}
         try:
             calibration.assert_no_merged_categories(honest)
@@ -4461,6 +4467,139 @@ def plant_both_form_factors_active_without_a_note() -> Result:
                   f"the measurement and the pair")
 
 
+LAW_TIERS = "A TIER IS ITS OWN RECORD"
+
+
+def plant_a_ufc_category_merged_across_tiers() -> Result:
+    """Report one UFC distance curve covering every kind of card.
+
+    LAW 6, ONE LEVEL DOWN (R2, 2026-09-03). Measured over 2,590 settled bouts:
+    a Contender Series bout goes the distance 43.6% of the time, a Fight Night
+    bout 55.3%, a numbered-card bout 58.0%. A single UFC distance curve
+    averages a 43.6% population with a 58.0% one and describes neither -- and
+    it FLATTERS, in the same direction and for the same reason the law was
+    written about sports.
+
+    The merge here is the shape it would really take: not a category labelled
+    'all', but a category that simply forgets to say which tier it is.
+    """
+    merged = {
+        "sport": "ufc",
+        "categories": [
+            {"sport": "ufc", "category": "distance / statistical",
+             "market": "distance", "n": 260,
+             "filters": {"predictor": "statistical", "prop_type": None}},
+        ],
+    }
+    try:
+        calibration.assert_no_merged_categories(merged)
+    except calibration.MergedCurve as exc:
+        # AND THE HONEST SHAPE MUST STILL PASS, or the guard is just refusing
+        # everything and proves nothing.
+        honest = {
+            "sport": "ufc",
+            "categories": [
+                {"sport": "ufc", "category": "distance / contender / statistical",
+                 "market": "distance", "event_tier": "contender", "n": 218,
+                 "filters": {"predictor": "statistical", "prop_type": None}},
+                {"sport": "ufc", "category": "distance / numbered / statistical",
+                 "market": "distance", "event_tier": "numbered", "n": 753,
+                 "filters": {"predictor": "statistical", "prop_type": None}},
+            ],
+        }
+        try:
+            calibration.assert_no_merged_categories(honest)
+        except calibration.MergedCurve as wrong:
+            return Result(LAW_TIERS, "a UFC category merged across tiers",
+                          "calibration.assert_no_merged_categories", False,
+                          f"the guard rejects two honest per-tier categories: "
+                          f"{wrong}")
+        # A TIER THAT IS NOT DECLARED IS ALSO A MERGE, because it means the
+        # category is describing a population nobody defined.
+        invented = {
+            "sport": "ufc",
+            "categories": [
+                {"sport": "ufc", "category": "distance / prelims / statistical",
+                 "market": "distance", "event_tier": "prelims", "n": 40,
+                 "filters": {"predictor": "statistical", "prop_type": None}},
+            ],
+        }
+        try:
+            calibration.assert_no_merged_categories(invented)
+        except calibration.MergedCurve:
+            pass
+        else:
+            return Result(LAW_TIERS, "a UFC category merged across tiers",
+                          "calibration.assert_no_merged_categories", False,
+                          "an undeclared tier was accepted as a category")
+        return Result(LAW_TIERS, "a UFC category merged across tiers",
+                      "calibration.assert_no_merged_categories", True, str(exc))
+    return Result(LAW_TIERS, "a UFC category merged across tiers",
+                  "calibration.assert_no_merged_categories", False,
+                  "NOT CAUGHT - one curve claimed to describe Contender Series "
+                  "bouts at 43.6% and numbered-card bouts at 58.0% at once")
+
+
+def plant_a_bout_from_another_promotion_in_the_ufc_pool() -> Result:
+    """Feed the pool an event that is not a UFC card.
+
+    R3 IS A LAW 6 RULING: PFL, Bellator and ONE are DIFFERENT SPORTS, not more
+    UFC data. Different rulesets -- cage against ring, different round lengths,
+    a season format in one of them -- so a rating pooled across promotions
+    describes no promotion, and a fighter's rating would move on evidence from
+    a sport this record does not model.
+
+    The nearest thing to that failure already in the record is The Ultimate
+    Fighter: entries carried under the UFC league whose bouts are not
+    sanctioned UFC bouts. Seven of them WERE in the rating pool until today.
+    This plants the same shape and checks the door is shut.
+    """
+    from gridiron.sports import ufc
+
+    # A television episode carrying one bout, which is what TUF looks like.
+    if ufc.is_sanctioned_card("The Ultimate Fighter 32 Semifinal: A vs. B", 1,
+                              "2024-07-05T00:00:00Z", "2026-09-03T00:00:00Z"):
+        return Result(LAW_TIERS, "a bout from outside the UFC entering the pool",
+                      "ufc.is_sanctioned_card", False,
+                      "NOT CAUGHT - a one-bout television episode was accepted "
+                      "as a card, and its bouts would enter the rating pool")
+
+    # AND A REAL CARD MUST STILL GET IN, or the guard is refusing everything.
+    if not ufc.is_sanctioned_card("UFC Fight Night: Bonfim vs. Brady", 11,
+                                  "2026-11-07T00:00:00Z",
+                                  "2026-09-03T00:00:00Z"):
+        return Result(LAW_TIERS, "a bout from outside the UFC entering the pool",
+                      "ufc.is_sanctioned_card", False,
+                      "a real Fight Night was refused")
+
+    # THE CASE THAT COST ME EIGHTEEN BOUTS: an upcoming card whose bouts are
+    # still being announced looks exactly like a thin one from the count alone.
+    if not ufc.is_sanctioned_card("Dana White's Contender Series: Season 10, "
+                                  "Week 10", 1, "2026-10-13T00:00:00Z",
+                                  "2026-09-03T00:00:00Z"):
+        return Result(LAW_TIERS, "a bout from outside the UFC entering the pool",
+                      "ufc.is_sanctioned_card", False,
+                      "an UPCOMING card with one bout announced so far was "
+                      "refused as though it were television; this deleted 18 "
+                      "real bouts once and must not again")
+
+    # And a tier that does not exist has no label to print.
+    from gridiron import config, language
+    if "pfl" in config.event_tiers("ufc"):
+        return Result(LAW_TIERS, "a bout from outside the UFC entering the pool",
+                      "config.event_tiers", False,
+                      "another promotion is declared as a UFC tier")
+    if language.tier_label("pfl"):
+        return Result(LAW_TIERS, "a bout from outside the UFC entering the pool",
+                      "language.tier_label", False,
+                      "an undeclared tier has a reader-facing label")
+    return Result(LAW_TIERS, "a bout from outside the UFC entering the pool",
+                  "ufc.is_sanctioned_card", True,
+                  "a one-bout television episode is refused, a real card is "
+                  "admitted, an UPCOMING card with one bout announced is "
+                  "admitted, and no other promotion is a declared tier")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -4505,6 +4644,8 @@ def main() -> int:
     results.append(plant_an_adjusted_factor_that_reads_raw_margin())
     results.append(plant_a_suppressed_pair_read_as_two_reasons())
     results.append(plant_both_form_factors_active_without_a_note())
+    results.append(plant_a_ufc_category_merged_across_tiers())
+    results.append(plant_a_bout_from_another_promotion_in_the_ufc_pool())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

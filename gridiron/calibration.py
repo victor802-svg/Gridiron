@@ -216,11 +216,23 @@ def resolved(
     prop_type: str | None = None,
     predictor: str | None = None,
     factor_set_version: str | None = None,
+    event_tier: str | None = None,
     with_factors: bool = False,
 ) -> list[Resolved]:
     require_sport(sport, "calibration.resolved")
     where = ["p.resolved_utc IS NOT NULL", "p.sport = ?"]
     params: list = [sport]
+    if event_tier:
+        # LAW 6 ONE LEVEL DOWN (R2, 2026-09-03). A Contender Series bout goes
+        # the distance 43.6% of the time and a numbered-card bout 58.0%; one
+        # UFC curve would average those and describe neither, which is exactly
+        # the failure the law forbids across sports. The tier lives on the
+        # EVENT, so this reaches through the bout to the card it was on.
+        where.append(
+            "EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
+            "          ON e.id = b.event_id"
+            "         WHERE b.id = p.game_id AND e.event_tier = ?)")
+        params.append(event_tier)
     if market_type:
         where.append("p.market_type = ?")
         params.append(market_type)
@@ -486,6 +498,7 @@ def curve(
     prop_type: str | None = None,
     predictor: str | None = None,
     factor_set_version: str | None = None,
+    event_tier: str | None = None,
 ) -> dict:
     require_sport(sport, "calibration.curve")
     items = resolved(
@@ -495,6 +508,7 @@ def curve(
         prop_type=prop_type,
         predictor=predictor,
         factor_set_version=factor_set_version,
+        event_tier=event_tier,
     )
     buckets = calibration_buckets(items)
     voids = void_count(
@@ -509,7 +523,10 @@ def curve(
             "prop_type": prop_type or "all",
             "predictor": predictor or "all",
             "factor_set_version": factor_set_version or "all",
+            "event_tier": event_tier or "all",
         },
+        "event_tier": event_tier,
+        "tier_label": language.tier_label(event_tier),
         "n": len(items),
         "buckets": buckets,
         "largest_gap": largest_gap_sentence(buckets),
@@ -1041,6 +1058,27 @@ def assert_no_merged_categories(payload: dict) -> None:
                 "with no prop_type filter, so it averages every prop market "
                 "into a single number."
             )
+        # LAW 6 ONE LEVEL DOWN (R2, 2026-09-03). A sport that splits below the
+        # market may not report a category that spans its tiers: a UFC distance
+        # curve mixing 43.6% Contender Series bouts with 58.0% numbered-card
+        # ones describes neither, and flatters, for the same reason the law
+        # forbids mixing sports.
+        declared_tiers = config.event_tiers(sport)
+        if declared_tiers:
+            tier = category.get("event_tier")
+            if tier in (None, "all"):
+                raise MergedCurve(
+                    f"LAW 6: category {category.get('category')!r} names no "
+                    f"event tier, so it averages {sport}'s "
+                    f"{len(declared_tiers)} tiers into one curve. Tiers are "
+                    f"reported side by side, never summed."
+                )
+            if tier not in declared_tiers:
+                raise MergedCurve(
+                    f"LAW 6: category {category.get('category')!r} reports "
+                    f"event tier {tier!r}, which is not one of {sport}'s "
+                    f"declared tiers {list(declared_tiers)}."
+                )
 
 
 def assert_single_sport(payload, sport: str, path: str = "$") -> None:
@@ -1175,24 +1213,36 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
         is_current = version == config.FACTOR_SET_VERSION
 
         categories = []
+        # A SPORT THAT SPLITS BELOW THE MARKET GETS ONE CATEGORY PER TIER
+        # (R2, 2026-09-03). `(None,)` for every other sport, so the loop below
+        # is unchanged for four of the five and no category gains an empty
+        # tier key it would have to be filtered out by later.
+        tiers = config.event_tiers(sport) or (None,)
         for market in config.SPORT_MARKETS.get(sport, ()):
-            for predictor in ("statistical", "llm"):
-                items = resolved(
-                    conn,
-                    sport=sport,
-                    market_type=market_type_of(sport, market),
-                    prop_type=prop_type_of(sport, market),
-                    predictor=predictor,
-                    factor_set_version=version,
-                )
-                if not items and not is_current:
-                    continue
-                categories.append({
-                    "category": f"{market} / {predictor}",
-                    "market": market,
-                    "predictor": predictor,
-                    **score(items),
-                })
+            for tier in tiers:
+                for predictor in ("statistical", "llm"):
+                    items = resolved(
+                        conn,
+                        sport=sport,
+                        market_type=market_type_of(sport, market),
+                        prop_type=prop_type_of(sport, market),
+                        predictor=predictor,
+                        factor_set_version=version,
+                        event_tier=tier,
+                    )
+                    if not items and not is_current:
+                        continue
+                    entry_c = {
+                        "category": (f"{market} / {tier} / {predictor}"
+                                     if tier else f"{market} / {predictor}"),
+                        "market": market,
+                        "predictor": predictor,
+                        **score(items),
+                    }
+                    if tier:
+                        entry_c["event_tier"] = tier
+                        entry_c["tier_label"] = language.tier_label(tier)
+                    categories.append(entry_c)
 
         start = starts.get(version) or None
         pos = ordered.index(version) if version in ordered else None
@@ -1252,22 +1302,27 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     markets = config.SPORT_MARKETS.get(sport, ())
 
     categories = []
+    # ONE CATEGORY PER TIER for a sport that splits below the market (R2),
+    # and `(None,)` for the four that do not, so nothing changes for them.
+    tiers = config.event_tiers(sport) or (None,)
     for market in markets:
-        for predictor in ("statistical", "llm"):
-            c = curve(conn, sport=sport,
-                      market_type=market_type_of(sport, market),
-                      prop_type=prop_type_of(sport, market),
-                      predictor=predictor)
-            c["category"] = f"{market} / {predictor}"
-            c["market"] = market
-            # RULING R3: a gate that will not be reached is not a gate that has
-            # not been reached YET, and rendering them alike reads as progress.
-            # Attached per category, statistical only -- the LLM predictor
-            # answers the same questions, so one projection covers both and two
-            # would invite a reader to add them.
-            if predictor == "statistical":
-                c["outlook"] = horizon.market_outlook(conn, sport, market)
-            categories.append(c)
+        for tier in tiers:
+            for predictor in ("statistical", "llm"):
+                c = curve(conn, sport=sport,
+                          market_type=market_type_of(sport, market),
+                          prop_type=prop_type_of(sport, market),
+                          predictor=predictor, event_tier=tier)
+                c["category"] = (f"{market} / {tier} / {predictor}"
+                                 if tier else f"{market} / {predictor}")
+                c["market"] = market
+                # RULING R3: a gate that will not be reached is not a gate that
+                # has not been reached YET, and rendering them alike reads as
+                # progress. Attached per category, statistical only -- the LLM
+                # predictor answers the same questions, so one projection
+                # covers both and two would invite a reader to add them.
+                if predictor == "statistical":
+                    c["outlook"] = horizon.market_outlook(conn, sport, market)
+                categories.append(c)
 
     headline_market = markets[0] if markets else "spread"
     headline = curve(conn, sport=sport,

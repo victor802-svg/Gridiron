@@ -273,7 +273,13 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         return conn.execute(
             "SELECT p.*, g.home, g.away, g.kickoff_utc, g.status,"
             " g.live_period, g.live_clock, g.home_score, g.league_date,"
-            " g.away_score FROM predictions p JOIN games g ON g.id = p.game_id"
+            " g.away_score,"
+            # WHICH KIND OF CARD A FIGHT IS ON (E3, 2026-09-03). Read here
+            # rather than looked up per row, and NULL for every sport that
+            # does not split -- the join is a left one for that reason.
+            " (SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+            "    ON e.id = b.event_id WHERE b.id = p.game_id) AS event_tier"
+            " FROM predictions p JOIN games g ON g.id = p.game_id"
             " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
             "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
             "                   WHERE v.prediction_id = p.id)"
@@ -587,6 +593,15 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 # Built here, not in the renderer. The row shows five things and
                 # every one of them is a phrase the server wrote.
                 "row_title": _row_title(r),
+                # THE TIER, IN WORDS, BESIDE THE TIME (E3). "Contender Series"
+                # rather than 'contender': a reader is told which kind of card
+                # this is, because a Contender Series bout goes the distance
+                # 43.6% of the time against 58.0% on a numbered card and the
+                # record is kept separately for exactly that reason. Empty for
+                # every sport that does not split, and for a card whose tier
+                # the source did not carry.
+                "tier_label": language.tier_label(
+                    r["event_tier"] if "event_tier" in r.keys() else None),
                 "start_local": _start_local(r["kickoff_utc"]),
                 "bucket_line": _bucket_line(bucket_cache[key]),
                 "resolved_story": _resolved_story(r, gap, team_names),

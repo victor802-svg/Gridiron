@@ -763,6 +763,41 @@ JOINTLY_READ_FACTORS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
 JOINTLY_READ_DECLARED = "2026-09-03T00:00:00Z"
 
 
+#: SPORTS WHOSE RECORD SPLITS BELOW THE MARKET (R2, 2026-09-03).
+#:
+#: LAW 6 forbids one curve across two sports because the easy one dilutes the
+#: hard one. The same argument applies one level down wherever a sport contains
+#: populations that differ enough to matter, and UFC does:
+#:
+#:     tier          settled   goes the distance
+#:     fight_night     1,619        55.3%
+#:     numbered          753        58.0%
+#:     contender         218        43.6%
+#:
+#: Twelve to fourteen points. A single UFC distance curve would average a 43.6%
+#: population with a 58.0% one and describe nobody, and it would FLATTER, in
+#: the same direction and for the same reason the law was written about.
+#:
+#: EACH TIER CARRIES ITS OWN GATE. `MIN_SAMPLE_FOR_EDGE_CLAIM` applies per
+#: category, so splitting the record three ways means three separate hundreds
+#: rather than one shared one. That is slower and it is the point: a Contender
+#: Series claim earned on numbered-card evidence is not earned.
+#:
+#: A CARD WITH NO TIER JOINS NO CATEGORY. The source carries no tier field, so
+#: an unrecognised card name is stamped NULL, and NULL is not a tier -- those
+#: bouts feed the rating pool and are never scored, because there is no honest
+#: category for them.
+SPORT_EVENT_TIERS: dict[str, tuple[str, ...]] = {
+    "ufc": ("numbered", "fight_night", "contender"),
+}
+EVENT_TIERS_DECLARED = "2026-09-03T00:00:00Z"
+
+
+def event_tiers(sport: str) -> tuple[str, ...]:
+    """The tiers a sport's record splits into, or () when it does not split."""
+    return SPORT_EVENT_TIERS.get(sport, ())
+
+
 def jointly_read(sport: str, market: str):
     """The jointly-read groups for one market, as (names, phrase) pairs."""
     entry = JOINTLY_READ_FACTORS.get((sport, market))

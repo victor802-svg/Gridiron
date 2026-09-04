@@ -998,6 +998,29 @@ def forecaster_silent_line(predictor: str, hours: float, wrote: int,
             f"them, so nothing it would have said is being scored.")
 
 
+#: What a reader is called the three UFC card kinds. THE PLAIN-WORDS LAW: no
+#: internal identifier reaches the interface, so 'fight_night' -- which is what
+#: the column holds and what every query filters on -- is never what a card
+#: says. Held here rather than beside the tier logic because this module is the
+#: one door prose comes through.
+TIER_LABELS = {
+    "numbered": "Numbered card",
+    "fight_night": "Fight Night",
+    "contender": "Contender Series",
+}
+
+
+def tier_label(tier: str | None) -> str:
+    """"Contender Series", never 'contender'.
+
+    An unknown tier returns the empty string rather than the identifier: a card
+    whose tier the source did not carry says nothing about its tier, which is
+    the truth, and printing the raw value would be the exact failure the
+    plain-words scan exists to catch.
+    """
+    return TIER_LABELS.get(tier or "", "")
+
+
 def rate_line(expected: float | None, rung: float | None,
               probability: float | None, market: str | None = None) -> str:
     """"The model expects about 0.9 home runs; clearing 0.5 is about 60%."

@@ -246,6 +246,9 @@ class UfcContext:
     finish_rate_a: float | None = None
     finish_rate_b: float | None = None
     scheduled_rounds: int | None = None
+    #: Which kind of card this bout is on: 'numbered', 'fight_night',
+    #: 'contender', or None when the name carried no tier. See `event_tier`.
+    event_tier: str | None = None
     #: The model's own expected length, in rounds. Set for the rounds market.
     expected_rounds: float | None = None
     notes: list = field(default_factory=list)
@@ -260,14 +263,15 @@ def build_context(conn: sqlite3.Connection, game_id: str,
     once, on 76.8% of NBA rows.
     """
     bout = conn.execute(
-        "SELECT b.*, e.season FROM ufc_bouts b JOIN ufc_events e"
+        "SELECT b.*, e.season, e.event_tier FROM ufc_bouts b JOIN ufc_events e"
         "  ON e.id = b.event_id WHERE b.id = ?", (game_id,)).fetchone()
     if bout is None:
         raise KeyError(f"no UFC bout {game_id!r}")
 
     ctx = UfcContext(game_id=game_id, line_asked=line_asked,
                      market_type=market_type,
-                     scheduled_rounds=bout["scheduled_rounds"])
+                     scheduled_rounds=bout["scheduled_rounds"],
+                     event_tier=bout["event_tier"])
 
     ratings = {r["fighter_id"]: r for r in conn.execute(
         "SELECT fighter_id, rating_before, bouts_before FROM ufc_ratings"
