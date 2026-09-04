@@ -1044,6 +1044,14 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   margin: 12px 0 6px; font-size: var(--t-body); color: var(--muted);
 }
 
+/* THE RATE SENTENCE (C3). Sits directly under the numbers line it explains,
+   quieter than it and above the bucket row, because it is context for the
+   percentage rather than a second claim. No colour of its own: a count
+   market is not a different KIND of pick and must not look like one. */
+.row-rate {
+  margin: 0 0 8px; font-size: var(--t-body); color: var(--faint);
+}
+
 .row-stats {
   display: flex; justify-content: space-between; gap: 12px;
   font-family: var(--mono); font-size: 11px; color: var(--faint);

@@ -479,3 +479,12 @@ python tools/make_token.py --ntfy --rotate
   is deliberately empty: no observed-weather source is wired. Until one is, the
   college wind coefficient is still fitted on observed and applied to forecasts.
   S5's fourth planting waits on the same thing.
+- **The compact rows truncate their own titles at 390px.** `.row-title` and
+  `.row-pick` carry `text-overflow: ellipsis`, so a phone reader sees
+  "BRISSETT · PASSI…" and "SF DOES NOT…". That is exactly what the no-tile-
+  truncation law forbids — the card says there is something it is not showing
+  and then does not show it — and the existing guard misses it because it scans
+  the frame at desk width, where nothing truncates. Present since `24212a6`
+  (2026-08-30), found while rendering the count markets at 390px on
+  2026-09-03. The fix is to let the row grow, as the desk tiles do, and to
+  widen the truncation scan to every breakpoint the suite already visits.

@@ -1423,6 +1423,17 @@ const Gridiron = (function () {
     // written by `language.rail_numbers_line`; this places it.
     body.appendChild(el('p', 'row-numbers', c.rail_line || ''));
 
+    // THE RATE, DIRECTLY UNDER THE NUMBER IT EXPLAINS (C3, 2026-09-03).
+    // "The model expects about 3.9 receptions; clearing 3.5 is about 56%."
+    // A count market answers in two steps and the reader is entitled to both:
+    // the percentage alone says nothing about whether the model thinks he
+    // catches four passes or nine. Present only on a count market -- a
+    // continuous market has no rate and the server sends an empty string.
+    // Composed by `language.rate_line`; this places it.
+    if (c.rate_line) {
+      body.appendChild(el('p', 'row-rate', c.rate_line));
+    }
+
     const line = el('div', 'row-stats');
     line.appendChild(el('span', 'row-bucket', c.bucket_line || ''));
     body.appendChild(line);

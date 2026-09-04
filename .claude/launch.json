@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "gridiron",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-c", "from gridiron import api; api.serve(port=8851, log_level='error')"],
+      "port": 8851
+    }
+  ]
+}
