@@ -464,6 +464,7 @@ def ensure_lines(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     place: the prediction rows exist before the request is made.
     """
     from . import espn, props
+    from . import ufc as market_ufc
 
     if not prediction_ids:
         return {}
@@ -488,6 +489,12 @@ def ensure_lines(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     for sport, game_ids in by_sport.items():
         if sport in espn.LEAGUE_PATH:
             out[sport] = espn.fetch_for_games(conn, sport, game_ids)
+        if sport == "ufc":
+            # A FIGHT'S GAME ID IS ITS BOUT ID, so the mirror needs no lookup.
+            # Every bout Gridiron currently forecasts comes back unpriced --
+            # the source stopped carrying UFC odds in January 2026 and the
+            # counts say so rather than the absence being inferred later.
+            out["ufc"] = market_ufc.fetch_for_bouts(conn, game_ids)
         if sport in has_props and sport in props.LEAGUE_PATH:
             out[f"{sport}:props"] = _fetch_prop_days(conn, sport, game_ids)
     return out

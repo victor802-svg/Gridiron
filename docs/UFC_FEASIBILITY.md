@@ -80,6 +80,16 @@ build may assume position 0 means anything.
 
 ## 3. The market data — better than any sport we hold
 
+> **CORRECTED 2026-09-03 (E4). THIS SECTION IS TRUE OF 2025 AND EARLIER AND
+> FALSE OF EVERY BOUT THIS MODEL FORECASTS.** A stratified sample of the whole
+> stored record found all 72 sampled bouts priced across 2022-2025 and **none
+> of 18 across 2026**; month by month, full coverage through November 2025,
+> three of five in December, and one priced bout in forty-five sampled from
+> January 2026 onward. The probe below sampled 20 bouts and reported 19 of
+> them priced - that measurement was correct for the bouts it took, and the
+> conclusion drawn from it, that a UFC market comparison is available, was
+> not. **The sample did not span the boundary.** See section 10.
+
 One bout's odds, measured:
 
 ```json
@@ -308,3 +318,76 @@ UNCLASSIFIED rather than guessed.
   prospect card is priced by fewer books than a pay-per-view.
 - Whether ESPN ever renames a tier mid-season, which would move an event
   between categories. Nothing in the record suggests it has.
+
+---
+
+## 10. Odds coverage, measured properly (E4, 2026-09-03)
+
+Section 3 said the market data was "better than any sport we hold". For the
+historical record that is still true. For anything Gridiron is forecasting it
+is wrong, and the correction is here rather than only in the section it
+corrects.
+
+### 10.1 What was measured
+
+A stratified sample — up to six bouts per (season, tier), across all three
+tiers and five seasons:
+
+| season | sampled | priced |
+|---|---|---|
+| 2022 | 18 | **18** |
+| 2023 | 18 | **18** |
+| 2024 | 18 | **18** |
+| 2025 | 18 | **18** |
+| 2026 | 18 | **0** |
+
+Month by month across the boundary, five bouts sampled per month:
+
+```
+2025-09  5 priced   2026-01  0 priced
+2025-10  5 priced   2026-02  1 priced
+2025-11  5 priced   2026-03  0 priced
+2025-12  3 priced   2026-04 .. 2026-12  0 priced, every month
+```
+
+**One priced bout in forty-five sampled from January 2026 onward.** The
+endpoint answers `200` with `count: 0` — this is not an outage and not a
+changed URL. The source simply stopped carrying UFC prices.
+
+### 10.2 Why the first probe missed it
+
+The section 3 probe sampled 20 bouts and found 19 priced. That number was
+correct. **The sample did not span the boundary**, so it measured a period in
+which coverage was complete and reported a conclusion about a period in which
+it is not. A sample that does not cross the thing you are asking about cannot
+answer it, and "19 of 20" reads like strong evidence either way.
+
+### 10.3 What exists anyway
+
+Fifteen providers appear in the historical data — Bet365, ESPN BET, Caesars
+(three states), Unibet, Titanbets, Consensus, PointsBet, Westgate and others.
+On a 14-bout November 2025 card the fetcher priced **14 of 14, every one with
+an opening price**.
+
+**Opening prices are real and they are here.** `docs/DIAGNOSIS.md` records H1a
+— "the model disagrees most when it is MISSING information the market has" — as
+NOT TESTABLE, because every market number this project holds for its other
+sports is a closing number. UFC's historical record carries `open` and `close`
+on the same object. That hypothesis is testable on 2022–2025 UFC bouts and
+nowhere else in this project, and nothing has acted on it yet.
+
+### 10.4 One measured surprise
+
+The favourite-flag cross-check fired on its first live run, and it was **wrong
+to**. A bout with both fighters at −110, neither flagged as favourite, is a
+pick-em — a real market state, and the most informative kind of comparison
+there is, because the market is saying it does not know either. The rule now
+treats equal prices with no flag as agreement. It still refuses the genuine
+contradiction: a price favouring one fighter and a flag favouring the other.
+
+### 10.5 What this does not measure
+
+Whether `overUnder` — the posted round total that sits on the same object — is
+asked at the same rungs the declared ladder uses. Until that is measured, the
+rounds and distance markets are NOT listed as available: a comparison against a
+differently-worded question is not a comparison.

@@ -4600,6 +4600,70 @@ def plant_a_bout_from_another_promotion_in_the_ufc_pool() -> Result:
                   "admitted, and no other promotion is a declared tier")
 
 
+LAW_SCHEMA = "A FOREIGN KEY POINTS AT SOMETHING"
+
+
+def plant_a_foreign_key_on_a_table_that_does_not_exist() -> Result:
+    """Rename a referenced table aside and leave it there.
+
+    THIS IS NOT HYPOTHETICAL. It happened, today, in this project, and nothing
+    caught it for hours.
+
+    Widening the sport CHECK on `games` renames the table aside, copies, and
+    renames back. SQLite rewrites every referencing table's foreign key to
+    FOLLOW the rename, and does not rewrite them back. Twelve tables holding
+    311,655 rows were left pointing at `games_narrow`, which no longer existed.
+
+    Every read kept working. The suite stayed green. Five sports rendered.
+    `PRAGMA foreign_key_check` was reporting violations the whole time and
+    nothing was asking it. It surfaced only when the UFC market fetcher became
+    the first thing in a long while to INSERT into one of the twelve, as
+    `no such table: main.games_narrow` raised from a module with nothing to do
+    with games.
+
+    So this plants the same rename and checks the scan now sees it.
+    """
+    from gridiron import audit as _audit
+
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(Path(tmp) / "fk.db")
+        clean = _audit.dangling_reference_faults(conn)
+        if clean:
+            conn.close()
+            return Result(LAW_SCHEMA, "a foreign key on a table that is gone",
+                          "audit.dangling_reference_faults", False,
+                          f"a FRESH database already fails the scan, so it "
+                          f"proves nothing: {clean[:2]}")
+
+        # THE PLANT: exactly what the rebuild does, and exactly why a
+        # rename-and-rename-back would NOT reproduce it -- SQLite repairs that
+        # case, which is worth knowing and is why the first version of this
+        # planting escaped. The damage comes from renaming aside, creating a
+        # FRESH table under the original name, and dropping the aside one: the
+        # referencing tables followed the rename and there is nothing left to
+        # follow back.
+        conn.execute("PRAGMA foreign_keys = OFF")
+        original = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'games'").fetchone()[0]
+        conn.execute("ALTER TABLE games RENAME TO games_narrow")
+        conn.execute(original)
+        conn.execute("DROP TABLE games_narrow")
+        conn.commit()
+        faults = _audit.dangling_reference_faults(conn)
+        conn.close()
+
+    if not faults:
+        return Result(LAW_SCHEMA, "a foreign key on a table that is gone",
+                      "audit.dangling_reference_faults", False,
+                      "NOT CAUGHT - a table's foreign key names a table that "
+                      "does not exist, every read still works, and the first "
+                      "INSERT will fail with an error naming a module that has "
+                      "nothing to do with it")
+    return Result(LAW_SCHEMA, "a foreign key on a table that is gone",
+                  "audit.dangling_reference_faults", True,
+                  f"{len(faults)} fault(s), the first being: {faults[0]}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -4646,6 +4710,7 @@ def main() -> int:
     results.append(plant_both_form_factors_active_without_a_note())
     results.append(plant_a_ufc_category_merged_across_tiers())
     results.append(plant_a_bout_from_another_promotion_in_the_ufc_pool())
+    results.append(plant_a_foreign_key_on_a_table_that_does_not_exist())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

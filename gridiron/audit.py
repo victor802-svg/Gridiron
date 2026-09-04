@@ -2194,6 +2194,58 @@ _JS_CLASS_SELECTOR = re.compile(
 _CLASS_IN_SELECTOR = re.compile(r"\.([A-Za-z][A-Za-z0-9_-]*)")
 
 
+def dangling_reference_faults(conn) -> list[str]:
+    """Every foreign key must name a table that exists (E4, 2026-09-03).
+
+    THIS FIRED FOR REAL AND SILENTLY, and the way it happened is the reason it
+    is now checked rather than assumed.
+
+    Widening the sport CHECK on `games` renames the table aside, copies, and
+    renames back. SQLite helpfully REWRITES EVERY REFERENCING TABLE'S FOREIGN
+    KEY to follow the rename -- and it does not rewrite them back. Twelve
+    tables holding 311,655 rows were left pointing at `games_narrow`, a table
+    that no longer existed.
+
+    NOTHING NOTICED FOR HOURS. Every read worked. The suite was green. Four
+    sports rendered. `PRAGMA foreign_key_check` was reporting violations the
+    whole time and nobody was asking it. It surfaced only when the UFC market
+    fetcher became the first thing in a long while to INSERT into one of the
+    twelve, and it surfaced as `no such table: main.games_narrow` from a module
+    that has nothing to do with games.
+
+    A BROKEN SCHEMA THAT ONLY BREAKS ON WRITE IS THE WORST KIND, because a
+    project that mostly reads will believe it is fine right up until the moment
+    it needs to record something.
+    """
+    faults = []
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'")}
+    for name in sorted(tables):
+        for fk in conn.execute(f'PRAGMA foreign_key_list("{name}")'):
+            target = fk["table"] if hasattr(fk, "keys") else fk[2]
+            if target not in tables:
+                faults.append(
+                    f"{name} has a foreign key on a table that does not "
+                    f"exist: {target!r}. Reads will work and the first INSERT "
+                    f"will fail. This is what a half-finished table rebuild "
+                    f"leaves behind.")
+    violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        faults.append(
+            f"PRAGMA foreign_key_check reports {len(violations)} violation(s). "
+            f"The first is in table {violations[0][0]!r}.")
+    return faults
+
+
+def check_no_dangling_references(conn) -> None:
+    """Raise when any foreign key points at a table that is not there."""
+    faults = dangling_reference_faults(conn)
+    if faults:
+        raise AssertionError(
+            "FOREIGN KEYS POINT AT TABLES THAT DO NOT EXIST:\n  "
+            + "\n  ".join(faults))
+
+
 def dead_selector_faults(js: str, html: str, css: str) -> list[str]:
     """A class the browser is asked for that nothing in the app ever builds.
 

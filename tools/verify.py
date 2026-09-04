@@ -167,10 +167,24 @@ def step_2_guards() -> bool:
     # scan is what noticed.
     from gridiron import audit
 
+    def _live_db():
+        """The database the gate is actually about, opened once per check."""
+        from gridiron import config, db as _db
+
+        return _db.open_db(config.DB_PATH)
+
+
     print()
     for name, fn in (
         ("prediction closures (LAW 1)", audit.check_all_prediction_closures),
         ("no orphan functions", audit.check_no_orphan_functions),
+        # ADDED 2026-09-03 AFTER IT HAPPENED. Widening a sport CHECK on `games`
+        # left twelve tables and 311,655 rows with foreign keys naming a table
+        # that no longer existed. Every read worked; the suite was green; the
+        # first INSERT in hours is what found it. A schema fault that only
+        # breaks on write is the worst kind for a project that mostly reads.
+        ("every foreign key points at a real table",
+         lambda: audit.check_no_dangling_references(_live_db())),
         ("one door for the side", audit.check_side_named),
         ("no shadowed definitions", audit.check_no_shadowed_definitions),
         ("the side, in prose, anywhere", audit.check_side_named_everywhere),

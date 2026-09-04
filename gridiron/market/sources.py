@@ -96,6 +96,41 @@ LINE_SOURCES: dict[str, dict] = {
             "both moneylines present. Same unstated-licence caveat as MLB."
         ),
     },
+    "ufc": {
+        "available": True,
+        "name": "ESPN public API (sports.core.api.espn.com)",
+        "url": "https://sports.core.api.espn.com/v2/sports/mma/leagues/ufc",
+        "licence": (
+            "NONE STATED. Undocumented public endpoint. No published terms, no "
+            "published rate limit, and no guarantee it continues to exist -- "
+            "and for UFC that last clause is not hypothetical, see the note."
+        ),
+        "rate_limit": (
+            "unpublished. Gridiron fetches one odds document per bout, caches "
+            "every response permanently, and never refetches a settled bout."
+        ),
+        "markets": ["moneyline"],
+        "prices": (
+            "moneyline prices from up to fifteen books, republished by ESPN, "
+            "with an explicit favourite flag and -- uniquely in this project -- "
+            "an OPENING price beside the closing one"
+        ),
+        "note": (
+            "COVERAGE STOPPED AT THE TURN OF THE YEAR, measured 2026-09-03. A "
+            "stratified sample of the stored record found every one of 72 "
+            "bouts priced across 2022-2025 and NONE of 18 across 2026; month "
+            "by month, full coverage through November 2025, three of five in "
+            "December, and one priced bout in forty-five sampled from January "
+            "2026 on. So every bout Gridiron is currently forecasting is "
+            "unpriced and no live UFC card shows a comparison. The fetcher is "
+            "correct and cached, works on the historical record, and starts "
+            "working again the day coverage returns. Rounds and distance are "
+            "NOT listed above: `overUnder` exists on the same object, but "
+            "nothing has measured whether its posted line matches the rungs "
+            "the declared ladder asks at, and a comparison against a different "
+            "question is not a comparison."
+        ),
+    },
     "cfb": {
         "available": True,
         "name": "ESPN public API (sports.core.api.espn.com)",
