@@ -168,12 +168,21 @@ month**.
 §6. **The build order is unchanged** — it comes from §4, which ranks on balance
 and on what needs no identity match.
 
-**The brief's question, answered directly:** batter strikeouts gets **5 slots a
+**The brief's question, answered directly.** Batter strikeouts gets **5 slots a
 day**. From 2026-09-04 to the record's last MLB date of 2026-09-27 that is
-**23 days × 5 = 115 questions**, before the floor and voids. **It is marginal
-against a 100-settled gate and I will not promise it clears.** Nothing was
-skipped on that basis, because the roster's own figures say it clears easily —
-the figures are what were wrong.
+**23 days × 5 = 115 questions written**, and at the 86% settle rate the record
+shows, **about 99 settled**.
+
+**The floor does not reduce that**, and it is worth being precise about why: the
+15.1% pass rate is measured over the *candidate pool*, and a slate offers
+roughly 270 batters. Fifteen per cent of 270 is about forty candidates above
+the floor competing for five slots — so the five are always filled, and by the
+most confident five rather than by whatever is left.
+
+**So it lands within a game or two of the hundred, and I will not promise it
+clears.** A rained-off day, a thin slate, or one more market joining the
+round-robin decides it. Nothing was skipped on volume, because the roster's own
+figures said it clears easily — those figures are what were wrong.
 
 ## 6. CORRECTION 2: a declaration and a hardcoded list disagreed, three times
 
