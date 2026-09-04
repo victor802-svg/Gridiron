@@ -404,6 +404,18 @@ def timezone_shift(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    note=(
+        "JOINTLY FITTED WITH `recent_form_diff`, MEASURED 2026-09-03. "
+        "Standardised, this factor is worth -0.083 fitted alone and -0.211 "
+        "with the recent-form factor beside it; recent form is +0.048 alone "
+        "and +0.194 together. Both inflate and they take opposite signs, at "
+        "a correlation of 0.698 over 2,454 games -- the model is using "
+        "their DIFFERENCE, so NEITHER COEFFICIENT MAY BE READ AS THIS "
+        "FACTOR'S OWN EFFECT. The pair is named in "
+        "`config.JOINTLY_READ_FACTORS` and the card describes it as one "
+        "reason. Not retired: the pair predicts better than either half, "
+        "and it is the reading that was wrong, not the fit."
+    ),
     why="how good the two teams have been, adjusted for who they played",
     rationale=(
         "Points scored minus points allowed, adjusted for the quality of the "
@@ -421,6 +433,18 @@ def srs_diff(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread",),
+    note=(
+        "JOINTLY FITTED WITH `recent_form_diff`, MEASURED 2026-09-03. "
+        "Standardised, this factor is worth -0.083 fitted alone and -0.211 "
+        "with the recent-form factor beside it; recent form is +0.048 alone "
+        "and +0.194 together. Both inflate and they take opposite signs, at "
+        "a correlation of 0.698 over 2,454 games -- the model is using "
+        "their DIFFERENCE, so NEITHER COEFFICIENT MAY BE READ AS THIS "
+        "FACTOR'S OWN EFFECT. The pair is named in "
+        "`config.JOINTLY_READ_FACTORS` and the card describes it as one "
+        "reason. Not retired: the pair predicts better than either half, "
+        "and it is the reading that was wrong, not the fit."
+    ),
     why="how the two teams have played lately",
     rationale=(
         "Rosters and schemes change during a season through injury and "

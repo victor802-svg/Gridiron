@@ -536,7 +536,19 @@ FACTOR_SET_VERSIONS: dict[tuple[str, str], str] = {
     ("mlb", "prop:batter_hits"): "fs3-rate",
     ("mlb", "prop:pitcher_strikeouts"): "fs3-rate",
     ("nfl", "spread"): "fs3",
-    ("nba", "spread"): "fs3",
+    # NBA SPREAD GAINED A FACTOR on 2026-09-03 (Session D): `nba_srs_diff`, an
+    # opponent-adjusted rating declared beside the rolling net rating. A model
+    # with a factor the previous one did not have is a different model, and its
+    # rows belong to a different curve.
+    #
+    # THE NFL SPREAD IS DELIBERATELY NOT BUMPED. Session D's brief expected to
+    # add the adjusted factor to both sports; the NFL already had it --
+    # `srs_diff`, declared 2026-08-28 -- so no NFL factor moved. What changed
+    # for the NFL is the PROSE, which is not a factor set. Versioning it would
+    # split a curve for a change that cannot affect a probability, and a
+    # version bump that means nothing is worse than none: it teaches a reader
+    # that the marker is decorative.
+    ("nba", "spread"): "fs4",
     ("cfb", "spread"): "fs3",
 }
 
@@ -700,6 +712,61 @@ MLB_PROP_LADDER_DECLARED = "2026-08-30T00:00:00Z"
 #     says quickly whether bold means good.
 PROPS_MIN_CLAIM = float(os.environ.get("GRIDIRON_PROPS_MIN_CLAIM", "0.70"))
 PROPS_MIN_CLAIM_DECLARED = "2026-08-30T00:00:00Z"
+
+
+#: FACTORS WHOSE COEFFICIENTS CANNOT BE READ ONE AT A TIME (D1, 2026-09-03).
+#:
+#: When two correlated factors are fitted together and the model uses their
+#: DIFFERENCE, each coefficient stops describing its own factor. Measured over
+#: the stored record on 2026-09-03, standardised (coefficient x factor SD):
+#:
+#:   nfl spread    srs_diff        alone -0.083   together -0.211
+#:                 recent_form_diff alone +0.048  together +0.194   r = 0.698
+#:
+#:   nba spread    nba_srs_diff    alone +0.200   together +0.536
+#:                 nba_net_rating_rolling alone -0.040  together -0.440  r = 0.791
+#:
+#: Both members inflate -- by 2.5x and 4x in the NFL, by 2.7x and 11x in the
+#: NBA -- and take OPPOSITE SIGNS. That is mutual suppression: the pair is
+#: measuring "season-long quality against the schedule faced, set against how
+#: the club has played lately", and neither half of that is a claim on its own.
+#:
+#: WHY THIS IS NOT JUST A NOTE IN A DOCUMENT. The card's "why" reads each
+#: contribution and names its declared phrase, so a reader was going to be told
+#: that "how the two clubs have been playing lately" was pulling AGAINST the
+#: pick. It was not. It was carrying the half of a difference. A sentence that
+#: is arithmetically derived and still false is the worst kind this project can
+#: print, because it looks checked.
+#:
+#: SO THE PAIR IS DESCRIBED AS ONE REASON, summing the two contributions --
+#: which is what the model actually did with them -- under one declared phrase.
+#: The decomposition on the Factors page still shows both separately, because
+#: somebody auditing the model needs the parts; the card shows the reason.
+#:
+#: THIS IS NOT A RETIREMENT. The brief asks both to stay declared for one
+#: version so they can be scored against each other, and the pair predicts
+#: better than either alone (nba Brier .2403 both, .2448 adjusted only, .2467
+#: raw only). Retiring the raw member would cost real accuracy. What it cannot
+#: be allowed to cost is a true sentence.
+JOINTLY_READ_FACTORS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
+    ("nfl", "spread"): (
+        ("srs_diff", "recent_form_diff"),
+        "how good the two teams have been, against who they played and how "
+        "lately",
+    ),
+    ("nba", "spread"): (
+        ("nba_srs_diff", "nba_net_rating_rolling"),
+        "how good the two clubs have been, against who they played and how "
+        "lately",
+    ),
+}
+JOINTLY_READ_DECLARED = "2026-09-03T00:00:00Z"
+
+
+def jointly_read(sport: str, market: str):
+    """The jointly-read groups for one market, as (names, phrase) pairs."""
+    entry = JOINTLY_READ_FACTORS.get((sport, market))
+    return [entry] if entry else []
 
 #: A reviewable daily card. Baseball's slate is a day, not a week, so this is
 #: the daily equivalent of PROPS_PER_WEEK and is deliberately smaller than the

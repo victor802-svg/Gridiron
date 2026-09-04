@@ -257,10 +257,13 @@ def test_every_nba_factor_is_namespaced_and_carries_a_rationale():
     # 17 and 10 from 2026-09-03: `nba_asked_distance` was declared and
     # `nba_asked_line` retired in its place, so the spread set gains a factor
     # and the ACTIVE count stays where it was.
-    assert len(factors) == 17
-    assert len([f for f in factors if "spread" in f.applies_to]) == 10
+    # 18 LATER THE SAME DAY (Session D): `nba_srs_diff`, the opponent-adjusted
+    # rating, declared BESIDE `nba_net_rating_rolling` rather than replacing
+    # it, so this one is a genuine addition and the active count moves too.
+    assert len(factors) == 18
+    assert len([f for f in factors if "spread" in f.applies_to]) == 11
     assert len([f for f in factors if "prop" in f.applies_to]) == 7
-    assert sum(f.active for f in factors) == 15, (
+    assert sum(f.active for f in factors) == 16, (
         "nba_back_to_back is deactivated in favour of nba_b2b_either"
     )
     for f in factors:

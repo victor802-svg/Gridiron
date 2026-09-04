@@ -82,6 +82,25 @@ def team_recent(
     ).fetchall()
 
 
+def league_history(conn: sqlite3.Connection, season: int,
+                   before: str) -> list[sqlite3.Row]:
+    """Every completed team-game this season before `before`, for opponent
+    adjustment. One query rather than one per opponent.
+
+    BOUNDED TO THE SEASON, deliberately, and unlike `team_recent` above, which
+    crosses the boundary backwards on purpose. A rating is a statement about
+    one league in one year: rosters move in the summer, and a rating that
+    averaged this October with last April would be describing a club that no
+    longer exists. `team_recent` may reach back because a ten-game FORM window
+    genuinely has nothing else in October; a rating has the whole league.
+    """
+    return conn.execute(
+        "SELECT * FROM nba_team_games WHERE season = ? AND game_date < ?"
+        " AND points_for IS NOT NULL ORDER BY game_date",
+        (season, before),
+    ).fetchall()
+
+
 def team_games_between(
     conn: sqlite3.Connection, team: str, start: str, before: str
 ) -> list[sqlite3.Row]:

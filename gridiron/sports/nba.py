@@ -25,7 +25,7 @@ from datetime import date
 
 from .. import config
 from ..data import nba_repo as repo
-from ..factors import compute
+from ..factors import compute, context
 from ..model import baseline
 from ..model import questions
 from ..model.question import Question
@@ -59,6 +59,60 @@ SPREAD_LADDER_BEFORE: tuple[float, ...] = (-9.5, -4.5, 0.5, 5.5)
 
 #: A club needs this many completed games before its rolling form is a number.
 MIN_TEAM_HISTORY = 5
+
+#: HOW MANY LEAGUE GAMES BEFORE AN OPPONENT ADJUSTMENT MEANS ANYTHING.
+#:
+#: The Simple Rating System solves each club's rating against the ratings of
+#: the clubs it played, so on opening night every rating is zero and after one
+#: round they are just margins. 150 team-games is roughly the first ten days of
+#: a season -- about five games a club -- which is the point at which the
+#: schedule has begun to differ between clubs and the adjustment has something
+#: to adjust. Below it the factor is ABSENT rather than zero: "we cannot tell
+#: yet who has played whom" is not the same claim as "the schedules were equal".
+#:
+#: DECLARED, NOT FITTED. It is a statement about when the instrument starts
+#: working, and it is one number in one place so it can be argued with.
+MIN_LEAGUE_GAMES_FOR_SRS = 150
+MIN_LEAGUE_GAMES_DECLARED = "2026-09-03T00:00:00Z"
+
+
+class SeasonRatings:
+    """Opponent-adjusted ratings for one season, memoised by date (D1).
+
+    Every game on a given night shares the same history and therefore the same
+    ratings. Training over four seasons builds contexts for ~4,900 games across
+    ~600 distinct dates; without this the whole league is re-solved once per
+    game, which is 4,900 solves for 600 answers.
+
+    THE SAME SHAPE AS THE NFL'S `WeekCache` and deliberately a SEPARATE class:
+    the NFL's league view is keyed by week and basketball's is keyed by date,
+    because clubs play different numbers of games in a week. Sharing one cache
+    would have meant a key that is a week for one sport and a date for another,
+    which is the kind of quiet ambiguity that produces a rating computed from
+    the wrong day.
+    """
+
+    def __init__(self) -> None:
+        self._by_date: dict[tuple[int, str], dict[str, float]] = {}
+
+    def on(self, conn: sqlite3.Connection, season: int,
+           before: str) -> dict[str, float]:
+        key = (season, before)
+        if key not in self._by_date:
+            rows = repo.league_history(conn, season, before)
+            # BELOW THE FLOOR THERE IS NO RATING AT ALL, rather than a table of
+            # zeroes that would read as "every club is exactly average".
+            if len(rows) < MIN_LEAGUE_GAMES_FOR_SRS:
+                self._by_date[key] = {}
+            else:
+                self._by_date[key] = context.srs_ratings(rows)
+        return self._by_date[key]
+
+
+#: One cache for the process. Ratings are a pure function of (season, date) and
+#: the stored record before that date, and the record before a past date does
+#: not change, so this is safe to share and worth sharing.
+_RATINGS = SeasonRatings()
 #: A player needs this many before we will ask a question about him...
 MIN_PROP_HISTORY = 5
 #: ...and must have played within this many days. A player who has quietly
@@ -221,6 +275,17 @@ def build_context(conn: sqlite3.Connection, game_id: str, line_asked=None) -> Nb
             pace, rating, _n = repo.pace_and_rating(recent)
             setattr(ctx, f"{side}_pace", pace)
             setattr(ctx, f"{side}_net_rating", rating)
+
+    # OPPONENT-ADJUSTED RATINGS (D1, 2026-09-03). Solved over every completed
+    # game this season BEFORE this one, so a rating cannot see the result it is
+    # being used to predict. Absent for both clubs or neither: a game where one
+    # side has a rating and the other does not has no rating DIFFERENCE, and
+    # filling the gap with zero would silently claim the unrated club is exactly
+    # league average.
+    ratings = _RATINGS.on(conn, game["season"], on_date)
+    home_srs, away_srs = ratings.get(game["home"]), ratings.get(game["away"])
+    if home_srs is not None and away_srs is not None:
+        ctx.home_srs, ctx.away_srs = home_srs, away_srs
 
     ctx.league_pace = repo.league_pace(conn, game["season"])
     if ctx.neutral_site:

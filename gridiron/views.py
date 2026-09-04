@@ -556,6 +556,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                         "absent_factors": _absent_factors(payload),
                     },
                     _why_phrases(),
+                    # A JOINTLY-FITTED PAIR READS AS ONE REASON (D1). Two
+                    # factors the model uses as a difference are not two
+                    # reasons that disagree.
+                    config.jointly_read(sport, r["market_type"]),
                 ),
                 "absent_factors": _absent_factors(payload),
                 "factor_coverage": payload.get("coverage"),
@@ -2070,7 +2074,10 @@ def digest(
             "phrase": language.phrase(item),
             # The same three-sentence reason the expanded pick rows carry, so a
             # resolved row in the digest explains itself without being opened.
-            "why": language.why_block(item, phrases),
+            # A JOINTLY-FITTED PAIR READS AS ONE REASON (D1).
+            "why": language.why_block(
+                item, phrases,
+                config.jointly_read(sport, r["market_type"])),
             "model_prob": r["model_prob"],
             "market_prob": r["implied_prob"],
             "outcome": r["outcome"],

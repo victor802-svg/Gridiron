@@ -4257,6 +4257,185 @@ def plant_a_rung_probability_that_rises_with_the_rung() -> Result:
                   "NOT CAUGHT - a model said 2.5 was easier to clear than 1.5")
 
 
+LAW_ADJUSTED = "AN ADJUSTED RATING IS ADJUSTED"
+
+
+def plant_an_adjusted_factor_that_reads_raw_margin() -> Result:
+    """Feed the opponent adjustment a league where every club played the same.
+
+    THE WHOLE CLAIM OF AN ADJUSTED RATING is that it differs from raw margin
+    when the schedules differ. A factor that says "adjusted for who they
+    played" and returns the raw differential is a LIE IN THE RATIONALE, not a
+    weak signal, and it would be invisible: the numbers would look reasonable
+    and rank the clubs plausibly.
+
+    So the plant builds a league where the answer is known. Two clubs carry
+    the SAME raw margin by construction, and one of them earned it against the
+    strongest club in the league. Raw margin cannot tell them apart; an
+    opponent adjustment must.
+    """
+    from gridiron.factors import context
+
+    # A is the strongest club and D the weakest, established by two blowouts.
+    # B then loses twice to A by five; C loses twice to D by five. B AND C
+    # CARRY THE IDENTICAL RAW MARGIN of -5.0, and the only thing separating
+    # them is WHO they lost to.
+    rows = [
+        {"team": "A", "opponent": "D", "points_for": 30, "points_against": 10},
+        {"team": "D", "opponent": "A", "points_for": 10, "points_against": 30},
+        {"team": "A", "opponent": "D", "points_for": 30, "points_against": 10},
+        {"team": "D", "opponent": "A", "points_for": 10, "points_against": 30},
+        {"team": "B", "opponent": "A", "points_for": 20, "points_against": 25},
+        {"team": "A", "opponent": "B", "points_for": 25, "points_against": 20},
+        {"team": "B", "opponent": "A", "points_for": 20, "points_against": 25},
+        {"team": "A", "opponent": "B", "points_for": 25, "points_against": 20},
+        {"team": "C", "opponent": "D", "points_for": 20, "points_against": 25},
+        {"team": "D", "opponent": "C", "points_for": 25, "points_against": 20},
+        {"team": "C", "opponent": "D", "points_for": 20, "points_against": 25},
+        {"team": "D", "opponent": "C", "points_for": 25, "points_against": 20},
+    ]
+    ratings = context.srs_ratings(rows)
+    if not ratings:
+        return Result(LAW_ADJUSTED, "an adjusted factor that reads raw margin",
+                      "context.srs_ratings", False,
+                      "the rating system returned nothing for a whole league")
+
+    raw = {}
+    for r in rows:
+        raw.setdefault(r["team"], []).append(r["points_for"] - r["points_against"])
+    raw = {t: sum(v) / len(v) for t, v in raw.items()}
+
+    if abs(raw["B"] - raw["C"]) > 1e-9:
+        return Result(LAW_ADJUSTED, "an adjusted factor that reads raw margin",
+                      "context.srs_ratings", False,
+                      f"the planted league is wrong: B and C already differ on "
+                      f"raw margin ({raw['B']} vs {raw['C']})")
+
+    if ratings["B"] <= ratings["C"] + 1e-6:
+        return Result(LAW_ADJUSTED, "an adjusted factor that reads raw margin",
+                      "context.srs_ratings", False,
+                      f"NOT CAUGHT - B lost twice to the strongest club and C "
+                      f"lost twice to the weakest, both by five, and the "
+                      f"adjustment rates them {ratings['B']:+.3f} and "
+                      f"{ratings['C']:+.3f}. It adjusts for nothing, and the "
+                      f"rationale's promise is false")
+    return Result(LAW_ADJUSTED, "an adjusted factor that reads raw margin",
+                  "context.srs_ratings", True,
+                  f"B and C both average {raw['B']:+.1f} raw and the "
+                  f"adjustment separates them: {ratings['B']:+.3f} against "
+                  f"{ratings['C']:+.3f}, because B lost to the best club in the "
+                  f"league and C lost to the worst")
+
+
+def plant_a_suppressed_pair_read_as_two_reasons() -> Result:
+    """Describe a jointly fitted pair as two reasons that disagree.
+
+    MEASURED, NOT SUSPECTED. nba_srs_diff is worth +0.200 standardised alone
+    and +0.536 with nba_net_rating_rolling beside it, which is -0.040 alone
+    and -0.440 together. Both inflate and flip: the model is using their
+    DIFFERENCE. A card that reads the two contributions separately tells a
+    reader that "how the two clubs have been playing lately" is pulling
+    AGAINST the pick. It is not. It is carrying half of a difference.
+
+    A SENTENCE THAT IS ARITHMETICALLY DERIVED AND STILL FALSE is the worst
+    kind this project can print, because it looks checked. This plants the
+    unmerged reading and checks the merge is what stands between a reader
+    and it.
+    """
+    from gridiron import language
+
+    item = {
+        "subject": "LAL", "market_type": "spread", "model_side": "cover",
+        "model_prob": 0.62,
+        "contributions": [
+            {"factor": "nba_srs_diff", "value": 1.2, "contribution": 0.84},
+            {"factor": "nba_net_rating_rolling", "value": 0.9,
+             "contribution": -0.40},
+            {"factor": "nba_rest_days_diff", "value": 1.0, "contribution": 0.14},
+        ],
+    }
+    phrases = {
+        "nba_srs_diff": "how good the two clubs have been, adjusted for who "
+                        "they played",
+        "nba_net_rating_rolling": "how the two clubs have been playing lately",
+        "nba_rest_days_diff": "how much rest each club had",
+    }
+    groups = config.jointly_read("nba", "spread")
+    if not groups:
+        return Result(LAW_ADJUSTED, "a suppressed pair read as two reasons",
+                      "config.JOINTLY_READ_FACTORS", False,
+                      "the nba spread pair is not declared jointly read at all")
+
+    # THE PLANT: the same contributions with no grouping, which is what the
+    # card did before this was measured.
+    unmerged = " ".join(language.why_sentences(item, phrases))
+    merged = " ".join(language.why_sentences(item, phrases, groups))
+
+    if "playing lately" not in unmerged or "other way" not in unmerged:
+        return Result(LAW_ADJUSTED, "a suppressed pair read as two reasons",
+                      "language.merge_jointly_read", False,
+                      f"the planted reading did not produce the false sentence, "
+                      f"so this proves nothing: {unmerged!r}")
+    if "other way" in merged:
+        return Result(LAW_ADJUSTED, "a suppressed pair read as two reasons",
+                      "language.merge_jointly_read", False,
+                      f"NOT CAUGHT - the pair still reads as two reasons that "
+                      f"disagree: {merged!r}")
+    for _names, phrase in groups:
+        if phrase not in merged:
+            return Result(LAW_ADJUSTED, "a suppressed pair read as two reasons",
+                          "language.merge_jointly_read", False,
+                          f"the pair was merged but its declared joint phrase "
+                          f"is not what a reader sees: {merged!r}")
+    return Result(LAW_ADJUSTED, "a suppressed pair read as two reasons",
+                  "language.merge_jointly_read", True,
+                  f"unmerged, the card said: {unmerged!r} -- which is false; "
+                  f"merged it says: {merged!r}")
+
+
+def plant_both_form_factors_active_without_a_note() -> Result:
+    """Leave a jointly-read factor active with nothing recorded beside it.
+
+    D1's instruction was explicit: score the two against each other, and if
+    they cannot be read apart, say so BY DATED NOTE -- never let both stand
+    silently. A pair whose coefficients are uninterpretable and whose registry
+    entries say nothing about it is exactly the silent case.
+    """
+    from gridiron.factors import registry
+    import gridiron.factors.nba                              # noqa: F401
+
+    by_name = {f.name: f for f in registry.all_factors()}
+    total = 0
+    for (sport, market), (names, _phrase) in config.JOINTLY_READ_FACTORS.items():
+        for name in names:
+            total += 1
+            factor = by_name.get(name)
+            if factor is None:
+                return Result(
+                    LAW_ADJUSTED, "both form factors active with no note",
+                    "config.JOINTLY_READ_FACTORS names a real factor", False,
+                    f"{sport} {market} is declared jointly read on {name!r}, "
+                    f"which is not a declared factor")
+            if not (factor.note or "").strip():
+                return Result(
+                    LAW_ADJUSTED, "both form factors active with no note",
+                    "a jointly-read factor carries a dated note", False,
+                    f"NOT CAUGHT - {name} is fitted as half of a difference "
+                    f"and its registry entry says nothing about it; a reader "
+                    f"of the factor list would take its coefficient at face "
+                    f"value")
+            if "2026-09-03" not in factor.note:
+                return Result(
+                    LAW_ADJUSTED, "both form factors active with no note",
+                    "a jointly-read factor carries a dated note", False,
+                    f"{name} has a note and it carries no date: a repair "
+                    f"nobody can place in time is a repair nobody can check")
+    return Result(LAW_ADJUSTED, "both form factors active with no note",
+                  "a jointly-read factor carries a dated note", True,
+                  f"all {total} jointly-read factors carry a dated note naming "
+                  f"the measurement and the pair")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -4298,6 +4477,9 @@ def main() -> int:
     results.append(plant_a_fighter_matched_by_guess())
     results.append(plant_a_count_market_scored_by_the_logistic())
     results.append(plant_a_rung_probability_that_rises_with_the_rung())
+    results.append(plant_an_adjusted_factor_that_reads_raw_margin())
+    results.append(plant_a_suppressed_pair_read_as_two_reasons())
+    results.append(plant_both_form_factors_active_without_a_note())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

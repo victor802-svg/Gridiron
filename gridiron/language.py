@@ -662,7 +662,53 @@ def asked_distance_phrase(name: str, value) -> str | None:
             f"expects")
 
 
-def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
+def merge_jointly_read(contributions: list, joint) -> list:
+    """Collapse each jointly-read group into ONE contribution (D1, 2026-09-03).
+
+    Two correlated factors fitted together can end up carrying the halves of a
+    difference: each coefficient inflates and they take opposite signs, so the
+    model is using "A minus B" and neither A nor B is a claim by itself. The
+    measurement that found this, and the numbers, are on
+    `config.JOINTLY_READ_FACTORS`.
+
+    Describing such a pair as two reasons tells a reader they disagree. They do
+    not -- they are one reason with two terms, and SUMMING the contributions is
+    exactly what the model did with them. So the group becomes one entry,
+    carrying the sum, under one declared phrase.
+
+    NOTHING IS HIDDEN BY THIS. The decomposition on the Factors page still
+    lists every factor separately, because somebody auditing the model needs
+    the parts. This is about the sentence on the card, which is a claim about
+    WHY, and a claim about why must be true.
+
+    `joint` is a list of (names, phrase) pairs, passed in rather than imported,
+    for the same reason `factors` is: this module reads no configuration.
+    """
+    if not joint:
+        return contributions
+    grouped = {n: (names, phrase) for names, phrase in joint for n in names}
+    if not grouped:
+        return contributions
+
+    out, sums, order = [], {}, {}
+    for c in contributions:
+        name = c.get("factor")
+        if name not in grouped or c.get("missing"):
+            out.append(c)
+            continue
+        names, phrase = grouped[name]
+        key = names
+        if key not in sums:
+            sums[key] = {"factor": "+".join(names), "value": None,
+                         "contribution": 0.0, "joint_phrase": phrase}
+            order[key] = len(out)
+            out.append(sums[key])
+        sums[key]["contribution"] += float(c.get("contribution") or 0.0)
+    return out
+
+
+def why_sentences(item: dict, factors: dict | None = None,
+                  joint=None) -> list[str]:
     """The plain-English reasons for one pick, at most three sentences.
 
     ONE: the biggest reason. TWO: the second reason, OR the strongest thing
@@ -674,7 +720,8 @@ def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
     `factors` maps a factor name to its declared WHY phrase, passed in so this
     module never imports the registry.
     """
-    contributions = item.get("contributions") or []
+    # A JOINTLY-FITTED PAIR IS ONE REASON, NOT TWO THAT DISAGREE (D1).
+    contributions = merge_jointly_read(item.get("contributions") or [], joint)
     known = factors or {}
     # Directions are relative to THE PICK, not to the question's yes side.
     flip = -1.0 if why_is_flipped(item) else 1.0
@@ -690,7 +737,9 @@ def why_sentences(item: dict, factors: dict | None = None) -> list[str]:
         # "the question sits 6 points above what the model expects" is the
         # thing itself, and the distance factors are the only ones whose
         # value is already in the reader's own units -- points.
-        phrase = asked_distance_phrase(name, c.get("value")) or known.get(name)
+        phrase = (c.get("joint_phrase")
+                  or asked_distance_phrase(name, c.get("value"))
+                  or known.get(name))
         if not phrase:
             # A factor with no declared phrase is SKIPPED rather than rendered
             # as its identifier. A test fails on any such factor, so this is a
@@ -792,7 +841,8 @@ def why_market(item: dict) -> str | None:
     return f"The market has {subject} at {round(implied * 100)}%; the model {lean}."
 
 
-def why_block(item: dict, factors: dict | None = None) -> dict:
+def why_block(item: dict, factors: dict | None = None,
+              joint=None) -> dict:
     """Everything the expanded row needs to explain a pick, in words.
 
     One structure so the card, and anything else that ever shows a reason, read
@@ -813,7 +863,7 @@ def why_block(item: dict, factors: dict | None = None) -> dict:
     # appears. "Ohio" on the tile and "Ohio Bobcats" in the rail is the same
     # inconsistency in a smaller font.
     picked, _prob = side_named(item, form="city")
-    sentences = why_sentences(item, factors)
+    sentences = why_sentences(item, factors, joint)
     # THE MARKET IS SENTENCE THREE, where a line exists. Where none does it is
     # omitted rather than replaced by a hedge: the budget is a ceiling, not a
     # quota to fill.

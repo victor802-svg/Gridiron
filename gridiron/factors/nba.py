@@ -203,6 +203,19 @@ def nba_pace_rolling(ctx) -> float | None:
     added=ADDED,
     sport="nba",
     applies_to=("spread",),
+    note=(
+        "JOINTLY FITTED WITH `nba_net_rating_rolling`, MEASURED "
+        "2026-09-03. Standardised, this factor is worth +0.200 fitted "
+        "alone and +0.536 with the rolling net rating beside it; the "
+        "rolling rating is -0.040 alone and -0.440 together. Both inflate "
+        "-- by 2.7x and 11x -- and take opposite signs, at a correlation "
+        "of 0.791 over 4,594 games. The model is using their DIFFERENCE, "
+        "so NEITHER COEFFICIENT MAY BE READ AS ITS OWN FACTOR'S EFFECT. "
+        "The pair is named in `config.JOINTLY_READ_FACTORS` and the card "
+        "describes it as one reason. Not retired: together they reach a "
+        "Brier of .2403 against .2448 for the adjusted factor alone and "
+        ".2467 for the rolling rating alone."
+    ),
     why="how the two clubs have been playing lately",
     rationale=(
         "Net points per hundred possessions over the last ten games, home minus "
@@ -218,6 +231,55 @@ def nba_net_rating_rolling(ctx) -> float | None:
     if ctx.home_net_rating is None or ctx.away_net_rating is None:
         return None
     return (ctx.home_net_rating - ctx.away_net_rating) / 10.0
+
+
+@factor(
+    added="2026-09-03T00:00:00Z",
+    sport="nba",
+    applies_to=("spread",),
+    note=(
+        "JOINTLY FITTED WITH `nba_net_rating_rolling`, MEASURED "
+        "2026-09-03. Standardised, this factor is worth +0.200 fitted "
+        "alone and +0.536 with the rolling net rating beside it; the "
+        "rolling rating is -0.040 alone and -0.440 together. Both inflate "
+        "-- by 2.7x and 11x -- and take opposite signs, at a correlation "
+        "of 0.791 over 4,594 games. The model is using their DIFFERENCE, "
+        "so NEITHER COEFFICIENT MAY BE READ AS ITS OWN FACTOR'S EFFECT. "
+        "The pair is named in `config.JOINTLY_READ_FACTORS` and the card "
+        "describes it as one reason. Not retired: together they reach a "
+        "Brier of .2403 against .2448 for the adjusted factor alone and "
+        ".2467 for the rolling rating alone."
+    ),
+    why="how good the two clubs have been, adjusted for who they played",
+    rationale=(
+        "The difference between the two clubs' Simple Rating System ratings, "
+        "in points, divided by ten. A club's rating is its average margin plus "
+        "the average rating of the clubs it played, solved by iteration over "
+        "every completed game this season -- the same four-line method college "
+        "football already uses, and it is fully inspectable for the same "
+        "reason. "
+        "WHY IT IS DECLARED BESIDE `nba_net_rating_rolling` RATHER THAN "
+        "REPLACING IT. The rolling net rating says how a club has played "
+        "LATELY, over ten games, and says so unadjusted -- its own rationale "
+        "has admitted the limitation since the day it was declared. This says "
+        "how good a club has been ALL SEASON against the schedule it actually "
+        "faced. Those are different questions and a 4-0 club that has played "
+        "nobody answers them differently, which is exactly the case this "
+        "factor exists for. Both are active for one factor-set version so the "
+        "coefficients can say which carries what, and the variance bookkeeping "
+        "that follows is what decides whether both survive. "
+        "ABSENT, not zero, before the league has played "
+        "`nba.MIN_LEAGUE_GAMES_FOR_SRS` games: on opening night every rating "
+        "is zero and a zero difference would read as 'these clubs are equally "
+        "good', which is a claim nobody has the evidence to make. Absent too "
+        "when either club is unrated."
+    ),
+)
+def nba_srs_diff(ctx) -> float | None:
+    if ctx.home_srs is None or ctx.away_srs is None:
+        return None
+    return (ctx.home_srs - ctx.away_srs) / 10.0
+
 
 
 @factor(
