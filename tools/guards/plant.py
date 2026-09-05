@@ -2384,6 +2384,41 @@ def plant_a_bouncing_chip() -> Result:
                        "audit.motion_faults")
 
 
+def plant_a_transform_outside_two_percent() -> Result:
+    """A panel that travels five per cent, one that grows ten, one in pixels.
+
+    R4 SET THE BOUND AT TWO PER CENT, and the reason is the same as for the
+    duration ceiling: motion here says that something changed, and past a
+    small movement it starts to say how the page feels about it. Pixels are
+    refused as well, because a bound in pixels is a bound at one width.
+    """
+    css = (config.PACKAGE_ROOT / "web" / "style.css").read_text(encoding="utf-8")
+    shipped = audit.transform_faults(css)
+    if shipped:
+        return Result("ONE MOTION VOCABULARY", "a transform outside two per cent",
+                      "audit.motion_faults", False,
+                      f"the shipped stylesheet already breaks the bound: {shipped[0]}")
+    probes = ("translateY(5%)", "scale(1.1)", "translateY(12px)")
+    missed = [probe for probe in probes
+              if not audit.motion_faults(css + f"{chr(10)}.probe {{ transform: {probe}; }}{chr(10)}")]
+    if missed:
+        return Result("ONE MOTION VOCABULARY", "a transform outside two per cent",
+                      "audit.motion_faults", False,
+                      f"NOT CAUGHT - {missed} pass the scan, and a panel that "
+                      f"travels reads as a page with feelings")
+    return Result("ONE MOTION VOCABULARY", "a transform outside two per cent",
+                  "audit.motion_faults", True,
+                  audit.motion_faults(css + chr(10) + ".probe { transform: translateY(5%); }")[0])
+
+
+def plant_a_transition_longer_than_the_ceiling() -> Result:
+    """A plain 400ms fade -- no keyframe, no bounce, just too long."""
+    css = (config.PACKAGE_ROOT / "web" / "style.css").read_text(encoding="utf-8")
+    faults = audit.motion_faults(css + chr(10) + ".probe { transition: opacity 400ms ease-out; }")
+    faults = [f for f in faults if "ceiling" in f]
+    return _desk_plant(faults, "fade a panel for 400ms", "audit.motion_faults")
+
+
 def plant_a_strobing_live_mark() -> Result:
     """The same guard's other direction: the one allowed loop, run too fast.
 
@@ -7029,6 +7064,8 @@ def main() -> int:
     results.append(plant_a_green_live_mark())
     results.append(plant_a_re_sort_during_a_live_slate())
     results.append(plant_a_bouncing_chip())
+    results.append(plant_a_transform_outside_two_percent())
+    results.append(plant_a_transition_longer_than_the_ceiling())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

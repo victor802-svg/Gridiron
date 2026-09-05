@@ -1977,6 +1977,50 @@ ALLOWED_KEYFRAMES = frozenset({"live-pulse"})
 #: opposite of the fault it looks for everywhere else.
 MOTION_PULSE_MIN_MS = 1000
 
+#: THE MOVEMENT BOUND (R4, 2026-09-05). A panel may arrive from up to two per
+#: cent below and may scale by up to two per cent; anything larger is a
+#: gesture, and this page makes none. Per cent only, so the bound can be read
+#: off the declaration rather than off a pixel measurement at one width.
+MOTION_MAX_TRANSLATE_PCT = 2.0
+MOTION_MAX_SCALE_DELTA = 0.02
+_CSS_TRANSFORM = re.compile(r"(?<![a-z-])transform\s*:\s*([^;}]+)")
+_CSS_TRANSLATE = re.compile(r"translate([XY]?)\(\s*([-+]?[0-9.]+)([a-z%]*)")
+_CSS_SCALE = re.compile(r"scale\(\s*([0-9.]+)")
+_CSS_OTHER_TRANSFORM = re.compile(r"\b(rotate|skew[XY]?|translateX|translate3d|matrix)\(")
+
+
+def transform_faults(css: str) -> list[str]:
+    """Every transform on the page outside the movement bound."""
+    faults = []
+    for match in _CSS_TRANSFORM.finditer(css):
+        value = match.group(1).strip()
+        where = f"transform {value[:48]!r}"
+        if value in ("none", "initial", "inherit"):
+            continue
+        for kind, amount, unit in _CSS_TRANSLATE.findall(value):
+            if kind == "X":
+                faults.append(f"{where}: sideways movement is a gesture; a panel "
+                              f"arrives from below or not at all.")
+                continue
+            if unit != "%":
+                faults.append(
+                    f"{where}: {amount}{unit or ''} is not a percentage. The bound "
+                    f"is {MOTION_MAX_TRANSLATE_PCT:g}% and a pixel figure cannot "
+                    f"be held to it at every width.")
+            elif abs(float(amount)) > MOTION_MAX_TRANSLATE_PCT:
+                faults.append(
+                    f"{where}: {amount}% is past the {MOTION_MAX_TRANSLATE_PCT:g}% "
+                    f"movement bound. A panel arrives; it does not travel.")
+        for amount in _CSS_SCALE.findall(value):
+            if abs(float(amount) - 1.0) > MOTION_MAX_SCALE_DELTA + 1e-9:
+                faults.append(
+                    f"{where}: scale({amount}) is past the "
+                    f"{MOTION_MAX_SCALE_DELTA * 100:g}% bound. Nothing on this "
+                    f"page grows to be noticed.")
+        for name in _CSS_OTHER_TRANSFORM.findall(value):
+            faults.append(f"{where}: {name}() is a gesture, and this page makes none.")
+    return faults
+
 _CSS_TOKEN = re.compile(r"--([a-z0-9-]+)\s*:\s*([^;]+);")
 _CSS_TRANSITION = re.compile(r"transition(?:-duration|-property|-timing-function)?"
                              r"\s*:\s*([^;}]+)")
@@ -2076,6 +2120,7 @@ def motion_faults(css: str) -> list[str]:
                 f"@keyframes {name!r} is not in the vocabulary. The only thing "
                 f"on this page that repeats is the mark saying a game is being "
                 f"played right now; anything else that loops is decoration.")
+    faults.extend(transform_faults(css))
     return faults
 
 

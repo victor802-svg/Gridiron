@@ -1166,6 +1166,48 @@ const Gridiron = (function () {
   //: survived a filter change would point at a different pick than the dots.
   let heroIndex = 0;
 
+  // WHAT THE HERO LAST RENDERED, so a swipe can step it (R4, 2026-09-05).
+  let heroRender = null;
+
+  function stepHero(delta) {
+    if (!heroRender || heroRender.count < 2) return;
+    heroIndex = (heroIndex + delta + heroRender.count) % heroRender.count;
+    renderHero(heroRender.cards, heroRender.sortMode, heroRender.tags,
+               heroRender.minClaim, heroRender.noLead);
+  }
+
+  // SWIPE ON TOUCH (R4). The dots and the arrows stay; a horizontal swipe of
+  // 40px or more on the hero steps it the way the arrows do. Wired once on
+  // the hero's host, which survives every re-render of its contents.
+  function wireHeroSwipe() {
+    const host = document.getElementById('week-hero');
+    if (!host) return;
+    let startX = null;
+    host.addEventListener('touchstart', event => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      startX = touch ? touch.clientX : null;
+    }, { passive: true });
+    host.addEventListener('touchend', event => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      if (startX === null || !touch) return;
+      const dx = touch.clientX - startX;
+      startX = null;
+      if (Math.abs(dx) < 40) return;
+      stepHero(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  }
+
+  // THE PANEL ARRIVES RATHER THAN CUTS (R4). The start state is committed
+  // before the class comes off, so the transition in the motion block runs;
+  // under reduced motion the stylesheet makes it instant and the layout is
+  // the same either way.
+  function arrive(node) {
+    if (!node) return;
+    node.classList.add('arriving');
+    void node.offsetHeight;
+    requestAnimationFrame(() => node.classList.remove('arriving'));
+  }
+
   function renderHero(cards, sortMode, tags, minClaim, noLead) {
     const host = document.getElementById('week-hero');
     if (!host) return;
@@ -1186,6 +1228,7 @@ const Gridiron = (function () {
     }
     if (heroIndex >= top.length) heroIndex = 0;
     const c = top[heroIndex];
+    heroRender = { cards, sortMode, tags, minClaim, noLead, count: top.length };
     // WHICH PREDICTION THE HERO IS SHOWING, said in the markup the way every
     // grid card already says it. The hero is a card; it was the only one on
     // the page that would not tell you which one, so "is this pick on the
@@ -1939,6 +1982,7 @@ const Gridiron = (function () {
       // the same thing.
       renderHero(open, state.weekSort, data.hero_tags,
                  data.hero_min_claim, data.no_lead);
+      arrive(document.getElementById('week-hero'));
 
       const heading = document.getElementById('week-grid-heading');
       // WHAT THE GRID DROPS IS THE CARD THE HERO LEADS WITH, by identity and
@@ -1954,6 +1998,7 @@ const Gridiron = (function () {
       const shown = state.showAllCards
         ? rest.length : Math.min(CARDS_BEFORE_SHOW_ALL, rest.length);
       rest.slice(0, shown).forEach((c, i) => host.appendChild(pickCard(c, i + 2)));
+      arrive(host);
 
       if (showAll) {
         const hidden = rest.length - shown;
@@ -2757,6 +2802,7 @@ const Gridiron = (function () {
   // moves to a quiet footer line.
   function wireSortToggle() {
     wireViewMenu();
+    wireHeroSwipe();
     const seg = document.getElementById('week-sort-seg');
     if (!seg) return;
     seg.querySelectorAll('button').forEach(button => {

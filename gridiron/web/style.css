@@ -1731,6 +1731,28 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    quietly, and a win gets exactly the same 150ms. */
 .tile-verdict { opacity: 1; }
 
+/* A TAB SWITCH (R4, 2026-09-05). The hero and the grid swap their whole
+   contents, so they get the panel duration, and they arrive from one per
+   cent below rather than cutting in. One per cent is the smallest movement
+   that reads as arrival; the bound is two, and `audit.motion_faults` refuses
+   a translateY or a scale outside it, in any unit but per cent. The view
+   menu's button joins the state-change line above. */
+#week-hero,
+#week-cards {
+  transition: opacity var(--motion-panel) var(--motion-ease),
+              transform var(--motion-panel) var(--motion-ease);
+}
+/* The start state snaps -- `transition: none` -- so that adding the class
+   does not itself animate towards zero; only the removal a frame later runs
+   the transition above, from one per cent below to place. */
+#week-hero.arriving,
+#week-cards.arriving { opacity: 0; transform: translateY(1%); transition: none; }
+.view-button {
+  transition: background-color var(--motion-state) var(--motion-ease),
+              border-color var(--motion-state) var(--motion-ease),
+              color var(--motion-state) var(--motion-ease);
+}
+
 /* THE ONE KEYFRAME. A game being played is the only thing on this page that
    repeats, because it is the only thing that is still happening. It pulses
    between full and half opacity -- no scale, no colour change, no glow. */
