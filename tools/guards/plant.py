@@ -6464,6 +6464,59 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
+LAW_ONE_CLAUSE = "EVERY COUNT OF THE RECORD USES THE STANDING CLAUSE"
+
+
+def plant_a_superseded_row_counted_as_settled() -> Result:
+    """Cut the standing clause out of the version table's count.
+
+    THE SCORECARD AND ITS OWN HEADER DISAGREED. Every category on the Record
+    page went through `resolved()` and its one-standing-row rule; the version
+    table's N above them and the pace line beside them counted rows off the
+    table. The MLB record read 233 settled where the categories summed to 197,
+    the other 36 being early rows a final pass had superseded (audit
+    2026-09-05). This plants an early/final pair, both settled, and asks the
+    table how many forecasts that is.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        conn, game_id, kickoff = _timing_world(tmp)
+        if game_id is None:
+            conn.close()
+            return Result(LAW_ONE_CLAUSE, "a superseded row counted as settled",
+                          "calibration.standing_row_clause", False,
+                          "the harness league has no NFL game to plant on")
+        _plant_pair(conn, game_id, "ONE-DOOR", [
+            ("early", _iso_shift(kickoff, -86400), 0.58),
+            ("final", _iso_shift(kickoff, -3600), 0.62)])
+        try:
+            def count():
+                versions = calibration.version_comparison(conn, sport="nfl")
+                entry = next(v for v in versions["versions"]
+                             if v["version"] == config.FACTOR_SET_VERSION)
+                return entry["n"]
+            shipped = count()
+            original = calibration.standing_row_clause
+            try:
+                calibration.standing_row_clause = lambda same_set: ""
+                without = count()
+            finally:
+                calibration.standing_row_clause = original
+        finally:
+            conn.close()
+    if shipped != 1 or without <= shipped:
+        return Result(LAW_ONE_CLAUSE, "a superseded row counted as settled",
+                      "calibration.standing_row_clause", False,
+                      f"NOT CAUGHT - the version table counts {shipped} "
+                      f"settled forecast(s) for one question answered twice, "
+                      f"and {without} without the clause; the header and the "
+                      f"categories beneath it can disagree")
+    return Result(LAW_ONE_CLAUSE, "a superseded row counted as settled",
+                  "calibration.standing_row_clause", True,
+                  f"one question forecast twice counts once ({shipped}); "
+                  f"cutting the clause counts it {without} times, so the "
+                  f"clause is the door")
+
+
 LAW_UNITS = "A RATE AND ITS MULTIPLIER COUNT THE SAME THING"
 
 
@@ -6671,6 +6724,7 @@ def main() -> int:
     results.append(plant_an_unfitted_market_that_blocks_a_rerun_refusal())
     results.append(plant_a_comment_naming_the_forbidden_thing())
     results.append(plant_a_horizon_that_counts_days_for_a_weekly_sport())
+    results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

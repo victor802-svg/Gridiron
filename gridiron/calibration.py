@@ -208,6 +208,59 @@ class Resolved:
     factors_json: str = "{}"
 
 
+def standing_row_clause(same_set: bool) -> str:
+    """The SQL that keeps ONE standing row per question: the latest written
+    before start. Appended to a query over `predictions p JOIN games g`.
+
+    ONE DOOR (audit 2026-09-05). `resolved()` had this rule inline and every
+    scorecard went through it, but the version table's N and the pace line
+    counted rows straight off the table -- so the MLB record showed 233
+    settled under fs2 while its categories summed to 197, the other 36 being
+    early rows a final pass had superseded. Two counts of one record cannot
+    disagree if they share the clause.
+    """
+    same = (" AND p2.factor_set_version = p.factor_set_version"
+            if same_set else "")
+    # THE LATEST ROW **BEFORE START**, not simply the latest (2026-09-03).
+    #
+    # The final pass (config.FINAL_PASS) writes a second forecast close to
+    # kickoff, so "which row is the standing one" stopped being a duplicate
+    # question and became the ordinary case. A row written AFTER the game
+    # began is not a forecast -- the MISSED rule already refuses to write one,
+    # and this is the second lock: even if one existed, it could not become
+    # the row the record is graded on. A backtest is the case that proves it
+    # matters, because every backtest row is written after its game.
+    #
+    # `g2.kickoff_utc IS NULL` keeps a game with no scheduled time eligible
+    # rather than silently dropping every question about it.
+    return (
+        " AND p.id = (SELECT p2.id FROM predictions p2"
+        "              JOIN games g2 ON g2.id = p2.game_id"
+        "              WHERE p2.game_id = p.game_id"
+        "                AND p2.market_type = p.market_type"
+        "                AND p2.subject = p.subject"
+        "                AND p2.predictor = p.predictor"
+        "                AND IFNULL(p2.line_asked, -1e9) = IFNULL(p.line_asked, -1e9)"
+        f"{same}"
+        "                AND (g2.kickoff_utc IS NULL"
+        "                     OR p2.created_utc <= g2.kickoff_utc"
+        # A SLATE OF ROWS ALL WRITTEN AFTER START is a backtest, and a
+        # backtest still has to produce a curve. When nothing was written
+        # before kickoff the latest row stands, because refusing them all
+        # would report an empty record rather than a retrospective one.
+        "                     OR NOT EXISTS (SELECT 1 FROM predictions p3"
+        "                                    JOIN games g3 ON g3.id = p3.game_id"
+        "                                    WHERE p3.game_id = p2.game_id"
+        "                                      AND p3.market_type = p2.market_type"
+        "                                      AND p3.subject = p2.subject"
+        "                                      AND p3.predictor = p2.predictor"
+        "                                      AND IFNULL(p3.line_asked, -1e9)"
+        "                                          = IFNULL(p2.line_asked, -1e9)"
+        "                                      AND p3.created_utc <= g3.kickoff_utc))"
+        "              ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)"
+    )
+
+
 def resolved(
     conn: sqlite3.Connection,
     *,
@@ -286,46 +339,7 @@ def resolved(
     # spanning two factor sets describes two models. A curve asked for ONE set
     # takes the latest within it -- without this, asking for fs1 would match
     # the fs2 row's id, fail the outer filter, and return nothing at all.
-    same_set = (" AND p2.factor_set_version = p.factor_set_version"
-                if factor_set_version else "")
-    # THE LATEST ROW **BEFORE START**, not simply the latest (2026-09-03).
-    #
-    # The final pass (config.FINAL_PASS) writes a second forecast close to
-    # kickoff, so "which row is the standing one" stopped being a duplicate
-    # question and became the ordinary case. A row written AFTER the game
-    # began is not a forecast -- the MISSED rule already refuses to write one,
-    # and this is the second lock: even if one existed, it could not become
-    # the row the record is graded on. A backtest is the case that proves it
-    # matters, because every backtest row is written after its game.
-    #
-    # `g2.kickoff_utc IS NULL` keeps a game with no scheduled time eligible
-    # rather than silently dropping every question about it.
-    standing = (
-        " AND p.id = (SELECT p2.id FROM predictions p2"
-        "              JOIN games g2 ON g2.id = p2.game_id"
-        "              WHERE p2.game_id = p.game_id"
-        "                AND p2.market_type = p.market_type"
-        "                AND p2.subject = p.subject"
-        "                AND p2.predictor = p.predictor"
-        "                AND IFNULL(p2.line_asked, -1e9) = IFNULL(p.line_asked, -1e9)"
-        f"{same_set}"
-        "                AND (g2.kickoff_utc IS NULL"
-        "                     OR p2.created_utc <= g2.kickoff_utc"
-        # A SLATE OF ROWS ALL WRITTEN AFTER START is a backtest, and a
-        # backtest still has to produce a curve. When nothing was written
-        # before kickoff the latest row stands, because refusing them all
-        # would report an empty record rather than a retrospective one.
-        "                     OR NOT EXISTS (SELECT 1 FROM predictions p3"
-        "                                    JOIN games g3 ON g3.id = p3.game_id"
-        "                                    WHERE p3.game_id = p2.game_id"
-        "                                      AND p3.market_type = p2.market_type"
-        "                                      AND p3.subject = p2.subject"
-        "                                      AND p3.predictor = p2.predictor"
-        "                                      AND IFNULL(p3.line_asked, -1e9)"
-        "                                          = IFNULL(p2.line_asked, -1e9)"
-        "                                      AND p3.created_utc <= g3.kickoff_utc))"
-        "              ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)"
-    )
+    standing = standing_row_clause(bool(factor_set_version))
     rows = conn.execute(
         "SELECT p.id, p.created_utc, p.game_id, g.season, g.week, p.market_type,"
         " p.prop_type, p.predictor, p.factor_set_version, p.subject, p.line_asked,"
@@ -1208,10 +1222,15 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
 
     entries = []
     for version in versions:
+        # STANDING ROWS ONLY, the same clause every category beneath uses.
+        # Counted off the raw table this said 280 written / 233 settled for
+        # MLB's fs2 while the categories summed to 197 (audit 2026-09-05).
         counts = conn.execute(
             "SELECT COUNT(*) AS total,"
-            " SUM(CASE WHEN resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
-            " FROM predictions WHERE sport = ? AND factor_set_version = ?",
+            " SUM(CASE WHEN p.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
+            " FROM predictions p JOIN games g ON g.id = p.game_id"
+            " WHERE p.sport = ? AND p.factor_set_version = ?"
+            + standing_row_clause(True),
             (sport, version),
         ).fetchone()
         total = counts["total"] or 0
@@ -1507,6 +1526,22 @@ def tier_table(
     }
 
 
+def recent_settled(conn: sqlite3.Connection, *, sport: str, since: str) -> tuple[int, int]:
+    """(standing rows settled since `since`, distinct days that settled any).
+
+    Standing rows, through the one clause: a superseded early row settles on
+    the same day as its final and would count the question twice.
+    """
+    require_sport(sport, "calibration.recent_settled")
+    row = conn.execute(
+        "SELECT COUNT(*) AS n, COUNT(DISTINCT substr(p.resolved_utc, 1, 10)) AS days"
+        " FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"
+        "   AND p.resolved_utc >= ?" + standing_row_clause(False),
+        (sport, since)).fetchone()
+    return int(row["n"] or 0), int(row["days"] or 0)
+
+
 def _closest_verdict(conn: sqlite3.Connection, rows: list, *, sport: str) -> dict:
     """The tier nearest a verdict, and roughly how many slates that is.
 
@@ -1527,18 +1562,13 @@ def _closest_verdict(conn: sqlite3.Connection, rows: list, *, sport: str) -> dic
     remaining = nearest["needed"] - nearest["n"]
 
     cutoff = _days_ago_iso(language.PACE_WINDOW_DAYS)
-    recent = conn.execute(
-        "SELECT COUNT(*) AS n, COUNT(DISTINCT substr(resolved_utc, 1, 10)) AS days"
-        " FROM predictions WHERE sport = ? AND resolved_utc IS NOT NULL"
-        "   AND resolved_utc >= ?",
-        (sport, cutoff)).fetchone()
-    days = recent["days"] or 0
-    per_slate = (recent["n"] / days) if days else None
+    n_recent, days = recent_settled(conn, sport=sport, since=cutoff)
+    per_slate = (n_recent / days) if days else None
     return {
         "n": nearest["n"],
         "tier": nearest["tier"],
         "remaining": remaining,
-        "settled_recently": recent["n"] or 0,
+        "settled_recently": n_recent,
         "days_of_history": days,
         "pace_known": days >= language.PACE_MIN_DAYS and bool(per_slate),
         "line": language.closest_verdict_line(

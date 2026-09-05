@@ -142,3 +142,39 @@ def test_lineless_cards_rank_by_confidence_among_themselves():
              {"abs_gap": 0.05, "model_prob": 0.55}]
     cards.sort(key=views._card_order, reverse=True)
     assert [c["model_prob"] for c in cards] == [0.55, 0.80, 0.61]
+
+
+
+# --- one standing clause for every count --------------------------------------
+
+def _settled_pair(conn):
+    game = conn.execute(
+        "SELECT id, kickoff_utc FROM games WHERE sport = 'nfl'"
+        " AND kickoff_utc IS NOT NULL LIMIT 1").fetchone()
+    conn.execute("UPDATE games SET status = 'final', home_score = 30,"
+                 " away_score = 20 WHERE id = ?", (game["id"],))
+    for pass_kind, created in (("early", "2025-01-01T00:00:00Z"),
+                               ("final", "2025-01-01T12:00:00Z")):
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning, resolved_utc, outcome)"
+            " VALUES (?,'nfl',?,'spread','PAIR',-3.5,0.6,'cover','statistical',"
+            " ?,?,'{}','pair',?,1)",
+            (created, game["id"], pass_kind, config.FACTOR_SET_VERSION,
+             db.utcnow()))
+    conn.commit()
+
+
+def test_the_version_table_counts_forecasts_not_rows(league):
+    _settled_pair(league)
+    entry = next(v for v in calibration.version_comparison(league, sport="nfl")["versions"]
+                 if v["version"] == config.FACTOR_SET_VERSION)
+    assert entry["n"] == 1, "an early row a final pass superseded was counted"
+    assert entry["predictions_written"] == 1
+
+
+def test_the_pace_counts_standing_rows_only(league):
+    _settled_pair(league)
+    n, days = calibration.recent_settled(league, sport="nfl", since="2000-01-01T00:00:00Z")
+    assert (n, days) == (1, 1)
