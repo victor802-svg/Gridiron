@@ -1432,3 +1432,17 @@ def test_no_internal_vocabulary_reaches_the_reader_on_the_llm_view(page):
         "checked an empty page. The fixture row is seeded by "
         "`_seed_llm_row_with_a_code_name`; if the slate or the tier default "
         "moved, point it at a card that renders.")
+
+
+
+def test_settings_fields_and_source_links_are_tappable_on_a_phone(phone):
+    """The audit of 2026-09-05 measured the time fields at 29px and the
+    colophon's source links at 17px on a 390px screen."""
+    phone.evaluate("location.hash = '#/settings'")
+    phone.wait_for_selector("#view-settings .inp", timeout=10000)
+    small = phone.evaluate("""() =>
+        [...document.querySelectorAll('#view-settings .inp, .colophon a')]
+          .map(e => ({ what: e.className || e.textContent.trim(),
+                       h: e.getBoundingClientRect().height }))
+          .filter(e => e.h > 0 && e.h < 44)""")
+    assert not small, f"tap targets under 44px: {small}"

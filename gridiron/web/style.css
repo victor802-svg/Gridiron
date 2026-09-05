@@ -1435,6 +1435,11 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 
 /* --- PHONE ---------------------------------------------------------------- */
 @media (max-width: 640px) {
+  /* TAP TARGETS (audit 2026-09-05). A 29px time field and a 17px source link
+     are not things a thumb reliably hits; 44px is the floor the slate and the
+     sport tabs already keep. */
+  .inp { min-height: 44px; }
+  .colophon a { display: inline-block; min-height: 44px; line-height: 44px; }
   .bar-inner { gap: 10px; padding: 0 12px; }
   .bar #nav .nav-more { display: none; }
   .bar #nav { gap: 12px; }
