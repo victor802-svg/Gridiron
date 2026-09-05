@@ -25,6 +25,8 @@ merging them would ask one question of three different cards.
 
 from __future__ import annotations
 
+from . import reference
+
 import json
 import sqlite3
 
@@ -236,12 +238,13 @@ def load_season(conn: sqlite3.Connection, season: int, *, progress=None) -> dict
             " league_date) VALUES (?,'cfb',?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(id) DO UPDATE SET status=excluded.status,"
             " home_score=excluded.home_score, away_score=excluded.away_score,"
-            " kickoff_utc=excluded.kickoff_utc",
+            " kickoff_utc=excluded.kickoff_utc, week=excluded.week,"
+            " league_date=excluded.league_date",
             (eid, season, _slate_ordinal(event), "REG", kickoff, home, away,
              "final" if final else "scheduled",
              scores.get("home") if final else None,
              scores.get("away") if final else None,
-             (event.get("date") or "")[:10]),
+             reference.league_day("cfb", event.get("date"))),
         )
         written += 1
         if progress and n % 50 == 0:
@@ -264,8 +267,9 @@ def _slate_ordinal(event: dict) -> int:
     honest unit here: Saturday's 60 games, Sunday's 16 and Friday's 8 are three
     slates, and a week ordinal would ask one question of all three.
     """
-    day = (event.get("date") or "")[:10]
-    return int(day.replace("-", "")) if day else 0
+    # THE EASTERN DAY, not the UTC one (ruling 3 on the audit, 2026-09-05):
+    # a 7:30 PM Pacific kickoff was filed under Sunday.
+    return reference.slate_key(reference.league_day("cfb", event.get("date"))) or 0
 
 
 def _team_code(conn, competitor: dict, *, immutable: bool) -> str | None:

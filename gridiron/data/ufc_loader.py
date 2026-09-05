@@ -115,13 +115,21 @@ def load_season(conn: sqlite3.Connection, season: int) -> dict:
         # seasons carries fewer than three.
         tier = ufc_adapter.event_tier(name)
         is_card = ufc_adapter.is_sanctioned_card(name, len(bouts), when, utcnow())
+        # THE VENUE, as ESPN carries it on every competition of the card. The
+        # event's local date comes from it (ruling 3 on the audit, 2026-09-05).
+        address = ((bouts[0].get("venue") or {}).get("address") or {}) if bouts else {}
         conn.execute(
             "INSERT INTO ufc_events (id, name, event_utc, season, event_tier,"
-            " is_card, fetched_utc) VALUES (?,?,?,?,?,?,?)"
+            " is_card, fetched_utc, venue_country, venue_state, venue_city)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(id) DO UPDATE SET name = excluded.name,"
             "   event_utc = excluded.event_utc, event_tier = excluded.event_tier,"
-            "   is_card = excluded.is_card, fetched_utc = excluded.fetched_utc",
-            (event_id, name, when, season, tier, 1 if is_card else 0, utcnow()))
+            "   is_card = excluded.is_card, fetched_utc = excluded.fetched_utc,"
+            "   venue_country = excluded.venue_country,"
+            "   venue_state = excluded.venue_state, venue_city = excluded.venue_city",
+            (event_id, name, when, season, tier, 1 if is_card else 0, utcnow(),
+             address.get("country") or None, address.get("state") or None,
+             address.get("city") or None))
         counts["events"] += 1
         if not is_card:
             # NOT A CARD, SO ITS BOUTS DO NOT ENTER THE RECORD AT ALL. Skipped

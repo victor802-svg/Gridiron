@@ -1134,6 +1134,13 @@ CREATE TABLE IF NOT EXISTS ufc_events (
     -- LAW 6 inside the sport forbids a category it could join.
     event_tier    TEXT CHECK (event_tier IS NULL OR event_tier IN
                               ('numbered', 'fight_night', 'contender')),
+    -- WHERE THE CARD IS HELD (ruling 3 on the audit, 2026-09-05), as ESPN
+    -- reports it. The event's local date is derived from the venue's zone by
+    -- `reference.league_day`; a venue that zone table does not declare
+    -- leaves the day absent rather than guessed.
+    venue_country TEXT,
+    venue_state   TEXT,
+    venue_city    TEXT,
     -- IS THIS A CARD AT ALL. The Ultimate Fighter entries carry exactly one
     -- bout each because they are weekly television episodes; no real card in
     -- five seasons carries fewer than three. Stored rather than recomputed so

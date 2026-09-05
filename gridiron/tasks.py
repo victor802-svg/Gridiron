@@ -298,6 +298,7 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
                 # references `games`, so a card that is loaded but not
                 # mirrored is a card nothing can be asked about.
                 loaded["mirrored"] = ufc_adapter.mirror_bouts(conn)
+                loaded["undated_cards"] = getattr(ufc_adapter.mirror_bouts, "undated", 0)
                 result = {"rows": loaded, "warnings": []}
             elif sport == "cfb":
                 # ITS OWN LOADER, and the `else` branch below is why this

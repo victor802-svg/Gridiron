@@ -16,6 +16,8 @@ method-of-victory -- it was excluded by the brief and is not smuggled in.
 
 from __future__ import annotations
 
+from ..data import reference
+
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -177,7 +179,8 @@ def mirror_bouts(conn: sqlite3.Connection) -> int:
     """
     rows = conn.execute(
         "SELECT b.id, b.bout_utc, b.status, b.winner, b.fighter_a, b.fighter_b,"
-        "       fa.name AS name_a, fb.name AS name_b, e.season"
+        "       fa.name AS name_a, fb.name AS name_b, e.season,"
+        "       e.venue_country, e.venue_state"
         "  FROM ufc_bouts b"
         "  JOIN ufc_events e ON e.id = b.event_id"
         "  LEFT JOIN ufc_fighters fa ON fa.id = b.fighter_a"
@@ -185,13 +188,23 @@ def mirror_bouts(conn: sqlite3.Connection) -> int:
         " WHERE b.bout_utc IS NOT NULL").fetchall()
 
     written = 0
+    undated = 0
     for row in rows:
         # THE TWO SIDES ARE NAMED, not numbered. A card reading "4848646 vs
         # 5324401" is a database talking to itself.
         name_a = row["name_a"] or row["fighter_a"]
         name_b = row["name_b"] or row["fighter_b"]
-        day = str(row["bout_utc"])[:10]
-        week = int(day.replace("-", ""))
+        # THE EVENT'S LOCAL DATE (ruling 3 on the audit, 2026-09-05), from the
+        # venue's zone; a Las Vegas card that ends after midnight UTC is still
+        # Saturday. A venue the zone table does not declare falls back to the
+        # UTC date, counted and reported, rather than to a guess.
+        local = reference.league_day("ufc", row["bout_utc"],
+                                     country=row["venue_country"],
+                                     state=row["venue_state"])
+        if local is None:
+            undated += 1
+        day = local or str(row["bout_utc"])[:10]
+        week = reference.slate_key(day)
         # A DECIDED BOUT SCORES 1-0 AND A DRAW 0-0. `games` has only scores to
         # express an outcome with, and a fight has no score at all -- this is
         # the minimum that lets the shared resolver see who won without
@@ -210,11 +223,15 @@ def mirror_bouts(conn: sqlite3.Connection) -> int:
             " ON CONFLICT(id) DO UPDATE SET status = excluded.status,"
             "   home_score = excluded.home_score,"
             "   away_score = excluded.away_score,"
-            "   kickoff_utc = excluded.kickoff_utc",
+            "   kickoff_utc = excluded.kickoff_utc,"
+            "   week = excluded.week, league_date = excluded.league_date",
             (row["id"], SPORT, row["season"], week, row["bout_utc"], day,
              name_a, name_b, row["status"], score_a, score_b))
         written += 1
     conn.commit()
+    # How many cards fell back to the UTC day for want of a declared venue
+    # zone; the refresh reports it beside the count.
+    mirror_bouts.undated = undated
     return written
 
 

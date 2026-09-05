@@ -3,3 +3,6 @@ fastapi==0.115.6         # HTTP API + static file serving
 uvicorn==0.34.0          # ASGI server, 127.0.0.1 only
 anthropic==0.42.0        # the LLM reasoning pass (optional at runtime;
                          # absent key degrades to statistical-only, tagged)
+tzdata==2026.3           # the IANA zone database; Windows ships none, and the
+                         # league-day convention (reference.league_day, 2026-09-05)
+                         # needs a venue's zone, not a hand-rolled DST rule

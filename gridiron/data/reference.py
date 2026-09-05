@@ -161,3 +161,139 @@ def kickoff_to_utc(gameday: str, gametime: str | None) -> str | None:
     return (naive - timedelta(hours=offset)).replace(tzinfo=timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
+
+
+# ---------------------------------------------------------------------------
+# THE LEAGUE'S OWN DAY (ruling 3 on the audit, 2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# A game is filed under the calendar day the league plays it on, never under
+# the UTC date. Until 2026-09-05 college football and UFC used the UTC date,
+# so a 7:30 PM Pacific kickoff was the next day's slate and a Las Vegas card
+# was a Sunday. The convention, declared once and dated:
+#
+#   nfl  -- nflverse publishes `gameday`; the loader stores it as given.
+#   mlb  -- statsapi publishes the schedule date; the loader stores it as given.
+#   nba  -- the NBA schedule publishes the game date; stored as given.
+#   cfb  -- the US Eastern date of kickoff. College football is scheduled and
+#           talked about in Eastern time, and ESPN's feed carries no local date.
+#   ufc  -- the EVENT'S local date, from the venue ESPN reports. A card is a
+#           local evening wherever it is held, and 157 of the 268 events in the
+#           record are Las Vegas nights that ended after midnight UTC.
+#
+# The three loaders that take the feed's own day never call this. The two that
+# derive it call `league_day`, and nothing else decides.
+
+LEAGUE_DAY_DECLARED = "2026-09-05"
+
+#: Where UFC has held a card, to the timezone the venue keeps. Keyed by
+#: (country, state) for the three countries that span zones and by country
+#: otherwise; every place in the record on 2026-09-05 is here. An unknown
+#: venue returns None rather than a guess, and the mirror says so.
+VENUE_TIMEZONES: dict[tuple[str, str | None], str] = {
+    ("USA", "NV"): "America/Los_Angeles",
+    ("USA", "CA"): "America/Los_Angeles",
+    ("USA", "WA"): "America/Los_Angeles",
+    ("USA", "AZ"): "America/Phoenix",
+    ("USA", "UT"): "America/Denver",
+    ("USA", "CO"): "America/Denver",
+    ("USA", "TX"): "America/Chicago",
+    ("USA", "MO"): "America/Chicago",
+    ("USA", "TN"): "America/Chicago",
+    ("USA", "LA"): "America/Chicago",
+    ("USA", "IL"): "America/Chicago",
+    ("USA", "IA"): "America/Chicago",
+    ("USA", "OK"): "America/Chicago",
+    ("USA", "NY"): "America/New_York",
+    ("USA", "NJ"): "America/New_York",
+    ("USA", "FL"): "America/New_York",
+    ("USA", "GA"): "America/New_York",
+    ("USA", "MA"): "America/New_York",
+    ("USA", "NC"): "America/New_York",
+    ("USA", "OH"): "America/New_York",
+    ("USA", "PA"): "America/New_York",
+    ("USA", "DC"): "America/New_York",
+    ("USA", "KY"): "America/New_York",
+    ("Canada", "BC"): "America/Vancouver",
+    ("Canada", "AB"): "America/Edmonton",
+    ("Canada", "MB"): "America/Winnipeg",
+    ("Canada", "ON"): "America/Toronto",
+    ("Canada", "PQ"): "America/Toronto",
+    ("Canada", "QC"): "America/Toronto",
+    ("Australia", "WA"): "Australia/Perth",
+    ("Australia", "NSW"): "Australia/Sydney",
+    ("Australia", "VIC"): "Australia/Melbourne",
+    ("Australia", "QLD"): "Australia/Brisbane",
+    ("United Arab Emirates", None): "Asia/Dubai",
+    ("England", None): "Europe/London",
+    ("Scotland", None): "Europe/London",
+    ("France", None): "Europe/Paris",
+    ("Germany", None): "Europe/Berlin",
+    ("Netherlands", None): "Europe/Amsterdam",
+    ("Spain", None): "Europe/Madrid",
+    ("Italy", None): "Europe/Rome",
+    ("Sweden", None): "Europe/Stockholm",
+    ("Poland", None): "Europe/Warsaw",
+    ("Serbia", None): "Europe/Belgrade",
+    ("Mexico", None): "America/Mexico_City",
+    ("Brazil", None): "America/Sao_Paulo",
+    ("Argentina", None): "America/Argentina/Buenos_Aires",
+    ("Chile", None): "America/Santiago",
+    ("Saudi Arabia", None): "Asia/Riyadh",
+    ("Qatar", None): "Asia/Qatar",
+    ("Azerbaijan", None): "Asia/Baku",
+    ("China", None): "Asia/Shanghai",
+    ("Macau", None): "Asia/Macau",
+    ("Singapore", None): "Asia/Singapore",
+    ("Japan", None): "Asia/Tokyo",
+    ("South Korea", None): "Asia/Seoul",
+    ("New Zealand", None): "Pacific/Auckland",
+}
+
+LEAGUE_TIMEZONES: dict[str, str] = {
+    "nfl": "America/New_York",
+    "mlb": "America/New_York",
+    "nba": "America/New_York",
+    "cfb": "America/New_York",
+}
+
+
+def venue_timezone(country: str | None, state: str | None = None) -> str | None:
+    """The zone a venue keeps, or None when the venue is not declared above."""
+    if not country:
+        return None
+    return VENUE_TIMEZONES.get((country, state)) or VENUE_TIMEZONES.get((country, None))
+
+
+def league_day(sport: str, when_utc: str | None, *, country: str | None = None,
+               state: str | None = None) -> str | None:
+    """The calendar day `sport` files a game starting at `when_utc` under.
+
+    "2026-09-06T02:30:00Z" is Saturday 5 September for college football and
+    for a Las Vegas card, Sunday 6 September for a card in Abu Dhabi. None
+    when there is no start time, or when a UFC venue is not declared above --
+    an absence, never a guess.
+    """
+    if not when_utc or len(when_utc) < 16:
+        return None
+    from zoneinfo import ZoneInfo
+
+    if sport == "ufc":
+        zone = venue_timezone(country, state)
+        if zone is None:
+            return None
+    else:
+        zone = LEAGUE_TIMEZONES.get(sport)
+        if zone is None:
+            raise ValueError(f"no league day convention is declared for {sport!r}")
+    text = when_utc.rstrip("Z")
+    try:
+        moment = datetime.strptime(text[:16], "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return moment.astimezone(ZoneInfo(zone)).strftime("%Y-%m-%d")
+
+
+def slate_key(day: str | None) -> int | None:
+    """"2026-09-05" -> 20260905, the integer form the `week` column keeps."""
+    return int(day.replace("-", "")) if day else None

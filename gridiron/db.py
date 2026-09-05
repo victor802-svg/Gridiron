@@ -87,6 +87,10 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # every rolling window cut on the UTC date therefore INCLUDED the game it
     # was predicting: 76.8% of NBA games and 25.1% of MLB ones.
     ("games", "league_date", "TEXT"),
+    # Where a UFC card is held, so its local date can be derived (2026-09-05).
+    ("ufc_events", "venue_country", "TEXT"),
+    ("ufc_events", "venue_state", "TEXT"),
+    ("ufc_events", "venue_city", "TEXT"),
     # When this device last saw the record. Per session, so two devices each
     # get their own "since you last looked" rather than stealing it from
     # one another.
