@@ -5418,6 +5418,128 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_SHOWN = "A MARKET IS SHOWN, NOT HIDDEN"
+
+
+def plant_a_weak_market_quietly_withdrawn() -> Result:
+    """Drop a flagged market from its sport's declared list.
+
+    THE TEMPTING FAILURE, and it is a kind one. Nobody withdraws a market out
+    of malice; they withdraw it because a question that measures almost
+    nothing looks bad on the page. CFB's totals expectation explains 0.93% of
+    a college total, and the operator's ruling of 2026-09-04 is that the
+    question STAYS, carrying the coin-flip line: *"a market the model cannot
+    inform is shown as such, not hidden."*
+
+    A SLATE THAT QUIETLY LOSES ITS WEAKEST QUESTION LOOKS SHARPER AND IS LESS
+    HONEST, and a reader has no way to tell the two apart -- which is the whole
+    reason the flag was chosen over withdrawal in the first place.
+    """
+    from gridiron import audit as _audit
+
+    if _audit.hidden_market_faults():
+        return Result(LAW_SHOWN, "a weak market quietly withdrawn",
+                      "audit.hidden_market_faults", False,
+                      "a market is already missing from its sport; fix that "
+                      "before trusting this planting")
+
+    original = config.SPORT_MARKETS["cfb"]
+    try:
+        config.SPORT_MARKETS["cfb"] = tuple(
+            m for m in original if m != "total")
+        faults = _audit.hidden_market_faults()
+    finally:
+        config.SPORT_MARKETS["cfb"] = original
+
+    if not faults:
+        return Result(LAW_SHOWN, "a weak market quietly withdrawn",
+                      "audit.hidden_market_faults", False,
+                      "NOT CAUGHT - the market whose expectation explains "
+                      "under one per cent of a college total has been taken "
+                      "off the slate, and the slate looks better for it")
+    return Result(LAW_SHOWN, "a weak market quietly withdrawn",
+                  "audit.hidden_market_faults", True, faults[0])
+
+
+def plant_a_confidence_floor_on_a_game_market() -> Result:
+    """Set a floor on game markets, against the ruling of 2026-09-04.
+
+    A FLOOR IS ONLY AS GOOD AS THE RELATIONSHIP BETWEEN CONFIDENCE AND
+    ACCURACY, and Session E measured that relationship running BACKWARDS for
+    the one game-market method that could make a confident claim: of 768 NFL
+    totals questions, the 95 that cleared 70% were right 38% and 43% of the
+    time against 49% for the ones that did not. A floor there would have kept
+    precisely the wrong questions.
+
+    THE RUNG METHOD CANNOT REACH 70% AT ALL, so a floor above about 55% would
+    empty the slate and one below it would be decoration. There is no useful
+    place to put it, and the ruling says so rather than leaving the absence to
+    be read as an oversight somebody helpfully fixes.
+    """
+    from gridiron import audit as _audit
+
+    original = config.GAME_MARKET_MIN_CLAIM
+    try:
+        config.GAME_MARKET_MIN_CLAIM = 0.60
+        faults = _audit.game_market_floor_faults()
+    finally:
+        config.GAME_MARKET_MIN_CLAIM = original
+
+    if not faults:
+        return Result(LAW_SHOWN, "a confidence floor on a game market",
+                      "audit.game_market_floor_faults", False,
+                      "NOT CAUGHT - a floor is set on markets that ask about "
+                      "every game on the slate, so the weakest questions are "
+                      "hidden rather than labelled")
+    return Result(LAW_SHOWN, "a confidence floor on a game market",
+                  "audit.game_market_floor_faults", True, faults[0])
+
+
+def plant_the_props_floor_escaping_its_branch() -> Result:
+    """Lift the confidence floor out of the prop-only branch in predict.py.
+
+    THE CONSTANT IS NOT THE FLOOR. A guard that only read
+    `GAME_MARKET_MIN_CLAIM` would pass happily while `PROPS_MIN_CLAIM` was
+    applied to every question in the loop -- same effect, different name, and
+    nothing in the configuration would look wrong.
+
+    Planted against the shipped source, because that is where a floor would
+    actually be added.
+    """
+    from gridiron import audit as _audit
+
+    source = (config.PACKAGE_ROOT / "model" / "predict.py").read_text(
+        encoding="utf-8")
+    if _audit.game_market_floor_faults(source):
+        return Result(LAW_SHOWN, "the props floor escaping its branch",
+                      "audit.game_market_floor_faults", False,
+                      "the shipped predict.py already applies a floor outside "
+                      "the prop branch; fix that before trusting this planting")
+
+    # Built by joining lines rather than written with escapes, so the
+    # planted text cannot drift from the shipped text by a stray newline.
+    nl = chr(10)
+    before = nl.join(['        if q.market_type == "prop":',
+                      '            _side, claimed = baseline.stated_side('])
+    after = nl.join(['        if True:',
+                     '            _side, claimed = baseline.stated_side('])
+    broken = source.replace(before, after, 1)
+    if broken == source:
+        return Result(LAW_SHOWN, "the props floor escaping its branch",
+                      "audit.game_market_floor_faults", False,
+                      "the floor's branch is no longer written the way this "
+                      "planting expects; re-point it")
+    faults = _audit.game_market_floor_faults(broken)
+    if not faults:
+        return Result(LAW_SHOWN, "the props floor escaping its branch",
+                      "audit.game_market_floor_faults", False,
+                      "NOT CAUGHT - the 70% floor now applies to spreads, "
+                      "totals and moneylines, and every game the model is "
+                      "unsure about has quietly left the slate")
+    return Result(LAW_SHOWN, "the props floor escaping its branch",
+                  "audit.game_market_floor_faults", True, faults[0])
+
+
 LAW_VERDICT = "A MARKET SHIPS ONLY ON ITS OWN VERDICT"
 
 
@@ -5888,6 +6010,9 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_a_weak_market_quietly_withdrawn())
+    results.append(plant_a_confidence_floor_on_a_game_market())
+    results.append(plant_the_props_floor_escaping_its_branch())
     results.append(plant_a_market_shipped_without_a_verdict())
     results.append(plant_a_ship_verdict_its_own_numbers_refuse())
     results.append(plant_a_rung_ladder_surviving_a_shipped_market())

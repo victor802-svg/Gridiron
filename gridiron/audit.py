@@ -3956,3 +3956,166 @@ def check_distributional_verdicts() -> None:
     if faults:
         raise LawViolation(
             "A MARKET SHIPS ONLY ON ITS OWN VERDICT:" + _NL2 + _NL2.join(faults))
+
+
+# A MARKET THE MODEL CANNOT INFORM IS SHOWN, NOT HIDDEN (rulings 2 and 3,
+# 2026-09-04)
+# ---------------------------------------------------------------------------
+#
+# TWO RULINGS, ONE ARGUMENT. CFB's totals expectation explains 0.93% of a
+# college total and the market stays on the slate with the coin-flip line on
+# it. Game markets get no confidence floor, so a weak claim is labelled rather
+# than withheld. Both say the same thing: a reader is told what a claim is
+# worth instead of having the weak ones taken away from them.
+#
+# THE FAILURE THEY GUARD AGAINST IS A KIND ONE. Nobody hides a market out of
+# malice; they hide it because it looks bad on the page, or because a floor is
+# an easy way to make a slate look sharper. Session E measured what that costs:
+# for the one game-market method that could make confident claims, confidence
+# ran BACKWARDS -- the questions above 70% were right 38% of the time and the
+# ones below it 49%. A floor there would have kept exactly the wrong ones.
+
+def hidden_market_faults() -> list[str]:
+    """Where a market that measured badly has been quietly withdrawn.
+
+    TWO WAYS TO DISAPPEAR, and this checks both:
+
+    1. A MARKET WITH A RECORDED VERDICT that is no longer declared. Somebody
+       measured it, did not like the answer, and took the question away.
+    2. A FLAGGED MARKET that is no longer declared. `FLAGGED_METHODS` names the
+       markets whose own method is known to measure almost nothing; those are
+       precisely the ones it would be tempting to drop, and the ruling of
+       2026-09-04 is that they stay ON the slate WITH the caveat.
+
+    WHAT THIS DOES NOT CHECK is whether a market carries words -- that is
+    `flagged_method_faults`, and one door decides it. This guard is about
+    presence.
+
+    AND A VERDICT IS NOT A JUDGEMENT ON THE MARKET. `DISTRIBUTIONAL_VERDICTS`
+    records whether the READ-OUT beat the rung, not whether the market is any
+    good: the NFL spread is refused there and is the market this project was
+    built on, with a walk-forward calibration gap of 1.93 points. Reading a DO
+    NOT SHIP as "this market is weak" was the first version of this function
+    and it was wrong.
+    """
+    faults: list[str] = []
+    for (sport, market) in sorted(config.DISTRIBUTIONAL_VERDICTS):
+        entry = config.distributional_verdict(sport, market)
+        if entry.get("verdict") == "SHIP":
+            continue
+        if market not in config.SPORT_MARKETS.get(sport, ()):
+            faults.append(
+                f"{sport}:{market} was measured and refused and is no longer a "
+                f"declared {sport} market. A market the model cannot inform is "
+                f"shown as such, not withdrawn: {entry.get('why')}")
+
+    for (sport, market) in sorted(config.FLAGGED_METHODS):
+        if market not in config.SPORT_MARKETS.get(sport, ()):
+            faults.append(
+                f"{sport}:{market} carries a method flag and is no longer a "
+                f"declared {sport} market. The flag exists so the question can "
+                f"stay on the slate saying what it is worth; withdrawing the "
+                f"question instead is the thing the flag was chosen over.")
+    return faults
+
+
+def check_no_market_is_hidden() -> None:
+    """Raise unless every refused market is still shown, with its caveat."""
+    faults = hidden_market_faults()
+    if faults:
+        raise LawViolation(
+            "A MARKET IS SHOWN, NOT HIDDEN:" + _NL2 + _NL2.join(faults))
+
+
+#: Names that hold a confidence floor. A comparison against any of them has to
+#: sit inside a prop branch or it is reaching a game market.
+FLOOR_CONSTANTS = ("PROPS_MIN_CLAIM", "GAME_MARKET_MIN_CLAIM")
+
+
+def _prop_branch(node: ast.AST) -> bool:
+    """Does this `if` test say the question is a player prop?"""
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Compare) and isinstance(sub.left, ast.Attribute):
+            if sub.left.attr != "market_type":
+                continue
+            for comparator in sub.comparators:
+                if isinstance(comparator, ast.Constant) and comparator.value == "prop":
+                    return True
+    return False
+
+
+def game_market_floor_faults(source: str | None = None) -> list[str]:
+    """Is a confidence floor being applied to a game market?
+
+    OPERATOR RULING, 2026-09-04: no floor on rung game markets. A floor keeps
+    the claims the model is most sure of, so it is only as good as the
+    relationship between confidence and accuracy -- and Session E measured that
+    relationship running BACKWARDS on the one game-market method that could
+    make a confident claim at all: of 768 NFL totals questions the 95 that
+    cleared 70% were right 38% and 43% of the time, against 49% for the rest.
+
+    READ FROM THE SYNTAX TREE, not from a pattern. The first version of this
+    matched `market_type == "prop"` and the floor with a regex, and `predict.py`
+    has TWO prop branches -- so lifting the floor out of the second one left
+    the first still matching and the planting escaped. An ancestor walk asks
+    the question that actually matters: is THIS comparison inside a branch that
+    has established the question is a prop?
+
+    THE CONSTANT IS NOT THE FLOOR, which is the other half. A guard that only
+    read `GAME_MARKET_MIN_CLAIM` would pass while `PROPS_MIN_CLAIM` was applied
+    to every question in the loop -- same effect, different name, and nothing
+    in the configuration would look wrong.
+    """
+    faults: list[str] = []
+    if config.GAME_MARKET_MIN_CLAIM is not None:
+        faults.append(
+            f"config.GAME_MARKET_MIN_CLAIM is "
+            f"{config.GAME_MARKET_MIN_CLAIM}, and the ruling of "
+            f"{config.GAME_MARKET_MIN_CLAIM_DECLARED[:10]} is that game "
+            f"markets carry no floor. Overturn the ruling in "
+            f"docs/DECISIONS_MADE.md before setting one.")
+
+    if source is None:
+        source = (config.PACKAGE_ROOT / "model" / "predict.py").read_text(
+            encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return faults + [f"predict.py does not parse, so no floor can be "
+                         f"checked for: {exc}"]
+
+    parents: dict[int, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[id(child)] = node
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        names = {n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute)}
+        hit = names & set(FLOOR_CONSTANTS)
+        if not hit:
+            continue
+        guarded = False
+        walker = parents.get(id(node))
+        while walker is not None:
+            if isinstance(walker, ast.If) and _prop_branch(walker):
+                guarded = True
+                break
+            walker = parents.get(id(walker))
+        if not guarded:
+            faults.append(
+                f"predict.py compares against {sorted(hit)[0]} at line "
+                f"{node.lineno}, and no enclosing branch has established that "
+                f"the question is a player prop. Every game on the slate gets "
+                f"a question; refusing the ones the model is least sure of "
+                f"hides them rather than choosing between them.")
+    return faults
+
+
+def check_no_floor_on_game_markets() -> None:
+    """Raise if a confidence floor has reached a game market."""
+    faults = game_market_floor_faults()
+    if faults:
+        raise LawViolation(
+            "NO CONFIDENCE FLOOR ON GAME MARKETS:" + _NL2 + _NL2.join(faults))

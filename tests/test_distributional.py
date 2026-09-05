@@ -190,3 +190,128 @@ def test_cfb_reads_the_fitted_margin_and_the_comment_now_says_so():
     assert questions.cfb_expected_margin(10.0, 0.0) == pytest.approx(
         intercept + slope * 10.0)
     assert intercept != questions.CFB_HOME_MARGIN_ASSUMED
+
+
+# --- the rulings on the result (2026-09-04) ---------------------------------
+
+def test_the_finding_reached_methodology_in_plain_words():
+    """RULING 1. A finding that stays in a close-out is a finding nobody
+    reads. `METHODOLOGY.md` §6 is where this project says what it believes
+    about itself, and it keeps a section for the unflattering ones."""
+    text = (config.PACKAGE_ROOT.parent / "docs" / "METHODOLOGY.md").read_text(
+        encoding="utf-8")
+    assert "the market was closer on" in text
+    for share in ("57%", "59%", "55%"):
+        assert share in text, f"the market-closer figure {share} is missing"
+    assert "Being able to say something is not the same as being right" in text
+
+    # PLAIN WORDS, in a document a reader consults rather than a log.
+    for jargon in ("PIT", "calibration gap", "read-out", "Brier score of the"):
+        assert jargon not in text.split("## 6.")[1].split("## 7.")[0], jargon
+
+
+def test_cfbs_slope_is_recorded_and_not_adopted():
+    """RULING 2. The brief said fit it first; the fit refused the market."""
+    fit = questions.CFB_TOTAL_FIT_MEASURED
+    assert fit["adopted"] is False
+    assert fit["r2"] == 0.0093
+    assert fit["n"] >= config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    assert fit["measured_utc"]
+    assert fit["why_not_adopted"]
+
+    # AND IT IS NOT SILENTLY IN USE. `cfb_total_asked` still adds two
+    # points-per-game figures; a slope of 0.109 would flatten every college
+    # total onto the league average.
+    plain = questions.cfb_total_asked(30.0, 30.0)
+    assert plain is not None and plain > 55, (
+        "cfb_total_asked has started applying the fitted slope; two sides "
+        "averaging 30 a game would be asked at about 50 rather than 60")
+
+
+def test_cfb_keeps_asking_totals_at_a_rung_and_says_what_it_is_worth():
+    """RULING 2's second half: shown as such, not hidden."""
+    assert "total" in config.SPORT_MARKETS["cfb"]
+    assert config.flagged_method("cfb", "total") == "total_at_own_rung"
+    assert not config.is_distributional("cfb", "total")
+
+    from gridiron import language
+    assert language.method_note(config.flagged_method("cfb", "total"))
+
+
+def test_the_guard_sees_a_weak_market_withdrawn():
+    original = config.SPORT_MARKETS["cfb"]
+    try:
+        config.SPORT_MARKETS["cfb"] = tuple(m for m in original if m != "total")
+        faults = audit.hidden_market_faults()
+        assert faults and any("cfb:total" in f for f in faults), faults
+    finally:
+        config.SPORT_MARKETS["cfb"] = original
+    assert audit.hidden_market_faults() == []
+
+
+def test_a_verdict_is_not_a_judgement_on_the_market():
+    """The bug the first version of `hidden_market_faults` had.
+
+    `DISTRIBUTIONAL_VERDICTS` records whether the READ-OUT beat the rung, not
+    whether the market is any good. The NFL spread is refused there and is the
+    market this project was built on, with a walk-forward calibration gap of
+    1.93 points against the totals' 0.35-to-3.98 range.
+    """
+    assert config.distributional_verdict("nfl", "spread")["verdict"] == "DO NOT SHIP"
+    assert config.flagged_method("nfl", "spread") is None, (
+        "a spread has picked up the coin-flip flag; that finding is about "
+        "totals asked at their own rung, and a spread is not one")
+    assert audit.hidden_market_faults() == []
+
+
+# --- no confidence floor on game markets (ruling 3) -------------------------
+
+def test_no_floor_is_declared_for_game_markets():
+    assert config.GAME_MARKET_MIN_CLAIM is None
+    assert config.GAME_MARKET_MIN_CLAIM_DECLARED
+    # And props keep theirs, which is a different situation for a stated reason.
+    assert config.PROPS_MIN_CLAIM == 0.70
+
+
+def test_no_floor_reaches_a_game_market():
+    audit.check_no_floor_on_game_markets()
+
+
+def test_the_guard_sees_a_floor_set_on_game_markets():
+    original = config.GAME_MARKET_MIN_CLAIM
+    try:
+        config.GAME_MARKET_MIN_CLAIM = 0.60
+        assert audit.game_market_floor_faults()
+    finally:
+        config.GAME_MARKET_MIN_CLAIM = original
+    assert audit.game_market_floor_faults() == []
+
+
+def test_the_guard_sees_the_props_floor_escape_its_branch():
+    """The regex version could not, and that is why this is an AST walk.
+
+    `predict.py` has TWO `market_type == "prop"` branches. A pattern that
+    matched the phrase and the floor separately stayed satisfied by the first
+    one while the floor was lifted out of the second -- so the planting
+    escaped, and the guard was reporting on a branch that was not the one
+    doing the work.
+    """
+    source = (config.PACKAGE_ROOT / "model" / "predict.py").read_text(
+        encoding="utf-8")
+    assert audit.game_market_floor_faults(source) == []
+
+    nl = chr(10)
+    before = nl.join(['        if q.market_type == "prop":',
+                      '            _side, claimed = baseline.stated_side('])
+    after = nl.join(['        if True:',
+                     '            _side, claimed = baseline.stated_side('])
+    broken = source.replace(before, after, 1)
+    assert broken != source, "the floor's branch has moved; re-point this test"
+    faults = audit.game_market_floor_faults(broken)
+    assert faults and "player prop" in faults[0], faults
+
+
+def test_the_floor_guard_counts_both_constants():
+    """A floor by another name is still a floor."""
+    assert set(audit.FLOOR_CONSTANTS) == {"PROPS_MIN_CLAIM",
+                                          "GAME_MARKET_MIN_CLAIM"}

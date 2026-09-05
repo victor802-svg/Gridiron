@@ -559,3 +559,81 @@ is an operator ruling.
 **What survives the NO:** the test itself, re-runnable; eight measured forecast
 spreads with their N; and **NBA line coverage from 25 to 4,900 lined finals**,
 which every future market comparison in that sport now rests on.
+
+---
+
+## 2026-09-04 — rulings on the Session E result
+
+### Ruling 1: the NO stands, and the finding goes where readers are
+
+**Ruling (operator):** *"The NO stands as recorded; §9 is the result; nothing
+amends the sections above it. Add the 'reach is not calibration' finding and
+the market-closer figure (55–59%) to METHODOLOGY §6 in plain words."*
+
+`docs/DISTRIBUTIONAL.md` is unchanged and stays unchanged: §9 records what the
+test said, and everything above it is exactly as written before the test ran.
+
+**What moved is where the finding lives.** It was in a close-out, which is a
+document about a session. `METHODOLOGY.md` §6 is the document about *the
+project*, and it already keeps a section headed "the worst thing the record
+says" — that section now holds three findings rather than two.
+
+**In plain words, and the plainest sentence is the point:**
+
+> **Being able to say something is not the same as being right about it.**
+
+The method that could reach 80% was wrong there; the method that can only
+reach 54% is accurate to within a third of a percentage point.
+
+### Ruling 2: CFB's slope is recorded and not adopted
+
+**Ruling (operator):** *"CFB totals: the measured slope (R² 0.0093) is recorded
+and NOT adopted. CFB keeps asking totals at rungs, carrying the coin-flip line;
+a market the model cannot inform is shown as such, not hidden."*
+
+`questions.CFB_TOTAL_FIT_MEASURED` records the fit — intercept 47.31, slope
+0.109, n 1,639, R² 0.0093 — with `adopted: False` and the reason.
+
+**Adopting it would have made every college total the same number.** The
+fitted line is 47.31 plus a whisker, so it would ask about the league average
+on every game in the country and would *look* more accurate for doing so: the
+residual drops from 20.85 to 16.31. That is not a better forecast, it is a
+forecast that has stopped trying, and its apparent confidence would come from
+college totals clustering rather than from anything known about the game.
+
+**"Shown as such, not hidden" is now structural.**
+`audit.check_no_market_is_hidden` fails if a market with a recorded verdict,
+or a market carrying a method flag, stops being declared by its sport. The
+temptation it guards against is a kind one: a slate that quietly loses its
+weakest question looks sharper and is less honest, and a reader cannot tell
+the two apart.
+
+### Ruling 3: no confidence floor on rung game markets
+
+**Ruling (operator):** *"No confidence floor on rung game markets — the floor
+selects for confidence, and this session showed confidence was the failure
+mode for the method that had any."*
+
+`config.GAME_MARKET_MIN_CLAIM = None`, dated. **`None` is a decision, not an
+omission**, and the difference is that adding a floor now means overturning
+this entry rather than filling a gap.
+
+**The evidence is this session's own.** Of 768 NFL totals questions under the
+read-out, the 95 that cleared 70% were right **38% and 43%** of the time
+against **49%** for the ones that did not. Confidence ran backwards; a floor
+would have kept precisely the wrong questions.
+
+**And the rung method cannot reach 70% at all** — an NFL total asked at its own
+rung is confined to 45.8%–54.2% by construction — so a floor above about 55%
+would empty the slate and one below it would be decoration.
+
+**What replaces it is already on the page:** the tier chip with its own settled
+record, and the coin-flip line in words. A reader is told what a claim is worth
+instead of having weak claims hidden from them — **the same choice ruling 2
+makes about CFB, for the same reason.**
+
+**Props keep their floor**, and the situation is genuinely different: a prop is
+asked at a rung a source actually posts, one subject at a time, against a daily
+cap of 25, so refusing the ones the model is unsure of **chooses between
+questions**. A game market asks about every game on the slate; refusing there
+**hides** them.

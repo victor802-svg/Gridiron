@@ -215,6 +215,12 @@ def step_2_guards() -> bool:
         # advisory, in both directions.
         ("every market matches its own verdict",
          audit.check_distributional_verdicts),
+        # RULINGS 2 AND 3 (2026-09-04). A market the model cannot inform is
+        # shown with its caveat rather than withdrawn, and no confidence floor
+        # reaches a market that asks about every game on the slate.
+        ("no market is hidden", audit.check_no_market_is_hidden),
+        ("no confidence floor on game markets",
+         audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),
         ("every self-chosen rung is flagged", audit.check_flagged_methods),
         ("the hero refuses a flagged method",

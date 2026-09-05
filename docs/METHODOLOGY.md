@@ -480,7 +480,7 @@ are stated, not offered as an improvement on anything.
 
 ### The worst thing the record says
 
-Two findings, both unflattering, both reported because that is the point.
+Three findings, all unflattering, all reported because that is the point.
 
 **Where the model disagrees with the market, it does worse.** Over the 544
 spread questions:
@@ -495,6 +495,53 @@ the move from fs1 to fs2 essentially unchanged, and
 [docs/DIAGNOSIS.md](DIAGNOSIS.md) is a pre-registered attempt to find out why
 that failed: none of the four hypotheses is supported, and the honest conclusion
 recorded there is *the disagreements lose and we do not know why yet.*
+
+**The market forecasts these games better than we do, and asking questions at
+its number makes that worse rather than better.** Measured 2026-09-04 over
+3,947 completed games in two sports.
+
+The model was asked, for every game, how far its own expected total or margin
+sat from the number the market had posted. Then both numbers were checked
+against what actually happened:
+
+| | our number was off by | the market's was off by | the market was closer on |
+|---|---:|---:|---:|
+| NFL totals | 11.2 points | **10.1** | **57%** of games |
+| NFL spreads | 10.4 points | **9.7** | **59%** of games |
+| NBA totals | 15.3 points | **14.6** | **55%** of games |
+| NBA spreads | 11.8 points | **10.9** | **57%** of games |
+
+**So most of what looks like a disagreement is our mistake, not our insight**,
+and that is the same finding as the one above it, measured a second way and in
+a second sport.
+
+It matters because of what was tried next. Every totals and spread question is
+currently asked at a rung *we* choose, near our own expectation, and that
+confines the answer to a narrow band around 50% — an NFL total asked that way
+cannot express a claim stronger than 54%. The proposed fix was to ask the
+question at **the market's** number instead, which would let the model say 20%
+or 80% when it disagreed.
+
+**It could say those things, and it was wrong when it did.** Out of sample:
+
+| what the model claimed | how often it was right |
+|---|---:|
+| about 55% | 49% |
+| about 64% | 48% |
+| about 74% | **38%** |
+| about 86% | **43%** |
+
+Above 70% it did worse than a coin toss, and above 80% it was more often wrong
+than right. The confident claims were the ones built on the largest
+disagreements with the market, and those disagreements are mostly our error.
+
+> **Being able to say something is not the same as being right about it.** The
+> method that could reach 80% was wrong there; the method that can only reach
+> 54% is accurate to within a third of a percentage point. A question with
+> almost nothing in it beats a question with the wrong thing in it.
+
+The full comparison is in [docs/DISTRIBUTIONAL.md](DISTRIBUTIONAL.md) §9. The
+change was refused on this evidence and every market stayed as it was.
 
 **Passing touchdowns are badly calibrated.** The model claimed 54.3% in the
 50–60% bucket and was right 41.8% across 98 resolved — overconfident by 12.4

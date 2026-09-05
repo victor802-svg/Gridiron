@@ -384,6 +384,53 @@ NBA_TOTAL_MAX = 278.0
 NBA_TOTAL_BOUNDS_DECLARED = "2026-09-04T00:00:00Z"
 
 
+#: WHAT A FIT OF CFB'S TOTALS EXPECTATION FOUND, and why it was not adopted
+#: (measured 2026-09-04, operator ruling the same day).
+#:
+#:     actual_total = 47.3123 + 0.1087 x expectation
+#:     n = 1,639     R-squared = 0.0093     residual sd 16.31 (from 20.85)
+#:
+#: MEASURED AND NOT ADOPTED. The brief that ordered the measurement said "fit
+#: it first, dated, then include CFB"; the fit answered by refusing the market.
+#: A SLOPE OF 0.109 IS NOT A CALIBRATION, IT IS A DISMISSAL: it says the sum of
+#: two points-per-game figures moves the expected total by about a ninth of
+#: what it claims, and R-squared 0.0093 says the whole instrument explains
+#: under one per cent of a college total. For scale, the same kind of fit gives
+#: R-squared 0.095 for the NFL margin and 0.357 for the CFB one.
+#:
+#: ADOPTING IT WOULD MAKE EVERY COLLEGE TOTAL THE SAME NUMBER. The fitted line
+#: is 47.31 plus a whisker, so it would ask about the league average on every
+#: game in the country and would look more accurate for doing so -- the
+#: residual does drop from 20.85 to 16.31. That is not a better forecast, it is
+#: a forecast that has stopped trying, and its confidence would be borrowed
+#: from the fact that college totals cluster rather than from anything known
+#: about the game.
+#:
+#: SO CFB KEEPS ASKING AT ITS RUNG, and its cards keep carrying the coin-flip
+#: line from `config.FLAGGED_METHODS`. A market the model cannot inform is
+#: SHOWN AS SUCH, not hidden: the question stays on the slate with the caveat
+#: attached, because a market that quietly disappears tells a reader nothing
+#: and a market that says what it is worth tells them everything.
+#:
+#: RECORDED HERE RATHER THAN IN A CLOSE-OUT because the next person to wonder
+#: whether CFB's totals expectation should be fitted will open this file, and
+#: the answer is that it was, and this is what happened.
+CFB_TOTAL_FIT_MEASURED = {
+    "measured_utc": "2026-09-04T00:00:00Z",
+    "adopted": False,
+    "intercept": 47.3123,
+    "slope": 0.1087,
+    "n": 1639,
+    "r2": 0.0093,
+    "resid_sd_before": 20.8488,
+    "resid_sd_after": 16.3118,
+    "why_not_adopted": (
+        "a slope of 0.109 and an R-squared of 0.0093 say the expectation "
+        "explains under one per cent of a college total; the fitted line is "
+        "the league average on every game in the country"
+    ),
+}
+
 #: THE SPREAD OF THE MODEL'S OWN FORECAST, per sport and quantity
 #: (Session E, measured 2026-09-04 by `tools/measure_forecast_spread.py`).
 #:

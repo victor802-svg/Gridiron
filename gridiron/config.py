@@ -930,6 +930,41 @@ MLB_PROP_LADDER_DECLARED = "2026-08-30T00:00:00Z"
 #     fills the STRONG tier's earned-accuracy line faster than any other part of
 #     the record. That is the experiment: boldest claims first, and the record
 #     says quickly whether bold means good.
+#: NO CONFIDENCE FLOOR ON GAME MARKETS (operator ruling, 2026-09-04).
+#:
+#: `None` MEANS NO FLOOR, AND IT IS A DECISION RATHER THAN AN OMISSION. Game
+#: markets had no floor before this by nobody having added one; they have none
+#: after it by a dated ruling, and the difference is that adding one now means
+#: overturning a decision instead of filling a gap.
+#:
+#: THE ARGUMENT IS THIS SESSION'S OWN EVIDENCE. A floor keeps the claims the
+#: model is most sure of and discards the rest, so it is only as good as the
+#: relationship between confidence and accuracy. Session E measured that
+#: relationship for the one game-market method that could produce confident
+#: claims at all -- the distributional read-out -- and it ran BACKWARDS: of
+#: 768 NFL totals questions, the 95 that cleared 70% were right 38% and 43% of
+#: the time, against 49% for the ones that did not. A floor there would have
+#: selected precisely the wrong questions.
+#:
+#: THE RUNG METHOD IS NOT THAT METHOD, and the reasoning still applies. A rung
+#: question cannot reach 70% at all -- an NFL total asked at its own rung is
+#: confined to 45.8%-54.2% by construction -- so a floor set anywhere above
+#: about 55% would empty the slate, and one set below it would be decoration.
+#: There is no useful place to put it.
+#:
+#: WHAT REPLACES IT IS ALREADY THERE. The tier chip says LEAN, SOLID or STRONG
+#: with its own settled record beside it, and `FLAGGED_METHODS` puts the
+#: coin-flip finding on the card in words. A reader is told what a claim is
+#: worth instead of having weak claims hidden from them -- which is the same
+#: choice ruling 2 makes about CFB's totals, taken for the same reason.
+#:
+#: PROPS KEEP THEIRS. `PROPS_MIN_CLAIM` below is unaffected: a prop is asked at
+#: a rung a source actually posts, one subject at a time, against a daily cap,
+#: so refusing the ones the model is unsure of chooses BETWEEN questions rather
+#: than hiding them. A game market asks about every game on the slate.
+GAME_MARKET_MIN_CLAIM: float | None = None
+GAME_MARKET_MIN_CLAIM_DECLARED = "2026-09-04T00:00:00Z"
+
 PROPS_MIN_CLAIM = float(os.environ.get("GRIDIRON_PROPS_MIN_CLAIM", "0.70"))
 PROPS_MIN_CLAIM_DECLARED = "2026-08-30T00:00:00Z"
 
