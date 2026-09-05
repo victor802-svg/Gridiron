@@ -950,6 +950,12 @@ def tier_from_bucket(bucket: dict) -> dict:
     # 19 settled, not yet proven" is the same fact and needs nothing carried.
     entry["message"] = language.tier_record_line(
         tier, n, TIER_MIN_SETTLED, entry["earned"])
+    # WHAT THE CHIP ITSELF READS (2026-09-04). Composed here rather than in the
+    # browser, so a renderer cannot invent it -- and composed at all because
+    # `message` above reached a grid card only as a hover tooltip, which is no
+    # caveat on a phone. Measured across four live slates: 17 of 379 chips had
+    # a settled record behind them.
+    entry["chip_label"] = language.tier_chip_label(tier, proven)
     return entry
 
 

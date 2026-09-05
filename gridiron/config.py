@@ -946,11 +946,27 @@ MLB_PROP_LADDER_DECLARED = "2026-08-30T00:00:00Z"
 #: the time, against 49% for the ones that did not. A floor there would have
 #: selected precisely the wrong questions.
 #:
-#: THE RUNG METHOD IS NOT THAT METHOD, and the reasoning still applies. A rung
-#: question cannot reach 70% at all -- an NFL total asked at its own rung is
-#: confined to 45.8%-54.2% by construction -- so a floor set anywhere above
-#: about 55% would empty the slate, and one set below it would be decoration.
-#: There is no useful place to put it.
+#: THE RUNG METHOD IS NOT THAT METHOD, and the reasoning still applies -- but
+#: not for the reason first written here, which was wrong.
+#:
+#: THIS PARAGRAPH CLAIMED "a rung question cannot reach 70% at all". IT DOES.
+#: Measured on the live slates of 2026-09-04, hours after the claim was
+#: written: 49 of 60 CFB spreads and 31 of 57 CFB totals sit at STRONG, and
+#: NFL's spread and MLB's each put a handful there. What is confined to
+#: 45.8%-54.2% is the contribution OF THE RUNG OFFSET; the fitted factors add
+#: to it, and in college football they add a great deal.
+#:
+#: WHICH MAKES THE ARGUMENT AGAINST A FLOOR STRONGER, not weaker. Those CFB
+#: chips have a MEDIAN OF 5 SETTLED PICKS BEHIND THEM on the spread and 1 on
+#: the total -- the sport's recorded over-confidence (spread base rate 0.371)
+#: arriving as confident claims nothing has yet tested. A floor at 70% would
+#: have kept precisely those and discarded the LEAN cards beside them, on no
+#: evidence at all that the confident ones are better. That is the same shape
+#: as the read-out's failure, in a second method.
+#:
+#: A FLOOR IS A BET THAT CONFIDENCE PREDICTS ACCURACY. This project has now
+#: measured that relationship twice and found it absent once and reversed
+#: once.
 #:
 #: WHAT REPLACES IT IS ALREADY THERE. The tier chip says LEAN, SOLID or STRONG
 #: with its own settled record beside it, and `FLAGGED_METHODS` puts the

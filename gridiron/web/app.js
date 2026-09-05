@@ -915,7 +915,20 @@ const Gridiron = (function () {
 
   function tierChip(tier) {
     if (!tier || !tier.tier) return el('span', 'tier tier-none', '');
-    const chip = el('span', 'tier ' + tier.tier.toLowerCase(), tier.tier);
+    // THE CHIP SAYS WHETHER IT IS A RECORD OR A CLAIM (2026-09-04), and the
+    // server writes that. `chip_label` is "STRONG" once the band has earned a
+    // verdict and "STRONG · unproven" until then.
+    //
+    // IT USED TO BE THE TIER WORD ALONE, with the whole story in `title` --
+    // which is a hover tooltip, so on a phone it did not exist. Measured
+    // across four live slates: 362 of 379 chips named a band with nothing
+    // behind it, and only the hero ever said so out loud.
+    //
+    // `|| tier.tier` IS NOT A FALLBACK THAT COMPOSES ANYTHING. It renders the
+    // bare band an older payload would carry, and adds no words of its own.
+    const chip = el('span', 'tier ' + tier.tier.toLowerCase(),
+                    tier.chip_label || tier.tier);
+    if (!tier.proven) chip.classList.add('tier-unproven');
     chip.title = tier.message || '';
     return chip;
   }

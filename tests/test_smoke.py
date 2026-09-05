@@ -871,7 +871,21 @@ def test_a_pending_row_shows_five_things_and_hides_the_rest(page):
     # R1 old -> new: `.tier`, which is what the stylesheet and the mockup
     # define. K2 emitted `chip chip-lean`, for which no rule existed.
     tier = row.locator(".tier").first
-    assert tier.inner_text().strip() in ("LEAN", "SOLID", "STRONG")
+    # READ FROM THE COMPOSER, NOT REMEMBERED (2026-09-04). This asserted the
+    # three band names as literals and went red when the chip started saying
+    # whether it had earned one -- "STRONG . unproven" -- which is the fix,
+    # not the defect. Measured that day: 362 of 379 live chips named a band
+    # with nothing behind it and admitted it only on hover.
+    #
+    # The sixth test of this shape corrected in three days. The band names are
+    # still asserted; what is no longer asserted is that nothing may ever be
+    # said beside them.
+    from gridiron import language as _language
+
+    allowed = {_language.tier_chip_label(band, proven)
+               for band in ("LEAN", "SOLID", "STRONG")
+               for proven in (True, False)}
+    assert tier.inner_text().strip() in allowed
 
     # ...and the detail is NOT on screen until it is asked for
     body = row.locator(".card-body")

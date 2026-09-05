@@ -219,6 +219,9 @@ def step_2_guards() -> bool:
         # shown with its caveat rather than withdrawn, and no confidence floor
         # reaches a market that asks about every game on the slate.
         ("no market is hidden", audit.check_no_market_is_hidden),
+        # MEASURED 2026-09-04: 17 of 379 live chips had a settled record
+        # behind them, and the grid said so only in a hover tooltip.
+        ("a chip says what it is", audit.check_the_chip_says_what_it_is),
         ("no confidence floor on game markets",
          audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),

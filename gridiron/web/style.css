@@ -424,6 +424,24 @@ table.grid td.wide {
 .tier.lean { color: var(--faint); border: 1px solid var(--line); }
 .tier.solid { color: var(--chrome); border: 1px solid var(--muted); }
 .tier.strong { color: var(--ink); background: var(--chrome); }
+/* AN UNPROVEN BAND IS A CLAIM, NOT A RECORD (2026-09-04).
+   Measured across four live slates: 362 of 379 chips named a band with no
+   settled picks behind it. The word is on the chip -- `chip_label`, composed
+   by the server -- and this stops the chip SHOUTING while it says so.
+   A filled STRONG chip that has never been right about anything is the most
+   persuasive thing on the page, and it should not look like the one that has.
+   The letter-spacing loosens because "STRONG · unproven" is a longer label
+   than a band name and the tracking was set for three or six characters. */
+.tier-unproven {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+.tier.strong.tier-unproven {
+  color: var(--chrome);
+  background: none;
+  border: 1px dashed var(--muted);
+}
 .tier-score {
   font-family: var(--mono); font-size: 11px; color: var(--faint);
   margin-left: 8px; letter-spacing: 0;

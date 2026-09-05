@@ -315,3 +315,98 @@ def test_the_floor_guard_counts_both_constants():
     """A floor by another name is still a floor."""
     assert set(audit.FLOOR_CONSTANTS) == {"PROPS_MIN_CLAIM",
                                           "GAME_MARKET_MIN_CLAIM"}
+
+
+# --- the tier chip, measured (2026-09-04) -----------------------------------
+
+def test_the_chip_says_whether_it_is_a_record_or_a_claim():
+    """MEASURED: 17 of 379 live chips had a settled record behind them.
+
+    Ruling 3 declined a confidence floor on the argument that a reader is told
+    what a claim is WORTH instead of having weak claims hidden. The chip is the
+    thing doing the telling, so a chip that cannot tell them takes the argument
+    with it.
+    """
+    from gridiron import language
+
+    assert language.tier_chip_label("STRONG", True) == "STRONG"
+    assert language.tier_chip_label("STRONG", False) != "STRONG"
+    assert "unproven" in language.tier_chip_label("STRONG", False)
+    assert language.tier_chip_label(None, False) == ""
+    # NO SECOND NUMBER on the chip: the cards brief's R2 is about figures.
+    assert not any(ch.isdigit()
+                   for ch in language.tier_chip_label("STRONG", False))
+
+
+def test_the_chip_label_travels_on_the_tier_itself():
+    """One door: composed where the tier is built, not per caller."""
+    from gridiron import calibration
+
+    unproven = calibration.tier_from_bucket(
+        {"label": "70-80%", "n": 3, "actual": 0.5})
+    assert unproven["chip_label"] == "STRONG · unproven"
+    assert unproven["proven"] is False
+
+    proven = calibration.tier_from_bucket(
+        {"label": "70-80%", "n": calibration.TIER_MIN_SETTLED, "actual": 0.74})
+    assert proven["chip_label"] == "STRONG"
+    assert proven["proven"] is True
+
+
+def test_the_shipped_chip_still_says_what_it_is():
+    audit.check_the_chip_says_what_it_is()
+
+
+def test_the_guard_sees_a_chip_that_hides_its_emptiness():
+    source = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    assert audit.tier_chip_faults(source) == []
+
+    broken = source.replace("tier.chip_label || tier.tier", "tier.tier", 1)
+    broken = broken.replace(
+        "if (!tier.proven) chip.classList.add('tier-unproven');", "", 1)
+    assert broken != source, "the chip has moved; re-point this test"
+    assert len(audit.tier_chip_faults(broken)) >= 2
+
+
+def test_the_guard_is_not_satisfied_by_its_own_comment():
+    """The failure `_caller_sources` documents, met again here.
+
+    `tierChip` carries a paragraph explaining why it renders `chip_label`. The
+    first version of this scan read the whole function body, so that paragraph
+    satisfied the check and deleting the actual code left the guard green.
+    """
+    nl = chr(10)
+    only_a_comment = nl.join([
+        "  function tierChip(tier) {",
+        "    // renders chip_label and marks tier-unproven, honest",
+        "    const chip = el('span', 'tier', tier.tier);",
+        "    chip.title = tier.message || '';",
+        "    return chip;",
+        "  }",
+    ])
+    faults = audit.tier_chip_faults(only_a_comment)
+    assert len(faults) >= 2, (
+        f"a function that only TALKS about chip_label passed the scan: {faults}")
+
+
+def test_the_measurement_tool_reads_the_live_slate():
+    """The tool the operator asked for, run against the record it measures."""
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "measure_tier_chip",
+        Path(config.PACKAGE_ROOT).parent / "tools" / "measure_tier_chip.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    from gridiron import db as _db
+    conn = _db.connect()
+    try:
+        result = module.measure_sport(conn, "nfl")
+    finally:
+        conn.close()
+    assert "cards" in result
+    if result.get("cards"):
+        # Every card carries a chip; that is the first of the three questions.
+        assert sum(m["no_chip"] for m in result["markets"].values()) == 0

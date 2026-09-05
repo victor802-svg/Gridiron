@@ -5418,6 +5418,85 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_CHIP = "A CHIP SAYS WHETHER IT IS A RECORD OR A CLAIM"
+
+
+def plant_a_chip_that_hides_its_own_emptiness() -> Result:
+    """Put the band back on the chip and the caveat back in the tooltip.
+
+    THE STATE THIS PROJECT SHIPPED FOR WEEKS, and it took a measurement to
+    see it: across four live slates on 2026-09-04, 17 of 379 chips had a
+    settled record behind them. The other 362 named a band -- 55 of them
+    STRONG -- and said so only through `title`, which is a hover tooltip and
+    therefore nothing at all on a phone.
+
+    THE HERO WAS ALWAYS HONEST AND THE GRID WAS NOT, which is the worst split
+    available: the one card shown in full says "not yet proven" and the thirty
+    behind it do not.
+
+    A FILLED STRONG CHIP THAT HAS NEVER BEEN RIGHT ABOUT ANYTHING is the most
+    persuasive thing on the page. Ruling 3 of 2026-09-04 declined to hide weak
+    claims behind a confidence floor on the argument that a reader is told what
+    a claim is WORTH instead -- and the chip is the thing doing the telling, so
+    a chip that cannot tell them takes the argument with it.
+    """
+    from gridiron import audit as _audit
+
+    web = config.PACKAGE_ROOT / "web"
+    js = (web / "app.js").read_text(encoding="utf-8")
+    if _audit.tier_chip_faults(js):
+        return Result(LAW_CHIP, "a chip that hides its own emptiness",
+                      "audit.tier_chip_faults", False,
+                      "the shipped chip already fails to say what it is; fix "
+                      "that before trusting this planting")
+
+    broken = js.replace("tier.chip_label || tier.tier", "tier.tier", 1)
+    broken = broken.replace(
+        "if (!tier.proven) chip.classList.add('tier-unproven');", "", 1)
+    if broken == js:
+        return Result(LAW_CHIP, "a chip that hides its own emptiness",
+                      "audit.tier_chip_faults", False,
+                      "the chip is no longer written the way this planting "
+                      "expects; re-point it")
+    faults = _audit.tier_chip_faults(broken)
+    if len(faults) < 2:
+        return Result(LAW_CHIP, "a chip that hides its own emptiness",
+                      "audit.tier_chip_faults", False,
+                      f"NOT CAUGHT in full - a band names itself with nothing "
+                      f"behind it and the only account of that is a hover "
+                      f"tooltip. {len(faults)} of the two halves were seen.")
+    return Result(LAW_CHIP, "a chip that hides its own emptiness",
+                  "audit.tier_chip_faults", True, faults[0])
+
+
+def plant_a_chip_label_that_reads_the_same_either_way() -> Result:
+    """Compose a chip label that cannot tell proven from unproven.
+
+    THE QUIETER HALF. A chip can be wired correctly end to end and still say
+    nothing, if the words it is given are the same in both states. This plants
+    the failure in `language`, where the sentence is composed, rather than in
+    the browser, where it is only printed.
+    """
+    from gridiron import audit as _audit, language as _language
+
+    original = _language.tier_chip_label
+    try:
+        _language.tier_chip_label = lambda tier, proven: tier or ""
+        faults = [f for f in _audit.tier_chip_faults()
+                  if "reads the same" in f]
+    finally:
+        _language.tier_chip_label = original
+
+    if not faults:
+        return Result(LAW_CHIP, "a chip label that reads the same either way",
+                      "audit.tier_chip_faults", False,
+                      "NOT CAUGHT - the chip renders a label that is identical "
+                      "whether the band has a settled record or none, so the "
+                      "wiring is right and the reader learns nothing")
+    return Result(LAW_CHIP, "a chip label that reads the same either way",
+                  "audit.tier_chip_faults", True, faults[0])
+
+
 LAW_SHOWN = "A MARKET IS SHOWN, NOT HIDDEN"
 
 
@@ -6010,6 +6089,8 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_a_chip_that_hides_its_own_emptiness())
+    results.append(plant_a_chip_label_that_reads_the_same_either_way())
     results.append(plant_a_weak_market_quietly_withdrawn())
     results.append(plant_a_confidence_floor_on_a_game_market())
     results.append(plant_the_props_floor_escaping_its_branch())

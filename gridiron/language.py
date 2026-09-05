@@ -2321,6 +2321,35 @@ def factor_what(rationale: str | None,
     return (text[:150].rstrip() + "...") if len(text) > 160 else text
 
 
+def tier_chip_label(tier: str | None, proven: bool) -> str:
+    """"STRONG" once it is proven, "STRONG · unproven" until then.
+
+    MEASURED, 2026-09-04, and this is why it exists. Across four live slates,
+    **17 of 379 cards** carried a tier chip with any settled record behind it.
+    The other 362 named a band -- often STRONG -- with nothing standing behind
+    it, and the sentence saying so (`tier_record_line`) reached the reader only
+    as a HOVER TOOLTIP on a grid card: absent on every touch device and on
+    every glance.
+
+    THE PRECEDENT IS THIS PROJECT'S OWN, three rulings old. The coin-flip note
+    was put on the collapsed card face rather than one tap in, because "a
+    caveat behind a tap is a caveat most readers never reach, and the reader
+    taking the percentage at face value is exactly the one it is written for."
+    A tooltip is worse than a tap.
+
+    ONE WORD, NOT THE SENTENCE. The full line still travels and the hero still
+    prints it; a chip is small and the reader only needs to know that the band
+    is a claim rather than a record. The sentence is a tap away in the body,
+    where the reader who wants the numbers goes.
+
+    NO NUMBER, so the cards brief's R2 is untouched -- "unproven" is a word,
+    not a second figure competing with the probability.
+    """
+    if not tier:
+        return ""
+    return tier if proven else f"{tier} · unproven"
+
+
 def tier_record_line(tier: str, settled: int, needed: int,
                      earned: float | None) -> str:
     """"STRONG - 8 settled, not yet proven." The band names itself.

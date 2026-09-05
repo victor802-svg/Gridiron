@@ -4119,3 +4119,86 @@ def check_no_floor_on_game_markets() -> None:
     if faults:
         raise LawViolation(
             "NO CONFIDENCE FLOOR ON GAME MARKETS:" + _NL2 + _NL2.join(faults))
+
+
+# A CHIP SAYS WHETHER IT IS A RECORD OR A CLAIM (2026-09-04)
+# ---------------------------------------------------------------------------
+#
+# MEASURED ON FOUR LIVE SLATES: 17 of 379 tier chips had a settled record
+# behind them. The other 362 named a band -- 55 of them STRONG -- and the
+# sentence saying nothing stood behind it reached a grid card only through the
+# `title` attribute, which is a hover tooltip and therefore absent on every
+# touch device and every glance.
+#
+# THE HERO WAS ALWAYS HONEST and the grid was not, which is the worst possible
+# split: the one card a reader is shown in full says "not yet proven", and the
+# thirty behind it do not.
+#
+# THE PRECEDENT IS THIS PROJECT'S OWN. The coin-flip note went on the collapsed
+# card face rather than one tap in, "because a caveat behind a tap is a caveat
+# most readers never reach". A tooltip is worse than a tap.
+
+def tier_chip_faults(source: str | None = None) -> list[str]:
+    """Can a chip name a band without saying whether anything stands behind it?
+
+    Read from the shipped `app.js`, because a caveat asserted in a test is a
+    caveat that protects the test. Two things have to hold:
+
+    * the chip renders the SERVER'S label, not the bare band name;
+    * the label is not the only place the state lives -- an unproven chip also
+      carries a class, so the stylesheet can stop it shouting.
+
+    AND THE LABEL IS NOT COMPOSED HERE OR THERE. `language.tier_chip_label` is
+    the one door; the browser prints what it is given.
+    """
+    from . import language
+
+    faults: list[str] = []
+    if source is None:
+        source = (config.PACKAGE_ROOT / "web" / "app.js").read_text(
+            encoding="utf-8")
+
+    match = re.search(r"function tierChip\((?:.|\n)*?\n  \}", source)
+    if match is None:
+        faults.append("`tierChip` is gone from app.js, so nothing renders the "
+                      "band at all.")
+        return faults
+    # COMMENTS STRIPPED FIRST, and the reason is written in `_caller_sources`
+    # a thousand lines above: "a guard satisfied by a comment about the guard
+    # is worse than the finding it silenced." The first version of this scan
+    # read the whole function body, and the paragraph inside `tierChip`
+    # EXPLAINING why it renders `chip_label` satisfied the check for
+    # `chip_label` -- so deleting the actual code left the guard green.
+    body = re.sub("//" + "[^" + chr(10) + "]*", "", match.group(0))
+
+    if "chip_label" not in body:
+        faults.append(
+            "`tierChip` no longer renders the server's `chip_label`, so a "
+            "chip names a band without saying whether it has earned it. On "
+            "the slates of 2026-09-04 that was true of 362 of 379 cards.")
+    if "tier-unproven" not in body:
+        faults.append(
+            "`tierChip` no longer marks an unproven chip, so a STRONG that "
+            "has never been right about anything looks exactly like one that "
+            "has.")
+    if "title" in body and "chip_label" not in body:
+        faults.append(
+            "the chip's only account of itself is the `title` attribute, "
+            "which is a hover tooltip: absent on every touch device.")
+
+    # And the words themselves still come from one place and say something.
+    if language.tier_chip_label("STRONG", True) == \
+            language.tier_chip_label("STRONG", False):
+        faults.append(
+            "`language.tier_chip_label` reads the same proven and unproven, "
+            "so the chip cannot tell a reader which it is looking at.")
+    return faults
+
+
+def check_the_chip_says_what_it_is() -> None:
+    """Raise unless a tier chip states whether it is a record or a claim."""
+    faults = tier_chip_faults()
+    if faults:
+        raise LawViolation(
+            "A CHIP SAYS WHETHER IT IS A RECORD OR A CLAIM:"
+            + _NL2 + _NL2.join(faults))

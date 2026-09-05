@@ -766,3 +766,58 @@ def test_no_font_request_is_refused(page):
     _open_week(page, WIDE)
     page.evaluate("() => document.fonts.ready")
     assert not refused, f"font requests were refused: {refused}"
+
+
+# --- the tier chip says what it is (2026-09-04) -----------------------------
+
+def test_an_unproven_chip_says_so_where_a_reader_can_see_it(page):
+    """MEASURED, and this is the fix. Across four live slates 362 of 379 tier
+    chips named a band with no settled record behind it, and the sentence
+    saying so reached a GRID card only through `title` -- a hover tooltip, so
+    nothing at all on a phone. The hero was honest; the thirty cards behind it
+    were not.
+
+    ASSERTED ON THE PHONE, deliberately: `title` is exactly the mechanism that
+    works where this test would not look and fails where a reader actually is.
+    """
+    _open_week(page, PHONE)
+    if not _cards(page):
+        pytest.skip("no cards on this slate")
+
+    chips = page.evaluate(
+        """[...document.querySelectorAll('#week-cards .card .tier')]
+             .filter(t => t.className.indexOf('tier-none') === -1)
+             .map(t => ({ text: t.textContent.trim(),
+                          unproven: t.classList.contains('tier-unproven'),
+                          seen: t.offsetParent !== null }))""")
+    if not chips:
+        pytest.skip("no tier chips on this slate")
+
+    assert all(c["seen"] for c in chips), "a tier chip rendered and is hidden"
+    for chip in chips:
+        if chip["unproven"]:
+            assert "unproven" in chip["text"], (
+                f"a chip is marked unproven and does not say so: {chip['text']!r}")
+        else:
+            assert "unproven" not in chip["text"], chip["text"]
+
+
+def test_the_chip_is_never_composed_in_the_browser(page):
+    """The word comes from the server, like every other word on the page."""
+    from gridiron import language
+
+    _open_week(page, WIDE)
+    texts = page.evaluate(
+        """[...document.querySelectorAll('.tier')]
+             .map(t => t.textContent.trim()).filter(Boolean)""")
+    if not texts:
+        pytest.skip("no tier chips on this slate")
+
+    allowed = set()
+    for band in ("LEAN", "SOLID", "STRONG"):
+        allowed.add(language.tier_chip_label(band, True))
+        allowed.add(language.tier_chip_label(band, False))
+    unknown = sorted(set(texts) - allowed)
+    assert not unknown, (
+        f"these chip labels were not composed by language.tier_chip_label: "
+        f"{unknown}")

@@ -637,3 +637,72 @@ asked at a rung a source actually posts, one subject at a time, against a daily
 cap of 25, so refusing the ones the model is unsure of **chooses between
 questions**. A game market asks about every game on the slate; refusing there
 **hides** them.
+
+---
+
+## 2026-09-04 — CFB totals stay, and the tier chip was measured
+
+### CFB totals stay
+
+**Ruling (operator):** *"CFB totals stay."*
+
+The question was left open in the previous close-out: a market whose
+expectation explains **0.93%** of the variance in a college total is still
+asked, shown with its coin-flip caveat, rather than withdrawn.
+
+**No code changed.** CFB's total was already declared, already flagged and
+already guarded against withdrawal by `audit.check_no_market_is_hidden`. What
+this entry adds is that the question is now **settled** rather than open, so a
+later session does not reopen it on the strength of the R² alone.
+
+### The tier chip, measured against a real slate
+
+**Ruling (operator):** *"the tier chip needs measuring against a real slate."*
+
+`tools/measure_tier_chip.py` asks each sport for the slate a reader would
+actually see — through `views.week`, the same call the page makes — and asks
+three questions of the chip. Measured across four live slates, **379 cards**:
+
+| question | answer |
+|---|---|
+| **Does it appear?** | **Yes** — 379 of 379 cards carry a chip |
+| **Does it vary?** | **Yes** — in 16 of 18 markets. The two that do not are MLB `batter_hits` (3 cards) and `batter_home_runs` (5), both tiny and both above the props floor by construction |
+| **Is it earned?** | **17 of 379 — 4.5%** |
+
+**The third answer is the finding.** Only MLB has any proven chips (13
+moneyline at a median of 71 settled, 4 home-run props at 24). **NFL, CFB and
+UFC have none at all** — 326 cards naming a band with nothing behind it, 55 of
+them STRONG.
+
+**That is correct behaviour and it was invisible.** `tier_from_bucket` refuses
+to state a hit rate below 20 settled and composes "STRONG — 3 settled, not yet
+proven" instead. On a **grid card** that sentence reached the reader only
+through the `title` attribute — **a hover tooltip, so nothing at all on a
+phone.** The hero printed it as text. The one card shown in full was honest and
+the thirty behind it were not.
+
+**Fixed, on this project's own precedent.** The coin-flip note was put on the
+collapsed card face rather than one tap in, "because a caveat behind a tap is a
+caveat most readers never reach". A tooltip is worse than a tap.
+`language.tier_chip_label` now composes **"STRONG · unproven"** until the band
+has earned a verdict, and `.tier-unproven` stops an unearned STRONG from
+looking like an earned one. One word, no number, so the cards brief's R2 is
+untouched. Guarded and planted twice.
+
+### A correction: "a rung question cannot reach 70%" was wrong
+
+The no-floor entry above claimed it. **It does.** Measured on the live slates
+hours later: **49 of 60 CFB spreads and 31 of 57 CFB totals sit at STRONG**,
+and NFL's spread and MLB's each put a handful there. What is confined to
+45.8%–54.2% is the contribution **of the rung offset**; the fitted factors add
+to it, and in college football they add a great deal.
+
+**This makes the case against a floor stronger, not weaker.** Those CFB chips
+have a **median of 5 settled picks behind them on the spread and 1 on the
+total** — the sport's recorded over-confidence (spread base rate 0.371)
+arriving as confident claims nothing has yet tested. A 70% floor would have
+kept precisely those and discarded the LEAN cards beside them, on no evidence
+that the confident ones are better.
+
+> **A floor is a bet that confidence predicts accuracy. This project has now
+> measured that relationship twice: absent once, reversed once.**
