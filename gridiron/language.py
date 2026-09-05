@@ -2621,6 +2621,19 @@ def tile_line(item: dict) -> str:
             f"{_number(line)} {humanise(market)}").strip()
 
 
+def counted(n: int, noun: str, plural: str | None = None) -> str:
+    """"1 prediction", "41 predictions". Never "prediction(s)".
+
+    A bracketed plural is a code plural: it asks the reader to do the
+    grammar. The Health panel showed "wrote 41 prediction(s) for slate
+    20260905" until the audit of 2026-09-05, and both halves of that line
+    were the same defect -- something written for the log and shown to a
+    person.
+    """
+    word = noun if n == 1 else (plural or noun + "s")
+    return f"{n} {word}"
+
+
 def task_name(task: str | None) -> str:
     """"predict:mlb" -> "Predict baseball". Falls back to opened-out words."""
     if not task:

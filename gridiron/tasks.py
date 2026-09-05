@@ -150,6 +150,23 @@ del _sport, _spec
 # running
 # ---------------------------------------------------------------------------
 
+def _slate_words(conn: sqlite3.Connection, sport: str, season: int,
+                 week: int | None) -> str:
+    """The slate as the page names it: "Saturday 5 September", "Week 1, 2026".
+
+    NEVER THE KEY. College football keys a slate as 20260905 and baseball as
+    an ordinal, and both reached the Health panel as "slate 20260905" until
+    2026-09-05. This is the door `views` already uses for the page title,
+    fed the slate's own calendar date so a baseball ordinal reads as a date.
+    """
+    from . import language
+    day = conn.execute(
+        "SELECT MIN(league_date) FROM games WHERE sport = ? AND season = ?"
+        " AND week = ?", (sport, season, week)).fetchone()[0]
+    return language.slate_title(
+        season, week, config.SPORT_SLATE_WORD.get(sport, "week"), day)
+
+
 def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> dict:
     """Run one scheduled task and record the attempt, whatever happens."""
     if task not in TASKS:
@@ -308,16 +325,20 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
                "warnings": warnings[:8], **drift_counts}
     if warnings:
         return ("ok" if counts else "failed",
-                f"refreshed {len(counts)} sport(s); {became_final} prediction(s) "
-                f"now have a finished game waiting; {len(warnings)} warning(s)",
+                f"refreshed {language.counted(len(counts), 'sport')}; "
+                f"{language.counted(became_final, 'prediction')} now "
+                f"{'has' if became_final == 1 else 'have'} a finished game "
+                f"waiting; {language.counted(len(warnings), 'warning')}",
                 payload)
     if became_final == 0:
         return ("noop",
                 "every sport re-read; no prediction's game has finished since "
                 "the last refresh", payload)
     return ("ok",
-            f"re-read {len(counts)} sport(s); {became_final} prediction(s) now "
-            "have a finished game waiting for the resolver", payload)
+            f"re-read {language.counted(len(counts), 'sport')}; "
+            f"{language.counted(became_final, 'prediction')} now "
+            f"{'has' if became_final == 1 else 'have'} a finished game waiting "
+            "for the resolver", payload)
 
 
 #: How close to the start a second look at the line is taken. Two hours is
@@ -436,7 +457,7 @@ def _run_resolve(conn: sqlite3.Connection) -> tuple[str, str, dict]:
         return "noop", "no prediction had a finished game waiting", payload
 
     payload["notified"] = _notify_results(conn)
-    return "ok", f"settled {n} prediction(s)", payload
+    return "ok", f"settled {language.counted(n, 'prediction')}", payload
 
 
 def _notify_results(conn: sqlite3.Connection) -> dict:
@@ -549,7 +570,8 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
         if missed:
             return (
                 "missed",
-                f"{sport} {season} slate {missed['week']} began at "
+                f"the {config.SPORT_LABELS.get(sport, sport.upper())} slate of "
+                f"{_slate_words(conn, sport, season, missed['week'])} began at "
                 f"{missed['first']} and was not forecast. It is NOT being "
                 "forecast now: a question answered after its games have started "
                 "is not a forecast, and answering it late would permanently "
@@ -572,7 +594,8 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
         "absent_starters": _absent_starters(conn, sport, season, week),
     }
     floor_note = (
-        f"; {result['below_floor']} prop question(s) were below the "
+        f"; {language.counted(result['below_floor'], 'prop question')} "
+        f"{'was' if result['below_floor'] == 1 else 'were'} below the "
         f"{round(config.PROPS_MIN_CLAIM * 100)}% confidence floor and not asked"
         if result.get("below_floor") else ""
     )
@@ -582,7 +605,9 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
             "every question on this slate was already answered" + floor_note,
             payload,
         )
-    return "ok", f"wrote {written} prediction(s) for slate {week}{floor_note}", payload
+    return ("ok",
+            f"wrote {language.counted(written, 'prediction')} for "
+            f"{_slate_words(conn, sport, season, week)}{floor_note}", payload)
 
 
 def _refresh_one_sport(conn: sqlite3.Connection, sport: str) -> str:
@@ -676,12 +701,14 @@ def _run_final_pass(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> t
     }
     if written == 0:
         return ("noop",
-                f"the final pass found nothing new to write for slate {week}"
+                f"the final pass found nothing new to write for "
+                f"{_slate_words(conn, sport, season, week)}"
                 + (f"; {fetch_note}" if fetch_note else ""),
                 payload)
     return ("ok",
-            f"re-forecast {written} question(s) for slate {week} close to "
-            f"start; these supersede the early rows"
+            f"re-forecast {language.counted(written, 'question')} for "
+            f"{_slate_words(conn, sport, season, week)} close to start; these "
+            f"supersede the early rows"
             + (f"; {fetch_note}" if fetch_note else ""),
             payload)
 
