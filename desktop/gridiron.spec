@@ -64,6 +64,11 @@ a = Analysis(
         (str(_STAMP), "gridiron"),
     ],
     hiddenimports=[
+        # THE ZONE DATABASE (2026-09-05). Windows ships none, and
+        # `reference.league_day` asks zoneinfo what day it is where a card is
+        # held. Absent, every UFC event would be filed under the UTC date --
+        # silently, because zoneinfo raises only when the zone is looked up.
+        "tzdata",
         "uvicorn.logging",
         "uvicorn.loops.auto",
         "uvicorn.protocols.http.auto",
