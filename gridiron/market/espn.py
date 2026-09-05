@@ -162,7 +162,7 @@ def fetch_day(
                 game_id,
                 utcnow(),
                 f"{SOURCE_NAME[sport]}/{odds.get('provider', {}).get('name', 'unknown')}",
-                _home_spread(odds),
+                _home_spread(odds, sport),
                 odds.get("overUnder"),
                 home.get("moneyLine"),
                 away.get("moneyLine"),
@@ -185,7 +185,14 @@ def fetch_day(
     return counts
 
 
-def _home_spread(odds: dict) -> float | None:
+#: Sports whose spread is a RUN LINE, which is never 0.0: ESPN posts
+#: `spread: 0` on a baseball game before the run line exists, and on
+#: 2026-09-05 ten of those reached the record as lines. A 0 spread on a
+#: football or basketball game is a real pick'em and stays.
+_RUN_LINE_SPORTS = frozenset({"mlb"})
+
+
+def _home_spread(odds: dict, sport: str | None = None) -> float | None:
     """ESPN's `spread` is the HOME team's line in betting convention; we store
     the home team's expected MARGIN, which is the opposite sign.
 
@@ -207,6 +214,8 @@ def _home_spread(odds: dict) -> float | None:
     spread = odds.get("spread")
     if spread is None:
         return None
+    if sport in _RUN_LINE_SPORTS and float(spread) == 0.0:
+        return None             # not posted yet; an absence, never a pick'em
     return -float(spread)
 
 

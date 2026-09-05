@@ -2655,6 +2655,8 @@ def run_line_sign_faults(rows) -> list[str]:
         home_ml, away_ml = row.get("home_moneyline"), row.get("away_moneyline")
         if spread is None or home_ml is None or away_ml is None:
             continue
+        if spread == 0:
+            continue                    # no run line posted yet (ESPN's 0 placeholder)
         if home_ml == away_ml:
             continue                    # a true pick'em says nothing either way
         home_favoured_by_price = home_ml < away_ml
