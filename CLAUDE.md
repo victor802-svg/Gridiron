@@ -1,6 +1,7 @@
 # Gridiron — working agreement
 
-Gridiron is a multi-sport forecaster — **NFL, MLB and NBA** — that makes
+Gridiron is a multi-sport forecaster — **NFL, MLB, NBA, college football and
+UFC** — that makes
 probabilistic predictions, records them **before** the market line is visible to
 it, resolves them against real outcomes, and scores its own calibration
 permanently, separately for every sport.
@@ -95,6 +96,10 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | 4 | A sub-50 probability is stored as a confident claim about the other side, so the bucket set starts at 50 and the tier chip cannot mislabel it | `plant.py::plant_a_home_run_bucket_below_fifty` |
 | 2 | `logistic.fit` reports `constant` and `dropped` per factor, and a constant factor is named rather than fitted | `plant.py::plant_a_constant_prop_factor` |
 | ORPHANS | `audit.check_no_orphan_functions` fails on a public function the shipped code never reaches; a decorator counts as a call site, `tools/` counts as a caller, `tests/` does not. Runs in `verify.py` step 2 | `plant.py::plant_an_orphan_guard`, `::plant_a_decorated_function_mistaken_for_an_orphan` |
+| COMMENTS | `audit._without_comments` blanks comments before the eight raw-text source scanners read `app.js`, `style.css` and `index.html`, so a comment can neither trip a scan nor satisfy one; proved at import | `plant.py::plant_a_comment_naming_the_forbidden_thing`, `test_guards.py::test_a_comment_cannot_stand_in_for_the_code_it_describes` |
+| ONE CLAUSE | `calibration.standing_row_clause` is the one rule for which row of a question is graded; the version table and the pace line count through it | `plant.py::plant_a_superseded_row_counted_as_settled` |
+| ONE UNIT | `audit.horizon_unit_faults` refuses an outlook whose rate and multiplier count different columns | `plant.py::plant_a_horizon_that_counts_days_for_a_weekly_sport` |
+| RECORD FIRST | `run_task` writes a `running` row before the task runs and finishes it after; `audit.task_run_order_faults` reads the order off the syntax tree | `plant.py::plant_a_run_recorded_only_when_it_ends` |
 
 Run them all at once, each violation planted for real:
 

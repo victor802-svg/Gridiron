@@ -17,16 +17,21 @@ Two kinds of question, both stated as a probability, both resolvable to exactly
 For every game in a week, one question: **does the home team cover
 `line_asked`?**
 
-`line_asked` is *ours*, not the market's. It is drawn from a ladder of four
-pre-declared rungs — **−7.5, −3.5, +0.5, +3.5** relative to the home side — and
-which rung a given game is asked at is decided by a CRC32 of the game id. That
-rule is fixed, deterministic, reproducible across runs and machines, and depends
-on nothing but the game's identity. It cannot be influenced by the model, by the
-market, or by what would make the record look good.
+`line_asked` is *ours*, not the market's. It is drawn from a ladder of
+pre-declared rungs — eleven for the NFL, **−15.5 to +7.5** relative to the home
+side, declared 2026-09-03; every sport declares its own, dated — and since
+2026-09-03 the rung a game is asked at is the one nearest the model's own
+expected margin, chosen before any line is seen. Until then it was a rotation
+by CRC32 of the game id, retired because a rotated rung asked a lopsided
+question of a lopsided game and 77% of cross-division college spreads came
+out claiming 90%+. The choice depends on the model's expectation and nothing
+else: not the market, and not what would make the record look good.
+`audit.rung_selection_faults` refuses a rung formed from a market value or
+from a rotation, and both are planted.
 
-**One question per game.** The alternative — asking all four rungs of every game
-— would quadruple the sample while adding almost no information, because four
-rungs of one result are four correlated looks at the same game. Every N on the
+**One question per game.** The alternative — asking every rung of every game
+— would multiply the sample while adding almost no information, because
+eleven rungs of one result are eleven correlated looks at the same game. Every N on the
 scorecard would then overstate how much had actually been learned. Rotating the
 rung across games instead means that over a season all four are exercised and
 the whole confidence range gets tested, without inflating anything.
@@ -38,9 +43,16 @@ Every rung ends in `.5`, so no question can push.
 **Football**: five markets, each its own scoring category — passing yards,
 receiving yards, rushing yards, receptions, passing touchdowns.
 **Basketball**: four — points, rebounds, assists, three-pointers.
-**Baseball**: four, added 2026-08-30 — batter hits, batter total bases, batter
-home runs, pitcher strikeouts. See `docs/MLB_PROPS.md`, which records what was
-measured before any of it was built.
+**Baseball**: five — batter hits, batter total bases, batter home runs and
+pitcher strikeouts, added 2026-08-30, and batter strikeouts, added 2026-09-04.
+See `docs/MLB_PROPS.md`, which records what was measured before any of it was
+built.
+
+**College football and the fights ask no player questions.** College football
+(from 2026-09-01) asks the spread, the moneyline and the total; UFC (from
+2026-09-03) asks the winner, over/under a scheduled-rounds rung, and whether
+the bout goes the distance. Twenty-nine markets across five sports in all,
+declared in `config.SPORT_MARKETS`.
 
 For each, one question: **does this subject exceed `line_asked` in this stat?**
 
@@ -140,7 +152,7 @@ ways:
    `gridiron.model.predict` and fails if any module in it imports
    `gridiron.market`, or names a market column anywhere in code. Docstrings are
    exempt: a module must stay free to explain in prose what it refuses to do.
-   The closure is currently 16 modules. `gridiron.audit` deliberately sits
+   The closure is currently 21 modules (2026-09-05). `gridiron.audit` deliberately sits
    OUTSIDE it: the module holds the list of forbidden market identifiers, so
    importing it from the prediction path would make the guard flag itself.
 3. **Runtime.** `blind.blind_window()` installs an import sentinel that raises if
@@ -299,10 +311,13 @@ activation date**, and nothing earlier is backfitted onto it. Versions are
 reported side by side and are **never summed**: a closed record and an
 accumulating one describe different models, and their total describes neither.
 
-* **fs1** — activated 2026-08-28. Closed. 48 forward predictions written, 0
+* **fs1** — activated 2026-08-28. Closed. 48 football forecasts written, 0
   resolved.
-* **fs2** — activated 2026-08-29. Current. 56 forward predictions written, 0
-  resolved.
+* **fs2** — activated 2026-08-29. Current. 88 football forecasts written, 0
+  resolved as of 2026-09-05, the season not having started; the baseball,
+  basketball, college and UFC records also sit under fs2. A handful of
+  per-market versions (`fs3`, `fs3-rate`) mark count-market and rate repairs
+  declared in `config.py` with their dates, and are shown as their own rows.
 
 The interface shows both, with no total row, and says in words that a version
 starting at zero is the expected state rather than a rendering fault.
@@ -384,9 +399,10 @@ better. The number that matters is the market comparison.
 
 - **Always 50%** — the floor.
 - **The market** — the closing spread converted to a probability under a normal
-  margin with SD 13.2 points, scored on exactly the same questions. This is a
-  stated modelling assumption, written down in `gridiron/market/lines.py` rather
-  than buried in an expression.
+  margin with a measured SD — 12.7 points for the NFL, from 2,761 closing lines
+  (2026-08-29; 13.2 was the assumption before it was measured) — scored on
+  exactly the same questions. Every sport declares its own SD, dated, in
+  `gridiron/market/lines.py` rather than buried in an expression.
 
 The model's own score is also reported restricted to the subset the market
 priced, so the comparison is like for like rather than across different question
@@ -445,12 +461,20 @@ conflating them retires good ideas for bad reasons:
 
 Two records, kept apart on purpose.
 
-### The forward record: N = 0 resolved
+### The forward record, re-derived 2026-09-05
 
-**104 predictions have been written before kickoff and none has resolved.**
-56 under fs2 and 48 under fs1, written on 2026-08-29, with the first kickoff of
-the 2026 season on 2026-09-10. Nothing can resolve until the games are played,
-and the scorecard says zero rather than borrowing a number from below.
+**765 forecasts have been written before start; 252 have resolved; 60 were
+voided.** By sport — baseball 280 written, 233 resolved; college football 202,
+19; football 152, none (first kickoff 2026-09-10); basketball 47, none (the
+season opens in October); the fights 84, none (first card 2026-09-05). No
+category has reached the 100 resolved that LAW 4 asks for before a claim; the
+closest is the baseball moneyline at 93. The scorecard shows the shortfall
+rather than borrowing a number from below.
+
+The sentence this replaced said 104 written and none resolved. It was true
+on 2026-08-29 and had not been updated since; the audit of 2026-09-05 found
+it. Numbers in this section are a reading of the record on a date, not a
+living count — the interface is the living count.
 
 This is the only record that could ever become evidence.
 
@@ -575,9 +599,10 @@ scorecard says zero, and it should.
 Before any claim here deserves weight, all of the following would have to hold:
 
 1. **Volume.** At least 100 resolved forward predictions in the specific
-   category being claimed about — and there are now eleven such categories, one
-   per market per forecaster, each gated separately — and 100 is a floor for showing a number at
-   all, not a threshold for believing it. Several hundred, across more than one
+   category being claimed about — and there are now 58 such categories, one
+   per market per forecaster across five sports, each gated separately — and
+   100 is a floor for showing a number at all, not a threshold for believing
+   it. Several hundred, across more than one
    season, is where the discussion starts.
 2. **A season it was not built in.** fs2 was declared with knowledge of
    2016–2025. Its first honest test is 2026 and beyond. A factor set that keeps

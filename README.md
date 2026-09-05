@@ -1,8 +1,9 @@
 # Gridiron
 
-An NFL forecaster that grades itself.
+A five-sport forecaster that grades itself.
 
-Gridiron makes probabilistic predictions on game spreads and player props,
+Gridiron makes probabilistic predictions on game markets and player props in
+five sports — NFL, MLB, NBA, college football and UFC, 29 markets in all —
 **writes them to the database before it is allowed to see the market line**,
 resolves them against real results, and keeps a permanent calibration record of
 how well its stated confidence matched what actually happened.
@@ -24,9 +25,9 @@ any of these numbers deserved trust.
 
 ---
 
-## The five laws
+## The six laws
 
-The project is built around five constraints, stated in full in
+The project is built around six constraints, stated in full in
 [CLAUDE.md](CLAUDE.md) and enforced by database triggers and guard tests rather
 than by good intentions:
 
@@ -38,6 +39,8 @@ than by good intentions:
 4. **No sample, no claim** — no figure renders without its N, and nothing claims
    an edge below 100 resolved predictions in that category.
 5. **Not a betting tool** — see above.
+6. **Never aggregate across sports** — every curve, score, edge figure and
+   sample size belongs to exactly one sport.
 
 ---
 
@@ -158,9 +161,9 @@ without notice. Responses are cached permanently, a settled game is never
 refetched, and a failure degrades the *comparison* visibly rather than touching
 the record at all.
 
-**Where no line exists, nothing is invented.** Every prop market in all three
-sports has no free line source, and so does any game whose line ESPN did not
-publish. Those cards say **"no line available"** in plain words, the gap visual
+**Where no line exists, nothing is invented.** Football and basketball props
+have no free line source; baseball props are priced from ESPN and PrizePicks
+(2026-09-02); and any game whose line ESPN did not publish is unpriced too. Those cards say **"no line available"** in plain words, the gap visual
 is absent rather than drawn at zero, and the edge figure states that it cannot
 be computed. The prediction is still written blind and still resolves against
 the real outcome — a missing line source degrades the comparison, never the
@@ -458,18 +461,20 @@ tools/
 
 ## Status
 
-Six build phases (G1-G6) and five repair phases (D1-D5). 252 tests. Every law
-has a guard and every guard has been made to fire by planting the violation it
-exists to catch — 20 plantings, all caught:
+Six build phases (G1-G6) and five repair phases (D1-D5), and many sessions
+since. About 1,100 tests. Every law has a guard and every guard has been made
+to fire by planting the violation it exists to catch — around 190 plantings,
+all caught, counted by the gate itself:
 
 ```bash
 python tools/verify.py
 ```
 
-**The forward record is N = 0 resolved, and that is the honest state.** 104
-predictions were written before kickoff on 2026-08-29 (56 under factor set fs2,
-48 under the now-closed fs1) against a first kickoff of 2026-09-10. Nothing can
-resolve until the games are played.
+**The forward record, as of 2026-09-05: 765 written before start, 252
+resolved, 60 voided, and no category yet at the 100 resolved a claim needs.**
+Baseball carries almost all of the settled rows; football's first kickoff is
+2026-09-10. The Record page is the living count; this sentence is a reading
+on a date.
 
 **What the backtest says, reported as found.** Walk-forward over 2024-25, each
 season fitted only on earlier ones, six markets scored separately and never
