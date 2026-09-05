@@ -547,3 +547,17 @@ fixes it made and the decisions it left. The decisions, in one line each:
 - **42 UFC reasoning rows quote encoded numbers** ("a combined finish rate of
   0.3333") — written before the factors-in-words fix, append-only, and
   answered once.
+
+## 2026-09-05 — rulings on the audit
+
+- **`tzdata` must reach the bundle.** Declared in `requirements.txt` for the
+  league-day convention; the PyInstaller spec needs it as a hidden import or
+  the exe will file every UFC card under the UTC day. Not built here.
+- **`teams.LEAGUE_PATH` has no UFC entry and the refresh warns about it every
+  run.** Correct for a sport without teams; the loader should say so instead
+  of warning.
+- **Five college games (pre-2024) still carry the UTC day.** The seasons the
+  cache holds were reloaded; these five were not in them.
+- **`docs/DIAGNOSIS.md` is the 2026-08-29 pre-registered run** (207 → 55.6%).
+  The same tool on the shipped question set reads 243 → 46.1% (METHODOLOGY
+  §6). Regenerating a pre-registered document is a ruling.

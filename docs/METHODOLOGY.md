@@ -480,20 +480,40 @@ This is the only record that could ever become evidence.
 
 ### The backtest: pipeline sanity, not evidence
 
-Walk-forward over 2024–2025, each season fitted only on seasons before it,
-1,892 resolved predictions under the fs2 factor set.
+Walk-forward over 2024–2025, each season fitted only on seasons before it.
+**Re-run 2026-09-05** on the record after every NFL game was re-filed under the
+league's own day (ruling 1 on the audit); the reading of 2026-08-29 is beside
+it, and the two differ for a reason that is not the dates.
 
-| Market | N | Void | Brier | Log loss | Hit rate |
-|---|---:|---:|---:|---:|---:|
-| spread | 544 | 0 | 0.2141 | 0.6153 | 64.9% |
-| passing yards | 261 | 27 | 0.1684 | 0.5164 | 77.0% |
-| receiving yards | 275 | 13 | 0.2137 | 0.6166 | 65.1% |
-| rushing yards | 273 | 15 | 0.2091 | 0.6071 | 64.8% |
-| receptions | 275 | 13 | 0.2074 | 0.6039 | 66.9% |
-| passing TDs | 264 | 21 | 0.2318 | 0.6584 | 59.1% |
+| Market | N | Void | Brier | Log loss | Hit rate | 2026-08-29 reading (N, Brier, hit) |
+|---|---:|---:|---:|---:|---:|---|
+| spread | 570 | 0 | 0.2436 | 0.6801 | 54.7% | 544, 0.2141, 64.9% |
+| moneyline | 569 | 1 | 0.2236 | 0.6377 | 64.3% | not yet asked |
+| total | 538 | 0 | 0.2478 | 0.6887 | 52.4% | not yet asked |
+| passing yards | 191 | 20 | 0.1341 | 0.4415 | 84.3% | 261, 0.1684, 77.0% |
+| receiving yards | 95 | 4 | 0.1660 | 0.5136 | 79.0% | 275, 0.2137, 65.1% |
+| rushing yards | 128 | 8 | 0.1805 | 0.5463 | 75.8% | 273, 0.2091, 64.8% |
+| receptions | 158 | 6 | 0.1891 | 0.5683 | 74.7% | 275, 0.2074, 66.9% |
+| passing TDs | 133 | 11 | 0.1981 | 0.5858 | 72.9% | 264, 0.2318, 59.1% |
 
-Always-50% scores 0.2500 Brier and 0.6931 log loss. On the same 544 spread
-questions, **the closing line scores 0.2011** against the model's 0.2141.
+Always-50% scores 0.2500 Brier and 0.6931 log loss. On the same 570 spread
+questions, **the closing line scores 0.2295** against the model's 0.2436 (on
+2026-08-29: 0.2011 against 0.2141).
+
+**Why the columns differ, and why it is not the date repair.** The spread
+question moved on 2026-09-03 from a four-rung rotation to an eleven-rung
+ladder with the rung chosen nearest the model's own expected margin, which is
+a harder question (§1); the prop questions gained the 70% confidence floor and
+the count-market machinery, which asks fewer of them and answers those better.
+The 2026-08-29 reading was of a different set of questions. **The date repair
+itself moved nothing**: the walk-forward, the diagnosis and the market-distance
+comparison were each run twice on 2026-09-05, on a copy taken before the repair
+and on the repaired record, and every NFL figure is identical to the last
+digit — because every football rolling window is cut on `games.week`, never on
+the calendar date. The invariant was measured directly: 6,066 team-game
+windows over 3,033 games, none containing its own game. Basketball and
+baseball had the calendar-date defect (76.8% and 25.1% of games inside their
+own window); football never did.
 
 There is no combined row and there will not be one.
 
@@ -509,10 +529,15 @@ Three findings, all unflattering, all reported because that is the point.
 **Where the model disagrees with the market, it does worse.** Over the 544
 spread questions:
 
-| | N | Model said | Market said | Resolved model's way |
-|---|---:|---:|---:|---:|
-| model more confident by >5 pts | 207 | 65.4% | 52.5% | **55.1%** |
-| market more confident by >5 pts | 148 | — | — | **70.3%** |
+| | N | Model said | Market said | Resolved model's way | 2026-08-29 reading |
+|---|---:|---:|---:|---:|---|
+| model more confident by >5 pts | 243 | 56.0% | 43.5% | **46.1%** | 207, 55.1% |
+| market more confident by >5 pts | 152 | — | — | **65.8%** | 148, 70.3% |
+
+(Re-run 2026-09-05 on the repaired record; identical to the run on the
+pre-repair copy. The question set changed on 2026-09-03, as above, and the
+finding got worse, not better: where the model is more confident than the
+market it is now right less than half the time.)
 
 Where it deferred, it did better. That is the opposite of an edge, it survived
 the move from fs1 to fs2 essentially unchanged, and
@@ -530,10 +555,14 @@ against what actually happened:
 
 | | our number was off by | the market's was off by | the market was closer on |
 |---|---:|---:|---:|
-| NFL totals | 11.2 points | **10.1** | **57%** of games |
-| NFL spreads | 10.4 points | **9.7** | **59%** of games |
+| NFL totals | 11.5 points | **10.3** | **59%** of games |
+| NFL spreads | 10.5 points | **9.7** | **60%** of games |
 | NBA totals | 15.3 points | **14.6** | **55%** of games |
 | NBA spreads | 11.8 points | **10.9** | **57%** of games |
+
+(NFL rows re-run 2026-09-05 on the repaired record, 272 spread and 256 totals
+games out of sample; identical on the pre-repair copy. The 2026-09-04 totals
+row read 11.2 / 10.1 / 57% from a different split.)
 
 **So most of what looks like a disagreement is our mistake, not our insight**,
 and that is the same finding as the one above it, measured a second way and in
