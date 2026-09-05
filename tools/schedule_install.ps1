@@ -61,7 +61,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$Python = Join-Path $Repo ".venv\Scripts\python.exe"
+# NO CONSOLE WINDOW (ruling 2 on the audit, 2026-09-05). Two tasks died with
+# exit 0xC000013A -- STATUS_CONTROL_C_EXIT -- which is what a console process
+# gets when its window is closed or the session it belongs to ends. pythonw
+# has no console to close. Nothing is lost: every task records its own row
+# in task_runs and prints nothing anyone was reading.
+$Python = Join-Path $Repo ".venv\Scripts\pythonw.exe"
 $Prefix = "Gridiron-"
 
 $TaskNames = @(
