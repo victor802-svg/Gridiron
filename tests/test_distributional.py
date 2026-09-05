@@ -636,3 +636,102 @@ def test_the_existence_check_is_one_door():
         "can drift apart")
     assert "SELECT 1 FROM predictions WHERE game_id" not in src, (
         "write_prediction has grown its own copy of the predicate again")
+
+
+# --- fix 4: no code name reaches a reader (2026-09-05) ---------------------
+
+def test_the_prompt_names_factors_in_plain_words():
+    """The source of the 27 dirty rows. A model quotes what it is given."""
+    from gridiron.model import llm
+
+    rows = [{"factor": "ufc_scheduled_rounds",
+             "why": "how many rounds the bout is scheduled for",
+             "value": 0.0, "present": True, "rationale": "scaled"}]
+    prompt = llm.build_prompt("does it go the distance", rows, [])
+    assert "ufc_scheduled_rounds" not in prompt
+    assert "how many rounds the bout is scheduled for" in prompt
+
+
+def test_every_declared_factor_has_a_phrase_for_the_prompt_to_use():
+    """Measured 2026-09-05: 103 of 103. The fallback to a code name exists for
+    a caller handing over rows from elsewhere, not for a gap in the registry."""
+    from gridiron.factors import registry
+
+    missing = [f.name for f in registry.all_factors() if not (f.why or "").strip()]
+    assert not missing, missing
+
+
+def test_stored_reasoning_is_humanised_at_render_time_not_rewritten():
+    """LAW 3: a forecaster's words are never edited. The READER sees plain
+    names; the row keeps what was written."""
+    from gridiron import db as _db, language, views
+
+    phrases = views._why_phrases()
+    conn = _db.connect()
+    try:
+        rows = conn.execute(
+            "SELECT reasoning FROM predictions WHERE predictor = 'llm'"
+        ).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        pytest.skip("no LLM rows in this record")
+
+    raw = sum(1 for r in rows
+              if audit.plain_words_violations(r["reasoning"] or ""))
+    shown = sum(1 for r in rows
+                if audit.plain_words_violations(
+                    language.humanise_reasoning(r["reasoning"], phrases) or ""))
+    assert shown == 0, f"{shown} of {len(rows)} rows still render a code name"
+    assert raw > 0, (
+        "no stored row carries a code name, so this test is no longer "
+        "checking the repair it was written for")
+
+
+def test_the_alias_rule_refuses_to_guess():
+    """Shortened names are mapped only where every owner agrees.
+
+    `nba_asked_line` yields `asked_line`, which is a declared factor of its
+    own, so no alias is made -- a reader must never be shown basketball's
+    phrase over football's factor. And a bare English word is never mapped.
+    """
+    from gridiron import language
+
+    phrases = {
+        "asked_line": "how far the question sits from the line",
+        "nba_asked_line": "how far the basketball question sits",
+        "mlb_prop_mean_vs_line": "where the line sits against his average",
+        "prop_mean_vs_line": "where the line sits against his average",
+        "ufc_scheduled_rounds": "how many rounds the bout is scheduled for",
+    }
+    out = language.with_prefix_aliases(phrases)
+
+    # Declared already: never overwritten by an alias.
+    assert out["asked_line"] == phrases["asked_line"]
+    # Owners agree, so the shortened form is safe.
+    assert out["mean_vs_line"] == "where the line sits against his average"
+    assert out["scheduled_rounds"] == phrases["ufc_scheduled_rounds"]
+    # Bare words are never mapped.
+    assert "line" not in out and "rounds" not in out
+
+
+def test_the_alias_rule_refuses_when_owners_disagree():
+    from gridiron import language
+
+    out = language.with_prefix_aliases({
+        "nfl_home_edge": "how much the home crowd is worth in football",
+        "nba_home_edge": "how much the home floor is worth in basketball",
+    })
+    assert "home_edge" not in out, (
+        "two sports disagree about what the phrase means and an alias was "
+        "made anyway; a reader could be shown the wrong sport's words")
+
+
+def test_the_llm_view_shows_no_code_name():
+    from gridiron import db as _db
+
+    conn = _db.connect()
+    try:
+        audit.check_no_code_names_in_llm_prose(conn)
+    finally:
+        conn.close()

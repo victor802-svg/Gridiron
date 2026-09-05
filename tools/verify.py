@@ -231,6 +231,11 @@ def step_2_guards() -> bool:
          audit.check_the_record_precedes_the_push),
         # A RESUMED RUN MUST NOT PAY TWICE (2026-09-05).
         ("nothing is reasoned twice", audit.check_nothing_is_reasoned_twice),
+        # THE SECOND FORECASTER'S PROSE (2026-09-05). The plain-words scan ran
+        # on the page and Picks opens on the statistical forecaster, so this
+        # surface had never been read by any guard.
+        ("no code name in the LLM view",
+         lambda: audit.check_no_code_names_in_llm_prose(_record_conn())),
         ("no confidence floor on game markets",
          audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),

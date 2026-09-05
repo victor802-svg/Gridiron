@@ -5418,6 +5418,92 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_LLM_WORDS = "NO CODE NAME REACHES A READER"
+
+
+def plant_a_code_name_in_rendered_llm_reasoning() -> Result:
+    """Render the second forecaster's prose without humanising it.
+
+    THE PLAIN-WORDS LAW HAD A HOLE AND THE LLM WALKED THROUGH IT. The prompt
+    named factors by their code names, the model quoted them back, and 27 of
+    65 stored rows carry a snake_case identifier -- `ufc_scheduled_rounds`,
+    `mlb_bullpen_recent_load`, `mean_vs_line`. Every one of them was on a card.
+
+    IT WAS NEVER LOOKED AT, which is the part worth remembering. The
+    rendered-page scan exists and runs; Picks opens on the STATISTICAL
+    forecaster and no test ever moved the selector, so the second forecaster's
+    prose had not been read by any guard since it was built. A scan that
+    cannot reach a surface is not protecting it.
+
+    LAW 3 FORBIDS FIXING THE ROWS. The reasoning is what the forecaster said
+    and is never edited, so the repair is at RENDER time and this plants its
+    removal.
+    """
+    from gridiron import audit as _audit, db as _db, language as _language
+
+    conn = _db.connect()
+    try:
+        if _audit.llm_prose_faults(conn):
+            return Result(LAW_LLM_WORDS, "a code name in rendered LLM prose",
+                          "audit.llm_prose_faults", False,
+                          "the shipped LLM view already shows one; fix that "
+                          "before trusting this planting")
+
+        original = _language.humanise_reasoning
+        try:
+            # THE PLANT: the door stops substituting, exactly as it did before
+            # 2026-09-05.
+            _language.humanise_reasoning = lambda text, phrases: text
+            faults = _audit.llm_prose_faults(conn)
+        finally:
+            _language.humanise_reasoning = original
+    finally:
+        conn.close()
+
+    if not faults:
+        return Result(LAW_LLM_WORDS, "a code name in rendered LLM prose",
+                      "audit.llm_prose_faults", False,
+                      "NOT CAUGHT - the second forecaster's reasoning reaches "
+                      "a card with its internal identifiers intact, and the "
+                      "scan that exists for exactly this cannot see them")
+    return Result(LAW_LLM_WORDS, "a code name in rendered LLM prose",
+                  "audit.llm_prose_faults", True, faults[0])
+
+
+def plant_a_code_name_handed_to_the_model() -> Result:
+    """Put the code names back in the prompt, where they came from.
+
+    THE SOURCE OF THE 27 ROWS. A model quotes what it is given, so naming
+    factors by their code names in the prompt guarantees code names in the
+    prose. Humanising at render time repairs the old rows; this is what stops
+    new ones being made.
+    """
+    from gridiron.model import llm as _llm
+
+    rows = [{
+        "factor": "ufc_scheduled_rounds",
+        "why": "how many rounds the bout is scheduled for",
+        "value": 0.0, "present": True,
+        "rationale": "scaled so five reads as 1 and three as 0",
+    }]
+    shipped = _llm.build_prompt("does it go the distance", rows, [])
+    if "ufc_scheduled_rounds" in shipped:
+        return Result(LAW_LLM_WORDS, "a code name handed to the model",
+                      "llm.build_prompt uses the declared WHY phrase", False,
+                      "NOT CAUGHT - the shipped prompt still names factors by "
+                      "their code names, so the model will keep quoting them "
+                      "onto cards")
+    if "how many rounds the bout is scheduled for" not in shipped:
+        return Result(LAW_LLM_WORDS, "a code name handed to the model",
+                      "llm.build_prompt uses the declared WHY phrase", False,
+                      "NOT CAUGHT - the prompt names the factor neither way, "
+                      "so the model is reasoning about an unlabelled number")
+    return Result(LAW_LLM_WORDS, "a code name handed to the model",
+                  "llm.build_prompt uses the declared WHY phrase", True,
+                  "the prompt presents factors under their declared plain "
+                  "phrase, so there is no code name for the model to quote")
+
+
 LAW_REASON_ONCE = "NOTHING IS REASONED TWICE"
 
 
@@ -6351,6 +6437,8 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_a_code_name_in_rendered_llm_reasoning())
+    results.append(plant_a_code_name_handed_to_the_model())
     results.append(plant_a_rerun_that_reasons_the_written_half_again())
     results.append(plant_the_check_moved_back_after_the_call())
     results.append(plant_a_push_posted_before_it_is_recorded())

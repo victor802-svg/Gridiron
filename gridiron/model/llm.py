@@ -195,15 +195,32 @@ def _client():
     return anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
 
+def _plain(row: dict) -> str:
+    """A factor's plain name for the prompt, falling back to its code name.
+
+    THE MODEL QUOTES WHAT IT IS GIVEN. Naming factors by their code names put
+    `ufc_scheduled_rounds` and `mlb_bullpen_recent_load` into reasoning that a
+    reader sees on a card -- measured 2026-09-05 at 19 of 42 new UFC rows and 8
+    of 23 older MLB ones, about 45% either way. The plain-words law says no
+    internal identifier reaches the interface, and the LLM was walking it
+    straight through.
+
+    EVERY DECLARED FACTOR HAS A PHRASE. Measured the same day: 103 of 103, so
+    the fallback below is for a caller that hands over rows from somewhere
+    else, not for a gap in the registry.
+    """
+    return (row.get("why") or "").strip() or row["factor"]
+
+
 def build_prompt(question: str, factor_rows: list[dict], notes: list[str]) -> str:
     lines = [f"CLAIM: {question}", "", "MEASURED FACTORS:"]
     unmeasured = []
     for row in factor_rows:
         if not row.get("present", True):
-            unmeasured.append(row["factor"])
+            unmeasured.append(_plain(row))
             continue
         source = f" [source: {row['source']}]" if row.get("source") else ""
-        lines.append(f"- {row['factor']} = {row['value']:g}{source}")
+        lines.append(f"- {_plain(row)} = {row['value']:g}{source}")
         lines.append(f"    what it measures: {row['rationale']}")
     if unmeasured:
         lines.append("")

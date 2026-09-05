@@ -4454,3 +4454,65 @@ def check_nothing_is_reasoned_twice() -> None:
     if faults:
         raise LawViolation(
             "NOTHING IS REASONED TWICE:" + _NL2 + _NL2.join(faults))
+
+
+# NO CODE NAME REACHES A READER THROUGH THE SECOND FORECASTER (2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# THE PLAIN-WORDS LAW HAD A HOLE AND THE LLM WALKED THROUGH IT. The prompt used
+# to name factors by their code names, and the model quoted them back into
+# prose that appears on a card: measured 2026-09-05 at 19 of 42 new UFC rows
+# and 8 of 23 older MLB ones -- 27 of 65 stored rows, about 45%.
+#
+# IT WAS NEVER LOOKED AT. The rendered-page scan exists and runs, but Picks
+# opens on `PICKS_DEFAULT_FORECASTER = "statistical"` and no test ever moved
+# the selector, so the LLM's prose had not been read by any guard since the
+# forecaster was built.
+#
+# TWO REPAIRS, and this watches both. The prompt now uses plain names, so no
+# NEW row can carry one. Old rows are humanised AT RENDER TIME -- LAW 3 forbids
+# editing what a forecaster said -- through `language.humanise_reasoning`.
+
+def llm_prose_faults(conn) -> list[str]:
+    """Does any rendered LLM card carry an internal identifier?
+
+    Rendered through `views.week(..., forecaster='llm')`, which is the call the
+    page makes, so this reads what a reader would read.
+    """
+    from . import config, views
+
+    faults: list[str] = []
+    looked_at = 0
+    for sport in config.SPORTS:
+        try:
+            payload = views.week(conn, sport, forecaster="llm")
+        except Exception as exc:                                  # noqa: BLE001
+            faults.append(f"{sport}: the LLM view could not be rendered at "
+                          f"all ({type(exc).__name__}: {exc})")
+            continue
+        for card in payload.get("cards") or []:
+            if card.get("predictor") != "llm":
+                continue
+            looked_at += 1
+            for field in ("reasoning", "phrase", "chance_clause"):
+                hits = plain_words_violations(card.get(field) or "")
+                if hits:
+                    faults.append(
+                        f"{sport} {card.get('subject')}: the second "
+                        f"forecaster's {field} shows {hits[0]}")
+    if looked_at == 0 and not faults:
+        # NOT A PASS. A scan that saw nothing proves nothing, and this one
+        # went unwritten for weeks precisely because nobody looked.
+        faults.append(
+            "no LLM card was rendered on any slate, so this scan checked "
+            "nothing. It is reported rather than passed: the hole it exists "
+            "for was invisible for weeks because the view was never opened.")
+    return faults
+
+
+def check_no_code_names_in_llm_prose(conn) -> None:
+    """Raise if the second forecaster shows a reader an internal identifier."""
+    faults = llm_prose_faults(conn)
+    if faults:
+        raise LawViolation(
+            "NO CODE NAME REACHES A READER:" + _NL2 + _NL2.join(faults))

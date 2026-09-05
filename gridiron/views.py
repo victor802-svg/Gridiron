@@ -185,7 +185,13 @@ def _why_phrases() -> dict:
     if _WHY_CACHE is None:
         from .factors import registry
 
-        _WHY_CACHE = {f.name: f.why for f in registry.all_factors() if f.why}
+        # AND THE FORMS THE MODEL ACTUALLY WROTE (2026-09-05). Asked about
+        # `ufc_scheduled_rounds` it wrote "(scheduled_rounds = 0)", so the map
+        # carries the prefix-stripped alias too -- derived, and only where it
+        # is unambiguous. See `language.with_prefix_aliases`.
+        _WHY_CACHE = language.with_prefix_aliases(
+            {f.name: f.why for f in registry.all_factors() if f.why},
+            config.SPORTS)
     return _WHY_CACHE
 
 
@@ -709,7 +715,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "absent_factors": _absent_factors(payload),
                 "factor_coverage": payload.get("coverage"),
                 "notes": payload.get("notes") or [],
-                "reasoning": r["reasoning"],
+                # THROUGH THE ONE DOOR (2026-09-05). Stored reasoning is
+                # never edited -- LAW 3 -- so a row written while the prompt
+                # still used code names keeps `mlb_bullpen_recent_load` for
+                # ever, and the READER is shown the plain phrase instead.
+                "reasoning": language.humanise_reasoning(
+                    r["reasoning"], _why_phrases()),
                 "degraded": r["degraded"],
                 "outcome": r["outcome"],
                 "resolved_utc": r["resolved_utc"],
@@ -1831,7 +1842,10 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
             "opponent": r["away"] if r["subject"] == r["home"] else r["home"],
             "team_names": teams.names(conn, r["sport"]),
         }),
-        "reasoning": r["reasoning"],
+        # Same door as the slate. A second surface rendering raw is exactly
+        # what `check_no_code_names_in_llm_prose` exists to refuse.
+        "reasoning": language.humanise_reasoning(
+            r["reasoning"], _why_phrases()),
         "degraded": r["degraded"],
         "outcome": r["outcome"],
         "resolved_utc": r["resolved_utc"],

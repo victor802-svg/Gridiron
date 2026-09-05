@@ -2321,6 +2321,88 @@ def factor_what(rationale: str | None,
     return (text[:150].rstrip() + "...") if len(text) > 160 else text
 
 
+def with_prefix_aliases(phrases: dict[str, str],
+                        prefixes: tuple[str, ...] = ()) -> dict[str, str]:
+    """Add the shortened forms of each factor name that a model actually writes.
+
+    THE MODEL SHORTENS NAMES. Asked about `ufc_scheduled_rounds` it wrote
+    "(scheduled_rounds = 0)"; asked about `mlb_prop_mean_vs_line` it wrote
+    "mean_vs_line". An exact-match substitution sees neither, and both reach a
+    card as snake_case.
+
+    DERIVED FROM THE DECLARED NAMES, never guessed. Every suffix at an
+    underscore boundary is a candidate, and a candidate becomes an alias only
+    when all three hold:
+
+    * IT IS NOT ITSELF A DECLARED FACTOR. `nba_asked_line` yields `asked_line`,
+      which is a declared factor of its own, so no alias is made -- a reader
+      must never be shown basketball's phrase over football's factor.
+    * IT STILL LOOKS LIKE A CODE NAME. `mean_vs_line` does; `line` does not,
+      and mapping a bare English word would rewrite ordinary prose.
+    * EVERY DECLARED NAME THAT PRODUCES IT AGREES ON THE PHRASE. Three sports
+      declare a `prop_mean_vs_line` variant and all three read "where the line
+      sits against his recent average", so substituting is safe whichever was
+      meant. Where they disagreed, no alias would be made and the code name
+      would survive -- which is the honest outcome, because guessing which
+      sport's factor a shortened name meant is exactly the sort of quiet
+      wrongness this project spends its time preventing.
+
+    `prefixes` is accepted and unused beyond documentation of intent: the
+    suffix walk covers sport prefixes and every other leading segment without
+    needing to be told what they are.
+    """
+    owners: dict[str, set[str]] = {}
+    for name, phrase in phrases.items():
+        parts = name.split("_")
+        for i in range(1, len(parts) - 1):
+            alias = "_".join(parts[i:])
+            owners.setdefault(alias, set()).add((phrase or "").strip())
+
+    out = dict(phrases)
+    for alias, seen in owners.items():
+        if alias in phrases:
+            continue
+        if len(seen) != 1:
+            continue
+        phrase = next(iter(seen))
+        if phrase:
+            out[alias] = phrase
+    return out
+
+
+def humanise_reasoning(text: str | None, phrases: dict[str, str]) -> str | None:
+    """Swap any code name in stored reasoning for its plain phrase.
+
+    AT RENDER TIME, NEVER BY REWRITING. LAW 3 is append-only: a prediction's
+    reasoning is what the forecaster said and is not edited afterwards. So the
+    row keeps `mlb_bullpen_recent_load` for ever and the READER is shown "how
+    hard the bullpens have been worked lately".
+
+    WHY THERE ARE ROWS TO REPAIR AT ALL. The prompt used to name factors by
+    their code names, and the model quoted them back: measured 2026-09-05 at
+    19 of 42 new UFC rows and 8 of 23 older MLB ones -- about 45% either way,
+    every one of them a snake_case identifier on a card. The prompt now uses
+    plain names, so no NEW row can carry one; this is for the old ones.
+
+    LONGEST NAME FIRST, and it matters: `mlb_prop_mean_vs_line` contains
+    `prop_mean_vs_line`, and replacing the short one first would leave `mlb_`
+    stranded in front of a phrase.
+
+    THE ONE DOOR. Every surface that shows stored reasoning calls this, so a
+    new surface cannot quietly render raw. `audit.check_no_code_names_in_llm_prose`
+    is what makes that true rather than hoped for.
+    """
+    if not text:
+        return text
+    out = text
+    for name in sorted(phrases, key=len, reverse=True):
+        phrase = (phrases.get(name) or "").strip()
+        if not phrase or name not in out:
+            continue
+        out = out.replace(name, phrase)
+    return out
+
+
 def tier_chip_label(tier: str | None, proven: bool) -> str:
     """"STRONG" once it is proven, "STRONG · unproven" until then.
 

@@ -163,6 +163,11 @@ def describe(fv: FeatureVector, coefficients: dict[str, float] | None = None) ->
     for name, value in fv.values.items():
         entry = {
             "factor": name,
+            # THE PLAIN NAME TRAVELS WITH THE CODE NAME (2026-09-05). Every
+            # declared factor has a `why` phrase -- measured, 103 of 103 -- so
+            # anything rendering a factor to a person can use one. The code
+            # name stays for the things that key on it.
+            "why": registry.REGISTRY[name].why,
             "value": round(value, 4),
             "present": True,
             "rationale": registry.REGISTRY[name].rationale,
@@ -180,6 +185,7 @@ def describe(fv: FeatureVector, coefficients: dict[str, float] | None = None) ->
     for name in fv.absent:
         out.append({
             "factor": name,
+            "why": registry.REGISTRY[name].why,
             "value": None,
             "present": False,
             "contribution": None,

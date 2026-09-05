@@ -554,7 +554,44 @@ def _build_world(conn) -> None:
     # rail, the pick sentence and the tier chip only exist before a result:
     # a settled card shows its verdict instead, per the approved mockup.
     run.run_week(conn, 2025, 18, include_props=True, use_llm=False)
+    _seed_llm_row_with_a_code_name(conn)
     conn.commit()
+
+
+def _seed_llm_row_with_a_code_name(conn) -> None:
+    """One LLM forecast whose reasoning quotes a factor by its CODE NAME.
+
+    THE DEFECT, PUT INTO THE FIXTURE ON PURPOSE (2026-09-05). The prompt used
+    to name factors by their code names and the model quoted them back: 27 of
+    65 stored rows carried `ufc_scheduled_rounds`, `mlb_bullpen_recent_load`
+    or `mean_vs_line` onto a card. LAW 3 forbids editing what a forecaster
+    said, so the repair is at RENDER time -- and a render-time repair can only
+    be tested against a row that needs it.
+
+    WITHOUT THIS THE BROWSER SUITE HAS NOTHING TO LOOK AT. Its league is seeded
+    with `use_llm=False`, so the second forecaster's view was empty in every
+    test -- which is the other half of why this went unnoticed for weeks: the
+    scan could not have caught it even if somebody had pointed it at the view.
+    """
+    row = conn.execute(
+        "SELECT game_id, market_type, subject, line_asked, factor_set_version"
+        "  FROM predictions WHERE predictor = 'statistical'"
+        "   AND market_type = 'spread' ORDER BY id DESC LIMIT 1").fetchone()
+    if row is None:
+        return
+    conn.execute(
+        "INSERT INTO predictions (created_utc, game_id, market_type, subject,"
+        " line_asked, model_prob, model_side, predictor, factor_set_version,"
+        " factors_json, reasoning) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (db.utcnow(), row["game_id"], row["market_type"], row["subject"],
+         # STRONG on purpose: Picks opens filtered to STRONG, so a SOLID row
+         # would be hidden by the default and the view the render test exists
+         # to look at would be empty again.
+         row["line_asked"], 0.78, "cover", "llm", row["factor_set_version"],
+         '{"prob_yes": 0.61}',
+         "The home side is the stronger team here: srs_diff is well positive "
+         "and recent_form_diff agrees with it, while travel_kmiles is small "
+         "enough not to matter."))
 
 
 def _serve(db_file):

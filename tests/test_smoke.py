@@ -1374,3 +1374,61 @@ def test_the_factor_search_filters_by_plain_name(page):
     page.wait_for_function(
         "(n) => document.querySelectorAll('#factors-cards .fcard').length === n",
         arg=before, timeout=5000)
+
+
+def test_no_internal_vocabulary_reaches_the_reader_on_the_llm_view(page):
+    """THE SURFACE NOBODY HAD LOOKED AT (2026-09-05).
+
+    The scan above runs on `#/week`, and Picks opens on
+    `PICKS_DEFAULT_FORECASTER = "statistical"`. No test ever moved the
+    selector, so the second forecaster's prose had not been read by any guard
+    since the forecaster was built -- and it was carrying internal identifiers
+    on 27 of 65 stored rows, quoted out of a prompt that used to name factors
+    by their code names.
+
+    A SCAN THAT CANNOT REACH A SURFACE IS NOT PROTECTING IT, which is the whole
+    lesson, so this clicks the control a reader clicks rather than fetching the
+    payload directly.
+    """
+    # THE FIXTURE CARRIES AN LLM ROW WHOSE REASONING QUOTES CODE NAMES, put
+    # there on purpose: a render-time repair can only be tested against a row
+    # that needs it. See `_seed_llm_row_with_a_code_name` in conftest.
+    from gridiron import audit
+
+    page.evaluate("location.hash = '#/week'")
+    page.wait_for_selector("#week-forecaster-seg [data-forecaster='llm']",
+                           timeout=10000)
+
+    with page.expect_response(lambda r: "forecaster=llm" in r.url):
+        page.click("#week-forecaster-seg [data-forecaster='llm']")
+    page.wait_for_function(
+        """() => document.querySelectorAll('#week-cards .card').length > 0
+                 || !document.getElementById('week-hero').hidden""",
+        timeout=10000)
+
+    # Open every card, because the reasoning lives in the body.
+    page.evaluate("""() => {
+        document.querySelectorAll('#week-cards .card-head')
+                .forEach(h => h.click());
+    }""")
+    visible = page.evaluate("""() => {
+        const clone = document.body.cloneNode(true);
+        clone.querySelectorAll('.factor-code, td.wide, .code-literal')
+             .forEach(e => e.remove());
+        return clone.innerText;
+    }""")
+    hits = audit.plain_words_violations(visible)
+    assert not hits, f"the LLM view shows internal vocabulary: {hits[:6]}"
+
+    # AND IT LOOKED AT SOMETHING. A scan over an empty page passes and proves
+    # nothing, which is the failure this whole test exists to correct -- the
+    # view went unread for weeks and every guard reported green. The fixture
+    # row quotes `srs_diff`; the page must show the PHRASE that replaces it.
+    from gridiron.factors import registry
+
+    phrase = registry.REGISTRY["srs_diff"].why
+    assert phrase and phrase in visible, (
+        "the LLM view rendered without the seeded reasoning, so this scan "
+        "checked an empty page. The fixture row is seeded by "
+        "`_seed_llm_row_with_a_code_name`; if the slate or the tier default "
+        "moved, point it at a card that renders.")
