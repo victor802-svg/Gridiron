@@ -55,11 +55,15 @@ those two. See `gate: 28 minutes to under 7` and MENTOR section 3.
 Still true, and now cheap: **run the whole suite in one process before claiming
 it is green.**
 
-### 2026-09-01 — `docs/mockup/gridiron_desk.html` is not in the repository
+### ~~2026-09-01 — `docs/mockup/gridiron_desk.html` is not in the repository~~ — CLOSED 2026-09-05
 
 The desk brief (D1–D5) requires it and stops at its first act without it. A
 rendered image was supplied in chat, which shows the layout but not the
 measurements the brief cites.
+
+**CLOSED 2026-09-05, overtaken.** The file is in `docs/mockup/` now, and the
+desk it described was deleted on 2026-09-04 (cards UI, R1): one layout at
+every width.
 
 ### 2026-12-01 — the bowls decision
 
@@ -206,7 +210,7 @@ The operator can check that by running `dist\Gridiron\Gridiron.exe` on a
 machine where the policy permits it, or by signing the binary. Until then the
 phase is PARTIAL, and it should not be reported otherwise.
 
-## The header does not fit between 640px and 900px
+## The header does not fit between 640px and 900px — narrower band, 2026-09-05
 
 Measured 2026-09-01 while adding the tab records (E2/R1), and **pre-existing**:
 before that change the header needed 941px of content, and it overflowed the
@@ -230,7 +234,11 @@ exactly here, and a page that scrolls sideways has lost something off the edge.
 Do it with the nav's existing "more" affordance rather than another font-size
 reduction; the tabs are already at 8px padding and 10px record type.
 
-## The slate clock's "in progress" state cannot be reached yet
+**Re-measured 2026-09-05 by the audit, against the live record:** 640, 800 and
+900 are clean; **700 still overflows by 80px.** The band has narrowed, not
+closed. Still open.
+
+## ~~The slate clock's "in progress" state cannot be reached yet~~ — OVERTAKEN 2026-09-05
 
 Found 2026-09-01 while rendering E3's three countdown states. `games.status`
 carries a CHECK constraint permitting only `'scheduled'` and `'final'`, so a
@@ -243,7 +251,10 @@ poll, which is the thing that would set it. **L1 must widen that constraint**,
 and the seeded render of the middle state belongs in L1's QA rather than being
 left as a gap here. Noted so the phase that needs it finds it.
 
-## The phone shows nothing live
+**OVERTAKEN.** `games.status` admits `'in'` (verified 2026-09-05), and the desk
+whose clock this described was deleted on 2026-09-04.
+
+## ~~The phone shows nothing live~~ — OVERTAKEN 2026-09-05
 
 Found 2026-09-01 in L4's 390px render. L1–L3 gave the desk three game states —
 upcoming, live, final — with scores, clocks and verdict chips on the tiles and
@@ -266,6 +277,9 @@ building anything: an afternoon, not a phase.
 Decide whether the phone follows a live slate. If it should, the row's corner
 is where it goes.
 
+**OVERTAKEN 2026-09-04.** The compact rows and the desk were both deleted; one
+card layout renders at every width and carries the same states everywhere.
+
 ## Live scores for basketball and football need an identity bridge
 
 2026-09-01, from L1. The live poll follows college football and baseball
@@ -286,6 +300,9 @@ and nothing downstream notices. That is a phase, not a line.
 
 Until then the schedule panel names the two sports and says why, rather than
 showing them with blank figures.
+
+**Still open 2026-09-05, and one wider:** the fights are not followed either —
+`live.GAME_HOURS` and `live.ESPN_LEAGUE` have no `ufc` entry (audit, B4).
 
 ## Drift arrows wait for their snapshots
 
@@ -319,7 +336,7 @@ footnote is a 700MB copy taken beforehand. Two traps, both now written into
 foreign_key_check` before it commits to anything.** The check is what turns
 "it looked fine" into evidence.
 
-## The phone has not received a push yet
+## ~~The phone has not received a push yet~~ — CLOSED 2026-09-05
 
 2026-09-02, from GRIDIRON_12 phase O5. The ntfy channel is built and the POST
 is accepted — `HTTP 200` from ntfy.sh, recorded in `notifications` — but
@@ -345,19 +362,28 @@ read the messages — counts and team names only, but still.
 python tools/make_token.py --ntfy --rotate
 ```
 
+**CLOSED 2026-09-05.** The topic was rotated by the operator, the new one is
+read from `.env`, and one test push was sent through `notify.send` and
+accepted (`HTTP 200`, recorded `sent`) so the phone could re-subscribe.
+Receipt on the phone is the operator's to confirm; nothing here can.
+
 ## 2026-09-02 — GRIDIRON_16
 
-- **NFL week 1 holds two prediction sets.** `predict:nfl` ran twice on
-  2026-08-29 (05:55Z and 07:34Z) and wrote a full second set: 104 written,
-  78 standing, 26 superseded. Both rows count in calibration, so week 1
-  counts 26 questions twice. LAW 3 forbids deleting either. Needs a ruling
-  on whether a duplicate run should be refused or flagged at write time.
+- ~~**NFL week 1 holds two prediction sets.**~~ **OVERTAKEN 2026-09-03.** The
+  standing-forecast rule (latest row before start, per question and
+  forecaster) grades one row per question, and `predict.already_written`
+  refuses a rerun at write time. The audit of 2026-09-05 confirmed no
+  superseded row enters a scorecard, and made the version table and the
+  pace line use the same clause (they had not).
 - **`dumbbell()` in `app.js` has no call sites.** Exported for tests only.
   Pre-existing; left alone under GRIDIRON_16 R3 because it is not on Picks.
-- **Rotate the ntfy topic and the Anthropic API key.** Both appeared in a
-  session transcript.
-- **The ntfy push is ready but unreceived.** The phone app is not set up.
-  Carried from BRIEF A phase O5 item 3, which STEP 0 stopped.
+  Still there 2026-09-05 (`app.js:688`); nothing scans `app.js` for orphans.
+- ~~**Rotate the ntfy topic and the Anthropic API key.**~~ **CLOSED 2026-09-05.**
+  Both rotated by the operator and verified: one probe call through the
+  budget ledger returned 200; git history, docs and tracked files hold
+  neither value (audit, A7).
+- ~~**The ntfy push is ready but unreceived.**~~ **CLOSED 2026-09-05**, see the
+  push item above.
 
 ## 2026-09-02 — GRIDIRON_13
 
@@ -366,6 +392,10 @@ python tools/make_token.py --ntfy --rotate
   `predict:cfb` task is installed on this machine at all. Both facts are
   stated in words on Settings > When it runs. Which one is right is an
   operator decision, not a bug to be quietly reconciled.
+  **2026-09-05:** Predict-CFB is installed (09:00). The machine holds 11 of
+  the app's tasks; Capture, Recalibrate and both UFC passes are not
+  registered, and re-running the installer is the operator's act. See
+  `docs/AUDIT-2026-09-05.md`.
 - **The digest's own page is gone** (GRIDIRON_13 P5). Its data still feeds the
   greeting, and a particular day is a click on the Results calendar. If a
   day-by-day narrative is wanted back, it is a new page rather than a
@@ -439,6 +469,8 @@ python tools/make_token.py --ntfy --rotate
   pre-game captures. A `source` column separating a live capture from a
   backfill would keep the measurable rows findable as they accumulate.
 - **CFB's expected margin is measurably wrong, and now has a number on it.**
+  (2026-09-05: measured again in Session E, the fitted slope was recorded
+  and NOT adopted — `DECISIONS_MADE.md`, 2026-09-04. Still an operator ruling.)
   `cfb_expected_margin` uses slope 1.0 and intercept 9.79; least squares over
   1,625 completed games says **+4.848 + 0.9351 x rating_diff**. The intercept is
   nearly double what the data supports, which is the documented 0.371 spread
@@ -456,10 +488,12 @@ python tools/make_token.py --ntfy --rotate
   of the three sports and worth re-measuring once the NBA record has settled
   rows. The residual still tracks the rating slightly through the ladder's
   uneven spacing at the extremes.
-- **The reasoning pass stopped writing on 2026-09-02 and the key is BLOCKED.**
-  23 rows, all in three minutes that morning; every run since records
-  `llm_unavailable:bad_api_key`. The front page now says so (2026-09-03); the
-  key itself lives in `.env` and needs the operator.
+- ~~**The reasoning pass stopped writing on 2026-09-02 and the key is BLOCKED.**~~
+  **CLOSED 2026-09-05.** Key rotated and verified; the pass wrote 42 UFC rows
+  that day. The slates that were answered while the key was blocked keep
+  their statistical-only halves for ever under the answered-once rule:
+  baseball days 160 and 161 and college football 2026-09-04. Football week
+  1 has not started, so its final pass can still write the second half.
 - ~~**`injuries` holds nothing for 2026.**~~ **WITHDRAWN the same day, and it
   was my error.** I reported this as a defect while building the capture pass.
   It is the correct state: the nflverse 2026 injuries release 404s because the
@@ -467,11 +501,9 @@ python tools/make_token.py --ntfy --rotate
   loader handles that properly, returning zero and warning only for seasons
   that have completed games. The 2025 file fetches fine at 695KB. Nothing is
   wrong here, and the capture pass will have rows to stamp from week 1.
-- **UFC is loaded but not declared.** 2,482 bouts, 954 fighters and a fitted
-  Elo (K=80) are stored; `ufc` is deliberately absent from `config.SPORTS`
-  because declaring it touches ~8 config tables, the adapter contract, factors,
-  questions, resolve, the tabs, the scheduler and 12 test files. U3-U6 are the
-  next session's work.
+- ~~**UFC is loaded but not declared.**~~ **OVERTAKEN 2026-09-03**: declared,
+  84 forecasts written. Its two scheduled passes were registered in the
+  installer only on 2026-09-05 (audit, A4).
 - **ESPN carries an OPENING moneyline for UFC.** DIAGNOSIS records H1a as NOT
   TESTABLE because no free source publishes opening lines for the NFL seasons we
   hold. In UFC it is testable, on 52 cards a year. Nothing acts on this yet.
@@ -493,3 +525,25 @@ python tools/make_token.py --ntfy --rotate
   (2026-08-30), found while rendering the count markets at 390px on
   2026-09-03. The fix is to let the row grow, as the desk tiles do, and to
   widen the truncation scan to every breakpoint the suite already visits.
+
+## 2026-09-05 — the audit
+
+Everything the audit found is ranked in `docs/AUDIT-2026-09-05.md`, with the
+fixes it made and the decisions it left. The decisions, in one line each:
+
+- **The installer has not been re-run** since Capture was added; Recalibrate,
+  Predict-UFC and Final-UFC were added to it on 2026-09-05. Running
+  `tools/schedule_install.ps1` is the operator's act.
+- **Tasks run in a console as the logged-on user** and two have died with a
+  control-C exit (Refresh 2026-09-05 03:00Z, Predict-MLB). Whether they should
+  run hidden is a machine decision.
+- **College football and UFC file a game under its UTC day**, so a late
+  Saturday kickoff is a Sunday slate. The slate key is stamped on every
+  prediction; changing the convention is a ruling.
+- **No stored fingerprint of the record exists.** The audit recorded one
+  (`b15a9f6f…`, 765 rows); a mechanism that keeps one is a design.
+- **Settings > Health cannot show Gridiron-CatchUp**, the one task that has
+  never fired, because it is not a `TaskSpec`.
+- **42 UFC reasoning rows quote encoded numbers** ("a combined finish rate of
+  0.3333") — written before the factors-in-words fix, append-only, and
+  answered once.
