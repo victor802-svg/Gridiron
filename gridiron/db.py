@@ -483,6 +483,55 @@ def db_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
 
 
+def widen_task_run_results(conn: sqlite3.Connection) -> bool:
+    """Admit the 'running' result on a database created before 2026-09-05.
+
+    Same reason and same shape as `widen_notification_states`: SQLite keeps
+    the CHECK it was created with, so an older record would refuse the row
+    `run_task` now writes first -- and refuse it before the task ran, which
+    would stop every scheduled task on the machine at once.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='task_runs'"
+    ).fetchone()
+    if row is None or "'running'" in (row[0] or ""):
+        return False
+
+    before = conn.execute("SELECT COUNT(*) FROM task_runs").fetchone()[0]
+    conn.executescript("""
+        PRAGMA foreign_keys=OFF;
+        BEGIN;
+        CREATE TABLE task_runs_wide (
+            id            INTEGER PRIMARY KEY,
+            task          TEXT    NOT NULL,
+            started_utc   TEXT    NOT NULL,
+            finished_utc  TEXT,
+            result        TEXT    NOT NULL
+                          CHECK (result IN ('running', 'ok', 'noop', 'missed', 'failed')),
+            detail        TEXT,
+            payload_json  TEXT
+        );
+        INSERT INTO task_runs_wide
+            SELECT id, task, started_utc, finished_utc, result, detail, payload_json
+              FROM task_runs;
+        COMMIT;
+    """)
+    after = conn.execute("SELECT COUNT(*) FROM task_runs_wide").fetchone()[0]
+    if after != before:
+        conn.execute("DROP TABLE task_runs_wide")
+        conn.commit()
+        raise MigrationRefused(
+            f"task_runs: copied {after} of {before} rows; the original is untouched")
+    conn.executescript("""
+        BEGIN;
+        DROP TABLE task_runs;
+        ALTER TABLE task_runs_wide RENAME TO task_runs;
+        COMMIT;
+        PRAGMA foreign_keys=ON;
+    """)
+    return True
+
+
 def init(conn: sqlite3.Connection) -> None:
     """Create the schema. Idempotent — every object is IF NOT EXISTS."""
     _migrate(conn)
@@ -494,6 +543,9 @@ def init(conn: sqlite3.Connection) -> None:
     # CHECK: a database made before 'sending' existed would refuse every row
     # `notify.send` writes.
     widen_notification_states(conn)
+    # AND THE RUN LEDGER'S RESULTS (audit 2026-09-05): a 'running' row is
+    # written before a task does anything, and an older CHECK would refuse it.
+    widen_task_run_results(conn)
     widening = _widen_market_type(conn) if _needs_market_type_widening(conn) else None
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     if widening is not None:

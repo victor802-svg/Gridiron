@@ -4599,6 +4599,65 @@ def horizon_unit_faults(source: str | None = None) -> list[str]:
     return faults
 
 
+def task_run_order_faults(source: str | None = None) -> list[str]:
+    """Is the run recorded before the task runs, and finished after?
+
+    READ FROM THE SYNTAX TREE of `tasks.run_task`: the INSERT into task_runs
+    must sit before the first `_run_*` call, and an UPDATE must sit after.
+    Written at the end -- the shape until 2026-09-05 -- a run that is killed
+    leaves no row, and the Health panel shows the last run that finished as
+    though nothing had happened since.
+    """
+    if source is None:
+        source = (config.PACKAGE_ROOT / "tasks.py").read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return [f"tasks.py does not parse: {exc}"]
+    fn = next((n for n in ast.walk(tree)
+               if isinstance(n, ast.FunctionDef) and n.name == "run_task"), None)
+    if fn is None:
+        return ["`tasks.run_task` is gone, so this scan cannot see what it "
+                "was built to see."]
+    insert_line = update_line = run_line = None
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+        if name == "execute" and node.args and isinstance(node.args[0], ast.Constant):
+            text = str(node.args[0].value).lstrip().upper()
+            # An explicit boundary: `task_runs_later` is not `task_runs`.
+            if re.match(r"INSERT INTO TASK_RUNS[\s(]", text) and insert_line is None:
+                insert_line = node.lineno
+            if re.match(r"UPDATE TASK_RUNS[\s(]", text) and update_line is None:
+                update_line = node.lineno
+        elif isinstance(name, str) and name.startswith("_run_") and run_line is None:
+            run_line = node.lineno
+    faults = []
+    if run_line is None:
+        return ["`run_task` dispatches to no `_run_*` function; nothing to order."]
+    if insert_line is None:
+        faults.append("`run_task` never inserts a task_runs row before the "
+                      "task runs, so a run that is killed leaves no trace.")
+    elif insert_line > run_line:
+        faults.append(
+            f"the task_runs row is written at line {insert_line}, after the "
+            f"task runs at line {run_line}. A run killed in between is a run "
+            f"the Health panel never hears about.")
+    if update_line is None or (run_line and update_line < run_line):
+        faults.append("`run_task` does not finish its row after the task "
+                      "runs, so every run reads as still running.")
+    return faults
+
+
+def check_a_run_is_recorded_before_it_runs() -> None:
+    """Raise if a task could die without leaving a row."""
+    faults = task_run_order_faults()
+    if faults:
+        raise LawViolation(
+            "THE RECORD PRECEDES THE RUN:" + _NL2 + _NL2.join(faults))
+
+
 def check_the_horizon_counts_in_one_unit() -> None:
     """Raise if the outlook's rate and multiplier count different things."""
     faults = horizon_unit_faults()

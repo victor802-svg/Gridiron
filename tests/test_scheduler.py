@@ -279,3 +279,83 @@ def test_every_task_is_installable_and_worded():
     for task, suffix in scheduler.OS_TASK_NAMES.items():
         assert task in tasks.TASKS or task == "catch-up", (
             f"{suffix} is named on the scheduler and is not a task")
+
+
+
+# --- the record precedes the run (audit 2026-09-05) ---------------------------
+
+def test_a_killed_run_leaves_a_row_with_no_ending(league, monkeypatch):
+    """Gridiron-Refresh died at 03:00Z on 2026-09-05 and the ledger had no
+    row. A KeyboardInterrupt is what a control-C exit looks like from here."""
+    def killed(conn):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(tasks, "_run_refresh", killed)
+    with pytest.raises(KeyboardInterrupt):
+        tasks.run_task(league, "refresh", use_llm=False)
+    row = league.execute(
+        "SELECT * FROM task_runs WHERE task = 'refresh' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert row["result"] == "running"
+    assert row["finished_utc"] is None
+
+
+def test_a_run_with_no_ending_is_said_so_on_the_panel(league, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    def killed(conn):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(tasks, "_run_refresh", killed)
+    with pytest.raises(KeyboardInterrupt):
+        tasks.run_task(league, "refresh", use_llm=False)
+    stale = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    league.execute("UPDATE task_runs SET started_utc = ? WHERE result = 'running'", (stale,))
+    league.commit()
+    entry = next(t for t in tasks.status(league)["tasks"] if t["task"] == "refresh")
+    assert entry["unfinished"] is True
+    assert "never recorded an ending" in entry["warning"]
+
+
+def test_a_finished_run_finishes_its_own_row(league):
+    out = tasks.run_task(league, "resolve", use_llm=False)
+    rows = league.execute(
+        "SELECT result, finished_utc FROM task_runs WHERE task = 'resolve'"
+    ).fetchall()
+    assert len(rows) == 1, "a run must be one row, started then finished"
+    assert rows[0]["result"] == out["result"] and rows[0]["finished_utc"]
+
+
+def test_an_older_ledger_is_widened_to_admit_running(tmp_path):
+    conn = db.open_db(tmp_path / "old.db")
+    try:
+        conn.executescript(
+            "DROP TABLE task_runs;"
+            "CREATE TABLE task_runs ("
+            " id INTEGER PRIMARY KEY, task TEXT NOT NULL, started_utc TEXT NOT NULL,"
+            " finished_utc TEXT, result TEXT NOT NULL"
+            " CHECK (result IN ('ok', 'noop', 'missed', 'failed')),"
+            " detail TEXT, payload_json TEXT);")
+        conn.execute(
+            "INSERT INTO task_runs (task, started_utc, finished_utc, result)"
+            " VALUES ('refresh','2026-01-01T00:00:00Z','2026-01-01T00:01:00Z','ok')")
+        conn.commit()
+        assert db.widen_task_run_results(conn) is True
+        ddl = conn.execute("SELECT sql FROM sqlite_master WHERE name='task_runs'").fetchone()[0]
+        assert "'running'" in ddl
+        assert conn.execute("SELECT COUNT(*) FROM task_runs").fetchone()[0] == 1
+        assert db.widen_task_run_results(conn) is False
+    finally:
+        conn.close()
+
+
+def test_the_guard_sees_a_run_recorded_only_when_it_ends():
+    from pathlib import Path
+
+    from gridiron import audit
+
+    source = (Path(config.PACKAGE_ROOT) / "tasks.py").read_text(encoding="utf-8")
+    assert audit.task_run_order_faults(source) == []
+    late = source.replace("INSERT INTO task_runs (task, started_utc, result, detail)",
+                          "INSERT INTO task_runs_later (task, started_utc, result, detail)", 1)
+    assert late != source
+    faults = audit.task_run_order_faults(late)
+    assert faults and "before the task runs" in faults[0]

@@ -2648,6 +2648,13 @@ def tile_line(item: dict) -> str:
             f"{_number(line)} {humanise(market)}").strip()
 
 
+def unfinished_run_line(age_hours: float) -> str:
+    """A run that started and never said how it ended, in words."""
+    return (f"started {age_hours:.0f}h ago and never recorded an ending. The "
+            "process was killed, or the machine slept, before it could say "
+            "what happened; whatever it was doing may be half done.")
+
+
 def counted(n: int, noun: str, plural: str | None = None) -> str:
     """"1 prediction", "41 predictions". Never "prediction(s)".
 

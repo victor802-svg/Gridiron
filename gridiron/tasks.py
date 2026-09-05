@@ -40,6 +40,10 @@ class TaskSpec:
     silent_after_hours: float
 
 
+#: The installer gives every task a two-hour execution limit; a 'running'
+#: row older than that is a run that never recorded an ending.
+RUN_CEILING_HOURS = 2.0
+
 TASKS: dict[str, TaskSpec] = {
     "refresh": TaskSpec(
         "refresh",
@@ -181,6 +185,20 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
     if task.startswith("predict:") or task.startswith("final:"):
         _record_missed_slates(conn, task.split(":", 1)[1])
 
+    # THE ROW EXISTS BEFORE THE WORK DOES (audit 2026-09-05). Gridiron-Refresh
+    # was killed at 03:00Z on 2026-09-05 with a control-C exit and left no row
+    # at all, so the Health panel showed the last run that finished and the
+    # resolve that followed read a table nobody had refreshed. A run that
+    # dies now dies as a 'running' row with no ending, which the panel can
+    # see. The same ordering as `notify.send`: intent recorded, then the act.
+    cursor = conn.execute(
+        "INSERT INTO task_runs (task, started_utc, result, detail)"
+        " VALUES (?,?,'running','started; no ending recorded yet')",
+        (task, started),
+    )
+    row_id = cursor.lastrowid
+    conn.commit()
+
     try:
         if task == "refresh":
             result, detail, payload = _run_refresh(conn)
@@ -212,9 +230,9 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
             pass
 
     conn.execute(
-        "INSERT INTO task_runs (task, started_utc, finished_utc, result, detail,"
-        " payload_json) VALUES (?,?,?,?,?,?)",
-        (task, started, db.utcnow(), result, detail, json.dumps(payload)),
+        "UPDATE task_runs SET finished_utc = ?, result = ?, detail = ?,"
+        " payload_json = ? WHERE id = ?",
+        (db.utcnow(), result, detail, json.dumps(payload), row_id),
     )
     conn.commit()
     return {"task": task, "result": result, "detail": detail, **payload}
@@ -895,6 +913,13 @@ def status(conn: sqlite3.Connection) -> dict:
                     f"has not run for {age:.0f}h, past the {spec.silent_after_hours:.0f}h "
                     "mark. The record is not being kept up to date."
                 )
+            # A ROW WITH NO ENDING. Past the scheduler's own two-hour limit
+            # on a task, a 'running' row is a run that died -- killed, or the
+            # machine slept -- and the panel says so rather than showing the
+            # last good ending as if nothing had happened since.
+            if last["result"] == "running" and age > RUN_CEILING_HOURS:
+                entry["unfinished"] = True
+                entry["warning"] = language.unfinished_run_line(age)
         out.append(entry)
 
     from . import views

@@ -6464,6 +6464,56 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
+LAW_RUN_RECORD = "THE RECORD PRECEDES THE RUN"
+
+
+def plant_a_run_recorded_only_when_it_ends() -> Result:
+    """Move the task_runs row back to the end of `run_task`.
+
+    THE SHIPPED SHAPE UNTIL 2026-09-05, and it hid a real event: the OS
+    killed Gridiron-Refresh at 03:00Z that morning (exit 0xC000013A) and the
+    ledger held no row, so the Health panel showed the previous refresh as
+    the latest and Resolve ran twenty minutes later against a table nobody
+    had refreshed. The same class as a push posted before it is recorded.
+    """
+    from gridiron import audit as _audit
+    source = (config.PACKAGE_ROOT / "tasks.py").read_text(encoding="utf-8")
+    if _audit.task_run_order_faults(source):
+        return Result(LAW_RUN_RECORD, "a run recorded only when it ends",
+                      "audit.task_run_order_faults", False,
+                      "the shipped run_task already records late; fix that "
+                      "before trusting this planting")
+    nl = chr(10)
+    first = nl.join([
+        "    cursor = conn.execute(",
+        '        "INSERT INTO task_runs (task, started_utc, result, detail)"',
+        "        \" VALUES (?,?,'running','started; no ending recorded yet')\",",
+        "        (task, started),",
+        "    )",
+        "    row_id = cursor.lastrowid",
+        "    conn.commit()",
+    ])
+    if first not in source:
+        return Result(LAW_RUN_RECORD, "a run recorded only when it ends",
+                      "audit.task_run_order_faults", False,
+                      "run_task is no longer written the way this planting "
+                      "expects; re-point it")
+    broken = source.replace(first, "    row_id = None", 1)
+    broken = broken.replace(
+        '"UPDATE task_runs SET finished_utc = ?, result = ?, detail = ?,"',
+        '"INSERT INTO task_runs (finished_utc, result, detail, payload_json,"'
+        ' " id) VALUES (?,?,?,?,?) --"', 1)
+    faults = _audit.task_run_order_faults(broken)
+    if not faults:
+        return Result(LAW_RUN_RECORD, "a run recorded only when it ends",
+                      "audit.task_run_order_faults", False,
+                      "NOT CAUGHT - a task that is killed leaves no row, and "
+                      "the panel shows the last run that finished as if "
+                      "nothing had happened since")
+    return Result(LAW_RUN_RECORD, "a run recorded only when it ends",
+                  "audit.task_run_order_faults", True, faults[0])
+
+
 LAW_ONE_CLAUSE = "EVERY COUNT OF THE RECORD USES THE STANDING CLAUSE"
 
 
@@ -6725,6 +6775,7 @@ def main() -> int:
     results.append(plant_a_comment_naming_the_forbidden_thing())
     results.append(plant_a_horizon_that_counts_days_for_a_weekly_sport())
     results.append(plant_a_superseded_row_counted_as_settled())
+    results.append(plant_a_run_recorded_only_when_it_ends())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

@@ -491,8 +491,12 @@ CREATE TABLE IF NOT EXISTS task_runs (
     task          TEXT    NOT NULL,
     started_utc   TEXT    NOT NULL,
     finished_utc  TEXT,
+    -- 'running' is the row written BEFORE the task does anything (audit
+    -- 2026-09-05): a run killed mid-way used to leave no row at all, and the
+    -- Health panel showed the last run that finished as if nothing had
+    -- happened since. The same shape as a notification's 'sending'.
     result        TEXT    NOT NULL
-                  CHECK (result IN ('ok', 'noop', 'missed', 'failed')),
+                  CHECK (result IN ('running', 'ok', 'noop', 'missed', 'failed')),
     detail        TEXT,
     payload_json  TEXT
 );

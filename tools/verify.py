@@ -239,6 +239,7 @@ def step_2_guards() -> bool:
         # ENCODED FACTORS GO TO THE MODEL IN WORDS (2026-09-05).
         ("an indicator is handed over in words", audit.check_indicators_are_words),
         ("the outlook counts in one unit", audit.check_the_horizon_counts_in_one_unit),
+        ("the record precedes the run", audit.check_a_run_is_recorded_before_it_runs),
         ("no confidence floor on game markets",
          audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),
