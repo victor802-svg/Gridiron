@@ -1339,3 +1339,46 @@ def test_law_five_still_forbids_everything_it_forbade():
                  "recommend_bet", "sportsbook", "roi"):
         assert word in audit.BETTING_IDENTIFIERS
     audit.check_not_a_betting_tool()          # must not raise
+
+
+# --- A SCANNER READS CODE, NOT COMMENTS (audit of 2026-09-05) ---------------
+
+def _web(name: str) -> str:
+    return (config.PACKAGE_ROOT / "web" / name).read_text(encoding="utf-8")
+
+
+def test_a_comment_naming_the_forbidden_thing_does_not_fire():
+    """Eight raw-text scanners fired on prose before 2026-09-05. A comment
+    recording a removal must be able to outlive the removal."""
+    css, js, html = _web("style.css"), _web("app.js"), _web("index.html")
+    sel = audit.FRAME_SELECTORS[0]
+    nl = chr(10)
+    assert audit.frame_truncation_faults(
+        css + f"{nl}{sel} .probe {{ /* text-overflow: ellipsis */ }}{nl}") == []
+    assert audit.frame_truncation_faults(
+        css + f"{nl}{sel} .probe {{ text-overflow: ellipsis; }}{nl}"), (
+        "the real truncation must still fire once comments are blanked")
+    assert audit.dead_selector_faults(
+        js + f"{nl}// document.querySelector('.never-built-probe'){nl}", html, css) == []
+    assert audit.dead_selector_faults(
+        js + f"{nl}document.querySelector('.never-built-probe');{nl}", html, css)
+    assert audit.hero_flag_faults(js + f"{nl}// const rest = open.slice(1){nl}") == []
+    assert audit.hero_flag_faults(js + f"{nl}const rest = open.slice(1);{nl}")
+
+
+def test_a_comment_cannot_stand_in_for_the_code_it_describes():
+    """The tier-chip direction: an absence check must not be satisfied by a
+    comment that happens to name the missing function."""
+    js = _web("app.js")
+    nl = chr(10)
+    gutted = js.replace("function heroPool", "function poolOfHeroes", 1)
+    gutted += f"{nl}// function heroPool(cards) {{ return cards.filter(c => !c.method_note); }}{nl}"
+    assert any("heroPool" in f for f in audit.hero_flag_faults(gutted)), (
+        "a comment naming heroPool satisfied the scan for heroPool")
+
+
+def test_a_slash_slash_inside_a_string_is_not_a_comment():
+    seen = audit._without_comments("const u = 'http://x/y'; // gone", "js")
+    assert "http://x/y" in seen
+    assert "gone" not in seen
+    assert len(seen) == len("const u = 'http://x/y'; // gone"), "line structure must survive"

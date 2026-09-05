@@ -6464,6 +6464,91 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
+LAW_COMMENTS = "A SCANNER READS CODE, NOT COMMENTS"
+
+
+def plant_a_comment_naming_the_forbidden_thing() -> Result:
+    """Write the forbidden thing into a COMMENT, in front of eight scanners.
+
+    THE AUDIT OF 2026-09-05 FOUND ALL EIGHT FIRING ON PROSE. A CSS comment
+    saying `text-overflow: ellipsis` truncated nothing and tripped the frame
+    scan; `// never .sort( here` inside `applyLive` read as a re-sort; a
+    commented-out fifth nav link counted as a fifth page. A guard that fires
+    on a comment is a guard people learn to satisfy by deleting the comment --
+    and the comment recording a removal is exactly the one that must survive.
+
+    THE OTHER DIRECTION HAD ALREADY HAPPENED. `tier_chip_faults` was once
+    satisfied by a comment explaining `chip_label`, so deleting the code left
+    the guard green. Blanking comments before the scan closes both doors at
+    once, and this planting holds both: none of the eight may fire on the
+    comment, and every one of them must still fire on the code.
+    """
+    from gridiron import audit as _audit
+
+    web = config.PACKAGE_ROOT / "web"
+    css = (web / "style.css").read_text(encoding="utf-8")
+    js = (web / "app.js").read_text(encoding="utf-8")
+    html = (web / "index.html").read_text(encoding="utf-8")
+    what = "a comment naming the forbidden thing"
+    guard = "audit._without_comments, in front of eight scanners"
+
+    nav = re.search(r'<nav id="nav".*?</nav>', html, re.S)
+    toggle = _audit._JS_CARD_TOGGLE.search(js)
+    live = re.search(r"function\s+applyLive\s*\([^)]*\)\s*\{", js)
+    if nav is None or toggle is None or live is None:
+        return Result(LAW_COMMENTS, what, guard, False,
+                      "the shipped app.js or index.html is no longer shaped "
+                      "the way this planting expects; re-point it")
+    nav_open = html[nav.start():nav.end() - len("</nav>")]
+    sel = _audit.FRAME_SELECTORS[0]
+    resort = sorted(_audit.RESORT_CALLS)[0]
+    rebuilder = sorted(_audit._REBUILDERS)[0]
+    tb, lv = toggle.start("body"), live.end()
+    nl = chr(10)
+
+    probes = [
+        ("frame truncation", _audit.frame_truncation_faults,
+         css + f"{nl}{sel} .probe {{ /* text-overflow: ellipsis */ color: red; }}{nl}",
+         css + f"{nl}{sel} .probe {{ text-overflow: ellipsis; }}{nl}"),
+        ("motion", _audit.motion_faults,
+         css + f"{nl}/* .probe {{ transition: transform 900ms linear; }} */{nl}",
+         css + f"{nl}.probe {{ transition: transform 900ms linear; }}{nl}"),
+        ("colour law", _audit.colour_law_faults,
+         css + f"{nl}.probe-link {{ /* never var(--win) here */ color: inherit; }}{nl}",
+         css + f"{nl}.probe-link {{ color: var(--win); }}{nl}"),
+        ("dead selector", lambda t: _audit.dead_selector_faults(t, html, css),
+         js + f"{nl}// document.querySelector('.never-built-probe'){nl}",
+         js + f"{nl}document.querySelector('.never-built-probe');{nl}"),
+        ("live re-sort", _audit.live_update_faults,
+         js[:lv] + f"{nl}    // never {resort} here{nl}" + js[lv:],
+         js[:lv] + f"{nl}    {resort});{nl}" + js[lv:]),
+        ("hero slice", _audit.hero_flag_faults,
+         js + f"{nl}// const rest = open.slice(1) was the old shape{nl}",
+         js + f"{nl}const rest = open.slice(1);{nl}"),
+        ("toggle rebuild", _audit.selection_moves_the_frame,
+         js[:tb] + f"{nl}      // never {rebuilder} here{nl}" + js[tb:],
+         js[:tb] + f"{nl}      {rebuilder});{nl}" + js[tb:]),
+        ("nav", lambda t: _audit.nav_faults(js, t),
+         nav_open + '<!-- <a data-route="calls">Calls</a> -->' + "</nav>",
+         nav_open + '<a data-route="calls">Calls</a>' + "</nav>"),
+    ]
+    fired_on_prose = [name for name, scan, commented, _real in probes if scan(commented)]
+    blind = [name for name, scan, _commented, real in probes if not scan(real)]
+    if fired_on_prose or blind:
+        parts = []
+        if fired_on_prose:
+            parts.append(f"fired on a comment: {', '.join(fired_on_prose)}")
+        if blind:
+            parts.append(f"missed the real thing: {', '.join(blind)}")
+        return Result(LAW_COMMENTS, what, guard, False,
+                      "NOT CAUGHT - " + "; ".join(parts) + ". A scanner that "
+                      "reads prose is satisfied by deleting the prose, or "
+                      "fooled by writing it.")
+    return Result(LAW_COMMENTS, what, guard, True,
+                  "none of the eight scanners fired on the comment and all "
+                  "eight fired on the code beneath it")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -6546,6 +6631,7 @@ def main() -> int:
     results.append(plant_a_flagged_market_leading_the_page())
     results.append(plant_a_drawn_game_graded_as_a_loss())
     results.append(plant_an_unfitted_market_that_blocks_a_rerun_refusal())
+    results.append(plant_a_comment_naming_the_forbidden_thing())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

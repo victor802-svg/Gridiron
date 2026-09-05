@@ -1666,8 +1666,101 @@ FRAME_SELECTORS = (".tile", ".desk-frame", ".tiles")
 _CSS_ELLIPSIS = re.compile(r"text-overflow\s*:\s*ellipsis")
 
 
+# ---------------------------------------------------------------------------
+# A SCANNER READS CODE, NOT COMMENTS (audit of 2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# Eight source scanners below read `app.js`, `style.css` and `index.html` as
+# raw text, and every one of them fired on a COMMENT that named the thing it
+# forbids: `/* text-overflow: ellipsis */` truncated nothing and tripped the
+# frame scan; `// never .sort( here` inside `applyLive` read as a re-sort.
+# The other direction is worse and had already happened once: `tier_chip_faults`
+# was satisfied by a comment explaining `chip_label`, so deleting the code left
+# the guard green. A comment recording a removal must be able to outlive it,
+# and a comment must never stand in for the code it describes.
+#
+# So the text is blanked of its comments before any scanner reads it. BLANKED,
+# not deleted: every character becomes a space and every newline stays, so a
+# line number a scanner reports is still the line in the file.
+#
+# THE STRIPPER IS PROVED AT IMPORT, the same way the withdrawal scanners are:
+# a `//` inside a string literal is not a comment and must survive.
+
+def _without_comments(text: str, kind: str) -> str:
+    """`text` with its comments blanked. `kind` is "js", "css" or "html"."""
+    if kind == "css":
+        return re.sub(r"/\*.*?\*/", lambda m: _blank(m.group(0)), text, flags=re.S)
+    if kind == "html":
+        return re.sub(r"<!--.*?-->", lambda m: _blank(m.group(0)), text, flags=re.S)
+    if kind != "js":
+        raise ValueError(f"no comment syntax known for {kind!r}")
+    out = []
+    i, n = 0, len(text)
+    quote = None
+    while i < n:
+        ch = text[i]
+        if quote:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in ("'", '"', "`"):
+            quote = ch
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            out.append(_blank(text[i:end]))
+            i = end
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":
+            end = text.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            out.append(_blank(text[i:end]))
+            i = end
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _blank(fragment: str) -> str:
+    """Spaces in place of every character, newlines kept."""
+    return "".join(c if c == "\n" else " " for c in fragment)
+
+
+def _check_the_comment_stripper_can_see() -> None:
+    problems = []
+    js = "const u = 'http://x/y'; // a comment naming .sort(\nlet z = 1; /* .sort( */"
+    seen = _without_comments(js, "js")
+    if "http://x/y" not in seen:
+        problems.append("the stripper eats a // inside a string literal")
+    if ".sort(" in seen:
+        problems.append("the stripper leaves a // or /* */ comment standing")
+    if seen.count("\n") != js.count("\n") or len(seen) != len(js):
+        problems.append("the stripper changes line structure")
+    if "ellipsis" in _without_comments("a { /* text-overflow: ellipsis */ }", "css"):
+        problems.append("the stripper leaves a CSS comment standing")
+    if "calls" in _without_comments('<nav><!-- <a data-route="calls"> --></nav>', "html"):
+        problems.append("the stripper leaves an HTML comment standing")
+    if problems:
+        raise LawViolation("THE COMMENT STRIPPER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_comment_stripper_can_see()
+
+
+
 def frame_truncation_faults(css: str) -> list[str]:
     """Every rule that would truncate something inside the frame."""
+    css = _without_comments(css, "css")
     faults = []
     for block in css.split("}"):
         if "{" not in block:
@@ -1725,6 +1818,7 @@ _REBUILDERS = ("renderWeek(", "innerHTML")
 
 def selection_moves_the_frame(js: str) -> list[str]:
     """True-ish when opening a card would cost the reader their place."""
+    js = _without_comments(js, "js")
     match = _JS_CARD_TOGGLE.search(js)
     if match is None:
         return ["the card's expand toggle is not in the renderer at all, so "
@@ -1920,6 +2014,7 @@ def _expand(value: str, tokens: dict) -> str:
 
 def motion_faults(css: str) -> list[str]:
     """Every animation on the page that is outside the declared vocabulary."""
+    css = _without_comments(css, "css")
     tokens = _resolve_tokens(css)
     faults = []
 
@@ -2165,6 +2260,7 @@ def tier_count_faults(payload: dict) -> list[str]:
 
 def colour_law_faults(css: str) -> list[str]:
     """Every rule that paints something a value colour without a value."""
+    css = _without_comments(css, "css")
     faults = []
     for match in _CSS_RULE.finditer(css):
         selector = match.group("selector")
@@ -2291,6 +2387,9 @@ def dead_selector_faults(js: str, html: str, css: str) -> list[str]:
     reads every class the JS asks for and fails on any the app never creates,
     in the markup, the stylesheet, or a class= / classList / el() call.
     """
+    js = _without_comments(js, "js")
+    html = _without_comments(html, "html")
+    css = _without_comments(css, "css")
     built = set(re.findall(r"class=['\"]([^'\"]+)['\"]", html))
     made = set()
     for group in built:
@@ -2643,6 +2742,8 @@ REDIRECTED = {
 
 def nav_faults(js: str, html: str) -> list[str]:
     """A nav that is not the four ruled pages, or an old route left to 404."""
+    js = _without_comments(js, "js")
+    html = _without_comments(html, "html")
     faults = []
     links = re.findall(r'data-route="([a-z-]+)"', html)
     if tuple(links) != NAV_PAGES:
@@ -3259,6 +3360,7 @@ RESORT_CALLS = ("renderWeek", ".sort(")
 
 def live_update_faults(js: str) -> list[str]:
     """A live update that rebuilds or reorders the grid instead of patching."""
+    js = _without_comments(js, "js")
     match = re.search(r"function\s+applyLive\s*\([^)]*\)\s*\{(?P<body>.*?)\n  \}",
                       js, re.S)
     if match is None:
@@ -3684,6 +3786,7 @@ def hero_flag_faults(source: str) -> list[str]:
       totals tab that is EVERY card, and the page would render empty while
       reporting a full slate.
     """
+    source = _without_comments(source, "js")
     faults: list[str] = []
     if "function heroPool" not in source:
         faults.append("`heroPool` is gone from app.js, so nothing filters the "
