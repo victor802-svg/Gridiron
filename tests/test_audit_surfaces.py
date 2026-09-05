@@ -56,3 +56,66 @@ def test_the_predict_task_reports_its_slate_in_words(mlb_league, mlb_season):
     assert "(s)" not in detail
     assert re.search(r"\bslate \d", detail) is None, detail
     assert audit.plain_words_violations(detail) == [], detail
+
+
+# --- three surfaces the browser world leaves empty --------------------------
+
+def _probe_game(conn, gid, sport, week, league_date, kickoff):
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+        " home, away, status, league_date) VALUES (?,?,2026,?,'REG',?,'HOM',"
+        " 'AWY','scheduled',?)", (gid, sport, week, kickoff, league_date))
+
+
+def _probe_prediction(conn, gid, sport, market="moneyline", side="win"):
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-09-01T00:00:00Z',?,?,?,'HOM',NULL,0.61,?,'statistical',"
+        " 'fs2','{}','probe')", (sport, gid, market, side))
+
+
+def test_the_slate_chooser_says_the_date_for_a_day_slate(conn):
+    """Baseball keys a slate by an ordinal. "Day 155, 2026" is that ordinal
+    with a word beside it, and it sat in the chooser on every MLB visit."""
+    _probe_game(conn, "mlb_probe", "mlb", 161, "2026-09-04", "2026-09-05T02:10:00Z")
+    _probe_prediction(conn, "mlb_probe", "mlb")
+    conn.commit()
+    labels = [w["label"] for w in views.available_weeks(conn, "mlb")]
+    assert labels, "nothing to choose from"
+    for label in labels:
+        assert not re.search(r"\bDay \d", label), label
+        assert audit.plain_words_violations(label) == [], label
+    assert "Friday 4 September" in labels[0]
+
+
+def test_a_history_row_names_its_slate_in_words(conn):
+    """Results printed `'wk ' + week`, which on a college row is the key."""
+    _probe_game(conn, "cfb_probe", "cfb", 20260905, "2026-09-05", "2026-09-05T23:30:00Z")
+    _probe_prediction(conn, "cfb_probe", "cfb")
+    conn.commit()
+    item = views.history(conn, sport="cfb")["items"][0]
+    assert item["slate_label"].startswith("Saturday 5 September")
+    assert audit.plain_words_violations(item["slate_label"]) == []
+    js = audit._without_comments(
+        (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8"), "js")
+    assert "'wk ' + i.week" not in js, "the renderer composes the slate key again"
+    assert "i.slate_label" in js
+
+
+def test_a_tier_category_is_labelled_in_words(conn):
+    """The UFC record printed `fight_night` on every tiered row."""
+    for payload in (calibration.scorecard(conn, sport="ufc")["categories"],
+                    [c for v in calibration.version_comparison(conn, sport="ufc")["versions"]
+                     for c in v["categories"]]):
+        tiered = [c for c in payload if c.get("event_tier")]
+        assert tiered, "no tiered category to label"
+        for c in tiered:
+            assert "_" not in c["category_label"], c["category_label"]
+            assert c["category_label"].startswith(
+                language.MARKET_WORDS.get(c["market"], c["market"]))
+            assert language.tier_label(c["event_tier"]) in c["category_label"]
+            assert audit.plain_words_violations(c["category_label"]) == []
+    js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    assert "c.category_label" in js, "the renderer ignores the server's words"

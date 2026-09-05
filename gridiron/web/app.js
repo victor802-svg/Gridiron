@@ -483,7 +483,7 @@ const Gridiron = (function () {
   function categoryCell(c) {
     const cell = el('div', 'cat-cell');
     // categoryLabel returns a STRING, not a node.
-    cell.appendChild(el('div', '', categoryLabel(c.category)));
+    cell.appendChild(el('div', '', categoryLabel(c)));
     const o = c.outlook;
     // ONLY WHERE THERE IS A RATE TO PROJECT FROM. The outlook counts THIS
     // season; the category's N counts the whole record. On a backtest, and on
@@ -2008,7 +2008,7 @@ const Gridiron = (function () {
             requireN(c, 'version ' + v.version + ' / ' + c.category);
             // Categories arrive as `market / forecaster`; the market half is
             // an internal name and must be said in words.
-            return [categoryLabel(c.category), int(c.n), num(c.brier),
+            return [categoryLabel(c), int(c.n), num(c.brier),
                     pct(c.hit_rate)];
           }));
         wrap.appendChild(t);
@@ -2216,10 +2216,14 @@ const Gridiron = (function () {
   // PENDING / WIN / LOSS / VOID, in the card language. "open" is not a word
   // anybody says about a forecast that has not happened yet.
   // "receiving_yards / statistical" -> "receiving yards, statistical"
-  function categoryLabel(category) {
-    const parts = String(category).split(' / ');
+  // THE SERVER'S WORDS, never the key (audit 2026-09-05). Splitting the
+  // category on its slashes printed the middle part raw, which on a tiered
+  // sport is the tier key -- "fight_night" on every row of the UFC record.
+  function categoryLabel(c) {
+    if (c && c.category_label) return c.category_label;
+    const parts = String((c && c.category) || c).split(' / ');
     const market = marketLabel(parts[0]);
-    return parts.length > 1 ? market + ', ' + parts[1] : market;
+    return parts.length > 1 ? market + ', ' + parts[parts.length - 1] : market;
   }
 
   function marketLabel(name) {
@@ -2646,7 +2650,9 @@ const Gridiron = (function () {
           // digest cannot drift into three vocabularies.
           i.phrase,
           (i.created_utc || '').slice(0, 10),
-          'wk ' + i.week,
+          // The slate in the server's words: "Week 7, 2025", "Saturday 5
+          // September". `'wk ' + i.week` put the college key on the page.
+          i.slate_label || '',
           pct(shownProb(i), 1),
           // "no line" in WORDS. A bare dash reads as an error rather than an
           // absence, and absence here is a fact about the market, not a fault.

@@ -1242,6 +1242,26 @@ def hero_tags(headline: str | None) -> dict:
     }
 
 
+def category_label(market: str, tier: str | None, predictor: str) -> str:
+    """"moneyline, Fight Night, statistical" -- never `fight_night`.
+
+    The browser split "moneyline / fight_night / statistical" on its slashes
+    and printed the middle part raw, which on the UFC record was the tier key
+    on every row (audit 2026-09-05). Composed here, where the tier's words
+    already live, and the forecaster keeps the plain word it is filtered by.
+    """
+    parts = [MARKET_WORDS.get(market) or humanise(market)]
+    if tier:
+        parts.append(tier_label(tier) or "")
+    parts.append(FORECASTER_FILTER_WORDS.get(predictor, predictor))
+    return ", ".join(p for p in parts if p)
+
+
+#: The forecaster as the Record page's filter names it. Distinct from
+#: FORECASTER_WORDS ("the model"), which is for sentences.
+FORECASTER_FILTER_WORDS = {"statistical": "statistical", "llm": "reasoning pass"}
+
+
 def tier_label(tier: str | None) -> str:
     """"Contender Series", never 'contender'.
 

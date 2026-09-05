@@ -1319,11 +1319,16 @@ def available_weeks(conn: sqlite3.Connection, sport: str) -> list[dict]:
          # THE CHOOSER'S OWN WORDS. It was built in the browser as
          # `w.season + ' week ' + w.week`, which is both prose composed in the
          # renderer and the eight-digit key on the page.
+         # WITH THE SLATE'S OWN DATE (audit 2026-09-05): a baseball slate is
+         # keyed by an ordinal, and without its calendar day the chooser read
+         # "Day 155, 2026" -- the key with a word beside it, which is still
+         # the key.
          "label": language.slate_option(
              r["season"], r["week"], r["n"],
-             config.SPORT_SLATE_WORD.get(sport, "week"))}
+             config.SPORT_SLATE_WORD.get(sport, "week"), r["league_date"])}
         for r in conn.execute(
-            "SELECT g.season, g.week, COUNT(*) AS n FROM predictions p"
+            "SELECT g.season, g.week, COUNT(*) AS n,"
+            " MIN(g.league_date) AS league_date FROM predictions p"
             " JOIN games g ON g.id = p.game_id WHERE p.sport = ?"
             " GROUP BY g.season, g.week ORDER BY g.season DESC, g.week DESC",
             (sport,),
@@ -1721,7 +1726,7 @@ def history(
         f" JOIN games g ON g.id = p.game_id WHERE {clause}", params
     ).fetchone()[0]
     rows = conn.execute(
-        f"SELECT p.*, g.season, g.week, g.home, g.away, g.status"
+        f"SELECT p.*, g.season, g.week, g.home, g.away, g.status, g.league_date"
         f" FROM predictions p JOIN games g ON g.id = p.game_id WHERE {clause}"
         f" ORDER BY p.id DESC LIMIT ? OFFSET ?",
         params + [min(limit, 500), offset],
@@ -1739,6 +1744,13 @@ def history(
                 "created_utc": r["created_utc"],
                 "season": r["season"],
                 "week": r["week"],
+                # THE SLATE IN WORDS (audit 2026-09-05). Results printed
+                # `'wk ' + week` in the browser, which on a college row is
+                # "wk 20260905": the key, composed in the renderer.
+                "slate_label": language.slate_title(
+                    r["season"], r["week"],
+                    config.SPORT_SLATE_WORD.get(sport, "week"),
+                    r["league_date"]),
                 "game_id": r["game_id"],
                 "matchup": f"{r['away']} @ {r['home']}",
                 "market_type": r["market_type"],
