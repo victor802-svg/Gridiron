@@ -441,8 +441,10 @@ untouched. From 2026-09-05 no question is formed in it (`questions` refuses at
 the door and skips on the way in), the day's prop cap fills across the four
 remaining markets, and Picks has no tab for it. LAW 3: nothing written moves.
 
-The final record, read 2026-09-05: **51 forecasts written** between 2026-08-30
-and 2026-09-05 (45 by the model, 6 by the reasoning pass), **40 settled, 36 of
-them right, 6 voided**. The ladder had one rung (0.5) and every question was
+The door closed at 20:53Z; five questions asked at 18:00Z that morning by
+the scheduled pass were asked while the market was open and stand -- the rule
+binds from its moment forward, never back. The final record, read 2026-09-05:
+**51 forecasts written** between 2026-08-30 and 2026-09-05 (45 by the model,
+6 by the reasoning pass), **40 settled, 36 of them right, 6 voided**. The ladder had one rung (0.5) and every question was
 "no home run", which is why the hit rate reads high and why the market never
 had a claim to make -- see the single-rung note above.

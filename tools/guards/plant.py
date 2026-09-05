@@ -6590,11 +6590,11 @@ LAW_RETIRED = "A RETIRED MARKET IS NOT ASKED"
 def plant_a_retired_market_written() -> Result:
     """Write a home-run question after the market was retired.
 
-    THE RETIREMENT IS A DATE, AND DATES ARE WHERE BOUNDARIES HIDE. The row is
-    planted at exactly midnight on the retirement day, which is the first
-    moment the rule binds -- a scan that read "after" as "later than the day"
-    would let a whole day of rows through. The rows before the day are the
-    market's record and must not be named.
+    THE RETIREMENT BINDS FROM A MOMENT, AND MOMENTS ARE WHERE BOUNDARIES
+    HIDE. The row is planted at exactly the second the door closed, which is
+    the first moment the rule binds; the row one second before it was asked
+    while the market was still open -- as five real rows were, the morning of
+    the ruling -- and must not be named.
     """
     from gridiron import audit as _audit
     (sport, market), entry = next(iter(config.RETIRED_MARKETS.items()))
@@ -6609,8 +6609,10 @@ def plant_a_retired_market_written() -> Result:
                " pass_kind, factor_set_version, factors_json, reasoning)"
                " VALUES (?,?,'rt_game','prop',?,?,0.5,0.77,'under','statistical',"
                " 'early','fs2','{}','planted')")
-        conn.execute(row, ("2026-09-04T23:59:59Z", sport, market, f"Before {market}"))
-        conn.execute(row, (entry["retired"] + "T00:00:00Z", sport, market, f"At {market}"))
+        moment = entry["from"]
+        second_before = moment[:-3] + f"{int(moment[-3:-1]) - 1:02d}Z"
+        conn.execute(row, (second_before, sport, market, f"Before {market}"))
+        conn.execute(row, (moment, sport, market, f"At {market}"))
         conn.commit()
         before_id, at_id = [r[0] for r in conn.execute(
             "SELECT id FROM predictions ORDER BY id")]

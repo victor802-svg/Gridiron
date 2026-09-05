@@ -13,7 +13,8 @@ RETIRED = ("mlb", "batter_home_runs")
 
 def test_the_retirement_is_declared_and_dated():
     entry = config.retired_market(*RETIRED)
-    assert entry == {"retired": "2026-09-05", "reason": "operator ruling"}
+    assert entry == {"retired": "2026-09-05", "from": "2026-09-05T20:53:01Z",
+                     "reason": "operator ruling"}
     assert config.RETIRED_MARKETS_DECLARED == "2026-09-05"
     assert config.retired_market("mlb", "batter_hits") is None
 
@@ -80,7 +81,10 @@ def test_the_market_words_say_retired_and_the_outlook_projects_nothing(conn):
     assert audit.plain_words_violations(out["message"]) == []
 
 
-def test_a_row_at_the_retirement_boundary_is_named_and_one_before_is_not(conn):
+def test_a_row_at_the_retirement_moment_is_named_and_one_second_before_is_not(conn):
+    """The rule binds from the moment the door closed, never before: the five
+    real rows asked at 18:00Z that morning stand (MENTOR: a rule binds from its
+    birthday forward)."""
     conn.execute(
         "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
         " home, away, status) VALUES ('rt','mlb',2026,170,'REG',"
@@ -90,11 +94,11 @@ def test_a_row_at_the_retirement_boundary_is_named_and_one_before_is_not(conn):
            " pass_kind, factor_set_version, factors_json, reasoning)"
            " VALUES (?,'mlb','rt','prop','batter_home_runs',?,0.5,0.77,'under',"
            " 'statistical','early','fs2','{}','t')")
-    conn.execute(row, ("2026-09-04T23:59:59Z", "Before batter_home_runs"))
-    conn.execute(row, ("2026-09-05T00:00:00Z", "At batter_home_runs"))
+    conn.execute(row, ("2026-09-05T20:53:00Z", "Before batter_home_runs"))
+    conn.execute(row, ("2026-09-05T20:53:01Z", "At batter_home_runs"))
     conn.commit()
     before, at = [r[0] for r in conn.execute("SELECT id FROM predictions ORDER BY id")]
     faults = audit.retired_market_faults(conn)
     assert [f.split()[1] for f in faults] == [str(at)], faults
     assert "2026-09-05" in faults[0] and "operator ruling" in faults[0]
-    assert str(before) not in " ".join(faults)
+    assert all(f.split()[1] != str(before) for f in faults), "the row before the door closed was named"

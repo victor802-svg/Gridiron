@@ -422,8 +422,14 @@ MLB_PROP_MARKETS: tuple[str, ...] = SPORT_PROP_MARKETS["mlb"]
 #
 # The entry is the registry. A retirement is a dated act with its reason, the
 # same shape as a factor's activation, and reversing one is deleting the entry.
+#: `retired` is the ruling's day. `from` is the MOMENT the door closed -- the
+#: commit that refused the market -- and the rule binds from there forward,
+#: never before: five home-run questions were asked at 18:00Z that morning by
+#: the scheduled pass, hours before the ruling, and they are the market's
+#: record, not violations of it (MENTOR: a rule binds from its birthday).
 RETIRED_MARKETS: dict[tuple[str, str], dict] = {
-    ("mlb", "batter_home_runs"): {"retired": "2026-09-05", "reason": "operator ruling"},
+    ("mlb", "batter_home_runs"): {"retired": "2026-09-05", "from": "2026-09-05T20:53:01Z",
+                                  "reason": "operator ruling"},
 }
 RETIRED_MARKETS_DECLARED = "2026-09-05"
 

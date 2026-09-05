@@ -4806,9 +4806,10 @@ def check_picks_has_two_control_rows() -> None:
 
 
 def retired_market_faults(conn) -> list[str]:
-    """Every prediction written in a retired market on or after its
-    retirement day, by id. The retirement binds from its birthday forward:
-    rows before it are the market's record and stay."""
+    """Every prediction written in a retired market at or after the moment
+    its door closed (`from`), by id. The retirement binds from that moment
+    forward and never before: rows written earlier, even on the same day, are
+    the market's record and stay."""
     faults: list[str] = []
     for (sport, market), entry in config.RETIRED_MARKETS.items():
         is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
@@ -4816,12 +4817,14 @@ def retired_market_faults(conn) -> list[str]:
             "SELECT id, created_utc FROM predictions WHERE sport = ?"
             "   AND " + ("prop_type = ?" if is_prop else "market_type = ?")
             + "   AND created_utc >= ? ORDER BY id",
-            (sport, market, entry["retired"] + "T00:00:00Z")).fetchall()
+            (sport, market, entry.get("from") or entry["retired"] + "T00:00:00Z")
+        ).fetchall()
         for r in rows:
             faults.append(
                 f"prediction {r['id']} asks {sport} {market} at {r['created_utc']}, "
                 f"and that market was retired on {entry['retired']} "
-                f"({entry['reason']})")
+                f"({entry['reason']}; the door closed at "
+                f"{entry.get('from') or entry['retired']})")
     return faults
 
 

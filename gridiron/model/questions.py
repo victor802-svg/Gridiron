@@ -1149,4 +1149,4 @@ def assert_market_active(q) -> None:
         market = q.stat if q.market_type == "prop" else q.market_type
         raise RetiredMarket(
             f"{q.sport} {market} was retired on {entry['retired']} "
-            f"({entry['reason']}); nothing is written in it after that day")
+            f"({entry['reason']}); nothing is written in it since")
