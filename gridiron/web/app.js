@@ -1602,44 +1602,43 @@ const Gridiron = (function () {
   //: sessions, for the same reason the Record tab's choice is not: a reader
   //: opening the page should see the model that answers every question, not
   //: whichever list they left open.
-  let picksForecaster = null;
+  // THE VIEW, REMEMBERED PER SPORT FOR THE SESSION (R2, 2026-09-05). In
+  // memory only: a reload gets the default, and nothing is written to the
+  // browser's storage. Whose forecast, and which pass.
+  const viewChoice = new Map();
 
-  //: Whether Picks is showing the earlier forecast instead of the standing
-  //: one. Never both at once: they are two answers to one question and
-  //: ranking them together names the same game twice.
-  let showEarlyView = false;
+  function currentView() {
+    return viewChoice.get(state.sport) || { forecaster: null, early: false };
+  }
 
-  // Built only when a game on this slate actually HAS both forecasts. A
-  // control that switches between one list and the same list is furniture,
-  // which is the rule the tier and forecaster segments already follow.
+  function setView(patch) {
+    viewChoice.set(state.sport, Object.assign({}, currentView(), patch));
+  }
+
   function renderPassFilter(data) {
     const host = document.getElementById('week-pass-seg');
     if (!host) return;
     host.innerHTML = '';
-    if (!data.has_early_view) {
-      host.hidden = true;
-      showEarlyView = false;
-      return;
-    }
-    [[false, 'Final forecast'], [true, 'Early view']].forEach(pair => {
+    const view = currentView();
+    if (!data.has_early_view && view.early) setView({ early: false });
+    const early = data.has_early_view && view.early;
+    [[false, 'final'], [true, 'early view']].forEach(pair => {
       const b = el('button', '', pair[1]);
       b.type = 'button';
       b.dataset.early = pair[0] ? 'true' : 'false';
-      b.setAttribute('aria-pressed', pair[0] === showEarlyView ? 'true' : 'false');
+      b.setAttribute('aria-pressed', pair[0] === early ? 'true' : 'false');
+      // A slate with no early forecast offers the toggle and says it cannot
+      // move, rather than hiding half the menu.
+      if (pair[0] && !data.has_early_view) b.disabled = true;
       b.addEventListener('click', () => {
-        showEarlyView = pair[0];
+        if (b.disabled) return;
+        setView({ early: pair[0] });
         renderWeek();
       });
       host.appendChild(b);
     });
-    host.hidden = false;
   }
 
-  // Built from the forecasters actually on this slate, exactly as the tier
-  // filter is built from the tiers actually on it, and hidden below two --
-  // a chooser with one choice is furniture. THERE IS NO "BOTH": two
-  // forecasters in one ranking rank against each other, and the same game
-  // then appears twice naming opposite sides.
   function renderForecasterFilter(data) {
     const host = document.getElementById('week-forecaster-seg');
     if (!host) return;
@@ -1652,13 +1651,52 @@ const Gridiron = (function () {
       b.setAttribute('aria-pressed',
         String(f.forecaster === (data.forecaster || '')));
       b.addEventListener('click', () => {
-        if (picksForecaster === f.forecaster) return;
-        picksForecaster = f.forecaster;
+        if (currentView().forecaster === f.forecaster) return;
+        setView({ forecaster: f.forecaster });
         renderWeek();
       });
       host.appendChild(b);
     });
-    host.hidden = options.length < 2;
+  }
+
+  // THE TAG ON THE MENU BUTTON: the current choice in as few words as it
+  // takes -- "statistical · final". Composed from the payload's own labels.
+  function renderViewMenu(data) {
+    const tag = document.getElementById('week-view-tag');
+    if (!tag) return;
+    const chosen = data.forecaster || '';
+    const who = ((data.forecasters || []).find(f => f.forecaster === chosen) || {}).label
+      || chosen;
+    const pass = (data.has_early_view && currentView().early) ? 'early' : 'final';
+    tag.textContent = who + ' · ' + pass;
+  }
+
+  function setViewMenuOpen(open) {
+    const button = document.getElementById('week-view-button');
+    const panel = document.getElementById('week-view-panel');
+    if (!button || !panel) return;
+    panel.hidden = !open;
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  function wireViewMenu() {
+    const menu = document.getElementById('week-view');
+    const button = document.getElementById('week-view-button');
+    const panel = document.getElementById('week-view-panel');
+    if (!menu || !button || !panel) return;
+    button.addEventListener('click', () => setViewMenuOpen(panel.hidden));
+    // Closes on a click anywhere else, and on Escape from anywhere inside
+    // it, which hands focus back to the button so a keyboard reader is not
+    // dropped on the page.
+    document.addEventListener('click', event => {
+      if (!panel.hidden && !menu.contains(event.target)) setViewMenuOpen(false);
+    });
+    menu.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !panel.hidden) {
+        setViewMenuOpen(false);
+        button.focus();
+      }
+    });
   }
 
   // THE COUNTDOWN (R3). The words come from the server; the DIGITS are worked
@@ -1724,14 +1762,15 @@ const Gridiron = (function () {
     // WHOSE PICKS. Absent on the first load, so the server applies its own
     // default rather than the browser having a second opinion about which
     // forecaster leads.
-    if (picksForecaster) {
-      qs += (qs ? '&' : '?') + 'forecaster=' + encodeURIComponent(picksForecaster);
+    const view = currentView();
+    if (view.forecaster) {
+      qs += (qs ? '&' : '?') + 'forecaster=' + encodeURIComponent(view.forecaster);
     }
     //: WHICH FORECAST (A3). Off by default: Picks shows the standing row, the
     //: one the record is graded on. Session-only, like the tier and the
     //: forecaster -- a reader who left the early view open yesterday should
     //: not find yesterday's forecasts waiting for them today.
-    if (showEarlyView) qs += (qs ? '&' : '?') + 'early_view=true';
+    if (view.early) qs += (qs ? '&' : '?') + 'early_view=true';
     const data = await fetchJSON(withSport('/api/week' + qs));
     if (data.default_tier) defaultTier = data.default_tier;
     const market = document.getElementById('week-market').value;
@@ -1747,6 +1786,7 @@ const Gridiron = (function () {
         : 'Agreeing confidently with the market is not a finding.';
     paintClock(data.glance, data.slate_title);
     renderForecasterFilter(data);
+    renderViewMenu(data);
     startLivePolling(data);
 
     host.innerHTML = '';
@@ -2689,6 +2729,7 @@ const Gridiron = (function () {
   // header shows whichever sport is being looked at, and the never-summed note
   // moves to a quiet footer line.
   function wireSortToggle() {
+    wireViewMenu();
     const seg = document.getElementById('week-sort-seg');
     if (!seg) return;
     seg.querySelectorAll('button').forEach(button => {

@@ -210,20 +210,33 @@
            here, so a tier added later appears without editing markup. -->
       <div class="seg" id="week-tier-seg" role="group"
            aria-label="Show one confidence tier"></div>
-      <!-- ONE FORECASTER IN ONE RANKING (GRIDIRON_14). The same segmented
-           control the Record tab uses, filled from the payload rather than
-           written here, and hidden when the slate has only one forecaster on
-           it -- a chooser with one choice is furniture. There is deliberately
-           no option that shows both: they rank against each other and can
-           name opposite sides of the same game. -->
-      <div class="seg" id="week-forecaster-seg" role="group"
-           aria-label="Whose picks to show" hidden></div>
-      <!-- THE EARLY VIEW (A3, 2026-09-03). A separate list, never a mixed
-           one: two forecasts of one game ranked against each other would put
-           the same matchup twice in one ordering. Hidden until a game
-           actually has both. -->
-      <div class="seg" id="week-pass-seg" role="group"
-           aria-label="Which forecast to show" hidden></div>
+      <!-- THE VIEW MENU (R2, 2026-09-05). One 44px button carrying the
+           current choice as a tag -- "statistical · final" -- and behind it
+           the two choices as two small labelled toggles: whose forecast
+           (GRIDIRON_14: one forecaster in one ranking, never both) and which
+           pass (A3: the early view is a separate list, never a mixed one).
+           Opens on click, closes on Escape or a click elsewhere, reachable by
+           keyboard; the choice is remembered per sport for the session, in
+           memory only. The toggles are filled from the payload, never
+           written here. -->
+      <div class="view-menu" id="week-view">
+        <button type="button" class="view-button" id="week-view-button"
+                aria-haspopup="true" aria-expanded="false"
+                aria-controls="week-view-panel">View
+          <span class="view-tag" id="week-view-tag"></span></button>
+        <div class="view-panel" id="week-view-panel" hidden>
+          <div class="view-choice">
+            <span class="view-choice-label" id="week-forecaster-label">Forecaster</span>
+            <div class="seg seg-small" id="week-forecaster-seg" role="group"
+                 aria-labelledby="week-forecaster-label"></div>
+          </div>
+          <div class="view-choice">
+            <span class="view-choice-label" id="week-pass-label">Forecast</span>
+            <div class="seg seg-small" id="week-pass-seg" role="group"
+                 aria-labelledby="week-pass-label"></div>
+          </div>
+        </div>
+      </div>
       <div class="slate-counts" id="week-counts"></div>
       <!-- STRONG BY DEFAULT (ruling R2). Opening on the most confident band
            also opens on the least-tested one, and this says so until it earns

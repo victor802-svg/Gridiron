@@ -1397,8 +1397,10 @@ def test_no_internal_vocabulary_reaches_the_reader_on_the_llm_view(page):
 
     page.evaluate("location.hash = '#/week'")
     page.wait_for_selector("#week-forecaster-seg [data-forecaster='llm']",
-                           timeout=10000)
+                           state="attached", timeout=10000)
 
+    # The forecaster toggle lives behind the view menu (R2, 2026-09-05).
+    page.click("#week-view-button")
     with page.expect_response(lambda r: "forecaster=llm" in r.url):
         page.click("#week-forecaster-seg [data-forecaster='llm']")
     page.wait_for_function(

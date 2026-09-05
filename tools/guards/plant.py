@@ -6477,6 +6477,44 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
+LAW_TWO_ROWS = "TWO CONTROL ROWS ABOVE THE HERO"
+
+
+def plant_a_third_control_row_above_the_hero() -> Result:
+    """Add a third row of controls above the hero on Picks.
+
+    THE PAGE HAD FOUR SEGMENTED CONTROLS ON ONE LINE BY 2026-09-05, each one
+    defensible when it arrived. R2 folded two of them into a menu and declared
+    the rows: the controls line and the market tabs. This is the way it grows
+    back -- a new row with one button, written into the markup, above the
+    hero.
+    """
+    from gridiron import audit as _audit
+    html = (config.PACKAGE_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    if _audit.picks_control_row_faults(html):
+        return Result(LAW_TWO_ROWS, "a third control row above the hero",
+                      "audit.picks_control_row_faults", False,
+                      "the shipped page already carries a third row; fix that "
+                      "before trusting this planting")
+    anchor = '<section id="week-hero"'
+    if anchor not in html:
+        return Result(LAW_TWO_ROWS, "a third control row above the hero",
+                      "audit.picks_control_row_faults", False,
+                      "the hero is no longer marked up the way this planting "
+                      "expects; re-point it")
+    broken = html.replace(
+        anchor,
+        '<div class="extra-row"><button type="button">Extra</button></div>' + anchor, 1)
+    faults = _audit.picks_control_row_faults(broken)
+    if not faults:
+        return Result(LAW_TWO_ROWS, "a third control row above the hero",
+                      "audit.picks_control_row_faults", False,
+                      "NOT CAUGHT - a third row of controls sits above the hero "
+                      "and the page grows a fifth segmented control unnoticed")
+    return Result(LAW_TWO_ROWS, "a third control row above the hero",
+                  "audit.picks_control_row_faults", True, faults[0])
+
+
 LAW_RETIRED = "A RETIRED MARKET IS NOT ASKED"
 
 
@@ -6914,6 +6952,7 @@ def main() -> int:
     results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_run_recorded_only_when_it_ends())
     results.append(plant_a_protected_field_edited_behind_the_trigger())
+    results.append(plant_a_third_control_row_above_the_hero())
     results.append(plant_a_retired_market_written())
     results.append(plant_a_retired_market_in_picks_tabs())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())

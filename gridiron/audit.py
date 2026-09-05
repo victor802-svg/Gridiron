@@ -4652,6 +4652,94 @@ def task_run_order_faults(source: str | None = None) -> list[str]:
     return faults
 
 
+#: THE ROWS OF CONTROLS ABOVE THE HERO ON PICKS (R2, 2026-09-05), declared.
+#: A control row is a direct child of `#view-week`, above the hero, that holds
+#: a button, a select or an input where a reader can see it -- a collapsed
+#: `<details>` is not a row until it is opened. Two rows: the controls line
+#: (sort, tier, the view menu) and the market tabs. A third is how a page
+#: grows a fourth segmented control, then a fifth, each defensible alone.
+PICKS_CONTROL_ROWS = ("controls", "week-market-tabs")
+
+_VOID_TAGS = frozenset({"input", "br", "img", "hr", "meta", "link", "source", "wbr"})
+
+
+def picks_control_rows(html: str) -> list[str]:
+    """The names (id, else class) of every control row above the hero."""
+    from html.parser import HTMLParser
+
+    html = _without_comments(html, "html")
+    start = html.find('id="view-week"')
+    end = html.find('id="week-hero"')
+    if start < 0 or end < 0:
+        return ["<view-week or week-hero missing>"]
+    section = html[html.rfind("<", 0, start): html.rfind("<", 0, end)]
+
+    class Walker(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.depth = 0
+            self.rows: list[str] = []
+            self.current: dict | None = None
+            self.details = 0
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if self.depth == 1 and tag not in _VOID_TAGS:
+                # A <nav> is a row of controls by nature: the market tabs are
+                # filled at render, so their markup holds no button to find.
+                self.current = {"name": attrs.get("id") or attrs.get("class") or tag,
+                                "interactive": tag == "nav"}
+            if tag == "details":
+                self.details += 1
+            if (tag in ("button", "select", "input", "textarea") and self.current
+                    and not self.details):
+                self.current["interactive"] = True
+            if tag not in _VOID_TAGS:
+                self.depth += 1
+
+        def handle_endtag(self, tag):
+            if tag in _VOID_TAGS:
+                return
+            self.depth -= 1
+            if tag == "details":
+                self.details -= 1
+            if self.depth == 1 and self.current is not None:
+                if self.current["interactive"]:
+                    self.rows.append(self.current["name"])
+                self.current = None
+
+    walker = Walker()
+    walker.feed(section)
+    return walker.rows
+
+
+def picks_control_row_faults(html: str | None = None) -> list[str]:
+    """A control row above the hero that was not declared."""
+    if html is None:
+        html = (config.PACKAGE_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    rows = picks_control_rows(html)
+    faults = []
+    for name in rows:
+        if name not in PICKS_CONTROL_ROWS:
+            faults.append(
+                f"a row of controls named {name!r} sits above the hero on Picks, "
+                f"and the declared rows are {list(PICKS_CONTROL_ROWS)}. Two rows: "
+                f"the controls line and the market tabs. A third is how a page "
+                f"grows a fifth segmented control.")
+    if len(rows) > len(PICKS_CONTROL_ROWS):
+        faults.append(f"{len(rows)} control rows above the hero; "
+                      f"{len(PICKS_CONTROL_ROWS)} are declared: {rows}")
+    return faults
+
+
+def check_picks_has_two_control_rows() -> None:
+    """Raise if Picks carries a control row above the hero beyond the two."""
+    faults = picks_control_row_faults()
+    if faults:
+        raise LawViolation(
+            "A THIRD CONTROL ROW ABOVE THE HERO:" + _NL2 + _NL2.join(faults))
+
+
 def retired_market_faults(conn) -> list[str]:
     """Every prediction written in a retired market on or after its
     retirement day, by id. The retirement binds from its birthday forward:
