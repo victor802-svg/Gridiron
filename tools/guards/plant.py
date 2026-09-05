@@ -5418,6 +5418,65 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_PUSH_RECORD = "A PUSH EXISTS IN THE RECORD"
+
+
+def plant_a_push_posted_before_it_is_recorded() -> Result:
+    """Restore the old order: post to both channels, then insert the row.
+
+    THIS IS NOT HYPOTHETICAL. On 2026-09-05 a message went out with a `kind`
+    the table's CHECK refuses. Both channels delivered, the phone buzzed, the
+    INSERT raised, and the record has no trace of a push a person received.
+
+    EVERY VALIDATION THE TABLE PERFORMS WAS HAPPENING AFTER THE IRREVERSIBLE
+    PART, which is the wrong way round for any action that leaves the machine.
+    A record that is wrong about an outcome can be corrected; a record that is
+    silent about an attempt cannot be, because nobody knows to look.
+    """
+    import json as _json
+    import tempfile
+
+    from gridiron import audit as _audit, db as _db, notify as _notify
+
+    if _audit.notification_ordering_faults():
+        return Result(LAW_PUSH_RECORD, "a push posted before it is recorded",
+                      "audit.notification_ordering_faults", False,
+                      "the shipped `send` already posts before it records; fix "
+                      "that before trusting this planting")
+
+    original = _notify.send
+
+    def post_then_record(conn, kind, body, title="Gridiron", now=None):
+        # THE PLANT: exactly the ordering that lost a push.
+        _notify.check_message(body)
+        channels = [_notify.send_toast(title, body),
+                    _notify.send_push(body, title)]
+        conn.execute(
+            "INSERT INTO notifications (queued_utc, sent_utc, kind, title,"
+            " body, state, channels_json) VALUES (?,?,?,?,?,?,?)",
+            (_db.utcnow(), _db.utcnow(), kind, title, body,
+             "sent" if any(c["ok"] for c in channels) else "failed",
+             _json.dumps(channels)))
+        conn.commit()
+        return {"queued": False, "channels": channels}
+
+    try:
+        _notify.send = post_then_record
+        faults = _audit.notification_ordering_faults()
+    finally:
+        _notify.send = original
+
+    if not faults:
+        return Result(LAW_PUSH_RECORD, "a push posted before it is recorded",
+                      "audit.notification_ordering_faults", False,
+                      "NOT CAUGHT - a push reaches the phone before anything "
+                      "in the record knows it exists, so a failure between the "
+                      "two leaves a person holding a message the appliance has "
+                      "never heard of")
+    return Result(LAW_PUSH_RECORD, "a push posted before it is recorded",
+                  "audit.notification_ordering_faults", True, faults[0])
+
+
 LAW_ABSENT_PROMPT = "AN ABSENT FACTOR IS NOT A ZERO"
 
 
@@ -6182,6 +6241,7 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_a_push_posted_before_it_is_recorded())
     results.append(plant_an_absent_factor_handed_to_the_model_as_zero())
     results.append(plant_a_measured_zero_dropped_from_the_prompt())
     results.append(plant_a_chip_that_hides_its_own_emptiness())

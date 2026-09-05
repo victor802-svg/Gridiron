@@ -233,13 +233,36 @@ def send(conn: sqlite3.Connection, kind: str, body: str,
         conn.commit()
         return {"queued": True, "channels": []}
 
+    # THE ROW EXISTS BEFORE THE NETWORK IS TOUCHED (2026-09-05).
+    #
+    # This used to post to both channels and THEN insert. On 2026-09-05 a
+    # message was sent with a `kind` the table's CHECK refuses: both channels
+    # delivered, the phone buzzed, the INSERT raised, and the record has no
+    # trace of a push that a person received. The ordering was the whole
+    # defect -- every validation the table does was happening AFTER the
+    # irreversible part.
+    #
+    # RECORD INTENT, POST, THEN MARK. The row is written as 'sending' first,
+    # so the CHECKs run before anything leaves the machine and a crash
+    # mid-post leaves evidence rather than silence. 'sending' is its own state
+    # and not 'queued' on purpose: queued means held for quiet hours and never
+    # sent, sending means handed to the network and unaccounted for.
+    #
+    # THE RECORD MAY BE WRONG ABOUT THE OUTCOME. It may never again be silent
+    # about the attempt.
+    cursor = conn.execute(
+        "INSERT INTO notifications (queued_utc, kind, title, body, state)"
+        " VALUES (?,?,?,?, 'sending')", (utcnow(), kind, title, body))
+    row_id = cursor.lastrowid
+    conn.commit()
+
     channels = [send_toast(title, body), send_push(body, title)]
+
     conn.execute(
-        "INSERT INTO notifications (queued_utc, sent_utc, kind, title, body,"
-        " state, channels_json) VALUES (?,?,?,?,?,?,?)",
-        (utcnow(), utcnow(), kind, title, body,
-         "sent" if any(c["ok"] for c in channels) else "failed",
-         json.dumps(channels)))
+        "UPDATE notifications SET sent_utc = ?, state = ?, channels_json = ?"
+        " WHERE id = ?",
+        (utcnow(), "sent" if any(c["ok"] for c in channels) else "failed",
+         json.dumps(channels), row_id))
     conn.commit()
     return {"queued": False, "channels": channels}
 

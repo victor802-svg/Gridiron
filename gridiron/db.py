@@ -230,6 +230,66 @@ WIDEN_ON_SIGHT = ("session_seen", "games", "factors", "factor_scores",
                   "model_fits")
 
 
+def widen_notification_states(conn: sqlite3.Connection) -> bool:
+    """Admit the 'sending' state on a database created before 2026-09-05.
+
+    SQLite applies a CHECK at CREATE and never revisits it, so a database made
+    before the state existed refuses every row `notify.send` now writes -- and
+    it would refuse it BEFORE the post rather than after, which is a different
+    failure from the one being fixed but no better.
+
+    A PLAIN VERIFIED COPY, like `widen_sport_checks`. The table holds delivery
+    history, no forecast and no claim, and nothing references it but its own
+    index. The row count is checked before the original is dropped, because
+    the last rebuild this project did left 311,655 rows in a table called
+    `games_narrow` when a foreign key tripped after the copy.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='notifications'"
+    ).fetchone()
+    if row is None or "'sending'" in (row[0] or ""):
+        return False
+
+    before = conn.execute("SELECT COUNT(*) FROM notifications").fetchone()[0]
+    conn.executescript("""
+        PRAGMA foreign_keys=OFF;
+        BEGIN;
+        CREATE TABLE notifications_wide (
+            id            INTEGER PRIMARY KEY,
+            queued_utc    TEXT    NOT NULL,
+            sent_utc      TEXT,
+            kind          TEXT    NOT NULL CHECK (kind IN ('results', 'failure')),
+            title         TEXT    NOT NULL,
+            body          TEXT    NOT NULL,
+            state         TEXT    NOT NULL
+                          CHECK (state IN ('queued','sending','sent','failed')),
+            channels_json TEXT
+        );
+        INSERT INTO notifications_wide
+            SELECT id, queued_utc, sent_utc, kind, title, body, state,
+                   channels_json
+              FROM notifications;
+        COMMIT;
+    """)
+    after = conn.execute("SELECT COUNT(*) FROM notifications_wide").fetchone()[0]
+    if after != before:
+        conn.execute("DROP TABLE notifications_wide")
+        conn.commit()
+        raise MigrationRefused(
+            f"notifications rebuild copied {after} of {before} rows; the "
+            f"original is untouched and nothing was dropped.")
+    conn.executescript("""
+        PRAGMA foreign_keys=OFF;
+        BEGIN;
+        DROP TABLE notifications;
+        ALTER TABLE notifications_wide RENAME TO notifications;
+        CREATE INDEX IF NOT EXISTS notifications_when ON notifications (id DESC);
+        COMMIT;
+    """)
+    conn.commit()
+    return True
+
+
 def widen_sport_checks(conn: sqlite3.Connection) -> list[str]:
     """Rebuild small tables whose sport CHECK predates a newly declared sport.
 
@@ -430,6 +490,10 @@ def init(conn: sqlite3.Connection) -> None:
     # is gone before anything tries to recreate it.
     _withdraw(conn)
     widen_sport_checks(conn)
+    # AND THE DELIVERY RECORD'S STATES (2026-09-05). Same reason, different
+    # CHECK: a database made before 'sending' existed would refuse every row
+    # `notify.send` writes.
+    widen_notification_states(conn)
     widening = _widen_market_type(conn) if _needs_market_type_widening(conn) else None
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     if widening is not None:

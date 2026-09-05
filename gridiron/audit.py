@@ -4278,3 +4278,100 @@ def check_the_prompt_keeps_absence_absent() -> None:
     if faults:
         raise LawViolation(
             "AN ABSENT FACTOR IS NOT A ZERO:" + _NL2 + _NL2.join(faults))
+
+
+# A PUSH THAT REACHED THE PHONE EXISTS IN THE RECORD (2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# `notify.send` used to post to both channels and THEN insert its row. On
+# 2026-09-05 a message went out with a `kind` the table's CHECK refuses: both
+# channels delivered, the phone buzzed, the INSERT raised, and the record has
+# no trace of a push a person received.
+#
+# THE ORDERING WAS THE WHOLE DEFECT. Every validation the table performs was
+# happening AFTER the irreversible part, which is the wrong way round for any
+# action that leaves the machine.
+#
+# BEHAVIOURAL, NOT A SOURCE SCAN. This runs `send` against a temporary
+# database with the channels stubbed, and asks the stub whether a row existed
+# at the moment it was called. A pattern match on the function would pass on a
+# rewrite that reintroduced the bug in a new shape.
+
+def notification_ordering_faults() -> list[str]:
+    """Is a push posted before the record knows about it?"""
+    import tempfile
+    from pathlib import Path
+
+    # IMPORTED HERE, not at module scope: `audit` holds the list of forbidden
+    # market identifiers, so a prediction-path module that imported it would
+    # make the LAW 1 closure scan flag itself. `db` is safe to reach from
+    # inside a function and not from the top of this file.
+    from . import db, notify
+
+    faults: list[str] = []
+    seen: dict = {}
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(Path(tmp) / "notify.db")
+        real_push, real_toast = notify.send_push, notify.send_toast
+
+        def watching_push(body, title="Gridiron"):
+            seen["rows_at_post"] = conn.execute(
+                "SELECT COUNT(*) FROM notifications").fetchone()[0]
+            seen["states_at_post"] = [
+                r[0] for r in conn.execute("SELECT state FROM notifications")]
+            return {"channel": "push", "ok": True, "detail": "HTTP 200"}
+
+        try:
+            notify.send_push = watching_push
+            notify.send_toast = lambda title, body: {
+                "channel": "toast", "ok": True, "detail": "shown"}
+            notify.send(conn, "failure", "an ordering probe", title="probe")
+        finally:
+            notify.send_push, notify.send_toast = real_push, real_toast
+
+        # CLOSED WHATEVER HAPPENED. On Windows SQLite holds the file open, so
+        # a connection left behind by an exception makes the temporary
+        # directory undeletable -- and the planting that breaks `send` on
+        # purpose is exactly the path that raises.
+        try:
+            final = conn.execute(
+                "SELECT state, sent_utc, channels_json FROM notifications"
+            ).fetchone()
+        finally:
+            conn.close()
+
+    if not seen.get("rows_at_post"):
+        faults.append(
+            "a push was posted with no row in `notifications`. A message that "
+            "reaches the phone and leaves no trace is a record that is silent "
+            "about something a person received -- which happened on "
+            "2026-09-05 and is the whole reason this exists.")
+    elif "sending" not in (seen.get("states_at_post") or []):
+        faults.append(
+            f"a row existed at post time and its state was "
+            f"{seen.get('states_at_post')}. It should be 'sending': 'queued' "
+            f"means held for quiet hours and never sent, and conflating the "
+            f"two hides a crash mid-post inside an ordinary state.")
+
+    if final is None:
+        faults.append("the row vanished after the post.")
+    else:
+        if final["state"] != "sent":
+            faults.append(
+                f"a delivered push left its row at {final['state']!r} rather "
+                f"than 'sent'. The record may be wrong about the outcome only "
+                f"by being told a wrong outcome, never by not being told.")
+        if not final["sent_utc"] or not final["channels_json"]:
+            faults.append(
+                "the row was never marked with when it went or what happened "
+                "on each channel.")
+    return faults
+
+
+def check_the_record_precedes_the_push() -> None:
+    """Raise if a push can reach the phone before the record knows."""
+    faults = notification_ordering_faults()
+    if faults:
+        raise LawViolation(
+            "A PUSH EXISTS IN THE RECORD:" + _NL2 + _NL2.join(faults))

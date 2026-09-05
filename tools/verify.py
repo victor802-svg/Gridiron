@@ -226,6 +226,9 @@ def step_2_guards() -> bool:
         # the factor code were both watched; what the model is TOLD was not.
         ("an absent factor is not a zero",
          audit.check_the_prompt_keeps_absence_absent),
+        # A PUSH THAT REACHED THE PHONE EXISTS IN THE RECORD (2026-09-05).
+        ("the record precedes the push",
+         audit.check_the_record_precedes_the_push),
         ("no confidence floor on game markets",
          audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),

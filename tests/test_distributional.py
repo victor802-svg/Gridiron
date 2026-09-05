@@ -458,3 +458,107 @@ def test_both_directions_of_the_absence_rule_are_seen():
     assert "measured = 0" in text
     assert "unmeasurable =" not in text
     assert "do not treat these as zero" in text.lower()
+
+
+# --- fix 2: a push exists in the record before it is sent (2026-09-05) ------
+
+def test_the_record_precedes_the_push():
+    audit.check_the_record_precedes_the_push()
+
+
+def test_a_refused_kind_now_fails_before_anything_is_posted():
+    """THE EXACT CASE THAT LOST A PUSH, pinned.
+
+    On 2026-09-05 `send` was called with a kind the table's CHECK refuses.
+    Both channels delivered, the phone buzzed, the INSERT raised, and the
+    record has no trace of it. The row is now written first, so the CHECK runs
+    before anything leaves the machine.
+    """
+    import sqlite3
+    import tempfile
+    from pathlib import Path
+
+    from gridiron import db as _db, notify as _notify
+
+    posted = []
+    real_push, real_toast = _notify.send_push, _notify.send_toast
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(Path(tmp) / "n.db")
+        try:
+            _notify.send_push = lambda body, title="Gridiron": posted.append(1)
+            _notify.send_toast = lambda title, body: posted.append(1)
+            with pytest.raises(sqlite3.IntegrityError):
+                _notify.send(conn, "test", "a kind the table refuses")
+        finally:
+            _notify.send_push, _notify.send_toast = real_push, real_toast
+            conn.close()
+
+    assert posted == [], (
+        "a message with a refused kind still reached the channels; the CHECK "
+        "must run before the irreversible part, not after it")
+
+
+def test_sending_is_its_own_state_and_not_queued():
+    """A crash mid-post must not hide inside an ordinary state.
+
+    'queued' means held for quiet hours and never sent. 'sending' means handed
+    to the network and unaccounted for. One is routine and one wants looking
+    at, so they are not the same word.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from gridiron import db as _db
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(Path(tmp) / "n.db")
+        try:
+            ddl = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name='notifications'"
+            ).fetchone()[0]
+            assert "'sending'" in ddl
+            assert "'queued'" in ddl
+        finally:
+            conn.close()
+
+
+def test_the_migration_widens_an_older_database():
+    """A database made before 'sending' existed would refuse every row."""
+    import tempfile
+    from pathlib import Path
+
+    from gridiron import db as _db
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        path = Path(tmp) / "old.db"
+        conn = _db.open_db(path)
+        try:
+            # Recreate the narrow table the way it was before 2026-09-05.
+            conn.executescript(
+                "DROP TABLE notifications;"
+                "CREATE TABLE notifications ("
+                " id INTEGER PRIMARY KEY, queued_utc TEXT NOT NULL,"
+                " sent_utc TEXT,"
+                " kind TEXT NOT NULL CHECK (kind IN ('results','failure')),"
+                " title TEXT NOT NULL, body TEXT NOT NULL,"
+                " state TEXT NOT NULL CHECK (state IN ('queued','sent','failed')),"
+                " channels_json TEXT);")
+            conn.execute(
+                "INSERT INTO notifications (queued_utc, kind, title, body,"
+                " state) VALUES ('2026-01-01T00:00:00Z','failure','t','b','sent')")
+            conn.commit()
+            assert _db.widen_notification_states(conn) is True
+            ddl = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name='notifications'"
+            ).fetchone()[0]
+            assert "'sending'" in ddl
+            # AND THE HISTORY SURVIVED, which is the part a rebuild can lose.
+            assert conn.execute(
+                "SELECT COUNT(*) FROM notifications").fetchone()[0] == 1
+            assert conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE"
+                " name='notifications_wide'").fetchone()[0] == 0
+            # Idempotent: a second call is a no-op.
+            assert _db.widen_notification_states(conn) is False
+        finally:
+            conn.close()

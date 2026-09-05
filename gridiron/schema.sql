@@ -1086,7 +1086,19 @@ CREATE TABLE IF NOT EXISTS notifications (
     kind          TEXT    NOT NULL CHECK (kind IN ('results', 'failure')),
     title         TEXT    NOT NULL,
     body          TEXT    NOT NULL,
-    state         TEXT    NOT NULL CHECK (state IN ('queued','sent','failed')),
+    -- 'sending' RECORDS INTENT BEFORE THE NETWORK IS TOUCHED (2026-09-05).
+    -- `send` used to post to both channels and THEN insert this row, so a
+    -- push that reached the phone left no trace if the insert failed -- which
+    -- happened: a message with a kind the CHECK above refuses was delivered
+    -- and then vanished from the record. The row now exists first and is
+    -- marked afterwards, so the record can be wrong about the OUTCOME but
+    -- never silent about the attempt.
+    --
+    -- A ROW LEFT AT 'sending' IS A CRASH MID-POST, and it is distinguishable
+    -- from 'queued' on purpose: queued means held for quiet hours and never
+    -- sent, sending means handed to the network and unaccounted for. One is
+    -- ordinary and one wants looking at.
+    state         TEXT    NOT NULL CHECK (state IN ('queued','sending','sent','failed')),
     channels_json TEXT
 );
 CREATE INDEX IF NOT EXISTS notifications_when ON notifications (id DESC);
