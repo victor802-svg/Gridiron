@@ -337,6 +337,13 @@ PICKS_DEFAULT_TIER = "STRONG"
 #: they are given.
 PICKS_DEFAULT_FORECASTER = "statistical"
 
+#: THE HERO'S FLOOR (R3, 2026-09-05). The hero is the largest claim on the
+#: page, and a claim under this is not large enough to lead it: the tab still
+#: lists the pick, ranked as usual, under a sentence saying nothing leads.
+#: Carried on the week payload so the browser applies it without knowing it.
+HERO_MIN_CLAIM = 0.55
+HERO_MIN_CLAIM_DECLARED = "2026-09-05"
+
 #: The markets each sport asks about. MLB is moneyline only: there is no run
 #: line question worth asking that the moneyline does not already ask better.
 SPORT_MARKETS: dict[str, tuple[str, ...]] = {

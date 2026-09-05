@@ -1227,6 +1227,8 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   padding: 18px 20px;
   min-width: 190px;
 }
+/* NO LEAD (R3, 2026-09-05): the hero's place carries the server's sentence. */
+.hero-none { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
 .hero-market {
   font: 600 12px/1.4 var(--body); color: var(--faint); margin-top: 8px;
 }

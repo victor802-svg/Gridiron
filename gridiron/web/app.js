@@ -897,6 +897,24 @@ const Gridiron = (function () {
     return cards.filter(c => !c.method_note);
   }
 
+  // THE HERO'S FLOOR (R3, 2026-09-05). The hero is the largest claim on the
+  // page, and a claim under `hero_min_claim` is not large enough to lead it:
+  // the tab still lists the pick, ranked as usual, under a sentence the
+  // server wrote. Takes the tab's cards and the sort, filters by the floor
+  // the payload carries, and `selectHero` returns the first or null.
+  function heroCandidates(cards, sortMode, minClaim) {
+    const pool = heroPool(cards);
+    const ranked = sortMode === 'confidence'
+      ? pool.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0))
+      : pool;
+    return ranked.filter(c => (shownProb(c) || 0) >= minClaim);
+  }
+
+  function selectHero(cards, sortMode, minClaim) {
+    const lead = heroCandidates(cards, sortMode, minClaim);
+    return lead.length ? lead[0] : null;
+  }
+
   function localTime(iso) {
     try {
       return new Date(iso).toLocaleTimeString([], {
@@ -1148,16 +1166,24 @@ const Gridiron = (function () {
   //: survived a filter change would point at a different pick than the dots.
   let heroIndex = 0;
 
-  function renderHero(cards, sortMode, tags) {
+  function renderHero(cards, sortMode, tags, minClaim, noLead) {
     const host = document.getElementById('week-hero');
     if (!host) return;
     host.innerHTML = '';
     if (!cards.length) { host.hidden = true; return; }
     host.hidden = false;
 
-    const top = heroPool(cards).slice(0, HERO_STEPS);
     // EVERY CARD FLAGGED MEANS NO HERO. Not a hero with a warning on it.
-    if (!top.length) { host.hidden = true; delete host.dataset.id; return; }
+    if (!heroPool(cards).length) { host.hidden = true; delete host.dataset.id; return; }
+    const top = heroCandidates(cards, sortMode, minClaim || 0).slice(0, HERO_STEPS);
+    if (!top.length) {
+      // NO LEAD, SAID SO (R3). Nothing on the tab reaches the floor; the
+      // place stays and carries the server's sentence rather than collapsing,
+      // so a reader can see the tab was looked at and why nothing leads it.
+      delete host.dataset.id;
+      host.appendChild(el('p', 'hero-none', noLead || ''));
+      return;
+    }
     if (heroIndex >= top.length) heroIndex = 0;
     const c = top[heroIndex];
     // WHICH PREDICTION THE HERO IS SHOWING, said in the markup the way every
@@ -1226,7 +1252,7 @@ const Gridiron = (function () {
       back.setAttribute('aria-label', 'Previous pick');
       back.addEventListener('click', () => {
         heroIndex = (heroIndex - 1 + top.length) % top.length;
-        renderHero(cards, sortMode, tags);
+        renderHero(cards, sortMode, tags, minClaim, noLead);
       });
       steps.appendChild(back);
       const dots = el('div', 'hero-dots');
@@ -1237,7 +1263,7 @@ const Gridiron = (function () {
         if (i === heroIndex) dot.setAttribute('aria-current', 'true');
         dot.addEventListener('click', () => {
           heroIndex = i;
-          renderHero(cards, sortMode, tags);
+          renderHero(cards, sortMode, tags, minClaim, noLead);
         });
         dots.appendChild(dot);
       });
@@ -1247,7 +1273,7 @@ const Gridiron = (function () {
       fwd.setAttribute('aria-label', 'Next pick');
       fwd.addEventListener('click', () => {
         heroIndex = (heroIndex + 1) % top.length;
-        renderHero(cards, sortMode, tags);
+        renderHero(cards, sortMode, tags, minClaim, noLead);
       });
       steps.appendChild(fwd);
       host.appendChild(steps);
@@ -1911,7 +1937,8 @@ const Gridiron = (function () {
       // NO CONFIDENCE HEADINGS. The sort toggle already says how the slate is
       // ordered, and a section label would be a second, quieter claim about
       // the same thing.
-      renderHero(open, state.weekSort, data.hero_tags);
+      renderHero(open, state.weekSort, data.hero_tags,
+                 data.hero_min_claim, data.no_lead);
 
       const heading = document.getElementById('week-grid-heading');
       // WHAT THE GRID DROPS IS THE CARD THE HERO LEADS WITH, by identity and
@@ -1919,7 +1946,7 @@ const Gridiron = (function () {
       // took `open[0]`; once the hero can refuse a flagged top card, dropping
       // position 0 would delete that card from the page entirely -- shown by
       // neither. The totals tab is exactly that case, on every card.
-      const lead = heroPool(open)[0];
+      const lead = selectHero(open, state.weekSort, data.hero_min_claim);
       const rest = lead ? open.filter(c => c !== lead) : open.slice();
       if (heading) heading.hidden = !rest.length;
 
@@ -3163,7 +3190,7 @@ const Gridiron = (function () {
 
   return { boot, route, state, requireN, MissingSampleSize,
            drawCalibration, drawOverTime, dumbbell, contributions, bucketChip,
-           fetchJSON };
+           fetchJSON, selectHero, heroCandidates, renderHero };
 })();
 
 window.Gridiron = Gridiron;

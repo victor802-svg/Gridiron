@@ -442,6 +442,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                     # guess, which is the rule the glance already follows.
                     "early_view": early_view,
                     "has_early_view": False,
+                    "hero_min_claim": config.HERO_MIN_CLAIM,
+                    "no_lead": language.no_lead_line(config.HERO_MIN_CLAIM),
                     "default_tier": config.PICKS_DEFAULT_TIER,
                     "tier_caveat": _least_tested_line(conn, sport),
                     "forecaster": forecaster or config.PICKS_DEFAULT_FORECASTER,
@@ -912,6 +914,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # deciding again and disagreeing. Both sorts' wording is composed here; the
     # browser picks one, as it does with the count lines.
     payload["hero_tags"] = language.hero_tags(payload["headline"])
+    payload["hero_min_claim"] = config.HERO_MIN_CLAIM
+    payload["no_lead"] = language.no_lead_line(config.HERO_MIN_CLAIM)
     # NO SECOND SUB-LINE. The brief asks for "13 strong picks · first pitch in
     # 2h 14m · 15 more didn't clear the bar", and every one of those three
     # facts is ALREADY composed and already on the page: `glance.count_lines`

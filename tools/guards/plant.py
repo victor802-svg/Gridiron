@@ -6477,6 +6477,40 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
+LAW_FLOOR = "A CLAIM UNDER THE FLOOR NEVER LEADS"
+
+
+def plant_a_hero_showing_a_claim_under_the_floor() -> Result:
+    """Take the floor out of the hero's candidates.
+
+    THE HERO IS THE LARGEST CLAIM ON THE PAGE, in the largest type. Before R3
+    a tab whose best pick was 51% led with it, and 51% in that type reads as a
+    finding. The floor is `config.HERO_MIN_CLAIM`, carried on the payload;
+    this plants the one-word edit that removes it from the renderer.
+    """
+    from gridiron import audit as _audit
+    js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    if _audit.hero_flag_faults(js):
+        return Result(LAW_FLOOR, "a hero showing a claim under the floor",
+                      "audit.hero_flag_faults", False,
+                      "the shipped renderer already fails the hero scan; fix that "
+                      "before trusting this planting")
+    broken = js.replace("(shownProb(c) || 0) >= minClaim", "true", 1)
+    if broken == js:
+        return Result(LAW_FLOOR, "a hero showing a claim under the floor",
+                      "audit.hero_flag_faults", False,
+                      "the floor is no longer written the way this planting "
+                      "expects; re-point it")
+    faults = [f for f in _audit.hero_flag_faults(broken) if "floor" in f]
+    if not faults:
+        return Result(LAW_FLOOR, "a hero showing a claim under the floor",
+                      "audit.hero_flag_faults", False,
+                      "NOT CAUGHT - a 51% claim leads the page in the largest "
+                      "type it has, and reads as a finding")
+    return Result(LAW_FLOOR, "a hero showing a claim under the floor",
+                  "audit.hero_flag_faults", True, faults[0])
+
+
 LAW_TWO_ROWS = "TWO CONTROL ROWS ABOVE THE HERO"
 
 
@@ -6952,6 +6986,7 @@ def main() -> int:
     results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_run_recorded_only_when_it_ends())
     results.append(plant_a_protected_field_edited_behind_the_trigger())
+    results.append(plant_a_hero_showing_a_claim_under_the_floor())
     results.append(plant_a_third_control_row_above_the_hero())
     results.append(plant_a_retired_market_written())
     results.append(plant_a_retired_market_in_picks_tabs())

@@ -1222,6 +1222,12 @@ def slate_headline(slate_title: str | None, state: str | None,
     return slate_title
 
 
+def no_lead_line(min_claim: float) -> str:
+    """What the hero's place says when no pick on the tab reaches the floor."""
+    return (f"Nothing leads this tab: no pick reaches {round(min_claim * 100)}%. "
+            "The picks below are ranked as usual.")
+
+
 def hero_tags(headline: str | None) -> dict:
     """What the hero card is answering, for each sort. Both, pre-composed.
 

@@ -3797,9 +3797,29 @@ def hero_flag_faults(source: str) -> list[str]:
         faults.append("`heroPool` no longer filters on `method_note`, so a "
                       "market flagged as a coin flip by construction can be "
                       "the largest claim on the page.")
-    if not re.search(r"const top = heroPool\(", source):
-        faults.append("`renderHero` no longer draws from `heroPool`, so the "
-                      "filter exists and the hero ignores it.")
+    if not re.search(r"const top = heroCandidates\(", source):
+        faults.append("`renderHero` no longer draws from `heroCandidates`, so the "
+                      "filters exist and the hero ignores them.")
+    # THE FLOOR (R3, 2026-09-05): the candidates are filtered at the declared
+    # minimum claim, and the grid's lead is chosen the same way.
+    candidates = re.search(r"function heroCandidates\([^)]*\)\s*\{(?P<body>[\s\S]*?)\n  \}",
+                           source)
+    if candidates is None:
+        faults.append("`heroCandidates` is gone from app.js, so nothing applies "
+                      "the hero's floor and a coin-flip claim can lead the page.")
+    else:
+        body = candidates.group("body")
+        if "heroPool(" not in body:
+            faults.append("`heroCandidates` no longer draws from `heroPool`, so a "
+                          "flagged market can reach the hero through the floor.")
+        if ">= minClaim" not in body:
+            faults.append("`heroCandidates` no longer filters at the floor "
+                          "(`>= minClaim`), so a claim under HERO_MIN_CLAIM can "
+                          "lead the page.")
+    if not re.search(r"const lead = selectHero\(", source):
+        faults.append("the grid's lead is no longer chosen by `selectHero`, so the "
+                      "card the hero leads with and the card the grid drops can "
+                      "differ.")
     if re.search(r"const rest = open\.slice\(1\)", source):
         faults.append("the grid drops position 0 rather than the card the hero "
                       "leads with. When the hero refuses a flagged top card, "
