@@ -203,3 +203,19 @@ def test_an_nfl_evening_game_keeps_the_leagues_day(conn, monkeypatch):
     loader.load_games(conn, (2026,))
     assert conn.execute("SELECT league_date FROM games WHERE id = '2026_01_DAL_PHI'"
                         ).fetchone()[0] == "2026-09-13"
+
+
+
+# --- declared once -------------------------------------------------------------
+
+def test_sport_labels_are_declared_in_one_place():
+    """A four-sport copy of SPORT_LABELS lived in language.py beside the
+    five-sport one in config.py (audit 2026-09-05, phase B4)."""
+    owners = []
+    for path in sorted(config.PACKAGE_ROOT.rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"^SPORT_LABELS\s*=\s*\{", text, re.M):
+            owners.append(path.name)
+    assert owners == ["config.py"], owners
+    assert language.SPORT_LABELS is config.SPORT_LABELS
+    assert set(config.SPORT_LABELS) == set(config.SPORTS)

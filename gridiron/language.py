@@ -18,6 +18,7 @@ matter of remembering.
 
 from __future__ import annotations
 
+from . import config as _config
 from . import subjects as _subjects
 
 #: What each market is CALLED. Anything absent falls back to the name with its
@@ -1855,7 +1856,10 @@ def live_not_followed_line(sports: list[str]) -> str | None:
 #: Printed labels per sport, for the few phrases here that name one. Kept as a
 #: literal rather than imported from config, because this module deliberately
 #: has one import and an internal key must never reach prose.
-SPORT_LABELS = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA", "cfb": "NCAAF"}
+#: ONE DOOR (audit 2026-09-05). A second copy lived here with four sports in
+#: it, and the fifth rendered as "UFC" only because the fallback upper-cases
+#: an unknown key -- the right label for the wrong reason.
+SPORT_LABELS = _config.SPORT_LABELS
 
 
 def build_line(freshness: dict) -> str:

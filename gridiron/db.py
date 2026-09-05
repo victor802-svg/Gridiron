@@ -108,7 +108,8 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
 #: nothing reads. `operator_calls` went 2026-09-02 by ruling (GRIDIRON_16 R1).
 #:
 #: DELIBERATELY NOT A GENERAL "RUN THIS SQL" HOOK. It drops NAMED objects and
-#: nothing else, and `_PROTECTED` refuses the record's own tables by name --
+#: nothing else, and `_schema_defines` refuses anything `schema.sql` still
+#: creates, so the record's own tables cannot be named here --
 #: because a migration that could drop `predictions` would be the way around
 #: LAW 3 that every trigger in this schema exists to prevent. Adding a row
 #: here is a deliberate act with a dated note, exactly as adding a factor is.
