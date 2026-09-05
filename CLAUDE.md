@@ -1,10 +1,9 @@
 # Gridiron — working agreement
 
 Gridiron is a multi-sport forecaster — **NFL, MLB, NBA, college football and
-UFC** — that makes
-probabilistic predictions, records them **before** the market line is visible to
-it, resolves them against real outcomes, and scores its own calibration
-permanently, separately for every sport.
+UFC** — that makes probabilistic predictions, records them **before** the
+market line is visible to it, resolves them against real outcomes, and scores
+its own calibration permanently, separately for every sport.
 
 Adding a market goes through `docs/NEW_MARKET_CHECKLIST.md`, item by item, and
 the phase that adds it shows the list ticked. `docs/MLB_PROPS.md` is the first
