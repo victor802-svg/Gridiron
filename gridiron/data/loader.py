@@ -66,12 +66,18 @@ def load_games(conn: sqlite3.Connection, seasons: tuple[int, ...]) -> dict[str, 
             final = home_score is not None and away_score is not None
             neutral = 1 if (r.get("location") or "").strip().lower() == "neutral" else 0
 
+            # THE LEAGUE'S OWN DAY (audit 2026-09-05). nflverse publishes
+            # `gameday`, the date the league plays the game on; without it the
+            # column fell back to the UTC date, and every evening game -- 617
+            # of 3,033 -- was filed under the following day. Results-by-day,
+            # "tonight" and the slate clock all read that column.
             conn.execute(
                 "INSERT INTO games (id, season, week, game_type, kickoff_utc, home, away,"
-                " status, home_score, away_score) VALUES (?,?,?,?,?,?,?,?,?,?)"
+                " status, home_score, away_score, league_date)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET kickoff_utc=excluded.kickoff_utc,"
                 " status=excluded.status, home_score=excluded.home_score,"
-                " away_score=excluded.away_score",
+                " away_score=excluded.away_score, league_date=excluded.league_date",
                 (
                     r["game_id"],
                     season,
@@ -83,6 +89,7 @@ def load_games(conn: sqlite3.Connection, seasons: tuple[int, ...]) -> dict[str, 
                     "final" if final else "scheduled",
                     home_score,
                     away_score,
+                    (r.get("gameday") or "").strip() or None,
                 ),
             )
             counts["games"] += 1

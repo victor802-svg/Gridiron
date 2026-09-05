@@ -178,3 +178,28 @@ def test_the_pace_counts_standing_rows_only(league):
     _settled_pair(league)
     n, days = calibration.recent_settled(league, sport="nfl", since="2000-01-01T00:00:00Z")
     assert (n, days) == (1, 1)
+
+
+
+# --- the league's own day ------------------------------------------------------
+
+def test_an_nfl_evening_game_keeps_the_leagues_day(conn, monkeypatch):
+    """Sunday Night Football kicks off after midnight UTC. It is a Sunday game."""
+    from gridiron.data import loader, sources
+
+    row = {"game_id": "2026_01_DAL_PHI", "season": "2026", "week": "1",
+           "game_type": "REG", "gameday": "2026-09-13", "gametime": "20:20",
+           "home_team": "PHI", "away_team": "DAL", "home_score": "", "away_score": "",
+           "location": "Home"}
+    monkeypatch.setattr(sources, "fetch_csv", lambda *a, **k: [row])
+    loader.load_games(conn, (2026,))
+    game = conn.execute("SELECT kickoff_utc, league_date FROM games"
+                        " WHERE id = '2026_01_DAL_PHI'").fetchone()
+    assert game["kickoff_utc"].startswith("2026-09-14T00:20")
+    assert game["league_date"] == "2026-09-13"
+    # A refresh repairs a row filed under the UTC date before the fix.
+    conn.execute("UPDATE games SET league_date = '2026-09-14' WHERE id = '2026_01_DAL_PHI'")
+    conn.commit()
+    loader.load_games(conn, (2026,))
+    assert conn.execute("SELECT league_date FROM games WHERE id = '2026_01_DAL_PHI'"
+                        ).fetchone()[0] == "2026-09-13"
