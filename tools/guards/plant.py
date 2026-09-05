@@ -6464,6 +6464,44 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
+LAW_UNITS = "A RATE AND ITS MULTIPLIER COUNT THE SAME THING"
+
+
+def plant_a_horizon_that_counts_days_for_a_weekly_sport() -> Result:
+    """Put the calendar-day count back into `slates_remaining`.
+
+    THIS IS THE SHIPPED CODE OF 2026-09-04. The rate was per `games.week`;
+    the multiplier was per UTC calendar day; the NFL gate line on the Record
+    page read "~3504 expected" from 48 forecasts in week one. Eighteen weeks
+    of 48 is 864. Nothing failed, because both numbers were real -- they were
+    just not in the same unit.
+    """
+    from gridiron import audit as _audit
+    source = (config.PACKAGE_ROOT / "horizon.py").read_text(encoding="utf-8")
+    if _audit.horizon_unit_faults(source):
+        return Result(LAW_UNITS, "a horizon counting days for a weekly sport",
+                      "audit.horizon_unit_faults", False,
+                      "the shipped horizon already mixes units; fix that "
+                      "before trusting this planting")
+    broken = source.replace(
+        "COUNT(DISTINCT week)",
+        "COUNT(DISTINCT COALESCE(league_date, substr(kickoff_utc, 1, 10)))", 1)
+    if broken == source:
+        return Result(LAW_UNITS, "a horizon counting days for a weekly sport",
+                      "audit.horizon_unit_faults", False,
+                      "slates_remaining is no longer written the way this "
+                      "planting expects; re-point it")
+    faults = _audit.horizon_unit_faults(broken)
+    if not faults:
+        return Result(LAW_UNITS, "a horizon counting days for a weekly sport",
+                      "audit.horizon_unit_faults", False,
+                      "NOT CAUGHT - the Record page multiplies forecasts per "
+                      "week by calendar days remaining and calls the product "
+                      "an expectation")
+    return Result(LAW_UNITS, "a horizon counting days for a weekly sport",
+                  "audit.horizon_unit_faults", True, faults[0])
+
+
 LAW_COMMENTS = "A SCANNER READS CODE, NOT COMMENTS"
 
 
@@ -6632,6 +6670,7 @@ def main() -> int:
     results.append(plant_a_drawn_game_graded_as_a_loss())
     results.append(plant_an_unfitted_market_that_blocks_a_rerun_refusal())
     results.append(plant_a_comment_naming_the_forbidden_thing())
+    results.append(plant_a_horizon_that_counts_days_for_a_weekly_sport())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

@@ -4551,6 +4551,62 @@ def reason_before_check_faults(source: str | None = None) -> list[str]:
     return faults
 
 
+def horizon_unit_faults(source: str | None = None) -> list[str]:
+    """Do the outlook's rate and its multiplier count the same thing?
+
+    `market_outlook` multiplies a rate per slate by the slates remaining. The
+    rate comes from `_written_so_far`, which groups by `g.week`; the multiplier
+    comes from `slates_remaining`. If the second counts anything else -- and
+    until 2026-09-05 it counted UTC calendar days -- the projection is off by
+    the ratio of the two units, silently, on every gate line of the Record
+    page. Read from the syntax tree, so a comment naming a column is not a
+    query naming it.
+    """
+    if source is None:
+        source = (config.PACKAGE_ROOT / "horizon.py").read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return [f"horizon.py does not parse: {exc}"]
+    sql = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in (
+                "slates_remaining", "_written_so_far"):
+            sql[node.name] = " ".join(
+                c.value for c in ast.walk(node)
+                if isinstance(c, ast.Constant) and isinstance(c.value, str))
+    faults = []
+    for name in ("slates_remaining", "_written_so_far"):
+        if name not in sql:
+            faults.append(f"`horizon.{name}` is gone, so this scan cannot see "
+                          "what it was built to see.")
+    if faults:
+        return faults
+    remaining, written = sql["slates_remaining"], sql["_written_so_far"]
+    if "DISTINCT week" not in remaining:
+        faults.append("`slates_remaining` does not count `DISTINCT week`, the "
+                      "slate key the rate is measured by.")
+    for column in ("league_date", "kickoff_utc"):
+        if column in remaining:
+            faults.append(
+                f"`slates_remaining` reads `{column}`: a calendar day is not "
+                f"a slate for a weekly sport, and the rate it multiplies is "
+                f"per slate. The outlook would overstate a football gate by "
+                f"the days in a week.")
+    if "DISTINCT g.week" not in written:
+        faults.append("`_written_so_far` no longer counts `DISTINCT g.week`, "
+                      "so the rate is in a unit the multiplier does not share.")
+    return faults
+
+
+def check_the_horizon_counts_in_one_unit() -> None:
+    """Raise if the outlook's rate and multiplier count different things."""
+    faults = horizon_unit_faults()
+    if faults:
+        raise LawViolation(
+            "THE OUTLOOK MULTIPLIES TWO UNITS:" + _NL2 + _NL2.join(faults))
+
+
 def check_nothing_is_reasoned_twice() -> None:
     """Raise if the model is asked before the record is."""
     faults = reason_before_check_faults()

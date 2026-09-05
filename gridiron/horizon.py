@@ -26,9 +26,21 @@ from . import config
 
 
 def slates_remaining(conn: sqlite3.Connection, sport: str, season: int) -> int:
-    """Distinct future slates still on the calendar for this sport's season."""
+    """Distinct future slates still on the calendar for this sport's season.
+
+    A SLATE IS WHAT THE SPORT WRITES BY: `games.week`, which is a week for
+    football and basketball, a day for baseball and college football, a card
+    for the fights. It is the same column `_written_so_far` divides by, and
+    it has to be, because the outlook multiplies one by the other.
+
+    Until 2026-09-05 this counted calendar days -- and UTC days at that, so a
+    Sunday night football game was its own slate. The NFL record showed 73
+    slates remaining against a rate measured per week, and the Record page
+    projected ~3,504 resolutions from 48 written in week one. Eighteen weeks
+    of 48 is 864.
+    """
     row = conn.execute(
-        "SELECT COUNT(DISTINCT COALESCE(league_date, substr(kickoff_utc, 1, 10)))"
+        "SELECT COUNT(DISTINCT week)"
         " FROM games WHERE sport = ? AND season = ? AND status = 'scheduled'",
         (sport, season),
     ).fetchone()

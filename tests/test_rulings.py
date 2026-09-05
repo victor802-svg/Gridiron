@@ -257,3 +257,37 @@ def test_every_compiled_scanner_has_a_known_positive_fixture():
         f"match anything: {missing}"
     )
     assert not audit.scanner_self_check()
+
+
+
+def test_a_weekly_sport_counts_its_slates_in_weeks(tmp_path):
+    """Sunday night football is not its own slate (audit 2026-09-05)."""
+    from gridiron import db
+
+    conn = db.open_db(tmp_path / "weeks.db")
+    for gid, kickoff, day in (
+            ("2026_01_A_B", "2026-09-11T00:20:00Z", "2026-09-11"),
+            ("2026_01_C_D", "2026-09-13T17:00:00Z", "2026-09-13"),
+            ("2026_01_E_F", "2026-09-14T00:20:00Z", "2026-09-14")):
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+            " home, away, status, league_date) VALUES (?,'nfl',2026,1,'REG',?,"
+            " 'HOM','AWY','scheduled',?)", (gid, kickoff, day))
+    conn.commit()
+    assert horizon.slates_remaining(conn, "nfl", 2026) == 1
+    conn.close()
+
+
+def test_the_guard_sees_a_horizon_counting_days():
+    from pathlib import Path
+
+    from gridiron import audit, config
+
+    source = (Path(config.PACKAGE_ROOT) / "horizon.py").read_text(encoding="utf-8")
+    assert audit.horizon_unit_faults(source) == []
+    broken = source.replace(
+        "COUNT(DISTINCT week)",
+        "COUNT(DISTINCT COALESCE(league_date, substr(kickoff_utc, 1, 10)))", 1)
+    assert broken != source
+    faults = audit.horizon_unit_faults(broken)
+    assert faults and any("league_date" in f for f in faults)
