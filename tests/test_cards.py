@@ -62,6 +62,17 @@ def _open_week(page, size):
                     (document.getElementById('week-hero').hidden ? 0 : 1) > 0""",
         timeout=15000,
     )
+    # AND FOR THE ARRIVAL TO END (R4, 2026-09-05). The grid and the hero come
+    # in from one per cent below over 200ms; a position measured a frame into
+    # that reads the slide as movement. "Waiting for the slate" now includes
+    # waiting for it to settle.
+    page.wait_for_function(
+        """() => ['week-cards', 'week-hero'].every(id => {
+            const el = document.getElementById(id);
+            if (!el || el.hidden) return true;
+            const cs = getComputedStyle(el);
+            return cs.opacity === '1' && cs.transform === 'none';
+        })""", timeout=5000)
 
 
 def _cards(page):
