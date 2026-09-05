@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 
 from datetime import date
 
-from .. import config, sports
+from .. import config, fingerprint, sports
 from ..db import utcnow
 from ..factors import compute, context
 from . import baseline, llm
@@ -208,6 +208,9 @@ def write_prediction(
             correction_version,
         ),
     )
+    # THE FINGERPRINT, ON THE SAME TRANSACTION (2026-09-05): the row and its
+    # hash exist together or not at all.
+    fingerprint.write(conn, cur.lastrowid)
     conn.commit()
     if cur.lastrowid is None:
         return None

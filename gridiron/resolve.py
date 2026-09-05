@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from . import subjects
+from . import fingerprint, subjects
 from .db import utcnow
 from .model import questions
 
@@ -194,6 +194,9 @@ def resolve_all(conn: sqlite3.Connection, *, progress=None) -> dict:
             " WHERE id = ? AND resolved_utc IS NULL",
             (utcnow(), outcome, pred["id"]),
         )
+        if cur.rowcount == 1:
+            # ONTO THE FINGERPRINT, ONCE, on the same transaction (2026-09-05).
+            fingerprint.record_resolution(conn, pred["id"])
         conn.commit()          # settle one at a time; a crash resumes cleanly
         if cur.rowcount == 1:
             settled += 1

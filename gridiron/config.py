@@ -978,6 +978,20 @@ MLB_PROP_LADDER_DECLARED = "2026-08-30T00:00:00Z"
 #: a rung a source actually posts, one subject at a time, against a daily cap,
 #: so refusing the ones the model is unsure of chooses BETWEEN questions rather
 #: than hiding them. A game market asks about every game on the slate.
+#: THE RECORD'S DECLARED BASELINE (ruling 4 on the audit, 2026-09-05).
+#: `audited_sha256` is the audit's own reading -- every protected field AND
+#: the resolution of every row that existed, ordered by id -- and it is
+#: recorded, not rechecked, because it goes stale with every settled game.
+#: `substance_sha256` is the hash the gate recomputes: the same rows without
+#: their resolutions, through `fingerprint.record_hash`. Taking a new baseline
+#: is a deliberate act (`tools/fingerprint.py`), dated here.
+RECORD_BASELINE: dict = {
+    "taken_utc": "2026-09-05T00:00:00Z",
+    "rows": 765,
+    "audited_sha256": "b15a9f6fa8e821c764498600c18b4ac284ace420843302641339a56b4aa27df3",
+    "substance_sha256": "0fcb277bdbbc45d1073a363915d6a80a04e4dcb855b5e9428f9429f8226ffdc9",
+}
+
 GAME_MARKET_MIN_CLAIM: float | None = None
 GAME_MARKET_MIN_CLAIM_DECLARED = "2026-09-04T00:00:00Z"
 

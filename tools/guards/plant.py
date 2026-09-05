@@ -6464,6 +6464,59 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
+LAW_FINGERPRINT = "A PROTECTED FIELD CANNOT DRIFT UNNOTICED"
+
+
+def plant_a_protected_field_edited_behind_the_trigger() -> Result:
+    """Drop LAW 3's trigger, edit a probability, and ask the fingerprint.
+
+    THE TRIGGER IS ONE LOCK AND A LOCK CAN BE REMOVED. The audit of 2026-09-05
+    hashed every protected field and found nothing to compare it with; this
+    is the second lock, and this plants the edit the first would refuse. The
+    second half plants the quieter fault: a row inserted around
+    `write_prediction`, which has no fingerprint at all.
+    """
+    from gridiron import fingerprint as _fingerprint
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(Path(tmp) / "fp.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+            " home, away, status) VALUES ('fp_game','nfl',2026,1,'REG',"
+            " '2026-09-13T17:00:00Z','HOM','AWY','scheduled')")
+        row = "INSERT INTO predictions (created_utc, sport, game_id, market_type," \
+              " subject, line_asked, model_prob, model_side, predictor, pass_kind," \
+              " factor_set_version, factors_json, reasoning)" \
+              " VALUES ('2026-09-01T00:00:00Z','nfl','fp_game','spread','HOM',-3.5," \
+              " ?,'cover','statistical','early','fs2','{}','planted')"
+        cur = conn.execute(row.replace("'HOM',-3.5", "'HOM',-3.5"), (0.61,))
+        through_the_door = cur.lastrowid
+        _fingerprint.write(conn, through_the_door)
+        # A second question on the same game -- the away side -- so the two
+        # rows do not collide on the one-standing-row unique index.
+        cur = conn.execute(row.replace("'HOM',-3.5", "'AWY',3.5"), (0.58,))
+        around_the_door = cur.lastrowid
+        conn.commit()
+        conn.execute("DROP TRIGGER predictions_no_update")
+        conn.execute("UPDATE predictions SET model_prob = 0.91 WHERE id = ?",
+                     (through_the_door,))
+        conn.commit()
+        faults = _fingerprint.drift(conn)
+        conn.close()
+    named_edit = any(f.startswith(f"prediction {through_the_door}:") and "changed" in f
+                     for f in faults)
+    named_bypass = any(f.startswith(f"prediction {around_the_door} has no fingerprint")
+                       for f in faults)
+    if not (named_edit and named_bypass):
+        return Result(LAW_FINGERPRINT, "a protected field edited behind the trigger",
+                      "fingerprint.drift", False,
+                      f"NOT CAUGHT - edit named: {named_edit}, bypass named: "
+                      f"{named_bypass}. A dropped trigger would let a probability "
+                      f"be rewritten and nothing would say so.")
+    return Result(LAW_FINGERPRINT, "a protected field edited behind the trigger",
+                  "fingerprint.drift", True,
+                  next(f for f in faults if "changed" in f))
+
+
 LAW_RUN_RECORD = "THE RECORD PRECEDES THE RUN"
 
 
@@ -6776,6 +6829,7 @@ def main() -> int:
     results.append(plant_a_horizon_that_counts_days_for_a_weekly_sport())
     results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_run_recorded_only_when_it_ends())
+    results.append(plant_a_protected_field_edited_behind_the_trigger())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

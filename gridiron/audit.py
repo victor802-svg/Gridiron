@@ -4650,6 +4650,20 @@ def task_run_order_faults(source: str | None = None) -> list[str]:
     return faults
 
 
+def check_record_fingerprint(conn) -> None:
+    """Raise, by prediction id, if any protected field has drifted from the
+    fingerprint taken when the row was written, if any row has no fingerprint,
+    or if the declared baseline no longer reproduces (ruling 4, 2026-09-05)."""
+    from . import fingerprint
+
+    faults = fingerprint.drift(conn, config.RECORD_BASELINE)
+    if faults:
+        raise LawViolation(
+            "THE RECORD DOES NOT MATCH ITS FINGERPRINT (LAW 3):" + _NL2
+            + _NL2.join(faults[:12])
+            + (_NL2 + f"... and {len(faults) - 12} more" if len(faults) > 12 else ""))
+
+
 def check_a_run_is_recorded_before_it_runs() -> None:
     """Raise if a task could die without leaving a row."""
     faults = task_run_order_faults()

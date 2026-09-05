@@ -502,6 +502,42 @@ CREATE TABLE IF NOT EXISTS task_runs (
 );
 CREATE INDEX IF NOT EXISTS task_runs_lookup ON task_runs (task, started_utc DESC);
 
+-- THE RECORD'S FINGERPRINT (ruling 4 on the audit, 2026-09-05). One row per
+-- prediction, written by `write_prediction` the moment the row exists: the
+-- hash of every protected field, and later the resolution, once. A trigger
+-- can be dropped; this is the second lock, checked in the gate by name.
+CREATE TABLE IF NOT EXISTS prediction_fingerprints (
+    prediction_id    INTEGER PRIMARY KEY REFERENCES predictions(id),
+    substance_sha256 TEXT    NOT NULL,
+    taken_utc        TEXT    NOT NULL,
+    resolved_utc     TEXT,
+    outcome          INTEGER
+);
+
+CREATE TRIGGER IF NOT EXISTS fingerprints_no_delete
+BEFORE DELETE ON prediction_fingerprints
+BEGIN
+    SELECT RAISE(ABORT, 'a fingerprint is never removed');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fingerprints_substance_frozen
+BEFORE UPDATE ON prediction_fingerprints
+FOR EACH ROW
+WHEN OLD.substance_sha256 IS NOT NEW.substance_sha256
+  OR OLD.taken_utc IS NOT NEW.taken_utc
+BEGIN
+    SELECT RAISE(ABORT, 'a fingerprint is taken once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fingerprints_resolve_once
+BEFORE UPDATE ON prediction_fingerprints
+FOR EACH ROW
+WHEN OLD.resolved_utc IS NOT NULL
+ AND (OLD.resolved_utc IS NOT NEW.resolved_utc OR OLD.outcome IS NOT NEW.outcome)
+BEGIN
+    SELECT RAISE(ABORT, 'a fingerprinted resolution is recorded once');
+END;
+
 CREATE TRIGGER IF NOT EXISTS task_runs_no_delete
 BEFORE DELETE ON task_runs
 BEGIN

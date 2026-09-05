@@ -555,6 +555,10 @@ def init(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     if widening is not None:
         _finish_widening(conn, widening)
+    # THE ROWS THAT PREDATE THE FINGERPRINT (2026-09-05): every row up to the
+    # declared baseline gets one now; a later row without one is a fault.
+    from . import config as _config, fingerprint as _fingerprint
+    _fingerprint.backfill(conn, _config.RECORD_BASELINE["rows"])
     conn.execute(
         "INSERT OR IGNORE INTO meta (key, value) VALUES ('kind', 'live')"
     )
