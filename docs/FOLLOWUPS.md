@@ -186,7 +186,7 @@ Retiring or reworking a declared factor is a LAW 2 act with a dated note, and
 Measure the two factors' correlation on a real training set first; the answer
 may be that the asked line stays and the rating is the one that moves.
 
-## The rebuilt bundle could not be launched to confirm it renders
+## ~~The rebuilt bundle could not be launched to confirm it renders~~ — CLOSED 2026-09-05
 
 2026-09-01. E0.1 asked for a rebuild "from HEAD, relaunch, and confirm the
 compact rows / desk render in the exe". The rebuild succeeded and is stamped
@@ -209,6 +209,11 @@ What was NOT confirmed: that the exe starts, serves, and paints those assets.
 The operator can check that by running `dist\Gridiron\Gridiron.exe` on a
 machine where the policy permits it, or by signing the binary. Until then the
 phase is PARTIAL, and it should not be reported otherwise.
+
+**CLOSED 2026-09-05.** The application-control policy no longer blocks it: the
+rebuilt exe (`5d588e0`) was run as `--serve-only` and answered
+`/api/health` **200** with its own build id. It was rebuilt because the
+2026-09-01 bundle could no longer open the record at all — see below.
 
 ## The header does not fit between 640px and 900px — narrower band, 2026-09-05
 
@@ -561,3 +566,34 @@ fixes it made and the decisions it left. The decisions, in one line each:
 - **`docs/DIAGNOSIS.md` is the 2026-08-29 pre-registered run** (207 → 55.6%).
   The same tool on the shipped question set reads 243 → 46.1% (METHODOLOGY
   §6). Regenerating a pre-registered document is a ruling.
+
+## 2026-09-05 — a stale bundle cannot open the record, and says only "503"
+
+The operator could not open the app. The dialog said *"the server did not
+start"* and showed fifteen lines of `GET /api/health 503`, which reads like an
+authentication or key problem — they had just rotated the API key and
+reasonably blamed that. It was neither.
+
+**The bundle was `62e7f3b` (2026-09-01) and the record had moved past it.** Its
+copy of `schema.sql` recreates the pre-final-pass unique index on
+`predictions (game_id, market_type, subject, predictor, factor_set_version)`.
+The final pass shipped 2026-09-03, so the record now holds early/final pairs —
+two rows agreeing on all five columns. `db.init()` raised
+`IntegrityError: UNIQUE constraint failed`, `get_conn()` raised, and
+`/api/health` answered 503 with the exception text deliberately withheld.
+Reproduced exactly by running that commit's code against a copy of the record.
+
+Three things to decide, none done here:
+
+- **The bundle ships a COPY of `schema.sql`,** so any schema change dates every
+  existing bundle. Nothing warns at build time or at launch that the copy is
+  older than the record it is about to open.
+- **The launcher's build-mismatch check only runs against a HEALTHY server**
+  (`/api/health` carries the build). A server that cannot open the database
+  never reports a build, so the one check that would have named the problem
+  could not fire.
+- **The traceback never reached the launcher log.** `start_server` redirects
+  the server's stdout and stderr into `%APPDATA%\Gridiron\launcher.log`, but
+  that file's last entry is 2026-08-29; the failing run left nothing. Whatever
+  the reason, the dialog showed access logs instead of the one line that
+  explained it, and the operator was left to guess.
