@@ -4497,9 +4497,16 @@ def llm_prose_faults(conn) -> list[str]:
             for field in ("reasoning", "phrase", "chance_clause"):
                 hits = plain_words_violations(card.get(field) or "")
                 if hits:
+                    # IDENTIFIED BY ROW, NOT BY TEAM. Naming the subject here
+                    # would put a raw side into a sentence, which
+                    # `check_side_named_everywhere` refuses for good reason --
+                    # on a moneyline the subject is the HOME club, so a
+                    # message built from it names the side the model forecast
+                    # AGAINST on every pick against the home team. A
+                    # prediction id is unambiguous and points at one row.
                     faults.append(
-                        f"{sport} {card.get('subject')}: the second "
-                        f"forecaster's {field} shows {hits[0]}")
+                        f"{sport} prediction {card.get('prediction_id')}: the "
+                        f"second forecaster's {field} shows {hits[0]}")
     if looked_at == 0 and not faults:
         # NOT A PASS. A scan that saw nothing proves nothing, and this one
         # went unwritten for weeks precisely because nobody looked.
