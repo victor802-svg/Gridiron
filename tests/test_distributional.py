@@ -410,3 +410,51 @@ def test_the_measurement_tool_reads_the_live_slate():
     if result.get("cards"):
         # Every card carries a chip; that is the first of the three questions.
         assert sum(m["no_chip"] for m in result["markets"].values()) == 0
+
+
+# --- fix 1: an absent factor is not a zero (2026-09-05) ---------------------
+
+def test_the_prompt_never_hands_absence_over_as_a_number():
+    audit.check_the_prompt_keeps_absence_absent()
+
+
+def test_the_ufc_zero_was_correct_all_along():
+    """The question fix 1 asked, answered in a test so it stays answered.
+
+    A reasoning row read "This is a three-round bout (ufc_scheduled_rounds =
+    0)" and the zero was suspected of being a silent default. It was not:
+    the factor is a declared INDICATOR, 1.0 for five rounds and 0.0 for three,
+    and its own rationale says so. The zero was right and the PRESENTATION was
+    what misled -- a code name and an encoded number quoted into prose.
+    """
+    from gridiron.factors import registry
+    import gridiron.factors.ufc  # noqa: F401
+
+    entry = registry.REGISTRY["ufc_scheduled_rounds"]
+    assert "scaled so five reads as 1 and three as 0" in entry.rationale
+
+    class _Ctx:
+        scheduled_rounds = 3
+    assert entry.fn(_Ctx()) == 0.0
+    _Ctx.scheduled_rounds = 5
+    assert entry.fn(_Ctx()) == 1.0
+    # And a length the source does not carry is ABSENT, never guessed.
+    _Ctx.scheduled_rounds = 4
+    assert entry.fn(_Ctx()) is None
+
+
+def test_both_directions_of_the_absence_rule_are_seen():
+    """A guard that watches one direction teaches the next person to
+    over-correct: a measured zero must still reach the model."""
+    from gridiron.model import llm
+
+    rows = [
+        {"factor": "measured", "value": 0.0, "present": True,
+         "rationale": "a measured zero"},
+        {"factor": "unmeasurable", "value": None, "present": False,
+         "rationale": "no value exists"},
+    ]
+    text = llm.build_prompt("claim", rows, [])
+    assert "measured = 0" in text
+    assert "unmeasurable =" not in text
+    assert "do not treat these as zero" in text.lower()

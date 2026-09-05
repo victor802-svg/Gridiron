@@ -5418,6 +5418,99 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_ABSENT_PROMPT = "AN ABSENT FACTOR IS NOT A ZERO"
+
+
+def plant_an_absent_factor_handed_to_the_model_as_zero() -> Result:
+    """Render an unmeasurable factor into the prompt as `name = 0`.
+
+    CHECKLIST ITEM 5, ON THE ONE SURFACE NOTHING WAS WATCHING. The feature
+    vector already refuses a defaulted absence at runtime and the factor code
+    is scanned for a reintroduced fallback; neither looks at what the model is
+    TOLD. A single edit to the loop in `build_prompt` would hand every
+    unmeasurable factor over as a zero, and nothing would look different --
+    the model would reason from those zeroes as facts and write confident
+    prose about them.
+
+    THIS PLANTING EXISTS BECAUSE THE QUESTION WAS ASKED AND THE ANSWER WAS NO.
+    A UFC row read "This is a three-round bout (ufc_scheduled_rounds = 0)" and
+    the zero was suspected of being this failure. It was not: that factor is a
+    declared INDICATOR, 1.0 for five rounds and 0.0 for three. The prompt was
+    honest. Being able to prove that structurally, next time, is worth more
+    than having read the function once.
+    """
+    from gridiron import audit as _audit
+    from gridiron.model import llm as _llm
+
+    if _audit.prompt_absence_faults():
+        return Result(LAW_ABSENT_PROMPT, "an absent factor handed over as zero",
+                      "audit.prompt_absence_faults", False,
+                      "the shipped prompt already mishandles absence; fix that "
+                      "before trusting this planting")
+
+    original = _llm.build_prompt
+
+    def defaulting(question, factor_rows, notes):
+        # The plant: absence quietly becomes a measurement.
+        rows = [dict(r) for r in factor_rows]
+        for row in rows:
+            if not row.get("present", True):
+                row["present"] = True
+                row["value"] = 0.0
+        return original(question, rows, notes)
+
+    try:
+        _llm.build_prompt = defaulting
+        faults = _audit.prompt_absence_faults()
+    finally:
+        _llm.build_prompt = original
+
+    if not faults:
+        return Result(LAW_ABSENT_PROMPT, "an absent factor handed over as zero",
+                      "audit.prompt_absence_faults", False,
+                      "NOT CAUGHT - every factor the model could not measure "
+                      "was handed to it as zero, and it will reason from those "
+                      "zeroes as though somebody had measured them")
+    return Result(LAW_ABSENT_PROMPT, "an absent factor handed over as zero",
+                  "audit.prompt_absence_faults", True, faults[0])
+
+
+def plant_a_measured_zero_dropped_from_the_prompt() -> Result:
+    """Drop measured zeroes, which is the opposite error and just as silent.
+
+    A ZERO IS A MEASUREMENT. Refusing to send it -- out of caution about the
+    failure above -- hides a real observation from the model, and the model
+    cannot tell a factor that measured zero from one that could not be
+    measured. Both halves of the rule are planted, because a guard that only
+    watches one direction teaches the next person to over-correct.
+    """
+    from gridiron import audit as _audit
+    from gridiron.model import llm as _llm
+
+    original = _llm.build_prompt
+
+    def timid(question, factor_rows, notes):
+        rows = [r for r in factor_rows
+                if not (r.get("present", True) and r.get("value") == 0.0)]
+        return original(question, rows, notes)
+
+    try:
+        _llm.build_prompt = timid
+        faults = [f for f in _audit.prompt_absence_faults()
+                  if "MEASURED zero" in f]
+    finally:
+        _llm.build_prompt = original
+
+    if not faults:
+        return Result(LAW_ABSENT_PROMPT, "a measured zero dropped",
+                      "audit.prompt_absence_faults", False,
+                      "NOT CAUGHT - a factor that measured exactly zero is "
+                      "withheld from the model, which cannot then tell it "
+                      "apart from one nobody could measure")
+    return Result(LAW_ABSENT_PROMPT, "a measured zero dropped",
+                  "audit.prompt_absence_faults", True, faults[0])
+
+
 LAW_CHIP = "A CHIP SAYS WHETHER IT IS A RECORD OR A CLAIM"
 
 
@@ -6089,6 +6182,8 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_an_absent_factor_handed_to_the_model_as_zero())
+    results.append(plant_a_measured_zero_dropped_from_the_prompt())
     results.append(plant_a_chip_that_hides_its_own_emptiness())
     results.append(plant_a_chip_label_that_reads_the_same_either_way())
     results.append(plant_a_weak_market_quietly_withdrawn())

@@ -4202,3 +4202,79 @@ def check_the_chip_says_what_it_is() -> None:
         raise LawViolation(
             "A CHIP SAYS WHETHER IT IS A RECORD OR A CLAIM:"
             + _NL2 + _NL2.join(faults))
+
+
+# AN ABSENT FACTOR NEVER REACHES THE MODEL AS A NUMBER (2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# CHECKLIST ITEM 5, applied to the prompt rather than to the feature vector.
+# `compute.assert_missing_is_explicit` already refuses a vector that defaults an
+# absent factor to zero, and `check_no_silent_defaults` scans the factor code
+# for a reintroduced fallback. Neither looks at what the LLM is TOLD.
+#
+# THE PROMPT GETS THIS RIGHT TODAY and this is what keeps it right. Absent
+# factors are collected into a block headed "NOT MEASURABLE for this game. No
+# value exists. Do not assume one, and do not treat these as zero" -- they are
+# never emitted as `name = 0`. A single edit to the loop in `build_prompt`
+# would change that, and nothing would look different: the model would simply
+# start reasoning from zeroes it was handed as facts.
+#
+# WHY IT WAS WRITTEN ON 2026-09-05. A UFC reasoning row read "This is a
+# three-round bout (ufc_scheduled_rounds = 0)" and the zero was suspected of
+# being exactly this failure. It was not -- `ufc_scheduled_rounds` is a
+# declared INDICATOR, 1.0 for five rounds and 0.0 for three, so the zero was
+# correct and the prompt was honest. The scan exists because the question was
+# worth being able to answer structurally rather than by reading the function.
+
+def prompt_absence_faults() -> list[str]:
+    """Does an absent factor reach the model as a value?
+
+    BEHAVIOURAL, not a source scan: it builds a prompt from one present factor
+    and one absent one and reads what came out. A pattern match on
+    `build_prompt` would pass on a rewrite that did the wrong thing in a new
+    shape, and this cannot.
+    """
+    from .model import llm
+
+    faults: list[str] = []
+    rows = [
+        {"factor": "present_one", "value": 0.0, "present": True,
+         "rationale": "a measured zero, which is a measurement"},
+        {"factor": "absent_one", "value": None, "present": False,
+         "contribution": None, "rationale": "not measurable for this game"},
+    ]
+    text = llm.build_prompt("does the home side win", rows, [])
+
+    if re.search(r"absent_one\s*=", text):
+        faults.append(
+            "an absent factor is rendered to the model as `absent_one = ...`. "
+            "CHECKLIST ITEM 5: a value that was never measured must not be "
+            "handed over as one, and a zero is the most convincing wrong "
+            "answer available -- the model would reason from it as a fact.")
+    if "absent_one" not in text:
+        faults.append(
+            "an absent factor is not mentioned to the model at all. Silence "
+            "and a zero are different failures with the same result: the "
+            "model cannot know what could not be measured, so it cannot say "
+            "so in its reasoning.")
+    if "do not treat these as zero" not in text.lower():
+        faults.append(
+            "the prompt no longer tells the model that unmeasurable factors "
+            "are not zero. The list alone is a heading; the instruction is "
+            "the part that does the work.")
+    # And a MEASURED zero must still be handed over as a value -- refusing it
+    # would be the opposite error, and just as silent.
+    if not re.search(r"present_one\s*=\s*0", text):
+        faults.append(
+            "a MEASURED zero no longer reaches the model. Zero is a "
+            "measurement like any other; dropping it would hide a real "
+            "observation to avoid a mistake nobody is making.")
+    return faults
+
+
+def check_the_prompt_keeps_absence_absent() -> None:
+    """Raise if an unmeasurable factor reaches the model as a number."""
+    faults = prompt_absence_faults()
+    if faults:
+        raise LawViolation(
+            "AN ABSENT FACTOR IS NOT A ZERO:" + _NL2 + _NL2.join(faults))
