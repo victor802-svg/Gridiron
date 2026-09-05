@@ -453,7 +453,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_rungs)
 
     s = sub.add_parser("task", help="run one scheduled task and record the attempt")
-    s.add_argument("name", choices=sorted(list(_task_names()) + ["catch-up"]))
+    s.add_argument("name", choices=sorted(_task_names()))
     s.add_argument("--no-llm", action="store_true")
     s.set_defaults(func=cmd_task)
 
@@ -484,10 +484,9 @@ def cmd_task(args: argparse.Namespace) -> int:
     from . import tasks
 
     conn = db.open_db(args.database)
-    if args.name == "catch-up":
-        results = tasks.catch_up(conn, use_llm=not args.no_llm)
-    else:
-        results = [tasks.run_task(conn, args.name, use_llm=not args.no_llm)]
+    # catch-up is a task like the others since 2026-09-05: one row of its own
+    # on the ledger, so the Health panel can say whether it has ever fired.
+    results = [tasks.run_task(conn, args.name, use_llm=not args.no_llm)]
     for r in results:
         print(f"[{r['result']:6s}] {r['task']}: {r['detail']}")
     return 1 if any(r["result"] == "failed" for r in results) else 0

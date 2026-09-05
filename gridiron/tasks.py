@@ -108,6 +108,17 @@ TASKS: dict[str, TaskSpec] = {
         every_hours=24.0,
         silent_after_hours=24.0 * 365,
     ),
+    # THE LOGON CATCH-UP, ON THE PANEL (ruling 5 on the audit, 2026-09-05).
+    # It was a function the installer registered and the panel could not
+    # show, so the one task that had never fired was the one nobody could see
+    # had never fired. No cadence: it runs at logon or not at all, so a year
+    # without one is unremarkable, as with the live poll.
+    "catch-up": TaskSpec(
+        "catch-up",
+        "after a sleep: re-read results, settle, then forecast only slates that have not started",
+        every_hours=24.0,
+        silent_after_hours=24.0 * 365,
+    ),
     "predict:ufc": TaskSpec(
         "predict:ufc",
         "forecast the next UFC card, blind",
@@ -210,6 +221,8 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
             result, detail, payload = _run_live(conn)
         elif task == "capture":
             result, detail, payload = _run_capture(conn)
+        elif task == "catch-up":
+            result, detail, payload = _run_catch_up(conn, use_llm=use_llm)
         elif task.startswith("final:"):
             result, detail, payload = _run_final_pass(
                 conn, task.split(":", 1)[1], use_llm=use_llm
@@ -830,6 +843,22 @@ def _absent_starters(conn: sqlite3.Connection, sport: str, season: int, week: in
 # ---------------------------------------------------------------------------
 # catch-up
 # ---------------------------------------------------------------------------
+
+def _run_catch_up(conn: sqlite3.Connection, *, use_llm: bool) -> tuple[str, str, dict]:
+    """The catch-up as one row of its own, wrapping the rows of what it ran."""
+    runs = catch_up(conn, use_llm=use_llm)
+    results = [r["result"] for r in runs]
+    if "failed" in results:
+        result = "failed"
+    elif "ok" in results:
+        result = "ok"
+    else:
+        result = "noop"
+    detail = (f"ran {language.counted(len(runs), 'task')}: "
+              + ", ".join(f"{language.task_name(r['task'])} {r['result']}" for r in runs))
+    return result, detail, {"runs": [{"task": r["task"], "result": r["result"],
+                                       "detail": r["detail"]} for r in runs]}
+
 
 def catch_up(conn: sqlite3.Connection, *, use_llm: bool = True) -> list[dict]:
     """What runs when the machine wakes up.

@@ -277,7 +277,7 @@ def test_every_task_is_installable_and_worded():
         assert task in tasks.TASKS and why, task
     # And the other way: nothing on the scheduler that the app does not know.
     for task, suffix in scheduler.OS_TASK_NAMES.items():
-        assert task in tasks.TASKS or task == "catch-up", (
+        assert task in tasks.TASKS, (
             f"{suffix} is named on the scheduler and is not a task")
 
 
@@ -359,3 +359,20 @@ def test_the_guard_sees_a_run_recorded_only_when_it_ends():
     assert late != source
     faults = audit.task_run_order_faults(late)
     assert faults and "before the task runs" in faults[0]
+
+
+# --- catch-up on the panel (ruling 5 on the audit, 2026-09-05) ---------------
+
+def test_catch_up_is_a_task_with_a_row_of_its_own(league):
+    out = tasks.run_task(league, "catch-up", use_llm=False)
+    assert out["task"] == "catch-up" and out["result"] in ("ok", "noop")
+    own = league.execute(
+        "SELECT result, detail FROM task_runs WHERE task = 'catch-up'").fetchall()
+    assert len(own) == 1 and own[0]["result"] == out["result"]
+    assert "Fetch results" in own[0]["detail"] and "Settle picks" in own[0]["detail"]
+    inner = league.execute(
+        "SELECT COUNT(*) FROM task_runs WHERE task IN ('refresh', 'resolve')").fetchone()[0]
+    assert inner == 2, "the catch-up's own row does not replace the rows of what it ran"
+    entry = next(t for t in tasks.status(league)["tasks"] if t["task"] == "catch-up")
+    assert entry["last_result"] == out["result"]
+    assert ":" not in entry["task_label"] and "catch" not in entry["task_label"].lower() or entry["task_label"]
