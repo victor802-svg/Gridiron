@@ -1119,3 +1119,34 @@ def select_week_props(
 
     chosen.sort(key=lambda c: (c["game_id"], c["stat"], c["player_id"]))
     return chosen
+
+
+
+# ---------------------------------------------------------------------------
+# RETIRED MARKETS (R1, 2026-09-05)
+# ---------------------------------------------------------------------------
+
+class RetiredMarket(ValueError):
+    """A question in a market the operator has retired."""
+
+
+def retirement_of(q) -> dict | None:
+    """The retirement entry for a question's market, or None."""
+    market = q.stat if q.market_type == "prop" else q.market_type
+    return config.retired_market(q.sport, market)
+
+
+def without_retired(questions) -> list:
+    """Every question except those in a retired market. Silent by design: a
+    retired market is not a gap in the slate, it is a market that is over."""
+    return [q for q in questions if retirement_of(q) is None]
+
+
+def assert_market_active(q) -> None:
+    """Refuse, by name, to write a question in a retired market."""
+    entry = retirement_of(q)
+    if entry is not None:
+        market = q.stat if q.market_type == "prop" else q.market_type
+        raise RetiredMarket(
+            f"{q.sport} {market} was retired on {entry['retired']} "
+            f"({entry['reason']}); nothing is written in it after that day")

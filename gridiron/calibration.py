@@ -1261,7 +1261,9 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
                         "category": (f"{market} / {tier} / {predictor}"
                                      if tier else f"{market} / {predictor}"),
                         "category_label": language.category_label(
-                            market, tier, predictor),
+                            market, tier, predictor,
+                            config.retired_market(sport, market)),
+                        "retired": config.retired_market(sport, market),
                         "market": market,
                         "predictor": predictor,
                         **score(items),
@@ -1342,7 +1344,8 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
                 c["category"] = (f"{market} / {tier} / {predictor}"
                                  if tier else f"{market} / {predictor}")
                 c["category_label"] = language.category_label(
-                    market, tier, predictor)
+                    market, tier, predictor, config.retired_market(sport, market))
+                c["retired"] = config.retired_market(sport, market)
                 c["market"] = market
                 # RULING R3: a gate that will not be reached is not a gate that
                 # has not been reached YET, and rendering them alike reads as

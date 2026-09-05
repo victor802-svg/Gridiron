@@ -481,7 +481,7 @@ const Gridiron = (function () {
   // outlook line says which of the two it is, with the arithmetic beside it so
   // the reader does not have to take it on trust.
   function categoryCell(c) {
-    const cell = el('div', 'cat-cell');
+    const cell = el('div', 'cat-cell' + (c.retired ? ' retired' : ''));
     // categoryLabel returns a STRING, not a node.
     cell.appendChild(el('div', '', categoryLabel(c)));
     const o = c.outlook;
@@ -1933,6 +1933,7 @@ const Gridiron = (function () {
     // picker and the chart's market selector have been EMPTY ever since,
     // and no test looked at them.
     state.markets = (data.game_markets || []).concat(data.props || []);
+    state.retired = data.retired || {};
     // Labels come from the server so every page says the same words.
     state.marketLabels = data.labels || {};
     const chart = document.getElementById('chart-market');
@@ -1953,6 +1954,9 @@ const Gridiron = (function () {
       const all = el('option', '', 'all markets'); all.value = '';
       sel.appendChild(all);
       state.markets.forEach(m => {
+        // A retired market is not offered on Picks; it stays on Results,
+        // labelled, because its settled rows are still there to read.
+        if (id === 'week-market' && state.retired[m]) return;
         const o = el('option', '', marketLabel(m)); o.value = m; sel.appendChild(o);
       });
       // A filter that survives the switch only if the new sport has it.

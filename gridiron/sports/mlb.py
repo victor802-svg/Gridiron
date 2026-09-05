@@ -467,7 +467,7 @@ def prop_candidates(conn: sqlite3.Connection, game: sqlite3.Row) -> list[dict]:
             # remembered separately -- a market declared in one place and asked
             # in another is a market that exists in the config and never on a
             # slate.
-            for market in [m for m in config.MLB_PROP_MARKETS
+            for market in [m for m in config.active_prop_markets(SPORT)
                            if m.startswith("batter_")]:
                 mean, _sd, n = repo.batter_rolling(
                     conn, row["player_id"], market, on_date
@@ -523,9 +523,14 @@ def select_day_props(
     if cap <= 0:
         return []
 
-    by_market: dict[str, list[dict]] = {m: [] for m in config.MLB_PROP_MARKETS}
+    # THE ACTIVE ROSTER, not the declared one (R1, 2026-09-05): a retired
+    # market takes no share of the day's cap.
+    active = config.active_prop_markets(SPORT)
+    by_market: dict[str, list[dict]] = {m: [] for m in active}
     for game in games:
         for candidate in prop_candidates(conn, game):
+            if candidate["market"] not in by_market:
+                continue        # a retired market gets no share, whoever offers it
             by_market[candidate["market"]].append(candidate)
     for market in by_market:
         by_market[market].sort(
@@ -533,13 +538,13 @@ def select_day_props(
         )
 
     chosen: list[dict] = []
-    cursors = {m: 0 for m in config.MLB_PROP_MARKETS}
+    cursors = {m: 0 for m in active}
     seen_subjects: set[int] = set()
     progressed = True
 
     while len(chosen) < cap and progressed:
         progressed = False
-        for market in config.MLB_PROP_MARKETS:
+        for market in active:
             if len(chosen) >= cap:
                 break
             pool = by_market[market]

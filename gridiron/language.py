@@ -1250,7 +1250,26 @@ def hero_tags(headline: str | None) -> dict:
     }
 
 
-def category_label(market: str, tier: str | None, predictor: str) -> str:
+RETIRED_WORD = "retired"
+
+
+def market_words(sport: str, market: str) -> str:
+    """"home runs", or "home runs · retired" once the operator has retired it."""
+    words = MARKET_WORDS.get(market) or humanise(market)
+    if _config.retired_market(sport, market):
+        return f"{words} · {RETIRED_WORD}"
+    return words
+
+
+def retired_outlook_line(n: int, gate: int, day: str) -> str:
+    """What a retired market's gate line says instead of a projection."""
+    when = date_words_from_iso(day) or day
+    return (f"{n} of {gate} · retired {when}; nothing more will be written, "
+            f"so {n} settled is the final count")
+
+
+def category_label(market: str, tier: str | None, predictor: str,
+                   retired: dict | None = None) -> str:
     """"moneyline, Fight Night, statistical" -- never `fight_night`.
 
     The browser split "moneyline / fight_night / statistical" on its slashes
@@ -1258,7 +1277,11 @@ def category_label(market: str, tier: str | None, predictor: str) -> str:
     on every row (audit 2026-09-05). Composed here, where the tier's words
     already live, and the forecaster keeps the plain word it is filtered by.
     """
-    parts = [MARKET_WORDS.get(market) or humanise(market)]
+    words = MARKET_WORDS.get(market) or humanise(market)
+    # A RETIRED MARKET SAYS SO BESIDE ITS NAME (R1, 2026-09-05): "home runs ·
+    # retired, statistical". The count beside it is final and the row is
+    # greyed by the renderer.
+    parts = [f"{words} · {RETIRED_WORD}" if retired else words]
     if tier:
         parts.append(tier_label(tier) or "")
     parts.append(FORECASTER_FILTER_WORDS.get(predictor, predictor))

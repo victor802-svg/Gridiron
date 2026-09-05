@@ -4936,7 +4936,8 @@ def plant_a_market_tab_row_that_is_hardcoded() -> Result:
     project's own pace that is a matter of weeks.
 
     So the guard reads the RENDERER for a written-out list of market names, and
-    the payload builder for a list that is not `config.SPORT_MARKETS`.
+    the payload builder for a list that is not `config.active_markets` -- the
+    declared roster minus what the operator has retired (R1, 2026-09-05).
     """
     from gridiron import views as _views
 
@@ -4974,12 +4975,14 @@ def plant_a_market_tab_row_that_is_hardcoded() -> Result:
                     "views._market_tabs", False,
                     f"the tabs for {sport} could not be built: {exc}")
             markets = [t["market"] for t in tabs][1:]
-            if markets != list(config.SPORT_MARKETS.get(sport, ())):
+            # THE ACTIVE ROSTER (R1, 2026-09-05): declared minus retired. A
+            # retired market keeps its row on Record and has no tab here.
+            if markets != list(config.active_markets(sport)):
                 return Result(
                     LAW_CARDS, "a market tab row written into the renderer",
                     "views._market_tabs", False,
-                    f"{sport}'s tabs are {markets} and its declared markets "
-                    f"are {list(config.SPORT_MARKETS.get(sport, ()))}")
+                    f"{sport}'s tabs are {markets} and its active markets "
+                    f"are {list(config.active_markets(sport))}")
     finally:
         conn.close()
     return Result(LAW_CARDS, "a market tab row written into the renderer",
@@ -5592,71 +5595,81 @@ def plant_a_code_name_handed_to_the_model() -> Result:
 LAW_REASON_ONCE = "NOTHING IS REASONED TWICE"
 
 
+
 def plant_a_rerun_that_reasons_the_written_half_again() -> Result:
-    """Re-run a slate that is already answered and count the model calls.
+    """Re-run a slate whose reasoning half is written, and count the calls.
 
-    THE MEASURED FAILURE. `predict_slate` called `llm.reason` and only then
-    `write_prediction`, which returns None for a row that already exists -- so
-    the answer was bought and discarded. On 2026-09-05 a resumed UFC pass made
-    76 reasoning calls to write 8 rows: 34 questions were answered a second
-    time at full price, about $0.23 against a $2.00 daily cap.
+    THE MEASURED FAILURE OF 2026-09-05: a resumed UFC pass made 76 reasoning
+    calls to write 8 rows, because the existence check sat after the call.
+    `llm.reason` is stubbed with a counter, so this spends nothing.
 
-    BEHAVIOURAL, ON THE REAL SLATE, AND IT SPENDS NOTHING. `llm.reason` is
-    stubbed with a counter, so this measures the ORDER of the loop rather than
-    the API. A run over a fully-written slate must call it ZERO times.
+    BUILDS ITS OWN WORLD. The first version read the live record's biggest
+    LLM slate and went vacuous the afternoon that slate started -- a started
+    slate is skipped before the loop asks the record, so zero calls proved
+    nothing (audit follow-up, 2026-09-05). The harness league has one slate
+    left to play; the statistical half is written, one question is seeded as
+    already reasoned, and the rerun must skip exactly that one.
     """
-    from gridiron import audit as _audit, db as _db
+    from gridiron import audit as _audit, fingerprint as _fingerprint
     from gridiron.model import llm as _llm, predict as _predict
-
+    what = "a re-run that reasons the written half"
     if _audit.reason_before_check_faults():
-        return Result(LAW_REASON_ONCE, "a re-run that reasons the written half",
-                      "audit.reason_before_check_faults", False,
-                      "the shipped loop already reasons before it checks; fix "
-                      "that before trusting this planting")
-
-    conn = _db.connect()
-    try:
-        row = conn.execute(
-            "SELECT g.season, g.week, p.sport FROM predictions p"
-            "  JOIN games g ON g.id = p.game_id"
-            " WHERE p.predictor = 'llm' GROUP BY p.sport, g.season, g.week"
-            " ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
-        if row is None:
-            return Result(LAW_REASON_ONCE,
-                          "a re-run that reasons the written half",
-                          "audit.reason_before_check_faults", False,
-                          "no slate in this record has LLM rows, so there is "
-                          "nothing to re-run")
-
-        calls = {"n": 0}
-        original = _llm.reason
-
-        def counting(*args, **kwargs):
-            calls["n"] += 1
-            raise _llm.LLMUnavailable("planted", "the counter never answers")
-
+        return Result(LAW_REASON_ONCE, what, "audit.reason_before_check_faults",
+                      False, "the shipped loop already reasons before it checks; "
+                      "fix that before trusting this planting")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "rerun.db")
+        # A backtest world: the harness league's last slate kicked off in
+        # December 2025, and a live world skips a started slate before the
+        # loop ever asks the record -- which is the vacuity being fixed.
+        db.set_meta(conn, "kind", "backtest")
         try:
-            _llm.reason = counting
-            run = _predict.predict_slate(
-                conn, row["sport"], row["season"], row["week"],
-                final=False, include_props=True, use_llm=True)
+            _predict.predict_slate(conn, "nfl", 2025, 18, final=False,
+                                   include_props=False, use_llm=False)
+            first = conn.execute(
+                "SELECT * FROM predictions WHERE predictor = 'statistical'"
+                " ORDER BY id LIMIT 1").fetchone()
+            if first is None:
+                return Result(LAW_REASON_ONCE, what,
+                              "audit.reason_before_check_faults", False,
+                              "the harness league wrote nothing to re-run over")
+            cur = conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+                " pass_kind, factor_set_version, factors_json, reasoning)"
+                " VALUES (?,?,?,?,?,?,?,?,?,'llm',?,?,?,'seeded')",
+                (first["created_utc"], first["sport"], first["game_id"],
+                 first["market_type"], first["prop_type"], first["subject"],
+                 first["line_asked"], first["model_prob"], first["model_side"],
+                 first["pass_kind"], first["factor_set_version"],
+                 first["factors_json"]))
+            _fingerprint.write(conn, cur.lastrowid)
+            conn.commit()
+            import json as _json
+            seeded_claim = _json.loads(first["factors_json"])["question"]["claim"]
+            calls = []
+            original = _llm.reason
+            try:
+                def counting(*args, **kwargs):
+                    calls.append(kwargs.get("question"))
+                    raise _llm.LLMUnavailable("planted", "the counter never answers")
+                _llm.reason = counting
+                run = _predict.predict_slate(conn, "nfl", 2025, 18, final=False,
+                                             include_props=False, use_llm=True)
+            finally:
+                _llm.reason = original
         finally:
-            _llm.reason = original
-    finally:
-        conn.close()
-
-    if calls["n"]:
-        return Result(LAW_REASON_ONCE, "a re-run that reasons the written half",
-                      "audit.reason_before_check_faults", False,
-                      f"NOT CAUGHT - re-running a slate whose LLM half is "
-                      f"written made {calls['n']} model calls. Every one of "
-                      f"them buys an answer that `write_prediction` will throw "
-                      f"away.")
-    return Result(LAW_REASON_ONCE, "a re-run that reasons the written half",
-                  "audit.reason_before_check_faults", True,
-                  f"a re-run over a written slate made 0 model calls and "
-                  f"skipped {run.llm_skipped} questions it had already "
-                  f"answered")
+            conn.close()
+    if run.llm_skipped != 1 or seeded_claim in calls:
+        return Result(LAW_REASON_ONCE, what, "audit.reason_before_check_faults",
+                      False,
+                      f"NOT CAUGHT - the question already reasoned was skipped "
+                      f"{run.llm_skipped} time(s) and the model was asked about "
+                      f"{calls}; every call for an answered question buys an "
+                      f"answer `write_prediction` throws away")
+    return Result(LAW_REASON_ONCE, what, "audit.reason_before_check_faults", True,
+                  f"the re-run skipped the one question already reasoned and "
+                  f"asked the model only about an unanswered one ({calls})")
 
 
 def plant_the_check_moved_back_after_the_call() -> Result:
@@ -6464,6 +6477,77 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
+LAW_RETIRED = "A RETIRED MARKET IS NOT ASKED"
+
+
+def plant_a_retired_market_written() -> Result:
+    """Write a home-run question after the market was retired.
+
+    THE RETIREMENT IS A DATE, AND DATES ARE WHERE BOUNDARIES HIDE. The row is
+    planted at exactly midnight on the retirement day, which is the first
+    moment the rule binds -- a scan that read "after" as "later than the day"
+    would let a whole day of rows through. The rows before the day are the
+    market's record and must not be named.
+    """
+    from gridiron import audit as _audit
+    (sport, market), entry = next(iter(config.RETIRED_MARKETS.items()))
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.open_db(Path(tmp) / "retired.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+            " home, away, status) VALUES ('rt_game',?,2026,170,'REG',"
+            " '2026-09-06T23:00:00Z','HOM','AWY','scheduled')", (sport,))
+        row = ("INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+               " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+               " pass_kind, factor_set_version, factors_json, reasoning)"
+               " VALUES (?,?,'rt_game','prop',?,?,0.5,0.77,'under','statistical',"
+               " 'early','fs2','{}','planted')")
+        conn.execute(row, ("2026-09-04T23:59:59Z", sport, market, f"Before {market}"))
+        conn.execute(row, (entry["retired"] + "T00:00:00Z", sport, market, f"At {market}"))
+        conn.commit()
+        before_id, at_id = [r[0] for r in conn.execute(
+            "SELECT id FROM predictions ORDER BY id")]
+        faults = _audit.retired_market_faults(conn)
+        conn.close()
+    names_at = any(f.startswith(f"prediction {at_id} ") for f in faults)
+    names_before = any(f.startswith(f"prediction {before_id} ") for f in faults)
+    if not names_at or names_before:
+        return Result(LAW_RETIRED, "a retired market written after its day",
+                      "audit.retired_market_faults", False,
+                      f"NOT CAUGHT - the row at the boundary named: {names_at}; "
+                      f"the row before it wrongly named: {names_before}")
+    return Result(LAW_RETIRED, "a retired market written after its day",
+                  "audit.retired_market_faults", True,
+                  next(f for f in faults if f.startswith(f"prediction {at_id} ")))
+
+
+def plant_a_retired_market_in_picks_tabs() -> Result:
+    """Put the retired market back on the Picks tab strip.
+
+    The tabs are built from `config.active_markets`; the fault a later session
+    would write is reading the declared roster instead, which is one word.
+    """
+    from gridiron import audit as _audit
+    if _audit.retired_in_picks_faults():
+        return Result(LAW_RETIRED, "a retired market as a tab on Picks",
+                      "audit.retired_in_picks_faults", False,
+                      "Picks already offers a retired market; fix that before "
+                      "trusting this planting")
+    original = config.active_markets
+    try:
+        config.active_markets = lambda sport: config.SPORT_MARKETS.get(sport, ())
+        faults = _audit.retired_in_picks_faults()
+    finally:
+        config.active_markets = original
+    if not faults:
+        return Result(LAW_RETIRED, "a retired market as a tab on Picks",
+                      "audit.retired_in_picks_faults", False,
+                      "NOT CAUGHT - the retired market is back on the Picks "
+                      "strip with a zero beside it, forever")
+    return Result(LAW_RETIRED, "a retired market as a tab on Picks",
+                  "audit.retired_in_picks_faults", True, faults[0])
+
+
 LAW_FINGERPRINT = "A PROTECTED FIELD CANNOT DRIFT UNNOTICED"
 
 
@@ -6830,6 +6914,8 @@ def main() -> int:
     results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_run_recorded_only_when_it_ends())
     results.append(plant_a_protected_field_edited_behind_the_trigger())
+    results.append(plant_a_retired_market_written())
+    results.append(plant_a_retired_market_in_picks_tabs())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())
     results.append(plant_an_injury_row_without_a_capture_time())
     results.append(plant_a_backfilled_lineup_posing_as_live())

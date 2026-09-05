@@ -531,7 +531,9 @@ def markets(sport: str | None = None) -> dict:
         # PLAIN WORDS: the browser renders these, never the raw names. Served
         # from the server so there is one vocabulary rather than one per page -
         # the market dropdowns were the last place `rushing_yards` was visible.
-        "labels": {m: language.humanise(m) for m in all_markets},
+        "labels": {m: language.market_words(chosen, m) for m in all_markets},
+        "retired": {m: config.retired_market(chosen, m) for m in all_markets
+                    if config.retired_market(chosen, m)},
         "line_availability": {
             m: line_sources.for_market(chosen, m) for m in all_markets
         },

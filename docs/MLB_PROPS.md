@@ -430,3 +430,19 @@ checklist item 1 requires it in every market from the first fit, and a market
 that gains a rung gains the instrument back with no code change — and it carries
 a dated note saying it is inert here, so a coefficient near zero reads as a
 property of the ladder rather than a refuted idea.
+
+
+## Retired: batter home runs (2026-09-05, operator ruling)
+
+The market is retired by operator ruling, dated in `config.RETIRED_MARKETS`.
+Retired, not deleted: it stays declared, its category stays on the Record page
+greyed as "home runs · retired" with its settled count, and its fitted model is
+untouched. From 2026-09-05 no question is formed in it (`questions` refuses at
+the door and skips on the way in), the day's prop cap fills across the four
+remaining markets, and Picks has no tab for it. LAW 3: nothing written moves.
+
+The final record, read 2026-09-05: **51 forecasts written** between 2026-08-30
+and 2026-09-05 (45 by the model, 6 by the reasoning pass), **40 settled, 36 of
+them right, 6 voided**. The ladder had one rung (0.5) and every question was
+"no home run", which is why the hit rate reads high and why the market never
+had a claim to make -- see the single-rung note above.

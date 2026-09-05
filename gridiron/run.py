@@ -89,6 +89,8 @@ def already_answered(conn, sport: str, season: int, week: int,
 
     expected = set()
     for market in sports.get(sport).markets():
+        if config.retired_market(sport, market):
+            continue        # a retired market is over, not missing (R1)
         is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
         if is_prop and not include_props:
             continue

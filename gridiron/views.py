@@ -271,7 +271,9 @@ def _market_tabs(sport: str, cards: list) -> list[dict]:
         counts[key] = counts.get(key, 0) + 1
 
     tabs = [{"market": "", "label": "All", "n": len(cards)}]
-    for market in config.SPORT_MARKETS.get(sport, ()):
+    # THE ACTIVE ROSTER (R1, 2026-09-05): a retired market is not a tab on
+    # Picks. It keeps its category on Record, greyed, with its settled count.
+    for market in config.active_markets(sport):
         tabs.append({
             "market": market,
             # SENTENCE CASE, not the storage form's lowercase. "Run line"

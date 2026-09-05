@@ -977,6 +977,8 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   border-left: 2px solid var(--line);
   padding-left: 0.5rem;
 }
+/* A RETIRED MARKET (R1, 2026-09-05): greyed, its count final, still a row. */
+.cat-cell.retired { color: var(--faint); }
 .cat-cell .footnote {
   margin-top: 0.15rem;
   font-variant-numeric: tabular-nums;

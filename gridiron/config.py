@@ -403,6 +403,40 @@ SPORT_PROP_MARKETS: dict[str, tuple[str, ...]] = {
 #: with roughly one qualifying subject per game.
 MLB_PROP_MARKETS: tuple[str, ...] = SPORT_PROP_MARKETS["mlb"]
 
+# ---------------------------------------------------------------------------
+# RETIRED MARKETS (R1, 2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# A retired market stays DECLARED -- its record exists, its category stays on
+# the Record page greyed with its final settled count, and its fitted model is
+# not deleted -- and is no longer ASKED. `questions` refuses to form or write a
+# question in it from the retirement date, the Picks tabs do not show it, and
+# the day's prop cap fills without it. LAW 3: nothing already written moves.
+#
+# The entry is the registry. A retirement is a dated act with its reason, the
+# same shape as a factor's activation, and reversing one is deleting the entry.
+RETIRED_MARKETS: dict[tuple[str, str], dict] = {
+    ("mlb", "batter_home_runs"): {"retired": "2026-09-05", "reason": "operator ruling"},
+}
+RETIRED_MARKETS_DECLARED = "2026-09-05"
+
+
+def retired_market(sport: str, market: str) -> dict | None:
+    """The retirement entry for (sport, market), or None while it is asked."""
+    return RETIRED_MARKETS.get((sport, market))
+
+
+def active_markets(sport: str) -> tuple[str, ...]:
+    """The declared markets of a sport that are still asked, in declared order."""
+    return tuple(m for m in SPORT_MARKETS.get(sport, ())
+                 if (sport, m) not in RETIRED_MARKETS)
+
+
+def active_prop_markets(sport: str) -> tuple[str, ...]:
+    """The prop markets still asked, in the order the day's cap fills them."""
+    return tuple(m for m in SPORT_PROP_MARKETS.get(sport, ())
+                 if (sport, m) not in RETIRED_MARKETS)
+
 #: Season the live slate is drawn from, per sport.
 SPORT_CURRENT_SEASON = {
     "nfl": int(os.environ.get("GRIDIRON_SEASON", "2026")),

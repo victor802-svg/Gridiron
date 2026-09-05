@@ -570,43 +570,66 @@ def test_the_check_is_asked_before_the_model():
     audit.check_nothing_is_reasoned_twice()
 
 
-def test_a_rerun_over_a_written_slate_makes_no_model_calls():
+
+def test_a_rerun_over_a_written_slate_makes_no_model_calls(league):
     """The measured failure, pinned. A resumed UFC pass made 76 reasoning
     calls to write 8 rows: 34 questions answered twice and discarded.
 
     SPENDS NOTHING -- `llm.reason` is stubbed with a counter, so this measures
-    the ORDER of the loop rather than the API.
+    the ORDER of the loop rather than the API. BUILDS ITS OWN WORLD: the first
+    version read the live record's biggest LLM slate, and went vacuous the
+    afternoon that slate's games started, because a started slate is skipped
+    before the loop ever asks the record (audit follow-up, 2026-09-05).
     """
-    from gridiron import db as _db
-    from gridiron.model import llm as _llm, predict as _predict
+    from gridiron import fingerprint, run as _run
+    from gridiron.factors import store
+    from gridiron.model import baseline, llm as _llm, predict as _predict
 
-    conn = _db.connect()
+    store.sync_registry(league)
+    baseline.train_all(league, (2025,), l2=1.0, note="rerun", min_rows=20)
+    # The statistical half, written once.
+    _predict.predict_slate(league, "nfl", 2025, 18, final=False,
+                           include_props=False, use_llm=False)
+    stat = league.execute(
+        "SELECT * FROM predictions WHERE predictor = 'statistical' ORDER BY id"
+    ).fetchall()
+    assert stat, "the world wrote nothing to re-run over"
+    # ONE question answered by the reasoning pass already: a copy of the first
+    # statistical row under the other predictor, through the fingerprint door.
+    first = stat[0]
+    cur = league.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+        " pass_kind, factor_set_version, factors_json, reasoning)"
+        " VALUES (?,?,?,?,?,?,?,?,?,'llm',?,?,?,'seeded')",
+        (first["created_utc"], first["sport"], first["game_id"],
+         first["market_type"], first["prop_type"], first["subject"],
+         first["line_asked"], first["model_prob"], first["model_side"],
+         first["pass_kind"], first["factor_set_version"], first["factors_json"]))
+    fingerprint.write(league, cur.lastrowid)
+    league.commit()
+
+    import json as _json
+    seeded_claim = _json.loads(first["factors_json"])["question"]["claim"]
+    calls = []
+    original = _llm.reason
     try:
-        row = conn.execute(
-            "SELECT g.season, g.week, p.sport FROM predictions p"
-            "  JOIN games g ON g.id = p.game_id"
-            " WHERE p.predictor = 'llm' GROUP BY p.sport, g.season, g.week"
-            " ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
-        if row is None:
-            pytest.skip("no slate in this record has LLM rows")
-
-        calls = []
-        original = _llm.reason
-        try:
-            _llm.reason = lambda *a, **k: calls.append(1)
-            run = _predict.predict_slate(
-                conn, row["sport"], row["season"], row["week"],
-                final=False, include_props=True, use_llm=True)
-        finally:
-            _llm.reason = original
+        def counting(*args, **kwargs):
+            calls.append(kwargs.get("question"))
+            raise _llm.LLMUnavailable("planted", "the counter never answers")
+        _llm.reason = counting
+        run = _predict.predict_slate(league, "nfl", 2025, 18, final=False,
+                                     include_props=False, use_llm=True)
     finally:
-        conn.close()
-
-    assert calls == [], (
-        f"a re-run over a written slate made {len(calls)} model calls; every "
-        f"one buys an answer `write_prediction` will discard")
-    assert run.llm_skipped > 0, (
-        "the run reported skipping nothing, so the counter is not counting")
+        _llm.reason = original
+    assert run.llm_skipped == 1, (
+        f"one question was already answered by the reasoning pass and the loop "
+        f"skipped {run.llm_skipped}")
+    # The first unanswered question is asked and the stub switches the pass
+    # off for the run; the answered one -- identified by its claim, because a
+    # game carries three questions -- was never asked.
+    assert len(calls) == 1 and calls[0] != seeded_claim, (
+        f"the model was asked {calls}; the answered question was {seeded_claim!r}")
 
 
 def test_the_skip_is_counted_not_silent():

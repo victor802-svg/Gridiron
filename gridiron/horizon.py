@@ -79,6 +79,20 @@ def market_outlook(
     ends = season_ends(conn, sport, season)
     gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
 
+    # A RETIRED MARKET PROJECTS NOTHING (R1, 2026-09-05): its settled count is
+    # the final count, and a line reading "~446 expected" would be false.
+    retired = config.retired_market(sport, market)
+    if retired:
+        from . import language
+        return {
+            "sport": sport, "market": market, "gate": gate, "resolved": resolved,
+            "written": written, "n": resolved, "slates_used": slates_used,
+            "slates_remaining": 0, "season_ends": ends, "per_slate": None,
+            "expected": resolved, "expected_is_an_extrapolation": False,
+            "retired": retired, "reachable": resolved >= gate,
+            "message": language.retired_outlook_line(resolved, gate, retired["retired"]),
+        }
+
     per_slate = (written / slates_used) if slates_used else None
     expected = None
     if per_slate is not None:

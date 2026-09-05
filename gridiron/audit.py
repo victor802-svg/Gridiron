@@ -4652,6 +4652,57 @@ def task_run_order_faults(source: str | None = None) -> list[str]:
     return faults
 
 
+def retired_market_faults(conn) -> list[str]:
+    """Every prediction written in a retired market on or after its
+    retirement day, by id. The retirement binds from its birthday forward:
+    rows before it are the market's record and stay."""
+    faults: list[str] = []
+    for (sport, market), entry in config.RETIRED_MARKETS.items():
+        is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
+        rows = conn.execute(
+            "SELECT id, created_utc FROM predictions WHERE sport = ?"
+            "   AND " + ("prop_type = ?" if is_prop else "market_type = ?")
+            + "   AND created_utc >= ? ORDER BY id",
+            (sport, market, entry["retired"] + "T00:00:00Z")).fetchall()
+        for r in rows:
+            faults.append(
+                f"prediction {r['id']} asks {sport} {market} at {r['created_utc']}, "
+                f"and that market was retired on {entry['retired']} "
+                f"({entry['reason']})")
+    return faults
+
+
+def check_no_retired_market_written(conn) -> None:
+    """Raise, by prediction id, if a retired market was asked after its day."""
+    faults = retired_market_faults(conn)
+    if faults:
+        raise LawViolation(
+            "A RETIRED MARKET WAS ASKED:" + _NL2 + _NL2.join(faults[:12]))
+
+
+def retired_in_picks_faults() -> list[str]:
+    """A retired market offered as a tab on Picks."""
+    from . import views
+
+    faults: list[str] = []
+    for (sport, market), entry in config.RETIRED_MARKETS.items():
+        offered = [t["market"] for t in views._market_tabs(sport, [])]
+        if market in offered:
+            faults.append(
+                f"Picks offers a {sport} {market} tab, and that market was "
+                f"retired on {entry['retired']}. A retired market keeps its "
+                f"row on Record and has no tab on Picks.")
+    return faults
+
+
+def check_no_retired_market_in_picks() -> None:
+    """Raise if a retired market is still a tab on Picks."""
+    faults = retired_in_picks_faults()
+    if faults:
+        raise LawViolation(
+            "A RETIRED MARKET IS ON PICKS:" + _NL2 + _NL2.join(faults))
+
+
 def check_record_fingerprint(conn) -> None:
     """Raise, by prediction id, if any protected field has drifted from the
     fingerprint taken when the row was written, if any row has no fingerprint,

@@ -30,7 +30,7 @@ from ..db import utcnow
 from ..factors import compute, context
 from . import baseline, llm
 from .question import Question
-from . import rungs
+from . import questions, rungs
 from .. import correction
 
 __all__ = ["Question", "BlindRun", "WrittenPrediction", "predict_slate", "predict_week"]
@@ -127,6 +127,7 @@ def write_prediction(
     forecast. Both rows are kept (LAW 3) and the early one is labelled rather
     than hidden.
     """
+    questions.assert_market_active(q)
     side, confidence = baseline.stated_side(prob_yes, q.yes_label, q.no_label)
     payload = fv.to_json_dict()
     payload["prob_yes"] = round(prob_yes, 6)
@@ -285,7 +286,7 @@ def predict_slate(
                 return run
 
     fits: dict[str, object] = {}
-    for market in config.SPORT_MARKETS.get(sport, ()):
+    for market in config.active_markets(sport):
         if not include_props and market in config.SPORT_PROP_MARKETS.get(sport, ()):
             continue
         key = baseline.market_key(sport, market)
@@ -296,7 +297,10 @@ def predict_slate(
 
     llm_off: str | None = None
 
-    for q in adapter.slate_questions(conn, season, week, include_props=include_props):
+    # A RETIRED MARKET IS NOT ASKED (R1, 2026-09-05). Skipped here as well as
+    # in the sport's own question door, so a sport that forgets is still held.
+    for q in questions.without_retired(
+            adapter.slate_questions(conn, season, week, include_props=include_props)):
         if live:
             kickoff = conn.execute(
                 "SELECT kickoff_utc, status FROM games WHERE id = ?", (q.game_id,)
