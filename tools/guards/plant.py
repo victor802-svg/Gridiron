@@ -5418,6 +5418,116 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_REASON_ONCE = "NOTHING IS REASONED TWICE"
+
+
+def plant_a_rerun_that_reasons_the_written_half_again() -> Result:
+    """Re-run a slate that is already answered and count the model calls.
+
+    THE MEASURED FAILURE. `predict_slate` called `llm.reason` and only then
+    `write_prediction`, which returns None for a row that already exists -- so
+    the answer was bought and discarded. On 2026-09-05 a resumed UFC pass made
+    76 reasoning calls to write 8 rows: 34 questions were answered a second
+    time at full price, about $0.23 against a $2.00 daily cap.
+
+    BEHAVIOURAL, ON THE REAL SLATE, AND IT SPENDS NOTHING. `llm.reason` is
+    stubbed with a counter, so this measures the ORDER of the loop rather than
+    the API. A run over a fully-written slate must call it ZERO times.
+    """
+    from gridiron import audit as _audit, db as _db
+    from gridiron.model import llm as _llm, predict as _predict
+
+    if _audit.reason_before_check_faults():
+        return Result(LAW_REASON_ONCE, "a re-run that reasons the written half",
+                      "audit.reason_before_check_faults", False,
+                      "the shipped loop already reasons before it checks; fix "
+                      "that before trusting this planting")
+
+    conn = _db.connect()
+    try:
+        row = conn.execute(
+            "SELECT g.season, g.week, p.sport FROM predictions p"
+            "  JOIN games g ON g.id = p.game_id"
+            " WHERE p.predictor = 'llm' GROUP BY p.sport, g.season, g.week"
+            " ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
+        if row is None:
+            return Result(LAW_REASON_ONCE,
+                          "a re-run that reasons the written half",
+                          "audit.reason_before_check_faults", False,
+                          "no slate in this record has LLM rows, so there is "
+                          "nothing to re-run")
+
+        calls = {"n": 0}
+        original = _llm.reason
+
+        def counting(*args, **kwargs):
+            calls["n"] += 1
+            raise _llm.LLMUnavailable("planted", "the counter never answers")
+
+        try:
+            _llm.reason = counting
+            run = _predict.predict_slate(
+                conn, row["sport"], row["season"], row["week"],
+                final=False, include_props=True, use_llm=True)
+        finally:
+            _llm.reason = original
+    finally:
+        conn.close()
+
+    if calls["n"]:
+        return Result(LAW_REASON_ONCE, "a re-run that reasons the written half",
+                      "audit.reason_before_check_faults", False,
+                      f"NOT CAUGHT - re-running a slate whose LLM half is "
+                      f"written made {calls['n']} model calls. Every one of "
+                      f"them buys an answer that `write_prediction` will throw "
+                      f"away.")
+    return Result(LAW_REASON_ONCE, "a re-run that reasons the written half",
+                  "audit.reason_before_check_faults", True,
+                  f"a re-run over a written slate made 0 model calls and "
+                  f"skipped {run.llm_skipped} questions it had already "
+                  f"answered")
+
+
+def plant_the_check_moved_back_after_the_call() -> Result:
+    """Put the existence check back after `llm.reason`, where it was.
+
+    THE SCAN READS THE SYNTAX TREE, not a pattern, because `predict_slate` is
+    a long loop and the check that lives inside `write_prediction` much
+    further down would satisfy a text match -- and that check is precisely the
+    one that was too late.
+    """
+    from gridiron import audit as _audit
+
+    source = (config.PACKAGE_ROOT / "model" / "predict.py").read_text(
+        encoding="utf-8")
+    if _audit.reason_before_check_faults(source):
+        return Result(LAW_REASON_ONCE, "the check moved back after the call",
+                      "audit.reason_before_check_faults", False,
+                      "the shipped loop already fails this; fix it before "
+                      "trusting this planting")
+
+    nl = chr(10)
+    guard = nl.join([
+        '        if already_written(conn, q, "llm", final=final):',
+        "            run.llm_skipped += 1",
+        "            continue",
+    ])
+    broken = source.replace(guard, "", 1)
+    if broken == source:
+        return Result(LAW_REASON_ONCE, "the check moved back after the call",
+                      "audit.reason_before_check_faults", False,
+                      "the pre-call check is no longer written the way this "
+                      "planting expects; re-point it")
+    faults = _audit.reason_before_check_faults(broken)
+    if not faults:
+        return Result(LAW_REASON_ONCE, "the check moved back after the call",
+                      "audit.reason_before_check_faults", False,
+                      "NOT CAUGHT - the slate loop asks the model before it "
+                      "asks the record, so every resumed run pays twice")
+    return Result(LAW_REASON_ONCE, "the check moved back after the call",
+                  "audit.reason_before_check_faults", True, faults[0])
+
+
 LAW_PUSH_RECORD = "A PUSH EXISTS IN THE RECORD"
 
 
@@ -6241,6 +6351,8 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_a_rerun_that_reasons_the_written_half_again())
+    results.append(plant_the_check_moved_back_after_the_call())
     results.append(plant_a_push_posted_before_it_is_recorded())
     results.append(plant_an_absent_factor_handed_to_the_model_as_zero())
     results.append(plant_a_measured_zero_dropped_from_the_prompt())

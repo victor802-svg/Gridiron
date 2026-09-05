@@ -4375,3 +4375,82 @@ def check_the_record_precedes_the_push() -> None:
     if faults:
         raise LawViolation(
             "A PUSH EXISTS IN THE RECORD:" + _NL2 + _NL2.join(faults))
+
+
+# NOTHING IS REASONED TWICE (2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# `predict_slate` called `llm.reason` and only then `write_prediction`, which
+# returns None for a row that already exists. So the answer was bought and
+# thrown away: resuming an interrupted pass, or backfilling the LLM half of a
+# slate whose statistical half is written, re-reasoned every question at full
+# price.
+#
+# MEASURED ON 2026-09-05: a resumed UFC pass made 76 reasoning calls to write 8
+# rows. Thirty-four questions were answered a second time and discarded --
+# about $0.23 against a $2.00 daily cap, on a slate of forty-two.
+#
+# THE FIX IS ORDER, and the guard is about order: the existence check must be
+# reachable BEFORE the call that costs money.
+
+def reason_before_check_faults(source: str | None = None) -> list[str]:
+    """Is the existence check asked before the model is?
+
+    READ FROM THE SYNTAX TREE. `predict_slate` is a long loop and a pattern
+    match would be satisfied by the check that lives inside `write_prediction`
+    much further down -- which is precisely the check that was too late.
+    """
+    faults: list[str] = []
+    if source is None:
+        source = (config.PACKAGE_ROOT / "model" / "predict.py").read_text(
+            encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return [f"predict.py does not parse: {exc}"]
+
+    loop = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != "predict_slate":
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.For):
+                loop = sub
+    if loop is None:
+        faults.append("`predict_slate` has no loop over questions any more; "
+                      "this scan cannot see what it was built to see.")
+        return faults
+
+    reason_line = check_line = None
+    for node in ast.walk(loop):
+        if isinstance(node, ast.Call):
+            fn = node.func
+            name = getattr(fn, "attr", None) or getattr(fn, "id", None)
+            if name == "reason" and reason_line is None:
+                reason_line = node.lineno
+            if name == "already_written" and check_line is None:
+                check_line = node.lineno
+
+    if reason_line is None:
+        faults.append("`llm.reason` is not called in the slate loop, so there "
+                      "is nothing for this scan to protect.")
+        return faults
+    if check_line is None:
+        faults.append(
+            "the slate loop calls `llm.reason` and never asks "
+            "`already_written` first, so a resumed or backfilling run pays "
+            "for every question it has already answered.")
+    elif check_line > reason_line:
+        faults.append(
+            f"`already_written` is asked at line {check_line} and "
+            f"`llm.reason` at line {reason_line}. The check must come first: "
+            f"asked afterwards it is a refund nobody gets.")
+    return faults
+
+
+def check_nothing_is_reasoned_twice() -> None:
+    """Raise if the model is asked before the record is."""
+    faults = reason_before_check_faults()
+    if faults:
+        raise LawViolation(
+            "NOTHING IS REASONED TWICE:" + _NL2 + _NL2.join(faults))

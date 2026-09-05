@@ -229,6 +229,8 @@ def step_2_guards() -> bool:
         # A PUSH THAT REACHED THE PHONE EXISTS IN THE RECORD (2026-09-05).
         ("the record precedes the push",
          audit.check_the_record_precedes_the_push),
+        # A RESUMED RUN MUST NOT PAY TWICE (2026-09-05).
+        ("nothing is reasoned twice", audit.check_nothing_is_reasoned_twice),
         ("no confidence floor on game markets",
          audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),

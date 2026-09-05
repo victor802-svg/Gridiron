@@ -562,3 +562,77 @@ def test_the_migration_widens_an_older_database():
             assert _db.widen_notification_states(conn) is False
         finally:
             conn.close()
+
+
+# --- fix 3: nothing is reasoned twice (2026-09-05) --------------------------
+
+def test_the_check_is_asked_before_the_model():
+    audit.check_nothing_is_reasoned_twice()
+
+
+def test_a_rerun_over_a_written_slate_makes_no_model_calls():
+    """The measured failure, pinned. A resumed UFC pass made 76 reasoning
+    calls to write 8 rows: 34 questions answered twice and discarded.
+
+    SPENDS NOTHING -- `llm.reason` is stubbed with a counter, so this measures
+    the ORDER of the loop rather than the API.
+    """
+    from gridiron import db as _db
+    from gridiron.model import llm as _llm, predict as _predict
+
+    conn = _db.connect()
+    try:
+        row = conn.execute(
+            "SELECT g.season, g.week, p.sport FROM predictions p"
+            "  JOIN games g ON g.id = p.game_id"
+            " WHERE p.predictor = 'llm' GROUP BY p.sport, g.season, g.week"
+            " ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
+        if row is None:
+            pytest.skip("no slate in this record has LLM rows")
+
+        calls = []
+        original = _llm.reason
+        try:
+            _llm.reason = lambda *a, **k: calls.append(1)
+            run = _predict.predict_slate(
+                conn, row["sport"], row["season"], row["week"],
+                final=False, include_props=True, use_llm=True)
+        finally:
+            _llm.reason = original
+    finally:
+        conn.close()
+
+    assert calls == [], (
+        f"a re-run over a written slate made {len(calls)} model calls; every "
+        f"one buys an answer `write_prediction` will discard")
+    assert run.llm_skipped > 0, (
+        "the run reported skipping nothing, so the counter is not counting")
+
+
+def test_the_skip_is_counted_not_silent():
+    """A run reporting `llm_skipped` beside a small `written` is a resume that
+    worked. Silence would look identical to a run that had nothing to do."""
+    from gridiron.model import predict as _predict
+
+    run = _predict.BlindRun(sport="ufc", season=2026, week=1)
+    assert run.llm_skipped == 0
+    assert hasattr(run, "llm_skipped")
+
+
+def test_the_existence_check_is_one_door():
+    """`write_prediction` and the LLM path must ask the same question.
+
+    A second predicate that drifted from the unique index is how the final
+    pass failed the first time it ran: a check that does not match the
+    constraint it stands in for turns a clean no-op into an IntegrityError.
+    """
+    import inspect
+
+    from gridiron.model import predict as _predict
+
+    src = inspect.getsource(_predict.write_prediction)
+    assert "already_written(" in src, (
+        "write_prediction no longer asks the shared door, so two predicates "
+        "can drift apart")
+    assert "SELECT 1 FROM predictions WHERE game_id" not in src, (
+        "write_prediction has grown its own copy of the predicate again")

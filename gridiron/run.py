@@ -197,6 +197,11 @@ def run_slate(
         # A MEASUREMENT COUNT, never a prediction count. Reported separately
         # and named so it cannot be added to the one above by mistake.
         "rungs_logged": run.rungs_logged,
+        # HOW MANY LLM QUESTIONS THE RUN DID NOT PAY FOR TWICE (2026-09-05).
+        # A resumed or backfilling run reports this; an ordinary one reports
+        # zero, and a run reporting a large number beside a small `written` is
+        # a resume that worked.
+        "llm_skipped": run.llm_skipped,
         "snapshots": None,
     }
     for w in run.written:

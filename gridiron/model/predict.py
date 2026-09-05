@@ -61,6 +61,11 @@ class BlindRun:
     #: Rows added to the rung log. A MEASUREMENT, never a prediction count --
     #: see `model/rungs.py` for why the two must not be added together.
     rungs_logged: int = 0
+    #: LLM questions skipped because the row already existed (2026-09-05).
+    #: COUNTED RATHER THAN SILENT, because it is the difference between a
+    #: resumed run that cost nothing and one that quietly paid twice: a run
+    #: reporting `llm_skipped: 34, written: 8` is a run that resumed properly.
+    llm_skipped: int = 0
 
     @property
     def prediction_ids(self) -> list[int]:
@@ -70,6 +75,35 @@ class BlindRun:
 # ---------------------------------------------------------------------------
 # step 4 — the write
 # ---------------------------------------------------------------------------
+
+def already_written(conn: sqlite3.Connection, q: Question, predictor: str,
+                    *, final: bool = False) -> bool:
+    """Has this exact question already been answered by this predictor?
+
+    THE ONE DOOR for "is this row already there", asked by `write_prediction`
+    before it inserts and by the LLM path before it spends money.
+
+    IT USED TO BE ASKED ONLY AT THE END. `llm.reason` ran first and the answer
+    was thrown away by `write_prediction` returning None, so a re-run over a
+    half-written slate paid for every question again. Measured on 2026-09-05:
+    an interrupted UFC pass was resumed and made 76 reasoning calls to write 8
+    rows -- 34 of the 42 questions were re-reasoned at full price and their
+    answers discarded, about $0.23 of a $2.00 daily cap.
+
+    THE PREDICATE MIRRORS THE UNIQUE INDEX EXACTLY, `pass_kind` included. A
+    check that does not match the constraint it stands in for lets a write
+    through and turns a clean no-op into an IntegrityError.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM predictions WHERE game_id = ? AND market_type = ?"
+        " AND subject = ? AND predictor = ? AND factor_set_version = ?"
+        "   AND pass_kind = ?",
+        (q.game_id, q.market_type, q.subject, predictor,
+         config.factor_set_version(q.sport, q.market_type),
+         "final" if final else "early"),
+    ).fetchone()
+    return row is not None
+
 
 def write_prediction(
     conn: sqlite3.Connection,
@@ -114,19 +148,15 @@ def write_prediction(
     # answered — which is how an entire sport's first slate silently wrote zero
     # predictions and reported success. A duplicate is a no-op; a violated
     # constraint is a bug, and the two must not return the same thing.
-    already = conn.execute(
-        "SELECT 1 FROM predictions WHERE game_id = ? AND market_type = ?"
-        " AND subject = ? AND predictor = ? AND factor_set_version = ?"
-        "   AND pass_kind = ?",
-        (q.game_id, q.market_type, q.subject, predictor,
-         config.factor_set_version(q.sport, q.market_type),
-         "final" if final else "early"),
-    ).fetchone()
     # MIRRORS THE UNIQUE INDEX, `pass_kind` included (2026-09-03). A check that
     # does not match the constraint it stands in for is worse than none: it
     # lets a write through and turns a clean no-op into an IntegrityError,
     # which is exactly how the final pass failed the first time it ran.
-    if already:
+    #
+    # LIFTED INTO `already_written` ON 2026-09-05 so a caller can ask BEFORE
+    # doing expensive work. It is still asked here, because a check a caller
+    # may forget is not a check.
+    if already_written(conn, q, predictor, final=final):
         return None
 
     # THE CORRECTION, APPLIED AT WRITE TIME AND ONLY HERE.
@@ -377,6 +407,17 @@ def predict_slate(
 
         # --- the LLM path ---------------------------------------------------
         if not use_llm or llm_off:
+            continue
+        # ASK BEFORE SPENDING (2026-09-05). `write_prediction` would return
+        # None for a row that already exists, but only after `llm.reason` had
+        # already been paid for -- so resuming an interrupted pass, or
+        # backfilling the LLM half of a slate whose statistical half is
+        # written, re-reasoned every question and threw the answers away.
+        #
+        # MEASURED: a resumed UFC pass made 76 reasoning calls to write 8 rows.
+        # The 34 questions already answered were answered again at full price.
+        if already_written(conn, q, "llm", final=final):
+            run.llm_skipped += 1
             continue
         try:
             result = llm.reason(
