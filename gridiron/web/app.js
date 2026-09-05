@@ -1173,9 +1173,12 @@ const Gridiron = (function () {
     // WRITTEN BY THE SERVER, PICKED HERE. Both wordings arrive on the
     // payload and the sort chooses between them -- "tonight" only appears
     // when the heading has already established that it is tonight.
-    host.appendChild(el('div', 'hero-tag',
-      (tags || {})[sortMode === 'confidence' ? 'confidence' : 'disagreement']
-      || ''));
+    // A card with no line cannot be the sharpest disagreement; the server
+    // wrote a third sentence for that case and this only picks it.
+    const noLine = c.market_implied_prob === null || c.market_implied_prob === undefined;
+    const tagKey = sortMode === 'confidence' ? 'confidence'
+      : (noLine ? 'no_line' : 'disagreement');
+    host.appendChild(el('div', 'hero-tag', (tags || {})[tagKey] || ''));
 
     const body = el('div', 'hero-body');
     const left = el('div', 'hero-left');

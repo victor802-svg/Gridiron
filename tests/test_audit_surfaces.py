@@ -119,3 +119,26 @@ def test_a_tier_category_is_labelled_in_words(conn):
             assert audit.plain_words_violations(c["category_label"]) == []
     js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
     assert "c.category_label" in js, "the renderer ignores the server's words"
+
+
+# --- the hero on a slate with no line ---------------------------------------
+
+def test_the_hero_tag_does_not_claim_a_disagreement_without_a_line():
+    """On the UFC slate of 2026-09-05 a card reading "no line to compare it
+    with" led the page under "Sharpest disagreement tomorrow"."""
+    tags = language.hero_tags("Tomorrow")
+    assert "disagreement" not in tags["no_line"].lower()
+    assert "no line" in tags["no_line"]
+    assert tags["no_line"].endswith("against") or "compare" in tags["no_line"]
+    js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    assert "'no_line'" in js, "the renderer never picks the no-line sentence"
+
+
+def test_lineless_cards_rank_by_confidence_among_themselves():
+    """Every lineless card tied at -1, so the leader was whichever the query
+    returned first."""
+    cards = [{"abs_gap": -1.0, "model_prob": 0.61},
+             {"abs_gap": -1.0, "model_prob": 0.80},
+             {"abs_gap": 0.05, "model_prob": 0.55}]
+    cards.sort(key=views._card_order, reverse=True)
+    assert [c["model_prob"] for c in cards] == [0.55, 0.80, 0.61]

@@ -826,7 +826,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
 
     # Sorted by disagreement size, because that is where anything interesting
     # lives. Cards with no market comparison sort last rather than first.
-    cards.sort(key=lambda c: c["abs_gap"], reverse=True)
+    cards.sort(key=_card_order, reverse=True)
     payload = {
         "sport": sport,
         # THE SLATE AT A GLANCE (D3), computed from the cards above rather than
@@ -1310,6 +1310,17 @@ def live_slate(conn: sqlite3.Connection, sport: str, season: int | None = None,
         "live": live_now,
         "picks": picks,
     }
+
+
+def _card_order(card: dict) -> tuple:
+    """Disagreement first; among cards with no line, confidence.
+
+    A card with no line has no disagreement to rank by (`abs_gap` is -1), and
+    before 2026-09-05 every such card tied, so the one that led a lineless
+    slate was whichever the query happened to return first -- under a tag
+    that called it the sharpest disagreement.
+    """
+    return (card["abs_gap"], card.get("model_prob") or 0.0)
 
 
 def available_weeks(conn: sqlite3.Connection, sport: str) -> list[dict]:

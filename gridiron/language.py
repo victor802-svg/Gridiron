@@ -1239,6 +1239,10 @@ def hero_tags(headline: str | None) -> dict:
     return {
         "disagreement": f"Sharpest disagreement{when}",
         "confidence": f"Most confident{when}",
+        # A CARD WITH NO LINE HAS NO DISAGREEMENT TO BE THE SHARPEST OF (audit
+        # 2026-09-05): on a slate the market had not priced, the hero wore the
+        # disagreement tag over "no line to compare it with".
+        "no_line": f"Most confident{when}, with no line to compare against",
     }
 
 
