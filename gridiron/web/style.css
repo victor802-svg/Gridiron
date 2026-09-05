@@ -1114,6 +1114,10 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   border-radius: var(--radius-sm); padding: 10px 12px;
   display: grid; gap: 10px;
 }
+/* `display: grid` above would beat the hidden attribute's own rule, and did:
+   the panel sat open under an unexpanded button until a render was looked
+   at (2026-09-05). The attribute wins, as it does for the tier segment. */
+.view-panel[hidden] { display: none; }
 .view-choice { display: grid; gap: 4px; }
 .view-choice-label {
   font-size: var(--t-caption); color: var(--faint);

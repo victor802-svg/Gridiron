@@ -26,12 +26,19 @@ def test_the_menu_is_a_tap_target_that_opens_and_closes(page):
     assert box["height"] >= 44, f"the view menu button is {box['height']:.0f}px tall"
     assert page.get_attribute("#week-view-button", "aria-expanded") == "false"
     assert page.evaluate("document.getElementById('week-view-panel').hidden") is True
+    # HIDDEN MEANS NOT PAINTED, not an attribute: the first version checked the
+    # attribute and passed while `.view-panel { display: grid }` overrode it
+    # and the panel sat open under an unexpanded button.
+    assert not page.is_visible("#week-view-panel"), "the closed panel is painted"
+    assert page.evaluate(
+        "getComputedStyle(document.getElementById('week-view-panel')).display") == "none"
     page.click("#week-view-button")
     assert page.get_attribute("#week-view-button", "aria-expanded") == "true"
     assert page.is_visible("#week-view-panel")
     # Closes on a click elsewhere.
     page.click("#week-headline")
     assert page.evaluate("document.getElementById('week-view-panel').hidden") is True
+    assert not page.is_visible("#week-view-panel")
     # And on Escape, handing focus back to the button.
     page.click("#week-view-button")
     page.keyboard.press("Escape")
