@@ -246,3 +246,36 @@ def _hours_ago(n: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(hours=n)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
+
+
+
+# --- one list of tasks (audit 2026-09-05) -----------------------------------
+
+def test_every_task_is_installable_and_worded():
+    """tasks.TASKS, scheduler.OS_TASK_NAMES, language.TASK_WORDS and the
+    installer disagreed four ways: the UFC passes existed only in the first
+    and third, `live` was named on the scheduler and registered nowhere, and
+    CatchUp was registered and named nowhere. Three lists that describe one
+    appliance are held together here."""
+    from pathlib import Path
+
+    from gridiron import language, scheduler
+
+    script = (Path(config.REPO_ROOT) / "tools" / "schedule_install.ps1").read_text(
+        encoding="utf-8")
+    names_block = script.split("$TaskNames = @(")[1].split(chr(10) + ")")[0]
+    for task in tasks.TASKS:
+        assert task in language.TASK_WORDS, f"{task} would reach the panel as a key"
+        assert task in scheduler.OS_TASK_NAMES, f"{task} has no name on the scheduler"
+        if task in scheduler.NOT_INSTALLED:
+            continue
+        suffix = scheduler.OS_TASK_NAMES[task]
+        assert f'"$($Prefix){suffix}"' in script, f"the installer never registers {suffix}"
+        assert f'TaskArg "{task}"' in script, f"the installer registers {suffix} for the wrong task"
+        assert suffix in names_block, f"an uninstall would orphan {suffix}"
+    for task, why in scheduler.NOT_INSTALLED.items():
+        assert task in tasks.TASKS and why, task
+    # And the other way: nothing on the scheduler that the app does not know.
+    for task, suffix in scheduler.OS_TASK_NAMES.items():
+        assert task in tasks.TASKS or task == "catch-up", (
+            f"{suffix} is named on the scheduler and is not a task")

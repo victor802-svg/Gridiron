@@ -39,6 +39,12 @@ OS_TASK_NAMES = {
     "predict:nfl": "Predict-NFL",
     "predict:nba": "Predict-NBA",
     "predict:cfb": "Predict-CFB",
+    # THE FIGHTS (audit 2026-09-05). Declared in `tasks.TASKS` on 2026-09-03
+    # and in nothing else: the installer never registered them, this map
+    # could not name them, and `read_os("predict:ufc")` refused by name. The
+    # 84 UFC forecasts in the record were all written by hand.
+    "predict:ufc": "Predict-UFC",
+    "final:ufc": "Final-UFC",
     # THE SECOND, LATER PASS PER SPORT (2026-09-03). Named here so the
     # settings page can READ whether the machine holds them -- and, until the
     # installer is run, say plainly that it does not. A mechanism nothing
@@ -53,6 +59,15 @@ OS_TASK_NAMES = {
     # that it does not.
     "capture": "Capture",
     "live": "Live",
+    "catch-up": "CatchUp",
+}
+
+#: Tasks the installer deliberately does NOT register, each with the reason
+#: a reader is owed. A task in `tasks.TASKS` must be either in the installer
+#: or here; a test holds the three lists together (audit 2026-09-05).
+NOT_INSTALLED: dict[str, str] = {
+    "live": "the live poll's cadence is an operator decision; nothing has "
+            "registered a timer for it yet (audit 2026-09-05)",
 }
 
 #: A change that hangs is worse than one that fails: the page would sit there.

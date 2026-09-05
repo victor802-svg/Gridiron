@@ -75,6 +75,9 @@ $TaskNames = @(
     "$($Prefix)Final-NFL",
     "$($Prefix)Final-NBA",
     "$($Prefix)Final-CFB",
+    "$($Prefix)Predict-UFC",
+    "$($Prefix)Final-UFC",
+    "$($Prefix)Recalibrate",
     "$($Prefix)Capture",
     "$($Prefix)CatchUp"
 )
@@ -241,6 +244,31 @@ New-GridironTask -Name "$($Prefix)Final-NBA" -TaskArg "final:nba" `
 New-GridironTask -Name "$($Prefix)Final-CFB" -TaskArg "final:cfb" `
     -Trigger (New-ScheduledTaskTrigger -Daily -At "08:00") `
     -Description "Re-forecast the college football slate on the morning of the games."
+
+# THE FIGHTS (audit 2026-09-05). `predict:ufc` and `final:ufc` were declared
+# in the app on 2026-09-03 and never registered here, so every UFC forecast in
+# the record was run by hand. Daily, like baseball: about 4.3 cards a month
+# with no season shape, and a day with no card is a logged no-op.
+#
+# Final-UFC at 12:00 local. `config.FINAL_PASS["ufc"]` asks for three hours
+# before the first bout and says it is NOT measured; the 2026 record puts the
+# first bout at 14:00 local on the early cards and 16:00 on most. 12:00 is
+# three hours before the early ones. Change it when the timing is measured.
+New-GridironTask -Name "$($Prefix)Predict-UFC" -TaskArg "predict:ufc" `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At "11:00") `
+    -Description "Forecast the next UFC card, blind. A logged no-op on a day with no card."
+
+New-GridironTask -Name "$($Prefix)Final-UFC" -TaskArg "final:ufc" `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At "12:00") `
+    -Description "Re-forecast the fights close to the first bout, on what is known then."
+
+# THE WEEKLY RE-FIT (audit 2026-09-05). `recalibrate` has declared a weekly
+# cadence since 2026-08-31 and nothing ever registered it, so the claim
+# corrections were refitted twice, both times by hand. Monday morning, after
+# the weekend's slates have settled.
+New-GridironTask -Name "$($Prefix)Recalibrate" -TaskArg "recalibrate" `
+    -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "06:00") `
+    -Description "Re-fit each category's claim correction against its settled record, once a week."
 
 # ---------------------------------------------------------------------------
 # WHAT WAS KNOWABLE, WHEN (S1, 2026-09-03)
