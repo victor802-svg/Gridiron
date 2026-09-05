@@ -181,13 +181,22 @@ CFB_HOME_MARGIN_ASSUMED_SLOPE = 1.0
 #: search over variants: the same act as measuring CFB_HOME_MARGIN, carried
 #: one term further.
 #:
-#: CFB'S ENTRY IS RECORDED AND NOT YET USED. `cfb_expected_margin` still runs
-#: on its original slope of 1.0 and intercept of 9.79, and changing it would
-#: change which questions college football asks -- a bigger act than this
-#: ruling authorises. The measurement above is the first quantification of the
-#: defect already recorded in FOLLOWUPS (spread base rate 0.371, not 0.5): the
-#: intercept is roughly double what the data says and the slope is 6% high.
-#: It needs an operator ruling, not a quiet edit.
+#: CFB'S ENTRY IS LIVE. `cfb_expected_margin` returns `expected_margin("cfb",
+#: ...)` and therefore reads this table like the other two.
+#:
+#: THIS PARAGRAPH SAID THE OPPOSITE FOR THREE DAYS. It read "CFB'S ENTRY IS
+#: RECORDED AND NOT YET USED. `cfb_expected_margin` still runs on its original
+#: slope of 1.0 and intercept of 9.79" -- true when the table was added and
+#: false from the moment the function was re-pointed at it, in the same
+#: session. Found on 2026-09-04 while measuring forecast spreads for Session
+#: E, and caught by ARITHMETIC rather than by reading: the CFB margin's
+#: measured bias is +0.05 points, and the old constants (intercept 9.79
+#: against the fitted 4.85) would have produced a bias of roughly five.
+#:
+#: A COMMENT THAT DESCRIBES THE CODE IS A CLAIM ABOUT IT, and this one was
+#: load-bearing -- `docs/DISTRIBUTIONAL.md` §1 nearly repeated it as fact. The
+#: fix is recorded here rather than silently applied, because a stale comment
+#: that quietly disappears teaches nobody anything.
 EXPECTED_MARGIN_FIT: dict[str, tuple[float, float]] = {
     "nfl": (1.932, 0.4426),
     "nba": (2.078, 0.5963),
@@ -373,6 +382,84 @@ def cfb_spread_rung(game_id: str, expected_margin: float | None = None) -> float
 NBA_TOTAL_MIN = 185.0
 NBA_TOTAL_MAX = 278.0
 NBA_TOTAL_BOUNDS_DECLARED = "2026-09-04T00:00:00Z"
+
+
+#: THE SPREAD OF THE MODEL'S OWN FORECAST, per sport and quantity
+#: (Session E, measured 2026-09-04 by `tools/measure_forecast_spread.py`).
+#:
+#: `SD(actual - the model's own expectation)` over every completed game in the
+#: loaded seasons. This is what a distributional forecast needs: how far a
+#: result lands from OUR number.
+#:
+#: THIS IS NOT `market.lines.MARGIN_SD_BY_SPORT` OR `TOTAL_SD_BY_SPORT`. Those
+#: hold `SD(actual - THE MARKET'S line)` and exist for the market comparison.
+#: They are a different and narrower quantity -- the market forecasts better
+#: than we do, by 4-6% of spread -- and confusing the two is the mistake that
+#: produced a false 4.71-versus-4.534 discrepancy in the run-line probe.
+#:
+#: TWO OF THESE REPRODUCE A NUMBER ALREADY IN THIS FILE, which is the check
+#: that the measurement is right: NFL margin comes back at 13.54 against
+#: `EXPECTED_MARGIN_FIT`'s recorded resid sd of 13.50, and CFB margin at 17.46
+#: against its 17.39 -- measured independently, by a different route.
+#:
+#: CONSTANT, NOT CONDITIONAL, and measured rather than assumed. The SD within
+#: terciles of the expectation varies by 1-6% and mostly not monotonically; a
+#: conditional spread would be a second fitted object with its own factors and
+#: its own calibration, for a correction smaller than one ladder step.
+#: `docs/DISTRIBUTIONAL.md` §1 carries the table.
+#:
+#: MLB IS ABSENT ON PURPOSE. Its total is right-skewed at +0.64 -- runs are
+#: counts, bounded below at zero -- and a symmetric distribution cannot hold
+#: that shape. It belongs on the count machinery, not here.
+#:
+#: CFB'S TOTAL IS ABSENT ON PURPOSE TOO, and the reason is worse than skew:
+#: its expectation carries almost no information. Regressing the actual total
+#: on it gives slope 0.109 and R-squared 0.0093 over 1,639 games -- the sum of
+#: two points-per-game figures explains under one per cent of a college total,
+#: against R-squared 0.095 for the NFL margin and 0.357 for the CFB one. A
+#: distribution built on it would say "about 53 points, give or take 16" on
+#: every game in the country.
+FORECAST_SPREAD: dict[tuple[str, str], float] = {
+    ("nfl", "total"): 14.28,
+    ("nfl", "spread"): 13.54,
+    ("nba", "total"): 18.83,
+    ("nba", "spread"): 14.24,
+    ("cfb", "spread"): 17.46,
+}
+FORECAST_SPREAD_DECLARED = "2026-09-04T00:00:00Z"
+
+#: How many completed games each figure above was measured on.
+FORECAST_SPREAD_N: dict[tuple[str, str], int] = {
+    ("nfl", "total"): 2478,
+    ("nfl", "spread"): 2603,
+    ("nba", "total"): 4841,
+    ("nba", "spread"): 4602,
+    ("cfb", "spread"): 1635,
+}
+
+
+class UnmeasuredForecastSpread(RuntimeError):
+    """A distributional path reached for a spread nobody measured."""
+
+
+def forecast_spread(sport: str, market: str) -> float:
+    """The measured spread of the model's own forecast, or a NAMED failure.
+
+    NO FALLBACK, EVER, and `market.lines.margin_sd` is the precedent: a bare
+    `MARGIN_SD = 13.2` behind a `dict.get` default meant MLB silently received
+    football's number and every probability derived from it was wrong in a way
+    nothing would ever print.
+    """
+    try:
+        return FORECAST_SPREAD[(sport, market)]
+    except KeyError:
+        raise UnmeasuredForecastSpread(
+            f"no forecast spread has been measured for {sport}:{market}. Run "
+            f"tools/measure_forecast_spread.py and add a dated entry; do not "
+            f"guess one. A forecast spread sets how confident every read-out "
+            f"is, so an invented value silently rewrites every probability "
+            f"this market produces."
+        ) from None
 
 
 # SESSION E WILL END THIS WHOLE ARRANGEMENT (operator ruling 1, 2026-09-04).
