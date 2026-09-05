@@ -9,6 +9,36 @@ Ruling: `docs/DECISIONS_MADE.md`, 2026-09-04 ruling 1.
 
 ---
 
+> # OUTCOME: THE WALK-FORWARD REFUSED IT. NOTHING SHIPPED.
+>
+> **Part 2 ran §7's test on 2026-09-04. All four arms said DO NOT SHIP**, on
+> **3,947 out-of-sample games.** This document stands as the record of a
+> hypothesis that failed its test, which §7 said it would be. The full result
+> is **§9**, at the bottom; the sections between are left exactly as they
+> were written, because a design edited after its own test is no longer a
+> record of what was predicted.
+>
+> | arm | n | rung gap | **read-out gap** | rung edge | **read-out edge** | PIT |
+> |---|---|---|---|---|---|---|
+> | NFL total | 768 | 0.35 | **13.24** | +0.0011 | **−0.0281** | flat |
+> | NFL spread | 813 | 1.93 | **11.91** | +0.0036 | **−0.0164** | flat |
+> | NBA total | 1,223 | 3.98 | **9.60** | −0.0030 | **−0.0147** | flat |
+> | NBA spread | 1,143 | 2.57 | **12.39** | +0.0085 | **−0.0197** | flat |
+>
+> **The structural argument in §0 was right and did not survive contact with
+> the market.** The read-out does span 3.4%–93.8% where a rung spans
+> 45.8%–54.2%, and 12.4% of its questions do reach 70%. Every one of those
+> extra claims is worse than a coin flip: the read-out's edge over
+> always-the-base-rate is **negative in all four arms.**
+>
+> **Every PIT came back flat**, so the distributions were honest about their
+> own width. **That is the finding, and §10.2 states it properly:** a
+> distribution can be perfectly honest about its own error and still be badly
+> calibrated at somebody else's number, because that number is not a random
+> point — it is a better forecast.
+
+---
+
 ## 0. The causal claim, stated first
 
 > **A binary asked at the model's own expected value is a coin flip by
@@ -780,7 +810,152 @@ schema first would make the test a formality that nobody wants to fail.
 - **The tie-break if the walk-forward splits by sport.** Deliberately left to
   the operator, by section 7.
 
-## 9. Operator's verdicts
+## 9. WHAT THE TEST SAID (Part 2, 2026-09-04)
+
+Everything above this line is as it was written **before** the test. Nothing
+in it has been edited to agree with the result, because a design amended after
+its own experiment stops being a record of what was predicted.
+
+### 9.1 The result
+
+`tools/walkforward_distributional.py`, per sport as the operator ruled — LAW 6
+makes each sport its own decision and sports are never averaged to reach a
+verdict.
+
+| arm | n | splits | rung gap | **read-out gap** | rung edge | **read-out edge** | read-out reach | PIT worst |
+|---|---|---|---|---|---|---|---|---|
+| NFL total | 768 | 2022/23/24 | 0.35 | **13.24** | +0.0011 | **−0.0281** | 12.4% | 0.29 flat |
+| NFL spread | 813 | 2022/23/24 | 1.93 | **11.91** | +0.0036 | **−0.0164** | 7.8% | 0.30 flat |
+| NBA total | 1,223 | 2024 | 3.98 | **9.60** | −0.0030 | **−0.0147** | 6.1% | 0.17 flat |
+| NBA spread | 1,143 | 2024 | 2.57 | **12.39** | +0.0085 | **−0.0197** | 11.2% | 0.13 flat |
+
+"Gap" is the weighted mean |claimed − actual| across the declared buckets, in
+percentage points, read on the claimed side. **LABELLED SANITY ONLY** — a
+retrospective comparison on completed games, not evidence of an edge.
+
+**§7's decision rule, applied exactly as written.** B ships only if its
+calibration gap is ≤ A's *and* its PIT is flat. **The PIT condition passed
+everywhere. The calibration condition failed everywhere.** No third condition
+was added after the numbers, and none was needed.
+
+### 9.2 Why it failed — and it is not what §0 expected
+
+**The read-out's error is monotone in its own confidence.** NFL totals:
+
+| read-out claimed | n | actually happened |
+|---|---|---|
+| 54.8% | 420 | 48.8% |
+| 64.4% | 253 | 47.8% |
+| 73.8% | 81 | **38.3%** |
+| 85.9% | 14 | **42.9%** |
+
+**Above 70% the read-out is worse than a coin flip, and above 80% it is
+reversed.** The same shape appears in all four arms.
+
+**The cause, measured.** The mean absolute error of each number against the
+result, on the same games:
+
+| arm | our expectation | the market's line | market closer |
+|---|---|---|---|
+| NFL total | 11.23 | **10.11** | 57.4% |
+| NFL spread | 10.45 | **9.74** | 58.9% |
+| NBA total | 15.34 | **14.61** | 54.8% |
+| NBA spread | 11.77 | **10.87** | 57.2% |
+
+**The market forecasts better than we do.** So the gap between our number and
+theirs is mostly *our error*, not our edge — and a read-out converts that gap
+directly into confidence. The bigger the disagreement, the more of it is us
+being wrong, which is exactly the monotone pattern above.
+
+> **The lesson, stated so it cannot be misread: a distribution can be
+> perfectly honest about its own error and still be badly calibrated at
+> somebody else's number, because that number is not a random point. It is a
+> better forecast.**
+>
+> §3 treated PIT flatness and calibration-at-the-line as two views of one
+> honesty. **They are not.** PIT asks "is the spread right for the mean" —
+> answered yes, everywhere. Calibration at the market's line asks "is the mean
+> right *relative to theirs*" — answered no, everywhere. The design conflated
+> them, and the test separated them.
+
+### 9.3 What §0 got right, and why it did not save the design
+
+The arithmetic in §0 stands: a rung asked at our own expectation confines
+P(over) to 45.8%–54.2%, and the read-out spans 3.4%–93.8%. **Both are true.
+Reach is not calibration.** The read-out reaches 70% on 12.4% of NFL totals
+and is right on 38% of those.
+
+**A question with almost nothing in it is still better than a question with
+the wrong thing in it.** The rung method's calibration gap of 0.35 points on
+768 games is the best number on this page. It measures nearly nothing and it
+does not lie about it — which is the whole of what LAW 4 asks.
+
+### 9.4 The suppression, still unexplained
+
+§0's second claim — that the rung causes the `srs_diff` / `recent_form_diff`
+suppression — is **untouched by this result.** The correlations it rests on
+were measured directly and stand: those factors carry +0.26 and +0.24 against
+the moneyline's label and −0.02 and +0.04 against the spread's, on the same
+games, correlated at 0.70 with each other throughout.
+
+**But the fix that was supposed to test it did not ship**, so the hypothesis
+is where it was: a mechanism and a measurement, no proof. Removing the rung is
+no longer the way to test it, because removing the rung makes the model worse.
+**Whatever tests it next has to be something else.**
+
+### 9.5 CFB never reached the walk-forward
+
+The brief said *"CFB totals WAIT for a fitted slope — fit it first, dated,
+then include CFB."* It was fitted, and the fit refused the market:
+
+```
+actual_total  =  47.31  +  0.109 x expectation      n=1,639   R^2 = 0.0093
+```
+
+**The expectation explains 0.93% of the variance in a college total.** The sum
+of two points-per-game figures is very nearly no forecast at all — against
+R² 0.095 for the NFL margin and 0.357 for the CFB one. Fitting it does reduce
+the spread from 20.85 to 16.31, and what it reduces it to is *the league
+average on every game in the country*.
+
+**So there was nothing to distribute**, and CFB's total is recorded NOT RUN
+for that reason rather than for line coverage. The slope and intercept are in
+`tools/measure_forecast_spread.py`'s output and are deliberately **not**
+declared as a live constant: adopting them would change which questions
+college football asks, and §8 says that is an operator ruling.
+
+### 9.6 What was built anyway
+
+**Nothing that asks a question differently.** Every market is on the same rung
+it was on before.
+
+| built | why it survives a NO |
+|---|---|
+| `tools/walkforward_distributional.py` | the test itself, re-runnable when the model changes |
+| `tools/measure_forecast_spread.py` | the eight spreads, and the CFB fit that refused it |
+| `tools/backfill_lines.py` | NBA line coverage: **25 → 4,900 lined finals** |
+| `questions.FORECAST_SPREAD` | five dated measurements with their N |
+| `config.DISTRIBUTIONAL_VERDICTS` | the decision, with its evidence, where code can read it |
+| `audit.check_distributional_verdicts` | makes the verdict binding in both directions |
+
+**The NBA backfill outlives this session by a distance.** The doc said the NBA
+arm might have to be reported as not run for want of lines; it now has 4,900
+lined finals, and every future market comparison in that sport rests on them.
+
+### 9.7 What is now known that was not
+
+1. **The read-out is not a free improvement.** It was proposed as a
+   deterministic re-reading of an existing forecast — no new model, no new
+   risk. It is a new *claim*, and it can be wrong.
+2. **We forecast totals and margins worse than the market, by 5–9%**, measured
+   four ways. That number was not on the record before today.
+3. **Our distributions are honest.** All four PITs flat is a real result about
+   the model, and it is what makes `FORECAST_SPREAD` worth keeping.
+4. **CFB's totals expectation does not work**, at R² 0.0093.
+5. **Reach and calibration trade off**, and this project's laws already choose:
+   LAW 4 exists to stop a number being shown that has not earned itself.
+
+## 10. Operator's verdicts
 
 **Strongest thing:**
 

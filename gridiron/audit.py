@@ -3818,3 +3818,141 @@ def check_vendored_fonts(root: Path | None = None) -> None:
     if faults:
         raise LawViolation(
             "A VENDORED BINARY IS CHECKABLE:" + _NL2 + _NL2.join(faults))
+
+
+# A MARKET SHIPS ONLY ON ITS OWN VERDICT (Session E Part 2, 2026-09-04)
+# ---------------------------------------------------------------------------
+#
+# `docs/DISTRIBUTIONAL.md` §7 fixed a decision rule BEFORE the numbers arrived:
+# the distributional read-out ships only if it is better calibrated than the
+# rung method, and its distribution's PIT is flat. The walk-forward then said
+# no in all four arms. `config.DISTRIBUTIONAL_VERDICTS` records that.
+#
+# A RULE WRITTEN BEFORE THE NUMBERS IS WORTH NOTHING IF IT CAN BE EDITED
+# AFTER THEM. This is the guard that makes the verdict binding rather than
+# advisory, and it checks the decision against its OWN recorded evidence:
+# a market may only be marked SHIP if the figures beside it say it earned it.
+#
+# AND THE MIGRATION IN BOTH DIRECTIONS. A shipped market must have lost its
+# rung ladder -- a ladder left standing is a market that can quietly go back
+# to asking at its own rung. A market that did NOT ship must still HAVE its
+# ladder, because deleting one for a market that stays on rungs is how a
+# migration half-lands.
+
+#: Which declared ladder belongs to which market. Named rather than guessed:
+#: a market whose ladder this map does not know is a market the migration
+#: check cannot see, so an unknown market is a fault rather than a pass.
+LADDERS_BY_MARKET: dict[tuple[str, str], tuple[str, str]] = {
+    ("nfl", "total"): ("gridiron.model.questions", "NFL_TOTAL_LADDER"),
+    ("nba", "total"): ("gridiron.model.questions", "NBA_TOTAL_LADDER"),
+    ("nfl", "spread"): ("gridiron.model.questions", "SPREAD_LADDER"),
+    ("cfb", "spread"): ("gridiron.model.questions", "CFB_SPREAD_LADDER"),
+    ("nba", "spread"): ("gridiron.sports.nba", "SPREAD_LADDER"),
+    # CFB's total is asked at its own expectation rounded to a half, with no
+    # ladder at all -- which is why it measured worst of the four.
+    ("cfb", "total"): (None, None),
+}
+
+#: Every figure a verdict must carry to be a verdict rather than an opinion.
+VERDICT_FIELDS = ("verdict", "measured_utc", "n", "splits", "why")
+
+
+def _ladder_exists(module_name: str | None, attr: str | None) -> bool:
+    if module_name is None:
+        return False
+    import importlib
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError:
+        return False
+    return getattr(module, attr, None) is not None
+
+
+def distributional_verdict_faults() -> list[str]:
+    """Where a market's behaviour and its recorded verdict disagree.
+
+    Five ways, and the first is the one the whole two-session structure exists
+    to prevent:
+
+    1. A MARKET SHIPPING WITHOUT A VERDICT. `DISTRIBUTIONAL_MARKETS` is derived
+       from the verdicts, so this can only happen if somebody writes the set by
+       hand -- which is exactly what the planting does.
+    2. A SHIP VERDICT ITS OWN NUMBERS DO NOT SUPPORT. The decision rule was
+       fixed before the data; a verdict that ignores the figures beside it is
+       the rule being edited after the numbers.
+    3. A SHIPPED MARKET THAT STILL HAS ITS RUNG LADDER.
+    4. A MARKET LEFT ON RUNGS WHOSE LADDER IS GONE.
+    5. A VERDICT MISSING ITS EVIDENCE -- no n, no date, no reason.
+    """
+    faults: list[str] = []
+
+    derived = frozenset(
+        key for key, entry in config.DISTRIBUTIONAL_VERDICTS.items()
+        if entry.get("verdict") == "SHIP")
+    # READ THROUGH THE ACCESSOR, not around it. `config.is_distributional` is
+    # the door every caller will use when a market eventually ships, so the
+    # guard has to be looking at the same door -- a check that reads the raw
+    # set while production reads the function is a check on the wrong thing.
+    for key in sorted(k for k in config.DISTRIBUTIONAL_MARKETS
+                      if config.is_distributional(*k) and k not in derived):
+        faults.append(
+            f"{key[0]}:{key[1]} is running distributionally and no SHIP "
+            f"verdict is recorded for it. The walk-forward is the only thing "
+            f"that may put a market here.")
+
+    for (sport, market) in sorted(config.DISTRIBUTIONAL_VERDICTS):
+        entry = config.distributional_verdict(sport, market)
+        where = f"{sport}:{market}"
+        if market not in config.SPORT_MARKETS.get(sport, ()):
+            faults.append(f"{where} has a verdict and {sport} does not declare "
+                          f"that market.")
+            continue
+        for field in VERDICT_FIELDS:
+            if entry.get(field) in (None, ""):
+                faults.append(f"{where}'s verdict carries no {field!r}. A "
+                              f"verdict without its evidence is an opinion.")
+
+        verdict = entry.get("verdict")
+        if verdict == "SHIP":
+            gap_b, gap_a = entry.get("readout_gap_pts"), entry.get("rung_gap_pts")
+            if gap_a is None or gap_b is None:
+                faults.append(f"{where} is marked SHIP with no calibration "
+                              f"figures to justify it.")
+            elif gap_b > gap_a:
+                faults.append(
+                    f"{where} is marked SHIP and its own numbers say the "
+                    f"read-out is WORSE calibrated ({gap_b} against {gap_a} "
+                    f"points). The decision rule was fixed before the data; "
+                    f"this is it being edited after.")
+            if entry.get("pit_flat") is not True:
+                faults.append(
+                    f"{where} is marked SHIP and its distribution's PIT is not "
+                    f"recorded flat. A read-out cannot be better calibrated "
+                    f"than the distribution it is read from.")
+
+        module_name, attr = LADDERS_BY_MARKET.get((sport, market), ("?", "?"))
+        if module_name == "?":
+            faults.append(f"{where} has a verdict and no entry in "
+                          f"LADDERS_BY_MARKET, so nothing can check whether "
+                          f"its migration happened.")
+            continue
+        has_ladder = _ladder_exists(module_name, attr)
+        shipped = verdict == "SHIP"
+        if shipped and has_ladder:
+            faults.append(
+                f"{where} shipped distributionally and {module_name}.{attr} is "
+                f"still there. A ladder left standing is a market that can go "
+                f"back to asking at its own rung without anybody deciding to.")
+        if not shipped and module_name is not None and not has_ladder:
+            faults.append(
+                f"{where} did not ship and {module_name}.{attr} is gone. A "
+                f"market left on rungs needs the rungs it is left on.")
+    return faults
+
+
+def check_distributional_verdicts() -> None:
+    """Raise unless every market's behaviour matches its recorded verdict."""
+    faults = distributional_verdict_faults()
+    if faults:
+        raise LawViolation(
+            "A MARKET SHIPS ONLY ON ITS OWN VERDICT:" + _NL2 + _NL2.join(faults))

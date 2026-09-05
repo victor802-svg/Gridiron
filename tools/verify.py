@@ -210,6 +210,11 @@ def step_2_guards() -> bool:
         # leading with a market whose own note calls it a coin flip.
         # OPERATOR RULING 4 (2026-09-04). A vendored binary is checkable to
         # exactly the extent its provenance is recorded AND enforced.
+        # SESSION E PART 2 (2026-09-04). The walk-forward said DO NOT SHIP in
+        # all four arms; this is what keeps that answer binding rather than
+        # advisory, in both directions.
+        ("every market matches its own verdict",
+         audit.check_distributional_verdicts),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),
         ("every self-chosen rung is flagged", audit.check_flagged_methods),
         ("the hero refuses a flagged method",

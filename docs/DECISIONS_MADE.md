@@ -497,3 +497,65 @@ count that is quietly short is the one thing it must not be.
 
 **Counted, not subtracted.** One query over the slate, minus what the page
 shows. There is no second definition left to drift.
+
+---
+
+## 2026-09-04 — Session E Part 2: the walk-forward refused the redesign
+
+**Ruling (operator), on the tie-break §7 left open:** if the walk-forward
+splits by sport, **ship per sport** — LAW 6 makes each sport its own decision,
+and sports are never averaged to reach a verdict.
+
+**It did not split. It said no in all four arms**, on **3,947 out-of-sample
+games**, so the ruling was not needed and the machinery that would have
+applied it is built and unused.
+
+| arm | n | rung gap | read-out gap | rung edge | read-out edge | PIT |
+|---|---|---|---|---|---|---|
+| NFL total | 768 | 0.35 | **13.24** | +0.0011 | **−0.0281** | flat |
+| NFL spread | 813 | 1.93 | **11.91** | +0.0036 | **−0.0164** | flat |
+| NBA total | 1,223 | 3.98 | **9.60** | −0.0030 | **−0.0147** | flat |
+| NBA spread | 1,143 | 2.57 | **12.39** | +0.0085 | **−0.0197** | flat |
+
+**Nothing ships.** Every totals and spreads market stays on the rung it was on.
+`config.DISTRIBUTIONAL_VERDICTS` records each verdict with its evidence, and
+`audit.check_distributional_verdicts` makes it binding **in both directions**:
+a market cannot be marked shipped against its own numbers, a shipped market
+cannot keep its ladder, and a market left on rungs cannot lose one.
+
+**Why it failed, and it is not what the design expected.** Every PIT came back
+flat, so the distributions were honest about their own width. What failed is
+the step after. The market's number lands closer to the result on **55–59%**
+of games in every arm, so the gap between our number and theirs is mostly
+*our error*, not our edge — and a read-out converts that gap directly into
+confidence. Above 70% the read-out is worse than a coin flip; above 80% it is
+reversed, 86% claimed against 43% actual.
+
+> **A distribution can be perfectly honest about its own error and still be
+> badly calibrated at somebody else's number, because that number is not a
+> random point. It is a better forecast.**
+
+**What this settles about the confidence floor**, which was an open operator
+question from the 2026-09-04 close-out: on NFL totals a 70% floor would have
+admitted 95 of 768 read-out questions, and those 95 are **precisely the ones
+the method gets wrong** (38.3% and 42.9% actual). A floor selects for
+confidence, and confidence was the failure mode. The floor question is still
+the operator's, and it now has evidence attached.
+
+**The suppression hypothesis is untouched and is no longer testable this way.**
+The correlations stand — the two factors carry +0.26 and +0.24 against the
+moneyline's label and −0.02 and +0.04 against the spread's, on the same games.
+But removing the rung was the test, and removing the rung makes the model
+worse, so whatever tests it next has to be something else.
+
+**CFB's total never reached the walk-forward, and not for want of lines.** Its
+expectation was fitted as the brief instructed: `actual = 47.31 + 0.109 ×
+expectation`, n=1,639, **R² = 0.0093**. The sum of two points-per-game figures
+explains under one per cent of a college total. There was nothing to
+distribute. The slope is measured and deliberately **not** declared live:
+adopting it would change which questions college football asks, which §8 says
+is an operator ruling.
+
+**What survives the NO:** the test itself, re-runnable; eight measured forecast
+spreads with their N; and **NBA line coverage from 25 to 4,900 lined finals**,
+which every future market comparison in that sport now rests on.

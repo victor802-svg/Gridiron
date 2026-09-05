@@ -5418,6 +5418,117 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_VERDICT = "A MARKET SHIPS ONLY ON ITS OWN VERDICT"
+
+
+def plant_a_market_shipped_without_a_verdict() -> Result:
+    """Put a market into the distributional set that no walk-forward passed.
+
+    THE WHOLE TWO-SESSION STRUCTURE EXISTS TO PREVENT THIS. Session E's design
+    document fixed a decision rule before the numbers arrived, precisely so
+    that shipping could not become a formality: *"Building the schema first
+    would make the test a formality that nobody wants to fail."* The test then
+    said no in all four arms.
+
+    A RULE WRITTEN BEFORE THE NUMBERS IS WORTH NOTHING IF THE SET IT GOVERNS
+    CAN BE EDITED BY HAND. `DISTRIBUTIONAL_MARKETS` is derived from the
+    verdicts for that reason, and this breaks the derivation the way a careless
+    later session would -- by adding the market and forgetting the decision.
+    """
+    from gridiron import audit as _audit
+
+    if _audit.distributional_verdict_faults():
+        return Result(LAW_VERDICT, "a market shipped without a verdict",
+                      "audit.distributional_verdict_faults", False,
+                      "the shipped verdicts already disagree with the markets; "
+                      "fix that before trusting this planting")
+
+    original = config.DISTRIBUTIONAL_MARKETS
+    try:
+        config.DISTRIBUTIONAL_MARKETS = frozenset(original | {("nfl", "total")})
+        faults = _audit.distributional_verdict_faults()
+    finally:
+        config.DISTRIBUTIONAL_MARKETS = original
+
+    if not faults:
+        return Result(LAW_VERDICT, "a market shipped without a verdict",
+                      "audit.distributional_verdict_faults", False,
+                      "NOT CAUGHT - a market is reading probabilities off a "
+                      "distribution at the market's line, and the walk-forward "
+                      "that was supposed to authorise that said DO NOT SHIP")
+    return Result(LAW_VERDICT, "a market shipped without a verdict",
+                  "audit.distributional_verdict_faults", True, faults[0])
+
+
+def plant_a_ship_verdict_its_own_numbers_refuse() -> Result:
+    """Flip a verdict to SHIP and leave the losing figures beside it.
+
+    THE RULE BEING EDITED AFTER THE NUMBERS, which is the failure mode a
+    pre-registered decision rule exists to make visible. NFL's total measured a
+    13.24-point calibration gap against the rung method's 0.35, and a verdict
+    that says SHIP over those two figures is not a decision, it is a wish.
+
+    THE GUARD READS THE EVIDENCE STORED WITH THE VERDICT rather than trusting
+    the word. That is the only version of this check worth having: a verdict
+    field alone is a string somebody typed.
+    """
+    from gridiron import audit as _audit
+
+    original = dict(config.DISTRIBUTIONAL_VERDICTS[("nfl", "total")])
+    try:
+        config.DISTRIBUTIONAL_VERDICTS[("nfl", "total")] = {
+            **original, "verdict": "SHIP"}
+        faults = _audit.distributional_verdict_faults()
+    finally:
+        config.DISTRIBUTIONAL_VERDICTS[("nfl", "total")] = original
+
+    if not faults:
+        return Result(LAW_VERDICT, "a SHIP verdict its own numbers refuse",
+                      "audit.distributional_verdict_faults", False,
+                      "NOT CAUGHT - a market is marked shipped while the "
+                      "figures recorded beside it say the read-out is 13 "
+                      "points worse calibrated than what it replaced")
+    return Result(LAW_VERDICT, "a SHIP verdict its own numbers refuse",
+                  "audit.distributional_verdict_faults", True, faults[0])
+
+
+def plant_a_rung_ladder_surviving_a_shipped_market() -> Result:
+    """Ship a market and leave its ladder standing.
+
+    A LADDER LEFT STANDING IS A MARKET THAT CAN GO BACK. The migration in
+    `docs/DISTRIBUTIONAL.md` §5 deletes the ladders of every market that
+    ships, and the reason is not tidiness: while `NFL_TOTAL_LADDER` exists,
+    one line of code can quietly ask at a rung again, and nothing on the page
+    would look different.
+
+    THE CONVERSE IS ALSO PLANTED, in the same guard: a market that did NOT
+    ship and has lost its ladder is a migration that half-landed, and it is
+    the more likely accident of the two.
+    """
+    from gridiron import audit as _audit
+
+    original = dict(config.DISTRIBUTIONAL_VERDICTS[("nfl", "total")])
+    winner = {**original, "verdict": "SHIP",
+              "rung_gap_pts": 9.9, "readout_gap_pts": 1.1, "pit_flat": True}
+    try:
+        # A verdict its numbers DO support, so the only remaining fault is the
+        # ladder -- otherwise this planting would pass for the wrong reason.
+        config.DISTRIBUTIONAL_VERDICTS[("nfl", "total")] = winner
+        faults = [f for f in _audit.distributional_verdict_faults()
+                  if "still there" in f]
+    finally:
+        config.DISTRIBUTIONAL_VERDICTS[("nfl", "total")] = original
+
+    if not faults:
+        return Result(LAW_VERDICT, "a rung ladder surviving a shipped market",
+                      "audit.distributional_verdict_faults", False,
+                      "NOT CAUGHT - a market ships at the market's line and "
+                      "the ladder it was supposed to leave behind is still "
+                      "declared, so one line of code puts it back on rungs")
+    return Result(LAW_VERDICT, "a rung ladder surviving a shipped market",
+                  "audit.distributional_verdict_faults", True, faults[0])
+
+
 LAW_VENDORED = "A VENDORED BINARY IS CHECKABLE"
 
 
@@ -5777,6 +5888,9 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_a_market_shipped_without_a_verdict())
+    results.append(plant_a_ship_verdict_its_own_numbers_refuse())
+    results.append(plant_a_rung_ladder_surviving_a_shipped_market())
     results.append(plant_a_font_swapped_for_another_file())
     results.append(plant_a_binary_with_no_provenance())
     results.append(plant_a_self_chosen_total_left_unflagged())

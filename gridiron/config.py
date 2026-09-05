@@ -466,10 +466,148 @@ SPORT_TOTAL_MARKETS: dict[str, tuple[str, ...]] = {
 #: does not reach it. That is a difference in method, and this table is about
 #: method.
 #:
-#: LIFTED BY SESSION E, not by time. When the blind object becomes a forecast
-#: distribution and P(over) is read off it at the MARKET's line, the question
-#: stops being asked at our own rung and the finding stops being true. Until
-#: then it stands.
+#: SESSION E WAS THE FIX, AND IT DID NOT WORK (2026-09-04). The plan was to
+#: stop asking at our own rung: write the model's forecast DISTRIBUTION blind,
+#: then read P(over) off it at the MARKET's line. The walk-forward tested that
+#: against the rung method on 3,947 out-of-sample games and refused it in all
+#: four arms -- worse calibrated by 6 to 13 percentage points, with a NEGATIVE
+#: edge everywhere. `DISTRIBUTIONAL_VERDICTS` above carries the figures.
+#:
+#: SO THIS FLAG IS NOT WAITING FOR ANYTHING. It stood for one version pending
+#: a fix; the fix was built, measured and refused, and the finding it reports
+#: is now better evidenced than when it was written. It stands until some
+#: other change makes it false, and the note's own wording -- "so far" -- is
+#: the part doing that work.
+#: WHAT THE WALK-FORWARD SAID, per sport and market (Session E Part 2,
+#: 2026-09-04). `tools/walkforward_distributional.py` produced every figure.
+#:
+#: THE CLAUSE IT ANSWERS, from `docs/DISTRIBUTIONAL.md` §7: *"The change ships
+#: only if the distributional read-out is better calibrated than the current
+#: rung method, measured on identical games, walk-forward."* And the operator's
+#: ruling of the same day: **PER SPORT** -- LAW 6 makes each sport its own
+#: decision, and sports are never averaged to reach a verdict.
+#:
+#: IT SAID NO, IN ALL FOUR ARMS, on 3,947 out-of-sample games. The read-out is
+#: worse calibrated by 6 to 13 percentage points everywhere, and its edge over
+#: always-the-base-rate is NEGATIVE in every arm -- worse than guessing.
+#:
+#: THE DISTRIBUTIONS THEMSELVES ARE HONEST. Every PIT came back flat, well
+#: inside the declared tolerance, so the spread is right for the mean. What
+#: fails is the step after: reading a probability off an honest distribution
+#: AT SOMEBODY ELSE'S NUMBER assumes our mean is unbiased relative to theirs,
+#: and it is not. The market's number lands closer to the result on 55-59% of
+#: games, so most of what looks like disagreement is our error, and the more
+#: confidently the read-out disagrees the more wrong it is -- monotonically,
+#: in all four arms, to a claimed 86% that came in at 43%.
+#:
+#: SO NOTHING SHIPS, and these markets stay on rungs. The design document
+#: stands as the record of a hypothesis that failed its test, which is what it
+#: said it would be.
+DISTRIBUTIONAL_VERDICTS: dict[tuple[str, str], dict] = {
+    ("nfl", "total"): {
+        "verdict": "DO NOT SHIP",
+        "measured_utc": "2026-09-04T00:00:00Z",
+        "n": 768,
+        "splits": "trained through 2022, 2023, 2024; tested on the season after each",
+        "rung_gap_pts": 0.35,
+        "readout_gap_pts": 13.24,
+        "rung_edge": 0.0011,
+        "readout_edge": -0.0281,
+        "readout_reach_70_pct": 12.37,
+        "pit_flat": True,
+        "market_closer_share_pct": 57.42,
+        "why": ("the read-out is 13.2 points worse calibrated and its edge is "
+                "negative; the market's total lands closer on 57% of games"),
+    },
+    ("nfl", "spread"): {
+        "verdict": "DO NOT SHIP",
+        "measured_utc": "2026-09-04T00:00:00Z",
+        "n": 813,
+        "splits": "trained through 2022, 2023, 2024; tested on the season after each",
+        "rung_gap_pts": 1.93,
+        "readout_gap_pts": 11.91,
+        "rung_edge": 0.0036,
+        "readout_edge": -0.0164,
+        "readout_reach_70_pct": 7.75,
+        "pit_flat": True,
+        "market_closer_share_pct": 58.92,
+        "why": ("the read-out is 10.0 points worse calibrated and its edge is "
+                "negative; the market's spread lands closer on 59% of games"),
+    },
+    ("nba", "total"): {
+        "verdict": "DO NOT SHIP",
+        "measured_utc": "2026-09-04T00:00:00Z",
+        "n": 1223,
+        "splits": "trained through 2024, tested on 2025",
+        "rung_gap_pts": 3.98,
+        "readout_gap_pts": 9.60,
+        "rung_edge": -0.0030,
+        "readout_edge": -0.0147,
+        "readout_reach_70_pct": 6.05,
+        "pit_flat": True,
+        "market_closer_share_pct": 54.78,
+        "why": ("the read-out is 5.6 points worse calibrated and its edge is "
+                "negative; the market's total lands closer on 55% of games"),
+    },
+    ("nba", "spread"): {
+        "verdict": "DO NOT SHIP",
+        "measured_utc": "2026-09-04T00:00:00Z",
+        "n": 1143,
+        "splits": "trained through 2024, tested on 2025",
+        "rung_gap_pts": 2.57,
+        "readout_gap_pts": 12.39,
+        "rung_edge": 0.0085,
+        "readout_edge": -0.0197,
+        "readout_reach_70_pct": 11.20,
+        "pit_flat": True,
+        "market_closer_share_pct": 57.22,
+        "why": ("the read-out is 9.8 points worse calibrated and its edge is "
+                "negative; the market's spread lands closer on 57% of games"),
+    },
+    # CFB'S TOTAL WAS NOT TESTED, and the reason is not line coverage. Its
+    # EXPECTATION does not work: regressing the actual total on it gives slope
+    # 0.109 and R-squared 0.0093 over 1,639 games, so the sum of two
+    # points-per-game figures explains under one per cent of a college total.
+    # There is nothing to build a distribution on, and the brief's "fit it
+    # first, then include CFB" was answered by the fit itself.
+    ("cfb", "total"): {
+        "verdict": "NOT RUN",
+        "measured_utc": "2026-09-04T00:00:00Z",
+        "n": 1639,
+        "splits": "no walk-forward; the expectation was measured and refused",
+        "rung_gap_pts": None,
+        "readout_gap_pts": None,
+        "rung_edge": None,
+        "readout_edge": None,
+        "readout_reach_70_pct": None,
+        "pit_flat": None,
+        "market_closer_share_pct": None,
+        "why": ("the expectation explains 0.93% of the variance in a college "
+                "total (slope 0.109), so there is no forecast to distribute"),
+    },
+}
+DISTRIBUTIONAL_VERDICTS_DECLARED = "2026-09-04T00:00:00Z"
+
+#: The markets that actually run distributionally. DERIVED from the verdicts,
+#: so a market cannot start reading out without a recorded SHIP -- which is
+#: the failure `plant_a_market_shipped_without_a_verdict` breaks on purpose.
+#:
+#: EMPTY, on 2026-09-04, and that is the whole result of Session E Part 2.
+DISTRIBUTIONAL_MARKETS: frozenset[tuple[str, str]] = frozenset(
+    key for key, entry in DISTRIBUTIONAL_VERDICTS.items()
+    if entry.get("verdict") == "SHIP")
+
+
+def distributional_verdict(sport: str, market: str) -> dict | None:
+    """What the walk-forward said about this market, or None if never asked."""
+    return DISTRIBUTIONAL_VERDICTS.get((sport, market))
+
+
+def is_distributional(sport: str, market: str) -> bool:
+    """Does this market ask at the market's line rather than at a rung?"""
+    return (sport, market) in DISTRIBUTIONAL_MARKETS
+
+
 FLAGGED_METHODS: dict[tuple[str, str], str] = {
     (sport, "total"): "total_at_own_rung"
     for sport, markets in SPORT_MARKETS.items() if "total" in markets
