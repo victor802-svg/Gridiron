@@ -4523,3 +4523,82 @@ def check_no_code_names_in_llm_prose(conn) -> None:
     if faults:
         raise LawViolation(
             "NO CODE NAME REACHES A READER:" + _NL2 + _NL2.join(faults))
+
+
+# AN INDICATOR IS HANDED OVER IN WORDS (2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# TWENTY-SEVEN OF 103 FACTORS ARE ENCODED and the prompt used to hand the model
+# the bare number. It reasoned correctly and wrote "(a three-round bout,
+# ufc_scheduled_rounds = 0)" -- right, and it reads to a person as zero rounds.
+# A model reasons better from "three rounds" than from "= 0", and so does
+# anyone reading the prose afterwards.
+#
+# A DECLARED READING IS THE ONLY ONE. `reads` maps an exact value to a phrase
+# and `unit` gives a quantity its real units; anything undeclared keeps its
+# number, because a guessed unit is worse than a bare one -- uninformative
+# versus wrong.
+
+#: Rationale wording that says a factor is an indicator. The author writes it,
+#: so it is a declaration rather than an inference -- and a new indicator whose
+#: rationale says so and which declares no `reads` is exactly what this
+#: catches.
+_INDICATOR_WORDS = re.compile(
+    "|".join([
+        r"indicator",
+        r"dummy coding",
+        "reads as 1",
+        # The DECLARATIVE form: "One when X, zero otherwise".
+        r"(?:1|One) when[^.]*zero otherwise",
+    ]), re.I)
+
+
+def indicator_words_faults() -> list[str]:
+    """Is any indicator still handed to the model as a bare number?
+
+    BEHAVIOURAL for the declared ones: each is rendered at each of its levels
+    and the output is read. DECLARATIVE for the rest: a factor whose own
+    rationale calls it an indicator and declares no reading is named.
+    """
+    from .factors import registry
+    from .model import llm
+
+    faults: list[str] = []
+    for entry in registry.all_factors():
+        declared = bool(entry.reads)
+        if declared:
+            for level, phrase in entry.reads.items():
+                rows = [{"factor": entry.name, "why": entry.why,
+                         "reads": entry.reads, "unit": entry.unit,
+                         "unit_scale": entry.unit_scale,
+                         "unit_offset": entry.unit_offset,
+                         "value": level, "present": True,
+                         "rationale": entry.rationale}]
+                text = llm.build_prompt("a claim", rows, [])
+                if f"- {phrase}" not in text:
+                    faults.append(
+                        f"{entry.name} declares that {level:g} reads "
+                        f"{phrase!r} and the prompt does not say it.")
+                if re.search(rf"- .*{re.escape(entry.name)}.*=", text):
+                    faults.append(
+                        f"{entry.name} is handed to the model as a bare "
+                        f"number under its code name.")
+                if re.search(rf"- {re.escape(phrase)} = ", text):
+                    faults.append(
+                        f"{entry.name} says {phrase!r} and then appends a "
+                        f"number to it, which puts back exactly what the "
+                        f"phrase replaced.")
+        elif _INDICATOR_WORDS.search(entry.rationale or ""):
+            faults.append(
+                f"{entry.name}'s own rationale calls it an indicator and it "
+                f"declares no `reads`, so the model is told a bare 0 or 1 and "
+                f"a reader sees whatever it quotes back.")
+    return faults
+
+
+def check_indicators_are_words(_conn=None) -> None:
+    """Raise if an indicator reaches the model as a number."""
+    faults = indicator_words_faults()
+    if faults:
+        raise LawViolation(
+            "AN INDICATOR IS HANDED OVER IN WORDS:" + _NL2 + _NL2.join(faults))

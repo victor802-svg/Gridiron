@@ -233,6 +233,9 @@ def cfb_travel_kmiles(ctx) -> float | None:
         "about how good the team is -- only that what we know about it is of a "
         "different kind."
     ),
+
+    reads={1.0: "the visitor is from a lower division",
+           0.0: "both sides are from the same division"},
 )
 def cfb_non_fbs_visitor(ctx) -> float | None:
     if ctx.away_is_fbs is None:

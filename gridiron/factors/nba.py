@@ -112,6 +112,10 @@ def nba_availability_index(ctx) -> float | None:
         "reads +1 when only the away side is on no rest and -1 when only the "
         "home side is."
     ),
+
+    reads={1.0: "the visitors are on a second night in a row",
+           0.0: "neither club is on a second night in a row",
+           -1.0: "the home club is on a second night in a row"},
 )
 def nba_back_to_back(ctx) -> float | None:
     if ctx.home_rest_days is None or ctx.away_rest_days is None:
@@ -135,6 +139,9 @@ def nba_back_to_back(ctx) -> float | None:
         "this fires in roughly a third of games where the differential fired in "
         "4.4%. Same repair, same reasoning, as NFL's short_week_either."
     ),
+
+    reads={1.0: "one of the clubs is on a second night in a row",
+           0.0: "neither club is on a second night in a row"},
 )
 def nba_b2b_either(ctx) -> float | None:
     if ctx.home_rest_days is None or ctx.away_rest_days is None:
@@ -288,6 +295,8 @@ def nba_net_rating_rolling(ctx) -> float | None:
         "good', which is a claim nobody has the evidence to make. Absent too "
         "when either club is unrated."
     ),
+
+    unit="points", unit_scale=10.0,
 )
 def nba_srs_diff(ctx) -> float | None:
     if ctx.home_srs is None or ctx.away_srs is None:
@@ -318,6 +327,9 @@ def nba_srs_diff(ctx) -> float | None:
         "declared anyway because it CAN vary, the measurement is on record, and "
         "the fit's own bookkeeping will say plainly if it did not."
     ),
+
+    reads={1.0: "played in the home club's own building",
+           0.0: "played at a neutral site"},
 )
 def nba_home_court(ctx) -> float:
     return 0.0 if ctx.neutral_site else 1.0
@@ -438,6 +450,8 @@ def nba_total_asked_distance(ctx) -> float | None:
         "standard deviation over one game is not one, and a zero would say "
         "the club's scoring never varies, which is a claim."
     ),
+
+    unit="points", unit_scale=10.0,
 )
 def nba_total_volatility(ctx) -> float | None:
     if ctx.home_total_sd is None or ctx.away_total_sd is None:

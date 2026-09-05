@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .. import config
+from ..factors import compute
 from ..db import utcnow
 
 SYSTEM_PROMPT = """You are a football forecaster. You are given a fixed set of \
@@ -220,7 +221,15 @@ def build_prompt(question: str, factor_rows: list[dict], notes: list[str]) -> st
             unmeasured.append(_plain(row))
             continue
         source = f" [source: {row['source']}]" if row.get("source") else ""
-        lines.append(f"- {_plain(row)} = {row['value']:g}{source}")
+        # IN WORDS, NOT NUMBERS, where the factor declares how it reads
+        # (2026-09-05). An indicator becomes its phrase -- "a three-round
+        # bout" -- and a scaled quantity becomes its real units. Composed by
+        # `language.factor_value_words`, the same door the card uses, so the
+        # model is told what a reader is told.
+        lines.append(f"- {compute.factor_value_words(
+            _plain(row), row['value'], row.get('reads'), row.get('unit'),
+            row.get('unit_scale') or 1.0, row.get('unit_offset') or 0.0,
+        )}{source}")
         lines.append(f"    what it measures: {row['rationale']}")
     if unmeasured:
         lines.append("")

@@ -430,6 +430,10 @@ def mlb_batter_lineup_slot(ctx) -> float | None:
         "handedness, and guessing at one would put a real number where there is "
         "no information at all."
     ),
+
+    reads={1.0: "the batter has the platoon advantage",
+           0.0: "a switch hitter, so neither side has the platoon advantage",
+           -1.0: "the pitcher has the platoon advantage"},
 )
 def mlb_batter_platoon(ctx) -> float | None:
     if not ctx.bat_side or not ctx.opposing_hand:

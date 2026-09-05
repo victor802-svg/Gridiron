@@ -5418,6 +5418,91 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
                   f"time; 2.5 lands {share(planted):.1%} and is refused")
 
 
+LAW_INDICATOR_WORDS = "AN INDICATOR IS HANDED OVER IN WORDS"
+
+
+def plant_an_indicator_handed_over_as_a_bare_number() -> Result:
+    """Strip an indicator's declared reading and watch it become a 0.
+
+    THE FAILURE THIS REPLACES. Twenty-seven of 103 factors are encoded, and
+    the prompt handed the model the bare number. It reasoned correctly and
+    wrote "(a three-round bout, ufc_scheduled_rounds = 0)" -- right, and it
+    reads to a person as zero rounds. A model reasons better from "three
+    rounds" than from "= 0", and so does anyone reading the prose afterwards.
+
+    THE READING IS A DECLARATION, so removing it is the whole plant: the
+    factor keeps working, the fit is unchanged, and only what the model is
+    TOLD gets worse. Nothing would look broken.
+    """
+    from gridiron import audit as _audit
+    from gridiron.factors import registry as _registry
+
+    if _audit.indicator_words_faults():
+        return Result(LAW_INDICATOR_WORDS, "an indicator handed over as a bare number",
+                      "audit.indicator_words_faults", False,
+                      "an indicator already reaches the model as a number; fix "
+                      "that before trusting this planting")
+
+    entry = _registry.REGISTRY["ufc_scheduled_rounds"]
+    original = entry.reads
+    try:
+        object.__setattr__(entry, "reads", None)
+        faults = _audit.indicator_words_faults()
+    finally:
+        object.__setattr__(entry, "reads", original)
+
+    if not faults:
+        return Result(LAW_INDICATOR_WORDS, "an indicator handed over as a bare number",
+                      "audit.indicator_words_faults", False,
+                      "NOT CAUGHT - an indicator whose own rationale says it "
+                      "is one reaches the model as a bare 0, and the model "
+                      "will quote that number into prose a reader sees")
+    return Result(LAW_INDICATOR_WORDS, "an indicator handed over as a bare number",
+                  "audit.indicator_words_faults", True, faults[0])
+
+
+def plant_a_reading_that_appends_its_own_number() -> Result:
+    """Say "a three-round bout = 0", which puts back what the phrase replaced.
+
+    THE HALF-FIX. Rendering the phrase AND the number looks like more
+    information and is exactly the thing being removed: the number is the part
+    that reads as zero rounds. Planted separately because it is the shape a
+    later edit would most plausibly take.
+    """
+    from gridiron import audit as _audit
+    from gridiron.factors import compute as _compute
+
+    # PATCHED WHERE THE DOOR ACTUALLY IS. `language` re-exports this, but the
+    # prompt calls `factors.compute` -- the module is on the prediction path
+    # and `language` is not allowed to be. Patching the re-export changed
+    # nothing and the planting escaped, which is the same lesson as every
+    # other guard here: point at the thing that runs.
+    original = _compute.factor_value_words
+
+    def appending(why, value, reads=None, unit=None, unit_scale=1.0,
+                  unit_offset=0.0):
+        out = original(why, value, reads, unit, unit_scale, unit_offset)
+        if reads and value is not None and "=" not in out:
+            return f"{out} = {float(value):g}"
+        return out
+
+    try:
+        _compute.factor_value_words = appending
+        faults = [f for f in _audit.indicator_words_faults()
+                  if "appends a number" in f]
+    finally:
+        _compute.factor_value_words = original
+
+    if not faults:
+        return Result(LAW_INDICATOR_WORDS, "a reading that appends its own number",
+                      "audit.indicator_words_faults", False,
+                      "NOT CAUGHT - the prompt says the phrase and then the "
+                      "encoded number after it, so the thing the phrase exists "
+                      "to replace is still there")
+    return Result(LAW_INDICATOR_WORDS, "a reading that appends its own number",
+                  "audit.indicator_words_faults", True, faults[0])
+
+
 LAW_LLM_WORDS = "NO CODE NAME REACHES A READER"
 
 
@@ -6437,6 +6522,8 @@ def main() -> int:
     results.append(plant_a_total_rung_that_can_push())
     results.append(plant_a_market_declared_but_never_asked())
     results.append(plant_a_rung_that_inherits_its_base_rate())
+    results.append(plant_an_indicator_handed_over_as_a_bare_number())
+    results.append(plant_a_reading_that_appends_its_own_number())
     results.append(plant_a_code_name_in_rendered_llm_reasoning())
     results.append(plant_a_code_name_handed_to_the_model())
     results.append(plant_a_rerun_that_reasons_the_written_half_again())

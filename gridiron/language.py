@@ -2321,6 +2321,18 @@ def factor_what(rationale: str | None,
     return (text[:150].rstrip() + "...") if len(text) > 160 else text
 
 
+#: THE FACTOR-VALUE COMPOSER LIVES IN `factors.compute`, and this re-exports
+#: it. Not a preference: `gridiron.model.llm` is inside the prediction closure
+#: and this module names market columns (`market_implied_prob`,
+#: `running_total_line`), so importing `language` from there is a LAW 1
+#: violation -- and the closure scan said so within a minute of it being
+#: written.
+#:
+#: THE PRECEDENT IS THE ONE `audit` ALREADY FOLLOWS: "the runtime missing-data
+#: check therefore lives in `factors.compute`, and `audit` re-exports it."
+#: Same shape, same reason.
+from .factors.compute import factor_value_words  # noqa: E402,F401
+
 def with_prefix_aliases(phrases: dict[str, str],
                         prefixes: tuple[str, ...] = ()) -> dict[str, str]:
     """Add the shortened forms of each factor name that a model actually writes.

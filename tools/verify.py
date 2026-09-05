@@ -236,6 +236,8 @@ def step_2_guards() -> bool:
         # surface had never been read by any guard.
         ("no code name in the LLM view",
          lambda: audit.check_no_code_names_in_llm_prose(_record_conn())),
+        # ENCODED FACTORS GO TO THE MODEL IN WORDS (2026-09-05).
+        ("an indicator is handed over in words", audit.check_indicators_are_words),
         ("no confidence floor on game markets",
          audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),

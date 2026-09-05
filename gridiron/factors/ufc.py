@@ -49,6 +49,8 @@ ALL_UFC = ("moneyline", "rounds", "distance")
         "always saying 0.5. A real signal and a small one. ABSENT when either "
         "fighter has no stored rating -- a debutant has no record to rate."
     ),
+
+    unit="rating points", unit_scale=100.0,
 )
 def ufc_rating_diff(ctx) -> float | None:
     if ctx.rating_a is None or ctx.rating_b is None:
@@ -70,6 +72,8 @@ def ufc_rating_diff(ctx) -> float | None:
         "ABSENT when either fighter is making a debut, because a fighter who "
         "has never fought has no layoff -- zero would say the opposite."
     ),
+
+    unit="days out", unit_scale=365.0,
 )
 def ufc_layoff_diff(ctx) -> float | None:
     if ctx.layoff_a is None or ctx.layoff_b is None:
@@ -91,6 +95,8 @@ def ufc_layoff_diff(ctx) -> float | None:
         "34-year-old are the same situation seen from two sides. ABSENT when "
         "the source carries no date of birth for either fighter."
     ),
+
+    unit="years", unit_scale=10.0,
 )
 def ufc_age_gap(ctx) -> float | None:
     if ctx.age_a is None or ctx.age_b is None:
@@ -112,6 +118,8 @@ def ufc_age_gap(ctx) -> float | None:
         "either fighter, which it usually does -- all 954 stored fighters "
         "carry one."
     ),
+
+    unit="inches", unit_scale=10.0,
 )
 def ufc_reach_gap(ctx) -> float | None:
     if ctx.reach_a is None or ctx.reach_b is None:
@@ -176,6 +184,8 @@ def ufc_finish_rate_sum(ctx) -> float | None:
         "which is not a UFC bout length, and those are refused rather than "
         "believed."
     ),
+
+    reads={1.0: "a five-round bout", 0.0: "a three-round bout"},
 )
 def ufc_scheduled_rounds(ctx) -> float | None:
     if ctx.scheduled_rounds not in (3, 5):
@@ -231,6 +241,9 @@ TIER_REFERENCE = "fight_night"
         "tier field at all, so an unrecognised card name is refused rather "
         "than assumed to be an ordinary one."
     ),
+
+    reads={1.0: "on a Contender Series card",
+           0.0: "not on a Contender Series card"},
 )
 def ufc_is_contender(ctx) -> float | None:
     if ctx.event_tier is None:
@@ -259,6 +272,8 @@ def ufc_is_contender(ctx) -> float | None:
         "what remains here is whatever else distinguishes a pay-per-view. "
         "ABSENT, not zero, when the card carries no tier."
     ),
+
+    reads={1.0: "on a numbered card", 0.0: "not on a numbered card"},
 )
 def ufc_is_numbered(ctx) -> float | None:
     if ctx.event_tier is None:

@@ -59,6 +59,33 @@ class Factor:
     #: fit -- which is item 2's "constant across training" failure arriving by
     #: the back door, dressed as missing data.
     markets: tuple[str, ...] | None = None
+    #: HOW THIS FACTOR'S VALUE READS IN WORDS (2026-09-05).
+    #:
+    #: TWENTY-SEVEN OF 103 FACTORS ARE ENCODED -- an indicator, a scaled
+    #: quantity, a difference -- and the LLM prompt handed the model the bare
+    #: number. It reasoned correctly and wrote "(a three-round bout, = 0)",
+    #: which is right and reads to a person as zero rounds. A model reasons
+    #: better from "three rounds" than from "= 0", and so does a reader who
+    #: sees the prose afterwards.
+    #:
+    #: `reads` MAPS AN EXACT VALUE TO A PHRASE, so an indicator becomes words
+    #: and nothing is inferred: `{1.0: "a five-round bout", 0.0: "a
+    #: three-round bout"}`. A tri-state declares three entries. A value not in
+    #: the map falls back to the number, which is the honest outcome for a
+    #: factor whose author has not said what it means.
+    reads: dict[float, str] | None = None
+    #: A QUANTITY'S REAL UNITS, for a value the model would otherwise read as
+    #: a scaled abstraction. `unit_scale` multiplies and `unit_offset` is
+    #: added afterwards, so `ufc_age_gap` at 0.78 renders "7.8 years".
+    #:
+    #: DECLARED ONLY WHERE THE ZERO MEANS WHAT THE FORMULA SAYS. `cold` is the
+    #: counter-example and the reason this is a decision rather than a
+    #: transcription: it returns 0.0 for an INDOOR game as well as for a 55F
+    #: one, so "55F" would be a temperature nobody measured, printed about a
+    #: dome. It carries no unit and keeps its bare number.
+    unit: str | None = None
+    unit_scale: float = 1.0
+    unit_offset: float = 0.0
     #: THE WHY TEMPLATE. A short noun phrase naming what this factor measured,
     #: in words a person would say out loud: "the starting pitching matchup",
     #: "how much rest he has had". `language.why_sentences` composes it with a
@@ -90,6 +117,10 @@ def factor(
     sport: str = "nfl",
     markets: Iterable[str] | None = None,
     why: str | None = None,
+    reads: dict[float, str] | None = None,
+    unit: str | None = None,
+    unit_scale: float = 1.0,
+    unit_offset: float = 0.0,
     active: bool = True,
     deactivated: str | None = None,
     note: str | None = None,
@@ -115,6 +146,10 @@ def factor(
             applies_to=tuple(applies_to),
             markets=tuple(markets) if markets is not None else None,
             why=why,
+            reads=dict(reads) if reads else None,
+            unit=unit,
+            unit_scale=unit_scale,
+            unit_offset=unit_offset,
             fn=fn,
             active=active,
             deactivated_utc=deactivated,
@@ -412,6 +447,8 @@ def short_week_either(ctx) -> float | None:
         "visiting side only. Scaled to thousands of miles so the coefficient is "
         "readable; a cross-country trip is roughly 2.5 units."
     ),
+
+    unit="miles", unit_scale=1000.0,
 )
 def travel_kmiles(ctx) -> float | None:
     if ctx.subject_travel_miles is None:
@@ -843,6 +880,8 @@ def nfl_total_asked_distance(ctx) -> float | None:
         "side has fewer than two games in it: a standard deviation over one "
         "game is not one, and a zero would say the scoring never varies."
     ),
+
+    unit="points", unit_scale=10.0,
 )
 def nfl_total_volatility(ctx) -> float | None:
     if ctx.home_total_sd is None or ctx.away_total_sd is None:

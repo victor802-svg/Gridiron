@@ -153,6 +153,43 @@ def feature_vector(ctx, market_type: str, market: str | None = None) -> FeatureV
     return fv
 
 
+def factor_value_words(why: str | None, value, reads=None, unit=None,
+                       unit_scale: float = 1.0,
+                       unit_offset: float = 0.0) -> str:
+    """One factor, as a line a model and a person both read the same way.
+
+    THE PROMPT USED TO HAND OVER BARE ENCODED NUMBERS. Twenty-seven of 103
+    factors are an indicator, a scaled quantity or a difference, so the model
+    was told `= 0` and wrote "(a three-round bout, = 0)" -- correct, and it
+    reads to a person as zero rounds.
+
+    THREE SHAPES, IN ORDER OF HOW MUCH IS DECLARED:
+
+    * AN INDICATOR BECOMES ITS PHRASE AND NOTHING ELSE. "a three-round bout"
+      carries the whole fact, and appending "= 0" to it would put back exactly
+      what this is for.
+    * A QUANTITY BECOMES ITS REAL UNITS. `ufc_age_gap` at 0.78 is "the age
+      difference between the two fighters = 7.8 years", not "= 0.78".
+    * ANYTHING ELSE KEEPS ITS NUMBER, which is the honest fallback for a
+      factor whose author has not said how it reads. A guessed unit is worse
+      than a bare number: one is uninformative and the other is wrong.
+
+    THE SAME DOOR AS THE CARD. `why` is the declared WHY phrase that
+    `why_sentences` composes with, so the model is told what a reader is told.
+    """
+    label = (why or "").strip()
+    if value is None:
+        return label
+    if reads:
+        for level, phrase in reads.items():
+            if abs(float(value) - float(level)) < 1e-9:
+                return (phrase or "").strip() or label
+    if unit:
+        shown = float(value) * float(unit_scale) + float(unit_offset)
+        return f"{label} = {shown:.4g} {unit}".strip()
+    return f"{label} = {float(value):g}".strip()
+
+
 def describe(fv: FeatureVector, coefficients: dict[str, float] | None = None) -> list[dict]:
     """Per-factor rows for display, largest absolute effect first.
 
@@ -168,6 +205,12 @@ def describe(fv: FeatureVector, coefficients: dict[str, float] | None = None) ->
             # anything rendering a factor to a person can use one. The code
             # name stays for the things that key on it.
             "why": registry.REGISTRY[name].why,
+            # HOW THE VALUE READS, carried so the prompt can say "a
+            # three-round bout" rather than "= 0" (2026-09-05).
+            "reads": registry.REGISTRY[name].reads,
+            "unit": registry.REGISTRY[name].unit,
+            "unit_scale": registry.REGISTRY[name].unit_scale,
+            "unit_offset": registry.REGISTRY[name].unit_offset,
             "value": round(value, 4),
             "present": True,
             "rationale": registry.REGISTRY[name].rationale,

@@ -735,3 +735,97 @@ def test_the_llm_view_shows_no_code_name():
         audit.check_no_code_names_in_llm_prose(conn)
     finally:
         conn.close()
+
+
+# --- encoded factors go to the model in words (2026-09-05) -----------------
+
+def test_an_indicator_reaches_the_model_as_words():
+    from gridiron.factors import compute
+    from gridiron.model import llm
+
+    rows = [{"factor": "ufc_scheduled_rounds",
+             "why": "how many rounds the bout is scheduled for",
+             "reads": {1.0: "a five-round bout", 0.0: "a three-round bout"},
+             "unit": None, "unit_scale": 1.0, "unit_offset": 0.0,
+             "value": 0.0, "present": True, "rationale": "scaled"}]
+    prompt = llm.build_prompt("does it go the distance", rows, [])
+    assert "- a three-round bout" in prompt
+    # AND NOT THE NUMBER. Appending it would put back what the phrase replaced.
+    assert "= 0" not in prompt
+    assert compute.factor_value_words(
+        "how many rounds", 1.0, {1.0: "a five-round bout"}) == "a five-round bout"
+
+
+def test_a_scaled_quantity_reaches_the_model_in_its_real_units():
+    from gridiron.factors import compute
+
+    assert compute.factor_value_words(
+        "the age difference between the two fighters", 0.78,
+        unit="years", unit_scale=10.0) == (
+        "the age difference between the two fighters = 7.8 years")
+
+
+def test_an_undeclared_value_keeps_its_number():
+    """A guessed unit is worse than a bare one: uninformative versus wrong."""
+    from gridiron.factors import compute
+
+    assert compute.factor_value_words("the cold", -0.75) == "the cold = -0.75"
+
+
+def test_cold_carries_no_unit_because_its_zero_is_overloaded():
+    """THE COUNTER-EXAMPLE that makes this a decision, not a transcription.
+
+    `cold` returns 0.0 for an INDOOR game as well as for a 55F one, so a unit
+    declaration would print "55 F" about a dome -- a temperature nobody
+    measured.
+    """
+    from gridiron.factors import registry
+
+    entry = registry.REGISTRY["cold"]
+    assert entry.unit is None and entry.reads is None
+
+
+def test_every_declared_indicator_is_handed_over_in_words():
+    audit.check_indicators_are_words()
+
+
+def test_the_guard_sees_an_indicator_stripped_of_its_reading():
+    from gridiron.factors import registry
+
+    entry = registry.REGISTRY["ufc_scheduled_rounds"]
+    original = entry.reads
+    try:
+        object.__setattr__(entry, "reads", None)
+        assert audit.indicator_words_faults()
+    finally:
+        object.__setattr__(entry, "reads", original)
+    assert audit.indicator_words_faults() == []
+
+
+def test_the_indicator_pattern_does_not_flag_ordinary_english():
+    """`mlb_pitcher_k_rate` reads "how often he gets one when he has the
+    chance" -- prose about a rate, not a declaration. The first version of the
+    pattern flagged it, and "zero otherwise" is what tells the two apart."""
+    from gridiron.factors import registry
+    import gridiron.factors.mlb  # noqa: F401
+
+    entry = registry.REGISTRY["mlb_pitcher_k_rate"]
+    assert "one when" in entry.rationale.lower()
+    assert not audit._INDICATOR_WORDS.search(entry.rationale)
+
+
+def test_the_composer_is_not_importable_into_the_prediction_path_by_accident():
+    """LAW 1 caught this within a minute of it being written.
+
+    `language` names market columns, so importing it from `model.llm` -- which
+    is inside the prediction closure -- is a violation. The composer lives in
+    `factors.compute` and `language` re-exports it, which is the same shape
+    `audit` already uses for the missing-data check.
+    """
+    from gridiron import language
+    from gridiron.factors import compute
+
+    assert language.factor_value_words is compute.factor_value_words
+    src = (config.PACKAGE_ROOT / "model" / "llm.py").read_text(encoding="utf-8")
+    assert "import language" not in src
+    audit.check_all_prediction_closures()
