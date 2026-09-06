@@ -1944,6 +1944,22 @@ const Gridiron = (function () {
 
     if (!open.length) {
       // A FINISHED SLATE SAYS SO AND POINTS AT RESULTS.
+      // NOTHING OF THE LAST SLATE SURVIVES AN EMPTY ONE (UI audit finding 2,
+      // 2026-09-05). This branch returned before it touched the hero, the
+      // grid heading or the show-all button, so the NBA tab -- no forecasts
+      // until October -- opened on a baseball hero at 88%, a "More picks"
+      // heading over nothing, and a "show all 7" button that showed nothing.
+      const heroHost = document.getElementById('week-hero');
+      if (heroHost) {
+        heroHost.hidden = true;
+        heroHost.innerHTML = '';
+        delete heroHost.dataset.id;
+      }
+      heroRender = null;
+      const gridHeading = document.getElementById('week-grid-heading');
+      if (gridHeading) gridHeading.hidden = true;
+      const showAllButton = document.getElementById('week-showall');
+      if (showAllButton) showAllButton.hidden = true;
       //
       // This tested `!open.length && !done.length` while a resolved section
       // still rendered underneath. With that section gone (R4) the same
