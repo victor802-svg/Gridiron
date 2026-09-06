@@ -840,3 +840,19 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     terminalreporter.write_sep("-", "tests that reached the network")
     for node in sorted(set(_WENT_OUTSIDE)):
         terminalreporter.write_line(f"  {node}")
+
+
+@pytest.fixture
+def world_copy(_shared_world, tmp_path):
+    """A private, consistent copy of the browser world's database, for a unit
+    test that needs its shape (resolved weeks, an open slate, a failed run)
+    and may write to it (UI audit, 2026-09-05)."""
+    import sqlite3 as _sqlite3
+    target = tmp_path / "world.db"
+    source = _sqlite3.connect(f"file:{_shared_world['db']}?mode=ro", uri=True)
+    copy = _sqlite3.connect(target)
+    source.backup(copy)
+    source.close(); copy.close()
+    conn = db.open_db(target)
+    yield conn
+    conn.close()

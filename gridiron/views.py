@@ -297,8 +297,18 @@ def _yesterday(conn: sqlite3.Connection, sport: str) -> dict | None:
     RETURNS None WHEN NOTHING HAS SETTLED, rather than a row of zeroes. "0
     right, 0 wrong" reads as a bad day; the truth is that there was no day.
     """
+    # THE LEAGUE DAY OF THE GAMES, NOT THE UTC DATE OF THE RESOLVER'S RUN
+    # (UI audit finding 7, 2026-09-05). Grouping on `substr(resolved_utc, 1,
+    # 10)` put every game that finished after 5 pm Pacific on tomorrow's
+    # date, split one evening's results across two labels, and showed only
+    # the later fragment: "6 September: 10 right, 9 wrong" at 10 pm on the
+    # 5th. `games.league_date` is the day the league itself calls the game's
+    # (the convention ruled on 2026-09-05), and it is the day a reader means.
+    # A game with no league day recorded falls back to the resolver's UTC
+    # date, so the strip never goes blank on an older row.
     day = conn.execute(
-        "SELECT MAX(substr(p.resolved_utc, 1, 10)) AS d FROM predictions p"
+        "SELECT MAX(COALESCE(g.league_date, substr(p.resolved_utc, 1, 10))) AS d"
+        "  FROM predictions p JOIN games g ON g.id = p.game_id"
         " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL", (sport,)).fetchone()
     if day is None or not day["d"]:
         return None
@@ -307,8 +317,9 @@ def _yesterday(conn: sqlite3.Connection, sport: str) -> dict | None:
     row = conn.execute(
         "SELECT COUNT(*) AS n,"
         "       SUM(CASE WHEN p.outcome = 1 THEN 1 ELSE 0 END) AS right_n"
-        "  FROM predictions p"
-        " WHERE p.sport = ? AND substr(p.resolved_utc, 1, 10) = ?"
+        "  FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"
+        "   AND COALESCE(g.league_date, substr(p.resolved_utc, 1, 10)) = ?"
         "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
         "                   WHERE v.prediction_id = p.id)",
         (sport, latest)).fetchone()
