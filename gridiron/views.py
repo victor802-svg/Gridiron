@@ -1482,12 +1482,17 @@ def login_glance(conn: sqlite3.Connection) -> dict:
             (sport,)).fetchone()
         settled = row["settled"] or 0
         won = row["won"] or 0
+        # STANDING QUESTIONS, NOT ROWS (UI audit finding 12, 2026-09-05). The
+        # login page said "NFL 152 picks this week" against Picks' "All 107":
+        # this counted every unresolved row, early and final passes both.
+        # One clause counts the record everywhere (`standing_row_clause`).
         tonight = conn.execute(
             "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
             " WHERE p.sport = ? AND p.resolved_utc IS NULL"
             "   AND g.status <> 'final'"
             "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
-            "                   WHERE v.prediction_id = p.id)",
+            "                   WHERE v.prediction_id = p.id)"
+            + calibration.standing_row_clause(same_set=False),
             (sport,)).fetchone()[0]
         if not (settled or tonight):
             continue
