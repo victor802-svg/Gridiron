@@ -5043,3 +5043,40 @@ def check_indicators_are_words(_conn=None) -> None:
     if faults:
         raise LawViolation(
             "AN INDICATOR IS HANDED OVER IN WORDS:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# HIDDEN MEANS NOT PAINTED (UI audit, 2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# `hidden` is the attribute the app toggles to show and hide things, and the
+# user-agent stylesheet gives it `display: none` at the lowest priority there
+# is. Any class rule that sets `display` beats it: `.show-all { display: block }`
+# left the show-all button painted and clickable after it had shown all;
+# `.yesterday { display: flex }` painted an empty strip with a rule across the
+# page; `.view-panel { display: grid }` painted the closed view menu. Each was
+# hidden to every test that read the attribute. The class ends with one rule --
+# `[hidden] { display: none !important; }` -- and this check refuses a
+# stylesheet that lacks it, so it cannot be tidied away.
+
+_HIDDEN_RULE = re.compile(r"\[hidden\]\s*\{[^}]*display\s*:\s*none\s*!important[^}]*\}")
+
+
+def hidden_rule_faults(css: str) -> list[str]:
+    """Does the stylesheet still declare that hidden wins?"""
+    css = _without_comments(css, "css")
+    if _HIDDEN_RULE.search(css):
+        return []
+    return ["style.css no longer declares `[hidden] { display: none !important }`, "
+            "so any class rule that sets `display` paints an element the app has "
+            "hidden -- the show-all button stays clickable after it has shown all, "
+            "the empty yesterday strip draws a rule across the page, and every "
+            "test that reads the attribute passes."]
+
+
+def check_hidden_is_not_painted(root: Path | None = None) -> None:
+    """Raise unless the one rule that makes `hidden` win is in the stylesheet."""
+    base = (config.PACKAGE_ROOT / "web") if root is None else Path(root)
+    faults = hidden_rule_faults((base / "style.css").read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation("HIDDEN MEANS NOT PAINTED:" + _NL2 + _NL2.join(faults))

@@ -242,6 +242,7 @@ def step_2_guards() -> bool:
         ("the record precedes the run", audit.check_a_run_is_recorded_before_it_runs),
         ("two control rows above the hero, no more",
          audit.check_picks_has_two_control_rows),
+        ("hidden means not painted", audit.check_hidden_is_not_painted),
         ("no retired market was asked after its day",
          lambda: audit.check_no_retired_market_written(_record_conn())),
         ("no retired market is a tab on Picks", audit.check_no_retired_market_in_picks),

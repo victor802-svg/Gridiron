@@ -17,6 +17,20 @@
  * hand-written range would either fetch both files for every page or drop a
  * character nobody tested.
  */
+/* HIDDEN MEANS NOT PAINTED (UI audit, 2026-09-05).
+
+   `hidden` is an attribute the app toggles on forty elements. The user-agent
+   sheet turns it into `display: none` at the lowest priority there is, so any
+   class rule that sets `display` -- `.show-all { display: block }`,
+   `.yesterday { display: flex }`, `.view-panel { display: grid }` -- wins, and
+   the element is hidden to every assertion and painted for every reader.
+   That happened three times (the view panel on 2026-09-05, then the show-all
+   button and the yesterday strip the same night). One rule ends the class:
+   hidden wins, everywhere, and the six per-element copies that used to patch
+   it one element at a time are deleted. `audit.hidden_rule_faults` refuses a
+   stylesheet without it, and a planting deletes it to prove the guard fires. */
+[hidden] { display: none !important; }
+
 @font-face {
   font-family: 'Manrope';
   font-style: normal;
@@ -833,7 +847,6 @@ button {
    at its own honesty. */
 /* `display:flex` beats the `hidden` attribute, so a hidden strip rendered as an
    empty bordered box. Stated explicitly rather than relying on the default. */
-.greet[hidden] { display: none; }
 .greet {
   margin: 20px 0 0; padding: 14px 16px; background: var(--card);
   border: 1px solid var(--line); border-radius: 10px;
@@ -948,7 +961,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    red and the rest in chrome is read. Every sentence survives behind the
    expander - this is compression, not suppression. */
 .notices { margin: 14px 0 0; }
-.notices[hidden] { display: none; }
 .notices-summary {
   width: 100%; text-align: left; cursor: pointer;
   background: var(--card); border: 1px solid var(--line);
@@ -961,7 +973,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .notices-summary:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
 .notices-count { color: var(--chrome); font-weight: 700; }
 .notices-detail { margin-top: 6px; }
-.notices-detail[hidden] { display: none; }
 
 /* A value the market never published, in the card's own language. */
 .rail-legend .v.no-line, .v.no-line {
@@ -1117,7 +1128,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 /* `display: grid` above would beat the hidden attribute's own rule, and did:
    the panel sat open under an unexpanded button until a render was looked
    at (2026-09-05). The attribute wins, as it does for the tier segment. */
-.view-panel[hidden] { display: none; }
 .view-choice { display: grid; gap: 4px; }
 .view-choice-label {
   font-size: var(--t-caption); color: var(--faint);
@@ -1631,7 +1641,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 /* --- the tier filter and the slate clock (E2) ------------------------------
    The tier control is a fourth segmented group beside the sort, styled by the
    same `.seg` rules; only its hidden state and the clock are new here. */
-#week-tier-seg[hidden] { display: none; }
 
 .slate-clock {
   display: flex;
@@ -1642,7 +1651,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: var(--chrome);
   padding: 2px 0 10px;
 }
-.slate-clock[hidden] { display: none; }
 
 /* THE CONTROLS ROW WRAPS RATHER THAN PUSHING THE PAGE. A fourth segmented
    control (the tier filter) put the row 1px over at 1100 and further over

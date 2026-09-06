@@ -6936,6 +6936,36 @@ def plant_a_comment_naming_the_forbidden_thing() -> Result:
                   "eight fired on the code beneath it")
 
 
+LAW_HIDDEN = "HIDDEN MEANS NOT PAINTED"
+
+
+def plant_a_hidden_element_painted_by_its_class() -> Result:
+    """Delete the rule that makes `hidden` win over a class's `display`.
+
+    THE THIRD TIME THIS SHAPE SHIPPED (2026-09-05): the view panel, then the
+    show-all button, then the yesterday strip -- each with `hidden` set and a
+    class rule setting `display`, each painted, each invisible to a test that
+    read the attribute. One rule fixes the class; this deletes it to prove the
+    guard notices.
+    """
+    from gridiron import audit as _audit
+    css = (config.PACKAGE_ROOT / "web" / "style.css").read_text(encoding="utf-8")
+    if _audit.hidden_rule_faults(css):
+        return Result(LAW_HIDDEN, "the hidden-wins rule deleted",
+                      "audit.hidden_rule_faults", False,
+                      "the shipped stylesheet already lacks the rule; fix that "
+                      "before trusting this planting")
+    broken = re.sub(r"\[hidden\]\s*\{[^}]*!important[^}]*\}", "", css, count=1)
+    faults = _audit.hidden_rule_faults(broken)
+    if not faults:
+        return Result(LAW_HIDDEN, "the hidden-wins rule deleted",
+                      "audit.hidden_rule_faults", False,
+                      "NOT CAUGHT - the rule is gone and nothing says so; the next "
+                      "class rule with a display value paints a hidden element")
+    return Result(LAW_HIDDEN, "the hidden-wins rule deleted",
+                  "audit.hidden_rule_faults", True, faults[0])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -7068,6 +7098,7 @@ def main() -> int:
     results.append(plant_a_bouncing_chip())
     results.append(plant_a_transform_outside_two_percent())
     results.append(plant_a_transition_longer_than_the_ceiling())
+    results.append(plant_a_hidden_element_painted_by_its_class())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())
