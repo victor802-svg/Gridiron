@@ -1799,6 +1799,19 @@ def at_the_line_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     markets = [m for m in ("spread", "total", "moneyline")
                if m in config.SPORT_MARKETS.get(sport, ())]
     categories = [at_the_line_curve(conn, sport=sport, market=m) for m in markets]
+    # THE HYPOTHETICAL LEDGER, one per market (ruling D1, 2026-09-06). Beside
+    # the curves and never inside them: a curve says whether 58% means 58%, and
+    # this says what the same rows would have come to at the venue's prices,
+    # which is a fact about those prices as much as about the forecast.
+    from .market import paper
+
+    ledgers = []
+    for m in markets:
+        entry = paper.ledger(conn, sport=sport, market=m)
+        entry["words"] = language.paper_ledger_line(entry)
+        entry["fee_words"] = language.paper_fee_line(entry)
+        ledgers.append(entry)
+
     coverage = at_the_line.coverage(conn, sport=sport)
     for row in coverage:
         row["words"] = language.at_the_line_coverage_line(
@@ -1811,6 +1824,7 @@ def at_the_line_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
         "categories": categories,
         "markets": markets,
         "coverage": coverage,
+        "paper": ledgers,
         "n": sum(c["n"] for c in categories),
         "note": AT_THE_LINE_NOTE,
         "edge": (at_the_line_edge(conn, sport=sport, market=headline_market)

@@ -2954,3 +2954,37 @@ def at_the_line_coverage_line(market: str, with_claim: int, n: int) -> str:
     share = round(with_claim / n * 100)
     return (f"{humanise(market)}: {with_claim} of {n} forecasts could be read "
             f"at the venue's line ({share}%)")
+
+
+# ---------------------------------------------------------------------------
+# THE HYPOTHETICAL UNIT LEDGER (operator ruling D1, 2026-09-06)
+# ---------------------------------------------------------------------------
+#
+# THE WORD "HYPOTHETICAL" IS NOT DECORATION AND IT LEADS. The ruling permits
+# this figure on the condition that it is labelled one wherever it appears, so
+# the label is the first word of the sentence rather than a footnote under it:
+# a reader who stops after four words has still read the true part.
+
+def paper_ledger_line(ledger: dict) -> str:
+    """One market's hypothetical one-unit record, said in words."""
+    gate = ledger.get("minimum_for_a_claim")
+    n = ledger.get("n", 0)
+    if not ledger.get("renderable"):
+        return (f"hypothetical, and not shown yet: {n} of {gate} settled "
+                f"comparisons where the model and the price disagreed · "
+                f"{ledger.get('shortfall', gate)} more before any figure here "
+                f"is shown at all")
+    units = ledger.get("units")
+    after = ledger.get("units_after_fees")
+    return (f"hypothetical: one unit carried on each of {n} settled "
+            f"comparisons where the model and the price disagreed comes to "
+            f"{units:+.2f} units, or {after:+.2f} after the venue's fee")
+
+
+def paper_fee_line(ledger: dict) -> str:
+    """Where the fee in that sentence came from, and what it is not."""
+    if ledger.get("fee_verified"):
+        return "the fee is the venue's published formula."
+    return ("the fee is the venue's formula as this project recorded it on "
+            "6 September 2026, and it has not been checked against the "
+            "venue's own schedule; the page would not load that day.")

@@ -649,6 +649,17 @@ const Gridiron = (function () {
       }
       host.appendChild(row);
     });
+    // THE HYPOTHETICAL LEDGER (ruling D1, 2026-09-06). Placed, not composed:
+    // the server writes the sentence, and it leads with the word the ruling
+    // requires. The fee's provenance goes directly under it, because a
+    // fee-adjusted figure whose fee is unverified must say so where it is read.
+    (atl.paper || []).forEach(row => {
+      requireN(row, 'hypothetical unit ledger');
+      const line = el('div', 'gate-row');
+      line.appendChild(el('div', 'gate-name', row.words));
+      line.appendChild(el('div', 'gate-why', row.fee_words));
+      host.appendChild(line);
+    });
     (atl.coverage || []).forEach(row => {
       cover.appendChild(el('div', 'footnote', row.words));
     });
