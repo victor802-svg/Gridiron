@@ -597,3 +597,21 @@ Three things to decide, none done here:
   that file's last entry is 2026-08-29; the failing run left nothing. Whatever
   the reason, the dialog showed access logs instead of the one line that
   explained it, and the operator was left to guess.
+
+## 2026-09-05 — retire home runs, the view menu, the hero floor, motion
+
+- **D1–D3 of the brief were never pasted.** The brief names them and gives
+  detail only for R1–R4; they are BLOCKED in the close-out, not skipped.
+- **A browser test that checks a class toggled is not a test that motion ran.**
+  R4's first fade never animated — the start state itself transitioned — and
+  the test passed. A render's per-frame opacity sampler found it. Any future
+  motion test asserts a sampled frame strictly between the two states.
+- **Tests that read the live record for a "current" slate go vacuous on the
+  day the slate starts.** The rerun-refusal test and its planting did this
+  afternoon; both now build their own world. Worth a scan for other tests
+  that pick "the biggest/latest slate in the record".
+- **The forecaster label on the view tag is the declared "LLM"** — not a plain
+  word. A better word for the reasoning pass's short label is a ruling.
+- **A retired market is still trained.** Its fit is refreshed by
+  `baseline.train_all` although nothing asks it; harmless, and deletion is not
+  retirement, but a reader of the fit log may wonder.
