@@ -1842,7 +1842,19 @@ const Gridiron = (function () {
     if (view.early) qs += (qs ? '&' : '?') + 'early_view=true';
     const data = await fetchJSON(withSport('/api/week' + qs));
     if (data.default_tier) defaultTier = data.default_tier;
-    const market = document.getElementById('week-market').value;
+    // THE TAB IS THE FILTER (UI audit finding 24, 2026-09-05). The cards were
+    // filtered on the hidden Market select inside "This week", and the tab
+    // click set only the pressed state -- so every tab showed the whole slate,
+    // the zero-count tab included, and the counts line never changed. One
+    // source of truth: `state.market`, set by the tab or by the select, and
+    // the select mirrors it. A market the new sport does not ask falls back
+    // to All rather than filtering the slate to nothing.
+    const select = document.getElementById('week-market');
+    if (state.market && !(data.market_tabs || []).some(t => (t.market || '') === state.market)) {
+      state.market = '';
+    }
+    const market = state.market || '';
+    if (select && select.value !== market) select.value = market;
 
     // PLACED, NOT COMPOSED. The server names the slate in words; this used to
     // glue the season to the raw key and print "Season 2026, week 20260905".
@@ -2874,6 +2886,7 @@ const Gridiron = (function () {
     // it across would filter a football table to a baseball date and show an
     // empty page that looks like a missing record.
     state.calendarDay = null;
+    state.market = '';
     document.querySelectorAll('#sport-tabs button').forEach(b => {
       const on = b.dataset.sport === sport;
       b.setAttribute('aria-current', on ? 'true' : 'false');
@@ -3229,9 +3242,13 @@ const Gridiron = (function () {
       document.getElementById(id).addEventListener('change', () => {
         try { renderRecord(); } catch (err) { showError(err); }
       }));
-    ['week-picker', 'week-market'].forEach(id =>
-      document.getElementById(id).addEventListener('change', () =>
-        renderWeek().catch(showError)));
+    document.getElementById('week-picker').addEventListener('change', () =>
+      renderWeek().catch(showError));
+    document.getElementById('week-market').addEventListener('change', event => {
+      heroIndex = 0;
+      state.market = event.target.value || '';
+      renderWeek().catch(showError);
+    });
     ['history-q', 'history-market', 'history-predictor', 'history-outcome'].forEach(id =>
       document.getElementById(id).addEventListener('input', () => {
         state.historyOffset = 0;
