@@ -17,6 +17,7 @@ import sqlite3
 import statistics
 from dataclasses import dataclass, field
 
+from .. import config
 from ..data import reference, repo
 
 #: Injury report statuses, mapped to a share of availability lost. Read straight
@@ -63,6 +64,12 @@ class GameContext:
     home_srs: float | None = None
     away_srs: float | None = None
     srs_basis: str = "none"          # 'season' | 'prior_season' | 'none'
+    #: THE DECAYED RATING (AT_THE_LINE E2, 2026-09-06): recency-weighted,
+    #: margin-capped, home-adjusted, opponent-adjusted; reads the season before
+    #: as well, decayed, so week 1 has a rating and not a prior. Absent when a
+    #: team has no completed game in the window -- never zero.
+    home_rating_decayed: float | None = None
+    away_rating_decayed: float | None = None
     home_recent_margin: float | None = None
     away_recent_margin: float | None = None
     #: SCORING FORM (roster #19, 2026-09-04). Absent, not zero, with no
@@ -159,6 +166,45 @@ def srs_ratings(rows, iterations: int = 12) -> dict[str, float]:
     return rating
 
 
+def decayed_ratings(rows, *, half_life_games: float, margin_cap: float,
+                    home_adjust: float, iterations: int = 12) -> dict[str, float]:
+    """The decayed, capped, home-adjusted, opponent-adjusted rating (AT_THE_LINE
+    E2, 2026-09-06). The same four-line iteration as `srs_ratings`, over
+    WEIGHTED margins: each game weighs one half to the power of how many games
+    ago it was for that team, over `half_life_games`; each margin is clipped
+    to plus or minus `margin_cap`; a home team's margin has `home_adjust`
+    taken off and an away team's has it added, so the rating is about the team
+    and not the venue. Rows arrive chronological; the last row is 0 games ago.
+    """
+    games: dict[str, list[tuple[float, str, float]]] = {}
+    for r in rows:
+        if r["points_for"] is None or not r["opponent"]:
+            continue
+        margin = float(r["points_for"] - r["points_against"])
+        margin -= home_adjust if r["was_home"] else -home_adjust
+        margin = max(-margin_cap, min(margin_cap, margin))
+        games.setdefault(r["team"], []).append((margin, r["opponent"], 0.0))
+    if not games:
+        return {}
+    weighted: dict[str, list[tuple[float, str, float]]] = {}
+    for team, played in games.items():
+        n = len(played)
+        weighted[team] = [
+            (m, opp, 0.5 ** ((n - 1 - i) / half_life_games))
+            for i, (m, opp, _) in enumerate(played)
+        ]
+    rating = {t: sum(m * w for m, _, w in g) / sum(w for _, _, w in g)
+              for t, g in weighted.items()}
+    for _ in range(iterations):
+        updated = {
+            t: sum((m + rating.get(opp, 0.0)) * w for m, opp, w in g) / sum(w for _, _, w in g)
+            for t, g in weighted.items()
+        }
+        mean = sum(updated.values()) / len(updated)
+        rating = {t: v - mean for t, v in updated.items()}
+    return rating
+
+
 class WeekCache:
     """Memoises the per-(season, week) league view.
 
@@ -170,6 +216,7 @@ class WeekCache:
     def __init__(self) -> None:
         self._cache: dict[tuple[int, int], tuple[dict[str, float], dict[str, list]]] = {}
         self._prior: dict[tuple[int, str], float | None] = {}
+        self._decayed: dict[tuple[int, int], dict[str, float]] = {}
 
     def league(self, conn: sqlite3.Connection, season: int, week: int):
         key = (season, week)
@@ -180,6 +227,19 @@ class WeekCache:
                 played.setdefault(r["team"], []).append(r)
             self._cache[key] = (srs_ratings(rows), played)
         return self._cache[key]
+
+    def decayed(self, conn: sqlite3.Connection, season: int, week: int) -> dict[str, float]:
+        """The decayed rating for every team at this cutoff, solved once per week."""
+        key = (season, week)
+        if key not in self._decayed:
+            spec = config.RATING_DECAY["nfl"]
+            rows = repo.team_games_for_rating(conn, season, week,
+                                              seasons_back=spec["seasons_back"])
+            self._decayed[key] = decayed_ratings(
+                rows, half_life_games=spec["half_life_games"],
+                margin_cap=spec["margin_cap"],
+                home_adjust=config.HOME_MARGIN_MEASURED["nfl"]["mean"])
+        return self._decayed[key]
 
     def prior_margin(self, conn: sqlite3.Connection, season: int, team: str):
         key = (season, team)
@@ -253,6 +313,7 @@ def build_game_context(
     season, week = game["season"], game["week"]
     cache = cache or WeekCache()
     ratings, played = cache.league(conn, season, week)
+    decayed = cache.decayed(conn, season, week)
 
     ctx = GameContext(
         game_id=game_id,
@@ -273,6 +334,7 @@ def build_game_context(
     for side, team in (("home", game["home"]), ("away", game["away"])):
         history = played.get(team, [])
         setattr(ctx, f"{side}_games_played", len(history))
+        setattr(ctx, f"{side}_rating_decayed", decayed.get(team))
 
         if len(history) >= 2:
             setattr(ctx, f"{side}_srs", ratings.get(team))

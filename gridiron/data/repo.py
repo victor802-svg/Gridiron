@@ -87,6 +87,24 @@ def league_history(conn: sqlite3.Connection, season: int, before_week: int) -> l
     ).fetchall()
 
 
+def team_games_for_rating(conn: sqlite3.Connection, season: int, before_week: int,
+                          seasons_back: int = 1) -> list[sqlite3.Row]:
+    """Every completed team-game a decayed rating may read at this cutoff: the
+    current season before `before_week`, and `seasons_back` seasons before it
+    in full, each row saying whether the team was at home. Chronological, so a
+    caller can count games ago. STRICTLY BEFORE THE CUTOFF, the same bound the
+    plain rating keeps (AT_THE_LINE E2)."""
+    return conn.execute(
+        "SELECT t.season, t.week, t.team, t.opponent, t.points_for, t.points_against,"
+        "       CASE WHEN g.home = t.team THEN 1 ELSE 0 END AS was_home"
+        "  FROM team_week_stats t LEFT JOIN games g ON g.id = t.game_id"
+        " WHERE t.points_for IS NOT NULL AND t.opponent IS NOT NULL"
+        "   AND ((t.season = ? AND t.week < ?) OR (t.season < ? AND t.season >= ?))"
+        " ORDER BY t.season, t.week",
+        (season, before_week, season, season - seasons_back),
+    ).fetchall()
+
+
 def prior_season_margin(conn: sqlite3.Connection, season: int, team: str) -> float | None:
     """Average point differential in the previous season. Week 1 has no
     current-season sample; last year is the honest prior, and it is stated as

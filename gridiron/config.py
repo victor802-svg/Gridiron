@@ -790,7 +790,11 @@ FACTOR_SET_VERSIONS: dict[tuple[str, str], str] = {
     ("mlb", "prop:batter_home_runs"): "fs3-rate",
     ("mlb", "prop:batter_hits"): "fs3-rate",
     ("mlb", "prop:pitcher_strikeouts"): "fs3-rate",
-    ("nfl", "spread"): "fs3",
+    # THE DECAYED RATING REPLACED THE PLAIN ONE on 2026-09-06 (AT_THE_LINE
+    # E2): a different factor set for the NFL game markets, so a new
+    # version for both; the rows before it stand on theirs.
+    ("nfl", "spread"): "fs5",
+    ("nfl", "moneyline"): "fs5",
     # NBA SPREAD GAINED A FACTOR on 2026-09-03 (Session D): `nba_srs_diff`, an
     # opponent-adjusted rating declared beside the rolling net rating. A model
     # with a factor the previous one did not have is a different model, and its
@@ -831,6 +835,13 @@ FACTOR_SET_HISTORY = ("fs1", "fs2")
 FACTOR_SET_ACTIVATED = {
     "fs1": "2026-08-28T00:00:00Z",
     "fs2": "2026-08-29T00:00:00Z",
+    # The per-market versions of 2026-09-03 (asked line, the count markets,
+    # the NBA rating), dated here so the versions view can order them;
+    # the comments on FACTOR_SET_VERSIONS carry their reasons.
+    "fs3": "2026-09-03T00:00:00Z",
+    "fs3-rate": "2026-09-03T00:00:00Z",
+    "fs4": "2026-09-03T00:00:00Z",
+    "fs5": "2026-09-06T00:00:00Z",
 }
 
 #: How far ahead a live slate may be forecast, in days.
@@ -1200,3 +1211,30 @@ COUNTING_STATS = frozenset(
 PROPS_PER_WEEK = int(os.environ.get("GRIDIRON_PROPS_PER_WEEK", "40"))
 #: Ceiling per game, so one marquee fixture cannot eat the whole slate.
 PROPS_PER_GAME = int(os.environ.get("GRIDIRON_PROPS_PER_GAME", "3"))
+
+
+#: THE DECAYED RATING'S DECLARED CHOICES (AT_THE_LINE E2, 2026-09-06). First
+#: principles, written down, dated, and NOT tuned against the record: a
+#: half-life and a cap fitted to the outcomes they then predict would be the
+#: discovery LAW 2 forbids. The NFL half-life is in games (its history is
+#: weekly); college football's is in days over its rolling window.
+RATING_DECAY = {
+    "nfl": {"half_life_games": 6.0, "margin_cap": 28.0,
+            "seasons_back": 1},
+    "cfb": {"half_life_days": 42.0, "margin_cap": 28.0},
+    "declared": "2026-09-06T00:00:00Z",
+    "why": ("a half-life of six games says the last six carry half the evidence "
+            "and the season before a seventh; 28 points is four touchdowns, past "
+            "which a margin measures the bench, not the team"),
+}
+
+#: THE HOME SIDE'S MEAN MARGIN, MEASURED (E2: "measured not assumed"). Read off
+#: the record's completed games before the rating was declared, dated, with
+#: its N. Subtracted from a home team's margin and added to an away team's
+#: before rating, so a rating is about the team and not the venue.
+HOME_MARGIN_MEASURED = {
+    "nfl": {"mean": 1.76, "n": 2639, "seasons": "2016-2025 regular season",
+            "measured_utc": "2026-09-06T00:00:00Z"},
+    "cfb": {"mean": 8.84, "n": 1761, "seasons": "2024-2025",
+            "measured_utc": "2026-09-06T00:00:00Z"},
+}

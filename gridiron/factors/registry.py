@@ -277,6 +277,11 @@ def sports() -> list[str]:
 #: a moneyline has no rung to be a distance from.
 NFL_GAME_MARKETS = ("spread", "moneyline")
 
+#: The successor rating's rationale (AT_THE_LINE E2). One text, declared once.
+DECAYED_RATING_RATIONALE = (
+    "Points scored minus points allowed, adjusted for the quality of the opponents faced, with three declared changes from the plain rating it replaces. RECENCY-DECAYED: each game's margin is weighted by one half raised to the power of how many games ago it was, over a half-life of six games -- an NFL season is seventeen, a depth chart and a scheme hold for about a third of it, and a half-life of six says the last six games carry half the evidence and the season before carries a seventh. MARGIN-CAPPED at 28 points: beyond four touchdowns a score says nothing more about strength, only about who emptied the bench. HOME-ADJUSTED by a MEASURED figure, not an assumed one: the home side's mean margin over the record's completed regular-season games is subtracted from home margins and added to away ones before rating, so a team is not rated for where it played. The half-life and the cap are choices from first principles, declared here and dated; NOT tuned against the record, which is LAW 2's line. Solved by the same iteration as before, so the whole method is still a few lines a reader can follow. Signed home minus away, scaled by 10 so one unit is about a touchdown and a field goal, as the factor it replaces was."
+)
+
 # ---------------------------------------------------------------------------
 # the NFL totals market (MARKET_ROSTER #19, 2026-09-04)
 # ---------------------------------------------------------------------------
@@ -473,9 +478,17 @@ def timezone_shift(ctx) -> float | None:
 
 
 @factor(
+    active=False,
+    deactivated="2026-09-06T00:00:00Z",
     added="2026-08-28T00:00:00Z",
     applies_to=NFL_GAME_MARKETS,
     note=(
+        "RETIRED 2026-09-06 by operator ruling (AT_THE_LINE E2) and REPLACED, "
+        "not refuted: `nfl_rating_decayed_diff` is the same opponent-adjusted "
+        "rating with recency decay, a margin cap and a measured home "
+        "adjustment declared beside it. This factor's record stands on its "
+        "own factor set. The asked-line retirement of 2026-09-03 is the "
+        "precedent. "
         "JOINTLY FITTED WITH `recent_form_diff`, MEASURED 2026-09-03. "
         "Standardised, this factor is worth -0.083 fitted alone and -0.211 "
         "with the recent-form factor beside it; recent form is +0.048 alone "
@@ -499,6 +512,27 @@ def srs_diff(ctx) -> float | None:
     if ctx.home_srs is None or ctx.away_srs is None:
         return None
     return (ctx.home_srs - ctx.away_srs) / 10.0
+
+
+@factor(
+    added="2026-09-06T00:00:00Z",
+    applies_to=NFL_GAME_MARKETS,
+    why="how good the two teams have been lately, adjusted for who they played and where",
+    rationale=DECAYED_RATING_RATIONALE,
+    note=(
+        "DECLARED 2026-09-06 (AT_THE_LINE E2), the successor to `srs_diff`, "
+        "scored forward from that date and never backfitted. The half-life "
+        "(six games), the cap (28 points) and the home adjustment (1.76, "
+        "measured over 2,639 regular-season games) are in "
+        "`config.RATING_DECAY` and `config.HOME_MARGIN_MEASURED`, dated. Its "
+        "relationship to `recent_form_diff` is UNMEASURED at declaration; the "
+        "pair note on the retired factor does not transfer until it is."
+    ),
+)
+def nfl_rating_decayed_diff(ctx) -> float | None:
+    if ctx.home_rating_decayed is None or ctx.away_rating_decayed is None:
+        return None
+    return (ctx.home_rating_decayed - ctx.away_rating_decayed) / 10.0
 
 
 @factor(
