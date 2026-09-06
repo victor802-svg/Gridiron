@@ -2823,3 +2823,11 @@ def unreachable_line() -> str:
     """
     return ("The appliance could not be reached, so nothing here has been "
             "refreshed. Check the connection and try again.")
+
+
+def settled_count_line(n: int) -> str:
+    """"13 settled" -- the picks a finished slate no longer shows (UI audit
+    finding 9, 2026-09-05). The counts line said "53 picks" over a page of 40,
+    because settled picks leave the grid once a slate is not live and nothing
+    said where the other 13 had gone."""
+    return f"{n:,} settled"

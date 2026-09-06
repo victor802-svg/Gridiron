@@ -1083,6 +1083,24 @@ def _count_lines(cards: list[dict]) -> dict:
     return out
 
 
+def _settled_lines(cards: list[dict]) -> dict:
+    """"<market>|<tier>" -> "13 settled", for every combination that has any:
+    the picks a finished slate no longer shows (UI audit finding 9). Same keys
+    as `_count_lines`, so the renderer looks one up beside the other."""
+    markets = {""} | {c.get("market") or "" for c in cards}
+    tiers = {""} | {(c.get("tier") or {}).get("tier") or "" for c in cards}
+    settled = [c for c in cards if c.get("resolved_utc") is not None or c.get("voided")]
+    out = {}
+    for market in markets:
+        for tier in tiers:
+            n = len([c for c in settled
+                     if (not market or (c.get("market") or "") == market)
+                     and (not tier or ((c.get("tier") or {}).get("tier") or "") == tier)])
+            if n:
+                out[f"{market}|{tier}"] = language.settled_count_line(n)
+    return out
+
+
 def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
     """WHAT THE WHOLE SLATE LOOKS LIKE, from the slate already in hand.
 
@@ -1208,6 +1226,7 @@ def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
         # renderer looks one up instead of gluing a sentence together, which
         # is what the 2026-08-31 ruling asks and what the JS tripwire checks.
         "count_lines": _count_lines(cards),
+        "settled_lines": _settled_lines(cards),
         "windows": windows,
         "windows_unknown": unknown,
         "games_line": f"{len(games)} {'game' if len(games) == 1 else 'games'}",

@@ -2026,6 +2026,12 @@ const Gridiron = (function () {
         bits.push(data.below_floor + ' below the ' +
                   Math.round((data.floor || 0.7) * 100) + '% floor');
       }
+      // WHERE THE REST WENT (UI audit finding 9). Once a slate is not live
+      // its settled picks leave the grid; the line says how many did.
+      if (!slateRunning) {
+        const settledLine = ((data.glance || {}).settled_lines || {})[(market || '') + '|' + tier];
+        if (settledLine) bits.push(settledLine);
+      }
       counts.textContent = bits.filter(Boolean).join(' · ');
     }
 
