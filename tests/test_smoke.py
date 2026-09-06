@@ -739,7 +739,7 @@ def test_every_tap_target_on_the_slate_is_big_enough(phone):
     phone.wait_for_selector("#week-cards .card", timeout=10000)
     small = phone.evaluate("""
       Array.from(document.querySelectorAll(
-        'nav a, #sport-tabs a, #sport-tabs button, select, button, .card-head'
+        'nav a, #sport-tabs a, #sport-tabs button, select, button, .card-head, summary'
       ))
         .filter(el => el.offsetParent !== null)
         .map(el => ({ tag: el.tagName + '.' + (el.className || ''),
@@ -747,6 +747,20 @@ def test_every_tap_target_on_the_slate_is_big_enough(phone):
         .filter(x => x.h > 0 && x.h < 44)
     """)
     assert not small, f"tap targets under 44px: {small}"
+    # WIDTH TOO, where a finger lands sideways (UI audit finding 17): the
+    # sport tabs and the hero's arrows at 44; the hero's dots at 32, because
+    # five dots and two arrows share a 312px row and 44 each runs 83px past
+    # the edge -- the dots keep 44px of height and 32 is the width a row of
+    # five can afford.
+    narrow = phone.evaluate("""
+      Array.from(document.querySelectorAll('#sport-tabs button, .hero-dot, .hero-arrow'))
+        .filter(el => el.offsetParent !== null)
+        .map(el => ({ tag: el.tagName + '.' + (el.className || ''),
+                      w: el.getBoundingClientRect().width,
+                      floor: el.classList.contains('hero-dot') ? 32 : 44 }))
+        .filter(x => x.w > 0 && x.w < x.floor)
+    """)
+    assert not narrow, f"tap targets under their width floor: {narrow}"
 
 
 def test_a_card_still_expands_on_a_phone(phone):

@@ -1958,3 +1958,23 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .factors-detail summary {
   cursor: pointer; font-size: 13px; color: var(--muted); padding: 6px 0;
 }
+
+/* TAP TARGETS AT PHONE WIDTH (UI audit finding 17, 2026-09-05). Measured at
+   390: the "This week" summary was 19px tall, "The measurements in full"
+   31px, the NFL and NBA tabs 40 and 43px wide, the hero dots 20px wide. The
+   mark stays small; the button around it does not. */
+@media (max-width: 640px) {
+  .week-more > summary, .factors-detail summary {
+    min-height: 44px; display: flex; align-items: center;
+  }
+  /* The strip was exactly saturated at 390 (five tabs, four 14px gaps);
+     the five pixels the two narrow tabs gain come out of the gaps. */
+  .bar #sport-tabs { gap: 12px; }
+  .bar #sport-tabs button { min-width: 44px; justify-content: center; }
+  /* Five dots and two arrows share a 312px row: at 44px each they run 83px
+     past the edge. The arrows get 44; the dots get 32 wide by 44 tall,
+     6px apart -- the width a row of five can afford, and recorded as such. */
+  .hero-steps { gap: 6px; }
+  .hero-dot { width: 32px; }
+  .hero-arrow { min-width: 44px; }
+}
