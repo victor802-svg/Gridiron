@@ -6966,6 +6966,40 @@ def plant_a_hidden_element_painted_by_its_class() -> Result:
                   "audit.hidden_rule_faults", True, faults[0])
 
 
+LAW_ONE_ANSWER = "ONE ANSWER PER QUESTION ASKED"
+
+
+def plant_a_late_answer_that_still_paints() -> Result:
+    """Delete the check that drops a superseded slate.
+
+    THE RACE THAT SHIPPED (UI audit, 2026-09-05): NCAAF then UFC within a
+    second left UFC's tabs over football's cards, because every answer painted
+    on arrival. This removes the one line in `renderWeek` that drops an answer
+    a later render has superseded, and expects the tripwire to name it.
+    """
+    from gridiron import audit as _audit
+    js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    if _audit.render_guard_faults(js):
+        return Result(LAW_ONE_ANSWER, "a superseded slate that still paints",
+                      "audit.render_guard_faults", False,
+                      "the shipped app.js already paints unchecked somewhere; fix "
+                      "that before trusting this planting")
+    anchor = "    if (seq !== weekSeq) return;\n"
+    if js.count(anchor) != 1:
+        return Result(LAW_ONE_ANSWER, "a superseded slate that still paints",
+                      "audit.render_guard_faults", False,
+                      "renderWeek no longer carries the check this planting deletes; "
+                      "re-point it")
+    faults = _audit.render_guard_faults(js.replace(anchor, "", 1))
+    if not faults:
+        return Result(LAW_ONE_ANSWER, "a superseded slate that still paints",
+                      "audit.render_guard_faults", False,
+                      "NOT CAUGHT - renderWeek paints whichever answer arrives last "
+                      "and nothing says so")
+    return Result(LAW_ONE_ANSWER, "a superseded slate that still paints",
+                  "audit.render_guard_faults", True, faults[0])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -7099,6 +7133,7 @@ def main() -> int:
     results.append(plant_a_transform_outside_two_percent())
     results.append(plant_a_transition_longer_than_the_ceiling())
     results.append(plant_a_hidden_element_painted_by_its_class())
+    results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

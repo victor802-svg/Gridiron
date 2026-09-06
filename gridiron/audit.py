@@ -5080,3 +5080,61 @@ def check_hidden_is_not_painted(root: Path | None = None) -> None:
     faults = hidden_rule_faults((base / "style.css").read_text(encoding="utf-8"))
     if faults:
         raise LawViolation("HIDDEN MEANS NOT PAINTED:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# ONE ANSWER PER QUESTION ASKED (UI audit finding 1, 2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# Every request app.js makes carries the sport, and for a month every answer
+# painted the moment it arrived, in whatever order the network chose. College
+# football's slate answers slowest, so NCAAF then UFC within a second put UFC's
+# tabs over football's cards, and the empty NBA tab showed 243 football picks.
+# The mechanism is two sequence numbers -- `sportSeq` on every sport switch,
+# `weekSeq` on every slate render -- taken before the fetch and checked after
+# it. This tripwire reads every sport-scoped fetch in app.js and refuses one
+# that paints without the check. A regex, not a parser (see the renderer-prose
+# note above); it catches the shape that shipped.
+
+_JS_SPORT_FETCH = "await fetchJSON(withSport("
+
+
+def render_guard_faults(source: str) -> list[str]:
+    """Which sport-scoped fetches paint without checking they are still wanted?"""
+    source = _without_comments(source, "js")
+    faults: list[str] = []
+    week = re.search(r"async function renderWeek\(\)\s*\{(?P<body>[\s\S]*?)\n  \}", source)
+    if week is None:
+        faults.append("`renderWeek` is gone from app.js; nothing renders the slate.")
+    else:
+        body = week.group("body")
+        at = body.find(_JS_SPORT_FETCH + "'/api/week'")
+        if at < 0 or "++weekSeq" not in body[:at]:
+            faults.append("`renderWeek` takes no sequence number before it asks for the "
+                          "slate, so two renders in flight paint in arrival order.")
+        elif "!== weekSeq" not in body[at:at + 240]:
+            faults.append("`renderWeek` does not drop an answer a later render has "
+                          "superseded; the slower slate takes the page.")
+    if not re.search(r"async function selectSport\([^)]*\)\s*\{[\s\S]*?\+\+sportSeq", source):
+        faults.append("`selectSport` no longer moves `sportSeq` on, so nothing asked "
+                      "for the previous sport knows it is stale.")
+    lines = source.split("\n")
+    for i, line in enumerate(lines):
+        if _JS_SPORT_FETCH not in line or "'/api/week' + qs" in line:
+            continue
+        # THE CHECK SITS AFTER THE ANSWER, and an answer can span a
+        # continuation line and a catch block before anything is painted (the
+        # live tick); fourteen lines covers the longest shape that ships.
+        window = "\n".join(lines[i:i + 14])
+        if "stale(seq)" not in window and "!== weekSeq" not in window:
+            faults.append(f"app.js line {i + 1}: `{line.strip()[:70]}` paints its answer "
+                          "without checking whether the sport has changed since it asked.")
+    return faults
+
+
+def check_a_superseded_answer_is_dropped(root: Path | None = None) -> None:
+    """Raise unless every sport-scoped fetch in app.js checks its sequence."""
+    base = (config.PACKAGE_ROOT / "web") if root is None else Path(root)
+    faults = render_guard_faults((base / "app.js").read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation("ONE ANSWER PER QUESTION ASKED:" + _NL2 + _NL2.join(faults))

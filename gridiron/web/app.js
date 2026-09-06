@@ -103,6 +103,21 @@ const Gridiron = (function () {
     // filter change shows a different number of cards than the control says.
     market: '', showAllCards: false };
 
+  // ONE ANSWER PER QUESTION ASKED (UI audit finding 1, 2026-09-05).
+  //
+  // Every request here carries the sport, and every answer used to paint the
+  // moment it arrived -- whichever order that was. College football's 243
+  // cards answer slowest, so a reader who clicked NCAAF and then UFC within a
+  // second got UFC's tabs over NCAAF's cards; the NBA tab, empty, showed 243
+  // football picks under "Today". Two sequence numbers end it: `sportSeq`
+  // moves on every sport switch, `weekSeq` on every slate render, and a
+  // loader that took its number before asking checks it after the answer
+  // and paints nothing if the number has moved on. `audit.render_guard_faults`
+  // reads every sport-scoped fetch and refuses one that paints unchecked.
+  let sportSeq = 0;
+  let weekSeq = 0;
+  function stale(seq) { return seq !== sportSeq; }
+
   function withSport(path, extra) {
     const p = new URLSearchParams(extra || {});
     p.set('sport', state.sport);
@@ -397,7 +412,9 @@ const Gridiron = (function () {
     const params = new URLSearchParams({ predictor: predictor });
     if (market === 'spread') params.set('market_type', 'spread');
     else { params.set('market_type', 'prop'); params.set('prop_type', market); }
+    const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/over-time?' + params.toString()));
+    if (stale(seq)) return;
     document.getElementById('overtime-caption').textContent =
       DASH + ' ' + int(data.n) + ' resolved across ' + int(data.points.length) + ' weeks';
     document.getElementById('overtime-note').textContent = data.note;
@@ -1082,6 +1099,7 @@ const Gridiron = (function () {
   function startLivePolling(data) {
     stopLivePolling();
     if (!data || !(data.glance || {}).state || data.glance.state === 'complete') return;
+    const seq = weekSeq;
     const tick = async () => {
       if (state.view !== 'week') { stopLivePolling(); return; }
       let live;
@@ -1095,6 +1113,7 @@ const Gridiron = (function () {
         console.error('live poll failed:', err);
         return;
       }
+      if (seq !== weekSeq) { stopLivePolling(); return; }
       applyLive(live);
       if (!live.any_live) stopLivePolling();
     };
@@ -1840,7 +1859,9 @@ const Gridiron = (function () {
     //: forecaster -- a reader who left the early view open yesterday should
     //: not find yesterday's forecasts waiting for them today.
     if (view.early) qs += (qs ? '&' : '?') + 'early_view=true';
+    const seq = ++weekSeq;
     const data = await fetchJSON(withSport('/api/week' + qs));
+    if (seq !== weekSeq) return;
     if (data.default_tier) defaultTier = data.default_tier;
     // THE TAB IS THE FILTER (UI audit finding 24, 2026-09-05). The cards were
     // filtered on the hidden Market select inside "This week", and the tab
@@ -2055,7 +2076,9 @@ const Gridiron = (function () {
   }
 
   async function loadWeekPicker() {
+    const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/weeks'));
+    if (stale(seq)) return;
     const picker = document.getElementById('week-picker');
     picker.innerHTML = '';
     data.weeks.forEach(w => {
@@ -2066,7 +2089,9 @@ const Gridiron = (function () {
   }
 
   async function loadMarkets() {
+    const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/markets'));
+    if (stale(seq)) return;
     // `game_markets`, not `spread`. s1 renamed this field on the server and
     // the browser was never updated, so `data.spread.concat` threw on every
     // boot — silently, because it happened inside boot's catch. The week
@@ -2106,7 +2131,9 @@ const Gridiron = (function () {
 
   // --- VERSIONS -----------------------------------------------------------
   async function renderVersions() {
+    const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/versions'));
+    if (stale(seq)) return;
     requireN(data, 'version comparison');
     // The last place the raw code reached a reader: "current: fs2". The set
     // in force is named by when it began, like every other mention of one.
@@ -2206,7 +2233,9 @@ const Gridiron = (function () {
     const host = document.getElementById('factors-worked');
     if (!host) return;
     try {
+      const seq = sportSeq;
       const data = await fetchJSON(withSport('/api/week'));
+      if (stale(seq)) return;
       const card = (data.cards || []).find(c => (c.top_factors || []).length);
       if (!card) { host.hidden = true; return; }
 
@@ -2234,7 +2263,9 @@ const Gridiron = (function () {
   }
 
   async function renderFactors() {
+    const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/factors'));
+    if (stale(seq)) return;
     requireN(data, 'factor report');
     document.getElementById('factors-caption').textContent =
       DASH + ' scored over ' + int(data.n) + ' resolved statistical predictions';
@@ -2403,7 +2434,9 @@ const Gridiron = (function () {
     const caption = document.getElementById('calendar-caption');
     if (!panel || !grid) return;
 
+    const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/calendar'));
+    if (stale(seq)) return;
     const days = data.days || [];
     grid.innerHTML = '';
     months.innerHTML = '';
@@ -2770,7 +2803,9 @@ const Gridiron = (function () {
   }
 
   async function renderResults() {
+    const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
+    if (stale(seq)) return;
     requireN(data, 'history');
     state.historyTotal = data.n;
     // PLACED, NOT COMPOSED. This glued " on " onto a date, which is the
@@ -2892,14 +2927,22 @@ const Gridiron = (function () {
       b.setAttribute('aria-current', on ? 'true' : 'false');
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+    const seq = ++sportSeq;
     try {
-      await      await renderGreeting();
-      state.meta = await fetchJSON(withSport('/api/meta'));
+      await renderGreeting();
+      if (stale(seq)) return;
+      const meta = await fetchJSON(withSport('/api/meta'));
+      if (stale(seq)) return;
+      state.meta = meta;
       renderBanner(state.meta);
       renderColophon(state.meta);
-      state.scorecard = await fetchJSON(withSport('/api/scorecard'));
+      const scorecard = await fetchJSON(withSport('/api/scorecard'));
+      if (stale(seq)) return;
+      state.scorecard = scorecard;
       await loadMarkets();
+      if (stale(seq)) return;
       await loadWeekPicker();
+      if (stale(seq)) return;
       await route();
     } catch (err) {
       showError(err);
@@ -3073,7 +3116,9 @@ const Gridiron = (function () {
     const strip = document.getElementById('glance');
     if (!strip) return;
     try {
+      const seq = sportSeq;
       const data = await fetchJSON(withSport('/api/digest'));
+      if (stale(seq)) return;
       paintDigest(data, {
         msg: document.getElementById('greet-msg'),
         countdown: document.getElementById('greet-countdown'),
@@ -3220,15 +3265,20 @@ const Gridiron = (function () {
   async function boot() {
     renderConnection();
     skeleton(document.getElementById('week-cards'), 'skeleton-card', 3);
+    const seq = sportSeq;
     try {
       await loadSports();
-      await      await renderGreeting();
-      state.meta = await fetchJSON(withSport('/api/meta'));
-      renderBanner(state.meta);
-      renderColophon(state.meta);
-      state.scorecard = await fetchJSON(withSport('/api/scorecard'));
-      await loadMarkets();
-      await loadWeekPicker();
+      await renderGreeting();
+      const meta = await fetchJSON(withSport('/api/meta'));
+      if (!stale(seq)) {
+        state.meta = meta;
+        renderBanner(state.meta);
+        renderColophon(state.meta);
+      }
+      const scorecard = await fetchJSON(withSport('/api/scorecard'));
+      if (!stale(seq)) state.scorecard = scorecard;
+      if (!stale(seq)) await loadMarkets();
+      if (!stale(seq)) await loadWeekPicker();
     } catch (err) {
       showError(err);
     }

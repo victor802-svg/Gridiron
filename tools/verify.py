@@ -243,6 +243,7 @@ def step_2_guards() -> bool:
         ("two control rows above the hero, no more",
          audit.check_picks_has_two_control_rows),
         ("hidden means not painted", audit.check_hidden_is_not_painted),
+        ("one answer per question asked", audit.check_a_superseded_answer_is_dropped),
         ("no retired market was asked after its day",
          lambda: audit.check_no_retired_market_written(_record_conn())),
         ("no retired market is a tab on Picks", audit.check_no_retired_market_in_picks),
