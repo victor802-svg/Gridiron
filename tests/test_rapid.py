@@ -149,13 +149,13 @@ def test_escape_closes_the_menu_after_a_choice_and_focus_stays_on_it(page):
     page.wait_for_timeout(150)
     assert page.evaluate("document.getElementById('week-view-panel').hidden") is True, "Escape did not close the menu after a choice"
     assert page.evaluate("document.activeElement.id") == "week-view-button"
-    # Escape with the menu open and focus elsewhere on the page closes it too.
+    # Escape with the menu open and focus nowhere in it closes it too. (Focus
+    # is moved by script: a pointer click elsewhere would close the menu by
+    # itself, and the open panel overlays the headline.)
     page.click("#week-view-button")
-    page.click("#week-headline")
     page.wait_for_timeout(100)
-    if page.evaluate("document.getElementById('week-view-panel').hidden"):
-        page.click("#week-view-button")
-    page.evaluate("document.body.focus()")
+    assert not page.evaluate("document.getElementById('week-view-panel').hidden")
+    page.evaluate("document.activeElement.blur(); document.body.focus()")
     page.keyboard.press("Escape")
     page.wait_for_timeout(150)
     assert page.evaluate("document.getElementById('week-view-panel').hidden") is True
