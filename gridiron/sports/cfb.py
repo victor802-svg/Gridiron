@@ -89,6 +89,10 @@ class CfbContext:
     #: Opponent-adjusted scoring margin, from games completed before kickoff.
     home_rating: float | None = None
     away_rating: float | None = None
+    #: THE DECAYED RATING (AT_THE_LINE E2, 2026-09-06); the plain one stays
+    #: for the rung, which is chosen against it (DISTRIBUTIONAL section 8).
+    home_rating_decayed: float | None = None
+    away_rating_decayed: float | None = None
     #: Great-circle miles between the two schools. None when either venue
     #: could not be placed -- absent, never zero.
     travel_miles: float | None = None
@@ -115,6 +119,7 @@ def build_context(conn: sqlite3.Connection, game_id: str,
         raise KeyError(f"CFB game {game_id!r} has no kickoff time")
 
     rating = repo.ratings(conn, game["season"], before_utc=kickoff)
+    decayed = repo.decayed_ratings(conn, game["season"], before_utc=kickoff)
     return CfbContext(
         game_id=game_id,
         season=game["season"],
@@ -133,6 +138,8 @@ def build_context(conn: sqlite3.Connection, game_id: str,
         away_is_fbs=repo.is_fbs(conn, game["away"]),
         home_rating=rating.get(game["home"]),
         away_rating=rating.get(game["away"]),
+        home_rating_decayed=decayed.get(game["home"]),
+        away_rating_decayed=decayed.get(game["away"]),
         travel_miles=_travel(conn, game["home"], game["away"]),
         home_swing=repo.score_swing(conn, game["home"], before_utc=kickoff),
         away_swing=repo.score_swing(conn, game["away"], before_utc=kickoff),

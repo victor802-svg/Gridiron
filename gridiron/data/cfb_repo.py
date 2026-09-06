@@ -205,6 +205,51 @@ def ratings(conn: sqlite3.Connection, season: int, *, before_utc: str) -> dict:
     return rating
 
 
+def decayed_ratings(conn: sqlite3.Connection, season: int, *, before_utc: str) -> dict:
+    """The decayed, capped, home-adjusted, opponent-adjusted rating for college
+    football (AT_THE_LINE E2, 2026-09-06): `ratings` with three declared
+    changes. Each game weighs one half to the power of its age in days over
+    the half-life in `config.RATING_DECAY["cfb"]`; margins are clipped to the
+    declared cap; the measured home margin is taken off the home side and
+    added to the away side before rating. THE TIME BOUND IS THE WHOLE THING,
+    exactly as for `ratings`: only games completed before `before_utc`, inside
+    the rolling window.
+    """
+    from datetime import datetime, timezone
+    from .. import config
+    spec = config.RATING_DECAY["cfb"]
+    home_adjust = config.HOME_MARGIN_MEASURED["cfb"]["mean"]
+    since = _days_before(before_utc, RATING_LOOKBACK_DAYS)
+    rows = conn.execute(
+        "SELECT home, away, home_score, away_score, kickoff_utc FROM games"
+        " WHERE sport = 'cfb' AND status = 'final'"
+        "   AND home_score IS NOT NULL AND away_score IS NOT NULL"
+        "   AND kickoff_utc < ? AND kickoff_utc >= ?",
+        (before_utc, since),
+    ).fetchall()
+    if not rows:
+        return {}
+    cutoff = datetime.fromisoformat(before_utc.replace("Z", "+00:00"))
+    played: dict[str, list[tuple[str, float, float]]] = {}
+    for r in rows:
+        margin = float(r["home_score"]) - float(r["away_score"]) - home_adjust
+        margin = max(-spec["margin_cap"], min(spec["margin_cap"], margin))
+        when = datetime.fromisoformat(str(r["kickoff_utc"]).replace("Z", "+00:00"))
+        age_days = max(0.0, (cutoff - when).total_seconds() / 86400.0)
+        weight = 0.5 ** (age_days / spec["half_life_days"])
+        played.setdefault(r["home"], []).append((r["away"], margin, weight))
+        played.setdefault(r["away"], []).append((r["home"], -margin, weight))
+    rating = {team: 0.0 for team in played}
+    for _ in range(RATING_PASSES):
+        nxt = {}
+        for team, games in played.items():
+            nxt[team] = (sum((m + rating.get(opp, 0.0)) * w for opp, m, w in games)
+                         / sum(w for _, _, w in games))
+        mean = sum(nxt.values()) / len(nxt)
+        rating = {t: v - mean for t, v in nxt.items()}
+    return rating
+
+
 def score_swing(conn: sqlite3.Connection, team: str, *, before_utc: str,
                 window: int = 5) -> float | None:
     """Mean absolute game-to-game change in a team's COMBINED score.

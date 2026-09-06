@@ -69,6 +69,16 @@ MARGIN_MARKETS = ("spread", "moneyline")
     added=ADDED,
     sport="cfb",
     applies_to=("spread", "moneyline"),
+    active=False,
+    deactivated="2026-09-06T00:00:00Z",
+    note=(
+        "RETIRED 2026-09-06 by operator ruling (AT_THE_LINE E2) and REPLACED, "
+        "not refuted: `cfb_rating_decayed_diff` is the same opponent-adjusted "
+        "rating with recency decay over the rolling window, a margin cap and a "
+        "measured home adjustment declared beside it. The plain rating is "
+        "still computed for the rung, which is chosen against it. This "
+        "factor's record stands on its own factor set."
+    ),
     why="how good the two teams have been, adjusted for who they played",
     rationale=(
         "THE MANDATORY ONE, and the reason is at the top of this module. "
@@ -95,6 +105,38 @@ def cfb_srs_diff(ctx) -> float | None:
     if ctx.home_rating is None or ctx.away_rating is None:
         return None
     return ctx.home_rating - ctx.away_rating
+
+
+@factor(
+    added="2026-09-06T00:00:00Z",
+    sport="cfb",
+    applies_to=("spread", "moneyline"),
+    why="how good the two teams have been lately, adjusted for who they played and where",
+    rationale=(
+        "The mandatory rating, with three declared changes (AT_THE_LINE E2, "
+        "2026-09-06). RECENCY-DECAYED over the rolling year: each game weighs "
+        "one half to the power of its age over a half-life of 42 days, so six "
+        "weeks of games carry half the evidence and last September a "
+        "sixteenth -- the same principle as the NFL's six games, in the unit "
+        "this sport's window is kept in. MARGIN-CAPPED at 28 points, where a "
+        "college blowout stops measuring the team. HOME-ADJUSTED by a MEASURED "
+        "figure, 8.84 points over 1,761 games of the two completed seasons in "
+        "the record, taken off home margins and added to away ones before "
+        "rating. The half-life and the cap are first-principles choices, "
+        "dated, not tuned against the record (LAW 2). Signed home minus away, "
+        "in points, computed strictly from games completed before this "
+        "kickoff, as the factor it replaces was."
+    ),
+    note=(
+        "DECLARED 2026-09-06, the successor to `cfb_srs_diff`, scored forward "
+        "from that date; the choices are in `config.RATING_DECAY` and "
+        "`config.HOME_MARGIN_MEASURED`."
+    ),
+)
+def cfb_rating_decayed_diff(ctx) -> float | None:
+    if ctx.home_rating_decayed is None or ctx.away_rating_decayed is None:
+        return None
+    return ctx.home_rating_decayed - ctx.away_rating_decayed
 
 
 @factor(

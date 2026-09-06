@@ -808,7 +808,10 @@ FACTOR_SET_VERSIONS: dict[tuple[str, str], str] = {
     # version bump that means nothing is worse than none: it teaches a reader
     # that the marker is decorative.
     ("nba", "spread"): "fs4",
-    ("cfb", "spread"): "fs3",
+    # THE DECAYED RATING REPLACED THE PLAIN ONE on 2026-09-06 (E2), for
+    # college football's two margin markets.
+    ("cfb", "spread"): "fs5",
+    ("cfb", "moneyline"): "fs5",
 }
 
 

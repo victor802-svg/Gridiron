@@ -109,20 +109,44 @@ def test_college_football_decays_by_days_caps_and_adjusts(tmp_path):
                      " status, home_score, away_score, league_date) VALUES (?, 'cfb', 2026, 1, 'REG', ?, ?, ?, 'final', ?, ?, ?)",
                      (gid, home, away, kick, hs, as_, kick[:10]))
     adj = config.HOME_MARGIN_MEASURED["cfb"]["mean"]
-    # A beats B at home by adj+10 in the last week; C beats D away by 10 a year earlier
-    game("g1", "A", "B", 40 + adj, 30, "2026-09-01T00:00:00Z")
-    game("g2", "D", "C", 20, 30, "2025-09-15T00:00:00Z")
+    # A CONNECTED, NON-BIPARTITE SCHEDULE: a round robin of four, last week.
+    # (Two isolated pairs make the iteration oscillate -- a degenerate
+    # schedule, not the solver; a real league has neither.) Every home
+    # margin carries the measured home adjustment so the rating sees 10.
+    recent = "2026-09-01T00:00:00Z"
+    game("g1", "A", "B", 30 + adj, 20, recent)   # A beats B by 10
+    game("g2", "A", "C", 30 + adj, 20, recent)   # A beats C by 10
+    game("g3", "D", "A", 20, 30 + adj, recent)   # A beats D by 10, away
+    game("g4", "B", "C", 30 + adj, 20, recent)   # B beats C by 10
+    game("g5", "D", "B", 20, 30 + adj, recent)   # B beats D by 10, away
+    game("g6", "C", "D", 30 + adj, 20, recent)   # C beats D by 10
     conn.commit()
-    r = cfb_repo.decayed_ratings(conn, 2026, before_utc="2026-09-06T00:00:00Z")
-    assert r["A"] > 0 and r["C"] > 0
-    assert r["A"] > r["C"], "a year-old win should weigh far less than last week's"
-    plain = cfb_repo.ratings(conn, 2026, before_utc="2026-09-06T00:00:00Z")
+    when = "2026-09-06T00:00:00Z"
+    r = cfb_repo.decayed_ratings(conn, 2026, before_utc=when)
+    assert r["A"] > r["B"] > r["C"] > r["D"], r
+    assert 20.0 < r["A"] - r["D"] < 40.0, "three wins by ten over three losses by ten, shrunk by the opponent adjustment"
+    plain = cfb_repo.ratings(conn, 2026, before_utc=when)
     assert set(plain) == set(r)
-    # the cap
-    game("g3", "E", "F", 90, 0, "2026-09-01T00:00:00Z"); conn.commit()
-    r2 = cfb_repo.decayed_ratings(conn, 2026, before_utc="2026-09-06T00:00:00Z")
-    capped = config.RATING_DECAY["cfb"]["margin_cap"]
-    assert r2["E"] - r2["F"] <= 2 * capped + 1e-6
+    # DECAY: a year-old heavy loss for A barely moves A with the declared
+    # half-life, and moves it a lot when the half-life is made enormous.
+    game("g7", "D", "A", 60, 0, "2025-09-15T00:00:00Z"); conn.commit()
+    with_decay = cfb_repo.decayed_ratings(conn, 2026, before_utc=when)["A"]
+    half = config.RATING_DECAY["cfb"]["half_life_days"]
+    try:
+        config.RATING_DECAY["cfb"]["half_life_days"] = 1e9
+        flat = cfb_repo.decayed_ratings(conn, 2026, before_utc=when)["A"]
+    finally:
+        config.RATING_DECAY["cfb"]["half_life_days"] = half
+    assert with_decay > flat, "a year-old loss should weigh less than last week's wins"
+    assert r["A"] - with_decay < 1.0, "with a 42-day half-life a year-old game is nearly weightless"
+    # THE CAP: the 60-point loss counts as 28; lifting the cap moves A further.
+    cap = config.RATING_DECAY["cfb"]["margin_cap"]
+    try:
+        config.RATING_DECAY["cfb"]["margin_cap"] = 1000.0
+        uncapped = cfb_repo.decayed_ratings(conn, 2026, before_utc=when)["A"]
+    finally:
+        config.RATING_DECAY["cfb"]["margin_cap"] = cap
+    assert uncapped < with_decay
     new = registry.REGISTRY["cfb_rating_decayed_diff"]
     old = registry.REGISTRY["cfb_srs_diff"]
     assert new.active and new.added_utc.startswith("2026-09-06") and new.sport == "cfb"

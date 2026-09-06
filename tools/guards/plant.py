@@ -1083,6 +1083,14 @@ LAW_ASKED = "THE ASKED LINE IS A DISTANCE"
 def plant_an_asked_line_that_is_not_a_distance() -> Result:
     """Compute the asked-line factor from the rung alone, as it used to be.
 
+    MEASURED AGAINST THE ACTIVE RATING FACTOR (2026-09-06): `cfb_srs_diff`
+    was retired and replaced by `cfb_rating_decayed_diff`, and a training
+    row carries active factors only. The rung is still chosen against the
+    plain rating the successor decays, so the correlation measured here
+    is a little under the 0.9816 of 2026-09-03; the comparison the guard
+    makes is between the planted copy and the shipped factor, on the same
+    rows, and that stands.
+
     THIS IS THE BUG THE RULING REPAIRED, replanted. Under nearest-expected-
     margin rungs the rung IS the rating, coarsened: it is chosen as the ladder
     point nearest minus the expected margin, so handing it to the model as a
@@ -1114,13 +1122,13 @@ def plant_an_asked_line_that_is_not_a_distance() -> Result:
     conn.close()
 
     pres = [r for r in rows
-            if "cfb_srs_diff" in r and "cfb_asked_distance" in r]
+            if "cfb_rating_decayed_diff" in r and "cfb_asked_distance" in r]
     if len(pres) < 100:
         return Result(LAW_ASKED, "an asked line computed from the rung alone",
                       "correlation with the rating", False,
                       f"only {len(pres)} rows to measure on")
 
-    rating = [r["cfb_srs_diff"] for r in pres]
+    rating = [r["cfb_rating_decayed_diff"] for r in pres]
     good = [r["cfb_asked_distance"] for r in pres]
     # THE PLANTED VERSION: the rung itself, reconstructed exactly. The shipped
     # factor is `-rung - expected`, and the expected margin is recoverable
@@ -1128,7 +1136,7 @@ def plant_an_asked_line_that_is_not_a_distance() -> Result:
     # to the last decimal rather than a lookalike.
     bad = []
     for r in pres:
-        expected = _q.cfb_expected_margin(r["cfb_srs_diff"], 0.0)
+        expected = _q.cfb_expected_margin(r["cfb_rating_decayed_diff"], 0.0)
         bad.append(-(r["cfb_asked_distance"] + expected))
 
     c_bad = abs(corr(bad, rating) or 0.0)
