@@ -179,8 +179,17 @@ def login_glance() -> dict:
 
 
 @app.get("/login")
-def login_page() -> FileResponse:
-    return FileResponse(WEB_DIR / "login.html")
+def login_page(request: Request):
+    # A SIGNED-IN READER HAS NOTHING TO DO HERE (UI audit finding 18,
+    # 2026-09-05): the form came up again for a session that was valid.
+    if auth.session_is_valid(get_auth_conn(), request.cookies.get(auth.COOKIE_NAME)):
+        return RedirectResponse("/", status_code=303,
+                                headers={"Cache-Control": "no-store"})
+    # NEVER CACHED. A FileResponse carries validators, and a browser served
+    # the sign-in form from its own cache to a reader whose session was
+    # valid -- the redirect above never ran. A login page is not a document.
+    return FileResponse(WEB_DIR / "login.html",
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.post("/auth/login")
