@@ -66,6 +66,10 @@ class BlindRun:
     #: resumed run that cost nothing and one that quietly paid twice: a run
     #: reporting `llm_skipped: 34, written: 8` is a run that resumed properly.
     llm_skipped: int = 0
+    #: Prop questions not put to the reasoning pass, because the pass runs on
+    #: game markets only (ruling E1, 2026-09-06). COUNTED, never silent, and
+    #: not a degradation: the absence is a ruling.
+    llm_routed_off: int = 0
 
     @property
     def prediction_ids(self) -> list[int]:
@@ -426,6 +430,12 @@ def predict_slate(
         if already_written(conn, q, "llm", final=final):
             run.llm_skipped += 1
             continue
+        # GAME MARKETS ONLY (ruling E1, 2026-09-06). A prop question is not put
+        # to the reasoning pass; it is counted as routed off and the run says
+        # so. Not `degraded`: nothing failed.
+        if not config.llm_routed(q.sport, q.market):
+            run.llm_routed_off += 1
+            continue
         try:
             result = llm.reason(
                 conn,
@@ -465,6 +475,12 @@ def predict_slate(
         run.skipped.append(
             f"LLM reasoning pass unavailable for this run ({llm_off}); "
             "statistical predictions stand alone"
+        )
+    if run.llm_routed_off:
+        run.skipped.append(
+            f"{run.llm_routed_off} prop question(s) not put to the reasoning "
+            "pass: it runs on game markets only, by ruling of 2026-09-06. Not "
+            "a degradation."
         )
     if run.below_floor:
         run.skipped.append(

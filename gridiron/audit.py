@@ -5171,3 +5171,36 @@ def check_health_speaks_plain(conn) -> None:
     faults = health_detail_faults(tasks.status(conn))
     if faults:
         raise LawViolation("THE HEALTH PANEL SPEAKS IN WORDS:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE REASONING PASS RUNS ON GAME MARKETS ONLY (ruling E1, 2026-09-06)
+# ---------------------------------------------------------------------------
+
+
+def llm_routing_faults() -> list[str]:
+    """Where the LLM roster disagrees with the ruling: a prop market on it, a
+    market the sport does not declare, a sport with no entry, no date."""
+    faults: list[str] = []
+    if not getattr(config, "LLM_ROUTING_DECLARED", None):
+        faults.append("LLM_MARKETS_BY_SPORT carries no declaration date.")
+    for sport in config.SPORTS:
+        if sport not in config.LLM_MARKETS_BY_SPORT:
+            faults.append(f"{sport} has no LLM roster; the pass would be asked "
+                          f"nothing or everything by accident.")
+            continue
+        for market in config.LLM_MARKETS_BY_SPORT[sport]:
+            if market in config.SPORT_PROP_MARKETS.get(sport, ()):
+                faults.append(f"{sport}:{market} is a prop market on the LLM "
+                              f"roster; the reasoning pass runs on game markets "
+                              f"only, by ruling of 2026-09-06.")
+            elif market not in config.SPORT_MARKETS.get(sport, ()):
+                faults.append(f"{sport}:{market} is on the LLM roster and {sport} "
+                              f"does not declare that market.")
+    return faults
+
+
+def check_llm_runs_on_game_markets_only() -> None:
+    faults = llm_routing_faults()
+    if faults:
+        raise LawViolation("THE REASONING PASS RUNS ON GAME MARKETS ONLY:" + _NL2 + _NL2.join(faults))

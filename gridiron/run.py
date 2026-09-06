@@ -204,6 +204,10 @@ def run_slate(
         # zero, and a run reporting a large number beside a small `written` is
         # a resume that worked.
         "llm_skipped": run.llm_skipped,
+        # PROP QUESTIONS THE REASONING PASS WAS NOT ASKED (ruling E1,
+        # 2026-09-06): counted so a slate whose LLM half is smaller than its
+        # statistical half reads as the ruling working, not as a failure.
+        "llm_routed_off": run.llm_routed_off,
         "snapshots": None,
     }
     for w in run.written:

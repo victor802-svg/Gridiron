@@ -2882,3 +2882,14 @@ def task_detail_words(detail: str | None) -> str | None:
     # identifier without the words around it (U4 re-drive, 2026-09-06).
     text = _DETAIL_BARE_FS.sub(lambda m: f"factor set {m.group(1)}", text)
     return text
+
+
+def llm_routed_off_line(n: int, gate: int, since: str) -> str:
+    """What an LLM prop category's gate line says once the reasoning pass no
+    longer asks that market (ruling E1, 2026-09-06). The count is final and
+    the sentence says so, rather than counting down to a gate that will never
+    be reached and reading as a stall."""
+    when = date_words_from_iso(since) or since
+    return (f"{n} of {gate} · the reasoning pass stopped asking this market "
+            f"{when}; nothing more will be written, so {n} settled is the "
+            f"final count")

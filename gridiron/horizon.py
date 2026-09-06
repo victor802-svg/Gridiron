@@ -135,7 +135,8 @@ def market_outlook(
     return out
 
 
-def _written_so_far(conn, sport, market_type, prop_type, season):
+def _written_so_far(conn, sport, market_type, prop_type, season,
+                    predictor: str = "statistical"):
     """(written, slates that wrote any, resolved) for one market this season."""
     sql = (
         "SELECT COUNT(*) AS written,"
@@ -143,11 +144,11 @@ def _written_so_far(conn, sport, market_type, prop_type, season):
         " SUM(CASE WHEN p.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
         " FROM predictions p JOIN games g ON g.id = p.game_id"
         " WHERE p.sport = ? AND g.season = ? AND p.market_type = ?"
-        " AND p.predictor = 'statistical'"
+        " AND p.predictor = ?"
         " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
         "                 WHERE v.prediction_id = p.id)"
     )
-    params = [sport, season, market_type]
+    params = [sport, season, market_type, predictor]
     if prop_type is not None:
         sql += " AND p.prop_type = ?"
         params.append(prop_type)
@@ -171,3 +172,28 @@ def zero_write_line(market: str, asked: int, floor: float) -> str:
         f"{language.humanise(market)}: 0 asked — model never reached "
         f"{round(floor * 100)}% at the market's line"
     )
+
+
+def llm_routed_off_outlook(conn: sqlite3.Connection, sport: str, market: str,
+                           season: int | None = None) -> dict:
+    """The outlook for an LLM category whose market the reasoning pass no
+    longer asks (ruling E1, 2026-09-06): the same shape as a retired market's,
+    so the Record draws it with the same component."""
+    from . import language
+    season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
+        if season is None else season
+    is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
+    written, slates_used, resolved = _written_so_far(
+        conn, sport, "prop" if is_prop else market, market if is_prop else None,
+        season, predictor="llm")
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    return {
+        "sport": sport, "market": market, "gate": gate, "resolved": resolved,
+        "written": written, "n": resolved, "slates_used": slates_used,
+        "slates_remaining": 0, "season_ends": season_ends(conn, sport, season),
+        "per_slate": None, "expected": resolved,
+        "expected_is_an_extrapolation": False,
+        "routed_off": {"since": config.LLM_ROUTING_DECLARED},
+        "reachable": resolved >= gate,
+        "message": language.llm_routed_off_line(resolved, gate, config.LLM_ROUTING_DECLARED),
+    }

@@ -867,6 +867,29 @@ EDGE_DISAGREEMENT_THRESHOLD = 0.05
 #: account -- it survives a machine move, and a rebuild cannot delete it
 #: because `.env` deliberately sits outside the bundle.
 ANTHROPIC_API_KEY = setting("ANTHROPIC_API_KEY")
+#: WHICH MARKETS THE REASONING PASS IS ASKED (ruling E1, 2026-09-06). Game
+#: markets only: the spread, the moneyline, the total, and for UFC the winner.
+#: No prop market is on the list. A prop question the statistical model answers
+#: is simply not put to the LLM -- COUNTED as routed off (`llm_routed_off` in
+#: the run and the task payload), never `degraded`: the absence is a ruling,
+#: not a failure. Existing LLM prop rows stand (LAW 3); their curves stop
+#: growing, and the Record says so in words rather than showing a stalled
+#: countdown. `audit.llm_routing_faults` refuses a prop market on this list.
+LLM_MARKETS_BY_SPORT: dict[str, tuple[str, ...]] = {
+    "nfl": ("spread", "moneyline", "total"),
+    "cfb": ("spread", "moneyline", "total"),
+    "nba": ("spread", "moneyline", "total"),
+    "mlb": ("spread", "moneyline", "total"),
+    "ufc": ("moneyline",),
+}
+LLM_ROUTING_DECLARED = "2026-09-06T00:00:00Z"
+
+
+def llm_routed(sport: str, market: str) -> bool:
+    """Is this market one the reasoning pass is asked about?"""
+    return market in LLM_MARKETS_BY_SPORT.get(sport, ())
+
+
 LLM_DAILY_USD_CAP = float(os.environ.get("GRIDIRON_LLM_DAILY_USD", "2.00"))
 LLM_REASONING_MODEL = os.environ.get("GRIDIRON_LLM_REASONING_MODEL", "claude-sonnet-4-5")
 LLM_CHEAP_MODEL = os.environ.get("GRIDIRON_LLM_CHEAP_MODEL", "claude-haiku-4-5-20251001")

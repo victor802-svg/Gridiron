@@ -1354,6 +1354,11 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
                 # covers both and two would invite a reader to add them.
                 if predictor == "statistical":
                     c["outlook"] = horizon.market_outlook(conn, sport, market)
+                elif not config.llm_routed(sport, market):
+                    # THE CURVE STOPS GROWING WITHOUT IMPLYING AN ERROR (ruling
+                    # E1, 2026-09-06): the reasoning pass no longer asks this
+                    # market, and the line says the count is final.
+                    c["outlook"] = horizon.llm_routed_off_outlook(conn, sport, market)
                 categories.append(c)
 
     headline_market = markets[0] if markets else "spread"

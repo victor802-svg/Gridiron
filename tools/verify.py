@@ -246,6 +246,8 @@ def step_2_guards() -> bool:
         ("one answer per question asked", audit.check_a_superseded_answer_is_dropped),
         ("the health panel speaks in words",
          lambda: audit.check_health_speaks_plain(_record_conn())),
+        ("the reasoning pass runs on game markets only",
+         audit.check_llm_runs_on_game_markets_only),
         ("no retired market was asked after its day",
          lambda: audit.check_no_retired_market_written(_record_conn())),
         ("no retired market is a tab on Picks", audit.check_no_retired_market_in_picks),

@@ -7028,6 +7028,33 @@ def plant_a_raw_exception_on_the_health_panel() -> Result:
                   "audit.health_detail_faults", True, faults[0])
 
 
+LAW_LLM_ROUTING = "THE REASONING PASS RUNS ON GAME MARKETS ONLY"
+
+
+def plant_a_prop_market_on_the_llm_roster() -> Result:
+    """Put a prop market on the LLM roster (ruling E1, 2026-09-06)."""
+    from gridiron import audit as _audit
+    if _audit.llm_routing_faults():
+        return Result(LAW_LLM_ROUTING, "a prop market routed to the reasoning pass",
+                      "audit.llm_routing_faults", False,
+                      "the shipped roster already disagrees with the ruling; fix "
+                      "that before trusting this planting")
+    original = dict(config.LLM_MARKETS_BY_SPORT)
+    try:
+        config.LLM_MARKETS_BY_SPORT["mlb"] = original["mlb"] + ("batter_hits",)
+        faults = _audit.llm_routing_faults()
+    finally:
+        config.LLM_MARKETS_BY_SPORT.clear()
+        config.LLM_MARKETS_BY_SPORT.update(original)
+    if not faults:
+        return Result(LAW_LLM_ROUTING, "a prop market routed to the reasoning pass",
+                      "audit.llm_routing_faults", False,
+                      "NOT CAUGHT - a prop market sits on the LLM roster and the "
+                      "pass would pay for it")
+    return Result(LAW_LLM_ROUTING, "a prop market routed to the reasoning pass",
+                  "audit.llm_routing_faults", True, faults[0])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -7163,6 +7190,7 @@ def main() -> int:
     results.append(plant_a_hidden_element_painted_by_its_class())
     results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_raw_exception_on_the_health_panel())
+    results.append(plant_a_prop_market_on_the_llm_roster())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())
