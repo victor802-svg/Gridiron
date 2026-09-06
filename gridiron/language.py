@@ -1955,7 +1955,7 @@ def colophon(meta: dict) -> str:
                 f" of {cover.get('n', 0):,}")
 
     ledger = meta.get("llm_ledger") or {}
-    bits.append(f"LLM spend today ${float(ledger.get('usd_spent') or 0):.4f}"
+    bits.append(f"LLM spend today ${float(ledger.get('usd_spent') or 0):.2f}"
                 f" of ${float(ledger.get('usd_cap') or 0):.2f}")
     # WHAT YOU ARE LOOKING AT, last, where a footer's provenance belongs.
     build = meta.get("build")
