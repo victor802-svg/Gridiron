@@ -125,7 +125,18 @@ const Gridiron = (function () {
   }
 
   async function fetchJSON(url) {
-    const res = await fetch(url);
+    let res;
+    try {
+      res = await fetch(url);
+    } catch (err) {
+      // THE NETWORK'S OWN WORDS ARE NOT WORDS (UI audit finding 8,
+      // 2026-09-05). "Failed to fetch" is what the browser says; the sentence
+      // shown is the server's, handed over at boot, with the offline bar's
+      // own text as the fallback before boot has finished.
+      const line = (state.meta && state.meta.unreachable_line) ||
+        ((document.getElementById('offline-bar') || {}).textContent || '').trim();
+      throw new Error(line || String(err));
+    }
     if (!res.ok) {
       let detail = res.statusText;
       try { detail = (await res.json()).detail || detail; } catch (e) { /* not json */ }
@@ -1906,6 +1917,7 @@ const Gridiron = (function () {
     const seq = ++weekSeq;
     const data = await fetchJSON(withSport('/api/week' + qs));
     if (seq !== weekSeq) return;
+    clearError();
     if (data.default_tier) defaultTier = data.default_tier;
     // THE TAB IS THE FILTER (UI audit finding 24, 2026-09-05). The cards were
     // filtered on the hidden Market select inside "This week", and the tab

@@ -2809,3 +2809,17 @@ def tier_status_line(label: str, proven: int, tiers: int, fullest: int,
         return f"{proven} of {tiers} {label} tiers proven"
     return (f"no {label} tier proven yet · fullest has {fullest} "
             f"of {needed} settled")
+
+
+def unreachable_line() -> str:
+    """What the page says when a request never reached the appliance.
+
+    THE BROWSER'S OWN WORDS ARE NOT WORDS (UI audit finding 8, 2026-09-05).
+    A tab tapped while offline put "Failed to fetch" in the error box -- a
+    string from the network layer, meaning nothing to a reader -- and it
+    stayed there after the connection returned and the next tap succeeded.
+    This sentence is handed to the page at boot, so it is there when the
+    network is not.
+    """
+    return ("The appliance could not be reached, so nothing here has been "
+            "refreshed. Check the connection and try again.")

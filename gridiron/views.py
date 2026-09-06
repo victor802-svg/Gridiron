@@ -131,6 +131,7 @@ def meta(conn: sqlite3.Connection, sport: str) -> dict:
         ),
         "minimum_for_edge_claim": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
         "minimum_for_bucket_point": config.MIN_SAMPLE_FOR_BUCKET_POINT,
+        "unreachable_line": language.unreachable_line(),
         "seasons_loaded": counts["seasons"],
         "games": counts["games"],
         "games_final": counts["games_final"],

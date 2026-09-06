@@ -169,6 +169,34 @@ def test_escape_closes_the_menu_after_a_choice_and_focus_stays_on_it(page):
     page.keyboard.press("Escape")
 
 
+def test_offline_says_so_in_words_and_a_later_success_clears_it(page):
+    """Go offline, tap a tab, come back, tap again. The box says the server's
+    sentence -- not "Failed to fetch" -- and clears when the next tap lands."""
+    _open_week(page)
+    full, _ = _full_and_empty(page)
+    _select(page, full)
+    line = page.evaluate("window.Gridiron.state.meta.unreachable_line")
+    assert line and "Failed to fetch" not in line
+    tabs = page.evaluate("[...document.querySelectorAll('.market-tab')].map(b => b.dataset.market)")
+    page.context.set_offline(True)
+    try:
+        page.evaluate("window.dispatchEvent(new Event('offline'))")
+        page.evaluate(f"document.querySelector(\".market-tab[data-market='{tabs[1]}']\").click()")
+        page.wait_for_timeout(1500)
+        assert page.is_visible("#offline-bar")
+        assert page.evaluate("document.getElementById('error').hidden") is False
+        shown = page.text_content("#error").strip()
+        assert shown == line, f"the error box says {shown!r}"
+    finally:
+        page.context.set_offline(False)
+    page.evaluate("window.dispatchEvent(new Event('online'))")
+    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+        page.evaluate(f"document.querySelector(\".market-tab[data-market='{tabs[0]}']\").click()")
+    page.wait_for_timeout(600)
+    assert page.evaluate("document.getElementById('error').hidden") is True, "the error survived the next success"
+    assert not page.is_visible("#offline-bar")
+
+
 def test_the_guard_names_a_fetch_that_paints_unchecked():
     from gridiron import audit, config
     js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
