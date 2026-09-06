@@ -70,6 +70,11 @@ class BlindRun:
     #: game markets only (ruling E1, 2026-09-06). COUNTED, never silent, and
     #: not a degradation: the absence is a ruling.
     llm_routed_off: int = 0
+    #: THE FROZEN DISTRIBUTION (AT_THE_LINE E3, 2026-09-06): how many game
+    #: questions carried one, and why the rest did not, by reason. Counted so a
+    #: slate's coverage for the at-the-line record is a fact, not an inference.
+    distributions_written: int = 0
+    distributions_absent: dict[str, int] = field(default_factory=dict)
 
     @property
     def prediction_ids(self) -> list[int]:
@@ -324,6 +329,21 @@ def predict_slate(
             continue
         try:
             fv, ctx = adapter.build_features(conn, q, cache)
+            # THE FROZEN DISTRIBUTION, INSIDE THE WINDOW (E3). From ratings and
+            # form alone; absent, never guessed; frozen with the row.
+            quantity = (None if q.market_type == "prop"
+                        else "total" if q.market == "total" else "home_margin")
+            distribution = (questions.blind_distribution(q.sport, quantity, ctx)
+                            if quantity else None)
+            if quantity:
+                if distribution is not None:
+                    run.distributions_written += 1
+                else:
+                    has_expectation = (getattr(ctx, "expected_total", None) is not None
+                                       if quantity == "total" else
+                                       getattr(ctx, "home_srs", getattr(ctx, "home_rating", None)) is not None)
+                    reason = "unmeasured spread" if has_expectation else "no expectation"
+                    run.distributions_absent[reason] = run.distributions_absent.get(reason, 0) + 1
         except KeyError as exc:
             run.skipped.append(f"{q.game_id} {q.subject}: {exc}")
             continue
@@ -406,6 +426,7 @@ def predict_slate(
                                    else None),
                 "model_form": stat.get("model_form"),
                 "absent_detail": stat["absent_detail"],
+                "margin_distribution": distribution,
             },
             degraded=llm_off if use_llm else None,
         )

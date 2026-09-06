@@ -1150,3 +1150,48 @@ def assert_market_active(q) -> None:
         raise RetiredMarket(
             f"{q.sport} {market} was retired on {entry['retired']} "
             f"({entry['reason']}); nothing is written in it since")
+
+
+def blind_distribution(sport: str, quantity: str, ctx) -> dict | None:
+    """The frozen distribution a game question carries (AT_THE_LINE E3,
+    2026-09-06): the model's own expectation for the home margin (the spread
+    and the winner questions) or the combined score (the total), and the
+    MEASURED spread of that expectation, as a normal family. Written inside
+    the blind window from ratings and form alone -- the same expectation the
+    rung is chosen against -- so no line is anywhere near it (LAW 1), and
+    frozen with the row (LAW 3). The caller names the QUANTITY, never a
+    market: this module chooses questions blind and does not name prices.
+
+    ABSENT, NEVER A GUESS. No rating, no expectation; no measured spread for
+    the pair (MLB, whose margins are counts; college football's total, whose
+    expectation carries no information), no distribution. The at-the-line
+    step (E4) evaluates only what is here.
+    """
+    if quantity == "total":
+        mean = getattr(ctx, "expected_total", None)
+        pair = "total"
+    elif quantity == "home_margin":
+        home = getattr(ctx, "home_srs", None)
+        away = getattr(ctx, "away_srs", None)
+        if home is None or away is None:
+            home = getattr(ctx, "home_rating", None)
+            away = getattr(ctx, "away_rating", None)
+        mean = (expected_margin(sport, home, away)
+                if home is not None and away is not None else None)
+        pair = "spread"
+    else:
+        return None
+    if mean is None:
+        return None
+    try:
+        sd = forecast_spread(sport, pair)
+    except UnmeasuredForecastSpread:
+        return None
+    return {
+        "quantity": quantity,
+        "family": "normal",
+        "mean": round(float(mean), 3),
+        "sd": sd,
+        "declared": FORECAST_SPREAD_DECLARED,
+        "written_blind": True,
+    }

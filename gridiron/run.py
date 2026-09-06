@@ -208,6 +208,10 @@ def run_slate(
         # 2026-09-06): counted so a slate whose LLM half is smaller than its
         # statistical half reads as the ruling working, not as a failure.
         "llm_routed_off": run.llm_routed_off,
+        # THE FROZEN DISTRIBUTIONS (E3): how many game questions carry one and
+        # why the rest do not. The at-the-line record's coverage starts here.
+        "distributions": {"written": run.distributions_written,
+                          "absent": dict(run.distributions_absent)},
         "snapshots": None,
     }
     for w in run.written:
