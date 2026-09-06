@@ -159,3 +159,48 @@ evidence nameable. SKIPPED and DECLINED remain ordinary outcomes.
 - "6 resolved predictions exist, none NFL" is a factual claim to VERIFY
   against the record before acting on it (MENTOR §4); the record on
   2026-09-05 held far more than six resolved rows.
+
+---
+
+## Operator rulings, received 2026-09-06 (saved verbatim at receipt)
+
+# Operator rulings on GRIDIRON_AT_THE_LINE (2026-09-06)
+
+Run the saved brief (docs/briefs/2026-09-06-at-the-line.md). Rulings on its
+three decisions, so nothing falls to a conservative default:
+
+**D1 — RULED: option (b).** Law 5 is amended by this dated operator ruling,
+narrowly: hypothetical unit-stake accounting against recorded market
+snapshots is permitted — "had every qualifying pick been backed at one
+unit, the paper return per sport is X", labelled hypothetical in the
+visible text, gated behind the same n=100 rule as the edge figure.
+Fee-adjusted comparison using the venue's published fee formula is
+included. Everything else Law 5 forbids stays forbidden: no staking
+advice, no bankroll, no bet recommendations, no placement, no account,
+no authentication to any venue. Write the amendment into CLAUDE.md the
+way the PrizePicks ruling was written.
+
+**D2 — RULED: NFL and CFB first** for the ratings-core work, in that
+order. The daily MLB runs keep priority on the scheduler regardless —
+those resolutions are the fastest n=100 available before spring.
+
+**D3 — RULED: ratified.** Kalshi is added as a read-only market source
+under the same terms as the PrizePicks ruling of 2026-09-02: published
+prices only, fetched only inside the market module, only after the
+prediction row exists, only from unauthenticated public endpoints. If
+the public data requires an account or key, the source is DROPPED and
+this ruling records that outcome. I hold a personal Kalshi account; it
+is mine, not the project's, and this codebase never touches it.
+
+All laws bind. Close-out table at the end, one row per phase plus one
+per decision.
+
+## How the rulings are read (written at receipt)
+
+- The rulings supersede the "How this brief is read" defaults above for D1,
+  D2 and D3. They are taken up after the UI audit's U4 closes out: a
+  complete item beats a half-built one, and the audit's re-drive was in
+  flight when they arrived.
+- The operator's personal Kalshi account is never touched, read, or
+  referenced by this codebase; only unauthenticated public endpoints, and
+  if none serve the data, the source is dropped and the outcome recorded.
