@@ -1329,6 +1329,31 @@ def _card_order(card: dict) -> tuple:
     return (card["abs_gap"], card.get("model_prob") or 0.0)
 
 
+def tier_table_for(conn: sqlite3.Connection, sport: str, *,
+                   market: str | None, forecaster: str | None) -> dict:
+    """The tier table for ONE market and ONE forecaster of one sport.
+
+    THE SELECT ABOVE THE TABLE DID NOTHING (UI audit finding 6, 2026-09-05):
+    it was filled with the sport's markets and never wired, and the forecaster
+    picker beside it set a variable nothing read. The scorecard carries one
+    table -- the headline market, the statistical forecaster -- and this is
+    the door for every other combination, through the same `tier_table` the
+    chips on the cards use, so the two cannot drift.
+    """
+    calibration.require_sport(sport, "views.tier_table_for")
+    markets = list(config.SPORT_MARKETS.get(sport, ()))
+    if market not in markets:
+        raise KeyError(market)
+    predictor = forecaster if forecaster in ("statistical", "llm") else "statistical"
+    table = calibration.tier_table(
+        conn, sport=sport,
+        market_type=calibration.market_type_of(sport, market),
+        prop_type=calibration.prop_type_of(sport, market),
+        predictor=predictor)
+    table["market"] = market
+    return table
+
+
 def available_weeks(conn: sqlite3.Connection, sport: str) -> list[dict]:
     calibration.require_sport(sport, "views.available_weeks")
     return [

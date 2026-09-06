@@ -398,6 +398,20 @@ def scorecard(sport: str | None = None) -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/tier-table")
+def tier_table(sport: str | None = None, market: str | None = None,
+               forecaster: str | None = None) -> dict:
+    """One market, one forecaster: the table the Record's select and picker name."""
+    chosen = _sport(sport)
+    try:
+        return views.tier_table_for(get_conn(), chosen, market=market, forecaster=forecaster)
+    except KeyError as exc:
+        raise HTTPException(status_code=404,
+                            detail=f"{chosen} asks no market called {market!r}") from exc
+    except calibration.MissingSampleSize as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/versions")
 def versions(sport: str | None = None) -> dict:
     """Factor-set records side by side, within one sport. Never summed."""

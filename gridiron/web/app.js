@@ -361,6 +361,12 @@ const Gridiron = (function () {
     renderOtherGates(sc);
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
+    const tierSel = document.getElementById('tier-market');
+    const shownMarket = (sc.tier_table || {}).prop_type || (sc.tier_table || {}).market_type;
+    if (tierSel && (tierSel.value !== shownMarket ||
+                    forecasterChoice !== ((sc.tier_table || {}).predictor || 'statistical'))) {
+      refreshTierTable().catch(showError);
+    }
     const market = document.getElementById('chart-market').value || 'spread';
     const predictor = document.getElementById('chart-predictor').value || 'statistical';
     const curve = findCurve(sc, market, predictor) || sc.headline;
@@ -539,7 +545,8 @@ const Gridiron = (function () {
       b.setAttribute('aria-pressed', String(f.forecaster === forecasterChoice));
       b.addEventListener('click', () => {
         forecasterChoice = f.forecaster;
-        renderRecord();
+        renderForecasterPicker(sc);
+        refreshTierTable().catch(showError);
       });
       host.appendChild(b);
     });
@@ -602,10 +609,37 @@ const Gridiron = (function () {
     panel.hidden = entries.length === 0;
   }
 
+  // WHICH TABLE THIS IS (UI audit finding 6). The market's label and the
+  // forecaster's label are the server's own words, placed here.
+  function forecasterLabel(f) {
+    const known = ((state.scorecard || {}).forecasters || []).find(x => x.forecaster === f);
+    return known ? known.label : f;
+  }
+  function tierTableFor(t) {
+    const market = t.market || t.prop_type || t.market_type;
+    if (!market) return '';
+    return marketLabel(market) + ', ' + forecasterLabel(t.predictor || 'statistical') + ' · ';
+  }
+
+  // THE SELECT AND THE PICKER FETCH THE TABLE THEY NAME (UI audit finding 6,
+  // 2026-09-05). The select was filled and never wired; the picker set a
+  // variable nothing read. Both now ask `/api/tier-table` for the market and
+  // forecaster chosen, through the same bucket arithmetic the cards use.
+  async function refreshTierTable() {
+    const sel = document.getElementById('tier-market');
+    const market = sel ? sel.value : '';
+    if (!market) return;
+    const seq = sportSeq;
+    const t = await fetchJSON(withSport('/api/tier-table',
+                                        { market: market, forecaster: forecasterChoice }));
+    if (stale(seq)) return;
+    renderTierTable(t);
+  }
+
   function renderTierTable(t) {
     if (!t) return;
     document.getElementById('tier-caption').textContent =
-      DASH + ' ' + int(t.n) + ' settled, by how sure the model said it was';
+      DASH + ' ' + tierTableFor(t) + int(t.n) + ' settled, by how sure the model said it was';
     document.getElementById('tier-headline').textContent = t.headline;
     document.getElementById('tier-bands-note').textContent = t.bands_note;
     // One line on whether these numbers are raw or earned, in the same voice
@@ -3311,6 +3345,8 @@ const Gridiron = (function () {
       document.getElementById(id).addEventListener('change', () => {
         try { renderRecord(); } catch (err) { showError(err); }
       }));
+    document.getElementById('tier-market').addEventListener('change', () =>
+      refreshTierTable().catch(showError));
     document.getElementById('week-picker').addEventListener('change', () =>
       renderWeek().catch(showError));
     document.getElementById('week-market').addEventListener('change', event => {
