@@ -7000,6 +7000,34 @@ def plant_a_late_answer_that_still_paints() -> Result:
                   "audit.render_guard_faults", True, faults[0])
 
 
+LAW_HEALTH_WORDS = "THE HEALTH PANEL SPEAKS IN WORDS"
+
+
+def plant_a_raw_exception_on_the_health_panel() -> Result:
+    """Hand the Health panel a task detail exactly as the exception wrote it.
+
+    THE STRING THAT SHIPPED (UI audit finding 11, 2026-09-05), with its class
+    name, its slate key and its ISO stamp, bypassing `task_detail_words`.
+    """
+    from gridiron import audit as _audit, language as _language
+    raw = ("SlateAlreadyAnswered: ufc 2026 slate 20260905 already has 84 forecasts "
+           "in every market it asks (distance, moneyline, rounds), written "
+           "2026-09-04T02:04 under factor set 'fs2'. A slate is answered once.")
+    if _audit.health_detail_faults({"tasks": [{"task": "catch-up", "last_detail": _language.task_detail_words(raw), "missed": []}]}):
+        return Result(LAW_HEALTH_WORDS, "a raw exception on the Health panel",
+                      "audit.health_detail_faults", False,
+                      "the humanised detail itself trips the scan; fix "
+                      "task_detail_words before trusting this planting")
+    faults = _audit.health_detail_faults({"tasks": [{"task": "catch-up", "last_detail": raw, "missed": []}]})
+    if not faults:
+        return Result(LAW_HEALTH_WORDS, "a raw exception on the Health panel",
+                      "audit.health_detail_faults", False,
+                      "NOT CAUGHT - a class name, a slate key and an ISO stamp "
+                      "reach the Settings page unremarked")
+    return Result(LAW_HEALTH_WORDS, "a raw exception on the Health panel",
+                  "audit.health_detail_faults", True, faults[0])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -7134,6 +7162,7 @@ def main() -> int:
     results.append(plant_a_transition_longer_than_the_ceiling())
     results.append(plant_a_hidden_element_painted_by_its_class())
     results.append(plant_a_late_answer_that_still_paints())
+    results.append(plant_a_raw_exception_on_the_health_panel())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

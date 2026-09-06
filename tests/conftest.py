@@ -555,7 +555,28 @@ def _build_world(conn) -> None:
     # a settled card shows its verdict instead, per the approved mockup.
     run.run_week(conn, 2025, 18, include_props=True, use_llm=False)
     _seed_llm_row_with_a_code_name(conn)
+    _seed_a_failed_run_with_the_records_vocabulary(conn)
     conn.commit()
+
+
+def _seed_a_failed_run_with_the_records_vocabulary(conn) -> None:
+    """One task run that failed with the exception's own words.
+
+    THE SHAPE THE SETTINGS SCAN NEVER SAW (UI audit finding 11, 2026-09-05).
+    The live Health panel read "SlateAlreadyAnswered: ufc 2026 slate 20260905
+    already has 84 forecasts ... written 2026-09-04T02:04 under factor set
+    'fs2'" -- a class name, a slate key and an ISO stamp -- and the plain-words
+    scan of the route passed for weeks because no fixture run had failed.
+    """
+    stamp = db.utcnow()
+    conn.execute(
+        "INSERT INTO task_runs (task, started_utc, finished_utc, result, detail, payload_json)"
+        " VALUES (?, ?, ?, 'failed', ?, '{}')",
+        ("catch-up", stamp, stamp,
+         "SlateAlreadyAnswered: cfb 2026 slate 20260905 already has 302 forecasts "
+         "in every market it asks (moneyline, spread, total), written "
+         "2026-09-01T06:58 under factor set 'fs2'. A slate is answered once. "
+         "Nothing was written."))
 
 
 def _seed_llm_row_with_a_code_name(conn) -> None:

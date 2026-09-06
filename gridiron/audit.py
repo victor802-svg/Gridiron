@@ -5138,3 +5138,36 @@ def check_a_superseded_answer_is_dropped(root: Path | None = None) -> None:
     faults = render_guard_faults((base / "app.js").read_text(encoding="utf-8"))
     if faults:
         raise LawViolation("ONE ANSWER PER QUESTION ASKED:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE HEALTH PANEL SPEAKS IN WORDS (UI audit finding 11, 2026-09-05)
+# ---------------------------------------------------------------------------
+#
+# A task that fails records `f"{type(exc).__name__}: {exc}"`, and the Settings
+# page placed that as it was: a Python class name, a slate key and an ISO
+# stamp in visible text. The rendered-page scan covers the route and never saw
+# it, because the fixture world had no failed run. `language.task_detail_words`
+# is the door; this check walks the health payload the page is handed and runs
+# every detail through the plain-words scan.
+
+
+def health_detail_faults(health: dict) -> list[str]:
+    """Which task details on the Health panel are not plain words?"""
+    faults: list[str] = []
+    for entry in (health or {}).get("tasks", []):
+        details = [entry.get("last_detail")] + [m.get("detail") for m in entry.get("missed", [])]
+        for detail in details:
+            if not detail:
+                continue
+            for hit in plain_words_violations(str(detail)):
+                faults.append(f"{entry.get('task')}: {hit}")
+    return faults
+
+
+def check_health_speaks_plain(conn) -> None:
+    """Raise unless every task detail the Settings page shows is plain words."""
+    from . import tasks
+    faults = health_detail_faults(tasks.status(conn))
+    if faults:
+        raise LawViolation("THE HEALTH PANEL SPEAKS IN WORDS:" + _NL2 + _NL2.join(faults))

@@ -18,6 +18,8 @@ matter of remembering.
 
 from __future__ import annotations
 
+import re as _re
+
 from . import config as _config
 from . import subjects as _subjects
 
@@ -2843,3 +2845,36 @@ def bucket_countdown_line(label: str, n: int, gate: int) -> str:
         return (f"{label} bucket: {n:,} settled · past the {gate:,} needed, "
                 "so calibration speaks here")
     return f"{label} bucket: {n:,} of {gate:,} · {gate - n:,} more before calibration speaks"
+
+
+_DETAIL_CLASS = _re.compile(r"^[A-Z][A-Za-z0-9]*(?:Error|Exception|Answered|Refused|Missing|Failure)?:\s+")
+_DETAIL_SLATE_KEY = _re.compile(r"\bslate (\d{4})(\d{2})(\d{2})\b")
+_DETAIL_STAMP = _re.compile(r"\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?Z?\b")
+_DETAIL_FACTOR_SET = _re.compile(r"factor set '?fs(\d+)'?")
+
+
+def task_detail_words(detail: str | None) -> str | None:
+    """A task's recorded detail, as a reader would say it.
+
+    THE HEALTH PANEL PRINTED A PYTHON EXCEPTION (UI audit finding 11,
+    2026-09-05): "SlateAlreadyAnswered: ufc 2026 slate 20260905 already has 84
+    forecasts ... written 2026-09-04T02:04 under factor set 'fs2'". The class
+    name, the slate key and the ISO stamp are the record's vocabulary, and
+    `run_task` stores them as the exception wrote them; this is the door they
+    pass through on the way to a page, and it leaves the sentence's meaning
+    alone.
+    """
+    if not detail:
+        return detail
+    # THE ABSOLUTE DAY, never "Today": a task record is read back days later.
+    def day_words(y, mo, d):
+        return f"{int(d)} {MONTH_NAMES[int(mo) - 1]} {y}"
+
+    text = _DETAIL_CLASS.sub("", detail, count=1)
+    text = _DETAIL_SLATE_KEY.sub(
+        lambda m: "the slate of " + day_words(m.group(1), m.group(2), m.group(3)), text)
+    text = _DETAIL_STAMP.sub(
+        lambda m: day_words(m.group(1), m.group(2), m.group(3)) + f" at {m.group(4)}:{m.group(5)} UTC",
+        text)
+    text = _DETAIL_FACTOR_SET.sub(lambda m: f"factor set {m.group(1)}", text)
+    return text

@@ -915,8 +915,9 @@ def status(conn: sqlite3.Connection) -> dict:
             "every_hours": spec.every_hours,
             "last_run_utc": last["started_utc"] if last else None,
             "last_result": last["result"] if last else None,
-            "last_detail": last["detail"] if last else None,
-            "missed": [dict(m) for m in missed],
+            "last_detail": language.task_detail_words(last["detail"]) if last else None,
+            "missed": [{**dict(m), "detail": language.task_detail_words(m["detail"])}
+                       for m in missed],
             "failures_all_time": failures,
             # A scheduled predict that ran statistical-only because the LLM
             # budget was spent is not a failure, but it IS a different run and
