@@ -2495,11 +2495,8 @@ def _record_movement(conn: sqlite3.Connection, sport: str, just_settled: int) ->
             # The countdown line, right-aligned in the design and deliberately
             # unglamorous: it is the honest distance to being able to say
             # anything at all.
-            "countdown": (
-                f"{label} bucket: {n} of {config.MIN_SAMPLE_FOR_EDGE_CLAIM}"
-                f" · {max(0, config.MIN_SAMPLE_FOR_EDGE_CLAIM - n)} more"
-                " before calibration speaks"
-            ),
+            "countdown": language.bucket_countdown_line(
+                label, n, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
         })
 
     return {

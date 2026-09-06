@@ -2831,3 +2831,15 @@ def settled_count_line(n: int) -> str:
     because settled picks leave the grid once a slate is not live and nothing
     said where the other 13 had gone."""
     return f"{n:,} settled"
+
+
+def bucket_countdown_line(label: str, n: int, gate: int) -> str:
+    """"50-60% bucket: 30 of 100 · 70 more before calibration speaks", and past
+    the gate "50-60% bucket: 158 settled · past the 100 needed, so calibration
+    speaks here". The first shape used to keep going -- "158 of 100 · 0 more
+    before calibration speaks" -- which says the gate is still ahead when it is
+    behind (UI audit finding 10, 2026-09-05). Tested AT the gate."""
+    if n >= gate:
+        return (f"{label} bucket: {n:,} settled · past the {gate:,} needed, "
+                "so calibration speaks here")
+    return f"{label} bucket: {n:,} of {gate:,} · {gate - n:,} more before calibration speaks"
