@@ -435,7 +435,9 @@ table.grid td.wide {
   font-size: 13px; letter-spacing: 0.14em; padding: 2px 9px;
   border-radius: 5px; margin-top: 8px;
 }
-.tier.lean { color: var(--faint); border: 1px solid var(--line); }
+/* --muted, not --faint: --faint on a card is 4.36:1, under the 4.5 a
+   small label needs (UI audit finding 21, 2026-09-05). */
+.tier.lean { color: var(--muted); border: 1px solid var(--line); }
 .tier.solid { color: var(--chrome); border: 1px solid var(--muted); }
 .tier.strong { color: var(--ink); background: var(--chrome); }
 /* AN UNPROVEN BAND IS A CLAIM, NOT A RECORD (2026-09-04).
