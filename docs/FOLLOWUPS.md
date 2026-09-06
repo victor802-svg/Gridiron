@@ -615,3 +615,45 @@ Three things to decide, none done here:
 - **A retired market is still trained.** Its fit is refreshed by
   `baseline.train_all` although nothing asks it; harmless, and deletion is not
   retirement, but a reader of the fit log may wonder.
+
+## 2026-09-05 — the UI audit (drive it like a person)
+
+- **One driver per server, and measure click-to-paint.** Two headless
+  browsers against one snapshot server inflated latency enough to fake a
+  dozen "the click did not take" findings; each vanished when re-driven
+  alone. The next drive records the time from click to the DOM changing, so
+  a slow control is a measured finding and not a guess.
+- **A test that passes on the unfixed code is not a test.** The race test's
+  first form delayed requests that had not been sent yet; those went out with
+  the new sport and the test passed vacuously. Every fix in this session was
+  proved by running its test on the unfixed code first; keep doing that.
+- **`pytest | tail` masks the exit code.** A commit landed with a red test
+  because of it. The chains now keep `$?`; the note in memory already said so
+  and was ignored once. Consider a pre-commit hook that runs the test named
+  in the commit message.
+- **The Write tool says "updated" when a file existed.** A tracked test file
+  was overwritten and restored from HEAD; check for an existing path before
+  naming a new test module.
+- **The plain-words scan of the Settings route was passing on an empty
+  shape.** The browser world had never had a failed task run, so the raw
+  exception on the Health panel was invisible to a scan that covered the
+  route. The fixture now carries one; the general lesson is that a route scan
+  is only as good as the fixture's states, and the fixture should hold one of
+  every state the record can be in (a failed run, a voided slate, a bucket at
+  the gate, a game past midnight UTC, an empty menu).
+- **Chrome keeps layout boxes under `content-visibility: hidden`** (a closed
+  `<details>`), so a box-based overlap or hit-test measurement must consult
+  `checkVisibility()`; inline boxes that wrap report union rects and only
+  block boxes can overlap for real; a keyboard walk must focus the first link
+  explicitly or it starts from the last click.
+- **The browser's HTTP cache answered `/login` for the server.** A
+  `FileResponse` carries validators, and a navigation was served the cached
+  form for a valid session; the login page is `no-store` now. Any other page
+  whose answer depends on the session should be checked for the same.
+- **DECISIONS awaiting a ruling** (from the findings document): the retired
+  market's picks leading MLB on the day of retirement; the sport in the
+  address; `SlateAlreadyAnswered` recorded as `failed`; the team-name map
+  ("LA"); the tap lost during arrival; settled picks kept on a finished
+  slate rather than counted.
+- **GRIDIRON_AT_THE_LINE** is saved and queued behind this session
+  (`docs/briefs/2026-09-06-at-the-line.md`); D1–D3 are the operator's.
