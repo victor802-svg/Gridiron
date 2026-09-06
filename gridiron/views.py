@@ -876,6 +876,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # shape the one-forecaster-per-list rule already forbids for the
         # LLM.
         "early_view": early_view,
+        # AN EMPTY SLATE SAYS WHY EVEN WHEN THE WEEK WAS PINNED (finding 13):
+        # the picker pins a week, and the season-start sentence used to come
+        # only on the default request.
+        "message": None if rows else _empty_slate_message(conn, sport),
         "has_early_view": bool(replaced_ids),
         "default_tier": config.PICKS_DEFAULT_TIER,
         "tier_caveat": _least_tested_line(conn, sport),
@@ -893,7 +897,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # holding is the system working (ruling R4).
         "below_floor": _below_floor(conn, sport, wk),
         "floor": config.PROPS_MIN_CLAIM,
-        "quiet_markets": _quiet_markets(conn, sport, season, wk) if wk else [],
+        # A QUIET MARKET IS A FACT ABOUT A SLATE THAT ASKED QUESTIONS. On a
+        # slate that asked none, "0 asked -- model never reached 70%" is a
+        # reason that is not true (finding 13).
+        "quiet_markets": _quiet_markets(conn, sport, season, wk) if (wk and rows) else [],
         # THE MARKET TABS (R4), from the sport's DECLARED list and never a
         # hardcoded row: a fifth market appears the day it is declared.
         "market_tabs": _market_tabs(sport, cards),
@@ -1400,9 +1407,15 @@ def available_weeks(conn: sqlite3.Connection, sport: str) -> list[dict]:
              r["season"], r["week"], r["n"],
              config.SPORT_SLATE_WORD.get(sport, "week"), r["league_date"])}
         for r in conn.execute(
+            # FORECASTS, NOT ROWS (UI audit finding 13, 2026-09-05): the NBA
+            # picker read "Week 1, 2026 (47)" beside "0 picks" because it
+            # counted 47 voided rows. A voided row is not a forecast anywhere
+            # else on the page, and a slate with none is not offered.
             "SELECT g.season, g.week, COUNT(*) AS n,"
             " MIN(g.league_date) AS league_date FROM predictions p"
             " JOIN games g ON g.id = p.game_id WHERE p.sport = ?"
+            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                   WHERE v.prediction_id = p.id)"
             " GROUP BY g.season, g.week ORDER BY g.season DESC, g.week DESC",
             (sport,),
         )
