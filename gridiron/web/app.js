@@ -2648,6 +2648,18 @@ const Gridiron = (function () {
         return;
       }
       said.textContent = body.line || 'saved';
+      // THE FACE FOLLOWS THE SAVE (UI audit finding 5, 2026-09-05). The line
+      // said "changed from 1 to 0" while the switch still read "on"; a second
+      // click said "is already 0" and it still read "on".
+      const control = row.querySelector('.set-switch, input.inp');
+      const saved = (body.value === undefined || body.value === null) ? String(value) : String(body.value);
+      if (control && control.classList.contains('set-switch')) {
+        const on = saved === '1';
+        control.textContent = on ? 'on' : 'off';
+        control.setAttribute('aria-pressed', String(on));
+      } else if (control) {
+        control.value = saved;
+      }
       renderRecentChanges(body.recent);
     } catch (err) {
       said.textContent = 'the change did not reach the appliance';
