@@ -1453,12 +1453,17 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    class of pick rather than a differently-shaped question. */
 .tier-name { color: var(--faint); }
 
-/* AT THE VENUE'S LINE (E4, 2026-09-06). Set like the rate line beneath it:
-   this is a second reading of the same forecast, not a louder one. */
+/* AT THE VENUE'S LINE (E4, 2026-09-06). Set like the numbers line above it:
+   this is a second reading of the same forecast, not a louder one.
+
+   IT WAS PAINTED IN `--ink` FIRST, which in this palette is the PAGE, not the
+   text on it -- the sentence rendered at #0F1114 on a #171A1F card and was
+   invisible in the screenshot that proved the feature worked. The render is
+   what caught it; no test compares a token to the surface it lands on. */
 .card-at-the-line {
   margin: 0.35rem 0 0;
-  color: var(--ink);
-  font-size: 0.86rem;
+  color: var(--muted);
+  font-size: var(--t-body);
   line-height: 1.45;
 }
 

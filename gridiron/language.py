@@ -2242,7 +2242,7 @@ def closest_verdict_line(name: str | None, remaining: int,
 
 
 def rail_numbers_line(model_prob: float, market_prob: float | None,
-                      gap: float | None) -> str:
+                      gap: float | None, *, venue_line: bool = False) -> str:
     """"The model says 53%. The market implies 41% -- a 12 point disagreement."
 
     IN WORDS, NOT A PICTURE (GRIDIRON_16 R3). A dot-and-span graphic stood
@@ -2255,6 +2255,14 @@ def rail_numbers_line(model_prob: float, market_prob: float | None,
     """
     model = f"The model says {round(model_prob * 100)}%."
     if market_prob is None:
+        # "NO LINE" MUST NOT CONTRADICT THE LINE UNDERNEATH IT (E4,
+        # 2026-09-06). The published-line sources price few of these markets,
+        # and this sentence said so in absolute terms -- which, on a card that
+        # now carries the venue's own number two lines below, read as the page
+        # disagreeing with itself. It was visible in the first render.
+        if venue_line:
+            return (f"{model} No published line prices this market, so the "
+                    f"venue's own number is the comparison below.")
         return f"{model} There is no line to compare it with."
     market = f"The market implies {round(market_prob * 100)}%"
     if gap is None:
@@ -2917,12 +2925,22 @@ def at_the_line_side_words(market: str, line: float | None,
 
 def at_the_line_line(market: str, line: float | None, model_prob: float,
                      venue_implied: float, n: int, *, home: str | None = None) -> str:
-    """One claim as a sentence: what the model says, what the price says, and
-    how many have settled so far."""
+    """One claim as a sentence: what the model's margin forecast says about the
+    venue's number, what the price says about it, and how many have settled.
+
+    THE SENTENCE NAMES WHICH FORECAST IT IS, and that is not a flourish. A pick
+    card already carries a percentage -- the fitted model's answer to the
+    question the model chose -- and this is a DIFFERENT calculation: the frozen
+    distribution of the margin, read at a number the venue chose. On a card
+    where the two numbers sit inches apart and disagree, an unlabelled second
+    percentage reads as a contradiction rather than as a second reading, which
+    was visible the first time this line was rendered.
+    """
     what = at_the_line_side_words(market, line, home)
-    return (f"the model gives {what} a {round(model_prob * 100)}% chance; "
-            f"the venue's price implies {round(venue_implied * 100)}%; "
-            f"{n} settled so far")
+    forecast = "total" if market == "total" else "margin"
+    return (f"from the model's {forecast} forecast, {what} is a "
+            f"{round(model_prob * 100)}% chance; the venue's price implies "
+            f"{round(venue_implied * 100)}%; {n} settled so far")
 
 
 def at_the_line_gate_line(n: int, gate: int) -> str:
@@ -2966,17 +2984,26 @@ def at_the_line_coverage_line(market: str, with_claim: int, n: int) -> str:
 # a reader who stops after four words has still read the true part.
 
 def paper_ledger_line(ledger: dict) -> str:
-    """One market's hypothetical one-unit record, said in words."""
+    """One market's hypothetical one-unit record, said in words.
+
+    THE LABEL LEADS AND THE MARKET FOLLOWS IT. The ruling requires the word
+    "hypothetical" wherever the figure appears, so it is the first word; the
+    market comes next because three of these sentences sit under one another on
+    the Record page and the first render of them said "one unit carried on each
+    of 130 settled comparisons" three times over with nothing to tell a reader
+    which market each one was about.
+    """
     gate = ledger.get("minimum_for_a_claim")
+    market = humanise(ledger.get("market"))
     n = ledger.get("n", 0)
     if not ledger.get("renderable"):
-        return (f"hypothetical, and not shown yet: {n} of {gate} settled "
-                f"comparisons where the model and the price disagreed · "
-                f"{ledger.get('shortfall', gate)} more before any figure here "
+        return (f"hypothetical, {market}, and not shown yet: {n} of {gate} "
+                f"settled comparisons where the model and the price disagreed "
+                f"· {ledger.get('shortfall', gate)} more before any figure here "
                 f"is shown at all")
     units = ledger.get("units")
     after = ledger.get("units_after_fees")
-    return (f"hypothetical: one unit carried on each of {n} settled "
+    return (f"hypothetical, {market}: one unit carried on each of {n} settled "
             f"comparisons where the model and the price disagreed comes to "
             f"{units:+.2f} units, or {after:+.2f} after the venue's fee")
 

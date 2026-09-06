@@ -657,3 +657,40 @@ Three things to decide, none done here:
   slate rather than counted.
 - **GRIDIRON_AT_THE_LINE** is saved and queued behind this session
   (`docs/briefs/2026-09-06-at-the-line.md`); D1–D3 are the operator's.
+
+## 2026-09-06 — at the venue's line
+
+GRIDIRON_AT_THE_LINE ran (brief `docs/briefs/2026-09-06-at-the-line.md`,
+close-out `docs/closeouts/2026-09-06-at-the-line.md`). What it leaves behind:
+
+- **A card can carry two probabilities for the same event.** The fitted model
+  answers the question the model chose; the frozen distribution, read at the
+  venue's number, answers the venue's. They disagree, sometimes widely, and
+  both are the model's. The sentence names which is which, but the real
+  question is whether the two should be reconciled -- a fitted model whose own
+  margin forecast contradicts it is worth measuring, and the pair is stored on
+  every claim now, so it can be.
+- **The at-the-line gate is always further away than the rung gate** for the
+  same market: a claim needs a ladder and a price as well as a forecast. The
+  pace line says so per market; if a market's coverage stays low its gate may
+  never open, and that is a coverage finding rather than a quiet stall.
+- **The venue's fee formula is unverified.** The schedule page answered HTTP
+  429 on the day. Fetch it once and either confirm the formula or correct it;
+  every figure that uses it currently says it is unchecked.
+- **The terms of use were never read**, for the same reason. If the public
+  data ever requires an account, the source is DROPPED under the ruling rather
+  than adapted to.
+- **A level game leaves a winner claim open forever.** The rung record voids
+  those; a claim has no void row, so the settle count reports them every run.
+  If that number ever grows past a handful, the claim table wants the same
+  terminal void the predictions have.
+- **The near-start venue look inherits the drift pass's eligibility.** A game
+  with no first snapshot gets no second look and therefore no near-start
+  ladder, so a market ESPN does not price gets one venue reading rather than
+  two. Worth splitting if the two records start disagreeing about which games
+  they cover.
+- **Look at the render.** Three defects shipped past a green suite, every
+  planting and the full gate: a card line painted in the page's own colour, a
+  sentence contradicting the line two rows beneath it, and three ledger rows
+  with identical words. None was reachable by a test; all three were obvious
+  in a screenshot.

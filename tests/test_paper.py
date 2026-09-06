@@ -88,6 +88,7 @@ def test_the_ledger_is_absent_below_the_gate_and_says_how_far_short(tmp_path):
     assert "units" not in led and "units_after_fees" not in led
     words = language.paper_ledger_line(led)
     assert words.startswith("hypothetical") and "4 of 100" in words
+    assert "point spread" in words   # which market, said on the row itself
 
 
 def test_past_the_gate_the_figures_appear_with_the_fee_beside_them(tmp_path, monkeypatch):
@@ -104,7 +105,8 @@ def test_past_the_gate_the_figures_appear_with_the_fee_beside_them(tmp_path, mon
     assert led["units_after_fees"] < led["units"]
     assert led["units_per_forecast"] == pytest.approx(led["units"] / 4, abs=1e-6)
     words = language.paper_ledger_line(led)
-    assert words.startswith("hypothetical:") and "after the venue's fee" in words
+    assert words.startswith("hypothetical, point spread:")
+    assert "after the venue's fee" in words
     assert "not been checked" in language.paper_fee_line(led)
 
 

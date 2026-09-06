@@ -277,7 +277,11 @@ def test_the_words_beside_a_pick_are_a_forecast_and_carry_their_sample(tmp_path)
     pid = conn.execute("SELECT id FROM predictions").fetchone()[0]
     beside = views._at_the_line(conn, "nfl", [pid], {})
     words = beside[pid]["words"]
-    assert "the model gives" in words and "the venue's price implies" in words
+    # THE SENTENCE NAMES WHICH FORECAST IT IS. The card already shows the fitted
+    # model's own percentage; an unlabelled second one inches away reads as a
+    # contradiction rather than a second reading of the same game.
+    assert "from the model's margin forecast" in words
+    assert "the venue's price implies" in words
     assert beside[pid]["n"] == 0 and "0 of 100" in beside[pid]["gate_line"]
     assert audit.advice_word_faults(words) == []
     assert audit.plain_words_violations(words) == []

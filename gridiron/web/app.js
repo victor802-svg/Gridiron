@@ -657,7 +657,10 @@ const Gridiron = (function () {
       requireN(row, 'hypothetical unit ledger');
       const line = el('div', 'gate-row');
       line.appendChild(el('div', 'gate-name', row.words));
-      line.appendChild(el('div', 'gate-why', row.fee_words));
+      // THE FEE'S PROVENANCE ONLY WHERE THERE IS A FEE-ADJUSTED FIGURE. Under a
+      // row that is still counting it repeated a paragraph about an unverified
+      // formula three times and said nothing about the record.
+      if (row.renderable) line.appendChild(el('div', 'gate-why', row.fee_words));
       host.appendChild(line);
     });
     (atl.coverage || []).forEach(row => {

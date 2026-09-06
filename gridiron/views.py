@@ -841,7 +841,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             cards[-1].get("shown_prob") if cards[-1].get("shown_prob") is not None
             else r["model_prob"],
             implied,
-            cards[-1].get("gap"))
+            cards[-1].get("gap"),
+            venue_line=bool(cards[-1].get("at_the_line")))
         # WHERE IT IS PLAYED, for the selected-pick subline. None when the
         # venue was never recorded, and the subline simply has one fewer part.
         cards[-1]["venue"] = venues.get(r["home"])

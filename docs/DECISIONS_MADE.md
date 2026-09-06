@@ -740,3 +740,30 @@ schedule before any fee-adjusted figure could clear the gate.
 none NFL" is not the record: it held 523 settled rows on 2026-09-05 (MLB 286,
 NCAAF 135, UFC 102, NFL 0). NFL is the sport with nothing resolved, which is
 what the ruling on order answers.
+
+## 2026-09-06 — decisions taken while executing GRIDIRON_AT_THE_LINE
+
+The rulings above are the operator's. These are the ordinary decisions the work
+needed and nobody was there to be asked for; the close-out
+(`docs/closeouts/2026-09-06-at-the-line.md`) lists them all, and three are
+worth their own entry here because a later reader will otherwise wonder.
+
+**The venue's quotes are not market snapshots.** `market_snapshots` holds one
+line per prediction per look; a venue quotes a ladder of twenty-five strikes
+per game. They went into `venue_quotes`, a table of their own with the venue
+named on every row and the same LAW 1 trigger, because a snapshot count that
+silently included ladder rows would disagree with every figure built on it.
+
+**A claim is made on one fixed proposition, never on a chosen side.** The home
+side of a spread, the over of a total, the home side of a winner market. This
+is what makes the advice scan a check rather than a hope: there is no side to
+recommend in a record that only ever states two probabilities for the same
+question. It also fixes the sign convention for the whole record, so a later
+figure cannot quietly flip it.
+
+**The rung compared against is the strike priced nearest an even chance.**
+Declared and dated before any claim was written. The alternative — the strike
+nearest our own asked line, or the one where the model looks best — would
+choose the comparison after seeing the answer, which is the same error as
+fitting a factor to the data that will score it.
+
