@@ -128,6 +128,47 @@ def test_a_double_clicked_tab_renders_each_pick_once(page):
     page.wait_for_timeout(400)
 
 
+def test_escape_closes_the_menu_after_a_choice_and_focus_stays_on_it(page):
+    """A person opens View, chooses the other forecaster, and presses Escape.
+    The choice re-renders the toggles; the menu must still close and focus
+    must be on the chosen toggle, not lost to the body."""
+    _open_week(page)
+    full, _ = _full_and_empty(page)
+    _select(page, full)
+    page.click("#week-view-button")
+    page.wait_for_timeout(150)
+    other = page.evaluate("(() => { const b = [...document.querySelectorAll('#week-forecaster-seg button')].find(b => b.getAttribute('aria-pressed') !== 'true' && !b.disabled); return b ? b.dataset.forecaster : null; })()")
+    assert other is not None, "the fixture slate offers only one forecaster"
+    with page.expect_response(lambda r: "/api/week" in r.url and f"forecaster={other}" in r.url, timeout=20000):
+        page.click(f"#week-forecaster-seg button[data-forecaster='{other}']")
+    page.wait_for_timeout(600)
+    assert not page.evaluate("document.getElementById('week-view-panel').hidden"), "the menu closed on the choice"
+    focused = page.evaluate("(() => { const e = document.activeElement; return e && e.closest('#week-forecaster-seg') ? e.dataset.forecaster : (e ? e.tagName : null); })()")
+    assert focused == other, f"after the choice, focus is on {focused!r}, not the chosen toggle"
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(150)
+    assert page.evaluate("document.getElementById('week-view-panel').hidden") is True, "Escape did not close the menu after a choice"
+    assert page.evaluate("document.activeElement.id") == "week-view-button"
+    # Escape with the menu open and focus elsewhere on the page closes it too.
+    page.click("#week-view-button")
+    page.click("#week-headline")
+    page.wait_for_timeout(100)
+    if page.evaluate("document.getElementById('week-view-panel').hidden"):
+        page.click("#week-view-button")
+    page.evaluate("document.body.focus()")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(150)
+    assert page.evaluate("document.getElementById('week-view-panel').hidden") is True
+    # back to the default forecaster for the tests that follow
+    page.click("#week-view-button")
+    page.wait_for_timeout(150)
+    first = page.evaluate("document.querySelector('#week-forecaster-seg button').dataset.forecaster")
+    if first != other:
+        with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+            page.click(f"#week-forecaster-seg button[data-forecaster='{first}']")
+    page.keyboard.press("Escape")
+
+
 def test_the_guard_names_a_fetch_that_paints_unchecked():
     from gridiron import audit, config
     js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")

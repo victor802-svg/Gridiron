@@ -1703,6 +1703,11 @@ const Gridiron = (function () {
     viewChoice.set(state.sport, Object.assign({}, currentView(), patch));
   }
 
+  // WHICH TOGGLE WAS CHOSEN, so that after the slate re-renders -- and the
+  // toggles with it -- focus lands on the new copy of the pressed button
+  // rather than on the body (UI audit finding 4).
+  let viewFocus = null;
+
   function renderPassFilter(data) {
     const host = document.getElementById('week-pass-seg');
     if (!host) return;
@@ -1721,6 +1726,7 @@ const Gridiron = (function () {
       b.addEventListener('click', () => {
         if (b.disabled) return;
         setView({ early: pair[0] });
+        viewFocus = 'week-pass-seg';
         renderWeek();
       });
       host.appendChild(b);
@@ -1741,6 +1747,7 @@ const Gridiron = (function () {
       b.addEventListener('click', () => {
         if (currentView().forecaster === f.forecaster) return;
         setView({ forecaster: f.forecaster });
+        viewFocus = 'week-forecaster-seg';
         renderWeek();
       });
       host.appendChild(b);
@@ -1779,7 +1786,10 @@ const Gridiron = (function () {
     document.addEventListener('click', event => {
       if (!panel.hidden && !menu.contains(event.target)) setViewMenuOpen(false);
     });
-    menu.addEventListener('keydown', event => {
+    // ESCAPE CLOSES AN OPEN MENU FROM ANYWHERE (UI audit finding 4,
+    // 2026-09-05). Choosing a toggle rebuilds the toggles and drops focus
+    // to the body; a key pressed there never reached a listener on the menu.
+    document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && !panel.hidden) {
         setViewMenuOpen(false);
         button.focus();
@@ -1902,6 +1912,15 @@ const Gridiron = (function () {
     // slate rather than a narrow filter unless the denominator is beside it.
     const wholeSlate = cards.length;
     renderPassFilter(data);
+    if (viewFocus) {
+      const openPanel = document.getElementById('week-view-panel');
+      const seg = document.getElementById(viewFocus);
+      if (openPanel && !openPanel.hidden && seg && !seg.contains(document.activeElement)) {
+        const pressed = seg.querySelector('button[aria-pressed="true"]') || seg.querySelector('button');
+        if (pressed) pressed.focus();
+      }
+      viewFocus = null;
+    }
     const tier = effectiveTier(cards);
     renderTierFilter(cards, tier);
     if (tier) cards = cards.filter(c => tierOf(c) === tier);
