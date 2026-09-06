@@ -1783,6 +1783,11 @@ const Gridiron = (function () {
     if (!host) return;
     const options = data.forecasters || [];
     host.innerHTML = '';
+    // A ROW WITH NOTHING IN IT IS NOT A CONTROL (UI audit finding 14). An
+    // empty slate offers no forecaster, and the menu showed "FORECASTER"
+    // over nothing.
+    const choice = host.closest('.view-choice');
+    if (choice) choice.hidden = options.length === 0;
     options.forEach(f => {
       const b = el('button', '', f.label);
       b.type = 'button';

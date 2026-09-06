@@ -90,6 +90,32 @@ def test_choosing_the_other_forecaster_updates_the_tag_and_is_remembered_per_spo
         "document.getElementById('week-view-tag').textContent.startsWith('LLM')", timeout=10000)
 
 
+def test_a_forecaster_row_with_no_choices_is_not_shown(page):
+    """UI audit finding 14 (2026-09-05): on a slate with no forecaster the
+    menu showed "FORECASTER" over nothing."""
+    _open_week(page)
+    sports = page.evaluate("[...document.querySelectorAll('#sport-tabs button')].map(b => b.dataset.sport)")
+    current = page.evaluate("window.Gridiron.state.sport")
+    counts = {sp: page.evaluate(f"fetch('/api/week?sport={sp}').then(r => r.json()).then(j => (j.cards || []).length)") for sp in sports}
+    empty = next(sp for sp, n in counts.items() if n == 0)
+    with page.expect_response(lambda r: "/api/week" in r.url and f"sport={empty}" in r.url, timeout=20000):
+        page.click(f"#sport-tabs button[data-sport='{empty}']")
+    page.wait_for_timeout(500)
+    page.click("#week-view-button")
+    page.wait_for_timeout(150)
+    row = page.evaluate("(() => { const r = document.getElementById('week-forecaster-seg').closest('.view-choice'); return {hidden: r.hidden, painted: getComputedStyle(r).display !== 'none', buttons: r.querySelectorAll('button').length}; })()")
+    assert row["buttons"] == 0
+    assert row["hidden"] and not row["painted"], f"an empty forecaster row is on the page: {row}"
+    page.keyboard.press("Escape")
+    with page.expect_response(lambda r: "/api/week" in r.url and f"sport={current}" in r.url, timeout=20000):
+        page.click(f"#sport-tabs button[data-sport='{current}']")
+    page.wait_for_timeout(500)
+    page.click("#week-view-button")
+    page.wait_for_timeout(150)
+    assert page.is_visible("#week-forecaster-seg")
+    page.keyboard.press("Escape")
+
+
 # --- the guard ---------------------------------------------------------------
 
 def test_the_shipped_page_has_exactly_two_control_rows_above_the_hero():
