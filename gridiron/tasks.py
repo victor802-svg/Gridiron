@@ -427,6 +427,11 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # line never moves" forever, from real-looking rows.
     ids = [r["id"] for r in rows]
     refreshed = lines.refresh_quotes(conn, ids, ttl=espn.NEAR_START_TTL)
+    # THE VENUE'S SECOND LOOK (ruling D3, 2026-09-06): the ladder near the
+    # start, past the cache, for the same rows the drift pass re-reads. Asked
+    # for by shape, not by name -- the venue is named only inside the market
+    # module, and the quarantine scan is what says so.
+    venue = lines.refresh_venue_ladder(conn, ids)
 
     taken, failed = 0, 0
     for row in rows:
@@ -436,7 +441,8 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
         except Exception:  # noqa: BLE001 - one bad quote must not stop the pass
             failed += 1
     return {"near_start_taken": taken, "near_start_failed": failed,
-            "near_start_due": len(rows), "near_start_refetched": refreshed}
+            "near_start_due": len(rows), "near_start_refetched": refreshed,
+            "venue_near_start": venue}
 
 
 def _plus_hours(stamp: str, hours: float) -> str:

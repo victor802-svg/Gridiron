@@ -1241,3 +1241,11 @@ HOME_MARGIN_MEASURED = {
     "cfb": {"mean": 8.84, "n": 1761, "seasons": "2024-2025",
             "measured_utc": "2026-09-06T00:00:00Z"},
 }
+
+
+#: WHETHER THE VENUE IS ASKED AT ALL (ruling D3, 2026-09-06). On by default;
+#: the test suite's network guard turns it off, so a slate run in a test asks
+#: the venue nothing rather than quietly failing to reach it -- the quiet
+#: attempt is exactly what that guard exists to catch. `GRIDIRON_VENUE_CAPTURE=0`
+#: turns it off for a machine that should never ask.
+VENUE_CAPTURE = setting("GRIDIRON_VENUE_CAPTURE", "1") != "0"

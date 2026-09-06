@@ -238,3 +238,38 @@ def for_market(sport: str, market: str) -> dict:
             ),
         }
     return {"sport": sport, "market": market, "available": True, **entry}
+
+
+#: THE VENUE (operator ruling D3, 2026-09-06). Not a line source for the rung
+#: comparison -- that stays with the entries above -- but the venue whose
+#: published prices the at-the-line record is scored against. Described the
+#: same way, including what could not be verified.
+VENUE_SOURCES: dict[str, dict] = {
+    "kalshi": {
+        "available": True,
+        "name": "Kalshi public trade API v2",
+        "url": "https://api.elections.kalshi.com/trade-api/v2",
+        "licence": (
+            "NOT VERIFIED. The terms of use and the API documentation could not "
+            "be fetched from this machine on 2026-09-06 (HTTP 429 and 404). "
+            "Market data answered without a key; treated as a source that may "
+            "vanish. If the public data ever requires an account or a key, the "
+            "source is dropped and DECISIONS_MADE records it."
+        ),
+        "rate_limit": (
+            "unpublished for unauthenticated reads. One event's ladder per game "
+            "per look, every response cached, a finished game never refetched."
+        ),
+        "markets": ["spread", "total", "moneyline"],
+        "sports": ["nfl", "cfb", "nba", "mlb"],
+        "prices": "yes bid and ask in dollars per binary market, one market per strike",
+        "note": (
+            "Measured 2026-09-06 before anything was built: markets, series and "
+            "events all HTTP 200 unauthenticated; the NFL week-1 crosswalk matched "
+            "16 of 16 events with two named aliases, the open college events 47 "
+            "of 50 with six, the last three being FCS games this record does not "
+            "carry. This codebase holds no account and never touches the "
+            "operator's."
+        ),
+    },
+}

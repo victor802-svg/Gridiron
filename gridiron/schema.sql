@@ -1329,3 +1329,47 @@ CREATE TABLE IF NOT EXISTS weather_observed (
     precip_pct   REAL,
     PRIMARY KEY (game_id, observed_utc)
 );
+
+-- ---------------------------------------------------------------------------
+-- VENUE QUOTES (operator ruling D3, 2026-09-06): Kalshi's published prices,
+-- read only, one row per quoted market per look. A venue quotes a LADDER per
+-- game, so these rows sit in a table of their own rather than in
+-- market_snapshots, which holds one line per prediction per look; the venue
+-- is named on every row.
+--
+-- LAW 1 HOLDS HERE TOO. The trigger refuses a quote for a game with no
+-- prediction written before the fetch: the ladder is read after the blind
+-- window has closed, and the schema does not take that on trust.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS venue_quotes (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    venue         TEXT    NOT NULL,
+    ticker        TEXT    NOT NULL,
+    event_ticker  TEXT    NOT NULL,
+    sport         TEXT    NOT NULL,
+    game_id       TEXT    NOT NULL REFERENCES games (id),
+    market        TEXT    NOT NULL CHECK (market IN ('spread', 'total', 'moneyline')),
+    quantity      TEXT    NOT NULL CHECK (quantity IN ('home_margin', 'total', 'home_win')),
+    -- the line from the home side's view for a spread (the ordinary
+    -- convention: -4.5 means the home side must win by five), the total for
+    -- a total, NULL for a winner market
+    line          REAL,
+    yes_side      TEXT    NOT NULL CHECK (yes_side IN ('home', 'away', 'over', 'under')),
+    yes_bid       REAL,
+    yes_ask       REAL,
+    last_price    REAL,
+    volume        REAL,
+    close_time    TEXT,
+    fetched_utc   TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS venue_quotes_game ON venue_quotes (game_id, market, fetched_utc);
+
+CREATE TRIGGER IF NOT EXISTS venue_quote_requires_prediction
+BEFORE INSERT ON venue_quotes
+FOR EACH ROW
+WHEN (SELECT COUNT(*) FROM predictions p
+       WHERE p.game_id = NEW.game_id AND p.created_utc <= NEW.fetched_utc) = 0
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: a venue quote cannot exist before a prediction for its game');
+END;

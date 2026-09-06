@@ -693,6 +693,24 @@ def refresh_quotes(conn: sqlite3.Connection, prediction_ids: list[int],
     return written
 
 
+def refresh_venue_ladder(conn: sqlite3.Connection, prediction_ids: list[int]) -> int:
+    """The venue's ladder for these predictions again, past the cache.
+
+    The drift pass's counterpart for the at-the-line record: the same rows the
+    near-start look re-reads, priced by the venue a second time. Returns how
+    many quote rows were written, which is a fetch count and not a claim.
+
+    IT LIVES HERE BECAUSE THE VENUE'S NAME DOES. `audit.market_source_faults`
+    fails on a market source named in any file outside this package, so the
+    scheduler asks for a ladder without knowing whose it is -- the same
+    quarantine that keeps a fetcher out of a prediction path.
+    """
+    from . import kalshi
+
+    return kalshi.capture_for_predictions(
+        conn, prediction_ids, ttl=kalshi.NEAR_START_TTL)["quotes"]
+
+
 def _fetch_prop_days(conn: sqlite3.Connection, sport: str,
                      game_ids: list[str]) -> dict:
     """Prop quotes for the dates these games fall on, one fetch per date.
@@ -737,6 +755,11 @@ def _fetch_prop_days(conn: sqlite3.Connection, sport: str,
 def snapshot_many(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[str, int]:
     counts = {"snapshotted": 0, "already": 0, "no_line": 0}
     counts["fetched"] = ensure_lines(conn, prediction_ids)
+    # THE VENUE'S LADDER, after the rows exist (ruling D3, 2026-09-06). Its
+    # counts are a fact about the fetch; a venue that does not answer degrades
+    # the at-the-line record visibly and the rung comparison not at all.
+    from . import kalshi
+    counts["venue"] = kalshi.capture_for_predictions(conn, prediction_ids)["quotes"]
     for pid in prediction_ids:
         before = conn.execute(
             "SELECT COUNT(*) AS n FROM market_snapshots WHERE prediction_id = ?", (pid,)

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from gridiron import api, auth, db, resolve, run
+from gridiron import api, auth, config, db, resolve, run
 from gridiron.factors import store
 from gridiron.model import baseline
 
@@ -805,6 +805,9 @@ def _no_network(request, monkeypatch):
         _WENT_OUTSIDE.append(request.node.nodeid)
         return
 
+    # The venue is never asked under the guard: a quiet attempt would be
+    # swallowed by the fetch helper's catch and counted as "unavailable".
+    monkeypatch.setattr(config, "VENUE_CAPTURE", False)
     real_connect = socket.socket.connect
     real_connect_ex = socket.socket.connect_ex
     real_create = socket.create_connection

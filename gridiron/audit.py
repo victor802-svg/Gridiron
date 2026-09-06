@@ -70,6 +70,12 @@ FORBIDDEN_MODULES = ("gridiron.market", "gridiron.live")
 FORBIDDEN_IDENTIFIERS = (
     "market_lines_raw",
     "market_snapshots",
+    # THE VENUE'S QUOTES (ruling D3, 2026-09-06): a ladder of prices per
+    # game, in the market module and nowhere near the prediction path.
+    "venue_quotes",
+    "yes_bid",
+    "yes_ask",
+    "last_price",
     "spread_line",
     "total_line",
     "home_moneyline",
