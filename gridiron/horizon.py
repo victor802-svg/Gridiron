@@ -197,3 +197,49 @@ def llm_routed_off_outlook(conn: sqlite3.Connection, sport: str, market: str,
         "reachable": resolved >= gate,
         "message": language.llm_routed_off_line(resolved, gate, config.LLM_ROUTING_DECLARED),
     }
+
+
+def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str,
+                        season: int | None = None) -> dict:
+    """When the at-the-line gate opens, at the rate claims are actually being
+    written (E4, 2026-09-06).
+
+    THE SAME SHAPE AS A MARKET'S OUTLOOK, and deliberately a separate count. A
+    claim needs three things a prediction does not -- a frozen distribution, a
+    ladder from the venue, and a price on it -- so its gate is always further
+    away than the rung gate for the same market, and projecting one from the
+    other would flatter by exactly the size of the coverage hole.
+    """
+    from . import language
+
+    season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
+        if season is None else season
+    row = conn.execute(
+        "SELECT COUNT(*) AS written, COUNT(DISTINCT g.week) AS slates,"
+        " SUM(CASE WHEN c.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
+        " FROM at_the_line_claims c JOIN games g ON g.id = c.game_id"
+        " WHERE c.sport = ? AND c.market = ? AND g.season = ?",
+        (sport, market, season)).fetchone()
+    written = int(row["written"] or 0)
+    slates_used = int(row["slates"] or 0)
+    resolved = int(row["resolved"] or 0)
+    remaining = slates_remaining(conn, sport, season)
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    per_slate = (written / slates_used) if slates_used else None
+    expected = int(round(resolved + per_slate * remaining)) if per_slate else None
+    out = {
+        "sport": sport, "market": market, "gate": gate, "resolved": resolved,
+        "written": written, "n": resolved, "slates_used": slates_used,
+        "slates_remaining": remaining, "season_ends": season_ends(conn, sport, season),
+        "per_slate": round(per_slate, 2) if per_slate is not None else None,
+        "expected": expected, "expected_is_an_extrapolation": True,
+        "record": "at_the_line",
+    }
+    if per_slate is None:
+        out["reachable"] = None
+        out["message"] = language.at_the_line_pace_line(resolved, gate, None, None)
+        return out
+    out["reachable"] = expected >= gate
+    out["message"] = language.at_the_line_pace_line(
+        resolved, gate, expected, out["season_ends"])
+    return out

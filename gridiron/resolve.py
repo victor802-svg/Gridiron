@@ -205,6 +205,14 @@ def resolve_all(conn: sqlite3.Connection, *, progress=None) -> dict:
         if progress and settled % 50 == 0 and settled:
             progress(f"settled {settled}")
 
+    # AT-THE-LINE CLAIMS DO NOT SETTLE HERE, and the attempt to make them is
+    # worth recording. This module is imported by `gridiron.sports.nfl`, so it
+    # sits inside a sport's prediction closure, and the closure scan reads the
+    # syntax tree: a function-local `from .market import at_the_line` put the
+    # market package on the prediction path and the planting caught it within
+    # the minute. `tasks.settle_everything` is the seam instead -- outside every
+    # closure, and the one door the scheduler, the CLI and the live poll go
+    # through.
     total_open = conn.execute(
         "SELECT COUNT(*) FROM predictions p WHERE p.resolved_utc IS NULL"
         " AND NOT EXISTS (SELECT 1 FROM prediction_voids v WHERE v.prediction_id = p.id)"

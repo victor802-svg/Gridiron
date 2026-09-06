@@ -170,6 +170,20 @@ def _record_conn():
     return db.connect()
 
 
+def _at_the_line_payload():
+    """Every sport's at-the-line words, in one payload for the advice scan.
+
+    Built from the live record rather than from a fixture: the words that
+    matter are the ones a reader would meet today, and a scan that reads a
+    fixture proves only that the fixture is polite.
+    """
+    from gridiron import calibration, config
+
+    conn = _record_conn()
+    return {"sports": [calibration.at_the_line_scorecard(conn, sport=sport)
+                       for sport in config.SPORTS]}
+
+
 def step_2_guards() -> bool:
     rule("STEP 2 — planted violations")
     result = subprocess.run(
@@ -248,6 +262,11 @@ def step_2_guards() -> bool:
          lambda: audit.check_health_speaks_plain(_record_conn())),
         ("the reasoning pass runs on game markets only",
          audit.check_llm_runs_on_game_markets_only),
+        ("at the line, a forecast and never advice",
+         lambda: audit.check_the_at_the_line_words_are_a_forecast(
+             _at_the_line_payload())),
+        ("no quoted reasoning recommends a side",
+         lambda: audit.check_no_quoted_prose_recommends(_record_conn())),
         ("no retired market was asked after its day",
          lambda: audit.check_no_retired_market_written(_record_conn())),
         ("no retired market is a tab on Picks", audit.check_no_retired_market_in_picks),

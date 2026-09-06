@@ -693,22 +693,26 @@ def refresh_quotes(conn: sqlite3.Connection, prediction_ids: list[int],
     return written
 
 
-def refresh_venue_ladder(conn: sqlite3.Connection, prediction_ids: list[int]) -> int:
-    """The venue's ladder for these predictions again, past the cache.
+def refresh_venue_ladder(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
+    """The venue's ladder for these predictions again, past the cache, and the
+    frozen distribution read at it.
 
     The drift pass's counterpart for the at-the-line record: the same rows the
     near-start look re-reads, priced by the venue a second time. Returns how
-    many quote rows were written, which is a fetch count and not a claim.
+    many quote rows were written and how many claims came of them -- fetch
+    counts, and not claims about anything.
 
     IT LIVES HERE BECAUSE THE VENUE'S NAME DOES. `audit.market_source_faults`
     fails on a market source named in any file outside this package, so the
     scheduler asks for a ladder without knowing whose it is -- the same
     quarantine that keeps a fetcher out of a prediction path.
     """
-    from . import kalshi
+    from . import at_the_line, kalshi
 
-    return kalshi.capture_for_predictions(
+    quotes = kalshi.capture_for_predictions(
         conn, prediction_ids, ttl=kalshi.NEAR_START_TTL)["quotes"]
+    claims = at_the_line.evaluate(conn, prediction_ids)["claims"]
+    return {"quotes": quotes, "claims": claims}
 
 
 def _fetch_prop_days(conn: sqlite3.Connection, sport: str,
@@ -758,8 +762,13 @@ def snapshot_many(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[s
     # THE VENUE'S LADDER, after the rows exist (ruling D3, 2026-09-06). Its
     # counts are a fact about the fetch; a venue that does not answer degrades
     # the at-the-line record visibly and the rung comparison not at all.
-    from . import kalshi
+    from . import at_the_line, kalshi
     counts["venue"] = kalshi.capture_for_predictions(conn, prediction_ids)["quotes"]
+    # AND THE FROZEN DISTRIBUTION IS READ AT IT (E4). Arithmetic on a blind
+    # artifact: the parameters were written before any line was seen, so
+    # evaluating them at the venue's number adds nothing to the model and
+    # takes nothing from the row.
+    counts["at_the_line"] = at_the_line.evaluate(conn, prediction_ids)["claims"]
     for pid in prediction_ids:
         before = conn.execute(
             "SELECT COUNT(*) AS n FROM market_snapshots WHERE prediction_id = ?", (pid,)

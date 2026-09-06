@@ -1453,6 +1453,15 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    class of pick rather than a differently-shaped question. */
 .tier-name { color: var(--faint); }
 
+/* AT THE VENUE'S LINE (E4, 2026-09-06). Set like the rate line beneath it:
+   this is a second reading of the same forecast, not a louder one. */
+.card-at-the-line {
+  margin: 0.35rem 0 0;
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
 .card-rate {
   margin: 0 0 8px; font-size: var(--t-body); color: var(--faint);
 }

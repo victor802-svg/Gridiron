@@ -561,6 +561,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # One lookup for the slate, not one per card. Empty when the team table has
     # not been loaded, and every name then falls back to its tricode.
     team_names = teams.names(conn, sport)
+    # THE VENUE'S LINE FOR THIS SLATE (E4, 2026-09-06), one lookup as well.
+    at_line = _at_the_line(conn, sport, ids, team_names)
     # One bucket record per (market, predictor, bucket) rather than one per
     # card: the same lookup would otherwise run once for every pick on the slate.
     bucket_cache: dict[tuple, dict] = {}
@@ -692,6 +694,11 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 "method_note": language.method_note(
                     config.flagged_method(sport, r["market_type"])),
                 "market_line": snap.get("line"),
+                # THE VENUE'S OWN LINE, AND THE MODEL READ AT IT (E4). Absent
+                # on a pick with no claim -- no frozen distribution, no ladder
+                # or no price -- and absent means absent: the card shows
+                # nothing rather than an empty comparison.
+                "at_the_line": at_line.get(r["id"]),
                 "market_implied_prob": implied,
                 "market_source": snap.get("source"),
                 "line_availability": lines.market_availability(
@@ -1063,6 +1070,64 @@ def _venues(conn: sqlite3.Connection, sport: str) -> dict:
             "SELECT tricode, venue_city FROM teams"
             " WHERE sport = ? AND venue_city IS NOT NULL", (sport,))
     }
+
+
+def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
+                 team_names: dict) -> dict[int, dict]:
+    """The venue's line beside each pick on this slate, as words.
+
+    ONE LOOKUP FOR THE SLATE. The standing claim per prediction -- the last
+    one written -- with the settled count for its market beside it, because
+    LAW 4 wants the sample next to the figure and this figure is a comparison
+    with a price.
+
+    A forecast, and nothing more. The sentence says what the model gives the
+    proposition and what the venue's price implies for the same one; it does
+    not say which of them to act on, and `audit.at_the_line_advice_faults`
+    scans these words on every gate run.
+    """
+    from .market import at_the_line as venue
+
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"SELECT c.* FROM at_the_line_claims c WHERE c.prediction_id IN ({placeholders})"
+        "   AND c.created_utc = (SELECT MAX(c2.created_utc) FROM at_the_line_claims c2"
+        "                        WHERE c2.prediction_id = c.prediction_id)",
+        ids).fetchall()
+    if not rows:
+        return {}
+    settled = {
+        r["market"]: r["n"] for r in conn.execute(
+            "SELECT market, COUNT(*) AS n FROM at_the_line_claims"
+            " WHERE sport = ? AND resolved_utc IS NOT NULL GROUP BY market",
+            (sport,))
+    }
+    homes = {
+        r["id"]: r["home"] for r in conn.execute(
+            f"SELECT p.id, g.home FROM predictions p JOIN games g ON g.id = p.game_id"
+            f" WHERE p.id IN ({placeholders})", ids)
+    }
+    out: dict[int, dict] = {}
+    for row in rows:
+        n = settled.get(row["market"], 0)
+        home = language.team_name(homes.get(row["prediction_id"]), team_names, "club")
+        out[row["prediction_id"]] = {
+            "words": language.at_the_line_line(
+                row["market"], row["line"], row["model_prob"], row["venue_implied"],
+                n, home=home),
+            "venue": venue.VENUE,
+            "line": row["line"],
+            "model_prob": row["model_prob"],
+            "venue_implied": row["venue_implied"],
+            "price_basis": row["price_basis"],
+            "n": n,
+            "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+            "gate_line": language.at_the_line_gate_line(
+                n, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
+        }
+    return out
 
 
 def _count_lines(cards: list[dict]) -> dict:

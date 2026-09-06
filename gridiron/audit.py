@@ -5210,3 +5210,101 @@ def check_llm_runs_on_game_markets_only() -> None:
     faults = llm_routing_faults()
     if faults:
         raise LawViolation("THE REASONING PASS RUNS ON GAME MARKETS ONLY:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# A FORECAST, NEVER ADVICE (AT_THE_LINE E4, 2026-09-06)
+# ---------------------------------------------------------------------------
+#
+# The at-the-line record puts the model's probability next to a venue's price.
+# That pair is the most decision-relevant thing this project produces, and it
+# is exactly where a forecaster starts sounding like a tipster: one adjective
+# is the difference between "the model says 58%, the price says 52%" and a
+# recommendation, which LAW 5 forbids.
+#
+# So the vocabulary is scanned rather than trusted, in two places with two
+# different lists, because the two kinds of text are not ours in the same way:
+#
+#   * TEXT THIS PROJECT COMPOSES -- every label, line and note in the
+#     at-the-line payload -- may not use any of `ADVICE_WORDS`. We write those
+#     sentences, so a false positive is fixed by writing a better sentence.
+#   * THE MODEL'S OWN PROSE, quoted on a card, is scanned for the shorter list
+#     in `TIPSTER_WORDS`: words no sentence about a football game needs and
+#     that only ever arrive as a recommendation. "Value" is on the first list
+#     and not the second, because a reasoning line may legitimately discuss the
+#     value of a running game, and two stored rows already do.
+ADVICE_WORDS: tuple[str, ...] = (
+    "value", "play", "bet", "bets", "lock", "hammer", "fade", "smash",
+    "best bet", "free money", "sure thing", "no-brainer",
+)
+
+#: The subset that is advice wherever it appears, including in prose the model
+#: wrote and we only quote.
+TIPSTER_WORDS: tuple[str, ...] = (
+    "lock", "hammer", "smash", "best bet", "free money", "sure thing",
+    "no-brainer",
+)
+
+
+def _word_scan(words: tuple[str, ...]) -> "re.Pattern[str]":
+    joined = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
+    return re.compile(rf"(?<![A-Za-z]){joined}(?![A-Za-z])", re.IGNORECASE)
+
+
+_ADVICE_SCAN = _word_scan(ADVICE_WORDS)
+_TIPSTER_SCAN = _word_scan(TIPSTER_WORDS)
+
+
+def advice_word_faults(text: str, where: str = "the page") -> list[str]:
+    """Words that turn a forecast into a recommendation."""
+    return [f"{where} says {hit.lower()!r}, which reads as advice rather than a "
+            f"forecast (LAW 5)"
+            for hit in sorted(set(_ADVICE_SCAN.findall(text or "")))]
+
+
+def at_the_line_advice_faults(payload) -> list[str]:
+    """Every string in an at-the-line payload, scanned. The payload is what the
+    interface renders, so this is the text a reader actually meets."""
+    faults: list[str] = []
+
+    def walk(node, path):
+        if isinstance(node, str):
+            faults.extend(advice_word_faults(node, path))
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, f"{path}.{key}")
+        elif isinstance(node, (list, tuple)):
+            for i, value in enumerate(node):
+                walk(value, f"{path}[{i}]")
+
+    walk(payload, "$")
+    return sorted(set(faults))
+
+
+def check_the_at_the_line_words_are_a_forecast(payload) -> None:
+    faults = at_the_line_advice_faults(payload)
+    if faults:
+        raise LawViolation(
+            "LAW 5: the at-the-line record is a forecast beside a price, and "
+            "its words have started recommending something:"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+def tipster_faults_in_quoted_prose(conn) -> list[str]:
+    """Stored reasoning that recommends rather than explains."""
+    faults = []
+    for row in conn.execute(
+            "SELECT id, reasoning FROM predictions WHERE reasoning IS NOT NULL"):
+        for hit in sorted(set(_TIPSTER_SCAN.findall(row["reasoning"]))):
+            faults.append(
+                f"prediction {row['id']} quotes {hit.lower()!r} in its reasoning, "
+                f"which is a recommendation and not an explanation (LAW 5)")
+    return sorted(set(faults))
+
+
+def check_no_quoted_prose_recommends(conn) -> None:
+    faults = tipster_faults_in_quoted_prose(conn)
+    if faults:
+        raise LawViolation(
+            "LAW 5: a stored reasoning line reads as a tip, and the card shows "
+            "it verbatim:" + _NL2 + _NL2.join(faults[:8]))

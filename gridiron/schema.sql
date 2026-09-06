@@ -1373,3 +1373,112 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 1: a venue quote cannot exist before a prediction for its game');
 END;
+
+-- ---------------------------------------------------------------------------
+-- AT-THE-LINE CLAIMS (AT_THE_LINE E4, 2026-09-06). The frozen distribution,
+-- read at the venue's number.
+--
+-- THIS IS NOT A SECOND PREDICTION. The parameters were written inside the
+-- blind window and frozen with the prediction row; evaluating them at a
+-- number fetched afterwards adds no market information to the model. The row
+-- records which prediction's parameters it came from, the quote it was read
+-- against, and its own timestamp -- which is necessarily AFTER the fetch, and
+-- the triggers below make that impossible to misread as a blind row.
+--
+-- ONE PROPOSITION, NEVER A CHOSEN SIDE. Every claim is stated on the home side
+-- of a spread, the over of a total, the home side of a winner market. The
+-- record therefore holds a probability for a fixed question and the venue's
+-- price for the same question; it never holds "which side to take", which is
+-- what LAW 5 forbids and what the plain-words scan checks the interface for.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS at_the_line_claims (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_id  INTEGER NOT NULL REFERENCES predictions (id),
+    quote_id       INTEGER NOT NULL REFERENCES venue_quotes (id),
+    venue          TEXT    NOT NULL,
+    sport          TEXT    NOT NULL,
+    game_id        TEXT    NOT NULL REFERENCES games (id),
+    market         TEXT    NOT NULL CHECK (market IN ('spread', 'total', 'moneyline')),
+    quantity       TEXT    NOT NULL CHECK (quantity IN ('home_margin', 'total', 'home_win')),
+    -- the venue's number, from the home side's view for a spread; NULL only
+    -- for a winner market, which has no line
+    line           REAL,
+    -- the fixed proposition this row is about
+    side           TEXT    NOT NULL CHECK (side IN ('home', 'over')),
+    -- the frozen parameters, copied onto the row so the claim can be read
+    -- back without reopening the prediction's factor payload
+    dist_mean      REAL    NOT NULL,
+    dist_sd        REAL    NOT NULL,
+    model_prob     REAL    NOT NULL CHECK (model_prob > 0 AND model_prob < 1),
+    venue_price    REAL    NOT NULL CHECK (venue_price > 0 AND venue_price < 1),
+    venue_implied  REAL    NOT NULL CHECK (venue_implied > 0 AND venue_implied < 1),
+    price_basis    TEXT    NOT NULL,
+    created_utc    TEXT    NOT NULL,
+    resolved_utc   TEXT,
+    outcome        INTEGER CHECK (outcome IN (0, 1)),
+    UNIQUE (prediction_id, quote_id)
+);
+CREATE INDEX IF NOT EXISTS at_the_line_claims_sport
+    ON at_the_line_claims (sport, market, created_utc);
+CREATE INDEX IF NOT EXISTS at_the_line_claims_prediction
+    ON at_the_line_claims (prediction_id, created_utc);
+
+CREATE TRIGGER IF NOT EXISTS at_the_line_requires_a_frozen_distribution
+BEFORE INSERT ON at_the_line_claims
+FOR EACH ROW
+WHEN (SELECT json_extract(p.factors_json, '$.margin_distribution.sd')
+        FROM predictions p WHERE p.id = NEW.prediction_id) IS NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: an at-the-line claim needs the frozen distribution '
+        || 'its prediction was written with; this prediction has none');
+END;
+
+CREATE TRIGGER IF NOT EXISTS at_the_line_comes_after_its_prediction
+BEFORE INSERT ON at_the_line_claims
+FOR EACH ROW
+WHEN NEW.created_utc <= (SELECT created_utc FROM predictions WHERE id = NEW.prediction_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: an at-the-line claim is stamped at or before its own '
+        || 'prediction, which would read as a blind row and is not one');
+END;
+
+CREATE TRIGGER IF NOT EXISTS at_the_line_comes_after_its_quote
+BEFORE INSERT ON at_the_line_claims
+FOR EACH ROW
+WHEN NEW.created_utc < (SELECT fetched_utc FROM venue_quotes WHERE id = NEW.quote_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: an at-the-line claim is stamped before the quote it '
+        || 'was computed from');
+END;
+
+CREATE TRIGGER IF NOT EXISTS at_the_line_no_update
+BEFORE UPDATE OF prediction_id, quote_id, venue, sport, game_id, market,
+                 quantity, line, side, dist_mean, dist_sd, model_prob,
+                 venue_price, venue_implied, created_utc
+ON at_the_line_claims
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: an at-the-line claim is append-only; resolution '
+        || 'writes an outcome and never rewrites the claim');
+END;
+
+CREATE TRIGGER IF NOT EXISTS at_the_line_resolve_once
+BEFORE UPDATE OF resolved_utc, outcome ON at_the_line_claims
+FOR EACH ROW
+WHEN OLD.resolved_utc IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: at-the-line claim already resolved; resolution is '
+        || 'idempotent and never re-scores');
+END;
+
+CREATE TRIGGER IF NOT EXISTS at_the_line_no_delete
+BEFORE DELETE ON at_the_line_claims
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: an at-the-line claim is never deleted');
+END;

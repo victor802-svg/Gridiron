@@ -370,6 +370,7 @@ const Gridiron = (function () {
     // the corrections, the drift pairs and the read windows are siblings of
     // that table, not part of it.
     renderOtherGates(sc);
+    renderAtTheLine(sc);
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
     const tierSel = document.getElementById('tier-market');
@@ -618,6 +619,40 @@ const Gridiron = (function () {
     });
     if (count) count.textContent = entries.length + ' gates';
     panel.hidden = entries.length === 0;
+  }
+
+  // AT THE VENUE'S LINE (E4, 2026-09-06). A second record with its own gate:
+  // what the model's frozen distribution says about the venue's own number,
+  // beside what the venue's price says about it. PLACED, NOT COMPOSED -- every
+  // sentence here is written by `language.at_the_line_*` and scanned for
+  // advice words before it ships.
+  function renderAtTheLine(sc) {
+    const panel = document.getElementById('at-the-line');
+    const host = document.getElementById('at-the-line-list');
+    const cover = document.getElementById('at-the-line-coverage');
+    const venue = document.getElementById('at-the-line-venue');
+    const note = document.getElementById('at-the-line-note');
+    if (!panel || !host || !cover) return;
+    host.innerHTML = '';
+    cover.innerHTML = '';
+    const atl = (sc && sc.at_the_line) || null;
+    if (!atl) { panel.hidden = true; return; }
+    if (venue) venue.textContent = atl.venue;
+    if (note) note.textContent = atl.note || '';
+    (atl.categories || []).forEach(c => {
+      requireN(c, 'at-the-line curve "' + c.category + '"');
+      const row = el('div', 'gate-row');
+      row.appendChild(el('div', 'gate-name', c.category_label));
+      row.appendChild(el('div', 'gate-why', c.gate_line));
+      if (c.outlook && c.outlook.message) {
+        row.appendChild(el('div', 'gate-why', c.outlook.message));
+      }
+      host.appendChild(row);
+    });
+    (atl.coverage || []).forEach(row => {
+      cover.appendChild(el('div', 'footnote', row.words));
+    });
+    panel.hidden = (atl.categories || []).length === 0;
   }
 
   // WHICH TABLE THIS IS (UI audit finding 6). The market's label and the
@@ -1589,6 +1624,16 @@ const Gridiron = (function () {
     // Composed by `language.rate_line`; this places it.
     if (c.rate_line) {
       body.appendChild(el('p', 'card-rate', c.rate_line));
+    }
+
+    // AT THE VENUE'S LINE (E4, 2026-09-06), one tap into the card. The model's
+    // own distribution read at the number the venue published after this
+    // forecast was written and frozen, beside what the venue's price implies
+    // for the same question. The server writes the sentence; this places it,
+    // and the gate line beneath it says how many have settled.
+    if (c.at_the_line && c.at_the_line.words) {
+      body.appendChild(el('p', 'card-at-the-line', c.at_the_line.words));
+      body.appendChild(el('p', 'footnote', c.at_the_line.gate_line));
     }
 
     const line = el('div', 'card-stats');

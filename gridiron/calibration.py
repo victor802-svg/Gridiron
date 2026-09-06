@@ -1368,8 +1368,15 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
                      predictor="statistical")
     headline["market"] = headline_market
 
+    for c in categories:
+        # WHICH RECORD THIS ROW BELONGS TO (E4). Checked, not assumed: an
+        # at-the-line curve filed here would be averaging a forecast against a
+        # price with a forecast against its own rung.
+        c["record"] = "rung"
+
     payload = {
         "sport": sport,
+        "record": "rung",
         "sport_label": config.SPORT_LABELS.get(sport, sport.upper()),
         "generated_for_factor_set": config.FACTOR_SET_VERSION,
         "headline": headline,
@@ -1396,8 +1403,14 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
             "any of these describes nobody."
         ),
     }
+    # THE OTHER RECORD, BESIDE THIS ONE AND NEVER INSIDE IT (E4, 2026-09-06).
+    # Its own curves, its own gate, its own guard; the Record page draws it as
+    # a separate section for the same reason.
+    payload["at_the_line"] = at_the_line_scorecard(conn, sport=sport)
+
     assert_every_figure_has_n(payload)
     assert_no_merged_categories(payload)
+    assert_the_records_stay_apart(payload)
     assert_single_sport(payload, sport)
     return payload
 
@@ -1632,3 +1645,202 @@ def _tier_headline(rows: list[dict]) -> str:
         f"{worst['tier']} picks in the {worst['band']} band have been right "
         f"{actual:.0f}% of the time over {worst['n']} — {worst['verdict']}."
     )
+
+
+# ---------------------------------------------------------------------------
+# THE AT-THE-LINE RECORD (E4, 2026-09-06)
+# ---------------------------------------------------------------------------
+#
+# A SECOND RECORD, NOT A SECOND OPINION. Every row here is the frozen
+# distribution read at a number the venue published after the prediction was
+# written. It resolves like a prediction and calibrates like one, and it is
+# kept apart from the blind rung record at every level:
+#
+#   * its own curves, one per market, never mixed with a rung curve;
+#   * its own gate, the same 100 as every other edge figure, counted from its
+#     own settled comparisons -- which are always fewer, because a claim needs
+#     a ladder and a price as well as a forecast;
+#   * its own guard. `assert_the_records_stay_apart` refuses a payload whose
+#     categories do not all belong to the record they are filed under, and
+#     `plant.py` puts an at-the-line curve in the blind record to prove it
+#     fires. Merging the two would describe neither: one is what the model
+#     said about its own question, the other what it says about the venue's.
+
+
+class MergedRecord(RuntimeError):
+    """The blind record and the at-the-line record were filed as one."""
+
+
+AT_THE_LINE_NOTE = (
+    "The model's own distribution, read at the venue's published line after the "
+    "forecast was written and frozen. Two probabilities for the same question, "
+    "and nothing else: this is a forecast beside a price, not a recommendation."
+)
+
+
+@dataclass(frozen=True)
+class AtTheLineResolved:
+    """One settled claim, in the shape the bucket and score functions read."""
+    model_prob: float
+    implied_prob: float
+    outcome: int
+    market: str
+    line: float | None
+
+
+def at_the_line_items(conn: sqlite3.Connection, *, sport: str,
+                      market: str) -> list[AtTheLineResolved]:
+    """The settled standing claims for one sport and market.
+
+    ONE PER PREDICTION (the market module's standing rule), so a ladder read
+    twice does not put two correlated rows in one curve.
+    """
+    from .market import at_the_line
+
+    require_sport(sport, "calibration.at_the_line_items")
+    return [
+        AtTheLineResolved(model_prob=c["model_prob"], implied_prob=c["venue_implied"],
+                          outcome=c["outcome"], market=c["market"], line=c["line"])
+        for c in at_the_line.standing_claims(conn, sport=sport, market=market)
+        if c["resolved_utc"] is not None and c["outcome"] is not None
+    ]
+
+
+def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str) -> dict:
+    """One market's at-the-line curve, with the venue's own prices as the
+    baseline it has to beat."""
+    items = at_the_line_items(conn, sport=sport, market=market)
+    buckets = calibration_buckets(items)
+    return {
+        "sport": sport,
+        "record": "at_the_line",
+        "venue": at_the_line_venue(),
+        "market": market,
+        "category": f"{market} / at the venue's line",
+        "category_label": language.humanise(market) + " at the venue's line",
+        "filters": {"sport": sport, "market": market, "record": "at_the_line"},
+        "n": len(items),
+        "buckets": buckets,
+        "largest_gap": largest_gap_sentence(buckets),
+        "score": score(items),
+        "baselines": baselines(items),
+        "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+        "gate_line": language.at_the_line_gate_line(
+            len(items), config.MIN_SAMPLE_FOR_EDGE_CLAIM),
+        "outlook": horizon.at_the_line_outlook(conn, sport, market),
+        "note": AT_THE_LINE_NOTE,
+    }
+
+
+def at_the_line_venue() -> str:
+    """The venue these claims are read against, named on every figure."""
+    from .market import at_the_line
+
+    return at_the_line.VENUE
+
+
+def at_the_line_edge(conn: sqlite3.Connection, *, sport: str, market: str,
+                     threshold: float | None = None) -> dict:
+    """Where the model and the venue's price disagree, who was right?
+
+    Both directions, always. Showing only the half where the model led is how
+    a record lies while staying technically accurate, and this figure is the
+    most decision-relevant one the project can produce, so it carries the same
+    gate and the same standing caveat as the blind edge figure.
+    """
+    threshold = config.EDGE_DISAGREEMENT_THRESHOLD if threshold is None else threshold
+    items = at_the_line_items(conn, sport=sport, market=market)
+    model_bolder = [r for r in items if r.model_prob - r.implied_prob > threshold]
+    venue_bolder = [r for r in items if r.implied_prob - r.model_prob > threshold]
+
+    def side(subset, label):
+        n = len(subset)
+        entry = {"label": label, "n": n}
+        if n:
+            entry["resolved_in_model_favour"] = round(
+                sum(r.outcome for r in subset) / n, 4)
+            entry["mean_model_prob"] = round(sum(r.model_prob for r in subset) / n, 4)
+            entry["mean_venue_prob"] = round(sum(r.implied_prob for r in subset) / n, 4)
+        else:
+            entry["resolved_in_model_favour"] = None
+            entry["mean_model_prob"] = None
+            entry["mean_venue_prob"] = None
+        return entry
+
+    minimum = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    payload = {
+        "sport": sport,
+        "record": "at_the_line",
+        "venue": at_the_line_venue(),
+        "market": market,
+        "threshold": threshold,
+        "n": len(items),
+        "n_disagreements": len(model_bolder),
+        "minimum_for_a_claim": minimum,
+        "standing_note": EDGE_STANDING_NOTE,
+        "note": AT_THE_LINE_NOTE,
+    }
+    if len(model_bolder) < minimum:
+        payload["renderable"] = False
+        payload["shortfall"] = minimum - len(model_bolder)
+        payload["message"] = language.at_the_line_gate_line(len(model_bolder), minimum)
+        return payload
+    payload["renderable"] = True
+    payload["model_more_confident"] = side(model_bolder, "model more confident")
+    payload["venue_more_confident"] = side(venue_bolder, "the venue's price more confident")
+    return payload
+
+
+def at_the_line_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """Every at-the-line curve for ONE sport, and the coverage behind them."""
+    from .market import at_the_line
+
+    require_sport(sport, "calibration.at_the_line_scorecard")
+    markets = [m for m in ("spread", "total", "moneyline")
+               if m in config.SPORT_MARKETS.get(sport, ())]
+    categories = [at_the_line_curve(conn, sport=sport, market=m) for m in markets]
+    coverage = at_the_line.coverage(conn, sport=sport)
+    for row in coverage:
+        row["words"] = language.at_the_line_coverage_line(
+            row["market"], row["with_a_claim"], row["n"])
+    headline_market = markets[0] if markets else None
+    payload = {
+        "sport": sport,
+        "record": "at_the_line",
+        "venue": at_the_line_venue(),
+        "categories": categories,
+        "markets": markets,
+        "coverage": coverage,
+        "n": sum(c["n"] for c in categories),
+        "note": AT_THE_LINE_NOTE,
+        "edge": (at_the_line_edge(conn, sport=sport, market=headline_market)
+                 if headline_market else None),
+    }
+    assert_the_records_stay_apart(payload)
+    assert_every_figure_has_n(payload)
+    assert_single_sport(payload, sport)
+    return payload
+
+
+def assert_the_records_stay_apart(payload: dict) -> None:
+    """Every category belongs to the record it is filed under.
+
+    The blind record answers the question the model chose; the at-the-line
+    record answers the venue's. A payload holding both would average a
+    forecast against its own rung with a forecast against a price, and the
+    result would describe neither -- the same failure LAW 6 names one level up.
+    """
+    record = payload.get("record")
+    if record not in ("rung", "at_the_line"):
+        raise MergedRecord(
+            f"a scorecard must say which record it is: {record!r} is neither "
+            f"'rung' nor 'at_the_line'.")
+    for category in payload.get("categories") or []:
+        theirs = category.get("record")
+        if theirs != record:
+            raise MergedRecord(
+                f"category {category.get('category')!r} belongs to the "
+                f"{theirs!r} record and is filed under the {record!r} one. The "
+                f"blind record and the at-the-line record are never merged: "
+                f"one is what the model said about its own question, the other "
+                f"what it says about the venue's.")

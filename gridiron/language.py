@@ -2893,3 +2893,64 @@ def llm_routed_off_line(n: int, gate: int, since: str) -> str:
     return (f"{n} of {gate} · the reasoning pass stopped asking this market "
             f"{when}; nothing more will be written, so {n} settled is the "
             f"final count")
+
+
+# ---------------------------------------------------------------------------
+# AT THE VENUE'S LINE (E4, 2026-09-06) -- a forecast, never advice
+# ---------------------------------------------------------------------------
+#
+# Every sentence here states two probabilities for ONE fixed question and
+# stops. It never says which side to take, never calls a gap an opportunity,
+# and never uses a word from `audit.ADVICE_WORDS`, which is scanned rather
+# than trusted. What a reader does with the pair is outside this codebase.
+
+def at_the_line_side_words(market: str, line: float | None,
+                           home: str | None = None) -> str:
+    """The proposition a claim is about, said out loud."""
+    who = home or "the home side"
+    if market == "moneyline" or line is None:
+        return f"{who} winning"
+    if market == "total":
+        return f"more than {_number(line)} points scored"
+    return f"{who} covering {_signed(line)}"
+
+
+def at_the_line_line(market: str, line: float | None, model_prob: float,
+                     venue_implied: float, n: int, *, home: str | None = None) -> str:
+    """One claim as a sentence: what the model says, what the price says, and
+    how many have settled so far."""
+    what = at_the_line_side_words(market, line, home)
+    return (f"the model gives {what} a {round(model_prob * 100)}% chance; "
+            f"the venue's price implies {round(venue_implied * 100)}%; "
+            f"{n} settled so far")
+
+
+def at_the_line_gate_line(n: int, gate: int) -> str:
+    """The gate, in the shape LAW 4 asks for: the count, then what is missing."""
+    if n >= gate:
+        return f"{n} settled comparisons, past the {gate} this record needs"
+    return (f"{n} of {gate} settled comparisons · {gate - n} more before any "
+            f"figure here is shown at all")
+
+
+def at_the_line_pace_line(n: int, gate: int, expected: int | None,
+                          ends: str | None) -> str:
+    """When the at-the-line gate opens at the rate claims are being written."""
+    if expected is None:
+        return (f"{n} of {gate} · no claim has been written in this market yet, "
+                f"so there is no rate to project from")
+    ends_words = date_words_from_iso(ends) if ends else None
+    tail = f" · season ends {ends_words}" if ends_words else ""
+    if expected >= gate:
+        return f"{n} of {gate} · ~{expected} expected{tail}"
+    return (f"{n} of {gate} · ~{expected} expected{tail} · THIS GATE CANNOT "
+            f"CLEAR THIS SEASON")
+
+
+def at_the_line_coverage_line(market: str, with_claim: int, n: int) -> str:
+    """How much of a market could be read at the venue's line."""
+    if not n:
+        return f"{humanise(market)}: nothing written yet"
+    share = round(with_claim / n * 100)
+    return (f"{humanise(market)}: {with_claim} of {n} forecasts could be read "
+            f"at the venue's line ({share}%)")

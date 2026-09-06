@@ -442,7 +442,8 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
             failed += 1
     return {"near_start_taken": taken, "near_start_failed": failed,
             "near_start_due": len(rows), "near_start_refetched": refreshed,
-            "venue_near_start": venue}
+            "venue_near_start": venue["quotes"],
+            "at_the_line_claims": venue["claims"]}
 
 
 def _plus_hours(stamp: str, hours: float) -> str:
@@ -469,6 +470,31 @@ def _run_recalibrate(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     return ("ok" if report["eligible"] else "noop"), detail, report
 
 
+def settle_everything(conn: sqlite3.Connection, *, progress=None) -> dict:
+    """Settle the predictions, then the at-the-line claims that came of them.
+
+    ONE DOOR, AND IT IS THIS ONE. `resolve.resolve_all` cannot do the second
+    half itself: a sport adapter imports that module, which puts it inside a
+    prediction closure, and nothing inside a closure may name the market
+    package -- the planted violation proved it by name the first time this was
+    written the other way round. So the pair lives here, where the scheduler,
+    the CLI and the live poll already are.
+
+    The counts are returned together because a claim that settled on a
+    different pass than its own prediction would let the two records disagree
+    about which games have finished.
+    """
+    from . import resolve
+    from .market import at_the_line
+
+    result = resolve.resolve_all(conn, progress=progress)
+    claims = at_the_line.resolve_claims(conn)
+    result["at_the_line_settled"] = claims["settled"]
+    result["at_the_line_open"] = claims["still_open"]
+    result["at_the_line_unanswerable"] = claims["unanswerable_level_game"]
+    return result
+
+
 def _run_resolve(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     """Idempotent by construction: `resolve_all` only touches rows whose
     `resolved_utc` is NULL, and a trigger is the backstop. Running it twice in a
@@ -483,7 +509,7 @@ def _run_resolve(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     # message -- no separate scheduled job that could itself go silent.
     held = notify.flush_queue(conn)
 
-    settled = resolve.resolve_all(conn)
+    settled = settle_everything(conn)
     n = settled["settled"]
     if held:
         settled["queued_sent"] = held
@@ -552,7 +578,7 @@ def _run_live(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     from . import live, resolve
 
     live.ensure_live_columns(conn)
-    report = live.poll(conn, resolver=resolve.resolve_all)
+    report = live.poll(conn, resolver=settle_everything)
     if not report["windows"]:
         return "noop", "nothing is on; no request made", report
     settled = (report.get("resolved") or {}).get("settled")

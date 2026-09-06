@@ -7063,6 +7063,52 @@ def plant_a_prop_market_on_the_llm_roster() -> Result:
                   "audit.llm_routing_faults", True, faults[0])
 
 
+LAW_AT_THE_LINE_WORDS = "AT THE LINE, A FORECAST AND NEVER ADVICE"
+LAW_TWO_RECORDS = "THE BLIND RECORD AND THE AT-THE-LINE RECORD STAY APART"
+
+
+def plant_advice_words_at_the_line() -> Result:
+    """Recommend a side in the at-the-line words (E4, 2026-09-06)."""
+    from gridiron import audit as _audit
+
+    clean = {"record": "at_the_line", "categories": [
+        {"category": "spread / at the venue's line",
+         "gate_line": "14 of 100 settled comparisons"}]}
+    if _audit.at_the_line_advice_faults(clean):
+        return Result(LAW_AT_THE_LINE_WORDS, "advice in the at-the-line words",
+                      "audit.at_the_line_advice_faults", False,
+                      "the scan fires on wording that recommends nothing; fix "
+                      "the scan before trusting this planting")
+    planted = {"record": "at_the_line", "categories": [
+        {"category": "spread / at the venue's line",
+         "gate_line": "the value play here is the home side at -6.5"}]}
+    faults = _audit.at_the_line_advice_faults(planted)
+    if not faults:
+        return Result(LAW_AT_THE_LINE_WORDS, "advice in the at-the-line words",
+                      "audit.at_the_line_advice_faults", False,
+                      "NOT CAUGHT - the record told a reader what to do")
+    return Result(LAW_AT_THE_LINE_WORDS, "advice in the at-the-line words",
+                  "audit.at_the_line_advice_faults", True, faults[0])
+
+
+def plant_an_at_the_line_curve_in_the_blind_record() -> Result:
+    """File a claim curve among the blind rung curves (E4, 2026-09-06)."""
+    from gridiron import calibration as _cal
+
+    payload = {"record": "rung", "categories": [
+        {"category": "spread / statistical", "record": "rung"},
+        {"category": "spread / at the venue's line", "record": "at_the_line"}]}
+    try:
+        _cal.assert_the_records_stay_apart(payload)
+    except _cal.MergedRecord as exc:
+        return Result(LAW_TWO_RECORDS, "an at-the-line curve filed as a blind one",
+                      "calibration.assert_the_records_stay_apart", True, str(exc))
+    return Result(LAW_TWO_RECORDS, "an at-the-line curve filed as a blind one",
+                  "calibration.assert_the_records_stay_apart", False,
+                  "NOT CAUGHT - one curve now averages a forecast against its "
+                  "own rung with a forecast against a price")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -7199,6 +7245,8 @@ def main() -> int:
     results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_raw_exception_on_the_health_panel())
     results.append(plant_a_prop_market_on_the_llm_roster())
+    results.append(plant_advice_words_at_the_line())
+    results.append(plant_an_at_the_line_curve_in_the_blind_record())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

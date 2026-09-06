@@ -291,8 +291,13 @@ def cmd_predict(args: argparse.Namespace) -> int:
 
 
 def cmd_resolve(args: argparse.Namespace) -> int:
+    from . import tasks
+
     conn = db.open_db(args.database)
-    result = resolver.resolve_all(conn, progress=lambda m: print(f"  .. {m}", flush=True))
+    # THE SEAM, not `resolve_all` directly: the at-the-line claims settle with
+    # the predictions they were computed from (E4, 2026-09-06).
+    result = tasks.settle_everything(
+        conn, progress=lambda m: print(f"  .. {m}", flush=True))
     print(json.dumps(result, indent=2))
     print(json.dumps(resolver.summary(conn), indent=2))
     conn.close()
