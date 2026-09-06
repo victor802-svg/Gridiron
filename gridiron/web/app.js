@@ -1144,6 +1144,11 @@ const Gridiron = (function () {
   function startLivePolling(data) {
     stopLivePolling();
     if (!data || !(data.glance || {}).state || data.glance.state === 'complete') return;
+    // NO SLATE, NO POLL (UI audit finding 25, 2026-09-06). An empty payload
+    // has no week; the poll asked `/api/live?week=null` every minute and was
+    // refused with a 422 on every NBA visit. The race fix exposed it: before,
+    // the NBA tab was polling for whichever sport's cards had leaked onto it.
+    if (data.week === null || data.week === undefined || !(data.cards || []).length) return;
     const seq = weekSeq;
     const tick = async () => {
       if (state.view !== 'week') { stopLivePolling(); return; }

@@ -33,6 +33,22 @@ def _nothing_but_the_message(page, where):
     assert page.evaluate("document.getElementById('week-hero').hidden") is True, f"{where}: a swipe brought the old hero back"
 
 
+def test_a_sport_with_no_forecasts_starts_no_live_poll(page):
+    """UI audit finding 25 (2026-09-06, found in the re-drive): an empty
+    payload has no week, and the live poll asked /api/live?week=null every
+    minute and was refused with a 422 on every NBA visit."""
+    _open_week(page)
+    sports = page.evaluate("[...document.querySelectorAll('#sport-tabs button')].map(b => b.dataset.sport)")
+    counts = {sp: page.evaluate(f"fetch('/api/week?sport={sp}').then(r => r.json()).then(j => (j.cards || []).length)") for sp in sports}
+    empty = next(sp for sp, n in counts.items() if n == 0)
+    seen = []
+    page.on("response", lambda r: seen.append((r.status, r.url)) if "/api/live" in r.url or r.status >= 400 else None)
+    with page.expect_response(lambda r: "/api/week" in r.url and f"sport={empty}" in r.url, timeout=20000):
+        page.click(f"#sport-tabs button[data-sport='{empty}']")
+    page.wait_for_timeout(2500)
+    assert not seen, f"an empty slate asked the live endpoint or was refused: {seen[:3]}"
+
+
 def test_a_sport_with_no_forecasts_shows_nothing_of_the_last_one(page):
     _open_week(page)
     full = page.evaluate("window.Gridiron.state.sport")
