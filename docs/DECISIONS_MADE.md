@@ -706,3 +706,37 @@ that the confident ones are better.
 
 > **A floor is a bet that confidence predicts accuracy. This project has now
 > measured that relationship twice: absent once, reversed once.**
+
+## 2026-09-06 — rulings on GRIDIRON_AT_THE_LINE (D1, D2, D3)
+
+Saved verbatim in `docs/briefs/2026-09-06-at-the-line.md`. Three rulings, each
+binding from its date forward.
+
+**D1 — option (b): the paper ledger.** LAW 5 amended by dated ruling, as now
+written in CLAUDE.md. What it permits is arithmetic on recorded snapshots and
+recorded outcomes — "had every qualifying pick been backed at one unit, the
+paper return per sport is X" — labelled hypothetical on its face, behind the
+n=100 gate, fee-adjusted by the venue's published formula. What it does not
+permit is unchanged: no staking advice, no bankroll, no recommendations, no
+placement, no account, no authentication. The identifiers of the ledger code
+avoid the words the LAW 5 scan refuses; the scan is not loosened.
+
+**D2 — NFL, then CFB**, for the ratings-core work. The daily MLB runs keep
+their place on the scheduler regardless: those resolutions are the fastest
+hundred available before spring.
+
+**D3 — Kalshi ratified** as a read-only market source. Probed 2026-09-06
+before anything was built: `api.elections.kalshi.com/trade-api/v2` answers
+`markets`, `series` and `events` without credentials (HTTP 200), with a spread
+ladder per game — `KXNFLSPREAD-26SEP09NESEA-SEA5`, "Seattle wins by over 4.5
+points", yes 0.45 / 0.46 — totals (`KXNFLTOTAL`) and college spreads
+(`KXNCAAFSPREAD`). Public data exists, so the source is built (E5). The fee
+schedule page and the API documentation could not be fetched from this
+machine the same day (HTTP 429 and 404); the fee formula is therefore declared
+from the brief's statement and marked to be verified against the published
+schedule before any fee-adjusted figure could clear the gate.
+
+**A correction to the brief's context line.** "6 resolved predictions exist,
+none NFL" is not the record: it held 523 settled rows on 2026-09-05 (MLB 286,
+NCAAF 135, UFC 102, NFL 0). NFL is the sport with nothing resolved, which is
+what the ruling on order answers.

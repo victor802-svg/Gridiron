@@ -370,7 +370,7 @@ BETTING_SCAN_EXEMPT = ("audit.py",)
 MARKET_MODULE = "market"
 
 #: Names that belong to a market source and to nowhere else.
-MARKET_SOURCE_IDENTIFIERS = ("prizepicks", "prize_picks")
+MARKET_SOURCE_IDENTIFIERS = ("prizepicks", "prize_picks", "kalshi")
 
 
 def market_source_faults(root: Path | None = None) -> list[str]:
@@ -389,8 +389,8 @@ def market_source_faults(root: Path | None = None) -> list[str]:
                     faults.append(
                         f"{path.relative_to(root)}:{name} names a market "
                         f"source outside gridiron/{MARKET_MODULE}/. LAW 5 as "
-                        f"amended permits read-only lines from PrizePicks "
-                        f"ONLY inside the market module -- that quarantine is "
+                        f"amended permits read-only lines from PrizePicks and "
+                        f"Kalshi ONLY inside the market module -- that quarantine is "
                         f"what keeps a fetcher out of a prediction path, and "
                         f"LAW 1's closure scan can only see what the closure "
                         f"imports.")

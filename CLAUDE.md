@@ -57,6 +57,23 @@ authenticates to nothing, and calls no exchange or book endpoint. If scoring
 against the market ever required an account, the market comparison would be
 dropped rather than the law bent.
 
+(Amended 2026-09-06 by operator ruling, narrowly, in two parts. **Hypothetical
+unit-stake accounting** is permitted: against recorded market snapshots only,
+the paper return per sport had every qualifying pick been backed at one unit,
+labelled "hypothetical" in the visible text wherever it appears, and gated
+behind the same 100-resolved rule as the edge figure; a fee-adjusted comparison
+using the venue's published fee formula is included in that permission.
+Everything else this law forbids stays forbidden: no staking advice, no
+bankroll, no bet recommendations, no placement, no account, no authentication
+to any venue. **Kalshi** is added as a read-only market source under the same
+terms as the PrizePicks ruling: published prices only, fetched only inside the
+market module, only after the prediction row exists, only from unauthenticated
+public endpoints; if the public data ever requires an account or a key, the
+source is dropped and the ruling records that outcome. Measured 2026-09-06
+before anything was built: the public trade API answers market, series and
+event reads without credentials. The operator holds a personal Kalshi account;
+it is the operator's, and this codebase never touches it.)
+
 **6. NEVER AGGREGATE ACROSS SPORTS.** Every calibration curve, Brier score, edge
 figure, factor verdict and sample size belongs to exactly one sport. A number
 that mixes NFL spreads with MLB moneylines describes neither, and it flatters

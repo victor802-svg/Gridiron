@@ -226,3 +226,30 @@ now carries five days of it.
 four entries need no player identity match, no lineup and no crosswalk, and
 they resolve from a final score present for 100% of stored games. Every prop
 above them depends on a name matching a name.
+
+## 7. Kalshi as a read-only market source (ruling D3, 2026-09-06)
+
+**What was measured, 2026-09-06, before anything was built.** The public trade
+API (`https://api.elections.kalshi.com/trade-api/v2`) answered unauthenticated
+reads of `markets`, `series` and `events` with HTTP 200. Per game it quotes a
+ladder of binary markets — for `KXNFLSPREAD-26SEP09NESEA`, twenty-five markets
+of the shape "Seattle wins by over 4.5 points" with `yes_bid_dollars` 0.45 and
+`yes_ask_dollars` 0.46 — plus totals (`KXNFLTOTAL`: "Over 63.5 points scored")
+and a game-winner series (`KXNFLGAME`). College football (`KXNCAAFSPREAD`),
+basketball (`KXNBASPREAD`) and baseball (`KXMLBSPREAD`, `KXMLBTOTAL`) have the
+same shapes.
+
+**Licence and terms, stated as far as they could be checked.** The market
+data is published on a public endpoint that needs no key. Kalshi's terms of
+use and its API documentation were not fetchable from this machine on the day
+(HTTP 429 on the fee schedule, 404 on the documentation path tried), so the
+terms are **not verified here** and are treated as unstated: no published rate
+limit for unauthenticated reads is known, every response is cached, one
+event's ladder is fetched per game near its start, and a settled game is never
+refetched. If the public endpoint ever requires an account or a key, the
+source is dropped and `docs/DECISIONS_MADE.md` records it, per the ruling.
+
+**What it is for.** The at-the-line record (E4): the model's frozen margin
+distribution evaluated at each quoted line, against the venue's price. It is
+market data under LAW 5 as amended, read only inside `gridiron/market/`, only
+after the prediction row exists.
