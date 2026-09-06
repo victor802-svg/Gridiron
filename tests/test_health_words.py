@@ -24,6 +24,10 @@ def test_the_recorded_detail_is_said_in_words():
     assert "84 forecasts in every market it asks (distance, moneyline, rounds)" in words
     assert language.task_detail_words(None) is None
     assert language.task_detail_words("") == ""
+    # a bare version token, as the recalibration task writes it
+    bare = language.task_detail_words("fitted 12 categories under fs2; 3 unchanged")
+    assert bare == "fitted 12 categories under factor set 2; 3 unchanged"
+    assert audit.plain_words_violations(bare) == []
 
 
 def test_the_health_payload_carries_the_failed_run_in_words(world_copy):

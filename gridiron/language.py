@@ -2851,6 +2851,7 @@ _DETAIL_CLASS = _re.compile(r"^[A-Z][A-Za-z0-9]*(?:Error|Exception|Answered|Refu
 _DETAIL_SLATE_KEY = _re.compile(r"\bslate (\d{4})(\d{2})(\d{2})\b")
 _DETAIL_STAMP = _re.compile(r"\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?Z?\b")
 _DETAIL_FACTOR_SET = _re.compile(r"factor set '?fs(\d+)'?")
+_DETAIL_BARE_FS = _re.compile(r"(?<![A-Za-z0-9_])'?fs(\d+)'?(?![A-Za-z0-9_])")
 
 
 def task_detail_words(detail: str | None) -> str | None:
@@ -2877,4 +2878,7 @@ def task_detail_words(detail: str | None) -> str | None:
         lambda m: day_words(m.group(1), m.group(2), m.group(3)) + f" at {m.group(4)}:{m.group(5)} UTC",
         text)
     text = _DETAIL_FACTOR_SET.sub(lambda m: f"factor set {m.group(1)}", text)
+    # A bare version token ("fitted 12 categories under fs2") is the same
+    # identifier without the words around it (U4 re-drive, 2026-09-06).
+    text = _DETAIL_BARE_FS.sub(lambda m: f"factor set {m.group(1)}", text)
     return text
