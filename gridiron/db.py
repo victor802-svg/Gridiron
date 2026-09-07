@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -16,6 +16,27 @@ SCHEMA_PATH = config.PACKAGE_ROOT / "schema.sql"
 def utcnow() -> str:
     """The one timestamp format in this project: ISO-8601, UTC, Z-suffixed."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def just_after(iso: str | None) -> str:
+    """One second past a stamp, or now if there is nothing to be after.
+
+    TWO TABLES NEED THIS AND THEY MUST AGREE. A rank and a recommendation are
+    both written after the prediction they are about, and both have a trigger
+    that refuses equality as well as precedence -- so a row written inside the
+    same second as its prediction would be refused for looking like a blind
+    one, which it is not. Written once here rather than twice there.
+    """
+    now = utcnow()
+    if not iso:
+        return now
+    try:
+        when = datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return now
+    after = (when.replace(tzinfo=timezone.utc)
+             + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return max(now, after)
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:

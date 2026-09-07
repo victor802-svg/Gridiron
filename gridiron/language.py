@@ -3118,3 +3118,71 @@ def ranker_verdict_line(led_brier: float | None, rest_brier: float | None,
                 f"rather than the formula being retuned to hide it")
     return (f"the two sides scored identically ({led_brier}) on {led_n} and "
             f"{rest_n} settled questions, so the ordering separated nothing")
+
+
+# ---------------------------------------------------------------------------
+# THE RECOMMENDATION (THE_RECOMMENDATION R2-R4, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# LAW 5 permits a recommendation now and the plain-words law still governs how
+# it reads. No "lock", no "best bet", no confidence theatre: the line says the
+# question, what the model makes it worth, what the venue is charging, what is
+# left after the fee, how much, and whether anything has settled behind it.
+# `audit.ADVICE_WORDS` scans these strings on every gate run.
+
+def recommendation_line(*, question: str, fair_value: float, price: float,
+                        edge_cents: float, side: str, units: float,
+                        flat: bool, size_why: str | None = None) -> str:
+    """One recommendation, in the order a reader needs it.
+
+    THE SIZE CARRIES ITS OWN REASON, and there are two different ones behind a
+    flat unit: a market with nothing settled yet, and a market with plenty
+    settled where the model is behind the price. Collapsing them into "no
+    measured edge yet" would tell a reader the second case is waiting for data
+    it already has.
+    """
+    what = "the yes side" if side == "yes" else "the other side"
+    return (f"{question} — the model makes it {round(fair_value * 100)}¢, the "
+            f"venue is at {round(price * 100)}¢, and {what} is worth "
+            f"{edge_cents:+.1f}¢ a contract after the fee. "
+            f"{_units_words(units, flat, size_why)}")
+
+
+def _units_words(units: float, flat: bool, size_why: str | None = None) -> str:
+    if flat:
+        reason = size_why or "no measured edge in this market yet"
+        return f"One flat unit — {reason}."
+    return f"{units:.2f} units, a quarter of Kelly and capped."
+
+
+def no_recommendation_line(reason: str) -> str:
+    """What the page says when nothing clears the fee, which is most days."""
+    return f"Nothing priced wrong enough today. {reason}"
+
+
+def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
+             minimum: int) -> str:
+    """The closing-line verdict, or how far it is from arriving.
+
+    THE FASTEST HONEST READ. A win rate needs several hundred settled questions;
+    this says something at around fifty, because it compares the app's price
+    against the market's own final estimate rather than against one outcome.
+    """
+    if n < minimum:
+        return (f"{n} of {minimum} priced against a close · nothing is claimed "
+                f"from a sample this size")
+    if mean_cents is None:
+        return f"{n} priced against a close, and none of them has a closing price"
+    direction = "cheaper" if mean_cents > 0 else "richer"
+    return (f"{n} priced against a close · {mean_cents:+.1f}¢ a contract on "
+            f"average, which is buying {direction} than the market's own final "
+            f"estimate · {round((beat_share or 0) * 100)}% beat the close")
+
+
+def clv_finding_line(mean_cents: float, n: int) -> str:
+    """The sentence for a negative closing line, written before it is needed."""
+    return (f"THE MODEL IS BUYING RICH: {mean_cents:+.1f}¢ a contract against "
+            f"the close over {n} recommendations. The honest reading is that "
+            f"the prices it likes are the ones the market is about to move "
+            f"away from, and the finding stands rather than the engine being "
+            f"quietly retuned.")

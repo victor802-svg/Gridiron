@@ -36,10 +36,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
 
 from . import config
-from .db import utcnow
+from .db import just_after, utcnow
 
 
 class RankIsNotAClaim(RuntimeError):
@@ -242,7 +241,7 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
              1 if entry["edge_counted"] else 0, entry["edge_gate_n"],
              entry["factor_set_version"], 1 if place is not None else 0, place,
              1 if backfilled else 0,
-             max(stamp, _after(entry["created_utc"]))))
+             max(stamp, just_after(entry["created_utc"]))))
         counts["ranked"] += 1
         counts["edge_counted"] += 1 if entry["edge_counted"] else 0
         counts["shortlisted"] += 1 if place is not None else 0
@@ -310,25 +309,6 @@ def select(sport: str, scored: list[dict]) -> list[int]:
                 per_game[game] = per_game.get(game, 0) + 1
                 break
     return chosen
-
-
-def _after(created_utc: str | None) -> str:
-    """One second past a prediction's own stamp.
-
-    The trigger refuses equality as well as precedence, and a rank written in
-    the same second as the row it scores would be refused for looking like a
-    blind rank, which it is not. This is only ever the larger of the two in a
-    test that writes a prediction stamped in the future; in earnest the clock
-    is well past it.
-    """
-    if not created_utc:
-        return utcnow()
-    try:
-        when = datetime.strptime(created_utc, "%Y-%m-%dT%H:%M:%SZ")
-    except ValueError:
-        return utcnow()
-    return (when.replace(tzinfo=timezone.utc)
-            + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def ranks_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[int, sqlite3.Row]:

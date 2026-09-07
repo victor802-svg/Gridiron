@@ -1560,3 +1560,86 @@ BEFORE DELETE ON prediction_ranks
 BEGIN
     SELECT RAISE(ABORT, 'GRIDIRON LAW 3: a rank is never deleted');
 END;
+
+-- ---------------------------------------------------------------------------
+-- RECOMMENDATIONS (THE_RECOMMENDATION R2/R3, 2026-09-07). What the app said
+-- was worth taking, at what price, and what the price did by the close.
+--
+-- THIS IS NOT THE OPERATOR'S LEDGER, and LAW 5 turns on the difference. It
+-- records what the APP recommended, not what he staked or what it returned;
+-- his own record lives outside this codebase, and `audit.wagering_ledger_faults`
+-- refuses a table that would hold it. Nothing here is a balance, a position or
+-- an order.
+--
+-- IT EXISTS FOR THE CLOSING LINE. A win rate needs several hundred settled
+-- questions to say anything; closing-line value says something at around
+-- fifty, and it is the first honest read on whether the model is buying cheap
+-- or buying rich. That is only measurable if the price at the moment of
+-- recommendation was written down, so it is.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recommendations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_id   INTEGER NOT NULL REFERENCES predictions (id),
+    sport           TEXT    NOT NULL,
+    game_id         TEXT    NOT NULL REFERENCES games (id),
+    market          TEXT    NOT NULL,
+    -- the fixed proposition, and which side of it was recommended
+    side            TEXT    NOT NULL CHECK (side IN ('yes', 'no')),
+    fair_value      REAL    NOT NULL CHECK (fair_value > 0 AND fair_value < 1),
+    price           REAL    NOT NULL CHECK (price > 0 AND price < 1),
+    edge_cents      REAL    NOT NULL,
+    -- 'flat' below the market's gate, 'fraction' above it. A flat unit is the
+    -- only size available to an unproven market and the column says which was
+    -- used, so a later reader can tell one from the other without arithmetic.
+    size_kind       TEXT    NOT NULL CHECK (size_kind IN ('flat', 'fraction')),
+    size_units      REAL    NOT NULL,
+    gate_n          INTEGER NOT NULL,
+    created_utc     TEXT    NOT NULL,
+    -- filled once, at the close, by the same pass that takes the near-start
+    -- look at the line
+    close_price     REAL,
+    clv_cents       REAL,
+    closed_utc      TEXT,
+    UNIQUE (prediction_id, created_utc)
+);
+CREATE INDEX IF NOT EXISTS recommendations_sport
+    ON recommendations (sport, market, created_utc);
+
+CREATE TRIGGER IF NOT EXISTS recommendation_comes_after_its_prediction
+BEFORE INSERT ON recommendations
+FOR EACH ROW
+WHEN NEW.created_utc <= (SELECT created_utc FROM predictions WHERE id = NEW.prediction_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: a recommendation reads a price, so it is stamped after '
+        || 'the prediction it is about, never at or before it');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendations_no_update
+BEFORE UPDATE OF prediction_id, sport, game_id, market, side, fair_value,
+                 price, edge_cents, size_kind, size_units, gate_n, created_utc
+ON recommendations
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a recommendation is append-only. The close is written '
+        || 'once; what was recommended is never rewritten');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendation_closes_once
+BEFORE UPDATE OF close_price, clv_cents, closed_utc ON recommendations
+FOR EACH ROW
+WHEN OLD.closed_utc IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: this recommendation already has its closing price; '
+        || 'closing-line value is measured once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendations_no_delete
+BEFORE DELETE ON recommendations
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a recommendation is never deleted. What the app said '
+        || 'at the time is the whole of the evidence about whether it was right');
+END;

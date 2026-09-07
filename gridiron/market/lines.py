@@ -715,6 +715,18 @@ def refresh_venue_ladder(conn: sqlite3.Connection, prediction_ids: list[int]) ->
     return {"quotes": quotes, "claims": claims}
 
 
+def record_closing_prices(conn: sqlite3.Connection) -> dict:
+    """The closing price beside every open recommendation.
+
+    Lives here for the same reason the venue ladder does: the scheduler asks
+    for it by shape rather than by name, and the market module is where the
+    prices are.
+    """
+    from . import recommend
+
+    return recommend.record_closing_prices(conn)
+
+
 def _fetch_prop_days(conn: sqlite3.Connection, sport: str,
                      game_ids: list[str]) -> dict:
     """Prop quotes for the dates these games fall on, one fetch per date.

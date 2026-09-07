@@ -861,6 +861,9 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # before the ranker existed has no ranks, says so, and shows everything --
     # which is what this page did before any of this.
     shortlist_block = _shortlist_block(conn, sport, cards)
+    # WHAT IS WORTH TAKING (R4, 2026-09-07), computed from the shortlist that
+    # was just marked. Empty on most days by design.
+    recommendations_block = _recommendations_block(conn, cards)
 
     payload = {
         "sport": sport,
@@ -883,6 +886,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         "n": len(cards),
         "cards": cards,
         "shortlist": shortlist_block,
+        "recommendations": recommendations_block,
         # WHOSE PICKS THESE ARE, and who else has some. Named on the payload
         # rather than inferred by the renderer from the cards: a list that
         # cannot say who made it is a list nobody can check.
@@ -1141,6 +1145,62 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
                 n, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
         }
     return out
+
+
+def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
+    """What is worth taking on this slate, and at what size.
+
+    MOST DAYS THIS IS EMPTY, and an empty list is a correct output rather than
+    a failure to find something. The page says so in a sentence instead of
+    reaching: a surface that produces an opinion every morning is a surface
+    that has stopped measuring anything.
+
+    Nothing here is a wager. It is a price the model disagrees with, the size
+    the declared rule allows, and the settled count behind it -- and below a
+    market's gate that size is one flat unit whatever the model says.
+    """
+    from .market import recommend
+
+    ids = [c["prediction_id"] for c in cards if c.get("on_shortlist")]
+    priced = recommend.for_predictions(conn, ids)
+    lines = []
+    for entry in priced:
+        if entry["side"] is None:
+            continue
+        size = entry["size"]
+        lines.append({
+            "prediction_id": entry["prediction_id"],
+            "n": entry["gate_n"],
+            "side": entry["side"],
+            "edge_cents": entry["edge_cents"],
+            "units": size["units"],
+            "flat": size["kind"] == "flat",
+            "words": language.recommendation_line(
+                question=_question_words(cards, entry),
+                fair_value=entry["fair_value"], price=entry["price"],
+                edge_cents=entry["edge_cents"], side=entry["side"],
+                units=size["units"], flat=size["kind"] == "flat",
+                size_why=size.get("why")),
+        })
+    considered = len(priced)
+    return {
+        "n": len(lines),
+        "considered": considered,
+        "lines": lines,
+        "empty_words": language.no_recommendation_line(
+            f"{considered} questions carried a price and none of them cleared "
+            f"the venue's fee." if considered else
+            "No question on this slate has a recorded price to compare against."),
+    }
+
+
+def _question_words(cards: list[dict], entry: dict) -> str:
+    """The question this recommendation is about, in the words already on its
+    card. Composed once, on the card, and reused rather than rebuilt."""
+    for card in cards:
+        if card["prediction_id"] == entry["prediction_id"]:
+            return card.get("phrase") or card.get("row_title") or "this question"
+    return "this question"
 
 
 def _shortlist_block(conn: sqlite3.Connection, sport: str,

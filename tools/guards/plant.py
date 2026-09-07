@@ -7078,6 +7078,75 @@ def _tree_with(module: str, source: str):
     return root
 
 
+def plant_a_parlay() -> Result:
+    """Ask the engine to price a parlay (LAW 5, 2026-09-07)."""
+    from gridiron.market import recommend as _recommend
+
+    try:
+        _recommend.price_parlay([{"leg": 1}, {"leg": 2}, {"leg": 3}])
+    except _recommend.SinglesOnly as exc:
+        return Result(LAW_NEVER_TRANSACTS, "price a three-leg parlay",
+                      "recommend.price_parlay", True, str(exc))
+    return Result(LAW_NEVER_TRANSACTS, "price a three-leg parlay",
+                  "recommend.price_parlay", False,
+                  "NOT CAUGHT - the engine priced a parlay, and each leg pays "
+                  "the spread and the fee whatever the product of the "
+                  "probabilities says")
+
+
+def plant_a_recommendation_in_a_live_game() -> Result:
+    """Size a wager while the game is running (LAW 5, 2026-09-07)."""
+    from gridiron.market import recommend as _recommend
+
+    try:
+        _recommend.refuse_in_game("in")
+    except _recommend.NotSizedInGame as exc:
+        return Result(LAW_NEVER_TRANSACTS, "size a wager in a running game",
+                      "recommend.refuse_in_game", True, str(exc))
+    return Result(LAW_NEVER_TRANSACTS, "size a wager in a running game",
+                  "recommend.refuse_in_game", False,
+                  "NOT CAUGHT - the app sized a bet off a score that can be "
+                  "ninety seconds behind the price it is betting into")
+
+
+def plant_a_full_kelly_stake() -> Result:
+    """Ask for the whole Kelly fraction (LAW 5, 2026-09-07)."""
+    from gridiron import config as _config
+    from gridiron.market import recommend as _recommend
+
+    full = _recommend.kelly_fraction(0.62, 0.50)
+    sized = _recommend.size_for(model_prob=0.62, price=0.50, settled=400,
+                                measured_edge=True)
+    if sized["fraction"] >= full:
+        return Result(LAW_NEVER_TRANSACTS, "stake the full Kelly fraction",
+                      "recommend.size_for", False,
+                      f"NOT CAUGHT - the sizer returned {sized['fraction']} "
+                      f"against a full Kelly of {full}")
+    if sized["fraction"] > _config.MAX_FRACTION:
+        return Result(LAW_NEVER_TRANSACTS, "stake the full Kelly fraction",
+                      "recommend.size_for", False,
+                      "NOT CAUGHT - the cap did not hold")
+    return Result(LAW_NEVER_TRANSACTS, "stake the full Kelly fraction",
+                  "recommend.size_for", True,
+                  f"a quarter and capped: {sized['fraction']} against a full "
+                  f"Kelly of {round(full, 4)}")
+
+
+def plant_a_sized_bet_below_the_gate() -> Result:
+    """Size on a market with a sample but no measured edge (LAW 5, 2026-09-07)."""
+    from gridiron.market import recommend as _recommend
+
+    behind = _recommend.size_for(model_prob=0.62, price=0.50, settled=400,
+                                 measured_edge=False)
+    if behind["kind"] != "flat":
+        return Result(LAW_NEVER_TRANSACTS, "size up on a market the model loses on",
+                      "recommend.size_for", False,
+                      "NOT CAUGHT - four hundred settled questions proving the "
+                      "model behind the price became a licence to stake more")
+    return Result(LAW_NEVER_TRANSACTS, "size up on a market the model loses on",
+                  "recommend.size_for", True, behind["why"])
+
+
 def plant_a_venue_credential() -> Result:
     """Put a key for the venue in the market module (LAW 5, 2026-09-07)."""
     from gridiron import audit as _audit
@@ -7442,6 +7511,10 @@ def main() -> int:
     results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_raw_exception_on_the_health_panel())
     results.append(plant_a_prop_market_on_the_llm_roster())
+    results.append(plant_a_parlay())
+    results.append(plant_a_recommendation_in_a_live_game())
+    results.append(plant_a_full_kelly_stake())
+    results.append(plant_a_sized_bet_below_the_gate())
     results.append(plant_a_venue_credential())
     results.append(plant_a_venue_credential_in_the_environment())
     results.append(plant_an_order_path())

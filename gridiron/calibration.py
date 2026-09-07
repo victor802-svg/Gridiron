@@ -1412,6 +1412,10 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     # curves, never inside them -- this is a fact about the ranker, not about
     # the model.
     payload["ranker"] = ranker_scorecard(conn, sport=sport)
+    # THE CLOSING LINE (R3, 2026-09-07): the first verdict available on whether
+    # the app is buying cheap. Its own section, its own minimum, and capable of
+    # returning bad news in words written before it was needed.
+    payload["closing_line"] = clv_report(conn, sport=sport)
 
     assert_every_figure_has_n(payload)
     assert_no_merged_categories(payload)
@@ -1955,5 +1959,80 @@ def ranker_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
             "per market, with the same gate as every other figure. Ranks "
             "computed after the fact are left out: a formula written today "
             "cannot be scored on games it already knows the answer to."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# CLOSING-LINE VALUE (THE_RECOMMENDATION R3, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# THE VERDICT THAT ARRIVES FIRST. Every other figure on this page waits for
+# games to finish and for a hundred of them to accumulate. This one compares
+# the price the app recommended against the market's own final estimate of the
+# same question, which is a far less noisy comparison than one outcome -- it
+# says something at around fifty observations rather than several hundred.
+#
+# IT IS STILL A CLAIM, so it renders with its N and claims nothing below the
+# declared minimum. And it is capable of returning bad news: a negative mean
+# means the app is buying prices the market is about to move away from, and the
+# sentence for that case is written in `language.clv_finding_line` rather than
+# improvised on the day.
+
+#: HOW MANY RECOMMENDATIONS BEFORE THE CLOSING LINE SAYS ANYTHING. Fifty,
+#: declared 2026-09-07 and deliberately not the hundred of MIN_SAMPLE_FOR_EDGE_CLAIM:
+#: this compares two prices for the same question rather than a forecast
+#: against an outcome, so most of the variance an edge estimate fights through
+#: is not in it. The number is a judgement and is dated as one.
+MIN_RECOMMENDATIONS_FOR_CLV = 50
+CLV_DECLARED = "2026-09-07T00:00:00Z"
+
+
+def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """What the closing line says about this sport's recommendations."""
+    require_sport(sport, "calibration.clv_report")
+    rows = conn.execute(
+        "SELECT market, side, price, close_price, clv_cents FROM recommendations"
+        " WHERE sport = ? AND closed_utc IS NOT NULL", (sport,)).fetchall()
+    by_market: dict[str, list] = {}
+    for row in rows:
+        by_market.setdefault(row["market"], []).append(row)
+
+    entries = []
+    for market in sorted(by_market):
+        got = by_market[market]
+        n = len(got)
+        mean = round(sum(r["clv_cents"] for r in got) / n, 2) if n else None
+        beat = round(sum(1 for r in got if r["clv_cents"] > 0) / n, 4) if n else None
+        entry = {
+            "sport": sport,
+            "market": market,
+            "n": n,
+            "minimum_for_a_claim": MIN_RECOMMENDATIONS_FOR_CLV,
+            "renderable": n >= MIN_RECOMMENDATIONS_FOR_CLV,
+            "mean_cents": mean,
+            "beat_the_close": beat,
+            "words": language.clv_line(n, mean, beat, MIN_RECOMMENDATIONS_FOR_CLV),
+        }
+        if entry["renderable"] and mean is not None and mean < 0:
+            entry["finding"] = language.clv_finding_line(mean, n)
+        entries.append(entry)
+
+    open_rows = conn.execute(
+        "SELECT COUNT(*) FROM recommendations WHERE sport = ? AND closed_utc IS NULL",
+        (sport,)).fetchone()[0]
+    return {
+        "sport": sport,
+        "record": "closing_line",
+        "declared": CLV_DECLARED,
+        "n": sum(e["n"] for e in entries),
+        "awaiting_close": open_rows,
+        "markets": entries,
+        "note": (
+            "The price the app recommended against the market's own final "
+            "estimate of the same question. It needs about fifty observations "
+            "to say anything, where a win rate needs several hundred, which is "
+            "why it is the first verdict this project can reach. A positive "
+            "number means it is buying cheaper than the close."
         ),
     }

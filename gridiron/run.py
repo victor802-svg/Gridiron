@@ -233,6 +233,15 @@ def run_slate(
 
         result["ranked"] = shortlist.rank_rows(conn, run.prediction_ids)
 
+        # Step 7. WHAT IS WORTH TAKING, AND AT WHAT SIZE (R2, 2026-09-07).
+        # Only where a side clears the venue's fee, which most questions do
+        # not; the price is written down with it because the closing line is
+        # the first verdict this project can reach and it cannot be compared
+        # against a price nobody recorded.
+        from .market import recommend
+
+        result["recommended"] = recommend.record_for(conn, run.prediction_ids)
+
     return result
 
 

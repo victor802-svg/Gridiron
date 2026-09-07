@@ -432,6 +432,11 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # for by shape, not by name -- the venue is named only inside the market
     # module, and the quarantine scan is what says so.
     venue = lines.refresh_venue_ladder(conn, ids)
+    # THE CLOSING LINE (R3, 2026-09-07). This pass already re-reads the market
+    # near the start, which is exactly the price a recommendation has to be
+    # measured against; taking it anywhere else would mean two definitions of
+    # "the close".
+    closed = lines.record_closing_prices(conn)
 
     taken, failed = 0, 0
     for row in rows:
@@ -443,7 +448,9 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     return {"near_start_taken": taken, "near_start_failed": failed,
             "near_start_due": len(rows), "near_start_refetched": refreshed,
             "venue_near_start": venue["quotes"],
-            "at_the_line_claims": venue["claims"]}
+            "at_the_line_claims": venue["claims"],
+            "closing_prices": closed["closed"],
+            "closing_price_missing": closed["no_close"]}
 
 
 def _plus_hours(stamp: str, hours: float) -> str:

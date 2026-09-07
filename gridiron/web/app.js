@@ -650,6 +650,39 @@ const Gridiron = (function () {
     panel.hidden = (rank.comparisons || []).length === 0;
   }
 
+  // WHAT IS WORTH TAKING (R4, 2026-09-07). Placed, never composed: every
+  // sentence is written by `language.recommendation_line` and scanned for
+  // advice words on the gate. An empty list gets the server's own sentence
+  // rather than a hidden section, because "nothing cleared the fee today" is
+  // the answer on most days and a blank space is not.
+  function renderRecommendations(data) {
+    const panel = document.getElementById('week-recommendations');
+    const host = document.getElementById('recommendations-list');
+    const empty = document.getElementById('recommendations-empty');
+    const count = document.getElementById('recommendations-n');
+    if (!panel || !host) return;
+    host.innerHTML = '';
+    const block = (data && data.recommendations) || null;
+    if (!block) { panel.hidden = true; return; }
+    requireN(block, 'the recommendation list');
+    (block.lines || []).forEach(line => {
+      requireN(line, 'a recommendation');
+      // ONE SENTENCE PER RECOMMENDATION. The size already carries its own
+      // reason and its own count -- "0 of 100 settled in this market" -- so a
+      // second line saying the same thing printed the same words twelve times
+      // down the page. Visible the first time this was rendered.
+      const row = el('div', 'gate-row');
+      row.appendChild(el('div', 'gate-name', line.words));
+      host.appendChild(row);
+    });
+    if (empty) {
+      empty.textContent = (block.lines || []).length ? '' : (block.empty_words || '');
+      empty.hidden = !empty.textContent;
+    }
+    if (count) count.textContent = String(block.n);
+    panel.hidden = false;
+  }
+
   // AT THE VENUE'S LINE (E4, 2026-09-06). A second record with its own gate:
   // what the model's frozen distribution says about the venue's own number,
   // beside what the venue's price says about it. PLACED, NOT COMPOSED -- every
@@ -2229,6 +2262,7 @@ const Gridiron = (function () {
       // showing, on its face, in the server's words. A slate written before
       // the ordering existed has no ranks: it says so and shows everything,
       // through the positional control this page has always had.
+      renderRecommendations(data);
       const listing = data.shortlist || {};
       const note = document.getElementById('week-shortlist-note');
       if (note) {
