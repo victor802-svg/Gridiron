@@ -1482,3 +1482,75 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 3: an at-the-line claim is never deleted');
 END;
+
+-- ---------------------------------------------------------------------------
+-- PREDICTION RANKS (THE_SHORTLIST S1, 2026-09-07). One ordering score per
+-- prediction per ranker version.
+--
+-- A RANK IS A MEASUREMENT AND IS TREATED LIKE ONE: append-only, timestamped,
+-- carrying the factor set it was computed from and the version of the formula
+-- that computed it. It is stored rather than computed on the fly for one
+-- reason above all others -- so the ranker itself can be scored later, by
+-- comparing what it put on the shortlist against what it left off.
+--
+-- IT IS NOT A CLAIM. A rank orders questions; it states no probability, no
+-- edge and no advice, and nothing downstream may read it as one.
+--
+-- LAW 1 HOLDS: the rank is computed after the blind window closes and after
+-- the market snapshot exists, so a row timestamped at or before its own
+-- prediction is refused.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS prediction_ranks (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_id       INTEGER NOT NULL REFERENCES predictions (id),
+    ranker_version      TEXT    NOT NULL,
+    sport               TEXT    NOT NULL,
+    market_type         TEXT    NOT NULL,
+    prop_type           TEXT,
+    -- the score and the three inputs that made it, each kept so a rank can be
+    -- read back and argued with rather than merely trusted
+    rank_score          REAL    NOT NULL CHECK (rank_score >= 0 AND rank_score <= 1),
+    confidence          REAL    NOT NULL,
+    completeness        REAL    NOT NULL,
+    -- NULL where the market never quoted a line: absent stays absent, and an
+    -- absent edge is never written as a zero one
+    edge                REAL,
+    -- whether the edge was allowed to move the ordering (its market has passed
+    -- its own gate), and the settled count that decided it
+    edge_counted        INTEGER NOT NULL DEFAULT 0 CHECK (edge_counted IN (0, 1)),
+    edge_gate_n         INTEGER NOT NULL DEFAULT 0,
+    factor_set_version  TEXT,
+    -- a rank computed after the games were played, for a row written before
+    -- this formula existed. Excluded from any comparison that scores the
+    -- ranker, because it is not the same object as a rank made in advance.
+    backfilled          INTEGER NOT NULL DEFAULT 0 CHECK (backfilled IN (0, 1)),
+    created_utc         TEXT    NOT NULL,
+    UNIQUE (prediction_id, ranker_version)
+);
+CREATE INDEX IF NOT EXISTS prediction_ranks_sport
+    ON prediction_ranks (sport, ranker_version, rank_score);
+
+CREATE TRIGGER IF NOT EXISTS rank_comes_after_its_prediction
+BEFORE INSERT ON prediction_ranks
+FOR EACH ROW
+WHEN NEW.created_utc <= (SELECT created_utc FROM predictions WHERE id = NEW.prediction_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: a rank is computed after the blind window closes; '
+        || 'this one is stamped at or before its own prediction');
+END;
+
+CREATE TRIGGER IF NOT EXISTS ranks_no_update
+BEFORE UPDATE ON prediction_ranks
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a rank is append-only; compute a new one under a new '
+        || 'ranker version rather than rewriting this row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS ranks_no_delete
+BEFORE DELETE ON prediction_ranks
+BEGIN
+    SELECT RAISE(ABORT, 'GRIDIRON LAW 3: a rank is never deleted');
+END;

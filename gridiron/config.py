@@ -1249,3 +1249,86 @@ HOME_MARGIN_MEASURED = {
 #: attempt is exactly what that guard exists to catch. `GRIDIRON_VENUE_CAPTURE=0`
 #: turns it off for a machine that should never ask.
 VENUE_CAPTURE = setting("GRIDIRON_VENUE_CAPTURE", "1") != "0"
+
+
+# ---------------------------------------------------------------------------
+# THE SHORTLIST (THE_SHORTLIST S1, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# Seventy questions a day is not a slate anybody reads, and a forecast nobody
+# reads is not a forecast anybody can check -- the same sentence that sits over
+# PROPS_PER_WEEK above, applied to the page rather than to the pass. NOTHING
+# HERE CHANGES WHAT IS ASKED: every question the model asks today it still
+# asks, still resolves and still scores. These constants decide only what the
+# Picks page puts in front of a person first, and the rest is one tap away
+# with its count on the face of the control.
+
+#: HOW MANY QUESTIONS LEAD A SLATE, per sport. The brief's proposed table,
+#: taken as declared while D1 and D2 sit with the operator; football and
+#: college may run larger because a week's slate is one sitting, not seven.
+#: `None` means the whole slate, which is what a fight card already is.
+SHORTLIST_CAPS: dict[str, int | None] = {
+    "mlb": int(os.environ.get("GRIDIRON_SHORTLIST_MLB", "20")),
+    "nba": int(os.environ.get("GRIDIRON_SHORTLIST_NBA", "20")),
+    "nfl": int(os.environ.get("GRIDIRON_SHORTLIST_NFL", "30")),
+    "cfb": int(os.environ.get("GRIDIRON_SHORTLIST_CFB", "30")),
+    "ufc": None,
+}
+SHORTLIST_DECLARED = "2026-09-07T00:00:00Z"
+
+#: CEILING PER GAME ON THE SHORTLIST, so one marquee fixture cannot eat it.
+#: The asking pass already has PROPS_PER_GAME for the same reason; this is that
+#: rule applied to the page, and it is separate because the two answer
+#: different questions -- how many questions to ask about a game, and how many
+#: of them a reader should meet before seeing any other game at all.
+SHORTLIST_PER_GAME = int(os.environ.get("GRIDIRON_SHORTLIST_PER_GAME", "3"))
+
+#: THE RANKER'S VERSION. Stored on every rank row, because a rank is a
+#: measurement and a measurement whose method cannot be named cannot be
+#: compared with a later one. Bump it when the formula or the weights change;
+#: never edit a stored row.
+RANKER_VERSION = "r1"
+
+#: THE WEIGHTS, WRITTEN FROM FIRST PRINCIPLES AND NOT TUNED (LAW 2). Tuning
+#: these until the shortlist looked good would be discovery by scanning, which
+#: is the failure the second law exists to prevent, and it would be invisible
+#: afterwards because a rank has no residual to inspect.
+#:
+#:   * CONFIDENCE weighs most because it is the only input that is entirely the
+#:     model's own answer, and a slate is read to find what the model is most
+#:     sure of.
+#:   * COMPLETENESS weighs next because it is about the evidence rather than
+#:     the answer: a question asked with an unannounced starting pitcher is a
+#:     worse question than the same question asked with the lineup in, and
+#:     until now that absence was invisible on the page.
+#:   * EDGE weighs least, and only once its market has earned a verdict. See
+#:     RANK_EDGE_GATE.
+RANK_WEIGHTS = {"confidence": 0.5, "completeness": 0.3, "edge": 0.2}
+
+#: A disagreement of this many probability points is a full edge score. Twenty
+#: points is roughly four times the threshold the record already calls a
+#: disagreement (EDGE_DISAGREEMENT_THRESHOLD), so the input saturates at a gap
+#: nobody would call small, and the scale is declared rather than fitted.
+RANK_EDGE_SCALE = 0.20
+
+#: THE EDGE INPUT IS GATED PER MARKET, at the same hundred resolutions every
+#: other edge figure needs.
+#:
+#: This is the most consequential line of the shortlist work. Ranking by
+#: disagreement with a liquid market sounds like the sharpest filter available
+#: and is, before a model has earned a verdict, the most dangerous one: the
+#: questions where this model most disagrees with a market that prices
+#: thousands of games are overwhelmingly the questions where THIS MODEL IS
+#: MOST WRONG. A shortlist built on them would surface its own worst errors
+#: and label them the clearest questions of the day.
+#:
+#: So the number is computed, stored and shown beside the pick, and carries
+#: ZERO weight in the ordering until that market's own record passes the gate.
+#: `audit.edge_weight_faults` refuses a stored rank that weighted an ungated
+#: market, and a planted violation proves it fires.
+RANK_EDGE_GATE = MIN_SAMPLE_FOR_EDGE_CLAIM
+
+
+def shortlist_cap(sport: str) -> int | None:
+    """How many questions lead this sport's slate, or None for all of them."""
+    return SHORTLIST_CAPS.get(sport, None)

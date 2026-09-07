@@ -7063,6 +7063,56 @@ def plant_a_prop_market_on_the_llm_roster() -> Result:
                   "audit.llm_routing_faults", True, faults[0])
 
 
+LAW_RANK_GATE = "AN UNGATED EDGE MOVES NO ORDERING"
+
+
+def plant_an_ungated_edge_in_the_ranking() -> Result:
+    """Rank a question by how far it sits from a market nobody has beaten yet
+    (THE_SHORTLIST S1, 2026-09-07)."""
+    from gridiron import audit as _audit, config as _config, db as _db, shortlist
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status) VALUES ('g1', 'mlb', 2026, 1, 'R', 'AAA', 'BBB',"
+        " '2026-09-08T00:00:00Z', 'scheduled')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type, subject,"
+        " line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-09-07T00:00:00Z', 'mlb', 'g1', 'moneyline', 'AAA', NULL,"
+        " 0.62, 'win', 'statistical', 'final', 'fs2', '{\"coverage\": 1.0}', 'planted')")
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+
+    if _audit.edge_weight_faults(conn):
+        return Result(LAW_RANK_GATE, "an ungated edge weighted into a rank",
+                      "audit.edge_weight_faults", False,
+                      "the scan fires on an empty table; fix that before "
+                      "trusting this planting")
+
+    # The rank a sharp-sounding ranker would write: the market has resolved
+    # three questions, and the disagreement is doing most of the ordering.
+    edge, confidence, completeness = 0.9, 0.24, 1.0
+    weighted = round(0.5 * confidence + 0.3 * completeness + 0.2 * edge, 6)
+    conn.execute(
+        "INSERT INTO prediction_ranks (prediction_id, ranker_version, sport,"
+        " market_type, rank_score, confidence, completeness, edge, edge_counted,"
+        " edge_gate_n, factor_set_version, created_utc)"
+        " VALUES (?, ?, 'mlb', 'moneyline', ?, ?, ?, ?, 1, 3, 'fs2',"
+        " '2026-09-07T12:00:00Z')",
+        (pid, _config.RANKER_VERSION, weighted, confidence, completeness, edge))
+    conn.commit()
+    faults = _audit.edge_weight_faults(conn)
+    if not faults:
+        return Result(LAW_RANK_GATE, "an ungated edge weighted into a rank",
+                      "audit.edge_weight_faults", False,
+                      "NOT CAUGHT - the shortlist is now ordered by the "
+                      "disagreements of a model that has proved nothing")
+    return Result(LAW_RANK_GATE, "an ungated edge weighted into a rank",
+                  "audit.edge_weight_faults", True, faults[0])
+
+
 LAW_AT_THE_LINE_WORDS = "AT THE LINE, A FORECAST AND NEVER ADVICE"
 LAW_TWO_RECORDS = "THE BLIND RECORD AND THE AT-THE-LINE RECORD STAY APART"
 
@@ -7245,6 +7295,7 @@ def main() -> int:
     results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_raw_exception_on_the_health_panel())
     results.append(plant_a_prop_market_on_the_llm_roster())
+    results.append(plant_an_ungated_edge_in_the_ranking())
     results.append(plant_advice_words_at_the_line())
     results.append(plant_an_at_the_line_curve_in_the_blind_record())
     results.append(plant_a_strobing_live_mark())

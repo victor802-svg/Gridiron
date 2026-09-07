@@ -5308,3 +5308,74 @@ def check_no_quoted_prose_recommends(conn) -> None:
         raise LawViolation(
             "LAW 5: a stored reasoning line reads as a tip, and the card shows "
             "it verbatim:" + _NL2 + _NL2.join(faults[:8]))
+
+
+# ---------------------------------------------------------------------------
+# THE EDGE MOVES NO ORDERING UNTIL ITS MARKET HAS EARNED ONE
+# (THE_SHORTLIST S1, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# The shortlist ranks questions by three declared inputs, and the third --
+# how far the model sits from the market's price -- is the one that would do
+# the most damage first. With almost nothing resolved, the questions where
+# this model most disagrees with a market that prices thousands of games are
+# mostly the questions where THIS MODEL IS WRONG. A shortlist built on them
+# would surface its own worst errors and call them the clearest of the day.
+#
+# So the edge is stored and shown, and carries no weight until its own market
+# has passed the same hundred-resolution gate every other edge figure needs.
+# This scan does not take the ranker's word for it: it recomputes each stored
+# score from the components stored beside it and refuses a row whose number
+# cannot be reproduced from its own declared inputs. A rank that weighted an
+# ungated edge cannot survive that, whatever flag it wrote next to itself.
+
+RANK_TOLERANCE = 1e-6
+
+
+def edge_weight_faults(conn) -> list[str]:
+    """Stored ranks that do not follow from their own declared inputs."""
+    from . import config, shortlist
+
+    faults: list[str] = []
+    rows = conn.execute(
+        "SELECT id, prediction_id, ranker_version, sport, market_type, prop_type,"
+        " rank_score, confidence, completeness, edge, edge_counted, edge_gate_n"
+        " FROM prediction_ranks").fetchall()
+    for row in rows:
+        counted = bool(row["edge_counted"])
+        if counted and row["edge"] is None:
+            faults.append(
+                f"rank {row['id']} (prediction {row['prediction_id']}) counted an "
+                f"edge it does not have: an unquoted market is an absence, not a "
+                f"zero disagreement")
+            continue
+        if counted and (row["edge_gate_n"] or 0) < config.RANK_EDGE_GATE:
+            faults.append(
+                f"rank {row['id']} (prediction {row['prediction_id']}) weighted the "
+                f"edge for {row['sport']} {row['market_type']} at "
+                f"{row['edge_gate_n']} settled, below the {config.RANK_EDGE_GATE} "
+                f"that market must reach before disagreement may move an ordering")
+            continue
+        try:
+            expected = shortlist.combine(
+                row["confidence"], row["completeness"], row["edge"],
+                edge_counted=counted)
+        except shortlist.RankIsNotAClaim as exc:
+            faults.append(f"rank {row['id']}: {exc}")
+            continue
+        if abs(expected - row["rank_score"]) > RANK_TOLERANCE:
+            faults.append(
+                f"rank {row['id']} (prediction {row['prediction_id']}) stores "
+                f"{row['rank_score']} where its own inputs give {expected}. A score "
+                f"that does not follow from its declared components is a formula "
+                f"nobody can check, and the likeliest cause is an ungated edge "
+                f"moving the ordering.")
+    return sorted(set(faults))[:20]
+
+
+def check_the_edge_moves_no_ungated_ordering(conn) -> None:
+    faults = edge_weight_faults(conn)
+    if faults:
+        raise LawViolation(
+            "THE SHORTLIST WEIGHTED AN EDGE ITS MARKET HAS NOT EARNED:"
+            + _NL2 + _NL2.join(faults[:8]))

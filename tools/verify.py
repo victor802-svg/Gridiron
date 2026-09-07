@@ -262,6 +262,8 @@ def step_2_guards() -> bool:
          lambda: audit.check_health_speaks_plain(_record_conn())),
         ("the reasoning pass runs on game markets only",
          audit.check_llm_runs_on_game_markets_only),
+        ("the edge moves no ordering its market has not earned",
+         lambda: audit.check_the_edge_moves_no_ungated_ordering(_record_conn())),
         ("at the line, a forecast and never advice",
          lambda: audit.check_the_at_the_line_words_are_a_forecast(
              _at_the_line_payload())),

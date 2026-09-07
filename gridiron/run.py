@@ -225,6 +225,14 @@ def run_slate(
             progress("blind window closed - fetching market lines")
         result["snapshots"] = lines.snapshot_many(conn, run.prediction_ids)
 
+        # Step 6. THE ORDERING, once the line exists to measure against
+        # (THE_SHORTLIST S1, 2026-09-07). It changes nothing about what was
+        # asked or answered -- every row above is already written and frozen --
+        # and decides only what the page puts first.
+        from . import shortlist
+
+        result["ranked"] = shortlist.rank_rows(conn, run.prediction_ids)
+
     return result
 
 
