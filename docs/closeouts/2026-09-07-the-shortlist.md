@@ -79,6 +79,15 @@ whole apparatus exists to prevent. The gate should be re-run after the day's
 first predict task, and the standing hole -- that a record-dependent scan is
 red every morning until then -- is recorded in `docs/FOLLOWUPS.md`.
 
-Everything else is green: the full test suite except that one harness test,
-209 planted violations of which 208 are caught (the escape being the same one),
-and every static scan including the two new ones.
+The gate's own summary, run at the end of this session:
+
+| step | verdict |
+|---|---|
+| 1. test suite | FAIL — two tests, both the empty-slate scan |
+| 2. planted violations | FAIL — 208 of 209 caught, the escape being the same scan |
+| 3. one week end to end | PASS |
+| 4. live forward week | PASS |
+
+The two failing tests are `test_distributional.py::test_the_llm_view_shows_no_code_name`
+and the planting harness that runs the same scan. Everything else passes,
+including both checks this phase added and the 208 other plantings.
