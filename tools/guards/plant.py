@@ -7063,6 +7063,35 @@ def plant_a_prop_market_on_the_llm_roster() -> Result:
                   "audit.llm_routing_faults", True, faults[0])
 
 
+LAW_SHORTLIST_WORDS = "A SHORTLIST ORDERS QUESTIONS, IT DOES NOT TIP"
+
+
+def plant_a_tip_sheet_headline_on_the_shortlist() -> Result:
+    """Call the shortlist what a tip sheet would call it (S2, 2026-09-07)."""
+    from gridiron import audit as _audit
+
+    clean = {"shortlist": {"words": "the 20 clearest questions on this day",
+                           "rest_words": "the other 48"},
+             "cards": [{"prediction_id": 1,
+                        "rank_line": "56% of the way from a coin flip"}]}
+    if _audit.slate_advice_faults(clean):
+        return Result(LAW_SHORTLIST_WORDS, "a tip sheet headline on the shortlist",
+                      "audit.slate_advice_faults", False,
+                      "the scan fires on wording that recommends nothing; fix "
+                      "the scan before trusting this planting")
+    planted = {"shortlist": {"words": "today's top plays", "rest_words": "the other 48"},
+               "cards": [{"prediction_id": 1,
+                          "rank_line": "the best bet on the board"}]}
+    faults = _audit.slate_advice_faults(planted)
+    if len(faults) < 2:
+        return Result(LAW_SHORTLIST_WORDS, "a tip sheet headline on the shortlist",
+                      "audit.slate_advice_faults", False,
+                      "NOT CAUGHT - the ordering now tells a reader what to "
+                      "back, which is the one thing LAW 5 forbids it to do")
+    return Result(LAW_SHORTLIST_WORDS, "a tip sheet headline on the shortlist",
+                  "audit.slate_advice_faults", True, faults[0])
+
+
 LAW_RANK_GATE = "AN UNGATED EDGE MOVES NO ORDERING"
 
 
@@ -7296,6 +7325,7 @@ def main() -> int:
     results.append(plant_a_raw_exception_on_the_health_panel())
     results.append(plant_a_prop_market_on_the_llm_roster())
     results.append(plant_an_ungated_edge_in_the_ranking())
+    results.append(plant_a_tip_sheet_headline_on_the_shortlist())
     results.append(plant_advice_words_at_the_line())
     results.append(plant_an_at_the_line_curve_in_the_blind_record())
     results.append(plant_a_strobing_live_mark())

@@ -1453,6 +1453,15 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    class of pick rather than a differently-shaped question. */
 .tier-name { color: var(--faint); }
 
+/* WHY A PICK LEADS (THE_SHORTLIST S2, 2026-09-07). Quieter than the numbers
+   it sits under: this explains the ordering, it does not make a claim. */
+.card-rank {
+  margin: 0.3rem 0 0;
+  color: var(--faint);
+  font-size: var(--t-caption);
+  line-height: 1.45;
+}
+
 /* AT THE VENUE'S LINE (E4, 2026-09-06). Set like the numbers line above it:
    this is a second reading of the same forecast, not a louder one.
 

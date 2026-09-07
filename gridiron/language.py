@@ -3015,3 +3015,73 @@ def paper_fee_line(ledger: dict) -> str:
     return ("the fee is the venue's formula as this project recorded it on "
             "6 September 2026, and it has not been checked against the "
             "venue's own schedule; the page would not load that day.")
+
+
+# ---------------------------------------------------------------------------
+# THE SHORTLIST (THE_SHORTLIST S2, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# WHAT THESE SENTENCES MAY NOT SAY. A shortlist is the shape a tip sheet
+# takes, and the words are the difference. There are no best bets here, no top
+# plays, no locks and no value: `audit.ADVICE_WORDS` scans every one of these
+# strings on the gate and a planted "top plays" proves the scan fires. The
+# list says what put a question on it -- the model's own confidence, how
+# complete the evidence was -- and stops.
+#
+# AND THE COUNT OF WHAT IS NOT ON IT IS ON THE CONTROL ITSELF. A page that
+# quietly showed twenty of seventy would be lying about the record by
+# omission, which is the failure this project keeps finding in its own past.
+
+def shortlist_line(shown: int, total: int, slate_word: str, *,
+                   ranked: bool = True) -> str:
+    """What the reader is looking at, and what put it there.
+
+    AN UNRANKED SLATE SAYS SO. Every row written before 7 September 2026 has no
+    rank until the backfill reaches it, and those slates are shown whole, in
+    the order this page has always used. Describing them as ordered by
+    confidence would be a sentence about a thing that did not happen.
+    """
+    if not ranked:
+        return (f"every question on this {slate_word}, in the order this page "
+                f"has always used: these were written before the ordering was")
+    if shown >= total:
+        return (f"every question on this {slate_word}, ordered by how sure the "
+                f"model is and how complete the evidence was")
+    return (f"the {shown} clearest questions on this {slate_word}, ordered by "
+            f"how sure the model is and how complete the evidence was")
+
+
+def shortlist_rest_line(rest: int) -> str | None:
+    """The control that reveals everything else, with its count on its face.
+
+    None where there is nothing behind the control, so the page shows no
+    control at all rather than one offering "the other 0".
+    """
+    if not rest:
+        return None
+    if rest == 1:
+        return "the other one"
+    return f"the other {rest}"
+
+
+def shortlist_rank_line(rank: dict | None) -> str | None:
+    """One pick's place in the ordering, in the reader's own terms.
+
+    THE EDGE IS NAMED WHETHER OR NOT IT COUNTED, and the sentence says which,
+    because a number shown beside a pick that a reader assumes moved the order
+    is worse than no number at all.
+    """
+    if not rank:
+        return None
+    parts = [f"{round(rank['confidence'] * 100)}% of the way from a coin flip",
+             f"evidence {round(rank['completeness'] * 100)}% complete"]
+    if rank.get("edge") is None:
+        parts.append("no line to disagree with")
+    elif rank.get("edge_counted"):
+        parts.append("and its market has enough settled questions for the "
+                     "disagreement to count toward the order")
+    else:
+        parts.append(f"disagreement with the line recorded but not counted "
+                     f"yet: {rank.get('edge_gate_n', 0)} of "
+                     f"{rank.get('gate', 100)} settled in this market")
+    return "; ".join(parts)

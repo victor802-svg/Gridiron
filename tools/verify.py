@@ -170,6 +170,19 @@ def _record_conn():
     return db.connect()
 
 
+def _config():
+    from gridiron import config
+
+    return config
+
+
+def _slate_payload(sport: str):
+    """One sport's current slate as the page would render it."""
+    from gridiron import views
+
+    return views.week(_record_conn(), sport)
+
+
 def _at_the_line_payload():
     """Every sport's at-the-line words, in one payload for the advice scan.
 
@@ -262,6 +275,9 @@ def step_2_guards() -> bool:
          lambda: audit.check_health_speaks_plain(_record_conn())),
         ("the reasoning pass runs on game markets only",
          audit.check_llm_runs_on_game_markets_only),
+        ("the shortlist orders questions and does not tip",
+         lambda: [audit.check_the_shortlist_speaks_of_questions(
+             _slate_payload(sport)) for sport in _config().SPORTS] and None),
         ("the edge moves no ordering its market has not earned",
          lambda: audit.check_the_edge_moves_no_ungated_ordering(_record_conn())),
         ("at the line, a forecast and never advice",

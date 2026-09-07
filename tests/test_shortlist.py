@@ -187,3 +187,61 @@ def test_a_small_slate_is_its_own_shortlist(tmp_path):
     assert picked["rest"] == [] and sorted(picked["shortlist"]) == sorted(ids)
     # a sport with no cap declared keeps its whole card
     assert config.shortlist_cap("ufc") is None
+
+
+def test_the_page_leads_with_the_shortlist_and_hides_nothing(tmp_path, monkeypatch):
+    from gridiron import views
+
+    conn = _world(tmp_path, games=6)
+    monkeypatch.setattr(config, "SHORTLIST_CAPS", dict(config.SHORTLIST_CAPS, mlb=4))
+    ids = [_write(conn, prob=0.60 + i * 0.03, game=f"g{i}") for i in range(6)]
+    shortlist.rank_rows(conn, ids)
+    payload = views.week(conn, "mlb", 2026, 1)
+    block = payload["shortlist"]
+    assert block["ranked"] is True and block["n"] == 4 and block["rest"] == 2
+    assert block["rest_words"] == "the other 2"
+    assert "clearest questions" in block["words"]
+    # every card is still on the payload, each marked
+    assert len(payload["cards"]) == 6
+    assert sum(1 for c in payload["cards"] if c["on_shortlist"]) == 4
+    # and the ones that lead are the ones the ranker put first
+    leading = {c["prediction_id"] for c in payload["cards"] if c["on_shortlist"]}
+    assert leading == set(shortlist.choose(conn, "mlb", ids)["shortlist"])
+    # each card explains its own place in the reader's terms, without advice
+    for card in payload["cards"]:
+        assert "coin flip" in card["rank_line"]
+    audit.check_the_shortlist_speaks_of_questions(payload)
+
+
+def test_a_slate_written_before_the_ordering_says_so(tmp_path):
+    from gridiron import views
+
+    conn = _world(tmp_path, games=3)
+    for i in range(3):
+        _write(conn, game=f"g{i}")
+    payload = views.week(conn, "mlb", 2026, 1)
+    block = payload["shortlist"]
+    # no ranks: everything shows, and the sentence does not claim an ordering
+    assert block["ranked"] is False and block["rest"] == 0
+    assert block["rest_words"] is None
+    assert "written before the ordering" in block["words"]
+    assert all(c["on_shortlist"] for c in payload["cards"])
+    assert all(c["rank_line"] is None for c in payload["cards"])
+
+
+def test_the_shortlist_never_speaks_like_a_tip_sheet():
+    from gridiron import language
+
+    for words in (language.shortlist_line(20, 68, "day"),
+                  language.shortlist_line(9, 9, "card"),
+                  language.shortlist_line(9, 9, "card", ranked=False),
+                  language.shortlist_rest_line(48),
+                  language.shortlist_rank_line(
+                      {"confidence": 0.5, "completeness": 1.0, "edge": 0.4,
+                       "edge_counted": 0, "edge_gate_n": 12, "gate": 100})):
+        assert audit.advice_word_faults(words) == [], words
+        assert audit.plain_words_violations(words) == [], words
+    planted = {"shortlist": {"words": "today's best bets"}, "cards": []}
+    assert audit.slate_advice_faults(planted)
+    with pytest.raises(audit.LawViolation, match="recommending rather than"):
+        audit.check_the_shortlist_speaks_of_questions(planted)

@@ -851,6 +851,17 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # Sorted by disagreement size, because that is where anything interesting
     # lives. Cards with no market comparison sort last rather than first.
     cards.sort(key=_card_order, reverse=True)
+
+    # WHICH QUESTIONS LEAD THIS SLATE (THE_SHORTLIST S2, 2026-09-07).
+    #
+    # NOTHING IS REMOVED. Every card stays in `cards`, each marked with whether
+    # it is on the shortlist and with the sentence that says what put it there;
+    # the page shows the shortlist first and the count of the rest sits on the
+    # face of the control that reveals them. A slate whose rows were written
+    # before the ranker existed has no ranks, says so, and shows everything --
+    # which is what this page did before any of this.
+    shortlist_block = _shortlist_block(conn, sport, cards)
+
     payload = {
         "sport": sport,
         # THE SLATE AT A GLANCE (D3), computed from the cards above rather than
@@ -871,6 +882,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                  None)),
         "n": len(cards),
         "cards": cards,
+        "shortlist": shortlist_block,
         # WHOSE PICKS THESE ARE, and who else has some. Named on the payload
         # rather than inferred by the renderer from the cards: a list that
         # cannot say who made it is a list nobody can check.
@@ -1129,6 +1141,53 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
                 n, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
         }
     return out
+
+
+def _shortlist_block(conn: sqlite3.Connection, sport: str,
+                     cards: list[dict]) -> dict:
+    """Mark each card with its place in the ordering, and describe the split.
+
+    The ordering itself is `shortlist.choose`; this is the page's half of it.
+    Two properties matter more than the arithmetic:
+
+      * THE COUNT OF WHAT IS NOT SHOWN IS ON THE CONTROL. Not in a tooltip,
+        not implied by a scrollbar.
+      * A SLATE WITH NO RANKS SHOWS EVERYTHING. The ranker landed on
+        2026-09-07; every row written before it has no rank until the backfill
+        runs, and a page that hid those would be hiding the record's own past.
+    """
+    from . import shortlist as ranker
+
+    ids = [c["prediction_id"] for c in cards]
+    picked = ranker.choose(conn, sport, ids)
+    ranks = ranker.ranks_for(conn, ids)
+    on = set(picked["shortlist"])
+    order = {pid: i for i, pid in enumerate(picked["shortlist"])}
+    for card in cards:
+        pid = card["prediction_id"]
+        row = ranks.get(pid)
+        card["on_shortlist"] = pid in on
+        card["shortlist_place"] = order.get(pid)
+        card["rank_line"] = language.shortlist_rank_line(
+            dict(row, gate=config.RANK_EDGE_GATE) if row else None)
+    slate_word = config.SPORT_SLATE_WORD.get(sport, "week")
+    return {
+        "ranked": bool(picked["ranked"]),
+        "n": len(picked["shortlist"]),
+        "rest": len(picked["rest"]),
+        "cap": picked["cap"],
+        "ranker_version": config.RANKER_VERSION,
+        "words": language.shortlist_line(len(picked["shortlist"]), len(cards),
+                                         slate_word, ranked=bool(picked["ranked"])),
+        # THE SECOND SENTENCE, for when the control has been opened and the
+        # whole slate is on screen. Both are written here so the renderer picks
+        # between two sentences rather than composing one -- and so the line
+        # over the grid cannot go on claiming twenty while showing sixty, which
+        # is what the first render of this did.
+        "all_words": language.shortlist_line(len(cards), len(cards), slate_word,
+                                             ranked=bool(picked["ranked"])),
+        "rest_words": language.shortlist_rest_line(len(picked["rest"])),
+    }
 
 
 def _count_lines(cards: list[dict]) -> dict:

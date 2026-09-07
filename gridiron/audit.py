@@ -5234,8 +5234,19 @@ def check_llm_runs_on_game_markets_only() -> None:
 #     and not the second, because a reasoning line may legitimately discuss the
 #     value of a running game, and two stored rows already do.
 ADVICE_WORDS: tuple[str, ...] = (
-    "value", "play", "bet", "bets", "lock", "hammer", "fade", "smash",
-    "best bet", "free money", "sure thing", "no-brainer",
+    "value", "play", "plays", "bet", "bets", "lock", "hammer", "fade", "smash",
+    "best bet", "best bets", "top play", "top plays", "free money",
+    "sure thing", "no-brainer",
+    # THE SHORTLIST'S OWN TEMPTATIONS (THE_SHORTLIST S2, 2026-09-07). A page
+    # that puts twenty questions in front of a reader every morning is one
+    # adjective away from being a tip sheet, and the two read almost the same
+    # until you notice that one of them is telling you what to do.
+    "card of the day", "pick of the day",
+    # "leans" is NOT here, and the render is why. The hero already says "the
+    # model leans harder on its own reading", which is a sentence about a
+    # probability and not a recommendation; adding the word would have made the
+    # project's own honest prose a violation and taught the next reader that
+    # the list is arbitrary.
 )
 
 #: The subset that is advice wherever it appears, including in prose the model
@@ -5379,3 +5390,28 @@ def check_the_edge_moves_no_ungated_ordering(conn) -> None:
         raise LawViolation(
             "THE SHORTLIST WEIGHTED AN EDGE ITS MARKET HAS NOT EARNED:"
             + _NL2 + _NL2.join(faults[:8]))
+
+
+def slate_advice_faults(payload) -> list[str]:
+    """The shortlist's own words, and every sentence it puts on a card.
+
+    A SHORTLIST IS THE SHAPE A TIP SHEET TAKES. What separates this page from
+    one is the vocabulary: it says how sure the model is and how complete the
+    evidence was, and it never says what to do about it. That distinction is
+    one careless label away from gone, so it is scanned rather than trusted --
+    here, and by a planted "top plays" in `tools/guards/plant.py`.
+    """
+    faults = at_the_line_advice_faults(payload.get("shortlist") or {})
+    for card in payload.get("cards") or []:
+        faults.extend(advice_word_faults(card.get("rank_line") or "",
+                                         f"the ordering line on prediction "
+                                         f"{card.get('prediction_id')}"))
+    return sorted(set(faults))
+
+
+def check_the_shortlist_speaks_of_questions(payload) -> None:
+    faults = slate_advice_faults(payload)
+    if faults:
+        raise LawViolation(
+            "LAW 5: the shortlist has started recommending rather than "
+            "ordering:" + _NL2 + _NL2.join(faults[:8]))

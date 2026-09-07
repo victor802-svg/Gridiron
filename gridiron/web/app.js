@@ -1645,6 +1645,14 @@ const Gridiron = (function () {
     // forecast was written and frozen, beside what the venue's price implies
     // for the same question. The server writes the sentence; this places it,
     // and the gate line beneath it says how many have settled.
+    // WHY THIS ONE IS IN FRONT (THE_SHORTLIST S2, 2026-09-07). The three
+    // inputs in the reader's own terms, including whether the disagreement
+    // with the line counted toward the order or is only recorded. Composed by
+    // `language.shortlist_rank_line`; this places it.
+    if (c.rank_line) {
+      body.appendChild(el('p', 'card-rank', c.rank_line));
+    }
+
     if (c.at_the_line && c.at_the_line.words) {
       body.appendChild(el('p', 'card-at-the-line', c.at_the_line.words));
       body.appendChild(el('p', 'footnote', c.at_the_line.gate_line));
@@ -2183,20 +2191,48 @@ const Gridiron = (function () {
       const rest = lead ? open.filter(c => c !== lead) : open.slice();
       if (heading) heading.hidden = !rest.length;
 
+      // THE SHORTLIST LEADS, THE REST IS ONE TAP AWAY (THE_SHORTLIST S2,
+      // 2026-09-07). The ordering is the server's -- rank, cap, per-game
+      // ceiling and the round robin across kinds of question all happen there
+      // and are stored -- and so are both sentences. This places them.
+      //
+      // NOTHING IS HIDDEN. The control carries the count of what it is not
+      // showing, on its face, in the server's words. A slate written before
+      // the ordering existed has no ranks: it says so and shows everything,
+      // through the positional control this page has always had.
+      const listing = data.shortlist || {};
+      const note = document.getElementById('week-shortlist-note');
+      if (note) {
+        // TWO SENTENCES, BOTH THE SERVER'S, and this picks between them: one
+        // for the shortlist and one for the opened slate. Saying "the 20
+        // clearest questions" over sixty cards is the page contradicting
+        // itself, and it did exactly that the first time it was rendered.
+        const said = state.showAllCards
+          ? (listing.all_words || listing.words) : listing.words;
+        note.textContent = said || '';
+        note.hidden = !said || !rest.length;
+      }
+
       const showAll = document.getElementById('week-showall');
+      const ranked = !!listing.ranked;
+      const leading = ranked ? rest.filter(c => c.on_shortlist) : rest;
       const shown = state.showAllCards
-        ? rest.length : Math.min(CARDS_BEFORE_SHOW_ALL, rest.length);
-      rest.slice(0, shown).forEach((c, i) => host.appendChild(pickCard(c, i + 2)));
+        ? rest.length
+        : (ranked ? leading.length : Math.min(CARDS_BEFORE_SHOW_ALL, rest.length));
+      const visible = state.showAllCards ? rest : (ranked ? leading : rest.slice(0, shown));
+      visible.forEach((c, i) => host.appendChild(pickCard(c, i + 2)));
       arrive(host);
 
       if (showAll) {
-        const hidden = rest.length - shown;
+        const hidden = rest.length - visible.length;
         showAll.hidden = hidden <= 0;
         if (hidden > 0) {
           // The count is the whole point of the control: "show all" with no
           // number asks a reader to click to find out how much they are
-          // asking for.
-          showAll.textContent = 'show all ' + rest.length + ' →';
+          // asking for. Ranked slates use the server's own phrase for it.
+          showAll.textContent = (ranked && listing.rest_words)
+            ? listing.rest_words + ' →'
+            : 'show all ' + rest.length + ' →';
           showAll.onclick = () => {
             state.showAllCards = true;
             renderWeek().catch(showError);
