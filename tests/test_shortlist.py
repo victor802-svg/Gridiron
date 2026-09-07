@@ -245,3 +245,73 @@ def test_the_shortlist_never_speaks_like_a_tip_sheet():
     assert audit.slate_advice_faults(planted)
     with pytest.raises(audit.LawViolation, match="recommending rather than"):
         audit.check_the_shortlist_speaks_of_questions(planted)
+
+
+def test_only_a_standing_row_can_lead_a_slate(tmp_path):
+    conn = _world(tmp_path, games=2)
+    # THE EARLY PASS answers a question, and the final pass answers it again.
+    # The record grades the second row, so the first cannot take a place on a
+    # list the page never shows it on.
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type, subject,"
+        " line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-09-07T00:00:00Z', 'mlb', 'g0', 'moneyline', 'AAA', NULL,"
+        " 0.95, 'win', 'statistical', 'early', 'fs2', ?, 'test')", (WHOLE,))
+    early = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    late = _write(conn, prob=0.60, game="g0", created="2026-09-07T02:00:00Z")
+    other = _write(conn, prob=0.55, game="g1")
+    conn.commit()
+    shortlist.rank_rows(conn, [early, late, other])
+    places = {r["prediction_id"]: r["on_shortlist"] for r in conn.execute(
+        "SELECT prediction_id, on_shortlist FROM prediction_ranks")}
+    # every row is ranked -- a rank is a fact about a row --
+    assert set(places) == {early, late, other}
+    # but the superseded one leads nothing
+    assert places[early] == 0
+    assert places[late] == 1 and places[other] == 1
+
+
+def test_the_ranker_is_scored_against_what_it_outranked(tmp_path, monkeypatch):
+    from gridiron import calibration
+
+    conn = _world(tmp_path, games=8)
+    monkeypatch.setattr(config, "SHORTLIST_CAPS", dict(config.SHORTLIST_CAPS, mlb=4))
+    ids = []
+    for i in range(8):
+        conn.execute("UPDATE games SET status = 'final', home_score = 5,"
+                     " away_score = 3 WHERE id = ?", (f"g{i}",))
+        pid = _write(conn, prob=0.60 + i * 0.04, game=f"g{i}")
+        conn.execute("UPDATE predictions SET resolved_utc = '2026-09-09T00:00:00Z',"
+                     " outcome = ? WHERE id = ?", (1 if i % 2 else 0, pid))
+        ids.append(pid)
+    conn.commit()
+    shortlist.rank_rows(conn, ids)
+    got = calibration.ranker_comparison(conn, sport="mlb", market_type="moneyline")
+    assert got["shortlisted"]["n"] == 4 and got["not_shortlisted"]["n"] == 4
+    assert got["excludes_backfilled"] is True
+    # below the gate there is no verdict at all, only the count and the shortfall
+    assert got["renderable"] is False and got["verdict"] is None
+    assert "both sides need 100" in got["gate_line"]
+    assert got["shortfall"] == (100 - 4) * 2
+
+
+def test_a_backfilled_rank_is_marked_and_left_out_of_the_comparison(tmp_path):
+    from gridiron import calibration
+
+    conn = _world(tmp_path, games=2)
+    ids = []
+    for i in range(2):
+        conn.execute("UPDATE games SET status = 'final', home_score = 5,"
+                     " away_score = 3 WHERE id = ?", (f"g{i}",))
+        pid = _write(conn, prob=0.7 + i * 0.1, game=f"g{i}")
+        conn.execute("UPDATE predictions SET resolved_utc = '2026-09-09T00:00:00Z',"
+                     " outcome = 1 WHERE id = ?", (pid,))
+        ids.append(pid)
+    conn.commit()
+    shortlist.rank_rows(conn, ids, backfilled=True)
+    assert all(r["backfilled"] == 1 for r in conn.execute(
+        "SELECT backfilled FROM prediction_ranks"))
+    got = calibration.ranker_comparison(conn, sport="mlb", market_type="moneyline")
+    # a rank computed after the games were played scores the ranker on nothing
+    assert got["shortlisted"]["n"] == 0 and got["not_shortlisted"]["n"] == 0

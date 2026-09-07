@@ -371,6 +371,7 @@ const Gridiron = (function () {
     // that table, not part of it.
     renderOtherGates(sc);
     renderAtTheLine(sc);
+    renderRanker(sc);
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
     const tierSel = document.getElementById('tier-market');
@@ -619,6 +620,34 @@ const Gridiron = (function () {
     });
     if (count) count.textContent = entries.length + ' gates';
     panel.hidden = entries.length === 0;
+  }
+
+  // DID THE ORDERING EARN ITS PLACE (S3, 2026-09-07). The shortlist is a
+  // claim of a kind -- that these were the better questions -- and this is
+  // where it is checked. Two counts per market and, once both sides pass the
+  // gate, one sentence that is allowed to say the ordering separated nothing.
+  function renderRanker(sc) {
+    const panel = document.getElementById('ranker-record');
+    const host = document.getElementById('ranker-list');
+    const note = document.getElementById('ranker-note');
+    const version = document.getElementById('ranker-version');
+    if (!panel || !host) return;
+    host.innerHTML = '';
+    const rank = (sc && sc.ranker) || null;
+    if (!rank) { panel.hidden = true; return; }
+    if (note) note.textContent = rank.note || '';
+    if (version) version.textContent = rank.ranker_version || '';
+    (rank.comparisons || []).forEach(c => {
+      requireN(c, 'ranker comparison "' + c.market + '"');
+      requireN(c.shortlisted, 'shortlisted side of "' + c.market + '"');
+      requireN(c.not_shortlisted, 'outranked side of "' + c.market + '"');
+      const row = el('div', 'gate-row');
+      row.appendChild(el('div', 'gate-name', marketLabel(c.market)));
+      row.appendChild(el('div', 'gate-why', c.gate_line));
+      if (c.verdict) row.appendChild(el('div', 'gate-why', c.verdict));
+      host.appendChild(row);
+    });
+    panel.hidden = (rank.comparisons || []).length === 0;
   }
 
   // AT THE VENUE'S LINE (E4, 2026-09-06). A second record with its own gate:

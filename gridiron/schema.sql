@@ -1520,6 +1520,12 @@ CREATE TABLE IF NOT EXISTS prediction_ranks (
     edge_counted        INTEGER NOT NULL DEFAULT 0 CHECK (edge_counted IN (0, 1)),
     edge_gate_n         INTEGER NOT NULL DEFAULT 0,
     factor_set_version  TEXT,
+    -- WHETHER THIS QUESTION LED ITS SLATE, decided when the rank was written
+    -- and never recomputed. The caps can change; what a reader was actually
+    -- shown cannot, and the comparison that scores the ranker has to read the
+    -- second one.
+    on_shortlist        INTEGER NOT NULL DEFAULT 0 CHECK (on_shortlist IN (0, 1)),
+    shortlist_place     INTEGER,
     -- a rank computed after the games were played, for a row written before
     -- this formula existed. Excluded from any comparison that scores the
     -- ranker, because it is not the same object as a rank made in advance.

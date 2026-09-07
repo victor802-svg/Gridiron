@@ -1407,6 +1407,11 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     # Its own curves, its own gate, its own guard; the Record page draws it as
     # a separate section for the same reason.
     payload["at_the_line"] = at_the_line_scorecard(conn, sport=sport)
+    # AND THE ORDERING'S OWN RECORD (S3, 2026-09-07): did the questions that
+    # led each slate score better than the ones they outranked? Beside the
+    # curves, never inside them -- this is a fact about the ranker, not about
+    # the model.
+    payload["ranker"] = ranker_scorecard(conn, sport=sport)
 
     assert_every_figure_has_n(payload)
     assert_no_merged_categories(payload)
@@ -1858,3 +1863,97 @@ def assert_the_records_stay_apart(payload: dict) -> None:
                 f"blind record and the at-the-line record are never merged: "
                 f"one is what the model said about its own question, the other "
                 f"what it says about the venue's.")
+
+
+# ---------------------------------------------------------------------------
+# SCORING THE RANKER ITSELF (THE_SHORTLIST S3, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# The reason the rank is written to the database rather than computed when the
+# page loads. A shortlist is a claim of a kind -- that these twenty questions
+# are the better ones -- and this project does not ship claims it cannot check.
+#
+# TWO CURVES, NEVER ONE. The questions that led their slate, and the questions
+# they outranked, scored separately with their own N and the same hundred-
+# resolution gate as every other figure here. Below the gate there is no
+# verdict at all, only the count and what is missing.
+#
+# BACKFILLED RANKS ARE EXCLUDED, and the exclusion matters more than it looks.
+# A rank computed after the games were played, by a formula written today, is
+# not the same object as one computed before kickoff: it cannot have been
+# influenced by the outcome, but it was written by somebody who already knew
+# it. Mixing the two would flatter the ranker with rows it never really
+# ordered.
+
+
+def ranker_comparison(conn: sqlite3.Connection, *, sport: str,
+                      market_type: str, prop_type: str | None = None,
+                      predictor: str = "statistical") -> dict:
+    """Did the shortlist calibrate better than what it outranked?"""
+    from . import shortlist as ranker
+
+    require_sport(sport, "calibration.ranker_comparison")
+    items = resolved(conn, sport=sport, market_type=market_type,
+                     prop_type=prop_type, predictor=predictor)
+    ranks = ranker.ranks_for(conn, [r.id for r in items])
+    led, rest = [], []
+    for row in items:
+        rank = ranks.get(row.id)
+        if rank is None or rank["backfilled"]:
+            continue
+        (led if rank["on_shortlist"] else rest).append(row)
+
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    led_score, rest_score = score(led), score(rest)
+    payload = {
+        "sport": sport,
+        "record": "ranker",
+        "market": prop_type or market_type,
+        "ranker_version": config.RANKER_VERSION,
+        "n": len(led) + len(rest),
+        "gate": gate,
+        "shortlisted": {
+            "label": "led the slate", "n": len(led), "score": led_score,
+            "buckets": calibration_buckets(led),
+        },
+        "not_shortlisted": {
+            "label": "outranked", "n": len(rest), "score": rest_score,
+            "buckets": calibration_buckets(rest),
+        },
+        "gate_line": language.ranker_gate_line(len(led), len(rest), gate),
+        "excludes_backfilled": True,
+    }
+    payload["renderable"] = len(led) >= gate and len(rest) >= gate
+    if payload["renderable"]:
+        payload["verdict"] = language.ranker_verdict_line(
+            led_score["brier"], rest_score["brier"], len(led), len(rest))
+    else:
+        payload["verdict"] = None
+        payload["shortfall"] = max(gate - len(led), 0) + max(gate - len(rest), 0)
+    return payload
+
+
+def ranker_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """One comparison per market of one sport, kept apart like every curve."""
+    require_sport(sport, "calibration.ranker_scorecard")
+    markets = config.SPORT_MARKETS.get(sport, ())
+    comparisons = [
+        ranker_comparison(conn, sport=sport,
+                          market_type=market_type_of(sport, market),
+                          prop_type=prop_type_of(sport, market))
+        for market in markets
+    ]
+    return {
+        "sport": sport,
+        "record": "ranker",
+        "ranker_version": config.RANKER_VERSION,
+        "n": sum(c["n"] for c in comparisons),
+        "comparisons": comparisons,
+        "note": (
+            "The shortlist is an ordering, and an ordering can be wrong. These "
+            "compare what led each slate against what it outranked, separately "
+            "per market, with the same gate as every other figure. Ranks "
+            "computed after the fact are left out: a formula written today "
+            "cannot be scored on games it already knows the answer to."
+        ),
+    }

@@ -1287,7 +1287,14 @@ SHORTLIST_PER_GAME = int(os.environ.get("GRIDIRON_SHORTLIST_PER_GAME", "3"))
 #: measurement and a measurement whose method cannot be named cannot be
 #: compared with a later one. Bump it when the formula or the weights change;
 #: never edit a stored row.
-RANKER_VERSION = "r1"
+#:
+#: r1 (2026-09-07) selected over every stored row, superseded ones included, so
+#: a question a later pass answered again could take a place on a list the page
+#: never shows it on. r2 selects over the standing rows only, through the same
+#: clause the record grades by. The r1 rows stay where they are: a rank is
+#: append-only, and a version that was wrong is part of the history of getting
+#: it right.
+RANKER_VERSION = "r2"
 
 #: THE WEIGHTS, WRITTEN FROM FIRST PRINCIPLES AND NOT TUNED (LAW 2). Tuning
 #: these until the shortlist looked good would be discovery by scanning, which

@@ -156,7 +156,7 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
     this table can hold.
     """
     counts = {"ranked": 0, "already": 0, "edge_counted": 0, "no_line": 0,
-              "considered": 0}
+              "considered": 0, "shortlisted": 0}
     where = ["1 = 1"]
     params: list = []
     if prediction_ids is not None:
@@ -165,11 +165,18 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
         where.append("p.id IN (%s)" % ",".join("?" for _ in prediction_ids))
         params.extend(prediction_ids)
     rows = conn.execute(
-        "SELECT p.id, p.sport, p.market_type, p.prop_type, p.predictor,"
+        "SELECT p.id, p.sport, p.game_id, p.market_type, p.prop_type, p.predictor,"
         " p.model_prob, p.factors_json, p.factor_set_version, p.created_utc,"
+        " g.season, g.week,"
         " (SELECT s.implied_prob FROM market_snapshots s"
-        "   WHERE s.prediction_id = p.id ORDER BY s.id LIMIT 1) AS implied_prob"
-        f" FROM predictions p WHERE {' AND '.join(where)}"
+        "   WHERE s.prediction_id = p.id ORDER BY s.id LIMIT 1) AS implied_prob,"
+        # WHETHER THIS IS THE ROW THE RECORD GRADES. Through the same clause
+        # every count on the Record page uses, because a selection that
+        # disagreed with the record about which forecast stands would put rows
+        # on a shortlist the page cannot show.
+        f"      (SELECT 1{_standing_clause()}) AS is_standing"
+        f" FROM predictions p JOIN games g ON g.id = p.game_id"
+        f" WHERE {' AND '.join(where)}"
         "   AND NOT EXISTS (SELECT 1 FROM prediction_ranks r"
         "                   WHERE r.prediction_id = p.id"
         "                     AND r.ranker_version = ?)"
@@ -177,6 +184,7 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
 
     gate_count = _gate_lookup(conn)
     stamp = utcnow()
+    scored: list[dict] = []
     for row in rows:
         counts["considered"] += 1
         confidence = confidence_score(row["model_prob"])
@@ -190,20 +198,118 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
         # either way; it moves the ordering only once its own market has a
         # record to stand on.
         edge_counted = edge is not None and settled >= config.RANK_EDGE_GATE
-        score = combine(confidence, completeness, edge, edge_counted=edge_counted)
+        scored.append({
+            "prediction_id": row["id"],
+            "sport": row["sport"],
+            "game_id": row["game_id"],
+            "slate": (row["season"], row["week"]),
+            "market_type": row["market_type"],
+            "prop_type": row["prop_type"],
+            "market_key": row["prop_type"] or row["market_type"],
+            "rank_score": combine(confidence, completeness, edge,
+                                  edge_counted=edge_counted),
+            "confidence": confidence,
+            "completeness": completeness,
+            "edge": edge,
+            "edge_counted": edge_counted,
+            "edge_gate_n": settled,
+            "factor_set_version": row["factor_set_version"],
+            "created_utc": row["created_utc"],
+            "standing": bool(row["is_standing"]),
+        })
+
+    # THE SELECTION IS DECIDED HERE, ONCE, AND STORED ON THE ROW. A shortlist
+    # recomputed later under a changed cap is not the list anybody was shown,
+    # and the comparison that scores the ranker has to read the one that was.
+    # Slates are selected apart: two days of baseball never compete for one cap.
+    places: dict[int, int] = {}
+    for (sport, _slate), group in _by_slate(scored).items():
+        standing = [e for e in group if e["standing"]]
+        for place, pid in enumerate(select(sport, standing)):
+            places[pid] = place
+
+    for entry in scored:
+        place = places.get(entry["prediction_id"])
         conn.execute(
             "INSERT INTO prediction_ranks (prediction_id, ranker_version, sport,"
             " market_type, prop_type, rank_score, confidence, completeness, edge,"
-            " edge_counted, edge_gate_n, factor_set_version, backfilled, created_utc)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (row["id"], config.RANKER_VERSION, row["sport"], row["market_type"],
-             row["prop_type"], score, confidence, completeness, edge,
-             1 if edge_counted else 0, settled, row["factor_set_version"],
-             1 if backfilled else 0, max(stamp, _after(row["created_utc"]))))
+            " edge_counted, edge_gate_n, factor_set_version, on_shortlist,"
+            " shortlist_place, backfilled, created_utc)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (entry["prediction_id"], config.RANKER_VERSION, entry["sport"],
+             entry["market_type"], entry["prop_type"], entry["rank_score"],
+             entry["confidence"], entry["completeness"], entry["edge"],
+             1 if entry["edge_counted"] else 0, entry["edge_gate_n"],
+             entry["factor_set_version"], 1 if place is not None else 0, place,
+             1 if backfilled else 0,
+             max(stamp, _after(entry["created_utc"]))))
         counts["ranked"] += 1
-        counts["edge_counted"] += 1 if edge_counted else 0
+        counts["edge_counted"] += 1 if entry["edge_counted"] else 0
+        counts["shortlisted"] += 1 if place is not None else 0
     conn.commit()
     return counts
+
+
+def _standing_clause() -> str:
+    """The record's own one-row-per-question rule, as a subquery condition.
+
+    ONE DOOR. `calibration.standing_row_clause` is the rule the whole record
+    counts by; importing it here rather than writing a second version is what
+    keeps the shortlist and the record from disagreeing about which forecast
+    of a question is the one that stands.
+    """
+    from . import calibration
+
+    return calibration.standing_row_clause(same_set=False)
+
+
+def _by_slate(scored: list[dict]) -> dict:
+    """The batch split into the slates it belongs to.
+
+    A cap is per slate. Ranking several days in one call -- which the backfill
+    does -- must not let one day crowd another off its own list.
+    """
+    groups: dict[tuple, list[dict]] = {}
+    for entry in scored:
+        groups.setdefault((entry["sport"], entry["slate"]), []).append(entry)
+    return groups
+
+
+def select(sport: str, scored: list[dict]) -> list[int]:
+    """Which questions lead one slate, in order.
+
+    THREE RULES, ALL DECLARED, NONE ABOUT THE ANSWER: the sport's cap, or the
+    whole slate where it declares none -- a fight card is already a shortlist;
+    a ceiling per game, so one marquee fixture cannot fill the list; and a
+    round robin across kinds of question, so the list is never twenty of the
+    same market with the rest of the slate invisible behind them.
+    """
+    ordered = sorted(scored, key=lambda e: (-e["rank_score"], e["prediction_id"]))
+    cap = config.shortlist_cap(sport)
+    if cap is None or len(ordered) <= cap:
+        return [e["prediction_id"] for e in ordered]
+
+    queues: dict[str, list[dict]] = {}
+    for entry in ordered:
+        queues.setdefault(entry["market_key"], []).append(entry)
+
+    chosen: list[int] = []
+    per_game: dict[str, int] = {}
+    kinds = list(queues)
+    while len(chosen) < cap and any(queues[k] for k in kinds):
+        for kind in kinds:
+            if len(chosen) >= cap:
+                break
+            queue = queues[kind]
+            while queue:
+                entry = queue.pop(0)
+                game = entry.get("game_id")
+                if per_game.get(game, 0) >= config.SHORTLIST_PER_GAME:
+                    continue
+                chosen.append(entry["prediction_id"])
+                per_game[game] = per_game.get(game, 0) + 1
+                break
+    return chosen
 
 
 def _after(created_utc: str | None) -> str:
@@ -239,70 +345,31 @@ def ranks_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[int, 
     }
 
 
-def _market_key(row) -> str:
-    """What a reader would call the kind of question this is."""
-    return row["prop_type"] or row["market_type"]
-
-
 def choose(conn: sqlite3.Connection, sport: str,
            prediction_ids: list[int]) -> dict:
-    """Which of a slate's questions lead it, and in what order.
+    """What led this slate, as recorded when the ranks were written.
 
-    THREE RULES, ALL DECLARED, NONE OF THEM ABOUT THE ANSWER:
-
-      * the cap for the sport (`config.SHORTLIST_CAPS`), or the whole slate
-        where the sport declares none -- a fight card is already a shortlist;
-      * a ceiling per game, so one marquee fixture cannot fill the list;
-      * a round robin across kinds of question, so the list is never twenty of
-        the same market with the rest of the slate invisible behind them.
-
-    NOTHING IS DISCARDED. The rest comes back in rank order too, because the
-    page shows it behind a control that carries its count, and a slate that
-    quietly lost fifty questions would misrepresent the record.
+    A READ, NOT A DECISION. The cap, the ceiling and the round robin were
+    applied once, at write time, and stored on the rows. Recomputing them here
+    would mean a later change to a cap silently rewrote what a reader was shown
+    last week, and the comparison that scores the ranker would then be scoring
+    a shortlist nobody ever saw. Rows with no rank -- everything written before
+    the ranker existed -- come back whole and say so.
     """
     ranks = ranks_for(conn, prediction_ids)
     if not ranks:
         return {"shortlist": list(prediction_ids), "rest": [], "cap": None,
                 "ranked": False}
-    games = {
-        r["id"]: r["game_id"] for r in conn.execute(
-            "SELECT id, game_id FROM predictions WHERE id IN (%s)"
-            % ",".join("?" for _ in prediction_ids), list(prediction_ids))
+    on = [r for r in ranks.values() if r["on_shortlist"]]
+    off = [r for r in ranks.values() if not r["on_shortlist"]]
+    on.sort(key=lambda r: (r["shortlist_place"]
+                           if r["shortlist_place"] is not None else 1_000_000,
+                           -r["rank_score"]))
+    off.sort(key=lambda r: (-r["rank_score"], r["prediction_id"]))
+    unranked = [pid for pid in prediction_ids if pid not in ranks]
+    return {
+        "shortlist": [r["prediction_id"] for r in on] + unranked,
+        "rest": [r["prediction_id"] for r in off],
+        "cap": config.shortlist_cap(sport),
+        "ranked": True,
     }
-    ordered = sorted(
-        (ranks[pid] for pid in prediction_ids if pid in ranks),
-        key=lambda r: (-r["rank_score"], r["prediction_id"]))
-    cap = config.shortlist_cap(sport)
-    if cap is None or len(ordered) <= cap:
-        chosen = [r["prediction_id"] for r in ordered]
-        unranked = [pid for pid in prediction_ids if pid not in ranks]
-        return {"shortlist": chosen + unranked, "rest": [], "cap": cap,
-                "ranked": True}
-
-    queues: dict[str, list] = {}
-    for row in ordered:
-        queues.setdefault(_market_key(row), []).append(row)
-
-    chosen: list[int] = []
-    per_game: dict[str, int] = {}
-    passed_over: list[int] = []
-    kinds = list(queues)
-    while len(chosen) < cap and any(queues[k] for k in kinds):
-        for kind in kinds:
-            if len(chosen) >= cap:
-                break
-            queue = queues[kind]
-            while queue:
-                row = queue.pop(0)
-                game = games.get(row["prediction_id"])
-                if per_game.get(game, 0) >= config.SHORTLIST_PER_GAME:
-                    passed_over.append(row["prediction_id"])
-                    continue
-                chosen.append(row["prediction_id"])
-                per_game[game] = per_game.get(game, 0) + 1
-                break
-
-    taken = set(chosen)
-    rest = [r["prediction_id"] for r in ordered if r["prediction_id"] not in taken]
-    rest += [pid for pid in prediction_ids if pid not in ranks and pid not in taken]
-    return {"shortlist": chosen, "rest": rest, "cap": cap, "ranked": True}

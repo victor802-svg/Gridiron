@@ -32,6 +32,11 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 #: nothing here drops or rewrites a column, because a migration that could
 #: rewrite `predictions` would be a way around LAW 3.
 MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    # THE SELECTION IS PART OF THE RANK (THE_SHORTLIST S3, 2026-09-07). Written
+    # with the row, because a shortlist recomputed under a later cap is not the
+    # list anybody was shown.
+    ("prediction_ranks", "on_shortlist", "INTEGER NOT NULL DEFAULT 0"),
+    ("prediction_ranks", "shortlist_place", "INTEGER"),
     # WHICH PASS WROTE A PREDICTION (2026-09-03). Every existing row is an
     # 'early' one by definition -- they were all written before the late pass
     # existed -- which is exactly what the column default says, so the

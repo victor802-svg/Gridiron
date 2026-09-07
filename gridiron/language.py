@@ -3085,3 +3085,36 @@ def shortlist_rank_line(rank: dict | None) -> str | None:
                      f"yet: {rank.get('edge_gate_n', 0)} of "
                      f"{rank.get('gate', 100)} settled in this market")
     return "; ".join(parts)
+
+
+def ranker_gate_line(led: int, rest: int, gate: int) -> str:
+    """How far the ranker's own comparison is from being able to say anything."""
+    short = max(gate - led, 0) + max(gate - rest, 0)
+    if not short:
+        return (f"{led} settled on the shortlist against {rest} settled off it")
+    return (f"{led} settled on the shortlist and {rest} off it; both sides need "
+            f"{gate} before this comparison says anything")
+
+
+def ranker_verdict_line(led_brier: float | None, rest_brier: float | None,
+                        led_n: int, rest_n: int) -> str:
+    """Whether the ordering earned its place, in the record's own vocabulary.
+
+    A RANKER THAT DOES NOT RANK IS A FINDING, not a bug to be quietly tuned
+    away. The sentence for that case is written here, in full, so that nobody
+    has to decide in the moment how to describe a disappointing result.
+    """
+    if led_brier is None or rest_brier is None:
+        return "nothing has settled on one of the two sides yet"
+    if led_brier < rest_brier:
+        return (f"the shortlist scored better than what it outranked "
+                f"({led_brier} against {rest_brier}, lower is better), on "
+                f"{led_n} and {rest_n} settled questions")
+    if led_brier > rest_brier:
+        return (f"THE SHORTLIST DID NOT SEPARATE: it scored {led_brier} against "
+                f"{rest_brier} for the questions it outranked, lower being "
+                f"better, on {led_n} and {rest_n} settled questions. The "
+                f"ordering is not earning its place and the finding stands "
+                f"rather than the formula being retuned to hide it")
+    return (f"the two sides scored identically ({led_brier}) on {led_n} and "
+            f"{rest_n} settled questions, so the ordering separated nothing")
