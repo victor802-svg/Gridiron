@@ -917,3 +917,54 @@ paragraph exists instead of a diagnosis.
 installer's own array -- and failed on the one of the four that had not been
 updated. It was written after the UFC passes were declared in one list and no
 other, and it has now paid for itself twice.
+
+
+## 2026-09-07 — the card face, and a correction to this morning's diagnosis
+
+GRIDIRON_CARD_FACE ran (brief and close-out of the same date). The Today screen
+is cards now, built around the edge after fees; the five findings the operator
+listed were checked against the rendered page before they were fixed and all
+five held, two of them worse than described.
+
+**CORRECTION, AND IT MATTERS MORE THAN THE REDESIGN. No prediction in this
+record carries the frozen distribution an at-the-line claim requires** — zero
+of them, measured while trying to render a card with a price on it. This
+morning's entry named the near-start cadence as the reason
+`at_the_line_claims` and `recommendations` read zero, and said the first claims
+were due at 15:05Z. The cadence gap was real and is fixed. It was not the whole
+story, and no claim could have been written this afternoon whatever the clock
+said.
+
+Three reasons, and only the third resolves soon:
+
+- **Baseball cannot produce one at all.** `questions.blind_distribution`
+  returns nothing for MLB by design: its margins are counts, there is no
+  measured spread for the pair, and the function refuses to guess one. Every
+  slate this week has been baseball.
+- **The fights have no margin**, so the same applies.
+- **Football does have one and has not been forecast since the distribution
+  began to be written on 6 September.** Its slate is weekly and the next run is
+  **9 September**.
+
+**What to check on 9 September**, in order: that the football run writes
+distributions (`predict:nfl`'s payload counts them); that the near-start pass
+then writes claims inside two hours of a kickoff; and that a recommendation
+follows. If claims are still zero after all three, the cause is none of the
+three named so far.
+
+**Found in the renderer, and both now scanned.** Two functions were defined
+twice — `renderToday` identically, and `localTime` with the two copies
+disagreeing about what to show when a date will not parse. Two sentences were
+being composed in JavaScript where the prose scan could not see them, because
+that scan only fires on a line naming one of a dozen hand-written field names.
+Static assets carried no cache directive, so a browser reused `app.js` without
+asking and rendered new markup with the old renderer.
+
+**A label at 3.39:1.** The price boxes drew their labels in the palette's
+quietest ink on the page ground, under WCAG AA's 4.5 for that size, and
+`tools/contrast.py` passed because the pair was not in its list. Three pairs
+added.
+
+**Still open**: a tap cannot be undone; and every watched card's chip ends in
+"· unproven", which is the group heading repeated on all 32 cards — the same
+defect as the one this brief closed, one level down.

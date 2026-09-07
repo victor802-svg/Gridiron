@@ -89,10 +89,17 @@ def test_today_has_two_groups_and_the_watched_rows_show_their_own_edge(tmp_path)
 
 
 def test_a_watched_row_prints_a_negative_edge_rather_than_hiding_it():
-    line = language.watching_line("Seattle covering -4.5", 0.52, 0.56, -3.4)
-    assert "-3.4" in line and "after fees" in line
-    assert audit.advice_word_faults(line) == []
-    assert audit.plain_words_violations(line) == []
+    """THE PROPERTY OUTLIVED THE FUNCTION. `language.watching_line` wrote a
+    sentence per row until CARD_FACE replaced the rows with cards; a watched
+    card still prints what the question is actually worth after the fee,
+    including when that number is negative, which is the point of showing it.
+    """
+    assert language.edge_chip_words(-3.4) == "-3.4¢"
+    assert language.edge_state(-3.4) == "down"
+    label = language.price_row_labels()["edge"]
+    assert "after fees" in label
+    assert audit.advice_word_faults(label) == []
+    assert audit.plain_words_violations(label) == []
     # and the heading says plainly that these do not clear the bar
     heading = language.watching_heading(18)
     assert "none of which clears" in heading

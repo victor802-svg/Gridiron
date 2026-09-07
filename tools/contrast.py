@@ -82,6 +82,13 @@ PAIRS = [
     ("muted", "resolved", "a settled card's matchup", False),
     ("muted", "card-2", "a chip label", False),
     ("faint", "ink", "captions and sample sizes on the page", False),
+    # THE PRICE BOXES (CARD_FACE, 2026-09-07). The boxes sit on the page
+    # ground inside a card, so their text is ink-on-ink rather than
+    # ink-on-card, which is a darker background and a different pair. The
+    # label was `--faintest` here and measured 3.39:1 before it was caught.
+    ("faint", "ink", "a price box label", False),
+    ("muted", "ink", "a price box value", False),
+    ("faint", "card", "the time beside a taken pick", False),
     ("faint", "card", "captions and sample sizes on a card", False),
     ("faint", "resolved", "captions on a settled card", False),
     # RENAMED WITH THE TOKENS (GRIDIRON_16 R2). These were "the accent on the

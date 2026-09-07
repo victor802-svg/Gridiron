@@ -3292,23 +3292,19 @@ def watching_heading(n: int) -> str:
             f"number beside each is what it is actually worth after that fee.")
 
 
-def watching_line(question: str, fair_value: float | None, price: float | None,
-                  edge_cents: float | None) -> str:
-    """One watched row: the question, the two numbers, and the true edge.
+def clears_the_bar_heading(n: int, folded: int = 0) -> str:
+    """The line above the group that does.
 
-    A ROW READING "-3¢ AFTER FEES" IS DOING ITS JOB. The whole design of this
-    group is that a reader can see why it is not in the other one.
+    `folded` is the picks the operator's payout floor keeps out of the cards.
+    They CLEARED THE BAR, so a heading that says "nothing" above a fold saying
+    "1 more clear the bar" is a page disagreeing with itself -- which it did,
+    on the first priced slate this design was rendered against.
     """
-    if fair_value is None or price is None or edge_cents is None:
-        return f"{question} — no venue price to compare against yet."
-    return (f"{question} — the model makes it {round(fair_value * 100)}¢, the "
-            f"venue is at {round(price * 100)}¢: {edge_cents:+.1f}¢ after fees.")
-
-
-def clears_the_bar_heading(n: int) -> str:
-    """The line above the group that does."""
-    if not n:
+    if not n and not folded:
         return "Nothing clears the venue's fee today."
+    if not n:
+        return (f"Clears the bar — {folded} on today's slate, all of them "
+                f"under your payout floor.")
     return f"Clears the bar — {n} on today's slate."
 
 
@@ -3401,3 +3397,221 @@ def correction_never_rewrites_line() -> str:
 # it a fit would tell a reader the model has learned something it has not, and
 # the difference is visible only in that column.
 
+
+# ---------------------------------------------------------------------------
+# THE DAY'S FACE (GRIDIRON_CARD_FACE, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# A sportsbook page is two things wearing one skin. Its GRAMMAR -- an event
+# header, the market underneath, prices side by side, a running list of what
+# you took -- is good information design for this content and is why the
+# operator can already read one. Its PRESSURE -- a countdown, a price that
+# flashes when it moves, a "hot" badge, a parlay builder -- exists to make
+# wagering feel urgent.
+#
+# This screen takes the grammar. The pressure is banned by name in
+# `audit.PRESSURE_WORDS`, a planting proves the scan fires, and no element on
+# the page is allowed to animate when a price changes.
+
+
+def day_strip_words(*, day_words: str | None, slate_words: str | None,
+                    clears: int, watching: int, below_floor: int,
+                    floor: float | None) -> dict:
+    """The whole day in one strip, so nothing below it has to be read first.
+
+    THE PAGE DID NOT SAY WHAT KIND OF DAY IT WAS. Today sat 916 pixels down a
+    desktop screen and 1,533 down a phone, under the filters and the hero, and
+    a reader had to get there and read thirty rows to learn the answer was
+    "nothing yet". Measured on 2026-09-07, before this existed.
+    """
+    where = " · ".join(part for part in (day_words, slate_words) if part)
+    # THE COUNT IS OF PICKS THAT CLEAR THE BAR, folded ones included. A pick
+    # under the operator's payout floor cleared both conditions and is on the
+    # record; the floor decided only that it is a line rather than a card.
+    # Counting it as "nothing" would make a display preference look like a
+    # rule about bets, which is the distinction F2b exists to keep.
+    total = clears + below_floor
+    if not total:
+        count = "nothing clears the bar"
+    elif total == 1:
+        count = "1 pick clears the bar"
+    else:
+        count = f"{total} picks clear the bar"
+    parts = [count]
+    if below_floor:
+        floor_words = f"{floor:g}x" if floor else "your floor"
+        parts.append(f"{below_floor} of them below your {floor_words} floor")
+    parts.append(f"{counted(watching, 'question')} watched")
+    return {"where": where, "counts": " · ".join(parts)}
+
+
+def first_price_words(hours: float) -> str:
+    """When a venue price is expected, on a slate that has none yet.
+
+    A reader who is told "no price yet" five times learns that the app is
+    stuck. A reader told when the price arrives learns how the app works.
+    """
+    return (f"No venue price on this slate yet. The first is taken about "
+            f"{hours:g} hours before each game starts.")
+
+
+def no_price_words() -> str:
+    """What the venue chip says when there is nothing to put in it."""
+    return "no price yet"
+
+
+def price_chip_words(cents: float | None) -> str:
+    """The model's fair value, as a price.
+
+    AN EM DASH, NOT "no price yet", when it is absent. The model always has a
+    probability; what it lacks until a claim exists is a price for the VENUE's
+    question, and those are different propositions. Printing the venue's
+    sentence in the model's box said the model had no opinion, which is not
+    what is true.
+    """
+    if cents is None:
+        return "—"
+    return f"{round(cents)}¢"
+
+
+def venue_chip_words(price: float | None, payout: float | None) -> str:
+    """The price and what it returns, which are the same fact twice.
+
+    A reader who has used a sportsbook reads a payout faster than a price, and
+    a reader who has used an exchange reads the price. Both, once.
+    """
+    if price is None:
+        return no_price_words()
+    if payout is None:
+        return f"{round(price * 100)}¢"
+    return f"{round(price * 100)}¢ · pays {payout:.2f}x"
+
+
+def edge_chip_words(edge_cents: float | None) -> str:
+    """THE NUMBER THE EYE LANDS ON, signed, or an em dash when unpriced.
+
+    The dash is not a zero and not a failure. It is "this has not been priced
+    yet", and the strip at the top of the page has already said why.
+    """
+    if edge_cents is None:
+        return "—"
+    return f"{edge_cents:+.1f}¢"
+
+
+def edge_label_words(base: str, side: str | None) -> str:
+    """The edge chip's label, saying which side of the question it is on.
+
+    A QUESTION, A PLUS SIGN AND A GREEN NUMBER ALL READ AS "BACK THIS", and on
+    a card whose edge sits on the other side that is three things agreeing
+    with each other and being wrong. Measured on a scratch render: "Carolina
+    covers -2.5", model 52¢, venue 60¢, edge +6.0¢ -- where the model's
+    disagreement is with the price of Carolina covering, not with Carolina.
+    """
+    if side == "no":
+        return f"{base}, on the other side"
+    return base
+
+
+def edge_state(edge_cents: float | None) -> str:
+    """Which of three states the edge chip is in. COLOUR IS DECIDED HERE.
+
+    The renderer applies a class and never picks a colour, so the one place
+    that decides what green means is this function.
+    """
+    if edge_cents is None:
+        return "none"
+    return "up" if edge_cents > 0 else ("down" if edge_cents < 0 else "flat")
+
+
+def size_words(*, units: float, flat: bool, why: str | None,
+               unit_dollars: float | None) -> str:
+    """The size, in the operator's money when he has told the app what a unit
+    is worth, and in units when he has not.
+
+    NOTHING HERE IS A BALANCE. The figure is the declared unit multiplied by a
+    number he typed on the settings page; no venue account is read, and the
+    app has no idea what he actually has.
+    """
+    if unit_dollars:
+        amount = units * unit_dollars
+        money = f"${amount:,.0f}" if abs(amount - round(amount)) < 0.005 else f"${amount:,.2f}"
+        if flat:
+            return f"{money} · one flat unit, {why or 'no measured edge in this market yet'}"
+        return f"{money} · {units:.2f} units, a quarter of Kelly and capped"
+    return _units_words(units, flat, why)
+
+
+def gate_status_words(n: int, minimum: int) -> str:
+    """Where this market stands against LAW 4's hundred, in words.
+
+    "52 settled" alone tells a reader nothing about whether that is a lot.
+    """
+    if n >= minimum:
+        return f"{n} settled · past the {minimum} this app asks for"
+    return f"{n} settled · {minimum - n} more before a verdict"
+
+
+def below_floor_words(n: int, floor: float) -> str:
+    """The fold. Says what is behind it and whose rule put it there."""
+    return (f"{n} more clear the bar and pay under your {floor:g}x floor")
+
+
+def taken_today_heading(n: int) -> str:
+    """The running list's own heading. Never the word "slip"."""
+    if not n:
+        return "Taken today · nothing marked yet"
+    return f"Taken today · {counted(n, 'pick')}"
+
+
+def taken_entry_words(question: str, edge_cents: float | None) -> str:
+    """One line in the running list: what it was, and what it was worth then.
+
+    THE EDGE IS FROZEN AT THE TAP. A number that moved afterwards would make
+    the list a scoreboard, and this is a record of what was chosen.
+    """
+    if edge_cents is None:
+        return f"{question} · no price recorded at the time"
+    return f"{question} · {edge_cents:+.1f}¢ when marked"
+
+
+def worked_example_caption(phrase: str | None, shown_prob: float | None) -> str:
+    """"— Miami to win, 60%": which pick the worked example is working.
+
+    COMPOSED HERE FROM 2026-09-07, because it was composed in the renderer
+    before that -- a dash, a space, a subject, a comma and a percentage, glued
+    together in JavaScript, which is the shape the prose ruling exists to
+    prevent.
+    """
+    what = phrase or "this pick"
+    if shown_prob is None:
+        return f"— {what}"
+    return f"— {what}, {round(shown_prob * 100)}%"
+
+
+def price_row_labels() -> dict:
+    """What sits above each of the three prices.
+
+    "Edge after fees" and not "Edge": the fee is the difference between a
+    number that looks like an edge and a number that is one, and a reader who
+    has to remember which of the two this is will eventually remember wrong.
+    """
+    return {
+        "model": "Model",
+        "venue": "Venue",
+        "edge": "Edge after fees",
+        "why": "Why",
+        "took": "I took this",
+        "taken": "taken",
+    }
+
+
+def kickoff_label_words() -> str:
+    """The word beside a start time. NOT A COUNTDOWN.
+
+    The page used to tick "first kickoff in 2d 6h" once a minute. A countdown
+    is the sportsbook's pressure rather than its grammar: it makes a time feel
+    like a deadline, and the operator ruled it out by name. The instant is
+    still rendered in the reader's own clock, because that is a fact about
+    when the game is.
+    """
+    return "starts"

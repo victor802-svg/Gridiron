@@ -671,8 +671,27 @@ def index() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
 
 
+class _RevalidatedStatic(StaticFiles):
+    """Static files a browser must ASK about before reusing.
+
+    WITHOUT THIS, WHAT IS ON THE SCREEN NEED NOT BE WHAT IS ON THE DISK. The
+    mount sent no cache directive, so a browser applied its own heuristic and
+    kept `app.js`; on 2026-09-07 a rebuilt page loaded the new markup with the
+    old renderer, which draws an empty panel and reports nothing anywhere.
+
+    `no-cache` is "revalidate", not "do not store": the file stays in the
+    browser's cache and an unchanged one still answers 304. The stale-asset
+    class of bug goes away for the price of one conditional request.
+    """
+
+    def file_response(self, *args, **kwargs):  # noqa: D102 - starlette's hook
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if WEB_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+    app.mount("/static", _RevalidatedStatic(directory=str(WEB_DIR)), name="static")
 
 
 def desktop_handoff_url(host: str = config.HOST, port: int = config.PORT) -> str | None:

@@ -751,117 +751,194 @@ const Gridiron = (function () {
     panel.hidden = (rank.comparisons || []).length === 0;
   }
 
-  // TODAY (T1, 2026-09-07). Two groups, never blended, and every sentence is
-  // the server's. The watched group exists because the operator ruled the list
-  // is never empty; each of its rows prints what it is actually worth after
-  // the fee, including when that is negative, so the screen shows without
-  // asserting. `audit.ADVICE_WORDS` scans these strings on the gate.
-  function renderToday(data) {
-    const panel = document.getElementById('today');
-    const clears = document.getElementById('today-clears');
-    const watching = document.getElementById('today-watching');
-    if (!panel || !clears || !watching) return;
-    clears.innerHTML = '';
-    watching.innerHTML = '';
-    csrfToken = data.csrf || csrfToken;
-    const today = (data && data.today) || null;
-    if (!today) { panel.hidden = true; return; }
-    requireN(today, 'today');
+  // TODAY (CARD_FACE, 2026-09-07, replacing T1's rows).
+  //
+  // ONE CARD DESIGN FOR BOTH GROUPS; the heading says which group, not the
+  // card. The three prices read across in the order a reader needs them --
+  // what the model makes it, what the venue is at, what the difference is
+  // worth after the fee -- and the third is the largest thing on the card
+  // because it is the only one that decides anything.
+  //
+  // THIS FUNCTION WAS DEFINED TWICE, identically, one copy directly after the
+  // other. The second replaced the first at load; a fix applied to the wrong
+  // one would have changed nothing on the screen and looked like a mystery.
+  // `audit.duplicate_js_definitions` now fails on that shape.
+  //
+  // EVERY STRING HERE IS THE SERVER'S, labels included. The one thing worked
+  // out in the browser is a kickoff instant turned into the reader's own
+  // clock, because the browser is the only party that knows the timezone --
+  // and it is a TIME, never a countdown. A countdown is a sportsbook's
+  // pressure rather than its grammar and is banned by name.
+  function todayCard(entry, labels) {
+    requireN(entry, 'a card on today');
+    const face = el('article', 'face' + (entry.taken ? ' face-took' : ''));
 
-    const heading = document.getElementById('today-clears-heading');
-    if (heading) heading.textContent = today.clears_heading || '';
-    const watchHeading = document.getElementById('today-watching-heading');
-    if (watchHeading) watchHeading.textContent = today.watching_heading || '';
-    const fee = document.getElementById('today-fee');
-    if (fee) fee.textContent = today.fee_line || '';
-    const taken = document.getElementById('today-taken');
-    if (taken) taken.textContent = today.taken_line || '';
+    const head = el('header', 'face-event');
+    head.appendChild(el('span', 'face-match', entry.matchup || ''));
+    if (entry.kickoff_utc) {
+      const when = el('span', 'face-when');
+      when.appendChild(el('span', 'face-when-label', entry.kickoff_label || ''));
+      when.appendChild(el('time', 'face-time', localTime(entry.kickoff_utc)));
+      head.appendChild(when);
+    }
+    head.appendChild(el('span', 'face-sport', entry.sport_label || ''));
+    face.appendChild(head);
 
-    const row = (entry, group) => {
-      requireN(entry, 'a row on today');
-      // THE ROW READS ACROSS, NOT DOWN. The first render put the control on
-      // its own line under every row and twenty of them filled a desktop
-      // screen with buttons; the sentence is the content and the control
-      // belongs beside it.
-      const line = el('div', 'gate-row today-row');
-      line.appendChild(el('div', 'gate-name', entry.words));
-      // I TOOK THIS. One tap, which records the pick and the moment and
-      // nothing else. A pick already marked says so rather than offering the
-      // tap again.
-      const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
-      mark.type = 'button';
-      mark.textContent = entry.taken ? 'taken' : 'I took this';
-      mark.disabled = !!entry.taken;
-      mark.onclick = async () => {
-        mark.disabled = true;
-        await fetch('/api/taken/' + entry.prediction_id, {
-          method: 'POST',
-          headers: { 'X-Gridiron-Form': csrfToken || '' },
-        });
-        renderWeek().catch(showError);
-      };
-      line.appendChild(mark);
-      group.appendChild(line);
+    face.appendChild(el('div', 'face-q', entry.question || ''));
+
+    const prices = el('div', 'face-prices');
+    const box = (cls, label, value) => {
+      const b = el('div', cls);
+      b.appendChild(el('span', 'box-label', label));
+      b.appendChild(el('span', 'box-value', value));
+      return b;
     };
-    (today.clears || []).forEach(entry => row(entry, clears));
-    (today.watching || []).forEach(entry => row(entry, watching));
-    panel.hidden = false;
+    prices.appendChild(box('box', labels.model, entry.model_words));
+    prices.appendChild(box('box', labels.venue, entry.venue_words));
+    // THE EDGE CHIP CARRIES THE ONLY COLOUR ON THE CARD, and the state comes
+    // from the server: `language.edge_state` is the one place that decides
+    // what green means here. No transition, no animation -- a price that
+    // flashes when it moves is the pressure this brief bans, and
+    // `audit.price_chip_animation_faults` fails the gate on one.
+    // THE LABEL SAYS WHICH SIDE, because the number cannot. A question, a
+    // plus sign and a green figure all read as "back this", and on a card
+    // whose edge is on the other side that is three things agreeing and being
+    // wrong.
+    prices.appendChild(box('box edge ' + (entry.edge_state || 'none'),
+                           entry.edge_label || labels.edge, entry.edge_words));
+    face.appendChild(prices);
+
+    if (entry.size_words) face.appendChild(el('div', 'face-size', entry.size_words));
+
+    const meta = el('div', 'face-meta');
+    meta.appendChild(el('span', 'face-gate', entry.gate_words || ''));
+    // ONLY WHEN IT SAYS SOMETHING. Twelve chips reading the same three words
+    // down one page is a group heading wearing a badge twelve times.
+    if (entry.tier_chip) meta.appendChild(el('span', 'chip', entry.tier_chip));
+    face.appendChild(meta);
+
+    const actions = el('div', 'face-actions');
+    const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
+    mark.type = 'button';
+    mark.textContent = entry.taken ? labels.taken : labels.took;
+    mark.disabled = !!entry.taken;
+    mark.onclick = async () => {
+      mark.disabled = true;
+      await fetch('/api/taken/' + entry.prediction_id, {
+        method: 'POST',
+        headers: { 'X-Gridiron-Form': csrfToken || '' },
+      });
+      renderWeek().catch(showError);
+    };
+    actions.appendChild(mark);
+
+    // COLLAPSED BY DEFAULT so the page still scans, and one click away
+    // because the operator reads each pick rather than scanning a table.
+    const sentences = (entry.why && entry.why.sentences) || [];
+    if (sentences.length || entry.reasoning || (entry.top_factors || []).length) {
+      const more = el('button', 'expand');
+      more.type = 'button';
+      more.textContent = labels.why;
+      more.setAttribute('aria-expanded', 'false');
+      const body = el('div', 'face-why');
+      body.hidden = true;
+      if (sentences.length) {
+        sentences.forEach(s => body.appendChild(el('p', 'face-sentence', s)));
+      } else if (entry.reasoning) {
+        body.appendChild(el('p', 'face-sentence', entry.reasoning));
+      }
+      const chips = factorChips(entry);
+      if (chips) body.appendChild(chips);
+      more.onclick = () => {
+        body.hidden = !body.hidden;
+        more.setAttribute('aria-expanded', body.hidden ? 'false' : 'true');
+      };
+      actions.appendChild(more);
+      face.appendChild(actions);
+      face.appendChild(body);
+      return face;
+    }
+    face.appendChild(actions);
+    return face;
   }
 
-  // TODAY (T1, 2026-09-07). Two groups, never blended, and every sentence is
-  // the server's. The watched group exists because the operator ruled the list
-  // is never empty; each of its rows prints what it is actually worth after
-  // the fee, including when that is negative, so the screen shows without
-  // asserting. `audit.ADVICE_WORDS` scans these strings on the gate.
   function renderToday(data) {
     const panel = document.getElementById('today');
     const clears = document.getElementById('today-clears');
     const watching = document.getElementById('today-watching');
-    if (!panel || !clears || !watching) return;
+    const folded = document.getElementById('today-below-floor');
+    if (!panel || !clears || !watching || !folded) return;
     clears.innerHTML = '';
     watching.innerHTML = '';
+    folded.innerHTML = '';
     csrfToken = data.csrf || csrfToken;
     const today = (data && data.today) || null;
     if (!today) { panel.hidden = true; return; }
     requireN(today, 'today');
+    const labels = today.labels || {};
 
-    const heading = document.getElementById('today-clears-heading');
-    if (heading) heading.textContent = today.clears_heading || '';
-    const watchHeading = document.getElementById('today-watching-heading');
-    if (watchHeading) watchHeading.textContent = today.watching_heading || '';
+    const where = document.getElementById('day-where');
+    if (where) where.textContent = today.where_words || '';
+    const counts = document.getElementById('day-counts');
+    if (counts) counts.textContent = today.count_words || '';
+    // SAID ONCE FOR THE SLATE. This sentence was appended to every row --
+    // thirty times on the football slate of 2026-09-07 -- which is how a page
+    // teaches a reader that its rows are not worth reading.
+    const note = document.getElementById('day-note');
+    if (note) {
+      note.textContent = today.no_price_words || '';
+      note.hidden = !today.no_price_words;
+    }
     const fee = document.getElementById('today-fee');
     if (fee) fee.textContent = today.fee_line || '';
     const taken = document.getElementById('today-taken');
     if (taken) taken.textContent = today.taken_line || '';
 
-    const row = (entry, group) => {
-      requireN(entry, 'a row on today');
-      // THE ROW READS ACROSS, NOT DOWN. The first render put the control on
-      // its own line under every row and twenty of them filled a desktop
-      // screen with buttons; the sentence is the content and the control
-      // belongs beside it.
-      const line = el('div', 'gate-row today-row');
-      line.appendChild(el('div', 'gate-name', entry.words));
-      // I TOOK THIS. One tap, which records the pick and the moment and
-      // nothing else. A pick already marked says so rather than offering the
-      // tap again.
-      const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
-      mark.type = 'button';
-      mark.textContent = entry.taken ? 'taken' : 'I took this';
-      mark.disabled = !!entry.taken;
-      mark.onclick = async () => {
-        mark.disabled = true;
-        await fetch('/api/taken/' + entry.prediction_id, {
-          method: 'POST',
-          headers: { 'X-Gridiron-Form': csrfToken || '' },
-        });
-        renderWeek().catch(showError);
-      };
-      line.appendChild(mark);
-      group.appendChild(line);
+    const heading = document.getElementById('today-clears-heading');
+    if (heading) heading.textContent = today.clears_heading || '';
+    const watchHeading = document.getElementById('today-watching-heading');
+    if (watchHeading) watchHeading.textContent = today.watching_heading || '';
+    const groupChip = (id, value) => {
+      const host = document.getElementById(id);
+      if (!host) return;
+      host.textContent = value || '';
+      host.hidden = !value;
     };
-    (today.clears || []).forEach(entry => row(entry, clears));
-    (today.watching || []).forEach(entry => row(entry, watching));
+    groupChip('today-clears-chip', today.clears_chip);
+    groupChip('today-watching-chip', today.watching_chip);
+
+    (today.clears || []).forEach(e => clears.appendChild(todayCard(e, labels)));
+    (today.watching || []).forEach(e => watching.appendChild(todayCard(e, labels)));
+    (today.below_floor || []).forEach(e => folded.appendChild(todayCard(e, labels)));
+
+    const fold = document.getElementById('today-fold');
+    if (fold) {
+      fold.textContent = today.below_floor_words || '';
+      fold.hidden = !today.below_floor_words;
+      fold.setAttribute('aria-expanded', 'false');
+      folded.hidden = true;
+      fold.onclick = () => {
+        folded.hidden = !folded.hidden;
+        fold.setAttribute('aria-expanded', folded.hidden ? 'false' : 'true');
+      };
+    }
+
+    const rail = document.getElementById('today-rail');
+    const takenHeading = document.getElementById('taken-heading');
+    const entries = document.getElementById('taken-entries');
+    if (rail && takenHeading && entries) {
+      const list = today.taken_today || { entries: [] };
+      takenHeading.textContent = list.heading || '';
+      entries.innerHTML = '';
+      (list.entries || []).forEach(item => {
+        const row = el('div', 'taken-row');
+        row.appendChild(el('span', 'taken-what', item.words));
+        if (item.taken_utc) {
+          row.appendChild(el('time', 'taken-when', localTime(item.taken_utc)));
+        }
+        entries.appendChild(row);
+      });
+    }
     panel.hidden = false;
   }
 
@@ -1303,6 +1380,16 @@ const Gridiron = (function () {
     return lead.length ? lead[0] : null;
   }
 
+  // A KICKOFF INSTANT IN THE READER'S OWN CLOCK. The one thing this file
+  // works out for itself, because the browser is the only party that knows
+  // what timezone the reader is in.
+  //
+  // THERE WERE TWO OF THESE, 571 lines apart, and they disagreed: this one
+  // returns an empty string when a date will not parse and the other returned
+  // the raw instant, which would have printed `2026-09-07T17:10:00Z` on a
+  // card. The second definition won at load, so the copy a reader was most
+  // likely to find and fix was the dead one. Found by CARD_FACE, 2026-09-07;
+  // `audit.duplicate_js_definitions` fails the gate on the shape now.
   function localTime(iso) {
     try {
       return new Date(iso).toLocaleTimeString([], {
@@ -1874,12 +1961,6 @@ const Gridiron = (function () {
     return String(name).replace(/^(nfl|mlb|nba)_/, '').replace(/_/g, ' ');
   }
 
-  function localTime(iso) {
-    try {
-      return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    } catch (err) { return iso; }
-  }
-
   // --- THIS WEEK ----------------------------------------------------------
   // ============================================================
   // THE COMPACT ROW
@@ -2203,10 +2284,16 @@ const Gridiron = (function () {
     });
   }
 
-  // THE COUNTDOWN (R3). The words come from the server; the DIGITS are worked
-  // out here, because they tick and the browser is the thing that knows what
-  // time it is now -- the same reason kickoff times are rendered locally.
-  let clockTimer = null;
+  // THE START TIME (R3, rewritten by CARD_FACE on 2026-09-07).
+  //
+  // IT USED TO BE A COUNTDOWN -- "first kickoff in 2d 6h", repainted every
+  // minute -- and a countdown is the one thing on this page that was pure
+  // sportsbook pressure: it makes a start time read as a deadline for the
+  // reader rather than a fact about the game. `audit.countdown_faults` fails
+  // the gate on the shape now, and a planting proves it.
+  //
+  // It also built its own sentence, `state_word + ' in ' + span`, which the
+  // prose scan could not see because that field was not on its list.
 
   function paintClock(glance, slateTitle) {
     const host = document.getElementById('week-clock');
@@ -2216,7 +2303,6 @@ const Gridiron = (function () {
     // words in two places, which is the duplication this project keeps having
     // to remove (the market column, the pick sentence, the tier label).
     if (!host || !line) return;
-    if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
     if (!glance) { host.hidden = true; return; }
 
     if (glance.state_line) {
@@ -2228,29 +2314,31 @@ const Gridiron = (function () {
     }
     if (!glance.first_kickoff_utc) { host.hidden = true; return; }
 
-    const kickoff = new Date(glance.first_kickoff_utc);
-    // THE SLATE'S OWN DATE, from the server, not the reader's rendering of the
-    // first kickoff instant. Those disagree: a midnight-UTC kickoff is the
-    // previous evening in America, so the page read "Saturday 5 September" at
-    // the top and "Friday, September 4" directly underneath, about one slate.
-    // The date a slate IS belongs to the slate; only the countdown ticks.
-    const tick = () => {
-      const left = kickoff - new Date();
-      if (left <= 0) { line.textContent = glance.state_word; return; }
-      const mins = Math.floor(left / 60000);
-      const days = Math.floor(mins / 1440);
-      const hours = Math.floor((mins % 1440) / 60);
-      const rest = mins % 60;
-      const span = days ? days + 'd ' + hours + 'h'
-                 : hours ? hours + 'h ' + rest + 'm'
-                 : rest + 'm';
-      line.textContent = glance.state_word + ' in ' + span;
-    };
-    tick();
-    // Once a minute: the smallest unit shown is a minute, so anything faster
-    // is repainting the same string.
-    clockTimer = setInterval(tick, 60000);
+    // THE WORD IS THE SERVER'S AND THE TIME IS THE READER'S CLOCK: two
+    // elements, so nothing is glued together and nothing counts down. The
+    // date travels with the time because a slate's first game can be days
+    // away, and a bare "1:05 PM" would read as today.
+    line.textContent = '';
+    line.appendChild(el('span', 'clock-word', glance.state_word || ''));
+    // A SEPARATOR, not a sentence. Two elements with a margin between them
+    // read correctly on screen and run together in the page's text content,
+    // which is what every rendered-text scan reads.
+    line.appendChild(document.createTextNode(' '));
+    line.appendChild(el('time', 'clock-time',
+                        localDayTime(glance.first_kickoff_utc)));
     host.hidden = false;
+  }
+
+  // A start instant as the reader's own calendar and clock show it. The one
+  // thing this file works out for itself, for the one reason it is allowed
+  // to: the browser is the only party that knows the timezone.
+  function localDayTime(iso) {
+    try {
+      return new Date(iso).toLocaleString([], {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      });
+    } catch (e) { return ''; }
   }
 
   async function renderWeek() {
@@ -2700,8 +2788,10 @@ const Gridiron = (function () {
       const card = (data.cards || []).find(c => (c.top_factors || []).length);
       if (!card) { host.hidden = true; return; }
 
+      // THE SERVER'S SENTENCE, placed. It was glued together here out of a
+      // dash, a subject and a percentage until 2026-09-07.
       document.getElementById('worked-caption').textContent =
-        DASH + ' ' + (card.phrase || '') + ', ' + pct(shownProb(card), 0);
+        card.example_caption || '';
       const bars = document.getElementById('worked-bars');
       bars.innerHTML = '';
       bars.appendChild(contributions(card));

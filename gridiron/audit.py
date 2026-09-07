@@ -690,6 +690,14 @@ def plain_words_violations(text: str) -> list[str]:
             f"the slate key 'Day {match}' is visible to a reader -- a day "
             f"ordinal means nothing outside this database; say the date in "
             f"words")
+    # THE PRESSURE WORDS ARE NOT HERE, and the reason is measured. Folding
+    # them in put the list in front of the second forecaster's own prose,
+    # where two stored rows say "boost" -- a boost from playing at home, which
+    # is ordinary English about a baseball game. `pressure_word_faults` scans
+    # the text THIS PROJECT composes instead, exactly as `ADVICE_WORDS` does
+    # and for the same reason: a false positive there is fixed by writing a
+    # better sentence, and one here would force the model's prose to get worse
+    # to satisfy a scan.
     return sorted(set(hits))
 
 
@@ -1155,6 +1163,13 @@ def check_side_named_everywhere(package: Path | None = None) -> None:
 JS_DATA_FIELDS = (
     "subject", "opponent", "prop_type", "market_type", "model_side",
     "factor", "task", "reason", "category", "database_kind", "tier",
+    # ADDED 2026-09-07, after a composition stood in this file for a week
+    # unseen: `glance.state_word + ' in ' + span` built the countdown's
+    # sentence, and the glue rule never fired because it only fires on a line
+    # that also mentions one of these names. THE LIST IS THE WEAKNESS OF THIS
+    # SCAN and always was -- it is a tripwire, not a parser -- so a field that
+    # has actually been glued to a label goes on it.
+    "state_word", "words", "question", "phrase",
 )
 
 #: `word + expr` or `expr + word` where the literal contains a space or ends
@@ -5816,3 +5831,235 @@ def check_taken_not_in_training(root: Path | None = None) -> None:
         raise LawViolation(
             "THE MODEL CAN SEE WHICH PICKS WERE TAKEN:"
             + _NL2 + _NL2.join(faults[:8]))
+
+
+# ---------------------------------------------------------------------------
+# THE GRAMMAR, NOT THE PRESSURE (GRIDIRON_CARD_FACE, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# The operator asked for a page that reads like a sportsbook, because he can
+# already read one. A sportsbook page is two things wearing one skin:
+#
+#   THE GRAMMAR -- an event header, the market under it, prices side by side,
+#   a running list of what you took. That is good information design for this
+#   content, and it is what was taken.
+#
+#   THE PRESSURE -- a countdown, a price that flashes when it moves, a "hot"
+#   badge, a streak counter, a parlay builder. That exists to make wagering
+#   feel urgent, and it is what makes a book money.
+#
+# The difference between the two is invisible in a diff and obvious on a
+# screen, which is exactly the kind of thing that needs a scan rather than an
+# intention.
+
+#: Words with no job on this page except to make a reader move faster. Matched
+#: on word boundaries written as character classes, because a substring match
+#: on "hot" flags "shot" and a scan that cries wolf gets switched off.
+PRESSURE_WORDS: tuple[str, ...] = (
+    "boost", "boosted", "hot", "trending", "popular", "streak", "streaks",
+    "parlay", "parlays", "combo", "same game", "sgp",
+)
+
+_PRESSURE = re.compile(
+    "(?:^|[^A-Za-z])(" + "|".join(w.replace(" ", r"\s+") for w in PRESSURE_WORDS)
+    + ")(?:[^A-Za-z]|$)", re.IGNORECASE)
+
+
+def pressure_word_faults(text: str) -> list[str]:
+    """A sportsbook's urgency vocabulary in text this project composes.
+
+    NOT a judgement about the words in English. "Hot" is a fine word about
+    weather and a terrible one on a pick card, where its only function is to
+    suggest that a reader who waits will miss something.
+    """
+    if not text:
+        return []
+    return sorted({
+        f"the word {m.group(1).lower()!r} belongs to a sportsbook's pressure, "
+        f"not to a forecast: it tells a reader to hurry rather than telling "
+        f"them anything"
+        for m in _PRESSURE.finditer(str(text))
+    })
+
+
+#: The selectors that carry a price. A transition or an animation on one of
+#: these is a number that MOVES when it changes, which is the single most
+#: effective piece of pressure a book has.
+PRICE_SELECTORS = (".box", ".box-value", ".edge", ".face-prices")
+
+_CSS_ANIMATED = re.compile(r"(?:^|[;\s])(transition|animation)\b[^;]*")
+
+
+def price_chip_animation_faults(css: str | None = None) -> list[str]:
+    """Every rule that would make a price move on its way to a new value."""
+    if css is None:
+        path = Path(__file__).resolve().parent / "web" / "style.css"
+        css = path.read_text(encoding="utf-8") if path.exists() else ""
+    css = _without_comments(css, "css")
+    faults = []
+    for match in _CSS_RULE.finditer(css):
+        selector = " ".join(match.group("selector").split()).split("*/")[-1].strip()
+        if not selector or selector.startswith("@"):
+            continue
+        if not any(part in selector for part in PRICE_SELECTORS):
+            continue
+        for animated in _CSS_ANIMATED.finditer(match.group("body")):
+            faults.append(
+                f"{selector!r} sets {animated.group(1)}, so a price would move "
+                f"on its way to a new value. A number that flashes when it "
+                f"changes is a sportsbook's pressure and this page refuses it: "
+                f"{animated.group(0).strip()[:60]}")
+    return faults
+
+
+def check_no_price_animation(css: str | None = None) -> None:
+    faults = price_chip_animation_faults(css)
+    if faults:
+        raise LawViolation(
+            "A PRICE MAY NOT MOVE WHEN IT CHANGES. The whole point of an "
+            "animated odds chip is that the eye is caught by the movement "
+            "rather than by the number, and a reader who is watching prices "
+            "flicker is not reading them:" + _NL2 + _NL2.join(faults[:6]))
+
+
+_JS_COUNTDOWN = re.compile(
+    r"setInterval|setTimeout")
+_JS_TIME_LEFT = re.compile(
+    r"(?:new\s+Date\s*\(\s*\)|Date\.now\s*\(\s*\))")
+
+
+def countdown_faults(path=None) -> list[str]:
+    """A ticking time-to-kickoff anywhere in the renderer.
+
+    KICKOFF IS A TIME, NOT A TIMER. The page ticked "first kickoff in 2d 6h"
+    once a minute until this brief; the instant is still rendered in the
+    reader's own clock, which is a fact about when the game is rather than a
+    deadline counting down at them.
+
+    Shape-based on purpose: a repeating timer, a subtraction against the
+    current instant, and a write into the page, in one function. Renaming the
+    variables does not get past it.
+    """
+    path = ((Path(__file__).resolve().parent / "web" / "app.js")
+            if path is None else Path(path))
+    if not path.exists():
+        return []
+    source = path.read_text(encoding="utf-8")
+    faults = []
+    for block in re.split(r"(?m)^  function ", source)[1:]:
+        name = block.split("(", 1)[0].strip()
+        body = chr(10).join(line for line in block.split(chr(10))
+                        if not line.strip().startswith("//"))
+        if not _JS_COUNTDOWN.search(body):
+            continue
+        if not _JS_TIME_LEFT.search(body):
+            continue
+        if "textContent" not in body and "innerText" not in body:
+            continue
+        faults.append(
+            f"{name!r} repeats a timer, subtracts against the current instant "
+            f"and writes the result into the page. That is a countdown, and a "
+            f"countdown makes a start time read as a deadline")
+    return faults
+
+
+def check_no_countdown(path=None) -> None:
+    faults = countdown_faults(path)
+    if faults:
+        raise LawViolation(
+            "NO COUNTDOWN TO KICKOFF. A start time is a fact about when a game "
+            "is; a countdown is a sportsbook telling a reader they are running "
+            "out of time to act, and the two look identical in a payload:"
+            + _NL2 + _NL2.join(faults[:6]))
+
+
+_JS_DEF = re.compile(r"(?m)^(\s*)function\s+([A-Za-z_$][\w$]*)\s*\(")
+
+
+def duplicate_js_definitions(path=None) -> list[str]:
+    """A function name defined twice at the same indentation in the renderer.
+
+    THE SECOND ONE WINS AND THE FIRST IS DEAD, silently. This file held two:
+    `renderToday`, byte-identical, one directly after the other; and
+    `localTime`, 571 lines apart and NOT identical -- one returned an empty
+    string for a date that would not parse and the other returned the raw
+    instant, which would have printed a machine timestamp on a card.
+
+    A fix applied to the dead copy changes nothing on the screen, which is the
+    worst kind of bug to chase. `check_no_shadowed_definitions` has caught this
+    in Python since the day a name collision reached the record; the renderer
+    had no equivalent until 2026-09-07.
+    """
+    path = ((Path(__file__).resolve().parent / "web" / "app.js")
+            if path is None else Path(path))
+    if not path.exists():
+        return []
+    seen: dict[tuple[str, int], int] = {}
+    faults = []
+    for n, line in enumerate(path.read_text(encoding="utf-8").split(chr(10)), 1):
+        if line.strip().startswith("//"):
+            continue
+        match = _JS_DEF.match(line)
+        if not match:
+            continue
+        key = (match.group(2), len(match.group(1)))
+        if key in seen:
+            faults.append(
+                f"{match.group(2)!r} is defined twice in the renderer, at "
+                f"lines {seen[key]} and {n}. The second replaces the first at "
+                f"load, so the first is dead code that still looks live -- and "
+                f"a fix applied to it changes nothing on the screen")
+        else:
+            seen[key] = n
+    return faults
+
+
+#: Where a card's own words live in the slate payload. Walked rather than
+#: named one by one, because a card that grows a new line of prose should be
+#: scanned the day it grows it, not the day somebody remembers to add it here.
+DAY_TEXT_KEYS = (
+    "where_words", "count_words", "no_price_words", "clears_heading",
+    "watching_heading", "below_floor_words", "fee_line", "taken_line",
+    "question", "matchup", "sport_label", "kickoff_label", "model_words",
+    "venue_words", "edge_words", "edge_label", "size_words", "gate_words",
+    "tier_chip", "words", "heading",
+)
+
+
+def day_pressure_faults(payload) -> list[str]:
+    """A sportsbook's urgency vocabulary anywhere in the day's own words."""
+    if not payload:
+        return []
+    faults: list[str] = []
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, f"{path}.{key}" if path else str(key))
+        elif isinstance(node, list):
+            for i, value in enumerate(node):
+                walk(value, f"{path}[{i}]")
+        elif isinstance(node, str) and path.rsplit(".", 1)[-1].split("[")[0] in DAY_TEXT_KEYS:
+            for fault in pressure_word_faults(node):
+                faults.append(f"{path}: {fault}")
+
+    walk(payload, "")
+    return faults
+
+
+def check_the_day_applies_no_pressure(payload) -> None:
+    """Raise if Today reads like a sportsbook rather than like a forecast."""
+    faults = day_pressure_faults(payload)
+    if faults:
+        raise LawViolation(
+            "THE GRAMMAR OF A SPORTSBOOK, NEVER ITS PRESSURE. A page that "
+            "tells a reader to hurry has stopped telling them anything:"
+            + _NL2 + _NL2.join(faults[:6]))
+
+
+def check_no_duplicate_js_definitions(path=None) -> None:
+    faults = duplicate_js_definitions(path)
+    if faults:
+        raise LawViolation(
+            "A FUNCTION DEFINED TWICE IN THE RENDERER. One of them is dead and "
+            "neither says so:" + _NL2 + _NL2.join(faults[:6]))

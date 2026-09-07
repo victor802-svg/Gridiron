@@ -2046,3 +2046,210 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   .hero-dot { width: 32px; }
   .hero-arrow { min-width: 44px; }
 }
+
+
+/* ==========================================================================
+   TODAY, AS CARDS (GRIDIRON_CARD_FACE, 2026-09-07)
+   ========================================================================== */
+
+.today .day-strip {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+/* "first kickoffWed, Sep 9, 5:20 PM" -- the label and the time are two
+   elements now that the countdown is gone, and two elements need a space
+   between them that a removed string used to carry. */
+.clock-word { margin-right: 6px; }
+
+.day-where {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.day-counts {
+  color: var(--chrome);
+  font-size: 20px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.day-note, .day-fee {
+  color: var(--faint);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+/* THE RAIL, where a book puts its running list. One column on a phone, and
+   the list moves under the cards rather than beside them. */
+.today-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 18px;
+  align-items: start;
+}
+.today-rail {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--card);
+}
+.today-rail h4 { margin: 0 0 8px; font-size: 13px; color: var(--chrome); }
+.taken-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.taken-what { color: var(--muted); }
+.taken-when { color: var(--faint); white-space: nowrap; }
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 16px 0 8px;
+}
+.group-head:first-child { margin-top: 0; }
+.group-chip { flex: 0 0 auto; }
+
+.faces { display: grid; gap: 10px; }
+
+.face {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  padding: 12px 14px;
+}
+.face-took { border-color: var(--line-lit); }
+.face-event {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--faint);
+}
+.face-match { color: var(--chrome); font-weight: 600; }
+.face-when-label { margin-right: 4px; }
+.face-sport { margin-left: auto; letter-spacing: 0.04em; }
+.face-q {
+  color: var(--chrome);
+  font-size: 17px;
+  font-weight: 600;
+  margin: 6px 0 10px;
+}
+
+/* THE PRICE ROW. Three boxes on one line at every width, because the
+   comparison IS the row: a model price above a venue price above an edge is
+   three facts, and side by side it is one. */
+.face-prices {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+.box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 0;
+  background: var(--ink);
+}
+.box-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  /* `--faint`, NOT `--faintest`. Measured at 10px on the page ground, the
+     quietest ink is 3.39:1 and AA wants 4.5 -- a label that is in the markup
+     and not on the screen. This pair is in tools/contrast.py now. */
+  color: var(--faint);
+  /* NOTHING ON A CARD TRUNCATES. `test_no_card_truncates` is a law here --
+     "a truncated card has told the reader there is something it is not
+     showing and then not shown it" -- and these two carried an ellipsis
+     borrowed from a table, on the one row whose whole job is being read. */
+  white-space: normal;
+  line-height: 1.25;
+}
+.box-value {
+  display: block;
+  font-size: 14px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.edge { border-color: var(--line-lit); }
+.edge .box-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--chrome);
+}
+.edge.up .box-value { color: var(--win); }
+.edge.down .box-value { color: var(--loss); }
+.edge.none .box-value { color: var(--faint); }
+
+.face-size {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--chrome);
+}
+.face-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.face-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.face-why {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.face-sentence { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+
+.expand, .fold {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.expand:hover, .fold:hover { border-color: var(--line-lit); color: var(--chrome); }
+.fold { width: 100%; margin: 8px 0; text-align: left; }
+
+@media (max-width: 860px) {
+  /* THE RAIL BECOMES A SHEET UNDER THE CARDS. Same content, same order of
+     importance, one column. */
+  .today-body { grid-template-columns: minmax(0, 1fr); }
+  .today-rail { order: 2; }
+  .day-counts { font-size: 17px; }
+  .face-q { font-size: 16px; }
+  /* THE THREE BOXES STAY ON ONE LINE at 390px, per the brief. The edge keeps
+     its weight; the two quiet boxes give up width first. */
+  .face-prices { grid-template-columns: 0.8fr 1.15fr 1fr; gap: 6px; }
+  .edge .box-value { font-size: 22px; }
+  /* At 390px "Edge after fees" needs two lines, and gets them. It was cut to
+     "Edge after fee..." on every card -- measured, 32 of them -- before the
+     ellipsis came off. */
+  .box-label { font-size: 9px; }
+  .box-value { font-size: 13px; }
+}

@@ -324,6 +324,14 @@ def step_2_guards() -> bool:
          audit.check_a_live_update_does_not_reorder),
         ("green means a pick won, and nothing else",
          audit.check_the_colour_law),
+        # THE GRAMMAR, NOT THE PRESSURE (CARD_FACE, 2026-09-07)
+        ("no price moves when it changes", audit.check_no_price_animation),
+        ("the day says nothing that tells a reader to hurry",
+         lambda: [audit.check_the_day_applies_no_pressure(_slate_payload(sport))
+                  for sport in _config().SPORTS] and None),
+        ("kickoff is a time, not a timer", audit.check_no_countdown),
+        ("one definition per function, in the renderer too",
+         audit.check_no_duplicate_js_definitions),
         ("picks shows tonight, not last night",
          audit.check_picks_shows_tonight),
         ("every gate counts, and none renders a share",

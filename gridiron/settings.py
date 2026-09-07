@@ -72,6 +72,58 @@ def _an_hour(value: str) -> str:
     return str(hour)
 
 
+def _a_multiple(value: str) -> str:
+    """A payout multiple like 1.5, meaning "returns one and a half times".
+
+    Refused below 1.0, because a contract that pays less than it costs is not
+    a floor a person can mean, and above 20 because a floor that high hides
+    every card on every slate and would read as the page being broken.
+    """
+    text = str(value).strip().lower().rstrip("x")
+    try:
+        got = float(text)
+    except (TypeError, ValueError):
+        raise SettingRefused(
+            f"{value!r} is not a payout. Write it as a multiple of the stake, "
+            f"like 1.5 for a contract that returns one and a half times what "
+            f"it costs.") from None
+    if got < 1.0:
+        raise SettingRefused(
+            f"{got:g} would mean a contract that pays back less than it cost. "
+            f"The lowest floor that means anything is 1.0.")
+    if got > 20.0:
+        raise SettingRefused(
+            f"{got:g} is higher than any price on the board pays, so nothing "
+            f"would ever be shown. The highest this page accepts is 20.")
+    return f"{got:g}"
+
+
+def _money_or_unset(value: str) -> str:
+    """A unit in dollars, or empty for "not set".
+
+    EMPTY IS A REAL ANSWER and the default one. The size then reads in units,
+    which is what this project has always shown; a number invented here would
+    put a dollar figure on the operator's screen that he never chose.
+    """
+    text = str(value).strip().lstrip("$").replace(",", "")
+    if text == "":
+        return ""
+    try:
+        got = float(text)
+    except (TypeError, ValueError):
+        raise SettingRefused(
+            f"{value!r} is not an amount. Write what one unit is worth to you, "
+            f"like 5 or 25 -- or leave it empty and sizes stay in units.") from None
+    if got <= 0:
+        raise SettingRefused("A unit is worth something or it is not set. "
+                             "Leave it empty rather than writing zero.")
+    if got > 100000:
+        raise SettingRefused(
+            f"{got:g} is larger than this page will accept for one unit. If "
+            f"that is really the number, the app is not the place to hold it.")
+    return f"{got:g}"
+
+
 def _a_switch(value: str) -> str:
     text = str(value).strip().lower()
     if text in ("1", "true", "on", "yes"):
@@ -138,6 +190,35 @@ EDITABLE: dict[str, dict] = {
         "kind": "hour",
         "check": _an_hour,
         "default": "7",
+    },
+    # THE OPERATOR'S FLOOR (CARD_FACE F2b, 2026-09-07). A DISPLAY PREFERENCE,
+    # and the distinction is load-bearing: the engine records every pick that
+    # clears the bar whatever this says, so the closing line is measured over
+    # all of them and, separately, over the ones this let through. Both
+    # figures render with their own N.
+    "min_payout": {
+        "label": "Minimum payout",
+        "why": ("picks that clear the bar but pay less than this fold into "
+                "one line instead of a card. It hides nothing from the "
+                "record: the closing line is still measured on all of them"),
+        "section": "what the day shows",
+        "kind": "multiple",
+        "check": _a_multiple,
+        "default": "1.5",
+    },
+    # WHAT ONE UNIT IS WORTH (CARD_FACE F2, 2026-09-07). Empty by default,
+    # because `config.BANKROLL_UNITS` says in as many words that nothing in
+    # this codebase is an amount and the operator maps a unit to money
+    # outside it. Asked for rather than assumed.
+    "unit_dollars": {
+        "label": "One unit is worth",
+        "why": ("in dollars, so a size reads as money rather than as units. "
+                "Leave it empty and sizes stay in units. No balance is ever "
+                "read from anywhere: this is a number you type"),
+        "section": "what the day shows",
+        "kind": "money",
+        "check": _money_or_unset,
+        "default": "",
     },
     "notify_results": {
         "label": "Tell me when results land",

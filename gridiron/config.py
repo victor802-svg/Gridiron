@@ -1384,6 +1384,25 @@ BANKROLL_UNITS = 100.0
 #: smallest difference the venue itself can express.
 MIN_EDGE_CENTS = 1.0
 
+#: HOW MUCH EDGE IS WORTH THE CLICK, as a share of the price paid (CARD_FACE
+#: F2b, operator ruling 2026-09-07). Cents and percentage answer two different
+#: questions and the second one was not being asked: a 2-cent edge on an
+#: 89-cent contract clears `MIN_EDGE_CENTS` comfortably and is 2.2% on the
+#: money, for a position that can settle at zero. The same 2 cents on a
+#: 20-cent contract is 10%.
+#:
+#: DECLARED, NOT FITTED. Five per cent is the operator's number, chosen before
+#: any recommendation existed to test it against -- there are none in the
+#: record on the day it was declared, so it cannot have been tuned to flatter
+#: one. It applies to what gets written next and rewrites nothing: LAW 3's
+#: logic applied to a threshold rather than to a row.
+#:
+#: A pick that fails this is NOT hidden. It keeps its place in the watched
+#: group with its edge on its face, because "the price is wrong but not wrong
+#: enough to be worth it" is a thing a reader should be able to see.
+MIN_RETURN_ON_STAKE = 0.05
+MIN_RETURN_ON_STAKE_DECLARED = "2026-09-07T00:00:00Z"
+
 
 # ---------------------------------------------------------------------------
 # THE PRICED FORECASTER (THE_PRICED P1, 2026-09-07)

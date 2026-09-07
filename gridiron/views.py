@@ -794,6 +794,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # reason it says the humanising rules live in ONE place: the history
         # table was fixed in C1 and the card was left building its own.
         cards[-1]["phrase"] = language.phrase(cards[-1])
+        # WHICH PICK THE WORKED EXAMPLE IS WORKING (2026-09-07). Composed here
+        # because it is composed FROM the phrase, and composed at all because
+        # the renderer was gluing it together out of a dash, a subject and a
+        # percentage -- the shape the prose ruling exists to prevent.
+        cards[-1]["example_caption"] = language.worked_example_caption(
+            cards[-1]["phrase"], cards[-1].get("shown_prob"))
         # THE TILE'S TEXT, composed here like every other sentence (ruling,
         # 2026-08-31). A tile is 124px and three across, so it gets the
         # shortest honest form of the pick plus a label saying what its
@@ -1180,48 +1186,127 @@ def _attach_priced(conn: sqlite3.Connection, cards: list[dict]) -> None:
             row["price_move_cents"])
 
 
+def _today_card(entry: dict, card: dict, *, taken: bool,
+                group_tier: str | None, unit_dollars: float | None) -> dict:
+    """One pick, in the grammar a sportsbook reader already has.
+
+    THE EDGE IS THE LARGEST THING ON IT. Everything else on this card is
+    context for that number: the event says which game, the question says what
+    was asked, the model and venue chips say where the two prices are, and the
+    edge says what the difference is worth after the fee. The probability --
+    the number that used to be 40 pixels tall on every card -- is not on the
+    face at all; it is in the fair value, as a price, which is the form the
+    reader can compare with the venue's.
+    """
+    question = card.get("phrase") or card.get("row_title") or "this question"
+    price = entry.get("price")
+    tier = (card.get("tier") or {})
+    chip = tier.get("chip_label")
+    return {
+        "prediction_id": entry["prediction_id"],
+        # LAW 4 travels with every row on this page, as it does everywhere.
+        "n": entry["gate_n"],
+        # the event line: placed, never composed. The renderer turns the
+        # instant into the reader's own clock and touches nothing else.
+        "matchup": card.get("matchup") or card.get("row_title"),
+        "kickoff_utc": card.get("kickoff_utc"),
+        "kickoff_label": language.kickoff_label_words(),
+        "sport_label": language.SPORT_LABELS.get(entry.get("sport"),
+                                                 (entry.get("sport") or "").upper()),
+        "question": question,
+        # the three chips
+        "model_words": language.price_chip_words(
+            None if entry.get("fair_value") is None
+            else entry["fair_value"] * 100),
+        "venue_words": language.venue_chip_words(price, entry.get("payout")),
+        "edge_words": language.edge_chip_words(entry.get("edge_cents")),
+        "edge_label": language.edge_label_words(
+            language.price_row_labels()["edge"], entry.get("edge_side")),
+        "edge_state": language.edge_state(entry.get("edge_cents")),
+        "edge_cents": entry.get("edge_cents"),
+        "payout": entry.get("payout"),
+        "gate_words": language.gate_status_words(entry["gate_n"], entry["gate"]),
+        # THE TIER CHIP ONLY WHEN IT SAYS SOMETHING. Twelve chips reading
+        # "STRONG · unproven" down one page is a group heading wearing a
+        # badge twelve times; when every card in a group would carry the same
+        # one, the heading carries it and the cards carry none.
+        "tier_chip": None if (chip is None or chip == group_tier) else chip,
+        "taken": taken,
+        # collapsed by default; the operator reads each pick, so the prose
+        # the reasoning pass already wrote is one click away rather than one
+        # page away.
+        "reasoning": card.get("reasoning"),
+        "why": card.get("why"),
+        "top_factors": card.get("top_factors") or [],
+    }
+
+
 def _today_block(conn: sqlite3.Connection, cards: list[dict],
                  priced: list[dict]) -> dict:
     """The two groups the operator reads every morning, never blended.
 
-    CLEARS THE BAR is the recommendations: an edge that survives the venue's
-    fee. WATCHING is everything else on the shortlist, ranked, each carrying
-    its own edge in cents INCLUDING WHEN THAT NUMBER IS NEGATIVE -- which is
-    the whole point of showing it. The operator ruled the list is never empty;
-    this answers that ruling by showing rows rather than by asserting things.
+    CLEARS THE BAR is what survives both conditions: an edge after the venue's
+    fee, and enough of a return on the money to be worth the click (F2b).
+    WATCHING is everything else on the shortlist, each carrying its own edge
+    including when that number is negative, which is the point of showing it.
 
-    And the fee is printed under both, every day, because the cost of a
-    no-edge bet belongs on the same screen as the temptation to make one.
+    THE FLOOR IS A DISPLAY PREFERENCE AND IS APPLIED HERE, on the way to the
+    screen, never on the way to the record: `recommend.record_for` writes
+    every pick that clears the bar whatever the floor says, so the closing
+    line on the 21st is measured over all of them. A taste that could hide
+    rows from the measurement would be the operator rewriting his own
+    evidence.
     """
+    from . import settings as _settings
+
     by_id = {c["prediction_id"]: c for c in cards}
     already = taken_ids(conn, [c["prediction_id"] for c in cards])
-    clears, watching = [], []
-    prices = []
+    try:
+        floor = float(_settings.value(conn, "min_payout"))
+    except (ValueError, TypeError):
+        floor = 1.0
+    raw_unit = _settings.value(conn, "unit_dollars")
+    unit_dollars = float(raw_unit) if raw_unit else None
+
+    # WHICH CHIP THE WHOLE GROUP WOULD WEAR. Computed before the cards are
+    # built, because "is this chip worth showing" is a question about the
+    # group and cannot be answered one card at a time.
+    def _one_chip(entries):
+        chips = {((by_id.get(e["prediction_id"]) or {}).get("tier") or {})
+                 .get("chip_label") for e in entries}
+        chips.discard(None)
+        return next(iter(chips)) if len(chips) == 1 else None
+
+    clears_entries, watch_entries, prices = [], [], []
     for entry in priced:
-        card = by_id.get(entry["prediction_id"])
-        question = (card or {}).get("phrase") or (card or {}).get("row_title") \
-            or "this question"
+        if entry["prediction_id"] not in by_id:
+            continue
         if entry.get("price") is not None:
             prices.append(entry["price"])
-        row = {
-            "prediction_id": entry["prediction_id"],
-            "n": entry["gate_n"],
-            "edge_cents": entry["edge_cents"],
-            "taken": entry["prediction_id"] in already,
-        }
-        if entry["side"] is not None:
-            size = entry["size"]
-            row["words"] = language.recommendation_line(
-                question=question, fair_value=entry["fair_value"],
-                price=entry["price"], edge_cents=entry["edge_cents"],
-                side=entry["side"], units=size["units"],
-                flat=size["kind"] == "flat", size_why=size.get("why"))
-            clears.append(row)
-        else:
-            row["words"] = language.watching_line(
-                question, entry.get("fair_value"), entry.get("price"),
-                entry.get("edge_cents"))
-            watching.append(row)
+        (clears_entries if entry["side"] is not None else watch_entries).append(entry)
+
+    clears_chip = _one_chip(clears_entries)
+    watch_chip = _one_chip(watch_entries)
+
+    clears, below_floor, watching = [], [], []
+    for entry in clears_entries:
+        card = _today_card(entry, by_id[entry["prediction_id"]],
+                           taken=entry["prediction_id"] in already,
+                           group_tier=clears_chip, unit_dollars=unit_dollars)
+        size = entry["size"]
+        card["size_words"] = language.size_words(
+            units=size["units"], flat=size["kind"] == "flat",
+            why=size.get("why"), unit_dollars=unit_dollars)
+        payout = entry.get("payout")
+        (below_floor if (payout is not None and payout < floor) else clears
+         ).append(card)
+    for entry in watch_entries:
+        # NO SIZE ON A WATCHED CARD. A size on a pick that does not clear the
+        # bar is a recommendation the app is not making.
+        watching.append(_today_card(
+            entry, by_id[entry["prediction_id"]],
+            taken=entry["prediction_id"] in already,
+            group_tier=watch_chip, unit_dollars=unit_dollars))
 
     median_price = statistics.median(prices) if prices else None
     fee_cents = None
@@ -1229,16 +1314,89 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         from .market import recommend as _recommend
 
         fee_cents = round(_recommend.fee(median_price) * 100, 1)
+
+    day = next((c.get("league_date") for c in cards if c.get("league_date")), None)
+    sport = next((c.get("sport") for c in cards if c.get("sport")), None)
+    strip = language.day_strip_words(
+        day_words=language.date_words_from_iso(day),
+        slate_words=language.SPORT_LABELS.get(sport, sport),
+        clears=len(clears), watching=len(watching),
+        below_floor=len(below_floor), floor=floor)
+
+    from . import tasks as _tasks
+
     return {
         "n": len(clears),
         "watching_n": len(watching),
+        "below_floor_n": len(below_floor),
+        "floor": floor,
         "clears": clears,
+        "below_floor": below_floor,
         "watching": watching,
-        "clears_heading": language.clears_the_bar_heading(len(clears)),
+        "clears_chip": clears_chip,
+        "watching_chip": watch_chip,
+        "where_words": strip["where"],
+        "count_words": strip["counts"],
+        # SAID ONCE FOR THE WHOLE SLATE, not appended to thirty rows. The
+        # sentence was on every row until this brief, which is how a page
+        # teaches a reader that its rows are not worth reading.
+        "no_price_words": (None if median_price is not None
+                           else language.first_price_words(_tasks.NEAR_START_HOURS)),
+        "clears_heading": language.clears_the_bar_heading(len(clears),
+                                                           len(below_floor)),
         "watching_heading": language.watching_heading(len(watching)),
+        "below_floor_words": (language.below_floor_words(len(below_floor), floor)
+                              if below_floor else None),
+        # THE CHIP LABELS, from here rather than from the renderer, for the
+        # same reason every other visible string is.
+        "labels": language.price_row_labels(),
         "fee_line": language.fee_arithmetic_line(median_price, fee_cents),
-        "taken_line": language.taken_line(sum(1 for r in clears + watching
-                                              if r["taken"])),
+        "taken_line": language.taken_line(len(
+            [c for c in clears + below_floor + watching if c["taken"]])),
+        "taken_today": taken_today(conn, cards),
+    }
+
+
+def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
+    """The running list, in the position a book puts one.
+
+    IT IS A SELECTION RECORD AND NOT A SLIP. No stake, no payout, no total,
+    and the word "slip" is not in it: what it holds is which questions the
+    operator marked and when, which is the comparison `calibration
+    .taken_comparison` exists to make.
+    """
+    by_id = {c["prediction_id"]: c for c in cards}
+    rows = conn.execute(
+        "SELECT prediction_id, taken_utc FROM picks_taken"
+        " ORDER BY taken_utc DESC, id DESC LIMIT 40").fetchall()
+    entries = []
+    for row in rows:
+        card = by_id.get(row["prediction_id"])
+        if card is None:
+            continue
+        # THE EDGE AS IT STOOD WHEN THE PICK WAS MARKED. `picks_taken` holds a
+        # prediction and a moment and nothing else -- three columns, by the
+        # law that keeps it from becoming a ledger -- so the number comes from
+        # the recommendation that was already on the record at that moment.
+        # Later recommendations for the same question are ignored on purpose:
+        # a number that moved afterwards would make this a scoreboard, and it
+        # is a record of what was chosen.
+        edge = conn.execute(
+            "SELECT edge_cents FROM recommendations"
+            " WHERE prediction_id = ? AND created_utc <= ?"
+            " ORDER BY created_utc DESC, id DESC LIMIT 1",
+            (row["prediction_id"], row["taken_utc"])).fetchone()
+        entries.append({
+            "prediction_id": row["prediction_id"],
+            "taken_utc": row["taken_utc"],
+            "words": language.taken_entry_words(
+                card.get("phrase") or card.get("row_title") or "this question",
+                edge["edge_cents"] if edge else None),
+        })
+    return {
+        "n": len(entries),
+        "entries": entries,
+        "heading": language.taken_today_heading(len(entries)),
     }
 
 

@@ -246,6 +246,24 @@
   </section>
 
   <section id="view-week" class="view" hidden>
+    <!-- THE DAY, STATED ONCE, AT THE TOP OF THE ROUTE (CARD_FACE F1,
+         2026-09-07). Nothing below it has to be read to know what kind of day
+         it is. Before it existed the answer was thirty rows down, past the
+         clock, the filters and the hero: 916 pixels on a desktop and 1,533 on
+         a phone, both measured.
+
+         IT CARRIES NO CONTROLS, and that is deliberate rather than incidental.
+         `audit.picks_control_row_faults` allows exactly two rows above the
+         hero to hold a button, a select or an input -- the filters and the
+         market tabs -- so a panel with "I took this" on every card may not sit
+         here. A strip of words may, and the law is untouched. -->
+    <div class="day-strip" id="day-strip">
+      <div class="day-where" id="day-where"></div>
+      <div class="day-counts" id="day-counts"></div>
+      <p class="day-note" id="day-note" hidden></p>
+      <p class="day-fee" id="today-fee" hidden></p>
+    </div>
+
     <!-- ONE controls line: the sort on the left, what the slate contains on
          the right. The title, the week picker and the market filter move
          behind the "more" details -- a returning reader wants tonight, and
@@ -346,13 +364,36 @@
          The nav stays four pages: `audit.nav_faults` rules that and a
          planting proves it, so Today leads Picks rather than becoming a
          fifth page. -->
-    <section class="panel" id="today">
-      <h3>Today <small id="today-taken"></small></h3>
-      <p class="footnote" id="today-clears-heading"></p>
-      <div id="today-clears"></div>
-      <p class="footnote" id="today-watching-heading"></p>
-      <div id="today-watching"></div>
-      <p class="footnote" id="today-fee"></p>
+    <section class="panel today" id="today">
+      <div class="today-body">
+        <div class="today-groups">
+          <h3 class="group-head">
+            <span id="today-clears-heading"></span>
+            <span class="chip group-chip" id="today-clears-chip" hidden></span>
+          </h3>
+          <div class="faces" id="today-clears"></div>
+          <!-- THE OPERATOR'S FLOOR (F2b). A display preference: everything
+               folded here is still on the record and still measured against
+               the close. -->
+          <button type="button" class="fold" id="today-fold" hidden></button>
+          <div class="faces" id="today-below-floor" hidden></div>
+
+          <h3 class="group-head">
+            <span id="today-watching-heading"></span>
+            <span class="chip group-chip" id="today-watching-chip" hidden></span>
+          </h3>
+          <div class="faces" id="today-watching"></div>
+        </div>
+
+        <!-- TAKEN TODAY (F3). A selection record, in the position a book puts
+             its running list. No stake, no payout, no total, and the word a
+             book uses for its list is not in this app. -->
+        <aside class="today-rail" id="today-rail">
+          <h4 id="taken-heading"></h4>
+          <div id="taken-entries"></div>
+          <p class="footnote" id="today-taken"></p>
+        </aside>
+      </div>
     </section>
 
     <!-- The "Worth taking" panel that stood here (R4, 2026-09-07) was

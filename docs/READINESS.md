@@ -245,3 +245,22 @@ Two criteria moving does not change the standing answer, and saying so is the
 point of a run log. What passes now is that the machine works and that nothing
 is known to be broken. **Whether its numbers beat a price is still unmeasured**,
 and the criterion that will decide it -- the closing line -- is still at zero.
+
+
+## 2026-09-07, a correction to criterion 2 and 3
+
+Criteria 2 and 3 were recorded as blocked by the near-start pass's four-hourly
+cadence against a two-hour window. That was measured and is fixed. **It was not
+the whole reason, and the rest is larger.**
+
+**No prediction in this record carries the frozen distribution an at-the-line
+claim requires.** Zero, measured 2026-09-07 while rendering a priced card.
+Baseball produces none by design — its margins are counts and
+`questions.blind_distribution` refuses to invent a spread — the fights have no
+margin, and football, which does have one, has not been forecast since the
+distribution began to be written on 6 September.
+
+So the first claim cannot appear before the football run on **9 September**, and
+criterion 3 — the closing line, the criterion that decides the others — cannot
+start counting before then. Neither threshold moves; what moves is the date
+this document expects the first number.

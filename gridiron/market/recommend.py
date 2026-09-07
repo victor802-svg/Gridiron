@@ -103,6 +103,59 @@ def side_for(model_prob: float | None, price: float | None) -> dict:
             "why": f"{best:+.1f} cents a contract after the venue's fee"}
 
 
+def return_on_stake(edge_cents: float | None, price: float | None) -> float | None:
+    """The edge as a share of the money put up, not as cents on a contract.
+
+    THE TWO NUMBERS DISAGREE ABOUT WHICH BET IS BETTER, which is the whole
+    reason this exists. Two cents on an 89-cent contract and two cents on a
+    20-cent one are the same edge and are 2.2% and 10% on the stake; the
+    second is worth four and a half times as much per dollar risked.
+
+    None where either input is missing, because absent and zero are different
+    facts here as everywhere else in this project.
+    """
+    if edge_cents is None or price is None or price <= 0:
+        return None
+    return round((float(edge_cents) / 100.0) / float(price), 4)
+
+
+def payout_multiple(price: float | None) -> float | None:
+    """What one unit returns if the contract settles at a dollar.
+
+    A contract at 84 cents pays 1.19 times the stake. This is arithmetic on a
+    published price and nothing else: no balance is read, nothing is placed,
+    and the number is the same whether or not anybody acts on it.
+    """
+    if price is None or price <= 0:
+        return None
+    return round(1.0 / float(price), 3)
+
+
+def clears_the_bar(edge_cents: float | None, price: float | None) -> dict:
+    """Both conditions, in one place, with the reason it failed in words.
+
+    ONE DOOR, for the same reason `refuse_in_game` is one: two callers deciding
+    what "clears the bar" means is how a page starts disagreeing with itself
+    about which group a pick belongs in.
+    """
+    got = return_on_stake(edge_cents, price)
+    if got is None:
+        return {"clears": False, "return_on_stake": None,
+                "why": "no recorded price to compare against"}
+    if got < config.MIN_RETURN_ON_STAKE:
+        return {
+            "clears": False,
+            "return_on_stake": got,
+            "why": (f"the price is wrong by {edge_cents:+.1f}¢ and that is "
+                    f"{got * 100:.1f}% of the {round(price * 100)}¢ it costs, "
+                    f"under the {config.MIN_RETURN_ON_STAKE * 100:.0f}% this "
+                    f"app asks for before it calls something worth the click"),
+        }
+    return {"clears": True, "return_on_stake": got,
+            "why": (f"{got * 100:.1f}% of the {round(price * 100)}¢ it costs, "
+                    f"after the venue's fee")}
+
+
 def kelly_fraction(model_prob: float, price: float) -> float:
     """The full Kelly fraction, which this module never recommends.
 
@@ -279,6 +332,20 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
                                      row["prop_type"] or row["market_type"])
         chosen = (side_for(model_prob, price) if allowed["priceable"]
                   else {"side": None, "edge_cents": None, "why": allowed["why"]})
+        # THE SECOND CONDITION (F2b, 2026-09-07). Applied AFTER the side is
+        # chosen and never inside `side_for`, because the edge in cents is
+        # still true and still shown -- what changes is whether the pick is
+        # called worth taking. The edge survives into the watched group with
+        # its number on its face.
+        # WHICH SIDE THE EDGE IS ON, kept whatever happens next. A pick that
+        # fails the return test is still shown, with the same number on its
+        # face, and a number with no side is the defect this project has had
+        # more often than any other.
+        edge_side = chosen["side"]
+        stake = clears_the_bar(chosen.get("edge_cents"), price)
+        if chosen["side"] is not None and not stake["clears"]:
+            chosen = {"side": None, "edge_cents": chosen["edge_cents"],
+                      "why": stake["why"]}
         ahead = measured_edge(conn, sport=row["sport"],
                               market_type=row["market_type"],
                               prop_type=row["prop_type"],
@@ -299,7 +366,18 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             "price": round(price, 4) if price is not None else None,
             "edge_cents": chosen["edge_cents"],
             "side": chosen["side"],
+            # The side the EDGE belongs to, which outlives the recommendation:
+            # `side` is None for a pick that does not clear the bar and this
+            # is not, because the card still shows the number.
+            "edge_side": edge_side,
             "side_why": chosen["why"],
+            # WHAT THE EDGE IS WORTH PER DOLLAR RISKED, and what the contract
+            # pays if it settles at a dollar. Both are arithmetic on the
+            # recorded price, carried here so the card does not do arithmetic
+            # of its own (F2b).
+            "return_on_stake": stake["return_on_stake"],
+            "return_minimum": config.MIN_RETURN_ON_STAKE,
+            "payout": payout_multiple(price),
             "size": size,
             "gate_n": settled,
             "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,

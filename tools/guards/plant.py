@@ -16,6 +16,7 @@ run against a temporary SQLite file.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import os
 import re
 import shutil
@@ -7563,6 +7564,185 @@ def plant_an_at_the_line_curve_in_the_blind_record() -> Result:
                   "own rung with a forecast against a price")
 
 
+LAW_NO_PRESSURE = "THE GRAMMAR OF A SPORTSBOOK, NEVER ITS PRESSURE"
+
+
+def plant_a_pressure_word_in_a_card_label() -> Result:
+    """Call a pick hot.
+
+    THE WORD IS THE WHOLE MECHANISM. Nothing else about the card changes -- the
+    same probability, the same edge, the same fee -- and a reader is told to
+    hurry. That is the difference between a page that reads like a sportsbook
+    and a page that behaves like one.
+    """
+    from gridiron import audit as _audit
+
+    planted = {"today": {"watching": [{"question": "Miami to win",
+                                      "edge_label": "a hot edge at this price"}]}}
+    faults = _audit.day_pressure_faults(planted)
+    if not any("hot" in f for f in faults):
+        return Result(LAW_NO_PRESSURE, "a pressure word on a card label",
+                      "audit.pressure_word_faults", False,
+                      "NOT CAUGHT - a card may call a pick hot, and the scan "
+                      "that exists to keep a sportsbook's urgency off this "
+                      "page cannot see it")
+    return Result(LAW_NO_PRESSURE, "a pressure word on a card label",
+                  "audit.pressure_word_faults", True,
+                  next(f for f in faults if "hot" in f))
+
+
+def plant_a_word_that_only_looks_like_pressure() -> Result:
+    """And the other way: "he took a shot" must not trip it.
+
+    A SCAN THAT CRIES WOLF GETS SWITCHED OFF. "hot" inside "shot", "combo"
+    inside "combos", "popular" in a sentence about crowds -- if any of those
+    failed the gate, the next person to hit it would widen the allowlist
+    rather than the rule, and the law would stop binding.
+    """
+    from gridiron import audit as _audit
+
+    innocent = "He took a shot from the hotel roof, and the photo was popularised."
+    faults = _audit.pressure_word_faults(innocent)
+    # "popularised" must not match; "popular" as a whole word would.
+    if faults:
+        return Result(LAW_NO_PRESSURE, "an innocent word flagged as pressure",
+                      "audit.pressure_word_faults", False,
+                      f"NOT CAUGHT - the scan fires on ordinary English "
+                      f"({faults[0][:60]}), which is how a law stops being "
+                      f"taken seriously")
+    return Result(LAW_NO_PRESSURE, "an innocent word flagged as pressure",
+                  "audit.pressure_word_faults", True,
+                  "ordinary English passes: the rule matches whole words only")
+
+
+def plant_a_price_that_moves_when_it_changes() -> Result:
+    """Put a transition on the price box.
+
+    ONE LINE OF CSS. The number is the same, the layout is the same, and the
+    eye is now caught by the movement rather than by the value -- which is the
+    entire design of an odds board.
+    """
+    from gridiron import audit as _audit
+
+    planted = ".edge .box-value { transition: color 200ms ease, transform 200ms; }"
+    faults = _audit.price_chip_animation_faults(planted)
+    if not faults:
+        return Result(LAW_NO_PRESSURE, "a price chip that animates",
+                      "audit.price_chip_animation_faults", False,
+                      "NOT CAUGHT - the edge may flash when it moves, and the "
+                      "reader watches the movement instead of the number")
+    return Result(LAW_NO_PRESSURE, "a price chip that animates",
+                  "audit.price_chip_animation_faults", True, faults[0])
+
+
+def plant_a_countdown_to_kickoff() -> Result:
+    """Rebuild the timer the operator ruled out.
+
+    IT WAS REAL CODE IN THIS FILE'S SIBLING until 2026-09-07: "first kickoff in
+    2d 6h", repainted once a minute. Kickoff is a time; a countdown is a
+    deadline pointed at the reader.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit
+
+    planted = chr(10).join([
+        "  function paintKickoff(glance) {",
+        "    const line = document.getElementById('week-clock-line');",
+        "    const kickoff = new Date(glance.first_kickoff_utc);",
+        "    const tick = () => {",
+        "      const left = kickoff - new Date();",
+        "      line.textContent = Math.floor(left / 60000) + 'm';",
+        "    };",
+        "    tick();",
+        "    setInterval(tick, 60000);",
+        "  }",
+    ])
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "app.js"
+        path.write_text(planted, encoding="utf-8")
+        faults = _audit.countdown_faults(path)
+    if not faults:
+        return Result(LAW_NO_PRESSURE, "a countdown to kickoff",
+                      "audit.countdown_faults", False,
+                      "NOT CAUGHT - the page may tick down to the first game, "
+                      "which turns a start time into a deadline")
+    return Result(LAW_NO_PRESSURE, "a countdown to kickoff",
+                  "audit.countdown_faults", True, faults[0])
+
+
+LAW_ONE_DEFINITION = "A FUNCTION IS DEFINED ONCE, IN THE RENDERER TOO"
+
+
+def plant_a_renderer_function_defined_twice() -> Result:
+    """Define one function twice, and make the copies disagree.
+
+    THIS IS NOT HYPOTHETICAL. `app.js` held two `renderToday` functions, byte
+    for byte identical, one directly after the other; and two `localTime`
+    functions 571 lines apart that disagreed about what to show when a date
+    would not parse. The second of each won at load. A fix applied to the dead
+    copy changes nothing on the screen, which is the worst kind of bug to hunt.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit
+
+    planted = chr(10).join([
+        "  function localTime(iso) {",
+        "    return new Date(iso).toLocaleTimeString();",
+        "  }",
+        "",
+        "  function localTime(iso) {",
+        "    return iso;",
+        "  }",
+    ])
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "app.js"
+        path.write_text(planted, encoding="utf-8")
+        faults = _audit.duplicate_js_definitions(path)
+    if not faults:
+        return Result(LAW_ONE_DEFINITION, "a renderer function defined twice",
+                      "audit.duplicate_js_definitions", False,
+                      "NOT CAUGHT - the renderer may hold two functions of one "
+                      "name, one of them dead and neither of them saying so")
+    return Result(LAW_ONE_DEFINITION, "a renderer function defined twice",
+                  "audit.duplicate_js_definitions", True, faults[0])
+
+
+LAW_RETURN_ON_STAKE = "AN EDGE IS ALSO A RETURN, AND BOTH HAVE TO CLEAR"
+
+
+def plant_a_thin_edge_on_an_expensive_contract() -> Result:
+    """Two cents on an 89-cent contract, which clears the cents test.
+
+    THE TWO NUMBERS DISAGREE ABOUT WHICH BET IS BETTER. Two cents on an
+    89-cent contract is 2.2% on the money; the same two cents on a 20-cent
+    contract is 10%. Before F2b the app called both of them worth taking, and
+    at the operator's unit the first is pennies for a position that can settle
+    at zero.
+    """
+    from gridiron import config as _config
+    from gridiron.market import recommend as _recommend
+
+    verdict = _recommend.clears_the_bar(2.0, 0.89)
+    if verdict["clears"]:
+        return Result(LAW_RETURN_ON_STAKE, "a thin edge on an expensive contract",
+                      "market.recommend.clears_the_bar", False,
+                      f"NOT CAUGHT - {verdict['return_on_stake'] * 100:.1f}% on "
+                      f"the money is called worth taking, under a declared "
+                      f"minimum of {_config.MIN_RETURN_ON_STAKE * 100:.0f}%")
+    # and the mirror: the same edge on a cheap contract must still clear
+    cheap = _recommend.clears_the_bar(2.0, 0.20)
+    if not cheap["clears"]:
+        return Result(LAW_RETURN_ON_STAKE, "a thin edge on an expensive contract",
+                      "market.recommend.clears_the_bar", False,
+                      "NOT CAUGHT - the rule refuses a real edge as well: two "
+                      "cents on a 20-cent contract is 10% on the money and is "
+                      "being turned away")
+    return Result(LAW_RETURN_ON_STAKE, "a thin edge on an expensive contract",
+                  "market.recommend.clears_the_bar", True, verdict["why"])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -7630,6 +7810,14 @@ def main() -> int:
     results.append(plant_a_code_name_handed_to_the_model())
     results.append(plant_a_rerun_that_reasons_the_written_half_again())
     results.append(plant_the_check_moved_back_after_the_call())
+    # CARD_FACE (2026-09-07): the grammar of a sportsbook without its
+    # pressure, and the two defects the work found in the renderer.
+    results.append(plant_a_pressure_word_in_a_card_label())
+    results.append(plant_a_word_that_only_looks_like_pressure())
+    results.append(plant_a_price_that_moves_when_it_changes())
+    results.append(plant_a_countdown_to_kickoff())
+    results.append(plant_a_renderer_function_defined_twice())
+    results.append(plant_a_thin_edge_on_an_expensive_contract())
     results.append(plant_a_push_posted_before_it_is_recorded())
     results.append(plant_an_absent_factor_handed_to_the_model_as_zero())
     results.append(plant_a_measured_zero_dropped_from_the_prompt())
