@@ -747,3 +747,29 @@ leaves behind:
   the closing-line measurement are the three things keeping it honest, all
   three are code rather than intention, and none should be loosened without a
   dated ruling.
+
+## 2026-09-07 — the priced forecaster
+
+GRIDIRON_THE_PRICED ran (brief and close-out of the same date):
+
+- **THE FCS HYPOTHESIS, WITH n=4.** The operator observes that his winning
+  tickets were FCS-versus-FBS mismatches in small-conference football. That is
+  a hypothesis with a sample of four and it is recorded as one. Nothing in the
+  coverage rule reads it. It is testable the same way everything else here is:
+  measure the venue's ladders for those games, see whether they are thin and
+  narrowly quoted, and let the measurement decide. Selecting the coverage list
+  on the four tickets would be LAW 2's discovery with money attached.
+- **Repricing frequency is the missing third leg of the coverage proxy.** It
+  needs two looks at one ladder separated in time. The near-start pass collects
+  them from today; until there are enough, coverage stands on quote width and
+  volume alone and the payload says so.
+- **Only one market is covered**, NFL totals, and only five games were measured.
+  The measurement should be repeated across a full slate and across sports
+  before the list is trusted, and the review cadence is 28 days by declaration
+  so that it is not edited the morning after a loss.
+- **The priced forecaster has written nothing yet.** It writes on the next slate
+  run. Its first curves will be meaningless for a long time; the closing line is
+  the number to watch, and it needs about fifty recommendations.
+- **The ceiling is arithmetic, not pessimism.** Twenty ten-dollar wagers a week
+  at a professional five per cent is about ten dollars a week. Worth re-reading
+  before any session proposes to make this bigger.

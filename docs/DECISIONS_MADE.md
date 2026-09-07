@@ -830,3 +830,27 @@ both the sample and a measured edge in the model's favour; the brief's own
 label -- "no measured edge, flat unit" -- is the authority for reading it that
 way, and the alternative reading would size up precisely because the record had
 proved the model behind.
+
+## 2026-09-07 — the priced forecaster, and what it may price
+
+**Two forecasters, never merged.** The blind one answers before it can see a
+price and is the only honest measurement of whether this project can forecast.
+The priced one answers afterwards, reads the price, and is scored on the
+closing line rather than on a Brier score -- a priced forecaster with a worse
+curve and a better closing line is succeeding. LAW 1 is not amended by any of
+it: the closure scan gains one named exemption for `gridiron.priced`, and two
+plantings prove the blind path still refuses both the market package and the
+priced one.
+
+**Coverage is measured, not picked.** The venue's own ladders decide: the quote
+must be narrow enough for an edge to survive crossing it, and the volume must
+sit in the thinner half of what was measured. Five NFL games produced one
+covered market, totals, and the two exclusions carry their reasons. The
+operator's winning tickets are recorded as a hypothesis with n=4 and read by
+nothing.
+
+**The kill criterion exists before it is needed.** Fifty recommendations with a
+negative mean closing line stop a market being priced; re-entry needs a dated
+ruling. It is asked before the coverage list, because a market stopped by its
+own record deserves that sentence rather than a general one about not being
+covered.
