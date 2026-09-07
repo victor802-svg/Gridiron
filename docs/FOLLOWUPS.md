@@ -773,3 +773,44 @@ GRIDIRON_THE_PRICED ran (brief and close-out of the same date):
 - **The ceiling is arithmetic, not pessimism.** Twenty ten-dollar wagers a week
   at a professional five per cent is about ten dollars a week. Worth re-reading
   before any session proposes to make this bigger.
+
+## 2026-09-07 — readiness, and a two-week observation period
+
+GRIDIRON_READINESS ran (brief and close-out of the same date, and
+`docs/READINESS.md`, which is re-run weekly and appends a dated row).
+
+**BROKEN, OPEN, AND THE OPERATOR'S TO FIX: the reasoning pass has been dead
+since 5 September.** Every call since `2026-09-05T15:00:03Z` returns HTTP 401,
+`"API key is invalid."` The last successful one was `2026-09-05T02:56:26Z`. A
+key is configured -- 108 characters -- so it is a rejected credential, not a
+missing one: the shape of a key rotated somewhere else and never updated here.
+The second forecaster has written nothing for two days as a result, and every
+LLM category's settled count is final rather than growing. The fix is one line
+in `.env` under `ANTHROPIC_API_KEY`; this session does not edit that file.
+
+**AND THE EXPLANATION THAT WAS INHERITED WAS WRONG.** The escaping planting was
+recorded earlier today as an artefact of the hours before the daily predict
+task runs. It is not. The current slates carry statistical forecasts -- 27
+cards on baseball's day, 107 on football's week -- and what is missing is the
+LLM half. A guard reported this correctly for two days and was explained away
+once; the brief that asked for it to be named by running the harness is the
+reason it was caught.
+
+**A TWO-WEEK OBSERVATION PERIOD BEGINS TODAY, 2026-09-07.** No new features
+this session or next unless something turns up broken. What will be read on
+**2026-09-21**:
+
+- `docs/READINESS.md`, re-run: how many of the six criteria have moved, and in
+  which direction.
+- The closing line, which is the criterion that decides the others. Any
+  recommendations at all by then would be a start; fifty is the threshold and
+  football's one slate a week will not reach it by the 21st.
+- Whether the reasoning pass is writing again, which is one key away.
+- The coverage measurement's game count, which accumulates at roughly twenty a
+  week from football alone, against a threshold of two hundred.
+- Whether the near-start pass has collected enough second looks to measure how
+  often a price is repriced -- the missing third leg of the coverage proxy.
+
+What is NOT to be done in that period: softening a threshold, adding surface
+area, or re-tuning anything on a sample this size. The engine needs slates run
+through it.

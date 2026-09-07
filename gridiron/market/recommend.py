@@ -125,9 +125,15 @@ def size_for(*, model_prob: float | None, price: float | None,
     fraction needs a market with its hundred settled questions AND a measured
     edge that is in the model's favour. A hundred settled questions is how an
     edge gets measured; it is not what makes one positive, and baseball
-    moneyline -- 286 settled, and the market's prices scoring better than the
-    model's -- is exactly the case where sizing on the sample alone would stake
-    more BECAUSE the record has proved the model behind.
+    moneyline is exactly the case where sizing on the sample alone would stake
+    more BECAUSE the record has proved the model behind: on the 74 settled
+    questions that had a price beside them, the model's Brier score is 0.2527
+    against the market's 0.2412, lower being better.
+
+    THE NUMBER IN THIS PARAGRAPH WAS 286 UNTIL 2026-09-07, and it was the
+    sport's settled count across every market rather than this comparison's N.
+    Re-measured against the live record, which `meta.kind` confirms is the
+    forward database and not a backtest.
 
     BELOW EITHER CONDITION, THE ANSWER DOES NOT DEPEND ON THE PROBABILITY. A
     92% claim and a 62% claim get the same flat unit, and a caller cannot ask

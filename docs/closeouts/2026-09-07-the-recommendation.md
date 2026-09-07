@@ -20,7 +20,8 @@ row per phase. The brief carried no operator decisions; it carried a ruling.
 
 1. **A measured sample is not a measured edge.** The brief's sizing rule keys
    on the n=100 gate. Read literally, that would have staked 2% of the
-   bankroll on baseball moneyline, where 286 settled questions have measured
+   bankroll on baseball moneyline, where 74 settled questions with a price
+   beside them have measured
    the model as WORSE than the market's own prices. The fraction now requires
    the sample and a measured edge in the model's favour; the brief's own label
    -- "no measured edge — flat unit" -- is the authority for reading it that
@@ -86,3 +87,25 @@ checked nothing" as a fault, and no slate has been predicted on 2026-09-07
 because the daily task runs at 11:00 local. Verified red on HEAD with this
 session's changes stashed, and recorded in `docs/FOLLOWUPS.md`. Everything
 else passes, including the nine plantings this phase added.
+
+## Correction, 2026-09-07 (GRIDIRON_READINESS V1.3)
+
+The figure above read **286** until the readiness session queried the database
+for it. 286 is baseball's settled count across every market; the comparison
+that decides the sizing rule is on **74** settled moneyline questions that had
+a price beside them — the model's Brier 0.2527 against the market's 0.2412,
+lower being better. The direction of the verdict, and therefore the rule, is
+unchanged. `meta.kind` confirms the rows come from the live forward database,
+and all 139 settled moneyline rows were written before kickoff, so none of them
+is a backtest row.
+
+**And the gate section above is wrong about WHY.** It attributes the two
+failing steps to an unpredicted slate. The readiness session ran the harness
+and read the name: the escaping planting is
+`plant_a_code_name_in_rendered_llm_prose`, and it never plants, because its
+precondition finds the shipped LLM view already faulty. The view is faulty
+because the reasoning pass has returned HTTP 401 since 2026-09-05 with "API
+key is invalid" -- the slates themselves are forecast. The explanation was
+inherited rather than measured, and that is exactly the failure the readiness
+brief was written to catch.
+
