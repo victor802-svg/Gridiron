@@ -163,3 +163,42 @@ records that, once, so that no later session mistakes this for a business.
 
 Standard table: one row per phase plus one per DECISION, four verdicts,
 evidence nameable. SKIPPED and DECLINED remain ordinary outcomes.
+
+---
+
+## How this brief is read (written when the work started)
+
+**LAW 1 IS NOT AMENDED AND THAT IS THE SPINE.** Everything here is additive:
+the blind forecaster keeps writing before any line is fetched, keeps its import
+closure, keeps its plantings. The closure scan is loosened for exactly one new
+package and the planting that proves the blind path still refuses market data
+runs immediately after the change, because a scan loosened one clause too far
+is the most expensive silent failure available in this project.
+
+**D1 — the coverage list: option (a), by measurement.** The brief recommends
+it, and the alternative the operator floated is the one thing the brief itself
+forbids: four winning college tickets is a sample of four, and selecting a
+coverage list on it is LAW 2's discovery with money attached. The FCS-versus-FBS
+observation is recorded in `docs/FOLLOWUPS.md` as a hypothesis with n=4, in
+those words, to be tested by the measurement rather than assumed by it. If the
+measurement cannot be made from the data available, the coverage list is empty
+and the engine recommends nothing, which is a correct output.
+
+**D2 — the kill criterion: the brief's own numbers stand as declared
+defaults.** Negative mean closing-line value after fifty recommendations in a
+market family stops the recommendations for that family. It is written as code
+now rather than as intention, because the brief is right that nobody has ever
+wanted to write this rule on the day it fired. The operator's own numbers
+replace the constants without touching the mechanism.
+
+**D3 — the bankroll: BLOCKED, and a denominator stands in.** A hundred units
+was declared during THE_RECOMMENDATION so that sizes could be expressed at all.
+It is a denominator, not an amount, and the operator's figure replaces it by
+editing one constant. Nothing in the repository will hold a money figure until
+he puts one there, and no balance is ever read from a venue.
+
+**The number the close-out must state honestly is stated.** At twenty ten-dollar
+bets a week, a professional-grade five per cent return is about ten dollars a
+week. The ceiling here is set by stake size and by the thinness of the markets
+where an edge could exist, not by model quality, and the close-out says so once
+so that no later session mistakes this for a business.
