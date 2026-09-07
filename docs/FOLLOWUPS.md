@@ -694,3 +694,35 @@ close-out `docs/closeouts/2026-09-06-at-the-line.md`). What it leaves behind:
   sentence contradicting the line two rows beneath it, and three ledger rows
   with identical words. None was reachable by a test; all three were obvious
   in a screenshot.
+
+## 2026-09-07 — the shortlist
+
+GRIDIRON_THE_SHORTLIST ran (brief `docs/briefs/2026-09-07-the-shortlist.md`,
+close-out `docs/closeouts/2026-09-07-the-shortlist.md`). What it leaves behind:
+
+- **The gate is red every morning until the first predict task.** A scan that
+  renders each sport's current slate reports "I checked nothing" as a fault
+  rather than a pass -- deliberately, because that hole was once invisible for
+  weeks -- so between midnight and 11:00 local there is no card to scan and
+  both that scan and its planting fail. It is not a false alarm exactly, but
+  it is an alarm nobody can act on, and an alarm that rings daily gets ignored.
+  Worth deciding whether the scan should distinguish "no slate written yet"
+  from "the view is broken", which is a change to a guard and therefore an
+  operator's call.
+- **D1 is still open.** The run line is asked, buried by the ordering when it
+  does not rank, and accruing toward its own hundred. Retiring it writes a
+  permanent line into the registry, so the ruling stays with the operator; the
+  brief lists the three options and recommends leaving it.
+- **The ranker's comparison needs a hundred on BOTH sides**, and baseball's
+  regular season ends within weeks. It may not open this season in any market.
+  That is the gate working, not a defect, but it means the question the whole
+  phase exists to answer -- does the shortlist calibrate better than what it
+  outranked? -- will not have an answer for a while.
+- **A shortlist can come in under its cap.** The per-game ceiling and the round
+  robin can both bind first; the page then says "the 18 clearest questions"
+  rather than padding to twenty. Left as is on purpose.
+- **The backfill is the thing that found the defect.** Ranking the record's own
+  past put superseded rows on shortlists within a minute of the first run. A
+  ranker that had only ever seen tomorrow's slate would have looked correct for
+  weeks. Any future scoring pass over stored rows is worth running against the
+  whole record for exactly this reason.

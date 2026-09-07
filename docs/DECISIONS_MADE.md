@@ -767,3 +767,33 @@ nearest our own asked line, or the one where the model looks best — would
 choose the comparison after seeing the answer, which is the same error as
 fitting a factor to the data that will score it.
 
+## 2026-09-07 — decisions taken while executing GRIDIRON_THE_SHORTLIST
+
+D1 and D2 were the operator's and no ruling had arrived. **D1 is BLOCKED, not
+guessed**: retiring the run line writes a permanent dated line into the
+registry and this codebase does not un-retire, so the market stays asked and
+the ordering buries it when it does not rank -- the brief's own recommendation,
+and the only option a later ruling can still reverse. **D2 took the brief's
+proposed caps**, which the brief states are the numbers unless the operator
+says otherwise: twenty a day for baseball and basketball, thirty a week for
+football and college, and the whole card for the fights.
+
+Three decisions the work itself needed:
+
+**The rank's weights are 0.5, 0.3, 0.2 and were not tuned.** Confidence,
+completeness, edge. Written from first principles and dated in config, because
+weights fitted until the shortlist looked good would be LAW 2's discovery by
+another name -- and worse than usual here, since a ranking has no residual to
+inspect afterwards.
+
+**An input that is not in play is renormalised away rather than scored as a
+zero.** An edge below its market's gate, or a market that quoted nothing, is an
+absence. Scoring it zero would assert the model agrees with a price nobody
+published, and would make every shortlist quietly reorder itself on the day a
+market's gate opened.
+
+**The selection is stored with the rank, not recomputed when the page loads.**
+The caps can change; what a reader was actually shown cannot, and the
+comparison that scores the ranker has to read the second one. This is also what
+made the defect visible: with the selection stored, the backfill immediately
+showed superseded rows holding places on lists the page never shows them on.
