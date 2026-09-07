@@ -274,6 +274,7 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
     exist.
     """
     from .. import shortlist as ranker
+    from ..priced import shape as _shapes
 
     if not prediction_ids:
         return []
@@ -291,7 +292,7 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
     rows = conn.execute(
         "SELECT p.id, p.sport, p.game_id, p.market_type, p.prop_type, p.subject,"
         " p.line_asked, p.model_prob, p.model_side, p.predictor, p.created_utc,"
-        " g.status, g.kickoff_utc,"
+        " g.status, g.kickoff_utc, g.home, g.away,"
         " c.model_prob AS claim_prob, c.venue_implied AS implied_prob,"
         " c.line AS venue_line, c.venue AS venue"
         f" FROM predictions p JOIN games g ON g.id = p.game_id"
@@ -375,6 +376,14 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             # pays if it settles at a dollar. Both are arithmetic on the
             # recorded price, carried here so the card does not do arithmetic
             # of its own (F2b).
+            # WHICH SIDE THE CARD'S WORDS NAME. A claim is stored from one
+            # fixed proposition so a curve compares like with like; a card
+            # names the side the model took. When those are opposites, a card
+            # that shows the claim's numbers under the question's words names
+            # one team and prices the other -- which it did on the first slate
+            # that ever produced a recommendation.
+            "question_takes_the_proposition": _shapes.question_takes_the_proposition(
+                row, row, quantity=_quantity_of(row)),
             "return_on_stake": stake["return_on_stake"],
             "return_minimum": config.MIN_RETURN_ON_STAKE,
             "payout": payout_multiple(price),
@@ -386,6 +395,17 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             "written_utc": row["created_utc"],
         })
     return out
+
+
+#: The proposition a claim in each market is stored from, which is what the
+#: quantity names. Declared here rather than read off the claim row, because a
+#: question with no claim still has to be oriented on the card.
+_QUANTITY = {"spread": "home_margin", "moneyline": "home_win",
+             "total": "total", "prop": "count"}
+
+
+def _quantity_of(row) -> str:
+    return _QUANTITY.get(row["market_type"], "")
 
 
 def measured_edge(conn: sqlite3.Connection, *, sport: str, market_type: str,

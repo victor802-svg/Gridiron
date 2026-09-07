@@ -432,3 +432,69 @@ def test_every_tap_target_keeps_its_floor():
         block = re.search(re.escape(selector) + r"[^{]*\{([^}]*)\}", css)
         assert block, selector
         assert "min-height: 44px" in block.group(1), selector
+
+
+def test_the_price_row_is_about_the_side_the_question_names(tmp_path, covered):
+    """FOUND ON THE FIRST SLATE THAT EVER CLEARED THE BAR. The card read
+    "Toronto covers +1.5" over three numbers about the Athletics, and labelled
+    the edge as being on the other side of the side it had already flipped.
+
+    A claim is stored from one fixed proposition -- the home side, or the over
+    -- so that a curve compares like with like. A card names the side the
+    model took. When those are opposites the card must turn the prices round,
+    or it names one team and prices the other.
+    """
+    conn = _world(tmp_path)
+    # THE MODEL TAKES THE AWAY SIDE: the home side does not cover. Written
+    # this way rather than edited afterwards, because LAW 3 refuses the edit --
+    # which it did, on the first draft of this test.
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-09-07T00:00:00Z', 'mlb', 'g0', 'spread', 'AAA', -1.5,"
+        " 0.70, 'not_cover', 'statistical', 'final', 'fs2', ?, 'test')",
+        (WHOLE,))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.commit()
+    shortlist.rank_rows(conn, [pid])
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, last_price,"
+        " volume, fetched_utc) VALUES ('test venue', 'T2', 'E2', 'mlb', 'g0',"
+        " 'spread', 'home_margin', -1.5, 'home', 0.49, 0.51, 0.5, 500,"
+        " '2026-09-07T01:00:00Z')")
+    quote_id = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (created_utc, prediction_id, quote_id,"
+        " venue, sport, game_id, market, quantity, line, side, shape,"
+        " model_prob, venue_price, venue_implied, price_basis)"
+        " VALUES ('2026-09-07T01:00:00Z', ?, ?, 'test venue', 'mlb', 'g0',"
+        " 'spread', 'home_margin', -1.5, 'home', 'rung_matched', 0.30, 0.50,"
+        " 0.50, 'the midpoint of the venue book')", (pid, quote_id))
+    conn.commit()
+
+    entry = recommend.for_predictions(conn, [pid])[0]
+    assert entry["question_takes_the_proposition"] is False, (
+        "the question is about the away side and the claim about the home one")
+
+    today = views.week(conn, "mlb", 2026, 1)["today"]
+    card = (today["clears"] + today["below_floor"] + today["watching"])[0]
+    # 30c on the home side is 70c on the side the question names
+    assert card["model_words"] == "70¢"
+    assert card["venue_words"].startswith("50¢")
+    # and the edge is on that same side, so the label carries no qualifier
+    assert card["edge_label"] == "Edge after fees"
+
+
+def test_an_edge_on_the_other_side_still_says_so():
+    """The qualifier is not deleted, only pointed correctly: it fires when the
+    better side is NOT the one the question names."""
+    same = views._edge_side_words("yes", True)
+    assert same == "yes" and language.edge_label_words("Edge", same) == "Edge"
+    other = views._edge_side_words("no", True)
+    assert language.edge_label_words("Edge", other) == "Edge, on the other side"
+    # and a question stated from the complement flips both answers
+    assert views._edge_side_words("no", False) == "yes"
+    assert views._edge_side_words("yes", False) == "no"
+    assert views._edge_side_words(None, True) is None

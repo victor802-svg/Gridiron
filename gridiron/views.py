@@ -1186,6 +1186,27 @@ def _attach_priced(conn: sqlite3.Connection, cards: list[dict]) -> None:
             row["price_move_cents"])
 
 
+def _payout_for(price):
+    """What a contract at this price returns, once the price has been turned
+    round to the side the card names."""
+    from .market import recommend as _recommend
+
+    return _recommend.payout_multiple(price)
+
+
+def _edge_side_words(edge_side, takes_the_proposition):
+    """Is the edge on the side the question names, or the other one?
+
+    `edge_side` is 'yes' or 'no' against the CLAIM's fixed proposition;
+    `takes_the_proposition` says whether the question names that same side.
+    The two together answer the only question a reader has.
+    """
+    if edge_side is None or takes_the_proposition is None:
+        return None
+    on_the_proposition = edge_side == "yes"
+    return "yes" if on_the_proposition == bool(takes_the_proposition) else "no"
+
+
 def _today_card(entry: dict, card: dict, *, taken: bool,
                 group_tier: str | None, unit_dollars: float | None) -> dict:
     """One pick, in the grammar a sportsbook reader already has.
@@ -1199,7 +1220,16 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     reader can compare with the venue's.
     """
     question = card.get("phrase") or card.get("row_title") or "this question"
+    # THE PRICE ROW IS ABOUT THE SIDE THE QUESTION NAMES (2026-09-07). The
+    # claim is stored from a fixed proposition -- the home side, or the over
+    # -- and the question is stated from the side the model took. On the first
+    # card that ever cleared the bar those were opposites, so it read
+    # "Toronto covers +1.5" over three numbers about the Athletics.
+    takes = entry.get("question_takes_the_proposition")
+    flip = takes is False
     price = entry.get("price")
+    if flip and price is not None:
+        price = 1.0 - price
     tier = (card.get("tier") or {})
     chip = tier.get("chip_label")
     return {
@@ -1217,11 +1247,16 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # the three chips
         "model_words": language.price_chip_words(
             None if entry.get("fair_value") is None
-            else entry["fair_value"] * 100),
-        "venue_words": language.venue_chip_words(price, entry.get("payout")),
+            else (1.0 - entry["fair_value"] if flip else entry["fair_value"]) * 100),
+        "venue_words": language.venue_chip_words(
+            price, _payout_for(price) if flip else entry.get("payout")),
         "edge_words": language.edge_chip_words(entry.get("edge_cents")),
+        # THE EDGE KEEPS ITS SIGN -- it is what the better side is worth
+        # either way -- and its label says "on the other side" only when the
+        # better side is not the one the question names.
         "edge_label": language.edge_label_words(
-            language.price_row_labels()["edge"], entry.get("edge_side")),
+            language.price_row_labels()["edge"],
+            _edge_side_words(entry.get("edge_side"), takes)),
         "edge_state": language.edge_state(entry.get("edge_cents")),
         "edge_cents": entry.get("edge_cents"),
         "payout": entry.get("payout"),

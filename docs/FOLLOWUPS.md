@@ -968,3 +968,45 @@ added.
 **Still open**: a tap cannot be undone; and every watched card's chip ends in
 "· unproven", which is the group heading repeated on all 32 cards — the same
 defect as the one this brief closed, one level down.
+
+
+## 2026-09-07 — the first slate that ever cleared the bar
+
+`predict --sport mlb --week 165` ran for Tuesday 8 September: 82 forecasts,
+207 venue quotes, **44 at-the-line claims and 6 recommendations** — the first
+recommendations this project has produced. Four of them show on the Picks
+screen, sized at one flat unit, which the operator's declared unit now prints
+as $15.
+
+**FOUND BY LOOKING AT THE FIRST CARD THAT CLEARED. It read:**
+
+    Toronto covers +1.5
+    MODEL 30c   VENUE 50c - pays 2.00x   EDGE AFTER FEES, ON THE OTHER SIDE +17.8c
+
+Every number on it was about the Athletics. A claim is stored from one FIXED
+proposition -- the home side covering, or the over -- so that a curve compares
+like with like; the question is stated from the side the model took. On this
+card those were opposites, so the page named one team, priced the other, and
+then said the edge was on the other side of the side it had already flipped.
+The literal reading was the reverse of the truth.
+
+**This is the wrong-side defect on its third appearance in two days** -- the
+claim writer's side mapping, the edge chip's label, and now the orientation of
+the whole price row. Each time it arrives somewhere new and each time it looks
+right. The price row is now stated from the side the question names, and the
+mapping that converts between the two says whether it complemented rather than
+leaving the card to assume.
+
+**OPEN: the screen shows four of the six recommendations, and the two it does
+not show are the second forecaster's.** The Picks view is filtered to one
+forecaster at a time, which is the no-merged-curves law working; the
+recommendations table is not filtered, so "4 picks clear the bar" and a record
+holding 6 are both true and a reader cannot tell why. The strip should say
+which forecaster it is counting, or the count should say "of the statistical
+forecaster's questions". Not fixed today.
+
+**Watch on 8 September**: all four cards take the away side of a run line, and
+the model is systematically more bearish than the venue on a home favourite
+covering -1.5 (30-34% against the venue's 37-50%). Six of six recommendations
+on one side of one market is a pattern, not six independent edges, and the
+gate says so already: 53 of 100 settled, one flat unit, no measured edge.

@@ -106,6 +106,25 @@ def claim_shape(prediction, venue_line, *, quantity: str) -> dict:
         f"has no rule for")}
 
 
+def question_takes_the_proposition(prediction, game, *, quantity: str) -> bool | None:
+    """Does the question name the same side the claim is stored from?
+
+    THE CARD NEEDS THIS AND THE RECORD DOES NOT. A claim row is stored from
+    one fixed proposition -- the home side, or the over -- so that a curve
+    compares like with like; a card names the side the model took. When those
+    are opposites, a card that shows the claim's numbers under the question's
+    words names one team and prices the other, which is what it did on the
+    first slate that produced a recommendation.
+
+    None where the mapping cannot say, which is the same answer
+    `blind_probability` gives and for the same reasons.
+    """
+    got = blind_probability(prediction, game, quantity=quantity)
+    if got["prob"] is None:
+        return None
+    return not got.get("complemented", False)
+
+
 def needs_margin_distribution(shape: str | None) -> bool:
     """Only one shape does, which is the whole finding behind this module."""
     return shape == RUNG_DIFFERS_MARGIN
@@ -148,11 +167,12 @@ def blind_probability(prediction, game, *, quantity: str) -> dict:
                 f"side {side!r} is neither winning nor losing, so what the "
                 f"probability is about cannot be established")}
         if subject == game["home"]:
-            return {"prob": about_subject, "why": (
+            return {"prob": about_subject, "complemented": side != "win", "why": (
                 f"the question was asked about the home side and took the "
                 f"{side} side")}
         if subject == game["away"]:
-            return {"prob": 1.0 - about_subject, "why": (
+            return {"prob": 1.0 - about_subject, "complemented": side == "win",
+                    "why": (
                 f"the question was asked about the away side taking the {side} "
                 f"side, so the claim's probability is its complement")}
         return {"prob": None, "why": (
@@ -166,18 +186,20 @@ def blind_probability(prediction, game, *, quantity: str) -> dict:
                 f"about the home side covering the venue's number; those are "
                 f"the same only when the subject is the home side")}
         if side == "cover":
-            return {"prob": float(prob), "why": "the question took the cover side"}
+            return {"prob": float(prob), "complemented": False,
+                    "why": "the question took the cover side"}
         if side == "not_cover":
-            return {"prob": 1.0 - float(prob), "why": (
+            return {"prob": 1.0 - float(prob), "complemented": True, "why": (
                 "the question took the not-cover side, so the claim's "
                 "probability is its complement")}
         return {"prob": None, "why": f"side {side!r} is not a spread side"}
 
     if quantity in ("total", "count"):
         if side == "over":
-            return {"prob": float(prob), "why": "the question took the over"}
+            return {"prob": float(prob), "complemented": False,
+                    "why": "the question took the over"}
         if side == "under":
-            return {"prob": 1.0 - float(prob), "why": (
+            return {"prob": 1.0 - float(prob), "complemented": True, "why": (
                 "the question took the under, so the claim's probability is "
                 "its complement")}
         return {"prob": None, "why": f"side {side!r} is not an over-or-under side"}
