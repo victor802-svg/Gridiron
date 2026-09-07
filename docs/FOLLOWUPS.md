@@ -814,3 +814,28 @@ this session or next unless something turns up broken. What will be read on
 What is NOT to be done in that period: softening a threshold, adding surface
 area, or re-tuning anything on a sample this size. The engine needs slates run
 through it.
+
+## 2026-09-07 — the Today screen, and what it exposed
+
+GRIDIRON_TODAY ran (brief and close-out of the same date):
+
+- **THE CORRECTION HAS NEVER ACTUALLY BEEN FITTED.** Three baseball categories
+  are past the fifty-row threshold -- moneyline 110, point spread 52, total 52
+  -- and every stored correction row carries `n_train = 0`, a placeholder from
+  a refit that ran on 1 September. The Windows task `Gridiron-Recalibrate` has
+  never fired: last run time 30 November 1999, result "has not yet run", first
+  trigger 5 September, next due 06:00 on the 7th. Check after that firing that
+  the panel shows fitted corrections with real training counts. If it does not,
+  the task is broken rather than merely pending.
+- **The empty-bar count starts at one of one day.** Nothing has cleared the
+  venue's fee yet and nothing can until a slate run writes frozen
+  distributions and at-the-line claims. Read the fraction on 21 September: if
+  the bar clears on few days of fourteen, that is the honest headline about how
+  often a real edge appears.
+- **A taken pick cannot be untaken.** `picks_taken` is append-only, so a
+  mis-tap is permanent. The options are a second row recording that it was
+  undone, or leaving it; both are the operator's call, and neither should add a
+  money-shaped column.
+- **The taken comparison needs both sides past the gate** -- a hundred taken
+  and a hundred passed over in one market -- before it says anything. At a
+  quarter of a twenty-row shortlist that is months, not weeks.

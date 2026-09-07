@@ -106,6 +106,23 @@ that reports it has been firing since, which is the guard working.
 The fix is the operator's: put the current key in `.env` under
 `ANTHROPIC_API_KEY`. This session does not edit that file.
 
+**Checked again later the same day, after the operator reported updating it:
+still rejected.** One live call to the venue returned the same 401. Two things
+were measured rather than assumed:
+
+- **`.env` has not changed.** Last modified 2026-09-04 16:47, and the key in it
+  is the one being rejected. No `.env` anywhere under the sessions directory
+  was modified today.
+- **A Windows USER environment variable named `ANTHROPIC_API_KEY` exists and is
+  10 characters long.** An Anthropic key is about 108. `config.setting` reads
+  the process environment BEFORE the file, so once the app or a scheduled task
+  starts in a session that inherits it, that 10-character value wins over
+  whatever `.env` says. It has to be corrected or removed as well, or fixing
+  the file will change nothing.
+
+Neither was touched: `.env` is not this session's to edit, and a machine-level
+environment variable is not either.
+
 ### 6. Coverage provenance — **FAIL**
 
 | measurement | date | games | quoted strikes | covered |
