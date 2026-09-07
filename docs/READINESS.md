@@ -264,3 +264,35 @@ So the first claim cannot appear before the football run on **9 September**, and
 criterion 3 — the closing line, the criterion that decides the others — cannot
 start counting before then. Neither threshold moves; what moves is the date
 this document expects the first number.
+
+
+## 2026-09-07 — baseball reaches the priced pipeline
+
+**The date, recorded because AT_THE_PRICE Q4 asks for it: 2026-09-07.** The
+first at-the-line claims in this project's record were written on this day, and
+they are baseball: 43 claims from 31 of the day's 62 questions, 26 of them
+line-less and 17 rung-matched.
+
+Two things had to change and only one of them was in the brief.
+
+**A claim needed a frozen margin distribution, whatever kind of contract it
+was.** Four shapes are now distinguished: a winner contract needs nothing,
+because the blind probability answers the venue's question exactly; a rung the
+model was asked about needs nothing; a counting stat at a differing strike
+reads the blind rate; only a spread or total at a number the model did not ask
+about needs the distribution. That last one wrote nothing today, correctly:
+baseball has no measured margin spread, because its margins are counts.
+
+**AND BASEBALL HAD NO VENUE QUOTES AT ALL — zero of 1,172.** The venue's
+baseball event ticker carries the first pitch, because baseball plays
+doubleheaders and date-plus-teams does not identify a game. Ours did not, so it
+matched nothing. Measured before the change: 20 of 22 games inside the venue's
+open window match exactly, with no code aliases needed. Baseball now holds 290
+quotes and **one covered market**: totals, 1.0¢ wide at the middle over 4,760
+contracts.
+
+**Criteria 2 and 3 are still FAIL and the reason has moved.** Claims exist now;
+recommendations follow coverage, and baseball's moneyline is not measured
+enough (26 quoted strikes across 10 games, against a floor of 50 across 3)
+while its spread sits in the busier half. Nothing about the thresholds changed.
+What changed is that the pipeline they gate is no longer empty.

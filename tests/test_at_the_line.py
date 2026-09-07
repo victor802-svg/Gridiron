@@ -15,6 +15,20 @@ DIST = {"quantity": "home_margin", "family": "normal", "mean": 3.0, "sd": 13.0,
         "declared": "2026-08-31T00:00:00Z", "written_blind": True}
 
 
+def _finish(conn, home_score, away_score, game="2026_01_NE_SEA"):
+    """The game ends, AFTER the claim was written.
+
+    THE ORDER IS THE REAL ONE from 2026-09-07: `evaluate` refuses a game
+    already under way, because a pre-game probability against an in-play price
+    is not a disagreement. A fixture that starts a game final writes no claim
+    at all, so these tests build the claim first and then let the game finish.
+    """
+    conn.execute(
+        "UPDATE games SET status = 'final', home_score = ?, away_score = ?"
+        " WHERE id = ?", (home_score, away_score, game))
+    conn.commit()
+
+
 def _world(tmp_path, *, status="scheduled", home_score=None, away_score=None,
            dist=DIST, market="spread"):
     conn = db.open_db(tmp_path / "atl.db")
@@ -25,13 +39,19 @@ def _world(tmp_path, *, status="scheduled", home_score=None, away_score=None,
         " '2026-09-10T00:20:00Z', ?, '2026-09-09', ?, ?)",
         (status, home_score, away_score))
     factors = json.dumps({"margin_distribution": dist} if dist else {})
+    # A WINNER QUESTION HAS NO LINE AND IS NOT ABOUT COVERING. The fixture
+    # used to give every market a spread's line and a spread's side, which
+    # nothing checked until the four shapes existed -- a moneyline question
+    # carrying -3.5 is now refused as a pair that is not about the same
+    # proposition, and rightly.
+    line, side = (None, "win") if market == "moneyline" else (-3.5, "cover")
     conn.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type, subject,"
         " line_asked, model_prob, model_side, predictor, pass_kind,"
         " factor_set_version, factors_json, reasoning)"
-        " VALUES ('2026-09-06T00:00:00Z', 'nfl', '2026_01_NE_SEA', ?, 'SEA', -3.5,"
-        " 0.58, 'cover', 'statistical', 'final', 'fs5', ?, 'test')",
-        (market, factors))
+        " VALUES ('2026-09-06T00:00:00Z', 'nfl', '2026_01_NE_SEA', ?, 'SEA', ?,"
+        " 0.58, ?, 'statistical', 'final', 'fs5', ?, 'test')",
+        (market, line, side, factors))
     conn.commit()
     return conn
 
@@ -94,13 +114,18 @@ def test_a_claim_needs_the_frozen_distribution_and_comes_after_it(tmp_path):
     conn = _world(tmp_path, dist=None)
     _quote(conn)
     quote_id = conn.execute("SELECT id FROM venue_quotes").fetchone()[0]
+    # A MARGIN-SHAPE CLAIM, which is the one shape that still needs the
+    # frozen distribution. The other three do not, which is the whole of
+    # AT_THE_PRICE: this trigger refused all four until 2026-09-07 and that is
+    # why the record held no claim at all.
     values = ("kalshi", "nfl", "2026_01_NE_SEA", "spread", "home_margin", -4.5,
-              "home", 3.0, 13.0, 0.48, 0.46, 0.46, "mid", "2026-09-07T01:00:00Z")
+              "home", "rung_differs_margin", 3.0, 13.0, 0.48, 0.46, 0.46, "mid",
+              "2026-09-07T01:00:00Z")
     pid = conn.execute("SELECT id FROM predictions").fetchone()[0]
     sql = ("INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
-           " game_id, market, quantity, line, side, dist_mean, dist_sd, model_prob,"
-           " venue_price, venue_implied, price_basis, created_utc)"
-           " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+           " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+           " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+           " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
     with pytest.raises(sqlite3.IntegrityError, match="frozen distribution"):
         conn.execute(sql, (pid, quote_id) + values)
 
@@ -111,11 +136,12 @@ def test_a_claim_stamped_before_its_prediction_or_its_quote_is_refused(tmp_path)
     quote_id = conn.execute("SELECT id FROM venue_quotes").fetchone()[0]
     pid = conn.execute("SELECT id FROM predictions").fetchone()[0]
     sql = ("INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
-           " game_id, market, quantity, line, side, dist_mean, dist_sd, model_prob,"
-           " venue_price, venue_implied, price_basis, created_utc)"
-           " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+           " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+           " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+           " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
     head = (pid, quote_id, "kalshi", "nfl", "2026_01_NE_SEA", "spread",
-            "home_margin", -4.5, "home", 3.0, 13.0, 0.48, 0.46, 0.46, "mid")
+            "home_margin", -4.5, "home", "rung_differs_margin", 3.0, 13.0,
+            0.48, 0.46, 0.46, "mid")
     # before the prediction: it would read as a blind row, and is not one.
     # Read against a quote of the prediction's own moment, so this is the only
     # rule the row breaks.
@@ -164,6 +190,13 @@ def test_one_claim_per_look_and_one_standing_claim_per_prediction(tmp_path):
 def test_the_holes_are_counted_by_name(tmp_path):
     conn = _world(tmp_path, dist=None)
     counts = at_the_line.evaluate(conn)
+    # NO QUOTE IS NOT NO DISTRIBUTION. A shape is a property of the PAIR --
+    # the question and the contract -- so with nothing quoted there is no
+    # pair to classify, and the hole is the missing quote. The distribution
+    # only becomes the hole once a differing rung has been quoted.
+    assert counts["claims"] == 0 and counts["no_quotes"] == 1
+    _quote(conn, line=-4.5)
+    counts = at_the_line.evaluate(conn)
     assert counts["claims"] == 0 and counts["no_distribution"] == 1
     conn.execute("INSERT INTO games (id, sport, season, week, game_type, home, away,"
                  " kickoff_utc, status, league_date) VALUES ('2026_01_KC_DEN', 'nfl',"
@@ -188,9 +221,10 @@ def test_the_holes_are_counted_by_name(tmp_path):
 
 
 def test_a_claim_settles_with_its_game_and_a_level_game_is_left_open(tmp_path):
-    conn = _world(tmp_path, status="final", home_score=27, away_score=20)
+    conn = _world(tmp_path)
     _quote(conn, line=-4.5, yes_bid=0.45, yes_ask=0.47)
     assert at_the_line.evaluate(conn)["claims"] == 1
+    _finish(conn, 27, 20)
     result = tasks.settle_everything(conn)
     assert result["at_the_line_settled"] == 1 and result["at_the_line_open"] == 0
     row = conn.execute("SELECT * FROM at_the_line_claims").fetchone()
@@ -204,11 +238,11 @@ def test_a_claim_settles_with_its_game_and_a_level_game_is_left_open(tmp_path):
 
 
 def test_a_level_game_leaves_the_winner_claim_open_and_says_so(tmp_path):
-    conn = _world(tmp_path, status="final", home_score=20, away_score=20,
-                  market="moneyline")
+    conn = _world(tmp_path, market="moneyline")
     _quote(conn, market="moneyline", quantity="home_win", line=None,
            yes_bid=0.55, yes_ask=0.57)
     assert at_the_line.evaluate(conn)["claims"] == 1
+    _finish(conn, 20, 20)
     result = tasks.settle_everything(conn)
     assert result["at_the_line_settled"] == 0
     assert result["at_the_line_unanswerable"] == 1 and result["at_the_line_open"] == 1
@@ -217,7 +251,7 @@ def test_a_level_game_leaves_the_winner_claim_open_and_says_so(tmp_path):
 def _settled_claim(conn, *, outcome=1, prob=0.58, implied=0.52, line=-4.5,
                    ticker="k1", fetched="2026-09-07T00:00:00Z"):
     _quote(conn, ticker=ticker, line=line, fetched_utc=fetched)
-    at_the_line.evaluate(conn)
+    at_the_line.evaluate(conn)   # while the game is still ahead
     row = conn.execute("SELECT id FROM at_the_line_claims ORDER BY id DESC").fetchone()
     conn.execute("UPDATE at_the_line_claims SET resolved_utc = '2026-09-11T00:00:00Z',"
                  " outcome = ? WHERE id = ?", (outcome, row[0]))
@@ -228,7 +262,7 @@ def _settled_claim(conn, *, outcome=1, prob=0.58, implied=0.52, line=-4.5,
 def test_the_at_the_line_record_is_its_own_record(tmp_path):
     from gridiron import calibration
 
-    conn = _world(tmp_path, status="final", home_score=27, away_score=20)
+    conn = _world(tmp_path)
     _settled_claim(conn)
     card = calibration.at_the_line_scorecard(conn, sport="nfl")
     assert card["record"] == "at_the_line" and card["venue"] == "kalshi"
@@ -259,7 +293,7 @@ def test_a_claim_curve_cannot_be_filed_with_the_blind_curves():
 def test_the_record_page_carries_both_records_separately(tmp_path):
     from gridiron import calibration
 
-    conn = _world(tmp_path, status="final", home_score=27, away_score=20)
+    conn = _world(tmp_path)
     _settled_claim(conn)
     card = calibration.scorecard(conn, sport="nfl")
     assert card["record"] == "rung"

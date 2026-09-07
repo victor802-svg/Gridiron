@@ -74,10 +74,12 @@ def _pick(conn, *, prob=0.62, implied=0.46, subject="AAA", market="moneyline"):
         quote_id = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
         conn.execute(
             "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
-            " sport, game_id, market, quantity, line, side, dist_mean, dist_sd,"
-            " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+            " sport, game_id, market, quantity, line, side, shape,"
+            " dist_mean, dist_sd, model_prob, venue_price, venue_implied,"
+            " price_basis, created_utc)"
             " VALUES (?, ?, 'kalshi', 'mlb', 'g0', ?, 'home_margin', -1.5,"
-            " 'home', 2.0, 13.0, ?, ?, ?, 'mid', '2026-09-07T01:30:00Z')",
+            " 'home', 'rung_differs_margin', 2.0, 13.0, ?, ?, ?, 'mid',"
+            " '2026-09-07T01:30:00Z')",
             (pid, quote_id, market, prob, implied, implied))
     conn.commit()
     shortlist.rank_rows(conn, [pid])
@@ -197,10 +199,11 @@ def test_the_closing_line_is_measured_once_and_can_report_bad_news(tmp_path):
     near_quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
     conn.execute(
         "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
-        " game_id, market, quantity, line, side, dist_mean, dist_sd, model_prob,"
-        " venue_price, venue_implied, price_basis, created_utc)"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
         " VALUES (?, ?, 'kalshi', 'mlb', 'g0', 'moneyline', 'home_margin', -1.5,"
-        " 'home', 2.0, 13.0, 0.62, 0.52, 0.52, 'mid', '2026-09-07T01:55:00Z')",
+        " 'home', 'rung_differs_margin', 2.0, 13.0, 0.62, 0.52, 0.52, 'mid',"
+        " '2026-09-07T01:55:00Z')",
         (pid, near_quote))
     conn.commit()
     counts = recommend.record_closing_prices(conn)

@@ -27,9 +27,14 @@ def _slate(tmp_path, n, *, home_wins_every=2, price=0.40):
         home, away = (34, 20) if i % home_wins_every == 0 else (17, 24)
         conn.execute(
             "INSERT INTO games (id, sport, season, week, game_type, home, away,"
-            " kickoff_utc, status, league_date, home_score, away_score)"
+            # SCHEDULED WHILE THE CLAIM IS WRITTEN, FINAL AFTERWARDS, which
+            # is the order the real pipeline works in: a claim is made before
+            # kickoff and settled after. From 2026-09-07 the writer refuses a
+            # game already under way, so a fixture that starts final writes
+            # no claims at all.
+            " kickoff_utc, status, league_date)"
             " VALUES (?, 'nfl', 2026, 1, 'REG', 'SEA', 'NE', '2026-09-10T00:20:00Z',"
-            " 'final', '2026-09-09', ?, ?)", (gid, home, away))
+            " 'scheduled', '2026-09-09')", (gid,))
         conn.execute(
             "INSERT INTO predictions (created_utc, sport, game_id, market_type, subject,"
             " line_asked, model_prob, model_side, predictor, pass_kind,"
@@ -45,6 +50,13 @@ def _slate(tmp_path, n, *, home_wins_every=2, price=0.40):
             (f"t{i}", gid, price - 0.01, price + 0.01))
     conn.commit()
     at_the_line.evaluate(conn)
+    # the games finish, and only then are they settled
+    for i in range(n):
+        home, away = (34, 20) if i % home_wins_every == 0 else (17, 24)
+        conn.execute(
+            "UPDATE games SET status = 'final', home_score = ?, away_score = ?"
+            " WHERE id = ?", (home, away, f"2026_01_G{i:03d}"))
+    conn.commit()
     tasks.settle_everything(conn)
     return conn
 

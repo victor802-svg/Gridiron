@@ -82,6 +82,14 @@ CODE_ALIASES: dict[str, dict[str, str]] = {
 CROSSWALK_MEASURED = {
     "nfl": {"matched": 16, "of": 16, "slate": "week 1, 2026", "with_aliases": 2,
             "measured_utc": "2026-09-06T00:00:00Z"},
+    # BASEBALL, measured 2026-09-07 against the venue's 42 open events and the
+    # 22 games this record holds inside that window. 20 matched exactly on
+    # date, start time, away and home, with NO aliases: the codes agree. The
+    # two misses are a 2024 row still marked scheduled and one game the venue
+    # had not opened -- neither is a naming disagreement.
+    "mlb": {"matched": 20, "of": 22, "slate": "open events, 7-9 September 2026",
+            "with_aliases": 0, "measured_utc": "2026-09-07T19:30:00Z",
+            "note": "the ticker carries the first pitch on the venue's clock"},
     "cfb": {"matched": 47, "of": 50, "slate": "open events, 5-13 September 2026",
             "with_aliases": 6, "not_carried": 3,
             "measured_utc": "2026-09-06T00:00:00Z"},
@@ -110,15 +118,50 @@ def our_code(sport: str, theirs: str) -> str:
     return CODE_ALIASES.get(sport, {}).get(theirs, theirs)
 
 
+#: Sports whose event ticker carries the START TIME as well as the date,
+#: and the timezone it is written in.
+#:
+#: BASEBALL PLAYS DOUBLEHEADERS. One pair of teams can meet twice on one date,
+#: so date and teams do not identify a game and the venue puts the first pitch
+#: in the ticker: `KXMLBGAME-26SEP071310NYMMIA`. Football never does, which is
+#: why the same builder matched 16 of 16 NFL events while matching 0 of 22
+#: baseball ones -- measured 2026-09-07, when this was found.
+#:
+#: The venue writes the time on the US Eastern clock, which is a fact about
+#: the venue rather than about the game, so it is declared here beside the
+#: sports that need it.
+TICKER_CARRIES_START = {"mlb": "America/New_York"}
+TICKER_START_MEASURED = "2026-09-07T19:30:00Z"
+
+
 def event_ticker(sport: str, market: str, game) -> str | None:
     """The venue's event ticker for one of our games, or None when the venue
-    has no series for the market or the game has no date."""
+    has no series for the market or the game has no date.
+
+    THE DATE IS THE LEAGUE'S AND THE TIME IS THE VENUE'S. A game's league date
+    is the day the sport files it under; the ticker's time is the first pitch
+    on the venue's own clock, and the two can disagree for a late start. Both
+    come from the same kickoff instant so they cannot drift apart.
+    """
     series = SERIES.get((sport, market))
     day = game["league_date"] or (game["kickoff_utc"] or "")[:10]
     if series is None or not day:
         return None
-    yy, mm, dd = day[2:4], int(day[5:7]), day[8:10]
-    return (f"{series}-{yy}{MONTHS[mm - 1]}{dd}"
+    zone = TICKER_CARRIES_START.get(sport)
+    if zone:
+        kickoff = game["kickoff_utc"]
+        if not kickoff:
+            return None
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+
+        local = datetime.strptime(kickoff, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc).astimezone(ZoneInfo(zone))
+        stem = (f"{local:%y}{MONTHS[local.month - 1]}{local:%d%H%M}")
+    else:
+        yy, mm, dd = day[2:4], int(day[5:7]), day[8:10]
+        stem = f"{yy}{MONTHS[mm - 1]}{dd}"
+    return (f"{series}-{stem}"
             f"{venue_code(sport, game['away'])}{venue_code(sport, game['home'])}")
 
 

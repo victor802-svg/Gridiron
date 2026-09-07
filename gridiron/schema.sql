@@ -1348,8 +1348,13 @@ CREATE TABLE IF NOT EXISTS venue_quotes (
     event_ticker  TEXT    NOT NULL,
     sport         TEXT    NOT NULL,
     game_id       TEXT    NOT NULL REFERENCES games (id),
-    market        TEXT    NOT NULL CHECK (market IN ('spread', 'total', 'moneyline')),
-    quantity      TEXT    NOT NULL CHECK (quantity IN ('home_margin', 'total', 'home_win')),
+    -- 'prop' and 'count' added 2026-09-07 with the four claim shapes. The
+    -- venue's declared series carry no prop market yet; the column admits one
+    -- so the shape that reads it is reachable rather than theoretical.
+    market        TEXT    NOT NULL
+                  CHECK (market IN ('spread', 'total', 'moneyline', 'prop')),
+    quantity      TEXT    NOT NULL
+                  CHECK (quantity IN ('home_margin', 'total', 'home_win', 'count')),
     -- the line from the home side's view for a spread (the ordinary
     -- convention: -4.5 means the home side must win by five), the total for
     -- a total, NULL for a winner market
@@ -1398,17 +1403,32 @@ CREATE TABLE IF NOT EXISTS at_the_line_claims (
     venue          TEXT    NOT NULL,
     sport          TEXT    NOT NULL,
     game_id        TEXT    NOT NULL REFERENCES games (id),
-    market         TEXT    NOT NULL CHECK (market IN ('spread', 'total', 'moneyline')),
-    quantity       TEXT    NOT NULL CHECK (quantity IN ('home_margin', 'total', 'home_win')),
+    market         TEXT    NOT NULL
+                   CHECK (market IN ('spread', 'total', 'moneyline', 'prop')),
+    quantity       TEXT    NOT NULL
+                   CHECK (quantity IN ('home_margin', 'total', 'home_win', 'count')),
     -- the venue's number, from the home side's view for a spread; NULL only
     -- for a winner market, which has no line
     line           REAL,
     -- the fixed proposition this row is about
     side           TEXT    NOT NULL CHECK (side IN ('home', 'over')),
+    -- WHICH KIND OF COMPARISON THIS IS (AT_THE_PRICE Q1, 2026-09-07). Four
+    -- shapes, and they never merge into one curve: a line-less claim carries
+    -- no distribution error at all, so averaging it with a rung-differing one
+    -- would report the distribution as better than it is. Same argument as
+    -- LAW 6 makes about sports, one level down.
+    shape          TEXT    NOT NULL
+                   CHECK (shape IN ('line_less', 'rung_matched',
+                                    'rung_differs_count', 'rung_differs_margin')),
     -- the frozen parameters, copied onto the row so the claim can be read
-    -- back without reopening the prediction's factor payload
-    dist_mean      REAL    NOT NULL,
-    dist_sd        REAL    NOT NULL,
+    -- back without reopening the prediction's factor payload.
+    --
+    -- NULLABLE FROM 2026-09-07, because three of the four shapes have no
+    -- distribution -- not a missing one, none. A winner contract has no
+    -- number to move to, so there is nothing to integrate and nothing to
+    -- record; a NOT NULL column would put a zero where absence is the truth.
+    dist_mean      REAL,
+    dist_sd        REAL,
     model_prob     REAL    NOT NULL CHECK (model_prob > 0 AND model_prob < 1),
     venue_price    REAL    NOT NULL CHECK (venue_price > 0 AND venue_price < 1),
     venue_implied  REAL    NOT NULL CHECK (venue_implied > 0 AND venue_implied < 1),
@@ -1423,15 +1443,52 @@ CREATE INDEX IF NOT EXISTS at_the_line_claims_sport
 CREATE INDEX IF NOT EXISTS at_the_line_claims_prediction
     ON at_the_line_claims (prediction_id, created_utc);
 
+-- ONE SHAPE NEEDS THE MARGIN DISTRIBUTION, and until 2026-09-07 this trigger
+-- demanded it of all four. That is why the record held no claim at all: every
+-- baseball question, every winner contract and every prop was refused at the
+-- last step for lacking something its comparison does not use.
 CREATE TRIGGER IF NOT EXISTS at_the_line_requires_a_frozen_distribution
 BEFORE INSERT ON at_the_line_claims
 FOR EACH ROW
-WHEN (SELECT json_extract(p.factors_json, '$.margin_distribution.sd')
+WHEN NEW.shape = 'rung_differs_margin'
+ AND (SELECT json_extract(p.factors_json, '$.margin_distribution.sd')
         FROM predictions p WHERE p.id = NEW.prediction_id) IS NULL
 BEGIN
     SELECT RAISE(ABORT,
-        'GRIDIRON LAW 1: an at-the-line claim needs the frozen distribution '
-        || 'its prediction was written with; this prediction has none');
+        'GRIDIRON LAW 1: a claim read at a number the question did not ask '
+        || 'about needs the frozen distribution its prediction was written '
+        || 'with; this prediction has none');
+END;
+
+-- AND THE COUNT SHAPE NEEDS THE BLIND RATE. `expected_count` is written
+-- inside the blind window with the prediction; evaluating a rate fitted after
+-- the venue's strike was visible would be LAW 1 with extra steps.
+CREATE TRIGGER IF NOT EXISTS at_the_line_requires_a_blind_rate
+BEFORE INSERT ON at_the_line_claims
+FOR EACH ROW
+WHEN NEW.shape = 'rung_differs_count'
+ AND (SELECT json_extract(p.factors_json, '$.expected_count')
+        FROM predictions p WHERE p.id = NEW.prediction_id) IS NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: a count claim read at the venue''s strike needs the '
+        || 'rate its prediction was written with; this prediction has none');
+END;
+
+-- A ROW MAY NOT CLAIM A SHAPE IT DOES NOT CARRY THE INPUTS FOR. The margin
+-- shape is the only one with parameters on the row, and it must have them.
+CREATE TRIGGER IF NOT EXISTS at_the_line_shape_carries_its_inputs
+BEFORE INSERT ON at_the_line_claims
+FOR EACH ROW
+WHEN (NEW.shape = 'rung_differs_margin'
+      AND (NEW.dist_mean IS NULL OR NEW.dist_sd IS NULL))
+  OR (NEW.shape IN ('line_less', 'rung_matched')
+      AND (NEW.dist_mean IS NOT NULL OR NEW.dist_sd IS NOT NULL))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a claim carries exactly the inputs its shape uses -- the '
+        || 'margin shape has a distribution and the two direct shapes have '
+        || 'none, because there is nothing to integrate');
 END;
 
 CREATE TRIGGER IF NOT EXISTS at_the_line_comes_after_its_prediction
@@ -1456,7 +1513,7 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS at_the_line_no_update
 BEFORE UPDATE OF prediction_id, quote_id, venue, sport, game_id, market,
-                 quantity, line, side, dist_mean, dist_sd, model_prob,
+                 quantity, line, side, shape, dist_mean, dist_sd, model_prob,
                  venue_price, venue_implied, created_utc
 ON at_the_line_claims
 FOR EACH ROW

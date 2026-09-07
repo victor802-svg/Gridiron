@@ -7743,6 +7743,221 @@ def plant_a_thin_edge_on_an_expensive_contract() -> Result:
                   "market.recommend.clears_the_bar", True, verdict["why"])
 
 
+LAW_CLAIM_SHAPE = "A CLAIM CARRIES THE INPUTS ITS SHAPE USES, AND NO OTHERS"
+
+
+def plant_a_winner_question_read_from_the_wrong_side() -> Result:
+    """Read a moneyline's probability off the subject and ignore the side.
+
+    THIS WAS LIVE. Six of the twenty-two baseball moneylines written on
+    2026-09-07 said the subject LOSES; the first version of the mapping read
+    the team name and not the verb, so "the home side loses, 62%" became a
+    claim that it wins with probability 0.62. Five claims were written that
+    way before it was caught.
+    """
+    from gridiron.priced import shape as _shape
+
+    class Row(dict):
+        def keys(self):
+            return super().keys()
+
+    game = {"home": "MIA", "away": "NYM"}
+    losing = Row({"model_prob": 0.62, "model_side": "lose", "subject": "MIA"})
+    got = _shape.blind_probability(losing, game, quantity="home_win")
+    if got["prob"] is None or abs(got["prob"] - 0.38) > 1e-9:
+        return Result(LAW_CLAIM_SHAPE, "a winner claim read from the wrong side",
+                      "priced.shape.blind_probability", False,
+                      f"NOT CAUGHT - a prediction that the home side LOSES with "
+                      f"probability 0.62 produces a claim of {got['prob']}, and "
+                      f"the claim is about the home side WINNING")
+    return Result(LAW_CLAIM_SHAPE, "a winner claim read from the wrong side",
+                  "priced.shape.blind_probability", True,
+                  "the losing side complements: 0.62 on a loss is 0.38 on the win")
+
+
+def plant_a_claim_against_a_live_price() -> Result:
+    """Compare a pre-game probability with an in-play price.
+
+    THIS WAS LIVE TOO. Seventeen of the first twenty-nine claims did it, one
+    of them a home side the model made 59.6% against a venue price of 3.5% --
+    which is not a disagreement, it is the fourth inning.
+    """
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl
+
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1,"
+            " 'R', 'MIA', 'NYM', '2026-09-07T01:00:00Z', 'scheduled',"
+            " '2026-09-07')")
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-07T00:00:00Z', 'mlb', 'g1', 'moneyline', 'MIA', NULL,"
+            " 0.6, 'win', 'statistical', 'final', 'fs2', '{}', 'x')")
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " last_price, volume, fetched_utc) VALUES (?, 'T', 'E', 'mlb',"
+            " 'g1', 'moneyline', 'home_win', NULL, 'home', 0.02, 0.05, 0.035,"
+            " 900, '2026-09-07T03:00:00Z')", (_atl.VENUE,))
+        conn.commit()
+        counts = _atl.evaluate(conn, [pid])
+        conn.close()
+    if counts["claims"]:
+        return Result(LAW_CLAIM_SHAPE, "a claim priced off a game in progress",
+                      "market.at_the_line.evaluate", False,
+                      "NOT CAUGHT - a quote taken two hours after first pitch "
+                      "was compared with a pre-game probability and written as "
+                      "a claim")
+    return Result(LAW_CLAIM_SHAPE, "a claim priced off a game in progress",
+                  "market.at_the_line.evaluate", True,
+                  f"refused: {counts['quote_after_first_pitch']} quote(s) taken "
+                  f"after first pitch")
+
+
+def plant_a_count_claim_with_no_blind_rate() -> Result:
+    """Read a counting stat at the venue's strike with no rate written blind.
+
+    Fitting one now would evaluate a rate against a strike that was visible
+    when it was fitted, which is LAW 1 with extra steps.
+    """
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl
+
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1,"
+            " 'R', 'MIA', 'NYM', '2026-09-09T00:00:00Z', 'scheduled',"
+            " '2026-09-08')")
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-07T00:00:00Z', 'mlb', 'g1', 'prop', 'batter_strikeouts',"
+            " 'A Batter', 1.5, 0.77, 'under', 'statistical', 'final', 'fs2',"
+            " '{}', 'x')")
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " last_price, volume, fetched_utc) VALUES (?, 'T', 'E', 'mlb',"
+            " 'g1', 'prop', 'count', 0.5, 'over', 0.49, 0.51, 0.5, 900,"
+            " '2026-09-07T02:00:00Z')", (_atl.VENUE,))
+        conn.commit()
+        counts = _atl.evaluate(conn, [pid])
+        conn.close()
+    if counts["claims"]:
+        return Result(LAW_CLAIM_SHAPE, "a count claim with no blind rate",
+                      "market.at_the_line.evaluate", False,
+                      "NOT CAUGHT - a strike the model never asked about was "
+                      "answered without the rate the answer needs")
+    return Result(LAW_CLAIM_SHAPE, "a count claim with no blind rate",
+                  "market.at_the_line.evaluate", True,
+                  "refused: the prediction carries no expected count")
+
+
+def plant_a_claim_carrying_a_distribution_it_does_not_use() -> Result:
+    """File a line-less claim with margin parameters on it.
+
+    A winner contract has nothing to integrate. Parameters on that row would
+    say a distribution was read when none was, and the four shapes would stop
+    meaning four different things.
+    """
+    import sqlite3 as _sqlite3
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl
+
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1,"
+            " 'R', 'MIA', 'NYM', '2026-09-09T00:00:00Z', 'scheduled',"
+            " '2026-09-08')")
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-07T00:00:00Z', 'mlb', 'g1', 'moneyline', 'MIA', NULL,"
+            " 0.6, 'win', 'statistical', 'final', 'fs2', '{}', 'x')")
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " last_price, volume, fetched_utc) VALUES (?, 'T', 'E', 'mlb',"
+            " 'g1', 'moneyline', 'home_win', NULL, 'home', 0.49, 0.51, 0.5,"
+            " 900, '2026-09-07T02:00:00Z')", (_atl.VENUE,))
+        conn.commit()
+        qid = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        try:
+            conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+                " sport, game_id, market, quantity, line, side, shape,"
+                " dist_mean, dist_sd, model_prob, venue_price, venue_implied,"
+                " price_basis, created_utc) VALUES (?,?,?,'mlb','g1',"
+                " 'moneyline','home_win',NULL,'home','line_less',2.0,13.0,0.6,"
+                " 0.5,0.5,'mid','2026-09-08T00:00:00Z')",
+                (pid, qid, _atl.VENUE))
+            caught, detail = False, None
+        except _sqlite3.IntegrityError as exc:
+            caught, detail = True, str(exc)
+        conn.close()
+    if not caught:
+        return Result(LAW_CLAIM_SHAPE, "a claim carrying inputs its shape never used",
+                      "schema trigger at_the_line_shape_carries_its_inputs", False,
+                      "NOT CAUGHT - a winner claim may carry margin parameters, "
+                      "so a reader cannot tell which claims read a distribution")
+    return Result(LAW_CLAIM_SHAPE, "a claim carrying inputs its shape never used",
+                  "schema trigger at_the_line_shape_carries_its_inputs", True, detail)
+
+
+def plant_a_baseball_ticker_without_its_first_pitch() -> Result:
+    """Build the venue's baseball ticker from the date and the teams alone.
+
+    THAT IS WHAT THIS PROJECT DID until 2026-09-07, and it is why the record
+    held 1,172 venue quotes and not one of them baseball. Doubleheaders: one
+    pair of teams can meet twice on a date, so the venue puts the first pitch
+    in the ticker.
+    """
+    from gridiron.market import kalshi as _kalshi
+
+    class Row(dict):
+        def keys(self):
+            return super().keys()
+
+    game = Row({"league_date": "2026-09-07",
+                "kickoff_utc": "2026-09-07T17:10:00Z",
+                "home": "MIA", "away": "NYM"})
+    built = _kalshi.event_ticker("mlb", "moneyline", game)
+    if built is None or "1310" not in built:
+        return Result(LAW_CLAIM_SHAPE, "a baseball ticker with no first pitch",
+                      "market.kalshi.event_ticker", False,
+                      f"NOT CAUGHT - the ticker is {built!r}, which matches "
+                      f"nothing at the venue and leaves baseball unquoted")
+    if "mlb" not in _kalshi.CROSSWALK_MEASURED:
+        return Result(LAW_CLAIM_SHAPE, "a baseball ticker with no first pitch",
+                      "market.kalshi.CROSSWALK_MEASURED", False,
+                      "NOT CAUGHT - the baseball crosswalk is used and has "
+                      "never been measured, which this module's own header "
+                      "forbids")
+    return Result(LAW_CLAIM_SHAPE, "a baseball ticker with no first pitch",
+                  "market.kalshi.event_ticker", True,
+                  f"the ticker carries the first pitch: {built}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -7818,6 +8033,13 @@ def main() -> int:
     results.append(plant_a_countdown_to_kickoff())
     results.append(plant_a_renderer_function_defined_twice())
     results.append(plant_a_thin_edge_on_an_expensive_contract())
+    # AT_THE_PRICE (2026-09-07): four claim shapes, and the four mistakes
+    # the first live run made.
+    results.append(plant_a_winner_question_read_from_the_wrong_side())
+    results.append(plant_a_claim_against_a_live_price())
+    results.append(plant_a_count_claim_with_no_blind_rate())
+    results.append(plant_a_claim_carrying_a_distribution_it_does_not_use())
+    results.append(plant_a_baseball_ticker_without_its_first_pitch())
     results.append(plant_a_push_posted_before_it_is_recorded())
     results.append(plant_an_absent_factor_handed_to_the_model_as_zero())
     results.append(plant_a_measured_zero_dropped_from_the_prompt())

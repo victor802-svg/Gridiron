@@ -71,11 +71,14 @@ def _claim(conn, pid, *, model_prob, venue_implied, game="g0"):
         (game, venue_implied - 0.01, venue_implied + 0.01, venue_implied))
     quote_id = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
     conn.execute(
+        # A WINNER CONTRACT, so the claim is line-less and carries no
+        # distribution: AT_THE_PRICE gave the row a shape, and the two direct
+        # shapes may not carry margin parameters they never read.
         "INSERT INTO at_the_line_claims (created_utc, prediction_id, quote_id,"
-        " venue, sport, game_id, market, quantity, line, side, dist_mean,"
-        " dist_sd, model_prob, venue_price, venue_implied, price_basis)"
+        " venue, sport, game_id, market, quantity, line, side, shape,"
+        " model_prob, venue_price, venue_implied, price_basis)"
         " VALUES ('2026-09-07T01:00:00Z', ?, ?, 'test venue', 'mlb', ?,"
-        " 'moneyline', 'home_win', NULL, 'home', 2.0, 13.0, ?, ?, ?,"
+        " 'moneyline', 'home_win', NULL, 'home', 'line_less', ?, ?, ?,"
         " 'the midpoint of the venue book')",
         (pid, quote_id, game, model_prob, venue_implied, venue_implied))
     conn.commit()
