@@ -779,6 +779,15 @@ GRIDIRON_THE_PRICED ran (brief and close-out of the same date):
 GRIDIRON_READINESS ran (brief and close-out of the same date, and
 `docs/READINESS.md`, which is re-run weekly and appends a dated row).
 
+**CLOSED 2026-09-07.** The operator replaced the key and, on his
+instruction, the 10-character Windows user environment variable of the same
+name was deleted -- it shadowed `.env` for every process started afterwards, so
+fixing the file alone would have changed nothing. A freshly started process
+authenticates; the day's run wrote 62 predictions with 22 LLM rows for $0.1052,
+and `audit.llm_prose_faults` came back clean for the first time in two days.
+The original finding is kept in full below, because the diagnosis is the
+reusable part.
+
 **BROKEN, OPEN, AND THE OPERATOR'S TO FIX: the reasoning pass has been dead
 since 5 September.** Every call since `2026-09-05T15:00:03Z` returns HTTP 401,
 `"API key is invalid."` The last successful one was `2026-09-05T02:56:26Z`. A
@@ -839,3 +848,43 @@ GRIDIRON_TODAY ran (brief and close-out of the same date):
 - **The taken comparison needs both sides past the gate** -- a hundred taken
   and a hundred passed over in one market -- before it says anything. At a
   quarter of a twenty-row shortlist that is months, not weeks.
+
+
+## 2026-09-07 — always on, and the clock that was quietly losing a quarter of every slate
+
+The operator asked for three things: run it around the clock, give him
+something now, and update the desktop app.
+
+**FOUND AND FIXED: the second look at the line fired every four hours against a
+two-hour window.** `_near_start_snapshots` acts on a prediction only while its
+game is between now and two hours out, and its only caller was `refresh`, which
+the scheduler runs every four hours. Measured on the day's twelve baseball
+games, three fell in no firing's window at all. Since that pass is the only
+writer of a near-start ladder, an at-the-line claim and a closing price, this is
+also the answer to a question the readiness document had left open: why
+`at_the_line_claims` and `recommendations` read zero while `venue_quotes` read
+1,172.
+
+The fix is a clock, not a wider window: task `near-start` every thirty minutes,
+so every kickoff is seen by at least three firings. The two hours are a declared
+meaning and were left alone.
+
+**What to check on 8 September**: `at_the_line_claims` should be non-zero, and
+the first recommendations follow it. If it is still zero, the cadence was not
+the whole story -- the next candidate is coverage, since baseball is thinly
+quoted at this venue and the covered market is football totals.
+
+**FIXED: `Gridiron-Serve` would not register, and the reason was not
+elevation.** The earlier attempt failed with "Access is denied" and was worked
+around with a Startup-folder shortcut. The installer already knew why: a logon
+trigger with no `-User` applies to every account on the machine, which Windows
+treats as a system-wide change and refuses. Scoped to the current user it
+registers without elevation, and it carries restart-on-failure settings a
+shortcut cannot. The shortcut was removed so the interface is not started twice.
+
+**A test caught the new task within a minute of it existing.**
+`test_every_task_is_installable_and_worded` holds four lists together --
+`tasks.TASKS`, `scheduler.OS_TASK_NAMES`, `language.TASK_WORDS` and the
+installer's own array -- and failed on the one of the four that had not been
+updated. It was written after the UFC passes were declared in one list and no
+other, and it has now paid for itself twice.

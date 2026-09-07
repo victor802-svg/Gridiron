@@ -84,6 +84,8 @@ $TaskNames = @(
     "$($Prefix)Final-UFC",
     "$($Prefix)Recalibrate",
     "$($Prefix)Capture",
+    "$($Prefix)NearStart",
+    "$($Prefix)Serve",
     "$($Prefix)CatchUp"
 )
 
@@ -293,6 +295,48 @@ New-GridironTask -Name "$($Prefix)Capture" -TaskArg "capture" `
     -Trigger (New-ScheduledTaskTrigger -Once -At "00:15" `
         -RepetitionInterval (New-TimeSpan -Hours 4)) `
     -Description "Stamp the injury report and tonight's lineups, so what was knowable when becomes data."
+
+# near-start - EVERY THIRTY MINUTES, and the interval is the point.
+#
+# The pass acts on a prediction only while its game is between now and two
+# hours out, and until 2026-09-07 its only caller was Refresh, which fires
+# every four hours. A two-hour window sampled every four hours cannot cover a
+# day: measured on that morning's baseball slate, three of twelve games fell
+# in no firing's window and would have been looked at once and never again.
+#
+# It is the only writer of a near-start ladder, an at-the-line claim and a
+# closing price, so the missed games were also why both of those tables were
+# empty. Half an hour against a two-hour window means every kickoff is seen by
+# at least three firings; the cost is a no-op row most of the time.
+New-GridironTask -Name "$($Prefix)NearStart" -TaskArg "near-start" `
+    -Trigger (New-ScheduledTaskTrigger -Once -At "00:05" `
+        -RepetitionInterval (New-TimeSpan -Minutes 30)) `
+    -Description "Take the second look at the line for games starting within two hours."
+
+# THE INTERFACE, at logon, restarted if it dies (2026-09-07).
+#
+# Registered here rather than left as a shortcut in the Startup folder, which
+# is what it was for half a day: a shortcut starts the app once and says
+# nothing if it exits, and the operator's ask was that it be running when he
+# reaches for it. This one has the scheduler's restart settings behind it.
+#
+# It does NOT go through New-GridironTask: that helper runs `python -m
+# gridiron.cli task <name>`, and this is the bundled executable in its
+# serve-only mode, which is a different thing entirely.
+$serveExe = Join-Path $Repo "dist\Gridiron\Gridiron.exe"
+if (Test-Path $serveExe) {
+    Register-ScheduledTask -TaskName "$($Prefix)Serve" `
+        -Action (New-ScheduledTaskAction -Execute $serveExe -Argument "--serve-only" -WorkingDirectory $Repo) `
+        -Trigger (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME") `
+        -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+            -DontStopIfGoingOnBatteries -StartWhenAvailable `
+            -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+            -ExecutionTimeLimit (New-TimeSpan -Days 0)) `
+        -Description "Serve the local interface at logon and restart it if it dies." | Out-Null
+    Write-Host "  registered $($Prefix)Serve"
+} else {
+    Write-Host "  skipped $($Prefix)Serve - no bundle at $serveExe. Build it with .venv\Scripts\pyinstaller.exe desktop\gridiron.spec --noconfirm, then re-run this."
+}
 
 # The logon trigger is scoped to THIS user on purpose. Without -User it applies
 # to every account on the machine, which Windows treats as a system-wide change

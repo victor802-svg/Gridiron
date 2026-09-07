@@ -96,6 +96,26 @@ TASKS: dict[str, TaskSpec] = {
         every_hours=4.0,
         silent_after_hours=12.0,
     ),
+    # THE SECOND LOOK AT THE LINE, ON ITS OWN CLOCK (2026-09-07).
+    #
+    # It used to ride inside `refresh`, which fires every four hours, while
+    # the window it acts on is two hours wide. Measured on today's baseball
+    # slate: three of twelve games fell in no firing's window and would have
+    # got no second look ever. Since this pass is the only writer of a
+    # near-start ladder, an at-the-line claim and a closing price, that is
+    # also why both of those tables were empty.
+    #
+    # Half an hour, against a two-hour window, means every kickoff is seen
+    # by at least three firings. The cost is a no-op row in `task_runs` most
+    # of the time, which is the cheapest thing in this record.
+    "near-start": TaskSpec(
+        "near-start",
+        "take the second look at the line for games about to start",
+        every_hours=0.5,
+        # Six hours, not one. A machine asleep overnight is not a fault, and
+        # this task's own no-op runs are what prove the clock is alive.
+        silent_after_hours=6.0,
+    ),
     "live": TaskSpec(
         "live",
         "follow the games that are on right now",
@@ -221,6 +241,8 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
             result, detail, payload = _run_live(conn)
         elif task == "capture":
             result, detail, payload = _run_capture(conn)
+        elif task == "near-start":
+            result, detail, payload = _run_near_start(conn)
         elif task == "catch-up":
             result, detail, payload = _run_catch_up(conn, use_llm=use_llm)
         elif task.startswith("final:"):
@@ -377,6 +399,28 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
 #: late enough that most of the day's news is priced and early enough that the
 #: fetch is not racing the first pitch.
 NEAR_START_HOURS = 2.0
+
+
+def _run_near_start(conn: sqlite3.Connection) -> tuple[str, str, dict]:
+    """The second look at the line, as a task in its own right.
+
+    `refresh` still calls the same pass, and that is deliberate: the pass is
+    idempotent -- it selects only predictions with no near-start row yet -- so
+    two callers cannot produce two snapshots. What the second caller buys is
+    the cadence, and nothing else changes.
+    """
+    counts = _near_start_snapshots(conn)
+    due = counts.get("near_start_due", 0)
+    if not due:
+        return ("noop", "no game starts within the next two hours", counts)
+    took = counts.get("near_start_taken", 0)
+    claims = counts.get("at_the_line_claims", 0)
+    closed = counts.get("closing_prices", 0)
+    return ("ok",
+            f"{language.counted(took, 'game')} looked at a second time; "
+            f"{language.counted(claims, 'claim')} at the line and "
+            f"{language.counted(closed, 'closing price')} recorded",
+            counts)
 
 
 def _near_start_snapshots(conn: sqlite3.Connection) -> dict:

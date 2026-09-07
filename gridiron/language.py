@@ -1044,6 +1044,9 @@ TASK_WORDS = {
     # The live poll was a task with no words (audit 2026-09-05); `task_name`
     # opened the key out, which is the fallback and not the door.
     "live": "Follow the games being played",
+    # The second look, named for what a reader would call it rather than for
+    # the window it uses.
+    "near-start": "Look at the line again before the start",
     # THE FINAL PASS (2026-09-03). "Take one more look" rather than "final
     # pass", because a reader of the Health panel is being told what the
     # machine does, not what the code calls it. The early pass keeps its own

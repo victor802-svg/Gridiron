@@ -45,6 +45,12 @@ OS_TASK_NAMES = {
     # 84 UFC forecasts in the record were all written by hand.
     "predict:ufc": "Predict-UFC",
     "final:ufc": "Final-UFC",
+    # THE SECOND LOOK AT THE LINE, on its own half-hourly clock from
+    # 2026-09-07. It ran inside Refresh's four-hourly firing against a
+    # two-hour window, so a quarter of a day's games were never looked at
+    # twice -- and it is the only writer of a near-start ladder, an
+    # at-the-line claim and a closing price.
+    "near-start": "NearStart",
     # THE SECOND, LATER PASS PER SPORT (2026-09-03). Named here so the
     # settings page can READ whether the machine holds them -- and, until the
     # installer is run, say plainly that it does not. A mechanism nothing
