@@ -170,6 +170,14 @@ def _record_conn():
     return db.connect()
 
 
+def _env_file():
+    """Where the operator's settings live, for the credential scan to read the
+    NAMES in. It never reads a value."""
+    from gridiron import auth
+
+    return auth.ENV_FILE
+
+
 def _config():
     from gridiron import config
 
@@ -344,7 +352,14 @@ def step_2_guards() -> bool:
                  __import__("gridiron.db", fromlist=["db"]).connect(),
                  __import__("gridiron.config", fromlist=["config"]).SPORTS[0]))),
         ("no silent defaults (v2)", audit.check_no_silent_defaults),
-        ("not a betting tool (LAW 5)", audit.check_not_a_betting_tool),
+        # LAW 5 as amended 2026-09-07. The staking scan is retired; these
+        # three are what it was really protecting, and they are not amendable.
+        ("no venue credential anywhere (LAW 5)",
+         lambda: audit.check_no_venue_credentials(
+             env_file=_env_file(), conn=_record_conn())),
+        ("no order path (LAW 5)", audit.check_no_order_path),
+        ("no wagering ledger in the repo (LAW 5)",
+         lambda: audit.check_no_wagering_ledger(conn=_record_conn())),
         ("no offline data caching", audit.check_no_offline_data_caching),
     ):
         try:

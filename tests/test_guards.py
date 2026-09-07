@@ -264,30 +264,60 @@ def test_every_declared_factor_reached_the_database(conn):
     assert stored == set(registry.REGISTRY)
 
 
-# --- LAW 5: not a betting tool ---------------------------------------------
+# --- LAW 5: the app recommends, it never transacts --------------------------
+#
+# AMENDED 2026-09-07. A stake sizer is permitted now, so the test that planted
+# one is gone with the law it enforced. These three are what the old law was
+# really protecting, and the brief that amended it marks them not amendable by
+# any later session.
 
-def test_the_package_has_no_staking_surface():
-    audit.check_not_a_betting_tool()   # must not raise
+def test_the_package_holds_no_venue_credential():
+    from gridiron import auth, db
+
+    conn = db.connect()
+    try:
+        audit.check_no_venue_credentials(env_file=auth.ENV_FILE, conn=conn)
+    finally:
+        conn.close()
 
 
-def test_a_planted_stake_sizer_is_caught_by_name(planted_tree):
-    (planted_tree / "staking.py").write_text(
-        "def kelly_stake(p, odds, bankroll):\n    return bankroll * p\n",
-        encoding="utf-8",
-    )
+def test_a_planted_venue_credential_is_caught_by_name(planted_tree):
+    (planted_tree / "market" / "keys.py").parent.mkdir(exist_ok=True)
+    (planted_tree / "market" / "keys.py").write_text(
+        "KALSHI_API_KEY = 'planted'\n", encoding="utf-8")
     with pytest.raises(audit.LawViolation) as exc:
-        audit.check_not_a_betting_tool(root=planted_tree)
+        audit.check_no_venue_credentials(root=planted_tree)
     assert "LAW 5" in str(exc.value)
-    assert "kelly" in str(exc.value).lower()
+
+
+def test_a_planted_order_path_is_caught_by_name(planted_tree):
+    (planted_tree / "market").mkdir(exist_ok=True)
+    (planted_tree / "market" / "trade.py").write_text(
+        "def place_order(ticker, count):\n    return (ticker, count)\n",
+        encoding="utf-8")
+    with pytest.raises(audit.LawViolation) as exc:
+        audit.check_no_order_path(root=planted_tree)
+    assert "LAW 5" in str(exc.value) and "human being" in str(exc.value)
+
+
+def test_a_planted_wagering_ledger_is_caught(tmp_path):
+    from gridiron import db
+
+    conn = db.connect(":memory:")
+    conn.execute("CREATE TABLE wagers (id INTEGER PRIMARY KEY, stake REAL)")
+    with pytest.raises(audit.LawViolation) as exc:
+        audit.check_no_wagering_ledger(conn=conn)
+    assert "LAW 5" in str(exc.value)
 
 
 def test_the_disclaimer_is_not_mistaken_for_a_feature():
-    """views.py says "bankroll" in the sentence explaining it has none."""
-    from gridiron import views
-
+    """views.py says "bankroll" in a sentence about sizing, and prose is exempt
+    from every one of these scans -- the rule the retired staking scan was
+    written around, still true of the three that replaced it."""
     source = (config.PACKAGE_ROOT / "views.py").read_text(encoding="utf-8")
     assert "bankroll" in source, "the disclaimer should still be there"
-    audit.check_not_a_betting_tool()   # and must still pass
+    audit.check_no_order_path()
+    audit.check_no_venue_credentials()
 
 
 def test_no_sportsbook_or_exchange_dependency():
@@ -1332,13 +1362,22 @@ def test_the_shipped_package_names_no_market_source_outside_the_module():
     audit.check_market_sources_stay_in_the_market_module()   # must not raise
 
 
-def test_law_five_still_forbids_everything_it_forbade():
-    """The amendment ADDED a permitted market source. It removed nothing, and
-    the identifier scan is unchanged."""
-    for word in ("kelly", "bankroll", "stake", "wager", "sizing",
-                 "recommend_bet", "sportsbook", "roi"):
-        assert word in audit.BETTING_IDENTIFIERS
-    audit.check_not_a_betting_tool()          # must not raise
+def test_law_five_forbids_the_four_things_it_still_forbids():
+    """AMENDED 2026-09-07, and this test amended with it.
+
+    Until that date the law forbade the staking vocabulary and this test held
+    the list. The operator replaced the law: the arithmetic is permitted and
+    the machinery is not. The words below are the ones that must still be
+    impossible, and each is proved by a planting rather than by an assertion
+    that a constant contains a string.
+    """
+    assert audit.venue_credential_faults() == []
+    assert audit.order_path_faults() == []
+    assert audit.wagering_ledger_faults() == []
+    # and the retired list is still readable, so a reader who greps for the old
+    # rule finds its history rather than an absence
+    for word in ("kelly", "bankroll", "stake", "roi"):
+        assert word in audit.RETIRED_BETTING_IDENTIFIERS
 
 
 # --- A SCANNER READS CODE, NOT COMMENTS (audit of 2026-09-05) ---------------

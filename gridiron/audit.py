@@ -280,7 +280,17 @@ def check_prediction_closure(
 #: "bankroll" and "stake" out loud in its own disclaimer, and a scan that could
 #: not tell a disclaimer from a feature would force the project to stop
 #: explaining what it refuses to do.
-BETTING_IDENTIFIERS = (
+#: RETIRED 2026-09-07, and REPLACED rather than refuted. LAW 5 no longer
+#: forbids the staking surface these words describe: the operator wagers either
+#: way and ruled that the app should price what he is doing. What the old law
+#: was really protecting -- the codebase's distance from his money -- is now
+#: three harder scans at the bottom of this file: `check_no_venue_credentials`,
+#: `check_no_order_path`, `check_no_wagering_ledger`.
+#:
+#: The list stays because a reader who greps for `kelly` deserves to find the
+#: history rather than an absence. Nothing calls it; `check_no_orphan_functions`
+#: does not scan constants.
+RETIRED_BETTING_IDENTIFIERS = (
     "kelly",
     "bankroll",
     "stake",
@@ -412,7 +422,14 @@ def check_market_sources_stay_in_the_market_module(root: Path | None = None) -> 
 
 
 def betting_surface(root: Path | None = None) -> list[str]:
-    """Any identifier in the package that would belong to a staking tool."""
+    """RETIRED 2026-09-07: what the staking scan used to find.
+
+    Kept callable so the tests and close-outs that name it still run and still
+    mean something -- it reports what a staking tool would look like, which is
+    now a description rather than a violation. The three scans that replaced it
+    are `venue_credential_faults`, `order_path_faults` and
+    `wagering_ledger_faults`.
+    """
     root = root or config.PACKAGE_ROOT
     hits: list[str] = []
     for path in sorted(root.rglob("*.py")):
@@ -420,13 +437,21 @@ def betting_surface(root: Path | None = None) -> list[str]:
             continue
         for name in sorted(identifiers_in(path)):
             lowered = name.lower()
-            for word in BETTING_IDENTIFIERS:
+            for word in RETIRED_BETTING_IDENTIFIERS:
                 if word in lowered:
                     hits.append(f"{path.name}:{name}")
     return hits
 
 
 def check_not_a_betting_tool(root: Path | None = None) -> None:
+    """RETIRED 2026-09-07 by the amendment to LAW 5. Kept as a no-op with its
+    reason attached, because a check that vanished leaves a reader unable to
+    tell a relaxed rule from a forgotten one. See `check_no_venue_credentials`,
+    `check_no_order_path` and `check_no_wagering_ledger`."""
+    return None
+
+
+def _the_old_staking_refusal(root: Path | None = None) -> None:
     hits = betting_surface(root)
     if hits:
         raise LawViolation(
@@ -5415,3 +5440,260 @@ def check_the_shortlist_speaks_of_questions(payload) -> None:
         raise LawViolation(
             "LAW 5: the shortlist has started recommending rather than "
             "ordering:" + _NL2 + _NL2.join(faults[:8]))
+
+
+# ---------------------------------------------------------------------------
+# THE APP RECOMMENDS, IT NEVER TRANSACTS (LAW 5 as amended 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# The old law forbade the arithmetic. This one permits the arithmetic and
+# forbids the machinery, which is a harder line to hold and a much easier one
+# to check: a stake size is a number and could always be argued about, but a
+# credential is a string, an order is an HTTP verb, and a ledger is a table.
+#
+# `BETTING_IDENTIFIERS` and `check_not_a_betting_tool` are RETIRED, not
+# deleted -- see the note beside them. What replaces them is three scans, each
+# with its own planting:
+#
+#   * NO CREDENTIALS, in the package, the environment or the record.
+#   * NO ORDER PATH: no write verb aimed at a venue, no account read.
+#   * NO LEDGER: the operator's own wagering record lives outside this repo.
+#
+# None of the three is amendable by a later session. A brief asking for one is
+# refused and pointed at LAW 5, which is exactly what the old law's own refusal
+# clause did for staking -- the mechanism is unchanged, only its subject.
+
+#: WHAT MAKES A CREDENTIAL A *VENUE* CREDENTIAL. Two lists, and a fault needs
+#: one word from each in the same name -- except inside the market module,
+#: which is the only code that talks to a venue at all, where a credential word
+#: is a fault on its own.
+#:
+#: THE FIRST RUN OF THIS SCAN PROVED THE POINT. A single list flagged the app's
+#: own sign-in cookie and the Anthropic key the reasoning pass runs on: three
+#: findings, none of them a violation, on a scan meant to catch something that
+#: would be unmistakable. A guard that cries wolf gets an allowlist, and an
+#: allowlist is the mute button this file's own docstring warns about.
+VENUE_WORDS = (
+    "kalshi", "polymarket", "draftkings", "fanduel", "betfair", "pinnacle",
+    "bookmaker", "sportsbook", "prizepicks", "exchange", "venue", "book",
+)
+CREDENTIAL_WORDS = (
+    "api_key", "apikey", "secret", "token", "password", "cookie", "session",
+    "credential", "bearer", "private_key", "signing_key", "access_key",
+    "auth_header",
+)
+#: Names that are a venue credential whatever module they sit in.
+VENUE_CREDENTIAL_IDENTIFIERS = tuple(
+    f"{venue}_{word}" for venue in VENUE_WORDS for word in
+    ("key", "api_key", "secret", "token", "password", "cookie", "session")
+)
+
+#: PLACING, CANCELLING, OR LOOKING AT MONEY. The gap between a recommendation
+#: and a wager is a human being, and these are the names that would close it.
+ORDER_PATH_IDENTIFIERS = (
+    "place_order", "submit_order", "send_order", "create_order", "cancel_order",
+    "modify_order", "amend_order", "order_ticket", "order_payload", "place_bet",
+    "submit_bet", "place_wager", "buy_contract", "sell_contract",
+    "account_balance", "available_balance", "account_positions",
+    "open_positions", "portfolio_value", "withdraw_funds", "deposit_funds",
+    "transfer_funds", "fund_account",
+    # NOT a bare "withdraw": this project already withdrew a feature and calls
+    # it that -- WITHDRAWN, WithdrawalRefused, _withdraw -- so the bare word
+    # would report three findings that are nothing to do with money. Caught on
+    # the first run of this scan.
+)
+
+#: THE OPERATOR'S OWN RESULTS. Not the model's record -- that is the whole
+#: point of the project -- but what he actually staked and what it returned.
+WAGERING_LEDGER_IDENTIFIERS = (
+    "my_bets", "my_wagers", "bet_log", "wager_log", "bet_ledger",
+    "wager_ledger", "betting_ledger", "bets_placed", "wagers_placed",
+    "realised_pnl", "realized_pnl", "profit_and_loss", "account_history",
+)
+
+#: Tables that would hold that ledger, checked against the schema itself.
+WAGERING_LEDGER_TABLES = (
+    "bets", "wagers", "my_bets", "bet_ledger", "wager_ledger", "pnl",
+    "account_history", "positions",
+)
+
+#: Environment names that would hold a venue credential. The VALUE is never
+#: read, printed or logged by any of this -- the name is the whole finding.
+VENUE_ENV_PREFIXES = ("KALSHI", "POLYMARKET", "DRAFTKINGS", "FANDUEL",
+                      "BETFAIR", "PINNACLE", "PRIZEPICKS", "BOOKMAKER",
+                      "EXCHANGE")
+VENUE_ENV_SUFFIXES = ("KEY", "SECRET", "TOKEN", "PASSWORD", "COOKIE",
+                      "SESSION", "CREDENTIAL", "AUTH")
+
+
+def venue_credential_faults(root: Path | None = None, env_file: Path | None = None,
+                            conn=None) -> list[str]:
+    """A venue credential in the code, the environment, or the record.
+
+    THREE PLACES, BECAUSE THERE ARE THREE WAYS IN. A key can be typed into a
+    module, exported into `.env`, or written to a settings table by a future
+    convenience. The value is never read here; the name is the finding, and
+    printing a secret to prove it exists would be its own violation.
+    """
+    root = root or config.PACKAGE_ROOT
+    faults: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        if path.name in BETTING_SCAN_EXEMPT:
+            continue
+        in_market = MARKET_MODULE in path.parts
+        for name in sorted(identifiers_in(path)):
+            lowered = name.lower()
+            credential = any(word in lowered for word in CREDENTIAL_WORDS)
+            if not credential:
+                continue
+            # Inside the market module a credential word is enough: that
+            # package exists to read venues and nothing else.
+            if in_market or any(v in lowered for v in VENUE_WORDS):
+                faults.append(
+                    f"{path.relative_to(root)}:{name} is a venue credential by "
+                    f"name. LAW 5: no key, token, password, cookie or session "
+                    f"for any venue lives in this codebase, its environment or "
+                    f"its database.")
+    env_file = env_file or config.ENV_FILE if hasattr(config, "ENV_FILE") else env_file
+    if env_file is not None and Path(env_file).exists():
+        for line in Path(env_file).read_text(encoding="utf-8").splitlines():
+            name = line.split("=", 1)[0].strip().upper()
+            if not name or name.startswith("#"):
+                continue
+            if (any(p in name for p in VENUE_ENV_PREFIXES)
+                    and any(s in name for s in VENUE_ENV_SUFFIXES)):
+                # THE NAME, NEVER THE VALUE. Printing the secret to prove the
+                # secret exists would be its own violation.
+                faults.append(
+                    f"the environment defines {name}, which names a venue "
+                    f"credential. LAW 5: the app authenticates to nothing.")
+    if conn is not None:
+        for row in conn.execute(
+                "SELECT name, sql FROM sqlite_master WHERE type = 'table'"):
+            sql = (row["sql"] or "").lower()
+            for word in VENUE_CREDENTIAL_IDENTIFIERS:
+                if word in sql:  # e.g. a column called kalshi_token
+                    faults.append(
+                        f"the record's table {row['name']} has a column named "
+                        f"for a venue credential ({word}). LAW 5: not in the "
+                        f"code, not in the environment, not in the database.")
+    return sorted(set(faults))
+
+
+def check_no_venue_credentials(root: Path | None = None, env_file=None,
+                               conn=None) -> None:
+    faults = venue_credential_faults(root, env_file, conn)
+    if faults:
+        raise LawViolation(
+            "LAW 5: A VENUE CREDENTIAL EXISTS IN THIS PROJECT."
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+#: HTTP verbs that change something at the other end. The project's own fetch
+#: helper is a GET, and every venue read goes through it.
+WRITE_VERBS = ('"POST"', "'POST'", '"PUT"', "'PUT'", '"DELETE"', "'DELETE'",
+               '"PATCH"', "'PATCH'", "requests.post", "requests.put",
+               "requests.delete", "requests.patch", "session.post")
+
+
+def _python_without_comments(text: str) -> str:
+    """Python source with its comments blanked, by the tokeniser.
+
+    THE SAME RULE THE OTHER SCANNERS FOLLOW: a comment may neither trip a scan
+    nor satisfy one, so a module explaining in prose that it must never POST
+    does not thereby appear to POST. `_without_comments` knows JavaScript, CSS
+    and HTML; Python needs the tokeniser, because a `#` inside a string is not
+    a comment.
+    """
+    import io
+    import tokenize
+
+    try:
+        out = []
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            out.append("" if tok.type == tokenize.COMMENT else tok.string)
+        return " ".join(out)
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        # An unparseable file is not a silent pass: scan it raw rather than
+        # skipping it, and accept the false positive a comment might cause.
+        return text
+
+
+def order_path_faults(root: Path | None = None) -> list[str]:
+    """Anything that could place, cancel or price an order at a venue, or read
+    an account.
+
+    The identifier scan is the blunt half. The other half reads the market
+    module -- the only place a venue is named at all -- for a write verb: a
+    module that may fetch a price has no business sending one.
+    """
+    root = root or config.PACKAGE_ROOT
+    faults: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        if path.name in BETTING_SCAN_EXEMPT:
+            continue
+        for name in sorted(identifiers_in(path)):
+            lowered = name.lower()
+            for word in ORDER_PATH_IDENTIFIERS:
+                if word in lowered:
+                    faults.append(
+                        f"{path.relative_to(root)}:{name} is an order path by "
+                        f"name. LAW 5: nothing here places, cancels, modifies "
+                        f"or prepares an order, and nothing reads an account.")
+        if MARKET_MODULE in path.parts:
+            source = _python_without_comments(path.read_text(encoding="utf-8"))
+            for verb in WRITE_VERBS:
+                if verb in source:
+                    faults.append(
+                        f"{path.relative_to(root)} sends {verb.strip(chr(34))} "
+                        f"from the market module. LAW 5: every venue request is "
+                        f"unauthenticated and READ-ONLY.")
+    return sorted(set(faults))
+
+
+def check_no_order_path(root: Path | None = None) -> None:
+    faults = order_path_faults(root)
+    if faults:
+        raise LawViolation(
+            "LAW 5: AN ORDER PATH EXISTS. The gap between a recommendation and "
+            "a wager is a human being, on purpose." + _NL2 + _NL2.join(faults[:8]))
+
+
+def wagering_ledger_faults(root: Path | None = None, conn=None) -> list[str]:
+    """The operator's own stakes and returns, inside the repo.
+
+    NOT THE MODEL'S RECORD, which is the entire project: this is the other
+    ledger, the one with real money in it. A model that can see its own profit
+    and loss is one step from fitting to it, and the step leaves no trace in
+    the code afterwards.
+    """
+    root = root or config.PACKAGE_ROOT
+    faults: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        if path.name in BETTING_SCAN_EXEMPT:
+            continue
+        for name in sorted(identifiers_in(path)):
+            lowered = name.lower()
+            for word in WAGERING_LEDGER_IDENTIFIERS:
+                if word in lowered:
+                    faults.append(
+                        f"{path.relative_to(root)}:{name} names the operator's "
+                        f"own wagering record. LAW 5: that ledger lives outside "
+                        f"this codebase.")
+    if conn is not None:
+        for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"):
+            if row["name"].lower() in WAGERING_LEDGER_TABLES:
+                faults.append(
+                    f"the record holds a table called {row['name']}, which is "
+                    f"the operator's own wagering ledger by name. LAW 5: it "
+                    f"lives outside this codebase.")
+    return sorted(set(faults))
+
+
+def check_no_wagering_ledger(root: Path | None = None, conn=None) -> None:
+    faults = wagering_ledger_faults(root, conn)
+    if faults:
+        raise LawViolation(
+            "LAW 5: THE OPERATOR'S OWN WAGERING LEDGER IS IN THE REPOSITORY."
+            + _NL2 + _NL2.join(faults[:8]))

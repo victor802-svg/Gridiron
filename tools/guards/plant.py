@@ -1862,24 +1862,27 @@ def plant_payout_arithmetic_against_a_market_source() -> Result:
         root = Path(tmp) / "gridiron"
         shutil.copytree(config.PACKAGE_ROOT, root,
                         ignore=shutil.ignore_patterns("__pycache__", "*.db"))
+        # AMENDED 2026-09-07: pricing a line into a payout is permitted now,
+        # so the planting is the act the quarantine was always really about --
+        # a fetch from the market module that carries a credential.
         (root / "market" / "entries.py").write_text(
             "# PLANTED VIOLATION\n"
-            "def prizepicks_payout(line_count, entry_amount):\n"
-            "    return entry_amount * (2 ** line_count)\n",
+            "PRIZEPICKS_SESSION = 'planted'\n"
+            "def signed_entries(url):\n"
+            "    return {'Cookie': PRIZEPICKS_SESSION}\n",
             encoding="utf-8")
         try:
-            audit.check_not_a_betting_tool(root=root)
+            audit.check_no_venue_credentials(root=root)
         except audit.LawViolation as exc:
             return Result(
-                "LAW 5", "price a market source's line into a payout",
-                "audit.check_not_a_betting_tool", True, str(exc))
+                "LAW 5", "authenticate to a market source",
+                "audit.check_no_venue_credentials", True, str(exc))
     return Result(
-        "LAW 5", "price a market source's line into a payout",
-        "audit.check_not_a_betting_tool", False,
-        "a payout function was added to the market module and nothing "
-        "objected. Reading a line and pricing one are different acts; the "
-        "quarantine says WHERE a source may be read, not that anything goes "
-        "there.")
+        "LAW 5", "authenticate to a market source",
+        "audit.check_no_venue_credentials", False,
+        "a credential was added to the market module and nothing objected. "
+        "Reading a published price and holding an account are different acts, "
+        "and the second one is the line the amendment marks as permanent.")
 
 
 def plant_a_market_source_outside_the_market_module() -> Result:
@@ -4016,37 +4019,32 @@ def plant_a_double_resolve() -> Result:
 
 
 def plant_a_stake_column() -> Result:
-    """Add a stake sizer to the package and check LAW 5's scan names it.
+    """Size a wager off the confidence tier, below the market's gate.
 
-    Confidence tiers are the closest this project has come to the thing LAW 5
-    forbids: they rank picks by how sure the model is, which is one short step
-    from ranking them by how much to put on. The step is not taken, and this
-    proves the guard would notice if it were.
+    AMENDED 2026-09-07. This used to plant a stake sizer, which the law now
+    permits; what it was really guarding against is what it plants instead --
+    sizing that varies with a number the model has not earned. Tiers rank picks
+    by how sure the model is, and staking on that before the tier has a settled
+    record is precisely the harm the flat-unit rule exists to prevent.
     """
-    root = Path(audit.__file__).resolve().parent
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        copy = Path(tmp) / "gridiron"
-        shutil.copytree(root, copy, ignore=shutil.ignore_patterns("__pycache__"))
-        (copy / "web" / "stake.py").parent.mkdir(parents=True, exist_ok=True)
-        (copy / "tiers_stake.py").write_text(
-            chr(10).join([
-                '"""A staking surface, planted."""',
-                "",
-                "",
-                "def stake_for_tier(tier, bankroll):",
-                "    units = {'LEAN': 0.5, 'SOLID': 1.0, 'STRONG': 2.0}[tier]",
-                "    return bankroll * 0.01 * units",
-            ]),
-            encoding="utf-8",
-        )
-        try:
-            audit.check_not_a_betting_tool(copy)
-        except audit.LawViolation as exc:
-            return Result("LAW 5", "add a stake column keyed on the tier",
-                          "audit.check_not_a_betting_tool", True, str(exc))
-        return Result("LAW 5", "add a stake column keyed on the tier",
-                      "audit.check_not_a_betting_tool", False,
-                      "NOT CAUGHT - a stake sizer passed the scan")
+    from gridiron.market import recommend as _recommend
+
+    lean = _recommend.size_for(model_prob=0.62, price=0.50, settled=3)
+    strong = _recommend.size_for(model_prob=0.92, price=0.50, settled=3)
+    if lean["kind"] != "flat" or strong["kind"] != "flat":
+        return Result("LAW 5", "size a wager off a tier below its gate",
+                      "recommend.size_for", False,
+                      "NOT CAUGHT - the app sized a wager on a market with "
+                      "three settled questions behind it")
+    if lean["units"] != strong["units"]:
+        return Result("LAW 5", "size a wager off a tier below its gate",
+                      "recommend.size_for", False,
+                      f"NOT CAUGHT - a 92% claim was staked {strong['units']} "
+                      f"against {lean['units']} for a 62% one, on a market with "
+                      f"nothing settled behind it")
+    return Result("LAW 5", "size a wager off a tier below its gate",
+                  "recommend.size_for", True,
+                  f"the sizer refused to vary: {lean['why']}")
 
 
 def plant_a_tier_hit_rate_below_the_gate() -> Result:
@@ -7063,6 +7061,123 @@ def plant_a_prop_market_on_the_llm_roster() -> Result:
                   "audit.llm_routing_faults", True, faults[0])
 
 
+LAW_NEVER_TRANSACTS = "THE APP RECOMMENDS, IT NEVER TRANSACTS"
+
+
+def _tree_with(module: str, source: str):
+    """A copy of the package with one module replaced, for a scan to read."""
+    import pathlib
+    import shutil
+    import tempfile
+
+    from gridiron import config as _config
+
+    root = pathlib.Path(tempfile.mkdtemp(prefix="planted-")) / "gridiron"
+    shutil.copytree(_config.PACKAGE_ROOT, root)
+    (root / module).write_text(source, encoding="utf-8")
+    return root
+
+
+def plant_a_venue_credential() -> Result:
+    """Put a key for the venue in the market module (LAW 5, 2026-09-07)."""
+    from gridiron import audit as _audit
+
+    if _audit.venue_credential_faults():
+        return Result(LAW_NEVER_TRANSACTS, "a venue credential in the codebase",
+                      "audit.venue_credential_faults", False,
+                      "the shipped tree already holds one; fix that before "
+                      "trusting this planting")
+    root = _tree_with("market/kalshi.py",
+                      "KALSHI_API_KEY = 'not-a-real-key'\n"
+                      "def signed_headers():\n"
+                      "    return {'Authorization': KALSHI_API_KEY}\n")
+    faults = _audit.venue_credential_faults(root=root)
+    if not faults:
+        return Result(LAW_NEVER_TRANSACTS, "a venue credential in the codebase",
+                      "audit.venue_credential_faults", False,
+                      "NOT CAUGHT - the app can now authenticate to a venue, "
+                      "which is the line LAW 5 says is not amendable")
+    return Result(LAW_NEVER_TRANSACTS, "a venue credential in the codebase",
+                  "audit.venue_credential_faults", True, faults[0])
+
+
+def plant_a_venue_credential_in_the_environment() -> Result:
+    """Export the key instead of typing it (LAW 5, 2026-09-07)."""
+    import pathlib
+    import tempfile
+
+    from gridiron import audit as _audit
+
+    env = pathlib.Path(tempfile.mkdtemp(prefix="planted-env-")) / ".env"
+    env.write_text("GRIDIRON_ACCESS_TOKEN=fine\nKALSHI_API_SECRET=planted\n",
+                   encoding="utf-8")
+    faults = _audit.venue_credential_faults(env_file=env)
+    if not faults:
+        return Result(LAW_NEVER_TRANSACTS, "a venue credential in the environment",
+                      "audit.venue_credential_faults", False,
+                      "NOT CAUGHT - a key outside the tree is still a key, and "
+                      "the scan looked only at the code")
+    return Result(LAW_NEVER_TRANSACTS, "a venue credential in the environment",
+                  "audit.venue_credential_faults", True, faults[0])
+
+
+def plant_an_order_path() -> Result:
+    """Place an order from the market module (LAW 5, 2026-09-07)."""
+    from gridiron import audit as _audit
+
+    if _audit.order_path_faults():
+        return Result(LAW_NEVER_TRANSACTS, "an order path", "audit.order_path_faults",
+                      False, "the shipped tree already has one; fix that first")
+    root = _tree_with("market/kalshi.py",
+                      "import json\n"
+                      "def place_order(conn, ticker, count):\n"
+                      "    return json.dumps({'ticker': ticker, 'count': count})\n")
+    faults = _audit.order_path_faults(root=root)
+    if not faults:
+        return Result(LAW_NEVER_TRANSACTS, "an order path", "audit.order_path_faults",
+                      False,
+                      "NOT CAUGHT - the gap between a recommendation and a "
+                      "wager was supposed to be a human being")
+    return Result(LAW_NEVER_TRANSACTS, "an order path", "audit.order_path_faults",
+                  True, faults[0])
+
+
+def plant_a_write_verb_at_a_venue() -> Result:
+    """Send a POST from the module that may only read (LAW 5, 2026-09-07)."""
+    from gridiron import audit as _audit
+
+    root = _tree_with("market/kalshi.py",
+                      "import urllib.request\n"
+                      "def ask(url, body):\n"
+                      "    req = urllib.request.Request(url, data=body, method=\"POST\")\n"
+                      "    return urllib.request.urlopen(req).read()\n")
+    faults = _audit.order_path_faults(root=root)
+    if not faults:
+        return Result(LAW_NEVER_TRANSACTS, "a write verb aimed at a venue",
+                      "audit.order_path_faults", False,
+                      "NOT CAUGHT - the market module may fetch a price and "
+                      "has just sent one")
+    return Result(LAW_NEVER_TRANSACTS, "a write verb aimed at a venue",
+                  "audit.order_path_faults", True, faults[0])
+
+
+def plant_a_wagering_ledger() -> Result:
+    """Keep the operator's own stakes in the record (LAW 5, 2026-09-07)."""
+    from gridiron import audit as _audit, db as _db
+
+    conn = _db.connect(":memory:")
+    conn.execute("CREATE TABLE bets (id INTEGER PRIMARY KEY, stake REAL,"
+                 " returned REAL)")
+    faults = _audit.wagering_ledger_faults(conn=conn)
+    if not faults:
+        return Result(LAW_NEVER_TRANSACTS, "the operator's own ledger in the repo",
+                      "audit.wagering_ledger_faults", False,
+                      "NOT CAUGHT - the model can now see its own profit and "
+                      "loss, and fitting to it leaves no trace in the code")
+    return Result(LAW_NEVER_TRANSACTS, "the operator's own ledger in the repo",
+                  "audit.wagering_ledger_faults", True, faults[0])
+
+
 LAW_SHORTLIST_WORDS = "A SHORTLIST ORDERS QUESTIONS, IT DOES NOT TIP"
 
 
@@ -7197,8 +7312,11 @@ def main() -> int:
     results.append(plant_market_import_in_prediction_path())
     results.append(plant_market_column_in_prediction_path())
     results.append(plant_market_import_inside_the_blind_window())
-    results.append(plant_betting_surface())
-    results.append(plant_betting_surface_violation())
+    # RETIRED 2026-09-07 with the law they enforced: `plant_betting_surface`
+    # and `plant_betting_surface_violation` planted a stake sizer, and a stake
+    # sizer is now permitted. What the old law was protecting is planted by the
+    # five above instead -- a credential, a credential in the environment, an
+    # order path, a write verb, and a ledger.
     results.append(plant_a_silent_missing_data_default())
     results.append(plant_a_defaulted_factor_at_runtime())
     results.append(plant_a_faked_line_where_none_exists())
@@ -7324,6 +7442,11 @@ def main() -> int:
     results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_raw_exception_on_the_health_panel())
     results.append(plant_a_prop_market_on_the_llm_roster())
+    results.append(plant_a_venue_credential())
+    results.append(plant_a_venue_credential_in_the_environment())
+    results.append(plant_an_order_path())
+    results.append(plant_a_write_verb_at_a_venue())
+    results.append(plant_a_wagering_ledger())
     results.append(plant_an_ungated_edge_in_the_ranking())
     results.append(plant_a_tip_sheet_headline_on_the_shortlist())
     results.append(plant_advice_words_at_the_line())

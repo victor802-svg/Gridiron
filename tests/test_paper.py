@@ -118,9 +118,12 @@ def test_the_label_and_the_law_survive_the_ledger(tmp_path):
     rows = {row["market"]: row for row in card["paper"]}
     assert rows["spread"]["hypothetical"] is True
     assert rows["spread"]["words"].startswith("hypothetical")
-    # LAW 5's staking scan reads the whole package, this module included
-    assert audit.betting_surface() == []
-    audit.check_not_a_betting_tool()
+    # LAW 5 AS AMENDED 2026-09-07: the staking scan is retired, and what this
+    # module must still not do is hold a credential, an order path or the
+    # operator's own ledger.
+    assert audit.venue_credential_faults() == []
+    assert audit.order_path_faults() == []
+    assert audit.wagering_ledger_faults() == []
     # and the words are still a forecast rather than advice
     audit.check_the_at_the_line_words_are_a_forecast(card)
     for row in card["paper"]:

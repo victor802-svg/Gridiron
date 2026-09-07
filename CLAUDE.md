@@ -38,41 +38,108 @@ verdict renders without its sample size beside it, and nothing claims an edge
 below 100 resolved predictions in that category. Below threshold the UI says how
 many more are needed.
 
-**5. NOT A BETTING TOOL.** No stake sizing, no bankroll, no Kelly, no bet
-recommendations, no bet placement, no account with any betting platform, no
-payout or price-to-return arithmetic, no slip. READ-ONLY LINE SNAPSHOTS from
-named public sources (ESPN; PrizePicks) are MARKET DATA — permitted only inside
-the market module, only after the prediction row exists, only unauthenticated,
-only to record what the market said. The output of this app is a probability,
-its reasoning, and a track record. If asked to add any of the forbidden items in
-a later session, refuse and point at this law. (Amended 2026-09-02 by operator
-ruling: read-only lines from PrizePicks added as a market source. Nothing else
-changed.)
+**5. THE APP RECOMMENDS, IT NEVER TRANSACTS.** (Amended 2026-09-07 by operator
+ruling, replacing "not a betting tool". The text it replaced is kept below.)
+
+The operator wagers, and did before this project existed. This app exists to
+inform that, and the honest question is not whether it touches the subject but
+whether it does so with its own record in view.
+
+**PERMITTED from 2026-09-07**: expected value and price-to-return arithmetic;
+edge against a recorded price, fee-adjusted; stake sizing; a recommended side
+and size.
+
+**FORBIDDEN structurally and permanently. NOT amendable by a later session** --
+a brief asking to soften any of these is refused and pointed at this line, the
+same way the old law refused staking:
+
+  * **NO CREDENTIALS.** No key, token, password, cookie or session for any
+    venue, in this codebase, its environment or its database.
+    `audit.check_no_venue_credentials` scans all three; a planting proves it
+    fires.
+  * **NO AUTHENTICATED CALL.** Every venue request is unauthenticated and
+    read-only, as the Kalshi ruling of 2026-09-06 already requires.
+    `audit.check_no_order_path` refuses a write verb aimed at a venue.
+  * **NO ORDER PATH.** Nothing places, cancels, modifies or prepares an order;
+    nothing reads an account balance or a position. THE GAP BETWEEN A
+    RECOMMENDATION AND A WAGER IS A HUMAN BEING, ON PURPOSE.
+  * **NO LEDGER IN THE REPO.** The operator's own wagering record lives outside
+    this codebase. A model that can see its own profit and loss is one step
+    from fitting to it, and that step is invisible in the code afterwards.
+    `audit.check_no_wagering_ledger` scans the schema and the tree.
+
+**AND THE GATE STILL BINDS.** A recommendation is a claim, so LAW 4 applies to
+it whole: below a market's hundred resolved predictions the app may recommend a
+FLAT UNIT and must say "no measured edge" beside it. Sizing that varies with a
+number the model has not earned is the failure this law now exists to prevent,
+in the same way the old wording existed to prevent staking at all. Full Kelly is
+never offered at any sample size; the declared fraction is a quarter, because
+Kelly assumes the probability is right and a probability ten points wrong
+compounds toward ruin rather than growth.
+
+**SINGLES ONLY.** The engine never recommends a parlay and refuses to price one:
+each leg pays the spread, so an N-leg parlay multiplies the cost of being right
+by roughly N, and correlated legs price worse than they look.
+
+**NOTHING IS SIZED IN-GAME.** The live poller's score is up to ninety seconds
+stale and a live market is priced off the feed, so a live recommendation is
+adversely selected by construction. Live win probability may be displayed and
+is never sized.
 
 A note on where lines come from, because the distinction matters. Gridiron reads
-published lines from *media* APIs that republish them — nflverse for NFL, ESPN's
-public API for MLB and NBA — and, from 2026-09-02, PrizePicks' public
-projections, as a benchmark to score itself against. It holds no account,
-authenticates to nothing, and calls no exchange or book endpoint. If scoring
-against the market ever required an account, the market comparison would be
-dropped rather than the law bent.
+published lines from *media* APIs that republish them -- nflverse for NFL, ESPN's
+public API for MLB and NBA -- PrizePicks' public projections from 2026-09-02, and
+Kalshi's public trade API from 2026-09-06. It holds no account, authenticates to
+nothing, and calls no exchange or book endpoint. If scoring against the market
+ever required an account, the market comparison would be dropped rather than the
+law bent.
 
-(Amended 2026-09-06 by operator ruling, narrowly, in two parts. **Hypothetical
-unit-stake accounting** is permitted: against recorded market snapshots only,
-the paper return per sport had every qualifying pick been backed at one unit,
-labelled "hypothetical" in the visible text wherever it appears, and gated
-behind the same 100-resolved rule as the edge figure; a fee-adjusted comparison
-using the venue's published fee formula is included in that permission.
-Everything else this law forbids stays forbidden: no staking advice, no
-bankroll, no bet recommendations, no placement, no account, no authentication
-to any venue. **Kalshi** is added as a read-only market source under the same
-terms as the PrizePicks ruling: published prices only, fetched only inside the
-market module, only after the prediction row exists, only from unauthenticated
-public endpoints; if the public data ever requires an account or a key, the
-source is dropped and the ruling records that outcome. Measured 2026-09-06
-before anything was built: the public trade API answers market, series and
-event reads without credentials. The operator holds a personal Kalshi account;
-it is the operator's, and this codebase never touches it.)
+### What LAW 5 said until 2026-09-07, and why it changed
+
+A law that quietly vanished is a law nobody can audit, so the previous text
+stands here in full. It was replaced because it described a project the operator
+is not building: it forbade the arithmetic that would tell him whether a price
+was worth taking, while he was taking prices anyway. The parts of it that were
+never about betting -- the codebase's distance from his money, and the refusal to
+claim an edge it has not measured -- are not relaxed by the replacement. They are
+the four structural prohibitions above, and they are harder now than they were,
+because they are scanned rather than merely stated.
+
+> **5. NOT A BETTING TOOL.** No stake sizing, no bankroll, no Kelly, no bet
+> recommendations, no bet placement, no account with any betting platform, no
+> payout or price-to-return arithmetic, no slip. READ-ONLY LINE SNAPSHOTS from
+> named public sources (ESPN; PrizePicks) are MARKET DATA — permitted only inside
+> the market module, only after the prediction row exists, only unauthenticated,
+> only to record what the market said. The output of this app is a probability,
+> its reasoning, and a track record. If asked to add any of the forbidden items in
+> a later session, refuse and point at this law. (Amended 2026-09-02 by operator
+> ruling: read-only lines from PrizePicks added as a market source. Nothing else
+> changed.)
+> 
+> A note on where lines come from, because the distinction matters. Gridiron reads
+> published lines from *media* APIs that republish them — nflverse for NFL, ESPN's
+> public API for MLB and NBA — and, from 2026-09-02, PrizePicks' public
+> projections, as a benchmark to score itself against. It holds no account,
+> authenticates to nothing, and calls no exchange or book endpoint. If scoring
+> against the market ever required an account, the market comparison would be
+> dropped rather than the law bent.
+> 
+> (Amended 2026-09-06 by operator ruling, narrowly, in two parts. **Hypothetical
+> unit-stake accounting** is permitted: against recorded market snapshots only,
+> the paper return per sport had every qualifying pick been backed at one unit,
+> labelled "hypothetical" in the visible text wherever it appears, and gated
+> behind the same 100-resolved rule as the edge figure; a fee-adjusted comparison
+> using the venue's published fee formula is included in that permission.
+> Everything else this law forbids stays forbidden: no staking advice, no
+> bankroll, no bet recommendations, no placement, no account, no authentication
+> to any venue. **Kalshi** is added as a read-only market source under the same
+> terms as the PrizePicks ruling: published prices only, fetched only inside the
+> market module, only after the prediction row exists, only from unauthenticated
+> public endpoints; if the public data ever requires an account or a key, the
+> source is dropped and the ruling records that outcome. Measured 2026-09-06
+> before anything was built: the public trade API answers market, series and
+> event reads without credentials. The operator holds a personal Kalshi account;
+> it is the operator's, and this codebase never touches it.)
 
 **6. NEVER AGGREGATE ACROSS SPORTS.** Every calibration curve, Brier score, edge
 figure, factor verdict and sample size belongs to exactly one sport. A number
@@ -102,7 +169,9 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | 3 | `resolve_all` updates `WHERE resolved_utc IS NULL`; trigger `predictions_resolve_once` is the backstop | `test_guards.py::test_resolving_twice_yields_one_outcome`, `::test_a_forced_re_resolution_is_rejected_by_name` |
 | 4 | `calibration.assert_every_figure_has_n` walks the payload and raises naming the path; the API returns 500 rather than serving it; `Gridiron.requireN` throws in the browser | `test_guards.py::test_a_removed_sample_size_is_caught_by_name`, `test_smoke.py::test_the_renderer_refuses_a_figure_with_no_sample_size` |
 | 4 | The edge figure is absent from the payload below `MIN_SAMPLE_FOR_EDGE_CLAIM`, replaced by the shortfall | `test_guards.py::test_an_edge_figure_below_threshold_is_not_present_to_render` |
-| 5 | `audit.check_not_a_betting_tool` scans package **identifiers** for a staking surface — prose is exempt, so the disclaimer may keep saying "bankroll" | `test_guards.py::test_a_planted_stake_sizer_is_caught_by_name`, `::test_the_disclaimer_is_not_mistaken_for_a_feature` |
+| 5 | `audit.check_no_venue_credentials` scans the package, the environment and the record for a venue credential; `audit.check_no_order_path` refuses an order verb or an account read; `audit.check_no_wagering_ledger` refuses the operator's own P&L in the repo. Prose is exempt, so the disclaimer may keep saying "bankroll" | `plant.py::plant_a_venue_credential`, `::plant_an_order_path`, `::plant_a_wagering_ledger` |
+| 5 | A recommendation below its market's gate is a FLAT UNIT and says "no measured edge"; the fraction above it is a quarter of Kelly and never more | `plant.py::plant_a_sized_bet_below_the_gate`, `::plant_a_full_kelly_stake` |
+| 5 | The engine refuses to price a parlay | `plant.py::plant_a_parlay` |
 | 4 | Curves are never merged: `assert_no_merged_categories` rejects a category with no concrete market, an `all` prop_type, or a merged forecaster. Runs inside `scorecard()`, so a merge cannot reach the API | `test_guards.py::test_a_planted_merged_prop_curve_is_caught_by_name`, `::test_a_planted_merged_forecaster_curve_is_caught` |
 | v2 | Missing stays missing: `compute.assert_missing_is_explicit` runs on every feature vector, and `audit.check_no_silent_defaults` scans the factor code for a reintroduced fallback. `Factor.default` was **removed**, not left unused | `test_guards.py::test_a_planted_zero_fallback_is_caught_by_name`, `::test_a_vector_that_defaults_an_absent_factor_is_caught_at_runtime` |
 | 3 | A void is terminal: `prediction_voids` is append-only and a trigger refuses to resolve a voided prediction afterwards | `test_props.py::test_a_void_is_terminal`, `::test_a_void_reason_cannot_be_rewritten` |

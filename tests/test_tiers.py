@@ -126,7 +126,7 @@ def test_no_stake_or_unit_surface_anywhere_in_the_tier_code(mlb_league):
     the ban is asserted where the temptation is."""
     from gridiron import audit
 
-    audit.check_not_a_betting_tool()
+    audit.check_no_order_path()
 
     card_tier = calibration.tier_from_bucket(
         {"label": "70-80%", "n": 41, "actual": 0.64}

@@ -1339,3 +1339,47 @@ RANK_EDGE_GATE = MIN_SAMPLE_FOR_EDGE_CLAIM
 def shortlist_cap(sport: str) -> int | None:
     """How many questions lead this sport's slate, or None for all of them."""
     return SHORTLIST_CAPS.get(sport, None)
+
+
+# ---------------------------------------------------------------------------
+# THE RECOMMENDATION (THE_RECOMMENDATION R2, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# LAW 5 as amended permits a size. These are the constants that bound it, and
+# every one of them is a declared choice rather than a fitted one -- a sizing
+# rule tuned against the record would be the discovery LAW 2 forbids, with
+# money attached.
+#
+# NOTHING HERE IS A BALANCE. `BANKROLL_UNITS` is a denominator, not an amount:
+# the operator maps a unit to money outside this codebase, and no venue balance
+# is ever read (LAW 5's permanent half).
+
+#: THE FLAT UNIT, and the only size available below a market's gate. One unit,
+#: the same one for a 92% claim as for a 62% one, because a probability the
+#: model has not earned the right to claim must not move the stake.
+FLAT_UNIT = 1.0
+
+#: A QUARTER OF KELLY, above the gate, and never more. Kelly is optimal only if
+#: the probability is exactly right; on a probability ten points wrong, full
+#: Kelly compounds toward ruin rather than growth, and the fraction is the
+#: standard concession to a model that could be wrong by that much. Declared
+#: 2026-09-07 and not tuned: a fraction fitted to this record would be fitted
+#: to 1,142 rows of which none has settled in a gated market.
+KELLY_FRACTION = 0.25
+KELLY_DECLARED = "2026-09-07T00:00:00Z"
+
+#: A HARD CEILING ON ANY SINGLE RECOMMENDATION, whatever the arithmetic says.
+#: Kelly on a 90% claim at a 50-cent price asks for a fifth of the bankroll;
+#: the cap is what stands between one such claim and a fifth of the money.
+MAX_FRACTION = 0.02
+
+#: THE DENOMINATOR, in units. Awaiting the operator's own number (THE_PRICED
+#: D3, drafted 2026-09-07): a hundred units means a size of "1.4 units" reads
+#: as 1.4% of the ring-fenced money, whatever that money is. Replacing this
+#: with the operator's figure changes no arithmetic, only the words on a line.
+BANKROLL_UNITS = 100.0
+
+#: HOW MUCH EDGE IS AN EDGE, in cents per contract, after the fee. A tenth of
+#: a cent is arithmetic noise on a price quoted in whole cents; one cent is the
+#: smallest difference the venue itself can express.
+MIN_EDGE_CENTS = 1.0
