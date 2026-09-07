@@ -412,7 +412,26 @@ def _run_near_start(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     counts = _near_start_snapshots(conn)
     due = counts.get("near_start_due", 0)
     if not due:
-        return ("noop", "no game starts within the next two hours", counts)
+        # TWO DIFFERENT REASONS FOR DOING NOTHING, and they were reported as
+        # one. At 19:00Z on the day this ran first, a game was kicking off at
+        # 19:10 and the task said "no game starts within the next two hours":
+        # the two predictions on it already had their second look, taken on an
+        # earlier firing of the same clock. A task that misreports why it did
+        # nothing is how a scheduler talks somebody out of trusting it.
+        soon = conn.execute(
+            "SELECT COUNT(*) FROM games WHERE status = 'scheduled'"
+            "   AND kickoff_utc > ? AND kickoff_utc <= ?",
+            (db.utcnow(), _plus_hours(db.utcnow(), NEAR_START_HOURS))
+        ).fetchone()[0]
+        counts["near_start_games_in_window"] = soon
+        if soon:
+            return ("noop",
+                    f"{language.counted(soon, 'game')} starts within the next "
+                    f"{NEAR_START_HOURS:g} hours and every one of them has "
+                    f"already had its second look", counts)
+        return ("noop",
+                f"no game starts within the next {NEAR_START_HOURS:g} hours",
+                counts)
     took = counts.get("near_start_taken", 0)
     claims = counts.get("at_the_line_claims", 0)
     closed = counts.get("closing_prices", 0)
