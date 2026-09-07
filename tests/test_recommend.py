@@ -11,7 +11,9 @@ import pytest
 from gridiron import audit, calibration, config, db, language, shortlist
 from gridiron.market import recommend
 
-WHOLE = json.dumps({"coverage": 1.0})
+DIST = {"quantity": "home_margin", "family": "normal", "mean": 2.0, "sd": 13.0,
+        "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+WHOLE = json.dumps({"coverage": 1.0, "margin_distribution": DIST})
 
 
 def _world(tmp_path, *, status="scheduled", kickoff="2026-09-09T00:00:00Z"):
@@ -55,10 +57,28 @@ def _pick(conn, *, prob=0.62, implied=0.46, subject="AAA", market="moneyline"):
         (market, subject, prob, WHOLE))
     pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
     if implied is not None:
+        # THE VENUE'S OWN PRICE, through the at-the-line claim the engine reads.
+        # A market snapshot is a bookmaker's line republished by a media API;
+        # the recommendation is priced, fed and closed at one venue, so the
+        # fixture provides that venue's row.
         conn.execute(
             "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
             " implied_prob, kind) VALUES (?, '2026-09-07T01:00:00Z', 'test', ?,"
             " 'open_at_predict')", (pid, implied))
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " fetched_utc) VALUES ('kalshi', ?, 'e', 'mlb', 'g0', ?,"
+            " 'home_margin', -1.5, 'home', ?, ?, '2026-09-07T01:00:00Z')",
+            (f"t{pid}", market, implied - 0.01, implied + 0.01))
+        quote_id = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, dist_mean, dist_sd,"
+            " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+            " VALUES (?, ?, 'kalshi', 'mlb', 'g0', ?, 'home_margin', -1.5,"
+            " 'home', 2.0, 13.0, ?, ?, ?, 'mid', '2026-09-07T01:30:00Z')",
+            (pid, quote_id, market, prob, implied, implied))
     conn.commit()
     shortlist.rank_rows(conn, [pid])
     return pid
@@ -166,11 +186,22 @@ def test_the_closing_line_is_measured_once_and_can_report_bad_news(tmp_path):
     conn = _world(tmp_path, kickoff="2026-09-07T02:00:00Z")
     pid = _pick(conn)
     recommend.record_for(conn, [pid])
-    # the near-start look, taken before the game started
+    # THE NEAR-START LOOK AT THE SAME VENUE, taken before the game started.
+    # The closing line is that venue's last word on the same proposition, not
+    # another venue's.
     conn.execute(
-        "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
-        " implied_prob, kind) VALUES (?, '2026-09-07T01:50:00Z', 'test', 0.52,"
-        " 'near_start')", (pid,))
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+        " VALUES ('kalshi', 'near', 'e', 'mlb', 'g0', 'moneyline', 'home_margin',"
+        " -1.5, 'home', 0.51, 0.53, '2026-09-07T01:50:00Z')")
+    near_quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, dist_mean, dist_sd, model_prob,"
+        " venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'mlb', 'g0', 'moneyline', 'home_margin', -1.5,"
+        " 'home', 2.0, 13.0, 0.62, 0.52, 0.52, 'mid', '2026-09-07T01:55:00Z')",
+        (pid, near_quote))
     conn.commit()
     counts = recommend.record_closing_prices(conn)
     assert counts["closed"] == 1

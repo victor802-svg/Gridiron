@@ -3212,13 +3212,14 @@ def nothing_priced_line(considered: int, uncovered: int, no_edge: int) -> str:
     """
     if not considered:
         return ("Nothing priced wrong enough today. No question on this slate "
-                "had a recorded price to compare against.")
+                "reached the point of being priced at all.")
     if uncovered and not no_edge:
-        return (f"Nothing priced wrong enough today. All {uncovered} priced "
-                f"questions were in markets this engine is not covering.")
+        return (f"Nothing priced wrong enough today. All {uncovered} of the "
+                f"questions leading this slate were in markets this engine "
+                f"does not cover.")
     parts = []
     if no_edge:
-        parts.append(f"{no_edge} carried a price and none cleared the venue's fee")
+        parts.append(f"{no_edge} carried a venue price and none cleared its fee")
     if uncovered:
         parts.append(f"{uncovered} were in markets the engine does not cover")
     return "Nothing priced wrong enough today. " + ", and ".join(parts) + "."

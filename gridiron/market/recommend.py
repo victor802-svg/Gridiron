@@ -219,14 +219,28 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
     if not prediction_ids:
         return []
     placeholders = ",".join("?" for _ in prediction_ids)
+    # ONE VENUE, END TO END. The price comes from the at-the-line claim -- the
+    # model's own frozen distribution read at the venue's number, and the
+    # venue's price for that same proposition -- so the fee subtracted below
+    # belongs to the venue whose price it is.
+    #
+    # IT USED TO READ `market_snapshots`, which on this record is mostly a
+    # bookmaker's line republished by a media API. Pricing against that while
+    # charging an exchange's fee and measuring coverage from the exchange's
+    # ladders is three venues in one sentence, and the middle one is not
+    # tradeable: a book's implied probability carries its own margin.
     rows = conn.execute(
         "SELECT p.id, p.sport, p.game_id, p.market_type, p.prop_type, p.subject,"
         " p.line_asked, p.model_prob, p.model_side, p.predictor, p.created_utc,"
-        " g.status,"
-        " g.kickoff_utc,"
-        " (SELECT s.implied_prob FROM market_snapshots s"
-        "   WHERE s.prediction_id = p.id ORDER BY s.id LIMIT 1) AS implied_prob"
+        " g.status, g.kickoff_utc,"
+        " c.model_prob AS claim_prob, c.venue_implied AS implied_prob,"
+        " c.line AS venue_line, c.venue AS venue"
         f" FROM predictions p JOIN games g ON g.id = p.game_id"
+        " LEFT JOIN at_the_line_claims c ON c.id = ("
+        "     SELECT c2.id FROM at_the_line_claims c2"
+        "      WHERE c2.prediction_id = p.id"
+        "        AND (g.kickoff_utc IS NULL OR c2.created_utc < g.kickoff_utc)"
+        "      ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
         f" WHERE p.id IN ({placeholders})", list(prediction_ids)).fetchall()
     ranks = ranker.ranks_for(conn, prediction_ids)
 
@@ -244,6 +258,12 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         except NotSizedInGame:
             continue
         price = row["implied_prob"]
+        # THE MODEL'S NUMBER FOR THE VENUE'S QUESTION, which is not the same as
+        # its number for our own. The claim carries the frozen distribution
+        # read at the venue's line; the prediction's probability answers a
+        # question asked at ours, and comparing that with the venue's price
+        # would be comparing two different propositions.
+        model_prob = row["claim_prob"]
         settled = rank["edge_gate_n"] or 0
         # COVERAGE FIRST (THE_PRICED P2/P5, 2026-09-07). A market the engine is
         # not allowed to price gets a forecast and no opinion, and the reason
@@ -251,13 +271,13 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         # own closing line.
         allowed = coverage.priceable(conn, row["sport"],
                                      row["prop_type"] or row["market_type"])
-        chosen = (side_for(row["model_prob"], price) if allowed["priceable"]
+        chosen = (side_for(model_prob, price) if allowed["priceable"]
                   else {"side": None, "edge_cents": None, "why": allowed["why"]})
         ahead = measured_edge(conn, sport=row["sport"],
                               market_type=row["market_type"],
                               prop_type=row["prop_type"],
                               predictor=row["predictor"])
-        size = size_for(model_prob=row["model_prob"], price=price,
+        size = size_for(model_prob=model_prob, price=price,
                         settled=settled, measured_edge=ahead["ahead"])
         out.append({
             "prediction_id": row["id"],
@@ -267,7 +287,9 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             "subject": row["subject"],
             "line_asked": row["line_asked"],
             "model_side": row["model_side"],
-            "fair_value": fair_value(row["model_prob"]),
+            "fair_value": fair_value(model_prob),
+            "venue": row["venue"],
+            "venue_line": row["venue_line"],
             "price": round(price, 4) if price is not None else None,
             "edge_cents": chosen["edge_cents"],
             "side": chosen["side"],
@@ -370,13 +392,16 @@ def record_closing_prices(conn: sqlite3.Connection) -> dict:
     closing price rather than a guessed one.
     """
     counts = {"closed": 0, "no_close": 0, "still_open": 0}
+    # THE SAME VENUE'S LAST WORD, not another venue's. The near-start pass
+    # re-reads the ladder past the cache, so the last claim written before the
+    # game started is the venue's own closing estimate of the proposition the
+    # recommendation was made on.
     rows = conn.execute(
         "SELECT r.id, r.prediction_id, r.side, r.price, g.kickoff_utc, g.status,"
-        " (SELECT s.implied_prob FROM market_snapshots s"
-        "   WHERE s.prediction_id = r.prediction_id"
-        "     AND s.implied_prob IS NOT NULL"
-        "     AND (g.kickoff_utc IS NULL OR s.fetched_utc <= g.kickoff_utc)"
-        "   ORDER BY s.fetched_utc DESC, s.id DESC LIMIT 1) AS close_price"
+        " (SELECT c.venue_implied FROM at_the_line_claims c"
+        "   WHERE c.prediction_id = r.prediction_id"
+        "     AND (g.kickoff_utc IS NULL OR c.created_utc <= g.kickoff_utc)"
+        "   ORDER BY c.created_utc DESC, c.id DESC LIMIT 1) AS close_price"
         " FROM recommendations r JOIN games g ON g.id = r.game_id"
         " WHERE r.closed_utc IS NULL").fetchall()
     now = utcnow()
