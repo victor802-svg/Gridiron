@@ -240,3 +240,54 @@ def test_the_spec_ships_no_database_and_no_token():
     assert "COLLECT(" in code, "not a onedir build"
     assert "exclude_binaries=True" in code, "not a onedir build"
     assert "onefile" not in code.lower()
+
+
+# --- a server started with no console (2026-09-07) ---------------------------
+
+def test_a_server_with_no_usable_output_writes_to_its_log(tmp_path, monkeypatch):
+    """The scheduler starts the bundle with no console, and uvicorn logs its
+    first line during startup. The process died there: alive in the task list,
+    listening on nothing, with the traceback in a dialog nobody was in front
+    of. `start_server` had handed its child a real file handle for exactly
+    this reason since the bundle existed; every other way of starting the
+    server was unprotected.
+
+    The probe is a real write, because a handle can look present and fail on
+    use -- so a check for None would have passed and the process would still
+    have died.
+    """
+    class Dead:
+        def write(self, _text):
+            raise OSError("the handle is not valid")
+
+        def flush(self):
+            raise OSError("the handle is not valid")
+
+    log = tmp_path / "launcher.log"
+    monkeypatch.setattr(launcher, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(launcher, "LOG_FILE", log)
+    monkeypatch.setattr(sys, "stdout", Dead())
+    monkeypatch.setattr(sys, "stderr", Dead())
+
+    launcher.ensure_serve_output()          # must not raise
+    try:
+        print("a line the server would have written")
+        sys.stdout.flush()
+    finally:
+        handle, sys.stdout, sys.stderr = sys.stdout, Dead(), Dead()
+        if hasattr(handle, "close"):
+            handle.close()
+
+    written = log.read_text(encoding="utf-8")
+    assert "serve-only start" in written
+    assert "a line the server would have written" in written
+    # and the stamp is UTC, like every other stamp in this project
+    assert written.strip().splitlines()[0].endswith("---")
+    assert "Z ---" in written
+
+
+def test_a_working_output_is_left_alone(capsys):
+    """The redirect is for the broken case only. A server started from a shell
+    with its output redirected to a file must keep writing there."""
+    launcher.ensure_serve_output()
+    assert "serve-only start" in capsys.readouterr().out

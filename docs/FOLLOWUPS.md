@@ -882,6 +882,35 @@ treats as a system-wide change and refuses. Scoped to the current user it
 registers without elevation, and it carries restart-on-failure settings a
 shortcut cannot. The shortcut was removed so the interface is not started twice.
 
+### The server the scheduler could not start, and what is still unexplained
+
+The first thing `Gridiron-Serve` did was fail. The process came up alive, bound
+no port, and sat there showing PyInstaller's **"Unhandled exception in script"**
+dialog where nobody was looking; `Get-NetTCPConnection` found no listener and no
+other holder of the port. It reproduced twice. The same executable, started from
+a shell with its output redirected to a file, served correctly every time, and
+so did the task once its action was wrapped in `cmd.exe ... > log 2>&1`.
+
+That pointed at output, and the knowledge was already in `desktop/launcher.py`:
+`start_server` hands its child a real file handle and its comment says why --
+"a console=False frozen build has no stdout handle at all; the first log line
+it writes then kills the process". **Everything that reached `--serve-only`
+through the window was protected. Anything that launched the executable
+directly was not.** That protection now sits at the entrance, with a test that
+proves the redirect fires when a write raises.
+
+**AND IT IS NOT PROVEN TO BE THE CAUSE.** After the rebuild the task starts
+cleanly -- four consecutive runs, no dialog, health OK each time -- but the
+redirect never fired in any of them: the log file was untouched, so the
+process's standard output was usable. Either the fault was in the build the
+scheduler ran twice, or it is intermittent and has not recurred.
+
+**What to check**: after the next real logon, that `Gridiron-Serve` is running
+and `http://127.0.0.1:8848/api/health` answers. If the dialog returns, the
+thing to capture before killing it is the dialog's text -- it carries the
+traceback, and both times it was closed without being read, which is why this
+paragraph exists instead of a diagnosis.
+
 **A test caught the new task within a minute of it existing.**
 `test_every_task_is_installable_and_worded` holds four lists together --
 `tasks.TASKS`, `scheduler.OS_TASK_NAMES`, `language.TASK_WORDS` and the

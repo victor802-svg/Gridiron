@@ -455,7 +455,12 @@ def stop_server(port: int, timeout: float = 10.0) -> bool:
 def start_server(port: int) -> subprocess.Popen:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     handle = LOG_FILE.open("a", encoding="utf-8")
-    handle.write(f"\n--- launcher start {time.strftime('%Y-%m-%dT%H:%M:%SZ')} ---\n")
+    # UTC, as every other stamp in this project is. It read the local
+    # clock and labelled it Z until 2026-09-07, which is the one kind of
+    # wrong timestamp that never looks wrong.
+    handle.write(
+        "\n--- launcher start "
+        f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} ---\n")
     handle.flush()
 
     if getattr(sys, "frozen", False):
@@ -501,6 +506,52 @@ def signed_in_url(port: int) -> str:
     return url or f"http://{HOST}:{port}/"
 
 
+def ensure_serve_output() -> None:
+    """Give the server somewhere to write before it writes anything.
+
+    A FROZEN BUILD STARTED WITH NO CONSOLE HAS NO USABLE STDOUT, and uvicorn
+    logs its first line during startup. The process then dies before it binds,
+    which from outside looks like an application that starts and does nothing:
+    alive in the task list, listening on no port, with the traceback in a
+    dialog box nobody is sitting in front of.
+
+    Measured on 2026-09-07, when `Gridiron-Serve` was registered as a logon
+    task. The same executable served correctly from a shell with its output
+    redirected, and failed every time the scheduler started it.
+
+    `start_server` has handed its child a real file handle for exactly this
+    reason since the bundle existed. This is that protection moved to the
+    entrance, so it covers every way the server can be started rather than the
+    one that goes through the window.
+
+    The probe is a real write, not a check for None. A handle can look present
+    and fail on use, which is the case this exists for.
+    """
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    banner = f"--- serve-only start {stamp} ---"
+    try:
+        if sys.stdout is None or sys.stderr is None:
+            raise OSError("no standard handles")
+        print(banner, flush=True)
+        return
+    except Exception:  # noqa: BLE001 - any failure here means redirect
+        pass
+
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        handle = LOG_FILE.open("a", encoding="utf-8", buffering=1)
+    except Exception:  # noqa: BLE001 - a server that cannot log must still serve
+        try:
+            devnull = open(os.devnull, "w", encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            return
+        sys.stdout = sys.stderr = devnull
+        return
+    sys.stdout = handle
+    sys.stderr = handle
+    print(banner, flush=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Open Gridiron in a window.")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -517,6 +568,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.serve_only:
+        # BEFORE THE IMPORT, because anything that logs on the way in would
+        # hit the same missing handle.
+        ensure_serve_output()
         from gridiron import api, config
 
         api.set_database(config.DB_PATH)
