@@ -1719,3 +1719,51 @@ BEFORE DELETE ON priced_forecasts
 BEGIN
     SELECT RAISE(ABORT, 'GRIDIRON LAW 3: a priced forecast is never deleted');
 END;
+
+-- ---------------------------------------------------------------------------
+-- PICKS TAKEN (GRIDIRON_TODAY T2, 2026-09-07). Which pick, and when.
+--
+-- TWO COLUMNS AND NO THIRD ONE, and the missing third is the point. LAW 5
+-- keeps the operator's wagering ledger outside this repository because a model
+-- that can see its own profit and loss is one step from fitting to it. This
+-- table therefore records that a pick was taken and the moment it was: never a
+-- stake, never a price paid, never a payout, never a result in money.
+-- `audit.check_taken_is_not_a_ledger` fails by name on a money-shaped column
+-- here, and a planting adds one to prove it fires.
+--
+-- AND NOTHING THAT TRAINS OR CORRECTS THE MODEL MAY READ IT. The operator
+-- takes a fraction of the list and takes it for his own reasons; those picks
+-- are a biased sample of the model's own work, and a model fitted to them
+-- would be learning his habits rather than the sport.
+-- `audit.check_taken_not_in_training` reads the SQL of every training and
+-- correction module and fails if this table's name appears there.
+--
+-- WHAT IT IS FOR: one question, and it is answerable rather than rhetorical --
+-- do the picks he selected score better, worse, or the same as the ones he
+-- passed over? Three curves, never merged, behind the usual gate.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS picks_taken (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_id  INTEGER NOT NULL REFERENCES predictions (id),
+    taken_utc      TEXT    NOT NULL,
+    UNIQUE (prediction_id)
+);
+CREATE INDEX IF NOT EXISTS picks_taken_when ON picks_taken (taken_utc);
+
+CREATE TRIGGER IF NOT EXISTS picks_taken_no_update
+BEFORE UPDATE ON picks_taken
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a taken pick is append-only. It records that a pick '
+        || 'was taken and when; there is nothing in it to revise');
+END;
+
+CREATE TRIGGER IF NOT EXISTS picks_taken_after_the_prediction
+BEFORE INSERT ON picks_taken
+FOR EACH ROW
+WHEN NEW.taken_utc < (SELECT created_utc FROM predictions WHERE id = NEW.prediction_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: a pick cannot be taken before it was forecast');
+END;

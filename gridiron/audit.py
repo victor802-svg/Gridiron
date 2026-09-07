@@ -5292,7 +5292,7 @@ ADVICE_WORDS: tuple[str, ...] = (
     # that puts twenty questions in front of a reader every morning is one
     # adjective away from being a tip sheet, and the two read almost the same
     # until you notice that one of them is telling you what to do.
-    "card of the day", "pick of the day",
+    "card of the day", "pick of the day", "worth it", "worth backing",
     # "leans" is NOT here, and the render is why. The hero already says "the
     # model leans harder on its own reading", which is a sentence about a
     # probability and not a recommendation; adding the word would have made the
@@ -5722,4 +5722,97 @@ def check_no_wagering_ledger(root: Path | None = None, conn=None) -> None:
     if faults:
         raise LawViolation(
             "LAW 5: THE OPERATOR'S OWN WAGERING LEDGER IS IN THE REPOSITORY."
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+# ---------------------------------------------------------------------------
+# WHICH PICKS WERE TAKEN, AND WHAT THAT RECORD MAY NEVER BECOME
+# (GRIDIRON_TODAY T2, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# `picks_taken` holds a prediction id and a time. Two scans stand over it, and
+# they guard two different failures:
+#
+#   * IT MUST NOT GROW A LEDGER. A stake, a price paid, a payout or a result in
+#     money would make it the thing LAW 5 keeps outside this repository, and it
+#     would arrive one convenient column at a time.
+#   * IT MUST NOT REACH THE MODEL. The operator takes a fraction of the list
+#     and takes it for his own reasons; a model fitted to those picks would be
+#     learning his habits rather than the sport, and the damage would be
+#     invisible afterwards because the fit would look ordinary.
+
+TAKEN_TABLE = "picks_taken"
+
+#: Column names that would turn a record of choices into a record of money.
+LEDGER_SHAPED_COLUMNS = (
+    "stake", "price", "paid", "payout", "payoff", "profit", "loss", "amount",
+    "units", "size", "returned", "return", "odds", "cost", "won", "balance",
+    "pnl", "money", "usd", "dollars", "wager", "risk",
+)
+
+#: The modules that teach the model anything. None of them may name the table.
+TRAINING_MODULES = (
+    "model/baseline.py", "model/logistic.py", "model/predict.py",
+    "model/questions.py", "correction.py", "drift.py", "shortlist.py",
+    "factors/compute.py", "factors/registry.py", "factors/context.py",
+    "factors/store.py",
+)
+
+
+def taken_ledger_faults(conn) -> list[str]:
+    """A money-shaped column on the record of which picks were taken."""
+    faults: list[str] = []
+    for row in conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type = 'table'"
+            "   AND name = ?", (TAKEN_TABLE,)):
+        for column in conn.execute(f"PRAGMA table_info({TAKEN_TABLE})"):
+            lowered = column["name"].lower()
+            for word in LEDGER_SHAPED_COLUMNS:
+                if word in lowered:
+                    faults.append(
+                        f"{TAKEN_TABLE}.{column['name']} is money-shaped. LAW 5: "
+                        f"this table records WHICH pick and WHEN. A stake, a "
+                        f"price, a payout or a result in money makes it the "
+                        f"operator's wagering ledger, which lives outside this "
+                        f"repository.")
+    return sorted(set(faults))
+
+
+def check_taken_is_not_a_ledger(conn) -> None:
+    faults = taken_ledger_faults(conn)
+    if faults:
+        raise LawViolation(
+            "LAW 5: THE RECORD OF TAKEN PICKS HAS GROWN A LEDGER:"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+def taken_in_training_faults(root: Path | None = None) -> list[str]:
+    """The taken table named by anything that teaches the model.
+
+    Reads the SQL as text rather than trusting the call graph: a training query
+    that mentions the table is a fault whether or not today's code path reaches
+    it, because the next edit will.
+    """
+    root = root or config.PACKAGE_ROOT
+    faults: list[str] = []
+    for relative in TRAINING_MODULES:
+        path = root / relative
+        if not path.exists():
+            continue
+        source = _python_without_comments(path.read_text(encoding="utf-8"))
+        if TAKEN_TABLE in source:
+            faults.append(
+                f"{relative} names {TAKEN_TABLE}. The picks the operator took "
+                f"are a biased sample of the model's own work: a model fitted "
+                f"to them learns his habits rather than the sport, and the "
+                f"damage is invisible afterwards because the fit looks "
+                f"ordinary.")
+    return faults
+
+
+def check_taken_not_in_training(root: Path | None = None) -> None:
+    faults = taken_in_training_faults(root)
+    if faults:
+        raise LawViolation(
+            "THE MODEL CAN SEE WHICH PICKS WERE TAKEN:"
             + _NL2 + _NL2.join(faults[:8]))

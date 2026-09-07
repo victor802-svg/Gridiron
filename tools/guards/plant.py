@@ -7061,6 +7061,90 @@ def plant_a_prop_market_on_the_llm_roster() -> Result:
                   "audit.llm_routing_faults", True, faults[0])
 
 
+LAW_TAKEN = "WHICH PICKS WERE TAKEN IS NOT A LEDGER, AND THE MODEL CANNOT SEE IT"
+
+
+def plant_a_watched_row_called_worth_backing() -> Result:
+    """Call a row that does not clear the fee something worth backing
+    (GRIDIRON_TODAY T1, 2026-09-07).
+
+    The operator ruled the daily list is never empty. The watched group answers
+    that by SHOWING a row and printing its true edge beside it, including when
+    that edge is negative. One adjective turns showing into asserting, and the
+    line between them is scanned rather than intended.
+    """
+    from gridiron import audit as _audit
+
+    clean = {"shortlist": {"words": "Watching - 18 more, none of which clears "
+                                    "the venue's fee"},
+             "cards": [{"prediction_id": 1,
+                        "rank_line": "56% of the way from a coin flip"}]}
+    if _audit.slate_advice_faults(clean):
+        return Result(LAW_TAKEN, "a watched row called worth backing",
+                      "audit.slate_advice_faults", False,
+                      "the scan fires on wording that asserts nothing; fix the "
+                      "scan before trusting this planting")
+    planted = {"shortlist": {"words": "Watching - 18 more, each one worth it "
+                                      "at this price"},
+               "cards": []}
+    faults = _audit.slate_advice_faults(planted)
+    if not faults:
+        return Result(LAW_TAKEN, "a watched row called worth backing",
+                      "audit.slate_advice_faults", False,
+                      "NOT CAUGHT - a row that does not clear the venue's fee "
+                      "is now described as worth backing, which is the app "
+                      "asserting what it has measured the opposite of")
+    return Result(LAW_TAKEN, "a watched row called worth backing",
+                  "audit.slate_advice_faults", True, faults[0])
+
+
+def plant_a_ledger_column_on_the_taken_table() -> Result:
+    """Add money to the record of which picks were taken (T2, 2026-09-07)."""
+    from gridiron import audit as _audit, db as _db
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    if _audit.taken_ledger_faults(conn):
+        return Result(LAW_TAKEN, "a money column on the taken table",
+                      "audit.taken_ledger_faults", False,
+                      "the shipped table already has one; fix that first")
+    conn.execute("ALTER TABLE picks_taken ADD COLUMN stake_units REAL")
+    faults = _audit.taken_ledger_faults(conn)
+    if not faults:
+        return Result(LAW_TAKEN, "a money column on the taken table",
+                      "audit.taken_ledger_faults", False,
+                      "NOT CAUGHT - the record of which picks were taken is "
+                      "now the operator's wagering ledger, which LAW 5 keeps "
+                      "outside this repository")
+    return Result(LAW_TAKEN, "a money column on the taken table",
+                  "audit.taken_ledger_faults", True, faults[0])
+
+
+def plant_the_taken_table_in_a_training_query() -> Result:
+    """Let the model learn from the picks he chose (T2, 2026-09-07)."""
+    from gridiron import audit as _audit
+
+    if _audit.taken_in_training_faults():
+        return Result(LAW_TAKEN, "the taken table joined into training",
+                      "audit.taken_in_training_faults", False,
+                      "a training module already names it; fix that first")
+    root = _tree_with(
+        "model/baseline.py",
+        "def training_rows(conn):\n"
+        "    return conn.execute({QUOTE}SELECT p.* FROM predictions p\n"
+        "        JOIN picks_taken t ON t.prediction_id = p.id{QUOTE}).fetchall()\n"
+        .replace("{QUOTE}", chr(34) * 3))
+    faults = _audit.taken_in_training_faults(root=root)
+    if not faults:
+        return Result(LAW_TAKEN, "the taken table joined into training",
+                      "audit.taken_in_training_faults", False,
+                      "NOT CAUGHT - the model now trains on the fraction of "
+                      "its own output that one person chose, which teaches it "
+                      "his habits rather than the sport")
+    return Result(LAW_TAKEN, "the taken table joined into training",
+                  "audit.taken_in_training_faults", True, faults[0])
+
+
 LAW_NEVER_TRANSACTS = "THE APP RECOMMENDS, IT NEVER TRANSACTS"
 
 
@@ -7605,6 +7689,9 @@ def main() -> int:
     results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_raw_exception_on_the_health_panel())
     results.append(plant_a_prop_market_on_the_llm_roster())
+    results.append(plant_a_watched_row_called_worth_backing())
+    results.append(plant_a_ledger_column_on_the_taken_table())
+    results.append(plant_the_taken_table_in_a_training_query())
     results.append(plant_a_coverage_list_chosen_by_results())
     results.append(plant_the_priced_package_inside_the_blind_closure())
     results.append(plant_a_market_import_after_the_priced_exemption())

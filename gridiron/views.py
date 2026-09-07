@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import statistics
 
 from . import (audit, buildinfo, calibration, config, db, language,
                sports, subjects)
@@ -868,6 +869,15 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # WHAT IS WORTH TAKING (R4, 2026-09-07), computed from the shortlist that
     # was just marked. Empty on most days by design.
     recommendations_block = _recommendations_block(conn, cards)
+    # TODAY (T1, 2026-09-07): the two groups the operator reads first. Built
+    # from the same priced entries the block above counts, so the page cannot
+    # disagree with itself about what cleared the fee.
+    from .market import recommend as _recommend
+
+    today_block = _today_block(
+        conn, cards,
+        _recommend.for_predictions(
+            conn, [c["prediction_id"] for c in cards if c.get("on_shortlist")]))
 
     payload = {
         "sport": sport,
@@ -891,6 +901,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         "cards": cards,
         "shortlist": shortlist_block,
         "recommendations": recommendations_block,
+        "today": today_block,
         # WHOSE PICKS THESE ARE, and who else has some. Named on the payload
         # rather than inferred by the renderer from the cards: a list that
         # cannot say who made it is a list nobody can check.
@@ -1167,6 +1178,68 @@ def _attach_priced(conn: sqlite3.Connection, cards: list[dict]) -> None:
         card["priced_line"] = None if row is None else language.priced_line(
             row["blind_prob"], row["priced_prob"], row["price_at_write"],
             row["price_move_cents"])
+
+
+def _today_block(conn: sqlite3.Connection, cards: list[dict],
+                 priced: list[dict]) -> dict:
+    """The two groups the operator reads every morning, never blended.
+
+    CLEARS THE BAR is the recommendations: an edge that survives the venue's
+    fee. WATCHING is everything else on the shortlist, ranked, each carrying
+    its own edge in cents INCLUDING WHEN THAT NUMBER IS NEGATIVE -- which is
+    the whole point of showing it. The operator ruled the list is never empty;
+    this answers that ruling by showing rows rather than by asserting things.
+
+    And the fee is printed under both, every day, because the cost of a
+    no-edge bet belongs on the same screen as the temptation to make one.
+    """
+    by_id = {c["prediction_id"]: c for c in cards}
+    already = taken_ids(conn, [c["prediction_id"] for c in cards])
+    clears, watching = [], []
+    prices = []
+    for entry in priced:
+        card = by_id.get(entry["prediction_id"])
+        question = (card or {}).get("phrase") or (card or {}).get("row_title") \
+            or "this question"
+        if entry.get("price") is not None:
+            prices.append(entry["price"])
+        row = {
+            "prediction_id": entry["prediction_id"],
+            "n": entry["gate_n"],
+            "edge_cents": entry["edge_cents"],
+            "taken": entry["prediction_id"] in already,
+        }
+        if entry["side"] is not None:
+            size = entry["size"]
+            row["words"] = language.recommendation_line(
+                question=question, fair_value=entry["fair_value"],
+                price=entry["price"], edge_cents=entry["edge_cents"],
+                side=entry["side"], units=size["units"],
+                flat=size["kind"] == "flat", size_why=size.get("why"))
+            clears.append(row)
+        else:
+            row["words"] = language.watching_line(
+                question, entry.get("fair_value"), entry.get("price"),
+                entry.get("edge_cents"))
+            watching.append(row)
+
+    median_price = statistics.median(prices) if prices else None
+    fee_cents = None
+    if median_price is not None:
+        from .market import recommend as _recommend
+
+        fee_cents = round(_recommend.fee(median_price) * 100, 1)
+    return {
+        "n": len(clears),
+        "watching_n": len(watching),
+        "clears": clears,
+        "watching": watching,
+        "clears_heading": language.clears_the_bar_heading(len(clears)),
+        "watching_heading": language.watching_heading(len(watching)),
+        "fee_line": language.fee_arithmetic_line(median_price, fee_cents),
+        "taken_line": language.taken_line(sum(1 for r in clears + watching
+                                              if r["taken"])),
+    }
 
 
 def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
@@ -3159,3 +3232,111 @@ def mark_seen(
     )
     conn.commit()
     return previous
+
+
+def take_pick(conn: sqlite3.Connection, prediction_id: int) -> dict:
+    """Record that the operator took this pick. Which, and when. Nothing else.
+
+    IDEMPOTENT BY THE TABLE'S OWN CONSTRAINT: a second tap on the same pick is
+    not a second wager, and the record would have no way to tell the two
+    apart, so it stores one row and says it was already there.
+    """
+    from .db import utcnow
+
+    row = conn.execute("SELECT id, created_utc FROM predictions WHERE id = ?",
+                       (prediction_id,)).fetchone()
+    if row is None:
+        return {"taken": False, "already": False,
+                "why": "there is no such forecast to take"}
+    try:
+        conn.execute(
+            "INSERT INTO picks_taken (prediction_id, taken_utc) VALUES (?, ?)",
+            (prediction_id, utcnow()))
+        conn.commit()
+        return {"taken": True, "already": False, "prediction_id": prediction_id}
+    except sqlite3.IntegrityError as exc:
+        if "UNIQUE" not in str(exc):
+            raise
+        return {"taken": True, "already": True, "prediction_id": prediction_id}
+
+
+def taken_ids(conn: sqlite3.Connection, prediction_ids: list[int]) -> set:
+    """Which of these picks are already marked as taken."""
+    if not prediction_ids:
+        return set()
+    placeholders = ",".join("?" for _ in prediction_ids)
+    return {
+        r["prediction_id"] for r in conn.execute(
+            f"SELECT prediction_id FROM picks_taken"
+            f" WHERE prediction_id IN ({placeholders})", list(prediction_ids))
+    }
+
+
+def learning(conn: sqlite3.Connection, sport: str) -> dict:
+    """What the record has taught the model, per category.
+
+    THE MACHINERY IS UNCHANGED. `correction.py` fits Platt scaling on the
+    record's own claims and outcomes at fifty settled rows and applies it at
+    write time; `drift.py` measures where the line went afterwards, gated at
+    fifty pairs. Both have been running and neither has ever been on a page,
+    which is why the operator concluded the app does not learn.
+    """
+    from . import correction, drift
+
+    # WHEN THE REFIT LAST RAN AT ALL, so a category that is eligible and
+    # unfitted says why rather than reading as a contradiction.
+    last_refit = conn.execute(
+        "SELECT MAX(fitted_utc) FROM calibration_corrections").fetchone()[0]
+
+    rows = []
+    for market in config.SPORT_MARKETS.get(sport, ()):
+        market_type = calibration.market_type_of(sport, market)
+        latest = conn.execute(
+            "SELECT * FROM calibration_corrections"
+            " WHERE sport = ? AND market_type = ? AND forecaster = 'statistical'"
+            " ORDER BY version DESC LIMIT 1", (sport, market_type)).fetchone()
+        settled = len(calibration.resolved(
+            conn, sport=sport, market_type=market_type,
+            prop_type=calibration.prop_type_of(sport, market),
+            predictor="statistical"))
+        active = correction.active_correction(
+            conn, sport=sport, market_type=market_type, forecaster="statistical")
+        shown, version = correction.shown_claim(
+            conn, sport=sport, market_type=market_type,
+            forecaster="statistical", claim=0.70)
+        moved = drift.report(conn, sport=sport, market_type=market_type)
+        rows.append({
+            "market": market,
+            "market_label": language.humanise(market),
+            "n": settled,
+            "minimum": correction.MIN_TRAIN,
+            "fitted_utc": latest["fitted_utc"] if latest else None,
+            "slope": latest["slope"] if latest else None,
+            "intercept": latest["intercept"] if latest else None,
+            "active": bool(active),
+            "version": version,
+            "n_train": latest["n_train"] if latest else 0,
+            "status_words": language.correction_status_line(
+                latest is not None, settled, correction.MIN_TRAIN,
+                latest["fitted_utc"] if latest else None, bool(active),
+                last_refit=last_refit,
+                n_train=(latest["n_train"] if latest else 0) or 0),
+            "meaning_words": language.correction_meaning_line(0.70, shown),
+            "drift_words": moved.get("line"),
+            "drift_n": moved.get("n", 0),
+        })
+    return {
+        "sport": sport,
+        "n": sum(r["n"] for r in rows),
+        "last_refit": last_refit,
+        "categories": rows,
+        "never_rewrites": language.correction_never_rewrites_line(),
+        "note": (
+            "The correction is fitted from this record's own claims and "
+            "outcomes once a category has fifty settled rows, and applied to "
+            "what gets written next. The drift figure is where the market's "
+            "line went after a disagreement, gated at fifty pairs. Both have "
+            "been running since they were built; this panel is the first time "
+            "either has been visible."
+        ),
+    }

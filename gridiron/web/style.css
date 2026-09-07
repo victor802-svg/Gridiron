@@ -1453,6 +1453,40 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    class of pick rather than a differently-shaped question. */
 .tier-name { color: var(--faint); }
 
+/* TODAY'S ROWS (GRIDIRON_TODAY T1, 2026-09-07). The sentence takes the width
+   it needs and the control sits at the end of it, so twenty rows read as a
+   list rather than as twenty stacked buttons. It wraps at narrow widths. */
+.today-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.today-row .gate-name { flex: 1 1 260px; }
+
+/* I TOOK THIS (GRIDIRON_TODAY T2, 2026-09-07). A quiet control: it records a
+   choice the operator has already made somewhere else, and it should not look
+   like the app asking him to make one. */
+.took {
+  margin-top: 0;
+  padding: 10px 14px;
+  flex: 0 0 auto;
+  /* 44px, the floor this project already holds every control to: a thumb on a
+     390px screen, not a mouse pointer. The first version of this button was
+     32px and two tap-target tests said so. */
+  min-height: 44px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--t-caption);
+  cursor: pointer;
+}
+.took:hover { border-color: var(--line-lit); color: var(--chrome); }
+.took-done { color: var(--faintest); cursor: default; }
+
 /* THE SECOND FORECASTER (THE_PRICED P1, 2026-09-07). Set like the at-the-line
    sentence it sits beside: another reading of the same game, not a louder one. */
 .card-priced {

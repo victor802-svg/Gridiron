@@ -82,6 +82,23 @@ def get_auth_conn() -> sqlite3.Connection:
     return conn
 
 
+def get_taken_conn() -> sqlite3.Connection:
+    """A WRITABLE handle, used only to append a taken pick.
+
+    The same boundary as the settings handle and for the same reason. A taken
+    pick is not the record: it is what a person did about the record, and the
+    table it lands in holds a prediction id and a time. `picks_taken` refuses
+    an UPDATE by trigger, `audit.check_taken_is_not_a_ledger` refuses a
+    money-shaped column on it, and nothing that trains or corrects the model
+    may read it.
+    """
+    conn = getattr(_local, "taken_conn", None)
+    if conn is None:
+        conn = db.open_db(_database)
+        _local.taken_conn = conn
+    return conn
+
+
 def get_settings_conn() -> sqlite3.Connection:
     """A WRITABLE handle, used only to append an operational setting.
 
@@ -433,7 +450,7 @@ def versions(sport: str | None = None) -> dict:
 
 
 @app.get("/api/week")
-def week(sport: str | None = None, season: int | None = None,
+def week(request: Request, sport: str | None = None, season: int | None = None,
          week: int | None = None, forecaster: str | None = None,
          early_view: bool = False) -> dict:
     """The slate, from ONE forecaster's point of view (GRIDIRON_14).
@@ -444,6 +461,11 @@ def week(sport: str | None = None, season: int | None = None,
     """
     payload = views.week(get_conn(), _sport(sport), season, week, forecaster,
                          early_view=early_view)
+    # THE FORM TOKEN TRAVELS WITH THE SLATE (T2, 2026-09-07), because the one
+    # write this page can make -- marking a pick as taken -- lives on it. It
+    # used to be issued only with the settings payload, so a tap made by
+    # somebody who had never opened Settings would have been refused.
+    payload["csrf"] = auth.csrf_token(request.cookies.get(auth.COOKIE_NAME))
     # PICKS OPENS FILTERED (R2), so the count line is the only thing telling a
     # reader the slate is bigger than what they see. A loud 500 beats a page
     # that makes a narrow band look like a quiet night -- the same trade LAW
@@ -615,6 +637,33 @@ def prediction(prediction_id: int) -> dict:
     if detail is None:
         raise HTTPException(status_code=404, detail=f"no prediction {prediction_id}")
     return detail
+
+
+@app.get("/api/learning")
+def learning(sport: str | None = None) -> dict:
+    """What the record has taught the model (T3, 2026-09-07)."""
+    return views.learning(get_conn(), _sport(sport))
+
+
+@app.post("/api/taken/{prediction_id}")
+async def taken(prediction_id: int, request: Request) -> dict:
+    """Record that the operator took this pick: which, and when.
+
+    It stores a prediction id and a timestamp -- no stake, no price paid, no
+    payout, no result in money -- because LAW 5 keeps that ledger outside this
+    repository, and `audit.check_taken_is_not_a_ledger` refuses a money-shaped
+    column here. Nothing that trains or corrects the model may read the table.
+
+    THE SAME TWO LOCKS THE SETTINGS ROUTE HAS: the session closes the route,
+    and the CSRF token closes a cross-site POST that a browser might otherwise
+    send with the cookie attached.
+    """
+    session_id = request.cookies.get(auth.COOKIE_NAME)
+    if not auth.csrf_is_valid(session_id, request.headers.get(auth.CSRF_HEADER)):
+        raise HTTPException(
+            status_code=403,
+            detail=("This page is out of date. Reload it and try again."))
+    return views.take_pick(get_taken_conn(), prediction_id)
 
 
 @app.get("/")

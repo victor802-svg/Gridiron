@@ -373,6 +373,7 @@ const Gridiron = (function () {
     renderAtTheLine(sc);
     renderRanker(sc);
     renderPriced(sc);
+    renderLearning().catch(showError);
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
     const tierSel = document.getElementById('tier-market');
@@ -623,6 +624,36 @@ const Gridiron = (function () {
     panel.hidden = entries.length === 0;
   }
 
+  // WHAT THE RECORD HAS TAUGHT IT (T3, 2026-09-07). Fetched on its own route
+  // because it reads two modules the slate does not touch. Every sentence is
+  // the server's; this places them.
+  async function renderLearning() {
+    const panel = document.getElementById('learning');
+    const host = document.getElementById('learning-list');
+    if (!panel || !host) return;
+    const seq = sportSeq;
+    const data = await fetchJSON(withSport('/api/learning', {}));
+    if (stale(seq)) return;
+    host.innerHTML = '';
+    requireN(data, 'what the record has taught it');
+    const note = document.getElementById('learning-note');
+    if (note) note.textContent = data.note || '';
+    const never = document.getElementById('learning-never');
+    if (never) never.textContent = data.never_rewrites || '';
+    const refit = document.getElementById('learning-refit');
+    if (refit) refit.textContent = data.last_refit ? data.last_refit.slice(0, 10) : '';
+    (data.categories || []).forEach(entry => {
+      requireN(entry, 'the correction for "' + entry.market + '"');
+      const row = el('div', 'gate-row');
+      row.appendChild(el('div', 'gate-name', entry.market_label));
+      row.appendChild(el('div', 'gate-why', entry.status_words));
+      row.appendChild(el('div', 'gate-why', entry.meaning_words));
+      if (entry.drift_words) row.appendChild(el('div', 'gate-why', entry.drift_words));
+      host.appendChild(row);
+    });
+    panel.hidden = (data.categories || []).length === 0;
+  }
+
   // THE PRICED RECORD (THE_PRICED, 2026-09-07). Placed, never composed. Three
   // lists that are deliberately separate: what may be priced at all, what the
   // closing line says about what was, and the two forecasters' scores on the
@@ -718,6 +749,120 @@ const Gridiron = (function () {
       host.appendChild(row);
     });
     panel.hidden = (rank.comparisons || []).length === 0;
+  }
+
+  // TODAY (T1, 2026-09-07). Two groups, never blended, and every sentence is
+  // the server's. The watched group exists because the operator ruled the list
+  // is never empty; each of its rows prints what it is actually worth after
+  // the fee, including when that is negative, so the screen shows without
+  // asserting. `audit.ADVICE_WORDS` scans these strings on the gate.
+  function renderToday(data) {
+    const panel = document.getElementById('today');
+    const clears = document.getElementById('today-clears');
+    const watching = document.getElementById('today-watching');
+    if (!panel || !clears || !watching) return;
+    clears.innerHTML = '';
+    watching.innerHTML = '';
+    csrfToken = data.csrf || csrfToken;
+    const today = (data && data.today) || null;
+    if (!today) { panel.hidden = true; return; }
+    requireN(today, 'today');
+
+    const heading = document.getElementById('today-clears-heading');
+    if (heading) heading.textContent = today.clears_heading || '';
+    const watchHeading = document.getElementById('today-watching-heading');
+    if (watchHeading) watchHeading.textContent = today.watching_heading || '';
+    const fee = document.getElementById('today-fee');
+    if (fee) fee.textContent = today.fee_line || '';
+    const taken = document.getElementById('today-taken');
+    if (taken) taken.textContent = today.taken_line || '';
+
+    const row = (entry, group) => {
+      requireN(entry, 'a row on today');
+      // THE ROW READS ACROSS, NOT DOWN. The first render put the control on
+      // its own line under every row and twenty of them filled a desktop
+      // screen with buttons; the sentence is the content and the control
+      // belongs beside it.
+      const line = el('div', 'gate-row today-row');
+      line.appendChild(el('div', 'gate-name', entry.words));
+      // I TOOK THIS. One tap, which records the pick and the moment and
+      // nothing else. A pick already marked says so rather than offering the
+      // tap again.
+      const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
+      mark.type = 'button';
+      mark.textContent = entry.taken ? 'taken' : 'I took this';
+      mark.disabled = !!entry.taken;
+      mark.onclick = async () => {
+        mark.disabled = true;
+        await fetch('/api/taken/' + entry.prediction_id, {
+          method: 'POST',
+          headers: { 'X-Gridiron-Form': csrfToken || '' },
+        });
+        renderWeek().catch(showError);
+      };
+      line.appendChild(mark);
+      group.appendChild(line);
+    };
+    (today.clears || []).forEach(entry => row(entry, clears));
+    (today.watching || []).forEach(entry => row(entry, watching));
+    panel.hidden = false;
+  }
+
+  // TODAY (T1, 2026-09-07). Two groups, never blended, and every sentence is
+  // the server's. The watched group exists because the operator ruled the list
+  // is never empty; each of its rows prints what it is actually worth after
+  // the fee, including when that is negative, so the screen shows without
+  // asserting. `audit.ADVICE_WORDS` scans these strings on the gate.
+  function renderToday(data) {
+    const panel = document.getElementById('today');
+    const clears = document.getElementById('today-clears');
+    const watching = document.getElementById('today-watching');
+    if (!panel || !clears || !watching) return;
+    clears.innerHTML = '';
+    watching.innerHTML = '';
+    csrfToken = data.csrf || csrfToken;
+    const today = (data && data.today) || null;
+    if (!today) { panel.hidden = true; return; }
+    requireN(today, 'today');
+
+    const heading = document.getElementById('today-clears-heading');
+    if (heading) heading.textContent = today.clears_heading || '';
+    const watchHeading = document.getElementById('today-watching-heading');
+    if (watchHeading) watchHeading.textContent = today.watching_heading || '';
+    const fee = document.getElementById('today-fee');
+    if (fee) fee.textContent = today.fee_line || '';
+    const taken = document.getElementById('today-taken');
+    if (taken) taken.textContent = today.taken_line || '';
+
+    const row = (entry, group) => {
+      requireN(entry, 'a row on today');
+      // THE ROW READS ACROSS, NOT DOWN. The first render put the control on
+      // its own line under every row and twenty of them filled a desktop
+      // screen with buttons; the sentence is the content and the control
+      // belongs beside it.
+      const line = el('div', 'gate-row today-row');
+      line.appendChild(el('div', 'gate-name', entry.words));
+      // I TOOK THIS. One tap, which records the pick and the moment and
+      // nothing else. A pick already marked says so rather than offering the
+      // tap again.
+      const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
+      mark.type = 'button';
+      mark.textContent = entry.taken ? 'taken' : 'I took this';
+      mark.disabled = !!entry.taken;
+      mark.onclick = async () => {
+        mark.disabled = true;
+        await fetch('/api/taken/' + entry.prediction_id, {
+          method: 'POST',
+          headers: { 'X-Gridiron-Form': csrfToken || '' },
+        });
+        renderWeek().catch(showError);
+      };
+      line.appendChild(mark);
+      group.appendChild(line);
+    };
+    (today.clears || []).forEach(entry => row(entry, clears));
+    (today.watching || []).forEach(entry => row(entry, watching));
+    panel.hidden = false;
   }
 
   // WHAT IS WORTH TAKING (R4, 2026-09-07). Placed, never composed: every
@@ -2339,7 +2484,7 @@ const Gridiron = (function () {
       // showing, on its face, in the server's words. A slate written before
       // the ordering existed has no ranks: it says so and shows everything,
       // through the positional control this page has always had.
-      renderRecommendations(data);
+      renderToday(data);
       const listing = data.shortlist || {};
       const note = document.getElementById('week-shortlist-note');
       if (note) {

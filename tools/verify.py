@@ -358,6 +358,10 @@ def step_2_guards() -> bool:
          lambda: audit.check_no_venue_credentials(
              env_file=_env_file(), conn=_record_conn())),
         ("no order path (LAW 5)", audit.check_no_order_path),
+        ("the taken picks are not a ledger (LAW 5)",
+         lambda: audit.check_taken_is_not_a_ledger(_record_conn())),
+        ("nothing that trains the model reads the taken picks",
+         audit.check_taken_not_in_training),
         ("no wagering ledger in the repo (LAW 5)",
          lambda: audit.check_no_wagering_ledger(conn=_record_conn())),
         ("no offline data caching", audit.check_no_offline_data_caching),

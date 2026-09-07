@@ -59,13 +59,32 @@ def test_no_route_can_write_to_the_record():
     write route the app has.
 
     A FOURTH POST still has to come back here and argue for itself.
+
+    `POST /api/taken/{prediction_id}` is the fourth, added 2026-09-07, and this
+    is its argument. It writes ONE row to `picks_taken`: a prediction id and a
+    timestamp. It cannot reach the record -- it is given `get_taken_conn`,
+    whose only caller inserts those two columns, while the interface's own
+    handle stays `query_only` -- and it carries the same two locks the settings
+    route does, a session and a CSRF token.
+
+    What makes it worth allowing at all: the operator asked the app to record
+    which picks he took, so that on a later date the record can answer whether
+    his selections scored better than the ones he passed over. What keeps it
+    from becoming the thing LAW 5 forbids: the table holds no stake, no price
+    paid, no payout and no result in money, `audit.check_taken_is_not_a_ledger`
+    fails by name on a money-shaped column, and
+    `audit.check_taken_not_in_training` refuses the table's name in anything
+    that trains or corrects the model -- both proved by plantings.
+
+    A FIFTH POST still has to come back here and argue for itself.
     """
     writers = sorted(
         route.path
         for route in api.app.routes
         if set(getattr(route, "methods", set()) or set()) - {"GET", "HEAD"}
     )
-    assert writers == ["/api/settings", "/auth/login", "/auth/logout"], (
+    assert writers == ["/api/settings", "/api/taken/{prediction_id}",
+                       "/auth/login", "/auth/logout"], (
         f"a write verb appeared outside the sign-in paths: {writers}"
     )
 

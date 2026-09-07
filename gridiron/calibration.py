@@ -2135,3 +2135,54 @@ class _PricedResolved:
     """The two fields the bucket and score functions actually read."""
     model_prob: float
     outcome: int
+
+
+def taken_comparison(conn: sqlite3.Connection, *, sport: str,
+                     market_type: str, prop_type: str | None = None,
+                     predictor: str = "statistical") -> dict:
+    """Do the picks the operator took score better than the ones he passed over?
+
+    THREE CURVES, NEVER MERGED: taken, not taken, and all of them. The third is
+    not the sum of the first two in any useful sense -- it is the population
+    both were drawn from, and it is reported so that a reader can see whether
+    either group differs from the model's ordinary behaviour at all.
+
+    NOTHING HERE FEEDS THE MODEL. This is a report about a human being's
+    choices, read after the fact; `audit.check_taken_not_in_training` refuses
+    the table's name in anything that trains or corrects, and a planting proves
+    it fires.
+    """
+    require_sport(sport, "calibration.taken_comparison")
+    items = resolved(conn, sport=sport, market_type=market_type,
+                     prop_type=prop_type, predictor=predictor)
+    taken_set = {
+        r["prediction_id"] for r in conn.execute("SELECT prediction_id FROM picks_taken")
+    }
+    took = [r for r in items if r.id in taken_set]
+    passed = [r for r in items if r.id not in taken_set]
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    payload = {
+        "sport": sport,
+        "record": "taken",
+        "market": prop_type or market_type,
+        "n": len(items),
+        "gate": gate,
+        "taken": {"label": "taken", "n": len(took), "score": score(took),
+                  "buckets": calibration_buckets(took)},
+        "not_taken": {"label": "passed over", "n": len(passed),
+                      "score": score(passed), "buckets": calibration_buckets(passed)},
+        "all": {"label": "every forecast", "n": len(items), "score": score(items),
+                "buckets": calibration_buckets(items)},
+        "renderable": len(took) >= gate and len(passed) >= gate,
+        "note": (
+            "What the operator chose against what he passed over, on the same "
+            "questions and the same scale. It reads his selections, never the "
+            "model's inputs: nothing that trains or corrects the model may see "
+            "this table."
+        ),
+    }
+    payload["words"] = language.taken_comparison_line(
+        len(took), len(passed), gate,
+        payload["taken"]["score"]["brier"] if payload["renderable"] else None,
+        payload["not_taken"]["score"]["brier"] if payload["renderable"] else None)
+    return payload

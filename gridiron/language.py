@@ -3241,3 +3241,160 @@ def priced_coverage_line(sport_label: str, covered: list, entries: int) -> str:
     return (f"{sport_label}: {named} — {len(covered)} of {entries} measured "
             f"markets, chosen for a narrow quote and thin trade rather than "
             f"for anything that has won.")
+
+
+def taken_comparison_line(taken: int, passed: int, gate: int,
+                          taken_brier: float | None,
+                          passed_brier: float | None) -> str:
+    """Whether the operator's own selections beat the ones he skipped.
+
+    A QUESTION ABOUT A PERSON, NOT ABOUT THE MODEL, and the sentence keeps that
+    straight: it says what his picks did, never what he should do next.
+    """
+    if taken_brier is None or passed_brier is None:
+        return (f"{taken} taken and {passed} passed over; both sides need "
+                f"{gate} settled before this comparison says anything")
+    if taken_brier < passed_brier:
+        return (f"the picks taken scored {taken_brier} against {passed_brier} "
+                f"for the ones passed over, lower being better, on {taken} and "
+                f"{passed} settled questions")
+    if taken_brier > passed_brier:
+        return (f"the picks taken scored {taken_brier} against {passed_brier} "
+                f"for the ones passed over, lower being better, on {taken} and "
+                f"{passed} settled questions: the selection did not improve on "
+                f"the list it was made from")
+    return (f"the two sides scored identically ({taken_brier}) on {taken} and "
+            f"{passed} settled questions")
+
+
+# ---------------------------------------------------------------------------
+# TODAY (GRIDIRON_TODAY T1, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# TWO GROUPS AND THE WORDS THAT KEEP THEM APART. One clears the venue's fee;
+# the other does not and says so on every row, in cents, including when the
+# number is negative. The operator ruled that the list is never empty, and this
+# is how that ruling is answered without the app asserting something it has not
+# measured: it SHOWS a row and prints the row's true edge beside it.
+#
+# No sentence here may say a watched row is worth backing.
+# `audit.ADVICE_WORDS` scans them all on the gate and a planting puts one in a
+# watched label to prove the scan fires.
+
+def watching_heading(n: int) -> str:
+    """The line above the group that does not clear the bar."""
+    if not n:
+        return "Nothing else on today's slate."
+    return (f"Watching — {n} more, none of which clears the venue's fee. The "
+            f"number beside each is what it is actually worth after that fee.")
+
+
+def watching_line(question: str, fair_value: float | None, price: float | None,
+                  edge_cents: float | None) -> str:
+    """One watched row: the question, the two numbers, and the true edge.
+
+    A ROW READING "-3¢ AFTER FEES" IS DOING ITS JOB. The whole design of this
+    group is that a reader can see why it is not in the other one.
+    """
+    if fair_value is None or price is None or edge_cents is None:
+        return f"{question} — no venue price to compare against yet."
+    return (f"{question} — the model makes it {round(fair_value * 100)}¢, the "
+            f"venue is at {round(price * 100)}¢: {edge_cents:+.1f}¢ after fees.")
+
+
+def clears_the_bar_heading(n: int) -> str:
+    """The line above the group that does."""
+    if not n:
+        return "Nothing clears the venue's fee today."
+    return f"Clears the bar — {n} on today's slate."
+
+
+def fee_arithmetic_line(median_price: float | None, cents: float | None) -> str:
+    """What a bet at today's median price costs before anything is right.
+
+    ON THE SAME SCREEN AS THE TEMPTATION, every day. The fee is largest at a
+    coin flip, which is exactly where a disagreement looks most attractive.
+    """
+    if median_price is None or cents is None:
+        return ("No venue price on this slate yet, so there is no fee to "
+                "quote against it.")
+    return (f"At today's median venue price of {round(median_price * 100)}¢, "
+            f"the fee is {cents:.1f}¢ a contract. A pick with no edge costs "
+            f"that much before anything is right or wrong.")
+
+
+def taken_line(n: int) -> str:
+    """How many of today's rows the operator has marked as taken."""
+    if not n:
+        return "None marked as taken today."
+    if n == 1:
+        return "One marked as taken today."
+    return f"{n} marked as taken today."
+
+
+# ---------------------------------------------------------------------------
+# WHAT THE RECORD HAS TAUGHT IT (GRIDIRON_TODAY T3, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# The correction and the drift measurement have been running since they were
+# built and have never been on a page. The operator concluded the app did not
+# learn. It does; it was simply silent about it, which is the same failure as
+# a number without its N -- a reader cannot check what they cannot see.
+
+def correction_status_line(fitted: bool, n: int, minimum: int,
+                           fitted_utc: str | None, active: bool,
+                           last_refit: str | None = None,
+                           n_train: int = 0) -> str:
+    """Where one category's correction stands.
+
+    FOUR STATES AND THEY ARE DIFFERENT FACTS. Below the threshold; past it but
+    never fitted because the refit has not run since; fitted and deliberately
+    inert; and in force. The first version of this sentence collapsed the
+    second into the first and printed "not yet fitted: 52 of 50 settled rows,
+    0 more before a correction is calculated" -- which reads as a
+    contradiction, because it is one.
+    """
+    when = date_words_from_iso((fitted_utc or "")[:10]) if fitted_utc else None
+    if n < minimum:
+        short = minimum - n
+        return (f"not yet fitted: {n} of {minimum} settled rows, {short} more "
+                f"before a correction is calculated at all")
+    if not fitted or n_train < minimum:
+        ran = date_words_from_iso((last_refit or "")[:10]) if last_refit else None
+        return (f"eligible and not yet fitted: {n} settled rows, past the "
+                f"{minimum} a fit needs"
+                + (f", and the refit last ran on {ran}" if ran else ""))
+    if not active:
+        return (f"fitted on {n} settled rows{' on ' + when if when else ''}, and "
+                f"NOT in force: a fit can be recorded without touching a single "
+                f"claim, and turning it on is a separate decision")
+    return (f"in force since {when}, fitted on {n} settled rows")
+
+
+def correction_meaning_line(claim: float, corrected: float) -> str:
+    """The number first, then the words, for one worked example.
+
+    A slope and an intercept mean nothing to a reader; what they do to a
+    seventy-per-cent claim means everything.
+    """
+    if abs(corrected - claim) < 0.005:
+        return (f"a {round(claim * 100)}% claim is published unchanged at "
+                f"{round(corrected * 100)}%")
+    direction = "lower" if corrected < claim else "higher"
+    return (f"claims near {round(claim * 100)}% have been worth about "
+            f"{round(corrected * 100)}% on this record, so they are now "
+            f"published {direction}")
+
+
+def correction_never_rewrites_line() -> str:
+    """The property a reader must not have to infer."""
+    return ("A correction changes what gets written next and never what was "
+            "written before: every prediction keeps the number it was made "
+            "with, which is why the record can still be checked.")
+
+
+# A ROW WITH `n_train` BELOW THE THRESHOLD IS A PLACEHOLDER, not a fit: it
+# records that the category had nothing to fit when the refit last ran. Calling
+# it a fit would tell a reader the model has learned something it has not, and
+# the difference is visible only in that column.
+

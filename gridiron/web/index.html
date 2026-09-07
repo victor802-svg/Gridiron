@@ -109,6 +109,19 @@
       <div id="other-gates-list"></div>
     </section>
 
+    <!-- WHAT THE RECORD HAS TAUGHT IT (GRIDIRON_TODAY T3, 2026-09-07). The
+         correction and the drift measurement have been running since they
+         were built and have never been on a page, which is why the operator
+         concluded the app does not learn. One row per category: where the
+         correction stands, what it does to a seventy-per-cent claim in words,
+         and where the line went afterwards. -->
+    <section class="panel" id="learning" hidden>
+      <h3>What the record has taught it <small id="learning-refit"></small></h3>
+      <p class="footnote" id="learning-note"></p>
+      <div id="learning-list"></div>
+      <p class="footnote" id="learning-never"></p>
+    </section>
+
     <!-- THE SECOND FORECASTER AND WHAT IT IS ALLOWED TO PRICE (THE_PRICED,
          2026-09-07). Three things that belong together and to nothing else on
          this page: the markets the engine may price and why so few, the
@@ -325,17 +338,29 @@
          top five. -->
     <section id="week-hero" class="hero" hidden aria-live="polite"></section>
 
-    <!-- WHAT IS WORTH TAKING (THE_RECOMMENDATION R4, 2026-09-07). One line
-         each: the question, what the model makes it worth, what the venue is
-         charging, what survives the fee, and the size -- which is one flat
-         unit until a market has a hundred settled questions behind it. Most
-         days this is the empty sentence, which is a correct output. -->
-    <section class="panel" id="week-recommendations" hidden>
-      <h3>Worth taking <small id="recommendations-n"></small></h3>
-      <div id="recommendations-list"></div>
-      <p class="footnote" id="recommendations-empty"></p>
+    <!-- TODAY (GRIDIRON_TODAY T1, 2026-09-07). The screen the operator opens
+         every morning, at the top of the route he opens. Two groups that are
+         never blended: what clears the venue's fee, and what does not -- the
+         second carrying its own edge in cents on every row, including when
+         that number is negative, which is the entire point of showing it.
+         The nav stays four pages: `audit.nav_faults` rules that and a
+         planting proves it, so Today leads Picks rather than becoming a
+         fifth page. -->
+    <section class="panel" id="today">
+      <h3>Today <small id="today-taken"></small></h3>
+      <p class="footnote" id="today-clears-heading"></p>
+      <div id="today-clears"></div>
+      <p class="footnote" id="today-watching-heading"></p>
+      <div id="today-watching"></div>
+      <p class="footnote" id="today-fee"></p>
     </section>
 
+    <!-- The "Worth taking" panel that stood here (R4, 2026-09-07) was
+         SUPERSEDED the same day by Today's own CLEARS THE BAR group, which
+         says the same thing in the same words at the top of the page. Two
+         panels reporting one fact is how a page starts disagreeing with
+         itself; the render showed both saying "nothing" one under the other.
+         The payload key stays and is still tested. -->
     <h2 class="grid-heading" id="week-grid-heading" hidden>More picks</h2>
     <!-- WHAT PUT THESE IN FRONT (THE_SHORTLIST S2, 2026-09-07). One line,
          written by the server, saying what the ordering is; the control below
