@@ -1453,6 +1453,15 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    class of pick rather than a differently-shaped question. */
 .tier-name { color: var(--faint); }
 
+/* THE SECOND FORECASTER (THE_PRICED P1, 2026-09-07). Set like the at-the-line
+   sentence it sits beside: another reading of the same game, not a louder one. */
+.card-priced {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: var(--t-body);
+  line-height: 1.45;
+}
+
 /* WHY A PICK LEADS (THE_SHORTLIST S2, 2026-09-07). Quieter than the numbers
    it sits under: this explains the ordering, it does not make a claim. */
 .card-rank {

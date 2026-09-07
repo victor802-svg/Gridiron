@@ -238,6 +238,13 @@ def run_slate(
         # not; the price is written down with it because the closing line is
         # the first verdict this project can reach and it cannot be compared
         # against a price nobody recorded.
+        # Step 7. THE SECOND FORECASTER (THE_PRICED P1, 2026-09-07). It reads
+        # the price the blind rows above were forbidden to see, writes its own
+        # rows in its own table, and is never merged with them in any figure.
+        from .priced import forecast as priced
+
+        result["priced"] = priced.write_for(conn, run.prediction_ids)
+
         from .market import recommend
 
         result["recommended"] = recommend.record_for(conn, run.prediction_ids)

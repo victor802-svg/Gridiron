@@ -7078,6 +7078,100 @@ def _tree_with(module: str, source: str):
     return root
 
 
+LAW_TWO_FORECASTERS = "THE BLIND PATH STILL REFUSES THE PRICE"
+
+
+def plant_a_coverage_list_chosen_by_results() -> Result:
+    """Cover a market because it won, rather than because it was measured
+    (THE_PRICED P2/D1, 2026-09-07).
+
+    The brief forbids this by name: four winning tickets is a sample of four,
+    and choosing coverage on them is LAW 2's discovery with money attached. The
+    selection takes measurements and nothing else, so a caller who hands it a
+    win rate finds there is nowhere to put it.
+    """
+    from gridiron.priced import coverage as _coverage
+
+    won = {"sport": "nfl", "market": "total", "n": 200, "games": 9,
+           "median_spread_cents": 6.0, "median_volume": 1.0,
+           "win_rate": 1.0, "tickets_won": 4}
+    decided = _coverage.select([won])[0]
+    if decided["covered"]:
+        return Result(LAW_TWO_FORECASTERS, "cover a market because it won",
+                      "coverage.select", False,
+                      "NOT CAUGHT - a market with a six-cent quote was covered, "
+                      "and the only thing recommending it was a win rate")
+    if "win" in decided["why"] or "won" in decided["why"]:
+        return Result(LAW_TWO_FORECASTERS, "cover a market because it won",
+                      "coverage.select", False,
+                      "NOT CAUGHT - the selection's own reason mentions the "
+                      "record of wins it was handed")
+    return Result(LAW_TWO_FORECASTERS, "cover a market because it won",
+                  "coverage.select", True,
+                  f"the win rate changed nothing: {decided['why']}")
+
+
+def plant_the_priced_package_inside_the_blind_closure() -> Result:
+    """Import the price-reading package from a blind module (P1, 2026-09-07).
+
+    THE EXEMPTION IS NOT A BACK DOOR. `gridiron.priced` may read the market;
+    the blind path may not read `gridiron.priced`. This plants the second
+    thing, immediately after the exemption for the first was written, because a
+    scan loosened one clause too far is the most expensive silent failure
+    available here.
+    """
+    from gridiron import audit as _audit
+
+    root = _tree_with(
+        "factors/context.py",
+        "from gridiron.priced import forecast\n"
+        "def blended_context(model_prob, price):\n"
+        "    return forecast.blended(model_prob, price)\n")
+    try:
+        _audit.check_prediction_closure(root=root)
+    except _audit.LawViolation as exc:
+        return Result(LAW_TWO_FORECASTERS,
+                      "read the priced package from a blind module",
+                      "audit.check_prediction_closure", True, str(exc))
+    return Result(LAW_TWO_FORECASTERS,
+                  "read the priced package from a blind module",
+                  "audit.check_prediction_closure", False,
+                  "NOT CAUGHT - the blind forecaster can now reach the price "
+                  "through the package that was exempted to read it, which is "
+                  "LAW 1 gone by two steps instead of one")
+
+
+def plant_a_market_import_after_the_priced_exemption() -> Result:
+    """The original LAW 1 planting, re-run after the exemption (P1, 2026-09-07).
+
+    Same violation this project has caught since its first week; the point is
+    the date. If exempting one package had loosened the scan generally, this is
+    the planting that would stop firing, and it is checked here rather than
+    assumed.
+    """
+    from gridiron import audit as _audit
+
+    root = _tree_with(
+        "factors/context.py",
+        "from gridiron.market import lines\n"
+        "def peek(conn, pid):\n"
+        "    return lines.snapshots_for(conn, [pid])\n")
+    try:
+        _audit.check_prediction_closure(root=root)
+    except _audit.LawViolation as exc:
+        return Result(LAW_TWO_FORECASTERS,
+                      "import the market from a blind module, after the "
+                      "priced exemption",
+                      "audit.check_prediction_closure", True, str(exc))
+    return Result(LAW_TWO_FORECASTERS,
+                  "import the market from a blind module, after the priced "
+                  "exemption",
+                  "audit.check_prediction_closure", False,
+                  "NOT CAUGHT - exempting the priced package loosened the scan "
+                  "for everything, and the blind forecaster can read a line")
+
+
+
 def plant_a_parlay() -> Result:
     """Ask the engine to price a parlay (LAW 5, 2026-09-07)."""
     from gridiron.market import recommend as _recommend
@@ -7511,6 +7605,9 @@ def main() -> int:
     results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_raw_exception_on_the_health_panel())
     results.append(plant_a_prop_market_on_the_llm_roster())
+    results.append(plant_a_coverage_list_chosen_by_results())
+    results.append(plant_the_priced_package_inside_the_blind_closure())
+    results.append(plant_a_market_import_after_the_priced_exemption())
     results.append(plant_a_parlay())
     results.append(plant_a_recommendation_in_a_live_game())
     results.append(plant_a_full_kelly_stake())

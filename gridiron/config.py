@@ -1383,3 +1383,31 @@ BANKROLL_UNITS = 100.0
 #: a cent is arithmetic noise on a price quoted in whole cents; one cent is the
 #: smallest difference the venue itself can express.
 MIN_EDGE_CENTS = 1.0
+
+
+# ---------------------------------------------------------------------------
+# THE PRICED FORECASTER (THE_PRICED P1, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# A second forecaster that reads the price. It never touches the blind one:
+# LAW 1 is not amended by any of this, and the blind path's closure, plantings
+# and guard tests are unchanged.
+
+#: THE BLEND'S VERSION, on every row it writes. A weight is a formula, and a
+#: formula that changes without a version leaves two incomparable populations
+#: in one table under one name.
+PRICED_VERSION = "b1"
+
+#: HOW MUCH OF THE BLEND IS THE MODEL'S OWN NUMBER, the rest being the market's
+#: price. Declared 2026-09-07 and NOT fitted -- fitting it today would fit
+#: 1,142 rows of which none has settled in a market where the model is ahead.
+#:
+#: IT LEANS TOWARD THE MARKET BECAUSE THE RECORD SAYS TO. On the 73 settled
+#: baseball moneyline questions with a price beside them, the market's own
+#: prices scored 0.2419 against the model's 0.2533, lower being better. A blend
+#: that leaned toward the model would assert the opposite of what this record
+#: says. A third is enough to disagree with a price when the model is far from
+#: it and not enough to disagree when it is close, which is the behaviour the
+#: fee schedule rewards.
+PRICED_MODEL_WEIGHT = 0.35
+PRICED_WEIGHT_DECLARED = "2026-09-07T00:00:00Z"

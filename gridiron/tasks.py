@@ -496,9 +496,17 @@ def settle_everything(conn: sqlite3.Connection, *, progress=None) -> dict:
 
     result = resolve.resolve_all(conn, progress=progress)
     claims = at_the_line.resolve_claims(conn)
+    # THE PRICED ROWS TAKE THE SAME OUTCOME, copied rather than judged again:
+    # two forecasters answered one question about one game, and if they could
+    # disagree about what happened every comparison between them would mean
+    # nothing.
+    from .priced import forecast as priced
+
+    priced_settled = priced.resolve_forecasts(conn)
     result["at_the_line_settled"] = claims["settled"]
     result["at_the_line_open"] = claims["still_open"]
     result["at_the_line_unanswerable"] = claims["unanswerable_level_game"]
+    result["priced_settled"] = priced_settled["settled"]
     return result
 
 

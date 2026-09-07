@@ -3155,11 +3155,6 @@ def _units_words(units: float, flat: bool, size_why: str | None = None) -> str:
     return f"{units:.2f} units, a quarter of Kelly and capped."
 
 
-def no_recommendation_line(reason: str) -> str:
-    """What the page says when nothing clears the fee, which is most days."""
-    return f"Nothing priced wrong enough today. {reason}"
-
-
 def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
              minimum: int) -> str:
     """The closing-line verdict, or how far it is from arriving.
@@ -3186,3 +3181,62 @@ def clv_finding_line(mean_cents: float, n: int) -> str:
             f"the prices it likes are the ones the market is about to move "
             f"away from, and the finding stands rather than the engine being "
             f"quietly retuned.")
+
+
+def priced_line(blind_prob: float, priced_prob: float, price: float,
+                move_cents: float | None) -> str:
+    """The second forecaster's number beside the first, never instead of it.
+
+    TWO FORECASTERS, SAID OUT LOUD. The blind one answered before it could see
+    a price; this one answered afterwards and read it. A page that showed only
+    the second would be reporting the market's skill as the model's.
+    """
+    moved = ""
+    if move_cents is not None and abs(move_cents) >= 1:
+        way = "toward" if (move_cents > 0) == (blind_prob > price) else "away from"
+        moved = (f" The price has moved {abs(move_cents):.0f}¢ {way} the blind "
+                 f"forecast since.")
+    return (f"Reading the price as well: {round(priced_prob * 100)}%, against "
+            f"{round(blind_prob * 100)}% from the blind forecast and "
+            f"{round(price * 100)}¢ at the venue.{moved}")
+
+
+def nothing_priced_line(considered: int, uncovered: int, no_edge: int) -> str:
+    """Why the list is empty, which is not the same question every day.
+
+    THREE DIFFERENT REASONS AND THEY MATTER DIFFERENTLY. A slate where nothing
+    is covered is a slate the engine was never allowed to price; a slate where
+    prices existed and none cleared the fee is the engine working; and a slate
+    with no prices at all is a data gap. A single sentence for all three would
+    hide the one that needs fixing.
+    """
+    if not considered:
+        return ("Nothing priced wrong enough today. No question on this slate "
+                "had a recorded price to compare against.")
+    if uncovered and not no_edge:
+        return (f"Nothing priced wrong enough today. All {uncovered} priced "
+                f"questions were in markets this engine is not covering.")
+    parts = []
+    if no_edge:
+        parts.append(f"{no_edge} carried a price and none cleared the venue's fee")
+    if uncovered:
+        parts.append(f"{uncovered} were in markets the engine does not cover")
+    return "Nothing priced wrong enough today. " + ", and ".join(parts) + "."
+
+
+def priced_coverage_line(sport_label: str, covered: list, entries: int) -> str:
+    """What the engine is allowed to price at all, and how few that is.
+
+    NOT `coverage_line`, which already exists and means something else: how
+    many of a slate's questions carried a market line. Two functions with one
+    name is a shadowed definition, and this file has a scan for exactly that --
+    which fired the moment these two met.
+    """
+    if not covered:
+        return (f"{sport_label}: no market is covered yet. The venue's ladders "
+                f"have not been measured enough to choose one, and an "
+                f"unmeasured market is not priced.")
+    named = ", ".join(humanise(m) for m in covered)
+    return (f"{sport_label}: {named} — {len(covered)} of {entries} measured "
+            f"markets, chosen for a narrow quote and thin trade rather than "
+            f"for anything that has won.")

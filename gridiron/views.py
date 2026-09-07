@@ -860,6 +860,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # face of the control that reveals them. A slate whose rows were written
     # before the ranker existed has no ranks, says so, and shows everything --
     # which is what this page did before any of this.
+    # THE SECOND FORECASTER'S NUMBER, beside the first and never instead of it
+    # (THE_PRICED P1, 2026-09-07).
+    _attach_priced(conn, cards)
+
     shortlist_block = _shortlist_block(conn, sport, cards)
     # WHAT IS WORTH TAKING (R4, 2026-09-07), computed from the shortlist that
     # was just marked. Empty on most days by design.
@@ -1147,6 +1151,24 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
     return out
 
 
+def _attach_priced(conn: sqlite3.Connection, cards: list[dict]) -> None:
+    """Put the priced forecast on each card that has one.
+
+    NEVER IN PLACE OF THE BLIND NUMBER. The card's percentage stays the blind
+    forecaster's, because that is the one this project's record is about; the
+    priced number is a second sentence that names itself.
+    """
+    from .priced import forecast as priced
+
+    ids = [c["prediction_id"] for c in cards]
+    rows = priced.forecasts_for(conn, ids)
+    for card in cards:
+        row = rows.get(card["prediction_id"])
+        card["priced_line"] = None if row is None else language.priced_line(
+            row["blind_prob"], row["priced_prob"], row["price_at_write"],
+            row["price_move_cents"])
+
+
 def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
     """What is worth taking on this slate, and at what size.
 
@@ -1164,8 +1186,14 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
     ids = [c["prediction_id"] for c in cards if c.get("on_shortlist")]
     priced = recommend.for_predictions(conn, ids)
     lines = []
+    uncovered = 0
+    no_edge = 0
     for entry in priced:
         if entry["side"] is None:
+            if not (entry.get("coverage") or {}).get("priceable", True):
+                uncovered += 1
+            else:
+                no_edge += 1
             continue
         size = entry["size"]
         lines.append({
@@ -1187,10 +1215,9 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
         "n": len(lines),
         "considered": considered,
         "lines": lines,
-        "empty_words": language.no_recommendation_line(
-            f"{considered} questions carried a price and none of them cleared "
-            f"the venue's fee." if considered else
-            "No question on this slate has a recorded price to compare against."),
+        "empty_words": language.nothing_priced_line(considered, uncovered, no_edge),
+        "uncovered": uncovered,
+        "no_edge": no_edge,
     }
 
 

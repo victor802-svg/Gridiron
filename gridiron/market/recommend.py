@@ -34,6 +34,7 @@ import sqlite3
 
 from .. import config
 from ..db import just_after, utcnow
+from ..priced import coverage
 from . import paper
 
 
@@ -244,7 +245,14 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             continue
         price = row["implied_prob"]
         settled = rank["edge_gate_n"] or 0
-        chosen = side_for(row["model_prob"], price)
+        # COVERAGE FIRST (THE_PRICED P2/P5, 2026-09-07). A market the engine is
+        # not allowed to price gets a forecast and no opinion, and the reason
+        # travels with it: not measured, too busy, too wide, or stopped by its
+        # own closing line.
+        allowed = coverage.priceable(conn, row["sport"],
+                                     row["prop_type"] or row["market_type"])
+        chosen = (side_for(row["model_prob"], price) if allowed["priceable"]
+                  else {"side": None, "edge_cents": None, "why": allowed["why"]})
         ahead = measured_edge(conn, sport=row["sport"],
                               market_type=row["market_type"],
                               prop_type=row["prop_type"],
@@ -268,6 +276,7 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             "gate_n": settled,
             "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
             "measured_edge": ahead,
+            "coverage": allowed,
             "written_utc": row["created_utc"],
         })
     return out

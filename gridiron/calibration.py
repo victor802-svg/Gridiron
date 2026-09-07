@@ -1416,6 +1416,17 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     # the app is buying cheap. Its own section, its own minimum, and capable of
     # returning bad news in words written before it was needed.
     payload["closing_line"] = clv_report(conn, sport=sport)
+    # WHAT THE ENGINE IS ALLOWED TO PRICE AT ALL (P2, 2026-09-07), with the
+    # measurement behind every entry and the reason for every exclusion.
+    from .priced import coverage as _coverage
+
+    covered = _coverage.coverage(conn, sport)
+    covered["words"] = language.priced_coverage_line(
+        config.SPORT_LABELS.get(sport, sport.upper()), covered["covered"],
+        len(covered["entries"]))
+    covered["stopped"] = list(_coverage.stopped(conn, sport).values())
+    payload["coverage"] = covered
+    payload["priced"] = priced_scorecard(conn, sport=sport)
 
     assert_every_figure_has_n(payload)
     assert_no_merged_categories(payload)
@@ -2036,3 +2047,91 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
             "number means it is buying cheaper than the close."
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# THE PRICED FORECASTER'S OWN RECORD (THE_PRICED P1/P4, 2026-09-07)
+# ---------------------------------------------------------------------------
+#
+# NEVER MERGED WITH THE BLIND ONE, and the reason is the whole point of having
+# two. A forecaster that reads the price will beat a blind one at predicting
+# outcomes while teaching nobody anything about the model's own skill, because
+# most of what it knows it read off the market. Reported side by side, they
+# answer two different questions: "are we any good?" and "are we making money?"
+#
+# ITS OBJECTIVE IS NOT A BRIER SCORE. A priced forecaster with a worse Brier
+# score and a better closing line is succeeding, and this payload is built so
+# the page can say that without a reader thinking something has gone wrong.
+
+
+def priced_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """What the priced forecaster's rows say, beside the blind ones.
+
+    Both scores are reported for the same questions -- the priced rows carry
+    the id of the blind row they came from -- so the comparison is like for
+    like rather than across two different question sets.
+    """
+    from .priced import forecast as priced
+
+    require_sport(sport, "calibration.priced_scorecard")
+    rows = conn.execute(
+        "SELECT f.market_type, f.prop_type, f.priced_prob, f.blind_prob,"
+        " f.price_at_write, f.price_move_cents, f.outcome"
+        " FROM priced_forecasts f"
+        " WHERE f.sport = ? AND f.blend_version = ? AND f.outcome IS NOT NULL",
+        (sport, config.PRICED_VERSION)).fetchall()
+
+    by_market: dict[str, list] = {}
+    for row in rows:
+        by_market.setdefault(row["prop_type"] or row["market_type"], []).append(row)
+
+    categories = []
+    for market in sorted(by_market):
+        got = by_market[market]
+        priced_items = [_PricedResolved(r["priced_prob"], r["outcome"]) for r in got]
+        blind_items = [_PricedResolved(r["blind_prob"], r["outcome"]) for r in got]
+        market_items = [_PricedResolved(r["price_at_write"], r["outcome"]) for r in got]
+        categories.append({
+            "sport": sport,
+            "record": "priced",
+            "forecaster": "priced",
+            "market": market,
+            "blend_version": config.PRICED_VERSION,
+            "n": len(got),
+            "priced": score(priced_items),
+            "blind_on_the_same_questions": score(blind_items),
+            "market_on_the_same_questions": score(market_items),
+            "buckets": calibration_buckets(priced_items),
+            "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+            "gate_line": language.at_the_line_gate_line(
+                len(got), config.MIN_SAMPLE_FOR_EDGE_CLAIM),
+        })
+
+    open_rows = conn.execute(
+        "SELECT COUNT(*) FROM priced_forecasts WHERE sport = ? AND blend_version = ?"
+        "  AND outcome IS NULL", (sport, config.PRICED_VERSION)).fetchone()[0]
+    return {
+        "sport": sport,
+        "record": "priced",
+        "blend_version": config.PRICED_VERSION,
+        "model_weight": config.PRICED_MODEL_WEIGHT,
+        "declared": config.PRICED_WEIGHT_DECLARED,
+        "n": sum(c["n"] for c in categories),
+        "awaiting_outcome": open_rows,
+        "categories": categories,
+        "note": (
+            "A second forecaster that reads the price the blind one is forbidden "
+            "to see. Its scores are shown beside the blind forecaster's on the "
+            "same questions and are never added to them. A better Brier score "
+            "here would mostly be the market's skill, not this project's, which "
+            "is why the number that matters for this record is the closing line "
+            "rather than the curve."
+        ),
+    }
+
+
+@dataclass(frozen=True)
+class _PricedResolved:
+    """The two fields the bucket and score functions actually read."""
+    model_prob: float
+    outcome: int

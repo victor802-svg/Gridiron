@@ -1643,3 +1643,79 @@ BEGIN
         'GRIDIRON LAW 3: a recommendation is never deleted. What the app said '
         || 'at the time is the whole of the evidence about whether it was right');
 END;
+
+-- ---------------------------------------------------------------------------
+-- PRICED FORECASTS (THE_PRICED P1, 2026-09-07). The second forecaster, which
+-- reads the price and says so on every row.
+--
+-- IT CANNOT BE MISTAKEN FOR A BLIND ROW, and that is the whole design of this
+-- table. It lives apart from `predictions`; it names the blind row it came
+-- from; it names the snapshot it read; and a trigger refuses any row stamped
+-- at or before the prediction it is based on. A figure that mixed the two
+-- forecasters would be reporting a market's skill as the model's, which is the
+-- single most flattering error available to this project.
+--
+-- LAW 1 IS UNTOUCHED. The blind row was written before any of this existed for
+-- that game, and nothing here can change it: `predictions` is append-only and
+-- this table is a reader of it.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS priced_forecasts (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_id    INTEGER NOT NULL REFERENCES predictions (id),
+    snapshot_id      INTEGER REFERENCES market_snapshots (id),
+    blend_version    TEXT    NOT NULL,
+    sport            TEXT    NOT NULL,
+    game_id          TEXT    NOT NULL REFERENCES games (id),
+    market_type      TEXT    NOT NULL,
+    prop_type        TEXT,
+    -- the two numbers that went in, kept so the blend can be read back rather
+    -- than merely trusted
+    blind_prob       REAL    NOT NULL,
+    price_at_write   REAL    NOT NULL,
+    price_latest     REAL,
+    price_move_cents REAL,
+    priced_prob      REAL    NOT NULL CHECK (priced_prob > 0 AND priced_prob < 1),
+    created_utc      TEXT    NOT NULL,
+    -- the SAME outcome as the blind row, copied rather than judged again
+    resolved_utc     TEXT,
+    outcome          INTEGER CHECK (outcome IN (0, 1)),
+    UNIQUE (prediction_id, blend_version)
+);
+CREATE INDEX IF NOT EXISTS priced_forecasts_sport
+    ON priced_forecasts (sport, market_type, blend_version);
+
+CREATE TRIGGER IF NOT EXISTS priced_comes_after_the_blind_row
+BEFORE INSERT ON priced_forecasts
+FOR EACH ROW
+WHEN NEW.created_utc <= (SELECT created_utc FROM predictions WHERE id = NEW.prediction_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: a priced forecast reads the market, so it is stamped '
+        || 'after the blind row it is based on, never at or before it');
+END;
+
+CREATE TRIGGER IF NOT EXISTS priced_forecasts_no_update
+BEFORE UPDATE OF prediction_id, snapshot_id, blend_version, blind_prob,
+                 price_at_write, priced_prob, created_utc
+ON priced_forecasts
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a priced forecast is append-only; a new blend gets a '
+        || 'new version rather than rewriting this row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS priced_forecasts_resolve_once
+BEFORE UPDATE OF resolved_utc, outcome ON priced_forecasts
+FOR EACH ROW
+WHEN OLD.resolved_utc IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: this priced forecast already carries its outcome');
+END;
+
+CREATE TRIGGER IF NOT EXISTS priced_forecasts_no_delete
+BEFORE DELETE ON priced_forecasts
+BEGIN
+    SELECT RAISE(ABORT, 'GRIDIRON LAW 3: a priced forecast is never deleted');
+END;

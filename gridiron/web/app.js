@@ -372,6 +372,7 @@ const Gridiron = (function () {
     renderOtherGates(sc);
     renderAtTheLine(sc);
     renderRanker(sc);
+    renderPriced(sc);
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
     const tierSel = document.getElementById('tier-market');
@@ -620,6 +621,75 @@ const Gridiron = (function () {
     });
     if (count) count.textContent = entries.length + ' gates';
     panel.hidden = entries.length === 0;
+  }
+
+  // THE PRICED RECORD (THE_PRICED, 2026-09-07). Placed, never composed. Three
+  // lists that are deliberately separate: what may be priced at all, what the
+  // closing line says about what was, and the two forecasters' scores on the
+  // same questions -- side by side, never summed, because a priced forecaster
+  // with a better Brier score is mostly reporting the market's skill.
+  function renderPriced(sc) {
+    const panel = document.getElementById('priced-record');
+    const coverage = document.getElementById('coverage-list');
+    const clv = document.getElementById('clv-list');
+    const scores = document.getElementById('priced-list');
+    if (!panel || !coverage || !clv || !scores) return;
+    coverage.innerHTML = '';
+    clv.innerHTML = '';
+    scores.innerHTML = '';
+    const cov = (sc && sc.coverage) || null;
+    const line = (sc && sc.closing_line) || null;
+    const priced = (sc && sc.priced) || null;
+    if (!cov && !line && !priced) { panel.hidden = true; return; }
+
+    const version = document.getElementById('priced-version');
+    if (version && priced) version.textContent = priced.blend_version || '';
+    const words = document.getElementById('coverage-words');
+    if (words && cov) words.textContent = cov.words || '';
+    const note = document.getElementById('priced-note');
+    if (note && priced) note.textContent = priced.note || '';
+
+    if (cov) {
+      requireN(cov, 'the coverage measurement');
+      (cov.entries || []).forEach(entry => {
+        requireN(entry, 'coverage of "' + entry.market + '"');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', marketLabel(entry.market)));
+        row.appendChild(el('div', 'gate-why', entry.why));
+        coverage.appendChild(row);
+      });
+      (cov.stopped || []).forEach(stop => {
+        requireN(stop, 'a stopped market');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', marketLabel(stop.market)));
+        row.appendChild(el('div', 'gate-why', stop.why));
+        coverage.appendChild(row);
+      });
+    }
+
+    if (line) {
+      requireN(line, 'the closing line');
+      (line.markets || []).forEach(entry => {
+        requireN(entry, 'the closing line for "' + entry.market + '"');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', marketLabel(entry.market)));
+        row.appendChild(el('div', 'gate-why', entry.words));
+        if (entry.finding) row.appendChild(el('div', 'gate-why', entry.finding));
+        clv.appendChild(row);
+      });
+    }
+
+    if (priced) {
+      requireN(priced, 'the priced forecaster');
+      (priced.categories || []).forEach(entry => {
+        requireN(entry, 'the priced curve for "' + entry.market + '"');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', marketLabel(entry.market)));
+        row.appendChild(el('div', 'gate-why', entry.gate_line));
+        scores.appendChild(row);
+      });
+    }
+    panel.hidden = false;
   }
 
   // DID THE ORDERING EARN ITS PLACE (S3, 2026-09-07). The shortlist is a
@@ -1713,6 +1783,13 @@ const Gridiron = (function () {
     // `language.shortlist_rank_line`; this places it.
     if (c.rank_line) {
       body.appendChild(el('p', 'card-rank', c.rank_line));
+    }
+
+    // THE SECOND FORECASTER (THE_PRICED P1, 2026-09-07), one tap into the
+    // card and clearly labelled as the one that read the price. The headline
+    // percentage above stays the blind forecast's.
+    if (c.priced_line) {
+      body.appendChild(el('p', 'card-priced', c.priced_line));
     }
 
     if (c.at_the_line && c.at_the_line.words) {

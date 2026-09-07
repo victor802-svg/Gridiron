@@ -54,6 +54,23 @@ def prediction_entrypoints() -> dict[str, str]:
 #: the score is not even wrong -- it is just reading off the result.
 FORBIDDEN_MODULES = ("gridiron.market", "gridiron.live")
 
+#: THE ONE PACKAGE ALLOWED TO READ A PRICE (THE_PRICED P1, 2026-09-07).
+#:
+#: `gridiron.priced` is a second forecaster that runs after the blind row and
+#: the snapshot exist, and reading the price is its entire purpose. It is
+#: NAMED HERE rather than the rule being relaxed: every blind entrypoint is
+#: still walked by name and still refuses `gridiron.market` and
+#: `gridiron.live`, and `plant.py` re-proves that refusal immediately after
+#: this exception exists, because a scan loosened one clause too far is the
+#: most expensive silent failure this project could have.
+#:
+#: NOTHING IN THE BLIND CLOSURE MAY IMPORT IT EITHER. The exemption is not a
+#: back door: `check_prediction_closure` refuses `gridiron.priced` inside a
+#: blind closure exactly as it refuses the market package, because a blind
+#: module that imported the priced one would be two steps from a price rather
+#: than one.
+CLOSURE_EXEMPT_PACKAGE = "gridiron.priced"
+
 #: Identifiers and literal fragments that name market DATA.
 #:
 #: Two words are deliberately absent, and the distinction is the same one that
@@ -246,6 +263,15 @@ def check_prediction_closure(
     report = import_closure(entrypoint, root)
 
     for module in sorted(report.modules):
+        if module == CLOSURE_EXEMPT_PACKAGE or module.startswith(
+                CLOSURE_EXEMPT_PACKAGE + "."):
+            raise LawViolation(
+                f"GRIDIRON LAW 1 VIOLATED: {entrypoint} can reach {module!r}, "
+                f"the priced forecaster. That package reads the market by "
+                f"design, so a blind path that imports it is two steps from a "
+                f"line rather than one. The exemption in CLOSURE_EXEMPT_PACKAGE "
+                f"lets the priced package read the market; it does not let the "
+                f"blind path read the priced package.")
         for forbidden in FORBIDDEN_MODULES:
             if module == forbidden or module.startswith(forbidden + "."):
                 chain = " -> ".join(report.path_to(module)) or module

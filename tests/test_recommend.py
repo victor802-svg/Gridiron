@@ -28,6 +28,23 @@ def _world(tmp_path, *, status="scheduled", kickoff="2026-09-09T00:00:00Z"):
     return conn
 
 
+@pytest.fixture(autouse=True)
+def _covered(monkeypatch):
+    """These tests are about the price, not about the coverage list.
+
+    THE_PRICED (2026-09-07) put a measured coverage list in front of the
+    recommendation engine, so a market nobody has measured is priced by nobody
+    -- correct, and not what these tests are checking. Coverage has its own
+    tests in `test_priced.py`.
+    """
+    from gridiron.priced import coverage
+
+    monkeypatch.setattr(coverage, "priceable",
+                        lambda conn, sport, market: {
+                            "priceable": True, "market": market,
+                            "why": "covered, in this test"})
+
+
 def _pick(conn, *, prob=0.62, implied=0.46, subject="AAA", market="moneyline"):
     conn.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type, subject,"
@@ -195,7 +212,8 @@ def test_the_words_are_plain_and_recommend_without_tipping():
         edge_cents=8.6, side="yes", units=1.0, flat=True,
         size_why="no measured edge yet: 3 of 100 settled in this market")
     assert "flat unit" in line and "8.6" in line
-    for words in (line, language.no_recommendation_line("Nothing cleared it."),
+    for words in (line, language.nothing_priced_line(18, 4, 14),
+                  language.nothing_priced_line(0, 0, 0),
                   language.clv_line(10, None, None, 50)):
         assert audit.advice_word_faults(words) == [], words
         assert audit.plain_words_violations(words) == [], words
