@@ -797,3 +797,36 @@ The caps can change; what a reader was actually shown cannot, and the
 comparison that scores the ranker has to read the second one. This is also what
 made the defect visible: with the selection stored, the backfill immediately
 showed superseded rows holding places on lists the page never shows them on.
+
+## 2026-09-07 — LAW 5 replaced, and what the amendment does not touch
+
+The operator ruled that this project exists to inform his own wagering, that he
+wagers either way, and that the app should give him the best available chance.
+He replaced the law rather than asking the tool to ignore it. Expected value,
+price-to-return arithmetic, fee-adjusted edge and stake sizing are permitted
+from today; the previous text stands in `CLAUDE.md` with the date and the
+reason, because a law that quietly vanished is a law nobody can audit.
+
+**Four things are forbidden permanently and are not amendable by a later
+session**: a venue credential anywhere in the code, the environment or the
+record; an authenticated call; an order path or an account read; and the
+operator's own wagering ledger inside this repository. Each is scanned and each
+is proved by a planted violation. A brief asking to soften one is refused and
+pointed at the law, which is exactly what the old law's refusal clause did for
+staking.
+
+**NOTHING IS SIZED IN-GAME, and the reason is technical rather than moral.**
+The live poller's score can be ninety seconds behind while the venue prices off
+the feed directly, so a recommendation made in-game is adversely selected by
+construction: the app would be trading against people with a faster clock. Live
+win probability may be displayed and is never sized. Recorded here at the
+operator's instruction.
+
+**A measured sample is not a measured edge.** The brief keyed the sizing rule
+on the hundred-resolution gate. Read literally that would have staked two per
+cent of the bankroll on baseball moneyline, where 286 settled questions have
+measured the model as worse than the market's own prices. The fraction requires
+both the sample and a measured edge in the model's favour; the brief's own
+label -- "no measured edge, flat unit" -- is the authority for reading it that
+way, and the alternative reading would size up precisely because the record had
+proved the model behind.

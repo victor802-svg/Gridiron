@@ -726,3 +726,24 @@ close-out `docs/closeouts/2026-09-07-the-shortlist.md`). What it leaves behind:
   ranker that had only ever seen tomorrow's slate would have looked correct for
   weeks. Any future scoring pass over stored rows is worth running against the
   whole record for exactly this reason.
+
+## 2026-09-07 — the recommendation
+
+GRIDIRON_THE_RECOMMENDATION ran (brief and close-out of the same date). What it
+leaves behind:
+
+- **The sizing rule's second condition should be reviewed by the operator.**
+  The brief said the gate; the code requires the gate AND a measured edge in the
+  model's favour, because the one market with a sample has measured the model
+  behind. It is the most consequential reading taken in his absence in this
+  phase.
+- **No market on this record has a measured edge**, and the one with enough
+  settled questions to check says the market's prices are better. Every
+  recommendation today is therefore a flat unit. The closing line is what will
+  say whether that changes, and it needs about fifty recommendations.
+- **The declared denominator is a placeholder.** A hundred units, pending the
+  operator's own figure. It is not money and no balance is ever read.
+- **A recommendation surface reads as authority.** The gate, the flat unit and
+  the closing-line measurement are the three things keeping it honest, all
+  three are code rather than intention, and none should be loosened without a
+  dated ruling.
