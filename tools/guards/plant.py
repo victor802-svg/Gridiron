@@ -5551,42 +5551,55 @@ LAW_LLM_WORDS = "NO CODE NAME REACHES A READER"
 
 
 def plant_a_code_name_in_rendered_llm_reasoning() -> Result:
-    """Render the second forecaster's prose without humanising it.
+    """Render an LLM card whose reasoning still carries a factor's code name.
 
-    THE PLAIN-WORDS LAW HAD A HOLE AND THE LLM WALKED THROUGH IT. The prompt
-    named factors by their code names, the model quoted them back, and 27 of
-    65 stored rows carry a snake_case identifier -- `ufc_scheduled_rounds`,
-    `mlb_bullpen_recent_load`, `mean_vs_line`. Every one of them was on a card.
+    THE PLANTING BUILDS ITS OWN CARD. It used to strip the humaniser and
+    re-scan the live record, which only worked while some stored row still
+    contained a code name; the prompt repair of 2026-09-05 stopped the model
+    emitting them, and by 2026-09-07 every fresh row was clean -- so the
+    planting quietly stopped planting anything and reported NOT CAUGHT. A
+    guard that depends on the defect still being present stops guarding the
+    moment the defect is fixed.
 
-    IT WAS NEVER LOOKED AT, which is the part worth remembering. The
-    rendered-page scan exists and runs; Picks opens on the STATISTICAL
-    forecaster and no test ever moved the selector, so the second forecaster's
-    prose had not been read by any guard since it was built. A scan that
-    cannot reach a surface is not protecting it.
-
-    LAW 3 FORBIDS FIXING THE ROWS. The reasoning is what the forecaster said
-    and is never edited, so the repair is at RENDER time and this plants its
-    removal.
+    The live record is still checked first, because a code name reaching a
+    real card is the thing this exists to prevent.
     """
     from gridiron import audit as _audit, db as _db, language as _language
 
-    conn = _db.connect()
+    live = _db.connect()
     try:
-        if _audit.llm_prose_faults(conn):
+        if _audit.llm_prose_faults(live):
             return Result(LAW_LLM_WORDS, "a code name in rendered LLM prose",
                           "audit.llm_prose_faults", False,
                           "the shipped LLM view already shows one; fix that "
                           "before trusting this planting")
-
-        original = _language.humanise_reasoning
-        try:
-            # THE PLANT: the door stops substituting, exactly as it did before
-            # 2026-09-05.
-            _language.humanise_reasoning = lambda text, phrases: text
-            faults = _audit.llm_prose_faults(conn)
-        finally:
-            _language.humanise_reasoning = original
     finally:
+        live.close()
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('planted', 'mlb', 2026, 1,"
+        " 'R', 'AAA', 'BBB', '2026-12-01T18:00:00Z', 'scheduled', '2026-12-01')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-12-01T00:00:00Z', 'mlb', 'planted', 'moneyline', 'AAA',"
+        " NULL, 0.61, 'win', 'llm', 'final', 'fs2', '{}',"
+        " 'srs_diff = 1.3322 pushes toward the yes side, and rest_days_diff"
+        " adds to it.')")
+    conn.commit()
+
+    # The humaniser repairs a stored code name at render time, so this plants
+    # the older failure: the door not substituting at all.
+    original = _language.humanise_reasoning
+    try:
+        _language.humanise_reasoning = lambda text, phrases: text
+        faults = _audit.llm_prose_faults(conn)
+    finally:
+        _language.humanise_reasoning = original
         conn.close()
 
     if not faults:
