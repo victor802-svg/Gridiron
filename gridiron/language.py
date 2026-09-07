@@ -3416,7 +3416,7 @@ def correction_never_rewrites_line() -> str:
 
 def day_strip_words(*, day_words: str | None, slate_words: str | None,
                     clears: int, watching: int, below_floor: int,
-                    floor: float | None) -> dict:
+                    floor: float | None, forecaster: str | None = None) -> dict:
     """The whole day in one strip, so nothing below it has to be read first.
 
     THE PAGE DID NOT SAY WHAT KIND OF DAY IT WAS. Today sat 916 pixels down a
@@ -3430,13 +3430,23 @@ def day_strip_words(*, day_words: str | None, slate_words: str | None,
     # record; the floor decided only that it is a line rather than a card.
     # Counting it as "nothing" would make a display preference look like a
     # rule about bets, which is the distinction F2b exists to keep.
+    # WHOSE QUESTIONS ARE BEING COUNTED. The page shows one forecaster at a
+    # time, because two forecasters answering one question are two claims and
+    # not two picks; the record holds both. On the first slate that produced
+    # recommendations the table held six and this line said four, and a reader
+    # had no way to tell that the difference was a filter rather than an
+    # error.
+    who = FORECASTER_WORDS.get(forecaster or "", "")
     total = clears + below_floor
     if not total:
-        count = "nothing clears the bar"
+        count = (f"{who} has nothing that clears the bar" if who
+                 else "nothing clears the bar")
     elif total == 1:
-        count = "1 pick clears the bar"
+        count = (f"{who} has 1 pick that clears the bar" if who
+                 else "1 pick clears the bar")
     else:
-        count = f"{total} picks clear the bar"
+        count = (f"{who} has {total} picks that clear the bar" if who
+                 else f"{total} picks clear the bar")
     parts = [count]
     if below_floor:
         floor_words = f"{floor:g}x" if floor else "your floor"

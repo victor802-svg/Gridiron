@@ -883,7 +883,9 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     today_block = _today_block(
         conn, cards,
         _recommend.for_predictions(
-            conn, [c["prediction_id"] for c in cards if c.get("on_shortlist")]))
+            conn, [c["prediction_id"] for c in cards if c.get("on_shortlist")]),
+        # THE COUNT IS OF ONE FORECASTER'S QUESTIONS, and the strip says which.
+        forecaster=chosen)
 
     payload = {
         "sport": sport,
@@ -1277,7 +1279,7 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
 
 
 def _today_block(conn: sqlite3.Connection, cards: list[dict],
-                 priced: list[dict]) -> dict:
+                 priced: list[dict], forecaster: str | None = None) -> dict:
     """The two groups the operator reads every morning, never blended.
 
     CLEARS THE BAR is what survives both conditions: an edge after the venue's
@@ -1356,7 +1358,8 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         day_words=language.date_words_from_iso(day),
         slate_words=language.SPORT_LABELS.get(sport, sport),
         clears=len(clears), watching=len(watching),
-        below_floor=len(below_floor), floor=floor)
+        below_floor=len(below_floor), floor=floor,
+        forecaster=forecaster)
 
     from . import tasks as _tasks
 

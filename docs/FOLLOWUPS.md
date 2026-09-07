@@ -997,8 +997,14 @@ right. The price row is now stated from the side the question names, and the
 mapping that converts between the two says whether it complemented rather than
 leaving the card to assume.
 
-**OPEN: the screen shows four of the six recommendations, and the two it does
-not show are the second forecaster's.** The Picks view is filtered to one
+**CLOSED the same day.** The strip names the forecaster it is counting: "the
+model has 4 picks that clear the bar", and switching the view to the reasoning
+pass changes the name with the count. Four and two, and the record's six is
+both of them.
+
+**The finding, kept because the shape of it recurs: the screen showed four of
+the six recommendations, and the two it did not show were the second
+forecaster's.** The Picks view is filtered to one
 forecaster at a time, which is the no-merged-curves law working; the
 recommendations table is not filtered, so "4 picks clear the bar" and a record
 holding 6 are both true and a reader cannot tell why. The strip should say

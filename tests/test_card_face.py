@@ -498,3 +498,65 @@ def test_an_edge_on_the_other_side_still_says_so():
     assert views._edge_side_words("no", False) == "yes"
     assert views._edge_side_words("yes", False) == "no"
     assert views._edge_side_words(None, True) is None
+
+
+def test_the_strip_says_whose_questions_it_is_counting():
+    """FOUND WHEN THE RECORD HELD SIX RECOMMENDATIONS AND THE SCREEN SAID FOUR.
+
+    Both were true. Picks shows one forecaster at a time -- two forecasters
+    answering one question are two claims and not two picks -- and the
+    recommendations table holds every forecaster's. "4 picks clear the bar" in
+    twenty-point type reads as a fact about the day rather than about a
+    filter, and a reader had no way to tell which it was.
+    """
+    model = language.day_strip_words(
+        day_words="Tuesday 8 September", slate_words="MLB", clears=4,
+        watching=11, below_floor=0, floor=1.5, forecaster="statistical")
+    assert model["counts"].startswith("the model has 4 picks that clear the bar")
+
+    pass_ = language.day_strip_words(
+        day_words="Tuesday 8 September", slate_words="MLB", clears=2,
+        watching=3, below_floor=0, floor=1.5, forecaster="llm")
+    assert pass_["counts"].startswith("the reasoning pass has 2 picks")
+
+    # every branch names it, including the empty one and the singular
+    empty = language.day_strip_words(
+        day_words="x", slate_words="MLB", clears=0, watching=15,
+        below_floor=0, floor=1.5, forecaster="statistical")
+    assert empty["counts"].startswith("the model has nothing that clears")
+    one = language.day_strip_words(
+        day_words="x", slate_words="MLB", clears=1, watching=9,
+        below_floor=0, floor=1.5, forecaster="statistical")
+    assert "1 pick that clears the bar" in one["counts"]
+    # and the floor clause survives the rewording
+    floored = language.day_strip_words(
+        day_words="x", slate_words="MLB", clears=2, watching=9,
+        below_floor=1, floor=1.5, forecaster="llm")
+    assert "1 of them below your 1.5x floor" in floored["counts"]
+
+    for words in (model["counts"], pass_["counts"], empty["counts"],
+                  one["counts"], floored["counts"]):
+        assert audit.plain_words_violations(words) == [], words
+        assert audit.advice_word_faults(words) == [], words
+
+
+def test_the_strip_counts_the_forecaster_the_page_is_showing(tmp_path):
+    conn = _world(tmp_path, games=2)
+    _pick(conn, game="g0", subject="AAA0")
+    # the second forecaster answers a question of its own
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-09-07T00:00:00Z', 'mlb', 'g1', 'moneyline', 'AAA1',"
+        " NULL, 0.66, 'win', 'llm', 'final', 'fs2', ?, 'test')", (WHOLE,))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.commit()
+    shortlist.rank_rows(conn, [pid])
+
+    statistical = views.week(conn, "mlb", 2026, 1, forecaster="statistical")["today"]
+    reasoning = views.week(conn, "mlb", 2026, 1, forecaster="llm")["today"]
+    assert "the model has" in statistical["count_words"]
+    assert "the reasoning pass has" in reasoning["count_words"]
+    # and the two counts are of different question sets
+    assert statistical["watching_n"] != reasoning["watching_n"] or         statistical["watching"][0]["prediction_id"] !=         reasoning["watching"][0]["prediction_id"]
