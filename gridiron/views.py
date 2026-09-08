@@ -485,7 +485,14 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     counts: dict[str, int] = {}
     for r in rows:
         counts[r["predictor"]] = counts.get(r["predictor"], 0) + 1
-    chosen = forecaster or config.PICKS_DEFAULT_FORECASTER
+    # THE DEFAULT IS THE OPERATOR'S, FROM SETTINGS (ruling 2026-09-08). Picks
+    # carries no control for this: a switch on the card face lets a reader
+    # pick whichever forecaster flatters each pick, and `picks_taken` would
+    # then record that choosing rather than one forecaster's work.
+    from . import settings as _settings
+
+    chosen = forecaster or _settings.value(conn, "default_forecaster") \
+        or config.PICKS_DEFAULT_FORECASTER
     available = [
         {"forecaster": name,
          "label": config.FORECASTER_LABELS.get(name, name),

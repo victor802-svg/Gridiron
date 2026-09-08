@@ -1373,11 +1373,25 @@ KELLY_DECLARED = "2026-09-07T00:00:00Z"
 #: the cap is what stands between one such claim and a fifth of the money.
 MAX_FRACTION = 0.02
 
-#: THE DENOMINATOR, in units. Awaiting the operator's own number (THE_PRICED
-#: D3, drafted 2026-09-07): a hundred units means a size of "1.4 units" reads
-#: as 1.4% of the ring-fenced money, whatever that money is. Replacing this
-#: with the operator's figure changes no arithmetic, only the words on a line.
-BANKROLL_UNITS = 100.0
+#: THE DENOMINATOR, in units: how many units the ring-fenced money divides
+#: into. A size of "1.4 units" reads as 1.4 / BANKROLL_UNITS of that money.
+#:
+#: SET FROM THE OPERATOR'S OWN RATIO ON 2026-09-08, and the number it replaced
+#: was not merely provisional, it was wrong in the direction that costs money.
+#: It read 100 -- one unit is one per cent -- while his unit is one and a half
+#: per cent of his ring-fenced money. At 100 the 2% ceiling resolved to 2.00
+#: units, and two units at his unit size is THREE per cent: the cap was
+#: exceeded by half again, in the one constant that exists to stop that.
+#:
+#:   before: 100 units,    one unit = 1.00%,  the 2% cap paid 3.0%
+#:   after:  66.667 units, one unit = 1.50%,  the 2% cap pays 2.0%
+#:
+#: NOTHING HERE IS STILL AN AMOUNT. This is a ratio; the money it is a ratio
+#: of lives in the settings row the operator typed, beside his unit, and
+#: `config.py` holds no balance -- which is LAW 5's ledger prohibition and is
+#: untouched by this.
+BANKROLL_UNITS = 1000.0 / 15.0
+BANKROLL_UNITS_DECLARED = "2026-09-08T00:00:00Z"
 
 #: HOW MUCH EDGE IS AN EDGE, in cents per contract, after the fee. A tenth of
 #: a cent is arithmetic noise on a price quoted in whole cents; one cent is the

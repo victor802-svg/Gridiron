@@ -1024,7 +1024,21 @@ tabs now, a card moves between them on the poller's word, and the old page --
 the notices bar, the sorters, the tier buttons, the View menu, the hero and
 its carousel -- is gone.
 
-**OPEN: Picks can no longer show the reasoning pass.** The View menu was the
+**CLOSED the same day, by operator ruling.** Picks gets NO control: a switch
+on the card face lets him pick whichever forecaster flatters each pick, and
+`picks_taken` would then be a record of that choosing rather than of one
+forecaster's work. "Default forecaster" is a Settings row instead -- default
+statistical, dated when changed, append-only -- so every taken row belongs to
+one forecaster for a stretch of days with a date at each end.
+
+**Confirmed with evidence, not assertion: both forecasters still write on
+every daily run.** The task run on a copy of the record with the control
+already removed wrote 50 statistical rows and 30 from the reasoning pass for
+slate 166, the latter covering both game markets it is routed to. The
+structural half holds too: `use_llm` is the scheduler's argument and neither
+`views` nor `api` references it, which a test now asserts.
+
+**The finding, kept: Picks could no longer show the reasoning pass.** The View menu was the
 only control that chose a forecaster, and it went with the rest of that page.
 The choice still exists in the payload, the API still serves
 `?forecaster=llm`, and the day strip still names whose questions it counts --
@@ -1055,3 +1069,25 @@ comment that replaced it.
 **Watch on the first real live evening.** Every live card rendered in this
 session came from a scratch copy with games forced to `in`. The poller has
 not run against a live baseball slate since these cards existed.
+
+## 2026-09-08 — the cap was being exceeded by half again
+
+**FOUND BY CHECKING THE UNIT THE OPERATOR ASKED ABOUT.** `unit_dollars` read
+15 and was right. `BANKROLL_UNITS` read 100 -- one unit is one per cent of the
+ring-fenced money -- and was not: a unit of $15 against a bankroll of $1,000
+is one and a half per cent.
+
+The two disagreed in the direction that costs money. At 100 units the declared
+2% ceiling resolved to 2.00 units, and two units at $15 is $30, which is 3% of
+$1,000. **The cap was exceeded by half again, in the one constant that exists
+to stop exactly that**, and it had been since the constant was declared on
+2026-09-07 with the note "awaiting the operator's own number".
+
+Nothing was staked on it: no recommendation has ever been above its market's
+gate, so every size written so far has been the flat unit. The ceiling only
+binds a gated market, and there are none.
+
+Set to 1000/15 = 66.667 units, dated, with the ruling as the reason. One unit
+is now 1.50% and the 2% cap pays $20. No amount is recorded in `config.py`:
+the denominator is a ratio and the money stays in the settings row the
+operator typed.

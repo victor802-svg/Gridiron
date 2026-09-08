@@ -116,3 +116,38 @@ all is the operator's call.
   the old design. Neither was named for removal and both still carry
   information, but the page below the fold has not had the same pass as the
   page above it.
+
+---
+
+## Addendum — the forecaster control, and the unit (operator ruling, 2026-09-08)
+
+| # | asked for | verdict | evidence |
+|---|---|---|---|
+| 1 | Picks gets NO control to switch forecaster | **DONE** | Nothing on the page sets it, and a test asserts the three names it went by appear in neither the markup nor the renderer. |
+| 2 | "Default forecaster" in Settings, dated, default statistical | **DONE** | `settings.EDITABLE["default_forecaster"]`, refusing anything but the two forecasters the record holds. Changed twice while proving it and both changes carry a timestamp and a previous value on an append-only row. |
+| 3 | Confirm both forecasters still write on every run | **CONFIRMED, by running it** | The daily task on a copy of the record, with the control already removed, wrote **50 statistical and 30 reasoning-pass** rows for slate 166 — the reasoning pass covering both game markets it is routed to, 15 each, with real prose. Structurally: `use_llm` is the scheduler's argument and neither `views` nor `api` references it, which a test now asserts. **Removing the control did not remove the path.** |
+| 4 | Confirm the unit | **DEFECT FOUND AND FIXED** | The unit was right at $15; the denominator was not. See below. |
+
+**The rationale, for the record.** A switch on the card face lets the operator
+pick whichever forecaster flatters each pick, which would make `picks_taken` a
+record of his cherry-picking rather than of one forecaster's work. A Settings
+default attributes every taken row to one forecaster for a stretch of days,
+and the settings table is append-only, so the stretch is dated at both ends.
+
+**The cap was being exceeded by half again.** `unit_dollars` read 15 and was
+right. `BANKROLL_UNITS` read 100 — one unit is one per cent of the ring-fenced
+money — and a $15 unit against a $1,000 bankroll is one and a half per cent.
+At 100 units the declared 2% ceiling resolved to 2.00 units, and two units at
+$15 is $30: **three per cent of the money, in the one constant that exists to
+stop that.** It had been so since the constant was declared on 2026-09-07 with
+the note "awaiting the operator's own number".
+
+**Nothing was staked on it.** No recommendation has ever been above its
+market's gate, so every size on the record is the flat unit: 8 rows, all
+`flat`, all 1.0 units. The ceiling binds only a gated market and there are
+none.
+
+Set to 66.667 units, dated, with this ruling as the reason. One unit is 1.50%
+and the 2% cap pays $20. No amount is written into `config.py`: the
+denominator is a ratio, and the money stays in the settings row the operator
+typed, so LAW 5's ledger prohibition is untouched.

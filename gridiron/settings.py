@@ -124,6 +124,21 @@ def _money_or_unset(value: str) -> str:
     return f"{got:g}"
 
 
+def _a_forecaster(value: str) -> str:
+    """Which forecaster Picks shows. One of the two the record holds.
+
+    NOT A MODEL SWITCH. Both forecasters write on every run whatever this
+    says; this decides which one's questions the screen shows, and therefore
+    which one every pick marked as taken belongs to.
+    """
+    text = str(value).strip().lower()
+    if text in ("statistical", "llm"):
+        return text
+    raise SettingRefused(
+        f"{value!r} is not a forecaster this record holds. The two are the "
+        f"model ('statistical') and the reasoning pass ('llm').")
+
+
 def _a_switch(value: str) -> str:
     text = str(value).strip().lower()
     if text in ("1", "true", "on", "yes"):
@@ -190,6 +205,23 @@ EDITABLE: dict[str, dict] = {
         "kind": "hour",
         "check": _an_hour,
         "default": "7",
+    },
+    # WHICH FORECASTER PICKS SHOWS (operator ruling, 2026-09-08). Settings
+    # and nowhere else: a switch on the card face would let a reader pick
+    # whichever forecaster flatters each pick, and the taken table would
+    # become a record of that choosing rather than of one forecaster's work.
+    # Here, it attributes every taken row to one forecaster for a stretch of
+    # days, and this table is append-only, so the stretch is dated at both
+    # ends.
+    "default_forecaster": {
+        "label": "Default forecaster",
+        "why": ("whose questions Picks shows. Both write on every run "
+                "whatever this says; changing it changes which one's picks "
+                "you are marking as taken"),
+        "section": "what the day shows",
+        "kind": "forecaster",
+        "check": _a_forecaster,
+        "default": "statistical",
     },
     # THE OPERATOR'S FLOOR (CARD_FACE F2b, 2026-09-07). A DISPLAY PREFERENCE,
     # and the distinction is load-bearing: the engine records every pick that

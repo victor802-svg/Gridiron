@@ -287,3 +287,109 @@ def test_the_nav_is_still_four_pages_and_the_controls_still_two_rows():
     assert audit.picks_control_row_faults() == []
     html = (WEB / "index.html").read_text(encoding="utf-8")
     assert audit.picks_control_rows(html) == ["week-market-tabs", "state-tabs"]
+
+
+# --- the forecaster control, and the unit (operator ruling, 2026-09-08) -----
+
+def test_picks_carries_no_control_to_switch_forecaster():
+    """A SWITCH ON THE CARD FACE LETS A READER PICK WHICHEVER FORECASTER
+    FLATTERS EACH PICK, and `picks_taken` would then record that choosing
+    rather than one forecaster's work. The choice is a Settings default, which
+    attributes every taken row to one forecaster for a stretch of days -- and
+    the settings table is append-only, so the stretch is dated at both ends.
+    """
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    app = (WEB / "app.js").read_text(encoding="utf-8")
+    for gone in ("week-forecaster-seg", "week-view-button", "data-forecaster"):
+        assert gone not in html, gone
+        assert gone not in app, gone
+
+
+def test_the_default_forecaster_is_a_dated_setting(tmp_path):
+    from gridiron import settings
+
+    conn = _world(tmp_path)
+    assert settings.value(conn, "default_forecaster") == "statistical"
+    changed = settings.set_value(conn, "default_forecaster", "llm")
+    assert changed["changed"] and changed["was"] == "statistical"
+    row = conn.execute(
+        "SELECT changed_utc, previous, value FROM settings"
+        " WHERE name = 'default_forecaster' ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["changed_utc"] and row["previous"] == "statistical"
+    assert row["value"] == "llm"
+    # and only the two forecasters this record holds
+    for bad in ("both", "", "ensemble"):
+        with pytest.raises(settings.SettingRefused):
+            settings._a_forecaster(bad)
+
+
+def test_the_default_forecaster_decides_whose_questions_picks_shows(tmp_path):
+    from gridiron import settings
+
+    conn = _world(tmp_path)
+    _pick(conn, subject="CHC")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-09-08T00:00:00Z', 'mlb', 'g0', 'total', 'MIL at CHC',"
+        " 8.5, 0.61, 'under', 'llm', 'final', 'fs2', ?, 'test')", (WHOLE,))
+    other = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.commit()
+    shortlist.rank_rows(conn, [other])
+
+    assert "the model has" in views.week(conn, "mlb", 2026, 1)["today"]["count_words"]
+    settings.set_value(conn, "default_forecaster", "llm")
+    assert "the reasoning pass has" in \
+        views.week(conn, "mlb", 2026, 1)["today"]["count_words"]
+
+
+def test_the_unit_and_the_denominator_agree():
+    """THE CAP WAS BEING EXCEEDED BY HALF AGAIN. A unit of $15 against a
+    bankroll of $1,000 is 1.5% of the money; at the old denominator of 100
+    units the 2% ceiling resolved to 2.00 units, and two units at $15 is $30 --
+    3% of the money, in the one constant that exists to stop that.
+    """
+    from gridiron import config
+    from gridiron.market import recommend
+
+    assert config.BANKROLL_UNITS == pytest.approx(1000.0 / 15.0)
+    assert config.BANKROLL_UNITS_DECLARED.startswith("2026-09-08")
+    assert config.FLAT_UNIT == 1.0
+
+    # one unit is one and a half per cent of the ring-fenced money
+    assert 100.0 / config.BANKROLL_UNITS == pytest.approx(1.5)
+    # and the declared ceiling resolves to exactly that ceiling
+    capped = recommend.size_for(model_prob=0.92, price=0.50, settled=200,
+                                measured_edge=True)
+    # NEVER OVER, and within one rounding step of the ceiling. `size_for`
+    # rounds units to three decimals for display, so 1.333 units is 1.99950%
+    # rather than 2.00000% -- the direction that matters is that rounding can
+    # only take it under.
+    share = capped["units"] / config.BANKROLL_UNITS
+    assert share <= config.MAX_FRACTION
+    assert share == pytest.approx(config.MAX_FRACTION, abs=1e-4)
+    assert language.size_words(units=capped["units"], flat=False, why=None,
+                               unit_dollars=15.0).startswith("$20")
+    assert language.size_words(units=config.FLAT_UNIT, flat=True,
+                               why="no measured edge yet",
+                               unit_dollars=15.0).startswith("$15")
+
+
+def test_both_forecasters_still_write_with_the_control_removed():
+    """MEASURED ON A COPY OF THE RECORD, not asserted: the daily task wrote 50
+    statistical rows and 30 from the reasoning pass for slate 166 on
+    2026-09-08, with the View menu already removed.
+
+    The structural half is checked here, because it is the half that could
+    silently change: `use_llm` is the scheduler's argument and nothing in the
+    read path references it.
+    """
+    from pathlib import Path as _Path
+
+    from gridiron import api, tasks, views as _views
+
+    assert "use_llm" in _Path(tasks.__file__).read_text(encoding="utf-8")
+    for module in (_views, api):
+        assert "use_llm" not in _Path(module.__file__).read_text(encoding="utf-8"), (
+            f"{module.__name__} can reach the reasoning pass's switch")
