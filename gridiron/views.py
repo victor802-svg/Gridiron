@@ -1524,6 +1524,251 @@ def _favours_home(entry: dict, card: dict, context: dict) -> bool:
     return not (subject and subject == context.get("away"))
 
 
+# ---------------------------------------------------------------------------
+# THE VENUE'S PACKAGES, GRADED (GRIDIRON_COMBOS C6, 2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# Third group on Upcoming, beneath Watching. On most days it is a heading and a
+# sentence, because most days the venue has nothing this record can price --
+# which is a finding, stated, rather than an empty space.
+
+
+def _leg_reading(leg: str, game_id: str, side: str | None, entry: dict | None,
+                 names: dict) -> dict | None:
+    """One leg's published probability and the venue's price for it.
+
+    BOTH ORIENTED TO THE SIDE THE LEG NAMES. A moneyline claim is stored from
+    the home side; a leg naming the away club is one minus both numbers. The
+    wrong-side defect has shipped here four times in other forms, so this is
+    the one place the flip happens and it happens to the pair together.
+    """
+    if entry is None or side is None:
+        return None
+    fair = entry.get("fair_value")
+    price = entry.get("price")
+    if fair is None or price is None:
+        return None
+    if side == "away":
+        fair, price = 1.0 - fair, 1.0 - price
+    club = (names.get(game_id) or {}).get(side)
+    return {
+        "words": leg,
+        "club": club,
+        "colour": None,          # filled by the block, which holds the palette
+        "game_id": game_id,
+        "side": side,
+        "fair": round(fair, 4),
+        "price": round(price, 4),
+        "edge_cents": round((fair - price) * 100, 2),
+        "prediction_id": entry.get("prediction_id"),
+    }
+
+
+def _combo_card(package, readings: list, *, taken: bool, floor: float,
+                unit_dollars: float | None, sport: str, settled: int,
+                colours: dict) -> dict:
+    """One package the venue published, priced against its own legs."""
+    from .market import combos as _combos
+
+    fair = _combos.fair_value([r["fair"] for r in readings])
+    price = package["last_price"] or package["yes_ask"] or package["yes_bid"]
+    edge = _combos.package_edge(fair, price)
+    product = _combos.legs_multiply_to([r["price"] for r in readings])
+    alternative = _combos.singles_alternative([r["price"] for r in readings],
+                                              [r["fair"] for r in readings])
+    size = _combos.size_for(len(readings), settled=settled,
+                            gate=config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+                            fair=fair, price=price, measured_edge=False)
+    payout = (round(1.0 / price, 2) if price else None)
+    # COLOURED BY THE LEG WITH THE LARGEST EDGE, which is the leg the package
+    # is really about. Its club's colour, not a verdict colour: green and red
+    # stay on the edge line and nowhere else.
+    lead = max(readings, key=lambda r: r["edge_cents"]) if readings else None
+    accent = colours.get((lead or {}).get("club")) if lead else None
+    return {
+        "kind": "package",
+        "state": "upcoming",
+        # EVERY PACKAGE SERIES THE VENUE PUBLISHES IS MADE OF MONEYLINES, and
+        # a leg in any other market is never matched, so this is what the card
+        # is: the market chips filter it with the rest of the slate rather
+        # than hiding it whenever a market is chosen.
+        "market": "moneyline",
+        "package_id": package["id"],
+        "ticker": package["ticker"],
+        "sport": sport,
+        "taken": taken,
+        "legs": readings,
+        "leg_count": len(readings),
+        # WHICH MARKET IT SETTLES INTO, on the card, because that is the record
+        # its result will join and the gate it will be counted against. Two
+        # legs and three legs are two markets: the fee per dollar differs by
+        # 1.7 times between them, measured.
+        "settles_into": config.combo_market(len(readings)),
+        "legs_words": language.combo_legs_words([r["words"] for r in readings]),
+        "payout": payout,
+        "payout_words": language.payout_chip_words(payout),
+        # THE MODEL'S OWN NUMBER, as a price, in the box beside the payout --
+        # the same shape the single card puts there.
+        "fair_words": language.price_chip_words(None if fair is None else fair * 100),
+        # GREEN AND RED LIVE ON THE EDGE LINE AND NOWHERE ELSE, which is why
+        # the state is named here rather than decided in the renderer.
+        "edge_state": ("up" if (edge["edge_cents"] or 0) > 0
+                       else "down" if edge["edge_cents"] is not None else "none"),
+        # LAW 4 ON A PACKAGE: its own market's N, beside its own size.
+        "gate_words": language.gate_status_words(
+            settled, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
+        "price_words": language.price_under_payout_words(price),
+        "margin_words": language.combo_margin_words(price, product),
+        "edge_cents": edge["edge_cents"],
+        "edge_words": language.edge_line_words(edge["edge_cents"]),
+        "return_on_stake": edge["return_on_stake"],
+        "clears": bool(edge["return_on_stake"] is not None
+                       and edge["edge_cents"] is not None
+                       and edge["edge_cents"] > 0
+                       and edge["return_on_stake"] >= config.MIN_RETURN_ON_STAKE
+                       and (payout is None or payout >= floor)),
+        "size_words": language.size_words(
+            units=size["units"], flat=size["kind"] == "flat",
+            why=size.get("why"), unit_dollars=unit_dollars),
+        "singles_words": language.combo_singles_words(alternative),
+        "fee_ratio": alternative.get("ratio"),
+        "accent": accent,
+        "lead_club": (lead or {}).get("club"),
+    }
+
+
+def _combo_block(conn: sqlite3.Connection, cards: list[dict],
+                 priced: list[dict], sport: str | None,
+                 unit_dollars: float | None = None,
+                 floor: float = 1.0, day: str | None = None) -> dict:
+    """The venue's packages for today's games, graded and counted.
+
+    THE COUNTS ARE THE POINT. Every package the venue had open is in this
+    payload's numbers -- priced, or refused with its reason -- and on the day
+    this shipped every one of them was refused, which the heading says in as
+    many words rather than leaving a blank space to be read as a bug.
+    """
+    from .market import combos as _combos
+
+    game_ids = sorted({c.get("game_id") for c in cards if c.get("game_id")})
+    stored = (_combos.stored_packages(conn, sport, game_ids)
+              if sport and game_ids else [])
+    # THE NEWEST LOOK AT EACH PACKAGE, and only that one. The table keeps every
+    # reading by law; the screen shows the price the venue has now.
+    latest, seen = [], set()
+    for row in stored:
+        if row["ticker"] in seen:
+            continue
+        seen.add(row["ticker"])
+        latest.append(row)
+
+    refused: dict = {}
+    for row in latest:
+        if not row["priceable"]:
+            refused[row["why_not"]] = refused.get(row["why_not"], 0) + 1
+
+    rows = _combos.club_rows(conn, game_ids)
+    sides = _combos.sides_for(rows)
+    names = {gid: {"home": s["home"][0] if s["home"] else None,
+                   "away": s["away"][0] if s["away"] else None}
+             for gid, s in sides.items()}
+    colours = {}
+    for row in rows:
+        for which in ("home", "away"):
+            club = (sides.get(row["id"]) or {}).get(which) or []
+            if club:
+                colours[club[0]] = team_colours(sport, row[which])["on_white"]
+
+    # ONE MONEYLINE ENTRY PER GAME, which is what every package series the
+    # venue publishes is made of. A leg in any other market is not matched and
+    # the package is counted unpriceable rather than guessed at.
+    by_game: dict = {}
+    by_id = {c["prediction_id"]: c for c in cards}
+    for entry in priced:
+        card = by_id.get(entry["prediction_id"])
+        if card is None or (card.get("market_type") or "") != "moneyline":
+            continue
+        by_game.setdefault(card.get("game_id"), entry)
+
+    already = taken_package_ids(conn, [r["id"] for r in latest])
+
+    # THE PACKAGE MARKET'S OWN N, NEVER THE LEG'S. A package is sized against
+    # `combo_2`/`combo_3`, which have settled nothing, so every package is a
+    # flat fraction. Reading the leg's count here would let a moneyline's
+    # hundred resolutions unlock variable sizing for a product that has never
+    # settled once -- LAW 5's gate answered with the wrong market's evidence.
+    def _settled(legs: int) -> int:
+        return conn.execute(
+            "SELECT COUNT(*) FROM recommendations"
+            " WHERE sport = ? AND market = ? AND closed_utc IS NOT NULL",
+            (sport, config.combo_market(legs))).fetchone()[0]
+    built = []
+    for row in latest:
+        if not row["priceable"]:
+            continue
+        legs = _combos.read_legs(row["legs_text"])
+        placed = [gid for gid in (row["game_ids"] or "").split(",") if gid]
+        if len(placed) != len(legs):
+            refused["unreadable"] = refused.get("unreadable", 0) + 1
+            continue
+        readings = [
+            _leg_reading(leg, gid, _combos.leg_side(leg, sides.get(gid) or {}),
+                         by_game.get(gid), names)
+            for leg, gid in zip(legs, placed)]
+        for reading in readings:
+            if reading is not None:
+                reading["colour"] = colours.get(reading["club"])
+        if any(r is None for r in readings):
+            # NO FORECAST FOR ONE OF ITS LEGS TODAY. Counted, never guessed:
+            # a package priced on a leg with no probability behind it would
+            # have invented one of the factors in its own product.
+            refused["unforecast_leg"] = refused.get("unforecast_leg", 0) + 1
+            continue
+        built.append(_combo_card(row, readings, taken=row["id"] in already,
+                                 floor=floor, unit_dollars=unit_dollars,
+                                 sport=sport, settled=_settled(len(readings)),
+                                 colours=colours))
+
+    # RANKED BY RETURN ON STAKE, AND NO TWO SHOWN PACKAGES SHARE A LEG. Two
+    # packages built on the same game are one opinion shown twice, and a
+    # reader taking both has doubled a single position without being told.
+    built.sort(key=lambda c: (c["return_on_stake"] is None,
+                              -(c["return_on_stake"] or 0)))
+    shown, used = [], set()
+    for card in built:
+        legs = {(leg["game_id"], leg["side"]) for leg in card["legs"]}
+        if legs & used:
+            continue
+        used |= legs
+        shown.append(card)
+        if len(shown) >= _combos.MAX_SHOWN:
+            break
+
+    # WHICH SPORTS THIS RECORD FORECASTS AND THE VENUE OFFERED NOTHING FOR.
+    # Read from the table rather than assumed, so the sentence is a
+    # measurement -- and READ FOR TODAY, because "none for baseball" is a
+    # statement about this slate. Without the date it would eventually be
+    # answered by a package the venue published in March.
+    with_packages = {r["sport"] for r in conn.execute(
+        "SELECT DISTINCT v.sport FROM venue_packages v WHERE v.priceable = 1"
+        "   AND EXISTS (SELECT 1 FROM games g WHERE instr(v.game_ids, g.id) > 0"
+        "                 AND (? IS NULL OR g.league_date = ?))", (day, day))}
+    without = [s for s in _combos.FORECAST_SPORTS if s not in with_packages]
+    return {
+        "n": len(shown),
+        "offered": len(latest),
+        "refused": refused,
+        "cards": shown,
+        "heading": language.state_heading_words("combos", len(shown)),
+        "count_words": language.combo_heading_words(len(shown), refused, without),
+        "fee_words": language.combo_fee_words(
+            shown[0]["fee_ratio"] if shown else None),
+        "empty_words": (None if shown else language.combo_empty_words(
+            list(_combos.FORECAST_SPORTS), offered=len(latest),
+            refused=refused)),
+    }
+
+
 def _today_block(conn: sqlite3.Connection, cards: list[dict],
                  priced: list[dict], forecaster: str | None = None) -> dict:
     """The two groups the operator reads every morning, never blended.
@@ -1715,6 +1960,12 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         "taken_line": language.taken_line(len(
             [c for c in clears + below_floor + watching if c["taken"]])),
         "taken_today": taken_today(conn, cards),
+        # THIRD GROUP ON UPCOMING, beneath Watching. Its heading says what the
+        # venue offered and what could be done with it, which on most days is
+        # the entire group.
+        "combos": _combo_block(conn, cards, priced, sport,
+                               unit_dollars=unit_dollars, floor=floor,
+                               day=day),
     }
 
 
@@ -1727,8 +1978,13 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
     .taken_comparison` exists to make.
     """
     by_id = {c["prediction_id"]: c for c in cards}
+    # A RETRACTED TAP IS NOT ON THE LIST. Both rows stay in the record -- the
+    # tap and the retraction -- and the running list shows what currently
+    # stands, which is what a running list is for.
     rows = conn.execute(
         "SELECT prediction_id, taken_utc FROM picks_taken"
+        " WHERE prediction_id IS NOT NULL AND id NOT IN"
+        "       (SELECT taken_id FROM picks_retracted)"
         " ORDER BY taken_utc DESC, id DESC LIMIT 40").fetchall()
     entries = []
     for row in rows:
@@ -1754,11 +2010,39 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
                 card.get("phrase") or card.get("row_title") or "this question",
                 edge["edge_cents"] if edge else None),
         })
+    # AND THE PACKAGES HE MARKED (GRIDIRON_COMBOS C4, 2026-09-08). The rail
+    # said "nothing marked yet" beneath a package card whose button read
+    # "taken" -- found by rendering the first package tap. A running list that
+    # omits half of what it records teaches a reader that the tap did nothing.
+    packages = conn.execute(
+        "SELECT t.package_id, t.taken_utc, v.legs_text, v.last_price,"
+        "       v.yes_ask, v.sport"
+        "  FROM picks_taken t JOIN venue_packages v ON v.id = t.package_id"
+        " WHERE t.package_id IS NOT NULL AND t.id NOT IN"
+        "       (SELECT taken_id FROM picks_retracted)"
+        " ORDER BY t.taken_utc DESC, t.id DESC LIMIT 40").fetchall()
+    for row in packages:
+        entries.append({
+            "package_id": row["package_id"],
+            "taken_utc": row["taken_utc"],
+            "words": language.taken_package_entry_words(
+                _combos_legs_words(row["legs_text"]),
+                row["last_price"] if row["last_price"] is not None
+                else row["yes_ask"]),
+        })
+    entries.sort(key=lambda e: e["taken_utc"], reverse=True)
     return {
         "n": len(entries),
         "entries": entries,
         "heading": language.taken_today_heading(len(entries)),
     }
+
+
+def _combos_legs_words(legs_text: str | None) -> str:
+    """The venue's legs, split and rejoined the way a card prints them."""
+    from .market import combos as _combos
+
+    return language.combo_legs_words(_combos.read_legs(legs_text))
 
 
 def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
@@ -3779,6 +4063,62 @@ def take_pick(conn: sqlite3.Connection, prediction_id: int) -> dict:
         return {"taken": True, "already": True, "prediction_id": prediction_id}
 
 
+def take_package(conn: sqlite3.Connection, package_id: int) -> dict:
+    """Record that the operator took this package. Which, and when.
+
+    THE SAME TABLE AND THE SAME THREE FACTS as a single pick, because it is the
+    same question being recorded: what was taken. The package id points at the
+    row that holds the venue's own price and legs as read, so the comparison
+    later has the package the operator actually saw rather than a reconstruction.
+    """
+    from .db import utcnow
+
+    row = conn.execute(
+        "SELECT v.id, v.priceable,"
+        "       EXISTS (SELECT 1 FROM games g WHERE instr(v.game_ids, g.id) > 0)"
+        "         AS placed"
+        "  FROM venue_packages v WHERE v.id = ?", (package_id,)).fetchone()
+    if row is None:
+        return {"taken": False, "already": False,
+                "why": "there is no such package to take"}
+    if not row["placed"]:
+        # ITS LEGS ARE NOT IN GAMES THIS RECORD HOLDS, so nothing here ever
+        # priced it and there is nothing for a tap to be compared against.
+        return {"taken": False, "already": False,
+                "why": "this package names games this record does not hold"}
+    if not row["priceable"]:
+        # A PACKAGE THIS APP REFUSED TO PRICE IS NOT ON THE PAGE, so a tap on
+        # one is a bug or a hand-made request. Recording it would put a row in
+        # the comparison for something nobody was shown.
+        return {"taken": False, "already": False,
+                "why": "this package was never priced here, so there is "
+                       "nothing recorded for it to be compared against"}
+    try:
+        conn.execute(
+            "INSERT INTO picks_taken (package_id, taken_utc) VALUES (?, ?)",
+            (package_id, utcnow()))
+        conn.commit()
+        return {"taken": True, "already": False, "package_id": package_id}
+    except sqlite3.IntegrityError as exc:
+        if "UNIQUE" not in str(exc):
+            raise
+        return {"taken": True, "already": True, "package_id": package_id}
+
+
+def taken_package_ids(conn: sqlite3.Connection, package_ids: list[int]) -> set:
+    """Which of these packages are already marked as taken."""
+    if not package_ids:
+        return set()
+    placeholders = ",".join("?" for _ in package_ids)
+    return {
+        r["package_id"] for r in conn.execute(
+            f"SELECT package_id FROM picks_taken"
+            f" WHERE package_id IN ({placeholders})"
+            f"   AND id NOT IN (SELECT taken_id FROM picks_retracted)",
+            list(package_ids))
+    }
+
+
 def taken_ids(conn: sqlite3.Connection, prediction_ids: list[int]) -> set:
     """Which of these picks are already marked as taken."""
     if not prediction_ids:
@@ -3787,7 +4127,9 @@ def taken_ids(conn: sqlite3.Connection, prediction_ids: list[int]) -> set:
     return {
         r["prediction_id"] for r in conn.execute(
             f"SELECT prediction_id FROM picks_taken"
-            f" WHERE prediction_id IN ({placeholders})", list(prediction_ids))
+            f" WHERE prediction_id IN ({placeholders})"
+            f"   AND id NOT IN (SELECT taken_id FROM picks_retracted)",
+            list(prediction_ids))
     }
 
 
@@ -3859,3 +4201,35 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
             "either has been visible."
         ),
     }
+
+
+def retract_tap(conn: sqlite3.Connection, taken_id: int, reason: str) -> dict:
+    """Take back a tap, without taking it out of the record.
+
+    THE TAP STAYS, BECAUSE IT HAPPENED. What this writes is a second row saying
+    it no longer stands and why -- the shape `prediction_voids` already uses
+    for the same kind of act, and the reason CARD_FACE F3 asked for one.
+
+    TERMINAL, like a void. The tap keeps its claim on that prediction or
+    package, so a retracted tap cannot be re-taken; a record that can be
+    toggled records the last edit rather than what happened.
+    """
+    from .db import utcnow
+
+    if not reason or len(reason.strip()) < 10:
+        return {"retracted": False,
+                "why": "a retraction needs a reason, and it has to say "
+                       "something: ten characters at least"}
+    row = conn.execute("SELECT id FROM picks_taken WHERE id = ?",
+                       (taken_id,)).fetchone()
+    if row is None:
+        return {"retracted": False, "why": "there is no such tap to retract"}
+    already = conn.execute("SELECT 1 FROM picks_retracted WHERE taken_id = ?",
+                           (taken_id,)).fetchone()
+    if already:
+        return {"retracted": True, "already": True, "taken_id": taken_id}
+    conn.execute(
+        "INSERT INTO picks_retracted (taken_id, retracted_utc, reason)"
+        " VALUES (?, ?, ?)", (taken_id, utcnow(), reason.strip()))
+    conn.commit()
+    return {"retracted": True, "already": False, "taken_id": taken_id}

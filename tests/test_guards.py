@@ -274,7 +274,8 @@ def test_every_declared_factor_reached_the_database(conn):
 def test_the_package_holds_no_venue_credential():
     from gridiron import auth, db
 
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "whether a venue credential sits in THIS deployment's own record, which is the only record that could hold one")
     try:
         audit.check_no_venue_credentials(env_file=auth.ENV_FILE, conn=conn)
     finally:
@@ -1158,7 +1159,8 @@ def test_every_verified_run_line_in_the_record_agrees_with_its_price():
     known unknowns and are excluded -- they must not be read as correct."""
     from gridiron import db as _db
 
-    conn = _db.connect()
+    conn = _db.read_the_live_record(
+        "every verified run line in the record, against its own price")
     audit.check_run_line_signs(conn, "mlb")          # must not raise
 
 
@@ -1171,7 +1173,8 @@ def test_superseded_forecasts_are_not_in_the_arithmetic():
     curve that counts 26 questions twice describes a slate nobody asked."""
     from gridiron import calibration as _cal, db as _db
 
-    conn = _db.connect()
+    conn = _db.read_the_live_record(
+        "the record's superseded forecasts, to prove none is in the arithmetic")
     standing = conn.execute("""
       SELECT COUNT(*) FROM predictions p WHERE p.sport='nfl'
          AND p.id = (SELECT p2.id FROM predictions p2
@@ -1212,7 +1215,7 @@ def test_a_factor_set_query_still_returns_its_own_rows():
     """
     from gridiron import db as _db
 
-    conn = _db.connect()
+    conn = _db.read_the_live_record("the record's own factor-set rows")
     sets = [r[0] for r in conn.execute(
         "SELECT DISTINCT factor_set_version FROM predictions"
         " WHERE sport='nfl' ORDER BY factor_set_version")]

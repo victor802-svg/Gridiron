@@ -465,6 +465,13 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("schedule", help="what the scheduler has and has not done")
     s.set_defaults(func=cmd_schedule)
 
+    s = sub.add_parser("retract-tap",
+                       help="take back a marked pick or package: a second "
+                            "append-only row with its reason, never a delete")
+    s.add_argument("taken_id", type=int, help="the picks_taken row id")
+    s.add_argument("reason", help="why it no longer stands, in words (10+ characters)")
+    s.set_defaults(func=cmd_retract_tap)
+
     s = sub.add_parser("serve", help="run the local web interface")
     s.add_argument("--open", dest="open_browser", action="store_true",
                    help="open an already-signed-in browser (the desktop launcher)")
@@ -495,6 +502,26 @@ def cmd_task(args: argparse.Namespace) -> int:
     for r in results:
         print(f"[{r['result']:6s}] {r['task']}: {r['detail']}")
     return 1 if any(r["result"] == "failed" for r in results) else 0
+
+
+def cmd_retract_tap(args: argparse.Namespace) -> int:
+    """Take back a tap without taking it out of the record (LAW 3, F3).
+
+    THE ONLY SHIPPED WAY TO DO IT, on purpose. No screen carries a control for
+    this and no route accepts it: a retraction is rare, deliberate, and needs a
+    reason written in words, which is a thing a keyboard is for and a button is
+    not.
+    """
+    from . import views
+
+    conn = db.open_db(args.database)
+    got = views.retract_tap(conn, args.taken_id, args.reason)
+    if not got.get("retracted"):
+        print(f"not retracted: {got.get('why')}")
+        return 1
+    print("already retracted" if got.get("already")
+          else f"retracted tap {args.taken_id}; both rows stand")
+    return 0
 
 
 def cmd_schedule(args: argparse.Namespace) -> int:

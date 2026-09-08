@@ -267,7 +267,8 @@ def test_the_generated_why_agrees_on_every_prediction_in_the_record():
 
     from gridiron import config, db
 
-    conn = db.open_db(config.DB_PATH)
+    conn = db.read_the_live_record(
+        "every prediction in the record, to prove the generated why agrees with the stored one")
     try:
         rows = conn.execute(
             "SELECT market_type, prop_type, subject, model_side, model_prob,"

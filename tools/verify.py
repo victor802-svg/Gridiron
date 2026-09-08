@@ -482,7 +482,13 @@ def step_4_live_forward_week() -> bool:
         print(f"no live database at {config.DB_PATH}")
         return False
 
-    conn = db.open_db(config.DB_PATH)
+    # READ-ONLY, FROM 2026-09-08. This step only asks the record questions --
+    # which weeks were written, when, and against which kickoffs -- and
+    # `open_db` would have run a migration on the operator's own file to do
+    # it. The gate does not need write access to report what the record says.
+    conn = db.read_the_live_record(
+        "the forward weeks on the live record, which is the only thing in this "
+        "project that could ever become evidence of an edge")
     kind = db.database_kind(conn)
     print(f"database: {config.DB_PATH}  (kind={kind['kind']})")
 

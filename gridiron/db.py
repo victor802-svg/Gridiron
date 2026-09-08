@@ -39,14 +39,112 @@ def just_after(iso: str | None) -> str:
     return max(now, after)
 
 
-def connect(path: Path | str | None = None) -> sqlite3.Connection:
+class LiveRecordTouched(RuntimeError):
+    """Verification opened the operator's own record. It never may.
+
+    Raised by name, with the file and the caller, because the failure this
+    prevents is silent: a test that writes to `var/gridiron.db` leaves rows
+    that look exactly like the operator's own and cannot be told from them
+    afterwards. It happened on 2026-09-08 -- a package the venue never
+    published, and a tap on it that the record then reported as his choice.
+    """
+
+
+def _verifying() -> str | None:
+    """Which verification is running, or None. The name goes in the error.
+
+    PYTEST SETS `PYTEST_CURRENT_TEST` for the duration of each test, which is
+    how a test is recognised without the test having to announce itself --
+    announcing is exactly what a test that reaches for the live record would
+    forget to do. `plant.py` sets `GRIDIRON_VERIFYING` for the same reason.
+    """
+    import os
+
+    current = os.environ.get("PYTEST_CURRENT_TEST")
+    if current:
+        return current.split(" ")[0]
+    if os.environ.get("GRIDIRON_VERIFYING"):
+        return os.environ["GRIDIRON_VERIFYING"]
+    return None
+
+
+#: THE LIVE RECORD IS WHAT THE DEPLOYMENT WAS CONFIGURED WITH, fixed here at
+#: import. Not `config.DB_PATH` at call time: a test that repoints that at its
+#: own scratch file is doing exactly what the guard asks, and the guard's first
+#: version then refused it for doing so.
+_LIVE_PATH: Path | None = (
+    None if str(config.DB_PATH) == ":memory:" else Path(config.DB_PATH).resolve())
+
+
+def _is_the_live_record(path: Path) -> bool:
+    """Is this the operator's own database file?
+
+    COMPARED RESOLVED, so `var/gridiron.db`, an absolute path to it and a
+    relative walk through `..` are all the same file. A guard that could be
+    stepped around with a different spelling of the same path is a guard that
+    will be, by accident, at two in the morning.
+
+    A FILE UNDER THE SYSTEM TEMP DIRECTORY IS SCRATCH BY DEFINITION. The error
+    message has said so since the guard was written; this is the code agreeing
+    with it.
+    """
+    import tempfile
+
+    if str(path) == ":memory:" or _LIVE_PATH is None:
+        return False
+    try:
+        resolved = path.resolve()
+        scratch = Path(tempfile.gettempdir()).resolve()
+        if scratch in resolved.parents:
+            return False
+        return resolved == _LIVE_PATH
+    except OSError:
+        return False
+
+
+def connect(path: Path | str | None = None, *,
+            _live_read_reason: str | None = None) -> sqlite3.Connection:
     path = Path(path) if path is not None else config.DB_PATH
+    verifying = _verifying()
+    if verifying and _live_read_reason is None and _is_the_live_record(path):
+        raise LiveRecordTouched(
+            f"VERIFICATION MAY NOT OPEN THE LIVE RECORD. {verifying} tried to "
+            f"open {path}, which is the operator's own database. Tests, "
+            f"plantings and any temporary slate use a scratch file -- pytest's "
+            f"`tmp_path` fixture, or a path under the system temp directory. "
+            f"If this really has to read the live record, say so in words: "
+            f"`db.read_the_live_record(\"why\")` hands back a query-only "
+            f"connection that SQLite itself refuses to write through.")
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    if _live_read_reason is not None:
+        # SQLITE REFUSES THE WRITE, not this module. A rule enforced by the
+        # thing being protected cannot be forgotten by the next caller.
+        conn.execute("PRAGMA query_only = ON")
     return conn
+
+
+def read_the_live_record(why: str) -> sqlite3.Connection:
+    """A QUERY-ONLY handle on the operator's record, for verification that
+    genuinely has to ask it something.
+
+    Some plantings and tests are about THIS deployment: that no venue
+    credential sits in its record, that the ratings it holds actually vary. A
+    scratch database cannot answer those, so this door exists -- narrow, named,
+    and unable to write.
+
+    `why` is not decoration. A caller that cannot say in a sentence why the
+    real record is needed is a caller that should be using a scratch one.
+    """
+    if not why or len(why.strip()) < 10:
+        raise LiveRecordTouched(
+            "READING THE LIVE RECORD NEEDS A REASON, in words: what question "
+            "does the operator's own database answer that a scratch one "
+            "cannot? Ten characters at least.")
+    return connect(config.DB_PATH, _live_read_reason=why.strip())
 
 
 #: Columns added to existing tables after the first release. Additive only:
@@ -563,6 +661,66 @@ def widen_task_run_results(conn: sqlite3.Connection) -> bool:
     return True
 
 
+#: Triggers attached to `picks_taken`. Named for the same reason
+#: `PREDICTION_TRIGGERS` is: a rename carries them along, and the schema script
+#: would then fail to recreate them under the same names.
+TAKEN_TRIGGERS = (
+    "picks_taken_no_update",
+    "picks_taken_after_the_prediction",
+    "picks_taken_after_the_package",
+)
+
+
+def widen_taken_for_packages(conn: sqlite3.Connection) -> bool:
+    """Let a package tap into `picks_taken` (GRIDIRON_COMBOS C4, 2026-09-08).
+
+    `prediction_id` was NOT NULL, and a package tap has no prediction behind
+    it. SQLite cannot relax a NOT NULL in place, so the table is rebuilt --
+    rename aside, schema script, copy back, verify the count, drop.
+
+    NOTHING IS LOST OR THE ROLLBACK KEEPS IT. If the copy does not restore
+    every row the original had, the transaction rolls back and the renamed
+    table is left where it is, under `picks_taken_pre_packages`, for the next
+    open to finish. That recovery path exists because this project has
+    previously left a table empty beside its own data.
+    """
+    stale = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table'"
+        "   AND name='picks_taken_pre_packages'").fetchone()
+    info = list(conn.execute("PRAGMA table_info(picks_taken)"))
+    if not stale:
+        if not info:
+            return False                     # fresh database; schema.sql has it
+        if any(r[1] == "package_id" for r in info):
+            return False                     # already rebuilt
+        conn.execute("PRAGMA legacy_alter_table = ON")
+        for trigger in TAKEN_TRIGGERS:
+            conn.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+        conn.execute(
+            "ALTER TABLE picks_taken RENAME TO picks_taken_pre_packages")
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    expected = conn.execute(
+        "SELECT COUNT(*) FROM picks_taken_pre_packages").fetchone()[0]
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute(
+        "INSERT OR IGNORE INTO picks_taken (id, prediction_id, taken_utc)"
+        " SELECT id, prediction_id, taken_utc FROM picks_taken_pre_packages")
+    after = conn.execute("SELECT COUNT(*) FROM picks_taken").fetchone()[0]
+    if after != expected:
+        conn.rollback()
+        conn.execute("PRAGMA foreign_keys = ON")
+        raise MigrationRefused(
+            f"rebuilding `picks_taken` would have changed the record: "
+            f"{expected} rows before, {after} after. The original is untouched "
+            f"under `picks_taken_pre_packages` and nothing was dropped.")
+    conn.execute("DROP TABLE picks_taken_pre_packages")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.commit()
+    return True
+
+
 def init(conn: sqlite3.Connection) -> None:
     """Create the schema. Idempotent — every object is IF NOT EXISTS."""
     _migrate(conn)
@@ -577,6 +735,9 @@ def init(conn: sqlite3.Connection) -> None:
     # AND THE RUN LEDGER'S RESULTS (audit 2026-09-05): a 'running' row is
     # written before a task does anything, and an older CHECK would refuse it.
     widen_task_run_results(conn)
+    # AND THE TAKEN TABLE'S SHAPE (GRIDIRON_COMBOS C4, 2026-09-08): a package
+    # tap has no prediction, so `prediction_id` had to stop being NOT NULL.
+    widen_taken_for_packages(conn)
     widening = _widen_market_type(conn) if _needs_market_type_widening(conn) else None
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     if widening is not None:
@@ -615,6 +776,13 @@ def database_kind(conn: sqlite3.Connection) -> dict:
 
 
 def open_db(path: Path | str | None = None) -> sqlite3.Connection:
+    """Open a database and bring its schema up to date.
+
+    NEVER REACHABLE FROM VERIFICATION ON THE LIVE FILE: `init` writes -- it
+    migrates, creates and backfills -- so `connect` refuses the live path under
+    pytest or a planting before any of that runs. Read the live record with
+    `read_the_live_record` instead, which does no `init` at all.
+    """
     conn = connect(path)
     init(conn)
     return conn

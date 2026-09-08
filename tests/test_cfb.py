@@ -63,7 +63,8 @@ def test_the_top_rung_is_reached_by_under_a_tenth_of_games():
     from gridiron.model import questions
     from gridiron.sports import cfb as cfb_sport
 
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "how often the top college-football rung is reached, over the games this record actually holds")
     rows = conn.execute(
         "SELECT id FROM games WHERE sport='cfb' AND status='final'"
         " AND home_score IS NOT NULL AND season IN (2024, 2025)").fetchall()

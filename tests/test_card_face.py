@@ -366,8 +366,14 @@ def test_no_pressure_word_may_reach_a_card():
     already draw this line and the pressure words belong on the composed side
     of it.
     """
+    # "combo" LEFT THIS LIST ON 2026-09-08 with LAW 5's amendment: the app now
+    # grades packages the venue publishes, and the group that shows them is
+    # called Combos because that is what the venue calls them. Everything else
+    # stays, "parlay" and "same game" included -- the first carries the
+    # sportsbook's urgency, and the second names the one package shape this
+    # app refuses to price, so printing it would advertise the refusal.
     for word in ("boost", "hot", "trending", "popular", "streak", "parlay",
-                 "combo", "same game"):
+                 "same game", "builder", "add leg", "slip"):
         planted = f"Miami to win — a {word} pick at this price"
         assert audit.pressure_word_faults(planted), word
         payload = {"today": {"watching": [{"question": planted}]}}
@@ -377,6 +383,9 @@ def test_no_pressure_word_may_reach_a_card():
     # and the model's own prose is left alone
     assert audit.plain_words_violations(
         "The home side get a boost from the short trip.") == []
+    # AND THE PRODUCT'S OWN NAME PASSES, in the one place it is allowed: the
+    # group heading and the cards under it.
+    assert audit.pressure_word_faults("Combos — 2 packages") == []
 
 
 def test_the_pressure_scan_does_not_fire_on_ordinary_english():

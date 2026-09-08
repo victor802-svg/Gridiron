@@ -940,6 +940,129 @@ const Gridiron = (function () {
     return face;
   }
 
+  // THE VENUE'S PACKAGES (GRIDIRON_COMBOS C6, 2026-09-08).
+  //
+  // The app grades what the venue assembled; it never assembles one, and there
+  // is no control here that adds a leg, builds anything, or invites another
+  // selection. The only control is the same one a single card has: a record of
+  // what the operator took.
+  function comboCard(entry, labels) {
+    const face = el('article', 'face combo-face');
+    if (entry.accent) face.style.setProperty('--accent', '#' + entry.accent);
+
+    // THE LEGS, AS THE VENUE WROTE THEM, each in its club's own colour. The
+    // same pill the single card uses: a club's colour marks its own name and
+    // is never a verdict.
+    // `face-band` IS THE ROW THE SINGLE CARD PUTS ITS CLUBS IN, and it is the
+    // row that has the gap between them. The first version invented
+    // `face-clubs`, which no stylesheet knows, so the two legs rendered
+    // welded together: "Chicago Cubs moneylineSan Francisco Giants moneyline".
+    const clubs = el('div', 'face-band combo-legs');
+    (entry.legs || []).forEach(leg => {
+      clubs.appendChild(clubPill(leg.words, {on_white: leg.colour}));
+    });
+    face.appendChild(clubs);
+
+    // THE PRICES, in the card grammar the rest of this page uses: the payout
+    // is the big chip, with the price beneath it.
+    const prices = el('div', 'face-prices');
+    const box = (cls, label, value) => {
+      const b = el('div', cls);
+      b.appendChild(el('span', 'box-label', label));
+      b.appendChild(el('span', 'box-value', value));
+      return b;
+    };
+    prices.appendChild(box('box', labels.model, entry.fair_words || ''));
+    const payout = box('box box-payout', labels.venue, entry.payout_words);
+    if (entry.accent) payout.style.background = '#' + entry.accent;
+    payout.appendChild(el('span', 'box-under', entry.price_words || ''));
+    prices.appendChild(payout);
+    face.appendChild(prices);
+
+    // WHAT ITS OWN LEGS MULTIPLY TO, beside what the venue charges for them:
+    // the venue's margin, or its discount, as one visible number.
+    face.appendChild(el('p', 'combo-margin', entry.margin_words || ''));
+
+    const edge = el('div', 'face-edge ' + (entry.edge_state || 'none'));
+    edge.appendChild(el('span', 'edge-label', labels.edge));
+    edge.appendChild(el('span', 'edge-value', entry.edge_words || ''));
+    face.appendChild(edge);
+
+    if (entry.size_words) face.appendChild(el('div', 'face-size', entry.size_words));
+
+    const meta = el('div', 'face-meta');
+    meta.appendChild(el('span', 'face-gate', entry.gate_words || ''));
+    face.appendChild(meta);
+
+    // THE COST, ON EVERY CARD. A package's fee per dollar is 1.7 to 2.8 times
+    // the same legs taken singly, measured, and a card showing only its own
+    // edge would be arguing one side.
+    if (entry.singles_words) {
+      face.appendChild(el('p', 'combo-singles', entry.singles_words));
+    }
+
+    const actions = el('div', 'face-actions');
+    const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
+    mark.type = 'button';
+    mark.textContent = entry.taken ? labels.taken : labels.took;
+    mark.disabled = !!entry.taken;
+    mark.onclick = () => takePackage(entry.package_id, mark, labels);
+    actions.appendChild(mark);
+    face.appendChild(actions);
+    return face;
+  }
+
+  function takePackage(packageId, button, labels) {
+    button.disabled = true;
+    // `X-Gridiron-Form` IS THIS APP'S CSRF HEADER. The first version sent
+    // `X-Gridiron-CSRF`, which the route refuses -- a 403 nobody could have
+    // seen, because no package had ever rendered a button to press.
+    fetch('/api/taken/package/' + packageId, {
+      method: 'POST',
+      headers: { 'X-Gridiron-Form': csrfToken || '' },
+    }).then(r => r.json()).then(result => {
+      if (result && result.taken) {
+        button.textContent = labels.taken;
+        button.classList.add('took-done');
+      } else {
+        button.disabled = false;
+        if (result && result.why) button.title = result.why;
+      }
+    }).catch(() => { button.disabled = false; });
+  }
+
+  function renderCombos(combos, labels) {
+    const host = document.getElementById('today-combos');
+    const heading = document.getElementById('combos-heading');
+    const counts = document.getElementById('combos-counts');
+    const fee = document.getElementById('combos-fee');
+    const empty = document.getElementById('combos-empty');
+    if (!host) return;
+    host.innerHTML = '';
+    const data = combos || null;
+    if (heading) heading.textContent = data ? (data.heading || '') : '';
+    if (counts) counts.textContent = data ? (data.count_words || '') : '';
+    // THE COST SENTENCE BELONGS TO THE CARDS. It says every card prints both
+    // rates, so above an empty group it describes cards that do not exist --
+    // which is how a page starts teaching a reader to skip its own sentences.
+    if (fee) {
+      const cardsPresent = !!(data && data.cards && data.cards.length);
+      fee.textContent = cardsPresent ? (data.fee_words || '') : '';
+      fee.hidden = !cardsPresent;
+      fee.dataset.emptyHidden = cardsPresent ? 'false' : 'true';
+    }
+    (data && data.cards ? data.cards : []).forEach(
+      entry => host.appendChild(comboCard(entry, labels)));
+    if (empty) {
+      empty.textContent = (data && data.empty_words) || '';
+      // HIDDEN BY ITS OWN EMPTINESS, which the tab logic then respects: the
+      // sentence shows when there are no cards, and never beside them.
+      const show = !!(data && data.empty_words);
+      empty.hidden = !show;
+      empty.dataset.emptyHidden = show ? 'false' : 'true';
+    }
+  }
+
   // WHICH TAB IS BEING LOOKED AT. The default is Upcoming; a reader who
   // switches to Live stays there across a refresh, because a poll that moved
   // them back would take the screen away from the game they are watching.
@@ -949,7 +1072,13 @@ const Gridiron = (function () {
     const tabs = document.getElementById('state-tabs');
     const upcomingParts = ['today-clears-heading', 'today-clears', 'today-fold',
                            'today-below-floor', 'today-watching-heading',
-                           'today-watching'];
+                           'today-watching',
+                           // COMBOS IS AN UPCOMING GROUP (C6). Nothing is
+                           // sized in-game, so a package has nothing to say
+                           // on Live and is a settled row rather than a card
+                           // on Results.
+                           'combos-heading-row', 'combos-counts', 'combos-fee',
+                           'today-combos', 'combos-empty'];
     const livePresent = (document.getElementById('today-live') || {}).childNodes;
     const liveCount = livePresent ? livePresent.length : 0;
     if (tabs) {
@@ -1053,6 +1182,8 @@ const Gridiron = (function () {
     const wanted = state.market || '';
     const keep = list => (list || []).filter(
       e => !wanted || (e.market || '') === wanted);
+
+    renderCombos(today.combos, labels);
 
     keep(today.clears).forEach(e => clears.appendChild(todayCard(e, labels)));
     keep(today.watching).forEach(e => watching.appendChild(todayCard(e, labels)));

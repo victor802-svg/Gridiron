@@ -1447,6 +1447,73 @@ CREATE INDEX IF NOT EXISTS at_the_line_claims_prediction
 -- demanded it of all four. That is why the record held no claim at all: every
 -- baseball question, every winner contract and every prop was refused at the
 -- last step for lacking something its comparison does not use.
+-- ---------------------------------------------------------------------------
+-- THE VENUE'S PACKAGES (GRIDIRON_COMBOS, 2026-09-08)
+--
+-- The venue assembles multi-leg packages; this records the ones it published
+-- and what this project made of each. LAW 5 as amended: the engine grades a
+-- package and never builds one.
+--
+-- THE VERDICT IS STORED BESIDE THE READING. `priceable` and `why_not` are
+-- this project's judgement, written at the moment of the read, so a later
+-- reader can check it rather than recompute it against a rule that has since
+-- changed. A same-game package is the commonest verdict and was the only one
+-- the venue had open on the day this shipped.
+CREATE TABLE IF NOT EXISTS venue_packages (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    venue         TEXT    NOT NULL,
+    ticker        TEXT    NOT NULL,
+    event_ticker  TEXT    NOT NULL,
+    series        TEXT    NOT NULL,
+    sport         TEXT    NOT NULL,
+    -- the venue's own words for the legs, joined as it wrote them, and the
+    -- games this project matched them to (empty when it could not)
+    legs_text     TEXT    NOT NULL,
+    leg_count     INTEGER NOT NULL,
+    game_ids      TEXT    NOT NULL DEFAULT '',
+    -- the package's own price, as read. NEVER computed: a package price this
+    -- project worked out for itself would be a product the venue never sold.
+    yes_bid       REAL,
+    yes_ask       REAL,
+    last_price    REAL,
+    volume        REAL,
+    -- the verdict, and the reason when there is one
+    priceable     INTEGER NOT NULL CHECK (priceable IN (0, 1)),
+    why_not       TEXT,
+    fetched_utc   TEXT    NOT NULL,
+    UNIQUE (ticker, fetched_utc)
+);
+CREATE INDEX IF NOT EXISTS venue_packages_sport
+    ON venue_packages (sport, fetched_utc);
+
+CREATE TRIGGER IF NOT EXISTS venue_packages_no_update
+BEFORE UPDATE ON venue_packages
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a package reading is append-only; a later look is a '
+        || 'new row, so the record keeps what the venue showed at each moment');
+END;
+
+CREATE TRIGGER IF NOT EXISTS venue_packages_no_delete
+BEFORE DELETE ON venue_packages
+BEGIN
+    SELECT RAISE(ABORT, 'GRIDIRON LAW 3: a package reading is never deleted');
+END;
+
+-- A PRICED PACKAGE MUST CARRY ITS GAMES, and an unpriced one must not carry a
+-- price. The verdict and the row have to agree, or the table would hold a
+-- same-game package with a fair value beside it.
+CREATE TRIGGER IF NOT EXISTS venue_packages_priced_only_when_placeable
+BEFORE INSERT ON venue_packages
+FOR EACH ROW
+WHEN NEW.priceable = 1 AND (NEW.game_ids = '' OR NEW.why_not IS NOT NULL)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a package is priceable only with its legs placed in games '
+        || 'and no reason against it');
+END;
+
 CREATE TRIGGER IF NOT EXISTS at_the_line_requires_a_frozen_distribution
 BEFORE INSERT ON at_the_line_claims
 FOR EACH ROW
@@ -1799,13 +1866,38 @@ END;
 -- do the picks he selected score better, worse, or the same as the ones he
 -- passed over? Three curves, never merged, behind the usual gate.
 -- ---------------------------------------------------------------------------
+-- ONE ROW PER THING TAKEN, and from 2026-09-08 the thing may be a package
+-- the venue published (GRIDIRON_COMBOS C4). Exactly one of `prediction_id`
+-- and `package_id` is set, enforced by CHECK: a row naming both would be two
+-- taps recorded as one, and a row naming neither is a tap on nothing.
+--
+-- STILL THREE FACTS AND NOT A PENNY: what was taken, which kind it was, and
+-- when. `audit.check_taken_is_not_a_ledger` reads this table's columns and a
+-- planting adds a money-shaped one to prove it fires.
 CREATE TABLE IF NOT EXISTS picks_taken (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    prediction_id  INTEGER NOT NULL REFERENCES predictions (id),
+    prediction_id  INTEGER REFERENCES predictions (id),
+    package_id     INTEGER REFERENCES venue_packages (id),
     taken_utc      TEXT    NOT NULL,
-    UNIQUE (prediction_id)
+    CHECK ((prediction_id IS NULL) <> (package_id IS NULL)),
+    UNIQUE (prediction_id),
+    UNIQUE (package_id)
 );
 CREATE INDEX IF NOT EXISTS picks_taken_when ON picks_taken (taken_utc);
+
+-- A TAP IS NEVER DELETED (2026-09-08). This trigger did not exist until now,
+-- which is how a synthetic tap written by a verification run came to be
+-- removed with an ordinary DELETE. The table's comment said "append-only" and
+-- nothing enforced it; LAW 3 is structural or it is decoration.
+CREATE TRIGGER IF NOT EXISTS picks_taken_no_delete
+BEFORE DELETE ON picks_taken
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a taken pick is never deleted. A tap that should not '
+        || 'stand is RETRACTED -- a second append-only row in picks_retracted '
+        || 'carrying its reason -- so the record keeps what happened and what '
+        || 'was said about it');
+END;
 
 CREATE TRIGGER IF NOT EXISTS picks_taken_no_update
 BEFORE UPDATE ON picks_taken
@@ -1819,8 +1911,57 @@ END;
 CREATE TRIGGER IF NOT EXISTS picks_taken_after_the_prediction
 BEFORE INSERT ON picks_taken
 FOR EACH ROW
-WHEN NEW.taken_utc < (SELECT created_utc FROM predictions WHERE id = NEW.prediction_id)
+WHEN NEW.prediction_id IS NOT NULL
+ AND NEW.taken_utc < (SELECT created_utc FROM predictions WHERE id = NEW.prediction_id)
 BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 1: a pick cannot be taken before it was forecast');
+END;
+
+-- AND A PACKAGE CANNOT BE TAKEN BEFORE THE VENUE PUBLISHED IT. Same law, same
+-- shape: the record has to be able to say the reading came first, or the tap
+-- is evidence of nothing.
+-- ---------------------------------------------------------------------------
+-- AND HOW A TAP IS TAKEN BACK (CARD_FACE F3, built 2026-09-08)
+--
+-- The same shape as `prediction_voids`, for the same kind of act: an
+-- append-only companion row saying which tap no longer stands and why. The tap
+-- itself is untouched, because it happened.
+--
+-- A RETRACTION IS TERMINAL. The tap keeps its UNIQUE claim on that prediction
+-- or package, so a retracted tap cannot be re-taken -- the same rule a void
+-- follows, and for the same reason: a record that can be toggled is a record
+-- of the last edit rather than of what happened.
+--
+-- THE REASON IS NOT OPTIONAL and cannot be a shrug: ten characters minimum, as
+-- `prediction_voids` requires. A retraction with no reason is a delete with
+-- extra steps.
+CREATE TABLE IF NOT EXISTS picks_retracted (
+    taken_id      INTEGER PRIMARY KEY REFERENCES picks_taken (id),
+    retracted_utc TEXT NOT NULL,
+    reason        TEXT NOT NULL CHECK (length(trim(reason)) >= 10)
+);
+
+CREATE TRIGGER IF NOT EXISTS picks_retracted_no_update
+BEFORE UPDATE ON picks_retracted
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a retraction is append-only. What it said at the time '
+        || 'is the whole of its value');
+END;
+
+CREATE TRIGGER IF NOT EXISTS picks_retracted_no_delete
+BEFORE DELETE ON picks_retracted
+BEGIN
+    SELECT RAISE(ABORT, 'GRIDIRON LAW 3: a retraction is never deleted');
+END;
+
+CREATE TRIGGER IF NOT EXISTS picks_taken_after_the_package
+BEFORE INSERT ON picks_taken
+FOR EACH ROW
+WHEN NEW.package_id IS NOT NULL
+ AND NEW.taken_utc < (SELECT fetched_utc FROM venue_packages WHERE id = NEW.package_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 1: a package cannot be taken before it was read');
 END;

@@ -312,3 +312,112 @@ def capture_for_predictions(conn: sqlite3.Connection, prediction_ids: list[int],
         for key, value in part.items():
             counts[key] = counts.get(key, 0) + value
     return counts
+
+
+# ---------------------------------------------------------------------------
+# THE VENUE'S PACKAGES (GRIDIRON_COMBOS, 2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# The venue assembles multi-leg packages and sells them; this reads the ones
+# it has open. LAW 5 as amended: the engine grades a package and never builds
+# one, so nothing here combines anything -- it fetches what is published and
+# hands it to `combos.classify`.
+
+
+def packages_url(series: str) -> str:
+    return f"{BASE}/markets?series_ticker={series}&status=open&limit=200"
+
+
+def read_packages(sport: str | None = None) -> tuple[list[dict], list[str]]:
+    """Every open package market in the venue's declared combo series.
+
+    Returns the packages and the series that answered nothing, because "the
+    venue has none open" is a fact the group heading states and a silent empty
+    list is not.
+    """
+    from . import combos
+
+    out, quiet = [], []
+    for series, series_sport in combos.COMBO_SERIES.items():
+        if sport is not None and series_sport != sport:
+            continue
+        try:
+            payload = _get(packages_url(series))
+        except Exception:  # noqa: BLE001 - a source that does not answer is a fact
+            quiet.append(series)
+            continue
+        markets = payload.get("markets") or []
+        if not markets:
+            quiet.append(series)
+            continue
+        for m in markets:
+            out.append({
+                "ticker": m.get("ticker") or "",
+                "event_ticker": m.get("event_ticker") or "",
+                "series": series,
+                "sport": series_sport,
+                "legs": combos.read_legs(
+                    m.get("yes_sub_title") or m.get("title")),
+                "legs_text": (m.get("yes_sub_title") or m.get("title") or ""),
+                "yes_bid": _dollars(m.get("yes_bid_dollars")),
+                "yes_ask": _dollars(m.get("yes_ask_dollars")),
+                "last_price": _dollars(m.get("last_price_dollars")),
+                "volume": _dollars(m.get("volume_fp")),
+            })
+    return out, quiet
+
+
+def capture_packages(conn, sport: str, game_ids: list[str]) -> dict:
+    """Store every package the venue has open for a sport, with its verdict.
+
+    EVERY PACKAGE IS STORED, priced or not. The unpriceable ones are the
+    group heading's counts and are the answer on most days -- on the day this
+    shipped they were the answer on every day the venue had open.
+    """
+    from ..db import utcnow
+    from . import combos
+
+    counts = {"packages": 0, "priceable": 0, "quiet_series": 0}
+    for reason in combos.UNPRICEABLE:
+        counts[reason] = 0
+    packages, quiet = read_packages(sport)
+    counts["quiet_series"] = len(quiet)
+    if not packages:
+        return counts
+
+    # EVERY NAME THE RECORD HOLDS FOR EACH CLUB, because the venue writes
+    # them in full: "Denver -7.5", not "DEN". One query, shared with the
+    # screen, so the fetch and the card cannot disagree about which names name
+    # a club.
+    codes = combos.club_index(combos.club_rows(conn, list(game_ids)))
+
+    stamp = utcnow()
+    for package in packages:
+        # THE TICKER MUST AGREE WITH THE SERIES IT ARRIVED UNDER. A venue that
+        # answers a series query with a market from another series would have
+        # this record price a basketball package as a football one; the ticker
+        # is the venue's own statement of which product it is, so it is read
+        # rather than assumed from the query.
+        by_ticker = combos.series_sport(package["ticker"])
+        if by_ticker is not None and by_ticker != package["sport"]:
+            package = dict(package, sport=by_ticker)
+        verdict = combos.classify(package, codes)
+        counts["packages"] += 1
+        if verdict["priceable"]:
+            counts["priceable"] += 1
+        else:
+            counts[verdict["why"]] = counts.get(verdict["why"], 0) + 1
+        conn.execute(
+            "INSERT OR IGNORE INTO venue_packages (venue, ticker, event_ticker,"
+            " series, sport, legs_text, leg_count, game_ids, yes_bid, yes_ask,"
+            " last_price, volume, priceable, why_not, fetched_utc)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (VENUE, package["ticker"], package["event_ticker"],
+             package["series"], package["sport"], package["legs_text"],
+             len(package["legs"]),
+             ",".join(verdict.get("games") or []) if verdict["priceable"] else "",
+             package["yes_bid"], package["yes_ask"], package["last_price"],
+             package["volume"], 1 if verdict["priceable"] else 0,
+             verdict["why"], stamp))
+    conn.commit()
+    return counts

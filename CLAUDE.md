@@ -77,9 +77,35 @@ never offered at any sample size; the declared fraction is a quarter, because
 Kelly assumes the probability is right and a probability ten points wrong
 compounds toward ruin rather than growth.
 
-**SINGLES ONLY.** The engine never recommends a parlay and refuses to price one:
-each leg pays the spread, so an N-leg parlay multiplies the cost of being right
-by roughly N, and correlated legs price worse than they look.
+**PACKAGES ARE GRADED, NEVER BUILT.** (Amended 2026-09-08 by operator ruling,
+replacing "SINGLES ONLY". The text it replaced is kept beneath.)
+
+The venue assembles multi-leg packages and sells them. The engine MAY price one
+it reads, and may never assemble one: it does not choose legs, does not combine
+them, and does not compute a package price the venue has not published.
+
+A package is PRICEABLE only if every leg is a market this record forecasts,
+every leg is from a DIFFERENT GAME, all legs are one sport, and there are two
+or three of them. A same-game package has no fair value here and gets none --
+the record holds no joint model, and multiplying two probabilities from one
+game would be pricing a correlation nobody declared, which LAW 2 forbids.
+Anything unpriceable is counted with its reason and never given a number.
+
+THE COST IS PRINTED BESIDE THE PRODUCT, always: the fee per dollar staked is
+1.67 times the singles' rate on two 60c legs and 2.8 times on three, measured
+2026-09-08, and every card carries the singles alternative on the same money.
+
+> **What this replaced, kept because a law that quietly vanished is a law
+> nobody can audit.** Amended 2026-09-08; the reason is the operator's: he
+> takes the venue's combos regardless, and a computed edge beside a package is
+> better than a guess.
+>
+> > **SINGLES ONLY.** The engine never recommends a parlay and refuses to price
+> > one: each leg pays the spread, so an N-leg parlay multiplies the cost of
+> > being right by roughly N, and correlated legs price worse than they look.
+>
+> The arithmetic in that sentence is not retracted and is why the cost is
+> printed beside every package.
 
 **NOTHING IS SIZED IN-GAME.** The live poller's score is up to ninety seconds
 stale and a live market is priced off the feed, so a live recommendation is
@@ -171,7 +197,11 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | 4 | The edge figure is absent from the payload below `MIN_SAMPLE_FOR_EDGE_CLAIM`, replaced by the shortfall | `test_guards.py::test_an_edge_figure_below_threshold_is_not_present_to_render` |
 | 5 | `audit.check_no_venue_credentials` scans the package, the environment and the record for a venue credential; `audit.check_no_order_path` refuses an order verb or an account read; `audit.check_no_wagering_ledger` refuses the operator's own P&L in the repo. Prose is exempt, so the disclaimer may keep saying "bankroll" | `plant.py::plant_a_venue_credential`, `::plant_an_order_path`, `::plant_a_wagering_ledger` |
 | 5 | A recommendation below its market's gate is a FLAT UNIT and says "no measured edge"; the fraction above it is a quarter of Kelly and never more | `plant.py::plant_a_sized_bet_below_the_gate`, `::plant_a_full_kelly_stake` |
-| 5 | The engine refuses to price a parlay | `plant.py::plant_a_parlay` |
+| 5 | A package is graded, never built: a same-game, cross-sport, four-leg or unforecast-leg package is refused a price and counted with its reason | `plant.py::plant_a_priced_same_game_package`, `::plant_a_priced_cross_sport_package`, `::plant_a_priced_four_leg_package`, `::plant_a_priced_package_with_an_unforecast_leg` |
+| 5 | A settled package is its own market -- `combo_2`/`combo_3`, per sport -- and its closing line needs a hundred observations where a single leg needs fifty. A package tap is one row in `picks_taken` carrying a package id, and a CHECK admits exactly one of a prediction and a package per row | `test_combos.py::test_a_package_tap_never_enters_a_single_legs_curve`, `::test_the_taken_table_admits_one_kind_of_tap_per_row` |
+| PLAIN WORDS | "combo" is permitted in the Combos group and on its cards from 2026-09-08; "parlay", "same game", "boost", "builder", "add leg" and "slip" stay banned, and the day scan reads a package card's own strings -- the legs arrive as the venue wrote them | `plant.py::plant_a_same_game_label_on_a_combo_card` |
+| 3 | A taken pick is never deleted: `picks_taken_no_delete` refuses it, and a tap that should not stand is RETRACTED -- a second append-only row in `picks_retracted` carrying its reason, ten characters minimum, the same shape `prediction_voids` uses | `plant.py::plant_a_deleted_tap`, `test_combos.py::test_a_tap_is_taken_back_by_a_second_row_carrying_its_reason` |
+| VERIFICATION | Tests and plantings may not open the operator's own database. `db.connect` raises `LiveRecordTouched` naming the file and the caller under pytest or `plant.py`; the one door, `db.read_the_live_record(why)`, takes a reason in words and hands back a `query_only` handle SQLite itself refuses to write through | `plant.py::plant_a_test_that_opens_the_live_record`, `::plant_a_write_through_the_live_read_handle` |
 | 4 | Curves are never merged: `assert_no_merged_categories` rejects a category with no concrete market, an `all` prop_type, or a merged forecaster. Runs inside `scorecard()`, so a merge cannot reach the API | `test_guards.py::test_a_planted_merged_prop_curve_is_caught_by_name`, `::test_a_planted_merged_forecaster_curve_is_caught` |
 | v2 | Missing stays missing: `compute.assert_missing_is_explicit` runs on every feature vector, and `audit.check_no_silent_defaults` scans the factor code for a reintroduced fallback. `Factor.default` was **removed**, not left unused | `test_guards.py::test_a_planted_zero_fallback_is_caught_by_name`, `::test_a_vector_that_defaults_an_absent_factor_is_caught_at_runtime` |
 | 3 | A void is terminal: `prediction_voids` is append-only and a trigger refuses to resolve a voided prediction afterwards | `test_props.py::test_a_void_is_terminal`, `::test_a_void_reason_cannot_be_rewritten` |

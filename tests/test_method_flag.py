@@ -108,7 +108,8 @@ def test_the_payload_carries_the_note_on_every_flagged_card():
     holds, a flagged card carries the note and an unflagged one does not."""
     from gridiron import db as _db, views as _views
 
-    conn = _db.connect()
+    conn = _db.read_the_live_record(
+        "the flagged cards in the record, to prove each carries its note")
     for sport in config.SPORTS:
         payload = _views.week(conn, sport)
         for card in payload.get("cards") or []:

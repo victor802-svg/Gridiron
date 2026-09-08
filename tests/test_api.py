@@ -77,13 +77,34 @@ def test_no_route_can_write_to_the_record():
     that trains or corrects the model -- both proved by plantings.
 
     A FIFTH POST still has to come back here and argue for itself.
+
+    `POST /api/taken/package/{package_id}` is the fifth, added 2026-09-08 under
+    GRIDIRON_COMBOS, and this is its argument. IT IS THE FOURTH ROUTE'S OWN
+    ARGUMENT, unchanged, applied to the other thing the operator can take: it
+    writes ONE row to the SAME table -- `picks_taken` -- carrying a package id
+    and a timestamp instead of a prediction id and a timestamp, through the
+    same `get_taken_conn` handle, behind the same session and the same CSRF
+    token.
+
+    What it does not gain by being about a package: it holds no stake, no price
+    paid, no payout and no result in money; the table's CHECK admits exactly
+    one of a prediction and a package, so a row cannot be two taps recorded as
+    one; and `calibration.taken_packages` reads it on its own line, never mixed
+    into a single leg's curve.
+
+    Why a separate path rather than one route taking either id: the two ids are
+    different things, and a route that guessed which one it had been given
+    would eventually guess wrong -- silently, into an append-only table.
+
+    A SIXTH POST still has to come back here and argue for itself.
     """
     writers = sorted(
         route.path
         for route in api.app.routes
         if set(getattr(route, "methods", set()) or set()) - {"GET", "HEAD"}
     )
-    assert writers == ["/api/settings", "/api/taken/{prediction_id}",
+    assert writers == ["/api/settings", "/api/taken/package/{package_id}",
+                       "/api/taken/{prediction_id}",
                        "/auth/login", "/auth/logout"], (
         f"a write verb appeared outside the sign-in paths: {writers}"
     )

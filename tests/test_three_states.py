@@ -118,7 +118,7 @@ def test_a_live_card_carries_nothing_that_can_be_acted_on(tmp_path):
 
 def test_the_guard_names_each_thing_a_live_card_may_not_carry():
     for field, value in (("size_words", "$15"), ("edge_line_words", "+2.0¢"),
-                         ("payout_words", "pays 2.00x"), ("price_words", "50¢")):
+                         ("payout_words", "2.00x"), ("price_words", "50¢")):
         planted = {"today": {"live": [
             {"state": "live", "n": 1, "question": "x", field: value}]}}
         assert audit.live_card_faults(planted), field
@@ -246,7 +246,10 @@ def test_the_payout_is_the_biggest_number_and_the_edge_is_a_line():
 
     assert size(".box-payout .box-value") > size(".box-value")
     assert size(".box-payout .box-value") > size(".face-q")
-    assert language.payout_chip_words(1.65) == "pays 1.65x"
+    # THE CHIP DOES NOT REPEAT ITS OWN LABEL (fixed 2026-09-08). The box is
+    # headed "Pays"; the chip said "pays 1.65x" beneath it, which rendered as
+    # "Payspays 1.65x" the first time a card carried a real payout.
+    assert language.payout_chip_words(1.65) == "1.65x"
     assert language.price_under_payout_words(0.61) == "61¢ a contract"
     assert language.edge_line_words(3.2) == "+3.2¢ after fees"
 

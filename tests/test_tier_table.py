@@ -158,7 +158,8 @@ def test_an_empty_record_says_nothing_has_resolved():
 def test_the_table_numbers_equal_the_chip_numbers_to_the_decimal():
     """Both call `bucket_record`. This asserts it, over the real record, so a
     future reimplementation that 'happens to agree' is caught."""
-    conn = db.open_db(config.DB_PATH)
+    conn = db.read_the_live_record(
+        "the tier table in the record, to the decimal")
     try:
         for sport in config.SPORTS:
             for market in config.SPORT_MARKETS.get(sport, ()):
@@ -187,7 +188,8 @@ def test_the_table_numbers_equal_the_chip_numbers_to_the_decimal():
 
 
 def test_the_scorecard_carries_the_table_and_passes_its_validators():
-    conn = db.open_db(config.DB_PATH)
+    conn = db.read_the_live_record(
+        "the record's scorecard, through its own validators")
     try:
         payload = C.scorecard(conn, sport="mlb")
         assert payload["tier_table"]["rows"]

@@ -78,7 +78,8 @@ def test_the_run_line_base_rate_matches_the_measured_one():
     """The training labels must reproduce the measured distribution: 35.8% of
     MLB games are won by the home side by two or more (n=9,373)."""
     measured = config.MLB_SCORE_DISTRIBUTION["home_by_2_or_more"]
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the finished baseball games in the record, against the declared run-line base rate")
     rows = conn.execute(
         "SELECT home_score, away_score FROM games WHERE sport='mlb'"
         " AND status='final' AND home_score IS NOT NULL").fetchall()
@@ -91,7 +92,7 @@ def test_the_run_line_base_rate_matches_the_measured_one():
 # --- item 6: its own category, its own gate --------------------------------
 
 def test_each_market_is_its_own_category():
-    conn = db.connect()
+    conn = db.read_the_live_record("the record's own baseball categories")
     payload = calibration.scorecard(conn, sport="mlb")
     kinds = {c["filters"]["market_type"] for c in payload["categories"]}
     assert {"moneyline", "spread", "total"} <= kinds
@@ -123,7 +124,8 @@ def test_a_higher_market_total_implies_a_higher_chance_of_going_over():
 def test_a_contradicted_run_line_sign_yields_no_comparison():
     """A confident probability pointing the wrong way is worse than none: a
     missing comparison is visible and a reversed one is not."""
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "a contradicted run-line sign in the record")
     row = conn.execute(
         "SELECT * FROM market_lines_raw WHERE spread_sign_source='contradicted'"
         " LIMIT 1").fetchone()
@@ -152,7 +154,8 @@ def test_every_card_carries_its_sport_so_the_label_can_use_it():
     humaniser, which is how the wrong-sport wording reached the page."""
     from gridiron import views
 
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "every card in the record, to prove each carries its sport")
     payload = views.week(conn, "mlb")
     assert payload["cards"], "no cards to check"
     for card in payload["cards"]:

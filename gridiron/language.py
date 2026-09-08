@@ -3151,10 +3151,25 @@ def recommendation_line(*, question: str, fair_value: float, price: float,
             f"{_units_words(units, flat, size_why)}")
 
 
+#: A FLAT SIZE IS NOT ALWAYS ONE UNIT (GRIDIRON_COMBOS C3, 2026-09-08). A
+#: package below its gate is half a unit on two legs and a quarter on three,
+#: and the sentence said "One flat unit" for all three sizes until the first
+#: package card was rendered. The money beside it was right, which is worse:
+#: the reader would have had two numbers disagreeing and no way to tell which
+#: one to believe.
+_FLAT_PHRASES = {1.0: "One flat unit", 0.5: "Half a flat unit",
+                 0.25: "A quarter of a flat unit"}
+
+
+def flat_size_phrase(units: float) -> str:
+    """"One flat unit", "Half a flat unit", "A quarter of a flat unit"."""
+    return _FLAT_PHRASES.get(round(float(units), 4)) or f"{units:g} of a flat unit"
+
+
 def _units_words(units: float, flat: bool, size_why: str | None = None) -> str:
     if flat:
         reason = size_why or "no measured edge in this market yet"
-        return f"One flat unit — {reason}."
+        return f"{flat_size_phrase(units)} — {reason}."
     return f"{units:.2f} units, a quarter of Kelly and capped."
 
 
@@ -3554,7 +3569,8 @@ def size_words(*, units: float, flat: bool, why: str | None,
         amount = units * unit_dollars
         money = f"${amount:,.0f}" if abs(amount - round(amount)) < 0.005 else f"${amount:,.2f}"
         if flat:
-            return f"{money} · one flat unit, {why or 'no measured edge in this market yet'}"
+            return (f"{money} · {flat_size_phrase(units).lower()}, "
+                    f"{why or 'no measured edge in this market yet'}")
         return f"{money} · {units:.2f} units, a quarter of Kelly and capped"
     return _units_words(units, flat, why)
 
@@ -3730,6 +3746,12 @@ def state_heading_words(state: str, n: int) -> str:
         return f"In progress — {counted(n, 'question')}"
     if state == "final":
         return f"Settled — {counted(n, 'question')}"
+    if state == "combos":
+        # THE VENUE'S WORD, AND ONLY HERE. "combo" left the pressure list on
+        # 2026-09-08 because it is the product's name; "parlay" did not.
+        if not n:
+            return "Combos"
+        return f"Combos — {counted(n, 'package')}"
     return f"Upcoming — {counted(n, 'question')}"
 
 
@@ -3743,7 +3765,12 @@ def payout_chip_words(payout: float | None) -> str:
     """
     if payout is None:
         return no_price_words()
-    return f"pays {payout:.2f}x"
+    # THE LABEL ABOVE IT ALREADY SAYS "Pays" (`price_row_labels`), and this
+    # said it again: the first card ever rendered with a real payout read
+    # "Payspays 3.33x". Found on 2026-09-08 by rendering a package card,
+    # and it was true of the single card too -- no pick on the live slate had
+    # a price on the day the chip was built, so nobody had seen either.
+    return f"{payout:.2f}x"
 
 
 def price_under_payout_words(price: float | None) -> str:
@@ -3820,3 +3847,135 @@ def settled_outcome_words(shown_prob: float | None, outcome: int | None,
         return "it happened" if outcome else "it did not happen"
     said = f"the model had this at {round(shown_prob * 100)}%"
     return f"{said} and it happened" if outcome else f"{said} and it did not"
+
+
+# ---------------------------------------------------------------------------
+# THE VENUE'S PACKAGES (GRIDIRON_COMBOS, 2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# The heading is the feature on most days. It says what the venue offered and
+# what this project could do with it, and on the day this shipped it said that
+# nothing the venue had open was priceable here.
+
+
+def combo_heading_words(priced: int, refused: dict, sports_without: list) -> str:
+    """"1 priced · 2 same-game, not priceable · none for baseball"."""
+    from .market import combos
+
+    parts = []
+    parts.append(f"{priced} priced" if priced else "none priced")
+    for reason, n in sorted((refused or {}).items()):
+        if n and reason in combos.UNPRICEABLE:
+            parts.append(f"{n} {combos.UNPRICEABLE[reason]}")
+    if sports_without:
+        named = ", ".join(SPORT_LABELS.get(s, s) for s in sports_without)
+        parts.append(f"none for {named}")
+    return " · ".join(parts)
+
+
+def combo_fee_words(ratio: float | None) -> str:
+    """The cost, once, in the heading. It is the argument against the product.
+
+    Measured 2026-09-08: 1.67 times the singles' rate per dollar on two 60c
+    legs, 2.8 times on three.
+    """
+    if not ratio:
+        return ("A package costs more per dollar than the same legs taken "
+                "singly, and every card prints both.")
+    return (f"The fee at package prices is about {ratio:.1f} times the "
+            f"singles' rate per dollar, and every card prints both.")
+
+
+def combo_empty_words(sports: list, offered: int = 0,
+                      refused: dict | None = None) -> str:
+    """When the venue has nothing this record can price, in one sentence.
+
+    TWO DIFFERENT FINDINGS, and the sentence says which. "The venue offered
+    nothing" and "the venue offered three and all three were same-game" are
+    not the same day, and a reader who cannot tell them apart cannot tell
+    whether this app is quiet or the market is.
+    """
+    from .market import combos
+
+    named = ", ".join(SPORT_LABELS.get(s, s) for s in sports)
+    where = f" It forecasts {named}." if named else ""
+    if not offered:
+        return ("The venue has no package open today in any sport this record "
+                "forecasts." + where)
+    reasons = [f"{n} {combos.UNPRICEABLE[why]}"
+               for why, n in sorted((refused or {}).items())
+               if n and why in combos.UNPRICEABLE]
+    listed = "; ".join(reasons) or "none of them priceable here"
+    return (f"The venue has {offered} package{'' if offered == 1 else 's'} open "
+            f"and this record can price none of them: {listed}." + where)
+
+
+def combo_legs_words(legs: list) -> str:
+    """The legs as the venue wrote them, joined for one line."""
+    return " · ".join(legs or [])
+
+
+def combo_margin_words(package_price: float | None,
+                       legs_product: float | None) -> str:
+    """The venue's package price beside what its own legs multiply to.
+
+    ONE VISIBLE NUMBER instead of an inference. A package quoted above the
+    product of its legs is the venue charging for the convenience; below it,
+    the venue is paying for the volume.
+    """
+    if package_price is None or legs_product is None:
+        return "no package price to compare"
+    return (f"{round(package_price * 100)}¢ · its legs multiply to "
+            f"{legs_product * 100:.1f}¢")
+
+
+def combo_singles_words(alt: dict) -> str:
+    """The same money as singles, printed on every package card."""
+    if not alt or alt.get("singles_edge_cents") is None:
+        return ""
+    return (f"as singles: {alt['singles_edge_cents']:+.1f}¢ a leg, fee "
+            f"{alt['singles_fee_share'] * 100:.1f}% · as one package: fee "
+            f"{alt['combo_fee_share'] * 100:.1f}%")
+
+
+def combo_kill_words(n: int, after: int, combo_mean: float | None,
+                     single_mean: float | None, fires: bool) -> str:
+    """The kill criterion in the words it will be read in, before it fires."""
+    if fires:
+        return (f"{n} settled packages: they are losing {abs(combo_mean):.1f}¢ "
+                f"a contract to the close while single legs beat it by "
+                f"{single_mean:.1f}¢. The criterion declared on 2026-09-08 "
+                f"says this sport's packages stop being priced.")
+    if n < after:
+        return (f"{n} of the {after} settled packages this sport needs before "
+                f"the record can say whether packages are worth taking at all.")
+    if combo_mean is None:
+        return f"{n} settled packages, none of them closed yet."
+    return (f"{n} settled packages, {combo_mean:+.1f}¢ a contract against the "
+            f"close; single legs {single_mean:+.1f}¢. The kill fires only when "
+            f"packages lose while singles win.")
+
+
+def taken_package_entry_words(legs: str, price: float | None) -> str:
+    """One package in the running list: what it was, and its price then.
+
+    THE PRICE AS THE VENUE SHOWED IT AT THE READING THE TAP POINTS AT. A
+    package has no recommendation row to take an edge from, and a number
+    recomputed later would make this a scoreboard rather than a record of what
+    was chosen.
+    """
+    if price is None:
+        return f"{legs} · no price recorded at the time"
+    return f"{legs} · {round(price * 100)}¢ when marked"
+
+
+def taken_packages_line(took: int, offered: int, gate: int) -> str:
+    """The combo line on the taken record, in the words it will be read in."""
+    if not offered:
+        return ("No package has been priced here yet, so there is nothing "
+                "taken or passed over to compare.")
+    if took < gate:
+        return (f"{took} of {offered} priced packages marked. A comparison "
+                f"needs {gate} settled, so this is a count and not a verdict.")
+    return (f"{took} of {offered} priced packages marked, scored on their own "
+            f"line and never mixed with single legs.")

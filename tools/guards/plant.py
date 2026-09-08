@@ -1117,7 +1117,8 @@ def plant_an_asked_line_that_is_not_a_distance() -> Result:
             return None
         return sum((a[i] - ma) * (b[i] - mb) for i in range(n)) / ((va * vb) ** 0.5)
 
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the asked lines in the record, which is where a line that is not a distance would be")
     seasons = _config.SPORT_LOAD_SEASONS.get("cfb", _config.DEFAULT_LOAD_SEASONS)
     rows, _labels, _names = _sports.get("cfb").training_set(conn, seasons, "spread")
     conn.close()
@@ -1207,7 +1208,8 @@ def plant_a_training_set_spanning_two_sports() -> Result:
     """
     from gridiron.model import baseline as _baseline
 
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the record's training rows, to plant a set spanning two sports")
     games = conn.execute(
         "SELECT id, sport FROM games"
         " WHERE sport IN ('nfl','mlb','nba','cfb') AND status = 'final'"
@@ -1514,7 +1516,8 @@ def plant_a_ufc_query_merged_with_another_sport() -> Result:
     is the easiest sport in this record to pool by accident: its moneyline has
     the same name as baseball's and its markets sit in the same tables.
     """
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the record's UFC rows, to plant a query merged with another sport")
     try:
         try:
             calibration.resolved(conn)
@@ -2215,13 +2218,28 @@ def plant_an_unauthenticated_settings_write() -> Result:
     open list -- so it is protected because it was added, not because somebody
     remembered to protect it.
     """
+    import tempfile
+
     from fastapi.testclient import TestClient
 
     from gridiron import api as _api
 
-    client = TestClient(_api.app)
-    got = client.post("/api/settings",
-                      json={"name": "predict_mlb_at", "value": "03:00"})
+    # AGAINST A SCRATCH DATABASE (2026-09-08). This planting POSTs a settings
+    # change; had the route been open, it would have written that setting to
+    # whatever database the app was pointed at -- which, with no
+    # `set_database`, is the operator's own. `db.connect` now refuses that, and
+    # this is the planting that made the refusal fire.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        target = Path(tmp) / "settings-plant.db"
+        db.open_db(target).close()
+        previous = _api._database
+        _api.set_database(target)
+        try:
+            client = TestClient(_api.app)
+            got = client.post("/api/settings",
+                              json={"name": "predict_mlb_at", "value": "03:00"})
+        finally:
+            _api.set_database(previous)
     caught = got.status_code in (401, 403, 503)
     return Result("SETTINGS", "change a setting with no session",
                   "api.require_session", caught,
@@ -4223,7 +4241,8 @@ def plant_a_count_market_scored_by_the_logistic() -> Result:
 
         return Untaught()
 
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the record's count markets, to plant one scored by the logistic")
     fit = None
     try:
         sport_registry.get = untaught
@@ -4876,7 +4895,8 @@ def plant_two_sentences_naming_opposite_sides() -> Result:
     So this guard does not check either sentence. It checks that the two
     AGREE -- which is the only thing neither of them could be asked alone.
     """
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the record's own sentences, to plant two naming opposite sides")
     try:
         disagreeing, checked = _side_disagreements(conn)
     finally:
@@ -5006,7 +5026,8 @@ def plant_a_market_tab_row_that_is_hardcoded() -> Result:
     # AND THE REAL TABS MUST TRACK THE DECLARATION. Asserted against the
     # config rather than against a remembered list, which is the only way to
     # tell a derived row from a hardcoded one that happens to be right today.
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the market tabs the record produces, to plant a hardcoded row")
     try:
         for sport in config.SPORTS:
             try:
@@ -5203,7 +5224,8 @@ def plant_a_moneyline_asked_with_a_rung() -> Result:
                       f"spread's: only in moneyline {sorted(money - spread)}")
 
     # AND THE QUESTION ITSELF CARRIES NO LINE.
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the record's moneyline rows, to plant one asked with a rung")
     try:
         game = conn.execute(
             "SELECT id, home, away FROM games WHERE sport = 'nba' LIMIT 1"
@@ -5425,7 +5447,8 @@ def plant_a_rung_that_inherits_its_base_rate() -> Result:
     plants the third to check the reasoning is enforced rather than merely
     written down.
     """
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the record's rungs, to plant one inheriting its base rate")
     try:
         rows = [r[0] for r in conn.execute(
             "SELECT strike_outs FROM mlb_batter_games"
@@ -5567,7 +5590,9 @@ def plant_a_code_name_in_rendered_llm_reasoning() -> Result:
     """
     from gridiron import audit as _audit, db as _db, language as _language
 
-    live = _db.connect()
+    live = _db.read_the_live_record(
+        "the shipped LLM prose in the record, because a code name reaching a "
+        "real card is the thing this planting exists to prevent")
     try:
         if _audit.llm_prose_faults(live):
             return Result(LAW_LLM_WORDS, "a code name in rendered LLM prose",
@@ -6451,7 +6476,8 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
     from gridiron import run as _run
     from gridiron.model import baseline as _baseline
 
-    conn = db.connect()
+    conn = db.read_the_live_record(
+        "the record's unfitted markets, to plant one blocking a rerun refusal")
     try:
         # Every declared market a run would ask must either have a fit or be
         # excluded from the gap calculation. Asserted on the real record.
@@ -7085,6 +7111,8 @@ def plant_the_taken_table_in_a_training_query() -> Result:
 
 LAW_NEVER_TRANSACTS = "THE APP RECOMMENDS, IT NEVER TRANSACTS"
 
+LAW_LIVE_RECORD = "VERIFICATION NEVER TOUCHES THE LIVE RECORD"
+
 
 def _tree_with(module: str, source: str):
     """A copy of the package with one module replaced, for a scan to read."""
@@ -7194,20 +7222,211 @@ def plant_a_market_import_after_the_priced_exemption() -> Result:
 
 
 
-def plant_a_parlay() -> Result:
-    """Ask the engine to price a parlay (LAW 5, 2026-09-07)."""
-    from gridiron.market import recommend as _recommend
+# ---------------------------------------------------------------------------
+# PACKAGES ARE GRADED, NEVER BUILT (LAW 5 as amended 2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# `plant_a_parlay` stood here until 2026-09-08 and asked the engine to price a
+# three-leg parlay, which `recommend.price_parlay` refused outright. Both were
+# retired by name when LAW 5 was amended: the engine may now price a package
+# the VENUE published, so a planting that proves it refuses every one of them
+# would be proving the wrong thing.
+#
+# THESE FOUR REPLACE IT, one per shape the amended law still refuses. Each
+# forces `priceable` true on a package that is not, and asks the guard.
 
+
+def _planted_package(**fields) -> dict:
+    """A package carrying a price it is not entitled to."""
+    package = {"ticker": "KXPLANT-01", "sport": "nfl", "priceable": True,
+               "legs": ["Kansas City moneyline", "Buffalo moneyline"],
+               "games": ["g1", "g2"]}
+    package.update(fields)
+    return package
+
+
+
+
+# ---------------------------------------------------------------------------
+# VERIFICATION NEVER TOUCHES THE LIVE RECORD (2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# On 2026-09-08 a verification run opened `var/gridiron.db`, wrote a package
+# the venue had never published and a tap on it, and the record then reported
+# that the operator had marked a package he had never seen. Nothing refused it.
+#
+# THREE ACTS, ONE PER WAY IT COULD HAPPEN AGAIN: opening the live file at all,
+# writing through the one door that may read it, and deleting a tap instead of
+# retracting it.
+
+
+def plant_a_test_that_opens_the_live_record() -> Result:
+    """Open the operator's own database from the verification path."""
+    import os
+
+    from gridiron import db as _db
+
+    before = os.environ.get("GRIDIRON_VERIFYING")
+    os.environ["GRIDIRON_VERIFYING"] = "plant_a_test_that_opens_the_live_record"
     try:
-        _recommend.price_parlay([{"leg": 1}, {"leg": 2}, {"leg": 3}])
-    except _recommend.SinglesOnly as exc:
-        return Result(LAW_NEVER_TRANSACTS, "price a three-leg parlay",
-                      "recommend.price_parlay", True, str(exc))
-    return Result(LAW_NEVER_TRANSACTS, "price a three-leg parlay",
-                  "recommend.price_parlay", False,
-                  "NOT CAUGHT - the engine priced a parlay, and each leg pays "
-                  "the spread and the fee whatever the product of the "
-                  "probabilities says")
+        _db.connect()
+    except _db.LiveRecordTouched as exc:
+        return Result(LAW_LIVE_RECORD, "open the live record from a planting",
+                      "db.connect", True, str(exc))
+    finally:
+        if before is None:
+            os.environ.pop("GRIDIRON_VERIFYING", None)
+        else:
+            os.environ["GRIDIRON_VERIFYING"] = before
+    return Result(LAW_LIVE_RECORD, "open the live record from a planting",
+                  "db.connect", False,
+                  "NOT CAUGHT - verification opened the operator's own record, "
+                  "which is how a synthetic row comes to be indistinguishable "
+                  "from one he made")
+
+
+def plant_a_write_through_the_live_read_handle() -> Result:
+    """Write through the one door verification may read the record by."""
+    import sqlite3 as _sqlite3
+
+    from gridiron import db as _db
+
+    conn = _db.read_the_live_record(
+        "planting a write, to prove the handle cannot carry one")
+    try:
+        conn.execute(
+            "INSERT INTO picks_taken (package_id, taken_utc)"
+            " VALUES (999999, '2026-09-08T00:00:00Z')")
+    except _sqlite3.OperationalError as exc:
+        return Result(LAW_LIVE_RECORD, "write through the live read handle",
+                      "sqlite3 PRAGMA query_only", True, str(exc))
+    finally:
+        conn.close()
+    return Result(LAW_LIVE_RECORD, "write through the live read handle",
+                  "sqlite3 PRAGMA query_only", False,
+                  "NOT CAUGHT - the read-only door carried a write, so the "
+                  "only door verification has into the record is a door in "
+                  "both directions")
+
+
+def plant_a_deleted_tap() -> Result:
+    """Delete a tap instead of retracting it (LAW 3, CARD_FACE F3)."""
+    import sqlite3 as _sqlite3
+
+    from gridiron import db as _db
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    conn.execute(
+        "INSERT INTO venue_packages (venue, ticker, event_ticker, series,"
+        " sport, legs_text, leg_count, game_ids, priceable, why_not,"
+        " fetched_utc) VALUES ('t', 'K', 'E', 'S', 'nfl', 'A & B', 2, 'g1,g2',"
+        " 1, NULL, '2026-09-08T00:00:00Z')")
+    conn.execute(
+        "INSERT INTO picks_taken (package_id, taken_utc)"
+        " VALUES (1, '2026-09-08T01:00:00Z')")
+    conn.commit()
+    try:
+        conn.execute("DELETE FROM picks_taken WHERE id = 1")
+    except _sqlite3.IntegrityError as exc:
+        return Result(LAW_LIVE_RECORD, "delete a taken pick",
+                      "picks_taken_no_delete", True, str(exc))
+    return Result(LAW_LIVE_RECORD, "delete a taken pick",
+                  "picks_taken_no_delete", False,
+                  "NOT CAUGHT - a tap was deleted rather than retracted. The "
+                  "table's comment said append-only and until 2026-09-08 "
+                  "nothing enforced it, which is how one was removed")
+
+def plant_a_same_game_label_on_a_combo_card() -> Result:
+    """Print "same game" on a package card (GRIDIRON_COMBOS C5, 2026-09-08).
+
+    THE VENUE'S OWN TEXT IS THE RISK. A package card prints the legs as the
+    venue wrote them, and a venue that labels its product "same game" would
+    put that phrase on this page -- advertising, in the app's own words, the
+    one package shape it refuses to price.
+    """
+    from gridiron import audit as _audit
+
+    planted = {"today": {"combos": {
+        "heading": "Combos",
+        "cards": [{"legs_words": "Denver moneyline · Kansas City same game"}],
+    }}}
+    try:
+        _audit.check_the_day_applies_no_pressure(planted)
+    except _audit.LawViolation as exc:
+        return Result(LAW_NO_PRESSURE, "print 'same game' on a package card",
+                      "audit.check_the_day_applies_no_pressure", True, str(exc))
+    return Result(LAW_NO_PRESSURE, "print 'same game' on a package card",
+                  "audit.check_the_day_applies_no_pressure", False,
+                  "NOT CAUGHT - the page named the one package shape this app "
+                  "refuses to price, in the venue's own words")
+
+def plant_a_priced_same_game_package() -> Result:
+    """Price two legs from ONE game (LAW 5 as amended, LAW 2)."""
+    from gridiron import audit as _audit
+
+    planted = _planted_package(games=["g1", "g1"])
+    try:
+        _audit.check_combo_package([planted])
+    except _audit.LawViolation as exc:
+        return Result(LAW_NEVER_TRANSACTS, "price a same-game package",
+                      "audit.check_combo_package", True, str(exc))
+    return Result(LAW_NEVER_TRANSACTS, "price a same-game package",
+                  "audit.check_combo_package", False,
+                  "NOT CAUGHT - two legs from one game were multiplied, which "
+                  "prices a correlation nobody declared and this record holds "
+                  "no joint model for (LAW 2)")
+
+
+def plant_a_priced_cross_sport_package() -> Result:
+    """Price one package across two sports (LAW 6)."""
+    from gridiron import audit as _audit
+
+    planted = _planted_package(leg_sports=["nfl", "mlb"])
+    try:
+        _audit.check_combo_package([planted])
+    except _audit.LawViolation as exc:
+        return Result(LAW_NEVER_TRANSACTS, "price a package across two sports",
+                      "audit.check_combo_package", True, str(exc))
+    return Result(LAW_NEVER_TRANSACTS, "price a package across two sports",
+                  "audit.check_combo_package", False,
+                  "NOT CAUGHT - one number now describes an NFL market and an "
+                  "MLB market, and it describes neither (LAW 6)")
+
+
+def plant_a_priced_four_leg_package() -> Result:
+    """Price a package past the declared shape (LAW 5 as amended)."""
+    from gridiron import audit as _audit
+
+    planted = _planted_package(
+        legs=["a", "b", "c", "d"], games=["g1", "g2", "g3", "g4"])
+    try:
+        _audit.check_combo_package([planted])
+    except _audit.LawViolation as exc:
+        return Result(LAW_NEVER_TRANSACTS, "price a four-leg package",
+                      "audit.check_combo_package", True, str(exc))
+    return Result(LAW_NEVER_TRANSACTS, "price a four-leg package",
+                  "audit.check_combo_package", False,
+                  "NOT CAUGHT - the declared shape is two or three legs, and a "
+                  "fourth multiplies the cost of being right again")
+
+
+def plant_a_priced_package_with_an_unforecast_leg() -> Result:
+    """Price a package one of whose legs this record does not forecast."""
+    from gridiron import audit as _audit
+
+    planted = _planted_package(unforecast_leg=True)
+    try:
+        _audit.check_combo_package([planted])
+    except _audit.LawViolation as exc:
+        return Result(LAW_NEVER_TRANSACTS,
+                      "price a package with a leg this record does not forecast",
+                      "audit.check_combo_package", True, str(exc))
+    return Result(LAW_NEVER_TRANSACTS,
+                  "price a package with a leg this record does not forecast",
+                  "audit.check_combo_package", False,
+                  "NOT CAUGHT - one of the factors in the product does not "
+                  "exist, so the fair value was invented rather than computed")
 
 
 def plant_a_recommendation_in_a_live_game() -> Result:
@@ -7985,6 +8204,14 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
     args = parser.parse_args()
 
+    # EVERY PLANTING RUNS AGAINST A SCRATCH DATABASE (2026-09-08). This flag
+    # is what `db.connect` reads to refuse the operator's own record: a
+    # planting breaks laws on purpose, and it may not break them on the only
+    # copy of his forecasts. The ten plantings that genuinely have to ask the
+    # live record something use `db.read_the_live_record`, which SQLite itself
+    # will not let them write through.
+    os.environ.setdefault("GRIDIRON_VERIFYING", "tools/guards/plant.py")
+
     results: list[Result] = []
     results.append(plant_market_import_in_prediction_path())
     results.append(plant_market_column_in_prediction_path())
@@ -8145,7 +8372,14 @@ def main() -> int:
     results.append(plant_a_coverage_list_chosen_by_results())
     results.append(plant_the_priced_package_inside_the_blind_closure())
     results.append(plant_a_market_import_after_the_priced_exemption())
-    results.append(plant_a_parlay())
+    results.append(plant_a_test_that_opens_the_live_record())
+    results.append(plant_a_write_through_the_live_read_handle())
+    results.append(plant_a_deleted_tap())
+    results.append(plant_a_same_game_label_on_a_combo_card())
+    results.append(plant_a_priced_same_game_package())
+    results.append(plant_a_priced_cross_sport_package())
+    results.append(plant_a_priced_four_leg_package())
+    results.append(plant_a_priced_package_with_an_unforecast_leg())
     results.append(plant_a_recommendation_in_a_live_game())
     results.append(plant_a_full_kelly_stake())
     results.append(plant_a_sized_bet_below_the_gate())

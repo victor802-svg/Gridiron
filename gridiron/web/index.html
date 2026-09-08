@@ -368,6 +368,23 @@
           </h3>
           <div class="faces" id="today-watching"></div>
 
+          <!-- COMBOS (GRIDIRON_COMBOS C6, 2026-09-08). Third group, beneath
+               Watching, and on most days it is the heading and one sentence:
+               the venue assembles its own packages and this record can price
+               very few of them. THE COUNTS ARE THE FEATURE -- what was
+               offered, and the reason each refusal was refused.
+
+               Upcoming only. A package cannot be taken once a game in it has
+               started (nothing is sized in-game), and a settled package is a
+               row in `combo_2`/`combo_3`, not a card. -->
+          <h3 class="group-head group-combos" id="combos-heading-row">
+            <span id="combos-heading"></span>
+          </h3>
+          <p class="group-note" id="combos-counts"></p>
+          <p class="group-note" id="combos-fee"></p>
+          <div class="faces" id="today-combos"></div>
+          <p class="group-empty" id="combos-empty" hidden></p>
+
           <!-- LIVE (S3). A game in progress, with the score where the start
                time was, and nothing on it that could be acted on: no size, no
                edge, no payout, no tap. `audit.live_card_faults` fails the

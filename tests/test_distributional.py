@@ -401,7 +401,8 @@ def test_the_measurement_tool_reads_the_live_slate():
     spec.loader.exec_module(module)
 
     from gridiron import db as _db
-    conn = _db.connect()
+    conn = _db.read_the_live_record(
+        "the tier measurement tool is checked against the live slate it was written to read")
     try:
         result = module.measure_sport(conn, "nfl")
     finally:
@@ -690,7 +691,8 @@ def test_stored_reasoning_is_humanised_at_render_time_not_rewritten():
     from gridiron import db as _db, language, views
 
     phrases = views._why_phrases()
-    conn = _db.connect()
+    conn = _db.read_the_live_record(
+        "stored reasoning in the record, to prove it is humanised at render time and never rewritten in place")
     try:
         rows = conn.execute(
             "SELECT reasoning FROM predictions WHERE predictor = 'llm'"
@@ -753,7 +755,8 @@ def test_the_alias_rule_refuses_when_owners_disagree():
 def test_the_llm_view_shows_no_code_name():
     from gridiron import db as _db
 
-    conn = _db.connect()
+    conn = _db.read_the_live_record(
+        "the LLM rows in the record, to prove no code name reaches a reader")
     try:
         audit.check_no_code_names_in_llm_prose(conn)
     finally:

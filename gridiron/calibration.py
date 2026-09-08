@@ -1416,6 +1416,13 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     # the app is buying cheap. Its own section, its own minimum, and capable of
     # returning bad news in words written before it was needed.
     payload["closing_line"] = clv_report(conn, sport=sport)
+    # AND WHETHER PACKAGES ARE WORTH TAKING AT ALL (GRIDIRON_COMBOS C4,
+    # 2026-09-08). The kill criterion was declared before the first package
+    # existed and is printed from the first day, so its wording cannot be
+    # chosen later to suit the numbers.
+    payload["combo_kill"] = combo_kill_verdict(conn, sport=sport)
+    # The packages he marked, on their own line and never inside a leg's.
+    payload["taken_packages"] = taken_packages(conn, sport=sport)
     # WHAT THE ENGINE IS ALLOWED TO PRICE AT ALL (P2, 2026-09-07), with the
     # measurement behind every entry and the reason for every exclusion.
     from .priced import coverage as _coverage
@@ -1998,6 +2005,19 @@ def ranker_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
 MIN_RECOMMENDATIONS_FOR_CLV = 50
 CLV_DECLARED = "2026-09-07T00:00:00Z"
 
+#: AND A HUNDRED FOR A PACKAGE (GRIDIRON_COMBOS C4, 2026-09-08). A package's
+#: close is the product of two or three moving quotes, so the same confidence
+#: costs more observations than a single's does -- twice as many, which is the
+#: coarsest defensible answer and is declared as a judgement, not fitted.
+MIN_PACKAGES_FOR_CLV = 100
+COMBO_CLV_DECLARED = "2026-09-08T00:00:00Z"
+
+
+def clv_minimum(market: str) -> int:
+    """How many closes this market needs before its number means anything."""
+    return (MIN_PACKAGES_FOR_CLV if config.is_combo_market(market)
+            else MIN_RECOMMENDATIONS_FOR_CLV)
+
 
 def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
     """What the closing line says about this sport's recommendations."""
@@ -2015,15 +2035,20 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
         n = len(got)
         mean = round(sum(r["clv_cents"] for r in got) / n, 2) if n else None
         beat = round(sum(1 for r in got if r["clv_cents"] > 0) / n, 4) if n else None
+        # ITS OWN N AND ITS OWN GATE. `combo_2` and `combo_3` are markets
+        # here exactly like `moneyline` is, which is what keeps a package out
+        # of a leg's count: this loop groups by the market a row was written
+        # under, and a package is never written under a leg's.
+        floor = clv_minimum(market)
         entry = {
             "sport": sport,
             "market": market,
             "n": n,
-            "minimum_for_a_claim": MIN_RECOMMENDATIONS_FOR_CLV,
-            "renderable": n >= MIN_RECOMMENDATIONS_FOR_CLV,
+            "minimum_for_a_claim": floor,
+            "renderable": n >= floor,
             "mean_cents": mean,
             "beat_the_close": beat,
-            "words": language.clv_line(n, mean, beat, MIN_RECOMMENDATIONS_FOR_CLV),
+            "words": language.clv_line(n, mean, beat, floor),
         }
         if entry["renderable"] and mean is not None and mean < 0:
             entry["finding"] = language.clv_finding_line(mean, n)
@@ -2155,8 +2180,15 @@ def taken_comparison(conn: sqlite3.Connection, *, sport: str,
     require_sport(sport, "calibration.taken_comparison")
     items = resolved(conn, sport=sport, market_type=market_type,
                      prop_type=prop_type, predictor=predictor)
+    # SINGLE TAPS ONLY IN THIS COMPARISON. A package tap is a row in the same
+    # table carrying a package id instead of a prediction id, and it belongs to
+    # `combo_2`/`combo_3` rather than to this market -- counting it here would
+    # put a package in a leg's curve, which is LAW 6 one level down.
     taken_set = {
-        r["prediction_id"] for r in conn.execute("SELECT prediction_id FROM picks_taken")
+        r["prediction_id"] for r in conn.execute(
+            "SELECT prediction_id FROM picks_taken"
+            " WHERE prediction_id IS NOT NULL"
+            "   AND id NOT IN (SELECT taken_id FROM picks_retracted)")
     }
     took = [r for r in items if r.id in taken_set]
     passed = [r for r in items if r.id not in taken_set]
@@ -2186,3 +2218,103 @@ def taken_comparison(conn: sqlite3.Connection, *, sport: str,
         payload["taken"]["score"]["brier"] if payload["renderable"] else None,
         payload["not_taken"]["score"]["brier"] if payload["renderable"] else None)
     return payload
+
+
+def combo_kill_verdict(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """Should this sport's packages stop being priced? (C4, 2026-09-08)
+
+    THE CRITERION IS DECLARED IN CONFIG AND DATED, and it was written before
+    the first package existed. At `config.COMBO_KILL_AFTER` settled packages in
+    a sport, packages losing to the close WHILE THAT SPORT'S SINGLES BEAT IT
+    retires the sport's combo markets.
+
+    AGAINST SINGLES, NOT AGAINST ZERO. A losing stretch in both is a bad month
+    and says nothing about the product; a losing stretch in packages alone is
+    the product being wrong, which is the only thing this verdict is for.
+
+    IT REPORTS, IT DOES NOT EDIT. Retiring a market is a dated act by a human
+    in `config.RETIRED_MARKETS`, the same shape as every other retirement here.
+    A function that could retire a market by itself would be a rule that
+    rewrote the registry, and the registry is the thing that makes a rule
+    auditable.
+    """
+    require_sport(sport, "calibration.combo_kill_verdict")
+    report = clv_report(conn, sport=sport)
+    packages = [e for e in report["markets"] if config.is_combo_market(e["market"])]
+    singles = [e for e in report["markets"]
+               if not config.is_combo_market(e["market"])]
+    settled = sum(e["n"] for e in packages)
+    single_n = sum(e["n"] for e in singles)
+
+    def _mean(entries, total):
+        if not total:
+            return None
+        return round(sum(e["mean_cents"] * e["n"] for e in entries
+                         if e["mean_cents"] is not None) / total, 2)
+
+    combo_mean = _mean(packages, settled)
+    single_mean = _mean(singles, single_n)
+    fires = (settled >= config.COMBO_KILL_AFTER
+             and combo_mean is not None and combo_mean < 0
+             and single_mean is not None and single_mean > 0)
+    return {
+        "sport": sport,
+        "record": "combo_kill",
+        "declared": config.COMBO_KILL_DECLARED,
+        "after": config.COMBO_KILL_AFTER,
+        "n": settled,
+        "combo_mean_cents": combo_mean,
+        "single_mean_cents": single_mean,
+        "single_n": single_n,
+        "fires": fires,
+        "already_retired": all(config.retired_market(sport, m)
+                               for m in config.COMBO_MARKETS),
+        "words": language.combo_kill_words(
+            settled, config.COMBO_KILL_AFTER, combo_mean, single_mean, fires),
+    }
+
+
+def taken_packages(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """The combo line on the taken record: what he took, of what was offered.
+
+    ITS OWN LINE AND NEVER MERGED into the single-leg comparison. A package and
+    a leg are different products at different prices with different fees, and
+    one curve holding both would report a rate for a thing nobody buys.
+
+    IT IS A COUNT, NOT A CURVE, until there are packages to score. Below the
+    gate that is all it can honestly be, and the sentence says so.
+    """
+    require_sport(sport, "calibration.taken_packages")
+    # PLACED IN GAMES THIS RECORD HOLDS, or it was never priceable here. A
+    # package naming games the project has never seen has no legs to multiply,
+    # so it is not one of the packages this app was "able to price at all" and
+    # does not belong in the denominator. Added 2026-09-08 after a verification
+    # run against the live database wrote exactly such a row.
+    offered = conn.execute(
+        "SELECT COUNT(*) FROM venue_packages v WHERE v.sport = ? AND v.priceable = 1"
+        "   AND EXISTS (SELECT 1 FROM games g WHERE instr(v.game_ids, g.id) > 0)",
+        (sport,)).fetchone()[0]
+    took = conn.execute(
+        "SELECT COUNT(*) FROM picks_taken t"
+        "  JOIN venue_packages p ON p.id = t.package_id"
+        " WHERE p.sport = ?"
+        "   AND t.id NOT IN (SELECT taken_id FROM picks_retracted)"
+        "   AND EXISTS (SELECT 1 FROM games g WHERE instr(p.game_ids, g.id) > 0)",
+        (sport,)).fetchone()[0]
+    return {
+        "sport": sport,
+        "record": "taken_packages",
+        "market": "packages",
+        "offered": offered,
+        "n": took,
+        "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+        "renderable": False if took < config.MIN_SAMPLE_FOR_EDGE_CLAIM else True,
+        "words": language.taken_packages_line(
+            took, offered, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
+        "note": (
+            "Packages the operator marked, against the packages this app was "
+            "able to price at all. It is its own line: a package and a single "
+            "leg are different products, and one curve holding both would "
+            "describe neither."
+        ),
+    }

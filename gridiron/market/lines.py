@@ -781,6 +781,12 @@ def snapshot_many(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict[s
     # evaluating them at the venue's number adds nothing to the model and
     # takes nothing from the row.
     counts["at_the_line"] = at_the_line.evaluate(conn, prediction_ids)["claims"]
+    # AND THE PACKAGES THE VENUE ASSEMBLED for the same games (GRIDIRON_COMBOS
+    # C4, 2026-09-08). Read here for the same reason the quotes are: after the
+    # prediction rows exist, so nothing a package says can reach the blind
+    # forecaster. Every package is stored, priced or refused, because the
+    # refusals are what the group heading counts.
+    counts["packages"] = _capture_packages(conn, prediction_ids)
     for pid in prediction_ids:
         before = conn.execute(
             "SELECT COUNT(*) AS n FROM market_snapshots WHERE prediction_id = ?", (pid,)
@@ -849,3 +855,32 @@ def coverage(conn: sqlite3.Connection, *, sport: str) -> dict:
             "is never proxied."
         ),
     }
+
+
+def _capture_packages(conn: sqlite3.Connection, prediction_ids: list[int]) -> int:
+    """Read the venue's packages for the games these predictions are about.
+
+    ONE PASS PER SPORT, because the venue's package series are declared per
+    sport and a package never crosses one (LAW 6). A venue that answers nothing
+    is a fact and not a failure: the counts say so and the day's group heading
+    prints it.
+    """
+    from . import kalshi
+
+    if not prediction_ids:
+        return 0
+    rows = conn.execute(
+        "SELECT DISTINCT sport, game_id FROM predictions WHERE id IN (%s)"
+        % ",".join("?" for _ in prediction_ids), list(prediction_ids)).fetchall()
+    by_sport: dict[str, list] = {}
+    for row in rows:
+        if row["game_id"]:
+            by_sport.setdefault(row["sport"], []).append(row["game_id"])
+    written = 0
+    for sport, game_ids in by_sport.items():
+        try:
+            counts = kalshi.capture_packages(conn, sport, sorted(set(game_ids)))
+        except Exception:  # noqa: BLE001 - a venue that does not answer is a fact
+            continue
+        written += counts.get("packages", 0)
+    return written

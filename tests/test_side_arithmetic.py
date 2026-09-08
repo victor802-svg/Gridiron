@@ -69,7 +69,8 @@ def test_every_card_in_the_record_agrees_with_its_own_arithmetic():
     this vacuous, so it asserts there is something to check."""
     from gridiron import config
 
-    conn = db.open_db(config.DB_PATH)
+    conn = db.read_the_live_record(
+        "every card in the record, to prove each agrees with its own arithmetic")
     try:
         rows = conn.execute(
             "SELECT id, sport, market_type, model_prob, model_side, factors_json"

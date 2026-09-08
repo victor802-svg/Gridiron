@@ -140,11 +140,46 @@ def test_the_fraction_is_a_quarter_of_kelly_and_capped():
     assert wild["fraction"] == config.MAX_FRACTION
 
 
-def test_a_parlay_is_refused_and_says_why():
-    with pytest.raises(recommend.SinglesOnly, match="SINGLES ONLY"):
-        recommend.price_parlay([{"leg": 1}, {"leg": 2}])
-    with pytest.raises(recommend.SinglesOnly, match="correlated"):
-        recommend.price_parlay([1, 2, 3])
+def test_the_blanket_refusal_is_retired_by_name_and_says_what_replaced_it():
+    """RETIRED 2026-09-08, not quietly deleted.
+
+    `price_parlay` refused every multi-leg price. LAW 5 as amended permits
+    pricing a package the venue published, so the blanket refusal is gone --
+    and this test fails if it comes back, or if the note saying where it went
+    is removed.
+    """
+    from pathlib import Path
+
+    assert not hasattr(recommend, "price_parlay")
+    assert not hasattr(recommend, "SinglesOnly")
+    source = Path(recommend.__file__).read_text(encoding="utf-8")
+    assert "RETIRED 2026-09-08" in source
+    assert "market.combos.classify" in source, "the note must say what replaced it"
+
+
+def test_the_four_shapes_that_replaced_it_are_each_refused():
+    """One refusal per shape, and none of them counts legs alone."""
+    from gridiron.market import combos
+
+    games = {"Kansas City": "g1", "Buffalo": "g1", "Miami": "g2"}
+    same_game = combos.classify(
+        {"sport": "nfl", "legs": ["Kansas City -3", "Buffalo over 44"]}, games)
+    assert same_game == {"priceable": False, "why": "same_game",
+                         "legs": ["Kansas City -3", "Buffalo over 44"],
+                         "games": ["g1", "g1"]}
+    four = combos.classify(
+        {"sport": "nfl", "legs": ["a", "b", "c", "d"]}, games)
+    assert four["why"] == "leg_count"
+    unforecast_leg = combos.classify(
+        {"sport": "nfl", "legs": ["Kansas City -3", "Sunderland to win"]}, games)
+    assert unforecast_leg["why"] == "unforecast_leg"
+    unforecast_sport = combos.classify(
+        {"sport": "cbb", "legs": ["Michigan -7.5", "UConn -2"]}, games)
+    assert unforecast_sport["why"] == "unforecast_sport"
+    # and the shape the law permits still passes
+    good = combos.classify(
+        {"sport": "nfl", "legs": ["Kansas City -3", "Miami moneyline"]}, games)
+    assert good["priceable"] and good["games"] == ["g1", "g2"]
 
 
 def test_nothing_is_sized_once_a_game_is_under_way(tmp_path):

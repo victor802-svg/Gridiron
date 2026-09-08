@@ -2274,3 +2274,39 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   .box-payout .box-value { font-size: 21px; }
   .face-context { gap: 4px 10px; }
 }
+
+
+/* THE VENUE'S PACKAGES (GRIDIRON_COMBOS C6, 2026-09-08).
+   Same card grammar as a single -- payout large, price beneath, edge quiet --
+   with the two lines a package needs: what its legs multiply to, and the same
+   money as singles. NOTHING HERE ANIMATES. */
+.group-combos { margin-top: 1.6rem; }
+.group-note {
+  margin: 0.15rem 0 0;
+  font-size: var(--type-small);
+  color: var(--muted);
+}
+.group-empty {
+  /* ROOM BENEATH IT, because on most days this sentence is the last thing in
+     the group and the next section's heading sat 15px from its final line. */
+  margin: 0.5rem 0 1.4rem;
+  max-width: 52ch;
+  font-size: var(--type-small);
+  color: var(--muted);
+  line-height: 1.5;
+}
+/* THE CARD IS THE SINGLE CARD'S CARD. Everything on it -- the club pills, the
+   price boxes, the edge line, the size, the tap -- uses the classes that were
+   already there; only these two lines are new, because only they say something
+   a single card has no equivalent of. */
+.combo-face { border-left: 4px solid var(--accent, var(--line)); }
+/* TWO OR THREE LEGS WRAP. The single card's band holds two club names and
+   never needs to; a package's legs are whole propositions and do. */
+.combo-legs { flex-wrap: wrap; row-gap: 6px; }
+.combo-margin,
+.combo-singles {
+  margin: 0.3rem 0 0;
+  font-size: var(--type-small);
+  color: var(--muted);
+}
+.combo-singles { font-variant-numeric: tabular-nums; }

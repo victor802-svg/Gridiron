@@ -47,7 +47,11 @@ def test_a_taken_pick_records_which_and_when_and_nothing_else(tmp_path):
     got = views.take_pick(conn, pid)
     assert got["taken"] is True and got["already"] is False
     row = conn.execute("SELECT * FROM picks_taken").fetchone()
-    assert set(row.keys()) == {"id", "prediction_id", "taken_utc"}
+    # AND `package_id` FROM 2026-09-08 (GRIDIRON_COMBOS C4): the same table
+    # records the other thing the operator can take, and its CHECK admits
+    # exactly one of the two per row. Still no stake, no price paid, no payout
+    # and no result in money, which is what this assertion actually defends.
+    assert set(row.keys()) == {"id", "prediction_id", "package_id", "taken_utc"}
     assert row["prediction_id"] == pid and row["taken_utc"] > "2026-09-07"
     # a second tap is the same fact, not a second wager
     assert views.take_pick(conn, pid)["already"] is True

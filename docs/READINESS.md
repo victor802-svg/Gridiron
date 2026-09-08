@@ -296,3 +296,43 @@ recommendations follow coverage, and baseball's moneyline is not measured
 enough (26 quoted strikes across 10 games, against a floor of 50 across 3)
 while its spread sits in the busier half. Nothing about the thresholds changed.
 What changed is that the pipeline they gate is no longer empty.
+
+## 2026-09-08 — the combo record opened, and it opened empty
+
+**The date the combo record opened: 2026-09-08.** `venue_packages` exists from
+this day, the daily read fetches every package the venue has open in the
+declared series, and every one of them is stored with this project's verdict
+beside it — priced, or refused with its reason.
+
+**Which sports had a priceable package on that date: NONE.** Measured against
+the venue twice, before building and after:
+
+* The only readable package markets were `KXNCAAMBSGP`, college-basketball
+  **same-game** parlays — for instance
+  `KXNCAAMBSGP-26APR06CONNMICHSPREAD-MICHU144`, "Michigan covers -7.5 and
+  UConn and Michigan collectively score under 144.5 total points", tagged
+  `cbb` by the fetcher from its series prefix. That tag is correct: it is the
+  men's college basketball final, `cbb` is not this record's `cfb`, and it is
+  not in `config.SPORTS`, so the package is refused `unforecast_sport` — there
+  is no forecast to price it with. `SAME_GAME_SERIES` also declares the
+  venue's SGP naming, so a same-game package in a sport this record DOES
+  forecast is refused as same-game rather than by whichever leg failed to
+  match a game.
+* `KXNBAPREPACK2ML`, `KXNBAPREPACK3ML`, `KXNFLCOMBO` and `KXNCAAMB2ML` list
+  historical events and expose no markets in any status.
+* **No baseball game package exists at all.** `KXMLBAWARDCOMBO` pairs two
+  season awards, which this record does not forecast, and is deliberately
+  absent from the declared series map.
+
+So the Combos group ships as a heading, a counts line and one sentence: "The
+venue has no package open today in any sport this record forecasts." That is
+the answer to the question the operator has, and it is the answer measurement
+produced rather than a gap in the work.
+
+**Nothing about the criteria changed.** A package clears the same two
+conditions a single does, its record is its own — `combo_2` and `combo_3`, per
+sport, never counted toward a leg's N — and its closing line needs a hundred
+observations where a single leg needs fifty, because a package's close is the
+product of two or three moving quotes. The kill criterion is declared and dated
+before the first package exists: at fifty settled in a sport, packages losing to
+the close while that sport's singles beat it retires the sport's combo markets.

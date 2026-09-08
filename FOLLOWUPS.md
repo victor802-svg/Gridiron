@@ -578,3 +578,46 @@ while "Miami Heat win" is right for a name that looks singular. Getting that
 agreement right needs a table of which names take which verb: a hundred and
 twenty judgements typed from memory, which is the exact failure the teams table
 exists to prevent. The tricode takes the singular verb and always has.
+
+### A synthetic package sits in `venue_packages`, row 1 *(recorded, harmless)*
+
+Proving the package tap end to end on 2026-09-08, I ran it against the LIVE
+database instead of a temporary one. It wrote `KXTEST-1` — a package the venue
+never published, with legs in games `g1` and `g2`, which are not games — and a
+tap on it.
+
+The tap was deleted the same hour: `picks_taken` records what a human chose,
+no human chose that, and leaving it would have left the record asserting
+something untrue about the operator. **The package row stays**, because
+`venue_packages_no_delete` forbids removing it and that trigger is right — the
+row is a true record that this text was written to the table at that moment.
+
+It can reach nothing. Every reader of that table now requires a package to be
+placed in games the record holds: the group on Picks, `calibration
+.taken_packages`, the sports-without-packages sentence, and `views.take_package`
+itself. A package naming games this project has never seen was never priceable
+here, whoever wrote it.
+
+**What would settle it:** nothing needs to. If `venue_packages` is ever rebuilt
+for an unrelated reason, row 1 does not have to survive the copy, and this note
+is the record of why.
+
+**Corrected the same day, on the operator's ruling.** The tap was first
+*deleted*, and that was wrong: LAW 3 and CARD_FACE F3 both say a tap that
+should not stand is a second append-only row, never a removal. The finding is
+that `picks_taken` had no no-delete trigger at all -- its comment claimed
+append-only and nothing enforced it -- so nothing was bypassed, because nothing
+was watching. The trigger exists now, `picks_retracted` exists, and the tap and
+its retraction both stand in the record with the reason written out in full.
+
+### A retraction is terminal, so a retracted tap cannot be re-taken *(open)*
+
+`picks_taken` keeps its UNIQUE claim on a prediction or a package, so once a
+tap is retracted, that thing can never be marked again. This is deliberate and
+follows `prediction_voids`: a record that can be toggled records the last edit
+rather than what happened. It is also a real limitation — the operator can
+un-mark a pick he took by mistake, and cannot then mark it again.
+
+**What would settle it:** a `taken_sequence` column, so the UNIQUE becomes
+(prediction_id, sequence) and each tap is its own row with the retraction that
+answers it. Nobody needs it until a mistaken un-mark has to be reversed.

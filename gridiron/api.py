@@ -666,6 +666,22 @@ async def taken(prediction_id: int, request: Request) -> dict:
     return views.take_pick(get_taken_conn(), prediction_id)
 
 
+@app.post("/api/taken/package/{package_id}")
+async def taken_package(package_id: int, request: Request) -> dict:
+    """Record that the operator took this package: which, and when.
+
+    THE SAME TABLE AND THE SAME THREE FACTS as a single pick -- what was taken,
+    which kind it was, and when -- because it is the same question being
+    recorded. The same two locks close the route.
+    """
+    session_id = request.cookies.get(auth.COOKIE_NAME)
+    if not auth.csrf_is_valid(session_id, request.headers.get(auth.CSRF_HEADER)):
+        raise HTTPException(
+            status_code=403,
+            detail=("This page is out of date. Reload it and try again."))
+    return views.take_package(get_taken_conn(), package_id)
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")

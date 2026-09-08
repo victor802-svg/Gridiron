@@ -21,9 +21,14 @@ fee, and staking more on a signal because it feels stronger. So:
     reachable from here at any sample size. Kelly assumes the probability is
     right; on a probability ten points wrong it compounds toward ruin rather
     than growth, and quarter-Kelly is the standard concession to that.
-  * SINGLES ONLY. `price_parlay` exists to refuse: each leg pays the spread,
-    so an N-leg parlay multiplies the cost of being right by roughly N, and
-    correlated legs price worse than they look.
+  * PACKAGES ARE GRADED, NEVER BUILT, and not here. `price_parlay` stood in
+    this module until 2026-09-08 and refused every multi-leg price outright;
+    LAW 5 as amended lets the engine price a package the VENUE published, so
+    the blanket refusal was retired by name and replaced by four graded ones
+    in `market.combos` -- same-game, cross-sport, four-leg, and a leg this
+    record does not forecast. The arithmetic in the old refusal is not
+    retracted: the fee per dollar is 1.67 to 2.8 times a single's, measured,
+    which is why `combos.singles_alternative` prints on every package.
   * NOTHING IS SIZED IN-GAME. The poller's score can be ninety seconds stale
     while the venue prices off the live feed, so a live recommendation is
     adversely selected by construction.
@@ -36,10 +41,6 @@ from .. import config
 from ..db import just_after, utcnow
 from ..priced import coverage
 from . import paper
-
-
-class SinglesOnly(RuntimeError):
-    """A parlay was priced. It is not, and the reason is arithmetic."""
 
 
 class NotSizedInGame(RuntimeError):
@@ -232,19 +233,16 @@ def size_for(*, model_prob: float | None, price: float | None,
     }
 
 
-def price_parlay(legs) -> None:
-    """Refuse, and say why in the same breath.
-
-    A function that exists to say no. Its argument is accepted so that a caller
-    reaching for a parlay finds this rather than a missing name and writes their
-    own.
-    """
-    raise SinglesOnly(
-        f"SINGLES ONLY (LAW 5): a {len(list(legs))}-leg parlay is not priced "
-        f"here. Each leg pays the spread and the fee, so the cost of being "
-        f"right multiplies with the legs, and legs about the same game are "
-        f"correlated -- which prices worse than the product of the parts "
-        f"suggests, not better.")
+# RETIRED 2026-09-08: `price_parlay` and its `SinglesOnly` stood here and
+# refused to put a number on any multi-leg price at all. LAW 5 as amended
+# permits pricing a package the venue itself published, so a function whose
+# whole body was a refusal now refuses something the law allows. It is gone,
+# and `market.combos.classify` carries the four refusals that replaced it --
+# each one about a shape rather than about the count of legs.
+#
+# The four are planted: `plant_a_priced_same_game_package`,
+# `plant_a_priced_cross_sport_package`, `plant_a_priced_four_leg_package`,
+# `plant_a_priced_package_with_an_unforecast_leg`.
 
 
 #: WHAT THIS RECORD CALLS A GAME THAT HAS STARTED. The schema's own word is

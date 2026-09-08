@@ -5801,9 +5801,18 @@ def check_taken_not_in_training(root: Path | None = None) -> None:
 #: Words with no job on this page except to make a reader move faster. Matched
 #: on word boundaries written as character classes, because a substring match
 #: on "hot" flags "shot" and a scan that cries wolf gets switched off.
+#: "combo" LEFT THIS LIST ON 2026-09-08, when LAW 5 was amended to let the
+#: engine price a package the venue publishes. It is the product's name and
+#: the group's name, and a scan that banned it would force the page to call
+#: the thing something a reader would not recognise.
+#:
+#: EVERYTHING ELSE STAYS BANNED, including "parlay" and "same game": the first
+#: is the sportsbook's word for the product and carries its urgency, and the
+#: second names a package this app refuses to price -- printing it as a label
+#: would advertise the one shape that has no fair value here.
 PRESSURE_WORDS: tuple[str, ...] = (
     "boost", "boosted", "hot", "trending", "popular", "streak", "streaks",
-    "parlay", "parlays", "combo", "same game", "sgp",
+    "parlay", "parlays", "same game", "sgp", "builder", "add leg", "slip",
 )
 
 _PRESSURE = re.compile(
@@ -5975,6 +5984,12 @@ DAY_TEXT_KEYS = (
     "question", "matchup", "sport_label", "kickoff_label", "model_words",
     "venue_words", "edge_words", "edge_label", "size_words", "gate_words",
     "tier_chip", "words", "heading",
+    # A PACKAGE CARD'S OWN WORDS (GRIDIRON_COMBOS C5, 2026-09-08). The legs
+    # arrive as the VENUE wrote them, which is the one place on this page
+    # where the text is somebody else's, so it is the place the scan most
+    # needs to read.
+    "legs_words", "margin_words", "singles_words", "payout_words",
+    "price_words", "empty_words", "fee_words",
 )
 
 
@@ -6111,3 +6126,62 @@ def check_the_live_card_offers_nothing(payload) -> None:
             "NOTHING ON A LIVE CARD CAN BE ACTED ON. The score is up to ninety "
             "seconds stale and the market it would be priced against is not:"
             + _NL2 + _NL2.join(faults[:6]))
+
+
+# ---------------------------------------------------------------------------
+# PACKAGES ARE GRADED, NEVER BUILT (GRIDIRON_COMBOS, 2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# LAW 5 as amended lets the engine price a package the VENUE published. What
+# it may never do is put a number on one whose legs it cannot honestly
+# multiply: two legs from one game price a correlation nobody declared (LAW
+# 2), two sports in one row merge two records (LAW 6), a fourth leg is past
+# the declared shape, and a leg this record does not forecast has no
+# probability to contribute.
+
+
+def combo_package_faults(packages) -> list[str]:
+    """A package carrying a price it is not entitled to."""
+    from .market import combos
+
+    if not packages:
+        return []
+    faults = []
+    for package in packages:
+        if not package.get("priceable"):
+            continue
+        legs = package.get("legs") or []
+        games = package.get("games") or []
+        where = package.get("ticker") or "a package"
+        if package.get("sport") not in combos.FORECAST_SPORTS:
+            faults.append(
+                f"{where} is priced in {package.get('sport')!r}, a sport this "
+                f"record does not forecast, so there is no probability to "
+                f"multiply")
+        if not combos.MIN_LEGS <= len(legs) <= combos.MAX_LEGS:
+            faults.append(
+                f"{where} is priced with {len(legs)} legs; the declared shape "
+                f"is two or three")
+        if games and len(set(games)) != len(games):
+            faults.append(
+                f"{where} is priced with two legs in one game. Multiplying "
+                f"them prices a correlation nobody declared, and this record "
+                f"holds no joint model (LAW 2)")
+        sports = {s for s in package.get("leg_sports") or [] if s}
+        if len(sports) > 1:
+            faults.append(
+                f"{where} is priced across {sorted(sports)}, and a number that "
+                f"mixes two sports describes neither (LAW 6)")
+        if package.get("unforecast_leg"):
+            faults.append(
+                f"{where} is priced with a leg this record does not forecast, "
+                f"so one of the factors in its product does not exist")
+    return faults
+
+
+def check_combo_package(packages) -> None:
+    faults = combo_package_faults(packages)
+    if faults:
+        raise LawViolation(
+            "A PACKAGE IS GRADED, NEVER BUILT, and never priced on legs this "
+            "record cannot honestly multiply:" + _NL2 + _NL2.join(faults[:6]))
