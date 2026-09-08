@@ -1091,3 +1091,30 @@ Set to 1000/15 = 66.667 units, dated, with the ruling as the reason. One unit
 is now 1.50% and the 2% cap pays $20. No amount is recorded in `config.py`:
 the denominator is a ratio and the money stays in the settings row the
 operator typed.
+
+## 2026-09-08 — GRIDIRON_COMBOS arrived and was not executed
+
+Brief and close-out of the same date. It proposes two- and three-leg combos,
+and LAW 5 carries a paragraph saying the engine never recommends a parlay and
+refuses to price one. The brief does not mention the law; it bans "parlay" as
+a WORD while building the product the law names.
+
+**AWAITING ONE SENTENCE FROM THE OPERATOR:** whether LAW 5's SINGLES ONLY is
+amended. The procedure exists and he used it on 2026-09-07 -- name the law,
+keep the old text beneath, date it, give the reason. The four bulleted
+prohibitions in LAW 5 say "NOT amendable by a later session"; this paragraph
+is not one of them, so it is amendable -- by him, by name.
+
+**Two measurements change what a lawful version would look like:**
+
+- **The venue assembles its combos; the app cannot.** Six sports combo series
+  exist and all are the venue's own packages (`KXNBAPREPACK2ML`,
+  `KXNBAPREPACK3ML`, `KXNCAAMB2ML`, `KXNCAAMBSGP`, `KXNFLCOMBO`,
+  `KXMLBAWARDCOMBO`). The brief has the app pick legs by edge and then read the
+  venue's price for that pair; that pair is not a product. C1 and C2
+  contradict each other against this venue.
+- **No baseball game combo exists.** The only baseball entry is an award
+  combo, and baseball is the daily sport with the only venue quotes in this
+  record.
+
+Nothing else is in flight. The observation window's other terms stand.
