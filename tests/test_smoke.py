@@ -1108,25 +1108,11 @@ def test_the_result_reads_as_a_word_not_as_open(page):
 
 # --- C2: the page calms down ------------------------------------------------
 
-def test_notices_collapse_into_one_bar_that_expands(page):
-    """Compression, not suppression: one line, every sentence behind it."""
-    page.evaluate("location.hash = '#/record'")
-    page.wait_for_selector("#notices-summary", timeout=10000)
-    bars = page.eval_on_selector_all("#notices-summary", "e => e.length")
-    assert bars == 1, f"{bars} notice bars rendered; the point is one"
-
-    summary = page.locator("#notices-summary")
-    text = summary.inner_text()
-    assert "notice" in text.lower()
-    assert page.locator("#notices-detail").is_visible() is False
-
-    summary.click()
-    page.locator("#notices-detail").wait_for(state="visible", timeout=10000)
-    assert page.locator("#notices-detail").is_visible(), "it does not expand"
-    full = page.locator("#notices-detail").inner_text()
-    # Every sentence survives; the bar is a summary of them, not a replacement.
-    assert len(full) > len(text)
-
+# `test_notices_collapse_into_one_bar_that_expands` and
+# `test_each_notice_keeps_its_task_name_in_the_summary` were retired with the
+# notices bar on 2026-09-08. It reported faults -- a silent task, a stale feed
+# -- above every card on every route, which is the Health panel's job and is
+# where they still are.
 
 def test_the_greeting_is_on_the_home_tab_only(page):
     """One page greets; every page warns."""
@@ -1145,9 +1131,10 @@ def test_the_greeting_is_on_the_home_tab_only(page):
         assert not page.locator("#greet-msg").is_visible(), (
             f"{route} shows the since-you-last-looked sentence"
         )
-        assert page.locator("#notices-summary").is_visible(), (
-            f"{route} lost its notices; a warning nobody sees is not a warning"
-        )
+        # THE NOTICES BAR WAS REMOVED ON 2026-09-08. "Every page warns" was
+        # its argument for surviving off-home; a fault belongs on the Health
+        # panel, which is where these are, and what the strip cost was the top
+        # of the screen the operator opens.
 
 
 def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
@@ -1172,17 +1159,6 @@ def test_no_bare_dash_stands_in_for_a_value(route, page):
                     .filter(t => t === '\u2014' || t === '-');
     }""")
     assert not bare, f"{route} has {len(bare)} cells showing a bare dash"
-
-
-def test_each_notice_keeps_its_task_name_in_the_summary(page):
-    """The bar said "predict never run · predict never run": splitting on the
-    first colon threw away the sport, so two different notices read as one
-    repeated. A summary that cannot tell two warnings apart is not a summary."""
-    page.evaluate("location.hash = '#/record'")
-    page.wait_for_selector("#notices-summary", timeout=10000)
-    text = page.locator("#notices-summary").inner_text()
-    parts = [p.strip() for p in text.split("—")[-1].split("·")]
-    assert len(parts) == len(set(parts)), f"the summary repeats itself: {parts}"
 
 
 def test_each_tab_carries_its_own_record_and_never_a_total(page):
@@ -1409,18 +1385,31 @@ def test_no_internal_vocabulary_reaches_the_reader_on_the_llm_view(page):
     # that needs it. See `_seed_llm_row_with_a_code_name` in conftest.
     from gridiron import audit
 
+    # THE CONTROL THAT REACHED THIS VIEW WAS REMOVED ON 2026-09-08 with the
+    # rest of the old Picks page, so there is no toggle to click. The API
+    # still serves the view and the scan still has to reach it: a scan that
+    # cannot reach a surface is not protecting it, which is this test's own
+    # lesson. Driven through the address the toggle used to build.
+    #
+    # THAT PICKS CAN NO LONGER SHOW THE REASONING PASS IS RECORDED IN
+    # `docs/FOLLOWUPS.md` as a consequence of that removal, not hidden here.
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-forecaster-seg [data-forecaster='llm']",
-                           state="attached", timeout=10000)
-
-    # The forecaster toggle lives behind the view menu (R2, 2026-09-05).
-    page.click("#week-view-button")
-    with page.expect_response(lambda r: "forecaster=llm" in r.url):
-        page.click("#week-forecaster-seg [data-forecaster='llm']")
     page.wait_for_function(
-        """() => document.querySelectorAll('#week-cards .card').length > 0
-                 || !document.getElementById('week-hero').hidden""",
+        """() => document.querySelectorAll('#week-cards .card').length > 0""",
         timeout=10000)
+    llm = page.evaluate("""async () => {
+        const r = await fetch('/api/week?sport=' + Gridiron.state.sport
+                              + '&forecaster=llm');
+        return await r.json();
+    }""")
+    reasoning = [c.get("reasoning") or "" for c in (llm.get("cards") or [])]
+    reasoning += [s for c in (llm.get("cards") or [])
+                  for s in ((c.get("why") or {}).get("sentences") or [])]
+    for text in reasoning:
+        assert audit.plain_words_violations(text) == [], text[:90]
+    if not reasoning:
+        pytest.skip("no reasoning-pass rows on this slate")
+    return
 
     # Open every card, because the reasoning lives in the body.
     page.evaluate("""() => {

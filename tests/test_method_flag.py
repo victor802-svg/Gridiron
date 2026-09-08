@@ -119,10 +119,13 @@ def test_the_payload_carries_the_note_on_every_flagged_card():
                 f"{card.get('method_note')!r} and should carry {expected!r}")
 
 
-def test_the_hero_refusal_is_still_in_the_shipped_page():
-    """Asserted against `app.js`, because that is where the refusal lives."""
-    audit.check_the_hero_refuses_flagged_methods()
-
+# `test_the_hero_refusal_is_still_in_the_shipped_page` and
+# `test_the_guard_sees_a_hero_that_stopped_refusing` were retired with the
+# hero on 2026-09-08. They checked that a market flagged as a coin flip by
+# construction could not LEAD the page. There is no lead.
+#
+# THE HALF THAT MATTERED IS BELOW: a flagged method SAYS SO, on the card that
+# carries it, and `audit.check_flagged_methods` still runs on the gate.
 
 def test_the_guard_sees_an_unflagged_total():
     """A scanner that cannot see the thing it scans for is the failure this
@@ -138,18 +141,6 @@ def test_the_guard_sees_an_unflagged_total():
         config.FLAGGED_METHODS.update(original)
     assert audit.flagged_method_faults() == []
 
-
-def test_the_guard_sees_a_hero_that_stopped_refusing():
-    broken = """
-      function heroPool(cards) { return cards.slice(); }
-      const top = heroPool(cards).slice(0, HERO_STEPS);
-      const rest = open.slice(1);
-    """
-    faults = audit.hero_flag_faults(broken)
-    assert len(faults) >= 2, faults
-
-
-# --- the vendored binaries (operator ruling 4) ------------------------------
 
 def test_the_vendored_fonts_match_their_recorded_provenance():
     audit.check_vendored_fonts()

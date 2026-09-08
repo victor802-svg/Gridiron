@@ -58,13 +58,15 @@
        boxes above the picks; on a phone the first forecast started below the
        fold. Since-you-last-looked reads on the left, the notice COUNT on the
        right, and the detail opens only when asked for. -->
+  <!-- THE NOTICES BAR WAS REMOVED (THREE_STATES S1, 2026-09-08). It sat
+       above every card on every route and reported faults -- a silent task, a
+       stale feed -- which is the Health panel's job and is where they still
+       are. What it cost was the top of the screen the operator opens. The
+       greeting's one line stays: it is not a notice. -->
   <div id="greeting-home"><div id="greeting">
     <div id="glance" class="glance" hidden>
       <div class="glance-msg" id="greet-msg"></div>
-      <button type="button" id="notices-summary" class="glance-notices"
-              aria-expanded="false" aria-controls="notices-detail" hidden></button>
     </div>
-    <div id="notices-detail" class="notices-detail" hidden></div>
     <div id="greet-countdown" class="glance-countdown" hidden></div>
   </div></div>
   <div id="greet-settled"></div>
@@ -268,51 +270,18 @@
          the right. The title, the week picker and the market filter move
          behind the "more" details -- a returning reader wants tonight, and
          choosing a past week is the rarer act. -->
-    <div class="controls">
-      <div class="seg" id="week-sort-seg" role="group" aria-label="Sort the slate">
-        <button type="button" data-sort="disagreement" aria-pressed="true">By disagreement</button>
-        <button type="button" data-sort="confidence" aria-pressed="false">By confidence</button>
-      </div>
-      <!-- THE TIER FILTER (R2), a fourth segmented control beside the sort.
-           The buttons are filled from the declared tiers rather than written
-           here, so a tier added later appears without editing markup. -->
-      <div class="seg" id="week-tier-seg" role="group"
-           aria-label="Show one confidence tier"></div>
-      <!-- THE VIEW MENU (R2, 2026-09-05). One 44px button carrying the
-           current choice as a tag -- "statistical · final" -- and behind it
-           the two choices as two small labelled toggles: whose forecast
-           (GRIDIRON_14: one forecaster in one ranking, never both) and which
-           pass (A3: the early view is a separate list, never a mixed one).
-           Opens on click, closes on Escape or a click elsewhere, reachable by
-           keyboard; the choice is remembered per sport for the session, in
-           memory only. The toggles are filled from the payload, never
-           written here. -->
-      <div class="view-menu" id="week-view">
-        <button type="button" class="view-button" id="week-view-button"
-                aria-haspopup="true" aria-expanded="false"
-                aria-controls="week-view-panel">View
-          <span class="view-tag" id="week-view-tag"></span></button>
-        <div class="view-panel" id="week-view-panel" hidden>
-          <div class="view-choice">
-            <span class="view-choice-label" id="week-forecaster-label">Forecaster</span>
-            <div class="seg seg-small" id="week-forecaster-seg" role="group"
-                 aria-labelledby="week-forecaster-label"></div>
-          </div>
-          <div class="view-choice">
-            <span class="view-choice-label" id="week-pass-label">Forecast</span>
-            <div class="seg seg-small" id="week-pass-seg" role="group"
-                 aria-labelledby="week-pass-label"></div>
-          </div>
-        </div>
-      </div>
-      <div class="slate-counts" id="week-counts"></div>
-      <!-- STRONG BY DEFAULT (ruling R2). Opening on the most confident band
-           also opens on the least-tested one, and this says so until it earns
-           its verdict. -->
-      <p class="footnote" id="tier-caveat" hidden></p>
-    </div>
-    <!-- THE COUNTDOWN (R3). One line, three states: how long until the first
-         kickoff, how far through the slate is, or that it is complete. -->
+    <!-- THE CONTROLS LINE WAS REMOVED (THREE_STATES S1, 2026-09-08): the
+         sort segment, the tier buttons and the View menu. Three segmented
+         controls above the first card, each defensible alone, which together
+         made the operator arrange the page before reading any of it.
+
+         Where each one's information went: the sort, because Watching is
+         already in the ranker's order; the tier, to a group heading and a
+         card's own chip; the forecaster, to the day strip, which says whose
+         questions it is counting. -->
+    <div class="slate-counts" id="week-counts"></div>
+    <p class="footnote" id="tier-caveat" hidden></p>
+
     <div class="slate-clock" id="week-clock" hidden>
       <span id="week-clock-line"></span>
     </div>
@@ -351,10 +320,12 @@
          tonight" is a fact about the slate and a tab that vanishes hides it. -->
     <nav id="week-market-tabs" class="market-tabs" aria-label="Markets"></nav>
 
-    <!-- THE HERO (R3). The sharpest disagreement for the selected tab, or the
-         most confident when the sort says so. Arrows and dots step through the
-         top five. -->
-    <section id="week-hero" class="hero" hidden aria-live="polite"></section>
+    <!-- THE HERO WAS REMOVED (THREE_STATES S1, 2026-09-08) with its arrows
+         and its dots. It showed one card at five times the size of the rest,
+         and a carousel to reach the other four, above a page that then showed
+         all of them again. Its reasoning is on every card now, behind Why;
+         its "Most confident, with no line to compare against" state is what
+         the Watching group's heading says for the whole group. -->
 
     <!-- TODAY (GRIDIRON_TODAY T1, 2026-09-07). The screen the operator opens
          every morning, at the top of the route he opens. Two groups that are
@@ -364,10 +335,23 @@
          The nav stays four pages: `audit.nav_faults` rules that and a
          planting proves it, so Today leads Picks rather than becoming a
          fifth page. -->
+    <!-- TWO TABS, AND THE NAV STAYS AT FOUR PAGES (THREE_STATES S1). A card
+         is born on Upcoming, moves to Live when its game starts, and ends on
+         Results. `audit.nav_faults` rules the nav at four pages and a
+         planting proves it, so Live is a tab on Picks and not a fifth page.
+
+         THE TAB A CARD SITS ON IS DERIVED, NEVER CLICKED. `games.status` is
+         what the poller writes; a state a person could set is a state that
+         can disagree with the game being played. -->
+    <nav class="state-tabs" id="state-tabs" aria-label="Upcoming or live">
+      <button type="button" data-state="upcoming" aria-pressed="true"></button>
+      <button type="button" data-state="live" aria-pressed="false"></button>
+    </nav>
+
     <section class="panel today" id="today">
       <div class="today-body">
         <div class="today-groups">
-          <h3 class="group-head">
+          <h3 class="group-head group-clears">
             <span id="today-clears-heading"></span>
             <span class="chip group-chip" id="today-clears-chip" hidden></span>
           </h3>
@@ -378,11 +362,24 @@
           <button type="button" class="fold" id="today-fold" hidden></button>
           <div class="faces" id="today-below-floor" hidden></div>
 
-          <h3 class="group-head">
+          <h3 class="group-head group-watching">
             <span id="today-watching-heading"></span>
             <span class="chip group-chip" id="today-watching-chip" hidden></span>
           </h3>
           <div class="faces" id="today-watching"></div>
+
+          <!-- LIVE (S3). A game in progress, with the score where the start
+               time was, and nothing on it that could be acted on: no size, no
+               edge, no payout, no tap. `audit.live_card_faults` fails the
+               gate on any of them and plantings prove each. -->
+          <h3 class="group-head group-live" id="live-heading-row" hidden>
+            <span id="live-heading"></span>
+          </h3>
+          <div class="faces" id="today-live" hidden></div>
+          <p class="live-empty" id="live-empty" hidden>
+            <span id="live-empty-words"></span>
+            <time id="live-empty-time"></time>
+          </p>
         </div>
 
         <!-- TAKEN TODAY (F3). A selection record, in the position a book puts
@@ -424,6 +421,17 @@
 
   <section id="view-results" class="view" hidden>
     <h2>Results <span id="history-caption" class="caption"></span></h2>
+
+    <!-- THE THIRD STATE OF THE SAME CARD (THREE_STATES S3, 2026-09-08). A
+         pick born on Upcoming and watched on Live ends here, with the final
+         score where the start time was and the outcome against the number
+         the reader was shown. The table below stays: it is the searchable
+         record of every question ever asked, which is a different thing from
+         the day's cards. -->
+    <h3 class="group-head group-settled" id="settled-heading-row" hidden>
+      <span id="settled-heading"></span>
+    </h3>
+    <div class="faces" id="results-settled" hidden></div>
     <!-- THE SEASON AS A SHAPE (GRIDIRON_13 P2). One square per day with a
          settled result, its balance inside. Click a day to filter the table
          below to it. One sport only -- a square holding two records would

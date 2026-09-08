@@ -89,6 +89,17 @@ PAIRS = [
     ("faint", "ink", "a price box label", False),
     ("muted", "ink", "a price box value", False),
     ("faint", "card", "the time beside a taken pick", False),
+    # THE CARD IN THREE STATES (THREE_STATES, 2026-09-08). Every foreground
+    # this brief put on a new ground, so the next person to reach for a
+    # colour is told rather than trusted. The club colours themselves are
+    # measured per club by tools/measure_team_colours.py, which records for
+    # each one the shade white can be read on.
+    ("white", "yours", "the Yours badge on a live card", False),
+    ("white", "sport-nfl", "the sport tag: football", False),
+    ("white", "sport-mlb", "the sport tag: baseball", False),
+    ("white", "sport-nba", "the sport tag: basketball", False),
+    ("white", "sport-cfb", "the sport tag: college football", False),
+    ("white", "sport-ufc", "the sport tag: the fights", False),
     ("faint", "card", "captions and sample sizes on a card", False),
     ("faint", "resolved", "captions on a settled card", False),
     # RENAMED WITH THE TOKENS (GRIDIRON_16 R2). These were "the accent on the

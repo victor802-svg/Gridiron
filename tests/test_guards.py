@@ -1401,19 +1401,29 @@ def test_a_comment_naming_the_forbidden_thing_does_not_fire():
         js + f"{nl}// document.querySelector('.never-built-probe'){nl}", html, css) == []
     assert audit.dead_selector_faults(
         js + f"{nl}document.querySelector('.never-built-probe');{nl}", html, css)
-    assert audit.hero_flag_faults(js + f"{nl}// const rest = open.slice(1){nl}") == []
-    assert audit.hero_flag_faults(js + f"{nl}const rest = open.slice(1);{nl}")
+    # The hero's slice probe was retired with the hero on 2026-09-08. The
+    # other five probes above cover the same property: a scanner that reads
+    # prose is satisfied by deleting the prose, or fooled by writing it.
 
 
 def test_a_comment_cannot_stand_in_for_the_code_it_describes():
     """The tier-chip direction: an absence check must not be satisfied by a
-    comment that happens to name the missing function."""
+    comment that happens to name the missing function.
+
+    DRIVEN THROUGH `duplicate_js_definitions` FROM 2026-09-08. It used to be
+    driven through the hero's scan, which was retired with the hero; this one
+    is the same shape of check -- it reads definitions out of the renderer --
+    and it is the scan this project grew most recently, after finding two
+    functions defined twice in one file.
+    """
     js = _web("app.js")
     nl = chr(10)
-    gutted = js.replace("function heroPool", "function poolOfHeroes", 1)
-    gutted += f"{nl}// function heroPool(cards) {{ return cards.filter(c => !c.method_note); }}{nl}"
-    assert any("heroPool" in f for f in audit.hero_flag_faults(gutted)), (
-        "a comment naming heroPool satisfied the scan for heroPool")
+    commented = js + f"{nl}// function localTime(iso) {{ return iso; }}{nl}"
+    assert audit.duplicate_js_definitions_in(commented) == [], (
+        "a commented-out definition counted as a second definition")
+    real = js + f"{nl}  function localTime(iso) {{ return iso; }}{nl}"
+    assert audit.duplicate_js_definitions_in(real), (
+        "a real second definition was not seen")
 
 
 def test_a_slash_slash_inside_a_string_is_not_a_comment():

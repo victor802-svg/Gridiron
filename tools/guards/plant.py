@@ -6379,57 +6379,6 @@ def plant_a_flagged_market_with_no_words() -> Result:
                   "audit.flagged_method_faults", True, faults[0])
 
 
-def plant_a_flagged_market_leading_the_page() -> Result:
-    """Let the hero take the top card whatever its method says.
-
-    THE HERO IS THE LARGEST CLAIM ON THE PAGE and the sort has no opinion
-    about method: on a slate where a totals card happens to carry the biggest
-    disagreement with the market, the coin flip leads. Ruling 2's word is
-    NEVER.
-
-    THE SECOND HALF IS THE ONE THAT NEARLY GOT AWAY. `open.slice(1)` was
-    correct for as long as the hero always took `open[0]`. The moment the hero
-    can REFUSE the top card, slicing position 0 deletes it from the page --
-    shown by neither the hero nor the grid -- and on the totals tab that is
-    every card on the slate. A page that renders empty while reporting a full
-    one is a worse failure than the one the ruling was fixing.
-    """
-    web = config.PACKAGE_ROOT / "web"
-    js = (web / "app.js").read_text(encoding="utf-8")
-    from gridiron import audit as _audit
-
-    if _audit.hero_flag_faults(js):
-        return Result(LAW_METHOD, "a flagged market leading the page",
-                      "audit.hero_flag_faults", False,
-                      "the shipped app.js already lets one through; fix that "
-                      "before trusting this planting")
-
-    # THE PLANT: the pool stops filtering, and the grid goes back to slicing.
-    broken = js.replace("return cards.filter(c => !c.method_note);",
-                        "return cards.slice();", 1)
-    broken = broken.replace(
-        "const rest = lead ? open.filter(c => c !== lead) : open.slice();",
-        "const rest = open.slice(1);", 1)
-    if broken == js:
-        return Result(LAW_METHOD, "a flagged market leading the page",
-                      "audit.hero_flag_faults", False,
-                      "the hero pool is no longer written the way this "
-                      "planting expects; re-point it")
-    faults = _audit.hero_flag_faults(broken)
-    if len(faults) < 2:
-        return Result(LAW_METHOD, "a flagged market leading the page",
-                      "audit.hero_flag_faults", False,
-                      f"NOT CAUGHT in full - a market whose own note calls it "
-                      f"a coin flip can lead the page, or the card the hero "
-                      f"refuses is dropped by the grid as well. "
-                      f"{len(faults)} of the two halves were seen.")
-    return Result(LAW_METHOD, "a flagged market leading the page",
-                  "audit.hero_flag_faults", True, faults[0])
-
-
-LAW_DRAW = "A DRAWN GAME ANSWERS NEITHER"
-
-
 def plant_a_drawn_game_graded_as_a_loss() -> Result:
     """Settle an NFL moneyline on a game that finished level.
 
@@ -6532,75 +6481,53 @@ def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
                   "declaring a market nobody has trained yet")
 
 
-LAW_FLOOR = "A CLAIM UNDER THE FLOOR NEVER LEADS"
+#: Declared here because the two hero plantings this constant sat between were
+#: retired on 2026-09-08 and took it with them for a minute -- the same shape
+#: of accident as `_FONT_ROW` in `audit`, on the same afternoon.
+LAW_DRAW = "A DRAWN GAME ANSWERS NEITHER"
+
+LAW_TWO_ROWS = "TWO CONTROL ROWS ABOVE THE FIRST CARD"
 
 
-def plant_a_hero_showing_a_claim_under_the_floor() -> Result:
-    """Take the floor out of the hero's candidates.
-
-    THE HERO IS THE LARGEST CLAIM ON THE PAGE, in the largest type. Before R3
-    a tab whose best pick was 51% led with it, and 51% in that type reads as a
-    finding. The floor is `config.HERO_MIN_CLAIM`, carried on the payload;
-    this plants the one-word edit that removes it from the renderer.
-    """
-    from gridiron import audit as _audit
-    js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
-    if _audit.hero_flag_faults(js):
-        return Result(LAW_FLOOR, "a hero showing a claim under the floor",
-                      "audit.hero_flag_faults", False,
-                      "the shipped renderer already fails the hero scan; fix that "
-                      "before trusting this planting")
-    broken = js.replace("(shownProb(c) || 0) >= minClaim", "true", 1)
-    if broken == js:
-        return Result(LAW_FLOOR, "a hero showing a claim under the floor",
-                      "audit.hero_flag_faults", False,
-                      "the floor is no longer written the way this planting "
-                      "expects; re-point it")
-    faults = [f for f in _audit.hero_flag_faults(broken) if "floor" in f]
-    if not faults:
-        return Result(LAW_FLOOR, "a hero showing a claim under the floor",
-                      "audit.hero_flag_faults", False,
-                      "NOT CAUGHT - a 51% claim leads the page in the largest "
-                      "type it has, and reads as a finding")
-    return Result(LAW_FLOOR, "a hero showing a claim under the floor",
-                  "audit.hero_flag_faults", True, faults[0])
-
-
-LAW_TWO_ROWS = "TWO CONTROL ROWS ABOVE THE HERO"
-
-
-def plant_a_third_control_row_above_the_hero() -> Result:
-    """Add a third row of controls above the hero on Picks.
+def plant_a_third_control_row_above_the_first_card() -> Result:
+    """Add a third row of controls above the first card on Picks.
 
     THE PAGE HAD FOUR SEGMENTED CONTROLS ON ONE LINE BY 2026-09-05, each one
     defensible when it arrived. R2 folded two of them into a menu and declared
-    the rows: the controls line and the market tabs. This is the way it grows
-    back -- a new row with one button, written into the markup, above the
-    hero.
+    the rows; THREE_STATES removed the menu, the sort and the tier buttons
+    outright and left two: the market chips and the state tabs.
+
+    THE LANDMARK MOVED WITH THE HERO on 2026-09-08 and the number did not.
+    This is the way a third row grows back -- one new row with one button,
+    written into the markup above the first card.
     """
     from gridiron import audit as _audit
     html = (config.PACKAGE_ROOT / "web" / "index.html").read_text(encoding="utf-8")
     if _audit.picks_control_row_faults(html):
-        return Result(LAW_TWO_ROWS, "a third control row above the hero",
+        return Result(LAW_TWO_ROWS, "a third control row above the first card",
                       "audit.picks_control_row_faults", False,
                       "the shipped page already carries a third row; fix that "
                       "before trusting this planting")
-    anchor = '<section id="week-hero"'
+    # INSERTED BEFORE THE STATE TABS, which is above the first card. The
+    # first draft anchored on `id="today"` and spliced a div INTO the section's
+    # opening tag, which is not a row of controls, it is broken markup -- and
+    # the scan was right not to count it.
+    anchor = '<nav class="state-tabs"'
     if anchor not in html:
-        return Result(LAW_TWO_ROWS, "a third control row above the hero",
+        return Result(LAW_TWO_ROWS, "a third control row above the first card",
                       "audit.picks_control_row_faults", False,
-                      "the hero is no longer marked up the way this planting "
-                      "expects; re-point it")
+                      "the first card is no longer marked up the way this "
+                      "planting expects; re-point it")
     broken = html.replace(
         anchor,
         '<div class="extra-row"><button type="button">Extra</button></div>' + anchor, 1)
     faults = _audit.picks_control_row_faults(broken)
     if not faults:
-        return Result(LAW_TWO_ROWS, "a third control row above the hero",
+        return Result(LAW_TWO_ROWS, "a third control row above the first card",
                       "audit.picks_control_row_faults", False,
                       "NOT CAUGHT - a third row of controls sits above the hero "
                       "and the page grows a fifth segmented control unnoticed")
-    return Result(LAW_TWO_ROWS, "a third control row above the hero",
+    return Result(LAW_TWO_ROWS, "a third control row above the first card",
                   "audit.picks_control_row_faults", True, faults[0])
 
 
@@ -6929,9 +6856,6 @@ def plant_a_comment_naming_the_forbidden_thing() -> Result:
         ("live re-sort", _audit.live_update_faults,
          js[:lv] + f"{nl}    // never {resort} here{nl}" + js[lv:],
          js[:lv] + f"{nl}    {resort});{nl}" + js[lv:]),
-        ("hero slice", _audit.hero_flag_faults,
-         js + f"{nl}// const rest = open.slice(1) was the old shape{nl}",
-         js + f"{nl}const rest = open.slice(1);{nl}"),
         ("toggle rebuild", _audit.selection_moves_the_frame,
          js[:tb] + f"{nl}      // never {rebuilder} here{nl}" + js[tb:],
          js[:tb] + f"{nl}      {rebuilder});{nl}" + js[tb:]),
@@ -7958,6 +7882,104 @@ def plant_a_baseball_ticker_without_its_first_pitch() -> Result:
                   f"the ticker carries the first pitch: {built}")
 
 
+LAW_LIVE_CARD = "NOTHING ON A LIVE CARD CAN BE ACTED ON"
+LAW_NO_MARKS = "COLOUR IS DECLARED; A CREST IS A TRADEMARK"
+
+
+def _live_card_with(field: str, value):
+    """One live card carrying one thing it may not."""
+    from gridiron import audit as _audit
+
+    card = {"state": "live", "question": "Chicago covers +1.5", "n": 53,
+            "score_words": "CHC 2 – MIL 4"}
+    card[field] = value
+    return _audit.live_card_faults({"today": {"live": [card]}})
+
+
+def plant_a_size_on_a_live_card() -> Result:
+    """Put a stake on a card whose game is being played.
+
+    THE IN-GAME RULE IS ALREADY LAW (THE_PRICED P2): a score this app reads up
+    to ninety seconds late, against a market priced off the feed, is adversely
+    selected by construction. The sizing path refuses it and the claim writer
+    refuses it; the SCREEN is the last place it could arrive.
+    """
+    faults = _live_card_with("size_words", "$15 · one flat unit")
+    if not faults:
+        return Result(LAW_LIVE_CARD, "a size on a card whose game is on",
+                      "audit.live_card_faults", False,
+                      "NOT CAUGHT - a live card may carry a stake, computed "
+                      "before the first pitch and shown beside a live score")
+    return Result(LAW_LIVE_CARD, "a size on a card whose game is on",
+                  "audit.live_card_faults", True, faults[0])
+
+
+def plant_an_edge_on_a_live_card() -> Result:
+    """The pregame edge, beside a live score.
+
+    THE WORST OF THE FOUR, because it looks the most reasonable: the number
+    was computed honestly before the game and is simply no longer true.
+    """
+    faults = _live_card_with("edge_line_words", "+11.8¢ after fees")
+    if not faults:
+        return Result(LAW_LIVE_CARD, "a pregame edge beside a live score",
+                      "audit.live_card_faults", False,
+                      "NOT CAUGHT - the edge from before first pitch renders "
+                      "on a card whose game is being played")
+    return Result(LAW_LIVE_CARD, "a pregame edge beside a live score",
+                  "audit.live_card_faults", True, faults[0])
+
+
+def plant_a_payout_on_a_live_card() -> Result:
+    faults = _live_card_with("payout_words", "pays 2.00x")
+    if not faults:
+        return Result(LAW_LIVE_CARD, "a payout on a card whose game is on",
+                      "audit.live_card_faults", False,
+                      "NOT CAUGHT - a live card may quote what a contract "
+                      "pays, at a price nobody can still get")
+    return Result(LAW_LIVE_CARD, "a payout on a card whose game is on",
+                  "audit.live_card_faults", True, faults[0])
+
+
+def plant_the_taken_control_on_a_live_card() -> Result:
+    from gridiron import audit as _audit
+
+    faults = _audit.live_card_faults(
+        {"today": {"live": [{"state": "live", "n": 53, "can_take": True,
+                             "question": "Chicago covers +1.5"}]}})
+    if not faults:
+        return Result(LAW_LIVE_CARD, "the taken control on a live card",
+                      "audit.live_card_faults", False,
+                      "NOT CAUGHT - the app offers to record a pick on a game "
+                      "already being played")
+    return Result(LAW_LIVE_CARD, "the taken control on a live card",
+                  "audit.live_card_faults", True, faults[0])
+
+
+def plant_a_club_crest_in_the_data_directory() -> Result:
+    """Store a club's mark beside its colour.
+
+    THE PAYLOAD THE COLOURS COME FROM CARRIES `logos`, so this is one line of
+    a generator away at all times. Colour is declared, measured and stored; a
+    crest is the club's trademark and is not.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit
+
+    with tempfile.TemporaryDirectory() as tmp:
+        crest = pathlib.Path(tmp) / "cubs.svg"
+        crest.write_text("<svg/>", encoding="utf-8")
+        faults = _audit.mark_faults(tmp)
+    if not faults:
+        return Result(LAW_NO_MARKS, "a club's crest in the team data",
+                      "audit.mark_faults", False,
+                      "NOT CAUGHT - a club's mark may be stored beside its "
+                      "colour, and this project has no licence to one")
+    return Result(LAW_NO_MARKS, "a club's crest in the team data",
+                  "audit.mark_faults", True, faults[0])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -8040,6 +8062,13 @@ def main() -> int:
     results.append(plant_a_count_claim_with_no_blind_rate())
     results.append(plant_a_claim_carrying_a_distribution_it_does_not_use())
     results.append(plant_a_baseball_ticker_without_its_first_pitch())
+    # THREE_STATES (2026-09-08): one card, three states, and the four
+    # things a live card may never carry.
+    results.append(plant_a_size_on_a_live_card())
+    results.append(plant_an_edge_on_a_live_card())
+    results.append(plant_a_payout_on_a_live_card())
+    results.append(plant_the_taken_control_on_a_live_card())
+    results.append(plant_a_club_crest_in_the_data_directory())
     results.append(plant_a_push_posted_before_it_is_recorded())
     results.append(plant_an_absent_factor_handed_to_the_model_as_zero())
     results.append(plant_a_measured_zero_dropped_from_the_prompt())
@@ -8055,7 +8084,6 @@ def main() -> int:
     results.append(plant_a_binary_with_no_provenance())
     results.append(plant_a_self_chosen_total_left_unflagged())
     results.append(plant_a_flagged_market_with_no_words())
-    results.append(plant_a_flagged_market_leading_the_page())
     results.append(plant_a_drawn_game_graded_as_a_loss())
     results.append(plant_an_unfitted_market_that_blocks_a_rerun_refusal())
     results.append(plant_a_comment_naming_the_forbidden_thing())
@@ -8063,8 +8091,7 @@ def main() -> int:
     results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_run_recorded_only_when_it_ends())
     results.append(plant_a_protected_field_edited_behind_the_trigger())
-    results.append(plant_a_hero_showing_a_claim_under_the_floor())
-    results.append(plant_a_third_control_row_above_the_hero())
+    results.append(plant_a_third_control_row_above_the_first_card())
     results.append(plant_a_retired_market_written())
     results.append(plant_a_retired_market_in_picks_tabs())
     results.append(plant_a_what_it_knew_line_that_disagrees_with_its_row())

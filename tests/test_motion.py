@@ -68,7 +68,7 @@ def test_a_tab_switch_arrives_through_the_motion_block(page):
         const obs = new MutationObserver(list => list.forEach(m => {
             if (m.target.classList.contains('arriving')) window.__arrivals.push(m.target.id);
         }));
-        for (const id of ['week-cards', 'week-hero']) {
+        for (const id of ['week-cards', 'today']) {
             obs.observe(document.getElementById(id), {attributes: true, attributeFilter: ['class']});
         }
     }""")
@@ -109,7 +109,7 @@ def test_reduced_motion_is_the_same_layout_with_no_transition(page):
     # After the arrival has finished: measured a frame into it, the grid sits
     # one per cent below its place and the comparison reads a 3px lie.
     page.wait_for_timeout(350)
-    boxes = "[...document.querySelectorAll('#week-hero, #week-cards, .market-tab')].map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; })"
+    boxes = "[...document.querySelectorAll('#today, #week-cards, .market-tab')].map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; })"
     before = page.evaluate(boxes)
     page.emulate_media(reduced_motion="reduce")
     page.wait_for_timeout(100)
@@ -121,35 +121,8 @@ def test_reduced_motion_is_the_same_layout_with_no_transition(page):
     page.emulate_media(reduced_motion="no-preference")
 
 
-def test_the_carousel_keeps_its_dots_and_arrows_and_steps_on_a_swipe(served, _browser):
-    """A touch context of its own: `phone` lives in test_smoke, not conftest."""
-    from tests.conftest import SMOKE_TOKEN
+# `test_the_carousel_keeps_its_dots_and_arrows_and_steps_on_a_swipe` was
+# removed with the carousel on 2026-09-08. It checked that a swipe stepped the
+# hero and that the dots followed. There is no hero and no carousel: every
+# card is the same size and the page scrolls.
 
-    context = _browser.new_context(viewport={"width": 390, "height": 844},
-                                   device_scale_factor=3, is_mobile=True, has_touch=True)
-    phone = context.new_page()
-    phone.goto(served + "/login", wait_until="networkidle")
-    phone.fill("#token", SMOKE_TOKEN)
-    phone.click("#submit")
-    phone.wait_for_url(served + "/", timeout=15000)
-    phone.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
-    phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#week-hero:not([hidden])", timeout=10000)
-    dots = phone.evaluate("document.querySelectorAll('.hero-dot').length")
-    arrows = phone.evaluate("document.querySelectorAll('.hero-arrow').length")
-    if dots < 2:
-        pytest.skip("fewer than two picks on this slate to step through")
-    assert arrows == 2
-    first = phone.evaluate("document.querySelector('.hero-game').textContent")
-    phone.evaluate("""() => {
-        const host = document.getElementById('week-hero');
-        const touch = (x) => new Touch({identifier: 1, target: host, clientX: x, clientY: 200});
-        host.dispatchEvent(new TouchEvent('touchstart', {changedTouches: [touch(300)], bubbles: true}));
-        host.dispatchEvent(new TouchEvent('touchend', {changedTouches: [touch(120)], bubbles: true}));
-    }""")
-    phone.wait_for_timeout(250)
-    second = phone.evaluate("document.querySelector('.hero-game').textContent")
-    assert second != first, "a swipe left did not step the hero"
-    on = phone.evaluate("document.querySelectorAll('.hero-dot.on').length")
-    assert on == 1
-    context.close()

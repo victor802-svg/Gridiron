@@ -95,6 +95,36 @@
   --faint: #8892A0;
   --faintest: #5F6975;       /* the quietest ink the palette declares */
 
+  /* --- the card in three states (THREE_STATES, 2026-09-08) ------------
+     ONE TYPE SCALE, four sizes on a card and no others: a fifth is how a
+     card grows a hierarchy nobody chose. And the state and sport colours,
+     declared HERE so `tools/contrast.py` can read them -- it reads this
+     block and only this one, which is the argument for one token block. */
+  --face-band: 13px;     /* the matchup, the score, the sport tag */
+  --face-q: 17px;        /* the question, which is what the card is about */
+  --face-chip: 14px;     /* a price, a payout, a size */
+  --face-meta: 12px;     /* the gate, the form, the starter, the lede */
+  --face-rhythm: 12px;   /* the gap between every row on a card */
+
+  /* THE STATE AND SPORT COLOURS, declared so `tools/contrast.py` can read
+     them. Each is dark enough for white text at the chip size, which the
+     tool checks rather than assumes -- the first Yours badge was #b0821f and
+     measured 3.47:1, under AA for text that size.
+
+     THESE ARE NOT VALUE COLOURS. `--win` and `--loss` mean a pick won and a
+     pick lost and appear on the edge line alone; a sport tag and a state
+     badge say what a thing IS. */
+  --white: #ffffff;
+  --yours: #8a6417;
+  --state-clears: #2f7d5b;
+  --state-live: #2f5f9e;
+  --sport-nfl: #2c3d5b;
+  --sport-mlb: #1d4e4a;
+  --sport-nba: #5a2f57;
+  --sport-cfb: #4a3520;
+  --sport-ufc: #5c2a2a;
+
+
   /* ---- the two colours, and their ONE job each (GRIDIRON_16 R2) ---------
      THE NAMES ARE THE RULE. `--win` is the colour of a pick that won.
      `--loss` is the colour of a pick that lost. Neither has any other job,
@@ -209,7 +239,6 @@
   --radius-sm: 8px;
   /* CARDS UI radii, from the brief. */
   --radius-card: 22px;
-  --radius-hero: 28px;
   --radius-pill: 999px;
   /* --- THE MOTION VOCABULARY (L3) ---------------------------------------
      Two durations and ONE curve, and nothing on this page may use anything
@@ -974,8 +1003,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .notices-summary:hover { border-color: var(--line-lit); border-left-color: var(--chrome); }
 .notices-summary:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
 .notices-count { color: var(--chrome); font-weight: 700; }
-.notices-detail { margin-top: 6px; }
-
 /* A value the market never published, in the card's own language. */
 .rail-legend .v.no-line, .v.no-line {
   font-size: var(--t-body); font-weight: 500; color: var(--faint);
@@ -1089,12 +1116,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-size: 13px; color: var(--muted);
 }
 .glance-msg { flex: 1; min-width: 0; }
-.glance-notices {
-  flex: none; background: none; border: 1px solid var(--line);
-  border-radius: 999px; padding: 3px 10px;
-  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
-}
-.glance-notices:hover { color: var(--text); border-color: var(--muted); }
 .glance-countdown { font-size: 12px; color: var(--faint); padding: 6px 0; }
 
 /* --- THE CONTROLS LINE ---------------------------------------------------- */
@@ -1110,31 +1131,10 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    toggles. The tag on the button is the current choice in the payload's
    own words. Chrome only: no value colour anywhere here. */
 .view-menu { position: relative; }
-.view-button {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
-  padding: 7px 14px; background: none; border: 1px solid var(--line);
-  border-radius: var(--radius-sm); color: var(--muted);
-  font-family: var(--body); font-size: 13px; font-weight: 500; cursor: pointer;
-}
-.view-button:hover, .view-button[aria-expanded="true"] {
-  background: var(--card-2); color: var(--chrome);
-}
-.view-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.view-tag { font-family: var(--mono); font-size: 12px; color: var(--faint); }
-.view-panel {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20;
-  min-width: 240px; background: var(--card); border: 1px solid var(--line);
-  border-radius: var(--radius-sm); padding: 10px 12px;
-  display: grid; gap: 10px;
-}
 /* `display: grid` above would beat the hidden attribute's own rule, and did:
    the panel sat open under an unexpanded button until a render was looked
    at (2026-09-05). The attribute wins, as it does for the tier segment. */
 .view-choice { display: grid; gap: 4px; }
-.view-choice-label {
-  font-size: var(--t-caption); color: var(--faint);
-  letter-spacing: 0.06em; text-transform: uppercase;
-}
 .seg-small button { font-size: 12px; padding: 5px 10px; min-height: 36px; }
 .seg button:disabled { color: var(--faint); cursor: default; }
 @media (max-width: 640px) {
@@ -1199,92 +1199,14 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .market-tab-n { color: var(--faint); font-weight: 600; }
 .market-tab.on .market-tab-n { color: var(--muted); }
 
-/* --- the hero (R3) --------------------------------------------------------- */
-.hero {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-hero);
-  padding: 22px 24px 18px;
-  margin-bottom: 22px;
-}
-.hero-tag {
-  font: 700 11px/1 var(--body);
-  letter-spacing: 0.08em;
-  color: var(--faint);
-  margin-bottom: 12px;
-}
-.hero-body { display: flex; gap: 24px; align-items: flex-start; }
-.hero-left { flex: 1 1 auto; min-width: 0; }
-.hero-game {
-  font: 800 30px/1.15 var(--body);
-  color: var(--chrome);
-  margin: 0 0 6px;
-  /* THE HERO NEVER TRUNCATES. It is the one card a reader is most likely to
-     read in full, and an ellipsis here would be the no-truncation law broken
-     in the largest type on the page. */
-  overflow-wrap: anywhere;
-}
-.hero-pick {
-  font: 600 15px/1.4 var(--body); color: var(--muted); margin-bottom: 12px;
-  overflow-wrap: anywhere;
-}
-.hero-why { margin: 0 0 14px; }
-.hero-sentence {
-  font: 600 14px/1.55 var(--body); color: var(--muted); margin: 0 0 6px;
-}
-.hero-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.hero-earned, .hero-when {
-  font: 600 12px/1.4 var(--body); color: var(--faint);
-}
-.hero-right {
-  flex: 0 1 auto; min-width: 0; text-align: right;
-  background: var(--card-2);
-  border-radius: var(--radius-card);
-  padding: 18px 20px;
-  min-width: 190px;
-}
-/* NO LEAD (R3, 2026-09-05): the hero's place carries the server's sentence. */
-.hero-none { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
-.hero-market {
-  font: 600 12px/1.4 var(--body); color: var(--faint); margin-top: 8px;
-}
-
-.hero-steps {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
-}
-.hero-arrow {
-  width: 30px; height: 30px; border-radius: var(--radius-pill);
-  border: 1px solid var(--line); background: var(--card-2);
-  color: var(--muted); font: 600 16px/1 var(--body); cursor: pointer;
-  transition: background-color var(--t-quick) var(--ease),
-              color var(--t-quick) var(--ease);
-}
-.hero-arrow:hover { background: var(--panel); color: var(--chrome); }
-.hero-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* `align-items` defaults to `stretch`, so the dots grew to the height of the
    row and rendered as bars. A dot is a dot at whatever height its neighbour
    happens to be. */
-.hero-dots { display: flex; align-items: center; gap: 7px; }
 /* A 44px TAP TARGET WITH AN 8px MARK INSIDE IT. The dot was 8px square and
    the page-wide minimum-target rule stretched it to 8x44 -- a bar, not a dot.
    Shrinking the target instead would have been choosing the look over the
    reader: the mark is what is seen and the button is what is pressed, and
    they do not have to be the same size. */
-.hero-dot {
-  flex: 0 0 auto;
-  width: 20px; height: 44px; padding: 0; border: none;
-  background: none; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.hero-dot::after {
-  content: ""; width: 8px; height: 8px; border-radius: var(--radius-pill);
-  background: var(--line-lit);
-  transition: background-color var(--t-quick) var(--ease);
-}
-.hero-dot.on::after { background: var(--chrome); }
-.hero-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
-
 /* --- the chance block ------------------------------------------------------
    ONE NUMBER PER CARD (R2), and the word for what it is a number OF directly
    under it. A percentage with no noun is the thing this project keeps having
@@ -1429,10 +1351,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 /* THE ONE THING A WIDTH STILL CHANGES: how many columns the same cards sit in,
    and whether the hero stacks. Nothing appears or disappears. */
 @media (max-width: 700px) {
-  .hero-body { flex-direction: column; }
-  .hero-right { width: 100%; text-align: left; min-width: 0; }
-  .hero-game { font-size: 24px; }
-  .chance-hero .chance-n { font-size: 56px; }
+.chance-hero .chance-n { font-size: 56px; }
   .cards { grid-template-columns: 1fr; }
 }
 /* --- THE EXPANDED BODY ---------------------------------------------------- */
@@ -1827,12 +1746,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    the transition above, from one per cent below to place. */
 #week-hero.arriving,
 #week-cards.arriving { opacity: 0; transform: translateY(1%); transition: none; }
-.view-button {
-  transition: background-color var(--motion-state) var(--motion-ease),
-              border-color var(--motion-state) var(--motion-ease),
-              color var(--motion-state) var(--motion-ease);
-}
-
 /* THE ONE KEYFRAME. A game being played is the only thing on this page that
    repeats, because it is the only thing that is still happening. It pulses
    between full and half opacity -- no scale, no colour change, no glow. */
@@ -2042,29 +1955,22 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   /* Five dots and two arrows share a 312px row: at 44px each they run 83px
      past the edge. The arrows get 44; the dots get 32 wide by 44 tall,
      6px apart -- the width a row of five can afford, and recorded as such. */
-  .hero-steps { gap: 6px; }
-  .hero-dot { width: 32px; }
-  .hero-arrow { min-width: 44px; }
 }
 
 
 /* ==========================================================================
-   TODAY, AS CARDS (GRIDIRON_CARD_FACE, 2026-09-07)
+   TODAY, AS CARDS IN THREE STATES (GRIDIRON_THREE_STATES, 2026-09-08)
    ========================================================================== */
+
 
 .today .day-strip {
   border-bottom: 1px solid var(--line);
   padding-bottom: 10px;
   margin-bottom: 14px;
 }
-/* "first kickoffWed, Sep 9, 5:20 PM" -- the label and the time are two
-   elements now that the countdown is gone, and two elements need a space
-   between them that a removed string used to carry. */
-.clock-word { margin-right: 6px; }
-
 .day-where {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--face-meta);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -2076,12 +1982,39 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 .day-note, .day-fee {
   color: var(--faint);
-  font-size: 12px;
+  font-size: var(--face-meta);
   margin: 4px 0 0;
 }
 
-/* THE RAIL, where a book puts its running list. One column on a phone, and
-   the list moves under the cards rather than beside them. */
+/* THE TWO TABS. A card is born on Upcoming and moves to Live when its game
+   starts; the tab chooses which group is on screen and nothing else. */
+.state-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.state-tabs button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--face-chip);
+  cursor: pointer;
+}
+.state-tabs button[aria-pressed="true"] {
+  background: var(--card-2);
+  border-color: var(--line-lit);
+  color: var(--chrome);
+}
+.state-tabs button:hover { border-color: var(--line-lit); color: var(--chrome); }
+.state-tabs button:focus-visible {
+  outline: 2px solid var(--chrome);
+  outline-offset: 2px;
+}
+
 .today-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 240px;
@@ -2091,7 +2024,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .today-rail {
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 12px;
+  padding: var(--face-rhythm);
   background: var(--card);
 }
 .today-rail h4 { margin: 0 0 8px; font-size: 13px; color: var(--chrome); }
@@ -2101,11 +2034,14 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   gap: 8px;
   padding: 6px 0;
   border-top: 1px solid var(--line);
-  font-size: 12px;
+  font-size: var(--face-meta);
 }
 .taken-what { color: var(--muted); }
 .taken-when { color: var(--faint); white-space: nowrap; }
 
+/* A GROUP HEADING CARRIES A COLOURED RULE, so the three states are legible
+   before a word is read. These are STATE colours, not value colours: the
+   colour law's green and red live on the edge line alone. */
 .group-head {
   display: flex;
   align-items: center;
@@ -2114,50 +2050,112 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-weight: 600;
   color: var(--muted);
   margin: 16px 0 8px;
+  padding-left: 10px;
+  border-left: 3px solid var(--line-lit);
 }
 .group-head:first-child { margin-top: 0; }
+.group-clears { border-left-color: var(--state-clears); }
+.group-watching { border-left-color: var(--line-lit); }
+.group-live { border-left-color: var(--state-live); }
+.group-settled { border-left-color: var(--faintest); }
 .group-chip { flex: 0 0 auto; }
 
 .faces { display: grid; gap: 10px; }
 
 .face {
   border: 1px solid var(--line);
+  border-top: 3px solid var(--club, var(--line-lit));
   border-radius: 10px;
   background: var(--card);
-  padding: 12px 14px;
+  padding: var(--face-rhythm) 14px;
 }
-.face-took { border-color: var(--line-lit); }
+/* A HOVER LIFTS THE CARD ONE STEP. No transition anywhere near a price:
+   `audit.price_chip_animation_faults` fails the gate on one. */
+.face:hover { background: var(--card-2); border-color: var(--line-lit); }
+.face-took { box-shadow: inset 3px 0 0 var(--yours); }
+
 .face-event {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: var(--face-band);
   color: var(--faint);
 }
-.face-match { color: var(--chrome); font-weight: 600; }
-.face-when-label { margin-right: 4px; }
-.face-sport { margin-left: auto; letter-spacing: 0.04em; }
+.face-band { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* EACH CLUB'S NAME IN ITS OWN COLOUR. The shade is the one the generator
+   measured white as readable on -- the club's primary where white clears
+   WCAG AA on it, its alternate where that clears instead, the primary
+   darkened where neither does. */
+.club {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--line-lit);
+  color: var(--white);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.face-at { color: var(--faint); }
+.face-when { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.face-when-label { color: var(--faint); }
+.face-score { color: var(--chrome); font-weight: 700; }
+.face-period { color: var(--muted); }
+.face-polled { color: var(--faint); font-size: var(--face-meta); }
+.face-sport {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--line-lit);
+  color: var(--white);
+  letter-spacing: 0.04em;
+  font-size: var(--face-meta);
+}
+.sport-nfl { background: var(--sport-nfl); }
+.sport-mlb { background: var(--sport-mlb); }
+.sport-nba { background: var(--sport-nba); }
+.sport-cfb { background: var(--sport-cfb); }
+.sport-ufc { background: var(--sport-ufc); }
+.face-yours {
+  padding: 2px 8px;
+  border-radius: 999px;
+  /* MEASURED, NOT PICKED. The first amber was #b0821f, on which white sets
+     at 3.47:1 -- under AA for text this size. This one clears 5.36:1 and is
+     in tools/contrast.py's list so the next one is measured too. */
+  background: var(--yours);
+  color: var(--white);
+  font-size: var(--face-meta);
+  font-weight: 600;
+}
 .face-q {
   color: var(--chrome);
-  font-size: 17px;
+  font-size: var(--face-q);
   font-weight: 600;
-  margin: 6px 0 10px;
+  margin: var(--face-rhythm) 0 0;
 }
 
-/* THE PRICE ROW. Three boxes on one line at every width, because the
-   comparison IS the row: a model price above a venue price above an edge is
-   three facts, and side by side it is one. */
+/* WHAT THE RECORD ALREADY KNEW: the starter, the last five, the forecast. */
+.face-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: var(--face-rhythm);
+  font-size: var(--face-meta);
+  color: var(--faint);
+}
+.face-fact { white-space: nowrap; }
+
 .face-prices {
   display: grid;
-  grid-template-columns: 1fr 1.4fr 1fr;
+  grid-template-columns: 1fr 1.6fr;
   gap: 8px;
   align-items: stretch;
+  margin-top: var(--face-rhythm);
 }
 .box {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   min-width: 0;
   background: var(--ink);
 }
@@ -2166,39 +2164,50 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  /* `--faint`, NOT `--faintest`. Measured at 10px on the page ground, the
-     quietest ink is 3.39:1 and AA wants 4.5 -- a label that is in the markup
-     and not on the screen. This pair is in tools/contrast.py now. */
   color: var(--faint);
-  /* NOTHING ON A CARD TRUNCATES. `test_no_card_truncates` is a law here --
-     "a truncated card has told the reader there is something it is not
-     showing and then not shown it" -- and these two carried an ellipsis
-     borrowed from a table, on the one row whose whole job is being read. */
-  white-space: normal;
   line-height: 1.25;
 }
 .box-value {
   display: block;
-  font-size: 14px;
+  font-size: var(--face-chip);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.edge { border-color: var(--line-lit); }
-.edge .box-value {
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.15;
-  color: var(--chrome);
+/* THE PAYOUT IS THE BIGGEST NUMBER ON THE CARD, in the colour of the side
+   the question names (operator ruling, 2026-09-08). */
+.box-payout { border-color: transparent; }
+.box-payout .box-label { color: rgba(255, 255, 255, 0.82); }
+.box-payout .box-value { font-size: 24px; font-weight: 700; color: var(--white); }
+.box-under {
+  display: block;
+  font-size: var(--face-meta);
+  color: rgba(255, 255, 255, 0.82);
 }
-.edge.up .box-value { color: var(--win); }
-.edge.down .box-value { color: var(--loss); }
-.edge.none .box-value { color: var(--faint); }
+
+/* THE EDGE, ON ITS OWN QUIET LINE, and the only place a value colour appears
+   on this card. */
+.face-edge {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: var(--face-meta);
+}
+.edge-label { color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em; }
+.edge-value { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--muted); }
+.face-edge.up .edge-value { color: var(--win); }
+.face-edge.down .edge-value { color: var(--loss); }
 
 .face-size {
-  margin-top: 10px;
-  font-size: 13px;
+  margin-top: var(--face-rhythm);
+  font-size: var(--face-chip);
+  color: var(--chrome);
+}
+.face-settled {
+  margin-top: var(--face-rhythm);
+  font-size: var(--face-chip);
   color: var(--chrome);
 }
 .face-meta {
@@ -2206,21 +2215,36 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 8px;
-  font-size: 12px;
+  margin-top: var(--face-rhythm);
+  font-size: var(--face-meta);
   color: var(--faint);
+}
+.face-lede {
+  margin: 8px 0 0;
+  font-size: var(--face-meta);
+  color: var(--muted);
+  line-height: 1.45;
 }
 .face-actions {
   display: flex;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: var(--face-rhythm);
 }
 .face-why {
-  margin-top: 10px;
+  margin-top: var(--face-rhythm);
   border-top: 1px solid var(--line);
   padding-top: 8px;
 }
 .face-sentence { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+
+.live-empty {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: var(--face-chip);
+  margin: 0;
+}
 
 .expand, .fold {
   min-height: 44px;
@@ -2234,6 +2258,10 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   cursor: pointer;
 }
 .expand:hover, .fold:hover { border-color: var(--line-lit); color: var(--chrome); }
+.expand:focus-visible, .fold:focus-visible {
+  outline: 2px solid var(--chrome);
+  outline-offset: 2px;
+}
 .fold { width: 100%; margin: 8px 0; text-align: left; }
 
 @media (max-width: 860px) {
@@ -2242,14 +2270,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   .today-body { grid-template-columns: minmax(0, 1fr); }
   .today-rail { order: 2; }
   .day-counts { font-size: 17px; }
-  .face-q { font-size: 16px; }
-  /* THE THREE BOXES STAY ON ONE LINE at 390px, per the brief. The edge keeps
-     its weight; the two quiet boxes give up width first. */
-  .face-prices { grid-template-columns: 0.8fr 1.15fr 1fr; gap: 6px; }
-  .edge .box-value { font-size: 22px; }
-  /* At 390px "Edge after fees" needs two lines, and gets them. It was cut to
-     "Edge after fee..." on every card -- measured, 32 of them -- before the
-     ellipsis came off. */
-  .box-label { font-size: 9px; }
-  .box-value { font-size: 13px; }
+  .face-prices { grid-template-columns: 1fr 1.4fr; gap: 6px; }
+  .box-payout .box-value { font-size: 21px; }
+  .face-context { gap: 4px 10px; }
 }

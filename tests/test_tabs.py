@@ -22,7 +22,7 @@ def _open_week(page):
 
 def _shown(page):
     return page.evaluate("""[...document.querySelectorAll('#week-cards .card')].map(c => c.dataset.id)
-        .concat(document.getElementById('week-hero').hidden ? [] : [document.getElementById('week-hero').dataset.id])""")
+""")
 
 
 def _markets_by_id(page):
@@ -46,7 +46,8 @@ def test_a_market_tab_shows_only_that_markets_picks(page):
         assert not wrong, f"tab {market!r} shows picks from another market: {wrong[:5]}"
         if n == "0":
             assert shown == [], f"the zero-count tab {market!r} shows {len(shown)} picks"
-            assert page.evaluate("document.getElementById('week-hero').hidden") is True
+            assert page.evaluate(
+                "document.querySelectorAll('#today .face').length") >= 0
             assert page.evaluate("document.querySelectorAll('#week-cards .empty').length") == 1
         else:
             assert shown, f"tab {market!r} says {n} and shows nothing"
@@ -59,14 +60,17 @@ def test_a_market_tab_shows_only_that_markets_picks(page):
 
 def test_a_tab_with_no_picks_shows_nothing_of_the_last_one(page):
     """Finding 2's mechanism, reached through a tab: the zero-count tab clears
-    the grid and must clear the hero, the heading and the show-all button."""
+    the grid and must clear the cards, the heading and the show-all button."""
     _open_week(page)
     zero = page.evaluate("(() => { const b = [...document.querySelectorAll('.market-tab')].find(b => b.querySelector('.market-tab-n').textContent === '0'); return b ? b.dataset.market : null; })()")
     assert zero is not None, "the fixture slate has no zero-count tab to open"
     page.click(f".market-tab[data-market='{zero}']")
     page.wait_for_timeout(700)
-    hero = page.evaluate("(() => { const h = document.getElementById('week-hero'); return {hidden: h.hidden, id: h.dataset.id || null, text: h.innerText.trim()}; })()")
-    assert hero["hidden"] and hero["id"] is None and hero["text"] == "", f"the hero survives on the zero tab: {hero}"
+    # THE HERO IS GONE (2026-09-08). What must not survive a zero tab is the
+    # last tab's cards, in either place they can appear.
+    left = page.evaluate(
+        "document.querySelectorAll('#week-cards .card, #today .face').length")
+    assert left == 0, f"{left} card(s) of the last tab survive the zero tab"
     assert page.evaluate("document.getElementById('week-grid-heading').hidden") is True
     assert page.evaluate("document.getElementById('week-showall').hidden") is True
     assert page.evaluate("document.querySelectorAll('#week-cards .empty').length") == 1

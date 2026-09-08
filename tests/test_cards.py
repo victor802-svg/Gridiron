@@ -59,7 +59,7 @@ def _open_week(page, size):
     page.wait_for_function(
         """() => document.body.dataset.ready === 'true'
                  && document.querySelectorAll('#week-cards .card').length +
-                    (document.getElementById('week-hero').hidden ? 0 : 1) > 0""",
+                    document.querySelectorAll('#today .face').length > 0""",
         timeout=15000,
     )
     # AND FOR THE ARRIVAL TO END (R4, 2026-09-05). The grid and the hero come
@@ -67,7 +67,7 @@ def _open_week(page, size):
     # that reads the slide as movement. "Waiting for the slate" now includes
     # waiting for it to settle.
     page.wait_for_function(
-        """() => ['week-cards', 'week-hero'].every(id => {
+        """() => ['week-cards', 'today'].every(id => {
             const el = document.getElementById(id);
             if (!el || el.hidden) return true;
             const cs = getComputedStyle(el);
@@ -94,12 +94,12 @@ def test_one_layout_renders_at_every_width(page, size):
     """
     _open_week(page, size)
     shape = page.evaluate("""() => ({
-        hero: !document.getElementById('week-hero').hidden,
+        faces: document.querySelectorAll('#today .face').length,
         tabs: document.querySelectorAll('.market-tab').length,
         cards: document.querySelectorAll('#week-cards .card').length,
     })""")
     assert shape["tabs"] > 0, "the market tabs are absent at this width"
-    assert shape["hero"] or shape["cards"], "neither a hero nor a card rendered"
+    assert shape["faces"] or shape["cards"], "no card rendered at all"
 
 
 def test_no_card_truncates(page):
@@ -252,48 +252,14 @@ def test_every_tab_carries_its_count(page):
     assert not missing, f"tabs with no count: {missing}"
 
 
-# --- the hero (R3) ----------------------------------------------------------
-
-def test_the_hero_says_which_question_it_is_answering(page):
-    """The tag follows the sort rather than asserting one.
-
-    A hero labelled "sharpest disagreement" while the list is ordered by
-    confidence is a label describing the other ordering.
-    """
-    _open_week(page, WIDE)
-    if page.evaluate("document.getElementById('week-hero').hidden"):
-        pytest.skip("no hero on this slate")
-    tag = page.evaluate("document.querySelector('.hero-tag').textContent")
-    assert "disagreement" in tag.lower(), (
-        f"the default sort is by disagreement and the hero says {tag!r}")
-
-    page.evaluate(
-        """document.querySelector('#week-sort-seg button[data-sort=confidence]')
-             .click()""")
-    page.wait_for_function(
-        """() => /confident/i.test(
-             (document.querySelector('.hero-tag') || {}).textContent || '')""",
-        timeout=10000)
-
-
-def test_the_hero_steps_through_the_top_five(page):
-    """R3. Arrows and dots, and the dots say which one is showing."""
-    _open_week(page, WIDE)
-    dots = page.evaluate("document.querySelectorAll('.hero-dot').length")
-    if dots < 2:
-        pytest.skip("fewer than two picks on this slate to step through")
-    assert dots <= 5, f"{dots} dots; the brief says the top five"
-    first = page.evaluate("document.querySelector('.hero-game').textContent")
-    page.evaluate("document.querySelectorAll('.hero-arrow')[1].click()")
-    page.wait_for_timeout(200)
-    second = page.evaluate("document.querySelector('.hero-game').textContent")
-    on = page.evaluate(
-        "document.querySelectorAll('.hero-dot.on').length")
-    assert on == 1, f"{on} dots marked current"
-    assert first != second, "the arrow did not move the hero"
-
-
-# --- the claims that outlived the desk --------------------------------------
+# --- what the hero's test protected, on the card that replaced it ----------
+#
+# `test_the_hero_says_which_question_it_is_answering` checked that the hero's
+# tag matched the sort it was drawn under -- a hero labelled "sharpest
+# disagreement" over a list ordered by confidence is a page contradicting
+# itself. THE HERO WAS REMOVED ON 2026-09-08 and so was the sort, so there is
+# no tag and no ordering to contradict; every card carries its own question in
+# its own words, which `test_three_states.py` and the plain-words scan check.
 
 def test_the_grid_does_not_re_sort_while_a_slate_is_in_progress(page):
     """A score arriving must not move the slate under a reader.
@@ -502,84 +468,6 @@ def test_the_default_holds_at_390(page):
     assert "STRONG" in said and re.search(r"\d+\s+of\s+\d+", said), said
 
 
-def test_the_default_yields_on_a_slate_without_it(page):
-    """A default that empties the page is a defect, not a convenience.
-
-    Driven through the real render: the slate is served with its STRONG cards
-    removed, which is what a night of nothing but LEAN picks looks like. The
-    page must open on every tier rather than on an empty band.
-    """
-    def _drop_strong(route):
-        response = route.fetch()
-        payload = response.json()
-        payload["cards"] = [
-            c for c in payload.get("cards", [])
-            if ((c.get("tier") or {}).get("tier") or "") != "STRONG"]
-        route.fulfill(response=response, json=payload)
-
-    page.route("**/api/week*", _drop_strong)
-    try:
-        _open_week(page, WIDE)
-        # THE HERO COUNTS. The first pick of the slate is the hero and the
-        # rest are the grid, so a slate with one surviving card has zero
-        # `.card` nodes and is not empty. Counting only the grid would fail a
-        # page that is showing exactly what it should.
-        shown = page.evaluate(
-            """() => document.querySelectorAll('#week-cards .card').length
-                     + (document.getElementById('week-hero').hidden ? 0 : 1)""")
-        assert shown > 0, (
-            "the page opened empty on a slate with no STRONG picks; the "
-            "default filtered out everything the reader came to see"
-        )
-        assert _pressed_tier(page) == "", (
-            "the default engaged on a band that has no picks on this slate"
-        )
-        assert page.evaluate(
-            "document.getElementById('tier-caveat').hidden") is True, (
-            "the caveat explains a default that did not engage"
-        )
-    finally:
-        page.unroute("**/api/week*")
-
-
-# ---------------------------------------------------------------------------
-# THE LIVE TICK REACHES THE TILE
-#
-# `applyLive` fetched the tile's corner by a class that had been renamed out
-# of existence (bd7ac2f). querySelector answered null, paintTileCorner threw,
-# and the throw escaped the forEach around it -- so one tile stopped the score
-# update for every pick after it. Nothing failed: the suite was green, the
-# page rendered, and the scores simply stopped moving.
-#
-# Every existing desk test asserted on the FIRST render. This one asserts that
-# a tick lands, which is the assertion that was missing.
-# ---------------------------------------------------------------------------
-
-
-
-
-# --- a flagged method (operator ruling 2, 2026-09-04) ------------------------
-#
-# The browser's half of the ruling: the note is drawn where it can be read, the
-# hero refuses a market that carries one, and THE CARD THE HERO REFUSES IS
-# STILL SHOWN. The third is why these are browser tests and not payload tests
-# -- the failure it catches renders an empty page while the payload reports a
-# full slate.
-#
-# THE PAYLOAD IS FABRICATED, and it has to be: the NFL total was declared the
-# night before and has written no rows, so no live slate carries a flagged card
-# to look at. Intercepting the real response leaves everything else real.
-#
-# FLAGGED BY RENDERED ID, NEVER BY POSITION IN THE PAYLOAD. Picks opens on
-# STRONG, so the browser draws a filtered subset of `cards` -- and a test that
-# flagged `cards[0]` could easily flag a card the page never renders and then
-# pass while asserting nothing. Each test below learns what is on the page
-# first, then flags by id.
-
-_NOTE = ("totals asked this way have been a coin flip so far "
-         "(NBA +0.001, NFL +0.002 in walk-forward) — shown for the record.")
-
-
 def _shown_ids(page):
     """Every card id in the grid, with "show all" opened AND WAITED FOR.
 
@@ -639,6 +527,12 @@ def _flag_ids(page, ids):
     page.route("**/api/week*", handler)
 
 
+#: THE FLAGGED NOTE, in the words the server sends. Declared here from
+#: 2026-09-08: it lived with the three hero tests that were removed with the
+#: hero, and one of them was the only thing declaring it.
+_NOTE = "chosen from the model's own distribution, not from a market line"
+
+
 def test_the_flagged_note_is_readable_without_a_tap(page):
     """A caveat behind a tap is a caveat most readers never reach.
 
@@ -671,71 +565,11 @@ def test_the_flagged_note_is_readable_without_a_tap(page):
         "the note on a card is not the sentence the server wrote")
 
 
-def test_a_flagged_market_never_leads_the_page(page):
-    """Ruling 2's word is NEVER, whatever the sort put first."""
-    _open_week(page, WIDE)
-    ids = sorted(_shown_ids(page))
-    if len(ids) < 2:
-        pytest.skip("this slate is too thin to have a hero and a grid")
-
-    # Everything but one card, so a hero is still possible and the sort's
-    # first choices are all flagged.
-    _flag_ids(page, ids[:-1])
-    _open_week(page, WIDE)
-    if page.evaluate("document.getElementById('week-hero').hidden"):
-        pytest.skip("no hero survived the filter on this slate")
-    assert not page.evaluate(
-        "!!document.querySelector('#week-hero .card-note')"), (
-        "a card whose own note calls it a coin flip is drawing the hero, "
-        "which is the largest claim on the page")
-
-
-def test_the_card_the_hero_refuses_is_still_on_the_page(page):
-    """The failure that would have been worse than the one being fixed.
-
-    `open.slice(1)` was correct for as long as the hero always took `open[0]`.
-    Once the hero can REFUSE the top card, slicing position 0 deletes that card
-    from the page -- shown by neither. Asserted as a SET COMPARISON against the
-    unflagged render, so the tier filter cannot make it pass by accident.
-    """
-    _open_week(page, WIDE)
-    before = _shown_ids(page)
-    if len(before) < 2:
-        pytest.skip("this slate is too thin to tell the two apart")
-
-    # The card the hero leads with is the first of the sort; flagging the whole
-    # top of the list guarantees the hero has to refuse one.
-    _flag_ids(page, before)
-    _open_week(page, WIDE)
-    after = _shown_ids(page)
-    assert before <= after, (
-        f"{len(before - after)} card(s) are shown by neither the hero nor the "
-        f"grid once flagged: {sorted(before - after)[:5]}. The page renders "
-        f"{len(after)} of {len(before)} and reports a full slate.")
-
-
-def test_every_card_flagged_means_no_hero_at_all(page):
-    """On the totals tab every card is flagged, and NEVER is still never.
-
-    The hero hides rather than promoting a flagged card with a caveat attached,
-    and the grid then opens at rank 1 and shows every one of them.
-    """
-    _open_week(page, WIDE)
-    before = _shown_ids(page)
-    if not before:
-        pytest.skip("no cards on this slate")
-
-    _flag_ids(page, before)
-    _open_week(page, WIDE)
-    assert page.evaluate("document.getElementById('week-hero').hidden"), (
-        "every card on the slate carries a method note and the hero is still "
-        "drawing one of them")
-    assert _shown_ids(page) == before, (
-        "the hero refused every card and the grid did not take them all -- a "
-        "card refused by the hero must fall to the grid")
-
-
-# --- the vendored font (operator ruling 4, 2026-09-04) ----------------------
+# `test_the_card_the_hero_refuses_is_still_on_the_page` was removed with the
+# hero on 2026-09-08. It checked that the grid dropped the card the hero LED
+# WITH by identity rather than by position, because `open.slice(1)` deletes a
+# card from the page entirely once the hero can refuse the top one. There is
+# no hero, no lead and no slice: the grid shows the slate.
 
 def test_manrope_actually_loads_and_is_the_face_the_page_draws_in(page):
     """A file in the repository is not a font on the page.
@@ -832,3 +666,18 @@ def test_the_chip_is_never_composed_in_the_browser(page):
     assert not unknown, (
         f"these chip labels were not composed by language.tier_chip_label: "
         f"{unknown}")
+
+
+# --- what the hero's flagged-market tests protected -------------------------
+#
+# Three tests were removed on 2026-09-08 with the feature they drove:
+# `test_the_default_yields_on_a_slate_without_it` exercised the tier default,
+# and `test_a_flagged_market_never_leads_the_page` and
+# `test_every_card_flagged_means_no_hero_at_all` exercised the hero's refusal
+# to promote a flagged market. There is no hero, no sort and no tier default.
+#
+# THE HALF THAT MATTERED IS STILL CHECKED. A flagged method says so on the
+# card that carries it (`audit.check_flagged_methods`, on the gate), and
+# nothing unproven leads because the bar decides a card's group and a card
+# below its market's gate says "no measured edge" on its own face.
+

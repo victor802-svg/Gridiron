@@ -3416,7 +3416,8 @@ def correction_never_rewrites_line() -> str:
 
 def day_strip_words(*, day_words: str | None, slate_words: str | None,
                     clears: int, watching: int, below_floor: int,
-                    floor: float | None, forecaster: str | None = None) -> dict:
+                    floor: float | None, forecaster: str | None = None,
+                    live: int = 0, settled: int = 0) -> dict:
     """The whole day in one strip, so nothing below it has to be read first.
 
     THE PAGE DID NOT SAY WHAT KIND OF DAY IT WAS. Today sat 916 pixels down a
@@ -3452,6 +3453,13 @@ def day_strip_words(*, day_words: str | None, slate_words: str | None,
         floor_words = f"{floor:g}x" if floor else "your floor"
         parts.append(f"{below_floor} of them below your {floor_words} floor")
     parts.append(f"{counted(watching, 'question')} watched")
+    # THE STRIP COUNTS ALL THREE STATES (THREE_STATES S4, 2026-09-08), and
+    # each one only when there is something in it: "0 live" on a morning is a
+    # zero a reader has to parse, and the absence says it faster.
+    if live:
+        parts.append(f"{live} live")
+    if settled:
+        parts.append(f"{settled} settled")
     return {"where": where, "counts": " · ".join(parts)}
 
 
@@ -3607,11 +3615,17 @@ def price_row_labels() -> dict:
     """
     return {
         "model": "Model",
-        "venue": "Venue",
+        # THE VENUE BOX IS THE PAYOUT NOW (2026-09-08), with the price beneath
+        # it, so its label says what the number is rather than whose it is.
+        "venue": "Pays",
         "edge": "Edge after fees",
         "why": "Why",
         "took": "I took this",
         "taken": "taken",
+        # The two tabs on Picks. A card is born on the first and moves to the
+        # second when its game starts.
+        "tab_upcoming": "Upcoming",
+        "tab_live": "Live",
     }
 
 
@@ -3625,3 +3639,184 @@ def kickoff_label_words() -> str:
     when the game is.
     """
     return "starts"
+
+
+# ---------------------------------------------------------------------------
+# THREE STATES (GRIDIRON_THREE_STATES, 2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# One card, three states, and the state is a fact about the game rather than a
+# tab somebody chose. Everything below is the words each state needs; the
+# arithmetic and the colour are elsewhere.
+
+
+def score_line_words(away: str, away_score, home: str, home_score) -> str:
+    """"DET 3 - MIN 2". The score, in the order the matchup is written."""
+    if away_score is None or home_score is None:
+        return f"{away} at {home}"
+    return f"{away} {int(away_score)} – {home} {int(home_score)}"
+
+
+def period_words(sport: str, period: str | None, clock: str | None) -> str:
+    """Where the game is, in the sport's own vocabulary.
+
+    THE SOURCE ALREADY SPEAKS IT. Baseball's feed says "Top 6th" and
+    football's says "2nd Quarter" with a clock; neither is improved by this
+    project inventing a house style for it, and inventing one is how a page
+    starts saying "period 6" about a baseball game.
+    """
+    parts = [part for part in (period, clock) if part]
+    return " · ".join(parts) if parts else "under way"
+
+
+def polled_words(seen_utc: str | None, now_utc: str | None = None) -> str:
+    """When the score was last read, so a stale one is visible as stale.
+
+    A SCORE WITH NO TIME ON IT IS A SCORE A READER TRUSTS TOO MUCH. The poller
+    runs every ninety seconds while a window is open and not at all otherwise,
+    so a card can sit with a number that stopped being true an hour ago.
+    """
+    if not seen_utc:
+        return "no score has been read yet"
+    if not now_utc:
+        return "read at " + seen_utc[11:16] + " UTC"
+    try:
+        from datetime import datetime
+
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        gap = (datetime.strptime(now_utc, fmt)
+               - datetime.strptime(seen_utc, fmt)).total_seconds() / 60.0
+    except (TypeError, ValueError):
+        return "read at " + seen_utc[11:16] + " UTC"
+    if gap < 2:
+        return "read just now"
+    if gap < 60:
+        return f"read {round(gap)} minutes ago"
+    hours = gap / 60.0
+    return f"read {round(hours)} hours ago"
+
+
+def live_empty_words(first_kickoff_utc: str | None) -> str:
+    """The Live tab on a day with nothing on it yet.
+
+    A TAB THAT SAYS NOTHING IS A TAB THAT LOOKS BROKEN. It says what it is
+    waiting for; the time itself is rendered in the reader's own clock beside
+    it, because the browser is the only party that knows the timezone.
+    """
+    if not first_kickoff_utc:
+        return "Nothing is being played, and nothing on this slate has a start time yet."
+    return "Nothing is being played. The first game starts"
+
+
+def taken_badge_words() -> str:
+    """What marks a game the operator has money on. NOT whether it is winning.
+
+    He declined that on 2026-09-08 and the reasoning stands: a running verdict
+    on his own pick is the feature that makes a person watch the app instead
+    of the game.
+    """
+    return "Yours"
+
+
+def state_heading_words(state: str, n: int) -> str:
+    """The heading over a group of cards in one state."""
+    if state == "live":
+        if not n:
+            return "Nothing is being played"
+        # QUESTIONS, NOT GAMES. One game carries several of them -- a winner,
+        # a run line, a total, a strikeout prop -- and calling four cards
+        # "four games" is a count of the wrong thing, on the tab whose whole
+        # job is saying what is on.
+        return f"In progress — {counted(n, 'question')}"
+    if state == "final":
+        return f"Settled — {counted(n, 'question')}"
+    return f"Upcoming — {counted(n, 'question')}"
+
+
+def payout_chip_words(payout: float | None) -> str:
+    """THE BIGGEST NUMBER ON THE CARD from 2026-09-08, by operator ruling.
+
+    A payout is what a reader of a sportsbook reads first, and it is the one
+    number on the card that says what the bet is FOR rather than what it is
+    worth. The edge moved to a quiet line beneath; the group heading is what
+    says whether a card clears the bar.
+    """
+    if payout is None:
+        return no_price_words()
+    return f"pays {payout:.2f}x"
+
+
+def price_under_payout_words(price: float | None) -> str:
+    """The price, small, beneath the payout it produces."""
+    if price is None:
+        return ""
+    return f"{round(price * 100)}¢ a contract"
+
+
+def edge_line_words(edge_cents: float | None, other_side: bool = False) -> str:
+    """The edge, on its own quiet line under the price row.
+
+    STILL SIGNED AND STILL COLOURED, because it is the number that ranks a
+    card; it is simply no longer the number that shouts. Green and red stay
+    on it and nowhere else, so the club colours the card gained on 2026-09-08
+    cannot be mistaken for a verdict.
+    """
+    if edge_cents is None:
+        return "no price to compare against yet"
+    tail = ", on the other side" if other_side else ""
+    return f"{edge_cents:+.1f}¢ after fees{tail}"
+
+
+def starter_words(name: str | None) -> str:
+    """Who is starting, or that nobody has said.
+
+    ABSENT IS NOT ZERO, and it is not an em dash either: "starter not named"
+    is a fact about the day, and a reader who sees it knows the slate is early
+    rather than that the app is broken.
+    """
+    return name if name else "starter not named"
+
+
+def form_words(results: list[str]) -> str:
+    """The last five, most recent first: "W W L W L".
+
+    FROM THE RECORD'S OWN FINISHED GAMES, not from a factor. `recent_form_diff`
+    is a margin difference over four games and is a different thing; this is
+    what a reader means by form, and the card says which it is.
+    """
+    if not results:
+        return "no finished games yet"
+    return " ".join(results[:5])
+
+
+def weather_words(temp_f, wind_mph, precip_pct) -> str | None:
+    """The forecast a factor already read, in a reader's units.
+
+    None where nothing was fetched, which is most games: the weather pass runs
+    for outdoor football and nothing else, and a card that invented a mild day
+    for a domed stadium would be inventing a factor input.
+    """
+    parts = []
+    if temp_f is not None:
+        parts.append(f"{round(float(temp_f))}°F")
+    if wind_mph is not None:
+        parts.append(f"wind {round(float(wind_mph))} mph")
+    if precip_pct is not None:
+        parts.append(f"{round(float(precip_pct))}% rain")
+    return " · ".join(parts) if parts else None
+
+
+def settled_outcome_words(shown_prob: float | None, outcome: int | None,
+                          question: str) -> str:
+    """The loop closed on the same card that opened it.
+
+    "The model had this at 66% and it happened." A verdict a reader can check
+    against the number they were shown, which is the whole argument for
+    keeping one card through three states.
+    """
+    if outcome is None:
+        return "not settled yet"
+    if shown_prob is None:
+        return "it happened" if outcome else "it did not happen"
+    said = f"the model had this at {round(shown_prob * 100)}%"
+    return f"{said} and it happened" if outcome else f"{said} and it did not"

@@ -108,7 +108,7 @@ def test_two_tabs_in_quick_succession_leave_the_second_one(page):
     page.wait_for_timeout(2500)
     assert page.evaluate("(document.querySelector('.market-tab[aria-pressed=\"true\"]') || {dataset: {}}).dataset.market") == second
     by_id = page.evaluate(f"fetch('/api/week?sport={full}').then(r => r.json()).then(j => Object.fromEntries(j.cards.map(c => [String(c.prediction_id), c.market])))")
-    shown = page.evaluate("[...document.querySelectorAll('#week-cards .card')].map(c => c.dataset.id).concat(document.getElementById('week-hero').hidden ? [] : [document.getElementById('week-hero').dataset.id])")
+    shown = page.evaluate("[...document.querySelectorAll('#week-cards .card')].map(c => c.dataset.id)")
     wrong = [i for i in shown if by_id.get(i) != second]
     assert not wrong, f"cards from another tab are on the page: {wrong[:5]}"
     page.click(".market-tab[data-market='']")
@@ -128,46 +128,11 @@ def test_a_double_clicked_tab_renders_each_pick_once(page):
     page.wait_for_timeout(400)
 
 
-def test_escape_closes_the_menu_after_a_choice_and_focus_stays_on_it(page):
-    """A person opens View, chooses the other forecaster, and presses Escape.
-    The choice re-renders the toggles; the menu must still close and focus
-    must be on the chosen toggle, not lost to the body."""
-    _open_week(page)
-    full, _ = _full_and_empty(page)
-    _select(page, full)
-    page.click("#week-view-button")
-    page.wait_for_timeout(150)
-    other = page.evaluate("(() => { const b = [...document.querySelectorAll('#week-forecaster-seg button')].find(b => b.getAttribute('aria-pressed') !== 'true' && !b.disabled); return b ? b.dataset.forecaster : null; })()")
-    assert other is not None, "the fixture slate offers only one forecaster"
-    with page.expect_response(lambda r: "/api/week" in r.url and f"forecaster={other}" in r.url, timeout=20000):
-        page.click(f"#week-forecaster-seg button[data-forecaster='{other}']")
-    page.wait_for_timeout(600)
-    assert not page.evaluate("document.getElementById('week-view-panel').hidden"), "the menu closed on the choice"
-    focused = page.evaluate("(() => { const e = document.activeElement; return e && e.closest('#week-forecaster-seg') ? e.dataset.forecaster : (e ? e.tagName : null); })()")
-    assert focused == other, f"after the choice, focus is on {focused!r}, not the chosen toggle"
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(150)
-    assert page.evaluate("document.getElementById('week-view-panel').hidden") is True, "Escape did not close the menu after a choice"
-    assert page.evaluate("document.activeElement.id") == "week-view-button"
-    # Escape with the menu open and focus nowhere in it closes it too. (Focus
-    # is moved by script: a pointer click elsewhere would close the menu by
-    # itself, and the open panel overlays the headline.)
-    page.click("#week-view-button")
-    page.wait_for_timeout(100)
-    assert not page.evaluate("document.getElementById('week-view-panel').hidden")
-    page.evaluate("document.activeElement.blur(); document.body.focus()")
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(150)
-    assert page.evaluate("document.getElementById('week-view-panel').hidden") is True
-    # back to the default forecaster for the tests that follow
-    page.click("#week-view-button")
-    page.wait_for_timeout(150)
-    first = page.evaluate("document.querySelector('#week-forecaster-seg button').dataset.forecaster")
-    if first != other:
-        with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
-            page.click(f"#week-forecaster-seg button[data-forecaster='{first}']")
-    page.keyboard.press("Escape")
-
+# `test_escape_closes_the_menu_after_a_choice_and_focus_stays_on_it` was
+# retired with the View menu on 2026-09-08. What it protected -- that a
+# control returns focus to the thing that opened it -- is carried by the state
+# tabs and the Why buttons, which are ordinary buttons with focus rings and no
+# panel to close.
 
 def test_offline_says_so_in_words_and_a_later_success_clears_it(page):
     """Go offline, tap a tab, come back, tap again. The box says the server's

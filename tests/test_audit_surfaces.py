@@ -123,16 +123,15 @@ def test_a_tier_category_is_labelled_in_words(conn):
 
 # --- the hero on a slate with no line ---------------------------------------
 
-def test_the_hero_tag_does_not_claim_a_disagreement_without_a_line():
-    """On the UFC slate of 2026-09-05 a card reading "no line to compare it
-    with" led the page under "Sharpest disagreement tomorrow"."""
-    tags = language.hero_tags("Tomorrow")
-    assert "disagreement" not in tags["no_line"].lower()
-    assert "no line" in tags["no_line"]
-    assert tags["no_line"].endswith("against") or "compare" in tags["no_line"]
-    js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
-    assert "'no_line'" in js, "the renderer never picks the no-line sentence"
-
+# `test_the_hero_tag_does_not_claim_a_disagreement_without_a_line` was removed
+# with the hero on 2026-09-08. On the UFC slate of 2026-09-05 a card reading
+# "no line to compare it with" led the page under "Sharpest disagreement
+# tomorrow"; the fix was a separate no-line sentence for the hero's tag.
+#
+# THE PAGE HAS NO TAG AND NO LEAD NOW. What replaced the protection is the
+# Watching group's own heading, which says for the whole group what the tag
+# said for one card, and the venue chip on every card, which reads "no price
+# yet" rather than implying a comparison that does not exist.
 
 def test_lineless_cards_rank_by_confidence_among_themselves():
     """Every lineless card tied at -1, so the leader was whichever the query

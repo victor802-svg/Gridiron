@@ -302,8 +302,6 @@ def step_2_guards() -> bool:
          audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),
         ("every self-chosen rung is flagged", audit.check_flagged_methods),
-        ("the hero refuses a flagged method",
-         audit.check_the_hero_refuses_flagged_methods),
         ("one door for the side", audit.check_side_named),
         ("no shadowed definitions", audit.check_no_shadowed_definitions),
         ("the side, in prose, anywhere", audit.check_side_named_everywhere),
@@ -330,6 +328,11 @@ def step_2_guards() -> bool:
          lambda: [audit.check_the_day_applies_no_pressure(_slate_payload(sport))
                   for sport in _config().SPORTS] and None),
         ("kickoff is a time, not a timer", audit.check_no_countdown),
+        # THREE STATES (2026-09-08)
+        ("no club mark is stored", audit.check_no_marks),
+        ("nothing on a live card can be acted on",
+         lambda: [audit.check_the_live_card_offers_nothing(_slate_payload(sport))
+                  for sport in _config().SPORTS] and None),
         ("one definition per function, in the renderer too",
          audit.check_no_duplicate_js_definitions),
         ("picks shows tonight, not last night",

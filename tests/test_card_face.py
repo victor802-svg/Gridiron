@@ -152,29 +152,44 @@ def test_a_pick_that_fails_the_return_test_keeps_its_edge_on_its_face(tmp_path, 
 
 # --- F2: the card ------------------------------------------------------------
 
-def test_the_edge_is_the_biggest_thing_on_the_card():
-    """THE POINT OF THE REDESIGN, in the one place it can be checked without a
-    browser: the edge's value is set larger than any other value on the card,
-    and the probability is not on the face at all."""
+def test_the_payout_leads_the_card_and_the_edge_is_a_quiet_line():
+    """THE HIERARCHY MOVED BY OPERATOR RULING ON 2026-09-08, and the property
+    this test protects did not: ONE number leads the card and it is a price,
+    not the probability.
+
+    It was the edge, from CARD_FACE on the 7th. It is the payout now -- what a
+    reader of a sportsbook reads first, and the one number that says what the
+    bet is FOR rather than what it is worth -- with the edge moved to its own
+    line beneath, still signed and still the only green and red on the card.
+    """
     css = (WEB / "style.css").read_text(encoding="utf-8")
+    root = css[css.index(":root {"):css.index("* { box-sizing")]
+    tokens = dict(re.findall(r"--([a-z0-9-]+):\s*([0-9.]+)px;", root))
 
     def size(selector):
         block = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
         assert block, selector
-        found = re.search(r"font-size:\s*([0-9.]+)px", block.group(1))
+        found = re.search(r"font-size:\s*(?:var\(--([a-z0-9-]+)\)|([0-9.]+)px)",
+                          block.group(1))
         assert found, selector
-        return float(found.group(1))
+        return float(tokens[found.group(1)] if found.group(1) else found.group(2))
 
-    assert size(".edge .box-value") > size(".box-value")
-    assert size(".edge .box-value") > size(".face-q")
+    assert size(".box-payout .box-value") > size(".box-value")
+    assert size(".box-payout .box-value") > size(".face-q")
+    # and the edge is set at the quietest size on the card
+    assert size(".face-edge") <= size(".box-value")
 
 
 def test_the_card_says_nothing_the_server_did_not_write():
     """Labels included. Three words typed into the renderer is how every
     composition this project has had to remove began."""
     labels = language.price_row_labels()
-    assert set(labels) == {"model", "venue", "edge", "why", "took", "taken"}
+    assert set(labels) == {"model", "venue", "edge", "why", "took", "taken",
+                           "tab_upcoming", "tab_live"}
     assert labels["edge"] == "Edge after fees"
+    # THE VENUE BOX IS THE PAYOUT NOW, so its label says what the number is
+    # rather than whose it is.
+    assert labels["venue"] == "Pays"
     app = (WEB / "app.js").read_text(encoding="utf-8")
     card = app[app.index("function todayCard"):app.index("function renderToday")]
     for word in ("'Model'", "'Venue'", "'Edge", "'I took this'"):
@@ -416,14 +431,20 @@ def test_the_day_is_stated_once_at_the_top(tmp_path):
     assert strip < markup.index('id="today-clears"'), "the strip leads the panel"
 
 
-def test_the_three_boxes_stay_on_one_line_on_a_phone():
-    """The brief's own requirement at 390px, checked where it is decided."""
+def test_the_price_row_stays_on_one_line_on_a_phone():
+    """The requirement survived the redesign; the number of boxes did not.
+
+    CARD_FACE put three boxes on the row -- model, venue, edge. THREE_STATES
+    took the edge off it and on to its own line, so the row is the model's
+    price and the payout, and the phone layout still has to hold both on one
+    line at 390px.
+    """
     css = (WEB / "style.css").read_text(encoding="utf-8")
     phone = css[css.index("@media (max-width: 860px)"):]
     block = re.search(r"\.face-prices\s*\{([^}]*)\}", phone)
     assert block, "the phone layout says nothing about the price row"
     columns = re.search(r"grid-template-columns:([^;]*);", block.group(1))
-    assert columns and len(columns.group(1).split()) == 3
+    assert columns and len(columns.group(1).split()) == 2
 
 
 def test_every_tap_target_keeps_its_floor():

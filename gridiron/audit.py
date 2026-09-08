@@ -3888,92 +3888,29 @@ def check_flagged_methods() -> None:
             "A FLAGGED METHOD SAYS SO:" + _NL2 + _NL2.join(faults))
 
 
-def hero_flag_faults(source: str) -> list[str]:
-    """Can a market whose method is flagged reach the hero?
-
-    Read off the shipped `app.js`, because that is where the refusal lives and
-    a refusal asserted in a test is a refusal that protects the test. Three
-    things have to hold together and the third is the one that was nearly
-    missed:
-
-    * the pool filters on `method_note`;
-    * the hero draws from the pool rather than from the raw list;
-    * THE GRID DROPS THE CARD THE HERO ACTUALLY LEADS WITH, by identity. While
-      the hero always took `open[0]`, `open.slice(1)` was the same thing. The
-      moment the hero can refuse the top card, slicing position 0 deletes that
-      card from the page -- shown by neither the hero nor the grid. On the
-      totals tab that is EVERY card, and the page would render empty while
-      reporting a full slate.
-    """
-    source = _without_comments(source, "js")
-    faults: list[str] = []
-    if "function heroPool" not in source:
-        faults.append("`heroPool` is gone from app.js, so nothing filters the "
-                      "hero's candidates and a flagged market can lead the page.")
-    elif not re.search(r"function heroPool[^}]*method_note", source):
-        faults.append("`heroPool` no longer filters on `method_note`, so a "
-                      "market flagged as a coin flip by construction can be "
-                      "the largest claim on the page.")
-    if not re.search(r"const top = heroCandidates\(", source):
-        faults.append("`renderHero` no longer draws from `heroCandidates`, so the "
-                      "filters exist and the hero ignores them.")
-    # THE FLOOR (R3, 2026-09-05): the candidates are filtered at the declared
-    # minimum claim, and the grid's lead is chosen the same way.
-    candidates = re.search(r"function heroCandidates\([^)]*\)\s*\{(?P<body>[\s\S]*?)\n  \}",
-                           source)
-    if candidates is None:
-        faults.append("`heroCandidates` is gone from app.js, so nothing applies "
-                      "the hero's floor and a coin-flip claim can lead the page.")
-    else:
-        body = candidates.group("body")
-        if "heroPool(" not in body:
-            faults.append("`heroCandidates` no longer draws from `heroPool`, so a "
-                          "flagged market can reach the hero through the floor.")
-        if ">= minClaim" not in body:
-            faults.append("`heroCandidates` no longer filters at the floor "
-                          "(`>= minClaim`), so a claim under HERO_MIN_CLAIM can "
-                          "lead the page.")
-    if not re.search(r"const lead = selectHero\(", source):
-        faults.append("the grid's lead is no longer chosen by `selectHero`, so the "
-                      "card the hero leads with and the card the grid drops can "
-                      "differ.")
-    if re.search(r"const rest = open\.slice\(1\)", source):
-        faults.append("the grid drops position 0 rather than the card the hero "
-                      "leads with. When the hero refuses a flagged top card, "
-                      "that card is shown by neither -- and on the totals tab "
-                      "that is every card on the slate.")
-    return faults
-
-
-def check_the_hero_refuses_flagged_methods(root: Path | None = None) -> None:
-    """Raise unless the hero can still refuse a flagged market."""
-    base = (config.PACKAGE_ROOT / "web") if root is None else Path(root)
-    faults = hero_flag_faults((base / "app.js").read_text(encoding="utf-8"))
-    if faults:
-        raise LawViolation(
-            "A FLAGGED METHOD NEVER LEADS:" + _NL2 + _NL2.join(faults))
-
-
-# A VENDORED BINARY IS CHECKABLE (operator ruling 4, 2026-09-04)
-# ---------------------------------------------------------------------------
+# THE HERO'S THREE GUARDS WERE RETIRED WITH THE HERO (THREE_STATES,
+# 2026-09-08). `hero_flag_faults` and `check_the_hero_refuses_flagged_methods`
+# checked that a flagged market could not LEAD the page, that a claim under
+# the confidence floor could not lead it, and that the grid dropped the card
+# the hero led with by identity rather than by position.
 #
-# This repository shipped no font binary for a reason: a binary nobody can diff
-# is a thing nobody can check, which is why the app icon is drawn in code. The
-# ruling drew the line in the right place -- a licensed font file is not what
-# that instinct protects against -- but the instinct still has to be answered,
-# and this is the answer.
+# THERE IS NO LEAD. Every card on Upcoming is the same size and which group it
+# sits in is decided by the bar, not by a sort. What survives:
 #
-# A VENDORED BINARY IS CHECKABLE TO EXACTLY THE EXTENT ITS PROVENANCE IS
-# RECORDED AND ENFORCED. `web/fonts/SOURCE.md` records where each file came
-# from, its size and its SHA-256. This re-hashes the files against that table,
-# so a substituted or truncated font is a GATE FAILURE and not something
-# noticed on a page one day.
+#   * a flagged method still says so, on the card that carries it --
+#     `check_flagged_methods` is a different scan and still runs;
+#   * nothing unproven leads, because a card below its market's gate says "no
+#     measured edge" on its own face, which binds every card rather than one;
+#   * the grid drops nothing, which is the defect the third check existed for.
 #
-# THE TABLE IS THE ONE DECLARATION. The hashes are not repeated here. A second
-# copy in Python would be the fifth instance this session of a declaration and
-# a hardcoded list drifting apart, and the whole point of the table is that a
-# reader can check it.
+# Recorded here rather than deleted silently: a guard that vanishes is a law
+# nobody can audit.
 
+
+#: One row of the font provenance table: the file, its size and its hash. It
+#: sat between the two hero functions and went out with them for a minute on
+#: 2026-09-08, which is what a slice taken by function boundaries does to
+#: anything declared between two functions.
 _FONT_ROW = re.compile(
     r"^\|\s*`(?P<name>[^`]+)`\s*\|\s*(?P<size>[\d,]+)\s*\|\s*`(?P<sha>[0-9a-f]{64})`\s*\|",
     re.M)
@@ -4790,12 +4727,20 @@ def task_run_order_faults(source: str | None = None) -> list[str]:
 
 
 #: THE ROWS OF CONTROLS ABOVE THE HERO ON PICKS (R2, 2026-09-05), declared.
-#: A control row is a direct child of `#view-week`, above the hero, that holds
-#: a button, a select or an input where a reader can see it -- a collapsed
-#: `<details>` is not a row until it is opened. Two rows: the controls line
-#: (sort, tier, the view menu) and the market tabs. A third is how a page
-#: grows a fourth segmented control, then a fifth, each defensible alone.
-PICKS_CONTROL_ROWS = ("controls", "week-market-tabs")
+#: A control row is a direct child of `#view-week`, above the FIRST CARD,
+#: that holds a button, a select or an input where a reader can see it -- a
+#: collapsed `<details>` is not a row until it is opened. Two rows, and a
+#: third is how a page grows a fourth segmented control, then a fifth, each
+#: defensible alone.
+#:
+#: THE LANDMARK MOVED ON 2026-09-08 and the number did not. The rule was
+#: anchored on `#week-hero`, which THREE_STATES removed along with the sort
+#: segment, the tier buttons and the View menu; the first card is `#today`
+#: now. The two rows that remain are the market chips and the state tabs, so
+#: the page carries fewer controls above its first card than when this rule
+#: was written, not more.
+PICKS_FIRST_CARD = "id=\"today\""
+PICKS_CONTROL_ROWS = ("week-market-tabs", "state-tabs")
 
 _VOID_TAGS = frozenset({"input", "br", "img", "hr", "meta", "link", "source", "wbr"})
 
@@ -4806,9 +4751,9 @@ def picks_control_rows(html: str) -> list[str]:
 
     html = _without_comments(html, "html")
     start = html.find('id="view-week"')
-    end = html.find('id="week-hero"')
+    end = html.find(PICKS_FIRST_CARD)
     if start < 0 or end < 0:
-        return ["<view-week or week-hero missing>"]
+        return ["<view-week or the first card missing>"]
     section = html[html.rfind("<", 0, start): html.rfind("<", 0, end)]
 
     class Walker(HTMLParser):
@@ -4859,12 +4804,13 @@ def picks_control_row_faults(html: str | None = None) -> list[str]:
     for name in rows:
         if name not in PICKS_CONTROL_ROWS:
             faults.append(
-                f"a row of controls named {name!r} sits above the hero on Picks, "
+                f"a row of controls named {name!r} sits above the first card "
+                f"on Picks, "
                 f"and the declared rows are {list(PICKS_CONTROL_ROWS)}. Two rows: "
                 f"the controls line and the market tabs. A third is how a page "
                 f"grows a fifth segmented control.")
     if len(rows) > len(PICKS_CONTROL_ROWS):
-        faults.append(f"{len(rows)} control rows above the hero; "
+        faults.append(f"{len(rows)} control rows above the first card; "
                       f"{len(PICKS_CONTROL_ROWS)} are declared: {rows}")
     return faults
 
@@ -5994,9 +5940,15 @@ def duplicate_js_definitions(path=None) -> list[str]:
             if path is None else Path(path))
     if not path.exists():
         return []
+    return duplicate_js_definitions_in(path.read_text(encoding="utf-8"))
+
+
+def duplicate_js_definitions_in(source: str) -> list[str]:
+    """The same scan over text, which is the form the comment-blindness test
+    drives it in and the form the file scan delegates to."""
     seen: dict[tuple[str, int], int] = {}
     faults = []
-    for n, line in enumerate(path.read_text(encoding="utf-8").split(chr(10)), 1):
+    for n, line in enumerate(source.split(chr(10)), 1):
         if line.strip().startswith("//"):
             continue
         match = _JS_DEF.match(line)
@@ -6063,3 +6015,99 @@ def check_no_duplicate_js_definitions(path=None) -> None:
         raise LawViolation(
             "A FUNCTION DEFINED TWICE IN THE RENDERER. One of them is dead and "
             "neither says so:" + _NL2 + _NL2.join(faults[:6]))
+
+
+# ---------------------------------------------------------------------------
+# THREE STATES (GRIDIRON_THREE_STATES, 2026-09-08)
+# ---------------------------------------------------------------------------
+
+#: File types that would be a club's mark. The colour generator reads a
+#: payload that also carries `logos`; none of it is stored, and this is what
+#: says so in a way a later session cannot talk itself past.
+MARK_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico",
+                 ".svg", ".avif", ".tif", ".tiff")
+
+
+def mark_faults(directory=None) -> list[str]:
+    """An image file in the team data directory, which would be a club's mark.
+
+    COLOUR IS ENOUGH TO MAKE A CUBS CARD LOOK LIKE A CUBS CARD. A crest is the
+    club's trademark and this project has no licence to it, so the rule is
+    structural rather than a note in a docstring: nothing that could BE one is
+    stored where the team data lives.
+    """
+    directory = (Path(__file__).resolve().parent / "data"
+                 if directory is None else Path(directory))
+    if not directory.exists():
+        return []
+    faults = []
+    for path in sorted(directory.rglob("*")):
+        if path.is_file() and path.suffix.lower() in MARK_SUFFIXES:
+            faults.append(
+                f"{path.name} sits in the team data directory. A club's logo, "
+                f"wordmark or crest is its trademark; this project stores "
+                f"colour and nothing else, and colour is enough to make a Cubs "
+                f"card look like a Cubs card")
+    return faults
+
+
+def check_no_marks(directory=None) -> None:
+    faults = mark_faults(directory)
+    if faults:
+        raise LawViolation(
+            "NO CLUB MARKS. Colour is declared, measured and stored; a crest "
+            "is a trademark and is not:" + _NL2 + _NL2.join(faults[:6]))
+
+
+#: What a card whose game is being played may not carry. Each one is a thing a
+#: reader could act on, and the in-game rule says none of them may be acted on:
+#: a score up to ninety seconds stale against a live market is adversely
+#: selected by construction (THE_PRICED P2).
+LIVE_FORBIDDEN = ("size_words", "edge_words", "edge_line_words", "edge_label",
+                  "payout_words", "price_words", "model_words", "venue_words")
+
+
+def live_card_faults(payload) -> list[str]:
+    """A live card carrying something a reader could act on.
+
+    THE SCREEN IS THE LAST PLACE THIS RULE COULD BE BROKEN. The sizing path
+    already refuses a game in progress and the claim writer refuses a quote
+    taken after first pitch; a card that rendered the pregame edge beside a
+    live score would put the same adversely-selected number in front of the
+    operator with none of them firing.
+    """
+    if not payload:
+        return []
+    faults = []
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            if node.get("state") == "live":
+                for field in LIVE_FORBIDDEN:
+                    if node.get(field) is not None:
+                        faults.append(
+                            f"{path or 'a card'} is live and carries "
+                            f"{field!r}: a game being played is priced off a "
+                            f"feed this app reads up to ninety seconds late, "
+                            f"so nothing on it may be acted on")
+                if node.get("taken_control") or node.get("can_take"):
+                    faults.append(
+                        f"{path or 'a card'} is live and offers the tap that "
+                        f"records a pick")
+            for key, value in node.items():
+                walk(value, f"{path}.{key}" if path else str(key))
+        elif isinstance(node, list):
+            for i, value in enumerate(node):
+                walk(value, f"{path}[{i}]")
+
+    walk(payload, "")
+    return faults
+
+
+def check_the_live_card_offers_nothing(payload) -> None:
+    faults = live_card_faults(payload)
+    if faults:
+        raise LawViolation(
+            "NOTHING ON A LIVE CARD CAN BE ACTED ON. The score is up to ninety "
+            "seconds stale and the market it would be priced against is not:"
+            + _NL2 + _NL2.join(faults[:6]))

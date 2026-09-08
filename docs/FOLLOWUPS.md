@@ -1016,3 +1016,42 @@ the model is systematically more bearish than the venue on a home favourite
 covering -1.5 (30-34% against the venue's 37-50%). Six of six recommendations
 on one side of one market is a pattern, not six independent edges, and the
 gate says so already: 53 of 100 settled, one flat unit, no measured edge.
+
+## 2026-09-08 — three states, and what the old page took with it
+
+GRIDIRON_THREE_STATES ran (brief and close-out of the same date). Picks is two
+tabs now, a card moves between them on the poller's word, and the old page --
+the notices bar, the sorters, the tier buttons, the View menu, the hero and
+its carousel -- is gone.
+
+**OPEN: Picks can no longer show the reasoning pass.** The View menu was the
+only control that chose a forecaster, and it went with the rest of that page.
+The choice still exists in the payload, the API still serves
+`?forecaster=llm`, and the day strip still names whose questions it counts --
+but nothing on the screen sets it, so Picks shows the statistical forecaster
+and only that. The second forecaster's questions are still on the Record page
+and in the history table.
+
+That is a consequence of a removal the brief asked for by name, recorded
+rather than hidden: the fix is a small control somewhere that is not a fourth
+row above the first card, and it is the operator's call whether Picks needs
+one at all.
+
+**FOUND AND FIXED: two versions of "nothing of the last one survives".**
+Switching sports left fifteen cards of the previous sport in the groups,
+because `renderToday` was called only in the branch that had cards; and
+switching to a market with no picks left the previous market's cards there,
+because the chips filtered the slate beneath the groups and not the groups.
+Both were caught by tests written for the same defect in September, when an
+empty branch left a hero behind.
+
+**RETIRED WITH THE HERO, each with its reason recorded where it stood:**
+`audit.hero_flag_faults` and its two plantings, `tests/test_hero_floor.py`,
+`tests/test_view_menu.py`, two tests in `test_method_flag.py`, three in
+`test_cards.py`, two notices tests in `test_smoke.py`, and the carousel test
+in `test_motion.py`. What each protected that still applies is named in the
+comment that replaced it.
+
+**Watch on the first real live evening.** Every live card rendered in this
+session came from a scratch copy with games forced to `in`. The poller has
+not run against a live baseball slate since these cards existed.

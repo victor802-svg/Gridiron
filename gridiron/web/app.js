@@ -769,71 +769,149 @@ const Gridiron = (function () {
   // clock, because the browser is the only party that knows the timezone --
   // and it is a TIME, never a countdown. A countdown is a sportsbook's
   // pressure rather than its grammar and is banned by name.
+  // ONE CARD, THREE STATES (THREE_STATES S2, 2026-09-08).
+  //
+  // Upcoming carries the matchup and the prices. Live carries the score and
+  // nothing that could be acted on. Final carries the outcome against the
+  // number the card was opened with, which is the whole argument for keeping
+  // one card through three states rather than three pages.
+  //
+  // EVERY STRING IS THE SERVER'S, labels included. The one thing worked out
+  // here is a kickoff instant turned into the reader's own clock, because the
+  // browser is the only party that knows the timezone -- and it is a TIME,
+  // never a countdown.
+  //
+  // THE COLOUR IS STRUCTURAL AND IS NOT A VERDICT. A club's own colour marks
+  // its own name; the payout chip takes the colour of the side the question
+  // names. `audit.check_the_colour_law` still rules that green means a pick
+  // won and red that one lost, and neither appears here: the edge line is the
+  // only place either can.
+  function clubPill(name, colours) {
+    const pill = el('span', 'club');
+    pill.textContent = name || '';
+    if (colours && colours.on_white) {
+      pill.style.background = '#' + colours.on_white;
+    }
+    return pill;
+  }
+
   function todayCard(entry, labels) {
     requireN(entry, 'a card on today');
-    const face = el('article', 'face' + (entry.taken ? ' face-took' : ''));
+    const state = entry.state || 'upcoming';
+    const face = el('article', 'face face-' + state + (entry.taken ? ' face-took' : ''));
+    if (entry.favoured_colour) {
+      face.style.setProperty('--club', '#' + entry.favoured_colour);
+    }
 
+    // --- the band -----------------------------------------------------
     const head = el('header', 'face-event');
-    head.appendChild(el('span', 'face-match', entry.matchup || ''));
-    if (entry.kickoff_utc) {
-      const when = el('span', 'face-when');
+    const band = el('div', 'face-band');
+    band.appendChild(clubPill(entry.away_name || entry.away, entry.away_colour));
+    band.appendChild(el('span', 'face-at', entry.matchup ? '' : ''));
+    band.appendChild(clubPill(entry.home_name || entry.home, entry.home_colour));
+    head.appendChild(band);
+
+    const when = el('span', 'face-when');
+    if (state === 'live') {
+      // THE SCORE WHERE THE START TIME WAS, and the time of the last poll
+      // beside it: a score with no timestamp is a score a reader trusts too
+      // much, and the poller runs only while a window is open.
+      when.appendChild(el('span', 'face-score', entry.score_words || ''));
+      when.appendChild(el('span', 'face-period', entry.period_words || ''));
+      when.appendChild(el('span', 'face-polled', entry.polled_words || ''));
+    } else if (state === 'final') {
+      when.appendChild(el('span', 'face-score', entry.score_words || ''));
+    } else if (entry.kickoff_utc) {
       when.appendChild(el('span', 'face-when-label', entry.kickoff_label || ''));
       when.appendChild(el('time', 'face-time', localTime(entry.kickoff_utc)));
-      head.appendChild(when);
     }
-    head.appendChild(el('span', 'face-sport', entry.sport_label || ''));
+    head.appendChild(when);
+
+    // THE SPORT'S COLOUR IS THE STYLESHEET'S, chosen by a class rather than
+    // set inline, so `tools/contrast.py` can read it off `:root` and measure
+    // it. A hex in two files is two colours that will disagree.
+    const tag = el('span', 'face-sport sport-' + (entry.sport_key || ''),
+                   entry.sport_label || '');
+    head.appendChild(tag);
+    if (entry.taken_badge) head.appendChild(el('span', 'face-yours', entry.taken_badge));
     face.appendChild(head);
 
     face.appendChild(el('div', 'face-q', entry.question || ''));
 
-    const prices = el('div', 'face-prices');
-    const box = (cls, label, value) => {
-      const b = el('div', cls);
-      b.appendChild(el('span', 'box-label', label));
-      b.appendChild(el('span', 'box-value', value));
-      return b;
+    // --- what the record already knew about this game ------------------
+    const context = el('div', 'face-context');
+    const line = (words) => {
+      if (!words) return;
+      context.appendChild(el('span', 'face-fact', words));
     };
-    prices.appendChild(box('box', labels.model, entry.model_words));
-    prices.appendChild(box('box', labels.venue, entry.venue_words));
-    // THE EDGE CHIP CARRIES THE ONLY COLOUR ON THE CARD, and the state comes
-    // from the server: `language.edge_state` is the one place that decides
-    // what green means here. No transition, no animation -- a price that
-    // flashes when it moves is the pressure this brief bans, and
-    // `audit.price_chip_animation_faults` fails the gate on one.
-    // THE LABEL SAYS WHICH SIDE, because the number cannot. A question, a
-    // plus sign and a green figure all read as "back this", and on a card
-    // whose edge is on the other side that is three things agreeing and being
-    // wrong.
-    prices.appendChild(box('box edge ' + (entry.edge_state || 'none'),
-                           entry.edge_label || labels.edge, entry.edge_words));
-    face.appendChild(prices);
+    if (entry.away_starter || entry.home_starter) {
+      line(entry.away_starter);
+      line(entry.home_starter);
+    }
+    line(entry.away_form ? entry.away_form : null);
+    line(entry.home_form ? entry.home_form : null);
+    line(entry.weather_words);
+    if (context.childNodes.length) face.appendChild(context);
 
-    if (entry.size_words) face.appendChild(el('div', 'face-size', entry.size_words));
+    // --- the prices, on states that may carry them ---------------------
+    if (state === 'upcoming') {
+      const prices = el('div', 'face-prices');
+      const box = (cls, label, value) => {
+        const b = el('div', cls);
+        b.appendChild(el('span', 'box-label', label));
+        b.appendChild(el('span', 'box-value', value));
+        return b;
+      };
+      prices.appendChild(box('box', labels.model, entry.model_words));
+      // THE PAYOUT IS THE BIG CHIP (operator ruling, 2026-09-08), filled in
+      // the colour of the side the question names, with the price beneath it.
+      const payout = box('box box-payout', labels.venue, entry.payout_words);
+      if (entry.favoured_colour) payout.style.background = '#' + entry.favoured_colour;
+      payout.appendChild(el('span', 'box-under', entry.price_words || ''));
+      prices.appendChild(payout);
+      face.appendChild(prices);
+
+      // THE EDGE IS ONE QUIET LINE, and the only green or red on the card.
+      const edge = el('div', 'face-edge ' + (entry.edge_state || 'none'));
+      edge.appendChild(el('span', 'edge-label', entry.edge_label || labels.edge));
+      edge.appendChild(el('span', 'edge-value', entry.edge_line_words || ''));
+      face.appendChild(edge);
+
+      if (entry.size_words) face.appendChild(el('div', 'face-size', entry.size_words));
+    }
+    if (state === 'final' && entry.settled_words) {
+      face.appendChild(el('div', 'face-settled', entry.settled_words));
+    }
 
     const meta = el('div', 'face-meta');
     meta.appendChild(el('span', 'face-gate', entry.gate_words || ''));
-    // ONLY WHEN IT SAYS SOMETHING. Twelve chips reading the same three words
-    // down one page is a group heading wearing a badge twelve times.
     if (entry.tier_chip) meta.appendChild(el('span', 'chip', entry.tier_chip));
     face.appendChild(meta);
 
-    const actions = el('div', 'face-actions');
-    const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
-    mark.type = 'button';
-    mark.textContent = entry.taken ? labels.taken : labels.took;
-    mark.disabled = !!entry.taken;
-    mark.onclick = async () => {
-      mark.disabled = true;
-      await fetch('/api/taken/' + entry.prediction_id, {
-        method: 'POST',
-        headers: { 'X-Gridiron-Form': csrfToken || '' },
-      });
-      renderWeek().catch(showError);
-    };
-    actions.appendChild(mark);
+    // THE FIRST SENTENCE WITHOUT A CLICK, the rest behind Why.
+    if (entry.first_sentence) {
+      face.appendChild(el('p', 'face-lede', entry.first_sentence));
+    }
 
-    // COLLAPSED BY DEFAULT so the page still scans, and one click away
-    // because the operator reads each pick rather than scanning a table.
+    const actions = el('div', 'face-actions');
+    // A LIVE CARD CARRIES NO TAP. Its game is being played; there is nothing
+    // to decide and nothing on the card to decide it with.
+    if (state === 'upcoming') {
+      const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
+      mark.type = 'button';
+      mark.textContent = entry.taken ? labels.taken : labels.took;
+      mark.disabled = !!entry.taken;
+      mark.onclick = async () => {
+        mark.disabled = true;
+        await fetch('/api/taken/' + entry.prediction_id, {
+          method: 'POST',
+          headers: { 'X-Gridiron-Form': csrfToken || '' },
+        });
+        renderWeek().catch(showError);
+      };
+      actions.appendChild(mark);
+    }
+
     const sentences = (entry.why && entry.why.sentences) || [];
     if (sentences.length || entry.reasoning || (entry.top_factors || []).length) {
       const more = el('button', 'expand');
@@ -862,6 +940,59 @@ const Gridiron = (function () {
     return face;
   }
 
+  // WHICH TAB IS BEING LOOKED AT. The default is Upcoming; a reader who
+  // switches to Live stays there across a refresh, because a poll that moved
+  // them back would take the screen away from the game they are watching.
+  let stateTab = 'upcoming';
+
+  function applyStateTab() {
+    const tabs = document.getElementById('state-tabs');
+    const upcomingParts = ['today-clears-heading', 'today-clears', 'today-fold',
+                           'today-below-floor', 'today-watching-heading',
+                           'today-watching'];
+    const livePresent = (document.getElementById('today-live') || {}).childNodes;
+    const liveCount = livePresent ? livePresent.length : 0;
+    if (tabs) {
+      tabs.querySelectorAll('button').forEach(button => {
+        const on = button.dataset.state === stateTab;
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+    const show = (id, on) => {
+      const node = document.getElementById(id);
+      if (node) node.hidden = !on;
+    };
+    const upcoming = stateTab === 'upcoming';
+    upcomingParts.forEach(id => {
+      const node = document.getElementById(id);
+      if (!node) return;
+      if (upcoming) {
+        // A group hidden by its own emptiness stays hidden; this only takes
+        // the tab's word for it.
+        if (node.dataset.emptyHidden !== 'true') node.hidden = false;
+      } else {
+        node.hidden = true;
+      }
+    });
+    show('live-heading-row', !upcoming && liveCount > 0);
+    show('today-live', !upcoming && liveCount > 0);
+    show('live-empty', !upcoming && liveCount === 0);
+    const rail = document.getElementById('today-rail');
+    if (rail) rail.hidden = !upcoming;
+  }
+
+  function wireStateTabs(labels) {
+    const tabs = document.getElementById('state-tabs');
+    if (!tabs || tabs.dataset.wired === 'true') return;
+    tabs.dataset.wired = 'true';
+    tabs.querySelectorAll('button').forEach(button => {
+      button.addEventListener('click', () => {
+        stateTab = button.dataset.state;
+        applyStateTab();
+      });
+    });
+  }
+
   function renderToday(data) {
     const panel = document.getElementById('today');
     const clears = document.getElementById('today-clears');
@@ -876,6 +1007,14 @@ const Gridiron = (function () {
     if (!today) { panel.hidden = true; return; }
     requireN(today, 'today');
     const labels = today.labels || {};
+    const tabs = document.getElementById('state-tabs');
+    if (tabs) {
+      tabs.querySelectorAll('button').forEach(button => {
+        const key = button.dataset.state === 'live' ? 'tab_live' : 'tab_upcoming';
+        button.textContent = labels[key] || '';
+      });
+      wireStateTabs(labels);
+    }
 
     const where = document.getElementById('day-where');
     if (where) where.textContent = today.where_words || '';
@@ -907,9 +1046,42 @@ const Gridiron = (function () {
     groupChip('today-clears-chip', today.clears_chip);
     groupChip('today-watching-chip', today.watching_chip);
 
-    (today.clears || []).forEach(e => clears.appendChild(todayCard(e, labels)));
-    (today.watching || []).forEach(e => watching.appendChild(todayCard(e, labels)));
-    (today.below_floor || []).forEach(e => folded.appendChild(todayCard(e, labels)));
+    // THE MARKET CHIPS FILTER THE GROUPS, not only the slate beneath them.
+    // They are declared a filter row on Upcoming; while they filtered the
+    // grid alone, opening a market with no picks left the previous market's
+    // cards standing in the groups.
+    const wanted = state.market || '';
+    const keep = list => (list || []).filter(
+      e => !wanted || (e.market || '') === wanted);
+
+    keep(today.clears).forEach(e => clears.appendChild(todayCard(e, labels)));
+    keep(today.watching).forEach(e => watching.appendChild(todayCard(e, labels)));
+    keep(today.below_floor).forEach(e => folded.appendChild(todayCard(e, labels)));
+
+    // LIVE (S3). The cards whose games are being played, taken first, with
+    // the score where the start time was. Which cards are here is the
+    // poller's answer, not the tab's.
+    const liveHost = document.getElementById('today-live');
+    const liveHeadingRow = document.getElementById('live-heading-row');
+    const liveHeading = document.getElementById('live-heading');
+    const liveEmpty = document.getElementById('live-empty');
+    if (liveHost) {
+      liveHost.innerHTML = '';
+      keep(today.live).forEach(e => liveHost.appendChild(todayCard(e, labels)));
+      if (liveHeading) liveHeading.textContent = today.live_heading || '';
+      if (liveEmpty) {
+        const words = document.getElementById('live-empty-words');
+        const at = document.getElementById('live-empty-time');
+        if (words) words.textContent = today.live_empty_words || '';
+        // The instant in the reader's own clock, beside the server's words:
+        // two elements, so nothing is glued together.
+        if (at) {
+          at.textContent = today.live_first_kickoff_utc
+            ? localDayTime(today.live_first_kickoff_utc) : '';
+        }
+      }
+    }
+    applyStateTab();
 
     const fold = document.getElementById('today-fold');
     if (fold) {
@@ -1361,35 +1533,6 @@ const Gridiron = (function () {
   function heroPool(cards) {
     return cards.filter(c => !c.method_note);
   }
-
-  // THE HERO'S FLOOR (R3, 2026-09-05). The hero is the largest claim on the
-  // page, and a claim under `hero_min_claim` is not large enough to lead it:
-  // the tab still lists the pick, ranked as usual, under a sentence the
-  // server wrote. Takes the tab's cards and the sort, filters by the floor
-  // the payload carries, and `selectHero` returns the first or null.
-  function heroCandidates(cards, sortMode, minClaim) {
-    const pool = heroPool(cards);
-    const ranked = sortMode === 'confidence'
-      ? pool.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0))
-      : pool;
-    return ranked.filter(c => (shownProb(c) || 0) >= minClaim);
-  }
-
-  function selectHero(cards, sortMode, minClaim) {
-    const lead = heroCandidates(cards, sortMode, minClaim);
-    return lead.length ? lead[0] : null;
-  }
-
-  // A KICKOFF INSTANT IN THE READER'S OWN CLOCK. The one thing this file
-  // works out for itself, because the browser is the only party that knows
-  // what timezone the reader is in.
-  //
-  // THERE WERE TWO OF THESE, 571 lines apart, and they disagreed: this one
-  // returns an empty string when a date will not parse and the other returned
-  // the raw instant, which would have printed `2026-09-07T17:10:00Z` on a
-  // card. The second definition won at load, so the copy a reader was most
-  // likely to find and fix was the dead one. Found by CARD_FACE, 2026-09-07;
-  // `audit.duplicate_js_definitions` fails the gate on the shape now.
   function localTime(iso) {
     try {
       return new Date(iso).toLocaleTimeString([], {
@@ -1646,172 +1789,16 @@ const Gridiron = (function () {
   //: Which of the top five the hero is showing. Reset whenever the slate,
   //: the sport, the sort or the market tab changes -- a step position that
   //: survived a filter change would point at a different pick than the dots.
-  let heroIndex = 0;
+
 
   // WHAT THE HERO LAST RENDERED, so a swipe can step it (R4, 2026-09-05).
-  let heroRender = null;
 
-  function stepHero(delta) {
-    if (!heroRender || heroRender.count < 2) return;
-    heroIndex = (heroIndex + delta + heroRender.count) % heroRender.count;
-    renderHero(heroRender.cards, heroRender.sortMode, heroRender.tags,
-               heroRender.minClaim, heroRender.noLead);
-  }
-
-  // SWIPE ON TOUCH (R4). The dots and the arrows stay; a horizontal swipe of
-  // 40px or more on the hero steps it the way the arrows do. Wired once on
-  // the hero's host, which survives every re-render of its contents.
-  function wireHeroSwipe() {
-    const host = document.getElementById('week-hero');
-    if (!host) return;
-    let startX = null;
-    host.addEventListener('touchstart', event => {
-      const touch = event.changedTouches && event.changedTouches[0];
-      startX = touch ? touch.clientX : null;
-    }, { passive: true });
-    host.addEventListener('touchend', event => {
-      const touch = event.changedTouches && event.changedTouches[0];
-      if (startX === null || !touch) return;
-      const dx = touch.clientX - startX;
-      startX = null;
-      if (Math.abs(dx) < 40) return;
-      stepHero(dx < 0 ? 1 : -1);
-    }, { passive: true });
-  }
-
-  // THE PANEL ARRIVES RATHER THAN CUTS (R4). The start state is committed
-  // before the class comes off, so the transition in the motion block runs;
-  // under reduced motion the stylesheet makes it instant and the layout is
-  // the same either way.
   function arrive(node) {
     if (!node) return;
     node.classList.add('arriving');
     void node.offsetHeight;
     requestAnimationFrame(() => node.classList.remove('arriving'));
   }
-
-  function renderHero(cards, sortMode, tags, minClaim, noLead) {
-    const host = document.getElementById('week-hero');
-    if (!host) return;
-    host.innerHTML = '';
-    if (!cards.length) { host.hidden = true; return; }
-    host.hidden = false;
-
-    // EVERY CARD FLAGGED MEANS NO HERO. Not a hero with a warning on it.
-    if (!heroPool(cards).length) { host.hidden = true; delete host.dataset.id; return; }
-    const top = heroCandidates(cards, sortMode, minClaim || 0).slice(0, HERO_STEPS);
-    if (!top.length) {
-      // NO LEAD, SAID SO (R3). Nothing on the tab reaches the floor; the
-      // place stays and carries the server's sentence rather than collapsing,
-      // so a reader can see the tab was looked at and why nothing leads it.
-      delete host.dataset.id;
-      host.appendChild(el('p', 'hero-none', noLead || ''));
-      return;
-    }
-    if (heroIndex >= top.length) heroIndex = 0;
-    const c = top[heroIndex];
-    heroRender = { cards, sortMode, tags, minClaim, noLead, count: top.length };
-    // WHICH PREDICTION THE HERO IS SHOWING, said in the markup the way every
-    // grid card already says it. The hero is a card; it was the only one on
-    // the page that would not tell you which one, so "is this pick on the
-    // page?" could not be asked about the largest pick on it.
-    host.dataset.id = c.prediction_id;
-
-    // THE TAG SAYS WHICH QUESTION THE HERO IS ANSWERING, and it follows the
-    // sort rather than asserting one: a card labelled "sharpest disagreement"
-    // while the list is ordered by confidence is a label describing the other
-    // ordering.
-    // WRITTEN BY THE SERVER, PICKED HERE. Both wordings arrive on the
-    // payload and the sort chooses between them -- "tonight" only appears
-    // when the heading has already established that it is tonight.
-    // A card with no line cannot be the sharpest disagreement; the server
-    // wrote a third sentence for that case and this only picks it.
-    const noLine = c.market_implied_prob === null || c.market_implied_prob === undefined;
-    const tagKey = sortMode === 'confidence' ? 'confidence'
-      : (noLine ? 'no_line' : 'disagreement');
-    host.appendChild(el('div', 'hero-tag', (tags || {})[tagKey] || ''));
-
-    const body = el('div', 'hero-body');
-    const left = el('div', 'hero-left');
-    left.appendChild(el('h2', 'hero-game', c.row_title || ''));
-    left.appendChild(el('div', 'hero-pick', c.phrase || ''));
-
-    const why = el('div', 'hero-why');
-    const w = c.why;
-    if (w && (w.sentences || []).length) {
-      w.sentences.forEach(sentence => {
-        why.appendChild(el('p', 'hero-sentence', sentence));
-      });
-    } else if (c.reasoning) {
-      why.appendChild(el('p', 'hero-sentence', c.reasoning));
-    }
-    left.appendChild(why);
-
-    const foot = el('div', 'hero-foot');
-    foot.appendChild(tierChip(c.tier));
-    if ((c.tier || {}).message) {
-      foot.appendChild(el('span', 'hero-earned', c.tier.message));
-    }
-    const when = cardTail(c);
-    if (c.tier_label) foot.appendChild(el('span', 'hero-when', c.tier_label));
-    if (when) foot.appendChild(el('span', 'hero-when', when));
-    if (c.venue) foot.appendChild(el('span', 'hero-when', c.venue));
-    left.appendChild(foot);
-    body.appendChild(left);
-
-    const right = el('div', 'hero-right');
-    right.appendChild(chanceBlock(c, 'chance-hero'));
-    // THE MARKET, WHERE THERE IS ONE. "no line" is a fact about the source and
-    // is said in words rather than left as a gap, which reads as an error.
-    right.appendChild(el('div', 'hero-market',
-      (c.market_implied_prob === null || c.market_implied_prob === undefined)
-        ? 'no line to compare it with'
-        : 'the market says ' + pct(c.market_implied_prob, 0)));
-    body.appendChild(right);
-    host.appendChild(body);
-
-    if (top.length > 1) {
-      const steps = el('div', 'hero-steps');
-      const back = el('button', 'hero-arrow', '‹');
-      back.type = 'button';
-      back.setAttribute('aria-label', 'Previous pick');
-      back.addEventListener('click', () => {
-        heroIndex = (heroIndex - 1 + top.length) % top.length;
-        renderHero(cards, sortMode, tags, minClaim, noLead);
-      });
-      steps.appendChild(back);
-      const dots = el('div', 'hero-dots');
-      top.forEach((_, i) => {
-        const dot = el('button', 'hero-dot' + (i === heroIndex ? ' on' : ''));
-        dot.type = 'button';
-        dot.setAttribute('aria-label', 'Pick ' + (i + 1) + ' of ' + top.length);
-        if (i === heroIndex) dot.setAttribute('aria-current', 'true');
-        dot.addEventListener('click', () => {
-          heroIndex = i;
-          renderHero(cards, sortMode, tags, minClaim, noLead);
-        });
-        dots.appendChild(dot);
-      });
-      steps.appendChild(dots);
-      const fwd = el('button', 'hero-arrow', '›');
-      fwd.type = 'button';
-      fwd.setAttribute('aria-label', 'Next pick');
-      fwd.addEventListener('click', () => {
-        heroIndex = (heroIndex + 1) % top.length;
-        renderHero(cards, sortMode, tags, minClaim, noLead);
-      });
-      steps.appendChild(fwd);
-      host.appendChild(steps);
-    }
-  }
-
-  // --- the market tabs ------------------------------------------------------
-
-  // DERIVED FROM THE DECLARED LIST, NEVER WRITTEN HERE (R4). The payload
-  // carries the sport's markets because `config.SPORT_MARKETS` does; a fifth
-  // market appears on this row the day it is declared, with no change to any
-  // file in `web/`. A hardcoded row is the defect this ruling exists to
-  // prevent, and a planting checks for one.
   function renderMarketTabs(data, active) {
     const host = document.getElementById('week-market-tabs');
     if (!host) return;
@@ -1830,7 +1817,6 @@ const Gridiron = (function () {
       // fact about the slate, and a tab that disappears hides it.
       b.appendChild(el('span', 'market-tab-n', String(t.n)));
       b.addEventListener('click', () => {
-        heroIndex = 0;
         state.market = t.market || '';
         renderWeek().catch(showError);
       });
@@ -2141,40 +2127,12 @@ const Gridiron = (function () {
     // reader. Compared as sent, shown as sent.
     return (card.tier || {}).tier || '';
   }
-
-  // Built from the tiers actually present on this slate, plus an "all" that is
-  // always first. A tier button for a tier with no picks on it would be a
-  // control that does nothing, which is worse than one that is absent.
-  function renderTierFilter(cards, active) {
-    const host = document.getElementById('week-tier-seg');
-    if (!host) return;
-    const present = [];
-    cards.forEach(c => {
-      const t = tierOf(c);
-      if (t && present.indexOf(t) < 0) present.push(t);
-    });
-    host.innerHTML = '';
-    const chosen = active === undefined ? currentTier() : active;
-    [['', 'All tiers']].concat(present.map(t => [t, t])).forEach(pair => {
-      const b = el('button', '', pair[1]);
-      b.type = 'button';
-      b.dataset.tier = pair[0];
-      b.setAttribute('aria-pressed', pair[0] === chosen ? 'true' : 'false');
-      b.addEventListener('click', () => setTier(pair[0]));
-      host.appendChild(b);
-    });
-    host.hidden = present.length < 2;
-  }
-
-  // ONE FORECASTER IN ONE RANKING (GRIDIRON_14).
-  //
-  //: Whose picks the slate is showing. Memory only and not remembered across
-  //: sessions, for the same reason the Record tab's choice is not: a reader
-  //: opening the page should see the model that answers every question, not
-  //: whichever list they left open.
-  // THE VIEW, REMEMBERED PER SPORT FOR THE SESSION (R2, 2026-09-05). In
-  // memory only: a reload gets the default, and nothing is written to the
-  // browser's storage. Whose forecast, and which pass.
+  // WHICH FORECASTER AND WHICH PASS, PER SPORT. The View menu that set these
+  // was removed on 2026-09-08 with the rest of the old Picks page; the choice
+  // itself is still read -- the day strip says whose questions it counts --
+  // and the map went with the menu by accident. Restored, because a page that
+  // cannot say which forecaster it is showing is the defect that strip was
+  // built to fix.
   const viewChoice = new Map();
 
   function currentView() {
@@ -2189,112 +2147,6 @@ const Gridiron = (function () {
   // toggles with it -- focus lands on the new copy of the pressed button
   // rather than on the body (UI audit finding 4).
   let viewFocus = null;
-
-  function renderPassFilter(data) {
-    const host = document.getElementById('week-pass-seg');
-    if (!host) return;
-    host.innerHTML = '';
-    const view = currentView();
-    if (!data.has_early_view && view.early) setView({ early: false });
-    const early = data.has_early_view && view.early;
-    [[false, 'final'], [true, 'early view']].forEach(pair => {
-      const b = el('button', '', pair[1]);
-      b.type = 'button';
-      b.dataset.early = pair[0] ? 'true' : 'false';
-      b.setAttribute('aria-pressed', pair[0] === early ? 'true' : 'false');
-      // A slate with no early forecast offers the toggle and says it cannot
-      // move, rather than hiding half the menu.
-      if (pair[0] && !data.has_early_view) b.disabled = true;
-      b.addEventListener('click', () => {
-        if (b.disabled) return;
-        setView({ early: pair[0] });
-        viewFocus = 'week-pass-seg';
-        renderWeek();
-      });
-      host.appendChild(b);
-    });
-  }
-
-  function renderForecasterFilter(data) {
-    const host = document.getElementById('week-forecaster-seg');
-    if (!host) return;
-    const options = data.forecasters || [];
-    host.innerHTML = '';
-    // A ROW WITH NOTHING IN IT IS NOT A CONTROL (UI audit finding 14). An
-    // empty slate offers no forecaster, and the menu showed "FORECASTER"
-    // over nothing.
-    const choice = host.closest('.view-choice');
-    if (choice) choice.hidden = options.length === 0;
-    options.forEach(f => {
-      const b = el('button', '', f.label);
-      b.type = 'button';
-      b.dataset.forecaster = f.forecaster;
-      b.setAttribute('aria-pressed',
-        String(f.forecaster === (data.forecaster || '')));
-      b.addEventListener('click', () => {
-        if (currentView().forecaster === f.forecaster) return;
-        setView({ forecaster: f.forecaster });
-        viewFocus = 'week-forecaster-seg';
-        renderWeek();
-      });
-      host.appendChild(b);
-    });
-  }
-
-  // THE TAG ON THE MENU BUTTON: the current choice in as few words as it
-  // takes -- "statistical · final". Composed from the payload's own labels.
-  function renderViewMenu(data) {
-    const tag = document.getElementById('week-view-tag');
-    if (!tag) return;
-    const chosen = data.forecaster || '';
-    const who = ((data.forecasters || []).find(f => f.forecaster === chosen) || {}).label
-      || chosen;
-    const pass = (data.has_early_view && currentView().early) ? 'early' : 'final';
-    tag.textContent = who + ' · ' + pass;
-  }
-
-  function setViewMenuOpen(open) {
-    const button = document.getElementById('week-view-button');
-    const panel = document.getElementById('week-view-panel');
-    if (!button || !panel) return;
-    panel.hidden = !open;
-    button.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-
-  function wireViewMenu() {
-    const menu = document.getElementById('week-view');
-    const button = document.getElementById('week-view-button');
-    const panel = document.getElementById('week-view-panel');
-    if (!menu || !button || !panel) return;
-    button.addEventListener('click', () => setViewMenuOpen(panel.hidden));
-    // Closes on a click anywhere else, and on Escape from anywhere inside
-    // it, which hands focus back to the button so a keyboard reader is not
-    // dropped on the page.
-    document.addEventListener('click', event => {
-      if (!panel.hidden && !menu.contains(event.target)) setViewMenuOpen(false);
-    });
-    // ESCAPE CLOSES AN OPEN MENU FROM ANYWHERE (UI audit finding 4,
-    // 2026-09-05). Choosing a toggle rebuilds the toggles and drops focus
-    // to the body; a key pressed there never reached a listener on the menu.
-    document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && !panel.hidden) {
-        setViewMenuOpen(false);
-        button.focus();
-      }
-    });
-  }
-
-  // THE START TIME (R3, rewritten by CARD_FACE on 2026-09-07).
-  //
-  // IT USED TO BE A COUNTDOWN -- "first kickoff in 2d 6h", repainted every
-  // minute -- and a countdown is the one thing on this page that was pure
-  // sportsbook pressure: it makes a start time read as a deadline for the
-  // reader rather than a fact about the game. `audit.countdown_faults` fails
-  // the gate on the shape now, and a planting proves it.
-  //
-  // It also built its own sentence, `state_word + ' in ' + span`, which the
-  // prose scan could not see because that field was not on its list.
-
   function paintClock(glance, slateTitle) {
     const host = document.getElementById('week-clock');
     const line = document.getElementById('week-clock-line');
@@ -2392,8 +2244,7 @@ const Gridiron = (function () {
         ? 'Sorted by how sure the model is. ' + data.n + ' forecasts.'
         : 'Agreeing confidently with the market is not a finding.';
     paintClock(data.glance, data.slate_title);
-    renderForecasterFilter(data);
-    renderViewMenu(data);
+
     startLivePolling(data);
 
     host.innerHTML = '';
@@ -2406,18 +2257,11 @@ const Gridiron = (function () {
     // reports both the part and the whole -- four picks looks like a thin
     // slate rather than a narrow filter unless the denominator is beside it.
     const wholeSlate = cards.length;
-    renderPassFilter(data);
     if (viewFocus) {
-      const openPanel = document.getElementById('week-view-panel');
-      const seg = document.getElementById(viewFocus);
-      if (openPanel && !openPanel.hidden && seg && !seg.contains(document.activeElement)) {
-        const pressed = seg.querySelector('button[aria-pressed="true"]') || seg.querySelector('button');
-        if (pressed) pressed.focus();
-      }
       viewFocus = null;
     }
     const tier = effectiveTier(cards);
-    renderTierFilter(cards, tier);
+
     if (tier) cards = cards.filter(c => tierOf(c) === tier);
     if (state.weekSort === 'confidence') {
       cards = cards.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0));
@@ -2495,20 +2339,23 @@ const Gridiron = (function () {
       caveat.hidden = !show;
     }
 
+    // TODAY IS DRAWN BEFORE THE EMPTY BRANCH, not inside the branch that has
+    // cards. It used to be called only where cards existed, so switching to a
+    // sport with no forecasts left the LAST sport's cards standing in the
+    // groups -- fifteen of them, found by
+    // `test_a_sport_with_no_forecasts_shows_nothing_of_the_last_one` on
+    // 2026-09-08. That test exists because the same shape of defect left a
+    // hero behind in September.
+    renderToday(data);
+
     if (!open.length) {
       // A FINISHED SLATE SAYS SO AND POINTS AT RESULTS.
       // NOTHING OF THE LAST SLATE SURVIVES AN EMPTY ONE (UI audit finding 2,
-      // 2026-09-05). This branch returned before it touched the hero, the
-      // grid heading or the show-all button, so the NBA tab -- no forecasts
-      // until October -- opened on a baseball hero at 88%, a "More picks"
-      // heading over nothing, and a "show all 7" button that showed nothing.
-      const heroHost = document.getElementById('week-hero');
-      if (heroHost) {
-        heroHost.hidden = true;
-        heroHost.innerHTML = '';
-        delete heroHost.dataset.id;
-      }
-      heroRender = null;
+      // 2026-09-05). This branch returned before it touched the grid
+      // heading or the show-all button, so the NBA tab -- no forecasts until
+      // October -- opened on a "More picks" heading over nothing and a
+      // "show all 7" button that showed nothing. The hero it also left
+      // standing was removed with the rest of that page on 2026-09-08.
       const gridHeading = document.getElementById('week-grid-heading');
       if (gridHeading) gridHeading.hidden = true;
       const showAllButton = document.getElementById('week-showall');
@@ -2542,25 +2389,16 @@ const Gridiron = (function () {
     }
 
     if (open.length) {
-      // ONE LAYOUT, EVERY WIDTH. The hero takes the top pick for the current
-      // sort; the grid takes the rest. No branch on viewport width, because
-      // there is only one layout now and it reflows.
+      // THE CARDS ARE THE PAGE (THREE_STATES S1, 2026-09-08). The hero and
+      // its carousel are gone: one card at five times the size of the rest,
+      // above a page that then showed all of them again. Every card carries
+      // its own reasoning behind Why, which is what the hero was for.
       //
-      // NO CONFIDENCE HEADINGS. The sort toggle already says how the slate is
-      // ordered, and a section label would be a second, quieter claim about
-      // the same thing.
-      renderHero(open, state.weekSort, data.hero_tags,
-                 data.hero_min_claim, data.no_lead);
-      arrive(document.getElementById('week-hero'));
-
+      // THE GRID DROPS NOTHING NOW. It used to drop whichever card the hero
+      // had led with, by identity; with no hero there is no lead, and the
+      // full slate is the full slate.
       const heading = document.getElementById('week-grid-heading');
-      // WHAT THE GRID DROPS IS THE CARD THE HERO LEADS WITH, by identity and
-      // never by position. `open.slice(1)` was right while the hero always
-      // took `open[0]`; once the hero can refuse a flagged top card, dropping
-      // position 0 would delete that card from the page entirely -- shown by
-      // neither. The totals tab is exactly that case, on every card.
-      const lead = selectHero(open, state.weekSort, data.hero_min_claim);
-      const rest = lead ? open.filter(c => c !== lead) : open.slice();
+      const rest = open.slice();
       if (heading) heading.hidden = !rest.length;
 
       // THE SHORTLIST LEADS, THE REST IS ONE TAP AWAY (THE_SHORTLIST S2,
@@ -2572,7 +2410,6 @@ const Gridiron = (function () {
       // showing, on its face, in the server's words. A slate written before
       // the ordering existed has no ranks: it says so and shows everything,
       // through the positional control this page has always had.
-      renderToday(data);
       const listing = data.shortlist || {};
       const note = document.getElementById('week-shortlist-note');
       if (note) {
@@ -3365,6 +3202,39 @@ const Gridiron = (function () {
     return isNaN(d) ? iso : d.toLocaleString();
   }
 
+  // THE SETTLED CARDS (S3). The same card the pick was born on, in its
+  // third state. Fetched from the slate payload rather than the history
+  // table, because a card is a card and a table row is a row.
+  async function renderSettledCards() {
+    const host = document.getElementById('results-settled');
+    const headingRow = document.getElementById('settled-heading-row');
+    const heading = document.getElementById('settled-heading');
+    if (!host) return;
+    host.innerHTML = '';
+    let data = null;
+    try {
+      // The current slate, which is what the week picker is pointing at.
+      // No forecaster or tier arguments: the settled cards are the day's, and
+      // the day strip on Picks is where a filter is named.
+      const picked = document.getElementById('week-picker');
+      const chosen = picked && picked.value ? JSON.parse(picked.value) : null;
+      const qs = chosen
+        ? '?season=' + chosen.season + '&week=' + chosen.week : '';
+      data = await fetchJSON(withSport('/api/week' + qs));
+    } catch (err) {
+      host.hidden = true;
+      if (headingRow) headingRow.hidden = true;
+      return;
+    }
+    const today = (data && data.today) || {};
+    const cards = today.settled || [];
+    const labels = today.labels || {};
+    cards.forEach(entry => host.appendChild(todayCard(entry, labels)));
+    host.hidden = !cards.length;
+    if (headingRow) headingRow.hidden = !cards.length;
+    if (heading) heading.textContent = today.settled_heading || '';
+  }
+
   async function renderResults() {
     const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
@@ -3375,6 +3245,7 @@ const Gridiron = (function () {
     // renderer writing a sentence -- the thing `check_js_composes_no_prose`
     // exists to refuse. The server says which day it filtered to.
     document.getElementById('history-caption').textContent = data.caption || '';
+    await renderSettledCards();
     await renderCalendar();
 
     // The forecaster column appears ONLY when both are being shown. A column
@@ -3427,17 +3298,11 @@ const Gridiron = (function () {
   // header shows whichever sport is being looked at, and the never-summed note
   // moves to a quiet footer line.
   function wireSortToggle() {
-    wireViewMenu();
-    wireHeroSwipe();
     const seg = document.getElementById('week-sort-seg');
     if (!seg) return;
     seg.querySelectorAll('button').forEach(button => {
       button.addEventListener('click', () => {
         state.weekSort = button.dataset.sort;
-        // THE HERO FOLLOWS THE SORT (R3), so its step position resets: a
-        // position kept across a re-order points at a different pick than
-        // the dots say it does.
-        heroIndex = 0;
         state.showAllCards = false;
         seg.querySelectorAll('button').forEach(b => {
           b.setAttribute('aria-pressed', b === button ? 'true' : 'false');
@@ -3592,9 +3457,9 @@ const Gridiron = (function () {
       counts.hidden = !counts.textContent;
     }
 
-    // The strip owns the notice controls; renderNotices finds them by id.
-    // Passing a host was how a second copy came to exist.
-    renderNotices(data.warnings || []);
+    // THE NOTICES BAR IS GONE (THREE_STATES S1, 2026-09-08). A fault
+    // belongs on the Health panel, which is where these still are; what the
+    // strip cost was the top of the screen the operator opens.
 
     if (hosts.settled) {
       hosts.settled.innerHTML = '';
@@ -3614,55 +3479,6 @@ const Gridiron = (function () {
       }
     }
   }
-
-  // ONE STRIP, and ONE IMPLEMENTATION OF IT.
-  //
-  // C2 was meant to collapse three stacked full-width notice boxes into a
-  // single expandable line, and it half did: the markup carried a
-  // `#notices-summary` button and a `#notices-detail` panel, and this function
-  // ALSO built a summary button and a detail panel of its own inside the host.
-  // Two implementations of one control. Which one a reader got depended on
-  // which host the caller passed, so the notices collapsed on the front page
-  // and stacked full-width everywhere else -- the regression the brief
-  // describes, and it was invisible to every test because both versions
-  // render something.
-  //
-  // Now: the markup owns the elements, this fills them, and there is nowhere
-  // for a second version to live.
-  function renderNotices(warnings) {
-    const summary = document.getElementById('notices-summary');
-    const detail = document.getElementById('notices-detail');
-    if (!summary || !detail) return;
-
-    if (!warnings.length) {
-      summary.hidden = true;
-      detail.hidden = true;
-      detail.innerHTML = '';
-      return;
-    }
-
-    summary.hidden = false;
-    summary.innerHTML = '';
-    summary.appendChild(el('b', 'notices-count',
-      warnings.length + (warnings.length === 1 ? ' notice' : ' notices')));
-    summary.appendChild(document.createTextNode(' \u25BE'));
-    summary.title = warnings.map(shortNotice).join(' \u00B7 ');
-
-    detail.innerHTML = '';
-    detail.hidden = true;
-    summary.setAttribute('aria-expanded', 'false');
-    warnings.forEach(w => detail.appendChild(el('div', 'greet-warn ' + w.kind, w.text)));
-
-    // Rebound rather than accumulated: renderNotices runs on every sport
-    // switch, and addEventListener would stack a new handler each time, so the
-    // panel would toggle twice and appear not to open at all.
-    summary.onclick = () => {
-      detail.hidden = !detail.hidden;
-      summary.setAttribute('aria-expanded', String(!detail.hidden));
-    };
-  }
-
-  // "predict:nfl never run", "NFL schedule stale 21h" — the key words only.
   function shortNotice(w) {
     // Keep the task's NAME. Splitting on the first colon turned "predict:nfl"
     // and "predict:nba" both into "predict", so the bar said "predict never
@@ -3764,12 +3580,9 @@ const Gridiron = (function () {
     const home = (state.view || 'record') === 'record';
     const greeting = document.getElementById('glance');
     if (greeting) {
-      const notices = document.getElementById('notices-summary');
-      const hasNotices = notices && !notices.hidden;
       const msg = document.getElementById('greet-msg');
       if (msg) msg.hidden = !home;
-      greeting.hidden = (!home || greeting.dataset.empty === 'true') && !hasNotices;
-      greeting.classList.toggle('glance-notices-only', !home && hasNotices);
+      greeting.hidden = !home || greeting.dataset.empty === 'true';
     }
     const settled = document.getElementById('greet-settled');
     if (settled) settled.hidden = !home;
@@ -3860,7 +3673,6 @@ const Gridiron = (function () {
     document.getElementById('week-picker').addEventListener('change', () =>
       renderWeek().catch(showError));
     document.getElementById('week-market').addEventListener('change', event => {
-      heroIndex = 0;
       state.market = event.target.value || '';
       renderWeek().catch(showError);
     });
@@ -3884,7 +3696,7 @@ const Gridiron = (function () {
 
   return { boot, route, state, requireN, MissingSampleSize,
            drawCalibration, drawOverTime, dumbbell, contributions, bucketChip,
-           fetchJSON, selectHero, heroCandidates, renderHero };
+           fetchJSON };
 })();
 
 window.Gridiron = Gridiron;

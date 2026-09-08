@@ -1209,8 +1209,182 @@ def _edge_side_words(edge_side, takes_the_proposition):
     return "yes" if on_the_proposition == bool(takes_the_proposition) else "no"
 
 
+# ---------------------------------------------------------------------------
+# THREE STATES (GRIDIRON_THREE_STATES, 2026-09-08)
+# ---------------------------------------------------------------------------
+
+#: The three states a card can be in, read off `games.status`, which the live
+#: poller writes. NEVER off a request: a state a person can set is a state
+#: that can disagree with the game.
+CARD_STATES = ("upcoming", "live", "final")
+
+
+def card_state(status: str | None) -> str:
+    """Which of the three a game is in. Anything unknown is upcoming, because
+    a card whose game the record cannot place has not started as far as this
+    project knows, and showing it as live would be a claim about a game."""
+    if status == "in":
+        return "live"
+    if status == "final":
+        return "final"
+    return "upcoming"
+
+
+def team_colours(sport: str, tricode: str | None) -> dict:
+    """One club's colours, or the neutral pair when the club is not known.
+
+    MEASURED, NOT TYPED. `gridiron/data/team_colours.py` is generated from the
+    same ESPN payload the team names come from, and it records for every club
+    the shade a white name can actually be read on -- the primary where white
+    clears WCAG AA on it, the club's alternate where that clears it instead,
+    and the primary darkened where neither does.
+    """
+    from .data.team_colours import TEAM_COLOURS
+
+    entry = (TEAM_COLOURS.get(sport) or {}).get(tricode or "")
+    if not entry:
+        return {"primary": "3a4250", "on_white": "3a4250", "how": "unknown",
+                "known": False}
+    primary, on_white, how = entry
+    return {"primary": primary, "on_white": on_white, "how": how, "known": True}
+
+
+def _recent_form(conn: sqlite3.Connection, sport: str, team: str | None,
+                 before_utc: str | None, limit: int = 5) -> list[str]:
+    """The club's last five results, most recent first, from this record.
+
+    NOT `recent_form_diff`. That factor is a margin difference over four games
+    and is a different quantity; this is what a reader means by form. Both
+    come from the same finished games, and the card says which it is showing.
+    """
+    if not team:
+        return []
+    rows = conn.execute(
+        "SELECT home, away, home_score, away_score FROM games"
+        " WHERE sport = ? AND status = 'final' AND (home = ? OR away = ?)"
+        "   AND (? IS NULL OR kickoff_utc < ?)"
+        " ORDER BY kickoff_utc DESC LIMIT ?",
+        (sport, team, team, before_utc, before_utc, limit)).fetchall()
+    out = []
+    for row in rows:
+        if row["home_score"] is None or row["away_score"] is None:
+            continue
+        ours = row["home_score"] if row["home"] == team else row["away_score"]
+        theirs = row["away_score"] if row["home"] == team else row["home_score"]
+        out.append("W" if ours > theirs else ("L" if ours < theirs else "D"))
+    return out
+
+
+def _starter(conn: sqlite3.Connection, game_id: str, side: str) -> str | None:
+    """The probable pitcher this game's factors already read."""
+    row = conn.execute(
+        "SELECT pitcher_name FROM mlb_probables WHERE game_id = ? AND side = ?"
+        " ORDER BY recorded_utc DESC LIMIT 1", (game_id, side)).fetchone()
+    return row["pitcher_name"] if row else None
+
+
+def _weather(conn: sqlite3.Connection, game_id: str) -> str | None:
+    """The forecast the weather factor already fetched, in a reader's units."""
+    row = conn.execute(
+        "SELECT temp_f, wind_mph, precip_pct FROM weather_forecasts"
+        " WHERE game_id = ? ORDER BY fetched_utc DESC LIMIT 1",
+        (game_id,)).fetchone()
+    if row is None:
+        return None
+    return language.weather_words(row["temp_f"], row["wind_mph"],
+                                  row["precip_pct"])
+
+
+def _first_sentence(card: dict) -> str | None:
+    """The first sentence of the reasoning, visible without a click.
+
+    THE REST STAYS BEHIND `Why`. A card that shows everything is a card nobody
+    scans; a card that shows nothing is a card the operator has to open twenty
+    times to read his own slate.
+    """
+    sentences = ((card.get("why") or {}).get("sentences") or [])
+    if sentences:
+        return sentences[0]
+    reasoning = card.get("reasoning")
+    if not reasoning:
+        return None
+    head = str(reasoning).split(". ")[0].strip()
+    return head + ("." if head and not head.endswith(".") else "")
+
+
+def _club_name(names: dict, code: str | None) -> str:
+    """"Phillies", from whatever shape the record holds a name in.
+
+    `team_names` carries a structure -- full, city, club -- and a card wants
+    the club alone: "Astros" beside "Phillies" reads as a matchup, and the
+    full names are two lines of chrome.
+    """
+    entry = names.get(code or "")
+    if isinstance(entry, dict):
+        return entry.get("club") or entry.get("full") or (code or "")
+    return entry or (code or "")
+
+
+def _card_context(conn: sqlite3.Connection, card: dict) -> dict:
+    """Everything the richer card shows that the record already holds.
+
+    NOTHING NEW IS FETCHED. Every line here is a read of a table some factor
+    already filled: the probable pitcher, the finished games, the forecast the
+    weather factor pulled. A card may only show what a factor already read.
+    """
+    sport = card.get("sport")
+    game_id = card.get("game_id")
+    game = conn.execute(
+        "SELECT home, away, status, home_score, away_score, kickoff_utc,"
+        "       live_period, live_clock, live_updated_utc FROM games"
+        " WHERE id = ?", (game_id,)).fetchone()
+    if game is None:
+        return {"state": "upcoming"}
+
+    state = card_state(game["status"])
+    home_colours = team_colours(sport, game["home"])
+    away_colours = team_colours(sport, game["away"])
+    names = card.get("team_names") or {}
+    context = {
+        "state": state,
+        "home": game["home"],
+        "away": game["away"],
+        "home_name": _club_name(names, game["home"]),
+        "away_name": _club_name(names, game["away"]),
+        "home_colour": home_colours,
+        "away_colour": away_colours,
+        # THE SPORT'S KEY, not its colour. The stylesheet holds the five
+        # colours as tokens so the contrast tool can measure them; a hex here
+        # as well would be a second copy to disagree with.
+        "sport_key": sport,
+        "home_form": language.form_words(
+            _recent_form(conn, sport, game["home"], game["kickoff_utc"])),
+        "away_form": language.form_words(
+            _recent_form(conn, sport, game["away"], game["kickoff_utc"])),
+        "first_sentence": _first_sentence(card),
+    }
+    if sport == "mlb":
+        context["home_starter"] = language.starter_words(
+            _starter(conn, game_id, "home"))
+        context["away_starter"] = language.starter_words(
+            _starter(conn, game_id, "away"))
+    weather = _weather(conn, game_id)
+    if weather:
+        context["weather_words"] = weather
+    if state in ("live", "final"):
+        context["score_words"] = language.score_line_words(
+            game["away"], game["away_score"], game["home"], game["home_score"])
+    if state == "live":
+        context["period_words"] = language.period_words(
+            sport, game["live_period"], game["live_clock"])
+        context["polled_words"] = language.polled_words(
+            game["live_updated_utc"], db.utcnow())
+    return context
+
+
 def _today_card(entry: dict, card: dict, *, taken: bool,
-                group_tier: str | None, unit_dollars: float | None) -> dict:
+                group_tier: str | None, unit_dollars: float | None,
+                conn: sqlite3.Connection | None = None) -> dict:
     """One pick, in the grammar a sportsbook reader already has.
 
     THE EDGE IS THE LARGEST THING ON IT. Everything else on this card is
@@ -1234,10 +1408,20 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         price = 1.0 - price
     tier = (card.get("tier") or {})
     chip = tier.get("chip_label")
-    return {
+    context = _card_context(conn, card) if conn is not None else {"state": "upcoming"}
+    state = context.get("state", "upcoming")
+    # WHICH CLUB THE QUESTION FAVOURS, for the accent and the payout chip.
+    # The side the question names, which is the side its numbers are about.
+    favoured = context.get("home") if _favours_home(entry, card, context) \
+        else context.get("away")
+    favoured_colour = (context.get("home_colour") if favoured == context.get("home")
+                       else context.get("away_colour")) or {}
+    out = {
         "prediction_id": entry["prediction_id"],
         # LAW 4 travels with every row on this page, as it does everywhere.
         "n": entry["gate_n"],
+        # THE STATE IS DERIVED FROM THE GAME, never from a tab somebody chose.
+        "state": state,
         # the event line: placed, never composed. The renderer turns the
         # instant into the reader's own clock and touches nothing else.
         "matchup": card.get("matchup") or card.get("row_title"),
@@ -1246,6 +1430,11 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "sport_label": language.SPORT_LABELS.get(entry.get("sport"),
                                                  (entry.get("sport") or "").upper()),
         "question": question,
+        # WHICH MARKET, so the chips above can filter the groups. The chips
+        # are declared a filter row on Upcoming and were filtering only the
+        # slate beneath it: switching to a market with no picks left the
+        # previous market's cards standing in the groups.
+        "market": entry.get("market") or card.get("market"),
         # the three chips
         "model_words": language.price_chip_words(
             None if entry.get("fair_value") is None
@@ -1275,7 +1464,57 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "reasoning": card.get("reasoning"),
         "why": card.get("why"),
         "top_factors": card.get("top_factors") or [],
+        # THE PAYOUT IS THE BIG CHIP from 2026-09-08, with the price beneath
+        # it and the edge on its own quiet line under the row.
+        "payout_words": language.payout_chip_words(entry.get("payout")),
+        "price_words": language.price_under_payout_words(price),
+        "favoured": favoured,
+        "favoured_colour": favoured_colour.get("primary"),
+        "favoured_on_white": favoured_colour.get("on_white"),
     }
+    out.update({k: v for k, v in context.items() if k != "state"})
+    out["edge_line_words"] = language.edge_line_words(
+        entry.get("edge_cents"),
+        other_side=_edge_side_words(entry.get("edge_side"), takes) == "no")
+    # A LIVE CARD CARRIES NO PRICE, NO EDGE, NO SIZE AND NO TAP. The in-game
+    # rule is already law (THE_PRICED P2): a score up to ninety seconds stale
+    # against a live market is adversely selected by construction, so a card
+    # whose game is being played states the score and nothing that could be
+    # acted on. `audit.live_card_faults` fails the gate on any of them.
+    if state == "live":
+        for field in ("payout_words", "price_words", "edge_words",
+                      "edge_line_words", "edge_label", "size_words",
+                      "model_words", "venue_words"):
+            out.pop(field, None)
+        out["edge_state"] = "none"
+        out["taken_badge"] = language.taken_badge_words() if taken else None
+    if state == "final":
+        out["settled_words"] = language.settled_outcome_words(
+            card.get("shown_prob"), card.get("outcome"),
+            out.get("question", ""))
+    return out
+
+
+def _favours_home(entry: dict, card: dict, context: dict) -> bool:
+    """Which club the card's WORDS are about, for the accent colour.
+
+    THE SAME ANSWER THE PRICES USE. `question_takes_the_proposition` says
+    whether the question names the side the claim is stored from -- the home
+    side on a winner or a spread -- and the accent follows the words rather
+    than the subject: a prediction of "the home side does not cover" is a card
+    about the away side, and painting it in the home club's colour is the
+    wrong-side defect again, in paint.
+
+    A GUESS HERE IS ONLY A COLOUR, and it is still not guessed: the subject
+    names a club on a winner or a spread question, and a total is about
+    neither, which the caller reads as the home side by convention rather
+    than by inference.
+    """
+    takes = entry.get("question_takes_the_proposition")
+    if takes is not None:
+        return bool(takes)
+    subject = (card.get("subject") or "").strip()
+    return not (subject and subject == context.get("away"))
 
 
 def _today_block(conn: sqlite3.Connection, cards: list[dict],
@@ -1325,11 +1564,17 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
     clears_chip = _one_chip(clears_entries)
     watch_chip = _one_chip(watch_entries)
 
-    clears, below_floor, watching = [], [], []
+    clears, below_floor, watching, live, settled_cards = [], [], [], [], []
     for entry in clears_entries:
         card = _today_card(entry, by_id[entry["prediction_id"]],
                            taken=entry["prediction_id"] in already,
-                           group_tier=clears_chip, unit_dollars=unit_dollars)
+                           group_tier=clears_chip, unit_dollars=unit_dollars,
+                           conn=conn)
+        # A GAME BEING PLAYED IS NOT AN UPCOMING PICK. It moves whole, with
+        # everything that could be acted on stripped off it by `_today_card`.
+        if card["state"] == "live":
+            live.append(card)
+            continue
         size = entry["size"]
         card["size_words"] = language.size_words(
             units=size["units"], flat=size["kind"] == "flat",
@@ -1340,10 +1585,17 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
     for entry in watch_entries:
         # NO SIZE ON A WATCHED CARD. A size on a pick that does not clear the
         # bar is a recommendation the app is not making.
-        watching.append(_today_card(
+        card = _today_card(
             entry, by_id[entry["prediction_id"]],
             taken=entry["prediction_id"] in already,
-            group_tier=watch_chip, unit_dollars=unit_dollars))
+            group_tier=watch_chip, unit_dollars=unit_dollars, conn=conn)
+        (live if card["state"] == "live" else watching).append(card)
+
+    # HOW MANY OF THE DAY'S QUESTIONS HAVE FINISHED. Counted from the cards
+    # themselves rather than queried again, so the strip cannot disagree with
+    # the page about what day it is.
+    settled_n = sum(1 for c in cards
+                    if card_state((c.get("game_status") or "")) == "final")
 
     median_price = statistics.median(prices) if prices else None
     fee_cents = None
@@ -1352,6 +1604,55 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
 
         fee_cents = round(_recommend.fee(median_price) * 100, 1)
 
+    # THE LIVE GROUP IS BUILT FROM THE CARDS, not from the priced entries.
+    # `recommend.for_predictions` calls `refuse_in_game` and drops a question
+    # whose game has started -- correctly, because nothing may be sized
+    # in-game -- so a card assembled from its output vanished the moment the
+    # first pitch was thrown instead of moving to Live.
+    # THE SETTLED CARDS, for Results. Same card, third state: the loop
+    # closed on the one that opened it.
+    for card_row in cards:
+        if not (card_row.get("on_shortlist")
+                or card_row["prediction_id"] in already):
+            continue
+        if card_state(card_row.get("game_status") or "") != "final":
+            continue
+        settled_cards.append(_today_card(
+            {"prediction_id": card_row["prediction_id"],
+             "gate_n": card_row.get("gate_n") or 0,
+             "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+             "sport": card_row.get("sport")},
+            card_row,
+            taken=card_row["prediction_id"] in already,
+            group_tier=None, unit_dollars=unit_dollars, conn=conn))
+
+    priced_ids = {e["prediction_id"] for e in priced}
+    for card_row in cards:
+        # SHORTLISTED, OR ONE HE MARKED. A taken pick is the game he has money
+        # on, and it belongs on Live whether or not the ranker put it in the
+        # day's top twenty -- that ranking is about which questions were worth
+        # asking before the game, and this tab is about the game.
+        if not (card_row.get("on_shortlist")
+                or card_row["prediction_id"] in already):
+            continue
+        if card_row["prediction_id"] in priced_ids:
+            continue          # already handled above, in whichever group
+        if card_state(card_row.get("game_status") or "") != "live":
+            continue
+        live.append(_today_card(
+            {"prediction_id": card_row["prediction_id"],
+             "gate_n": card_row.get("gate_n") or 0,
+             "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+             "sport": card_row.get("sport")},
+            card_row,
+            taken=card_row["prediction_id"] in already,
+            group_tier=None, unit_dollars=unit_dollars, conn=conn))
+
+    # TAKEN FIRST ON LIVE, and nothing else about them. The game he has money
+    # on is the one he is looking for; which way it is going is the game's to
+    # say, not the app's.
+    live.sort(key=lambda c: (not c["taken"], c.get("question") or ""))
+
     day = next((c.get("league_date") for c in cards if c.get("league_date")), None)
     sport = next((c.get("sport") for c in cards if c.get("sport")), None)
     strip = language.day_strip_words(
@@ -1359,13 +1660,28 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         slate_words=language.SPORT_LABELS.get(sport, sport),
         clears=len(clears), watching=len(watching),
         below_floor=len(below_floor), floor=floor,
-        forecaster=forecaster)
+        forecaster=forecaster, live=len(live), settled=settled_n)
 
     from . import tasks as _tasks
 
     return {
         "n": len(clears),
         "watching_n": len(watching),
+        "live_n": len(live),
+        "settled_n": settled_n,
+        "live": live,
+        "live_heading": language.state_heading_words("live", len(live)),
+        "settled": settled_cards,
+        "settled_heading": language.state_heading_words(
+            "final", len(settled_cards)),
+        "live_empty_words": (None if live else language.live_empty_words(
+            next((c.get("kickoff_utc") for c in cards
+                  if card_state(c.get("game_status") or "") == "upcoming"
+                  and c.get("kickoff_utc")), None))),
+        "live_first_kickoff_utc": next(
+            (c.get("kickoff_utc") for c in cards
+             if card_state(c.get("game_status") or "") == "upcoming"
+             and c.get("kickoff_utc")), None),
         "below_floor_n": len(below_floor),
         "floor": floor,
         "clears": clears,
