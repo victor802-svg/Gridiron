@@ -624,6 +624,13 @@ INTERNAL_TERMS = (
     "pitcher_strikeouts", "market_type", "prop_type", "model_prob",
     "line_asked", "factor_set_version", "created_utc", "resolved_utc",
     "implied_prob", "game_id",
+    # GRIDIRON_COMBOS brought these into the payloads (2026-09-08) and the
+    # list did not know them until NIGHT_AUDIT item 4 read it against the
+    # tree. Any of them on a label is a column name a reader would have to
+    # decode.
+    "combo_2", "combo_3", "same_game", "unforecast_leg", "unforecast_sport",
+    "why_not", "legs_text", "settles_into", "package_id", "taken_id",
+    "retracted_utc",
     # FACTOR-SET VERSION STRINGS. "Factor set fs2" rendered in the footer of
     # every page and the scan called the page clean, because a version is not
     # snake_case and was not on this list. It is an internal identifier by any
@@ -5468,6 +5475,9 @@ CREDENTIAL_WORDS = (
     "api_key", "apikey", "secret", "token", "password", "cookie", "session",
     "credential", "bearer", "private_key", "signing_key", "access_key",
     "auth_header",
+    # THE SPELLINGS A CLIENT LIBRARY USES (NIGHT_AUDIT item 4, 2026-09-08).
+    # Grepped against the tree before adding: zero matches each.
+    "client_secret", "refresh_token", "auth_token", "passwd",
 )
 #: Names that are a venue credential whatever module they sit in.
 VENUE_CREDENTIAL_IDENTIFIERS = tuple(
@@ -5635,7 +5645,36 @@ def order_path_faults(root: Path | None = None) -> list[str]:
                         f"{path.relative_to(root)} sends {verb.strip(chr(34))} "
                         f"from the market module. LAW 5: every venue request is "
                         f"unauthenticated and READ-ONLY.")
+            # A `urllib` POST HAS NO VERB IN IT (NIGHT_AUDIT item 4, 2026-09-08).
+            # `Request(url, data=body)` posts because `data` is present; the
+            # verb list above never sees it. Read off the syntax tree, where a
+            # keyword argument cannot hide in a string.
+            for name, keyword in _request_write_keywords(path):
+                faults.append(
+                    f"{path.relative_to(root)} builds {name}(..., {keyword}=...) "
+                    f"in the market module, which is a write however it is "
+                    f"spelled. LAW 5: every venue request is unauthenticated "
+                    f"and READ-ONLY.")
     return sorted(set(faults))
+
+
+def _request_write_keywords(path: Path) -> list[tuple[str, str]]:
+    """Every `Request(...)` call in a file that carries `data=` or `method=`."""
+    import ast as _ast
+
+    tree = _ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    hits: list[tuple[str, str]] = []
+    for node in _ast.walk(tree):
+        if not isinstance(node, _ast.Call):
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, _ast.Attribute) else getattr(func, "id", "")
+        if not name or not name.endswith("Request"):
+            continue
+        for kw in node.keywords:
+            if kw.arg in ("data", "method"):
+                hits.append((name, kw.arg))
+    return hits
 
 
 def check_no_order_path(root: Path | None = None) -> None:
@@ -5709,6 +5748,8 @@ LEDGER_SHAPED_COLUMNS = (
     "stake", "price", "paid", "payout", "payoff", "profit", "loss", "amount",
     "units", "size", "returned", "return", "odds", "cost", "won", "balance",
     "pnl", "money", "usd", "dollars", "wager", "risk",
+    # NIGHT_AUDIT item 4, 2026-09-08: two more shapes a ledger column takes.
+    "winnings", "net_profit",
 )
 
 #: The modules that teach the model anything. None of them may name the table.
@@ -5991,6 +6032,45 @@ DAY_TEXT_KEYS = (
     "legs_words", "margin_words", "singles_words", "payout_words",
     "price_words", "empty_words", "fee_words",
 )
+
+#: A STALE JOB MUST BE ON THE STRIP (NIGHT_AUDIT item 1, 2026-09-08). The
+#: payload that draws Picks has to carry every freshness entry, and an entry
+#: past its threshold has to say so in its own words -- a mark with no words
+#: is a style, and a job that is stale on the ledger and fresh on the page is
+#: the dead key again.
+FRESHNESS_JOBS = ("daily_run", "venue_read", "reasoning")
+
+
+def freshness_faults(payload) -> list[str]:
+    """The strip hides a dead job, or calls a stale one fresh."""
+    block = (payload or {}).get("freshness")
+    if not isinstance(block, dict):
+        return ["the Picks payload carries no freshness block, so a dead job "
+                "cannot reach the first screen"]
+    faults = []
+    seen = {e.get("job") for e in block.get("entries") or []}
+    for job in FRESHNESS_JOBS:
+        if job not in seen:
+            faults.append(f"freshness: the {job} line is missing from the strip")
+    for entry in block.get("entries") or []:
+        age, limit = entry.get("age_hours"), entry.get("limit_hours")
+        past = age is None or (limit is not None and age > limit)
+        if past and not entry.get("stale"):
+            faults.append(f"freshness: {entry.get('job')} is {age}h old against "
+                          f"a {limit}h threshold and is not marked stale")
+        if entry.get("stale") and "past" not in (entry.get("words") or "") \
+                and "never" not in (entry.get("words") or ""):
+            faults.append(f"freshness: {entry.get('job')} is stale and its words "
+                          f"do not say so")
+    return faults
+
+
+def check_the_strip_shows_a_dead_job(payload) -> None:
+    faults = freshness_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A JOB THAT FAILS MUST BE VISIBLE ON THE FIRST SCREEN:"
+            + _NL2 + _NL2.join(faults[:6]))
 
 
 def day_pressure_faults(payload) -> list[str]:

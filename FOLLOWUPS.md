@@ -621,3 +621,85 @@ un-mark a pick he took by mistake, and cannot then mark it again.
 **What would settle it:** a `taken_sequence` column, so the UNIQUE becomes
 (prediction_id, sequence) and each tap is its own row with the retraction that
 answers it. Nobody needs it until a mistaken un-mark has to be reversed.
+
+---
+
+## GRIDIRON_NIGHT_AUDIT, 2026-09-08 — findings that need a ruling *(class c)*
+
+### The live poller has no scheduled task *(rule needed)*
+
+`task_runs` shows `live` ran twice, both on 2026-09-02, by hand. There is no
+`Gridiron-Live` in Task Scheduler and none in `tools/schedule_install.ps1`'s
+`$TaskNames`; the installer's own docstring lists the tasks it registers and
+the poller is not among them. Consequence, measured: `games` has had **zero**
+rows with `status = 'in'` since the 2nd, so the Live tab THREE_STATES built has
+never shown a live card on the live record, and a game's score never updates
+between the four-hourly `refresh` runs. THREE_STATES's own close-out flagged
+"the poller has not run against a live baseball slate since these cards
+existed" under *what to check next*, and nobody ruled.
+
+Two readings: **(i)** register `Gridiron-Live` on a short repetition (the task
+already makes zero requests when nothing is on, by test) — a machine change
+made while the operator sleeps, which the audit's remit does not cover;
+**(ii)** declare Live a read of `refresh` only and say so on the tab. Not
+chosen.
+
+### Coverage is measured once per card, not once per page *(rule needed, or leave)*
+
+One Picks render at 107 cards issues 694 SQL statements: `recommend.for_predictions`
+calls `coverage.priceable()` per prediction, which re-runs `measure()` — a
+full scan of the sport's `venue_quotes` — and `clv_report()` each time (120×
+and 60× respectively). The render takes 0.3 s today, so nothing is slow; no
+docstring promises once-per-slate, so this is not a defect by class (a). It
+will scale with the slate. Two readings: declare "measured once per slate" and
+memoise per render, or leave it and re-measure at 500 cards.
+
+### The closer sits below near-start's early return *(rule needed)*
+
+`record_closing_prices` is called inside `_run_near_start` after the
+`if not due: return "noop"` branch, so it runs only when some game is within
+two hours. On scratch at 02:40 PT it closed nothing while two recommendations'
+games were final. The close *value* is the last pre-kickoff claim either way,
+so nothing is lost — only `closed_utc` and the CLV report's "awaiting close"
+count lag until the next window. Reading (i): call the closer before the early
+return so every firing closes what has finished; reading (ii): leave it. Not
+chosen.
+
+### `catch-up` reports "failed" when a member correctly refuses *(rule needed)*
+
+Both `catch-up` runs are `failed` because one member `predict` raised
+`SlateAlreadyAnswered` — the correct refusal of a slate already answered. The
+sum calls a refusal a failure, so the panel's only logon task has never shown
+green. Reading (i): count `SlateAlreadyAnswered` as `noop` inside catch-up;
+reading (ii): leave it, since the detail line names the reason.
+
+### "Turns red" against the colour law *(rule needed)*
+
+NIGHT_AUDIT item 1 asked that a stale job on the day strip turn red.
+`audit.colour_law_faults` — ruled under CARD_FACE — admits `--loss` only under
+a selector naming an outcome (`.loss`, `.neg`, `.down`); a job that stopped is
+not an outcome, and the planting run went 244 of 245 with red in place.
+Shipped instead: bold in the warning ink, threshold in the words. Reading (i):
+widen `_LOSS_SELECTOR` with a dated word for appliance faults (`.stale` or
+`.dead`), which puts red on the first screen for the thing the brief wanted it
+for; reading (ii): keep red for outcomes only, as ruled. Not chosen.
+
+### `setting()` lets the process environment beat `.env` *(recorded, not a defect)*
+
+Documented and deliberate ("the process environment wins"). Tonight's key
+resolves from `.env` and is absent from the environment — the pipeline row
+passes. Recorded because a stale `ANTHROPIC_API_KEY` exported in a shell
+profile would silently outrank the rotated key in the file, which is the
+shape of the 2 September incident from the other side.
+
+## GRIDIRON_NIGHT_AUDIT, 2026-09-08 — measured, no action *(class b or none)*
+
+* **Waste, seven days.** Distinct URLs fetched: ESPN 8,233 / 122 / 1,367 /
+  10,749 / 2,761 / 223 / 108 (1–7 Sep); the venue 31 / 255 (6–7 Sep); LLM
+  reasoning calls 178, one key probe. On scratch, `refresh` made 2 network
+  requests and repeated none; `near-start` and `capture` made 0. The poller
+  made 0 because it never runs.
+* **The UFC forecasters.** The LLM half of the 8 September card was written
+  at 2026-09-07 19:00Z, twenty-five hours after the statistical half, and only
+  because `final:ufc` fired a second time — the dead-key day. Both stand; the
+  strip's reasoning-pass age now makes the next such gap red.

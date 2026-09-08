@@ -917,6 +917,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         "shortlist": shortlist_block,
         "recommendations": recommendations_block,
         "today": today_block,
+        # THE APPLIANCE'S PULSE, ON THE FIRST SCREEN (NIGHT_AUDIT item 1). On
+        # the payload the strip is drawn from, so a dead job is on the page
+        # the operator opens rather than on the one he does not.
+        "freshness": freshness(conn),
         # WHOSE PICKS THESE ARE, and who else has some. Named on the payload
         # rather than inferred by the renderer from the cards: a list that
         # cannot say who made it is a list nobody can check.
@@ -3965,6 +3969,64 @@ def _parse_utc(text):
         return _dt.fromisoformat(str(text).replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# A DEAD JOB ON THE FIRST SCREEN (GRIDIRON_NIGHT_AUDIT item 1, 2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# The dead key of 2 September was recorded in `task_runs` on every run for
+# thirty hours and reached no screen the operator opens. THREE_STATES then
+# took the notices bar off the top of Picks. This puts three ages there
+# instead -- small, in words, and marked stale past a declared threshold --
+# so a machine that has stopped keeping the record looks stopped.
+
+
+def freshness(conn: sqlite3.Connection) -> dict:
+    """How old the last successful daily run, venue read and reasoning pass are.
+
+    NOT SPORT-SCOPED, and that is not a LAW 6 problem: these are facts about
+    the appliance. Each age is read from the ledger the job itself writes --
+    `task_runs` for the run, `venue_quotes` for the read, `llm_calls` for the
+    pass -- so a line cannot say "fresh" about a job that only looked alive.
+    """
+    now = _parse_utc(db.utcnow())
+
+    def _age(iso: str | None) -> float | None:
+        when = _parse_utc(iso) if iso else None
+        if when is None:
+            return None
+        return round((now - when).total_seconds() / 3600.0, 1)
+
+    run = conn.execute(
+        "SELECT MAX(started_utc) FROM task_runs"
+        " WHERE task LIKE 'predict:%' AND result IN ('ok', 'noop')").fetchone()[0]
+    venue = conn.execute("SELECT MAX(fetched_utc) FROM venue_quotes").fetchone()[0]
+    reasoning = conn.execute(
+        "SELECT MAX(called_utc) FROM llm_calls WHERE ok = 1"
+        "   AND purpose = 'reasoning'").fetchone()[0]
+
+    entries = []
+    for key, label, last in (("daily_run", "daily run", run),
+                             ("venue_read", "venue read", venue),
+                             ("reasoning", "reasoning pass", reasoning)):
+        age = _age(last)
+        limit = config.FRESHNESS_HOURS[key]
+        stale = age is None or age > limit
+        entries.append({
+            "job": key,
+            "label": label,
+            "last_utc": last,
+            "age_hours": age,
+            "limit_hours": limit,
+            "stale": stale,
+            "words": language.freshness_words(label, age, limit),
+        })
+    return {
+        "declared": config.FRESHNESS_DECLARED,
+        "entries": entries,
+        "any_stale": any(e["stale"] for e in entries),
+    }
 
 
 def _front_page_warnings(conn: sqlite3.Connection) -> list[dict]:

@@ -1149,6 +1149,18 @@ const Gridiron = (function () {
     if (where) where.textContent = today.where_words || '';
     const counts = document.getElementById('day-counts');
     if (counts) counts.textContent = today.count_words || '';
+    // THE THREE AGES, EVERY STRING THE SERVER'S. A stale one is marked, and
+    // its own words say which threshold it is past; nothing here is red,
+    // because the colour law keeps red for a loss.
+    const jobs = document.getElementById('day-jobs');
+    if (jobs) {
+      jobs.innerHTML = '';
+      const pulse = (data && data.freshness && data.freshness.entries) || [];
+      pulse.forEach(entry => {
+        jobs.appendChild(el('span', 'day-job' + (entry.stale ? ' day-job-stale' : ''),
+                            entry.words || ''));
+      });
+    }
     // SAID ONCE FOR THE SLATE. This sentence was appended to every row --
     // thirty times on the football slate of 2026-09-07 -- which is how a page
     // teaches a reader that its rows are not worth reading.
@@ -1645,25 +1657,9 @@ const Gridiron = (function () {
 
   //: How many cards the grid shows before "show all". Six, from the brief.
   const CARDS_BEFORE_SHOW_ALL = 6;
-  //: How many picks the hero steps through. Five, from the brief.
-  const HERO_STEPS = 5;
-
-  // THE HERO NEVER LEADS WITH A FLAGGED METHOD (operator ruling 2,
-  // 2026-09-04). A market whose own note says it has measured a coin flip has
-  // no business in the largest type on the page, whatever the sort put first.
-  //
-  // READ OFF THE NOTE ITSELF. `method_note` is the words the server wrote; a
-  // card that has them is ineligible, and there is no second boolean that
-  // could say otherwise. The browser does not know WHY the market is flagged
-  // and does not need to.
-  //
-  // THE POOL CAN BE EMPTY, and then there is no hero at all -- on the totals
-  // tab, every card is flagged. "Never" is the ruling's word, so an empty pool
-  // hides the hero rather than promoting a flagged card with a caveat
-  // attached. The grid then opens at rank 1 and shows every one of them.
-  function heroPool(cards) {
-    return cards.filter(c => !c.method_note);
-  }
+  // THE HERO IS GONE (THREE_STATES S1, 2026-09-08) and so is the pool it
+  // stepped through: `heroPool` and `HERO_STEPS` stood here with no caller
+  // until NIGHT_AUDIT item 6 measured that and removed them.
   function localTime(iso) {
     try {
       return new Date(iso).toLocaleTimeString([], {
@@ -3610,17 +3606,8 @@ const Gridiron = (function () {
       }
     }
   }
-  function shortNotice(w) {
-    // Keep the task's NAME. Splitting on the first colon turned "predict:nfl"
-    // and "predict:nba" both into "predict", so the bar said "predict never
-    // run · predict never run" — two notices that read as one repeated.
-    const text = w.text || '';
-    const head = text.split(': ')[0];
-    if (w.kind === 'silent') return head + ' never run';
-    if (w.kind === 'missed') return head + ' missed a slate';
-    const hours = text.match(/([\d.]+)h ago/);
-    return head + (hours ? ' stale ' + Math.round(+hours[1]) + 'h' : ' stale');
-  }
+  // `shortNotice` stood here for the notices bar THREE_STATES removed;
+  // nothing called it. Removed by NIGHT_AUDIT item 6, 2026-09-08.
 
   async function renderGreeting() {
     const strip = document.getElementById('glance');

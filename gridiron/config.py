@@ -1416,6 +1416,25 @@ def is_combo_market(market: str | None) -> bool:
     return market in COMBO_MARKETS
 
 
+#: HOW OLD A JOB MAY BE BEFORE THE FIRST SCREEN SAYS SO
+#: (GRIDIRON_NIGHT_AUDIT item 1, 2026-09-08). Three ages sit on the day strip
+#: on Upcoming; each is marked stale past its threshold, in words that carry
+#: the threshold. Declared here and dated, like every other threshold, so the
+#: mark cannot be argued away on the morning it appears. (The brief said
+#: "red"; the colour law reserves red for a loss, and that fork is the
+#: operator's -- see the NIGHT_AUDIT close-out.)
+#:
+#: THE DAILY RUN: 36 hours, the same figure the daily predict tasks declare
+#: as `silent_after_hours` -- one skipped morning is a machine that slept,
+#: two is a machine nobody noticed sleeping.
+#: THE VENUE READ: 30 hours. The near-start pass reads the venue within two
+#: hours of every kickoff and baseball plays every day until 27 September, so
+#: a day and a night with no read means the pass is not running.
+#: THE REASONING PASS: 36 hours, because the LLM writes once per daily slate
+#: and this is the line the dead key would have turned red on 3 September.
+FRESHNESS_HOURS = {"daily_run": 36.0, "venue_read": 30.0, "reasoning": 36.0}
+FRESHNESS_DECLARED = "2026-09-08T00:00:00Z"
+
 #: THE COMBO KILL (GRIDIRON_COMBOS C4, 2026-09-08). At fifty settled packages
 #: in a sport, if the packages' closing-line value is negative while the same
 #: period's single legs is positive, that sport's combo markets are retired

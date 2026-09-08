@@ -3790,8 +3790,15 @@ def edge_line_words(edge_cents: float | None, other_side: bool = False) -> str:
     """
     if edge_cents is None:
         return "no price to compare against yet"
-    tail = ", on the other side" if other_side else ""
-    return f"{edge_cents:+.1f}¢ after fees{tail}"
+    # THE LABEL ABOVE IT ALREADY SAYS "Edge after fees" and, when it applies,
+    # "on the other side" (`edge_label_words`). This said both again: the first
+    # package card rendered read "EDGE AFTER FEES +9.0¢ after fees", and the
+    # single card had read the same since the label was added. Found by
+    # NIGHT_AUDIT item 6, 2026-09-08, as a sibling of the payout chip's
+    # "Payspays". `other_side` is kept in the signature so the one caller
+    # that passes it keeps compiling; the label is where the words live.
+    del other_side
+    return f"{edge_cents:+.1f}¢"
 
 
 def starter_words(name: str | None) -> str:
@@ -3979,3 +3986,24 @@ def taken_packages_line(took: int, offered: int, gate: int) -> str:
                 f"needs {gate} settled, so this is a count and not a verdict.")
     return (f"{took} of {offered} priced packages marked, scored on their own "
             f"line and never mixed with single legs.")
+
+
+def freshness_words(label: str, age_hours: float | None, limit: float) -> str:
+    """"daily run 7h ago", or "venue read 31h ago, past 30h", marked stale.
+
+    THE THRESHOLD IS IN THE SENTENCE when it is crossed, so the mark is never
+    a style a reader has to decode: it says what it means and what the rule
+    was. A job that has never run says so rather than showing an age of
+    nothing.
+    """
+    if age_hours is None:
+        return f"{label} has never run"
+    if age_hours < 1:
+        shown = "under an hour ago"
+    elif age_hours < 48:
+        shown = f"{age_hours:.0f}h ago"
+    else:
+        shown = f"{age_hours / 24:.0f} days ago"
+    if age_hours > limit:
+        return f"{label} {shown}, past {limit:g}h"
+    return f"{label} {shown}"

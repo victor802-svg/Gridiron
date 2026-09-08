@@ -7112,6 +7112,7 @@ def plant_the_taken_table_in_a_training_query() -> Result:
 LAW_NEVER_TRANSACTS = "THE APP RECOMMENDS, IT NEVER TRANSACTS"
 
 LAW_LIVE_RECORD = "VERIFICATION NEVER TOUCHES THE LIVE RECORD"
+LAW_FIRST_SCREEN = "A JOB THAT FAILS IS VISIBLE ON THE FIRST SCREEN"
 
 
 def _tree_with(module: str, source: str):
@@ -7259,6 +7260,58 @@ def _planted_package(**fields) -> dict:
 # writing through the one door that may read it, and deleting a tap instead of
 # retracting it.
 
+
+
+def plant_a_dead_job_the_strip_calls_fresh() -> Result:
+    """A job past its threshold, marked fresh on the strip (NIGHT_AUDIT 1)."""
+    from gridiron import audit as _audit, config as _config
+
+    limit = _config.FRESHNESS_HOURS["reasoning"]
+    planted = {"freshness": {"entries": [
+        {"job": "daily_run", "age_hours": 2.0, "limit_hours": 36.0,
+         "stale": False, "words": "daily run 2h ago"},
+        {"job": "venue_read", "age_hours": 1.0, "limit_hours": 30.0,
+         "stale": False, "words": "venue read 1h ago"},
+        # THE DEAD KEY: thirty hours of silence, shown as fine.
+        {"job": "reasoning", "age_hours": limit + 30.0, "limit_hours": limit,
+         "stale": False, "words": "reasoning pass 66h ago"},
+    ]}}
+    try:
+        _audit.check_the_strip_shows_a_dead_job(planted)
+    except _audit.LawViolation as exc:
+        return Result(LAW_FIRST_SCREEN, "a dead job shown as fresh on the strip",
+                      "audit.check_the_strip_shows_a_dead_job", True, str(exc))
+    return Result(LAW_FIRST_SCREEN, "a dead job shown as fresh on the strip",
+                  "audit.check_the_strip_shows_a_dead_job", False,
+                  "NOT CAUGHT - the reasoning pass has been silent for sixty-six "
+                  "hours and the first screen says nothing, which is the dead "
+                  "key of 2 September again")
+
+
+def plant_a_urllib_post_at_the_venue() -> Result:
+    """A venue write with no verb in it (NIGHT_AUDIT item 4, 2026-09-08).
+
+    `urllib.request.Request(url, data=body)` posts because `data` is there;
+    the verb list never sees the word. Planted in the market module, where
+    every venue request must be read-only.
+    """
+    from gridiron import audit as _audit
+
+    tree = _tree_with("market/kalshi.py", (
+        "import urllib.request\n"
+        "BASE = 'https://api.example'\n"
+        "def _send(ticker, body):\n"
+        "    req = urllib.request.Request(BASE + '/orders', data=body)\n"
+        "    return urllib.request.urlopen(req)\n"))
+    faults = _audit.order_path_faults(tree)
+    hit = [f for f in faults if "data=" in f]
+    if hit:
+        return Result(LAW_NEVER_TRANSACTS, "a urllib POST with no verb, at the venue",
+                      "audit.order_path_faults", True, hit[0])
+    return Result(LAW_NEVER_TRANSACTS, "a urllib POST with no verb, at the venue",
+                  "audit.order_path_faults", False,
+                  "NOT CAUGHT - Request(url, data=body) is a POST, and the verb "
+                  "scan only knows the word")
 
 def plant_a_test_that_opens_the_live_record() -> Result:
     """Open the operator's own database from the verification path."""
@@ -8372,6 +8425,8 @@ def main() -> int:
     results.append(plant_a_coverage_list_chosen_by_results())
     results.append(plant_the_priced_package_inside_the_blind_closure())
     results.append(plant_a_market_import_after_the_priced_exemption())
+    results.append(plant_a_dead_job_the_strip_calls_fresh())
+    results.append(plant_a_urllib_post_at_the_venue())
     results.append(plant_a_test_that_opens_the_live_record())
     results.append(plant_a_write_through_the_live_read_handle())
     results.append(plant_a_deleted_tap())

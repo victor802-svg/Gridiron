@@ -251,7 +251,10 @@ def test_the_payout_is_the_biggest_number_and_the_edge_is_a_line():
     # "Payspays 1.65x" the first time a card carried a real payout.
     assert language.payout_chip_words(1.65) == "1.65x"
     assert language.price_under_payout_words(0.61) == "61¢ a contract"
-    assert language.edge_line_words(3.2) == "+3.2¢ after fees"
+    # THE VALUE DOES NOT REPEAT ITS LABEL (NIGHT_AUDIT item 6, 2026-09-08):
+    # the line is headed "Edge after fees" and the value used to say it again.
+    assert language.edge_line_words(3.2) == "+3.2¢"
+    assert language.edge_line_words(3.2, other_side=True) == "+3.2¢"
 
 
 def test_one_type_scale_and_four_sizes():

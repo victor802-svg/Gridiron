@@ -336,3 +336,27 @@ observations where a single leg needs fifty, because a package's close is the
 product of two or three moving quotes. The kill criterion is declared and dated
 before the first package exists: at fifty settled in a sport, packages losing to
 the close while that sport's singles beat it retires the sport's combo markets.
+
+## 2026-09-08 — three dates the record has to carry (GRIDIRON_NIGHT_AUDIT item 9)
+
+**The date the pipeline became whole: 2026-09-07.** Whole means every stage
+had written at least one row: blind forecasts (since 2026-08-29), venue quotes
+(NFL and college football from 2026-09-06 09:29Z, baseball from 2026-09-07
+19:37Z once the ticker carried the first pitch), at-the-line claims (from
+2026-09-07 19:37Z), and recommendations (the first eight, all baseball, from
+2026-09-07 20:52Z). The closer had nothing to close until the first two of
+those games went final on the night of 2026-09-08; the first closing price
+is therefore still to be written as this is recorded.
+
+**The backfilled-claims flag.** Seventeen of the first twenty-nine at-the-line
+claims — every one stamped 2026-09-07 19:41Z, on games that had already
+started — were priced against a quote taken after first pitch. They stand,
+under LAW 3, and no column marks them: the record identifies them only by
+`c.created_utc > g.kickoff_utc`, which returns exactly those seventeen and
+nothing written since. The `quote_after_first_pitch` guard that forbids the
+shape landed fifty minutes after them (commit `25d83b8`, 20:30Z). Anything
+that reads the closing-line record should exclude them by that predicate, and
+this paragraph is the flag until a column is.
+
+**The date the combo record opened: 2026-09-08**, with no priceable package
+in any sport this record forecasts — see the entry above.
