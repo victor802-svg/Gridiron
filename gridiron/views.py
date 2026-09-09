@@ -2972,10 +2972,21 @@ def _rulings_in_force() -> list[dict]:
         {"name": "No sample, no claim",
          "what": ("Nothing claims an edge below 100 resolved predictions in "
                   "that category, and every figure is shown with its N.")},
-        {"name": "Not a betting tool",
-         "what": ("No stake sizing, no bankroll, no bet recommendations. The "
-                  "output is a probability, its reasoning and a track "
-                  "record.")},
+        # AMENDED 2026-09-07 AND THE PAGE DID NOT FOLLOW UNTIL 2026-09-09.
+        # This read "Not a betting tool -- no stake sizing, no bankroll, no
+        # bet recommendations" for two days after the law stopped saying so,
+        # while the app sized every pick and led with a group called "clears
+        # the bar". A law list that describes a previous version of the law is
+        # worse than no list: it is the page telling a reader not to check the
+        # thing it is doing.
+        {"name": "The app recommends, it never transacts",
+         "what": ("A recommended side and size, and expected-value arithmetic "
+                  "against a recorded price. Never an account, an "
+                  "authenticated request, an order path or a wagering ledger "
+                  "-- those four are structural and not amendable. Below a "
+                  "market's gate the size is a flat unit and says \"no "
+                  "measured edge\"; above it, never more than a quarter of "
+                  "Kelly.")},
         {"name": "Never aggregate across sports",
          "what": ("Every curve, score, edge figure and sample size belongs to "
                   "exactly one sport. The functions that read the record take "
