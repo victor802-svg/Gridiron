@@ -801,3 +801,20 @@ Declared in `kalshi.NO_VENUE_SERIES` with its evidence. The record forecasts
 it and the venue will not price it per game -- only `KXNFLSEASONRUSHYDS`,
 season-long, which this record does not forecast. Not a gap to fill: a fact
 about the venue, and the guard requires it to stay written down.
+
+### Smart App Control blocks the unsigned bundle *(2026-09-09, service degraded)*
+
+The build at `45e4e0e` is stamped, hashed and unable to start: Smart App
+Control is enforcing and refused it (CodeIntegrity 3077/3118, 21:20:06). The
+previous bundle ran; the log holds 168 blocks since 2026-09-02 and none of
+them was Gridiron before today, so this is a verdict on the new hash rather
+than a policy change.
+
+**Right now the app is served from source** on the same port and the same
+commit, which does not survive a reboot, and `Gridiron-Serve` still launches
+the blocked exe.
+
+**What would settle it:** sign the binary. Allowing one hash by hand fixes
+today and reappears at the next rebuild; pointing the task at the venv's
+python abandons the bundle. Either of those is a decision, and both -- like
+the security setting itself -- are the operator's, not a session's.
