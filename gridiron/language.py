@@ -412,7 +412,12 @@ def phrase(item: dict) -> str:
         # through the subject would produce "Ohio State over 52.5", which reads
         # as a claim about one team's scoring and is not the question asked.
         over = "over" if side != "under" else "under"
-        return f"{over} {_number(line)} total points"
+        # WHAT THIS SPORT COUNTS. Hardcoded to "total points" until 2026-09-08,
+        # when the operator read "under 12.5 total points" on a baseball card.
+        # `SPORT_MARKET_WORDS` has held ("mlb", "total") -> "total runs" since
+        # the filter chips were written; the sentence never asked it.
+        unit = SPORT_MARKET_WORDS.get((item.get("sport"), "total"), "total points")
+        return f"{over} {_number(line)} {unit}"
 
     if market_type == "moneyline":
         # "ATL to lose" is arithmetic; "COL to win" is what a person says. The
@@ -1328,12 +1333,66 @@ def tier_label(tier: str | None) -> str:
 #:
 #: "SO FAR" IS DOING WORK. It dates the claim without a date: two sports have
 #: been measured this way and the finding is about those two.
+#: LAW 6 REACHES THE CARD (found by the operator, 2026-09-08). One note was
+#: shared by every sport's total and it cited NBA and NFL walk-forward edges,
+#: so a Cubs card argued from basketball and football. A number that mixes two
+#: sports describes neither, and on a card it describes the wrong game.
+#:
+#: THE NOTE IS NOW BUILT FROM THAT SPORT'S OWN VERDICT, and a sport whose
+#: total was never walked forward gets NO sentence: "we have not tested this"
+#: and "we tested it and it was a coin flip" are different facts, and the
+#: second may not be borrowed from a sport that is not on the card.
 METHOD_NOTES: dict[str, str] = {
+    # KEPT AS THE FALLBACK WORDING ONLY, with every other sport's figures
+    # taken out of it. `method_note_for` is what a card reads.
     "total_at_own_rung": (
-        "totals asked this way have been a coin flip so far "
-        "(NBA +0.001, NFL +0.002 in walk-forward) — shown for the record."
+        "asked at the rung nearest the model's own expectation, so the "
+        "question is close to a coin flip by construction — shown for the "
+        "record."
     ),
 }
+
+
+def method_note_for(sport: str | None, market: str | None) -> str | None:
+    """The flagged-method sentence for ONE sport, in that sport's own terms.
+
+    THE STRUCTURAL CLAIM IS TRUE EVERYWHERE AND NEEDS NO FIGURES: the rung is
+    the ladder point nearest the model's own expectation, so P(over) is near
+    one half by construction. That sentence is the same for every sport
+    because the METHOD is the same, and it cites nothing.
+
+    WHAT IS ADDED IS ONLY THAT SPORT'S OWN RECORDED VERDICT -- the word and
+    the sample size in `config.DISTRIBUTIONAL_VERDICTS[(sport, market)]`, read
+    from that key and no other. A sport with no verdict says so; it does not
+    borrow one.
+
+    THE FIGURES IN THE OLD SENTENCE ARE NOT REPRODUCED. It read "(NBA +0.001,
+    NFL +0.002 in walk-forward)", and those come from the measurement written
+    up beside `config.FLAGGED_METHODS` rather than from the verdict registry's
+    `rung_edge`, which holds different numbers. Rather than re-cite figures
+    whose provenance I cannot pin from the registry alone, the note carries
+    the verdict word and the sample, both of which are in the row it reads.
+    """
+    from . import config
+
+    key = config.flagged_method(sport or "", market or "")
+    if key is None:
+        return None
+    base = METHOD_NOTES.get(key)
+    if base is None:
+        return None
+    label = SPORT_LABELS.get(sport, (sport or "").upper())
+    verdict = config.distributional_verdict(sport or "", market or "")
+    if verdict is None:
+        return (f"{label}: {base} Reading it at the market's line instead has "
+                f"not been measured for {label}.")
+    n = verdict.get("n")
+    where = f" over {n:,} games" if n else ""
+    if verdict.get("verdict") == "NOT RUN":
+        return (f"{label}: {base} Reading it at the market's line was measured"
+                f"{where} and refused.")
+    return (f"{label}: {base} Reading it at the market's line was walked "
+            f"forward{where} and came back {verdict['verdict'].lower()}.")
 
 
 def method_note(key: str | None) -> str | None:

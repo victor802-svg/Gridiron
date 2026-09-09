@@ -1787,21 +1787,27 @@ def plant_a_selector_for_a_class_nothing_builds() -> Result:
     html = (web / "index.html").read_text(encoding="utf-8")
     css = (web / "style.css").read_text(encoding="utf-8")
 
-    # RE-POINTED AT THE CARDS UI (2026-09-04). It anchored on
-    # `tile.querySelector('.tile-score')`, and the tiles are deleted. The
-    # failure it guards against is unchanged and the new layout can commit it
-    # exactly as the old one did: `applyCardState` fetches parts of a card by
-    # class on every live tick, and `querySelector` answers null rather than
-    # raising, so a renamed class stops the scores moving in silence.
+    # RE-POINTED TWICE, AND THE RULE IS THE SAME BOTH TIMES. It anchored on
+    # `tile.querySelector('.tile-score')` until the tiles were deleted
+    # (2026-09-04), then on `applyCardState`'s `.card-when` until the old grid
+    # and its live tick were removed (2026-09-08). The failure it guards
+    # against has not changed: code fetches a node by class, `querySelector`
+    # answers null rather than raising, and the feature stops working in
+    # silence.
+    #
+    # IT NOW ANCHORS ON `saveSetting`, which fetches a settings row's status
+    # line by class before writing "saving..." into it. Rename that class and
+    # every settings change reports nothing at all, with no error anywhere --
+    # exactly the shape of the bug this planting was written for.
     #
     # THE BRIEF SAID RE-POINT, NOT DROP, and this is what that means: the
     # guard follows the mechanism it protects rather than retiring with the
     # markup it happened to be written against.
-    live = "node.querySelector('.card-when')"
+    live = "row.querySelector('.set-said')"
     if js.count(live) != 1:
         return _desk_plant([], "a selector for a class nothing builds",
                            "audit.dead_selector_faults")
-    broken = js.replace(live, "node.querySelector('.card-clock')", 1)
+    broken = js.replace(live, "row.querySelector('.set-spoke')", 1)
     faults = _audit.dead_selector_faults(broken, html, css)
 
     if _audit.dead_selector_faults(js, html, css):
@@ -7262,6 +7268,50 @@ def _planted_package(**fields) -> dict:
 
 
 
+
+def plant_the_old_card_on_the_live_tab() -> Result:
+    """Put a probability and a tier chip on a live card (2026-09-08).
+
+    THE SHAPE THE OPERATOR FOUND. Beneath the Live tab's own empty state the
+    page rendered the old Picks grid: the raw probability as the largest thing
+    on each card and a tier chip on every one. The night audit had passed Live
+    by reading the DOM for the ids it expected, which cannot see a section it
+    does not ask about.
+    """
+    from gridiron import audit as _audit
+
+    planted = {"today": {"live_heading": "In progress - 2 questions", "live": [
+        {"state": "live", "question": "Cubs at Brewers",
+         "probability": 0.78, "tier_chip": "STRONG"},
+    ]}}
+    try:
+        _audit.check_the_live_tab_shows_only_the_game(planted)
+    except _audit.LawViolation as exc:
+        return Result(LAW_CARDS, "a probability and a tier chip on a live card",
+                      "audit.check_the_live_tab_shows_only_the_game", True, str(exc))
+    return Result(LAW_CARDS, "a probability and a tier chip on a live card",
+                  "audit.check_the_live_tab_shows_only_the_game", False,
+                  "NOT CAUGHT - the Live tab is showing the pre-CARD_FACE card "
+                  "beside a score this app reads up to ninety seconds late")
+
+
+def plant_another_groups_heading_on_the_live_tab() -> Result:
+    """Let Upcoming's heading follow the reader onto Live."""
+    from gridiron import audit as _audit
+
+    planted = {"today": {"live_heading": "Clears the bar - 4 on today's slate",
+                         "live": []}}
+    try:
+        _audit.check_the_live_tab_shows_only_the_game(planted)
+    except _audit.LawViolation as exc:
+        return Result(LAW_CARDS, "another group's heading on the Live tab",
+                      "audit.check_the_live_tab_shows_only_the_game", True, str(exc))
+    return Result(LAW_CARDS, "another group's heading on the Live tab",
+                  "audit.check_the_live_tab_shows_only_the_game", False,
+                  "NOT CAUGHT - a heading for a group that is not on this tab, "
+                  "which is what the clears group's rule and its SOLID chip "
+                  "were doing over an empty Live tab")
+
 def plant_a_dead_job_the_strip_calls_fresh() -> Result:
     """A job past its threshold, marked fresh on the strip (NIGHT_AUDIT 1)."""
     from gridiron import audit as _audit, config as _config
@@ -8425,6 +8475,8 @@ def main() -> int:
     results.append(plant_a_coverage_list_chosen_by_results())
     results.append(plant_the_priced_package_inside_the_blind_closure())
     results.append(plant_a_market_import_after_the_priced_exemption())
+    results.append(plant_the_old_card_on_the_live_tab())
+    results.append(plant_another_groups_heading_on_the_live_tab())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_urllib_post_at_the_venue())
     results.append(plant_a_test_that_opens_the_live_record())

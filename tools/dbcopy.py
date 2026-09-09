@@ -108,8 +108,14 @@ def verify_copy(conn: sqlite3.Connection, tables=FACT_TABLES) -> dict:
             "which is what a POSITIONAL copy produces: a column added by "
             "migration sits at the end of the live table and in its declared "
             "position in a fresh schema, so every value after it shifts one "
-            "place along. Mismatches:" + SEPARATOR + SEPARATOR.join(mismatches[:8])
+            "place along. THE OTHER CAUSE IS GONE: until 2026-09-08 this "
+            "could also fire because the source was written while it was "
+            "read, and it did, and it reported a live poller as a transposed "
+            "schema. `copy_facts` now reads one snapshot for the copy and the "
+            "check both, so a mismatch here is the shift and nothing else. "
+            "Mismatches:" + SEPARATOR + SEPARATOR.join(mismatches[:8])
         )
+
     return {"tables": len(tables), "ok": True}
 
 
@@ -127,6 +133,16 @@ def copy_facts(conn: sqlite3.Connection, source: Path | str, tables=FACT_TABLES)
     conn.execute("ATTACH DATABASE ? AS live", (str(source),))
     copied: dict[str, int] = {}
     try:
+        # ONE INSTANT OF THE RECORD, for the copy AND for the check that
+        # follows it. The live database is in WAL, so the first read here
+        # fixes a snapshot that holds until COMMIT and blocks no writer.
+        #
+        # WITHOUT THIS the check read a later instant than the copy, because
+        # `commit()` released the read lock before it ran -- and on
+        # 2026-09-08 the gate failed with the live poller's `live_period` and
+        # the venue read's `http_cache` rows both moved beneath it. That was
+        # unreachable until ruling 1 registered the poller at ninety seconds.
+        conn.execute("BEGIN")
         for table in tables:
             cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
             live_cols = {r[1] for r in conn.execute(f"PRAGMA live.table_info({table})")}
@@ -138,10 +154,11 @@ def copy_facts(conn: sqlite3.Connection, source: Path | str, tables=FACT_TABLES)
                 f"INSERT INTO {table} ({joined}) SELECT {joined} FROM live.{table}"
             )
             copied[table] = cur.rowcount
-        conn.commit()
-        # Checked, not assumed. The copy is the step that silently corrupted a
-        # backtest and a verifier; it does not get to be trusted.
+        # Checked, not assumed, and checked BEFORE the commit so it reads the
+        # same instant the copy did. The copy is the step that silently
+        # corrupted a backtest and a verifier; it does not get to be trusted.
         verify_copy(conn, tables)
+        conn.commit()
     finally:
         conn.execute("DETACH DATABASE live")
     return copied

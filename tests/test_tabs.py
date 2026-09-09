@@ -13,7 +13,10 @@ WIDE = {"width": 1440, "height": 900}
 def _open_week(page):
     page.set_viewport_size(WIDE)
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .card", timeout=15000)
+    # THE CARDS MOVED (2026-09-08). The "More picks" grid was removed and
+    # the Today groups are the cards; the slate's own sentences still
+    # land in #week-cards, so the `.empty` assertions below are unchanged.
+    page.wait_for_selector("#today .face", timeout=15000)
     page.wait_for_timeout(300)
     if page.evaluate("!!document.querySelector('#week-tier-seg button[data-tier=\"\"]')"):
         page.click("#week-tier-seg button[data-tier='']")
@@ -21,7 +24,7 @@ def _open_week(page):
 
 
 def _shown(page):
-    return page.evaluate("""[...document.querySelectorAll('#week-cards .card')].map(c => c.dataset.id)
+    return page.evaluate("""[...document.querySelectorAll('#today .face')].map(c => c.dataset.id)
 """)
 
 
@@ -71,8 +74,9 @@ def test_a_tab_with_no_picks_shows_nothing_of_the_last_one(page):
     left = page.evaluate(
         "document.querySelectorAll('#week-cards .card, #today .face').length")
     assert left == 0, f"{left} card(s) of the last tab survive the zero tab"
-    assert page.evaluate("document.getElementById('week-grid-heading').hidden") is True
-    assert page.evaluate("document.getElementById('week-showall').hidden") is True
+    # THE "More picks" HEADING WENT WITH ITS GRID (2026-09-08). What this
+    # test is for -- nothing of the last tab survives an empty one -- is
+    # carried by the card count asserted above.
     assert page.evaluate("document.querySelectorAll('#week-cards .empty').length") == 1
     page.click(".market-tab[data-market='']")
     page.wait_for_timeout(500)

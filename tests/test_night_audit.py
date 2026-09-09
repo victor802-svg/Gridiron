@@ -150,3 +150,103 @@ def test_the_shipped_tree_still_passes_every_widened_scan():
     assert audit.venue_credential_faults() == []
     assert audit.order_path_faults() == []
     assert audit.wagering_ledger_faults() == []
+
+
+# ---------------------------------------------------------------------------
+# The operator's screen, 2026-09-08: six defects he found that the night
+# audit's DOM-only pass could not.
+# ---------------------------------------------------------------------------
+
+def test_the_old_picks_grid_and_its_renderer_are_gone():
+    """TWO CARD DESIGNS ON ONE SCREEN. The grid rendered every shortlisted
+    question a second time in the design CARD_FACE replaced -- raw probability
+    largest, a tier chip on every card. THREE_STATES S1 named six things to
+    remove and the grid was not among them, so it survived; removed by ruling
+    on 2026-09-08."""
+    js = (WEB / "app.js").read_text(encoding="utf-8")
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    for name in ("function pickCard", "function applyCardState",
+                 "function cardTail", "function chanceBlock",
+                 "function marketHint"):
+        assert name not in js, name
+    for ident in ('id="week-grid-heading"', 'id="week-showall"',
+                  'id="week-shortlist-note"'):
+        assert ident not in html, ident
+    # the slate's own sentences survive: a slate that says nothing is unreadable
+    assert 'id="week-cards"' in html
+    assert audit.duplicate_js_definitions() == []
+
+
+def test_the_live_tab_carries_the_game_and_nothing_else():
+    """The guard the DOM pass could not be: a probability, a tier chip or
+    another group's heading on Live fails by name."""
+    clean = {"today": {"live_heading": "In progress — 2 questions",
+                       "live": [{"state": "live", "question": "Cubs at Brewers"}]}}
+    assert audit.live_tab_faults(clean) == []
+    empty = {"today": {"live_heading": "Nothing is being played", "live": []}}
+    assert audit.live_tab_faults(empty) == []
+
+    for field in ("probability", "tier_chip"):
+        planted = {"today": {"live_heading": "In progress — 1 question",
+                             "live": [{"state": "live", field: 0.78}]}}
+        assert audit.live_tab_faults(planted), field
+        with pytest.raises(audit.LawViolation, match="LIVE TAB"):
+            audit.check_the_live_tab_shows_only_the_game(planted)
+
+    strayed = {"today": {"live_heading": "Clears the bar — 4 today", "live": []}}
+    with pytest.raises(audit.LawViolation, match="LIVE TAB"):
+        audit.check_the_live_tab_shows_only_the_game(strayed)
+
+
+def test_a_group_head_leaves_the_screen_with_its_group():
+    """A "SOLID" chip and a green rule stood over an empty Live tab because
+    the tab logic hid the heading SPANS and not the rows they sit in."""
+    js = (WEB / "app.js").read_text(encoding="utf-8")
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    for row in ("clears-head-row", "watching-head-row"):
+        assert f'id="{row}"' in html, row
+        assert f"'{row}'" in js, row
+
+
+def test_one_source_of_truth_for_the_next_start(tmp_path):
+    """The header said 3:35 PM and Live said 4:40 PM about the same slate:
+    one took the minimum kickoff over every card, the other the first card in
+    CARD ORDER, which is by disagreement and not by clock."""
+    cards = [
+        {"kickoff_utc": "2026-09-08T23:40:00Z", "game_status": "scheduled"},
+        {"kickoff_utc": "2026-09-08T22:35:00Z", "game_status": "scheduled"},
+        {"kickoff_utc": "2026-09-08T20:00:00Z", "game_status": "final"},
+    ]
+    assert views.next_start_utc(cards) == "2026-09-08T22:35:00Z"
+    # nothing left to start says nothing, rather than naming a past time
+    assert views.next_start_utc([{"kickoff_utc": "2026-09-08T20:00:00Z",
+                                  "game_status": "final"}]) is None
+    assert views.next_start_utc([]) is None
+
+
+def test_every_sport_counts_its_own_unit():
+    """"under 12.5 total points" on a baseball card. Baseball scores runs."""
+    assert "total runs" in language.phrase(
+        {"sport": "mlb", "market_type": "total", "line_asked": 12.5,
+         "model_side": "under"})
+    for sport in ("nfl", "nba", "cfb"):
+        assert "total points" in language.phrase(
+            {"sport": sport, "market_type": "total", "line_asked": 51.5,
+             "model_side": "under"}), sport
+
+
+def test_a_card_never_argues_from_another_sport():
+    """LAW 6 REACHING A CARD. One flagged-method note was shared by every
+    sport's total and cited NBA and NFL walk-forward figures, so a Cubs card
+    argued from basketball and football."""
+    for sport in config.SPORTS:
+        note = language.method_note_for(sport, "total")
+        if note is None:
+            continue
+        others = [s for s in config.SPORTS if s != sport]
+        labels = [language.SPORT_LABELS.get(s, s.upper()) for s in others]
+        for other in labels:
+            assert other not in note, (sport, other, note)
+    # and a sport with no walk-forward of its own says so rather than borrowing
+    mlb = language.method_note_for("mlb", "total")
+    assert mlb and "not been measured for MLB" in mlb

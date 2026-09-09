@@ -699,8 +699,11 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 # card comes to be flagged according to one and eligible
                 # according to the other, which this file has already fixed
                 # once for the open/shut state.
-                "method_note": language.method_note(
-                    config.flagged_method(sport, r["market_type"])),
+                # THAT SPORT'S OWN NOTE (2026-09-08). One shared sentence
+                # cited NBA and NFL walk-forward figures on every sport's
+                # total, so a baseball card argued from basketball -- LAW 6
+                # reaching a card.
+                "method_note": language.method_note_for(sport, r["market_type"]),
                 "market_line": snap.get("line"),
                 # THE VENUE'S OWN LINE, AND THE MODEL READ AT IT (E4). Absent
                 # on a pick with no claim -- no frozen distribution, no ladder
@@ -800,6 +803,13 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # This is precisely the drift `language.py` exists to prevent, and the
         # reason it says the humanising rules live in ONE place: the history
         # table was fixed in C1 and the card was left building its own.
+        # THE CARD KNOWS ITS SPORT BEFORE ANYTHING COMPOSES WORDS ABOUT IT
+        # (2026-09-08). This assignment sat seventeen lines further down, so
+        # every composer above it -- `phrase` among them -- saw a card with no
+        # sport and took the generic branch. That is why a baseball total read
+        # "under 12.5 total points": `phrase` asked which unit the sport counts
+        # and the card could not say.
+        cards[-1]["sport"] = sport
         cards[-1]["phrase"] = language.phrase(cards[-1])
         # WHICH PICK THE WORKED EXAMPLE IS WORKING (2026-09-07). Composed here
         # because it is composed FROM the phrase, and composed at all because
@@ -817,7 +827,6 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         cards[-1]["player"] = language.strip_market_suffix(
             cards[-1]["subject"], cards[-1]["market"]
         )
-        cards[-1]["sport"] = sport
         # THE SPORT NAMES ITS OWN MARKETS. Without this the label falls
         # back to the generic humaniser, which called a baseball run
         # line a "point spread" -- a sentence about the wrong sport.
@@ -1483,6 +1492,19 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "favoured_colour": favoured_colour.get("primary"),
         "favoured_on_white": favoured_colour.get("on_white"),
     }
+    # THE FLAGGED-METHOD NOTE TRAVELS WITH THE CARD (2026-09-08). It was on
+    # `cards[]`, which the old grid read, and never on the Today card -- so
+    # operator ruling 2 of 2026-09-04 ("on the face and not one tap in") was
+    # satisfied only by the grid, and stopped being satisfied at all when the
+    # grid was removed. The renderer draws it as `.face-method`.
+    if card.get("method_note"):
+        out["method_note"] = card["method_note"]
+    # MODEL, MARKET AND GAP AS TEXT (GRIDIRON_16 R3), same story as the method
+    # note: `rail_line` was rendered by the old card's expanded body and never
+    # reached the CARD_FACE card, so removing the grid took R3's sentence off
+    # the product with it.
+    if card.get("rail_line"):
+        out["rail_line"] = card["rail_line"]
     out.update({k: v for k, v in context.items() if k != "state"})
     out["edge_line_words"] = language.edge_line_words(
         entry.get("edge_cents"),
@@ -1773,6 +1795,27 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
     }
 
 
+def next_start_utc(cards: list[dict]) -> str | None:
+    """WHEN THE NEXT GAME ON THIS SLATE STARTS, and the only answer to that.
+
+    THE PAGE GAVE TWO (found by the operator, 2026-09-08). The header read the
+    minimum kickoff over every card, started games included; the Live tab read
+    the first card in CARD ORDER whose game had not started -- and the cards
+    are ordered by disagreement, not by clock, so it named whichever game the
+    ranker happened to put first. One screen said 3:35 PM and the other 4:40
+    PM about the same slate.
+
+    THE EARLIEST KICKOFF AMONG GAMES THAT HAVE NOT STARTED. A game already
+    under way is not the next one to start, and when nothing is left to start
+    this is None and both sentences go quiet rather than naming a time in the
+    past.
+    """
+    times = [c.get("kickoff_utc") for c in cards
+             if c.get("kickoff_utc")
+             and card_state(c.get("game_status") or "") == "upcoming"]
+    return min(times) if times else None
+
+
 def _today_block(conn: sqlite3.Connection, cards: list[dict],
                  priced: list[dict], forecaster: str | None = None) -> dict:
     """The two groups the operator reads every morning, never blended.
@@ -1930,14 +1973,11 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         "settled": settled_cards,
         "settled_heading": language.state_heading_words(
             "final", len(settled_cards)),
-        "live_empty_words": (None if live else language.live_empty_words(
-            next((c.get("kickoff_utc") for c in cards
-                  if card_state(c.get("game_status") or "") == "upcoming"
-                  and c.get("kickoff_utc")), None))),
-        "live_first_kickoff_utc": next(
-            (c.get("kickoff_utc") for c in cards
-             if card_state(c.get("game_status") or "") == "upcoming"
-             and c.get("kickoff_utc")), None),
+        # ONE SOURCE FOR THE NEXT START (2026-09-08), read by the header and
+        # by this sentence, so the two cannot name different games.
+        "live_empty_words": (None if live
+                             else language.live_empty_words(next_start_utc(cards))),
+        "live_first_kickoff_utc": next_start_utc(cards),
         "below_floor_n": len(below_floor),
         "floor": floor,
         "clears": clears,
@@ -2306,13 +2346,16 @@ def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
         state = "live"
     else:
         state = "upcoming"
-    kickoffs = [c["kickoff_utc"] for c in cards if c.get("kickoff_utc")]
+    # THE SAME ANSWER THE LIVE TAB GIVES. This took the minimum over every
+    # card, started games included, and disagreed with Live by an hour on the
+    # slate of 2026-09-08.
+    next_start = next_start_utc(cards)
 
     return {
         "games": len(games),
         "picks": len(cards),
         "state": state,
-        "first_kickoff_utc": min(kickoffs) if kickoffs else None,
+        "first_kickoff_utc": next_start,
         "final": done,
         "in_progress": running,
         # The countdown's digits tick, so the browser renders them from the
@@ -2923,6 +2966,10 @@ def history(
     for r in rows:
         snap = snapshots.get(r["id"]) or {}
         item = {
+                # THE SPORT, SO THE WORDS ARE THIS SPORT'S (2026-09-08).
+                # Without it `language.phrase` takes the generic branch
+                # and a baseball total reads "total points".
+                "sport": sport,
                 "prediction_id": r["id"],
                 "created_utc": r["created_utc"],
                 "season": r["season"],
@@ -3455,6 +3502,8 @@ def digest(
     for r in rows:
         payload = json.loads(r["factors_json"] or "{}")
         item = {
+            # THE SPORT, SO THE WORDS ARE THIS SPORT'S (2026-09-08).
+            "sport": sport,
             "subject": r["subject"],
             "market_type": r["market_type"],
             "prop_type": _prose_prop_type(r, sport),

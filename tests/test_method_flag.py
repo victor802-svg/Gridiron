@@ -65,17 +65,57 @@ def test_nothing_else_carries_a_caveat(sport, market):
 # --- the words --------------------------------------------------------------
 
 def test_the_note_is_the_sentence_the_ruling_asked_for():
-    note = language.method_note("total_at_own_rung")
-    assert note == (
-        "totals asked this way have been a coin flip so far "
-        "(NBA +0.001, NFL +0.002 in walk-forward) — shown for the record.")
+    """RULING 2 OF 2026-09-04, AS AMENDED 2026-09-08.
+
+    The sentence used to be one shared string naming NBA and NFL figures, and
+    this test asserted it verbatim. The operator ruled that a card may not
+    argue from another sport, so what the ruling asks for is now the
+    structural claim -- true of every sport, citing none -- with that sport's
+    own verdict added by `method_note_for`.
+    """
+    base = language.METHOD_NOTES["total_at_own_rung"]
+    assert base == (
+        "asked at the rung nearest the model's own expectation, so the "
+        "question is close to a coin flip by construction — shown for the "
+        "record.")
+    # and no sport's name appears in the shared half
+    from gridiron import config
+
+    for sport in config.SPORTS:
+        assert language.SPORT_LABELS.get(sport, sport.upper()) not in base
 
 
-def test_the_note_carries_its_numbers():
-    """LAW 4's habit: a caveat without its measurements is an opinion."""
-    note = language.method_note("total_at_own_rung")
-    assert "+0.001" in note and "+0.002" in note
-    assert "walk-forward" in note
+def test_the_note_carries_only_its_own_sport(config_sports=None):
+    """REWRITTEN 2026-09-08 by operator ruling, and the old assertion is why.
+
+    It read: `assert "+0.001" in note and "+0.002" in note` -- the NBA and NFL
+    walk-forward figures, asserted present in the ONE note every sport's total
+    shared. So a Cubs card argued from basketball and football, and this test
+    held that in place. LAW 6 says a number that mixes two sports describes
+    neither; on a card it describes the wrong game.
+
+    The note is now built per sport and cites that sport's own recorded
+    verdict, or says plainly that its own has not been measured.
+    """
+    from gridiron import config
+
+    for sport in config.SPORTS:
+        note = language.method_note_for(sport, "total")
+        if note is None:
+            continue
+        label = language.SPORT_LABELS.get(sport, sport.upper())
+        assert note.startswith(label + ":"), note
+        for other in config.SPORTS:
+            if other == sport:
+                continue
+            other_label = language.SPORT_LABELS.get(other, other.upper())
+            assert other_label not in note, (
+                f"{sport}'s note names {other_label}: {note!r}")
+        verdict = config.distributional_verdict(sport, "total")
+        if verdict is None:
+            assert "not been measured" in note, note
+        else:
+            assert f"{verdict['n']:,}" in note, note
 
 
 def test_an_unflagged_market_says_nothing():
@@ -113,8 +153,10 @@ def test_the_payload_carries_the_note_on_every_flagged_card():
     for sport in config.SPORTS:
         payload = _views.week(conn, sport)
         for card in payload.get("cards") or []:
-            expected = language.method_note(
-                config.flagged_method(sport, card.get("market_type")))
+            # PER SPORT FROM 2026-09-08. `method_note` took a flag key and
+            # returned one sentence for every sport; `method_note_for` builds
+            # the sentence from THAT sport's own verdict.
+            expected = language.method_note_for(sport, card.get("market_type"))
             assert card.get("method_note") == expected, (
                 f"{sport}:{card.get('market_type')} card carries "
                 f"{card.get('method_note')!r} and should carry {expected!r}")

@@ -111,9 +111,15 @@
      tool checks rather than assumes -- the first Yours badge was #b0821f and
      measured 3.47:1, under AA for text that size.
 
-     THESE ARE NOT VALUE COLOURS. `--win` and `--loss` mean a pick won and a
-     pick lost and appear on the edge line alone; a sport tag and a state
-     badge say what a thing IS. */
+     THESE ARE NOT VALUE COLOURS. `--win` and `--loss` mean WON and LOST; a
+     sport tag and a state badge say what a thing IS.
+
+     WHERE THE TWO COLOURS APPEAR, and the list is the whole of it: the edge
+     line, a settled verdict, and -- from 2026-09-08, by operator ruling --
+     the W and L of a club's form streak on a card. The streak was the first
+     time either colour was asked to describe a GAME rather than a PICK, and
+     it was allowed because it is the same fact: a win is a win. A draw takes
+     neither. Nothing else may reach for them. */
   --white: #ffffff;
   --yours: #8a6417;
   --state-clears: #2f7d5b;
@@ -1727,16 +1733,23 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    that reads as arrival; the bound is two, and `audit.motion_faults` refuses
    a translateY or a scale outside it, in any unit but per cent. The view
    menu's button joins the state-change line above. */
-#week-hero,
-#week-cards {
+/* `#week-hero` and `#week-cards` carried this until 2026-09-08; the hero and
+   the grid are both gone and the Today panel is what swaps its whole contents
+   when a market chip changes the slate. Same duration, same easing, same one
+   per cent. */
+#today {
   transition: opacity var(--motion-panel) var(--motion-ease),
               transform var(--motion-panel) var(--motion-ease);
 }
 /* The start state snaps -- `transition: none` -- so that adding the class
    does not itself animate towards zero; only the removal a frame later runs
    the transition above, from one per cent below to place. */
-#week-hero.arriving,
-#week-cards.arriving { opacity: 0; transform: translateY(1%); transition: none; }
+/* `#week-hero` and `#week-cards` were the hero and the grid; both are gone.
+   THE TODAY PANEL IS WHERE CONTENT ARRIVES NOW (2026-09-08) -- a market chip
+   switching the slate refills its groups, and without this rule the swap was
+   instantaneous, which is the one thing the motion vocabulary exists to
+   prevent. The transition itself is unchanged. */
+#today.arriving { opacity: 0; transform: translateY(1%); transition: none; }
 /* THE ONE KEYFRAME. A game being played is the only thing on this page that
    repeats, because it is the only thing that is still happening. It pulses
    between full and half opacity -- no scale, no colour change, no glow. */
@@ -2151,6 +2164,14 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 .face-fact { white-space: nowrap; }
 
+/* THE FORM STREAK (operator, 2026-09-08). The gap is the streak's own, not
+   the context row's, so five marks read as one run rather than five facts.
+   `.win` and `.loss` are the class names the colour law scans for, and they
+   are the words themselves: this is a game the club won and a game it lost. */
+.face-form { display: inline-flex; gap: 5px; font-weight: 600; }
+.fmark.win { color: var(--win); }
+.fmark.loss { color: var(--loss); }
+
 .face-prices {
   display: grid;
   grid-template-columns: 1fr 1.6fr;
@@ -2184,6 +2205,15 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 /* THE PAYOUT IS THE BIGGEST NUMBER ON THE CARD, in the colour of the side
    the question names (operator ruling, 2026-09-08). */
 .box-payout { border-color: transparent; }
+/* NO NUMBER, NO TEAM COLOUR (2026-09-08). A payout chip with nothing in it
+   took the favoured club's colour, so "no price yet" arrived on a red field
+   and read as a verdict. Grey is the absence colour; red is a loss. */
+.box-payout-empty {
+  background: var(--line) !important;
+  border-color: var(--line-lit) !important;
+}
+.box-payout-empty .box-value { color: var(--muted); font-weight: 600; }
+
 .box-payout .box-label { color: rgba(255, 255, 255, 0.82); }
 .box-payout .box-value { font-size: 24px; font-weight: 700; color: var(--white); }
 .box-under {
@@ -2305,6 +2335,29 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    price boxes, the edge line, the size, the tap -- uses the classes that were
    already there; only these two lines are new, because only they say something
    a single card has no equivalent of. */
+/* THE FLAGGED-METHOD NOTE, on the face (operator ruling 2, 2026-09-04).
+   Quiet but not hidden: it is the sentence that stops a reader taking a
+   coin-flip percentage at face value, and it may not sit behind a tap. */
+/* The route from a card's reasons to the page that explains them. */
+.face-more {
+  display: inline-block;
+  margin-top: 0.4rem;
+  font-size: var(--face-meta);
+  color: var(--chrome);
+}
+/* R3's sentence, at the top of the card's Why body. */
+.face-numbers {
+  margin: 0 0 0.4rem;
+  font-size: var(--face-meta);
+  color: var(--chrome);
+}
+.face-method {
+  margin: 0.4rem 0 0;
+  font-size: var(--face-meta);
+  font-style: italic;
+  color: var(--faint);
+  line-height: 1.5;
+}
 .combo-face { border-left: 4px solid var(--accent, var(--line)); }
 /* TWO OR THREE LEGS WRAP. The single card's band holds two club names and
    never needs to; a package's legs are whole propositions and do. */

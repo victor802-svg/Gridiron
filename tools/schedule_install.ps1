@@ -85,6 +85,7 @@ $TaskNames = @(
     "$($Prefix)Recalibrate",
     "$($Prefix)Capture",
     "$($Prefix)NearStart",
+    "$($Prefix)Live",
     "$($Prefix)Serve",
     "$($Prefix)CatchUp"
 )
@@ -312,6 +313,24 @@ New-GridironTask -Name "$($Prefix)NearStart" -TaskArg "near-start" `
     -Trigger (New-ScheduledTaskTrigger -Once -At "00:05" `
         -RepetitionInterval (New-TimeSpan -Minutes 30)) `
     -Description "Take the second look at the line for games starting within two hours."
+
+# THE LIVE POLL, every 90 seconds, registered 2026-09-08 by operator ruling.
+#
+# IT WAS NEVER REGISTERED. `live.py` has declared POLL_SECONDS = 90 since
+# 2026-09-01 and THREE_STATES built a Live tab on top of it on 2026-09-08, but
+# no task ever ran it: the poller's two runs on the record are both from
+# 2026-09-02 and both were started by hand. So `games.status` never became
+# 'in', and the Live tab had nothing to show on any real evening between
+# those dates.
+#
+# NINETY SECONDS COSTS ALMOST NOTHING. The poll makes ZERO requests when no
+# game is inside its window -- a property with its own test -- so outside a
+# slate this is a process start and a `noop` row. `IgnoreNew` means a slow run
+# can never stack on the next tick.
+New-GridironTask -Name "$($Prefix)Live" -TaskArg "live" `
+    -Trigger (New-ScheduledTaskTrigger -Once -At "00:00" `
+        -RepetitionInterval (New-TimeSpan -Seconds 90)) `
+    -Description "Follow the games that are on right now. Zero requests when nothing is in its window."
 
 # THE INTERFACE, at logon, restarted if it dies (2026-09-07).
 #

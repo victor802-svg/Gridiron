@@ -45,7 +45,7 @@ def test_an_open_slate_has_no_settled_line(world_copy):
 def test_the_counts_line_names_the_settled_picks(page):
     page.set_viewport_size(WIDE)
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .card", timeout=15000)
+    page.wait_for_selector("#today .face", timeout=15000)
     page.evaluate("document.querySelector('.week-more').open = true")
     options = page.evaluate("[...document.querySelectorAll('#week-picker option')].map(o => o.value)")
     assert len(options) >= 2, options

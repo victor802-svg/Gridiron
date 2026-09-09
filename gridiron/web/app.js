@@ -101,7 +101,7 @@ const Gridiron = (function () {
     // whether the grid has been expanded past its first six, and it resets on
     // every slate, sport, sort and tab change -- a grid left expanded across a
     // filter change shows a different number of cards than the control says.
-    market: '', showAllCards: false };
+    market: '' };
 
   // ONE ANSWER PER QUESTION ASKED (UI audit finding 1, 2026-09-05).
   //
@@ -799,6 +799,10 @@ const Gridiron = (function () {
     requireN(entry, 'a card on today');
     const state = entry.state || 'upcoming';
     const face = el('article', 'face face-' + state + (entry.taken ? ' face-took' : ''));
+    // THE ID THE LIVE TICK FINDS IT BY. `applyLive` patches the score on a
+    // card already on screen rather than rebuilding the slate under a reader
+    // (audit.live_update_faults), and it needs a handle to patch.
+    if (entry.prediction_id !== undefined) face.dataset.id = entry.prediction_id;
     if (entry.favoured_colour) {
       face.style.setProperty('--club', '#' + entry.favoured_colour);
     }
@@ -848,8 +852,29 @@ const Gridiron = (function () {
       line(entry.away_starter);
       line(entry.home_starter);
     }
-    line(entry.away_form ? entry.away_form : null);
-    line(entry.home_form ? entry.home_form : null);
+    // FORM IS READ AT A GLANCE OR NOT AT ALL (operator, 2026-09-08). The
+    // last five results arrived as one grey run of letters and a reader had
+    // to spell them out. W is green and L is red -- the record's own two
+    // colours, doing the one job the law gives them, on a CLUB'S GAME rather
+    // than on a pick. A draw is neither, so it stays the colour of the line.
+    //
+    // Anything that is not a run of W/L/D is not a streak: "no finished
+    // games yet" is a sentence and renders as one.
+    const formLine = (words) => {
+      if (!words) return;
+      const marks = words.split(' ');
+      if (!marks.every(m => m === 'W' || m === 'L' || m === 'D')) {
+        line(words);
+        return;
+      }
+      const fact = el('span', 'face-fact face-form');
+      marks.forEach(m => fact.appendChild(el(
+        'span', m === 'W' ? 'fmark win' : m === 'L' ? 'fmark loss' : 'fmark',
+        m)));
+      context.appendChild(fact);
+    };
+    formLine(entry.away_form ? entry.away_form : null);
+    formLine(entry.home_form ? entry.home_form : null);
     line(entry.weather_words);
     if (context.childNodes.length) face.appendChild(context);
 
@@ -866,7 +891,19 @@ const Gridiron = (function () {
       // THE PAYOUT IS THE BIG CHIP (operator ruling, 2026-09-08), filled in
       // the colour of the side the question names, with the price beneath it.
       const payout = box('box box-payout', labels.venue, entry.payout_words);
-      if (entry.favoured_colour) payout.style.background = '#' + entry.favoured_colour;
+      // THE CLUB'S COLOUR ONLY WHEN THERE IS A PAYOUT TO COLOUR (2026-09-08).
+      // A card with no venue price was painting "no price yet" on the
+      // favoured club's colour, and on a club whose colour is red that reads
+      // as a verdict: the operator reported it as red, and the colour law
+      // keeps red for a loss. With no number in it the chip is grey, and
+      // `box-payout-empty` says so rather than borrowing a team's identity
+      // for an absence.
+      if (entry.payout !== null && entry.payout !== undefined &&
+          entry.favoured_colour) {
+        payout.style.background = '#' + entry.favoured_colour;
+      } else {
+        payout.classList.add('box-payout-empty');
+      }
       payout.appendChild(el('span', 'box-under', entry.price_words || ''));
       prices.appendChild(payout);
       face.appendChild(prices);
@@ -887,6 +924,20 @@ const Gridiron = (function () {
     meta.appendChild(el('span', 'face-gate', entry.gate_words || ''));
     if (entry.tier_chip) meta.appendChild(el('span', 'chip', entry.tier_chip));
     face.appendChild(meta);
+
+    // WHAT IS KNOWN ABOUT THIS MARKET'S METHOD, ON THE FACE AND NOT ONE TAP
+    // IN (operator ruling 2, 2026-09-04). The old grid card rendered this and
+    // the CARD_FACE card never did, so when the grid was removed on
+    // 2026-09-08 the caveat stopped reaching the reader altogether -- the
+    // payload carried it and nothing drew it. Caught by
+    // `test_the_flagged_note_is_readable_without_a_tap`, which is the test
+    // that exists for exactly this.
+    //
+    // A caveat behind a tap is a caveat most readers never reach, and the
+    // reader taking the percentage at face value is the one it is written for.
+    if (entry.method_note) {
+      face.appendChild(el('p', 'face-method', entry.method_note));
+    }
 
     // THE FIRST SENTENCE WITHOUT A CLICK, the rest behind Why.
     if (entry.first_sentence) {
@@ -913,13 +964,21 @@ const Gridiron = (function () {
     }
 
     const sentences = (entry.why && entry.why.sentences) || [];
-    if (sentences.length || entry.reasoning || (entry.top_factors || []).length) {
+    if (sentences.length || entry.reasoning || entry.rail_line ||
+        (entry.top_factors || []).length) {
       const more = el('button', 'expand');
       more.type = 'button';
       more.textContent = labels.why;
       more.setAttribute('aria-expanded', 'false');
       const body = el('div', 'face-why');
       body.hidden = true;
+      // MODEL, MARKET AND GAP AS TEXT (R3), first in the body. A dot-and-span
+      // graphic stood here until 2026-09-02 and made the reader estimate two
+      // percentages off a 100-pixel track. It was rendered by the old card's
+      // body, which the grid took with it on 2026-09-08.
+      if (entry.rail_line) {
+        body.appendChild(el('p', 'face-numbers', entry.rail_line));
+      }
       if (sentences.length) {
         sentences.forEach(s => body.appendChild(el('p', 'face-sentence', s)));
       } else if (entry.reasoning) {
@@ -927,6 +986,15 @@ const Gridiron = (function () {
       }
       const chips = factorChips(entry);
       if (chips) body.appendChild(chips);
+      // THE WAY OUT TO THE WORKINGS. The coefficient table moved to the
+      // Factors page (R1) and the old card's body carried this link to it;
+      // the CARD_FACE card never did, so removing the grid on 2026-09-08 left
+      // the card's reasons with no route to the page that explains them.
+      const w = entry.why || {};
+      const moreLink = el('a', 'face-more',
+        (w.more_label || 'How the model works') + ' →');
+      moreLink.href = w.more_href || '#/factors';
+      body.appendChild(moreLink);
       more.onclick = () => {
         body.hidden = !body.hidden;
         more.setAttribute('aria-expanded', body.hidden ? 'false' : 'true');
@@ -1070,9 +1138,15 @@ const Gridiron = (function () {
 
   function applyStateTab() {
     const tabs = document.getElementById('state-tabs');
-    const upcomingParts = ['today-clears-heading', 'today-clears', 'today-fold',
-                           'today-below-floor', 'today-watching-heading',
-                           'today-watching',
+    // THE HEADS, NOT JUST THE HEADINGS (2026-09-08). This listed the heading
+    // SPANS and not the `<h3>` rows they sit in, so switching to Live left
+    // the clears group's coloured rule and its tier chip standing over an
+    // empty tab -- a "SOLID" heading with nothing under it, which is what the
+    // operator saw.
+    const upcomingParts = ['clears-head-row', 'today-clears-heading',
+                           'today-clears', 'today-fold',
+                           'today-below-floor', 'watching-head-row',
+                           'today-watching-heading', 'today-watching',
                            // COMBOS IS AN UPCOMING GROUP (C6). Nothing is
                            // sized in-game, so a package has nothing to say
                            // on Live and is a settled row rather than a card
@@ -1196,6 +1270,12 @@ const Gridiron = (function () {
       e => !wanted || (e.market || '') === wanted);
 
     renderCombos(today.combos, labels);
+
+    // CONTENT ARRIVES THROUGH THE MOTION BLOCK (2026-09-08). `arrive` was
+    // called on the old grid's host; with the grid gone its only caller went
+    // with it, and a market switch re-filled the groups with no fade at all.
+    // The panel is the container the cards now arrive in.
+    arrive(panel);
 
     keep(today.clears).forEach(e => clears.appendChild(todayCard(e, labels)));
     keep(today.watching).forEach(e => watching.appendChild(todayCard(e, labels)));
@@ -1656,7 +1736,6 @@ const Gridiron = (function () {
   // verb and getting the side backwards twice.
 
   //: How many cards the grid shows before "show all". Six, from the brief.
-  const CARDS_BEFORE_SHOW_ALL = 6;
   // THE HERO IS GONE (THREE_STATES S1, 2026-09-08) and so is the pool it
   // stepped through: `heroPool` and `HERO_STEPS` stood here with no caller
   // until NIGHT_AUDIT item 6 measured that and removed them.
@@ -1671,10 +1750,8 @@ const Gridiron = (function () {
   // What follows the pick on the line: kick-off for a game, the fixture for a
   // prop, because on a prop the subject is the headline and the fixture is the
   // detail.
-  function cardTail(c) {
-    if (c.market_type === 'prop') return c.matchup || '';
-    return c.start_local ? localTime(c.start_local) : '';
-  }
+  // `cardTail` STOOD HERE, for the old grid card's time slot. Removed
+  // with that card on 2026-09-08.
 
   function tierChip(tier) {
     if (!tier || !tier.tier) return el('span', 'tier tier-none', '');
@@ -1700,102 +1777,12 @@ const Gridiron = (function () {
   // and "chance" beneath it, and nothing else numeric on a collapsed card --
   // the market's figure is inside, one tap away, because a card showing two
   // percentages makes a reader work out which one is the claim.
-  function chanceBlock(c, size) {
-    const wrap = el('div', 'chance ' + size);
-    const n = el('div', 'chance-n');
-    n.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
-    n.appendChild(el('span', 'chance-pct', '%'));
-    wrap.appendChild(n);
-    // The server wrote this line; the browser places it.
-    wrap.appendChild(el('div', 'chance-of', c.chance_clause
-      ? 'chance ' + c.chance_clause : 'chance'));
-    return wrap;
-  }
-
-  // THE MARKET'S NUMBER LIVES INSIDE THE CARD. On the collapsed face it is a
-  // hover hint only; the figure itself is in the body, beside the model's, so
-  // the two are read together or not at all.
-  function marketHint(c) {
-    // `market_implied_prob`, which is what the payload calls it. Written as
-    // `market_prob` first, which is not a field: the hint silently never
-    // appeared and the hero said "no line to compare it with" on every card
-    // including the ones with a line. An undefined property is falsy and says
-    // nothing, which is why a wrong field name reads as a missing value.
-    if (c.market_implied_prob === null ||
-        c.market_implied_prob === undefined) return null;
-    return el('div', 'card-hint',
-      'market ' + pct(c.market_implied_prob, 0) + ' · tap for the why');
-  }
-
-  function pickCard(c, rank) {
-    const card = el('article', 'card');
-    card.dataset.id = c.prediction_id;
-    if ((c.tier || {}).tier) card.classList.add('t-' + c.tier.tier.toLowerCase());
-
-    const head = el('button', 'card-head');
-    head.type = 'button';
-    head.setAttribute('aria-expanded', 'false');
-
-    const mid = el('div', 'card-mid');
-    mid.appendChild(el('h3', 'card-game', c.row_title || ''));
-    const pick = el('div', 'card-pick');
-    pick.appendChild(el('span', 'card-phrase', c.phrase || ''));
-    if (c.tier_label) {
-      pick.appendChild(el('span', 'tier-name', ' · ' + c.tier_label));
-    }
-    const tail = cardTail(c);
-    if (tail) pick.appendChild(el('span', 'card-when', ' · ' + tail));
-    mid.appendChild(pick);
-    const hint = marketHint(c);
-    if (hint) mid.appendChild(hint);
-    // WHAT IS KNOWN ABOUT THIS MARKET'S METHOD, on the face and not one tap
-    // in (operator ruling 2). A caveat behind a tap is a caveat most readers
-    // never reach, and the reader taking the percentage at face value is
-    // precisely the one it is written for.
-    //
-    // IT DOES NOT BREAK R2. "One number and the word for what it is a number
-    // of" is a rule about NUMBERS on the collapsed face; this is a sentence,
-    // it names no probability of its own, and the two figures in it are
-    // labelled as walk-forward edges rather than as anything about tonight.
-    //
-    // THE SERVER WROTE IT. Nothing here decides whether a market is flagged
-    // or what the flag says.
-    if (c.method_note) mid.appendChild(el('div', 'card-note', c.method_note));
-    head.appendChild(mid);
-
-    head.appendChild(chanceBlock(c, 'chance-grid'));
-
-    const meta = el('div', 'card-meta');
-    meta.appendChild(tierChip(c.tier));
-    head.appendChild(meta);
-    card.appendChild(head);
-
-    // Built once, on first open. A slate of forty would otherwise render forty
-    // decompositions and forty why-texts nobody has asked to see.
-    //
-    // ONE MECHANISM DECIDES WHETHER IT IS OPEN, and that is the `open` class.
-    // The stylesheet has hidden `.card-body` and revealed `.card.open
-    // .card-body` since long before this layout; setting `hidden` as well
-    // would be a second switch for one state, and two switches for one state
-    // is how a card comes to be open according to one of them and shut
-    // according to the other.
-    const body = el('div', 'card-body');
-    card.appendChild(body);
-
-    let built = false;
-    const toggle = () => {
-      if (!built) { buildCardBody(body, c); built = true; }
-      const open = !card.classList.contains('open');
-      card.classList.toggle('open', open);
-      head.setAttribute('aria-expanded', String(open));
-    };
-    head.addEventListener('click', toggle);
-    // THE STATE IS APPLIED ON FIRST RENDER, not only on a live tick. A card
-    // built while a game is already in flight would otherwise show a kick-off
-    // time that has passed until the next poll arrived a minute later.
-    applyCardState(card, c);
-    return card;
-  }
+  // `chanceBlock`, `marketHint` and `pickCard` STOOD HERE: the old Picks
+  // card, with the raw probability as its largest element and a tier chip
+  // on every one. CARD_FACE replaced that design and THREE_STATES took the
+  // hero off the top of it, but the grid itself was never named for removal
+  // and survived both -- so the page rendered two card designs at once,
+  // which is what the operator saw on 2026-09-08. Removed by his ruling.
 
   // --- FOLLOWING A SLATE THAT IS ON (L2) ------------------------------------
   //
@@ -1814,11 +1801,8 @@ const Gridiron = (function () {
   const LIVE_POLL_MS = 60000;
   let livePollTimer = null;
 
-  //: The cards of the slate currently rendered, by prediction id, so a live
-  //: tick can update ONE card's data without re-fetching or re-sorting the
-  //: slate. Declared here rather than springing into existence on first
-  //: assignment.
-  let slateCards = new Map();
+  // `slateCards` STOOD HERE, indexing the old grid's cards so a tick could
+  // patch one of them. The tick re-renders now; nothing indexes cards.
 
   function stopLivePolling() {
     if (livePollTimer) { clearInterval(livePollTimer); livePollTimer = null; }
@@ -1854,72 +1838,44 @@ const Gridiron = (function () {
     livePollTimer = setInterval(tick, LIVE_POLL_MS);
   }
 
+  // THE TICK PATCHES THE CARD IN PLACE (2026-09-08).
+  //
+  // `applyLive` used to reach for `.card[data-id=...]` -- the OLD grid card's
+  // class -- and `applyCardState` moved that card's internals between states.
+  // Both went with the grid, and for an hour this function called
+  // `renderWeek()` instead. THAT IS THE ONE THING THE GUARD FORBIDS:
+  // `audit.live_update_faults` refuses a re-render or a re-sort on a tick,
+  // because a reader part way down a slate must not have the thing they are
+  // looking at move. The plantings caught it; this is the repair.
+  //
+  // EVERY STRING IS THE SERVER'S. The compact live payload carries
+  // `score_line`, `clock_line` and `verdict`, composed by the same humaniser
+  // the full payload uses, so nothing is written in the browser.
+  //
+  // IT PATCHES SCORES, NOT STATES. A game that has just gone live belongs in
+  // a different group, and which group a card sits in is decided on the
+  // server from `games.status`. The tick keeps the score current on cards
+  // already showing; the next render moves them.
   function applyLive(live) {
     (live.picks || []).forEach(pick => {
-      const card = slateCards.get(String(pick.prediction_id));
-      if (!card) return;
-      Object.assign(card, pick);
       const node = document.querySelector(
-        '.card[data-id="' + pick.prediction_id + '"]');
-      if (node) applyCardState(node, card);
+        '.face[data-id="' + pick.prediction_id + '"]');
+      if (!node) return;
+      const put = (cls, words) => {
+        const el = node.querySelector(cls);
+        if (el && words) el.textContent = words;
+      };
+      put('.face-score', pick.score_line);
+      put('.face-period', pick.clock_line);
     });
   }
 
-  // THE THREE STATES A CARD CAN BE IN, in one function, so a card that changes
-  // state re-renders IN PLACE rather than being rebuilt.
-  function applyCardState(node, c) {
-    const cardState = c.tile_state || 'upcoming';
-    node.dataset.state = cardState;
-    node.classList.toggle('t-live', cardState === 'live');
-    node.classList.toggle('t-final', cardState === 'final');
-
-    // THE TIME SLOT CARRIES THE STATE. A card shows the game, the pick, the
-    // chance, the time and the tier and nothing else (R2), so where the
-    // kick-off time stood, a game in flight shows its clock and a settled one
-    // shows nothing new -- the verdict chip below is what says it finished.
-    const when = node.querySelector('.card-when');
-    if (when && c.live_line) when.textContent = ' · ' + c.live_line;
-
-    const meta = node.querySelector('.card-meta');
-    let chip = node.querySelector('.card-verdict');
-    if (cardState === 'final' && c.verdict) {
-      if (!chip && meta) {
-        chip = el('span', 'card-verdict');
-        meta.appendChild(chip);
-      }
-      if (chip) {
-        chip.textContent = c.verdict;
-        // classList, not className: building a class string out of a re-cased
-        // value is the shape the prose tripwire watches for. The value is a
-        // modifier here and never a word a reader sees.
-        ['v-win', 'v-loss', 'v-void'].forEach(k => chip.classList.remove(k));
-        chip.classList.add('v-' + c.verdict.toLowerCase());
-      }
-    } else if (chip) {
-      chip.remove();
-    }
-
-    let mark = node.querySelector('.card-live');
-    if (cardState === 'live' && !mark && meta) {
-      // A MARK, NOT A COLOUR. Green means a win and means interactive; a live
-      // game is neither, so the mark is chrome and says what it is on hover.
-      mark = el('span', 'card-live');
-      mark.title = 'this game is being played now';
-      meta.appendChild(mark);
-    } else if (cardState !== 'live' && mark) {
-      mark.remove();
-    }
-  }
-
-  // --- the hero -------------------------------------------------------------
-
-  //: Which of the top five the hero is showing. Reset whenever the slate,
-  //: the sport, the sort or the market tab changes -- a step position that
-  //: survived a filter change would point at a different pick than the dots.
-
-
-  // WHAT THE HERO LAST RENDERED, so a swipe can step it (R4, 2026-09-05).
-
+  // RESTORED 2026-09-08, verbatim. Removing `applyCardState` cut from
+  // its opening brace to the next top-level boundary and took six
+  // neighbours with it -- `arrive`, `renderMarketTabs`,
+  // `renderYesterday`, `placeGreeting`, `probBlock` and `clamp01`.
+  // The page threw `placeGreeting is not defined` on boot, which is
+  // how it was found. Only `applyCardState` was meant to go.
   function arrive(node) {
     if (!node) return;
     node.classList.add('arriving');
@@ -2322,10 +2278,10 @@ const Gridiron = (function () {
 
   async function renderWeek() {
     const host = document.getElementById('week-cards');
-    // HAIRLINE SHAPES IN THE GRID'S OWN GEOMETRY, so the layout does not jump
-    // when the data lands a frame later. One shape at every width, because
-    // there is one grid at every width.
-    skeleton(host, 'skeleton-card', CARDS_BEFORE_SHOW_ALL);
+    // THE SKELETON WENT WITH THE GRID (2026-09-08). It drew hairline card
+    // shapes in the grid's geometry so the layout would not jump when the
+    // data landed; with no grid there are no shapes to hold a place for, and
+    // the sentences this container now carries arrive with the payload.
 
     const picker = document.getElementById('week-picker');
     const chosen = picker.value ? JSON.parse(picker.value) : {};
@@ -2378,7 +2334,6 @@ const Gridiron = (function () {
     let cards = market ? data.cards.filter(c => c.market === market) : data.cards;
     // Indexed BEFORE the filters narrow the view, so the rail can still
     // describe a pick the reader selected under a different filter.
-    slateCards = new Map(data.cards.map(c => [String(c.prediction_id), c]));
 
     // THE TIER FILTER NARROWS AFTER THE MARKET ONE, and the count line below
     // reports both the part and the whole -- four picks looks like a thin
@@ -2483,10 +2438,6 @@ const Gridiron = (function () {
       // October -- opened on a "More picks" heading over nothing and a
       // "show all 7" button that showed nothing. The hero it also left
       // standing was removed with the rest of that page on 2026-09-08.
-      const gridHeading = document.getElementById('week-grid-heading');
-      if (gridHeading) gridHeading.hidden = true;
-      const showAllButton = document.getElementById('week-showall');
-      if (showAllButton) showAllButton.hidden = true;
       //
       // This tested `!open.length && !done.length` while a resolved section
       // still rendered underneath. With that section gone (R4) the same
@@ -2515,68 +2466,12 @@ const Gridiron = (function () {
       return;
     }
 
-    if (open.length) {
-      // THE CARDS ARE THE PAGE (THREE_STATES S1, 2026-09-08). The hero and
-      // its carousel are gone: one card at five times the size of the rest,
-      // above a page that then showed all of them again. Every card carries
-      // its own reasoning behind Why, which is what the hero was for.
-      //
-      // THE GRID DROPS NOTHING NOW. It used to drop whichever card the hero
-      // had led with, by identity; with no hero there is no lead, and the
-      // full slate is the full slate.
-      const heading = document.getElementById('week-grid-heading');
-      const rest = open.slice();
-      if (heading) heading.hidden = !rest.length;
-
-      // THE SHORTLIST LEADS, THE REST IS ONE TAP AWAY (THE_SHORTLIST S2,
-      // 2026-09-07). The ordering is the server's -- rank, cap, per-game
-      // ceiling and the round robin across kinds of question all happen there
-      // and are stored -- and so are both sentences. This places them.
-      //
-      // NOTHING IS HIDDEN. The control carries the count of what it is not
-      // showing, on its face, in the server's words. A slate written before
-      // the ordering existed has no ranks: it says so and shows everything,
-      // through the positional control this page has always had.
-      const listing = data.shortlist || {};
-      const note = document.getElementById('week-shortlist-note');
-      if (note) {
-        // TWO SENTENCES, BOTH THE SERVER'S, and this picks between them: one
-        // for the shortlist and one for the opened slate. Saying "the 20
-        // clearest questions" over sixty cards is the page contradicting
-        // itself, and it did exactly that the first time it was rendered.
-        const said = state.showAllCards
-          ? (listing.all_words || listing.words) : listing.words;
-        note.textContent = said || '';
-        note.hidden = !said || !rest.length;
-      }
-
-      const showAll = document.getElementById('week-showall');
-      const ranked = !!listing.ranked;
-      const leading = ranked ? rest.filter(c => c.on_shortlist) : rest;
-      const shown = state.showAllCards
-        ? rest.length
-        : (ranked ? leading.length : Math.min(CARDS_BEFORE_SHOW_ALL, rest.length));
-      const visible = state.showAllCards ? rest : (ranked ? leading : rest.slice(0, shown));
-      visible.forEach((c, i) => host.appendChild(pickCard(c, i + 2)));
-      arrive(host);
-
-      if (showAll) {
-        const hidden = rest.length - visible.length;
-        showAll.hidden = hidden <= 0;
-        if (hidden > 0) {
-          // The count is the whole point of the control: "show all" with no
-          // number asks a reader to click to find out how much they are
-          // asking for. Ranked slates use the server's own phrase for it.
-          showAll.textContent = (ranked && listing.rest_words)
-            ? listing.rest_words + ' →'
-            : 'show all ' + rest.length + ' →';
-          showAll.onclick = () => {
-            state.showAllCards = true;
-            renderWeek().catch(showError);
-          };
-        }
-      }
-    }
+    // THE CARDS ARE THE PAGE, AND THERE IS ONLY ONE SET OF THEM
+    // (2026-09-08). The grid that stood here rendered every shortlisted
+    // question a second time, in the design CARD_FACE replaced. What it
+    // showed that the groups above do not is the NON-shortlisted
+    // questions, and those are reachable on Results and in the record;
+    // the ruling is that one screen shows one set of cards.
     // A market the slate asked nothing in says so, rather than leaving a gap
     // that reads as a failure to find questions.
     (data.quiet_markets || []).forEach(q =>
@@ -3430,7 +3325,6 @@ const Gridiron = (function () {
     seg.querySelectorAll('button').forEach(button => {
       button.addEventListener('click', () => {
         state.weekSort = button.dataset.sort;
-        state.showAllCards = false;
         seg.querySelectorAll('button').forEach(b => {
           b.setAttribute('aria-pressed', b === button ? 'true' : 'false');
         });

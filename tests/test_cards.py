@@ -58,7 +58,7 @@ def _open_week(page, size):
         page.evaluate("location.hash = '#/week'")
     page.wait_for_function(
         """() => document.body.dataset.ready === 'true'
-                 && document.querySelectorAll('#week-cards .card').length +
+                 && document.querySelectorAll('#today .face').length +
                     document.querySelectorAll('#today .face').length > 0""",
         timeout=15000,
     )
@@ -77,7 +77,7 @@ def _open_week(page, size):
 
 def _cards(page):
     return page.evaluate(
-        "document.querySelectorAll('#week-cards .card').length")
+        "document.querySelectorAll('#today .face').length")
 
 
 # --- what the brief asks the layout to be -----------------------------------
@@ -96,7 +96,7 @@ def test_one_layout_renders_at_every_width(page, size):
     shape = page.evaluate("""() => ({
         faces: document.querySelectorAll('#today .face').length,
         tabs: document.querySelectorAll('.market-tab').length,
-        cards: document.querySelectorAll('#week-cards .card').length,
+        cards: document.querySelectorAll('#today .face').length,
     })""")
     assert shape["tabs"] > 0, "the market tabs are absent at this width"
     assert shape["faces"] or shape["cards"], "no card rendered at all"
@@ -164,12 +164,17 @@ def test_a_collapsed_card_shows_one_number(page):
     # WHAT A READER SEES WITHOUT HOVERING. The market hint is a hover reveal
     # the brief asks for by name, so it is in the markup and at zero opacity;
     # counting the text alone would count a number nobody is being shown.
+    # RE-POINTED 2026-09-08. The old card had a `.card-head` that carried the
+    # collapsed face; the CARD_FACE card IS the collapsed face, with its
+    # reasons in a `.face-why` that starts hidden. So this reads the card and
+    # skips that body, which is the same question asked of the new shape.
     numbers = page.evaluate(r"""() => {
-        const card = document.querySelector('#week-cards .card');
-        const head = card.querySelector('.card-head');
+        const card = document.querySelector('#today .face');
+        const why = card.querySelector('.face-why');
         const out = [];
-        head.querySelectorAll('*').forEach(e => {
+        card.querySelectorAll('*').forEach(e => {
             if (e.children.length) return;
+            if (why && why.contains(e)) return;
             if (parseFloat(getComputedStyle(e).opacity) === 0) return;
             (e.textContent.match(/\d+(\.\d+)?%/g) || [])
                 .forEach(m => out.push(m));
@@ -184,17 +189,23 @@ def test_a_card_expands_in_place_and_shows_the_why(page):
     _open_week(page, WIDE)
     if not _cards(page):
         pytest.skip("no cards on this slate")
+    # RE-POINTED 2026-09-08 at the CARD_FACE card: a Why control that reveals
+    # a `.face-why` already in the tree by clearing `hidden`, rather than a
+    # card head that toggled an `open` class. The promise is R2's and is
+    # unchanged -- the reasons are one tap away, they arrive, and the card
+    # does not move under the reader while they do.
     result = page.evaluate("""async () => {
-        const card = document.querySelector('#week-cards .card');
+        const card = document.querySelector('#today .face');
         const before = card.getBoundingClientRect().top;
-        card.querySelector('.card-head').click();
+        const control = card.querySelector('.expand');
+        if (!control) return {skip: true};
+        control.click();
         await new Promise(r => setTimeout(r, 250));
-        const body = card.querySelector('.card-body');
+        const body = card.querySelector('.face-why');
         return {
-            open: card.classList.contains('open'),
-            expanded: card.querySelector('.card-head')
-                          .getAttribute('aria-expanded'),
-            text: (body.textContent || '').trim().length,
+            open: !!(body && !body.hidden),
+            expanded: control.getAttribute('aria-expanded'),
+            text: body ? body.innerText.trim().length : 0,
             moved: Math.abs(card.getBoundingClientRect().top - before),
         };
     }""")
@@ -299,11 +310,11 @@ def test_the_grid_does_not_re_sort_while_a_slate_is_in_progress(page):
         if not seen["ids"] or not _cards(page):
             pytest.skip("no cards on this slate to tick")
         order_before = page.evaluate(
-            """[...document.querySelectorAll('#week-cards .card')]
+            """[...document.querySelectorAll('#today .face')]
                  .map(c => c.dataset.id)""")
         page.wait_for_timeout(1400)
         order_after = page.evaluate(
-            """[...document.querySelectorAll('#week-cards .card')]
+            """[...document.querySelectorAll('#today .face')]
                  .map(c => c.dataset.id)""")
         assert not errors, (
             f"a live tick threw: {errors}. The throw escapes the loop over "
@@ -331,6 +342,59 @@ def test_the_live_mark_is_never_green(page):
     }""")
     assert colour["c"] != colour["win"], (
         f"the live mark is drawn in the win colour ({colour['c']})")
+
+
+def test_the_form_streak_is_green_for_a_win_and_red_for_a_loss(page):
+    """W and L in the record's own two colours (operator, 2026-09-08).
+
+    The colour law reserves them for won and lost, and a club's game is
+    exactly that. A DRAW takes neither, and a streak that is not a streak --
+    "no finished games yet" -- is a sentence, not five marks.
+    """
+    _open_week(page, WIDE)
+    palette = page.evaluate("""() => {
+        const r = getComputedStyle(document.documentElement);
+        const hex = name => r.getPropertyValue(name).trim();
+        const probe = (cls) => {
+            const s = document.createElement('span');
+            s.className = cls;
+            document.body.appendChild(s);
+            const c = getComputedStyle(s).color;
+            s.remove();
+            return c;
+        };
+        return { win: hex('--win'), loss: hex('--loss'),
+                 plain: probe('fmark'),
+                 winMark: probe('fmark win'),
+                 lossMark: probe('fmark loss') };
+    }""")
+    assert palette["winMark"] != palette["plain"], (
+        "a W in the form streak is drawn in the context row's own colour")
+    assert palette["lossMark"] != palette["plain"], (
+        "an L in the form streak is drawn in the context row's own colour")
+    assert palette["winMark"] != palette["lossMark"], (
+        "a win and a loss are the same colour in the form streak")
+
+    # AND THE MARKUP THE RENDERER ACTUALLY BUILT, not just the stylesheet.
+    marks = page.evaluate("""() => Array.from(
+        document.querySelectorAll('#today .face-form')).map(
+            f => Array.from(f.children).map(
+                c => [c.textContent, c.className]))""")
+    for streak in marks:
+        for text, cls in streak:
+            assert text in ("W", "L", "D"), (
+                f"{text!r} is in a form streak and is not a result")
+            want = {"W": "fmark win", "L": "fmark loss", "D": "fmark"}[text]
+            assert cls == want, f"{text} is marked {cls!r}, not {want!r}"
+
+    # A SENTENCE IS NOT A STREAK. Whatever the slate holds, nothing that is
+    # not a run of results may be broken into marks.
+    facts = page.eval_on_selector_all(
+        "#today .face-fact:not(.face-form)",
+        "els => els.map(e => e.textContent)")
+    for fact in facts:
+        assert not re.fullmatch(r"[WLD](?: [WLD])*", fact), (
+            f"{fact!r} is a form streak rendered as plain text")
 
 
 def test_every_class_the_page_asks_for_is_a_class_it_builds():
@@ -481,28 +545,16 @@ def _shown_ids(page):
     six. A helper that reports an empty page as an empty slate turns every
     test built on it into a test of nothing.
     """
-    if page.evaluate("""() => {
-            const b = document.getElementById('week-showall');
-            return !!(b && !b.hidden && b.offsetParent !== null);
-        }"""):
-        with page.expect_response(lambda r: "/api/week" in r.url):
-            page.evaluate(
-                "() => document.getElementById('week-showall').click()")
-        # The post-condition, not a duration: everything is shown exactly when
-        # the control that offers to show it has nothing left to offer.
-        page.wait_for_function(
-            """() => {
-                 const b = document.getElementById('week-showall');
-                 return (!b || b.hidden) &&
-                        document.querySelectorAll('#week-cards .card').length > 0;
-               }""",
-            timeout=15000)
+    # THE SHOW-ALL CONTROL WENT WITH THE GRID (2026-09-08). This helper used
+    # to press it so the assertions below saw the whole slate rather than the
+    # shortlist. There is no "rest" to reveal now: the Today groups show what
+    # the bar and the floor put in them, and the control is gone.
     # THE HERO'S CARD COUNTS. It is not in the grid -- the grid drops the card
     # the hero leads with -- so a helper that returned only `#week-cards` would
     # report the largest pick on the page as absent from it.
     return set(page.evaluate(
         """(() => {
-             const ids = [...document.querySelectorAll('#week-cards .card')]
+             const ids = [...document.querySelectorAll('#today .face')]
                            .map(c => Number(c.dataset.id));
              const hero = document.getElementById('week-hero');
              if (hero && !hero.hidden && hero.dataset.id) {
@@ -519,9 +571,17 @@ def _flag_ids(page, ids):
     def handler(route):
         response = route.fetch()
         payload = response.json()
-        for card in payload.get("cards") or []:
-            if card.get("prediction_id") in wanted:
-                card["method_note"] = _NOTE
+        # THE TODAY GROUPS ARE THE CARDS (2026-09-08). This injected only into
+        # `cards[]`, which the removed grid read; the cards a reader sees are
+        # built from `today.clears` and `today.watching`.
+        groups = [payload.get("cards") or []]
+        today = payload.get("today") or {}
+        for name in ("clears", "below_floor", "watching", "live", "settled"):
+            groups.append(today.get(name) or [])
+        for group in groups:
+            for card in group:
+                if card.get("prediction_id") in wanted:
+                    card["method_note"] = _NOTE
         route.fulfill(response=response, json=payload)
 
     page.route("**/api/week*", handler)
@@ -549,8 +609,8 @@ def test_the_flagged_note_is_readable_without_a_tap(page):
     _open_week(page, WIDE)
     _shown_ids(page)
     shown = page.evaluate(
-        """[...document.querySelectorAll('#week-cards .card')].map(c => {
-             const n = c.querySelector('.card-note');
+        """[...document.querySelectorAll('#today .face')].map(c => {
+             const n = c.querySelector('.face-method');
              return n ? { text: n.textContent.trim(),
                           seen: n.offsetParent !== null &&
                                 getComputedStyle(n).opacity !== '0' }
@@ -630,7 +690,7 @@ def test_an_unproven_chip_says_so_where_a_reader_can_see_it(page):
         pytest.skip("no cards on this slate")
 
     chips = page.evaluate(
-        """[...document.querySelectorAll('#week-cards .card .tier')]
+        """[...document.querySelectorAll('#today .face .face-meta .chip')]
              .filter(t => t.className.indexOf('tier-none') === -1)
              .map(t => ({ text: t.textContent.trim(),
                           unproven: t.classList.contains('tier-unproven'),
@@ -639,12 +699,21 @@ def test_an_unproven_chip_says_so_where_a_reader_can_see_it(page):
         pytest.skip("no tier chips on this slate")
 
     assert all(c["seen"] for c in chips), "a tier chip rendered and is hidden"
+    # RE-POINTED 2026-09-08. The old card marked an unproven chip with a
+    # `tier-unproven` CLASS and the words followed it; the CARD_FACE chip
+    # carries the state in the server's own string and has no such class. So
+    # the promise is checked where it now lives: the chip a reader sees is the
+    # sentence the server wrote, unproven state included, and never a tier
+    # name with its proof state quietly dropped.
+    from gridiron import language
+
     for chip in chips:
-        if chip["unproven"]:
-            assert "unproven" in chip["text"], (
-                f"a chip is marked unproven and does not say so: {chip['text']!r}")
-        else:
-            assert "unproven" not in chip["text"], chip["text"]
+        assert chip["text"], "a tier chip rendered with no words in it"
+        tier = chip["text"].split("·")[0].strip()
+        assert tier, f"a chip names no tier: {chip['text']!r}"
+        assert chip["text"] == language.tier_chip_label(tier, "unproven" not in chip["text"]), (
+            f"the chip on the card is not the sentence the server composes: "
+            f"{chip['text']!r}")
 
 
 def test_the_chip_is_never_composed_in_the_browser(page):

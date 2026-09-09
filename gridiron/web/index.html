@@ -357,7 +357,7 @@
     <section class="panel today" id="today">
       <div class="today-body">
         <div class="today-groups">
-          <h3 class="group-head group-clears">
+          <h3 class="group-head group-clears" id="clears-head-row">
             <span id="today-clears-heading"></span>
             <span class="chip group-chip" id="today-clears-chip" hidden></span>
           </h3>
@@ -368,7 +368,7 @@
           <button type="button" class="fold" id="today-fold" hidden></button>
           <div class="faces" id="today-below-floor" hidden></div>
 
-          <h3 class="group-head group-watching">
+          <h3 class="group-head group-watching" id="watching-head-row">
             <span id="today-watching-heading"></span>
             <span class="chip group-chip" id="today-watching-chip" hidden></span>
           </h3>
@@ -422,13 +422,17 @@
          panels reporting one fact is how a page starts disagreeing with
          itself; the render showed both saying "nothing" one under the other.
          The payload key stays and is still tested. -->
-    <h2 class="grid-heading" id="week-grid-heading" hidden>More picks</h2>
-    <!-- WHAT PUT THESE IN FRONT (THE_SHORTLIST S2, 2026-09-07). One line,
-         written by the server, saying what the ordering is; the control below
-         the grid carries the count of everything it is not showing. -->
-    <p class="footnote" id="week-shortlist-note" hidden></p>
-    <div id="week-cards" class="cards"></div>
-    <button type="button" id="week-showall" class="show-all" hidden></button>
+    <!-- THE "More picks" GRID STOOD HERE and was removed on 2026-09-08. It
+         rendered every shortlisted question a second time in the design
+         CARD_FACE replaced -- raw probability largest, a tier chip on every
+         card -- so the page carried two card designs at once. The groups
+         inside #today are the cards now.
+
+         THIS DIV SURVIVES AS THE SLATE'S OWN SENTENCES: "no forecasts on this
+         slate yet", "every pick has been settled", and the quiet-market
+         lines. Those were never part of the old card and a slate that says
+         nothing is a slate a reader cannot read. -->
+    <div id="week-cards" class="slate-notes"></div>
 
     <!-- THE YESTERDAY STRIP. Three facts, side by side, never summed across
          sports: what settled yesterday, the season record, and how far the

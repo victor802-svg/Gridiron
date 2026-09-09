@@ -54,7 +54,8 @@ def _open_week(page, size=WIDE):
 def test_a_tab_switch_arrives_through_the_motion_block(page):
     _open_week(page)
     props = page.evaluate("""() => {
-        const cs = getComputedStyle(document.getElementById('week-cards'));
+        // RE-POINTED 2026-09-08: the panel carries the arrival transition.
+        const cs = getComputedStyle(document.getElementById('today'));
         return {duration: cs.transitionDuration, property: cs.transitionProperty,
                 timing: cs.transitionTimingFunction};
     }""")
@@ -81,7 +82,9 @@ def test_a_tab_switch_arrives_through_the_motion_block(page):
     # state animated towards zero and was reversed a frame later.
     page.evaluate("""() => {
         window.__opacity = [];
-        const el = document.getElementById('week-cards');
+        // RE-POINTED 2026-09-08: the fade runs on the Today panel, which is
+        // the container the cards arrive in now.
+        const el = document.getElementById('today');
         const obs = new MutationObserver(() => {
             obs.disconnect();
             const t0 = performance.now();
@@ -96,11 +99,13 @@ def test_a_tab_switch_arrives_through_the_motion_block(page):
     page.click(f".market-tab[data-market='{target}']")
     page.wait_for_function("window.__arrivals.length > 0", timeout=5000)
     page.wait_for_timeout(400)
-    assert "week-cards" in page.evaluate("window.__arrivals")
+    # RE-POINTED 2026-09-08: the cards arrive in the Today panel now,
+    # not in the removed grid.
+    assert "today" in page.evaluate("window.__arrivals")
     assert page.evaluate(
-        "document.getElementById('week-cards').classList.contains('arriving')") is False
+        "document.getElementById('today').classList.contains('arriving')") is False
     samples = page.evaluate("window.__opacity")
-    assert any(0 < s < 1 for s in samples), f"the grid never faded: {samples}"
+    assert any(0 < s < 1 for s in samples), f"the panel never faded: {samples}"
     assert samples[-1] == 1
 
 

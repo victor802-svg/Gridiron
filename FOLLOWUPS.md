@@ -626,7 +626,7 @@ answers it. Nobody needs it until a mistaken un-mark has to be reversed.
 
 ## GRIDIRON_NIGHT_AUDIT, 2026-09-08 — findings that need a ruling *(class c)*
 
-### The live poller has no scheduled task *(rule needed)*
+### The live poller had no scheduled task *(RULED and REGISTERED 2026-09-08)*
 
 `task_runs` shows `live` ran twice, both on 2026-09-02, by hand. There is no
 `Gridiron-Live` in Task Scheduler and none in `tools/schedule_install.ps1`'s
@@ -638,32 +638,35 @@ between the four-hourly `refresh` runs. THREE_STATES's own close-out flagged
 "the poller has not run against a live baseball slate since these cards
 existed" under *what to check next*, and nobody ruled.
 
-Two readings: **(i)** register `Gridiron-Live` on a short repetition (the task
-already makes zero requests when nothing is on, by test) — a machine change
-made while the operator sleeps, which the audit's remit does not cover;
-**(ii)** declare Live a read of `refresh` only and say so on the tab. Not
-chosen.
+**The operator ruled: register it**, at the cadence `live.py` declares.
+`Gridiron-Live` runs `gridiron.cli task live` every 90 seconds (`PT1M30S`),
+`MultipleInstances = IgnoreNew` so a slow run cannot stack, and
+`tools/schedule_install.ps1` registers it so a reinstall keeps it. It has
+fired on its own schedule and recorded `noop — nothing is on; no request
+made`, which is the poller's zero-request contract holding in production.
 
-### Coverage is measured once per card, not once per page *(rule needed, or leave)*
+### Coverage is measured once per card, not once per page *(RULED 2026-09-08: leave it; revisit after the 21st)*
 
 One Picks render at 107 cards issues 694 SQL statements: `recommend.for_predictions`
 calls `coverage.priceable()` per prediction, which re-runs `measure()` — a
 full scan of the sport's `venue_quotes` — and `clv_report()` each time (120×
 and 60× respectively). The render takes 0.3 s today, so nothing is slow; no
 docstring promises once-per-slate, so this is not a defect by class (a). It
-will scale with the slate. Two readings: declare "measured once per slate" and
-memoise per render, or leave it and re-measure at 500 cards.
+will scale with the slate. Two readings were put to the operator: declare
+"measured once per slate" and memoise per render, or leave it and re-measure
+later. **He ruled 2026-09-08: leave it, and bring it back after the 21st.**
 
-### The closer sits below near-start's early return *(rule needed)*
+### The closer sat below near-start's early return *(RULED and FIXED 2026-09-08)*
 
 `record_closing_prices` is called inside `_run_near_start` after the
 `if not due: return "noop"` branch, so it runs only when some game is within
 two hours. On scratch at 02:40 PT it closed nothing while two recommendations'
 games were final. The close *value* is the last pre-kickoff claim either way,
 so nothing is lost — only `closed_utc` and the CLV report's "awaiting close"
-count lag until the next window. Reading (i): call the closer before the early
-return so every firing closes what has finished; reading (ii): leave it. Not
-chosen.
+count lagged until the next window. **The operator ruled 2026-09-08: move it
+above the early return** — closing a finished game does not depend on another
+game being within two hours. Done, with a planting that closes a finished
+game on a run where nothing is near start.
 
 ### `catch-up` reports "failed" when a member correctly refuses *(rule needed)*
 
@@ -673,16 +676,15 @@ sum calls a refusal a failure, so the panel's only logon task has never shown
 green. Reading (i): count `SlateAlreadyAnswered` as `noop` inside catch-up;
 reading (ii): leave it, since the detail line names the reason.
 
-### "Turns red" against the colour law *(rule needed)*
+### "Turns red" against the colour law *(RULED 2026-09-08: the colour law stands)*
 
 NIGHT_AUDIT item 1 asked that a stale job on the day strip turn red.
 `audit.colour_law_faults` — ruled under CARD_FACE — admits `--loss` only under
 a selector naming an outcome (`.loss`, `.neg`, `.down`); a job that stopped is
 not an outcome, and the planting run went 244 of 245 with red in place.
-Shipped instead: bold in the warning ink, threshold in the words. Reading (i):
-widen `_LOSS_SELECTOR` with a dated word for appliance faults (`.stale` or
-`.dead`), which puts red on the first screen for the thing the brief wanted it
-for; reading (ii): keep red for outcomes only, as ruled. Not chosen.
+Shipped instead: bold in the warning ink, threshold in the words. **The
+operator ruled 2026-09-08: the colour law stands and stale jobs keep the
+warning ink.** Red stays what it has always been here — a pick that lost.
 
 ### `setting()` lets the process environment beat `.env` *(recorded, not a defect)*
 
@@ -703,3 +705,69 @@ shape of the 2 September incident from the other side.
   at 2026-09-07 19:00Z, twenty-five hours after the statistical half, and only
   because `final:ufc` fired a second time — the dead-key day. Both stand; the
   strip's reasoning-pass age now makes the next such gap red.
+
+### 83 CSS rules style classes nothing appears to build *(measured 2026-09-08, not acted on)*
+
+A crude detector written during the night audit — collect every class literal
+in `app.js`, every `class="…"` in `index.html`, every `classList` argument, and
+compare against every top-level class rule in `style.css` — reports **83 of 268
+rules** styling classes it cannot find a builder for. Most predate this
+session: `.masthead`, `.sportbar`, `.tile*`, `.sched-*` and `.chance-*` are the
+residue of designs replaced over the past fortnight.
+
+**THE DETECTOR HAS FALSE POSITIVES AND MUST NOT DRIVE DELETIONS.** It misses
+any class assembled by concatenation, and one of its own hits proves it:
+`.day-job-stale` IS built, by `'day-job' + (entry.stale ? ' day-job-stale' : '')`
+— written the same night. `.face-took` is another. Deleting a rule whose class
+is concatenated breaks a page silently, and the audit's own item 6 says to
+remove dead code only when a test proves nothing references it. This is not
+that proof.
+
+**What would settle it:** resolve class names the way the renderer does — walk
+`app.js` for string concatenations that feed `className`/`classList` and expand
+them — or, better, assert coverage from the other end: render every route at
+both widths in a headless browser, collect `document.querySelectorAll('*')`
+class names, and treat a rule matching nothing on any route as dead. The second
+needs the screenshot harness the same audit found missing, so it waits for
+that.
+
+### `buildCardBody` has no caller *(measured 2026-09-08, left in place)*
+
+It built the old grid card's expanded body — `.card-why`, `.card-numbers`,
+`.card-more`, the bucket line and the tier sentence — and its only caller went
+with `pickCard`. Everything in it that was a promise has been re-rendered on
+the CARD_FACE card (see the night-audit close-out); what remains is the
+function itself, unreachable.
+
+**Not cut tonight, on purpose.** Two text-boundary cuts in `app.js` in the
+same session each took neighbouring functions with them — six the first time,
+a loading skeleton the second — and both were found by loading the page rather
+than by a test. A third cut at five in the morning is not worth the risk.
+
+**What would settle it:** remove it in daylight, with the Playwright suite run
+before and after, and a test asserting the name is absent — the shape used for
+`heroPool` and `shortNotice`.
+
+### The gate never parses `app.js` *(found 2026-09-08, the hard way)*
+
+Restoring the Factors link declared `const more` a second time in a scope that
+already had one. `const` twice in one block is a **SyntaxError**, so the whole
+file failed to parse, `boot()` never ran, and nothing on any route rendered.
+
+**Every scanner in `verify.py` stayed green.** They read `app.js` as text —
+regexes for forbidden words, class literals, the toggle's shape — and text
+scans do not care whether the text is a program. The browser suite did catch
+it, in the only way it could: every test that waits for the ready flag timed
+out. But a 15-second timeout with no message is what those five ERRORs looked
+like for an hour, and the cause was sitting unread in `page.page_errors` the
+whole time. The fixture now prints it (`tests/conftest.py`), which turned an
+hour into a minute.
+
+**What would settle it:** a step in `verify.py` that parses the three browser
+files before anything else runs — `node --check gridiron/web/app.js` is one
+line and Playwright already ships a node binary, so nothing new is installed.
+It belongs FIRST in the gate: a file that does not parse makes every scan
+after it meaningless.
+
+**Not built tonight** because a new gate step is a change to the thing that
+judges every other change, and this session has already run past its brief.

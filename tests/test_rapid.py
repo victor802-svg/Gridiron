@@ -43,7 +43,7 @@ def _select(page, sport):
 def _open_week(page):
     page.set_viewport_size(WIDE)
     page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards .card, #week-cards .empty", timeout=15000)
+    page.wait_for_selector("#today .face, #week-cards .empty", timeout=15000)
     page.wait_for_timeout(300)
 
 
@@ -88,7 +88,7 @@ def test_a_slower_earlier_slate_does_not_take_the_page(page):
         page.unroute(f"**/api/week?*sport={full}*")
     assert page.evaluate("window.Gridiron.state.sport") == empty
     assert page.get_attribute(f"#sport-tabs button[data-sport='{empty}']", "aria-pressed") == "true"
-    cards = page.evaluate("document.querySelectorAll('#week-cards .card').length")
+    cards = page.evaluate("document.querySelectorAll('#today .face').length")
     assert cards == 0, f"{cards} of {full}'s cards are on {empty}'s page"
     assert page.evaluate("document.getElementById('error').hidden") is True
     _select(page, full)
@@ -108,7 +108,7 @@ def test_two_tabs_in_quick_succession_leave_the_second_one(page):
     page.wait_for_timeout(2500)
     assert page.evaluate("(document.querySelector('.market-tab[aria-pressed=\"true\"]') || {dataset: {}}).dataset.market") == second
     by_id = page.evaluate(f"fetch('/api/week?sport={full}').then(r => r.json()).then(j => Object.fromEntries(j.cards.map(c => [String(c.prediction_id), c.market])))")
-    shown = page.evaluate("[...document.querySelectorAll('#week-cards .card')].map(c => c.dataset.id)")
+    shown = page.evaluate("[...document.querySelectorAll('#today .face')].map(c => c.dataset.id)")
     wrong = [i for i in shown if by_id.get(i) != second]
     assert not wrong, f"cards from another tab are on the page: {wrong[:5]}"
     page.click(".market-tab[data-market='']")
@@ -122,7 +122,7 @@ def test_a_double_clicked_tab_renders_each_pick_once(page):
     tabs = page.evaluate("[...document.querySelectorAll('.market-tab')].map(b => b.dataset.market)")
     page.dblclick(f".market-tab[data-market='{tabs[1]}']")
     page.wait_for_timeout(1500)
-    ids = page.evaluate("[...document.querySelectorAll('#week-cards .card')].map(c => c.dataset.id)")
+    ids = page.evaluate("[...document.querySelectorAll('#today .face')].map(c => c.dataset.id)")
     assert len(ids) == len(set(ids)), "a pick is on the page twice"
     page.click(".market-tab[data-market='']")
     page.wait_for_timeout(400)

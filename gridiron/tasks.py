@@ -424,14 +424,21 @@ def _run_near_start(conn: sqlite3.Connection) -> tuple[str, str, dict]:
             (db.utcnow(), _plus_hours(db.utcnow(), NEAR_START_HOURS))
         ).fetchone()[0]
         counts["near_start_games_in_window"] = soon
+        # WHAT IT CLOSED, EVEN ON A NOOP (ruling 2026-09-08). The pass still
+        # closes finished games on a firing with nothing near start, and a
+        # detail line that said only "no game starts" would hide the one
+        # thing this firing did.
+        shut = counts.get("closing_prices", 0)
+        also = (f"; {language.counted(shut, 'closing price')} recorded"
+                if shut else "")
         if soon:
             return ("noop",
                     f"{language.counted(soon, 'game')} starts within the next "
                     f"{NEAR_START_HOURS:g} hours and every one of them has "
-                    f"already had its second look", counts)
+                    f"already had its second look" + also, counts)
         return ("noop",
-                f"no game starts within the next {NEAR_START_HOURS:g} hours",
-                counts)
+                f"no game starts within the next {NEAR_START_HOURS:g} hours"
+                + also, counts)
     took = counts.get("near_start_taken", 0)
     claims = counts.get("at_the_line_claims", 0)
     closed = counts.get("closing_prices", 0)
@@ -472,9 +479,30 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
         (now, horizon),
     ).fetchall()
 
+    # THE CLOSING LINE (R3, 2026-09-07), AND IT RUNS FIRST (ruling 2026-09-08).
+    #
+    # It sat below the early return until then, so a firing with no game
+    # within two hours -- most firings, and every firing overnight -- left a
+    # finished game's recommendation open until some unrelated game happened
+    # to approach its own kickoff. Measured on a scratch copy at 02:40 PT on
+    # 2026-09-08: two recommendations whose games were already final, zero
+    # closed, because nothing else was near start.
+    #
+    # THE TWO SETS ARE DISJOINT, which is what makes this a move rather than a
+    # rewrite: the rows above are games still SCHEDULED with a kickoff in the
+    # future, and the closer only touches recommendations whose kickoff has
+    # passed. Nothing is closed here that the second look would have priced.
+    #
+    # The close VALUE is unchanged either way -- it is the last claim written
+    # before kickoff, whenever it is read -- so this fixes when a close is
+    # recorded and never what it says.
+    closed = lines.record_closing_prices(conn)
+
     if not rows:
         return {"near_start_taken": 0, "near_start_failed": 0,
-                "near_start_due": 0}
+                "near_start_due": 0, "closing_prices": closed["closed"],
+                "closing_no_close": closed["no_close"],
+                "closing_still_open": closed["still_open"]}
 
     # RE-READ THE MARKET FIRST, AND FORCE IT PAST THE CACHE.
     #
@@ -495,12 +523,6 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # for by shape, not by name -- the venue is named only inside the market
     # module, and the quarantine scan is what says so.
     venue = lines.refresh_venue_ladder(conn, ids)
-    # THE CLOSING LINE (R3, 2026-09-07). This pass already re-reads the market
-    # near the start, which is exactly the price a recommendation has to be
-    # measured against; taking it anywhere else would mean two definitions of
-    # "the close".
-    closed = lines.record_closing_prices(conn)
-
     taken, failed = 0, 0
     for row in rows:
         try:

@@ -753,7 +753,22 @@ def page(served, _browser):
     page.fill("#token", SMOKE_TOKEN)
     page.click("#submit")
     page.wait_for_url(served + "/", timeout=15000)
-    page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+    try:
+        page.wait_for_function(
+            "document.body.dataset.ready === 'true'", timeout=15000)
+    except Exception as exc:  # noqa: BLE001
+        # THE BROWSER ALREADY KNOWS WHY. `boot()` sets the ready flag on its
+        # last line, so a timeout here means something above it threw, and
+        # that throw is in `page_errors` this instant. Raising the bare
+        # timeout throws the answer away and hands the reader fifteen seconds
+        # of nothing -- which is what five smoke tests reported on 2026-09-08
+        # before this said the sentence out loud.
+        raise AssertionError(
+            "the page never finished booting.\n"
+            f"  page errors:    {page.page_errors or 'none'}\n"
+            f"  console errors: {page.console_errors or 'none'}\n"
+            f"  ready flag:     {page.evaluate('document.body.dataset.ready')!r}\n"
+            f"  ({exc})") from None
     yield page
     # THE CONTEXT CLOSES, NOT THE BROWSER. Closing the context is what
     # discards this test's cookies, storage and signed-in session; the

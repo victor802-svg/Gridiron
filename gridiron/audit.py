@@ -1887,8 +1887,14 @@ def check_no_truncation_in_the_frame(path: Path | None = None) -> None:
 #: revealing a body that is already there -- which rebuilds every node, resets
 #: the scroll, and moves the card the reader just tapped. So the guard reads
 #: the toggle and refuses a re-render inside it.
+#: RE-POINTED AGAIN 2026-09-08, at the CARD_FACE card's Why expander.
+#: `pickCard` wrote `const toggle = () => {...}` and was removed with the
+#: old grid; the new card writes `more.onclick = () => {...}`. BOTH SHAPES
+#: ARE ACCEPTED so the fixtures below -- which are what prove this scanner
+#: can see at all -- keep working while the shipped card is really read.
 _JS_CARD_TOGGLE = re.compile(
-    r"const\s+toggle\s*=\s*\(\)\s*=>\s*\{(?P<body>.*?)\n    \};", re.S)
+    r"(?:const\s+toggle|more\.onclick)\s*=\s*\(\)\s*=>\s*\{"
+    r"(?P<body>.*?)\n\s*\};", re.S)
 
 #: What a toggle may not do. Each of these rebuilds the slate from the payload,
 #: which is the one thing that cannot happen while a reader is mid-tap.
@@ -1912,11 +1918,19 @@ def selection_moves_the_frame(js: str) -> list[str]:
                 f"page. Every node is replaced, the scroll position resets, "
                 f"and the card the reader just tapped moves out from under "
                 f"them.")
-    if "classList" not in body:
+    # HOW A CARD OPENS, in either of the two correct ways (2026-09-08). The
+    # old card toggled a class and the stylesheet drew from it; the CARD_FACE
+    # card sets `hidden` on a body that is already in the tree, which the
+    # stylesheet's own reset draws. Requiring `classList` would fail the
+    # shipped card for using the newer of two right answers.
+    #
+    # NEITHER is still a fault: then nothing in the toggle says how the card
+    # opens, and the reveal is happening somewhere this guard cannot see.
+    if "classList" not in body and "hidden" not in body:
         faults.append(
-            "the card's toggle does not toggle a class, so whatever it does "
-            "to open the card is not the in-place reveal the stylesheet is "
-            "written for.")
+            "the card's toggle neither toggles a class nor sets `hidden`, so "
+            "whatever it does to open the card is not the in-place reveal the "
+            "stylesheet is written for.")
     return faults
 
 
@@ -6265,3 +6279,65 @@ def check_combo_package(packages) -> None:
         raise LawViolation(
             "A PACKAGE IS GRADED, NEVER BUILT, and never priced on legs this "
             "record cannot honestly multiply:" + _NL2 + _NL2.join(faults[:6]))
+
+
+# ---------------------------------------------------------------------------
+# THE LIVE TAB SHOWS THE GAME AND NOTHING ELSE (2026-09-08)
+# ---------------------------------------------------------------------------
+#
+# `live_card_faults` above rules the CARD. This rules the TAB, and it exists
+# because the night audit of the same day passed Live "via the DOM": it read
+# the ids it expected, found them right, and could not see that the old Picks
+# grid was rendering fifteen cards underneath -- raw probability largest, a
+# tier chip on every one, in the design CARD_FACE replaced.
+#
+# A DOM CHECK SEES WHAT IT ASKS FOR. A screenshot sees what is there.
+
+#: What a card on Live may not carry, beyond the actionable fields
+#: `LIVE_FORBIDDEN` already refuses: the model's own probability and the tier
+#: chip. Both belong to the pre-CARD_FACE card, and both read as a claim about
+#: a game whose score this app is up to ninety seconds late on.
+LIVE_TAB_FORBIDDEN_FIELDS = ("probability", "model_prob", "chance",
+                             "tier_chip", "tier_label", "tier")
+
+#: The only headings the Live tab may carry. "In progress" is the group's own;
+#: "Yours" marks a pick the operator took. Any other heading on this tab is a
+#: group that belongs to Upcoming and has followed the reader across.
+LIVE_TAB_HEADINGS = ("In progress", "Yours", "Nothing is being played")
+
+
+def live_tab_faults(payload) -> list[str]:
+    """Anything on the Live tab that is not the game.
+
+    Reads the day's payload: the live group's cards and the headings that
+    would render beside them.
+    """
+    today = ((payload or {}).get("today") or {})
+    if not today:
+        return []
+    faults: list[str] = []
+    for i, card in enumerate(today.get("live") or []):
+        if not isinstance(card, dict):
+            continue
+        for field in LIVE_TAB_FORBIDDEN_FIELDS:
+            if card.get(field) is not None:
+                faults.append(
+                    f"today.live[{i}] carries {field!r}: the Live tab shows the "
+                    f"score and what the operator took, and a probability or a "
+                    f"tier chip beside a game in progress is the pre-CARD_FACE "
+                    f"card returning")
+    heading = today.get("live_heading")
+    if heading and not any(word in heading for word in LIVE_TAB_HEADINGS):
+        faults.append(
+            f"the Live tab's heading is {heading!r}, which is not one of "
+            f"{LIVE_TAB_HEADINGS}: a heading from another group has followed "
+            f"the reader onto this tab")
+    return faults
+
+
+def check_the_live_tab_shows_only_the_game(payload) -> None:
+    faults = live_tab_faults(payload)
+    if faults:
+        raise LawViolation(
+            "THE LIVE TAB SHOWS THE GAME AND NOTHING ELSE:"
+            + _NL2 + _NL2.join(faults[:6]))

@@ -112,6 +112,11 @@ PAIRS = [
     ("loss", "ink", "a pick that lost, on the page", False),
     ("loss", "card", "a pick that lost, on a card", False),
     ("loss", "card-2", "a pick that lost, on a raised well", False),
+    # THE FORM STREAK (operator, 2026-09-08). The same two colours on the
+    # same ground as a verdict, measured under their own name so the list
+    # says every place they are actually painted.
+    ("win", "card", "a game the club won, in the form streak", False),
+    ("loss", "card", "a game the club lost, in the form streak", False),
     ("chrome", "card-2", "the pressed segment and every focus ring", False),
     ("ink", "chrome", "the STRONG tier chip: dark on white", False),
 ]

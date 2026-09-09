@@ -24,3 +24,67 @@ Nothing in this run wrote to the live record: every measurement went through the
 **One housekeeping item for you, not done because it is irreversible:** `var/gridiron.db.pre-combos.bak` (966 MB) is the pre-migration backup I took before rebuilding `picks_taken`; the migration is proven and committed, so it can be deleted.
 
 **The single thing most likely to cost you money in the next thirteen days.** The machine sleeps after fifteen idle minutes and nothing wakes it, and the one pass that reads the venue near kickoff — the second look that writes the price you are shown, the at-the-line claim, and the close — only runs while the box is awake. The first NFL slate opens tomorrow with zero settled questions in every football market, so every football card will carry "no measured edge" and a flat unit; the danger is not that, which the card says, but a card whose price is hours stale because the pass slept, read as current. Set the box never to sleep on AC, and read the pulse line under the day strip before any tap: if "venue read" is past 30 h, the price on the card is not the price at the window.
+
+---
+
+## Addendum, 2026-09-08 morning — your six rulings and your six defects
+
+**Your rulings, all executed.** (1) `Gridiron-Live` registered at the cadence
+`live.py` declares — every 90 seconds, `IgnoreNew`, in the installer too; it
+has fired on its own and recorded "nothing is on; no request made". THREE_STATES
+shipped the Live tab on 2026-09-08 against a poller whose only two runs were by
+hand on 2026-09-02, so `games.status` never became `in` and Live had nothing to
+show on any evening in between — recorded in that close-out. (2) The closer
+moved above near-start's early return, with a planting. (3) The colour law
+stands; every "red" in the docs now says what shipped. (4) Per-card coverage
+left, after the 21st. (5) The backup is yours.
+
+**(6) "Fitted, not applied" is DELIBERATE, with the reason and the date, and
+not a defect.** `correction.HOLDOUT_MIN = 40` says so in its own declaration:
+the holdout needs 40 rows, which at the 80/20 split means a category activates
+from **about 200 settled** — "later than the brief's fifty, and it is what the
+measurement supports: fifty is the bar for FITTING a correction and looking at
+it, not for applying one." The measurement is dated 2026-08-31: a perfectly
+calibrated category passed a bare comparison 38% of the time, so activating on
+one would switch on corrections that correct nothing while the page called them
+earned.
+
+It does not contradict TODAY's ruling. "Apply automatically and report
+afterwards" removed the human approval step; it did not remove the quality bar.
+**But my column heading was misleading and I am correcting it:** it should read
+"fitted; not yet activated, because its holdout is too small to judge on".
+Where each category actually stands, measured today:
+
+| category | settled | holdout rows | more needed (of ~200) |
+|---|---|---|---|
+| mlb moneyline | 141 | 28 | 59 |
+| cfb moneyline | 137 | 27 | 63 |
+| cfb spread | 134 | 26 | 66 |
+| cfb total | 129 | 25 | 71 |
+| mlb spread / total | 83 | 16 | 117 |
+| mlb prop | 65 | 13 | 135 |
+
+**No correction has ever been active on any category.** At current settle rates
+the first activations land in early October, not on the 21st. If you want them
+sooner, that is a dated ruling lowering `HOLDOUT_MIN` and accepting the
+measured false-activation rate — a class (b) change I did not make.
+
+**Your six screen defects: one was not a defect, five were, all five fixed.**
+The Combos group renders with zero packages at both widths — your screenshot
+predates the 03:14 rebuild. Fixed: the old "More picks" grid and its renderer
+removed; the group heads now leave the screen with their groups; one source of
+truth for the next start (header and Live now both say 3:35 PM); baseball reads
+"total runs" on Picks, Results and the digest; and each sport's flagged-method
+note cites only its own walk-forward.
+
+**And the finding about my own work, which is the one that matters:** the night
+audit passed Live "via the DOM" because screenshots timed out with the pane
+minimised. A DOM check sees what it asks for. It could not see fifteen cards in
+a design we replaced rendering underneath. **From here a close-out with no
+screenshot of a route says that route is unverified.** All four routes at both
+widths are captured in the addendum to the night-audit close-out.
+
+I also introduced two defects doing this and both were caught by loading the
+page rather than by a test — a text-boundary cut in `app.js` took six
+neighbouring functions with it, and the grid's loading skeleton outlived the
+grid. Both are written up where they happened.
