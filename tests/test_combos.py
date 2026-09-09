@@ -219,46 +219,54 @@ def test_above_the_gate_a_package_is_never_staked_above_the_flat_fraction():
 
 
 # ---------------------------------------------------------------------------
-# C4 -- the record, the gate and the kill
+# C4 -- WITHDRAWN 2026-09-09, and what is left of it
 # ---------------------------------------------------------------------------
+#
+# Five tests stood here: the two combo markets, the hundred-package CLV gate,
+# the kill's declared threshold, the condition it fires on, and its refusal to
+# edit the registry. Every one of them was true, and every one described a
+# product this app cannot have.
+#
+# The venue quotes a combo to an account holder on request. The app has no
+# account and LAW 5 does not permit one, so it never sees the price paid --
+# and a product with no price paid has no closing line, no CLV, no verdict and
+# nothing for a kill to fire on. The criterion counted SETTLED packages and
+# nothing could ever settle.
+#
+# What replaces them is one test: that the withdrawal is complete, and that
+# the app says why on the card rather than leaving a reader to look for a
+# sample size that is never coming.
 
-def test_a_package_settles_into_its_own_market():
-    assert config.combo_market(2) == "combo_2"
-    assert config.combo_market(3) == "combo_3"
-    assert config.is_combo_market("combo_3")
-    assert not config.is_combo_market("moneyline")
-    with pytest.raises(ValueError, match="two or three legs"):
-        config.combo_market(4)
 
+def test_the_combo_record_is_withdrawn_and_says_so():
+    """C4 WITHDRAWN (operator ruling, 2026-09-09).
 
-def test_the_package_gate_is_a_hundred_and_a_single_leg_is_fifty():
+    The machinery is GONE, not left unused -- the treatment `Factor.default`
+    got, and for the same reason: a constant nobody reads is one the next
+    reader assumes is doing something.
+    """
+    assert not hasattr(config, "COMBO_MARKETS")
+    assert not hasattr(config, "combo_market")
+    assert not hasattr(config, "is_combo_market")
+    assert not hasattr(config, "COMBO_KILL_AFTER")
+    assert not hasattr(calibration, "combo_kill_verdict")
+    assert not hasattr(calibration, "MIN_PACKAGES_FOR_CLV")
+    # The dates the withdrawal happened on, so a reader finds the ruling.
+    assert config.COMBO_RECORD_WITHDRAWN == "2026-09-09"
+    assert calibration.COMBO_CLV_WITHDRAWN == "2026-09-09"
+    # ONE ANSWER FOR EVERY MARKET now that no combo reaches it.
     assert calibration.clv_minimum("moneyline") == 50
-    assert calibration.clv_minimum("combo_2") == 100
-    assert calibration.MIN_PACKAGES_FOR_CLV == 100
-    assert calibration.COMBO_CLV_DECLARED.startswith("2026-09-08")
+    assert calibration.clv_minimum("combo_2") == 50
 
 
-def test_the_kill_is_declared_and_dated_before_the_first_package():
-    assert config.COMBO_KILL_AFTER == 50
-    assert config.COMBO_KILL_DECLARED.startswith("2026-09-08")
-
-
-def test_the_kill_fires_only_when_packages_lose_while_singles_win():
-    """AGAINST SINGLES, NOT AGAINST ZERO. A losing stretch in both is a bad
-    month; a losing stretch in packages alone is the product being wrong."""
-    losing_both = language.combo_kill_words(60, 50, -2.0, -1.0, False)
-    assert "fires only when" in losing_both
-    fired = language.combo_kill_words(60, 50, -2.0, 1.0, True)
-    assert "stop being priced" in fired
-
-
-def test_the_kill_reports_and_never_edits_the_registry(tmp_path):
-    conn = db.connect(tmp_path / "kill.db")
-    db.init(conn)
-    verdict = calibration.combo_kill_verdict(conn, sport="nfl")
-    assert verdict["fires"] is False
-    assert verdict["n"] == 0
-    assert config.RETIRED_MARKETS.get(("nfl", "combo_2")) is None
+def test_the_card_says_the_product_cannot_be_scored():
+    """EVERY OTHER NUMBER ON THIS PAGE CARRIES ITS N (LAW 4), so a reader
+    trained by that will look for one on a combo card. It is not coming, and
+    the card says so instead of leaving a hole."""
+    words = language.combo_unmeasurable_words()
+    assert "never sees the price" in words
+    assert "cannot be scored" in words
+    assert "No record is kept" in words
 
 
 def test_a_package_tap_is_one_row_in_the_same_table(tmp_path):
@@ -357,32 +365,47 @@ def test_the_heading_reads_as_a_sentence_after_a_count():
     assert "4 in a sport this record does not forecast" in words
 
 
-def test_the_empty_state_says_which_finding_it_is():
-    """"The venue offered nothing" and "the venue offered three and all three
-    were same-game" are different days."""
-    nothing = language.combo_empty_words(["nfl", "mlb"], offered=0)
-    assert "no package open today" in nothing
-    assert "NFL, MLB" in nothing
-    some = language.combo_empty_words(["nfl"], offered=3,
-                                      refused={"same_game": 3})
-    assert "3 packages open" in some
-    assert "3 same-game, not priceable" in some
+def test_the_empty_state_never_reports_the_venue_as_having_nothing():
+    """REPLACED 2026-09-09. This asserted the two shapes of "the venue offered
+    nothing" -- and the ruling of that date forbids the app saying that at
+    all: the venue's combo builder is an account-holder feature that exists
+    whether or not anything sits on its public shelf, and the true statement
+    is that this app cannot ask.
+
+    The empty state now describes OUR side, per sport, in the operator's own
+    words, so a reader can see that a combo is two picks from one sport.
+    """
+    assert not hasattr(language, "combo_empty_words")
+    words = language.combo_none_clear_words("MLB")
+    assert words == "no two MLB picks clear the bar today"
+    assert "package" not in words and "venue" not in words
+    # AND THE GROUP SAYS WHAT IT CANNOT DO, above the cards.
+    assert "cannot ask" in language.COMBO_RFQ_SENTENCE
+    assert "on request" in language.COMBO_RFQ_SENTENCE
 
 
 def test_the_group_ships_empty_and_truthful_on_the_live_record(tmp_path):
-    """MEASURED 2026-09-08: the venue had no package this record could price.
+    """An empty group is a finding, and the sentence is how a reader tells it
+    from a broken one.
 
-    An empty group is the finding, and the sentence is how a reader can tell
-    it from a broken one.
+    REWRITTEN 2026-09-09. It asserted the heading was "Combos" and the empty
+    sentence said "no package open today". Both were corrected by ruling: the
+    group is PER SPORT ("MLB combos", LAW 6), and it never reports the venue
+    as having nothing, because the venue's builder exists whether or not its
+    public shelf does -- the app simply cannot ask. The empty state describes
+    OUR side of it.
     """
     conn = db.connect(tmp_path / "group.db")
     db.init(conn)
     block = views._combo_block(conn, [], [], "mlb")
     assert block["n"] == 0
     assert block["cards"] == []
-    assert block["heading"] == "Combos"
-    assert block["empty_words"]
-    assert "no package open today" in block["empty_words"]
+    assert block["heading"] == "MLB combos"
+    assert block["empty_words"] == "no two MLB picks clear the bar today"
+    # AND NEVER THE OLD SENTENCE, in any form.
+    assert "package open" not in block["empty_words"]
+    # The group says what it cannot do, above the cards.
+    assert "cannot ask" in block["rfq_words"]
 
 
 # ---------------------------------------------------------------------------

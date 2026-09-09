@@ -3970,6 +3970,65 @@ def settled_outcome_words(shown_prob: float | None, outcome: int | None,
 # nothing the venue had open was priceable here.
 
 
+#: WHY THE CARD SHOWS NO PRICE, and it is not a gap (ruled 2026-09-09). The
+#: venue builds a combo to an account holder's order and quotes it back to
+#: that account on request. The public interface carries only prepackaged
+#: series, so there is no combo price this app can ever read: asking would
+#: require an account, which LAW 5 forbids and marks not amendable.
+#:
+#: So the app does the half it can do honestly -- what the combo is worth --
+#: and the operator does the half only he can do, which is reading the quote
+#: on his own screen.
+COMBO_RFQ_SENTENCE = (
+    "The venue quotes combos to your account on request. This app cannot ask, "
+    "so it shows what a combo is worth and you compare.")
+
+
+def combo_group_heading(sport_label: str) -> str:
+    """"MLB combos", per sport, because a combo never crosses one (LAW 6).
+
+    The heading names the sport for the same reason every other figure in this
+    record does: two sports in one product would describe neither, and a
+    reader glancing at a list called "Combos" cannot tell whether the two legs
+    came from the same game of the same sport or from two different ones.
+    """
+    return f"{sport_label} combos"
+
+
+def combo_none_clear_words(sport_label: str) -> str:
+    """No two picks cleared the bar in this sport today.
+
+    IN THESE WORDS, ruled 2026-09-09, because they say what a combo IS: two
+    picks, one sport, each good enough on its own. "No package open" described
+    the venue's shelf and was wrong twice over -- the shelf is not where these
+    come from, and the builder exists whether or not anything is on it.
+    """
+    return f"no two {sport_label} picks clear the bar today"
+
+
+def combo_ceiling_words(ceiling_cents: int | None) -> str:
+    """The highest price worth paying, in the operator's own words.
+
+    THE ONLY NUMBER ON THE CARD THAT IS A DECISION. There is no venue price to
+    compare against and no edge to print, so the card carries what the combo
+    is worth and the line beneath it that turns that into an answer: pay less
+    than this or do not take it.
+    """
+    if ceiling_cents is None:
+        return "not worth taking at any price"
+    return f"worth taking only below {ceiling_cents}\u00a2"
+
+
+def combo_unmeasurable_words() -> str:
+    """Why this product has no record and never will (C4 withdrawn, 2026-09-09).
+
+    Said on the card rather than in a document, because a reader who has been
+    told every other number carries its sample size will look for one here.
+    """
+    return ("This app never sees the price you were quoted, so a combo's "
+            "result cannot be scored. No record is kept and none is claimed.")
+
+
 def combo_heading_words(priced: int, refused: dict, sports_without: list) -> str:
     """"1 priced · 2 same-game, not priceable · none for baseball"."""
     from .market import combos
@@ -3998,28 +4057,12 @@ def combo_fee_words(ratio: float | None) -> str:
             f"singles' rate per dollar, and every card prints both.")
 
 
-def combo_empty_words(sports: list, offered: int = 0,
-                      refused: dict | None = None) -> str:
-    """When the venue has nothing this record can price, in one sentence.
-
-    TWO DIFFERENT FINDINGS, and the sentence says which. "The venue offered
-    nothing" and "the venue offered three and all three were same-game" are
-    not the same day, and a reader who cannot tell them apart cannot tell
-    whether this app is quiet or the market is.
-    """
-    from .market import combos
-
-    named = ", ".join(SPORT_LABELS.get(s, s) for s in sports)
-    where = f" It forecasts {named}." if named else ""
-    if not offered:
-        return ("The venue has no package open today in any sport this record "
-                "forecasts." + where)
-    reasons = [f"{n} {combos.UNPRICEABLE[why]}"
-               for why, n in sorted((refused or {}).items())
-               if n and why in combos.UNPRICEABLE]
-    listed = "; ".join(reasons) or "none of them priceable here"
-    return (f"The venue has {offered} package{'' if offered == 1 else 's'} open "
-            f"and this record can price none of them: {listed}." + where)
+# `combo_empty_words` STOOD HERE until 2026-09-09. It composed "the venue
+# has no package open today in any sport this record forecasts" -- a
+# sentence the ruling of that date forbids, because the venue's combo
+# builder exists whether or not its public shelf does, and what is true is
+# that this app cannot ask. `combo_none_clear_words` replaced it and
+# describes OUR side: no two picks in this sport cleared the bar.
 
 
 def combo_legs_words(legs: list) -> str:
@@ -4050,22 +4093,11 @@ def combo_singles_words(alt: dict) -> str:
             f"{alt['combo_fee_share'] * 100:.1f}%")
 
 
-def combo_kill_words(n: int, after: int, combo_mean: float | None,
-                     single_mean: float | None, fires: bool) -> str:
-    """The kill criterion in the words it will be read in, before it fires."""
-    if fires:
-        return (f"{n} settled packages: they are losing {abs(combo_mean):.1f}¢ "
-                f"a contract to the close while single legs beat it by "
-                f"{single_mean:.1f}¢. The criterion declared on 2026-09-08 "
-                f"says this sport's packages stop being priced.")
-    if n < after:
-        return (f"{n} of the {after} settled packages this sport needs before "
-                f"the record can say whether packages are worth taking at all.")
-    if combo_mean is None:
-        return f"{n} settled packages, none of them closed yet."
-    return (f"{n} settled packages, {combo_mean:+.1f}¢ a contract against the "
-            f"close; single legs {single_mean:+.1f}¢. The kill fires only when "
-            f"packages lose while singles win.")
+# `combo_kill_words` STOOD HERE until 2026-09-09, when C4 was withdrawn.
+# It read the kill verdict out in words. The verdict counted SETTLED
+# packages and a combo cannot settle -- the app never sees the price the
+# operator was quoted -- so the sentence described a judgement that could
+# never be reached. `combo_unmeasurable_words` says the true thing.
 
 
 def taken_package_entry_words(legs: str, price: float | None) -> str:

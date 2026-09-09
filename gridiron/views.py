@@ -930,7 +930,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         _recommend.for_predictions(
             conn, [c["prediction_id"] for c in cards if c.get("on_shortlist")]),
         # THE COUNT IS OF ONE FORECASTER'S QUESTIONS, and the strip says which.
-        forecaster=chosen)
+        forecaster=chosen, sport=sport)
 
     payload = {
         "sport": sport,
@@ -1683,7 +1683,7 @@ def _leg_reading(leg: str, game_id: str, side: str | None, entry: dict | None,
     }
 
 
-def _combo_card(package, readings: list, *, taken: bool, floor: float,
+def _prepackaged_card(package, readings: list, *, taken: bool, floor: float,
                 unit_dollars: float | None, sport: str, settled: int,
                 colours: dict) -> dict:
     """One package the venue published, priced against its own legs."""
@@ -1722,7 +1722,6 @@ def _combo_card(package, readings: list, *, taken: bool, floor: float,
         # its result will join and the gate it will be counted against. Two
         # legs and three legs are two markets: the fee per dollar differs by
         # 1.7 times between them, measured.
-        "settles_into": config.combo_market(len(readings)),
         "legs_words": language.combo_legs_words([r["words"] for r in readings]),
         "payout": payout,
         "payout_words": language.payout_chip_words(payout),
@@ -1811,16 +1810,13 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
 
     already = taken_package_ids(conn, [r["id"] for r in latest])
 
-    # THE PACKAGE MARKET'S OWN N, NEVER THE LEG'S. A package is sized against
-    # `combo_2`/`combo_3`, which have settled nothing, so every package is a
-    # flat fraction. Reading the leg's count here would let a moneyline's
-    # hundred resolutions unlock variable sizing for a product that has never
-    # settled once -- LAW 5's gate answered with the wrong market's evidence.
+    # A PACKAGE IS ALWAYS FLAT (C4 withdrawn, 2026-09-09). This counted rows
+    # in `combo_2`/`combo_3` to decide whether variable sizing had been
+    # earned. Those markets are gone and nothing settles into them, so the
+    # answer is zero for ever and is written as the constant it is rather than
+    # asked of a table that will always say the same thing.
     def _settled(legs: int) -> int:
-        return conn.execute(
-            "SELECT COUNT(*) FROM recommendations"
-            " WHERE sport = ? AND market = ? AND closed_utc IS NOT NULL",
-            (sport, config.combo_market(legs))).fetchone()[0]
+        return 0
     built = []
     for row in latest:
         if not row["priceable"]:
@@ -1843,7 +1839,7 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
             # have invented one of the factors in its own product.
             refused["unforecast_leg"] = refused.get("unforecast_leg", 0) + 1
             continue
-        built.append(_combo_card(row, readings, taken=row["id"] in already,
+        built.append(_prepackaged_card(row, readings, taken=row["id"] in already,
                                  floor=floor, unit_dollars=unit_dollars,
                                  sport=sport, settled=_settled(len(readings)),
                                  colours=colours))
@@ -1873,18 +1869,85 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
         "   AND EXISTS (SELECT 1 FROM games g WHERE instr(v.game_ids, g.id) > 0"
         "                 AND (? IS NULL OR g.league_date = ?))", (day, day))}
     without = [s for s in _combos.FORECAST_SPORTS if s not in with_packages]
+
+    # WHAT THE GROUP IS NOW (ruled 2026-09-09). The venue builds a combo to an
+    # account holder's order and quotes it back on request; the public
+    # interface has only prepackaged series. So there is no combo price this
+    # app can ever read, and the group stops waiting for one: it PROPOSES,
+    # prices a ceiling, and leaves the comparison to the person who can see
+    # the quote. `shown` -- the prepackaged series this build already graded --
+    # stays, as `graded`, because those rare series do carry a public price.
+    label = language.SPORT_LABELS.get(sport, (sport or "").upper())
+    proposals = [
+        _proposal_card(p, unit_dollars=unit_dollars, names=names,
+                       colours=colours, by_id=by_id)
+        for p in _combos.propose(priced, sport=sport)
+    ] if sport else []
     return {
-        "n": len(shown),
+        "n": len(proposals),
         "offered": len(latest),
         "refused": refused,
-        "cards": shown,
-        "heading": language.state_heading_words("combos", len(shown)),
+        "cards": proposals,
+        "graded": shown,
+        "heading": language.combo_group_heading(label),
+        "rfq_words": language.COMBO_RFQ_SENTENCE,
+        "unmeasurable_words": language.combo_unmeasurable_words(),
         "count_words": language.combo_heading_words(len(shown), refused, without),
         "fee_words": language.combo_fee_words(
-            shown[0]["fee_ratio"] if shown else None),
-        "empty_words": (None if shown else language.combo_empty_words(
-            list(_combos.FORECAST_SPORTS), offered=len(latest),
-            refused=refused)),
+            proposals[0]["fee_ratio"] if proposals else
+            (shown[0]["fee_ratio"] if shown else None)),
+        # NOT "no package open" (ruled 2026-09-09). The builder exists whether
+        # or not the venue has a shelf, so the empty state describes OUR side:
+        # no two picks in this sport cleared the bar today.
+        "empty_words": (None if proposals
+                        else language.combo_none_clear_words(label)),
+    }
+
+
+def _proposal_card(proposal: dict, *, unit_dollars: float | None,
+                   names: dict, colours: dict, by_id: dict) -> dict:
+    """One combo the app puts forward: what it is worth, and the ceiling.
+
+    NO VENUE PRICE, NO EDGE, NO PAYOUT CHIP, and their absence is the point.
+    The app cannot read what the venue would quote, so a card carrying an
+    edge would be comparing a real number with an imagined one. What it
+    carries instead is the fair value, the highest price worth paying, and the
+    same singles alternative every package card has printed since the group
+    shipped.
+    """
+    from .market import combos as _combos
+
+    legs = []
+    for leg in proposal["legs"]:
+        card = by_id.get(leg["prediction_id"]) or {}
+        club = (card.get("phrase") or card.get("row_title")
+                or leg.get("market") or "")
+        legs.append({
+            "prediction_id": leg["prediction_id"],
+            "game_id": leg["game_id"],
+            "words": club,
+            "fair_cents": round((leg["fair_value"] or 0) * 100),
+            "market": leg.get("market"),
+        })
+    size = _combos.size_for(len(legs), settled=0,
+                            gate=config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+                            measured_edge=False)
+    singles = proposal.get("singles") or {}
+    return {
+        "leg_ids": proposal["leg_ids"],
+        "legs": legs,
+        "sport": proposal["sport"],
+        "fair": proposal["fair"],
+        "fair_words": language.price_chip_words(
+            None if proposal["fair"] is None else proposal["fair"] * 100),
+        "ceiling_cents": proposal.get("ceiling_cents"),
+        "ceiling_words": language.combo_ceiling_words(
+            proposal.get("ceiling_cents")),
+        "size_words": language.size_words(
+            units=size["units"], flat=size["kind"] == "flat",
+            why=size.get("why"), unit_dollars=unit_dollars),
+        "singles_words": language.combo_singles_words(singles),
+        "fee_ratio": singles.get("ratio"),
     }
 
 
@@ -1910,7 +1973,8 @@ def next_start_utc(cards: list[dict]) -> str | None:
 
 
 def _today_block(conn: sqlite3.Connection, cards: list[dict],
-                 priced: list[dict], forecaster: str | None = None) -> dict:
+                 priced: list[dict], forecaster: str | None = None,
+                 sport: str | None = None) -> dict:
     """The two groups the operator reads every morning, never blended.
 
     CLEARS THE BAR is what survives both conditions: an edge after the venue's
@@ -2046,7 +2110,12 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
     live.sort(key=lambda c: (not c["taken"], c.get("question") or ""))
 
     day = next((c.get("league_date") for c in cards if c.get("league_date")), None)
-    sport = next((c.get("sport") for c in cards if c.get("sport")), None)
+    # THE PAGE'S SPORT, NOT THE CARDS' (ruled 2026-09-09). The Combos group
+    # is per sport and its empty state names that sport -- "no two MLB picks
+    # clear the bar today" -- so on a day with no cards at all it still has to
+    # know which sport it is empty FOR. Falling back to the cards left the
+    # sentence reading "no two  picks", which is how this was found.
+    sport = sport or next((c.get("sport") for c in cards if c.get("sport")), None)
     strip = language.day_strip_words(
         day_words=language.date_words_from_iso(day),
         slate_words=language.SPORT_LABELS.get(sport, sport),

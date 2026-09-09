@@ -358,5 +358,36 @@ shape landed fifty minutes after them (commit `25d83b8`, 20:30Z). Anything
 that reads the closing-line record should exclude them by that predicate, and
 this paragraph is the flag until a column is.
 
-**The date the combo record opened: 2026-09-08**, with no priceable package
-in any sport this record forecasts — see the entry above.
+**The combo record opened 2026-09-08 and was WITHDRAWN 2026-09-09.** It ran
+for one day and never held a row.
+
+**THE COMBO PRODUCT IS UNMEASURABLE BY CONSTRUCTION, and this is the line that
+says so.** Every other product in this record can eventually be scored: a
+prediction settles, a recommendation gets a closing price, a claim resolves.
+A combo cannot, and not for want of sample size — for want of the one input
+scoring needs.
+
+The venue builds a combo to the account holder's order and quotes it back to
+that account on request. The public interface carries only a handful of
+prepackaged series. So **the app never sees the price the operator was
+quoted**, and asking for one would require an account, which LAW 5 forbids and
+marks not amendable. With no price paid there is no closing line, no CLV, no
+win rate that means anything, and no verdict — now or ever, under any amount
+of data.
+
+What was removed on 2026-09-09, rather than left to look like a record waiting
+to fill: `config.COMBO_MARKETS`, `combo_market()`, `is_combo_market()`,
+`COMBO_KILL_AFTER`, `calibration.MIN_PACKAGES_FOR_CLV` and
+`calibration.combo_kill_verdict`. The kill counted SETTLED packages and
+nothing could ever settle, so it could not have fired — a criterion that
+cannot fire reads as a safety net while being a sign saying one is there.
+
+**What the app does instead**, and it is the honest half: it proposes combos
+from legs that each clear the bar alone, prints what the combo is worth and
+the highest price worth paying, and leaves the comparison to the person who
+can see the quote. The card carries the sentence too, because a reader taught
+that every number here arrives with its N will look for one.
+
+**Nothing in the six criteria above moves on this.** A product that cannot be
+scored cannot contribute evidence for or against readiness, and counting it
+either way would be the mistake this document exists to prevent.

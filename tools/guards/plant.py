@@ -8269,6 +8269,129 @@ def plant_an_absence_with_no_evidence() -> Result:
                   "be priced, and nobody can tell whether anyone looked")
 
 
+LAW_COMBO_PROPOSAL = "A PROPOSED COMBO IS TWO CLEARING LEGS FROM TWO GAMES"
+
+
+def _leg(pid, *, sport="mlb", game="g1", side="yes", fair=0.7, edge=6.0):
+    return {"prediction_id": pid, "sport": sport, "game_id": game,
+            "market": "moneyline", "fair_value": fair, "price": 0.55,
+            "edge_cents": edge, "side": side}
+
+
+def plant_a_proposed_combo_from_one_game() -> Result:
+    """Offer the proposer two clearing legs from the SAME game.
+
+    A combo of two legs from one game prices a correlation nobody declared,
+    which LAW 2 forbids: there is no joint model in this record, and
+    multiplying two probabilities from one game invents the factor that would
+    connect them.
+    """
+    from gridiron.market import combos as _combos
+
+    out = _combos.propose([_leg(1, game="g1"), _leg(2, game="g1")], sport="mlb")
+    if not out:
+        return Result(LAW_COMBO_PROPOSAL, "propose two legs from one game",
+                      "market.combos.propose", True,
+                      "refused: both legs are the same game, so no proposal "
+                      "was made")
+    return Result(LAW_COMBO_PROPOSAL, "propose two legs from one game",
+                  "market.combos.propose", False,
+                  f"NOT CAUGHT - proposed {out[0]['leg_ids']} from one game, "
+                  f"which prices a correlation nobody declared")
+
+
+def plant_a_proposed_combo_across_sports() -> Result:
+    """Offer a leg from another sport. LAW 6: a number that mixes two sports
+    describes neither, and a combo is one number about both legs."""
+    from gridiron.market import combos as _combos
+
+    out = _combos.propose([_leg(1, sport="mlb", game="g1"),
+                           _leg(2, sport="nfl", game="g2")], sport="mlb")
+    if not out:
+        return Result(LAW_COMBO_PROPOSAL, "propose a leg from another sport",
+                      "market.combos.propose", True,
+                      "refused: the football leg is not this sport's, so no "
+                      "proposal was made")
+    return Result(LAW_COMBO_PROPOSAL, "propose a leg from another sport",
+                  "market.combos.propose", False,
+                  f"NOT CAUGHT - proposed {out[0]['leg_ids']} across two sports")
+
+
+def plant_a_proposed_combo_with_a_leg_that_does_not_clear() -> Result:
+    """Offer a leg the app would not recommend on its own.
+
+    Every leg clears the bar ALONE (ruled 2026-09-09). A combo containing a
+    pick the app declined to make is the app making it after all, inside a
+    product that costs more per dollar than the pick would have.
+    """
+    from gridiron.market import combos as _combos
+
+    out = _combos.propose([_leg(1, game="g1"),
+                           _leg(2, game="g2", side=None)], sport="mlb")
+    if not out:
+        return Result(LAW_COMBO_PROPOSAL, "propose a leg that does not clear the bar",
+                      "market.combos.propose", True,
+                      "refused: the second leg has no side, so no proposal "
+                      "was made")
+    return Result(LAW_COMBO_PROPOSAL, "propose a leg that does not clear the bar",
+                  "market.combos.propose", False,
+                  f"NOT CAUGHT - proposed {out[0]['leg_ids']}, one of which the "
+                  f"app declined to recommend on its own")
+
+
+def plant_a_leg_reused_across_two_proposals() -> Result:
+    """Three clearing legs, and the middle one is the best.
+
+    A leg spent in one proposal is spent. The same pick in two combos is one
+    opinion sold twice, and a reader taking both has doubled a position
+    without being told.
+    """
+    from gridiron.market import combos as _combos
+
+    out = _combos.propose(
+        [_leg(1, game="g1", edge=9.0), _leg(2, game="g2", edge=8.0),
+         _leg(3, game="g3", edge=7.0), _leg(4, game="g4", edge=6.0)],
+        sport="mlb")
+    seen: list[int] = []
+    for proposal in out:
+        seen.extend(proposal["leg_ids"])
+    if len(seen) == len(set(seen)):
+        return Result(LAW_COMBO_PROPOSAL, "reuse one leg in two proposals",
+                      "market.combos.propose", True,
+                      f"no leg is reused across {len(out)} proposal(s): {seen}")
+    return Result(LAW_COMBO_PROPOSAL, "reuse one leg in two proposals",
+                  "market.combos.propose", False,
+                  f"NOT CAUGHT - {seen} contains a repeat")
+
+
+def plant_a_combo_card_carrying_a_venue_price() -> Result:
+    """A proposal card with a price on it.
+
+    THE APP CANNOT READ A COMBO PRICE (ruled 2026-09-09): the venue quotes one
+    to an account holder on request, and asking needs an account, which LAW 5
+    forbids and marks not amendable. A card carrying a venue price, an edge or
+    a payout chip would be comparing a real number with an imagined one.
+    """
+    from gridiron.market import combos as _combos
+
+    out = _combos.propose([_leg(1, game="g1"), _leg(2, game="g2")], sport="mlb")
+    if not out:
+        return Result(LAW_COMBO_PROPOSAL, "put a venue price on a proposed combo",
+                      "market.combos.propose", False,
+                      "NOT CAUGHT - the proposer made nothing to check")
+    banned = [k for k in ("price", "edge_cents", "payout", "venue_price")
+              if out[0].get(k) is not None]
+    if not banned:
+        return Result(LAW_COMBO_PROPOSAL, "put a venue price on a proposed combo",
+                      "market.combos.propose", True,
+                      "a proposal carries a fair value and a ceiling and no "
+                      "venue price, edge or payout")
+    return Result(LAW_COMBO_PROPOSAL, "put a venue price on a proposed combo",
+                  "market.combos.propose", False,
+                  f"NOT CAUGHT - the proposal carries {banned}, which this app "
+                  f"cannot have read")
+
+
 LAW_AT_THE_LINE_ONLY = "A CLAIM IS PRICED AT THE LINE, NEVER AT THE OPEN"
 
 
@@ -8663,6 +8786,11 @@ def main() -> int:
     results.append(plant_an_absence_with_no_evidence())
     results.append(plant_a_syntax_error_in_the_browser())
     results.append(plant_a_claim_priced_off_the_opening_read())
+    results.append(plant_a_proposed_combo_from_one_game())
+    results.append(plant_a_proposed_combo_across_sports())
+    results.append(plant_a_proposed_combo_with_a_leg_that_does_not_clear())
+    results.append(plant_a_leg_reused_across_two_proposals())
+    results.append(plant_a_combo_card_carrying_a_venue_price())
     results.append(plant_a_urllib_post_at_the_venue())
     results.append(plant_a_test_that_opens_the_live_record())
     results.append(plant_a_write_through_the_live_read_handle())

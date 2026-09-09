@@ -1429,27 +1429,20 @@ MAX_FRACTION = 0.02
 BANKROLL_UNITS = 1000.0 / 15.0
 BANKROLL_UNITS_DECLARED = "2026-09-08T00:00:00Z"
 
-#: A SETTLED PACKAGE IS ITS OWN MARKET (GRIDIRON_COMBOS C4, 2026-09-08), per
-#: sport, and never counts toward any leg's N. Two legs and three legs are two
-#: markets because they are two products: the fee per dollar differs by 1.7
-#: times between them, measured, and a record that merged them would report a
-#: mean edge for a thing nobody can buy.
-COMBO_MARKETS = ("combo_2", "combo_3")
-
-
-def combo_market(legs: int) -> str:
-    """Which market a package of this many legs settles into."""
-    if legs not in (2, 3):
-        raise ValueError(
-            f"GRIDIRON: a package settles into {COMBO_MARKETS}, and {legs} legs "
-            f"is neither. The declared shape is two or three legs (LAW 5 as "
-            f"amended 2026-09-08); a package outside it is never priced, so it "
-            f"never settles either.")
-    return f"combo_{legs}"
-
-
-def is_combo_market(market: str | None) -> bool:
-    return market in COMBO_MARKETS
+#: THE COMBO PRODUCT HAS NO MARKET RECORD, and cannot have one
+#: (C4 WITHDRAWN by operator ruling, 2026-09-09).
+#:
+#: `COMBO_MARKETS = ("combo_2", "combo_3")`, `combo_market()` and
+#: `is_combo_market()` stood here from 2026-09-08 until this ruling, written
+#: for a product the app was going to grade at a price it could read. It
+#: cannot read one: the venue quotes a combo to an account holder on request,
+#: and asking needs an account, which LAW 5 forbids and marks not amendable.
+#:
+#: So a combo has no price paid, therefore no closing line, no CLV, no
+#: verdict. The two market names were removed rather than left unused -- the
+#: same treatment `Factor.default` got -- because a constant nobody reads is a
+#: constant the next reader assumes is doing something.
+COMBO_RECORD_WITHDRAWN = "2026-09-09"
 
 
 #: HOW OLD A JOB MAY BE BEFORE THE FIRST SCREEN SAYS SO
@@ -1471,18 +1464,10 @@ def is_combo_market(market: str | None) -> bool:
 FRESHNESS_HOURS = {"daily_run": 36.0, "venue_read": 30.0, "reasoning": 36.0}
 FRESHNESS_DECLARED = "2026-09-08T00:00:00Z"
 
-#: THE COMBO KILL (GRIDIRON_COMBOS C4, 2026-09-08). At fifty settled packages
-#: in a sport, if the packages' closing-line value is negative while the same
-#: period's single legs is positive, that sport's combo markets are retired
-#: until a dated ruling revives them.
-#:
-#: FIFTY, matching the single-leg kill, and for the same reason: it is roughly
-#: where the closing line starts to say something, and a win rate would need
-#: several hundred. The comparison is against SINGLES rather than against zero
-#: on purpose -- a losing stretch in both is a bad month, and a losing stretch
-#: in packages alone is the product being wrong.
-COMBO_KILL_AFTER = 50
-COMBO_KILL_DECLARED = "2026-09-08T00:00:00Z"
+#: THE COMBO KILL IS WITHDRAWN TOO (2026-09-09), for the reason above: it
+#: fired at fifty SETTLED packages, and nothing can ever settle. A criterion
+#: that cannot fire is worse than none -- it reads as a safety net and is a
+#: sign saying one is there.
 
 #: HOW MUCH EDGE IS AN EDGE, in cents per contract, after the fee. A tenth of
 #: a cent is arithmetic noise on a price quoted in whole cents; one cent is the

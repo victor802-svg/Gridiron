@@ -1420,7 +1420,6 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     # 2026-09-08). The kill criterion was declared before the first package
     # existed and is printed from the first day, so its wording cannot be
     # chosen later to suit the numbers.
-    payload["combo_kill"] = combo_kill_verdict(conn, sport=sport)
     # The packages he marked, on their own line and never inside a leg's.
     payload["taken_packages"] = taken_packages(conn, sport=sport)
     # WHAT THE ENGINE IS ALLOWED TO PRICE AT ALL (P2, 2026-09-07), with the
@@ -2009,14 +2008,21 @@ CLV_DECLARED = "2026-09-07T00:00:00Z"
 #: close is the product of two or three moving quotes, so the same confidence
 #: costs more observations than a single's does -- twice as many, which is the
 #: coarsest defensible answer and is declared as a judgement, not fitted.
-MIN_PACKAGES_FOR_CLV = 100
-COMBO_CLV_DECLARED = "2026-09-08T00:00:00Z"
+#: `MIN_PACKAGES_FOR_CLV = 100` stood here from 2026-09-08 until C4 was
+#: WITHDRAWN on 2026-09-09. A package needed twice a single's observations
+#: before its closing-line number meant anything -- a sound threshold for a
+#: product with a closing line. A combo has none: the app never sees the price
+#: the operator was quoted, so there is nothing to close against.
+COMBO_CLV_WITHDRAWN = "2026-09-09"
 
 
 def clv_minimum(market: str) -> int:
-    """How many closes this market needs before its number means anything."""
-    return (MIN_PACKAGES_FOR_CLV if config.is_combo_market(market)
-            else MIN_RECOMMENDATIONS_FOR_CLV)
+    """How many closes this market needs before its number means anything.
+
+    ONE ANSWER NOW. The combo branch went with C4: no combo settles, so no
+    combo market ever reaches this function.
+    """
+    return MIN_RECOMMENDATIONS_FOR_CLV
 
 
 def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
@@ -2220,58 +2226,18 @@ def taken_comparison(conn: sqlite3.Connection, *, sport: str,
     return payload
 
 
-def combo_kill_verdict(conn: sqlite3.Connection, *, sport: str) -> dict:
-    """Should this sport's packages stop being priced? (C4, 2026-09-08)
-
-    THE CRITERION IS DECLARED IN CONFIG AND DATED, and it was written before
-    the first package existed. At `config.COMBO_KILL_AFTER` settled packages in
-    a sport, packages losing to the close WHILE THAT SPORT'S SINGLES BEAT IT
-    retires the sport's combo markets.
-
-    AGAINST SINGLES, NOT AGAINST ZERO. A losing stretch in both is a bad month
-    and says nothing about the product; a losing stretch in packages alone is
-    the product being wrong, which is the only thing this verdict is for.
-
-    IT REPORTS, IT DOES NOT EDIT. Retiring a market is a dated act by a human
-    in `config.RETIRED_MARKETS`, the same shape as every other retirement here.
-    A function that could retire a market by itself would be a rule that
-    rewrote the registry, and the registry is the thing that makes a rule
-    auditable.
-    """
-    require_sport(sport, "calibration.combo_kill_verdict")
-    report = clv_report(conn, sport=sport)
-    packages = [e for e in report["markets"] if config.is_combo_market(e["market"])]
-    singles = [e for e in report["markets"]
-               if not config.is_combo_market(e["market"])]
-    settled = sum(e["n"] for e in packages)
-    single_n = sum(e["n"] for e in singles)
-
-    def _mean(entries, total):
-        if not total:
-            return None
-        return round(sum(e["mean_cents"] * e["n"] for e in entries
-                         if e["mean_cents"] is not None) / total, 2)
-
-    combo_mean = _mean(packages, settled)
-    single_mean = _mean(singles, single_n)
-    fires = (settled >= config.COMBO_KILL_AFTER
-             and combo_mean is not None and combo_mean < 0
-             and single_mean is not None and single_mean > 0)
-    return {
-        "sport": sport,
-        "record": "combo_kill",
-        "declared": config.COMBO_KILL_DECLARED,
-        "after": config.COMBO_KILL_AFTER,
-        "n": settled,
-        "combo_mean_cents": combo_mean,
-        "single_mean_cents": single_mean,
-        "single_n": single_n,
-        "fires": fires,
-        "already_retired": all(config.retired_market(sport, m)
-                               for m in config.COMBO_MARKETS),
-        "words": language.combo_kill_words(
-            settled, config.COMBO_KILL_AFTER, combo_mean, single_mean, fires),
-    }
+# `combo_kill_verdict` STOOD HERE from 2026-09-08 until C4 was WITHDRAWN on
+# 2026-09-09. It asked whether a sport's packages were losing to the close
+# while its singles beat it, and retired the combo markets when they were.
+#
+# IT COULD NEVER HAVE FIRED. It counted SETTLED packages, and a combo cannot
+# settle: the app never sees the price the operator was quoted, so there is no
+# closing line to compare against and no verdict to reach. A criterion that
+# cannot fire is worse than no criterion -- it reads as a safety net while
+# being a sign saying one is there.
+#
+# What replaced it is a sentence on the card and a line in READINESS saying
+# the product is unmeasurable by construction, which is the true thing.
 
 
 def taken_packages(conn: sqlite3.Connection, *, sport: str) -> dict:

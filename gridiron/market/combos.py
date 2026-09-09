@@ -309,6 +309,127 @@ def singles_alternative(leg_prices: list[float], leg_fairs: list[float]) -> dict
     }
 
 
+#: HOW MANY THE APP WILL PROPOSE IN A DAY, PER SPORT (ruled 2026-09-09).
+#: Three is a ceiling on a list, not a target: a day with two qualifying pairs
+#: proposes two, and a day with none proposes none and says so.
+MAX_PROPOSALS_PER_SPORT = 3
+
+#: HOW MANY LEGS THE APP PROPOSES. The ruling permits two or three; this
+#: proposes TWO, and the reason is the cost printed on every card: the fee per
+#: dollar staked is 1.67 times the singles' rate on two 60c legs and 2.8 times
+#: on three, measured 2026-09-08. Nothing in the record yet argues for the
+#: more expensive shape, and choosing it would be the app taking a view it
+#: cannot support. Three-leg proposals are permitted by the ruling and are not
+#: made; say so rather than let the absence look like an oversight.
+PROPOSAL_LEGS = 2
+
+
+def price_ceiling(fair: float | None) -> dict:
+    """The highest price worth paying for a combo worth `fair`.
+
+    A price is worth paying when what the combo is worth, less the venue's fee
+    at that price, beats the price by at least the declared return on stake:
+
+        fair - price - fee(price) >= MIN_RETURN_ON_STAKE * price
+
+    THE SAME TEST A SINGLE FACES, at the same threshold, so "worth taking" is
+    one rule in this app rather than two. The search is cent by cent because
+    the fee is rounded up to the cent and is therefore a step function; a
+    closed form would be a smooth answer to a stepped question.
+
+    Returns the ceiling as a probability and in cents, or None when no price
+    clears -- which is the honest answer for a combo whose fair value is so
+    low that the fee eats it at every price.
+    """
+    from .. import config
+    from . import recommend
+
+    if fair is None or not 0 < fair < 1:
+        return {"ceiling": None, "ceiling_cents": None,
+                "minimum_return": config.MIN_RETURN_ON_STAKE}
+    best = None
+    for cents in range(1, 100):
+        price = cents / 100.0
+        if fair - price - recommend.fee(price) >= config.MIN_RETURN_ON_STAKE * price:
+            best = cents
+    return {
+        "ceiling": (best / 100.0) if best else None,
+        "ceiling_cents": best,
+        "minimum_return": config.MIN_RETURN_ON_STAKE,
+    }
+
+
+def propose(entries: list[dict], *, sport: str) -> list[dict]:
+    """Up to three combos the app puts forward, from one sport's own legs.
+
+    THE RULES, ALL DECLARED, NONE ABOUT THE ANSWER (ruled 2026-09-09):
+
+      * every leg CLEARS THE BAR ALONE. Not "is interesting" -- the same test
+        the Clears group applies, read off the same entry, so a combo can
+        never contain a leg the app would not recommend on its own.
+      * DIFFERENT GAMES. Two legs from one game price a correlation nobody
+        declared, which LAW 2 forbids and no joint model here can supply.
+      * ONE SPORT, which is this function's argument and LAW 6's rule: a
+        number that mixes two sports describes neither.
+      * NO LEG REUSED. A leg in one proposal is spent; the same pick appearing
+        in three combos would be one opinion sold three times.
+
+    THE ORDER IS THE LEGS' OWN EDGE, best first, and the pairing is greedy
+    from that order. It is not tuned and it is not an optimiser: an optimiser
+    would be choosing combinations to make a number look good, which is the
+    discovery-by-scanning LAW 2 exists to prevent.
+    """
+    clearing = [e for e in entries
+                if e.get("side") is not None
+                and e.get("sport") == sport
+                and e.get("fair_value") is not None
+                and e.get("game_id")]
+    clearing.sort(key=lambda e: (-(e.get("edge_cents") or 0.0),
+                                 e.get("prediction_id") or 0))
+
+    proposals: list[dict] = []
+    used_games: set[str] = set()
+    spent: set[int] = set()
+    pool = list(clearing)
+    while len(proposals) < MAX_PROPOSALS_PER_SPORT:
+        legs: list[dict] = []
+        games: set[str] = set()
+        for entry in pool:
+            if entry["prediction_id"] in spent:
+                continue
+            if entry["game_id"] in games:
+                continue
+            legs.append(entry)
+            games.add(entry["game_id"])
+            if len(legs) == PROPOSAL_LEGS:
+                break
+        if len(legs) < PROPOSAL_LEGS:
+            break
+        for entry in legs:
+            spent.add(entry["prediction_id"])
+        used_games |= games
+        fair = fair_value([e["fair_value"] for e in legs])
+        ceiling = price_ceiling(fair)
+        proposals.append({
+            "sport": sport,
+            "legs": [{
+                "prediction_id": e["prediction_id"],
+                "game_id": e["game_id"],
+                "market": e.get("market"),
+                "fair_value": e["fair_value"],
+                "price": e.get("price"),
+                "edge_cents": e.get("edge_cents"),
+            } for e in legs],
+            "leg_ids": [e["prediction_id"] for e in legs],
+            "fair": fair,
+            **ceiling,
+            "singles": singles_alternative(
+                [e["price"] for e in legs if e.get("price") is not None],
+                [e["fair_value"] for e in legs if e.get("price") is not None]),
+        })
+    return proposals
+
+
 def stored_packages(conn: sqlite3.Connection, sport: str,
                     game_ids: list[str]) -> list[sqlite3.Row]:
     """Every package the record has read for these games, newest look first."""

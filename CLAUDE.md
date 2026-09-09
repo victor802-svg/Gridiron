@@ -77,12 +77,52 @@ never offered at any sample size; the declared fraction is a quarter, because
 Kelly assumes the probability is right and a probability ten points wrong
 compounds toward ruin rather than growth.
 
-**PACKAGES ARE GRADED, NEVER BUILT.** (Amended 2026-09-08 by operator ruling,
-replacing "SINGLES ONLY". The text it replaced is kept beneath.)
+**COMBOS ARE PROPOSED AND NEVER PRICED AT THE VENUE.** (Amended 2026-09-09 by
+operator ruling, replacing "PACKAGES ARE GRADED, NEVER BUILT" of the previous
+day. Both replaced texts are kept beneath.)
 
-The venue assembles multi-leg packages and sells them. The engine MAY price one
-it reads, and may never assemble one: it does not choose legs, does not combine
-them, and does not compute a package price the venue has not published.
+**THE MEASUREMENT THAT FORCED THIS.** The venue's combos are USER-BUILT and
+quoted by request to the account holder; the public interface exposes only a
+handful of prepackaged series. So "grade what the venue published" describes a
+thing that does not exist for combos, and the app cannot ever read a combo
+price -- asking would require an account, which the four prohibitions above
+forbid and mark not amendable.
+
+The engine therefore PROPOSES: up to three combos a day per sport, from legs
+that each clear the bar alone, from different games, in one sport, two or three
+of them, no leg reused. It computes what the combo is WORTH -- the product of
+the legs' corrected probabilities -- and the highest price worth paying for it,
+and it prints no venue price, no edge and no payout, because it has none and
+would be inventing them.
+
+**AND IT IS UNMEASURABLE BY CONSTRUCTION.** The app never sees the price the
+operator was quoted, so a combo has no closing line, no CLV and no verdict.
+There is no `combo_2`/`combo_3` record, no kill criterion, and no claim that
+this product works. A tap records the combo and its leg ids and nothing else.
+That is stated on the card, in `docs/READINESS.md`, and here, because a
+product this record cannot score is the one place a reader is most likely to
+assume it has been scored.
+
+A same-game combo stays refused at any price: multiplying two probabilities
+from one game prices a correlation nobody declared, which LAW 2 forbids.
+
+THE COST IS PRINTED BESIDE THE PRODUCT, always: the fee per dollar staked is
+1.67 times the singles' rate on two 60c legs and 2.8 times on three, measured
+2026-09-08, and every card carries the singles alternative on the same money.
+
+> **What this replaced, kept because a law that quietly vanished is a law
+> nobody can audit.** Amended 2026-09-09, one day after it was written, on a
+> measurement nobody had made when it was: that the venue's combo builder is
+> an account-holder feature and its public series are a rounding error.
+>
+> > **PACKAGES ARE GRADED, NEVER BUILT.** The venue assembles multi-leg
+> > packages and sells them. The engine MAY price one it reads, and may never
+> > assemble one: it does not choose legs, does not combine them, and does not
+> > compute a package price the venue has not published.
+>
+> The grader itself was not deleted -- it still reads the rare prepackaged
+> series, which do carry a public price -- but it is no longer what the Combos
+> group is for.
 
 A package is PRICEABLE only if every leg is a market this record forecasts,
 every leg is from a DIFFERENT GAME, all legs are one sport, and there are two

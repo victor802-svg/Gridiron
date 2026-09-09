@@ -1111,6 +1111,47 @@ const Gridiron = (function () {
     }).catch(() => { button.disabled = false; });
   }
 
+  // A COMBO THE APP PUTS FORWARD (ruled 2026-09-09).
+  //
+  // NO PAYOUT CHIP, NO EDGE, NO VENUE PRICE, and their absence is the design.
+  // The venue quotes a combo only to an account holder who asks; this app has
+  // no account and LAW 5 does not permit one, so any price on this card would
+  // be invented. What it carries is the half the app can do honestly -- what
+  // the combo is worth -- and the line that turns that into a decision.
+  function proposalCard(entry, labels) {
+    const face = el('article', 'face combo-face');
+
+    const head = el('div', 'face-head');
+    (entry.legs || []).forEach((leg, i) => {
+      if (i) head.appendChild(el('span', 'combo-and', '+'));
+      head.appendChild(el('span', 'combo-leg', leg.words || ''));
+    });
+    face.appendChild(head);
+
+    const prices = el('div', 'face-prices');
+    const box = (cls, label, value) => {
+      const b = el('div', cls);
+      b.appendChild(el('span', 'box-label', label));
+      b.appendChild(el('span', 'box-value', value));
+      return b;
+    };
+    prices.appendChild(box('box', (labels && labels.model) || 'WORTH',
+                           entry.fair_words || ''));
+    // THE CEILING IS THE BIG NUMBER, because it is the only one on the card
+    // that answers a question. The fair value is what it is worth; this is
+    // what a reader may pay for it.
+    const ceiling = box('box box-payout box-payout-empty', 'PAY BELOW',
+                        entry.ceiling_words || '');
+    prices.appendChild(ceiling);
+    face.appendChild(prices);
+
+    if (entry.size_words) face.appendChild(el('div', 'face-size', entry.size_words));
+    if (entry.singles_words) {
+      face.appendChild(el('p', 'face-sentence', entry.singles_words));
+    }
+    return face;
+  }
+
   function renderCombos(combos, labels) {
     const host = document.getElementById('today-combos');
     const heading = document.getElementById('combos-heading');
@@ -1121,7 +1162,11 @@ const Gridiron = (function () {
     host.innerHTML = '';
     const data = combos || null;
     if (heading) heading.textContent = data ? (data.heading || '') : '';
-    if (counts) counts.textContent = data ? (data.count_words || '') : '';
+    // THE SENTENCE THAT REPLACED "no package open" (ruled 2026-09-09). The
+    // venue quotes a combo to an account holder on request and this app has
+    // no account, so the group says what it can do and what it cannot -- it
+    // never reports the venue as having nothing.
+    if (counts) counts.textContent = data ? (data.rfq_words || '') : '';
     // THE COST SENTENCE BELONGS TO THE CARDS. It says every card prints both
     // rates, so above an empty group it describes cards that do not exist --
     // which is how a page starts teaching a reader to skip its own sentences.
@@ -1132,7 +1177,14 @@ const Gridiron = (function () {
       fee.dataset.emptyHidden = cardsPresent ? 'false' : 'true';
     }
     (data && data.cards ? data.cards : []).forEach(
-      entry => host.appendChild(comboCard(entry, labels)));
+      entry => host.appendChild(proposalCard(entry, labels)));
+    // WHY THIS PRODUCT HAS NO SAMPLE SIZE, said beside the cards that carry
+    // none. Every other number on this page arrives with its N; a reader who
+    // has been taught that will look for one here and must be told instead of
+    // left to wonder.
+    if (data && data.cards && data.cards.length && data.unmeasurable_words) {
+      host.appendChild(el('p', 'group-note', data.unmeasurable_words));
+    }
     if (empty) {
       empty.textContent = (data && data.empty_words) || '';
       // HIDDEN BY ITS OWN EMPTINESS, which the tab logic then respects: the
