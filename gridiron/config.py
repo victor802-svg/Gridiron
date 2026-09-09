@@ -1321,6 +1321,15 @@ RANKER_VERSION = "r3"
 #: figure read on the 21st above all -- is reported as TWO SPANS, before and
 #: after, because a slate chosen under one rule and a slate chosen under
 #: another are not the same measurement. `tools/empty_bar.py` splits here.
+#:
+#: WHAT "PRICEABLE" MEANS, ratified 2026-09-09 (evening): ANY venue quote for
+#: the game and market. Not strictly an opening read -- that would rank a game
+#: inside the near-start window as unpriceable, since such a game has had its
+#: near-start read and may have no opening one.
+#:
+#: WHAT IT DOES NOT MEAN: soon. There is no imminence term and the operator
+#: refused one on 2026-09-09; the slate is the week's, ranked on score inside
+#: each group. See `shortlist.select`.
 PRICEABLE_FIRST_FROM = "2026-09-09"
 
 #: THE WEIGHTS, WRITTEN FROM FIRST PRINCIPLES AND NOT TUNED (LAW 2). Tuning

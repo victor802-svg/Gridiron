@@ -180,6 +180,16 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
         # rather than asked of the venue: this runs inside the ranker, and a
         # ranker that made network calls would put a fetch in front of a
         # slate.
+        #
+        # ANY QUOTE COUNTS -- RATIFIED 2026-09-09 (evening). The ruling said
+        # "an open read at the venue" and that admitted two readings: strictly
+        # `read_kind = 'open'`, or any venue quote for the game and market.
+        # The strict one would rank a game INSIDE the near-start window as
+        # unpriceable, because such a game has had its near-start read and may
+        # have no opening one -- the questions closest to kickoff, the ones a
+        # reader is most likely to act on, would sink. The operator ruled the
+        # second reading. No `read_kind` filter here is therefore deliberate,
+        # and removing that absence would reverse a ruling.
         f"      (SELECT 1 FROM venue_quotes v"
         f"        WHERE v.game_id = p.game_id AND v.market = p.market_type"
         f"        LIMIT 1) AS venue_lists_it"
@@ -335,6 +345,14 @@ def select(sport: str, scored: list[dict]) -> list[int]:
     question the venue does not list cannot become one. A slate of thirty that
     excluded the three priceable questions on the night's only game while
     carrying twenty unpriceable props was ranked against its own purpose.
+
+    AND THERE IS NO IMMINENCE TERM -- RULED 2026-09-09 (evening), asked and
+    answered so it is not asked again. The slate is the WEEK's, and a question
+    on a game six days out competes with one on a game tonight on score alone.
+    On the night this shipped that put "New England covers +3.5" 23rd of 48
+    NFL spreads and off a list that takes fifteen, while the same game's
+    moneyline made place 17. THAT IS THE CAP WORKING. Adding kickoff proximity
+    to the ordering is a fifth rule; it was put to the operator and refused.
     """
     ordered = sorted(scored, key=lambda e: (-e["rank_score"], e["prediction_id"]))
     cap = config.shortlist_cap(sport)

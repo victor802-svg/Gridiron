@@ -908,12 +908,76 @@ other side.** `audit.venue_series_faults` refuses a forecast market with no
 way to reach the venue; nothing yet refuses a DECLARED market that produces no
 forecast. The two together would have caught this weeks ago.
 
-**What would settle it:** find out whether the NFL total question is simply
-not being formed (a loader or question-builder gap) or was deliberately left
-out, and record which. Then, either way, a check with the shape of
-`venue_series_faults` pointed the other way: a market declared in
+**SCHEDULED, 2026-09-09 (evening): GRIDIRON_NFL_TOTAL**, second of the two
+jobs above, after the crosswalk. The forecaster forms the question using
+college football's shape and settlement, blind-first, declared factors only,
+with its own market record and gate stated in `docs/READINESS.md` on its ship
+date. Still a forecaster change, so it still goes through
+`docs/NEW_MARKET_CHECKLIST.md` — it now has a place in the order rather than
+an open question mark.
+
+**And the check that would have caught it stays worth building:**
+`venue_series_faults` pointed the other way. A market declared in
 `SPORT_MARKETS` that has produced no prediction in N days is either a defect
-or a retirement, and both are things to say out loud. **Not started here** --
-the ruling of 2026-09-09 says no forecaster changes, and forming a new
-question is a forecaster change that goes through
-`docs/NEW_MARKET_CHECKLIST.md`.
+or a retirement, and both are things to say out loud. Not part of
+GRIDIRON_NFL_TOTAL, which fixes this one instance; this would find the next.
+
+### ASKED AND ANSWERED: no imminence term in the shortlist *(ruled 2026-09-09)*
+
+**Do not reopen this.** It is here because the question is a natural one and
+the next session will otherwise ask it again from the same evidence.
+
+**The question.** On the night priceable-first shipped, the NFL slate showed
+`Seattle to win` from the game kicking off in twenty hours and did NOT show
+`New England covers +3.5` from the same game. The spread ranked **23rd of the
+48 NFL spreads** by score; the round robin takes fifteen. Meanwhile questions
+on games six days away made the list. Should kickoff proximity enter the
+ordering?
+
+**The answer: no.** The operator ruled it on 2026-09-09. **The shortlist is
+the WEEK's, ranked as r3 ranks it, and 23rd of 48 is the cap working.** A
+question that does not make the cap has been out-scored, which is what the cap
+is for; the slate is not a "tonight" list and was never claimed to be.
+
+**What this does not touch:** the two groups. Priceable still ranks ahead of
+unpriceable — that is the ruling of the same day, and it is about whether a
+question can become a recommendation at all, not about when it settles.
+
+### RATIFIED: any venue quote counts as "listed" *(2026-09-09)*
+
+The priceable-first ruling said "an open read at the venue", which admitted
+two readings. The operator ratified the wider one: **any venue quote for the
+game and market**, whatever its `read_kind`.
+
+**Why the strict reading was wrong.** A game inside the two-hour near-start
+window has had its near-start read and may have no opening one — so under
+`read_kind = 'open'` the questions CLOSEST to kickoff, the ones a reader is
+most likely to act on, would have ranked as unpriceable. The absence of a
+`read_kind` filter in `shortlist.rank_rows` is therefore deliberate, and
+adding one would reverse a ruling.
+
+### THE NEXT TWO JOBS, IN ORDER *(ruled 2026-09-09, evening)*
+
+Each on its own commit, each with its own close-out. Neither is started.
+
+**1. GRIDIRON_PROP_CROSSWALK** — brief in
+`docs/briefs/2026-09-09-rulings-2.md`, ruling 3. Opens **after tonight's game
+settles** (kickoff 05:20 PM Pacific, 9 September). Match the record's player
+and line to the venue's player code and rung for the four NFL prop series that
+resolve, the way MLB was done; absent-not-zero for a player the venue has not
+listed; an unmatched player keeps "not read at the venue yet"; the near-start
+rule unchanged; plant a wrong-player match and a wrong-rung match so both fail
+by name; report matched/total per prop market with an example each, and the
+open-read count the first run writes.
+
+**2. GRIDIRON_NFL_TOTAL** — brief in
+`docs/briefs/2026-09-09-evening-rulings.md`, ruling 3b. Opens **after the
+crosswalk**. The forecaster forms the total question for NFL games using the
+same question shape and settlement college football's total already uses;
+blind-first per LAW 1, declared factors only per LAW 2; its own market record
+and gate, opened on its ship date and stated in `docs/READINESS.md`. Report
+the first slate's count and the first open-read count. **Nothing else in the
+forecaster moves.**
+
+This supersedes the "what would settle it" line in the NFL-totals entry
+below: the answer is no longer open, it is scheduled.
