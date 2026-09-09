@@ -732,6 +732,13 @@ def serve(host: str = config.HOST, port: int = config.PORT, *, log_level: str = 
           open_browser: bool = False) -> None:
     import uvicorn
 
+    # WHAT IS RUNNING, PINNED BEFORE THE PORT OPENS (2026-09-09). From source
+    # the build id is the repository's HEAD, and reading it per request meant
+    # a commit landing while the server was up changed the answer without
+    # changing a byte of the code in memory. `/api/health` is half the build
+    # identity now, so it must answer about THIS PROCESS.
+    buildinfo.freeze()
+
     if host not in ("127.0.0.1", "localhost", "::1"):
         raise ValueError(
             f"refusing to bind {host!r}: Gridiron serves 127.0.0.1 only. "

@@ -291,3 +291,49 @@ def test_the_guard_sees_a_horizon_counting_days():
     assert broken != source
     faults = audit.horizon_unit_faults(broken)
     assert faults and any("league_date" in f for f in faults)
+
+
+def test_the_build_id_describes_the_process_not_the_checkout():
+    """`/api/health` IS HALF THE BUILD IDENTITY (operator ruling, 2026-09-09),
+    so it has to describe the code that is RUNNING.
+
+    Found the minute after the ruling: a commit was pushed and `/api/health`
+    reported it at once, from a process that had been up for four minutes on
+    the previous one. Running from source there is no build stamp, so the id
+    fell through to the repository's HEAD -- read fresh on every request. A
+    `git checkout` would have "changed the running version" without a byte of
+    code being reloaded, and Python does not hot-reload.
+
+    `api.serve` pins it before it binds the port. This proves the pin holds
+    when the checkout moves underneath it.
+    """
+    from gridiron import buildinfo
+
+    kept = buildinfo._FROZEN
+    try:
+        buildinfo._FROZEN = None
+        buildinfo.freeze()
+        pinned = buildinfo.build_id()
+        assert pinned, "a frozen build id is not empty"
+
+        # THE CHECKOUT MOVES. Only the repository answer changes; the process
+        # is still running the code it started with.
+        real = buildinfo.repository_head
+        buildinfo.repository_head = lambda *a, **k: "deadbeefcafe0000"
+        try:
+            assert buildinfo.build_id() == pinned, (
+                "the build id followed the checkout instead of the process")
+        finally:
+            buildinfo.repository_head = real
+
+        # And with nothing pinned it is free to follow the checkout again,
+        # which is what a one-shot CLI command wants.
+        buildinfo._FROZEN = None
+        buildinfo.repository_head = lambda *a, **k: "deadbeefcafe0000"
+        try:
+            assert buildinfo.build_id() == "deadbeefcafe", (
+                "unpinned, the id should read the repository")
+        finally:
+            buildinfo.repository_head = real
+    finally:
+        buildinfo._FROZEN = kept

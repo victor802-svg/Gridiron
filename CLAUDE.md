@@ -308,19 +308,29 @@ python tools/verify.py
 
 ## The release path — RULED 2026-09-09
 
-**Gate, commit, push, confirm.** Four steps, and the fourth is
-`GET /api/health` answering the commit that was just pushed.
+**Gate, commit, push, restart, confirm.** The last two are one move: the
+interface is a Python process and Python does not hot-reload, so a pushed
+commit is not a running commit until something restarts.
 
 ```bash
-python tools/verify.py          # all four steps, no flags
-git commit && git push          # and check the remote matches
-curl -s http://127.0.0.1:8848/api/health
+python tools/verify.py                     # all four steps, no flags
+git commit && git push                     # and check the remote matches
+# kill the serving process; Gridiron-Serve brings it back within two minutes
+curl -s http://127.0.0.1:8848/api/health   # must answer the commit just pushed
 ```
 
 **THE BUILD IDENTITY IS THE COMMIT HASH PLUS WHAT `/api/health` ANSWERS.**
 There is no binary to hash any more. A SHA-256 of an executable said what was
 BUILT; the health line says what is actually SERVING, which is the question
 anyone asking "what version is this?" is really asking.
+
+**AND THE HEALTH LINE MEANS THE PROCESS, NOT THE CHECKOUT.** It did not, for
+about a minute: from source there is no build stamp, so the id fell through to
+the repository's HEAD, read fresh on every request -- a commit landing while
+the server was up changed the answer without changing a byte of the code in
+memory. `api.serve` pins it now (`buildinfo.freeze`), which is what makes the
+restart step meaningful rather than decorative: if you skip it, the health
+line tells you so.
 
 **The PyInstaller bundle is retired**, and "rebuild, hash" is no longer a step
 in this path. `desktop/gridiron.spec` and `desktop/make_shortcut.ps1` are kept

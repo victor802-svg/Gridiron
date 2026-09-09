@@ -52,7 +52,39 @@ def stamp(root: Path | None = None) -> dict | None:
     return data
 
 
+#: The answer pinned at process start, or None when nothing has pinned it.
+#: Only a long-running process needs this -- a CLI command begins and ends
+#: inside one checkout, so its live answer is already the true one.
+_FROZEN: str | None = None
+
+
+def freeze(root: Path | None = None) -> str:
+    """Pin `build_id` to the commit this PROCESS started at (2026-09-09).
+
+    WHY THIS IS NOT PEDANTRY. From source there is no stamp, so `build_id`
+    answered with the repository's HEAD -- read fresh on every request. A
+    commit pushed while the server was up changed what `/api/health` reported
+    without changing one byte of the code in memory, and Python does not
+    hot-reload. On the day `/api/health` became half of the build identity,
+    that made the identity a statement about the working tree rather than
+    about the running program.
+
+    Called by `api.serve` before it binds the port. A CLI command does not
+    need it: it begins and ends inside one checkout.
+    """
+    global _FROZEN
+    _FROZEN = _live_build_id(root)
+    return _FROZEN
+
+
 def build_id(root: Path | None = None) -> str:
+    """The build that is RUNNING -- frozen at start when a process pinned it."""
+    if _FROZEN is not None:
+        return _FROZEN
+    return _live_build_id(root)
+
+
+def _live_build_id(root: Path | None = None) -> str:
     """A short, stable name for the build that is running (GRIDIRON_13 P6).
 
     THE LAUNCHER COMPARES THIS ACROSS A SOCKET, so it has to mean the same
