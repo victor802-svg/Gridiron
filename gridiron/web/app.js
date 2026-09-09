@@ -904,7 +904,19 @@ const Gridiron = (function () {
       } else {
         payout.classList.add('box-payout-empty');
       }
-      payout.appendChild(el('span', 'box-under', entry.price_words || ''));
+      // THE OPENING READ, WITH ITS TIME (GRIDIRON_OPENING_READ, 2026-09-09).
+      // The words are the server's; the instant is turned into the reader's
+      // own clock here, the same way the kickoff line has always worked. A
+      // price with no "read at" beside it gets compared with an edge that was
+      // measured at kickoff, which is the one mistake this line prevents.
+      if (entry.open_read_words && entry.open_read_utc) {
+        const w = entry.open_read_words;
+        payout.appendChild(el(
+          'span', 'box-under',
+          w.before + ' ' + localTime(entry.open_read_utc) + ' \u00b7 ' + w.after));
+      } else {
+        payout.appendChild(el('span', 'box-under', entry.price_words || ''));
+      }
       prices.appendChild(payout);
       face.appendChild(prices);
 

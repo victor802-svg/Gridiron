@@ -375,8 +375,18 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     # change no claim.
     drift_counts = _near_start_snapshots(conn)
 
+    # THE OPENING READ (GRIDIRON_OPENING_READ, 2026-09-09), beside the second
+    # look and deliberately after it: if a game is inside the near-start
+    # window its ladder has just been read as the look that counts, and the
+    # opening pass skips it by kickoff time rather than by luck of ordering.
+    try:
+        open_counts = _opening_read(conn)
+    except Exception as exc:  # noqa: BLE001 - a venue outage is not a failed refresh
+        warnings.append(f"opening read: {type(exc).__name__}: {exc}")
+        open_counts = {"opening_read_due": 0, "opening_read_quotes": 0}
+
     payload = {"sports": list(counts), "resolvable_now": became_final,
-               "warnings": warnings[:8], **drift_counts}
+               "warnings": warnings[:8], **drift_counts, **open_counts}
     if warnings:
         return ("ok" if counts else "failed",
                 f"refreshed {language.counted(len(counts), 'sport')}; "
@@ -399,6 +409,63 @@ def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
 #: late enough that most of the day's news is priced and early enough that the
 #: fetch is not racing the first pitch.
 NEAR_START_HOURS = 2.0
+
+#: How stale an opening read may be before the slate is asked again
+#: (GRIDIRON_OPENING_READ, 2026-09-09). Twelve hours, so a card carries a
+#: price from this morning or last night rather than from whenever the game
+#: was first seen -- and so the refresh, which fires every four hours, writes
+#: about two ladders a day per game rather than six.
+#:
+#: THE OPEN IS NOT RE-DATED BY A RE-READ. Every row is kept and timestamped;
+#: "the open" for drift is the EARLIEST one, and the card shows the latest.
+#: Which read you mean is a query, not a state.
+OPENING_READ_HOURS = 12.0
+
+
+def _opening_read(conn: sqlite3.Connection) -> dict:
+    """Ask the venue about the whole slate, not just the games about to start.
+
+    WHY THIS EXISTS. Until today the venue was read in one place only -- the
+    near-start pass, inside a two-hour window before kickoff. So an NFL card
+    four days out said "no price yet" while the venue had the market open with
+    twenty-five contracts on it, and the operator found that on his own
+    screen. Measured 2026-09-09: the venue answers for NFL events sixteen days
+    ahead. Nothing was asking.
+
+    IT PRICES NOTHING. The rows go in as `read_kind='open'`, no claim is
+    evaluated, and the at-the-line record cannot see them. The near-start read
+    is untouched and stays the only look a claim may cite.
+    """
+    from .market import at_the_line
+
+    # THE COLUMN BEFORE THE QUERY THAT READS IT. On the operator's own record
+    # this is the first thing that touches `read_kind`, and the capture below
+    # -- which also ensures it -- runs too late to help the SELECT.
+    at_the_line.ensure_read_kind(conn)
+    now = db.utcnow()
+    horizon = _plus_hours(now, NEAR_START_HOURS)
+    stale_before = _plus_hours(now, -OPENING_READ_HOURS)
+    rows = conn.execute(
+        "SELECT p.id FROM predictions p"
+        " JOIN games g ON g.id = p.game_id"
+        " WHERE g.status = 'scheduled'"
+        # PAST THE NEAR-START WINDOW ONLY. Inside it the near-start pass is
+        # already reading the same events, and its read is the one that
+        # counts; two passes fetching the same ladder in the same minute
+        # would double the rows and answer nothing extra.
+        "   AND g.kickoff_utc > ?"
+        "   AND NOT EXISTS (SELECT 1 FROM venue_quotes v"
+        "                   WHERE v.game_id = g.id AND v.read_kind = 'open'"
+        "                     AND v.fetched_utc > ?)"
+        " ORDER BY g.kickoff_utc",
+        (horizon, stale_before)).fetchall()
+    if not rows:
+        return {"opening_read_due": 0, "opening_read_quotes": 0}
+    from .market import lines
+
+    got = lines.read_the_venue_open(conn, [r["id"] for r in rows])
+    return {"opening_read_due": len(rows),
+            "opening_read_quotes": got["quotes"]}
 
 
 def _run_near_start(conn: sqlite3.Connection) -> tuple[str, str, dict]:

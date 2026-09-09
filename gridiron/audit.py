@@ -6341,3 +6341,208 @@ def check_the_live_tab_shows_only_the_game(payload) -> None:
         raise LawViolation(
             "THE LIVE TAB SHOWS THE GAME AND NOTHING ELSE:"
             + _NL2 + _NL2.join(faults[:6]))
+
+
+# ---------------------------------------------------------------------------
+# EVERY FORECAST MARKET HAS A WAY TO REACH THE VENUE (ruling 1, 2026-09-09)
+# ---------------------------------------------------------------------------
+#
+# WHAT WENT WRONG. `kalshi.SERIES` mapped moneyline, spread and total for
+# every sport and nothing else. The record forecasts five NFL player-prop
+# markets as well, so `event_ticker` returned None for all of them, every
+# card said "no price yet" forever, and NO SCAN NOTICED -- because none of
+# them compared the markets the record forecasts against the markets it can
+# price. The operator found it by looking at his own screen.
+#
+# A market may legitimately have no series: the venue does not publish a
+# per-game rushing-yards market at all. That is why the declared absence
+# exists. The fault is a market in NEITHER map, which is what an oversight
+# looks like from the outside -- indistinguishable from a considered
+# decision, until somebody writes the decision down.
+
+
+def venue_series_faults() -> list[str]:
+    """Forecast markets with neither a venue series nor a declared absence."""
+    from . import config
+    from .market import kalshi
+
+    faults: list[str] = []
+    for sport in sorted(kalshi.SERIES_MEASURED):
+        for market in config.SPORT_MARKETS.get(sport, ()):  # declared order
+            if (sport, market) in kalshi.SERIES:
+                continue
+            if (sport, market) in kalshi.NO_VENUE_SERIES:
+                continue
+            faults.append(
+                f"{sport} forecasts {market!r} and has no way to reach the "
+                f"venue for it: no entry in kalshi.SERIES and no dated "
+                f"absence in kalshi.NO_VENUE_SERIES. Every card in this "
+                f"market will say it has no price for as long as that is "
+                f"true, and nothing else will say why. Declare the series, "
+                f"or declare the absence with what was searched and when.")
+    for (sport, market), why in sorted(kalshi.NO_VENUE_SERIES.items()):
+        if len(why.strip()) < 40:
+            faults.append(
+                f"{sport}.{market} declares an absence in {len(why.strip())} "
+                f"characters. An absence is evidence -- what was searched, "
+                f"how much of it, and when -- or it is a shrug with a "
+                f"docstring.")
+        if (sport, market) in kalshi.SERIES:
+            faults.append(
+                f"{sport}.{market} is declared BOTH as a series and as an "
+                f"absence. One of the two is stale.")
+    return faults
+
+
+def check_every_forecast_market_can_reach_the_venue() -> None:
+    faults = venue_series_faults()
+    if faults:
+        raise LawViolation(
+            "A FORECAST MARKET HAS NO TICKER AND NO DECLARED ABSENCE:"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+# ---------------------------------------------------------------------------
+# THE BROWSER FILES PARSE (ruling 4, 2026-09-09)
+# ---------------------------------------------------------------------------
+#
+# Every other scan in this module reads `app.js` as TEXT: regexes for
+# forbidden words, class literals, the shape of the expander. None of them
+# cares whether the text is a program. On 2026-09-08 it was not -- `const
+# more` was declared twice in one block, the file did not parse, `boot()`
+# never ran, nothing rendered on any route, and the gate was green.
+#
+# NODE COMES FROM PLAYWRIGHT, not from the machine. Playwright is already a
+# declared dependency and ships its own binary, so the gate does not quietly
+# depend on whatever somebody happens to have installed -- and if neither is
+# there this RAISES rather than passing, because a check that cannot run is
+# not a check that passed.
+#
+# HTML AND CSS ARE NOT PARSED HERE and this does not pretend otherwise: node
+# parses JavaScript. What stands behind the other two is the dead-selector
+# scan, `tools/contrast.py`, and the browser suite loading the real page.
+
+#: The files node can actually parse. `index.html` and `style.css` are not
+#: JavaScript and are not listed rather than being silently skipped.
+BROWSER_SCRIPTS = ("app.js", "sw.js")
+
+
+def _node_binary() -> str | None:
+    """Playwright's node first, then the machine's."""
+    import shutil
+    import sys
+
+    shipped = (Path(sys.prefix) / "Lib" / "site-packages" / "playwright"
+               / "driver" / "node.exe")
+    if shipped.exists():
+        return str(shipped)
+    unix = (Path(sys.prefix) / "lib" / "site-packages" / "playwright"
+            / "driver" / "node")
+    if unix.exists():
+        return str(unix)
+    return shutil.which("node")
+
+
+def browser_syntax_faults(root: Path | None = None) -> list[str]:
+    """Every browser script that does not parse, with node's own message.
+
+    `root` is for the planting: it copies the shipped files somewhere else,
+    breaks one, and asks the same function the gate asks. Breaking the real
+    `app.js` to prove a guard works is how a broken `app.js` gets committed.
+    """
+    import subprocess
+
+    from . import config
+
+    node = _node_binary()
+    if node is None:
+        raise LawViolation(
+            "THE GATE CANNOT PARSE THE BROWSER FILES. No node binary: not at "
+            "playwright/driver inside this environment, and not on PATH. A "
+            "check that cannot run is not a check that passed -- install "
+            "playwright's browsers or put node on PATH.")
+    faults: list[str] = []
+    for name in BROWSER_SCRIPTS:
+        path = (root or (config.PACKAGE_ROOT / "web")) / name
+        if not path.exists():
+            faults.append(f"{name} is declared a browser script and is not there")
+            continue
+        done = subprocess.run(
+            [node, "--check", str(path)],
+            capture_output=True, text=True, timeout=60)
+        if done.returncode != 0:
+            first = (done.stderr or done.stdout or "").strip().splitlines()
+            detail = " | ".join(line.strip() for line in first[:4] if line.strip())
+            faults.append(f"{name} does not parse: {detail}")
+    return faults
+
+
+def check_the_browser_files_parse() -> None:
+    faults = browser_syntax_faults()
+    if faults:
+        raise LawViolation(
+            "A BROWSER FILE DOES NOT PARSE, so nothing on any route renders "
+            "and every text scan above this line was reading a file the "
+            "browser cannot run:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# A CLAIM IS PRICED AT THE LINE, NEVER AT THE OPEN (OPENING_READ, 2026-09-09)
+# ---------------------------------------------------------------------------
+#
+# The opening read exists so a card four days out can show a real number
+# instead of "no price yet". It is a look at a market that may be a week from
+# closing, and a claim priced off it would be a claim about a price nobody
+# could still take by kickoff, scored afterwards against a real outcome --
+# which would flatter the record in exactly the way LAW 4 exists to prevent.
+#
+# So the two looks are told apart in the row, and this is the line between
+# them. The near-start read is the only one a claim, an at-the-line row or a
+# CLV pair may cite. That is a rule about DATA, so it is checked against the
+# data rather than against the code that writes it.
+
+
+def claims_priced_off_an_open_read(conn) -> list[str]:
+    """Claims whose quote is an opening read rather than the near-start look."""
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if "at_the_line_claims" not in tables or "venue_quotes" not in tables:
+        return []
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(venue_quotes)")}
+    if "read_kind" not in columns:
+        # A record older than the opening read has one kind of look in it and
+        # nothing to tell apart. Saying nothing is the truth here; saying
+        # "clean" would not be.
+        return []
+    rows = conn.execute(
+        "SELECT c.id, c.prediction_id, c.game_id, c.market, v.fetched_utc"
+        "  FROM at_the_line_claims c"
+        "  JOIN venue_quotes v ON v.id = c.quote_id"
+        " WHERE v.read_kind = 'open'"
+        " ORDER BY c.id LIMIT 8").fetchall()
+    return [
+        f"claim {r['id']} on prediction {r['prediction_id']} "
+        f"({r['game_id']} {r['market']}) is priced off an OPENING read taken "
+        f"{r['fetched_utc']}. The opening read is a look at a market that may "
+        f"be a week from closing; only the near-start look may price a claim."
+        for r in rows]
+
+
+def check_claims_price_at_the_line(conn=None) -> None:
+    """Every at-the-line claim cites the near-start look. Named in the brief
+    of 2026-09-08 and built 2026-09-09 with the read it guards."""
+    close = False
+    if conn is None:
+        from . import db as _db
+
+        conn = _db.connect()
+        close = True
+    try:
+        faults = claims_priced_off_an_open_read(conn)
+    finally:
+        if close:
+            conn.close()
+    if faults:
+        raise LawViolation(
+            "A CLAIM IS PRICED AT THE LINE, NEVER AT THE OPEN:"
+            + _NL2 + _NL2.join(faults))

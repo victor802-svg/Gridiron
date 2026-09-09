@@ -178,6 +178,33 @@ which point the tripwire fires by name.
 
 ---
 
+## Who reads a law — RULED 2026-09-09
+
+**A law is read by the operator, not by the session.** When a request is
+allowed under one reading of a law above and forbidden under another, the
+session does not choose. It **reports both readings and stops**, and the
+operator rules. What is built is then built under a dated ruling rather than
+under an argument the session found convincing.
+
+This exists because of one that went the right way by luck. On 2026-09-08 the
+operator asked for the W and L of a form streak to be coloured. LAW-adjacent
+text reserved `--win` and `--loss` for a **pick's** verdict and named the edge
+line as their only home; a club's game is not a pick. The session read the
+law's intent — that the rule exists to stop a colour reaching for importance
+it has not earned, which a real win is not — decided the colour was allowed,
+built it, and amended the stylesheet's own text to match. The reading was
+sound and the operator ratified it the next morning. **It was still not the
+session's to make**, and a reading that had gone the other way would have
+shipped just as quietly.
+
+The distinction is not "ask about anything ambiguous". The standing contract
+still says never stop for a fork the law, precedent or the conservative
+default can settle. This is narrower and harder: **when a law's own words have
+to be stretched, reinterpreted or amended for the work to proceed, that is the
+operator's call and the work waits.**
+
+---
+
 ## How the laws are enforced in code
 
 Not as convention. Each law has a structural mechanism and a guard test that is

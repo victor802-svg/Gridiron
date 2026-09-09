@@ -715,6 +715,27 @@ def refresh_venue_ladder(conn: sqlite3.Connection, prediction_ids: list[int]) ->
     return {"quotes": quotes, "claims": claims}
 
 
+def read_the_venue_open(conn: sqlite3.Connection,
+                        prediction_ids: list[int]) -> dict:
+    """The venue's ladder for the whole slate, filed as the OPENING read.
+
+    THE DIFFERENCE FROM `refresh_venue_ladder` IS THE WHOLE POINT and it is
+    two words wide: `read_kind="open"`, and no claims. The opening read says
+    what the market looked like when we first asked; it never prices a claim,
+    never feeds a CLV pair, and never reaches the at-the-line record.
+    `audit.check_claims_price_at_the_line` enforces that rather than trusting
+    it.
+
+    Lives here for the same reason the near-start ladder does: the scheduler
+    asks for a read by shape, and the venue is named only inside this package.
+    """
+    from . import kalshi
+
+    quotes = kalshi.capture_for_predictions(
+        conn, prediction_ids, ttl=kalshi.OPEN_TTL, read_kind="open")["quotes"]
+    return {"quotes": quotes}
+
+
 def record_closing_prices(conn: sqlite3.Connection) -> dict:
     """The closing price beside every open recommendation.
 

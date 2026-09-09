@@ -3547,9 +3547,49 @@ def first_price_words(hours: float) -> str:
             f"{hours:g} hours before each game starts.")
 
 
-def no_price_words() -> str:
-    """What the venue chip says when there is nothing to put in it."""
-    return "no price yet"
+#: The markets the venue is actually asked about. Everything else in
+#: `config.SPORT_MARKETS` is forecast and never priced here, and the chip says
+#: which of those two silences it is looking at.
+MARKETS_READ_AT_THE_VENUE = frozenset({"spread", "total", "moneyline"})
+
+
+def no_price_words(market: str | None = None) -> str:
+    """What the venue chip says when there is nothing to put in it.
+
+    THREE DIFFERENT SILENCES, and until 2026-09-09 all three said "no price
+    yet", which is why the operator read it as a broken app:
+
+      * THE VENUE WAS ASKED AND HAS NOTHING. Now that the slate is read
+        daily, this is a real answer and it is said in the operator's own
+        words: "venue has not listed this yet".
+      * NOBODY ASKED. Every prop market: `capture_for_predictions` excludes
+        `market_type = 'prop'`, because matching our player and our rung to
+        the venue's ticker is a crosswalk that does not exist. Saying "the
+        venue has not listed this" there would be a falsehood on the card --
+        `KXNFLREC-26SEP09NESEA` was open with seventy-one contracts on it on
+        the morning this was written.
+      * The near-start read has not happened yet, which the day strip says at
+        the top of the page rather than forty times down it.
+    """
+    if market is not None and market not in MARKETS_READ_AT_THE_VENUE:
+        return "not read at the venue yet"
+    return "venue has not listed this yet"
+
+
+#: The words around the opening read's time. The INSTANT is sent as an
+#: instant and the renderer turns it into the reader's clock; these are the
+#: two halves that sit either side of it, so no label is invented in the
+#: browser.
+def opening_read_words() -> dict:
+    """The line under the payout chip when the price is an opening read.
+
+    Two facts, and neither of them is the payout: the chip above already says
+    what it pays, and saying it twice is the "Payspays" defect of 2026-09-08
+    wearing a different label. What a reader cannot get from the chip is WHEN
+    this was read and that a closer read is coming -- without the second, an
+    opening price gets compared with an edge measured at kickoff.
+    """
+    return {"before": "read", "after": "re-read near kickoff"}
 
 
 def price_chip_words(cents: float | None) -> str:
@@ -3566,14 +3606,19 @@ def price_chip_words(cents: float | None) -> str:
     return f"{round(cents)}¢"
 
 
-def venue_chip_words(price: float | None, payout: float | None) -> str:
+def venue_chip_words(price: float | None, payout: float | None,
+                     market: str | None = None) -> str:
     """The price and what it returns, which are the same fact twice.
 
     A reader who has used a sportsbook reads a payout faster than a price, and
     a reader who has used an exchange reads the price. Both, once.
+
+    `market` decides which SILENCE is printed when there is no price -- see
+    `no_price_words`. A card that says the venue has nothing must be about a
+    market the venue was asked.
     """
     if price is None:
-        return no_price_words()
+        return no_price_words(market)
     if payout is None:
         return f"{round(price * 100)}¢"
     return f"{round(price * 100)}¢ · pays {payout:.2f}x"
@@ -3814,7 +3859,8 @@ def state_heading_words(state: str, n: int) -> str:
     return f"Upcoming — {counted(n, 'question')}"
 
 
-def payout_chip_words(payout: float | None) -> str:
+def payout_chip_words(payout: float | None,
+                      market: str | None = None) -> str:
     """THE BIGGEST NUMBER ON THE CARD from 2026-09-08, by operator ruling.
 
     A payout is what a reader of a sportsbook reads first, and it is the one
@@ -3823,7 +3869,7 @@ def payout_chip_words(payout: float | None) -> str:
     says whether a card clears the bar.
     """
     if payout is None:
-        return no_price_words()
+        return no_price_words(market)
     # THE LABEL ABOVE IT ALREADY SAYS "Pays" (`price_row_labels`), and this
     # said it again: the first card ever rendered with a real payout read
     # "Payspays 3.33x". Found on 2026-09-08 by rendering a package card,

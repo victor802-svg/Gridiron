@@ -239,6 +239,29 @@ def _drop_dependent_triggers(conn: sqlite3.Connection, table: str) -> list[str]:
     return [row["name"] for row in rows]
 
 
+def ensure_read_kind(conn: sqlite3.Connection) -> bool:
+    """Let `venue_quotes` say which look it was, on an older database.
+
+    A PLAIN ADD COLUMN, not a rebuild. The change is additive and the default
+    is `'near_start'`, which is what every existing row actually is: until
+    2026-09-09 the near-start pass was the only thing that ever read the
+    venue. Backfilling them as opening reads would have made the claim guard
+    fail on true history.
+    """
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(venue_quotes)")}
+    if not columns or "read_kind" in columns:
+        return False
+    conn.execute(
+        "ALTER TABLE venue_quotes ADD COLUMN read_kind TEXT NOT NULL"
+        " DEFAULT 'near_start'"
+        " CHECK (read_kind IN ('open', 'near_start'))")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS venue_quotes_kind"
+        " ON venue_quotes (game_id, market, read_kind, fetched_utc)")
+    conn.commit()
+    return True
+
+
 def ensure_quote_shapes(conn: sqlite3.Connection) -> bool:
     """Let `venue_quotes` hold a prop, on a database built before shapes.
 
@@ -338,10 +361,27 @@ def _schema_statements(schema: str, table: str) -> list[str]:
 
 def _looks(conn: sqlite3.Connection, game_id: str, market: str) -> list[list[sqlite3.Row]]:
     """One ladder per look, oldest first."""
-    rows = conn.execute(
-        "SELECT * FROM venue_quotes WHERE game_id = ? AND market = ? AND venue = ?"
-        " ORDER BY fetched_utc, line",
-        (game_id, market, VENUE)).fetchall()
+    # NEAR-START ONLY (GRIDIRON_OPENING_READ, 2026-09-09). The opening read
+    # is a daily look at a market that may be a week from closing; a claim
+    # priced off it would be a claim about a price nobody could still take by
+    # kickoff, scored against an outcome. The guard says so by name.
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(venue_quotes)")}
+    if "read_kind" in columns:
+        rows = conn.execute(
+            "SELECT * FROM venue_quotes"
+            " WHERE game_id = ? AND market = ? AND venue = ?"
+            "   AND read_kind = 'near_start'"
+            " ORDER BY fetched_utc, line",
+            (game_id, market, VENUE)).fetchall()
+    else:
+        # A DATABASE FROM BEFORE THE OPENING READ. Every row in it came from
+        # the near-start pass, because that was the only thing that ever read
+        # the venue -- so there is nothing to exclude, and no filter to apply.
+        rows = conn.execute(
+            "SELECT * FROM venue_quotes"
+            " WHERE game_id = ? AND market = ? AND venue = ?"
+            " ORDER BY fetched_utc, line",
+            (game_id, market, VENUE)).fetchall()
     looks: dict[str, list[sqlite3.Row]] = {}
     for row in rows:
         looks.setdefault(row["fetched_utc"], []).append(row)
@@ -422,6 +462,7 @@ def evaluate(conn: sqlite3.Connection,
 
     ensure_claim_shape(conn)
     ensure_quote_shapes(conn)
+    ensure_read_kind(conn)
     counts_out = {"claims": 0, "already": 0, "no_distribution": 0,
                   "no_quotes": 0, "no_priced_rung": 0,
                   "unusable_distribution": 0, "predictions": 0,

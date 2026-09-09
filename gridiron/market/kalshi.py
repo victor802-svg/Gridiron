@@ -64,7 +64,45 @@ SERIES: dict[tuple[str, str], str] = {
     ("mlb", "spread"): "KXMLBSPREAD",
     ("mlb", "total"): "KXMLBTOTAL",
     ("mlb", "moneyline"): "KXMLBGAME",
+    # THE FOUR NFL PROP SERIES, measured 2026-09-08 across all 3,661 series
+    # the venue lists under Sports (330 of them KXNFL*) and re-measured
+    # 2026-09-09 against the record's own forty-game slate: sixteen events
+    # answer for each, which is week 1 and everything the venue has listed.
+    # The event ticker is the SAME SHAPE the game markets already build, so
+    # `event_ticker` needed no new logic -- only these four lines, whose
+    # absence is why every one of these markets resolved 0/40.
+    ("nfl", "passing_yards"): "KXNFLPASSYDS",
+    ("nfl", "receiving_yards"): "KXNFLRECYDS",
+    ("nfl", "receptions"): "KXNFLREC",
+    ("nfl", "passing_tds"): "KXNFLPASSTDS",
 }
+
+#: A market this record forecasts for which the venue publishes NO per-game
+#: series at all. AN ABSENCE IS DECLARED, DATED AND EVIDENCED, or it cannot be
+#: told apart from an oversight -- which is the whole of what went wrong here:
+#: five NFL prop markets resolved 0/40 for as long as the record has forecast
+#: them, and nothing said so, because "no series" and "nobody looked" are the
+#: same silence.
+NO_VENUE_SERIES: dict[tuple[str, str], str] = {
+    ("nfl", "rushing_yards"): (
+        "the venue lists no per-game rushing-yards market. Searched all 3,661 "
+        "series under Sports on 2026-09-08 and again on 2026-09-09; the only "
+        "match is KXNFLSEASONRUSHYDS, which is season-long and is not a "
+        "market this record forecasts."),
+}
+
+#: THE SPORTS WHOSE VENUE COVERAGE HAS ACTUALLY BEEN MEASURED, market by
+#: market, with the date. The guard is exactly this wide and no wider: a check
+#: that pretended to cover baseball props nobody has looked for would be a
+#: green tick standing in for work not done.
+SERIES_MEASURED: dict[str, str] = {
+    "nfl": "2026-09-09",
+    "cfb": "2026-09-09",
+}
+
+#: Not measured, and named so the gap is a fact rather than a silence. Each is
+#: a session's work -- find the series, match the player, match the rung.
+SERIES_NOT_MEASURED = ("mlb props", "nba props", "ufc")
 
 #: THE VENUE'S CODE -> OURS, where they differ. Measured 2026-09-06 against the
 #: record's own slates: NFL week 1 matched 14 of 16 tickers on date + away +
@@ -233,7 +271,8 @@ def parse_markets(sport: str, market: str, game, payload: dict) -> tuple[list[di
 
 
 def capture_for_games(conn: sqlite3.Connection, sport: str, game_ids: list[str],
-                      *, ttl: timedelta | None = None) -> dict:
+                      *, ttl: timedelta | None = None,
+                      read_kind: str = "near_start") -> dict:
     """Fetch and store the venue's ladders for these games. Every count is a
     fact about the fetch: events with no markets, unreadable tickers, sources
     that did not answer. Writes happen only where a prediction already exists
@@ -274,18 +313,20 @@ def capture_for_games(conn: sqlite3.Connection, sport: str, game_ids: list[str],
                 conn.execute(
                     "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
                     " market, quantity, line, yes_side, yes_bid, yes_ask, last_price,"
-                    " volume, close_time, fetched_utc)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " volume, close_time, fetched_utc, read_kind)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (VENUE, q["ticker"], q["event_ticker"] or ticker, sport, game["id"],
                      q["market"], q["quantity"], q["line"], q["yes_side"], q["yes_bid"],
-                     q["yes_ask"], q["last_price"], q["volume"], q["close_time"], stamp))
+                     q["yes_ask"], q["last_price"], q["volume"], q["close_time"], stamp,
+                     read_kind))
                 counts["quotes"] += 1
             conn.commit()
     return counts
 
 
 def capture_for_predictions(conn: sqlite3.Connection, prediction_ids: list[int],
-                            *, ttl: timedelta | None = None) -> dict:
+                            *, ttl: timedelta | None = None,
+                            read_kind: str = "near_start") -> dict:
     """The ladders for the games behind these predictions, one sport at a time.
     THE ROWS EXIST BEFORE THE FETCH: this is called after the blind window has
     closed, and the trigger on the table holds the order regardless."""
@@ -298,6 +339,8 @@ def capture_for_predictions(conn: sqlite3.Connection, prediction_ids: list[int],
         return counts
     if not prediction_ids:
         return counts
+    from . import at_the_line
+    at_the_line.ensure_read_kind(conn)
     placeholders = ",".join("?" for _ in prediction_ids)
     by_sport: dict[str, list[str]] = {}
     for r in conn.execute(
@@ -308,7 +351,8 @@ def capture_for_predictions(conn: sqlite3.Connection, prediction_ids: list[int],
         if not any(key[0] == sport for key in SERIES):
             counts["no_series"] += len(game_ids)
             continue
-        part = capture_for_games(conn, sport, game_ids, ttl=ttl)
+        part = capture_for_games(conn, sport, game_ids, ttl=ttl,
+                                 read_kind=read_kind)
         for key, value in part.items():
             counts[key] = counts.get(key, 0) + value
     return counts

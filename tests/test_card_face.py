@@ -199,7 +199,20 @@ def test_the_card_says_nothing_the_server_did_not_write():
 
 def test_the_three_chips_read_across_and_an_absence_is_not_a_zero():
     assert language.venue_chip_words(0.84, 1.19) == "84¢ · pays 1.19x"
-    assert language.venue_chip_words(None, None) == "no price yet"
+    # THREE SILENCES, TOLD APART (operator, 2026-09-08; built 2026-09-09).
+    # This asserted "no price yet" for every absence -- the sentence the
+    # operator read as a broken app -- and on a prop it was a falsehood: the
+    # venue had the market open and nobody had asked it. The RULE is pinned
+    # here, not a string.
+    assert language.venue_chip_words(None, None, market="moneyline") == (
+        "venue has not listed this yet")
+    assert language.venue_chip_words(None, None, market="receptions") == (
+        "not read at the venue yet"), (
+        "a prop is not read at the venue at all, so the card may not say the "
+        "venue has nothing")
+    assert language.payout_chip_words(None, market="spread") == (
+        "venue has not listed this yet")
+    assert "no price yet" not in language.no_price_words("total")
     assert language.edge_chip_words(-3.4) == "-3.4¢"
     assert language.edge_chip_words(2.0) == "+2.0¢"
     assert language.edge_chip_words(None) == "—"
@@ -225,7 +238,12 @@ def test_the_sentence_is_said_once_for_the_slate_not_once_per_row(tmp_path):
     assert "hours before each game starts" in today["no_price_words"]
     for card in today["watching"]:
         assert "no venue price to compare against yet" not in json.dumps(card)
-        assert card["venue_words"] == "no price yet"
+        # The card says WHICH silence it is looking at; both are acceptable
+        # here and "no price yet" -- the sentence the operator read as a
+        # broken app -- is not.
+        assert card["venue_words"] in (
+            "venue has not listed this yet", "not read at the venue yet"), (
+            f"an unpriced card says {card['venue_words']!r}")
 
 
 def test_a_chip_every_card_would_wear_belongs_to_the_heading(tmp_path):

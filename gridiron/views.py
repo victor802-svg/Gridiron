@@ -1402,6 +1402,48 @@ def _card_context(conn: sqlite3.Connection, card: dict) -> dict:
     return context
 
 
+def _opening_price(conn: sqlite3.Connection | None, game_id: str | None,
+                   market: str | None, *, flip: bool) -> dict | None:
+    """The venue's latest OPENING read for this game and market.
+
+    THE LATEST, not the first. "The open" for drift is the earliest read --
+    that is what the word means there -- but a card is answering "what does
+    the venue say right now, and when did we last ask", and the newest read is
+    the honest answer to that.
+
+    Returns None when the venue has not listed the market, which is a
+    different fact from not having been asked and is said in different words.
+    """
+    if conn is None or not game_id or market not in ("spread", "total", "moneyline"):
+        return None
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if "venue_quotes" not in tables:
+        return None
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(venue_quotes)")}
+    if "read_kind" not in columns:
+        return None
+    latest = conn.execute(
+        "SELECT MAX(fetched_utc) FROM venue_quotes"
+        " WHERE game_id = ? AND market = ? AND read_kind = 'open'",
+        (game_id, market)).fetchone()[0]
+    if latest is None:
+        return None
+    ladder = conn.execute(
+        "SELECT * FROM venue_quotes WHERE game_id = ? AND market = ?"
+        "   AND read_kind = 'open' AND fetched_utc = ?",
+        (game_id, market, latest)).fetchall()
+    from .market import at_the_line
+
+    rung = at_the_line.rung_for(list(ladder))
+    if rung is None:
+        return None
+    price = 1.0 - rung["implied"] if flip else rung["implied"]
+    if not 0 < price < 1:
+        return None
+    return {"price": price, "payout": _payout_for(price), "read_utc": latest}
+
+
 def _today_card(entry: dict, card: dict, *, taken: bool,
                 group_tier: str | None, unit_dollars: float | None,
                 conn: sqlite3.Connection | None = None) -> dict:
@@ -1460,7 +1502,8 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
             None if entry.get("fair_value") is None
             else (1.0 - entry["fair_value"] if flip else entry["fair_value"]) * 100),
         "venue_words": language.venue_chip_words(
-            price, _payout_for(price) if flip else entry.get("payout")),
+            price, _payout_for(price) if flip else entry.get("payout"),
+            market=entry.get("market") or card.get("market")),
         "edge_words": language.edge_chip_words(entry.get("edge_cents")),
         # THE EDGE KEEPS ITS SIGN -- it is what the better side is worth
         # either way -- and its label says "on the other side" only when the
@@ -1486,7 +1529,9 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "top_factors": card.get("top_factors") or [],
         # THE PAYOUT IS THE BIG CHIP from 2026-09-08, with the price beneath
         # it and the edge on its own quiet line under the row.
-        "payout_words": language.payout_chip_words(entry.get("payout")),
+        "payout_words": language.payout_chip_words(
+            entry.get("payout"),
+            market=entry.get("market") or card.get("market")),
         "price_words": language.price_under_payout_words(price),
         "favoured": favoured,
         "favoured_colour": favoured_colour.get("primary"),
@@ -1505,6 +1550,23 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # the product with it.
     if card.get("rail_line"):
         out["rail_line"] = card["rail_line"]
+    # THE OPENING READ (GRIDIRON_OPENING_READ, 2026-09-09), and ONLY where
+    # there is no price at the line. The near-start read remains the only
+    # number an edge is measured at; this fills a chip that would otherwise
+    # say nothing for four days, and labels itself as a read so nobody
+    # compares it with an edge measured at kickoff.
+    if price is None and state == "upcoming":
+        opened = _opening_price(conn, card.get("game_id"),
+                                entry.get("market") or card.get("market"),
+                                flip=flip)
+        if opened is not None:
+            out["payout_words"] = language.payout_chip_words(opened["payout"])
+            out["payout"] = opened["payout"]
+            out["venue_words"] = language.venue_chip_words(
+                opened["price"], opened["payout"])
+            out["open_read_utc"] = opened["read_utc"]
+            out["open_read_words"] = language.opening_read_words()
+            out["price_words"] = ""
     out.update({k: v for k, v in context.items() if k != "state"})
     out["edge_line_words"] = language.edge_line_words(
         entry.get("edge_cents"),
@@ -3163,11 +3225,27 @@ def drift_report(conn: sqlite3.Connection, sport: str) -> dict:
     per_market = [
         drift.report(conn, sport=sport, market_type=m) for m in markets
     ]
+    # THE VENUE'S OWN PAIR (GRIDIRON_OPENING_READ, 2026-09-09), reported
+    # BESIDE the media pairs and never inside them. They answer the same
+    # question about two different prices: what ESPN republished, and what
+    # could actually have been taken. A single averaged figure would describe
+    # neither, which is the argument LAW 6 makes about sports one level up.
+    venue_markets = [
+        drift.venue_report(conn, sport=sport, market_type=m)
+        for m in markets if m in ("spread", "total", "moneyline")
+    ]
     return {
         "sport": sport,
         "n": sum(m["n"] for m in per_market),
         "min_pairs": drift.MIN_PAIRS,
         "markets": per_market,
+        "venue_markets": venue_markets,
+        "venue_n": sum(m["n"] for m in venue_markets),
+        "venue_question": (
+            "And between the venue's own opening read and its price at the "
+            "line -- the price that could actually have been taken -- did it "
+            "move toward the model or away?"
+        ),
         "question": (
             "When the model disagrees with the published line, does the line "
             "later move toward it or away? Two looks at the same line answer "

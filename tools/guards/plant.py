@@ -8204,6 +8204,187 @@ def plant_a_baseball_ticker_without_its_first_pitch() -> Result:
                   f"the ticker carries the first pitch: {built}")
 
 
+LAW_VENUE_REACH = "EVERY FORECAST MARKET CAN REACH THE VENUE"
+
+
+def plant_a_forecast_market_with_no_ticker() -> Result:
+    """Take passing yards back out of the series map (ruling 1, 2026-09-09).
+
+    THIS IS THE STATE THE PROJECT WAS ACTUALLY IN. Five NFL prop markets were
+    forecast, none had a series, `event_ticker` returned None for all of them,
+    and every card in those markets said "no price yet" from the day they
+    shipped. The gate was green the whole time because nothing compared what
+    the record FORECASTS against what it can PRICE.
+    """
+    from gridiron import audit as _audit
+    from gridiron.market import kalshi as _kalshi
+
+    key = ("nfl", "passing_yards")
+    kept = _kalshi.SERIES.pop(key, None)
+    try:
+        faults = _audit.venue_series_faults()
+    finally:
+        if kept is not None:
+            _kalshi.SERIES[key] = kept
+
+    hit = [f for f in faults if "passing_yards" in f]
+    if hit:
+        return Result(LAW_VENUE_REACH,
+                      "forecast a market the venue has no series for, silently",
+                      "audit.venue_series_faults", True, hit[0])
+    return Result(LAW_VENUE_REACH,
+                  "forecast a market the venue has no series for, silently",
+                  "audit.venue_series_faults", False,
+                  "NOT CAUGHT - NFL passing yards is forecast on every card "
+                  "and has no way to reach the venue, which is the state that "
+                  "shipped and that the operator found on his own screen")
+
+
+def plant_an_absence_with_no_evidence() -> Result:
+    """Declare "no series at the venue" and give no reason for saying so.
+
+    An absence that carries no evidence is a shrug, and a shrug in this map is
+    indistinguishable from the oversight the map exists to make visible.
+    """
+    from gridiron import audit as _audit
+    from gridiron.market import kalshi as _kalshi
+
+    key = ("nfl", "receptions")
+    kept_series = _kalshi.SERIES.pop(key, None)
+    _kalshi.NO_VENUE_SERIES[key] = "none"
+    try:
+        faults = _audit.venue_series_faults()
+    finally:
+        _kalshi.NO_VENUE_SERIES.pop(key, None)
+        if kept_series is not None:
+            _kalshi.SERIES[key] = kept_series
+
+    hit = [f for f in faults if "characters" in f]
+    if hit:
+        return Result(LAW_VENUE_REACH, "declare an absence and evidence none",
+                      "audit.venue_series_faults", True, hit[0])
+    return Result(LAW_VENUE_REACH, "declare an absence and evidence none",
+                  "audit.venue_series_faults", False,
+                  "NOT CAUGHT - 'none' stands as the reason a market cannot "
+                  "be priced, and nobody can tell whether anyone looked")
+
+
+LAW_AT_THE_LINE_ONLY = "A CLAIM IS PRICED AT THE LINE, NEVER AT THE OPEN"
+
+
+def plant_a_claim_priced_off_the_opening_read() -> Result:
+    """Score a claim against a price nobody could still take at kickoff.
+
+    THE FAILURE THIS PREVENTS. The opening read looks at a market that may be
+    a week from closing. A claim written against it would be graded, days
+    later, against a real outcome -- and the record would carry an edge
+    measured at a price that had moved before anyone could act on it. That is
+    the shape of every flattering backtest ever written.
+
+    So the two looks are told apart in the row, and the claim may cite only
+    one of them.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit, db as _db
+    from gridiron.market import at_the_line as _atl
+
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('g1', 'nfl', 2026, 1,"
+            " 'REG', 'SEA', 'NE', '2026-09-16T00:20:00Z', 'scheduled',"
+            " '2026-09-15')")
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-09T00:00:00Z', 'nfl', 'g1', 'moneyline', 'SEA', NULL,"
+            " 0.6, 'win', 'statistical', 'final', 'fs2', '{}', 'x')")
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        # THE PLANTED ROW: an OPENING read, a week before the game.
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " last_price, volume, fetched_utc, read_kind) VALUES (?, 'T', 'E',"
+            " 'nfl', 'g1', 'moneyline', 'home_win', NULL, 'home', 0.49, 0.51,"
+            " 0.5, 900, '2026-09-09T09:12:00Z', 'open')", (_atl.VENUE,))
+        conn.commit()
+        qid = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape,"
+            " dist_mean, dist_sd, model_prob, venue_price, venue_implied,"
+            " price_basis, created_utc) VALUES (?,?,?,'nfl','g1',"
+            " 'moneyline','home_win',NULL,'home','line_less',NULL,NULL,0.6,"
+            " 0.5,0.5,'mid','2026-09-09T09:13:00Z')",
+            (pid, qid, _atl.VENUE))
+        conn.commit()
+        try:
+            _audit.check_claims_price_at_the_line(conn)
+            caught, detail = False, None
+        except _audit.LawViolation as exc:
+            caught, detail = True, str(exc).splitlines()[-1]
+        conn.close()
+
+    if caught:
+        return Result(LAW_AT_THE_LINE_ONLY,
+                      "price a claim off the opening read, a week out",
+                      "audit.check_claims_price_at_the_line", True, detail)
+    return Result(LAW_AT_THE_LINE_ONLY,
+                  "price a claim off the opening read, a week out",
+                  "audit.check_claims_price_at_the_line", False,
+                  "NOT CAUGHT - the record now holds an edge measured at a "
+                  "price that had a week to move before anyone could take it")
+
+
+LAW_BROWSER_PARSES = "THE BROWSER FILES PARSE"
+
+
+def plant_a_syntax_error_in_the_browser() -> Result:
+    """Declare `more` twice in one scope (ruling 4, 2026-09-09).
+
+    THIS IS THE EXACT DEFECT OF 2026-09-08, character for character: an
+    expand button called `more`, and a link called `more` in the same block.
+    `const` twice in one scope is a SyntaxError, so the file does not parse,
+    `boot()` never runs, and nothing on any route renders -- while every text
+    scan in the gate reads the same file happily and passes.
+
+    Planted in a COPY of the shipped files. Breaking the real `app.js` to
+    prove a guard works is how a broken `app.js` gets committed.
+    """
+    from gridiron import audit as _audit, config as _config
+
+    web = _config.PACKAGE_ROOT / "web"
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        for name in _audit.BROWSER_SCRIPTS:
+            shutil.copy2(web / name, root / name)
+        broken = root / "app.js"
+        broken.write_text(
+            broken.read_text(encoding="utf-8")
+            + "\nfunction plantedTwice() {\n"
+              "  const more = document.createElement('button');\n"
+              "  const more = document.createElement('a');\n"
+              "  return [more];\n}\n",
+            encoding="utf-8")
+
+        faults = _audit.browser_syntax_faults(root)
+
+    hit = [f for f in faults if "app.js" in f]
+    if hit:
+        return Result(LAW_BROWSER_PARSES,
+                      "declare `more` twice in one scope in app.js",
+                      "audit.browser_syntax_faults", True, hit[0])
+    return Result(LAW_BROWSER_PARSES,
+                  "declare `more` twice in one scope in app.js",
+                  "audit.browser_syntax_faults", False,
+                  "NOT CAUGHT - app.js does not parse, boot() never runs, no "
+                  "route renders, and the gate is green: 2026-09-08 again")
+
+
 LAW_LIVE_CARD = "NOTHING ON A LIVE CARD CAN BE ACTED ON"
 LAW_NO_MARKS = "COLOUR IS DECLARED; A CREST IS A TRADEMARK"
 
@@ -8478,6 +8659,10 @@ def main() -> int:
     results.append(plant_the_old_card_on_the_live_tab())
     results.append(plant_another_groups_heading_on_the_live_tab())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
+    results.append(plant_a_forecast_market_with_no_ticker())
+    results.append(plant_an_absence_with_no_evidence())
+    results.append(plant_a_syntax_error_in_the_browser())
+    results.append(plant_a_claim_priced_off_the_opening_read())
     results.append(plant_a_urllib_post_at_the_venue())
     results.append(plant_a_test_that_opens_the_live_record())
     results.append(plant_a_write_through_the_live_read_handle())

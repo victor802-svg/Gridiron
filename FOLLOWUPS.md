@@ -771,3 +771,33 @@ after it meaningless.
 
 **Not built tonight** because a new gate step is a change to the thing that
 judges every other change, and this session has already run past its brief.
+
+### NFL prop prices need a player crosswalk *(measured 2026-09-09)*
+
+The four prop series are declared and every event resolves 40/40, so the
+TICKER is no longer the obstacle. The QUOTE still is, in two places:
+
+* `kalshi.capture_for_predictions` excludes `market_type = 'prop'`, so no prop
+  ladder is ever fetched;
+* `kalshi.parse_markets` has no branch for a prop, so a prop ticker would be
+  counted `unreadable` if one arrived.
+
+**What the venue's market ticker carries**, measured today inside
+`KXNFLPASSYDS-26SEP09NESEA`: `...-SEASDARNOLD14-150`, which is team, an
+abbreviated player, a number, and the rung. Matching that to our
+`Sam Darnold passing_yards 165.5` is the same problem `player_crosswalk`
+solved for baseball -- measured, dated, both match rates reported, and an
+ambiguous pair refused rather than guessed. It also needs a rung rule: the
+venue quotes `150+` where the record asks `over/under 165.5`, so a claim would
+be `rung_differs_count`, not `rung_matched`.
+
+**Until that exists the card says "not read at the venue yet"**, which is
+true, rather than "venue has not listed this yet", which was false and was
+rendering on the Seahawks card this morning.
+
+### Rushing yards has no per-game market at the venue *(measured 2026-09-08 and 2026-09-09)*
+
+Declared in `kalshi.NO_VENUE_SERIES` with its evidence. The record forecasts
+it and the venue will not price it per game -- only `KXNFLSEASONRUSHYDS`,
+season-long, which this record does not forecast. Not a gap to fill: a fact
+about the venue, and the guard requires it to stay written down.

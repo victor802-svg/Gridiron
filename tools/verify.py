@@ -231,6 +231,11 @@ def step_2_guards() -> bool:
 
     print()
     for name, fn in (
+        # FIRST, AND FIRST FOR A REASON (ruling 4, 2026-09-09). A file that
+        # does not parse makes every scan after it meaningless: they read it
+        # as text and pass, while the browser runs none of it. This is the
+        # check that was missing on 2026-09-08.
+        ("the browser files parse", audit.check_the_browser_files_parse),
         ("prediction closures (LAW 1)", audit.check_all_prediction_closures),
         ("no orphan functions", audit.check_no_orphan_functions),
         # ADDED 2026-09-03 AFTER IT HAPPENED. Widening a sport CHECK on `games`
@@ -376,6 +381,17 @@ def step_2_guards() -> bool:
         ("no wagering ledger in the repo (LAW 5)",
          lambda: audit.check_no_wagering_ledger(conn=_record_conn())),
         ("no offline data caching", audit.check_no_offline_data_caching),
+        # RULING 1 (2026-09-09). Five NFL prop markets had no venue series at
+        # all, so every card in them said "no price yet" from the day they
+        # were first forecast, and the gate was green throughout. Nothing
+        # here compared what the record FORECASTS against what it can PRICE.
+        ("every forecast market can reach the venue",
+         audit.check_every_forecast_market_can_reach_the_venue),
+        # GRIDIRON_OPENING_READ (2026-09-09). The opening read prices nothing;
+        # this is what makes that a fact about the record rather than a
+        # promise about the code.
+        ("a claim is priced at the line, never at the open",
+         lambda: audit.check_claims_price_at_the_line(_live_db_conn())),
     ):
         try:
             fn()
@@ -384,6 +400,18 @@ def step_2_guards() -> bool:
             ok = False
             print(f"  FAIL  {name}: {str(exc).splitlines()[0]}")
     return ok
+
+
+def _live_db_conn():
+    """A QUERY-ONLY handle on the operator's record for the data checks.
+
+    The same door `db.read_the_live_record` opens for a planting: the gate is
+    verification, and verification does not write to the record it is
+    checking. SQLite refuses the write, not this function.
+    """
+    return db.read_the_live_record(
+        "the gate asks the record whether any claim was priced off an "
+        "opening read rather than the near-start look")
 
 
 def step_3_one_week_end_to_end(source: Path) -> bool:

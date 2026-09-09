@@ -1365,9 +1365,26 @@ CREATE TABLE IF NOT EXISTS venue_quotes (
     last_price    REAL,
     volume        REAL,
     close_time    TEXT,
-    fetched_utc   TEXT    NOT NULL
+    fetched_utc   TEXT    NOT NULL,
+    -- WHICH LOOK THIS WAS (GRIDIRON_OPENING_READ, 2026-09-09).
+    --
+    -- 'near_start' is the read taken inside the two-hour window before
+    -- kickoff. It is the ONLY look a priced claim, an at-the-line claim or a
+    -- CLV pair may ever cite, and that is not a convention:
+    -- `audit.check_claims_price_at_the_line` fails by name on a claim whose
+    -- quote is an opening read.
+    --
+    -- 'open' is the daily read of the whole slate, added because the venue
+    -- publishes a week ahead and this project was not asking. It exists to
+    -- answer "what did the market say when we first looked", to give
+    -- `drift.py` the open-to-close pair it has wanted since it was written,
+    -- and to put a real number on a card that said "no price yet" for four
+    -- days. It prices nothing.
+    read_kind     TEXT    NOT NULL DEFAULT 'near_start'
+                  CHECK (read_kind IN ('open', 'near_start'))
 );
 CREATE INDEX IF NOT EXISTS venue_quotes_game ON venue_quotes (game_id, market, fetched_utc);
+CREATE INDEX IF NOT EXISTS venue_quotes_kind ON venue_quotes (game_id, market, read_kind, fetched_utc);
 
 CREATE TRIGGER IF NOT EXISTS venue_quote_requires_prediction
 BEFORE INSERT ON venue_quotes
