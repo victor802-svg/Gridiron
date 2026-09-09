@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from . import config, db
@@ -545,7 +546,29 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     return 0
 
 
+def _streams_that_exist() -> None:
+    """Bind stdout and stderr to the null device when there are none.
+
+    `pythonw.exe` has no console, so both are None. `print()` copes -- it
+    returns without writing -- but `logging.StreamHandler(sys.stdout)` does
+    not, and uvicorn builds one at startup. That is exactly how
+    `Gridiron-Serve` failed with exit 1 the first time it was pointed at the
+    interpreter, on 2026-09-09.
+
+    Called before the command runs, so it is in place before anything imports
+    uvicorn and captures the stream it finds.
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    sink = open(os.devnull, "w", encoding="utf-8")   # noqa: SIM115 - process-lifetime
+    if sys.stdout is None:
+        sys.stdout = sink
+    if sys.stderr is None:
+        sys.stderr = sink
+
+
 def main(argv: list[str] | None = None) -> int:
+    _streams_that_exist()
     args = build_parser().parse_args(argv)
     return args.func(args)
 

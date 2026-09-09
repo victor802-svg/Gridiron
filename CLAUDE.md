@@ -306,6 +306,34 @@ python tools/verify.py
 
 ---
 
+## The release path — RULED 2026-09-09
+
+**Gate, commit, push, confirm.** Four steps, and the fourth is
+`GET /api/health` answering the commit that was just pushed.
+
+```bash
+python tools/verify.py          # all four steps, no flags
+git commit && git push          # and check the remote matches
+curl -s http://127.0.0.1:8848/api/health
+```
+
+**THE BUILD IDENTITY IS THE COMMIT HASH PLUS WHAT `/api/health` ANSWERS.**
+There is no binary to hash any more. A SHA-256 of an executable said what was
+BUILT; the health line says what is actually SERVING, which is the question
+anyone asking "what version is this?" is really asking.
+
+**The PyInstaller bundle is retired**, and "rebuild, hash" is no longer a step
+in this path. `desktop/gridiron.spec` and `desktop/make_shortcut.ps1` are kept
+and marked, because a step that vanishes is a step nobody can audit; neither
+is part of a release. Why it went is in `FOLLOWUPS.md`: Smart App Control
+blocked the unsigned binary this machine built itself, and the answer is not
+to argue with the security setting.
+
+`Gridiron-Serve` runs `pythonw.exe -m gridiron.cli serve` from the repository,
+at logon, `StartWhenAvailable`, restarted by the scheduler if it dies.
+
+---
+
 ## Ending a session
 
 **Every session ends with a close-out table against its brief's phase list.**

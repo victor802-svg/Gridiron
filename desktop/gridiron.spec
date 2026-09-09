@@ -1,5 +1,19 @@
 # PyInstaller spec for the Gridiron desktop launcher.
 #
+# ============================ RETIRED 2026-09-09 ============================
+# THIS IS NOT PART OF A RELEASE ANY MORE and the command below is kept as
+# history rather than as an instruction. Smart App Control blocked the
+# unsigned binary this machine built itself -- twice, on 2026-09-05 and again
+# on 2026-09-09 -- and the operator ruled that the bundle is retired rather
+# than signed or waved through. `Gridiron-Serve` runs
+# `pythonw.exe -m gridiron.cli serve` from the repository instead, and the
+# build identity is the commit hash plus what `/api/health` answers.
+#
+# The file stays because a step that vanishes is a step nobody can audit, and
+# because everything below it is a measured decision about HOW to bundle a
+# Python app -- worth reading if this is ever revived with a signing key.
+# ===========================================================================
+#
 #     .venv\Scripts\pyinstaller.exe desktop\gridiron.spec --noconfirm
 #
 # ONEDIR, NOT ONEFILE, and the reason is not taste:

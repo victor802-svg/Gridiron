@@ -781,7 +781,12 @@ def test_a_card_still_expands_on_a_phone(phone):
     does not overflow the phone doing it -- is unchanged."""
     phone.evaluate("location.hash = '#/week'")
     phone.wait_for_selector("#today .face", timeout=10000)
-    phone.query_selector("#today .face .expand").click()
+    # A LOCATOR, NOT AN ELEMENT HANDLE. `query_selector` snapshots one node
+    # and `renderWeek` rebuilds `#today` wholesale, so a render landing
+    # between the query and the click detaches it -- which it did, once in
+    # three runs, in the gate of 2026-09-09. A locator re-resolves at click
+    # time and retries while the node is detached.
+    phone.locator("#today .face .expand").first.click()
     phone.wait_for_selector("#today .face .face-why", state="visible", timeout=5000)
     assert _overflow(phone) <= 0, "an expanded card overflows the phone"
 
@@ -790,7 +795,12 @@ def test_the_dumbbell_and_contribution_bars_fit(phone):
     """Both are horizontal by nature and are the first things to break narrow."""
     phone.evaluate("location.hash = '#/week'")
     phone.wait_for_selector("#today .face", timeout=10000)
-    phone.query_selector("#today .face .expand").click()
+    # A LOCATOR, NOT AN ELEMENT HANDLE. `query_selector` snapshots one node
+    # and `renderWeek` rebuilds `#today` wholesale, so a render landing
+    # between the query and the click detaches it -- which it did, once in
+    # three runs, in the gate of 2026-09-09. A locator re-resolves at click
+    # time and retries while the node is detached.
+    phone.locator("#today .face .expand").first.click()
     phone.wait_for_selector("#today .face .face-why", state="visible", timeout=5000)
 
     # `.factors` is where the contribution chips live on the CARD_FACE card;

@@ -41,12 +41,19 @@ if ($Remove) {
 }
 
 if (-not (Test-Path $Exe)) {
-    Write-Host "No build found at $Exe"
+    # RETIRED 2026-09-09 by operator ruling. This used to say "build it
+    # first" and print the pyinstaller line; Smart App Control blocked the
+    # unsigned binary this machine built itself, and the bundle went rather
+    # than the security setting. There is nothing to build any more.
+    Write-Host "No build at $Exe, and there will not be one."
     Write-Host ""
-    Write-Host "Build it first:"
-    Write-Host "    .venv\Scripts\pyinstaller.exe desktop\gridiron.spec --noconfirm"
+    Write-Host "The PyInstaller bundle was retired on 2026-09-09. The interface"
+    Write-Host "runs from source, registered by tools\schedule_install.ps1:"
+    Write-Host "    .venv\Scripts\pythonw.exe -m gridiron.cli serve"
     Write-Host ""
-    Write-Host "Nothing was changed."
+    Write-Host "A desktop shortcut can point at that instead; this script has"
+    Write-Host "not been rewritten to make one, and says so rather than"
+    Write-Host "pretending. Nothing was changed."
     exit 1
 }
 

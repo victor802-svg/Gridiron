@@ -249,6 +249,23 @@ def _absent_factors(payload: dict) -> list[dict]:
     ]
 
 
+def _market_key(card: dict) -> str:
+    """WHICH MARKET A CARD IS, and the only answer to that (2026-09-09).
+
+    There were two. The tab row read `prop_type or market_type`; the card the
+    tab filters carried whatever `recommend` reported, which for a prop is the
+    bare `'prop'`. Predictions 6, 32 and 39 -- written before `prop_type`
+    existed, so it is NULL on their rows -- were therefore counted under
+    "Passing yards" and rendered under a market with no tab at all. Clicking
+    the tab showed four of the seven it promised, and the other three were
+    reachable only from All.
+
+    A card's market is derived HERE, once, and both ends read it.
+    """
+    return (card.get("prop_type") or card.get("market_type")
+            or card.get("market") or "")
+
+
 def _market_tabs(sport: str, cards: list) -> list[dict]:
     """One tab per DECLARED market, with the count on this slate (R4).
 
@@ -266,13 +283,25 @@ def _market_tabs(sport: str, cards: list) -> list[dict]:
     THE LABELS ARE PLAIN WORDS. `prop:pitcher_strikeouts` is a storage key;
     "Strikeouts" is what a person says. `language.market_word` already knows
     that a handicap is a point spread in football and a run line in baseball.
-    """
-    counts: dict[str, int] = {}
-    for card in cards:
-        key = card.get("prop_type") or card.get("market_type") or ""
-        counts[key] = counts.get(key, 0) + 1
 
-    tabs = [{"market": "", "label": "All", "n": len(cards)}]
+    IT COUNTS WHAT IT FILTERS (2026-09-09), which it did not. These numbers
+    were the count of every question the record FORECASTS for the slate, and
+    the row sits above the cards the slate SHOWS -- which are the shortlisted
+    ones. On the live NFL slate that read "Point spread 29" over four spread
+    cards, and "All 107" over thirty. Every tab overstated by three to seven
+    times, and a reader clicking one found a fraction of what it promised.
+
+    Same fault as the operator's ruling of 2026-09-08 on this row, from the
+    other end: then the filter did not reach everything it counted; now the
+    count did not describe what the filter reaches. Which questions reach the
+    slate is the shortlist's business and is untouched by this.
+    """
+    shown = [c for c in cards if c.get("on_shortlist")]
+    counts: dict[str, int] = {}
+    for card in shown:
+        counts[_market_key(card)] = counts.get(_market_key(card), 0) + 1
+
+    tabs = [{"market": "", "label": "All", "n": len(shown)}]
     # THE ACTIVE ROSTER (R1, 2026-09-05): a retired market is not a tab on
     # Picks. It keeps its category on Record, greyed, with its settled count.
     for market in config.active_markets(sport):
@@ -1496,7 +1525,9 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # are declared a filter row on Upcoming and were filtering only the
         # slate beneath it: switching to a market with no picks left the
         # previous market's cards standing in the groups.
-        "market": entry.get("market") or card.get("market"),
+        # THE SAME DERIVATION THE TAB ROW USES, so a card cannot be counted
+        # under one market and rendered under another.
+        "market": _market_key(card) or entry.get("market"),
         # the three chips
         "model_words": language.price_chip_words(
             None if entry.get("fair_value") is None

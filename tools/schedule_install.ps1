@@ -339,23 +339,49 @@ New-GridironTask -Name "$($Prefix)Live" -TaskArg "live" `
 # nothing if it exits, and the operator's ask was that it be running when he
 # reaches for it. This one has the scheduler's restart settings behind it.
 #
-# It does NOT go through New-GridironTask: that helper runs `python -m
-# gridiron.cli task <name>`, and this is the bundled executable in its
-# serve-only mode, which is a different thing entirely.
-$serveExe = Join-Path $Repo "dist\Gridiron\Gridiron.exe"
-if (Test-Path $serveExe) {
-    Register-ScheduledTask -TaskName "$($Prefix)Serve" `
-        -Action (New-ScheduledTaskAction -Execute $serveExe -Argument "--serve-only" -WorkingDirectory $Repo) `
-        -Trigger (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME") `
-        -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
-            -DontStopIfGoingOnBatteries -StartWhenAvailable `
-            -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
-            -ExecutionTimeLimit (New-TimeSpan -Days 0)) `
-        -Description "Serve the local interface at logon and restart it if it dies." | Out-Null
-    Write-Host "  registered $($Prefix)Serve"
-} else {
-    Write-Host "  skipped $($Prefix)Serve - no bundle at $serveExe. Build it with .venv\Scripts\pyinstaller.exe desktop\gridiron.spec --noconfirm, then re-run this."
-}
+# FROM SOURCE, NOT FROM A BUNDLE (operator ruling, 2026-09-09). This ran
+# `dist\Gridiron\Gridiron.exe --serve-only` until Smart App Control blocked
+# the binary: an unsigned executable this machine built itself has no
+# reputation to be judged on, so it is judged on nothing and refused. The
+# ruling is that the bundle is retired rather than argued with -- no signing,
+# no allowing the hash by hand, and the security setting untouched.
+#
+# TWO TRIGGERS, AND THE SECOND IS THE ONE THAT WORKS (measured 2026-09-09).
+#
+# This task carried `RestartCount 3 / RestartInterval 1 minute` from
+# 2026-09-07 and it had never restarted anything. Killed the serving process
+# at 22:15:14 and ninety seconds later the task read `state=Ready`,
+# `lastResult=0xFFFFFFFF`, `nextRun` EMPTY -- nothing queued. Windows applies
+# that setting to a task that failed to START, not to a long-running action
+# whose process died. The setting had been on the task, untested, for two
+# days.
+#
+# So the mechanism is the one `Gridiron-Live` already uses: a repeating
+# trigger with `MultipleInstances IgnoreNew`. Every two minutes the scheduler
+# tries to start it. Up: the attempt is ignored and costs nothing. Dead: it
+# comes back inside two minutes. `RestartCount` is kept because it covers the
+# case it does cover, but it is not what is relied on.
+#
+# `-ExecutionTimeLimit 0` is what lets a task run forever; without it Windows
+# kills the interface after three days.
+#
+# It does NOT go through New-GridironTask: that helper runs `-m gridiron.cli
+# task <name>` and exits, and this runs `serve` and does not.
+Register-ScheduledTask -TaskName "$($Prefix)Serve" `
+    -Action (New-ScheduledTaskAction -Execute $Python `
+        -Argument "-m gridiron.cli serve" -WorkingDirectory $Repo) `
+    -Trigger @(
+        (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"),
+        (New-ScheduledTaskTrigger -Once -At "00:00" `
+            -RepetitionInterval (New-TimeSpan -Minutes 2))
+    ) `
+    -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries -StartWhenAvailable `
+        -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+        -MultipleInstances IgnoreNew `
+        -ExecutionTimeLimit (New-TimeSpan -Days 0)) `
+    -Description "Serve the local interface, from source. At logon, and re-checked every two minutes so a death is repaired without anyone noticing. The bundle was retired 2026-09-09." | Out-Null
+Write-Host "  registered $($Prefix)Serve (from source, self-healing)"
 
 # The logon trigger is scoped to THIS user on purpose. Without -User it applies
 # to every account on the machine, which Windows treats as a system-wide change

@@ -226,6 +226,71 @@ def test_the_three_chips_read_across_and_an_absence_is_not_a_zero():
     assert language.edge_state(None) == "none"
 
 
+def test_every_market_tab_counts_the_cards_it_will_show(tmp_path):
+    """A FILTER ROW COUNTS WHAT IT FILTERS (2026-09-09).
+
+    On the live NFL slate the row read "All 107" over thirty cards and "Point
+    spread 29" over four: the counts were of every question the record
+    forecasts, and the row sits above the shortlisted ones. A reader clicking
+    a tab found between a seventh and a third of what it promised.
+
+    The invariant, and it is checkable on any slate: for every tab, the number
+    beside the label equals the number of cards that tab leaves on screen.
+    """
+    # MORE QUESTIONS THAN THE CAP, which is what makes this test about
+    # anything: baseball's shortlist cap is twenty, so with twenty-two ranked
+    # together two of them stay off the slate. With every question
+    # shortlisted the old count and the new one agree and the defect hides --
+    # which is exactly why it survived until somebody read the live slate.
+    conn = _world(tmp_path, games=22)
+    pids = []
+    for i in range(22):
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning)"
+            " VALUES ('2026-09-07T00:00:00Z', 'mlb', ?, 'moneyline', ?, NULL,"
+            " ?, 'win', 'statistical', 'final', 'fs2', ?, 'test')",
+            (f"g{i}", f"AAA{i}", 0.55 + i * 0.005, WHOLE))
+        pids.append(conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0])
+    conn.commit()
+    shortlist.rank_rows(conn, pids)      # ONE slate, so the cap applies
+
+    week = views.week(conn, "mlb", 2026, 1)
+    off = [c for c in week["cards"] if not c.get("on_shortlist")]
+    assert off, "the cap must leave something off, or this proves nothing"
+    today = week["today"]
+    cards = (today["watching"] + today["clears"] + today["below_floor"]
+             + today["live"] + today["settled"])
+    assert len(cards) < len(week["cards"]), (
+        "the slate must be smaller than the payload for the counts to differ")
+    for tab in week["market_tabs"]:
+        shown = (len(cards) if tab["market"] == ""
+                 else len([c for c in cards if c.get("market") == tab["market"]]))
+        assert tab["n"] == shown, (
+            f'the {tab["label"]!r} tab says {tab["n"]} and leaves {shown} '
+            f'cards on screen')
+
+
+def test_a_card_is_counted_under_the_market_it_renders_under(tmp_path):
+    """ONE DERIVATION OF "WHICH MARKET IS THIS" (2026-09-09).
+
+    Three NFL passing-yards cards were counted under "Passing yards" and
+    rendered carrying the bare market `prop` -- early rows whose `prop_type`
+    column is NULL. They were reachable from no tab but All. Every card's
+    market must be a market the row has a tab for.
+    """
+    conn = _world(tmp_path, games=2)
+    for i in range(2):
+        _pick(conn, game=f"g{i}", subject=f"AAA{i}")
+    week = views.week(conn, "mlb", 2026, 1)
+    today = week["today"]
+    tabs = {t["market"] for t in week["market_tabs"]}
+    for card in today["watching"] + today["clears"] + today["below_floor"]:
+        assert card.get("market") in tabs, (
+            f'a card renders under {card.get("market")!r}, which no tab shows')
+
+
 def test_the_sentence_is_said_once_for_the_slate_not_once_per_row(tmp_path):
     """IT WAS SAID THIRTY TIMES. Measured on the football slate of
     2026-09-07: "no venue price to compare against yet" appeared on all thirty

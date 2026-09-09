@@ -814,7 +814,73 @@ than a policy change.
 commit, which does not survive a reboot, and `Gridiron-Serve` still launches
 the blocked exe.
 
-**What would settle it:** sign the binary. Allowing one hash by hand fixes
-today and reappears at the next rebuild; pointing the task at the venv's
-python abandons the bundle. Either of those is a decision, and both -- like
-the security setting itself -- are the operator's, not a session's.
+**RULED AND CLOSED, 2026-09-09.** The operator retired the bundle. Not
+signed, not allowed by hand, and Smart App Control untouched.
+
+**Why, in his terms and worth keeping:** an unsigned binary a machine built
+for itself HAS NO REPUTATION. Smart App Control is not malfunctioning when it
+refuses one -- that is the whole of what it does, and it has no carve-out for
+a file because the person who built it vouches for it. A session that turns
+the setting off, or allows one hash, has removed the check for everything that
+comes after, to ship a convenience.
+
+**And this was the second time.** The same policy blocked the same bundle on
+2026-09-05; that entry above was closed by rebuilding until a build happened
+to be allowed, which was luck being recorded as a fix. The rebuild that worked
+told us nothing about the next one, and the next one was refused.
+
+**What replaced it:** `Gridiron-Serve` runs
+`.venv\Scripts\pythonw.exe -m gridiron.cli serve` from the repository, at
+logon, `StartWhenAvailable`, `RestartCount 3` at one-minute intervals, no
+execution time limit. The release path in CLAUDE.md is gate, commit, push,
+confirm -- and the build identity is **the commit hash plus what `/api/health`
+answers**, which says what is SERVING rather than what was BUILT.
+
+`desktop/gridiron.spec` and `desktop/make_shortcut.ps1` are kept and marked
+retired rather than deleted, because a step that vanishes is a step nobody can
+audit.
+
+### GRIDIRON_PROP_CROSSWALK — ruled 2026-09-09, starts after tonight's game
+
+The operator's brief is in `docs/briefs/2026-09-09-rulings-2.md`, ruling 3,
+and it opens **"after tonight's game settles"** -- so it is not started here.
+In short: match the record's player and line to the venue's player code and
+rung for the four NFL prop series that now resolve, the way MLB was done;
+absent-not-zero for a player the venue has not listed; a card whose player is
+unmatched keeps saying "not read at the venue yet"; the near-start rule is
+unchanged; plant a wrong-player match and a wrong-rung match so both fail by
+name; report matched/total per prop market with an example each, and the
+open-read count the first run writes.
+
+What is already measured and waiting for it is the entry above: the venue's
+market ticker carries team, player and rung together
+(`KXNFLPASSYDS-26SEP09NESEA-SEASDARNOLD14-150`), and the rungs will not line
+up with ours -- the venue quotes `150+` where the record asks over/under
+`165.5`, so a matched claim is `rung_differs_count`, not `rung_matched`.
+
+### The group heading counts the whole slate under a filtered one *(measured 2026-09-09)*
+
+Third of the same family, and the only one of the three not fixed tonight.
+With the "Point spread" tab chosen the slate shows four cards under the
+heading **"Watching — 30 more, none of which clears the venue's fee."**
+Thirty is the whole slate; four is what is on the screen.
+
+**Why it is not a two-line fix.** `/api/week` takes no market parameter: the
+filter is entirely in the browser, which hides the cards that do not match
+`state.market`. The heading is composed server-side by
+`language.watching_heading(len(watching))` over the unfiltered slate and never
+changes. Recounting in the renderer would fix the number and break PLAIN
+WORDS -- no visible label is composed in the browser, which is a rule with its
+own scan.
+
+**What would settle it:** send the headings per market -- a
+`watching_heading` for the whole slate plus one per market key -- and have the
+renderer PLACE the one matching `state.market`, choosing nothing and composing
+nothing. Then the same treatment for the "clears the bar" heading and the
+"no venue price on this slate yet" sentence, both of which describe the whole
+slate from above a filtered one.
+
+**Not built at the end of this session**, with two changes to the same payload
+already in it (the tab counts and the single market key) and a gate to run.
+It is a payload-shape change and those have twice this week taken more than
+they were aimed at.
