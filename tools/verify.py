@@ -392,6 +392,12 @@ def step_2_guards() -> bool:
         # promise about the code.
         ("a claim is priced at the line, never at the open",
          lambda: audit.check_claims_price_at_the_line(_live_db_conn())),
+        # THE LIVE RULINGS (2026-09-09). A page that stops asking the first
+        # time nothing is on never learns the day started -- which is how the
+        # server came to hold six live cards while the screen said nothing was
+        # being played.
+        ("the live poll keeps asking, and never asks for a price",
+         audit.check_the_live_poll_keeps_asking),
     ):
         try:
             fn()

@@ -6172,8 +6172,28 @@ def check_no_marks(directory=None) -> None:
 #: reader could act on, and the in-game rule says none of them may be acted on:
 #: a score up to ninety seconds stale against a live market is adversely
 #: selected by construction (THE_PRICED P2).
+#:
+#: NARROWED 2026-09-09 BY OPERATOR RULING, and the law did not move. LAW 5 has
+#: always said "Live win probability may be displayed and is never sized";
+#: this list carried `model_words` from 2026-09-08 until today, which forbade
+#: the probability itself and left a live card saying nothing at all about the
+#: game the operator was watching. That guard was written after the old Picks
+#: grid leaked fifteen cards under Live's empty state, and it overshot the
+#: ruling that produced it: what was being prevented was a recommendation
+#: surface, not a number.
+#:
+#: `model_words` is therefore GONE from this list and `pregame_words` takes
+#: its place on the card -- the corrected probability the claim was written
+#: with, carrying the word "pregame". Everything else here stands.
 LIVE_FORBIDDEN = ("size_words", "edge_words", "edge_line_words", "edge_label",
-                  "payout_words", "price_words", "model_words", "venue_words")
+                  "payout_words", "price_words", "model_words", "venue_words",
+                  "tier_chip")
+
+#: The word a live card's probability must carry. WITHOUT IT the figure reads
+#: as the model's opinion of the game in front of the reader, and there is no
+#: such opinion: no live model exists, S5 is unbuilt, and the number is what
+#: was thought before the first pitch.
+PREGAME_WORD = "pregame"
 
 
 def live_card_faults(payload) -> list[str]:
@@ -6203,6 +6223,17 @@ def live_card_faults(payload) -> list[str]:
                     faults.append(
                         f"{path or 'a card'} is live and offers the tap that "
                         f"records a pick")
+                # THE PROBABILITY IS ALLOWED AND THE WORD IS NOT OPTIONAL
+                # (operator ruling, 2026-09-09). A figure beside a live score
+                # with nothing to date it reads as the model's opinion of the
+                # game being played, and there is no such opinion.
+                pregame = node.get("pregame_words")
+                if pregame is not None and PREGAME_WORD not in str(pregame).lower():
+                    faults.append(
+                        f"{path or 'a card'} is live and shows {pregame!r} "
+                        f"without the word {PREGAME_WORD!r}: no live model "
+                        f"exists, so an undated figure beside a live score "
+                        f"claims to be something this app does not have")
             for key, value in node.items():
                 walk(value, f"{path}.{key}" if path else str(key))
         elif isinstance(node, list):
@@ -6546,3 +6577,83 @@ def check_claims_price_at_the_line(conn=None) -> None:
         raise LawViolation(
             "A CLAIM IS PRICED AT THE LINE, NEVER AT THE OPEN:"
             + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE LIVE POLL KEEPS ASKING, AND NEVER ASKS FOR A PRICE (ruled 2026-09-09)
+# ---------------------------------------------------------------------------
+#
+# TWO RULES, ONE SCAN, both about the same function.
+#
+# IT KEEPS ASKING. `startLivePolling` ended its tick with
+# `if (!live.any_live) stopLivePolling();`, so a page opened before first
+# pitch polled ONCE, saw nothing live, and killed its own timer for the day.
+# The server held six live cards with scores while the operator's screen said
+# nothing was being played. The page stops when the SLATE is complete --
+# nothing left to play, which is the poller's own rule -- not when nothing
+# happens to be on in the second it asked.
+#
+# IT NEVER ASKS FOR A PRICE. A live card carries none and may carry none
+# (THE_PRICED P2): a score up to ninety seconds stale against a live market is
+# adversely selected by construction. A poll that fetched a priced endpoint
+# would put that number one render away from the screen.
+
+#: Endpoints that answer with a price, a claim or a recommendation. The live
+#: poll may touch none of them.
+PRICED_ENDPOINTS = ("/api/week", "/api/shortlist", "/api/recommend",
+                    "/api/claims", "/api/combos", "/api/taken")
+
+
+def live_poll_faults(js: str) -> list[str]:
+    """The browser's live poll, read off the renderer."""
+    js = _without_comments(js, "js")
+    match = re.search(
+        r"function\s+startLivePolling\s*\([^)]*\)\s*\{(?P<body>.*?)\n  \}",
+        js, re.S)
+    if match is None:
+        return ["startLivePolling() is not in the renderer, so nothing "
+                "re-reads the score while a game is being played"]
+    body = match.group("body")
+    faults = []
+    if re.search(r"if\s*\(\s*!\s*live\.any_live\s*\)", body):
+        faults.append(
+            "startLivePolling() stops when `any_live` is false: a page opened "
+            "before the first game starts polls once, finds nothing on, and "
+            "never asks again. It stops when the SLATE is complete.")
+    if "slate_complete" not in body:
+        faults.append(
+            "startLivePolling() never reads `slate_complete`, so nothing "
+            "tells it when the day is actually over and the poll may stop.")
+    for endpoint in PRICED_ENDPOINTS:
+        if endpoint in body:
+            faults.append(
+                f"startLivePolling() fetches {endpoint!r}: a live card carries "
+                f"no price and may carry none, and a poll that reads one puts "
+                f"an adversely-selected number one render from the screen.")
+    return faults
+
+
+def check_the_live_poll_keeps_asking(js: str | None = None) -> None:
+    if js is None:
+        from . import config
+
+        js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    faults = live_poll_faults(js)
+    if faults:
+        raise LawViolation(
+            "THE LIVE POLL KEEPS ASKING, AND NEVER ASKS FOR A PRICE:"
+            + _NL2 + _NL2.join(faults))
+
+
+#: A poll that gives up the first time nothing is on, and one that reads a
+#: priced endpoint. The two failures the plantings reproduce.
+LIVE_POLL_FIXTURE_POSITIVE = """
+  function startLivePolling(data) {
+    const tick = async () => {
+      const live = await fetchJSON('/api/live');
+      applyLive(live);
+      if (!live.any_live) stopLivePolling();
+    };
+    tick();
+  }
+"""

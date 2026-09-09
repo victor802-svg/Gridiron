@@ -23,7 +23,10 @@
                             Baseball finishes games all evening, so four-hourly
                             keeps the record within hours of the sport.
 
-      Gridiron-Predict-MLB  daily 11:00 local, after most probable starters have
+      Gridiron-Predict-MLB  22:00 local for the NEXT day's slate, and 11:00 as
+                            a backstop. Until 2026-09-09 it ran only at 11:00
+                            and the picks landed after first pitch. Probable
+                            starters have
                             posted. Each run records how many forecasts were
                             made without a named starter, so this time can be
                             revisited with evidence rather than opinion.
@@ -157,9 +160,29 @@ New-GridironTask -Name "$($Prefix)Resolve" -TaskArg "resolve" `
               -RepetitionInterval (New-TimeSpan -Hours 4)) `
     -Description "Settle every Gridiron prediction whose game has finished. Idempotent. Runs after Refresh."
 
+# THE NIGHT BEFORE, AND A BACKSTOP (operator ruling, 2026-09-09).
+#
+# This ran once, at 11:00 local. Measured on 2026-09-09: the slate's first
+# pitch was 10:10 local, so the picks were written FIFTY MINUTES AFTER the
+# day had started -- every day, not once. The operator found it by looking for
+# them at five in the morning and seeing an unforecast slate.
+#
+# 22:00 the night before is the ruling: written while he is awake, hours
+# before anything starts.
+#
+# 11:00 STAYS AS A BACKSTOP, and it is not a duplicate. `predict` targets the
+# NEXT UNPLAYED slate; at ten at night a late West Coast game can still be in
+# progress, in which case the next unplayed slate is still TODAY's -- already
+# answered -- and the run refuses. Without the backstop that refusal would
+# silently cost the following day its picks. A second firing on an answered
+# slate costs nothing: `SlateAlreadyAnswered` is the append-only guard doing
+# its job and it writes a row saying so.
 New-GridironTask -Name "$($Prefix)Predict-MLB" -TaskArg "predict:mlb" `
-    -Trigger (New-ScheduledTaskTrigger -Daily -At $Time) `
-    -Description "Forecast today's MLB slate, blind, after probable starters post."
+    -Trigger @(
+        (New-ScheduledTaskTrigger -Daily -At "22:00"),
+        (New-ScheduledTaskTrigger -Daily -At $Time)
+    ) `
+    -Description "Forecast the MLB slate, blind. 22:00 for the next day's card; 11:00 as a backstop when a late game made the night run refuse."
 
 New-GridironTask -Name "$($Prefix)Predict-NFL" -TaskArg "predict:nfl" `
     -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Wednesday -At $Time) `

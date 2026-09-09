@@ -2170,6 +2170,16 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 .face-fact { white-space: nowrap; }
 
+/* THE PREGAME FIGURE ON A LIVE CARD (operator ruling, 2026-09-09). Quiet on
+   purpose: it is the only number on a live card and it describes a moment
+   that has passed, so it sits at the weight of a caption rather than at the
+   weight of the score above it. */
+.face-pregame {
+  margin-top: var(--face-rhythm);
+  font-size: var(--face-meta);
+  color: var(--muted);
+}
+
 /* THE FORM STREAK (operator, 2026-09-08). The gap is the streak's own, not
    the context row's, so five marks read as one run rather than five facts.
    `.win` and `.loss` are the class names the colour law scans for, and they

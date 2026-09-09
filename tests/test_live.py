@@ -41,17 +41,54 @@ def test_a_quiet_day_makes_no_request_at_all(conn):
 
 
 def test_a_window_opens_only_while_a_game_could_be_on(conn):
-    """The boundary, tested AT the boundary (MENTOR section 3)."""
+    """The boundary, tested AT the boundary (MENTOR section 3).
+
+    REWRITTEN 2026-09-09. This asserted the window SHUT one minute past
+    `GAME_HOURS`, which is the defect the operator ruled on: a game in extra
+    innings or through a rain delay stopped being polled while it was still
+    being played, and its score froze on screen with nothing saying so. A game
+    is on until the poller has seen it FINAL; `STALE_AFTER` is only the
+    backstop for a row whose status never arrives.
+    """
     _game(conn, "cfb_w1", "2026-09-05T16:00:00Z")
     hours = live.GAME_HOURS["cfb"]
     kickoff = dt.datetime(2026, 9, 5, 16, 0, tzinfo=dt.timezone.utc)
 
-    # Exactly at the lead-in, and exactly at the far end: both open.
+    # Exactly at the lead-in: open.
     assert live.open_windows(conn, kickoff - live.WINDOW_LEAD)
+    # A minute before it: shut. That edge did not move.
+    assert not live.open_windows(
+        conn, kickoff - live.WINDOW_LEAD - dt.timedelta(minutes=1))
+
+    # AT the expected end, and PAST it: both open now, because the game has
+    # not been seen final. This is the edge the ruling moved.
     assert live.open_windows(conn, kickoff + dt.timedelta(hours=hours))
-    # A minute either side of those: shut.
-    assert not live.open_windows(conn, kickoff - live.WINDOW_LEAD - dt.timedelta(minutes=1))
-    assert not live.open_windows(conn, kickoff + dt.timedelta(hours=hours, minutes=1))
+    assert live.open_windows(conn, kickoff + dt.timedelta(hours=hours, minutes=1))
+    assert live.open_windows(conn, kickoff + dt.timedelta(hours=hours + 3))
+
+    # The backstop, at the boundary: open at it, shut a minute past it.
+    assert live.open_windows(conn, kickoff + live.STALE_AFTER)
+    assert not live.open_windows(
+        conn, kickoff + live.STALE_AFTER + dt.timedelta(minutes=1))
+
+
+def test_a_game_seen_final_closes_its_window_at_once(conn):
+    """THE CLOSING CONDITION IS THE FINAL, not the clock (ruled 2026-09-09).
+
+    The other half of the rewritten boundary: a game that ends early stops
+    being polled the moment the poller records it, without waiting out the
+    expected length of a game.
+    """
+    _game(conn, "cfb_early", "2026-09-05T16:00:00Z")
+    kickoff = dt.datetime(2026, 9, 5, 16, 0, tzinfo=dt.timezone.utc)
+    during = kickoff + dt.timedelta(hours=1)
+    assert live.open_windows(conn, during), "a game an hour in is on"
+
+    conn.execute("UPDATE games SET status='final', home_score=21, away_score=17"
+                 " WHERE id='cfb_early'")
+    conn.commit()
+    assert not live.open_windows(conn, during), (
+        "a game the poller has seen final is over, whatever the clock says")
 
 
 def test_a_finished_game_never_opens_a_window(conn):
@@ -322,16 +359,24 @@ def test_polling_starts_and_stops_with_the_window(conn):
         calls.append((sport, day))
         return []
 
-    hours = live.GAME_HOURS["cfb"]
+    # AFTER IS NOW A FINAL, NOT A CLOCK (ruled 2026-09-09). This read
+    # `kickoff + GAME_HOURS + 1h` and asserted the poll had stopped -- which
+    # is exactly the behaviour that dropped a game still being played. The
+    # poll stops when the game is over, so the test ends it.
     before = kickoff - dt.timedelta(hours=2)
     during = kickoff + dt.timedelta(hours=1)
-    after = kickoff + dt.timedelta(hours=hours + 1)
+    after = kickoff + dt.timedelta(hours=2)
 
     live.poll(conn, now=before, fetcher=counting)
     assert calls == [], "the poll ran two hours before kickoff"
 
     live.poll(conn, now=during, fetcher=counting)
     assert len(calls) == 1, "the poll did not run during the game"
+
+    # THE GAME ENDS, and the poller has seen it.
+    conn.execute("UPDATE games SET status='final', home_score=21, away_score=17"
+                 " WHERE id='cfb_win'")
+    conn.commit()
 
     live.poll(conn, now=after, fetcher=counting)
     assert len(calls) == 1, (

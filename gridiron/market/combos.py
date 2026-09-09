@@ -314,14 +314,10 @@ def singles_alternative(leg_prices: list[float], leg_fairs: list[float]) -> dict
 #: proposes two, and a day with none proposes none and says so.
 MAX_PROPOSALS_PER_SPORT = 3
 
-#: HOW MANY LEGS THE APP PROPOSES. The ruling permits two or three; this
-#: proposes TWO, and the reason is the cost printed on every card: the fee per
-#: dollar staked is 1.67 times the singles' rate on two 60c legs and 2.8 times
-#: on three, measured 2026-09-08. Nothing in the record yet argues for the
-#: more expensive shape, and choosing it would be the app taking a view it
-#: cannot support. Three-leg proposals are permitted by the ruling and are not
-#: made; say so rather than let the absence look like an oversight.
-PROPOSAL_LEGS = 2
+#: HOW MANY LEGS THE APP PROPOSES -- declared in config, ratified 2026-09-09.
+#: Two by default, for the fee reason recorded beside `config.PROPOSAL_LEGS`;
+#: three is available through `GRIDIRON_PROPOSAL_LEGS` and is not enabled.
+PROPOSAL_LEGS = config.PROPOSAL_LEGS
 
 
 def price_ceiling(fair: float | None) -> dict:

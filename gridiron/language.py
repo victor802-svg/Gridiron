@@ -1800,6 +1800,31 @@ SLATE_STATES = {
     "complete": "complete",
 }
 
+#: WHAT EACH SPORT CALLS THE MOMENT IT STARTS (ruled 2026-09-09). "first
+#: kickoff" was printed above a baseball slate, a basketball slate and a fight
+#: card, because the state line composed one phrase for five sports out of
+#: football's noun. A reader who is told "kickoff" about a game with a first
+#: pitch is being told the page was written for a different sport.
+FIRST_START_WORDS = {
+    "nfl": "first kickoff",
+    "cfb": "first kickoff",
+    "mlb": "first pitch",
+    "nba": "first tip-off",
+    "ufc": "first bell",
+}
+
+
+def slate_state_word(state: str, sport: str | None = None) -> str:
+    """The word beside the slate's clock, in the sport's own language.
+
+    Falls back to football's noun only when the sport is unknown, which is
+    the case a payload with no cards produces -- and even then it is a word
+    rather than a blank, because a missing label reads as a broken line.
+    """
+    if state == "upcoming":
+        return FIRST_START_WORDS.get(sport or "", SLATE_STATES["upcoming"])
+    return SLATE_STATES.get(state, state)
+
 
 def slate_state_line(state: str, final: int, games: int) -> str | None:
     """"in progress - 12 of 60 final". None while the slate is still ahead.
@@ -3982,6 +4007,25 @@ def settled_outcome_words(shown_prob: float | None, outcome: int | None,
 COMBO_RFQ_SENTENCE = (
     "The venue quotes combos to your account on request. This app cannot ask, "
     "so it shows what a combo is worth and you compare.")
+
+
+def pregame_words(probability: float | None) -> str | None:
+    """What the model thought BEFORE the game started (ruled 2026-09-09).
+
+    THE WORD IS THE POINT. A percentage beside a live score reads as the
+    model's opinion of the game in front of you, and there is no such
+    opinion: no live model exists here -- THREE_STATES S5 is unbuilt -- and
+    this figure is the corrected probability the claim was written with,
+    hours ago, against a game that had not started.
+
+    LAW 5 permits exactly this and no more: "Live win probability may be
+    displayed and is never sized." The card carries no price, no edge, no
+    size and no tier chip beside it, and `audit.live_card_faults` fails by
+    name on any of them.
+    """
+    if probability is None:
+        return None
+    return f"pregame {round(float(probability) * 100)}%"
 
 
 def combo_group_heading(sport_label: str) -> str:

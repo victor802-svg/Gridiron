@@ -8269,6 +8269,147 @@ def plant_an_absence_with_no_evidence() -> Result:
                   "be priced, and nobody can tell whether anyone looked")
 
 
+LAW_LIVE_PREGAME = "A LIVE CARD'S PROBABILITY SAYS PREGAME"
+LAW_LIVE_POLL = "THE LIVE POLL KEEPS ASKING, AND NEVER ASKS FOR A PRICE"
+LAW_LIVE_WINDOW = "A GAME IS ON UNTIL THE POLLER HAS SEEN IT FINAL"
+
+
+def plant_a_live_probability_with_no_pregame_word() -> Result:
+    """Put "74%" on a live card with nothing to date it.
+
+    LAW 5 permits the figure -- "Live win probability may be displayed and is
+    never sized" -- and the operator ruled on 2026-09-09 that it comes back.
+    What it may not do is read as the model's opinion of the game in front of
+    the reader: no live model exists, S5 is unbuilt, and the number was
+    written before first pitch.
+    """
+    from gridiron import audit as _audit
+
+    faults = _audit.live_card_faults(
+        {"today": {"live": [{"state": "live", "pregame_words": "74%"}]}})
+    hit = [f for f in faults if "pregame" in f]
+    if hit:
+        return Result(LAW_LIVE_PREGAME, "show 74% on a live card, undated",
+                      "audit.live_card_faults", True, hit[0])
+    return Result(LAW_LIVE_PREGAME, "show 74% on a live card, undated",
+                  "audit.live_card_faults", False,
+                  "NOT CAUGHT - a bare percentage sits beside a live score and "
+                  "reads as a live model this app does not have")
+
+
+def plant_a_price_on_a_live_card() -> Result:
+    """The rule that did not change: nothing actionable while a game is on."""
+    from gridiron import audit as _audit
+
+    faults = _audit.live_card_faults(
+        {"today": {"live": [{"state": "live", "pregame_words": "pregame 74%",
+                             "price_words": "42c a contract"}]}})
+    hit = [f for f in faults if "price_words" in f]
+    if hit:
+        return Result(LAW_LIVE_PREGAME, "put a price on a live card",
+                      "audit.live_card_faults", True, hit[0])
+    return Result(LAW_LIVE_PREGAME, "put a price on a live card",
+                  "audit.live_card_faults", False,
+                  "NOT CAUGHT - a price sits on a card whose game is being "
+                  "played, which THE_PRICED P2 refuses everywhere else")
+
+
+def plant_a_poll_that_gives_up_when_nothing_is_on_yet() -> Result:
+    """Stop polling the first time nothing is live.
+
+    THIS IS WHAT SHIPPED until 2026-09-09: a page opened before first pitch
+    polled once, saw `any_live` false, and killed its timer for the day. The
+    server held six live cards with scores while the operator's screen said
+    nothing was being played.
+    """
+    from gridiron import audit as _audit
+
+    faults = _audit.live_poll_faults(_audit.LIVE_POLL_FIXTURE_POSITIVE)
+    hit = [f for f in faults if "any_live" in f]
+    if hit:
+        return Result(LAW_LIVE_POLL, "stop polling because nothing is on yet",
+                      "audit.live_poll_faults", True, hit[0])
+    return Result(LAW_LIVE_POLL, "stop polling because nothing is on yet",
+                  "audit.live_poll_faults", False,
+                  "NOT CAUGHT - a page opened before the first game never "
+                  "learns that the day started")
+
+
+def plant_a_live_poll_that_reads_a_price() -> Result:
+    """Point the live poll at a priced endpoint."""
+    from gridiron import audit as _audit
+
+    planted = """
+  function startLivePolling(data) {
+    const tick = async () => {
+      const live = await fetchJSON('/api/live');
+      const slate = await fetchJSON('/api/week');
+      applyLive(live);
+      if (live.slate_complete) stopLivePolling();
+    };
+    tick();
+  }
+"""
+    faults = _audit.live_poll_faults(planted)
+    hit = [f for f in faults if "/api/week" in f]
+    if hit:
+        return Result(LAW_LIVE_POLL, "fetch a priced endpoint from the live poll",
+                      "audit.live_poll_faults", True, hit[0])
+    return Result(LAW_LIVE_POLL, "fetch a priced endpoint from the live poll",
+                  "audit.live_poll_faults", False,
+                  "NOT CAUGHT - the poll reads a price while a game is being "
+                  "played, one render from the screen")
+
+
+def plant_a_game_past_its_start_with_no_final() -> Result:
+    """A game five hours past first pitch, still not final.
+
+    MEASURED on 2026-09-09 before the fix: polled at one, three and four
+    hours; NOT polled at five, because the window closed on `GAME_HOURS`
+    rather than on a final. Extra innings and rain delays stopped the poll
+    while the game was still being played.
+    """
+    import tempfile
+    from datetime import datetime, timedelta, timezone
+
+    from gridiron import db as _db, live as _live
+
+    # `ignore_cleanup_errors`, the idiom `verify.py` already uses: Windows
+    # holds the sqlite file a moment after `close()` and the planting is about
+    # the window, not about a temp directory.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "live.db")
+        kickoff = datetime(2026, 9, 9, 17, 10, tzinfo=timezone.utc)
+        conn.execute(
+            # A GAME IN PROGRESS CARRIES A SCORE. The schema's own CHECK says
+            # so -- only a scheduled game may have none -- and a planting that
+            # ignored it would be testing a row the record cannot hold.
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES ('g1', 'mlb', 2026, 166, 'R', 'AAA', 'BBB', ?, 'in',"
+            " '2026-09-09', 2, 1)",
+            (kickoff.strftime("%Y-%m-%dT%H:%M:%SZ"),))
+        conn.commit()
+        polled = {}
+        for hours in (1, 5, 8):
+            ids = set()
+            for window in _live.open_windows(conn, kickoff + timedelta(hours=hours)):
+                ids |= set(window.games)
+            polled[hours] = "g1" in ids
+        conn.close()
+
+    if all(polled.values()):
+        return Result(LAW_LIVE_WINDOW,
+                      "let a game run five hours past first pitch, unfinished",
+                      "live.open_windows", True,
+                      f"still polled at every hour checked: {polled}")
+    return Result(LAW_LIVE_WINDOW,
+                  "let a game run five hours past first pitch, unfinished",
+                  "live.open_windows", False,
+                  f"NOT CAUGHT - the poll dropped a game that is still being "
+                  f"played: {polled}")
+
+
 LAW_COMBO_PROPOSAL = "A PROPOSED COMBO IS TWO CLEARING LEGS FROM TWO GAMES"
 
 
@@ -8791,6 +8932,11 @@ def main() -> int:
     results.append(plant_a_proposed_combo_with_a_leg_that_does_not_clear())
     results.append(plant_a_leg_reused_across_two_proposals())
     results.append(plant_a_combo_card_carrying_a_venue_price())
+    results.append(plant_a_live_probability_with_no_pregame_word())
+    results.append(plant_a_price_on_a_live_card())
+    results.append(plant_a_poll_that_gives_up_when_nothing_is_on_yet())
+    results.append(plant_a_live_poll_that_reads_a_price())
+    results.append(plant_a_game_past_its_start_with_no_final())
     results.append(plant_a_urllib_post_at_the_venue())
     results.append(plant_a_test_that_opens_the_live_record())
     results.append(plant_a_write_through_the_live_read_handle())

@@ -1332,6 +1332,26 @@ RANKER_VERSION = "r3"
 #: each group. See `shortlist.select`.
 PRICEABLE_FIRST_FROM = "2026-09-09"
 
+#: HOW MANY LEGS A PROPOSED COMBO CARRIES (ratified 2026-09-09).
+#:
+#: TWO, and the reason is the number printed on every combo card: the fee per
+#: dollar staked is 1.67 times the singles' rate on two 60c legs and 2.8 times
+#: on three, measured 2026-09-08. Nothing in the record argues for the dearer
+#: shape, and choosing it would be the app taking a view it cannot support.
+#:
+#: THREE IS AVAILABLE AND NOT ENABLED. The ruling permits either, so this is
+#: an environment variable rather than a constant to edit --
+#: `GRIDIRON_PROPOSAL_LEGS=3` turns it on without touching code, and the
+#: default says which one the operator chose. The proposer refuses anything
+#: outside two or three: one leg is a single, and four is a shape LAW 5 has
+#: never permitted.
+PROPOSAL_LEGS = int(os.environ.get("GRIDIRON_PROPOSAL_LEGS", "2"))
+if PROPOSAL_LEGS not in (2, 3):
+    raise ValueError(
+        f"GRIDIRON: a proposed combo carries two or three legs and "
+        f"GRIDIRON_PROPOSAL_LEGS is {PROPOSAL_LEGS}. One leg is a single; "
+        f"four is a shape LAW 5 has never permitted.")
+
 #: THE WEIGHTS, WRITTEN FROM FIRST PRINCIPLES AND NOT TUNED (LAW 2). Tuning
 #: these until the shortlist looked good would be discovery by scanning, which
 #: is the failure the second law exists to prevent, and it would be invisible

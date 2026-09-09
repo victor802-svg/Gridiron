@@ -58,6 +58,22 @@ GAME_HOURS = {
     "mlb": 4.0,     # extra innings have no clock at all
 }
 
+#: HOW LONG AFTER ITS START A GAME MAY STILL BE POLLED (ruled 2026-09-09).
+#:
+#: THE WINDOW USED TO CLOSE ON `GAME_HOURS`, and a game that ran past it was
+#: dropped while it was still being played. Measured against a live game that
+#: day: polled at one, three and four hours after first pitch; not polled at
+#: five. Extra innings, a rain delay, a long review -- the poll stopped and
+#: the score froze on screen with nothing saying so.
+#:
+#: A GAME IS NOW ON UNTIL THE POLLER HAS SEEN IT FINAL. This is only the
+#: backstop for a row whose status never arrives: without one, a single stale
+#: game would keep the poller requesting all night, which is the zero-request
+#: contract undone from the other end. Twelve hours is far beyond any real
+#: game in any sport here -- baseball's expected four, college football's
+#: four and a half -- so it can only catch a row nothing is updating.
+STALE_AFTER = timedelta(hours=12)
+
 #: A poll starts this long before the first kickoff, so a game that starts
 #: early -- or a clock that is a few minutes out -- is not missed.
 WINDOW_LEAD = timedelta(minutes=10)
@@ -272,7 +288,7 @@ def open_windows(conn: sqlite3.Connection, now: datetime | None = None) -> list[
             " WHERE sport = ? AND kickoff_utc IS NOT NULL AND status != 'final'"
             "   AND kickoff_utc >= ? AND kickoff_utc <= ?",
             (sport,
-             (now - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             (now - STALE_AFTER).strftime("%Y-%m-%dT%H:%M:%SZ"),
              (now + WINDOW_LEAD).strftime("%Y-%m-%dT%H:%M:%SZ")),
         ).fetchall()
         live = []
@@ -280,12 +296,21 @@ def open_windows(conn: sqlite3.Connection, now: datetime | None = None) -> list[
             kickoff = _parse(row["kickoff_utc"])
             if kickoff is None:
                 continue
-            if kickoff - WINDOW_LEAD <= now <= kickoff + timedelta(hours=hours):
+            # ON FROM ITS START UNTIL IT IS SEEN FINAL (ruled 2026-09-09).
+            # `status != 'final'` in the query above is the closing condition;
+            # this is the opening one, plus the stale backstop. The expected
+            # length of a game decides nothing any more: a game that runs long
+            # is still a game being played, and dropping it was how a score
+            # came to freeze on screen mid-innings.
+            if kickoff - WINDOW_LEAD <= now <= kickoff + STALE_AFTER:
                 live.append(row["id"])
         if live:
             kickoffs = [_parse(r["kickoff_utc"]) for r in rows
                         if r["id"] in set(live)]
             kickoffs = [k for k in kickoffs if k]
+            # THE REPORTED END IS STILL THE EXPECTED ONE. `GAME_HOURS` says
+            # when a game is expected to finish, which is what a window's
+            # description is for; it no longer decides whether the poll runs.
             windows.append(LiveWindow(
                 sport, min(kickoffs), max(kickoffs) + timedelta(hours=hours), live))
     return windows

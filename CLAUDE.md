@@ -79,7 +79,10 @@ compounds toward ruin rather than growth.
 
 **COMBOS ARE PROPOSED AND NEVER PRICED AT THE VENUE.** (Amended 2026-09-09 by
 operator ruling, replacing "PACKAGES ARE GRADED, NEVER BUILT" of the previous
-day. Both replaced texts are kept beneath.)
+day. **RATIFIED by the operator the same evening**, with both replaced texts
+kept beneath: this is the third wording of the clause in three days, and a
+reader deserves to see who changed it and when rather than find a law that
+quietly differs from the one they read yesterday.)
 
 **THE MEASUREMENT THAT FORCED THIS.** The venue's combos are USER-BUILT and
 quoted by request to the account holder; the public interface exposes only a

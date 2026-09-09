@@ -931,6 +931,15 @@ const Gridiron = (function () {
     if (state === 'final' && entry.settled_words) {
       face.appendChild(el('div', 'face-settled', entry.settled_words));
     }
+    // THE ONE FIGURE A LIVE CARD MAY CARRY (operator ruling, 2026-09-09).
+    // LAW 5 has always permitted it -- "Live win probability may be displayed
+    // and is never sized" -- and the guard that forbade it outright was
+    // narrowed the same day. The WORD travels with the number, composed by
+    // the server: no live model exists here, so an undated percentage beside
+    // a live score would claim something this app does not have.
+    if (state === 'live' && entry.pregame_words) {
+      face.appendChild(el('div', 'face-pregame', entry.pregame_words));
+    }
 
     const meta = el('div', 'face-meta');
     meta.appendChild(el('span', 'face-gate', entry.gate_words || ''));
@@ -1862,8 +1871,14 @@ const Gridiron = (function () {
   // games are being played shuffles the screen under a reader part way down
   // it, and by confidence the finished games would climb over the ones still
   // on.
-  const LIVE_POLL_MS = 60000;
+  // THE CADENCE IS THE SERVER'S (operator ruling, 2026-09-09). This was a
+  // hard-coded 60000 while the poller wrote every 90 seconds: two numbers in
+  // two files for one fact, and the page asking half again as often as the
+  // data could change. `/api/live` carries `poll_seconds`; this is only the
+  // interval used for the very first tick, before any answer has arrived.
+  const LIVE_POLL_MS = 90000;
   let livePollTimer = null;
+  let livePollMs = LIVE_POLL_MS;
 
   // `slateCards` STOOD HERE, indexing the old grid's cards so a tick could
   // patch one of them. The tick re-renders now; nothing indexes cards.
@@ -1896,10 +1911,31 @@ const Gridiron = (function () {
       }
       if (seq !== weekSeq) { stopLivePolling(); return; }
       applyLive(live);
-      if (!live.any_live) stopLivePolling();
+      // THE PAGE KEEPS ASKING UNTIL THE SLATE IS DONE (operator ruling,
+      // 2026-09-09). This read `if (!live.any_live) stopLivePolling();`, so a
+      // page opened before first pitch polled ONCE, saw nothing live, and
+      // killed its own timer for the day. Every game could start and the
+      // screen would never learn: the server held six live cards with scores
+      // while the operator's page said nothing was being played, and only a
+      // reload fixed it.
+      //
+      // `slate_complete` is the poller's own rule -- nothing left to play, no
+      // requests -- rather than "nothing is on this second".
+      if (live.slate_complete) { stopLivePolling(); return; }
+      // AND THE CADENCE COMES BACK WITH THE ANSWER. Adopted on the first tick
+      // that carries it, so the interval is the poller's rather than a
+      // second opinion about it.
+      const wanted = (live.poll_seconds || 0) * 1000;
+      if (wanted && wanted !== livePollMs) {
+        livePollMs = wanted;
+        if (livePollTimer) {
+          clearInterval(livePollTimer);
+          livePollTimer = setInterval(tick, livePollMs);
+        }
+      }
     };
     tick();
-    livePollTimer = setInterval(tick, LIVE_POLL_MS);
+    livePollTimer = setInterval(tick, livePollMs);
   }
 
   // THE TICK PATCHES THE CARD IN PLACE (2026-09-08).
@@ -3481,6 +3517,13 @@ const Gridiron = (function () {
   // of those is a decision about how a number reads, taken in the one place
   // the plain-words tests cannot see.
   function renderColophon(meta) {
+
+    // THE LAW IN THE FOOTER, PLACED AND NEVER COMPOSED (ruled
+    // 2026-09-09). The server reads it out of CLAUDE.md; this puts
+    // it on the page. Typed into the markup it described a law that
+    // had been replaced two days earlier.
+    const lawNote = document.getElementById('law-note');
+    if (lawNote) lawNote.textContent = (meta && meta.law_note) || '';
     document.getElementById('colophon-text').textContent = meta.colophon || '';
   }
 

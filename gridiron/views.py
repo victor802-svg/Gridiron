@@ -11,7 +11,7 @@ import json
 import sqlite3
 import statistics
 
-from . import (audit, buildinfo, calibration, config, db, language,
+from . import (audit, buildinfo, calibration, config, db, language, laws,
                sports, subjects)
 from .data import reference, repo, teams
 from .factors import compute as factor_compute, registry
@@ -145,11 +145,13 @@ def meta(conn: sqlite3.Connection, sport: str) -> dict:
         # the browser, and computed by the same function the launcher calls so
         # the window and the launcher cannot disagree about how old it is.
         "build": buildinfo.freshness(),
-        "not_a_betting_tool": (
-            "Gridiron states probabilities and keeps score of them. It does not "
-            "size stakes, manage a bankroll, or recommend a bet, and it connects "
-            "to no sportsbook or exchange."
-        ),
+        # THE FOOTER'S SENTENCE, FROM THE LAW ITSELF (ruled 2026-09-09).
+        # This key held a hand-typed paragraph saying the app "does not size
+        # stakes, manage a bankroll, or recommend a bet" -- every clause of
+        # which LAW 5 stopped saying on 2026-09-07, while the app did all
+        # three. It is rendered from `CLAUDE.md` now and cannot go stale
+        # without a test failing.
+        "law_note": laws.footer_note(),
     }
     # The footer sentence, composed by the humaniser rather than glued together
     # in the browser. It is prose about data -- a spend, a span of seasons, a
@@ -1473,6 +1475,38 @@ def _opening_price(conn: sqlite3.Connection | None, game_id: str | None,
     return {"price": price, "payout": _payout_for(price), "read_utc": latest}
 
 
+def _pregame_probability(conn, entry: dict, card: dict) -> float | None:
+    """The corrected probability the claim was written with, for a live card.
+
+    READ FROM THE CLAIM, not from the recommendation. `recommend` refuses a
+    game in progress by design -- `refuse_in_game` skips it before an entry
+    exists -- so a live card has no priced entry to take a number from, and
+    reaching for one returned nothing on every live card the first time this
+    was rendered.
+
+    THE CLAIM IS THE RIGHT SOURCE ANYWAY. It carries the model's probability
+    for the venue's own proposition, frozen when it was written, which is
+    exactly what "pregame" means. The claim guard already refuses one written
+    after first pitch, so the row this finds cannot be a mid-game read.
+    """
+    if conn is None:
+        return None
+    pid = entry.get("prediction_id") or card.get("prediction_id")
+    if not pid:
+        return None
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if "at_the_line_claims" not in tables:
+        return None
+    row = conn.execute(
+        "SELECT model_prob FROM at_the_line_claims"
+        " WHERE prediction_id = ? ORDER BY created_utc DESC, id DESC LIMIT 1",
+        (pid,)).fetchone()
+    if row is None or row["model_prob"] is None:
+        return None
+    return float(row["model_prob"])
+
+
 def _today_card(entry: dict, card: dict, *, taken: bool,
                 group_tier: str | None, unit_dollars: float | None,
                 conn: sqlite3.Connection | None = None) -> dict:
@@ -1613,7 +1647,27 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
                       "model_words", "venue_words"):
             out.pop(field, None)
         out["edge_state"] = "none"
+        # A CHIP EVERY CARD IN A GROUP WOULD WEAR belongs to the heading, and
+        # on a live card it may not appear at all: it is a confidence band on
+        # a question whose game is being played.
+        out["tier_chip"] = None
         out["taken_badge"] = language.taken_badge_words() if taken else None
+        # AND THE ONE FIGURE THE LAW ALLOWS (operator ruling, 2026-09-09).
+        # "Live win probability may be displayed and is never sized" -- LAW 5,
+        # unchanged. What was missing was the label: no live model exists, so
+        # the number is what was thought BEFORE first pitch and the card says
+        # so in that word. Everything a reader could act on is still gone.
+        # FLIPPED WITH THE QUESTION, like every other number on this card.
+        # A claim is stored from a FIXED proposition -- the home side, or the
+        # over -- and the question names the side the model took. On the very
+        # first card that ever cleared the bar those were opposites, and the
+        # price row read "Toronto covers +1.5" over three numbers about the
+        # Athletics. An unflipped pregame figure would be that defect again,
+        # on a number with no price beside it to make the mismatch obvious.
+        _pregame = _pregame_probability(conn, entry, card)
+        if flip and _pregame is not None:
+            _pregame = 1.0 - _pregame
+        out["pregame_words"] = language.pregame_words(_pregame)
     if state == "final":
         out["settled_words"] = language.settled_outcome_words(
             card.get("shown_prob"), card.get("outcome"),
@@ -2522,7 +2576,9 @@ def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
         "in_progress": running,
         # The countdown's digits tick, so the browser renders them from the
         # instant above; every word around them is written here.
-        "state_word": language.SLATE_STATES.get(state, state),
+        # PER SPORT (ruled 2026-09-09). This read the shared map and printed
+        # "first kickoff" above a baseball slate.
+        "state_word": language.slate_state_word(state, sport),
         "state_line": language.slate_state_line(state, done, len(game_states)),
         # EVERY COUNT LINE THE CONTROLS CAN PRODUCE, written here rather than
         # assembled in the browser. The pair of filters is small enough to
@@ -2602,8 +2658,11 @@ def live_slate(conn: sqlite3.Connection, sport: str, season: int | None = None,
         if latest:
             season, wk = latest["season"], latest["week"]
     if wk is None:
+        from . import live as _live
+
         return {"sport": sport, "season": season, "week": wk, "any_live": False,
-                "live": 0, "picks": []}
+                "live": 0, "picks": [], "poll_seconds": _live.POLL_SECONDS,
+                "slate_complete": True}
 
     voided = {r["prediction_id"] for r in conn.execute(
         "SELECT v.prediction_id FROM prediction_voids v JOIN predictions p"
@@ -2617,13 +2676,21 @@ def live_slate(conn: sqlite3.Connection, sport: str, season: int | None = None,
         " WHERE p.sport = ? AND g.season = ? AND g.week = ?",
         (sport, season, wk)).fetchall()
 
-    picks, live_now = [], 0
+    from . import live as _live
+
+    picks, live_now, unplayed = [], 0, 0
     for r in rows:
         state = language.tile_state(
             r["status"], resolved=r["resolved_utc"] is not None,
             voided=r["id"] in voided)
         if state == "live":
             live_now += 1
+        # ANYTHING NOT YET FINISHED, which is what decides whether the page
+        # keeps asking. A game that has not started counts: the whole point of
+        # the ruling is that a page opened before first pitch must still be
+        # asking when the first pitch comes.
+        if state in ("live", "upcoming"):
+            unplayed += 1
         picks.append({
             "prediction_id": r["id"],
             "tile_state": state,
@@ -2649,6 +2716,17 @@ def live_slate(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # no requests.
         "any_live": live_now > 0,
         "live": live_now,
+        # THE CADENCE, DECLARED ONCE (operator ruling, 2026-09-09). The browser
+        # held its own 60-second interval while the poller wrote every 90:
+        # two numbers in two files for one fact, and the page asking more
+        # often than the data could change. It reads this now.
+        "poll_seconds": _live.POLL_SECONDS,
+        # WHEN THE PAGE MAY STOP ASKING, and it is not "nothing is on right
+        # now". A page opened before first pitch used to poll once, see
+        # `any_live` false and kill its timer for the day. It stops when the
+        # slate has nothing left to play, which is the rule the poller itself
+        # follows.
+        "slate_complete": unplayed == 0,
         "picks": picks,
     }
 
@@ -2956,42 +3034,19 @@ def _rulings_in_force() -> list[dict]:
     READ-ONLY AND SAID SO. This is the part of the settings page that exists
     to answer "can I turn this off" with "no, and here is why", rather than
     leaving a reader to search the codebase for a flag that does not exist.
+
+    READ FROM `CLAUDE.md`, NEVER TYPED HERE (ruled 2026-09-09). This list was
+    hand-written and one entry -- "Not a betting tool: no stake sizing, no
+    bankroll, no bet recommendations" -- described a law that had been
+    replaced two days earlier, on a page whose whole purpose is telling a
+    reader what the rules are. A law list that lags the law is worse than no
+    list. `tests/test_laws.py` asserts every string here appears in the
+    source file.
     """
-    return [
-        {"name": "Blind first",
-         "what": ("The probability is written before any market line is "
-                  "fetched. Structural: the prediction row exists before the "
-                  "line request is made.")},
-        {"name": "Declared factors only",
-         "what": ("Every factor is declared in advance with its rationale and "
-                  "scored from the date it was added, never backfitted.")},
-        {"name": "Append-only",
-         "what": ("A prediction cannot be edited, deleted or re-scored. "
-                  "Resolution writes an outcome and never rewrites a "
-                  "probability.")},
-        {"name": "No sample, no claim",
-         "what": ("Nothing claims an edge below 100 resolved predictions in "
-                  "that category, and every figure is shown with its N.")},
-        # AMENDED 2026-09-07 AND THE PAGE DID NOT FOLLOW UNTIL 2026-09-09.
-        # This read "Not a betting tool -- no stake sizing, no bankroll, no
-        # bet recommendations" for two days after the law stopped saying so,
-        # while the app sized every pick and led with a group called "clears
-        # the bar". A law list that describes a previous version of the law is
-        # worse than no list: it is the page telling a reader not to check the
-        # thing it is doing.
-        {"name": "The app recommends, it never transacts",
-         "what": ("A recommended side and size, and expected-value arithmetic "
-                  "against a recorded price. Never an account, an "
-                  "authenticated request, an order path or a wagering ledger "
-                  "-- those four are structural and not amendable. Below a "
-                  "market's gate the size is a flat unit and says \"no "
-                  "measured edge\"; above it, never more than a quarter of "
-                  "Kelly.")},
-        {"name": "Never aggregate across sports",
-         "what": ("Every curve, score, edge figure and sample size belongs to "
-                  "exactly one sport. The functions that read the record take "
-                  "the sport as a required argument.")},
-    ]
+    from . import laws as _laws
+
+    return [{"name": law["title"].capitalize(), "what": law["what"]}
+            for law in _laws.read_laws()]
 
 
 def results_calendar(conn: sqlite3.Connection, *, sport: str,

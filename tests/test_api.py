@@ -381,9 +381,21 @@ def test_the_page_has_no_build_step():
                    for p in web.iterdir())
 
 
-def test_the_meta_states_it_is_not_a_betting_tool(client):
+def test_the_meta_states_the_law_as_it_stands(client):
+    """RENAMED AND REWRITTEN 2026-09-09. It asserted `not_a_betting_tool`
+    contained "does not" -- and that key held "It does not size stakes,
+    manage a bankroll, or recommend a bet", every clause of which LAW 5
+    stopped saying on 2026-09-07 while the app did all three.
+
+    The key is `law_note` now and its contents are read out of `CLAUDE.md`,
+    so a test asserting particular words here would be a fourth copy of the
+    law. What is asserted is that it IS the law: see `tests/test_laws.py`.
+    """
+    from gridiron import laws
+
     body = client.get("/api/meta").json()
-    assert "does not" in body["not_a_betting_tool"]
+    assert body["law_note"] == laws.footer_note()
+    assert "not a betting tool" not in body["law_note"].lower()
     assert body["minimum_for_edge_claim"] == config.MIN_SAMPLE_FOR_EDGE_CLAIM
 
 
