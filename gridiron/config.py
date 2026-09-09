@@ -1294,7 +1294,34 @@ SHORTLIST_PER_GAME = int(os.environ.get("GRIDIRON_SHORTLIST_PER_GAME", "3"))
 #: clause the record grades by. The r1 rows stay where they are: a rank is
 #: append-only, and a version that was wrong is part of the history of getting
 #: it right.
-RANKER_VERSION = "r2"
+#:
+#: r3 (2026-09-09) ranks PRICEABLE QUESTIONS FIRST -- see
+#: `PRICEABLE_FIRST_FROM` below. The formula is untouched: r2's score, r2's
+#: weights, r2's tie-breaks, applied inside each of two groups instead of once
+#: across the slate. The version moves because the LIST CHANGES, and a list
+#: that changed under a version somebody has already compared against is a
+#: measurement rewritten after the fact.
+RANKER_VERSION = "r3"
+
+#: PRICEABLE FIRST (operator ruling, 2026-09-09). Within a sport's cap, a
+#: question the venue lists ranks ahead of one it does not; inside each of
+#: those two groups the ordering is exactly what SHORTLIST ruled -- confidence
+#: and completeness, with the edge gated as before.
+#:
+#: THE REASON, in the operator's words: the app's job is recommendations, and
+#: a question the venue does not list cannot become one. A slate of thirty
+#: that excluded the three priceable questions on the night's only game while
+#: carrying twenty unpriceable props was ranked against its own purpose.
+#:
+#: DISPLAY RANKING ONLY. No forecaster changes, no correction changes, no
+#: claim changes, and nothing here reaches a probability. What moves is which
+#: questions a reader is shown first.
+#:
+#: THE DATE IS LOAD-BEARING. Every count that spans it -- the empty-top-group
+#: figure read on the 21st above all -- is reported as TWO SPANS, before and
+#: after, because a slate chosen under one rule and a slate chosen under
+#: another are not the same measurement. `tools/empty_bar.py` splits here.
+PRICEABLE_FIRST_FROM = "2026-09-09"
 
 #: THE WEIGHTS, WRITTEN FROM FIRST PRINCIPLES AND NOT TUNED (LAW 2). Tuning
 #: these until the shortlist looked good would be discovery by scanning, which

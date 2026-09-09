@@ -884,3 +884,36 @@ slate from above a filtered one.
 already in it (the tab counts and the single market key) and a gate to run.
 It is a payload-shape change and those have twice this week taken more than
 they were aimed at.
+
+### NFL totals are declared and have never been forecast *(measured 2026-09-09)*
+
+The ruling of 2026-09-09 expected three priceable questions on
+`2026_01_NE_SEA`: the moneyline, the spread and **the total**. The first two
+exist. The third does not, and not only for that game -- the record has never
+held a single NFL total, in any week, since it was created:
+
+| sport | totals in the record |
+|---|---|
+| cfb | 133 |
+| mlb | 171 |
+| **nfl** | **0** |
+
+`total` is in `config.SPORT_MARKETS["nfl"]`, so the market tab renders and
+reads **"Total points 0"**, and `KXNFLTOTAL` resolves 40/40 with nineteen
+contracts open on tonight's game. The venue prices it, the ticker builder
+reaches it, the tab is there for it, and nothing asks the question.
+
+**This is the model side of the hole the venue-series guard closed on the
+other side.** `audit.venue_series_faults` refuses a forecast market with no
+way to reach the venue; nothing yet refuses a DECLARED market that produces no
+forecast. The two together would have caught this weeks ago.
+
+**What would settle it:** find out whether the NFL total question is simply
+not being formed (a loader or question-builder gap) or was deliberately left
+out, and record which. Then, either way, a check with the shape of
+`venue_series_faults` pointed the other way: a market declared in
+`SPORT_MARKETS` that has produced no prediction in N days is either a defect
+or a retirement, and both are things to say out loud. **Not started here** --
+the ruling of 2026-09-09 says no forecaster changes, and forming a new
+question is a forecaster change that goes through
+`docs/NEW_MARKET_CHECKLIST.md`.

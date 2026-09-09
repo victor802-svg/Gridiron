@@ -315,3 +315,108 @@ def test_a_backfilled_rank_is_marked_and_left_out_of_the_comparison(tmp_path):
     got = calibration.ranker_comparison(conn, sport="mlb", market_type="moneyline")
     # a rank computed after the games were played scores the ranker on nothing
     assert got["shortlisted"]["n"] == 0 and got["not_shortlisted"]["n"] == 0
+
+
+def _venue_quote(conn, game, market, *, fetched="2026-09-07T02:00:00Z"):
+    """One venue row, which is all "the venue lists this" means."""
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, last_price,"
+        " volume, fetched_utc) VALUES ('kalshi', 'T', 'E', 'mlb', ?, ?,"
+        " ?, NULL, 'home', 0.49, 0.51, 0.5, 100, ?)",
+        (game, market,
+         {"moneyline": "home_win", "spread": "home_margin",
+          "total": "total"}[market], fetched))
+    conn.commit()
+
+
+def test_a_question_the_venue_lists_outranks_a_better_one_it_does_not(
+        tmp_path, monkeypatch):
+    """PRICEABLE FIRST (operator ruling, 2026-09-09).
+
+    The app's job is recommendations and a question the venue does not list
+    cannot become one, so it ranks behind every question that can -- however
+    confident the model is about it. On the live NFL slate before this, thirty
+    places carried twenty-two props nobody can price while the two priceable
+    questions on the night's only game sat off the list.
+    """
+    conn = _world(tmp_path, games=4)
+    monkeypatch.setattr(config, "SHORTLIST_CAPS", dict(config.SHORTLIST_CAPS, mlb=2))
+
+    # THE UNPRICEABLE ONES SCORE HIGHER. That is the whole test: without the
+    # ruling they take both places on confidence alone.
+    loud = [_write(conn, prob=0.97, market="prop", prop="batter_hits",
+                   game=f"g{i}", line=1.5, subject=f"loud {i}")
+            for i in range(2)]
+    quiet = [_write(conn, prob=0.55, market="moneyline", game=f"g{i + 2}")
+             for i in range(2)]
+    for i in range(2):
+        _venue_quote(conn, f"g{i + 2}", "moneyline")
+
+    ids = loud + quiet
+    shortlist.rank_rows(conn, ids)
+    picked = shortlist.choose(conn, "mlb", ids)
+
+    assert sorted(picked["shortlist"]) == sorted(quiet), (
+        "the two questions the venue lists must take both places, even though "
+        "the two it does not list score higher")
+    assert sorted(picked["rest"]) == sorted(loud)
+    # NOTHING IS HIDDEN, as the cap test already requires.
+    assert sorted(picked["shortlist"] + picked["rest"]) == sorted(ids)
+
+
+def test_inside_a_group_the_order_is_the_one_shortlist_ruled(
+        tmp_path, monkeypatch):
+    """The ruling reorders the GROUPS and nothing inside them.
+
+    Confidence and completeness still decide, exactly as SHORTLIST ruled; a
+    priceable question that scores badly still loses to a priceable question
+    that scores well.
+    """
+    conn = _world(tmp_path, games=3)
+    monkeypatch.setattr(config, "SHORTLIST_CAPS", dict(config.SHORTLIST_CAPS, mlb=1))
+    sure = _write(conn, prob=0.90, market="moneyline", game="g0")
+    unsure = _write(conn, prob=0.52, market="moneyline", game="g1")
+    _venue_quote(conn, "g0", "moneyline")
+    _venue_quote(conn, "g1", "moneyline")
+
+    ids = [unsure, sure]
+    shortlist.rank_rows(conn, ids)
+    picked = shortlist.choose(conn, "mlb", ids)
+    assert picked["shortlist"] == [sure], (
+        "inside the priceable group the confident question still leads")
+
+
+def test_a_game_cannot_take_a_fourth_place_by_being_priceable(
+        tmp_path, monkeypatch):
+    """THE PER-GAME CEILING SPANS BOTH GROUPS.
+
+    Filling the priceable group first and the rest second must not let one
+    fixture take three places in each. The ceiling is a fact about the slate,
+    not about a group of it.
+    """
+    conn = _world(tmp_path, games=2)
+    monkeypatch.setattr(config, "SHORTLIST_CAPS", dict(config.SHORTLIST_CAPS, mlb=6))
+    priceable = [
+        _write(conn, prob=0.9, market="moneyline", game="g0"),
+        _write(conn, prob=0.9, market="spread", game="g0", line=-1.5),
+        _write(conn, prob=0.9, market="total", game="g0", line=8.5),
+    ]
+    for market in ("moneyline", "spread", "total"):
+        _venue_quote(conn, "g0", market)
+    unpriceable = [
+        _write(conn, prob=0.8, market="prop", prop="batter_hits", game="g0",
+               line=1.5, subject=f"p{i}") for i in range(3)
+    ]
+    elsewhere = [_write(conn, prob=0.6, market="moneyline", game="g1")]
+
+    ids = priceable + unpriceable + elsewhere
+    shortlist.rank_rows(conn, ids)
+    picked = shortlist.choose(conn, "mlb", ids)
+    games = {r["id"]: r["game_id"] for r in conn.execute(
+        "SELECT id, game_id FROM predictions")}
+    from collections import Counter
+    per_game = Counter(games[pid] for pid in picked["shortlist"])
+    assert per_game["g0"] <= config.SHORTLIST_PER_GAME, (
+        f"g0 took {per_game['g0']} places against a ceiling of "
+        f"{config.SHORTLIST_PER_GAME}")

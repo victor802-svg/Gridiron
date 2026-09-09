@@ -173,7 +173,16 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
         # every count on the Record page uses, because a selection that
         # disagreed with the record about which forecast stands would put rows
         # on a shortlist the page cannot show.
-        f"      (SELECT 1{_standing_clause()}) AS is_standing"
+        f"      (SELECT 1{_standing_clause()}) AS is_standing,"
+        # DOES THE VENUE LIST THIS QUESTION (operator ruling, 2026-09-09).
+        # A question the venue does not price cannot become a recommendation,
+        # so it ranks behind every question that can. Read off the quote rows
+        # rather than asked of the venue: this runs inside the ranker, and a
+        # ranker that made network calls would put a fetch in front of a
+        # slate.
+        f"      (SELECT 1 FROM venue_quotes v"
+        f"        WHERE v.game_id = p.game_id AND v.market = p.market_type"
+        f"        LIMIT 1) AS venue_lists_it"
         f" FROM predictions p JOIN games g ON g.id = p.game_id"
         f" WHERE {' AND '.join(where)}"
         "   AND NOT EXISTS (SELECT 1 FROM prediction_ranks r"
@@ -215,6 +224,9 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
             "factor_set_version": row["factor_set_version"],
             "created_utc": row["created_utc"],
             "standing": bool(row["is_standing"]),
+            # PRICEABLE FIRST (2026-09-09). In memory only: what it decides is
+            # already recorded, in `shortlist_place` under ranker version r3.
+            "priceable": bool(row["venue_lists_it"]),
         })
 
     # THE SELECTION IS DECIDED HERE, ONCE, AND STORED ON THE ROW. A shortlist
@@ -274,26 +286,17 @@ def _by_slate(scored: list[dict]) -> dict:
     return groups
 
 
-def select(sport: str, scored: list[dict]) -> list[int]:
-    """Which questions lead one slate, in order.
+def _fill(group: list[dict], chosen: list[int], per_game: dict[str, int],
+          cap: int) -> None:
+    """Take from one group until the cap is reached, by the declared rules.
 
-    THREE RULES, ALL DECLARED, NONE ABOUT THE ANSWER: the sport's cap, or the
-    whole slate where it declares none -- a fight card is already a shortlist;
-    a ceiling per game, so one marquee fixture cannot fill the list; and a
-    round robin across kinds of question, so the list is never twenty of the
-    same market with the rest of the slate invisible behind them.
+    THE ROUND ROBIN AND THE PER-GAME CEILING, exactly as they were. `chosen`
+    and `per_game` are threaded through so a game's ceiling spans the groups:
+    a fixture cannot take a fourth place by being priceable for three of them.
     """
-    ordered = sorted(scored, key=lambda e: (-e["rank_score"], e["prediction_id"]))
-    cap = config.shortlist_cap(sport)
-    if cap is None or len(ordered) <= cap:
-        return [e["prediction_id"] for e in ordered]
-
     queues: dict[str, list[dict]] = {}
-    for entry in ordered:
+    for entry in group:
         queues.setdefault(entry["market_key"], []).append(entry)
-
-    chosen: list[int] = []
-    per_game: dict[str, int] = {}
     kinds = list(queues)
     while len(chosen) < cap and any(queues[k] for k in kinds):
         for kind in kinds:
@@ -308,6 +311,41 @@ def select(sport: str, scored: list[dict]) -> list[int]:
                 chosen.append(entry["prediction_id"])
                 per_game[game] = per_game.get(game, 0) + 1
                 break
+
+
+def select(sport: str, scored: list[dict]) -> list[int]:
+    """Which questions lead one slate, in order.
+
+    FOUR RULES NOW, ALL DECLARED, NONE ABOUT THE ANSWER: the sport's cap, or
+    the whole slate where it declares none -- a fight card is already a
+    shortlist; a ceiling per game, so one marquee fixture cannot fill the
+    list; a round robin across kinds of question, so the list is never twenty
+    of the same market with the rest of the slate invisible behind them; and,
+    from 2026-09-09 by operator ruling, PRICEABLE FIRST.
+
+    PRICEABLE FIRST is not a change to the formula. r2's score, r2's weights
+    and r2's tie-breaks decide the order inside each group; what the ruling
+    adds is that the group the venue lists is emptied before the group it does
+    not. `config.PRICEABLE_FIRST_FROM` carries the date, and the ranker
+    version moved to r3 with it, because the LIST changes and a list that
+    changed under an unchanged version is a measurement rewritten after the
+    fact.
+
+    THE REASON, from the ruling: the app's job is recommendations, and a
+    question the venue does not list cannot become one. A slate of thirty that
+    excluded the three priceable questions on the night's only game while
+    carrying twenty unpriceable props was ranked against its own purpose.
+    """
+    ordered = sorted(scored, key=lambda e: (-e["rank_score"], e["prediction_id"]))
+    cap = config.shortlist_cap(sport)
+    if cap is None or len(ordered) <= cap:
+        return [e["prediction_id"] for e in ordered]
+
+    chosen: list[int] = []
+    per_game: dict[str, int] = {}
+    # THE ONLY LINE THE RULING ADDS: two passes instead of one.
+    _fill([e for e in ordered if e.get("priceable")], chosen, per_game, cap)
+    _fill([e for e in ordered if not e.get("priceable")], chosen, per_game, cap)
     return chosen
 
 

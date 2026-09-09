@@ -841,6 +841,15 @@ GRIDIRON_TODAY ran (brief and close-out of the same date):
   distributions and at-the-line claims. Read the fraction on 21 September: if
   the bar clears on few days of fourteen, that is the honest headline about how
   often a real edge appears.
+
+  **READ IT IN TWO SPANS, NOT ONE** (operator ruling, 2026-09-09). Run
+  `python tools/empty_bar.py`, which splits at `config.PRICEABLE_FIRST_FROM`.
+  Before that date a day's places could be spent on questions the venue does
+  not list, and nothing on such a day could clear a bar it was never priced
+  against; after it, the shortlist ranks priceable questions first. One
+  averaged figure would report the ranker's old shape as if it were the
+  market's behaviour. The tool prints what a countable day is, because the
+  definition matters more than the number.
 - **A taken pick cannot be untaken.** `picks_taken` is append-only, so a
   mis-tap is permanent. The options are a second row recording that it was
   undone, or leaving it; both are the operator's call, and neither should add a
