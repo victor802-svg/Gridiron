@@ -69,6 +69,16 @@ $Repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 # gets when its window is closed or the session it belongs to ends. pythonw
 # has no console to close. Nothing is lost: every task records its own row
 # in task_runs and prints nothing anyone was reading.
+#
+# AND THERE IS A SECOND REASON, found on 2026-09-09 by the operator being
+# thrown out of a fullscreen game every ninety seconds. `Gridiron-Live` had
+# been registered BY HAND on `python.exe` -- the one task not created through
+# `New-GridironTask` -- so a console window opened and closed on his screen
+# 960 times a day. A window that appears for a tenth of a second still takes
+# the focus, and a game gives it up by going windowed.
+#
+# EVERY TASK GOES THROUGH `New-GridironTask` for this reason. A task
+# registered by hand is a task that missed whatever this line learned.
 $Python = Join-Path $Repo ".venv\Scripts\pythonw.exe"
 $Prefix = "Gridiron-"
 

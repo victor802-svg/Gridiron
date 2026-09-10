@@ -1190,7 +1190,20 @@ def test_superseded_forecasts_are_not_in_the_arithmetic():
     # same question" and both read it.
     from gridiron import views as _views
 
-    assert _views.week(conn, "nfl")["n"] + _views.week(conn, "nfl")["superseded"] \
+    # THE IDENTITY HAS THREE TERMS, NOT TWO (2026-09-10). It read
+    # `n + superseded == every statistical forecast`, and the first void in
+    # the football record broke it by one: the page excludes a voided
+    # forecast, correctly -- a void is terminal, and such a row is neither
+    # standing nor superseded but WITHDRAWN. The record's total counts it.
+    #
+    # Found when a void was written overnight, not by a change to either side.
+    # The page was right and the arithmetic here was short a term.
+    voided = conn.execute(
+        "SELECT COUNT(*) FROM prediction_voids v JOIN predictions p"
+        " ON p.id = v.prediction_id WHERE p.sport='nfl'"
+        " AND p.predictor='statistical'").fetchone()[0]
+    week = _views.week(conn, "nfl")
+    assert week["n"] + week["superseded"] + voided \
         == conn.execute("SELECT COUNT(*) FROM predictions p JOIN games g"
                         " ON g.id=p.game_id WHERE p.sport='nfl'"
                         " AND p.predictor='statistical'").fetchone()[0]

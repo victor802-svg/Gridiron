@@ -14,6 +14,25 @@ DIST = {"quantity": "home_margin", "family": "normal", "mean": 3.0, "sd": 13.0,
         "declared": "2026-08-31T00:00:00Z", "written_blind": True}
 
 
+# THE FIXTURE'S CLOCK IS RELATIVE, NOT A DATE (2026-09-10).
+#
+# These fixtures hard-coded `2026-09-10T00:20:00Z` as the kickoff. The claim
+# writer refuses a game already under way, so the moment the wall clock passed
+# that instant every claim was refused and the tests failed on code nobody had
+# touched. A test that passes only before a certain date is a test with an
+# expiry.
+#
+# TWO DAYS OUT, which is comfortably clear of any window the pipeline cares
+# about: the near-start pass looks two hours ahead, and nothing here is about
+# what happens close to a start.
+def _soon(hours: int = 48) -> str:
+    """A kickoff far enough ahead that the fixture is never mid-game."""
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+
+
 def _slate(tmp_path, n, *, home_wins_every=2, price=0.40):
     """n finished games, each with a forecast, a quote and an outcome.
 
@@ -33,8 +52,8 @@ def _slate(tmp_path, n, *, home_wins_every=2, price=0.40):
             # game already under way, so a fixture that starts final writes
             # no claims at all.
             " kickoff_utc, status, league_date)"
-            " VALUES (?, 'nfl', 2026, 1, 'REG', 'SEA', 'NE', '2026-09-10T00:20:00Z',"
-            " 'scheduled', '2026-09-09')", (gid,))
+            " VALUES (?, 'nfl', 2026, 1, 'REG', 'SEA', 'NE', ?,"
+            " 'scheduled', '2026-09-09')", (gid, _soon()))
         conn.execute(
             "INSERT INTO predictions (created_utc, sport, game_id, market_type, subject,"
             " line_asked, model_prob, model_side, predictor, pass_kind,"

@@ -81,10 +81,30 @@ def test_the_total_and_the_winner_are_read():
     assert all(q["quantity"] == "home_win" and q["line"] is None for q in quotes)
 
 
+# THE FIXTURE'S CLOCK IS RELATIVE, NOT A DATE (2026-09-10).
+#
+# These fixtures hard-coded `2026-09-10T00:20:00Z` as the kickoff. The claim
+# writer refuses a game already under way, so the moment the wall clock passed
+# that instant every claim was refused and the tests failed on code nobody had
+# touched. A test that passes only before a certain date is a test with an
+# expiry.
+#
+# TWO DAYS OUT, which is comfortably clear of any window the pipeline cares
+# about: the near-start pass looks two hours ahead, and nothing here is about
+# what happens close to a start.
+def _soon(hours: int = 48) -> str:
+    """A kickoff far enough ahead that the fixture is never mid-game."""
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+
+
 def _world(tmp_path):
     conn = db.open_db(tmp_path / "venue.db")
     conn.execute("INSERT INTO games (id, sport, season, week, game_type, home, away, kickoff_utc, status, league_date)"
-                 " VALUES ('2026_01_NE_SEA', 'nfl', 2026, 1, 'REG', 'SEA', 'NE', '2026-09-10T00:20:00Z', 'scheduled', '2026-09-09')")
+                 " VALUES ('2026_01_NE_SEA', 'nfl', 2026, 1, 'REG', 'SEA', 'NE', ?, 'scheduled', '2026-09-09')",
+                 (_soon(),))
     conn.commit()
     return conn
 

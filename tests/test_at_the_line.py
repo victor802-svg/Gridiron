@@ -29,6 +29,25 @@ def _finish(conn, home_score, away_score, game="2026_01_NE_SEA"):
     conn.commit()
 
 
+# THE FIXTURE'S CLOCK IS RELATIVE, NOT A DATE (2026-09-10).
+#
+# These fixtures hard-coded `2026-09-10T00:20:00Z` as the kickoff. The claim
+# writer refuses a game already under way, so the moment the wall clock passed
+# that instant every claim was refused and the tests failed on code nobody had
+# touched. A test that passes only before a certain date is a test with an
+# expiry.
+#
+# TWO DAYS OUT, which is comfortably clear of any window the pipeline cares
+# about: the near-start pass looks two hours ahead, and nothing here is about
+# what happens close to a start.
+def _soon(hours: int = 48) -> str:
+    """A kickoff far enough ahead that the fixture is never mid-game."""
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+
+
 def _world(tmp_path, *, status="scheduled", home_score=None, away_score=None,
            dist=DIST, market="spread"):
     conn = db.open_db(tmp_path / "atl.db")
@@ -36,8 +55,8 @@ def _world(tmp_path, *, status="scheduled", home_score=None, away_score=None,
         "INSERT INTO games (id, sport, season, week, game_type, home, away,"
         " kickoff_utc, status, league_date, home_score, away_score)"
         " VALUES ('2026_01_NE_SEA', 'nfl', 2026, 1, 'REG', 'SEA', 'NE',"
-        " '2026-09-10T00:20:00Z', ?, '2026-09-09', ?, ?)",
-        (status, home_score, away_score))
+        " ?, ?, '2026-09-09', ?, ?)",
+        (_soon(), status, home_score, away_score))
     factors = json.dumps({"margin_distribution": dist} if dist else {})
     # A WINNER QUESTION HAS NO LINE AND IS NOT ABOUT COVERING. The fixture
     # used to give every market a spread's line and a spread's side, which

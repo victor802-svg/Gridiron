@@ -576,13 +576,25 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str,
     reason. A ladder read twice would otherwise put two correlated rows in one
     curve and call the sample twice the size it is.
     """
+    # THE TIE-BREAK IS THE ROW ID, and it is not decoration (2026-09-10).
+    #
+    # This matched on `created_utc = MAX(created_utc)`. Two looks at one ladder
+    # are evaluated in a SINGLE pass, so both claims are stamped in the same
+    # second -- and `MAX` then matched BOTH, returning two standing claims for
+    # one prediction. That is the exact failure this function exists to
+    # prevent: two correlated rows in one curve, a sample counted at twice its
+    # size. It was found when a fixture's hard-coded kickoff expired and the
+    # test that asserts "there is one" started reporting two.
+    #
+    # `id` is monotonic and is how the rest of this record breaks the same tie.
     return conn.execute(
         "SELECT c.* FROM at_the_line_claims c"
         " JOIN games g ON g.id = c.game_id"
         " WHERE c.sport = ? AND c.market = ?"
-        "   AND c.created_utc = (SELECT MAX(c2.created_utc) FROM at_the_line_claims c2"
-        "                        WHERE c2.prediction_id = c.prediction_id"
-        "                          AND c2.created_utc < g.kickoff_utc)"
+        "   AND c.id = (SELECT c2.id FROM at_the_line_claims c2"
+        "               WHERE c2.prediction_id = c.prediction_id"
+        "                 AND c2.created_utc < g.kickoff_utc"
+        "               ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
         " ORDER BY c.id", (sport, market)).fetchall()
 
 
