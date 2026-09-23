@@ -981,3 +981,141 @@ forecaster moves.**
 
 This supersedes the "what would settle it" line in the NFL-totals entry
 below: the answer is no longer open, it is scheduled.
+
+---
+
+## THE READ, 2026-09-23 — ten findings, none fixed *(the read writes nothing)*
+
+Measured read-only for `docs/closeouts/2026-09-23-the-read.md`. Each is a
+change to shipped behaviour, and none of the five jobs ordered that day is
+"fix", so each waits for a ruling.
+
+### BROKEN: the closing line compares a price with itself *(measured 2026-09-23)*
+
+**49 of 49 closed recommendations have `close_price == price` and
+`clv_cents == 0.00`.** `recommend.record_closing_prices` reads the last claim
+before kickoff, and for a recommended prediction that is always the claim it
+was priced from. Two reasons, both measured:
+
+* `tasks._near_start_snapshots` takes only predictions whose `open_at_predict`
+  snapshot has an `implied_prob`. **All 55 recommended predictions have NULL
+  there**, because the media line does not quote the venue's alternate rung.
+  So they never get a second look.
+* The venue re-reads the same contracts for other predictions of the same game
+  (41 of 49 were read again before kickoff, 33 of them by a near-start read,
+  which is the only kind that may stand as a close; 14 of the 33 moved), but
+  `at_the_line.evaluate(conn, prediction_ids)` claims only for the ids passed.
+
+Measured against the same ticker's last near-start quote instead: MLB spread
++0.30¢ at n=22, MLB total −0.68¢ at n=11 (scratch script, not in the repo).
+
+**What would settle it:** a close read from the venue's last near-start quote
+of the recommendation's own ticker, a planting that fails when a close equals
+the pricing claim's row, and a statement of whether the 49 recorded zeros are
+voided or left standing beside a corrected figure (LAW 3 says left standing).
+
+### The return-on-stake bar divides a no-side edge by the yes price *(measured 2026-09-23)*
+
+`recommend.py:344` calls `clears_the_bar(edge_cents, price)` with the venue's
+yes price whichever side was chosen. On the no side the stake is `1 - price`.
+53 of 55 recommendations are no-side. **3 cleared the 5% bar only because of
+it**: recs 3, 10 and 26, true returns 3.3%, 3.7% and 4.7%. The reverse case, a
+no-side pick with yes price above 50¢ refused when it should have cleared, was
+not counted. Every test and planting of `clears_the_bar` is yes-side.
+
+**What would settle it:** pass the cost of the side taken, and add a no-side
+planting at a yes price under 50¢.
+
+### Both sides of one total were recommended *(measured 2026-09-23)*
+
+Recs 45 and 46, 2026-09-21T22:13:03Z, game `mlb_824787` (Toronto at
+Baltimore): over 7.5 from the statistical forecaster, under 7.5 from the
+reasoning forecaster, both at 48.5¢. Taking both is a certain loss of two
+fees. Nothing reconciles two forecasters' opinions about one question.
+
+**What would settle it:** a rule, the operator's, for which forecaster
+recommends when both clear. Then a planting that fails on two sides of one
+question.
+
+### Duplicate recommendations inflate the closing-line count *(measured 2026-09-23)*
+
+13 game-market pairs carry more than one recommendation, because the morning
+and final passes each write a prediction for the same question. **35 closed
+spread recommendations are 26 distinct bets; 14 totals are 11.** The gate of 50
+counts rows. `standing_row_clause` exists for exactly this and is not used
+here.
+
+### Corrections cannot reach a recommendation *(measured 2026-09-23)*
+
+An active correction writes `calibrated_prob` on the prediction row. The
+recommendation is priced from `at_the_line_claims.model_prob`
+(`recommend.py:324`), and nothing under `market/` or `priced/` reads
+`calibrated_prob`. Applied, a correction would move the card's percentage and
+never the pick. Had each fit been applied while it was the latest, 5
+recommendations change (recs 43, 45 and 47 stop clearing; 46 and 49 flip to
+the over). In hindsight the 21 September fit removes all 14 MLB totals.
+Separately, `correction.training_rows` does
+not use `standing_row_clause`: MLB spread trains on 174 rows for 132
+questions.
+
+### A correct refusal is logged as a failure *(measured 2026-09-23)*
+
+`SlateAlreadyAnswered` is the record refusing to answer a slate twice. That is
+correct, and it is written as `failed`. That accounts for 50 of the `failed`
+rows since 12 September, and catch-up has never once recorded success in 19
+runs. A real failure would now sit invisibly among them.
+
+### `final:cfb` leaves `running` rows and exits 1 *(measured 2026-09-23, cause not proven)*
+
+4 of its rows never recorded an ending: 2026-09-09T19:41:45Z,
+2026-09-21T06:29:42Z, 22:11:39Z, 2026-09-23T19:30:06Z. Windows reports exit 1
+for the last. **Hypothesis:** the closing `UPDATE task_runs` in `run_task`
+(`tasks.py:268`) is outside the `try`, and each orphan started inside a burst
+of catch-up firings after a wake. A locked database on that one write leaves
+the row `running`. Not reproduced, because reproducing it writes.
+
+### Two counts of one record on the learning panel *(measured 2026-09-23)*
+
+MLB spread at the venue's line: the outlook says "128 of 100 · ~228
+expected" and the gate line says "80 of 100 settled comparisons · 20 more".
+The outlook counts claims; the gate counts standing comparisons. The first
+reads as cleared and is not. This is the ONE CLAUSE failure again.
+
+### BROKEN: NFL and NCAAF spread and moneyline have not been forecast since 5 September *(measured 2026-09-23)*
+
+`config.FACTOR_SET_VERSIONS` maps `("nfl", "spread")`, `("nfl",
+"moneyline")`, `("cfb", "spread")` and `("cfb", "moneyline")` to **fs5**,
+activated 2026-09-06. On the live record `baseline.load_fit` raises
+`NotTrained: no fitted nfl:spread model for factor set fs5; run train first`,
+and the same for the other three. `run.py:99` catches `NotTrained` and
+`continue`s, so the market drops out of what the run "expects". Every predict
+run since has written props and totals, called itself complete, and refused
+the rerun as `SlateAlreadyAnswered`.
+
+Last question written: NFL spread and moneyline 2026-09-04 (week 1), college
+spread and moneyline 2026-09-05. `docs/closeouts/2026-09-06-at-the-line.md`
+says "fs5 declared and the model refit". Whatever was refit, it was not this
+record.
+
+**What would settle it:** train fs5 on the live record (the operator's to
+order, since it writes model fits); make an untrained declared market a
+visible failure rather than a silent skip; and plant a declared market with
+no fit so the gate says so by name.
+
+### The at-the-line scorecard merges forecasters *(measured 2026-09-23)*
+
+`at_the_line.standing_claims` keeps one claim per PREDICTION, not per
+question and forecaster. MLB moneyline's 174 settled comparisons are 87 on
+statistical rows and 87 on reasoning rows, covering 54 games. Totals are 29
+and 29 on 20 games. Spread's 80 are all statistical but sit on 53 games. The
+panel reads "174 settled comparisons, past the 100". Per forecaster on graded
+rows it is 54. `calibration.assert_no_merged_categories` refuses exactly this
+on the blind record, and nothing checks it here.
+
+### The machine was off for nine days *(measured 2026-09-23, not a code defect)*
+
+Shut down 2026-09-11T21:18Z, booted 2026-09-21T06:23Z. Awake 6.2 of 285.8
+hours since the 12th, and 17 slates were missed for good. Every `Gridiron-*`
+task has `WakeToRun = False`. Sleep, wake timers and whether the tasks may
+wake the machine are the operator's to set. Recorded so nobody reads the
+missing days as the model's.

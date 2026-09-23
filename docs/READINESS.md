@@ -29,6 +29,7 @@ Each run appends a row. Nothing is overwritten.
 |---|---|---|---|---|---|---|---|
 | 2026-09-07 | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | not fit to act on |
 | 2026-09-07 (2nd) | **PASS** | FAIL | FAIL | FAIL | **PASS** | FAIL | not fit to act on |
+| 2026-09-23 | **PASS** | FAIL | FAIL (broken) | FAIL | FAIL | FAIL | not fit to act on |
 
 ## 2026-09-07 — the criteria in full
 
@@ -391,3 +392,33 @@ that every number here arrives with its N will look for one.
 **Nothing in the six criteria above moves on this.** A product that cannot be
 scored cannot contribute evidence for or against readiness, and counting it
 either way would be the mistake this document exists to prevent.
+
+## 2026-09-23 — THE READ: five fail, and the deciding one is broken
+
+Measured read-only for `docs/closeouts/2026-09-23-the-read.md`, where every
+number below has its query and its N. Sixteen days after the first
+recommendation, **nine and a half of them with the machine switched off**.
+
+| # | now | verdict |
+|---|---|---|
+| 1 | first run today FAIL: two checks that read the live record assumed its shape of 10 September (fixed in c3c9dc8). After the fix: 4 of 4 steps, 261/261 plantings caught | PASS |
+| 2 | MLB spread 41 recommendations (32 distinct bets), MLB total 14 (11). Every other covered market 0 | FAIL |
+| 3 | **all 49 recorded closes are 0.00¢ because the close is read from the claim the price came from.** Against the venue's own last near-start price: MLB spread +0.30¢ at n=22, MLB total −0.68¢ at n=11 | FAIL, and the instrument is broken |
+| 4 | MLB spread 132 and MLB total 134 settled for the statistical forecaster. 13 of the 14 total recommendations come from the reasoning forecaster, which has 66 | FAIL as defined |
+| 5 | two BROKEN findings open (FOLLOWUPS, 2026-09-23): the closing line, and NFL and NCAAF spread and moneyline not forecast since 5 September (fs5 never trained here) | FAIL |
+| 6 | MLB 79 games, NFL 33, NCAAF 10, NBA 3, UFC 0 | FAIL |
+
+**Criterion 3 cannot pass as built, at any sample size.** A close that is the
+recommendation's own price reads 0.00¢ forever, and "mean CLV positive" never
+comes true. At the current rate the recorded count reaches about 42 of 50 by
+the season's last game. Had it reached 50, it would have been a gate passed
+by a broken instrument, and should not be read as one.
+
+**Where a price sits beside a hundred settled rows, the market scores
+better than the model:** MLB moneyline 0.2524 against 0.2403 (n=140), NCAAF
+spread 0.1917 against 0.1731 (n=126). The learning panel's "174 past the
+100" for MLB moneyline at the venue's line pools two forecasters; per
+forecaster on graded rows it is 54.
+
+**The standing answer is unchanged: a forecast to read, not a recommendation
+to follow.**
