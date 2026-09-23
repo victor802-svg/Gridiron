@@ -1119,7 +1119,16 @@ def plant_an_asked_line_that_is_not_a_distance() -> Result:
 
     conn = db.read_the_live_record(
         "the asked lines in the record, which is where a line that is not a distance would be")
+    # FINISHED SEASONS ONLY (2026-09-23). A game settled this week has no
+    # cached weather archive yet, so building its row fetched one and tried to
+    # write the cache through a handle SQLite refuses to write through -- the
+    # planting died with "attempt to write a readonly database" the first time
+    # the record held a game the scheduler had settled but no training run had
+    # read. Past seasons are immutable and cached forever, the measurement is
+    # a correlation that needs rows rather than recent ones, and a planting
+    # that reaches the network is not a planting.
     seasons = _config.SPORT_LOAD_SEASONS.get("cfb", _config.DEFAULT_LOAD_SEASONS)
+    seasons = tuple(s for s in seasons if s < max(seasons))
     rows, _labels, _names = _sports.get("cfb").training_set(conn, seasons, "spread")
     conn.close()
 

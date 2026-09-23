@@ -1198,15 +1198,24 @@ def test_superseded_forecasts_are_not_in_the_arithmetic():
     #
     # Found when a void was written overnight, not by a change to either side.
     # The page was right and the arithmetic here was short a term.
+    #
+    # AND ALL THREE ARE THE SLATE'S, NOT THE RECORD'S (2026-09-23). The page
+    # counts one week for one forecaster; the right-hand side counted every
+    # NFL forecast ever written. The two agreed only while the record was one
+    # week deep, and the first week-3 slate broke it: 36 + 32 + 10 against 222.
+    # Scoped to the week the page shows, it is 36 + 32 + 0 = 68, exactly.
+    week = _views.week(conn, "nfl")
+    slate = (week["forecaster"], week["season"], week["week"])
     voided = conn.execute(
         "SELECT COUNT(*) FROM prediction_voids v JOIN predictions p"
-        " ON p.id = v.prediction_id WHERE p.sport='nfl'"
-        " AND p.predictor='statistical'").fetchone()[0]
-    week = _views.week(conn, "nfl")
+        " ON p.id = v.prediction_id JOIN games g ON g.id = p.game_id"
+        " WHERE p.sport='nfl' AND p.predictor=? AND g.season=? AND g.week=?",
+        slate).fetchone()[0]
     assert week["n"] + week["superseded"] + voided \
         == conn.execute("SELECT COUNT(*) FROM predictions p JOIN games g"
                         " ON g.id=p.game_id WHERE p.sport='nfl'"
-                        " AND p.predictor='statistical'").fetchone()[0]
+                        " AND p.predictor=? AND g.season=? AND g.week=?",
+                        slate).fetchone()[0]
 
 
 def test_a_factor_set_query_still_returns_its_own_rows():
