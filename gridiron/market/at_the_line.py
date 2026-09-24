@@ -107,6 +107,27 @@ def _price(quote: sqlite3.Row) -> tuple[float, str] | None:
     return None
 
 
+def implied_of(quote: sqlite3.Row) -> tuple[float, float, str] | None:
+    """One quote's price, read as a probability for OUR fixed proposition.
+
+    Returns (implied, price, basis), or None when the quote carries no usable
+    price. A strike quoted from the away side answers the complementary
+    question, so its price is complemented.
+
+    ONE DOOR (2026-09-23). The claim reads its price through here, and so does
+    the close. Two readings of one quote that could orient differently would
+    put a claim at 46c and its close at 54c for a market that never moved.
+    """
+    priced = _price(quote)
+    if priced is None:
+        return None
+    price, basis = priced
+    implied = price if quote["yes_side"] in ("home", "over") else 1.0 - price
+    if not 0 < implied < 1:
+        return None
+    return implied, price, basis
+
+
 def rung_for(quotes: list[sqlite3.Row]) -> dict | None:
     """The venue's own line out of one look at one ladder.
 
@@ -118,13 +139,10 @@ def rung_for(quotes: list[sqlite3.Row]) -> dict | None:
     """
     best = None
     for quote in quotes:
-        priced = _price(quote)
-        if priced is None:
+        read = implied_of(quote)
+        if read is None:
             continue
-        price, basis = priced
-        implied = price if quote["yes_side"] in ("home", "over") else 1.0 - price
-        if not 0 < implied < 1:
-            continue
+        implied, price, basis = read
         distance = abs(implied - 0.5)
         if best is None or distance < best["distance"]:
             best = {"quote": quote, "price": round(price, 6),
@@ -568,6 +586,23 @@ def evaluate(conn: sqlite3.Connection,
     return counts_out
 
 
+def standing_claim_clause(alias: str = "c") -> str:
+    """The SQL that keeps ONE claim per prediction: the last before its game.
+
+    ONE DOOR (2026-09-23). From that date the near-start pass reads the venue
+    on every firing inside the window, so a prediction gathers a claim per
+    look -- about four. Anything that counts claim ROWS as a sample size would
+    then call one question four, and a gate would clear on duplicates, which
+    LAW 4 forbids. Every count of claims goes through here.
+    """
+    return (f" {alias}.id = (SELECT c2.id FROM at_the_line_claims c2"
+            f"   JOIN games g2 ON g2.id = c2.game_id"
+            f"  WHERE c2.prediction_id = {alias}.prediction_id"
+            f"    AND (g2.kickoff_utc IS NULL"
+            f"         OR c2.created_utc < g2.kickoff_utc)"
+            f"  ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)")
+
+
 def standing_claims(conn: sqlite3.Connection, *, sport: str,
                     market: str) -> list[sqlite3.Row]:
     """ONE CLAIM PER PREDICTION: the last one written before the game started.
@@ -589,13 +624,8 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str,
     # `id` is monotonic and is how the rest of this record breaks the same tie.
     return conn.execute(
         "SELECT c.* FROM at_the_line_claims c"
-        " JOIN games g ON g.id = c.game_id"
-        " WHERE c.sport = ? AND c.market = ?"
-        "   AND c.id = (SELECT c2.id FROM at_the_line_claims c2"
-        "               WHERE c2.prediction_id = c.prediction_id"
-        "                 AND c2.created_utc < g.kickoff_utc"
-        "               ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
-        " ORDER BY c.id", (sport, market)).fetchall()
+        " WHERE c.sport = ? AND c.market = ? AND" + standing_claim_clause("c")
+        + " ORDER BY c.id", (sport, market)).fetchall()
 
 
 def resolve_claims(conn: sqlite3.Connection) -> dict:

@@ -171,6 +171,26 @@ def test_a_wide_quote_is_never_covered_however_thin():
 def test_the_kill_criterion_stops_a_market_on_its_closing_line(tmp_path):
     conn = _world(tmp_path, games=1)
     pid = _blind(conn)
+    # THE CLOSE IS A LATER READ OF ITS OWN CONTRACT (2026-09-23), and only a
+    # close measured that way is counted, so the fixture reads the venue twice.
+    reads = []
+    for stamp, bid in (("2026-09-07T01:00:00Z", 0.49), ("2026-09-08T23:00:00Z", 0.45)):
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " fetched_utc, read_kind) VALUES ('kalshi', 'T', 'E', 'nfl', 'g0',"
+            " 'total', 'total', 44.5, 'over', ?, ?, ?, 'near_start')",
+            (bid, bid + 0.02, stamp))
+        reads.append(conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0])
+    # AND THE CLAIM THE PRICE CAME FROM: a close must cite the read its own
+    # recommendation was priced from, at the recommended price.
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'nfl', 'g0', 'total', 'total', 44.5, 'over',"
+        " 'rung_matched', NULL, NULL, 0.6, 0.5, 0.5, 'mid',"
+        " '2026-09-07T01:30:00Z')", (pid, reads[0]))
     # fifty recommendations that all bought richer than the close
     for i in range(coverage.KILL_AFTER):
         conn.execute(
@@ -180,6 +200,14 @@ def test_the_kill_criterion_stops_a_market_on_its_closing_line(tmp_path):
             " VALUES (?, 'nfl', 'g0', 'total', 'yes', 0.6, 0.5, 3.0, 'flat', 1.0,"
             " 0, ?, 0.46, -4.0, '2026-09-09T00:00:00Z')",
             (pid, f"2026-09-07T02:{i:02d}:00Z"))
+        rec = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+        conn.execute(
+            "INSERT INTO recommendation_closes (recommendation_id, written_utc,"
+            " pricing_quote_id, close_quote_id, close_price, clv_cents,"
+            " minutes_before_start, restated, reason) VALUES (?,"
+            " '2026-09-09T00:00:00Z', ?, ?, 0.46, -4.0, 60.0, 0,"
+            " 'the last near-start read of its own contract')",
+            (rec, reads[0], reads[1]))
     conn.commit()
     stopped = coverage.stopped(conn, "nfl")
     assert "total" in stopped

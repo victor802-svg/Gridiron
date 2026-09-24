@@ -471,10 +471,12 @@ def _opening_read(conn: sqlite3.Connection) -> dict:
 def _run_near_start(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     """The second look at the line, as a task in its own right.
 
-    `refresh` still calls the same pass, and that is deliberate: the pass is
-    idempotent -- it selects only predictions with no near-start row yet -- so
-    two callers cannot produce two snapshots. What the second caller buys is
-    the cadence, and nothing else changes.
+    `refresh` still calls the same pass, and that is deliberate: a second
+    caller buys cadence and nothing else. The venue is re-read on every firing
+    inside the window -- every open recommendation and every drift row -- and
+    that is the point: the close is the LAST read before kickoff, so a pass
+    that read once and stopped measured nothing (2026-09-23). The drift
+    snapshot is still one per prediction; the schema holds that, not a filter.
     """
     counts = _near_start_snapshots(conn)
     due = counts.get("near_start_due", 0)
@@ -495,25 +497,44 @@ def _run_near_start(conn: sqlite3.Connection) -> tuple[str, str, dict]:
         # closes finished games on a firing with nothing near start, and a
         # detail line that said only "no game starts" would hide the one
         # thing this firing did.
-        shut = counts.get("closing_prices", 0)
-        also = (f"; {language.counted(shut, 'closing price')} recorded"
-                if shut else "")
+        also = _closes_words(counts)
         if soon:
             return ("noop",
                     f"{language.counted(soon, 'game')} starts within the next "
-                    f"{NEAR_START_HOURS:g} hours and every one of them has "
-                    f"already had its second look" + also, counts)
+                    f"{NEAR_START_HOURS:g} hours, and none of them carries a "
+                    f"forecast with a line to read" + also, counts)
         return ("noop",
                 f"no game starts within the next {NEAR_START_HOURS:g} hours"
                 + also, counts)
     took = counts.get("near_start_taken", 0)
+    asked = counts.get("near_start_asked", 0)
+    quotes = counts.get("venue_near_start", 0)
     claims = counts.get("at_the_line_claims", 0)
-    closed = counts.get("closing_prices", 0)
+    pairs = (f"; {language.counted(took, 'media line')} looked at a second "
+             f"time" if took else "")
+    # WHAT CAME BACK, not what was asked: a venue that does not answer writes
+    # no quote now, and a line saying "read again" over nothing would hide it.
     return ("ok",
-            f"{language.counted(took, 'game')} looked at a second time; "
-            f"{language.counted(claims, 'claim')} at the line and "
-            f"{language.counted(closed, 'closing price')} recorded",
+            f"{language.counted(asked, 'forecast')} asked at the line, "
+            f"{language.counted(quotes, 'price')} came back; "
+            f"{language.counted(claims, 'claim')} at the line"
+            + pairs + _closes_words(counts),
             counts)
+
+
+def _closes_words(counts: dict) -> str:
+    """What this firing closed, measured and not, in words."""
+    shut = counts.get("closing_prices", 0)
+    blind = counts.get("closing_unmeasured", 0)
+    words = ""
+    if shut:
+        words += f"; {language.counted(shut, 'closing price')} recorded"
+    if blind == 1:
+        words += "; 1 closed with no later read of its own price, unmeasured"
+    elif blind:
+        words += (f"; {blind} closed with no later read of their own price, "
+                  f"unmeasured")
+    return words
 
 
 def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
@@ -533,18 +554,51 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
 
     now = db.utcnow()
     horizon = _plus_hours(now, NEAR_START_HOURS)
-    rows = conn.execute(
+    # RETIRED 2026-09-23 (GRIDIRON_REPAIR item 1): THE ONCE-THEN-EXCLUDE.
+    #
+    #     AND NOT EXISTS (SELECT 1 FROM market_snapshots n
+    #                     WHERE n.prediction_id = p.id AND n.kind = 'near_start')
+    #
+    # stood in this query from the pass's first version and read each
+    # prediction ONCE, then never again. With the `implied_prob IS NOT NULL`
+    # join beside it, it did worse than that to the recommendations: every
+    # recommended prediction had no media line (55 of 55), so none of them was
+    # ever read inside the window at all, and the close -- "the last claim
+    # before kickoff" -- was always the claim the price came from. 49 of 49
+    # closes equalled the price paid; every closing-line value read 0.00c.
+    #
+    # REPLACED BY: every open recommendation inside the window, read at the
+    # venue on EVERY firing until kickoff, whatever media line it had. A drift
+    # row still gets its venue look once, with its media look: the drift pair
+    # is one media snapshot each side (`market_snapshots_one_per_kind`, a
+    # unique index, not a filter), and re-reading it every firing would only
+    # multiply claims nothing reads.
+    drift = [r["id"] for r in conn.execute(
         "SELECT p.id FROM predictions p"
         " JOIN games g ON g.id = p.game_id"
         " JOIN market_snapshots o"
         "   ON o.prediction_id = p.id AND o.kind = 'open_at_predict'"
         " WHERE g.status = 'scheduled'"
         "   AND g.kickoff_utc > ? AND g.kickoff_utc <= ?"
-        "   AND o.implied_prob IS NOT NULL"
-        "   AND NOT EXISTS (SELECT 1 FROM market_snapshots n"
-        "                   WHERE n.prediction_id = p.id AND n.kind = 'near_start')",
+        "   AND o.implied_prob IS NOT NULL",
         (now, horizon),
-    ).fetchall()
+    )]
+    # THE KICKOFF IS THE FACT, not the status: a status is only as fresh as
+    # the last refresh, and a recommendation is read until its game starts.
+    # And the status as well, the same pair of checks `at_the_line.evaluate`
+    # makes: a game the record shows under way before its listed time (a
+    # doubleheader's second game) is priced off the game, not before it.
+    recs = [r["prediction_id"] for r in conn.execute(
+        "SELECT DISTINCT r.prediction_id FROM recommendations r"
+        " JOIN games g ON g.id = r.game_id"
+        " WHERE r.closed_utc IS NULL"
+        "   AND (g.status IS NULL OR g.status IN ('scheduled', 'pre'))"
+        "   AND g.kickoff_utc > ? AND g.kickoff_utc <= ?",
+        (now, horizon),
+    )]
+    firsts = [pid for pid in drift if not conn.execute(
+        "SELECT 1 FROM market_snapshots WHERE prediction_id = ?"
+        "   AND kind = 'near_start'", (pid,)).fetchone()]
 
     # THE CLOSING LINE (R3, 2026-09-07), AND IT RUNS FIRST (ruling 2026-09-08).
     #
@@ -560,16 +614,18 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # future, and the closer only touches recommendations whose kickoff has
     # passed. Nothing is closed here that the second look would have priced.
     #
-    # The close VALUE is unchanged either way -- it is the last claim written
-    # before kickoff, whenever it is read -- so this fixes when a close is
-    # recorded and never what it says.
+    # WHAT THE CLOSE IS, from 2026-09-23: the recommendation's own contract's
+    # last near-start read before kickoff, or UNMEASURED where there is none
+    # (`recommend.close_of`). Never the claim it was priced from.
     closed = lines.record_closing_prices(conn)
+    closing = {"closing_prices": closed["closed"],
+               "closing_unmeasured": closed["unmeasured"],
+               "closing_still_open": closed["still_open"]}
 
-    if not rows:
+    ids = sorted(set(drift) | set(recs))
+    if not ids:
         return {"near_start_taken": 0, "near_start_failed": 0,
-                "near_start_due": 0, "closing_prices": closed["closed"],
-                "closing_no_close": closed["no_close"],
-                "closing_still_open": closed["still_open"]}
+                "near_start_due": 0, **closing}
 
     # RE-READ THE MARKET FIRST, AND FORCE IT PAST THE CACHE.
     #
@@ -583,26 +639,33 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # pairs, every one with `near` equal to `opened` to the last decimal. A
     # market does not do that. The drift measurement would have reported "the
     # line never moves" forever, from real-looking rows.
-    ids = [r["id"] for r in rows]
-    refreshed = lines.refresh_quotes(conn, ids, ttl=espn.NEAR_START_TTL)
-    # THE VENUE'S SECOND LOOK (ruling D3, 2026-09-06): the ladder near the
-    # start, past the cache, for the same rows the drift pass re-reads. Asked
-    # for by shape, not by name -- the venue is named only inside the market
-    # module, and the quarantine scan is what says so.
-    venue = lines.refresh_venue_ladder(conn, ids)
+    #
+    # THE MEDIA SNAPSHOT IS TAKEN ONCE: it is one half of a drift pair, and
+    # the unique index would refuse a second. So only the rows without one are
+    # refetched for it.
+    refreshed = (lines.refresh_quotes(conn, firsts, ttl=espn.NEAR_START_TTL)
+                 if firsts else 0)
+    # THE VENUE'S LOOK (ruling D3, 2026-09-06): on EVERY firing for every open
+    # recommendation, and with its media look for a drift row. Asked for by
+    # shape, not by name -- the venue is named only inside the market module,
+    # and the quarantine scan is what says so.
+    looks = sorted(set(firsts) | set(recs))
+    venue = (lines.refresh_venue_ladder(conn, looks) if looks
+             else {"quotes": 0, "claims": 0})
     taken, failed = 0, 0
-    for row in rows:
+    for pid in firsts:
         try:
-            lines.snapshot_prediction(conn, row["id"], kind="near_start")
+            lines.snapshot_prediction(conn, pid, kind="near_start")
             taken += 1
         except Exception:  # noqa: BLE001 - one bad quote must not stop the pass
             failed += 1
     return {"near_start_taken": taken, "near_start_failed": failed,
-            "near_start_due": len(rows), "near_start_refetched": refreshed,
+            "near_start_due": len(ids), "near_start_refetched": refreshed,
+            "near_start_recommendations": len(recs),
+            "near_start_asked": len(looks),
             "venue_near_start": venue["quotes"],
             "at_the_line_claims": venue["claims"],
-            "closing_prices": closed["closed"],
-            "closing_price_missing": closed["no_close"]}
+            **closing}
 
 
 def _plus_hours(stamp: str, hours: float) -> str:

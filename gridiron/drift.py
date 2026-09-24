@@ -181,6 +181,8 @@ def venue_pairs(conn: sqlite3.Connection, *, sport: str,
         # gate's query-only handle refused, correctly, the first time this ran.
         return []
 
+    # ONE PAIR PER PREDICTION, not per claim row (2026-09-23): the venue is
+    # read on every firing now, and each look writes a claim.
     claims = conn.execute(
         "SELECT c.id, c.game_id, c.market, c.model_prob, c.venue_implied,"
         "       c.prediction_id"
@@ -189,7 +191,8 @@ def venue_pairs(conn: sqlite3.Connection, *, sport: str,
         " WHERE c.sport = ? AND c.market = ?"
         "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
         "                   WHERE v.prediction_id = c.prediction_id)"
-        " ORDER BY c.id",
+        "   AND" + at_the_line.standing_claim_clause("c")
+        + " ORDER BY c.id",
         (sport, market_type)).fetchall()
 
     out = []

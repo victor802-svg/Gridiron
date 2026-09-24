@@ -136,7 +136,12 @@ CROSSWALK_MEASURED = {
 #: How fresh a quote must be. The open look accepts the cache's live window;
 #: the near-start look asks again, the way the ESPN second look does.
 OPEN_TTL = timedelta(hours=6)
-NEAR_START_TTL = timedelta(minutes=10)
+#: ZERO, from 2026-09-23 (GRIDIRON_REPAIR item 1). It was ten minutes, and a
+#: near-start "read" inside that window was the cached bytes of an earlier one
+#: stamped with a new time -- which, once the close became the last read before
+#: kickoff, let a close be the pricing read replayed: the 0.00c defect again,
+#: wearing a later timestamp. A near-start read is now a fetch or nothing.
+NEAR_START_TTL = timedelta(0)
 
 MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
           "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
@@ -272,7 +277,8 @@ def parse_markets(sport: str, market: str, game, payload: dict) -> tuple[list[di
 
 def capture_for_games(conn: sqlite3.Connection, sport: str, game_ids: list[str],
                       *, ttl: timedelta | None = None,
-                      read_kind: str = "near_start") -> dict:
+                      read_kind: str = "near_start",
+                      offline_ok: bool = True) -> dict:
     """Fetch and store the venue's ladders for these games. Every count is a
     fact about the fetch: events with no markets, unreadable tickers, sources
     that did not answer. Writes happen only where a prediction already exists
@@ -292,8 +298,14 @@ def capture_for_games(conn: sqlite3.Connection, sport: str, game_ids: list[str],
             if ticker is None:
                 counts["no_series"] += 1
                 continue
+            # `is not None`, NOT `or`: a zero window is falsy, and `ttl or
+            # OPEN_TTL` would turn "fetch now" back into "anything from the last
+            # six hours". And with `offline_ok` off, a venue that does not
+            # answer writes no row, rather than the cached body stamped now.
             try:
-                body = http.fetch(conn, markets_url(ticker), ttl=ttl or OPEN_TTL)
+                body = http.fetch(conn, markets_url(ticker),
+                                  ttl=ttl if ttl is not None else OPEN_TTL,
+                                  offline_ok=offline_ok)
             except http.SourceUnavailable:
                 counts["unavailable"] += 1
                 continue
@@ -326,7 +338,8 @@ def capture_for_games(conn: sqlite3.Connection, sport: str, game_ids: list[str],
 
 def capture_for_predictions(conn: sqlite3.Connection, prediction_ids: list[int],
                             *, ttl: timedelta | None = None,
-                            read_kind: str = "near_start") -> dict:
+                            read_kind: str = "near_start",
+                            offline_ok: bool = True) -> dict:
     """The ladders for the games behind these predictions, one sport at a time.
     THE ROWS EXIST BEFORE THE FETCH: this is called after the blind window has
     closed, and the trigger on the table holds the order regardless."""
@@ -352,7 +365,7 @@ def capture_for_predictions(conn: sqlite3.Connection, prediction_ids: list[int],
             counts["no_series"] += len(game_ids)
             continue
         part = capture_for_games(conn, sport, game_ids, ttl=ttl,
-                                 read_kind=read_kind)
+                                 read_kind=read_kind, offline_ok=offline_ok)
         for key, value in part.items():
             counts[key] = counts.get(key, 0) + value
     return counts

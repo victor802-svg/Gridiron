@@ -481,6 +481,8 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_merged_calibration_curve",
         "plant_a_merged_forecaster_curve",
         "plant_a_registry_factor_without_a_rationale",
+        "plant_a_close_read_from_the_first_of_two_reads",
+        "plant_a_close_that_cites_its_own_pricing_read",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

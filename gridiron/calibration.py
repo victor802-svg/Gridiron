@@ -2026,18 +2026,43 @@ def clv_minimum(market: str) -> int:
 
 
 def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
-    """What the closing line says about this sport's recommendations."""
+    """What the closing line says about this sport's recommendations.
+
+    COUNTED FROM `recommendation_closes`, NOT FROM THE COLUMNS (2026-09-23).
+    Until then every close was the recommendation's own price and this read
+    49 rows at 0.00c as a measurement. Now:
+
+      * MEASURED -- a close by the one rule, at the time: counted, in N.
+      * UNMEASURED -- closed with no later read of its own contract, or closed
+        by the old closer and not yet restated: counted BESIDE, never at zero.
+      * RESTATED -- an old close recomputed after the fact from quotes the
+        record held before the start: counted beside too. It was computed by
+        somebody who knew how the games went, so it is shown and never counted.
+      * UNACCOUNTED -- an old close not yet restated. Its recorded value is
+        its own price; counted beside, with its own words, until it is.
+    """
     require_sport(sport, "calibration.clv_report")
     rows = conn.execute(
-        "SELECT market, side, price, close_price, clv_cents FROM recommendations"
-        " WHERE sport = ? AND closed_utc IS NOT NULL", (sport,)).fetchall()
+        "SELECT r.market, r.side, r.price, c.clv_cents, c.restated,"
+        "       c.recommendation_id IS NOT NULL AS accounted"
+        "  FROM recommendations r"
+        "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
+        " WHERE r.sport = ? AND r.closed_utc IS NOT NULL", (sport,)).fetchall()
     by_market: dict[str, list] = {}
     for row in rows:
         by_market.setdefault(row["market"], []).append(row)
 
     entries = []
     for market in sorted(by_market):
-        got = by_market[market]
+        closed = by_market[market]
+        got = [r for r in closed if r["accounted"] and not r["restated"]
+               and r["clv_cents"] is not None]
+        restated = sum(1 for r in closed if r["accounted"] and r["restated"]
+                       and r["clv_cents"] is not None)
+        # CLOSED BY THE OLD CLOSER AND NOT YET RESTATED: its recorded close is
+        # its own price, and nothing is known either way until it is.
+        unaccounted = sum(1 for r in closed if not r["accounted"])
+        unmeasured = len(closed) - len(got) - restated - unaccounted
         n = len(got)
         mean = round(sum(r["clv_cents"] for r in got) / n, 2) if n else None
         beat = round(sum(1 for r in got if r["clv_cents"] > 0) / n, 4) if n else None
@@ -2050,11 +2075,17 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
             "sport": sport,
             "market": market,
             "n": n,
+            "unmeasured": unmeasured,
+            "restated": restated,
+            "unaccounted": unaccounted,
             "minimum_for_a_claim": floor,
             "renderable": n >= floor,
             "mean_cents": mean,
             "beat_the_close": beat,
-            "words": language.clv_line(n, mean, beat, floor),
+            "words": language.clv_line(n, mean, beat, floor,
+                                       unmeasured=unmeasured,
+                                       restated=restated,
+                                       unaccounted=unaccounted),
         }
         if entry["renderable"] and mean is not None and mean < 0:
             entry["finding"] = language.clv_finding_line(mean, n)
@@ -2068,6 +2099,9 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
         "record": "closing_line",
         "declared": CLV_DECLARED,
         "n": sum(e["n"] for e in entries),
+        "unmeasured": sum(e["unmeasured"] for e in entries),
+        "restated": sum(e["restated"] for e in entries),
+        "unaccounted": sum(e["unaccounted"] for e in entries),
         "awaiting_close": open_rows,
         "markets": entries,
         "note": (

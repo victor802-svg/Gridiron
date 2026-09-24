@@ -288,6 +288,7 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | ONE CLAUSE | `calibration.standing_row_clause` is the one rule for which row of a question is graded; the version table and the pace line count through it | `plant.py::plant_a_superseded_row_counted_as_settled` |
 | ONE UNIT | `audit.horizon_unit_faults` refuses an outlook whose rate and multiplier count different columns | `plant.py::plant_a_horizon_that_counts_days_for_a_weekly_sport` |
 | RECORD FIRST | `run_task` writes a `running` row before the task runs and finishes it after; `audit.task_run_order_faults` reads the order off the syntax tree | `plant.py::plant_a_run_recorded_only_when_it_ends` |
+| THE CLOSE | A recommendation closes on its OWN contract's last near-start read before kickoff, or UNMEASURED -- never on the price compared with itself, which is what 49 of 49 closes were until 2026-09-23. `recommendation_closes` records how every close was measured, and a trigger refuses a close that is not a later read of the same contract | `plant.py::plant_a_close_read_from_the_first_of_two_reads`, `::plant_a_close_that_cites_its_own_pricing_read` |
 
 Run them all at once, each violation planted for real:
 

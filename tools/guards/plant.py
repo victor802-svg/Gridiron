@@ -8613,6 +8613,220 @@ def plant_a_claim_priced_off_the_opening_read() -> Result:
                   "price that had a week to move before anyone could take it")
 
 
+LAW_THE_CLOSE = "THE CLOSE IS THE LAST READ OF ITS OWN CONTRACT BEFORE KICKOFF"
+
+
+def plant_a_close_read_from_the_first_of_two_reads() -> Result:
+    """Close a recommendation on anything but its own contract's last read.
+
+    THE DEFECT OF 2026-09-23. The closer read "the last claim written before
+    kickoff", and for every recommended prediction that claim was the one it
+    was priced from: 49 of 49 closes equalled the price paid, every CLV read
+    0.00c, and the record called that a measurement.
+
+    Planted here with every wrong answer on offer at once: the pricing read
+    itself, a later read of the SAME contract (the right answer), an opening
+    read of the same contract, a later read of ANOTHER strike with a claim on
+    it (what the old closer picked), and a read after the start. Only the
+    later near-start read of its own contract, before kickoff, may close it.
+
+    And the mirror: a recommendation with no later read closes UNMEASURED --
+    counted beside the closing line, never inside it at 0.00c.
+    """
+    import tempfile
+
+    from gridiron import calibration as _cal, db as _db
+    from gridiron.market import at_the_line as _atl, recommend as _rec
+
+    def world(conn, gid, reads):
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1, 'R',"
+            " 'MIA', 'NYM', '2026-09-07T02:00:00Z', 'scheduled', '2026-09-06')",
+            (gid,))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-07T00:00:00Z', 'mlb', ?, 'total', 'NYM at MIA', 8.5,"
+            " 0.6, 'over', 'statistical', 'final', 'fs2', '{}', 'x')", (gid,))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        quotes = {}
+        for name, ticker, kind, stamp, bid, ask in reads:
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                " last_price, volume, fetched_utc, read_kind) VALUES (?, ?, 'E',"
+                " 'mlb', ?, 'total', 'total', 8.5, 'over', ?, ?, NULL, 900, ?, ?)",
+                (_atl.VENUE, ticker, gid, bid, ask, stamp, kind))
+            quotes[name] = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+
+        def claim(quote, stamp, implied):
+            conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+                " sport, game_id, market, quantity, line, side, shape,"
+                " dist_mean, dist_sd, model_prob, venue_price, venue_implied,"
+                " price_basis, created_utc) VALUES (?,?,?,'mlb',?,'total',"
+                " 'total',8.5,'over','rung_matched',NULL,NULL,0.6,?,?,'mid',?)",
+                (pid, quote, _atl.VENUE, gid, implied, implied, stamp))
+
+        claim(quotes["pricing"], "2026-09-07T00:31:00Z", 0.46)
+        conn.execute(
+            "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
+            " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+            " created_utc) VALUES (?, 'mlb', ?, 'total', 'yes', 0.6, 0.46, 10.0,"
+            " 'flat', 1.0, 0, '2026-09-07T00:32:00Z')", (pid, gid))
+        rec = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+        return quotes, claim, rec
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        quotes, claim, rec = world(conn, "g1", reads=[
+            ("pricing", "T8", "near_start", "2026-09-07T00:30:00Z", 0.45, 0.47),
+            # TWO reads after the price, so a closer that took the FIRST later
+            # read would be caught too -- the review proved one could slip by.
+            ("middle", "T8", "near_start", "2026-09-07T01:10:00Z", 0.47, 0.49),
+            ("later", "T8", "near_start", "2026-09-07T01:40:00Z", 0.51, 0.53),
+            ("open", "T8", "open", "2026-09-07T01:45:00Z", 0.59, 0.61),
+            ("other", "T9", "near_start", "2026-09-07T01:50:00Z", 0.29, 0.31),
+            ("after", "T8", "near_start", "2026-09-07T02:05:00Z", 0.89, 0.91),
+        ])
+        # THE OLD CLOSER'S ANSWER: a claim on another strike, written last.
+        claim(quotes["other"], "2026-09-07T01:51:00Z", 0.30)
+        _, _, lone = world(conn, "g2", reads=[
+            ("pricing", "T7", "near_start", "2026-09-07T00:30:00Z", 0.45, 0.47),
+        ])
+        conn.commit()
+        _rec.record_closing_prices(conn)
+        got = conn.execute("SELECT close_price, clv_cents FROM recommendations"
+                           " WHERE id = ?", (rec,)).fetchone()
+        mirror = conn.execute("SELECT close_price, closed_utc FROM"
+                              " recommendations WHERE id = ?", (lone,)).fetchone()
+        entry = next((e for e in _cal.clv_report(conn, sport="mlb")["markets"]
+                      if e["market"] == "total"), {})
+        conn.close()
+
+    closed_right = (got["close_price"] is not None
+                    and abs(got["close_price"] - 0.52) < 1e-9
+                    and got["clv_cents"] is not None
+                    and abs(got["clv_cents"] - 6.0) < 1e-9)
+    lone_unmeasured = (mirror["closed_utc"] is not None
+                       and mirror["close_price"] is None
+                       and entry.get("n") == 1 and entry.get("unmeasured") == 1)
+    if closed_right and lone_unmeasured:
+        return Result(LAW_THE_CLOSE,
+                      "close a recommendation on the first of two reads",
+                      "market.recommend.record_closing_prices", True,
+                      "closed on 0.52, the later read of its own contract "
+                      "(+6.0c); the one with no later read closed unmeasured")
+    return Result(LAW_THE_CLOSE,
+                  "close a recommendation on the first of two reads",
+                  "market.recommend.record_closing_prices", False,
+                  f"NOT CAUGHT - closed on {got['close_price']} "
+                  f"({got['clv_cents']}c) where the later read of its own "
+                  f"contract said 0.52; the lone one read close "
+                  f"{mirror['close_price']}, counted n={entry.get('n')} with "
+                  f"unmeasured={entry.get('unmeasured')}. The price compared "
+                  f"with itself read 0.00c on 49 of 49 rows before 2026-09-23")
+
+
+def plant_a_close_that_cites_its_own_pricing_read() -> Result:
+    """Write the account of a close that is not a later read of its own price.
+
+    The schema, not the code, has the last word: whatever a future closer
+    does, two triggers stand between it and the record. Planted twice, each
+    shape aimed at one of them, and BOTH must be refused:
+
+      * the exact 2026-09-23 shape -- the close IS the read the price came
+        from (`recommendation_close_is_a_later_read_of_its_own_contract`);
+      * a later read cited against a "pricing read" the recommendation was
+        never priced from, which is the old closer's other failure with a
+        better alibi (`recommendation_close_cites_its_own_priced_read`).
+    """
+    import sqlite3 as _sqlite3
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl
+
+    refused: dict[str, str | None] = {}
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1,"
+            " 'R', 'MIA', 'NYM', '2026-09-07T02:00:00Z', 'scheduled',"
+            " '2026-09-06')")
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-07T00:00:00Z', 'mlb', 'g1', 'total', 'NYM at MIA', 8.5,"
+            " 0.6, 'over', 'statistical', 'final', 'fs2', '{}', 'x')")
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        quotes = {}
+        for name, ticker, stamp, bid in (("pricing", "T8", "00:30", 0.45),
+                                          ("stray", "T9", "00:40", 0.29),
+                                          ("stray_later", "T9", "01:40", 0.35)):
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                " fetched_utc, read_kind) VALUES (?, ?, 'E', 'mlb', 'g1',"
+                " 'total', 'total', 8.5, 'over', ?, ?, ?, 'near_start')",
+                (_atl.VENUE, ticker, bid, bid + 0.02,
+                 f"2026-09-07T{stamp}:00Z"))
+            quotes[name] = conn.execute(
+                "SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        # the claim the price really came from
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+            " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+            " created_utc) VALUES (?, ?, ?, 'mlb', 'g1', 'total', 'total', 8.5,"
+            " 'over', 'rung_matched', NULL, NULL, 0.6, 0.46, 0.46, 'mid',"
+            " '2026-09-07T00:31:00Z')", (pid, quotes["pricing"], _atl.VENUE))
+        conn.execute(
+            "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
+            " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+            " created_utc, close_price, clv_cents, closed_utc) VALUES"
+            " (?, 'mlb', 'g1', 'total', 'yes', 0.6, 0.46, 10.0, 'flat', 1.0, 0,"
+            " '2026-09-07T00:32:00Z', 0.46, 0.0, '2026-09-07T02:10:00Z')", (pid,))
+        rec = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+        conn.commit()
+        for shape, pricing, close, price in (
+                ("the close is the pricing read", "pricing", "pricing", 0.46),
+                ("a pricing read it was never priced from", "stray",
+                 "stray_later", 0.36)):
+            try:
+                conn.execute(
+                    "INSERT INTO recommendation_closes (recommendation_id,"
+                    " written_utc, pricing_quote_id, close_quote_id, close_price,"
+                    " clv_cents, minutes_before_start, restated, reason) VALUES"
+                    " (?, '2026-09-07T02:10:00Z', ?, ?, ?, ?, 20.0, 0,"
+                    " 'a planted close that is not a close')",
+                    (rec, quotes[pricing], quotes[close], price,
+                     round((price - 0.46) * 100, 2)))
+                refused[shape] = None
+                conn.rollback()
+            except _sqlite3.IntegrityError as exc:
+                refused[shape] = str(exc)
+        conn.close()
+
+    guard = ("recommendation_close_is_a_later_read_of_its_own_contract, "
+             "recommendation_close_cites_its_own_priced_read")
+    escaped = [shape for shape, why in refused.items() if why is None]
+    if not escaped:
+        return Result(LAW_THE_CLOSE,
+                      "record a close that is not a later read of its own price",
+                      guard, True, " / ".join(refused.values()))
+    return Result(LAW_THE_CLOSE,
+                  "record a close that is not a later read of its own price",
+                  guard, False,
+                  f"NOT CAUGHT - the table took: {', '.join(escaped)}")
+
+
 LAW_BROWSER_PARSES = "THE BROWSER FILES PARSE"
 
 
@@ -8936,6 +9150,8 @@ def main() -> int:
     results.append(plant_an_absence_with_no_evidence())
     results.append(plant_a_syntax_error_in_the_browser())
     results.append(plant_a_claim_priced_off_the_opening_read())
+    results.append(plant_a_close_read_from_the_first_of_two_reads())
+    results.append(plant_a_close_that_cites_its_own_pricing_read())
     results.append(plant_a_proposed_combo_from_one_game())
     results.append(plant_a_proposed_combo_across_sports())
     results.append(plant_a_proposed_combo_with_a_leg_that_does_not_clear())

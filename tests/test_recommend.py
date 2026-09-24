@@ -219,34 +219,48 @@ def test_a_question_with_no_side_is_not_recorded(tmp_path):
     assert conn.execute("SELECT COUNT(*) FROM recommendations").fetchone()[0] == 0
 
 
-def test_the_closing_line_is_measured_once_and_can_report_bad_news(tmp_path):
+def _read(conn, pid, *, at, bid, ask, ticker=None, kind="near_start",
+          last=None):
+    """A later look at the venue. The recommendation's own contract unless told
+    otherwise: `_pick` prices from ticker t<pid>."""
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, last_price,"
+        " fetched_utc, read_kind) VALUES ('kalshi', ?, 'e', 'mlb', 'g0',"
+        " 'moneyline', 'home_margin', -1.5, 'home', ?, ?, ?, ?, ?)",
+        (ticker or f"t{pid}", bid, ask, last, at, kind))
+    conn.commit()
+    return conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+
+
+def _closed(tmp_path, reads, *, price_claim_shift=None):
+    """A recommendation priced at 46c on a game that has started, with the
+    given later reads. Returns (conn, rec row after closing, counts)."""
     conn = _world(tmp_path, kickoff="2026-09-07T02:00:00Z")
     pid = _pick(conn)
     recommend.record_for(conn, [pid])
-    # THE NEAR-START LOOK AT THE SAME VENUE, taken before the game started.
-    # The closing line is that venue's last word on the same proposition, not
-    # another venue's.
-    conn.execute(
-        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
-        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
-        " VALUES ('kalshi', 'near', 'e', 'mlb', 'g0', 'moneyline', 'home_margin',"
-        " -1.5, 'home', 0.51, 0.53, '2026-09-07T01:50:00Z')")
-    near_quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
-    conn.execute(
-        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
-        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
-        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
-        " VALUES (?, ?, 'kalshi', 'mlb', 'g0', 'moneyline', 'home_margin', -1.5,"
-        " 'home', 'rung_differs_margin', 2.0, 13.0, 0.62, 0.52, 0.52, 'mid',"
-        " '2026-09-07T01:55:00Z')",
-        (pid, near_quote))
-    conn.commit()
+    for read in reads:
+        _read(conn, pid, **read)
     counts = recommend.record_closing_prices(conn)
+    rec = conn.execute("SELECT * FROM recommendations").fetchone()
+    return conn, rec, counts
+
+
+def test_the_closing_line_is_measured_once_and_can_report_bad_news(tmp_path):
+    # THE NEAR-START LOOK AT THE SAME CONTRACT, taken before the game started.
+    # The closing line is that venue's last word on the same proposition, not
+    # another venue's and not another strike's.
+    conn, row, counts = _closed(tmp_path, [
+        dict(at="2026-09-07T01:50:00Z", bid=0.51, ask=0.53)])
     assert counts["closed"] == 1
-    row = conn.execute("SELECT * FROM recommendations").fetchone()
     # bought at 46, closed at 52: six cents better than the market's own last word
+    assert row["close_price"] == pytest.approx(0.52)
     assert row["clv_cents"] == pytest.approx(6.0)
     assert row["closed_utc"]
+    # and how it was measured is written beside it, in the same transaction
+    how = conn.execute("SELECT * FROM recommendation_closes").fetchone()
+    assert how["restated"] == 0 and how["close_price"] == pytest.approx(0.52)
+    assert how["minutes_before_start"] == pytest.approx(10.0)
     # measured once
     assert recommend.record_closing_prices(conn)["closed"] == 0
     with pytest.raises(sqlite3.IntegrityError, match="measured once"):
@@ -255,16 +269,177 @@ def test_the_closing_line_is_measured_once_and_can_report_bad_news(tmp_path):
                      " WHERE id = ?", (row["id"],))
 
 
-def test_the_closing_line_claims_nothing_from_a_small_sample(tmp_path):
+def test_the_close_is_the_last_of_two_reads_of_its_own_contract(tmp_path):
+    """THE 2026-09-23 DEFECT: 49 of 49 closes were the price compared with
+    itself. With two reads AFTER the price and before the start, the later one
+    is the close -- both after the 01:00 pricing read, so a closer that took
+    the first later read would fail here, which the review proved it could."""
+    _, row, _ = _closed(tmp_path, [
+        dict(at="2026-09-07T01:20:00Z", bid=0.47, ask=0.49),
+        dict(at="2026-09-07T01:40:00Z", bid=0.53, ask=0.55)])
+    assert row["close_price"] == pytest.approx(0.54)
+    assert row["clv_cents"] == pytest.approx(8.0)
+
+
+def test_a_read_identical_to_the_pricing_read_is_not_a_close(tmp_path):
+    """A cached body re-stamped as a new read looks exactly like this: the
+    same bid, ask, last price and volume, later. It is no evidence of a later
+    price, so it is skipped -- and with nothing before it, unmeasured."""
+    _, alone, counts = _closed(tmp_path, [
+        dict(at="2026-09-07T01:50:00Z", bid=0.45, ask=0.47)])
+    assert alone["close_price"] is None and counts["unmeasured"] == 1
+    _, row, _ = _closed(tmp_path / "two", [
+        dict(at="2026-09-07T01:30:00Z", bid=0.51, ask=0.53),
+        dict(at="2026-09-07T01:50:00Z", bid=0.45, ask=0.47)])
+    assert row["close_price"] == pytest.approx(0.52)
+
+
+def test_a_start_nobody_knows_yet_is_still_open(tmp_path):
+    conn = _world(tmp_path, kickoff=None)
+    pid = _pick(conn)
+    recommend.record_for(conn, [pid])
+    assert recommend.record_closing_prices(conn) == {
+        "closed": 0, "unmeasured": 0, "still_open": 1}
+
+
+@pytest.mark.parametrize("wrong", [
+    dict(at="2026-09-07T01:50:00Z", bid=0.29, ask=0.31, ticker="another-strike"),
+    dict(at="2026-09-07T01:50:00Z", bid=0.59, ask=0.61, kind="open"),
+    dict(at="2026-09-07T02:00:00Z", bid=0.89, ask=0.91),     # at the start
+    dict(at="2026-09-07T02:20:00Z", bid=0.89, ask=0.91),     # after it
+])
+def test_no_other_read_can_close_it(tmp_path, wrong):
+    """Another strike, an opening read, a read at or after the start: none is
+    the close. Beside the right read, the right read wins; alone, unmeasured."""
+    _, row, _ = _closed(tmp_path, [
+        dict(at="2026-09-07T01:30:00Z", bid=0.51, ask=0.53), wrong])
+    assert row["close_price"] == pytest.approx(0.52)
+    _, alone, counts = _closed(tmp_path / "alone", [wrong])
+    assert alone["closed_utc"] and alone["close_price"] is None
+    assert counts["unmeasured"] == 1
+
+
+def test_an_unpriced_last_read_falls_back_to_the_one_before(tmp_path):
+    _, row, _ = _closed(tmp_path, [
+        dict(at="2026-09-07T01:30:00Z", bid=0.51, ask=0.53),
+        dict(at="2026-09-07T01:55:00Z", bid=None, ask=None)])
+    assert row["close_price"] == pytest.approx(0.52)
+
+
+def test_no_later_read_is_unmeasured_never_zero(tmp_path):
+    conn, row, counts = _closed(tmp_path, [])
+    assert counts == {"closed": 0, "unmeasured": 1, "still_open": 0}
+    assert row["closed_utc"] and row["close_price"] is None
+    assert row["clv_cents"] is None
+    how = conn.execute("SELECT * FROM recommendation_closes").fetchone()
+    assert how["close_quote_id"] is None and "no near-start read" in how["reason"]
+    entry = calibration.clv_report(conn, sport="mlb")["markets"][0]
+    assert entry["n"] == 0 and entry["unmeasured"] == 1
+    assert entry["mean_cents"] is None
+    assert "not counted" in entry["words"]
+    assert audit.advice_word_faults(entry["words"]) == []
+    assert audit.plain_words_violations(entry["words"]) == []
+
+
+def test_a_price_that_does_not_trace_to_its_quote_is_unmeasured(tmp_path):
+    """The contract is found through the claim the price came from. A later
+    claim at another price, written before the recommendation, breaks the
+    trail -- and the answer is unmeasured, never a guessed contract."""
     conn = _world(tmp_path, kickoff="2026-09-07T02:00:00Z")
     pid = _pick(conn)
     recommend.record_for(conn, [pid])
+    qid = _read(conn, pid, at="2026-09-07T01:40:00Z", bid=0.51, ask=0.53)
     conn.execute(
-        "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
-        " implied_prob, kind) VALUES (?, '2026-09-07T01:50:00Z', 'test', 0.52,"
-        " 'near_start')", (pid,))
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'mlb', 'g0', 'moneyline', 'home_margin', -1.5,"
+        " 'home', 'rung_differs_margin', 2.0, 13.0, 0.62, 0.52, 0.52, 'mid',"
+        " '2026-09-07T01:41:00Z')", (pid, qid))
     conn.commit()
-    recommend.record_closing_prices(conn)
+    assert recommend.record_closing_prices(conn)["unmeasured"] == 1
+    how = conn.execute("SELECT reason FROM recommendation_closes").fetchone()
+    assert "cannot be traced" in how["reason"]
+
+
+def test_an_old_close_with_no_account_is_unmeasured_until_restated(tmp_path):
+    """The shape the old closer left: a close equal to the price, and nothing
+    beside it. It is not read as 0.00c; restated, it is shown beside the
+    closing line and never counted inside it."""
+    conn = _world(tmp_path, kickoff="2026-09-07T02:00:00Z")
+    pid = _pick(conn)
+    recommend.record_for(conn, [pid])
+    conn.execute("UPDATE recommendations SET close_price = price, clv_cents = 0,"
+                 " closed_utc = '2026-09-07T02:10:00Z'")
+    _read(conn, pid, at="2026-09-07T01:40:00Z", bid=0.51, ask=0.53)
+    conn.commit()
+    entry = calibration.clv_report(conn, sport="mlb")["markets"][0]
+    # NOT "no later read": it has one. It simply has not been worked out yet.
+    assert entry["n"] == 0 and entry["unaccounted"] == 1
+    assert entry["unmeasured"] == 0
+    assert "have not been worked out again" in entry["words"] or \
+        "has not been worked out again" in entry["words"]
+
+    dry = recommend.restate_old_closes(conn, write=False)
+    assert dry["rows"] == 1 and dry["written"] == 0
+    assert dry["by"][("mlb", "moneyline")]["clv"] == [pytest.approx(6.0)]
+    assert conn.execute("SELECT COUNT(*) FROM recommendation_closes").fetchone()[0] == 0
+
+    wrote = recommend.restate_old_closes(conn, write=True)
+    assert wrote["written"] == 1
+    how = conn.execute("SELECT * FROM recommendation_closes").fetchone()
+    assert how["restated"] == 1 and how["clv_cents"] == pytest.approx(6.0)
+    assert "own price, not a later read" in how["reason"]
+    entry = calibration.clv_report(conn, sport="mlb")["markets"][0]
+    assert entry["n"] == 0 and entry["restated"] == 1 and entry["unmeasured"] == 0
+    assert entry["unaccounted"] == 0
+    assert "worked out again afterwards" in entry["words"]
+    # the recorded close stands as it was
+    row = conn.execute("SELECT close_price, clv_cents FROM recommendations").fetchone()
+    assert row["clv_cents"] == 0 and row["close_price"] == pytest.approx(0.46)
+    # idempotent
+    assert recommend.restate_old_closes(conn, write=True)["rows"] == 0
+
+
+def test_the_account_of_a_close_is_append_only_and_refuses_the_old_defect(tmp_path):
+    conn, row, _ = _closed(tmp_path, [
+        dict(at="2026-09-07T01:50:00Z", bid=0.51, ask=0.53)])
+    with pytest.raises(sqlite3.IntegrityError, match="written once"):
+        conn.execute("UPDATE recommendation_closes SET clv_cents = 9")
+    with pytest.raises(sqlite3.IntegrityError, match="never deleted"):
+        conn.execute("DELETE FROM recommendation_closes")
+    # a second recommendation, still open, on the same prediction
+    conn.execute(
+        "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
+        " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+        " created_utc) SELECT prediction_id, sport, game_id, market, side,"
+        " fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+        " '2099-01-01T00:00:00Z' FROM recommendations")
+    open_id = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+    with pytest.raises(sqlite3.IntegrityError, match="never for one still open"):
+        conn.execute(
+            "INSERT INTO recommendation_closes (recommendation_id, written_utc,"
+            " restated, reason) VALUES (?, 'x', 0, 'no later read at all')",
+            (open_id,))
+    how = conn.execute("SELECT pricing_quote_id FROM recommendation_closes").fetchone()
+    conn.execute("UPDATE recommendations SET closed_utc = '2026-09-07T03:00:00Z'"
+                 " WHERE id = ?", (open_id,))
+    with pytest.raises(sqlite3.IntegrityError, match="own contract"):
+        conn.execute(
+            "INSERT INTO recommendation_closes (recommendation_id, written_utc,"
+            " pricing_quote_id, close_quote_id, close_price, clv_cents,"
+            " restated, reason) VALUES (?, 'x', ?, ?, 0.46, 0.0, 0,"
+            " 'the price compared with itself')",
+            (open_id, how["pricing_quote_id"], how["pricing_quote_id"]))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO recommendation_closes (recommendation_id, written_utc,"
+            " restated, reason) VALUES (?, 'x', 0, 'short')", (open_id,))
+
+
+def test_the_closing_line_claims_nothing_from_a_small_sample(tmp_path):
+    conn, _, _ = _closed(tmp_path, [
+        dict(at="2026-09-07T01:50:00Z", bid=0.51, ask=0.53)])
     report = calibration.clv_report(conn, sport="mlb")
     entry = report["markets"][0]
     assert entry["n"] == 1 and entry["renderable"] is False
@@ -283,6 +458,8 @@ def test_the_words_are_plain_and_recommend_without_tipping():
     assert "flat unit" in line and "8.6" in line
     for words in (line, language.nothing_priced_line(18, 4, 14),
                   language.nothing_priced_line(0, 0, 0),
-                  language.clv_line(10, None, None, 50)):
+                  language.clv_line(10, None, None, 50),
+                  language.clv_line(0, None, None, 50, unmeasured=16,
+                                    restated=33)):
         assert audit.advice_word_faults(words) == [], words
         assert audit.plain_words_violations(words) == [], words

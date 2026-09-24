@@ -709,8 +709,12 @@ def refresh_venue_ladder(conn: sqlite3.Connection, prediction_ids: list[int]) ->
     """
     from . import at_the_line, kalshi
 
+    # A READ OR NOTHING (2026-09-23): no cache window and no offline replay,
+    # because the last of these reads before kickoff is a recommendation's
+    # close, and a replay of the read it was priced from closes it at 0.00c.
     quotes = kalshi.capture_for_predictions(
-        conn, prediction_ids, ttl=kalshi.NEAR_START_TTL)["quotes"]
+        conn, prediction_ids, ttl=kalshi.NEAR_START_TTL,
+        offline_ok=False)["quotes"]
     claims = at_the_line.evaluate(conn, prediction_ids)["claims"]
     return {"quotes": quotes, "claims": claims}
 

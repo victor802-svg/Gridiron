@@ -3258,22 +3258,48 @@ def _units_words(units: float, flat: bool, size_why: str | None = None) -> str:
 
 
 def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
-             minimum: int) -> str:
+             minimum: int, *, unmeasured: int = 0, restated: int = 0,
+             unaccounted: int = 0) -> str:
     """The closing-line verdict, or how far it is from arriving.
 
     THE FASTEST HONEST READ. A win rate needs several hundred settled questions;
     this says something at around fifty, because it compares the app's price
     against the market's own final estimate rather than against one outcome.
+
+    AND WHAT IT DID NOT COUNT, said beside it (2026-09-23). A close with no
+    later read of its own price is not a close at 0.00c, and an old close
+    worked out again afterwards is not a close made at the time.
     """
     if n < minimum:
-        return (f"{n} of {minimum} priced against a close · nothing is claimed "
+        line = (f"{n} of {minimum} priced against a close · nothing is claimed "
                 f"from a sample this size")
-    if mean_cents is None:
-        return f"{n} priced against a close, and none of them has a closing price"
-    direction = "cheaper" if mean_cents > 0 else "richer"
-    return (f"{n} priced against a close · {mean_cents:+.1f}¢ a contract on "
-            f"average, which is buying {direction} than the market's own final "
-            f"estimate · {round((beat_share or 0) * 100)}% beat the close")
+    elif mean_cents is None:
+        line = f"{n} priced against a close, and none of them has a closing price"
+    else:
+        direction = "cheaper" if mean_cents > 0 else "richer"
+        line = (f"{n} priced against a close · {mean_cents:+.1f}¢ a contract on "
+                f"average, which is buying {direction} than the market's own "
+                f"final estimate · {round((beat_share or 0) * 100)}% beat the "
+                f"close")
+    if unmeasured == 1:
+        line += (" · 1 more closed with no later read of its own price and is "
+                 "not counted")
+    elif unmeasured:
+        line += (f" · {unmeasured} more closed with no later read of their own "
+                 f"price and are not counted")
+    if restated == 1:
+        line += (" · 1 older close was worked out again afterwards and is not "
+                 "counted")
+    elif restated:
+        line += (f" · {restated} older closes were worked out again afterwards "
+                 f"and are not counted")
+    if unaccounted == 1:
+        line += (" · 1 more closed before 23 September on its own price and "
+                 "has not been worked out again")
+    elif unaccounted:
+        line += (f" · {unaccounted} more closed before 23 September on their "
+                 f"own price and have not been worked out again")
+    return line
 
 
 def clv_finding_line(mean_cents: float, n: int) -> str:

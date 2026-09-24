@@ -214,11 +214,15 @@ def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str,
 
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
         if season is None else season
+    # ONE CLAIM PER PREDICTION (2026-09-23): the venue is read on every
+    # firing now, and a count of rows would call one question four.
+    from .market import at_the_line
     row = conn.execute(
         "SELECT COUNT(*) AS written, COUNT(DISTINCT g.week) AS slates,"
         " SUM(CASE WHEN c.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
         " FROM at_the_line_claims c JOIN games g ON g.id = c.game_id"
-        " WHERE c.sport = ? AND c.market = ? AND g.season = ?",
+        " WHERE c.sport = ? AND c.market = ? AND g.season = ? AND"
+        + at_the_line.standing_claim_clause("c"),
         (sport, market, season)).fetchone()
     written = int(row["written"] or 0)
     slates_used = int(row["slates"] or 0)

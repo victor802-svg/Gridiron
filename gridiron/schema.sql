@@ -1737,7 +1737,9 @@ CREATE TABLE IF NOT EXISTS recommendations (
     gate_n          INTEGER NOT NULL,
     created_utc     TEXT    NOT NULL,
     -- filled once, at the close, by the same pass that takes the near-start
-    -- look at the line
+    -- look at the line. From 2026-09-23 a NULL close_price with closed_utc
+    -- set is a close with no later read of its own contract: UNMEASURED,
+    -- never zero. How every close was measured is in recommendation_closes.
     close_price     REAL,
     clv_cents       REAL,
     closed_utc      TEXT,
@@ -1783,6 +1785,127 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 3: a recommendation is never deleted. What the app said '
         || 'at the time is the whole of the evidence about whether it was right');
+END;
+
+-- ---------------------------------------------------------------------------
+-- HOW EACH CLOSE WAS MEASURED (GRIDIRON_REPAIR item 1, 2026-09-23).
+--
+-- THE DEFECT THIS EXISTS FOR. Until 2026-09-23 the close was "the last claim
+-- written before kickoff", and for every recommended prediction that was the
+-- claim it had been priced from: 49 of 49 closes equalled the price paid and
+-- every closing-line value read 0.00c. Those columns on `recommendations` are
+-- closed once and cannot be corrected in place, and they stand as recorded.
+--
+-- ONE ROW PER CLOSED RECOMMENDATION, SAYING WHAT CLOSED IT. The closer writes
+-- it in the same transaction as the close: the quote that closed it -- its
+-- own contract's last near-start read before kickoff -- or NULL where there
+-- was none, which is UNMEASURED, never zero. So a closed recommendation with
+-- no row here is, by construction, one the old closer closed; its recorded
+-- close is not read as a measurement by anything.
+--
+-- `restated = 1` marks a row written AFTER THE FACT for one of those, from
+-- quotes the record stored before kickoff, by the same rule. It is shown
+-- beside the closing line and never counted inside it: it was computed by
+-- somebody who already knew how the games went. The shape is
+-- `prediction_voids` and `picks_retracted`: a companion row beside a record
+-- that is itself untouched.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recommendation_closes (
+    recommendation_id    INTEGER PRIMARY KEY REFERENCES recommendations (id),
+    written_utc          TEXT    NOT NULL,
+    -- the read it was priced from; NULL only where that cannot be traced
+    pricing_quote_id     INTEGER REFERENCES venue_quotes (id),
+    close_quote_id       INTEGER REFERENCES venue_quotes (id),
+    close_price          REAL    CHECK (close_price IS NULL
+                                        OR (close_price > 0 AND close_price < 1)),
+    clv_cents            REAL,
+    minutes_before_start REAL,
+    restated             INTEGER NOT NULL CHECK (restated IN (0, 1)),
+    reason               TEXT    NOT NULL CHECK (length(trim(reason)) >= 10),
+    CHECK ((close_quote_id IS NULL) = (close_price IS NULL)
+           AND (close_price IS NULL) = (clv_cents IS NULL))
+);
+
+CREATE TRIGGER IF NOT EXISTS recommendation_closes_no_update
+BEFORE UPDATE ON recommendation_closes
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: how a close was measured is written once and never '
+        || 'rewritten');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendation_closes_no_delete
+BEFORE DELETE ON recommendation_closes
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: how a close was measured is never deleted');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendation_closes_only_when_closed
+BEFORE INSERT ON recommendation_closes
+FOR EACH ROW
+WHEN (SELECT closed_utc FROM recommendations
+       WHERE id = NEW.recommendation_id) IS NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a close is recorded for a recommendation that has closed, '
+        || 'never for one still open');
+END;
+
+-- THE 2026-09-23 DEFECT, MADE STRUCTURALLY IMPOSSIBLE. A close must be a
+-- LATER near-start read of the SAME contract, taken BEFORE the game started.
+-- The pricing read itself, another strike, an opening read or a read after
+-- the start are each refused here, whatever the code above it does.
+CREATE TRIGGER IF NOT EXISTS recommendation_close_is_a_later_read_of_its_own_contract
+BEFORE INSERT ON recommendation_closes
+FOR EACH ROW
+WHEN NEW.close_quote_id IS NOT NULL
+ AND (NEW.pricing_quote_id IS NULL
+      OR NOT EXISTS (
+          SELECT 1 FROM venue_quotes c, venue_quotes p, recommendations r,
+                        games g
+           WHERE c.id = NEW.close_quote_id AND p.id = NEW.pricing_quote_id
+             AND r.id = NEW.recommendation_id AND g.id = r.game_id
+             AND c.venue = p.venue AND c.ticker = p.ticker
+             AND c.read_kind = 'near_start'
+             AND c.fetched_utc > p.fetched_utc
+             AND c.fetched_utc < g.kickoff_utc))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a close is a later near-start read of the recommendation''s '
+        || 'own contract, taken before the game started');
+END;
+
+-- AND THE PRICING READ IS THIS RECOMMENDATION'S OWN, and the value is the
+-- difference between the two prices. Without it a close could cite another
+-- strike's contract, or another game's, so long as its "pricing read" did too
+-- -- which is the old closer's failure with a better alibi. A separate trigger
+-- rather than an edit to the one above, because the live record already holds
+-- that one, and a declaration made only if absent never replaces it. (The
+-- two words that open a declaration may not appear in a comment here:
+-- at_the_line._schema_statements finds each one by scanning this text.)
+CREATE TRIGGER IF NOT EXISTS recommendation_close_cites_its_own_priced_read
+BEFORE INSERT ON recommendation_closes
+FOR EACH ROW
+WHEN (NEW.pricing_quote_id IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM recommendations r
+            JOIN at_the_line_claims a ON a.prediction_id = r.prediction_id
+            JOIN venue_quotes p ON p.id = a.quote_id
+           WHERE r.id = NEW.recommendation_id
+             AND a.quote_id = NEW.pricing_quote_id
+             AND p.game_id = r.game_id
+             AND a.created_utc <= r.created_utc
+             AND round(a.venue_implied, 4) = round(r.price, 4)))
+  OR (NEW.close_price IS NOT NULL
+      AND abs(NEW.clv_cents - (
+          SELECT (CASE r.side WHEN 'yes' THEN NEW.close_price - r.price
+                               ELSE r.price - NEW.close_price END) * 100.0
+            FROM recommendations r WHERE r.id = NEW.recommendation_id)) > 0.01)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a close cites the read its own recommendation was priced '
+        || 'from, and its closing-line value is the difference between them');
 END;
 
 -- ---------------------------------------------------------------------------

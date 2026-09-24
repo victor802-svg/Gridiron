@@ -1189,10 +1189,14 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
         ids).fetchall()
     if not rows:
         return {}
+    # ONE CLAIM PER PREDICTION (2026-09-23): the venue is read on every
+    # firing now, and a count of rows would call one question four.
+    from .market import at_the_line
     settled = {
         r["market"]: r["n"] for r in conn.execute(
-            "SELECT market, COUNT(*) AS n FROM at_the_line_claims"
-            " WHERE sport = ? AND resolved_utc IS NOT NULL GROUP BY market",
+            "SELECT c.market, COUNT(*) AS n FROM at_the_line_claims c"
+            " WHERE c.sport = ? AND c.resolved_utc IS NOT NULL AND"
+            + at_the_line.standing_claim_clause("c") + " GROUP BY c.market",
             (sport,))
     }
     homes = {

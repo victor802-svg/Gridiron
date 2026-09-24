@@ -481,6 +481,118 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     return counts
 
 
+#: What a close with no later read of its own contract says about itself.
+UNMEASURED_WHY = ("no near-start read of the same contract after the price it "
+                  "was recommended at, before the start")
+
+#: And one whose price cannot be traced to the quote it came from.
+UNTRACEABLE_WHY = ("the price it was recommended at cannot be traced to the "
+                   "quote it was read from")
+
+#: What every restated row says: the close the old closer recorded was the
+#: recommendation's own price, not a later read.
+RESTATED_WHY = ("the close recorded at the time was the recommendation's own "
+                "price, not a later read; restated on {day} from quotes the "
+                "record held before the start")
+
+
+def close_of(conn: sqlite3.Connection, rec: sqlite3.Row,
+             kickoff: str | None) -> dict:
+    """The close of one recommendation, by the one rule, or why it has none.
+
+    THE RULE (GRIDIRON_REPAIR item 1, 2026-09-23): the close is the LAST
+    NEAR-START READ OF THE RECOMMENDATION'S OWN CONTRACT, taken after the read
+    it was priced from and before the game started. Priced the way its claim
+    was (`at_the_line.implied_of`), so the two cannot orient differently.
+
+    NEVER "THE LAST CLAIM", which is what it was until this date. A later claim
+    sits on whichever rung is nearest 50/50 at that look, which can be another
+    strike; and for a recommended prediction no later claim was ever written,
+    so the close was the price compared with itself -- 0.00c on 49 of 49 rows.
+
+    The contract is found through the pricing claim: the latest claim on the
+    prediction written by the time of the recommendation, whose price must be
+    the recommendation's price. Anything that does not trace is UNMEASURED
+    with its reason, never guessed.
+    """
+    from . import at_the_line
+
+    out = {"pricing_quote_id": None, "close_quote_id": None,
+           "close_price": None, "clv_cents": None,
+           "minutes_before_start": None}
+    claim = conn.execute(
+        "SELECT quote_id, venue_implied FROM at_the_line_claims"
+        " WHERE prediction_id = ? AND created_utc <= ?"
+        "   AND (? IS NULL OR created_utc < ?)"
+        " ORDER BY created_utc DESC, id DESC LIMIT 1",
+        (rec["prediction_id"], rec["created_utc"], kickoff, kickoff)).fetchone()
+    if claim is None or round(claim["venue_implied"], 4) != round(rec["price"], 4):
+        return {**out, "why": UNTRACEABLE_WHY}
+    pricing = conn.execute("SELECT * FROM venue_quotes WHERE id = ?",
+                           (claim["quote_id"],)).fetchone()
+    if pricing is None:
+        return {**out, "why": UNTRACEABLE_WHY}
+    out["pricing_quote_id"] = claim["quote_id"]
+    if kickoff is None:
+        return {**out, "why": UNMEASURED_WHY}
+    for quote in conn.execute(
+            "SELECT * FROM venue_quotes WHERE venue = ? AND ticker = ?"
+            "   AND read_kind = 'near_start'"
+            "   AND fetched_utc > ? AND fetched_utc < ?"
+            " ORDER BY fetched_utc DESC, id DESC",
+            (pricing["venue"], pricing["ticker"], pricing["fetched_utc"],
+             kickoff)):
+        if all(_same(quote[k], pricing[k]) for k in _READ_CONTENT):
+            # INDISTINGUISHABLE FROM THE READ IT WAS PRICED FROM -- the same
+            # bid, ask, last price and volume -- which is what a cached body
+            # re-stamped as a new read looks like. Not evidence of a later
+            # price, so it cannot be one.
+            continue
+        read = at_the_line.implied_of(quote)
+        if read is None:
+            continue           # an unpriced read; the one before it may be priced
+        close = round(read[0], 4)
+        return {**out, "close_quote_id": quote["id"], "close_price": close,
+                "clv_cents": clv_cents(rec["side"], rec["price"], close),
+                "minutes_before_start": _minutes_between(quote["fetched_utc"],
+                                                         kickoff),
+                "why": "the last near-start read of its own contract before "
+                       "the start"}
+    return {**out, "why": UNMEASURED_WHY}
+
+
+#: What makes two reads of one contract different reads.
+_READ_CONTENT = ("yes_bid", "yes_ask", "last_price", "volume")
+
+
+def _same(a, b) -> bool:
+    """Equal as prices are: absent matches absent, and a number matches a
+    number to far below a tenth of a cent -- never by float representation."""
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(float(a) - float(b)) < 1e-9
+
+
+def _minutes_between(earlier: str, later: str) -> float:
+    from datetime import datetime
+
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+    delta = datetime.strptime(later, fmt) - datetime.strptime(earlier, fmt)
+    return round(delta.total_seconds() / 60.0, 1)
+
+
+def _write_close(conn: sqlite3.Connection, rec_id: int, got: dict, *,
+                 restated: bool, now: str, reason: str) -> None:
+    conn.execute(
+        "INSERT INTO recommendation_closes (recommendation_id, written_utc,"
+        " pricing_quote_id, close_quote_id, close_price, clv_cents,"
+        " minutes_before_start, restated, reason)"
+        " VALUES (?,?,?,?,?,?,?,?,?)",
+        (rec_id, now, got["pricing_quote_id"], got["close_quote_id"],
+         got["close_price"], got["clv_cents"], got["minutes_before_start"],
+         1 if restated else 0, reason))
+
+
 def record_closing_prices(conn: sqlite3.Connection) -> dict:
     """The price at the close, beside the price that was recommended.
 
@@ -489,40 +601,105 @@ def record_closing_prices(conn: sqlite3.Connection) -> dict:
     at around fifty, because it compares the app's price against the market's
     own final estimate rather than against one noisy outcome.
 
-    Read from the last snapshot taken before the game started, which is what
-    the near-start pass exists to collect. A game with no second look gets no
-    closing price rather than a guessed one.
+    The close is `close_of`: its own contract's last near-start read before
+    kickoff. A recommendation with none closes UNMEASURED -- `closed_utc` set,
+    no price, no CLV -- and is counted beside the closing line, never inside
+    it at 0.00c. Either way the close and how it was measured are written in
+    one transaction, so no close exists without its account.
     """
-    counts = {"closed": 0, "no_close": 0, "still_open": 0}
-    # THE SAME VENUE'S LAST WORD, not another venue's. The near-start pass
-    # re-reads the ladder past the cache, so the last claim written before the
-    # game started is the venue's own closing estimate of the proposition the
-    # recommendation was made on.
+    counts = {"closed": 0, "unmeasured": 0, "still_open": 0}
     rows = conn.execute(
-        "SELECT r.id, r.prediction_id, r.side, r.price, g.kickoff_utc, g.status,"
-        " (SELECT c.venue_implied FROM at_the_line_claims c"
-        "   WHERE c.prediction_id = r.prediction_id"
-        "     AND (g.kickoff_utc IS NULL OR c.created_utc <= g.kickoff_utc)"
-        "   ORDER BY c.created_utc DESC, c.id DESC LIMIT 1) AS close_price"
-        " FROM recommendations r JOIN games g ON g.id = r.game_id"
+        "SELECT r.id, r.prediction_id, r.side, r.price, r.created_utc,"
+        "       g.kickoff_utc"
+        "  FROM recommendations r JOIN games g ON g.id = r.game_id"
         " WHERE r.closed_utc IS NULL").fetchall()
     now = utcnow()
     for row in rows:
-        if row["kickoff_utc"] and row["kickoff_utc"] > now:
+        # A START NOBODY KNOWS YET IS STILL AHEAD. Closing it now would write,
+        # once and for good, that no read came before a start that has not
+        # been scheduled.
+        if not row["kickoff_utc"] or row["kickoff_utc"] > now:
             counts["still_open"] += 1
             continue
-        close = row["close_price"]
-        if close is None:
-            counts["no_close"] += 1
+        got = close_of(conn, row, row["kickoff_utc"])
+        if got["close_price"] is None:
+            cur = conn.execute("UPDATE recommendations SET closed_utc = ?"
+                               " WHERE id = ? AND closed_utc IS NULL",
+                               (now, row["id"]))
+        else:
+            cur = conn.execute(
+                "UPDATE recommendations SET close_price = ?, clv_cents = ?,"
+                " closed_utc = ? WHERE id = ? AND closed_utc IS NULL",
+                (got["close_price"], got["clv_cents"], now, row["id"]))
+        # ANOTHER FIRING GOT THERE FIRST. Refresh and the near-start task both
+        # call this; if one closed the row between this one's read and its
+        # write, the account is already written and a second would abort the
+        # whole pass on the primary key.
+        if cur.rowcount != 1:
             continue
-        counts["closed"] += 1
-        conn.execute(
-            "UPDATE recommendations SET close_price = ?, clv_cents = ?,"
-            " closed_utc = ? WHERE id = ? AND closed_utc IS NULL",
-            (round(close, 4), clv_cents(row["side"], row["price"], close), now,
-             row["id"]))
+        counts["closed" if got["close_price"] is not None else "unmeasured"] += 1
+        _write_close(conn, row["id"], got, restated=False, now=now,
+                     reason=got["why"])
     conn.commit()
     return counts
+
+
+def restate_old_closes(conn: sqlite3.Connection, *, write: bool) -> dict:
+    """Every close the old closer made, restated by the one rule.
+
+    A closed recommendation with no `recommendation_closes` row is one the
+    closer of before 2026-09-23 closed, on its own price. Its recorded close
+    stands (LAW 3; the trigger would refuse a second write anyway), and this
+    writes the companion row beside it: the true close where the record holds
+    a later read of the same contract from before the start, UNMEASURED where
+    it does not. Every one is marked `restated`, and nothing counts it inside
+    the closing line.
+
+    Reported PER SPORT AND MARKET, never pooled (LAW 6). Dry by default, and a
+    dry run reads only: it works on a query-only handle, and on a record that
+    has no account table yet it treats every close as unaccounted.
+    """
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+        "   AND name = 'recommendation_closes'").fetchone() is not None
+    unaccounted = (" AND NOT EXISTS (SELECT 1 FROM recommendation_closes c"
+                   "                  WHERE c.recommendation_id = r.id)"
+                   if has_table else "")
+    rows = conn.execute(
+        "SELECT r.id, r.prediction_id, r.sport, r.market, r.side, r.price,"
+        "       r.created_utc, r.close_price, g.kickoff_utc"
+        "  FROM recommendations r JOIN games g ON g.id = r.game_id"
+        " WHERE r.closed_utc IS NOT NULL" + unaccounted +
+        " ORDER BY r.id").fetchall()
+    if write and not has_table:
+        raise RuntimeError("the record has no recommendation_closes table; "
+                           "open it with db.open_db so the schema is applied")
+    now = utcnow()
+    reason = RESTATED_WHY.format(day=now[:10])
+    report: dict = {"rows": 0, "by": {}, "written": 0}
+    for row in rows:
+        if row["close_price"] is not None and abs(row["close_price"] - row["price"]) > 1e-9:
+            raise ValueError(
+                f"recommendation {row['id']} closed at {row['close_price']} "
+                f"against a price of {row['price']}: the old closer never did "
+                f"that, so this row is not what this restatement is for")
+        got = close_of(conn, row, row["kickoff_utc"])
+        bucket = report["by"].setdefault(
+            (row["sport"], row["market"]),
+            {"measured": 0, "unmeasured": 0, "clv": []})
+        report["rows"] += 1
+        if got["close_price"] is None:
+            bucket["unmeasured"] += 1
+        else:
+            bucket["measured"] += 1
+            bucket["clv"].append(got["clv_cents"])
+        if write:
+            _write_close(conn, row["id"], got, restated=True, now=now,
+                         reason=f"{reason}; {got['why']}")
+            report["written"] += 1
+    if write:
+        conn.commit()
+    return report
 
 
 def clv_cents(side: str, taken: float, close: float) -> float:

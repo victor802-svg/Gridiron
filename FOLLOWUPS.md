@@ -990,7 +990,7 @@ Measured read-only for `docs/closeouts/2026-09-23-the-read.md`. Each is a
 change to shipped behaviour, and none of the five jobs ordered that day is
 "fix", so each waits for a ruling.
 
-### BROKEN: the closing line compares a price with itself *(measured 2026-09-23)*
+### REPAIRED: the closing line compared a price with itself *(measured 2026-09-23; repaired the same day, GRIDIRON_REPAIR item 1)*
 
 **49 of 49 closed recommendations have `close_price == price` and
 `clv_cents == 0.00`.** `recommend.record_closing_prices` reads the last claim
@@ -1013,6 +1013,16 @@ Measured against the same ticker's last near-start quote instead: MLB spread
 of the recommendation's own ticker, a planting that fails when a close equals
 the pricing claim's row, and a statement of whether the 49 recorded zeros are
 voided or left standing beside a corrected figure (LAW 3 says left standing).
+
+**Settled, GRIDIRON_REPAIR item 1.** The near-start pass reads every open
+recommendation on every firing inside the window; the once-then-exclude is
+retired by name. The close is `recommend.close_of`: the recommendation's own
+contract's last near-start read before kickoff, or unmeasured. Every close is
+accounted for in `recommendation_closes`, whose trigger refuses a close that
+is not a later read of the same contract. The recorded zeros stand; each
+gets a restated row beside it (`tools/restate_closes.py`), shown and never
+counted. Planted twice: `plant_a_close_read_from_the_first_of_two_reads`,
+`plant_a_close_that_cites_its_own_pricing_read`.
 
 ### The return-on-stake bar divides a no-side edge by the yes price *(measured 2026-09-23)*
 
@@ -1119,3 +1129,51 @@ hours since the 12th, and 17 slates were missed for good. Every `Gridiron-*`
 task has `WakeToRun = False`. Sleep, wake timers and whether the tasks may
 wake the machine are the operator's to set. Recorded so nobody reads the
 missing days as the model's.
+
+## GRIDIRON_REPAIR item 1, 2026-09-23 — found in review, not in scope
+
+### `INSERT OR REPLACE` walks past every append-only trigger *(measured 2026-09-23)*
+
+With `recursive_triggers` off (SQLite's default, and this project's), `REPLACE`
+deletes the conflicting row WITHOUT firing its `BEFORE DELETE` trigger. So a
+statement written as `INSERT OR REPLACE` could silently rewrite a prediction's
+void, a recommendation's account of its close, or any other row a `no_delete`
+trigger is meant to protect. Nothing in the code does this today. **What would
+settle it:** `PRAGMA recursive_triggers = ON` in `db.connect`, or an audit scan
+refusing `OR REPLACE` / `REPLACE INTO` against record tables, with a planting.
+
+### Predict-time captures file cached bytes as near-start reads *(measured 2026-09-23)*
+
+`lines.snapshot_many` calls `kalshi.capture_for_predictions` with the default
+six-hour window and `read_kind='near_start'`. A slate written at 21:33 can store
+the bytes of a 19:43 opening read again, stamped 21:33 and labelled near-start.
+Five of the six recommendations open on the night of 2026-09-23 were priced
+that way. `audit.claims_priced_off_an_open_read` cannot see it: it checks the
+label, and the label is wrong. Item 1 closed the half of this that can fake a
+CLOSE (a near-start pass read is now a fetch or nothing, and `close_of` skips a
+read identical to the pricing read). The pricing half is not closed. **What
+would settle it:** a predict-time capture that fetches, or that files a cached
+body as `read_kind='open'`; and a stored fetch time per row.
+
+### One test reads the operator's real `.env` *(measured 2026-09-23)*
+
+`tests/test_guards.py::test_the_csrf_token_is_bound_to_the_session` passes in
+the main checkout because `.env` there holds an access token, and in a full run
+elsewhere only because an earlier test sets the variable. Run alone in a
+worktree, which has no `.env`, it fails. The suite should not depend on the
+operator's secrets file. **What would settle it:** the test sets its own token
+through `monkeypatch.setenv`.
+
+### Unshipped schema reached the live record *(2026-09-23, recorded, no harm)*
+
+Between about 22:20Z and 22:47Z on 2026-09-23, item 1's first draft sat
+UNCOMMITTED in the main checkout. The scheduled tasks import code from there, and
+`Gridiron-Live` opens the database every 90 seconds, so `db.init` ran the draft
+`schema.sql` against the live record. It created `recommendation_closes` and
+four triggers. **No row was written**: the 22:35Z near-start firing ran the OLD
+code (its detail line is the old wording), and the table held 0 rows when the
+work moved to a worktree. The committed schema keeps those four objects
+byte-identical, so the live copies are exactly what ships. The stronger checks
+went into a new trigger, because `CREATE TRIGGER IF NOT EXISTS` would never
+replace one the live record already holds. This is why the worktree rule
+(ruled 2026-09-23) exists.
