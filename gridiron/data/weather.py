@@ -4,8 +4,20 @@ Source: Open-Meteo (https://open-meteo.com), free, no API key, CC BY 4.0.
 
 Only fetched for games that are outdoors and inside the forecast horizon. A
 forecast we do not have is recorded as absent rather than guessed: the weather
-factors then return None, the feature vector defaults them, and the prediction
-carries the fact in its `missing` list forever.
+factors then return None, the feature vector excludes them, and the prediction
+carries the fact in its `absent` list forever. (Corrected 2026-09-24: this
+said "defaults them" and "`missing`", the v1 behaviour v2 removed.)
+
+AN INDOOR GAME IS NOT FETCHED AND CARRIES NO WEATHER VALUE (operator ruling
+4, 2026-09-24). `roof_state` is the one test of a roof, read by this fetch and
+by the factor context alike, so the two cannot disagree about which games are
+under one. A roof the source has not published -- measured that day: 37 of
+the 2026 season's scheduled games, every home game of the five clubs with a
+retractable roof (two of them abroad), none in the history -- is UNKNOWN, and
+an unknown roof is not assumed open: no forecast is fetched for it and no
+weather value is carried, the way college football already treats a venue
+whose indoor flag is unknown. Those five roofs were published closed for 354
+of the 402 of their 2016-2025 home games that were published open or closed.
 
 Stored separately from the observed post-game readings in `game_conditions`, so
 a forecast that was wrong stays distinguishable from the weather that happened.
@@ -22,7 +34,30 @@ from ..db import utcnow
 from . import reference, sources
 
 SOURCE = "open-meteo"
+#: The published roof values that put a game indoors: a dome, or a retractable
+#: roof the source lists closed.
 INDOOR_ROOFS = ("dome", "closed")
+#: The published roof values that put a game outdoors: open air, or a
+#: retractable roof the source lists open. Anything else is UNKNOWN.
+OUTDOOR_ROOFS = ("outdoors", "open")
+
+
+def roof_state(roof: str | None) -> str:
+    """'indoors', 'outdoors' or 'unknown roof', from a published roof value.
+
+    THE ONE TEST OF A ROOF (operator ruling 4, 2026-09-24): the forecast fetch
+    asks it before fetching and the factor context before reading, so only an
+    'outdoors' game ever carries a weather value. Unknown is its own answer
+    rather than a guess at open: nflverse publishes a retractable stadium's
+    roof only after the game, and in 2016-2025 those roofs were closed for
+    354 of 402 home games.
+    """
+    value = (roof or "").strip().lower()
+    if value in INDOOR_ROOFS:
+        return "indoors"
+    if value in OUTDOOR_ROOFS:
+        return "outdoors"
+    return "unknown roof"
 
 
 def _forecast_url(lat: float, lon: float) -> str:
@@ -65,10 +100,12 @@ def fetch_week(conn: sqlite3.Connection, season: int, week: int) -> dict[str, in
         (season, week),
     ).fetchall()
 
-    counts = {"fetched": 0, "indoors": 0, "out_of_range": 0, "unavailable": 0}
+    counts = {"fetched": 0, "indoors": 0, "unknown_roof": 0, "out_of_range": 0,
+              "unavailable": 0}
     for g in games:
-        if (g["roof"] or "").lower() in INDOOR_ROOFS:
-            counts["indoors"] += 1
+        state = roof_state(g["roof"])
+        if state != "outdoors":
+            counts["indoors" if state == "indoors" else "unknown_roof"] += 1
             continue
         if not g["kickoff_utc"]:
             counts["out_of_range"] += 1

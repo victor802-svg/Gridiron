@@ -778,15 +778,24 @@ def factor_report(
     # from every training row, or present but never varying, has no coefficient
     # to score and would otherwise show as "no resolved predictions yet", which
     # reads like patience when it is really a measurement problem.
-    fit_status = _fit_status(conn, sport, factor_set_version or config.FACTOR_SET_VERSION)
+    #
+    # EACH MARKET'S ACTIVE FIT, one entry per market that fit carries the
+    # factor in (operator ruling 4, 2026-09-24: "the fit reports each factor's
+    # rows used"). Until that day this read the NEWEST fit of the default
+    # factor set under a market key that was wrong for every total, so the
+    # page could describe a fit no market was forecasting from. The version
+    # filter above scopes the RESOLVED predictions; the fits are the ones in
+    # force, whatever it is.
+    fit_status = _fit_status(conn, sport)
     for entry in factors:
         status = fit_status.get(entry["factor"])
         if not status:
             continue
-        entry["training_rows_measured"] = status.get("presence")
-        entry["excluded_from_fit"] = status.get("excluded")
-        if status.get("excluded") and not entry["n"]:
-            entry["verdict"] = status["reason"]
+        entry["fit_rows"] = status
+        entry["fit_rows_words"] = language.fit_rows_words(sport, status)
+        entry["excluded_from_fit"] = all(s["excluded"] for s in status)
+        if entry["excluded_from_fit"] and not entry["n"]:
+            entry["verdict"] = status[0]["reason"]
 
     factors.sort(key=lambda e: (-(e["delta_brier"] or -9), e["factor"]))
     return {
@@ -798,42 +807,57 @@ def factor_report(
     }
 
 
-def _fit_status(conn: sqlite3.Connection, sport: str, version: str) -> dict[str, dict]:
-    """Per-factor presence in the most recent fit of each of the sport's markets."""
-    out: dict[str, dict] = {}
-    for market in config.SPORT_MARKETS.get(sport, ()):
-        market_type = market if market in ("spread", "moneyline") else f"prop:{market}"
-        row = conn.execute(
-            "SELECT coefficients_json FROM model_fits"
-            " WHERE sport = ? AND market_type = ? AND factor_set_version = ?"
-            " ORDER BY id DESC LIMIT 1",
-            (sport, market_type, version),
-        ).fetchone()
-        if row is None:
+def _fit_status(conn: sqlite3.Connection, sport: str) -> dict[str, list[dict]]:
+    """Per factor, the rows that carried it in each market's ACTIVE fit.
+
+    ONE ENTRY PER MARKET, from the fit that market forecasts from
+    (`activation.active_fit`), keyed by the market's own key
+    (`baseline.market_key`) -- REPAIRED 2026-09-24 (operator ruling 4). It
+    read the newest fit of one factor set for every market, looked a total
+    up as 'prop:total', and kept the first market's count for a factor
+    several markets share, so the wind on the page was one market's wind.
+
+    `rows` is what the fit stored: the training rows that carried a value.
+    `indoor_filled` marks a weather count taken before an indoor game carried
+    no value (`registry.FILLED_INDOORS_UNTIL_2026_09_24`): those rows include
+    domes given 0.0, which added nothing to the fit and are not readings.
+    """
+    from .model import activation, baseline
+
+    out: dict[str, list[dict]] = {}
+    for market in config.active_markets(sport):
+        _, market_type = baseline.split_key(baseline.market_key(sport, market))
+        active = activation.active_fit(conn, sport, market_type)
+        if active is None:
             continue
-        blob = json.loads(row["coefficients_json"])
+        blob = json.loads(active["coefficients_json"])
         total = blob.get("n") or 0
-        for name, count in (blob.get("presence") or {}).items():
-            out.setdefault(name, {"presence": count, "excluded": False})
+        base = {"market": market, "fit_id": active["fit_id"],
+                "factor_set_version": active["factor_set_version"], "n": total}
+        presence = blob.get("presence") or {}
+        filled = blob.get("indoor_weather") != factor_compute.INDOOR_WEATHER
+
+        def add(name: str, rows, excluded: bool, reason: str | None = None):
+            # Only a count that HAS rows can have domes among them: "0 of 64,
+            # indoor games among them" rendered once and said nothing true.
+            out.setdefault(name, []).append({
+                **base, "rows": rows, "excluded": excluded, "reason": reason,
+                "indoor_filled": bool(
+                    filled and rows
+                    and name in registry.FILLED_INDOORS_UNTIL_2026_09_24),
+            })
+
+        for name in (blob.get("coefficients") or {}):
+            add(name, presence.get(name), False)
         for name, count in (blob.get("constant") or {}).items():
-            out[name] = {
-                "presence": count,
-                "excluded": True,
-                "reason": (
-                    f"never varied where it could be measured - one value across all "
-                    f"{count:,} of {total:,} training rows that carried it, so there "
-                    "is nothing to fit and nothing to score"
-                ),
-            }
+            add(name, count, True, (
+                f"never varied where it could be measured - one value across all "
+                f"{count:,} of {total:,} training rows that carried it, so there "
+                "is nothing to fit and nothing to score"))
         for name, count in (blob.get("dropped") or {}).items():
-            out[name] = {
-                "presence": count,
-                "excluded": True,
-                "reason": (
-                    f"measurable in only {count:,} of {total:,} training rows, below "
-                    "the floor for estimating a coefficient at all"
-                ),
-            }
+            add(name, count, True, (
+                f"measurable in only {count:,} of {total:,} training rows, below "
+                "the floor for estimating a coefficient at all"))
     return out
 
 

@@ -501,6 +501,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_page_forecast_from_a_fit_that_is_not_active",
         "plant_a_revert_activating_the_wrong_fit",
         "plant_a_fit_reading_a_retired_factor",
+        # AN INDOOR GAME CARRIES NO WEATHER (operator ruling 4, 2026-09-24)
+        "plant_an_indoor_forecast_carrying_the_weather",
+        "plant_an_indoor_training_row_carrying_the_weather",
+        "plant_a_training_row_with_no_weather_carrying_precipitation",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

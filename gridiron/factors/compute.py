@@ -59,6 +59,79 @@ def assert_missing_is_explicit(fv: "FeatureVector") -> None:
             )
 
 
+class WeatherNotRead(MissingDataDefaulted):
+    """A weather factor carried a value on a row whose weather was not read
+    outdoors -- an indoor game, or no reading at all (operator ruling 4,
+    2026-09-24)."""
+
+
+#: WHAT A FIT TRAINED UNDER THIS RULE SAYS ABOUT ITS WEATHER ROWS
+#: (2026-09-24). `baseline.train` stores it in the fit's blob as
+#: `indoor_weather`; a fit without it was trained while indoor games were
+#: filled, and its weather counts include those domes.
+INDOOR_WEATHER = "absent"
+
+#: The bases on which a context's weather counts as READ: a forecast fetched
+#: before kickoff, or the observation the source published after it. Anything
+#: else -- 'indoors', 'none', an unknown roof -- is a reason there is no value.
+WEATHER_READ = ("forecast", "observed")
+
+
+def assert_weather_was_read(ctx, fv: "FeatureVector") -> None:
+    """A weather factor carries a value only if the weather was read, outdoors.
+
+    THE ONE DOOR (operator ruling 4, 2026-09-24: "precipitation, wind and cold
+    all follow the same rule. An indoor game carries no value"; and the fs5
+    brief: "a training row with no weather can't carry a precipitation
+    value"). Runs inside `feature_vector`, which every training row and every
+    forecast of every sport goes through, so a fill reintroduced anywhere --
+    in a factor, in the context, in a loader -- fails here, by name, on the
+    first row it touches.
+
+    WHY IT EXISTS. Until that day a dome read wind 0, cold 0 and rain 0: 760
+    of the NFL spread's 2,632 training rows said the weather was measured for
+    games it never reached, and precipitation's only values in the whole
+    training set were those domes. `assert_missing_is_explicit` could not see
+    it -- the values were not listed absent, they were simply made up.
+
+    Which factors are weather is declared on the factor (`Factor.weather`,
+    the context reading it is computed from), not listed here.
+    """
+    for name, value in fv.values.items():
+        declared = registry.REGISTRY.get(name)
+        reading = declared.weather if declared is not None else None
+        if reading is None:
+            continue
+        where = f"{fv.sport} {fv.market_type} {getattr(ctx, 'game_id', '?')}"
+        if getattr(ctx, "indoors", None):
+            raise WeatherNotRead(
+                f"WEATHER ON AN INDOOR GAME: {name!r} = {value!r} for {where}, "
+                f"which is played indoors. An indoor game carries no value for "
+                f"the wind, the cold or the rain (operator ruling 4, "
+                f"2026-09-24): no weather reaches it, and a 0.0 there reads "
+                f"as a calm, mild, dry afternoon nobody measured.")
+        basis = getattr(ctx, "weather_basis", None)
+        if basis not in WEATHER_READ or getattr(ctx, reading, None) is None:
+            raise WeatherNotRead(
+                f"WEATHER THAT WAS NEVER READ: {name!r} = {value!r} for "
+                f"{where}, whose {reading} reading is "
+                f"{getattr(ctx, reading, None)!r} on a {basis!r} basis. A row "
+                f"with no weather reading carries no weather value -- absent, "
+                f"never filled (the fs5 brief, 2026-09-24).")
+
+
+def weather_absent_reason(ctx) -> str | None:
+    """Why a weather factor is absent, in words, or None to say nothing extra."""
+    if getattr(ctx, "indoors", None):
+        return "played indoors: no weather reaches the game"
+    basis = getattr(ctx, "weather_basis", None)
+    if basis == "unknown roof":
+        return "the roof is not known to be open, so no weather is read"
+    if basis not in WEATHER_READ:
+        return "no weather reading for this game"
+    return None
+
+
 @dataclass
 class FeatureVector:
     sport: str
@@ -73,8 +146,12 @@ class FeatureVector:
     failed: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
     #: Where each measured value came from, when that is not obvious
-    #: (e.g. weather: forecast / observed / indoors).
+    #: (e.g. weather: forecast / observed).
     sources: dict[str, str] = field(default_factory=dict)
+    #: WHY AN ABSENT FACTOR IS ABSENT, where the vector knows (2026-09-24):
+    #: an indoor game's weather is absent because no weather reaches it, which
+    #: is a different fact from a forecast nobody fetched.
+    absent_reasons: dict[str, str] = field(default_factory=dict)
 
     @property
     def names(self) -> list[str]:
@@ -144,12 +221,19 @@ def feature_vector(ctx, market_type: str, market: str | None = None) -> FeatureV
             fv.values[f.name] = float(value)
 
     assert_missing_is_explicit(fv)
+    assert_weather_was_read(ctx, fv)
 
+    # WHICH FACTORS ARE WEATHER IS READ OFF THE REGISTRY (2026-09-24), where
+    # it is declared, rather than a list of three NFL names kept here.
     basis = getattr(ctx, "weather_basis", None)
-    if basis:
-        for name in ("wind", "cold", "precipitation"):
-            if name in fv.values:
-                fv.sources[name] = basis
+    why_absent = weather_absent_reason(ctx)
+    for name in list(fv.values) + fv.absent:
+        if registry.REGISTRY[name].weather is None:
+            continue
+        if name in fv.values and basis:
+            fv.sources[name] = basis
+        elif name not in fv.values and why_absent and name not in fv.failed:
+            fv.absent_reasons[name] = why_absent
     return fv
 
 
@@ -234,6 +318,14 @@ def describe(fv: FeatureVector, coefficients: dict[str, float] | None = None) ->
             "contribution": None,
             "rationale": registry.REGISTRY[name].rationale
             if name in registry.REGISTRY else "",
-            "why_absent": fv.failed.get(name, "not measurable for this game"),
+            "why_absent": absent_reason(fv, name),
         })
     return out
+
+
+def absent_reason(fv: FeatureVector, name: str) -> str:
+    """Why one absent factor is absent: the error if it failed, the reason the
+    vector recorded if it has one, else the plain default. ONE DOOR, read by
+    `describe` and by the statistical forecast's stored `absent_detail`."""
+    return (fv.failed.get(name) or fv.absent_reasons.get(name)
+            or "not measurable for this game")

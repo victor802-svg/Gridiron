@@ -80,9 +80,14 @@ class Factor:
     #:
     #: DECLARED ONLY WHERE THE ZERO MEANS WHAT THE FORMULA SAYS. `cold` is the
     #: counter-example and the reason this is a decision rather than a
-    #: transcription: it returns 0.0 for an INDOOR game as well as for a 55F
+    #: transcription: it returned 0.0 for an INDOOR game as well as for a 55F
     #: one, so "55F" would be a temperature nobody measured, printed about a
     #: dome. It carries no unit and keeps its bare number.
+    #:
+    #: STILL NO UNIT AFTER 2026-09-24, when ruling 4 gave an indoor game no
+    #: value: every row written before that day keeps its indoor 0.0 (LAW 3),
+    #: and a unit would print "55F" about those domes wherever an old row is
+    #: read back.
     unit: str | None = None
     unit_scale: float = 1.0
     unit_offset: float = 0.0
@@ -101,12 +106,24 @@ class Factor:
     active: bool = True
     deactivated_utc: str | None = None
     note: str | None = None
+    #: A WEATHER FACTOR NAMES THE CONTEXT READING IT IS COMPUTED FROM
+    #: (operator ruling 4, 2026-09-24): 'wind_mph', 'temp_f' or 'precip_pct'.
+    #: Declared here so `compute.assert_weather_was_read` knows which values
+    #: need a reading behind them: an indoor game, or a game whose weather was
+    #: never read, carries no value for any of them. None for every other
+    #: factor. `tests/test_weather_indoors.py` refuses a factor that reads
+    #: one of these readings without declaring it.
+    weather: str | None = None
 
     def applies_to_market(self, market: str | None) -> bool:
         return self.markets is None or market is None or market in self.markets
 
 
 REGISTRY: dict[str, Factor] = {}
+
+#: The weather readings a context can carry, each a measurement of the day
+#: (2026-09-24). A factor computed from one of them declares it as `weather`.
+WEATHER_READINGS = ("wind_mph", "temp_f", "precip_pct")
 
 
 def factor(
@@ -124,6 +141,7 @@ def factor(
     active: bool = True,
     deactivated: str | None = None,
     note: str | None = None,
+    weather: str | None = None,
 ):
     """Declare a factor. The rationale is not decoration; the schema rejects a
     factor whose rationale is shorter than a sentence."""
@@ -132,6 +150,10 @@ def factor(
         name = fn.__name__
         if name in REGISTRY:
             raise ValueError(f"factor {name!r} is already declared")
+        if weather is not None and weather not in WEATHER_READINGS:
+            raise ValueError(
+                f"factor {name!r} declares weather={weather!r}, which is not a "
+                f"weather reading a context carries: {', '.join(WEATHER_READINGS)}")
         if sport != "nfl" and not name.startswith(f"{sport}_"):
             raise ValueError(
                 f"factor {name!r} is declared for {sport!r} but is not prefixed "
@@ -154,6 +176,7 @@ def factor(
             active=active,
             deactivated_utc=deactivated,
             note=note,
+            weather=weather,
         )
         return fn
 
@@ -657,12 +680,53 @@ def divisional(ctx) -> float | None:
 
 
 # --- weather ---------------------------------------------------------------
-# Indoors, weather is a constant, so these read 0 under a roof rather than
-# NULL: a dome is not missing data, it is a known absence of wind.
+# AN INDOOR GAME CARRIES NO VALUE (operator ruling 4, 2026-09-24: "Weather:
+# precipitation, wind and cold all follow the same rule. An indoor game carries
+# no value"). Until that day this block read "Indoors, weather is a constant,
+# so these read 0 under a roof rather than NULL", and all three returned 0.0
+# for a dome -- the same number as a 10mph, 55F, dry afternoon, which is a
+# claim about weather nobody read. Each factor now returns None indoors, the
+# context records the game as indoors and says so in its notes, and
+# `compute.assert_weather_was_read` refuses, by name, any weather value on a
+# row whose weather was not read outdoors.
+#
+# THE REPAIR MOVES NO PROBABILITY, measured rather than assumed: a 0.0 adds
+# nothing to a logistic's or a rate model's fit or forecast, so the refits
+# with and without the fill, and every active fit's forecasts, come out the
+# same (the table is in FOLLOWUPS, "Weather: an indoor game carries no
+# value"). What changes is the record -- which rows say they measured the
+# weather -- and each fit's count of rows used. Because the probabilities do
+# not move, the factor-set versions do not move either.
+
+#: THE FACTORS THAT GAVE AN INDOOR GAME 0.0 until the 2026-09-24 repair. A fit
+#: trained before it counts those domes among the rows each of these carried,
+#: and a fit trained after says so in its blob (`compute.INDOOR_WEATHER`), so
+#: the Factors page can tell the two counts apart. College football's wind is
+#: not here: it never gave an indoor venue a value.
+FILLED_INDOORS_UNTIL_2026_09_24 = ("wind", "cold", "precipitation")
+
+#: What every weather factor's note says about the 2026-09-24 repair.
+INDOOR_REPAIR_NOTE = (
+    "REPAIRED 2026-09-24 (operator ruling 4): an indoor game carries no value. "
+    "A repair, not a discovery: the factor returned 0.0 for every dome and "
+    "closed roof -- 760 of the 2,632 NFL spread training rows of 2016-2025 -- "
+    "the same number as a mild, calm, dry afternoon, so the record said the "
+    "weather was read for games it never reached. It now carries no value "
+    "there, nor for a roof the source has not yet published, which is not "
+    "assumed open; the row lists it absent with the reason, and a weather "
+    "value on a row whose weather was not read outdoors is refused by name. "
+    "Measured on the "
+    "2025 holdout before and after: no coefficient, log loss or Brier moved, "
+    "because a 0.0 adds nothing to the fit; the rows each fit counts as used "
+    "did. Rows written before the repair keep their indoor 0.0 (LAW 3)."
+)
+
 
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "total", "prop"),
+    weather="wind_mph",
+    note=INDOOR_REPAIR_NOTE,
     why="the wind",
     rationale=(
         "Wind is the weather variable that actually changes football: it moves "
@@ -673,7 +737,7 @@ def divisional(ctx) -> float | None:
 )
 def wind(ctx) -> float | None:
     if ctx.indoors:
-        return 0.0
+        return None          # no weather reaches the game (ruling 4, 2026-09-24)
     if ctx.wind_mph is None:
         return None
     return (ctx.wind_mph - 10.0) / 10.0
@@ -682,6 +746,8 @@ def wind(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "total", "prop"),
+    weather="temp_f",
+    note=INDOOR_REPAIR_NOTE,
     why="the cold",
     rationale=(
         "Cold stiffens the ball and the hands and favours the running game. "
@@ -690,7 +756,7 @@ def wind(ctx) -> float | None:
 )
 def cold(ctx) -> float | None:
     if ctx.indoors:
-        return 0.0
+        return None          # no weather reaches the game (ruling 4, 2026-09-24)
     if ctx.temp_f is None:
         return None
     return (ctx.temp_f - 55.0) / 20.0
@@ -699,6 +765,7 @@ def cold(ctx) -> float | None:
 @factor(
     added="2026-08-28T00:00:00Z",
     applies_to=("spread", "total", "prop"),
+    weather="precip_pct",
     note=(
         "REPAIRED 2026-08-29. It was not inert because rain does not matter; it "
         "was inert because it was unmeasurable in 66% of games and those games "
@@ -707,7 +774,11 @@ def cold(ctx) -> float | None:
         "for outdoor stadiums (Open-Meteo, cached, tagged with its source), and "
         "a game with no reading now EXCLUDES this factor rather than defaulting "
         "it. Historical games still carry no precipitation reading at all, so "
-        "this factor's honest sample begins with the forward record."
+        "this factor's honest sample begins with the forward record. "
+        "THE 2026-08-29 REPAIR LEFT THE DOMES FILLED: an indoor game still "
+        "read 0.0, so every one of the 760 NFL spread training rows that "
+        "carried a value was a dome and the fit reported the factor constant. "
+        + INDOOR_REPAIR_NOTE
     ),
     why="the rain or snow",
     rationale=(
@@ -717,7 +788,7 @@ def cold(ctx) -> float | None:
 )
 def precipitation(ctx) -> float | None:
     if ctx.indoors:
-        return 0.0
+        return None          # no weather reaches the game (ruling 4, 2026-09-24)
     if ctx.precip_pct is None:
         return None
     return ctx.precip_pct / 100.0

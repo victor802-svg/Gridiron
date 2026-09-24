@@ -101,6 +101,15 @@ class CfbContext:
     away_swing: float | None = None
     #: Forecast wind at kickoff, outdoor venues only.
     wind_mph: float | None = None
+    #: WHERE THE WIND CAME FROM, AND WHETHER THE VENUE IS UNDER A ROOF
+    #: (operator ruling 4, 2026-09-24), the same two facts the NFL context
+    #: keeps, so the one weather guard in `compute` reads both sports alike.
+    #: `indoors` is the listed home side's venue flag: True, False, or None
+    #: when the record does not know. `weather_basis` is 'forecast' or
+    #: 'observed' when a wind was read, else why not: 'indoors', 'unknown
+    #: roof', or 'none'.
+    indoors: bool | None = None
+    weather_basis: str = "none"
     #: A game against a lower division is a different question, and saying so
     #: is more honest than letting a factor average it in silently.
     home_is_fbs: bool = True
@@ -120,6 +129,7 @@ def build_context(conn: sqlite3.Connection, game_id: str,
 
     rating = repo.ratings(conn, game["season"], before_utc=kickoff)
     decayed = repo.decayed_ratings(conn, game["season"], before_utc=kickoff)
+    indoors, wind_mph, basis = _weather(conn, game["home"], kickoff)
     return CfbContext(
         game_id=game_id,
         season=game["season"],
@@ -143,7 +153,9 @@ def build_context(conn: sqlite3.Connection, game_id: str,
         travel_miles=_travel(conn, game["home"], game["away"]),
         home_swing=repo.score_swing(conn, game["home"], before_utc=kickoff),
         away_swing=repo.score_swing(conn, game["away"], before_utc=kickoff),
-        wind_mph=_wind(conn, game["home"], kickoff),
+        wind_mph=wind_mph,
+        indoors=indoors,
+        weather_basis=basis,
     )
 
 
@@ -155,27 +167,35 @@ def _travel(conn: sqlite3.Connection, home: str, away: str) -> float | None:
     return venues.miles_between(here, there)
 
 
-def _wind(conn: sqlite3.Connection, home: str, kickoff: str) -> float | None:
-    """Forecast wind at an OUTDOOR venue, or None.
+def _weather(conn: sqlite3.Connection, home: str,
+             kickoff: str) -> tuple[bool | None, float | None, str]:
+    """(indoors, wind at an OUTDOOR venue or None, where the wind came from).
 
-    None covers three different situations on purpose, and all three are
-    absences rather than calm: the venue is indoors, we do not know whether it
-    is indoors, or no forecast exists for that kickoff. Returning 0 for any of
-    them would put a real number about the wrong thing into the fit.
+    The wind is None in three different situations on purpose, and all three
+    are absences rather than calm: the venue is indoors, we do not know
+    whether it is indoors, or no forecast exists for that kickoff. Returning 0
+    for any of them would put a real number about the wrong thing into the
+    fit. The basis says which (2026-09-24, ruling 4: this returned the wind
+    alone, and a dome's None and a missing forecast's None read the same).
     """
-    if venues.indoor(conn, home) is not False:
-        return None
+    indoors = venues.indoor(conn, home)
+    if indoors is None:
+        return None, None, "unknown roof"
+    if indoors:
+        return True, None, "indoors"
     site = venues.site(conn, home)
     if site is None:
-        return None
+        return False, None, "none"
     # A PAST KICKOFF GETS THE OBSERVATION, A FUTURE ONE THE FORECAST. The
     # forecast endpoint has no history, so without this the factor is measured
     # on zero training rows and dropped by the fit while being present on the
     # live slate -- an instrument that exists only forward. See
     # `weather.wind_observed` for why that trade is stated rather than hidden.
     if kickoff < db.utcnow():
-        return weather.wind_observed(conn, site[0], site[1], kickoff)
-    return weather.wind_at(conn, site[0], site[1], kickoff)
+        wind, basis = weather.wind_observed(conn, site[0], site[1], kickoff), "observed"
+    else:
+        wind, basis = weather.wind_at(conn, site[0], site[1], kickoff), "forecast"
+    return False, wind, (basis if wind is not None else "none")
 
 
 def slate_questions(conn: sqlite3.Connection, season: int, day: int,

@@ -2796,7 +2796,7 @@ const Gridiron = (function () {
 
     table(document.getElementById('factors-table'),
       [{ label: 'Factor' }, { label: 'Added' }, { label: 'Applies to' },
-       { label: 'N' }, { label: 'Rows measured' }, { label: 'Δ Brier' },
+       { label: 'N' }, { label: 'Training rows used' }, { label: 'Δ Brier' },
        { label: 'Effect' }, { label: 'Verdict' },
        { label: 'Why it was declared', cls: 'wide' }],
       data.factors.map(f => {
@@ -2814,7 +2814,10 @@ const Gridiron = (function () {
         if (!f.active) name.appendChild(el('span', 'tag', 'inactive'));
         return [
           name, (f.added_utc || '').slice(0, 10), f.applies_to.join(', '),
-          int(f.n), int(f.training_rows_measured),
+          // EACH MARKET'S ACTIVE FIT, in the server's words (ruling 4,
+          // 2026-09-24): one number here was one market's count for a factor
+          // three markets use, read off a fit none of them forecast from.
+          int(f.n), f.fit_rows_words || ABSENT,
           (f.delta_brier === null || f.delta_brier === undefined)
             ? el('span', 'absent', 'nothing resolved yet') : signed(f.delta_brier, 5),
           // The effect in WORDS with its sample beside it, and the raw figure

@@ -75,6 +75,21 @@ depend on the answer.
    were forecasting from. Keep them, or revert to 61 and 70 (lawful as
    `incumbent` activations; both predate the birthday)? FOLLOWUPS has the
    numbers.
+3. **The active NFL fits count domes among their weather rows (ruling 4,
+   2026-09-24).** Fits 88 (spread), 90 (total), 12, 13 and 14 (the yardage
+   props), 56 (passing touchdowns) and 57 (receptions) were trained while an
+   indoor game read wind, cold and rain 0.0, and each stores those domes
+   among the rows that carried the weather: fit 88 counts wind and cold on
+   2,463 of 2,632 rows, 760 of them domes, and precipitation on 760, every
+   one a dome. Refit without the fill, every coefficient, 2025 probability,
+   log loss and Brier is bit-for-bit the same (measured; FOLLOWUPS, "Weather:
+   an indoor game carries no value"), so a refit ties its incumbent, the tie
+   rule keeps the incumbent, and no activation kind admits it; none was
+   trained or activated. The Factors page prints the stored counts with
+   "indoor games among them". Is that enough, or should the counts be
+   restated -- an identical refit activated under a ruling that says so, or
+   a dated measured count shown beside the stored one? Default until ruled:
+   the stored counts, with the words.
 
 (Older detail follows; where it conflicts with the block above, the block wins.)
 

@@ -391,6 +391,12 @@ def cfb_total_volatility(ctx) -> float | None:
         "not as outdoors -- absent rather than assumed. Forecast from "
         "Open-Meteo at the venue's geocoded coordinates."
     ),
+    # DECLARED A WEATHER FACTOR 2026-09-24 (operator ruling 4), so the one
+    # guard in `compute` holds it to the rule it already kept: an indoor
+    # venue, or a venue whose roof is unknown, carries no value.
+    weather="wind_mph",
 )
 def cfb_wind_mph(ctx) -> float | None:
+    if getattr(ctx, "indoors", None):
+        return None          # no weather reaches the game (ruling 4, 2026-09-24)
     return ctx.wind_mph

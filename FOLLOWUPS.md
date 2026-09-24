@@ -1361,11 +1361,16 @@ longer publish -- it is inactive -- but it is still a row in the operator's
 record that no forecast used. **What would settle it:** the tool
 trains on a scratch copy, as `tools/holdout.py` does.
 
-### The Factors page reads the newest fit, not the active one *(open, 2026-09-24)*
+### REPAIRED: the Factors page reads the newest fit, not the active one *(open 2026-09-24; repaired the same day with ruling 4)*
 
 `calibration._fit_status` still picks the newest fit of a version to report
 each factor's training rows, so the page can describe a fit no market is
 forecasting from. **What would settle it:** it reads `activation.active_fit`.
+
+**Repaired** with the weather ruling (below, "Operator ruling 4"): it reads
+`activation.active_fit` for every asked market under `baseline.market_key`
+-- which also mends the total, looked up as `prop:total` -- and reports one
+entry per market, so a factor three markets share shows three counts.
 
 ## The fs5 revert, 2026-09-24 *(the three decisions; GRIDIRON_REPAIR, the queue's item 2)*
 
@@ -1441,3 +1446,153 @@ step's NFL spread retrain is queued next -- would fit both ratings into a fit
 labelled fs3, a different set under the old name. **What would settle it:**
 before that retrain, either retire them by dated entry or declare the set
 the retrain is meant to be.
+
+## Operator ruling 4 of 2026-09-24 — weather: an indoor game carries no value *(GRIDIRON_REPAIR, the overnight queue's item 3)*
+
+### BUILT: an indoor game carries no weather value, and each fit's rows used are read from the market's active fit *(ruled and built 2026-09-24)*
+
+**What was there.** `context._weather` returned wind 0.0 and rain 0.0 for a
+roof listed `dome` or `closed`, and `wind`, `cold` and `precipitation` each
+returned 0.0 whenever the game was indoors -- although precipitation's note
+said "REPAIRED 2026-08-29 ... EXCLUDES": that repair excluded outdoor games
+with no reading and left every dome filled. In the NFL spread's training set
+(2016-2025, 2,632 rows): precipitation read 0 / filled 760 / absent 1,872;
+wind and cold read 1,703 / filled 760 / absent 169. College football's wind
+never gave an indoor venue a value (NCAAF total: read 1,557, absent 44); MLB,
+NBA and UFC declare no weather factor.
+
+**What changed.** An indoor game is recorded as indoors, with a note saying
+why, and carries no weather reading; each weather factor carries no value
+under a roof and the row lists it absent with its reason ("played indoors: no weather
+reaches the game"). `weather.roof_state` is the one test of a roof, asked by
+the forecast fetch and the context alike. A weather factor declares the
+reading it is computed from (`Factor.weather`), and
+`compute.assert_weather_was_read`, inside `feature_vector`, refuses by name
+any weather value on a row that is indoors or whose weather was not read
+(`WeatherNotRead`). `calibration._fit_status` reads each market's ACTIVE fit
+under the market's own key (it read the newest fit of the default set, looked
+a total up as `prop:total`, and kept one market's count for a factor three
+markets share), and the Factors page prints each factor's training rows used
+per market. A fit trained from now on stores `indoor_weather: absent`; a
+count from a fit without it is printed with "indoor games among them".
+
+**Ruling taken, by precedent (reversible in one line).** A roof the source
+has not published is UNKNOWN, not open: nflverse publishes a retractable
+roof only after the game, so 37 of the 2026 season's scheduled games carry
+none -- every home game of the five retractable-roof clubs, two of them
+abroad; none in the history -- and in 2016-2025 those roofs were published
+closed for 354 of their 402 home games published open or closed. So an unknown roof carries no weather value and no forecast is fetched
+for it -- the treatment college football already gives a venue whose indoor
+flag is unknown. It moves nothing today (no NFL forecast is fetched at all,
+below). Reversal: map None to 'outdoors' in `weather.roof_state`.
+
+**THE MEASUREMENT (ruling 4: "Report each factor's coefficient before and
+after on the holdout").** Every market whose active fit carries a weather
+factor, from `fit_activations` and each fit's coefficient names: seven NFL
+markets and the NCAAF total. Each refit on its active fit's own factor set
+through 2024 and scored on 2025, on a scratch copy of the record made
+through `db.read_the_live_record`, no network; baseline.train's l2 (2.0);
+the fit's own form. "Before" is the released code (ed5c07e, `git archive`),
+"after" is this commit. Paired bootstrap as `tools/holdout.py` (1,000 draws,
+seed 20260923).
+
+| market (active fit) | train rows | scored (2025) | log loss before / after | Brier before / after | after − before [95% CI] |
+|---|---|---|---|---|---|
+| NFL spread (88, fs3) | 2,360 | 272 | .683614 / .683614 | .245353 / .245353 | 0 [0, 0] |
+| NFL total (90, fs2) | 2,222 | 256 | .682861 / .682861 | .244877 / .244877 | 0 [0, 0] |
+| NFL passing yards (12, fs2) | 1,171 | 144 | .525885 / .525885 | .171890 / .171890 | 0 [0, 0] |
+| NFL receiving yards (13, fs2) | 1,203 | 144 | .625087 / .625087 | .216911 / .216911 | 0 [0, 0] |
+| NFL rushing yards (14, fs2) | 1,160 | 148 | .620817 / .620817 | .214478 / .214478 | 0 [0, 0] |
+| NFL passing touchdowns (56, fs3-rate, Poisson) | 1,159 | 140 | .589143 / .589143 | .201675 / .201675 | 0 [0, 0] |
+| NFL receptions (57, fs3-rate, negative binomial) | 1,202 | 141 | .625077 / .625077 | .214465 / .214465 | 0 [0, 0] |
+| NCAAF total (36, fs2) | 720 | 881 | .579844 / .579844 | .197723 / .197723 | 0 [0, 0] |
+
+| market | factor | coefficient before = after | training rows used before → after | 2025 rows with a value before → after |
+|---|---|---|---|---|
+| NFL spread | wind | +0.051409 | 2,195 → 1,527 | 268 → 176 |
+| NFL spread | cold | −0.088087 | 2,195 → 1,527 | 268 → 176 |
+| NFL spread | precipitation | not fitted: constant (668, all domes) → dropped (0) | 668 → 0 | 92 → 0 |
+| NFL total | wind | −0.181788 | 2,078 → 1,454 | 252 → 165 |
+| NFL total | cold | +0.131717 | 2,078 → 1,454 | 252 → 165 |
+| NFL total | precipitation | constant → dropped | 624 → 0 | 87 → 0 |
+| NFL passing yards | wind | −0.185990 | 1,094 → 737 | 141 → 100 |
+| NFL passing yards | cold | +0.050948 | 1,094 → 737 | 141 → 100 |
+| NFL passing yards | precipitation | constant → dropped | 357 → 0 | 41 → 0 |
+| NFL receiving yards | wind | −0.089848 | 1,114 → 762 | 143 → 87 |
+| NFL receiving yards | cold | +0.103381 | 1,114 → 762 | 143 → 87 |
+| NFL receiving yards | precipitation | constant → dropped | 352 → 0 | 56 → 0 |
+| NFL rushing yards | wind | +0.150449 | 1,083 → 741 | 147 → 100 |
+| NFL rushing yards | cold | +0.041898 | 1,083 → 741 | 147 → 100 |
+| NFL rushing yards | precipitation | constant → dropped | 342 → 0 | 47 → 0 |
+| NFL passing touchdowns | wind | −0.074080 | 1,087 → 755 | 136 → 94 |
+| NFL passing touchdowns | cold | +0.059642 | 1,087 → 755 | 136 → 94 |
+| NFL passing touchdowns | precipitation | constant → dropped | 332 → 0 | 42 → 0 |
+| NFL receptions | wind | +0.031288 | 1,116 → 768 | 141 → 81 |
+| NFL receptions | cold | +0.011333 | 1,116 → 768 | 141 → 81 |
+| NFL receptions | precipitation | constant → dropped | 348 → 0 | 60 → 0 |
+| NCAAF total | wind at kickoff | −0.021882 | 700 → 700 | 857 → 857 |
+
+**Nothing moved but the counts.** Every coefficient, every intercept, every
+2025 probability, log loss and Brier is bit-for-bit the same before and
+after (largest |Δ| 0.0, so every bootstrap interval is [0, 0]): a 0.0 adds
+nothing to a logistic's or a rate model's gradient or Hessian, exactly as an
+absent term does (`test_missingness.py` already pinned that for the logistic;
+`test_weather_indoors.py` now pins it through the real training path). The
+rows each fit counts as used fell by the domes, and precipitation, whose only
+values were domes, goes from "never varied" to "never measured".
+
+**This week's slates, active fits unchanged** (scratch copy, the same two
+trees, network refused): every NFL and NCAAF question with a kickoff in the
+seven days from 24 September, 295 of them, 18 indoor. Under the released code
+those 18 carried 30 weather values; now none. Every probability from the
+active fits is bit-for-bit the same (largest |Δp| 0).
+
+**Not done, and why.** No fit was trained or activated on the live record.
+An identical refit would tie its incumbent, and ties go to the incumbent, so
+the active fits (88, 90, 12, 13, 14, 56, 57) stay, and their stored weather
+counts include the domes -- the page says "indoor games among them" beside
+each. Whether to do more is written under "Questions for the operator" in
+`docs/REPAIR_STATE.md`. The reasoning pass does change for an indoor game:
+its prompt no longer lists "the wind = 0 [source: indoors]" among measured
+factors; the three are under NOT MEASURABLE and the caveats say the game is
+played indoors.
+
+### Weather forecasts are never fetched by the scheduled tasks *(open, measured 2026-09-24)*
+
+`weather.fetch_week` is called only by the command-line `predict` and
+`weather` commands; the scheduled `predict:nfl` and `final:nfl` tasks call
+`run.run_slate` without it. `weather_forecasts` holds 9 rows, all fetched at
+07:34:56Z on 29 August for 2026 week 1 (2 of them for games now listed with
+a closed roof). **What it means today:** every outdoor NFL forward forecast
+carries no wind, cold or rain value -- absent, with "no weather reading for
+this game", never filled: on this week's slate 62 outdoor NFL questions
+say so, and 11 at the retractable roofs say "the roof is not known to be
+open". The active fits' wind and cold
+coefficients therefore never act forward: an absent term contributes what the
+reference level does (10 mph, 55F), so every NFL forecast sits at calm, mild
+weather whatever the sky does, and the factor scorecard scores them on no
+forward row after week 1 (whose seven outdoor forecasts were fetched by
+hand). Precipitation has no coefficient in any active fit, and has never
+had a reading in the history. College football is not affected: its wind is
+read inline at forecast time (`weather.wind_at`). **What would settle it:**
+the scheduled NFL passes fetch the week's forecasts before they predict
+(outdoor games only, `weather.roof_state`), inside the forecast horizon.
+
+### A college game at a neutral site reads the listed home side's weather *(open, 2026-09-24)*
+
+`sports.cfb._weather` reads the listed home side's venue: its indoor flag and
+its coordinates. The record keeps no per-game venue or neutral-site flag for
+college games, so a bowl or a kickoff game in a dome is given the home
+campus's wind -- an indoor game carrying a value, which the new guard cannot
+see, because the context does not know the game is indoors -- and one
+outdoors elsewhere is given the wrong city's. How many: not measurable from
+the record. **What
+would settle it:** the loader stores each event's venue (ESPN's event carries
+it), and the context reads that venue's flag and coordinates.
+
+### The card's weather line does not ask about the roof *(open, measured 2026-09-24)*
+
+`views._weather` prints any stored forecast beside a game. Two of the nine
+stored (2026_01_BUF_HOU, 2026_01_BAL_IND) are for games now listed with a
+closed roof: their cards print a forecast no factor read. **What would settle
+it:** the card asks `weather.roof_state` first, the same door.

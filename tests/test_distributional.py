@@ -802,9 +802,11 @@ def test_an_undeclared_value_keeps_its_number():
 def test_cold_carries_no_unit_because_its_zero_is_overloaded():
     """THE COUNTER-EXAMPLE that makes this a decision, not a transcription.
 
-    `cold` returns 0.0 for an INDOOR game as well as for a 55F one, so a unit
+    `cold` returned 0.0 for an INDOOR game as well as for a 55F one, so a unit
     declaration would print "55 F" about a dome -- a temperature nobody
-    measured.
+    measured. From 2026-09-24 (operator ruling 4) an indoor game carries no
+    value, but every row written before keeps its indoor 0.0 (LAW 3), and a
+    unit would print "55 F" about those domes wherever one is read back.
     """
     from gridiron.factors import registry
 

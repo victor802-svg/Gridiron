@@ -216,9 +216,11 @@ def fit(
 
     # A factor measured only where it takes one value carries no information and
     # cannot be fitted, but it WOULD be reported with a coefficient of 0.0 and
-    # look like a tested idea. `precipitation` is exactly this: measurable only
-    # indoors, where it is always zero. Drop it and name it, so the interface can
-    # say "never varied in the training window" instead of "no effect".
+    # look like a tested idea. `precipitation` was exactly this: its only values
+    # were indoor games filled with zero. Drop it and name it, so the interface
+    # can say "never varied in the training window" instead of "no effect".
+    # (From 2026-09-24 an indoor game carries no value, so a history with no
+    # rain reading leaves it with no rows at all and it is `dropped` instead.)
     constant: dict[str, int] = {}
     for name in names:
         if name in dropped:

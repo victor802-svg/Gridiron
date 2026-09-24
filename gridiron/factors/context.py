@@ -18,7 +18,17 @@ import statistics
 from dataclasses import dataclass, field
 
 from .. import config
-from ..data import reference, repo
+from ..data import reference, repo, weather
+
+#: What an indoor game's record says about its weather, in words: the game is
+#: under a roof, and the three weather factors are absent for that reason
+#: rather than read as a calm, mild, dry day (operator ruling 4, 2026-09-24).
+INDOORS_NOTE = ("played indoors, so the wind, the cold and the rain carry no "
+                "value for this game")
+#: ...and a game whose roof the source has not yet published, which is not
+#: assumed open (the same day).
+UNKNOWN_ROOF_NOTE = ("whether the roof will be open is not yet known, so the "
+                     "wind, the cold and the rain carry no value for this game")
 
 #: Injury report statuses, mapped to a share of availability lost. Read straight
 #: off the report; no judgement about how badly hurt anyone is (LAW 2 note in
@@ -94,11 +104,18 @@ class GameContext:
     home_qb_out: int | None = None
     away_qb_out: int | None = None
 
-    indoors: bool = False
+    #: AN INDOOR GAME CARRIES NO WEATHER (operator ruling 4, 2026-09-24).
+    #: `indoors` records that the game is under a roof and `weather_basis`
+    #: says so ('indoors'); the three readings stay None, never a stand-in
+    #: calm, mild, dry day. Until that ruling a dome read wind 0 and rain 0
+    #: here, and the factors filled 0.0 on top. `indoors` is None, and the
+    #: basis 'unknown roof', when the source has not published the roof.
+    indoors: bool | None = False
     wind_mph: float | None = None
     temp_f: float | None = None
     precip_pct: float | None = None
-    weather_basis: str = "none"      # 'forecast' | 'observed' | 'indoors' | 'none'
+    #: 'forecast' | 'observed' | 'indoors' | 'unknown roof' | 'none'
+    weather_basis: str = "none"
 
     notes: list[str] = field(default_factory=list)
 
@@ -283,10 +300,23 @@ def _injury_counts(
     return out, min(qb_out, 1)
 
 
-def _weather(conn: sqlite3.Connection, game: sqlite3.Row) -> tuple[bool, float | None, float | None, float | None, str]:
-    roof = (game["roof"] or "").lower()
-    if roof in ("dome", "closed"):
-        return True, 0.0, None, 0.0, "indoors"
+def _weather(conn: sqlite3.Connection, game: sqlite3.Row) -> tuple[bool | None, float | None, float | None, float | None, str]:
+    # INDOORS IS A FACT; ITS WEATHER IS NOT A READING (operator ruling 4,
+    # 2026-09-24: "An indoor game carries no value"). This returned wind 0.0
+    # and rain 0.0 for a dome until that day -- a calm, dry day nobody
+    # measured, 760 of the NFL spread's 2,632 training rows -- and every
+    # weather factor filled 0.0 on top. The game is still recorded as indoors,
+    # and why; no reading is invented for it. Which roofs count is
+    # `weather.roof_state`, the test the forecast fetch asks as well.
+    state = weather.roof_state(game["roof"])
+    if state == "indoors":
+        return True, None, None, None, "indoors"
+    # A ROOF NOT YET PUBLISHED IS NOT ASSUMED OPEN (the same day): every
+    # retractable stadium's is unknown until its game is played, and those
+    # roofs were closed for 354 of 402 home games in 2016-2025. `indoors`
+    # says "not known" rather than "no", and no weather is read for it.
+    if state != "outdoors":
+        return None, None, None, None, state
 
     forecast = repo.weather_for(conn, game["id"])
     if forecast is not None:
@@ -388,6 +418,10 @@ def build_game_context(
     )
     if ctx.weather_basis == "observed":
         ctx.notes.append("weather is the observed post-game reading, not a forecast")
+    elif ctx.weather_basis == "indoors":
+        ctx.notes.append(INDOORS_NOTE)
+    elif ctx.weather_basis == "unknown roof":
+        ctx.notes.append(UNKNOWN_ROOF_NOTE)
     elif ctx.weather_basis == "none":
         ctx.notes.append("no weather available for an outdoor game")
 

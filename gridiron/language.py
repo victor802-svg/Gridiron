@@ -1320,6 +1320,32 @@ def market_words(sport: str, market: str) -> str:
     return words
 
 
+def fit_rows_words(sport: str, entries: list[dict]) -> str | None:
+    """How many training rows carried one factor in each market's active fit.
+
+    "point spread 1,703 of 2,632 · total 1,650 of 2,478" -- every count with
+    the fit's own row count beside it (LAW 4), one clause per market, because
+    a factor shared by three markets was fitted three times on three
+    different sets of rows (operator ruling 4, 2026-09-24: "the fit reports
+    each factor's rows used"). A factor the fit carried but could not fit
+    says so; a count taken while indoor games were filled says that too,
+    because those domes are among its rows without being readings.
+    """
+    parts = []
+    for e in entries:
+        words = market_words(sport, e["market"])
+        if e.get("rows") is None:
+            clause = f"{words}: rows not recorded by this fit"
+        else:
+            clause = f"{words} {int(e['rows']):,} of {int(e.get('n') or 0):,}"
+        if e.get("excluded"):
+            clause += ", not fitted"
+        if e.get("indoor_filled"):
+            clause += ", indoor games among them"
+        parts.append(clause)
+    return " · ".join(parts) if parts else None
+
+
 def retired_outlook_line(n: int, gate: int, day: str) -> str:
     """What a retired market's gate line says instead of a projection."""
     when = date_words_from_iso(day) or day

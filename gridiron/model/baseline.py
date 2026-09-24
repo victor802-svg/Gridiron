@@ -458,6 +458,13 @@ def train(
         if through_season is not None
         else f"seasons:{min(seasons)}-{max(seasons)}"
     )
+    # A FIT SAYS WHICH WEATHER RULE ITS ROWS WERE BUILT UNDER (operator ruling
+    # 4, 2026-09-24), the way it says which form produced it. Every row this
+    # fit saw went through `compute.assert_weather_was_read`, so no indoor
+    # game carried a weather value; a fit stored without the flag was trained
+    # while they did, and the Factors page says so beside its counts.
+    blob = fitted.to_json()
+    blob["indoor_weather"] = compute.INDOOR_WEATHER
     # WRITTEN INACTIVE (operator ruling 2, 2026-09-24). This INSERT is the
     # whole of training's effect on the record: the fit forecasts nothing
     # until `activation` writes a dated row naming it, carrying its holdout
@@ -473,7 +480,7 @@ def train(
             market_type,
             through,
             fitted.n,
-            json.dumps(fitted.to_json()),
+            json.dumps(blob),
             note,
         ),
     )
@@ -687,8 +694,10 @@ def predict(fit, fv: compute.FeatureVector, rung: float | None = None) -> dict:
         # model could not see; a factor merely absent from the contributions
         # list would be indistinguishable from one that contributed zero.
         "absent": list(fv.absent),
+        # WITH ITS REASON where the vector has one (2026-09-24): an indoor
+        # game's weather is absent because no weather reaches it.
         "absent_detail": {
-            name: fv.failed.get(name, "not measurable for this game")
+            name: compute.absent_reason(fv, name)
             for name in fv.absent
         },
     }

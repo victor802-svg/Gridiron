@@ -9986,6 +9986,274 @@ def plant_a_fit_reading_a_retired_factor() -> Result:
         f"factor's term would vanish from every forecast without a word")
 
 
+LAW_INDOOR_WEATHER = "ABSENT, NOT ZERO: AN INDOOR GAME CARRIES NO WEATHER"
+
+#: The weather factors the released code (ed5c07e) filled for an indoor game.
+_FILLED = ("wind", "cold", "precipitation")
+
+
+class _TheReleasedIndoorFill:
+    """Put back, for the length of a planting, exactly what ed5c07e did for
+    an indoor game (operator ruling 4, 2026-09-24, repaired it): the context
+    read wind 0.0 and rain 0.0 under a dome, and wind, cold and rain each
+    returned 0.0 whenever the game was indoors."""
+
+    def __enter__(self):
+        import dataclasses as _dc
+
+        from gridiron.factors import context as _context
+
+        self._context = _context
+        self._weather = _context._weather
+        self._saved = {n: registry.REGISTRY[n] for n in _FILLED}
+        real_weather = self._weather
+
+        def released_weather(conn, game):
+            if (game["roof"] or "").lower() in ("dome", "closed"):
+                return True, 0.0, None, 0.0, "indoors"
+            return real_weather(conn, game)
+
+        def released_wind(ctx):
+            if ctx.indoors:
+                return 0.0
+            return None if ctx.wind_mph is None else (ctx.wind_mph - 10.0) / 10.0
+
+        def released_cold(ctx):
+            if ctx.indoors:
+                return 0.0
+            return None if ctx.temp_f is None else (ctx.temp_f - 55.0) / 20.0
+
+        def released_precipitation(ctx):
+            if ctx.indoors:
+                return 0.0
+            return None if ctx.precip_pct is None else ctx.precip_pct / 100.0
+
+        _context._weather = released_weather
+        for name, fn in (("wind", released_wind), ("cold", released_cold),
+                         ("precipitation", released_precipitation)):
+            registry.REGISTRY[name] = _dc.replace(self._saved[name], fn=fn)
+        return self
+
+    def __exit__(self, *exc):
+        self._context._weather = self._weather
+        registry.REGISTRY.update(self._saved)
+        return False
+
+
+class _WithoutTheWeatherGuard:
+    """The escape half of each planting: the guard made a no-op, so the
+    planting shows the violation reaching the record when nothing stops it.
+    On a tree that predates the guard there is nothing to switch off."""
+
+    def __enter__(self):
+        self._real = getattr(compute, "assert_weather_was_read", None)
+        if self._real is not None:
+            compute.assert_weather_was_read = lambda ctx, fv: None
+        return self
+
+    def __exit__(self, *exc):
+        if self._real is not None:
+            compute.assert_weather_was_read = self._real
+        return False
+
+
+def _weather_refusal():
+    """The guard's named failure, or a class nothing raises on a tree that
+    predates it -- so this harness can be run against the released code and
+    report the escape rather than crash."""
+    return getattr(compute, "WeatherNotRead", None) or type(
+        "NothingRaisesThis", (Exception,), {})
+
+
+def _weather_on_rows(conn, week: int) -> int:
+    import json as _json
+
+    carried = 0
+    for (payload,) in conn.execute(
+            "SELECT p.factors_json FROM predictions p JOIN games g"
+            "    ON g.id = p.game_id WHERE g.week = ?", (week,)):
+        values = _json.loads(payload).get("values") or {}
+        carried += any(n in values for n in _FILLED)
+    return carried
+
+
+def plant_an_indoor_forecast_carrying_the_weather() -> Result:
+    """Put the released indoor fill back and forecast a slate of domes.
+
+    THE DEFECT THIS WAS WRITTEN FOR (operator ruling 4, 2026-09-24). Until
+    that day a dome read wind 0, cold 0 and rain 0 -- the same numbers as a
+    calm, mild, dry afternoon -- and every NFL forecast for an indoor game
+    stored them as measurements. The guard is `compute.assert_weather_was_read`,
+    inside the feature vector every forecast is built through.
+
+    ESCAPES WITHOUT THE GUARD, and the planting shows it: with the guard made
+    a no-op the slate is written and every row carries the weather.
+    """
+    guard = "compute.assert_weather_was_read"
+    violation = "a forecast for an indoor game carrying wind, cold and rain"
+    refused = _weather_refusal()
+    said, written, carried = None, None, 0
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "indoor_forecast.db")
+        week = 6
+        conn.execute(
+            "UPDATE game_conditions SET roof = 'dome' WHERE game_id IN"
+            " (SELECT id FROM games WHERE week = ?)", (week,))
+        conn.commit()
+        with _TheReleasedIndoorFill():
+            try:
+                written = run.run_slate(conn, "nfl", 2025, week, include_props=False,
+                                        use_llm=False, snapshot=False)["written"]
+            except refused as exc:
+                said = str(exc)
+            if said is None:
+                carried = _weather_on_rows(conn, week)
+                conn.close()
+                return Result(
+                    LAW_INDOOR_WEATHER, violation, guard, False,
+                    f"NOT CAUGHT - {written} forecasts were written for a week "
+                    f"of domes and {carried} of them carry the weather as if "
+                    f"it had been read")
+            with _WithoutTheWeatherGuard():
+                written = run.run_slate(conn, "nfl", 2025, week, include_props=False,
+                                        use_llm=False, snapshot=False)["written"]
+            carried = _weather_on_rows(conn, week)
+        conn.close()
+    if "INDOOR" in said and written and carried == written:
+        return Result(LAW_INDOOR_WEATHER, violation, guard, True,
+                      said.split(". ")[0] + f" -- unguarded, {written} rows were "
+                      f"written and all {carried} carry the weather")
+    return Result(LAW_INDOOR_WEATHER, violation, guard, False,
+                  f"NOT CAUGHT - refused with {said!r}, but unguarded {written} "
+                  f"rows were written and {carried} carry the weather, so the "
+                  f"planting did not show the escape it guards")
+
+
+def plant_an_indoor_training_row_carrying_the_weather() -> Result:
+    """Put the released indoor fill back and train on a season with domes.
+
+    THE SAME DEFECT ON THE TRAINING SIDE: 760 of the NFL spread's 2,632
+    training rows (2016-2025) were domes filled with 0.0, and precipitation's
+    only values in the whole set were those domes. Training builds its rows
+    through the same feature vector as a forecast, so the same guard refuses.
+
+    ESCAPES WITHOUT THE GUARD: the fit is written, and it counts every dome
+    among the rows that carried the weather.
+    """
+    import json as _json
+
+    guard = "compute.assert_weather_was_read"
+    violation = "a training row for an indoor game carrying the weather"
+    refused = _weather_refusal()
+    said, counted, domes = None, None, 0
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "indoor_training.db")
+        conn.execute(
+            "UPDATE game_conditions SET roof = 'dome' WHERE game_id IN"
+            " (SELECT id FROM games WHERE week <= 4)")
+        conn.commit()
+        domes = conn.execute(
+            "SELECT COUNT(*) FROM games g JOIN game_conditions c ON c.game_id = g.id"
+            " WHERE c.roof = 'dome' AND g.status = 'final'").fetchone()[0]
+        with _TheReleasedIndoorFill():
+            try:
+                baseline.train(conn, "spread", (2025,), sport="nfl", l2=1.0,
+                               note="planted: the released indoor fill")
+            except refused as exc:
+                said = str(exc)
+            if said is None:
+                blob = _json.loads(conn.execute(
+                    "SELECT coefficients_json FROM model_fits ORDER BY id DESC"
+                    " LIMIT 1").fetchone()[0])
+                conn.close()
+                return Result(
+                    LAW_INDOOR_WEATHER, violation, guard, False,
+                    f"NOT CAUGHT - the fit was written, and it reports the wind "
+                    f"on {(blob.get('constant') or {}).get('wind', (blob.get('presence') or {}).get('wind'))} "
+                    f"rows, every one of them a dome")
+            with _WithoutTheWeatherGuard():
+                baseline.train(conn, "spread", (2025,), sport="nfl", l2=1.0,
+                               note="planted, unguarded")
+            blob = _json.loads(conn.execute(
+                "SELECT coefficients_json FROM model_fits ORDER BY id DESC"
+                " LIMIT 1").fetchone()[0])
+            counted = ((blob.get("constant") or {}).get("wind")
+                       or (blob.get("presence") or {}).get("wind"))
+        conn.close()
+    if "INDOOR" in said and domes and counted is not None and counted <= domes and counted > 0:
+        return Result(LAW_INDOOR_WEATHER, violation, guard, True,
+                      said.split(". ")[0] + f" -- unguarded, the fit counts "
+                      f"{counted} dome rows as rows that carried the wind")
+    return Result(LAW_INDOOR_WEATHER, violation, guard, False,
+                  f"NOT CAUGHT - refused with {said!r}; unguarded the fit counted "
+                  f"{counted} rows of the wind over {domes} domes, so the planting "
+                  f"did not show the escape it guards")
+
+
+def plant_a_training_row_with_no_weather_carrying_precipitation() -> Result:
+    """The fs5 brief's planting, word for word: "a training row with no
+    weather can't carry a precipitation value" (2026-09-24).
+
+    Planted as the fallback v2 removed and the domes kept: precipitation
+    gives 0.0 when no reading exists. Every game in the harness season is
+    outdoors and none has a forecast or an observation, so every training row
+    is a row with no weather.
+
+    ESCAPES WITHOUT THE GUARD: the fit is written, and it reports the rain
+    on every row it trained on -- confirmed dry weather, nowhere measured.
+    """
+    import dataclasses as _dc
+    import json as _json
+
+    guard = "compute.assert_weather_was_read"
+    violation = "a training row with no weather carrying a precipitation value"
+    refused = _weather_refusal()
+    saved = registry.REGISTRY["precipitation"]
+    said, counted, rows = None, None, 0
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "no_weather.db")
+        rows = conn.execute(
+            "SELECT n_train FROM model_fits ORDER BY id DESC LIMIT 1").fetchone()[0]
+        try:
+            registry.REGISTRY["precipitation"] = _dc.replace(
+                saved, fn=lambda ctx: 0.0 if ctx.precip_pct is None
+                else ctx.precip_pct / 100.0)
+            try:
+                baseline.train(conn, "spread", (2025,), sport="nfl", l2=1.0,
+                               note="planted: dry weather nobody read")
+            except refused as exc:
+                said = str(exc)
+            if said is None:
+                blob = _json.loads(conn.execute(
+                    "SELECT coefficients_json FROM model_fits ORDER BY id DESC"
+                    " LIMIT 1").fetchone()[0])
+                conn.close()
+                return Result(
+                    LAW_INDOOR_WEATHER, violation, guard, False,
+                    f"NOT CAUGHT - the fit was written and reports the rain on "
+                    f"{(blob.get('constant') or {}).get('precipitation')} of "
+                    f"{rows} rows, none of which read any weather")
+            with _WithoutTheWeatherGuard():
+                baseline.train(conn, "spread", (2025,), sport="nfl", l2=1.0,
+                               note="planted, unguarded")
+            blob = _json.loads(conn.execute(
+                "SELECT coefficients_json FROM model_fits ORDER BY id DESC"
+                " LIMIT 1").fetchone()[0])
+            counted = (blob.get("constant") or {}).get("precipitation")
+        finally:
+            registry.REGISTRY["precipitation"] = saved
+        conn.close()
+    if ("NEVER READ" in said and "precipitation" in said and rows
+            and counted == rows):
+        return Result(LAW_INDOOR_WEATHER, violation, guard, True,
+                      said.split(". ")[0] + f" -- unguarded, the fit reports "
+                      f"the rain on all {counted} of {rows} rows")
+    return Result(LAW_INDOOR_WEATHER, violation, guard, False,
+                  f"NOT CAUGHT - refused with {said!r}; unguarded the fit counted "
+                  f"the rain on {counted} of {rows} rows, so the planting did not "
+                  f"show the escape it guards")
+
+
 LAW_BROWSER_PARSES = "THE BROWSER FILES PARSE"
 
 
@@ -10332,6 +10600,11 @@ def main() -> int:
     results.append(plant_a_page_forecast_from_a_fit_that_is_not_active())
     results.append(plant_a_revert_activating_the_wrong_fit())
     results.append(plant_a_fit_reading_a_retired_factor())
+    # ABSENT, NOT ZERO: AN INDOOR GAME CARRIES NO WEATHER (operator ruling
+    # 4, 2026-09-24, and the fs5 brief's planting of the same morning).
+    results.append(plant_an_indoor_forecast_carrying_the_weather())
+    results.append(plant_an_indoor_training_row_carrying_the_weather())
+    results.append(plant_a_training_row_with_no_weather_carrying_precipitation())
     results.append(plant_a_proposed_combo_from_one_game())
     results.append(plant_a_proposed_combo_across_sports())
     results.append(plant_a_proposed_combo_with_a_leg_that_does_not_clear())
