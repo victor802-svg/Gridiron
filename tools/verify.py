@@ -450,6 +450,11 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
         print(f"target: {season} week {week} (the most recent completed regular-season week)")
 
         started = time.time()
+        # THIS PIPELINE TRAINS ITS OWN FITS, strictly before the season it
+        # predicts, on a scratch copy. A hold (config.HELD_MARKETS) is about
+        # the LIVE record's fits and does not bind a scratch pipeline.
+        from gridiron import config as _config
+        _config.HELD_MARKETS = {}
         fits = baseline.train_all(
             conn, tuple(range(2016, season)),
             note=f"verification fit, strictly before {season}",

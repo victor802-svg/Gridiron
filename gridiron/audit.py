@@ -6075,10 +6075,21 @@ def freshness_faults(payload) -> list[str]:
         if past and not entry.get("stale"):
             faults.append(f"freshness: {entry.get('job')} is {age}h old against "
                           f"a {limit}h threshold and is not marked stale")
-        if entry.get("stale") and "past" not in (entry.get("words") or "") \
-                and "never" not in (entry.get("words") or ""):
+        words = entry.get("words") or ""
+        if entry.get("stale") and not any(w in words for w in ("past", "never", "held")):
             faults.append(f"freshness: {entry.get('job')} is stale and its words "
                           f"do not say so")
+    # A HELD MARKET IS ON THE STRIP, BY NAME (ruling 2026-09-24).
+    from . import language as _language
+
+    shown = [e for e in block.get("entries") or []
+             if e.get("job") == "held" and e.get("stale")]
+    for hold in block.get("held") or []:
+        name = _language.market_words(hold.get("sport", ""), hold.get("market", ""))
+        if not any(e.get("sport") == hold.get("sport")
+                   and name in (e.get("words") or "") for e in shown):
+            faults.append(f"freshness: {hold.get('sport')} {name} is held and "
+                          f"the strip does not say so")
     return faults
 
 

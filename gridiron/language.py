@@ -4195,6 +4195,15 @@ def taken_packages_line(took: int, offered: int, gate: int) -> str:
             f"line and never mixed with single legs.")
 
 
+def held_line_words(sport: str, markets: list[str], reason: str) -> str:
+    """The day strip's line for markets held back from forecasting."""
+    names = [market_words(sport, m) for m in markets]
+    joined = names[0] if len(names) == 1 else (
+        ", ".join(names[:-1]) + " and " + names[-1])
+    return (f"{SPORT_LABELS.get(sport, sport.upper())} {joined} held, not "
+            f"forecast and not shown: {reason}")
+
+
 def freshness_words(label: str, age_hours: float | None, limit: float) -> str:
     """"daily run 7h ago", or "venue read 31h ago, past 30h", marked stale.
 

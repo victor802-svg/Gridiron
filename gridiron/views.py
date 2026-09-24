@@ -403,6 +403,16 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     if wk is None:
         wk = repo.next_unplayed_week(conn, season, sport=sport)
 
+    # A HELD MARKET IS NOT SHOWN (ruling 2026-09-24), including forecasts
+    # written before the hold: the logon catch-up of 24 September wrote NFL and
+    # NCAAF spread and moneyline from the fits the hold exists to check,
+    # minutes before the ruling arrived, and four of them became
+    # recommendations. They stand in the record (LAW 3); the page does not
+    # stand behind them.
+    held_types = sorted(m for (s_, m) in config.HELD_MARKETS if s_ == sport)
+    held_sql = ("   AND p.market_type NOT IN (%s)"
+                % ",".join("?" for _ in held_types)) if held_types else ""
+
     def fetch(s: int, w: int | None):
         """The slate's forecasts. VOIDED ROWS ARE NOT FORECASTS.
 
@@ -429,6 +439,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
             "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
             "                   WHERE v.prediction_id = p.id)"
+            + held_sql
             # ONE ROW PER QUESTION ON THE PICKS LIST (2026-09-03).
             #
             # The final pass writes a second forecast of every question, so
@@ -454,7 +465,7 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                "                     AND later.created_utc > p.created_utc"
                "                     AND later.created_utc <= g.kickoff_utc)")
             + " ORDER BY p.id",
-            (sport, s, w),
+            (sport, s, w, *held_types),
         ).fetchall()
 
     rows = fetch(season, wk)
@@ -581,8 +592,8 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
         " WHERE p.sport = ? AND g.season = ? AND g.week = ? AND p.predictor = ?"
         "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
-        "                   WHERE v.prediction_id = p.id)",
-        (sport, season, wk, chosen),
+        "                   WHERE v.prediction_id = p.id)" + held_sql,
+        (sport, season, wk, chosen, *held_types),
     ).fetchone()[0]
     superseded = max(0, on_slate - len(standing))
     rows = sorted(standing.values(), key=lambda r: r["id"])
@@ -4319,9 +4330,35 @@ def freshness(conn: sqlite3.Connection) -> dict:
             "stale": stale,
             "words": language.freshness_words(label, age, limit),
         })
+    # A HELD MARKET IS SAID ON THE FIRST SCREEN (ruling 2026-09-24): a day
+    # without its forecasts is only harmless if the reader knows why. Listed
+    # for a sport the record has forecast; a sport never forecast is not
+    # waiting for anything.
+    held: list[dict] = []
+    for sport in config.SPORTS:
+        markets = [m for (s, m) in config.HELD_MARKETS if s == sport]
+        if not markets or not conn.execute(
+                "SELECT 1 FROM predictions WHERE sport = ? LIMIT 1",
+                (sport,)).fetchone():
+            continue
+        held.extend({"sport": sport, "market": m, **config.HELD_MARKETS[(sport, m)]}
+                    for m in markets)
+        entries.append({
+            "job": "held",
+            "label": f"{config.SPORT_LABELS.get(sport, sport)} markets held",
+            "sport": sport,
+            "markets": markets,
+            "last_utc": None,
+            "age_hours": None,
+            "limit_hours": None,
+            "stale": True,
+            "words": language.held_line_words(
+                sport, markets, config.HELD_MARKETS[(sport, markets[0])]["reason"]),
+        })
     return {
         "declared": config.FRESHNESS_DECLARED,
         "entries": entries,
+        "held": held,
         "any_stale": any(e["stale"] for e in entries),
     }
 

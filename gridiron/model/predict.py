@@ -310,6 +310,12 @@ def predict_slate(
     # in the sport's own question door, so a sport that forgets is still held.
     for q in questions.without_retired(
             adapter.slate_questions(conn, season, week, include_props=include_props)):
+        # A HELD MARKET IS NOT ASKED (ruling 2026-09-24), by either forecaster,
+        # and the run says so. Unlike a retired market this is a gap, so it is
+        # counted where the Health panel can see it.
+        if config.held_market(sport, q.market_type):
+            run.skipped.append(f"{q.game_id} {q.market_key}: held, not forecast")
+            continue
         if live:
             kickoff = conn.execute(
                 "SELECT kickoff_utc, status FROM games WHERE id = ?", (q.game_id,)

@@ -7321,6 +7321,91 @@ def plant_another_groups_heading_on_the_live_tab() -> Result:
                   "which is what the clears group's rule and its SOLID chip "
                   "were doing over an empty Live tab")
 
+LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
+
+
+def plant_a_held_market_that_is_forecast_anyway() -> Result:
+    """Hold the NFL spread and run the slate anyway (ruling 2026-09-24).
+
+    The hold exists so a fit nobody has checked cannot publish. A run that
+    wrote the market regardless, or a first screen that said nothing about
+    why a market was missing, would each undo it.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit, config as _config, run as _run
+    from gridiron import views as _views
+
+    saved = dict(_config.HELD_MARKETS)
+    written, strip_ok, detail = None, False, ""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "held.db")
+        db.set_meta(conn, "kind", "backtest")
+        try:
+            _config.HELD_MARKETS = {("nfl", "spread"): {
+                "held": "2026-09-24", "reason": _config.HELD_REASON}}
+            _run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                           use_llm=False, snapshot=False)
+            written = conn.execute(
+                "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
+                " WHERE g.week = 6 AND p.market_type = 'spread'").fetchone()[0]
+            # the strip lists a hold for a sport the record has forecast
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+                " factor_set_version, factors_json, reasoning) VALUES"
+                " ('2025-01-01T00:00:00Z', 'nfl', (SELECT MIN(id) FROM games),"
+                " 'total', 'x', 44.5, 0.6, 'over', 'statistical', 'final', 'fs2',"
+                " '{}', 'x')")
+            block = _views.freshness(conn)
+            try:
+                _audit.check_the_strip_shows_a_dead_job({"freshness": block})
+                strip_ok = any(e.get("job") == "held" and "spread" in (e.get("words") or "")
+                               for e in block["entries"])
+            except _audit.LawViolation as exc:
+                detail = str(exc)
+        finally:
+            _config.HELD_MARKETS = saved
+            conn.close()
+
+    if written == 0 and strip_ok:
+        return Result(LAW_HELD, "run a held market's slate anyway",
+                      "predict.predict_slate + views.freshness", True,
+                      "the held spread was not forecast, and the strip said so")
+    return Result(LAW_HELD, "run a held market's slate anyway",
+                  "predict.predict_slate + views.freshness", False,
+                  f"NOT CAUGHT - {written} held spread forecasts were written"
+                  + ("" if strip_ok else "; the first screen said nothing")
+                  + (f" ({detail})" if detail else ""))
+
+
+def plant_a_held_market_the_strip_leaves_off() -> Result:
+    """Three fresh ages, and a held market nobody is told about."""
+    from gridiron import audit as _audit
+
+    planted = {"freshness": {
+        "entries": [
+            {"job": "daily_run", "age_hours": 2.0, "limit_hours": 36.0,
+             "stale": False, "words": "daily run 2h ago"},
+            {"job": "venue_read", "age_hours": 1.0, "limit_hours": 30.0,
+             "stale": False, "words": "venue read 1h ago"},
+            {"job": "reasoning", "age_hours": 3.0, "limit_hours": 36.0,
+             "stale": False, "words": "reasoning pass 3h ago"},
+        ],
+        "held": [{"sport": "nfl", "market": "moneyline", "held": "2026-09-24",
+                  "reason": "checked before it publishes"}],
+    }}
+    try:
+        _audit.check_the_strip_shows_a_dead_job(planted)
+    except _audit.LawViolation as exc:
+        return Result(LAW_HELD, "a held market left off the first screen",
+                      "audit.check_the_strip_shows_a_dead_job", True, str(exc))
+    return Result(LAW_HELD, "a held market left off the first screen",
+                  "audit.check_the_strip_shows_a_dead_job", False,
+                  "NOT CAUGHT - the NFL moneyline is held and the first screen "
+                  "shows three fresh ages and nothing else")
+
+
 def plant_a_dead_job_the_strip_calls_fresh() -> Result:
     """A job past its threshold, marked fresh on the strip (NIGHT_AUDIT 1)."""
     from gridiron import audit as _audit, config as _config
@@ -8982,6 +9067,10 @@ def main() -> int:
     # live record something use `db.read_the_live_record`, which SQLite itself
     # will not let them write through.
     os.environ.setdefault("GRIDIRON_VERIFYING", "tools/guards/plant.py")
+    # EVERY PLANTING TRAINS ITS OWN FITS on a scratch database; a hold is about
+    # the live record's (ruling 2026-09-24). The hold's own plantings set it.
+    from gridiron import config as _config
+    _config.HELD_MARKETS = {}
 
     results: list[Result] = []
     results.append(plant_market_import_in_prediction_path())
@@ -9150,6 +9239,8 @@ def main() -> int:
     results.append(plant_an_absence_with_no_evidence())
     results.append(plant_a_syntax_error_in_the_browser())
     results.append(plant_a_claim_priced_off_the_opening_read())
+    results.append(plant_a_held_market_that_is_forecast_anyway())
+    results.append(plant_a_held_market_the_strip_leaves_off())
     results.append(plant_a_close_read_from_the_first_of_two_reads())
     results.append(plant_a_close_that_cites_its_own_pricing_read())
     results.append(plant_a_proposed_combo_from_one_game())

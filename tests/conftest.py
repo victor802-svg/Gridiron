@@ -813,6 +813,21 @@ def _is_loopback(host) -> bool:
     return str(host) in _LOOPBACK
 
 
+# A HOLD IS ABOUT THE LIVE RECORD'S FITS (ruling 2026-09-24), and every test
+# world trains its own. Cleared for the WHOLE SESSION here, not only per test:
+# the browser suite builds one world per session, before any function-scoped
+# fixture runs, and the first gate after the hold landed failed two browser
+# tests on exactly that -- a shared world with no NFL spread in it.
+config.HELD_MARKETS = {}
+
+
+@pytest.fixture(autouse=True)
+def _no_holds(monkeypatch):
+    """A HOLD IS ABOUT THE LIVE RECORD'S FITS (ruling 2026-09-24), and every
+    test trains its own. A test of the hold sets the one it means."""
+    monkeypatch.setattr(config, "HELD_MARKETS", {})
+
+
 @pytest.fixture(autouse=True)
 def _no_network(request, monkeypatch):
     """Shut the network for every test that has not declared it needs it."""

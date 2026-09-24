@@ -445,6 +445,38 @@ def active_markets(sport: str) -> tuple[str, ...]:
                  if (sport, m) not in RETIRED_MARKETS)
 
 
+#: MARKETS HELD, NOT RETIRED (operator ruling 2026-09-24, "fs5 before it
+#: publishes", part 3). A held market is NOT FORECAST while it is listed here,
+#: the run records why, and the day strip carries a line saying so. Held is
+#: not retired: a retired market is over; a held one is waiting for a check
+#: and comes back when it passes.
+#:
+#: WHY THESE FOUR. Fits 91-94, the first fs5 fits on the live record
+#: (2026-09-24 05:16Z), may not publish until the precipitation fill in their
+#: training rows is repaired and retrained, and each fit beats the set it
+#: replaced on the 2025 season it was not fitted on. The operator's words: a
+#: day of forecasts missed costs nothing; a day from an unsound fit costs the
+#: clean window. Lifted by the commit that ships a fit that passed, or by the
+#: revert to the last trained set.
+#:
+#: ABOUT THE LIVE RECORD'S FITS, NOT ANY OTHER DATABASE'S: the test suite, the
+#: planting harness and the gate's scratch pipeline each train their own fits,
+#: and each clears this for its own run.
+HELD_REASON = ("its new model is being checked against last season, which "
+               "it was not fitted on, before it publishes")
+HELD_MARKETS: dict[tuple[str, str], dict] = {
+    ("nfl", "spread"): {"held": "2026-09-24", "reason": HELD_REASON},
+    ("nfl", "moneyline"): {"held": "2026-09-24", "reason": HELD_REASON},
+    ("cfb", "spread"): {"held": "2026-09-24", "reason": HELD_REASON},
+    ("cfb", "moneyline"): {"held": "2026-09-24", "reason": HELD_REASON},
+}
+
+
+def held_market(sport: str, market: str) -> dict | None:
+    """The hold on (sport, market), or None while it is forecast."""
+    return HELD_MARKETS.get((sport, market))
+
+
 def active_prop_markets(sport: str) -> tuple[str, ...]:
     """The prop markets still asked, in the order the day's cap fills them."""
     return tuple(m for m in SPORT_PROP_MARKETS.get(sport, ())
