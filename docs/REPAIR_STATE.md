@@ -1,13 +1,18 @@
 # GRIDIRON_REPAIR — state for the next session
 
-## READ THIS BLOCK FIRST (updated 2026-09-24 ~13:10Z, overnight run)
+## READ THIS BLOCK FIRST (updated 2026-09-24 ~14:30Z, overnight run)
 
-- **Released and serving: 4c3bda4** (`/api/health` = 4c3bda439bee), on main
-  and pushed: **the fs5 revert** (repair 2d), after ff7e5ab **the activation
-  gate** (repair 2c). Gates: 4/4 each; 275/275 then 278/278 plantings; live
-  record as found each time. (The revert's first gate failed on the package
-  side-in-prose scan -- its new audit message quoted a raw subject -- fixed
-  and rerun green.)
+- **Released and serving: fddd61b** (`/api/health` = fddd61b8d635), on main
+  and pushed: **weather** (repair 2e), after 4c3bda4 **the fs5 revert**
+  (repair 2d) and ff7e5ab **the activation gate** (repair 2c). Gates: 4/4
+  each; 275, 278, then 281 plantings, all caught; live record as found each
+  time. (The revert's first gate failed on the package side-in-prose scan --
+  its new audit message quoted a raw subject -- fixed and rerun green.)
+- **Weather (2e):** an indoor game carries no wind, cold or rain value in
+  any sport; the Factors page reads rows used from each market's active
+  fit. The 2025 holdout refit moved no coefficient and no score in any of
+  the 8 weather-bearing markets (FOLLOWUPS, "Weather: an indoor game
+  carries no value"). Question 3 below.
 - **On the live record since the releases:** 24 `incumbent` activations by
   the bootstrap at 11:28:31Z, one per market in use; then activations 25-28
   at 13:00:01Z, the revert: NFL spread fit 88 (fs3), NFL moneyline fit 71
@@ -25,9 +30,8 @@
   1. ~~Activation gate~~ -- released ff7e5ab.
   2. ~~Revert~~ -- released 4c3bda4; the day-strip confirmation waits for the
      15:00Z pass.
-  3. **Weather** (in progress): precipitation, wind and cold carry no value indoors; report
-     coefficients before and after on the holdout.
-  4. The reasoning-pass prompt record.
+  3. ~~Weather~~ -- released fddd61b.
+  4. **The reasoning-pass prompt record** (in progress).
   5. Schema rulings (below, in the order the brief gives).
   6. Repair items 3-8.
 - **The schema rulings, as queued before the overnight reorder** (their
