@@ -66,3 +66,77 @@ checked against the brief rather than written from memory.
 
 ## Running log
 
+### Checkpoint 1 — `38df569` (layout, Games, expansion, Props, rail, signals, tooltips)
+
+Built and pushed to `board` and `claude/jolly-tesla-7ue0v7`. Everything the
+brief lists under LAYOUT, GAMES PAGE, PROPS PAGE and SIGNALS is on the page;
+what follows is what was measured and what is still open.
+
+**Verified so far**
+- Every renderer scanner passes on the new `app.js`: duplicate definitions,
+  dead selectors, composed prose, the render guard, the live update, the
+  in-place toggle, countdown, resolved rows, nav, control rows, live poll.
+- Every stylesheet scanner passes: motion vocabulary, price animation, frame
+  truncation, hidden rule, live mark, transforms, and the AMENDED colour law
+  with zero faults after the sweep (23 before it).
+- The board's own guards pass on the fixture world: no signal without a
+  badge, no typed club hex, no live row with a price, no internal word or
+  pressure word on a row, a tile or a tooltip.
+- Ten new plantings caught, plus every existing web planting re-run
+  individually and caught (the two that anchored on the old markup were
+  re-pointed). `tools/guards/plant.py` as a whole cannot run here: several
+  plantings read the operator's live record and the harness stops at the
+  first `unable to open database file`. Same for `tools/verify.py` steps 2-4.
+- `tools/contrast.py`: every pair meets AA, including ink on the two solid
+  fills (9.60:1 and 6.81:1).
+- Server-side test files touched by the board pass (`test_card_face`,
+  `test_three_states`, `test_night_audit`, `test_today`, `test_laws`,
+  `test_audit_surfaces`, `test_voids`, `test_health_words`, `test_yesterday`,
+  `test_combos`, `test_recommend`, `test_guards` except the rows below).
+
+**Failing here and not the board's** (they fail on `origin/master` in this
+container the same way): every test that opens the live record
+(`test_the_package_holds_no_venue_credential`,
+`test_every_verified_run_line_in_the_record_agrees_with_its_price`,
+`test_superseded_forecasts_are_not_in_the_arithmetic`,
+`test_a_factor_set_query_still_returns_its_own_rows`,
+`test_the_planted_violation_harness_catches_everything`), and
+`test_the_csrf_token_is_bound_to_the_session`, which passes only when an
+earlier browser fixture has exported the token variable — an ordering
+dependence that predates tonight and is listed for the morning.
+
+**Where the old Picks page's pieces went** (the brief's list):
+
+| element | now |
+|---|---|
+| `#/week` (Picks), `#/live`, `#/today`, `#/picks` | redirect to `#/games` |
+| the Upcoming / Live state tabs | gone; a row's state is on the row (LIVE mark, FINAL mark) |
+| the market tabs above the cards | gone (no control above the first game); the Market select beneath the rows narrows every row, and the Props chips carry the per-family counts |
+| Clears the bar / Watching group headings and chips | gone; the green outline on a row's pick IS "clears the bar", the day strip counts them |
+| the CARD_FACE card (`todayCard`) | the game row's pick block and the question tiles behind it |
+| the price row (Model / Pays boxes), the edge line | probability, price and payout beneath the pick; the edge in the tile's `edge_words`; the signal's meaning in its tooltip |
+| the tier chip | gone from the board; the record badge "12/100" is the count on every row and tile; `.tier` still renders on Results |
+| "I took this" | the checkmark button on every upcoming tile (`picks_taken`, unchanged) |
+| Yours badge | YOURS on the row |
+| the Why body: numbers line, reasons, link to the workings | the numbers line is the probability's tooltip, the reasons are the pick's tooltip, the link sits at the foot of the expanded row |
+| the flagged-method note | on the pick block's face and on the tile (operator ruling 2, 2026-09-04, kept) |
+| the form line, starter, weather | not on the board (the brief's row has no context line); the data still travels on `cards[]` |
+| the day strip (where / counts / note / fee) | top of Games, unchanged |
+| the pulse (three ages, held markets) | the header, on every page |
+| the Combos group | beneath the rows on Games, unchanged |
+| Taken today rail | beneath the rows on Games, shown when it has entries |
+| the yesterday strip, the week picker | beneath the rows on Games |
+| the settled cards on Results | the same question tile, filled with its verdict |
+| the greeting | above the day strip on Games |
+
+**Tests retired rather than re-homed** (each with its reason, none loosened):
+the STRONG-by-default block in `tests/test_cards.py` (eight tests reading
+`#week-tier-seg` and `#week-counts`, controls THREE_STATES removed on
+2026-09-08; they had passed by skipping since), and the three skipped
+"RE-POINT NEEDED" tests in `test_smoke.py` stay skipped as they were.
+
+**Open after this checkpoint**: the browser suites are being re-run against
+the re-homed selectors; the jersey's nameplate needs polish; the empty states
+and the live and final rows need their screenshots; the log's close-out
+table.
+

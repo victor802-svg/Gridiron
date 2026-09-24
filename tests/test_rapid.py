@@ -94,59 +94,79 @@ def test_a_slower_earlier_slate_does_not_take_the_page(page):
     _select(page, full)
 
 
-def test_two_tabs_in_quick_succession_leave_the_second_one(page):
+def _open_props(page):
+    """RE-HOMED 2026-09-24 (GRIDIRON_BOARD): the market tabs went with the
+    old Picks page; the Props chips are the rapid-click control now."""
+    page.evaluate("location.hash = '#/props'")
+    page.wait_for_selector("#props-chips .chip-btn", timeout=15000)
+    page.wait_for_timeout(300)
+
+
+def _tiles_by_id(page, sport):
+    return page.evaluate(
+        f"fetch('/api/week?sport={sport}').then(r => r.json()).then(j => "
+        "Object.fromEntries(j.board.props.tiles.map(t => [String(t.prediction_id), t.family])))")
+
+
+def test_two_chips_in_quick_succession_leave_the_second_one(page):
     _open_week(page)
     full, _ = _full_and_empty(page)
     _select(page, full)
-    tabs = page.evaluate("[...document.querySelectorAll('.market-tab')].map(b => b.dataset.market)")
-    assert len(tabs) >= 3, tabs
-    first, second = tabs[1], tabs[2]
+    _open_props(page)
+    keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
+    families = [k for k in keys if k and k != "alt"]
+    assert len(families) >= 2, keys
+    first, second = families[0], families[1]
     page.evaluate(f"""() => {{
-        document.querySelector(".market-tab[data-market='{first}']").click();
-        setTimeout(() => document.querySelector(".market-tab[data-market='{second}']").click(), 60);
+        document.querySelector("#props-chips .chip-btn[data-key='{first}']").click();
+        setTimeout(() => document.querySelector("#props-chips .chip-btn[data-key='{second}']").click(), 60);
     }}""")
     page.wait_for_timeout(2500)
-    assert page.evaluate("(document.querySelector('.market-tab[aria-pressed=\"true\"]') || {dataset: {}}).dataset.market") == second
-    by_id = page.evaluate(f"fetch('/api/week?sport={full}').then(r => r.json()).then(j => Object.fromEntries(j.cards.map(c => [String(c.prediction_id), c.market])))")
-    shown = page.evaluate("[...document.querySelectorAll('#games-rows .game')].map(c => c.dataset.id)")
+    assert page.evaluate("(document.querySelector('#props-chips .chip-btn[aria-pressed=\"true\"]') || {dataset: {}}).dataset.key") == second
+    by_id = _tiles_by_id(page, full)
+    shown = page.evaluate("[...document.querySelectorAll('#props-tiles .prop')].map(c => c.dataset.id)")
     wrong = [i for i in shown if by_id.get(i) != second]
-    assert not wrong, f"cards from another tab are on the page: {wrong[:5]}"
-    page.click(".market-tab[data-market='']")
+    assert not wrong, f"tiles from another chip are on the page: {wrong[:5]}"
+    page.click("#props-chips .chip-btn[data-key='']")
     page.wait_for_timeout(400)
 
 
-def test_a_double_clicked_tab_renders_each_pick_once(page):
+def test_a_double_clicked_chip_renders_each_tile_once(page):
     _open_week(page)
     full, _ = _full_and_empty(page)
     _select(page, full)
-    tabs = page.evaluate("[...document.querySelectorAll('.market-tab')].map(b => b.dataset.market)")
-    page.dblclick(f".market-tab[data-market='{tabs[1]}']")
+    _open_props(page)
+    keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
+    family = next(k for k in keys if k and k != "alt")
+    page.dblclick(f"#props-chips .chip-btn[data-key='{family}']")
     page.wait_for_timeout(1500)
-    ids = page.evaluate("[...document.querySelectorAll('#games-rows .game')].map(c => c.dataset.id)")
-    assert len(ids) == len(set(ids)), "a pick is on the page twice"
-    page.click(".market-tab[data-market='']")
+    ids = page.evaluate("[...document.querySelectorAll('#props-tiles .prop')].map(c => c.dataset.id)")
+    assert len(ids) == len(set(ids)), "a tile is on the page twice"
+    page.click("#props-chips .chip-btn[data-key='']")
     page.wait_for_timeout(400)
 
 
 # `test_escape_closes_the_menu_after_a_choice_and_focus_stays_on_it` was
 # retired with the View menu on 2026-09-08. What it protected -- that a
-# control returns focus to the thing that opened it -- is carried by the state
-# tabs and the Why buttons, which are ordinary buttons with focus rings and no
-# panel to close.
+# control returns focus to the thing that opened it -- is carried by the
+# menu button, the row heads and the chips, which are ordinary buttons with
+# focus rings.
 
 def test_offline_says_so_in_words_and_a_later_success_clears_it(page):
-    """Go offline, tap a tab, come back, tap again. The box says the server's
+    """Go offline, tap a chip, come back, tap again. The box says the server's
     sentence -- not "Failed to fetch" -- and clears when the next tap lands."""
     _open_week(page)
     full, _ = _full_and_empty(page)
     _select(page, full)
+    _open_props(page)
     line = page.evaluate("window.Gridiron.state.meta.unreachable_line")
     assert line and "Failed to fetch" not in line
-    tabs = page.evaluate("[...document.querySelectorAll('.market-tab')].map(b => b.dataset.market)")
+    keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
+    family = next(k for k in keys if k and k != "alt")
     page.context.set_offline(True)
     try:
         page.evaluate("window.dispatchEvent(new Event('offline'))")
-        page.evaluate(f"document.querySelector(\".market-tab[data-market='{tabs[1]}']\").click()")
+        page.evaluate(f"document.querySelector(\"#props-chips .chip-btn[data-key='{family}']\").click()")
         page.wait_for_timeout(1500)
         assert page.is_visible("#offline-bar")
         assert page.evaluate("document.getElementById('error').hidden") is False
@@ -156,7 +176,7 @@ def test_offline_says_so_in_words_and_a_later_success_clears_it(page):
         page.context.set_offline(False)
     page.evaluate("window.dispatchEvent(new Event('online'))")
     with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
-        page.evaluate(f"document.querySelector(\".market-tab[data-market='{tabs[0]}']\").click()")
+        page.evaluate("document.querySelector(\"#props-chips .chip-btn[data-key='']\").click()")
     page.wait_for_timeout(600)
     assert page.evaluate("document.getElementById('error').hidden") is True, "the error survived the next success"
     assert not page.is_visible("#offline-bar")

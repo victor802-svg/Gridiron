@@ -4485,11 +4485,6 @@ def alt_lines_empty_words() -> str:
             "there is nothing here to rank.")
 
 
-def chip_words(family: str | None, sport: str) -> str:
-    """A filter chip's label: the market in words, never its key."""
-    return market_words(sport, family) if family else "All"
-
-
 def entry_words() -> dict:
     """The entry rail's fixed sentences."""
     return {

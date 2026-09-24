@@ -1123,13 +1123,15 @@ def test_the_result_reads_as_a_word_not_as_open(page):
 # where they still are.
 
 def test_the_greeting_is_on_the_home_tab_only(page):
-    """One page greets; every page warns."""
-    _open_route(page, "#/record")
+    """One page greets; every page warns. GAMES IS THE HOME TAB since
+    GRIDIRON_BOARD (2026-09-24): the first screen is the one that answers
+    "what happened while I was away"."""
+    _open_route(page, "#/games")
     assert page.locator("#glance").is_visible(), "the home tab does not greet"
 
     # NOT the home tab -- that is the page that greets. This list is every
-    # OTHER page, and it shrank to two when the seven pages became four.
-    for route in ("#/results", "#/settings"):
+    # OTHER page.
+    for route in ("#/props", "#/record", "#/results", "#/settings"):
         _open_route(page, route)
         # K2 old -> new: the greeting and the notices are ONE strip now, and
         # this test's own docstring is why the assertion had to move. "One

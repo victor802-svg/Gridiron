@@ -102,12 +102,17 @@ def test_one_layout_renders_at_every_width(page, size):
     """
     _open_week(page, size)
     shape = page.evaluate("""() => ({
-        faces: document.querySelectorAll('#games-rows .game').length,
-        tabs: document.querySelectorAll('.market-tab').length,
-        cards: document.querySelectorAll('#games-rows .game').length,
+        rows: document.querySelectorAll('#games-rows .game').length,
+        picks: document.querySelectorAll('#games-rows .game .pick').length,
+        teams: document.querySelectorAll('#games-rows .game .team').length,
+        strip: !!document.querySelector('#day-strip') && !document.getElementById('day-strip').hidden,
+        pulse: document.querySelectorAll('#day-jobs .day-job').length,
     })""")
-    assert shape["tabs"] > 0, "the market tabs are absent at this width"
-    assert shape["faces"] or shape["cards"], "no card rendered at all"
+    assert shape["rows"] > 0, "no row rendered at all"
+    assert shape["picks"] == shape["rows"], "a row is missing its pick block at this width"
+    assert shape["teams"] == 2 * shape["rows"], "a row is missing a team line at this width"
+    assert shape["strip"], "the day strip is absent at this width"
+    assert shape["pulse"] >= 3, "the pulse is absent at this width"
 
 
 def test_no_card_truncates(page):

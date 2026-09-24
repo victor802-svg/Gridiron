@@ -27,8 +27,11 @@ def _shown(page):
 
 
 def _markets_by_id(page):
+    """Every question the board carries, both forecasters, by id."""
     sport = page.evaluate("window.Gridiron.state.sport")
-    return page.evaluate(f"fetch('/api/week?sport={sport}').then(r => r.json()).then(j => Object.fromEntries(j.cards.map(c => [String(c.prediction_id), c.market])))")
+    return page.evaluate(
+        f"fetch('/api/week?sport={sport}').then(r => r.json()).then(j => "
+        "Object.fromEntries(j.board.games.flatMap(g => g.questions).map(q => [String(q.prediction_id), q.market])))")
 
 
 def _choose(page, market):

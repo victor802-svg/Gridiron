@@ -380,7 +380,7 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
 #sport-note { flex-basis: 100%; color: var(--faint); font-size: 11px; }
 #sport-tabs { display: flex; gap: 2px; }
 #sport-tabs button {
-  font-family: var(--cond); font-size: 16px; font-weight: 600;
+  font-family: var(--body); font-size: 16px; font-weight: 600;
   letter-spacing: 0.08em;
   background: none; border: 0; border-bottom: 2px solid transparent;
   padding: 8px 14px 10px; color: var(--muted); cursor: pointer;
@@ -506,7 +506,7 @@ table.grid td.wide {
 }
 
 .matchup {
-  font-family: var(--cond); font-weight: 700; font-size: 24px;
+  font-family: var(--body); font-weight: 700; font-size: 24px;
   letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.1;
 }
 .market-line { font-size: var(--t-caption); color: var(--muted); margin-top: 3px; }
@@ -523,7 +523,7 @@ table.grid td.wide {
    outline, filled. Colour is not available for this — green has two jobs
    already (interactive, positive) and a third would empty it of meaning. */
 .tier {
-  display: inline-block; font-family: var(--cond); font-weight: 700;
+  display: inline-block; font-family: var(--body); font-weight: 700;
   font-size: 13px; letter-spacing: 0.14em; padding: 2px 9px;
   border-radius: 5px; margin-top: 8px;
 }
@@ -636,7 +636,7 @@ table.grid td.wide {
 .card.resolved { background: var(--resolved); }
 .card.resolved .matchup { color: var(--muted); }
 .verdict {
-  font-family: var(--cond); font-weight: 700; font-size: 15px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
   letter-spacing: 0.12em; padding: 3px 10px; border-radius: 6px;
 }
 .verdict.sig-won { background: var(--win); color: var(--ink); }
@@ -644,7 +644,7 @@ table.grid td.wide {
 .final { font-family: var(--mono); font-size: var(--t-caption); color: var(--muted); }
 
 .section-label {
-  font-family: var(--cond); font-size: 15px; font-weight: 600;
+  font-family: var(--body); font-size: 15px; font-weight: 600;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
   margin: 30px 0 2px;
 }
@@ -966,13 +966,13 @@ button {
   background: var(--resolved); border: 1px solid var(--line);
 }
 .settled-verdict {
-  font-family: var(--cond); font-weight: 700; font-size: 12px;
+  font-family: var(--body); font-weight: 700; font-size: 12px;
   letter-spacing: 0.12em; padding: 1px 7px; border-radius: 4px;
 }
 .settled-row.sig-won .settled-verdict { background: var(--win); color: var(--ink); }
 .settled-row.sig-lost .settled-verdict { background: var(--loss); color: var(--ink); }
 .settled-match {
-  font-family: var(--cond); font-weight: 700; font-size: 15px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
   letter-spacing: 0.04em; text-transform: uppercase; color: var(--chrome);
 }
 .settled-pick { color: var(--muted); font-size: var(--t-caption); }
@@ -1003,7 +1003,7 @@ label { color: var(--muted); font-size: var(--t-caption); }
 /* --- tables, on the dark ground ----------------------------------------- */
 table.grid { width: 100%; border-collapse: collapse; }
 table.grid th {
-  text-align: left; font-family: var(--cond); font-weight: 600;
+  text-align: left; font-family: var(--body); font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--faint); font-size: 11px;
   border-bottom: 1px solid var(--line); padding: 8px 10px;
@@ -1028,7 +1028,7 @@ table.grid tr:hover td { background: var(--card-2); }
 /* --- the history row ------------------------------------------------------
    One sentence per prediction, then only the columns that earn their space. */
 .result-chip {
-  font-family: var(--cond); font-weight: 700; font-size: 11px;
+  font-family: var(--body); font-weight: 700; font-size: 11px;
   letter-spacing: 0.12em; padding: 2px 8px; border-radius: 4px;
   display: inline-block;
 }
@@ -1652,7 +1652,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    know what "and 17 more" was. */
 .set-detail { margin: 2px 0 12px; }
 .set-detail-head {
-  font-family: var(--cond); font-size: 11px; letter-spacing: 0.08em;
+  font-family: var(--body); font-size: 11px; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--ink-3); margin-top: 8px;
 }
 .set-detail-list {
@@ -2441,6 +2441,12 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .combo-singles { font-variant-numeric: tabular-nums; }
 
 /* =========================================================================
+
+/* THE CONDENSED FACE IS THE BOARD'S (GRIDIRON_BOARD, 2026-09-24): team
+   names, scores, picks and big numbers, all of them in the block at the end
+   of this file. Every older rule that reached for `--cond` -- sport tabs,
+   section labels, table headers, verdict chips -- now asks for the body face,
+   which is what "clean sans for everything else" means. */
    THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
    =========================================================================
    Dark sportsbook grammar with none of the pressure: condensed bold for team
@@ -2593,10 +2599,12 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 
 /* THE FOUR SIGNALS. Outline means a state of the price; fill means a
    settled verdict. Nothing else on the page reaches for these tokens. */
+/* The pick, the tile and the prop tile each set their own ground with one
+   class, so the fill is written at two classes to win over them. */
 .sig-clears { box-shadow: 0 0 0 1.5px var(--win), 0 0 14px 0 var(--win); }
 .sig-costs { box-shadow: 0 0 0 1.5px var(--loss), 0 0 14px 0 var(--loss); }
-.sig-won { background: var(--win); }
-.sig-lost { background: var(--loss); }
+.sig-won, .pick.sig-won, .q.sig-won, .prop.sig-won { background: var(--win); }
+.sig-lost, .pick.sig-lost, .q.sig-lost, .prop.sig-lost { background: var(--loss); }
 .pick.sig-won, .pick.sig-lost, .q.sig-won, .q.sig-lost, .prop.sig-won, .prop.sig-lost { border-color: transparent; }
 .sig-won .pick-line, .sig-won .pick-prob, .sig-won .q-line, .sig-won .q-prob,
 .sig-lost .pick-line, .sig-lost .pick-prob, .sig-lost .q-line, .sig-lost .q-prob,
@@ -2605,7 +2613,11 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .sig-won .q-head, .sig-lost .q-head, .sig-won .pick-meta, .sig-lost .pick-meta,
 .sig-won .q-foot, .sig-lost .q-foot, .sig-won .badge, .sig-lost .badge,
 .sig-won .prop-player, .sig-lost .prop-player, .sig-won .prop-line, .sig-lost .prop-line,
-.sig-won .prop-nums, .sig-lost .prop-nums { color: var(--ink); border-color: var(--ink); }
+.sig-won .prop-nums, .sig-lost .prop-nums,
+.sig-won .pick-method, .sig-lost .pick-method, .sig-won .q-method, .sig-lost .q-method,
+.sig-won .pick-size, .sig-lost .pick-size, .sig-won .q-size, .sig-lost .q-size,
+.sig-won .q-signal, .sig-lost .q-signal, .sig-won .q-game, .sig-lost .q-game { color: var(--ink); border-color: var(--ink); }
+.sig-won .q-signal, .sig-lost .q-signal { background: transparent; }
 
 /* THE EXPANSION: the questions, already in the tree, revealed in place. */
 .game-more { border-top: 1px solid var(--line); padding: 10px 14px 14px; background: var(--resolved); }

@@ -133,6 +133,11 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
             None if shown is None else shown * 100).replace("¢", "%"),
         "signal": signal,
         "taken": taken,
+        # WHETHER A VENUE PRICE STANDS BEHIND THE NUMBERS, as a fact rather
+        # than as the absence of a sentence: the words say "not listed" in
+        # three different ways and a reader of the payload should not have
+        # to parse them.
+        "priced": price is not None,
         "tips": {
             "prob": language.prob_tip(shown, label),
             "badge": language.badge_tip(n_settled, config.MIN_SAMPLE_FOR_EDGE_CLAIM,
@@ -450,6 +455,9 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             "cushion": cushion,
             "cushion_words": language.cushion_words(cushion),
             "venue_words": language.board_labels()["not_read"],
+            # NO ALT LINES UNTIL A VENUE IS READ. An alt tile carries the
+            # second badge and its tooltip; the composers exist and the scan
+            # demands them, and nothing sets `alt` tonight.
             "alt": False,
             "high_end_badge_words": None,
             "game_id": card["game_id"],
@@ -460,6 +468,24 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             config.PICKEM_TWO_PICK_DECLARED)
         block["tips"]["venue"] = language.venue_line_tip()
         block["tips"]["number"] = "No number on record for this player."
+        if block["alt"]:
+            high = _settled_n(conn, settled_cache, sport=sport,
+                              market_type=card["market_type"],
+                              prop_type=card.get("prop_type"), predictor=chosen)
+            block["high_end_badge_words"] = language.high_end_badge_words(
+                high, config.MIN_SAMPLE_FOR_EDGE_CLAIM)
+            block["tips"]["high_end"] = language.high_end_badge_tip(
+                high, config.MIN_SAMPLE_FOR_EDGE_CLAIM)
+        if state == "live":
+            # NOTHING ON A LIVE TILE CAN BE ACTED ON, the cushion and the
+            # venue line included: `audit.live_card_faults` names the venue
+            # line by its field, and a cushion beside a game being played is
+            # the same adverse selection with a different label.
+            for field in ("venue_words", "cushion_words", "breakeven_words"):
+                block.pop(field, None)
+            block["cushion"] = None
+            block["tips"].pop("cushion", None)
+            block["tips"].pop("venue", None)
         tiles.append(block)
     tiles.sort(key=lambda t: (-(t["cushion"] if t["cushion"] is not None else -9),
                               t["prediction_id"]))
@@ -476,10 +502,13 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         "games": games,
         "games_n": len(games),
         "games_empty_words": language.games_empty_words(sport_label) if not games else None,
+        # NOTHING CLEARS THE BAR, said once, and only on a slate that has a
+        # price to clear it against: on an unpriced slate the day strip
+        # already says the first read is still to come.
         "nothing_clears_words": (
             language.nothing_clears_words()
             if games and not any((g["pick"] or {}).get("signal") == "clears" for g in games)
-            and any((g["pick"] or {}).get("price_words") for g in games) else None),
+            and any(q.get("priced") for g in games for q in g["questions"]) else None),
         "props": {
             "n": len(tiles),
             "tiles": tiles,

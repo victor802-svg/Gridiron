@@ -65,6 +65,53 @@ measurements the brief cites.
 desk it described was deleted on 2026-09-04 (cards UI, R1): one layout at
 every width.
 
+### 2026-09-25 — the board's four open ends (GRIDIRON_BOARD)
+
+Recorded by the overnight build of 2026-09-24/25 (`docs/closeouts/2026-09-25-board-overnight.md`).
+
+- **No jersey numbers in the record.** The brief assumed the roster carried
+  them; no table does (`schema.sql`, every player table read). The jersey
+  renders the surname on its plate and a number only when the payload carries
+  one. **What would settle it:** the operator rules whether the roster load
+  should carry numbers (nflverse rosters publish `jersey_number`; MLB and NBA
+  feeds carry one too), and a dated factor-free column is added to the player
+  tables with its provenance.
+- **No pick'em venue is read, so the cushion is against a declared constant.**
+  `config.PICKEM_TWO_PICK_MULTIPLE` (3x, declared 2026-09-24) stands in for a
+  read multiplier; every tile says "not read yet"; the Alt lines chip is
+  permanently empty. `docs/PRIZEPICKS_FEASIBILITY.md` says why. **What would
+  settle it:** a venue whose public lines this app may read without an
+  account, measured before anything is built, on the new-market checklist.
+- **A prop tile wears no outline.** Reading A (built): an edge needs a
+  RECORDED price (LAW 5), and a declared multiple is not one, so a cushion
+  never lights a tile. Reading B: the cushion is expected-value arithmetic,
+  which LAW 5 permits, and a positive one above the gate could wear the green
+  outline. **What would settle it:** an operator ruling; one line in
+  `board.build` changes it.
+- **The form streak's colours.** The amended colour law's "nothing else uses
+  those colours" retired the ruling of 2026-09-09 (W green, L red). If the
+  amendment meant to leave that ruling standing, it is one stylesheet rule
+  and one allowance in `audit.colour_law_faults`, with the planting
+  `plant_a_value_colour_on_a_form_streak` reversed. The form line is not on
+  the board's rows at all; the data still travels on `cards[]`.
+
+### 2026-09-25 — `test_the_csrf_token_is_bound_to_the_session` depends on test order
+
+Run alone, `tests/test_guards.py::test_the_csrf_token_is_bound_to_the_session`
+fails: `auth.csrf_token("session-one")` is `None` until something has exported
+the token variable, which in the full suite an earlier browser fixture does.
+Found while running the board's files in isolation on 2026-09-24. **What
+would settle it:** the test sets the variable itself, or the fixture that
+exports it is made explicit.
+
+### 2026-09-25 — the retired STRONG-by-default tests
+
+Eight tests in `tests/test_cards.py` read `#week-tier-seg` and `#week-counts`,
+which THREE_STATES removed on 2026-09-08; every one had passed since by
+skipping or by finding nothing to press. Retired with the board rather than
+re-pointed, because the board has no tier filter to hold them to. If a tier
+filter returns, so do they, from `git show 38df569^:tests/test_cards.py`.
+
 ### 2026-12-01 — the bowls decision
 
 Whether to forecast college bowl games, and if so whether they are their own

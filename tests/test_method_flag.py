@@ -223,15 +223,33 @@ def test_the_variable_axis_covers_every_weight_the_page_asks_for():
     css = (config.PACKAGE_ROOT / "web" / "style.css").read_text(encoding="utf-8")
     faces = re.findall(r"@font-face\s*\{[^}]*\}", css)
     assert faces, "no @font-face rules at all"
+    # MANROPE IS THE VARIABLE FONT and answers every weight the body asks
+    # for. BARLOW CONDENSED (GRIDIRON_BOARD, 2026-09-24) ships as static
+    # instances, so the condensed rules may ask only for a weight it ships.
+    static = set()
     for face in faces:
-        assert "font-weight: 200 800" in face, (
-            "a face declares a single weight; the stylesheet asks for 640, "
-            "which a static instance rounds to 600 or 700 in silence")
+        if "'Manrope'" in face:
+            assert "font-weight: 200 800" in face, (
+                "a Manrope face declares a single weight; the stylesheet asks "
+                "for 640, which a static instance rounds to 600 or 700 in silence")
+        elif "'Barlow Condensed'" in face:
+            found = re.search(r"font-weight:\s*(\d{3})\s*;", face)
+            assert found, "a Barlow Condensed face declares no weight"
+            static.add(int(found.group(1)))
+        else:
+            raise AssertionError(f"a face this test does not know: {face[:60]}")
+    assert static, "no Barlow Condensed face is declared"
     weights = {int(w) for w in re.findall(r"font-weight:\s*(\d{3})\s*;", css)}
     weights |= {int(w) for w in re.findall(r"font:\s*(\d{3})\s", css)}
     assert weights, "no weights found to check"
     assert all(200 <= w <= 800 for w in weights), (
         f"a weight outside the vendored axis: {sorted(weights)}")
+    # every rule that asks for the condensed face asks for a weight it ships
+    for block in re.findall(r"\{[^{}]*var\(--cond\)[^{}]*\}", css):
+        for w in re.findall(r"font-weight:\s*(\d{3})\s*;", block):
+            assert int(w) in static, (
+                f"a condensed rule asks for weight {w}, which Barlow Condensed "
+                f"does not ship; the browser would fake it")
 
 
 def test_the_offline_shell_names_the_fonts():

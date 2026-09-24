@@ -940,7 +940,9 @@ const Gridiron = (function () {
     node.appendChild(head);
     node.appendChild(tip(el('div', 'q-line', q.line_words || ''), (q.tips || {}).line || q.question));
     const nums = el('div', 'q-nums');
-    nums.appendChild(tip(el('span', 'q-prob', q.prob_words || ''), (q.tips || {}).prob));
+    if (q.state !== 'live') {
+      nums.appendChild(tip(el('span', 'q-prob', q.prob_words || ''), (q.tips || {}).prob));
+    }
     if (q.state === 'upcoming') {
       nums.appendChild(tip(el('span', 'q-price', q.price_words || ''), (q.tips || {}).price));
       nums.appendChild(tip(el('span', 'q-pays', q.pays_words || ''), (q.tips || {}).pays));
@@ -1025,7 +1027,12 @@ const Gridiron = (function () {
     if (pick) {
       pickBox.appendChild(tip(el('div', 'pick-line', pick.line_words || ''), (pick.tips || {}).line || pick.question));
       const under = el('div', 'pick-under');
-      under.appendChild(tip(el('span', 'pick-prob', pick.prob_words || ''), (pick.tips || {}).prob));
+      // A LIVE ROW SHOWS "pregame NN%" AND NOTHING ELSE about the number:
+      // the word is the point (ruled 2026-09-09), and a second, undated copy
+      // of the figure beside it would be the opinion the app does not have.
+      if (state !== 'live') {
+        under.appendChild(tip(el('span', 'pick-prob', pick.prob_words || ''), (pick.tips || {}).prob));
+      }
       if (state === 'upcoming') {
         under.appendChild(tip(el('span', 'pick-price', pick.price_words || ''), (pick.tips || {}).price));
         under.appendChild(tip(el('span', 'pick-pays', pick.pays_words || ''), (pick.tips || {}).pays));
@@ -1238,11 +1245,23 @@ const Gridiron = (function () {
                                     'stroke-opacity': '0.35', 'stroke-width': '1' }));
     svg.appendChild(svgEl('path', { d: body, fill: 'url(#' + uid + '-mesh)' }));
     svg.appendChild(svgEl('path', { d: body, fill: 'url(#' + uid + '-sheen)' }));
-    // two sleeve bands
-    svg.appendChild(svgEl('path', { d: 'M 15 33 L 26 39 L 27 43 L 13 36 Z', fill: second, opacity: '0.95' }));
-    svg.appendChild(svgEl('path', { d: 'M 105 33 L 94 39 L 93 43 L 107 36 Z', fill: second, opacity: '0.95' }));
-    svg.appendChild(svgEl('path', { d: 'M 17 39 L 27 44 L 27.5 47 L 15.5 41 Z', fill: second, opacity: '0.6' }));
-    svg.appendChild(svgEl('path', { d: 'M 103 39 L 93 44 L 92.5 47 L 104.5 41 Z', fill: second, opacity: '0.6' }));
+    // TWO SLEEVE BANDS on each sleeve, the same on every jersey: a strip
+    // across the sleeve at two points along it, computed from the body
+    // path's own sleeve edges so they follow the sleeve rather than sit on
+    // it. The left sleeve runs from the shoulder (34,12) to (12,26) along
+    // its upper edge and from (32,40) to (20,46) along its lower one; the
+    // right sleeve is the mirror.
+    const band = (t0, t1, mirror) => {
+      const top = t => [34 - 22 * t, 12 + 14 * t];
+      const bottom = t => [32 - 12 * t, 40 + 6 * t];
+      const pts = [top(t0), top(t1), bottom(t1), bottom(t0)]
+        .map(([x, y]) => [mirror ? 120 - x : x, y]);
+      return 'M ' + pts.map(([x, y]) => x.toFixed(1) + ' ' + y.toFixed(1)).join(' L ') + ' Z';
+    };
+    [[0.70, 0.84], [0.48, 0.58]].forEach(([t0, t1]) => {
+      svg.appendChild(svgEl('path', { d: band(t0, t1, false), fill: second, opacity: '0.95' }));
+      svg.appendChild(svgEl('path', { d: band(t0, t1, true), fill: second, opacity: '0.95' }));
+    });
     // the V-neck
     svg.appendChild(svgEl('path', { d: 'M 48 6 L 60 22 L 72 6 L 68 5 L 60 16 L 52 5 Z',
                                     fill: second }));
@@ -1312,15 +1331,21 @@ const Gridiron = (function () {
     node.appendChild(top);
 
     const nums = el('div', 'prop-nums');
-    nums.appendChild(tip(el('span', 'prop-prob', t.prob_words || ''), (t.tips || {}).prob));
-    nums.appendChild(tip(el('span', 'prop-cushion', t.cushion_words || ''), (t.tips || {}).cushion));
+    if (t.state === 'live') {
+      // A LIVE TILE: the pregame figure, its word, and nothing to act on.
+      nums.appendChild(el('span', 'q-pregame', t.pregame_words || ''));
+    } else {
+      nums.appendChild(tip(el('span', 'prop-prob', t.prob_words || ''), (t.tips || {}).prob));
+      nums.appendChild(tip(el('span', 'prop-cushion', t.cushion_words || ''), (t.tips || {}).cushion));
+    }
     node.appendChild(nums);
-    node.appendChild(probBar(t));
-
-    const venue = el('div', 'prop-venue');
-    venue.appendChild(el('span', 'prop-venue-label', labels.venue || ''));
-    venue.appendChild(tip(el('span', 'prop-venue-words', t.venue_words || ''), (t.tips || {}).venue));
-    node.appendChild(venue);
+    if (t.state !== 'live') {
+      node.appendChild(probBar(t));
+      const venue = el('div', 'prop-venue');
+      venue.appendChild(el('span', 'prop-venue-label', labels.venue || ''));
+      venue.appendChild(tip(el('span', 'prop-venue-words', t.venue_words || ''), (t.tips || {}).venue));
+      node.appendChild(venue);
+    }
     if (t.state === 'final' && t.settled_words) {
       node.appendChild(el('div', 'q-settled', t.settled_words));
     }
