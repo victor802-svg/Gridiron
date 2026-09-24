@@ -60,7 +60,7 @@ class Result:
 TEAMS = ["KC", "BUF", "SF", "PHI", "DAL", "MIA", "SEA", "GB"]
 
 
-def seeded_database(path: Path) -> sqlite3.Connection:
+def seeded_database(path: Path, *, activate: bool = True) -> sqlite3.Connection:
     import random
     from datetime import datetime, timedelta, timezone
 
@@ -108,6 +108,13 @@ def seeded_database(path: Path) -> sqlite3.Connection:
                         )
     store.sync_registry(conn)
     baseline.train(conn, "spread", (2025,), sport="nfl", l2=1.0, note="guard harness")
+    # A FIT IS WRITTEN INACTIVE (ruling 2, 2026-09-24). The harness world has
+    # no incumbent to beat, so it activates its own fit the one lawful way a
+    # scratch world can, which the schema refuses on a live database. The
+    # activation plantings ask for a world without it.
+    if activate:
+        from gridiron.model import activation
+        activation.activate_in_a_scratch_world(conn)
     return conn
 
 
@@ -9293,6 +9300,420 @@ def plant_a_recommendation_reader_that_goes_round_the_door() -> Result:
                   f"nothing names it")
 
 
+LAW_ACTIVATION = "A FIT IS WRITTEN INACTIVE, AND TIES GO TO THE INCUMBENT"
+
+
+def _newest_fit_the_old_way(conn, sport: str, market_type: str):
+    """THE RULE BEFORE 2026-09-24, kept here only to plant it: the newest fit
+    of the declared factor set was the model, activated by being written."""
+    return conn.execute(
+        "SELECT id AS fit_id, factor_set_version, coefficients_json"
+        "  FROM model_fits WHERE sport = ? AND market_type = ?"
+        "   AND factor_set_version = ? ORDER BY id DESC LIMIT 1",
+        (sport, market_type,
+         config.factor_set_version(sport, market_type))).fetchone()
+
+
+def _a_copy_without(conn, path: Path, trigger: str) -> sqlite3.Connection:
+    """A copy of `conn` at `path` with one of the gate's triggers dropped.
+
+    THE UNFIXED SCHEMA FOR THAT ONE RULE. Each activation planting shows its
+    violation LANDING here before it shows the trigger refusing it on the
+    real schema, so a planting that some other guard happened to catch --
+    or that asked for nothing -- cannot pass for this one.
+
+    FROM A CLOSED TRANSACTION ONLY: a backup from a connection still holding
+    the write lock of a refused INSERT waits on itself forever, which is how
+    the first run of these plantings spent ten minutes doing nothing.
+    """
+    if conn.in_transaction:
+        raise RuntimeError("PLANTING ABORTED: copying a connection that is "
+                           "still inside a transaction would never finish")
+    copy = sqlite3.connect(str(path))
+    conn.backup(copy)
+    copy.close()
+    other = db.connect(path)
+    other.execute(f"DROP TRIGGER {trigger}")
+    other.commit()
+    return other
+
+
+def _fit_of(conn, fit_id: int):
+    import json as _json
+
+    from gridiron.model import logistic as _logistic
+
+    return _logistic.Fit.from_json(_json.loads(conn.execute(
+        "SELECT coefficients_json FROM model_fits WHERE id = ?",
+        (fit_id,)).fetchone()[0]))
+
+
+def _which_fit_wrote(conn, week: int, fits: dict) -> list[str]:
+    """For each statistical spread row of `week`, the one fit in `fits` whose
+    probability on the row's own stored values is the probability written."""
+    import json as _json
+
+    out = []
+    for row in conn.execute(
+            "SELECT p.factors_json FROM predictions p JOIN games g"
+            "    ON g.id = p.game_id WHERE g.week = ?"
+            "   AND p.predictor = 'statistical' AND p.market_type = 'spread'",
+            (week,)):
+        payload = _json.loads(row[0])
+        gaps = {name: abs(fit.predict(payload["values"]) - payload["prob_yes"])
+                for name, fit in fits.items()}
+        best = min(gaps, key=gaps.get)
+        out.append(best if gaps[best] < 1e-4 else "neither")
+    return out
+
+
+def plant_a_fresh_fit_used_without_activation() -> Result:
+    """Train a fit, activate nothing, and run the slate (ruling 2, 2026-09-24).
+
+    THE VIOLATION IS WHAT HAPPENED. Fits 91-94 were trained on the live record
+    at 05:16Z on 24 September, and the logon catch-up published from them at
+    05:32Z, because the model was simply the newest fit. Two worlds:
+
+      * one with an incumbent, and a fresher fit trained after it -- the
+        slate is then run the way a catch-up after a training step runs it.
+        Every row must come from the incumbent.
+      * one with no activation at all, and a fit trained. Nothing may be
+        written, and the run must say why.
+
+    AND THE DOOR REMOVED: `activation.active_fit` put back to the rule before
+    the ruling -- the newest fit is the model -- and the same run publishes
+    from the fresh fit. Without that half, a run that wrote from the
+    incumbent for some other reason would pass this for nothing.
+    """
+    from gridiron import run as _run
+    from gridiron.model import activation as _activation
+
+    guard = "baseline.load_fit reads the market's active fit, never the newest"
+    violation = "publish from a freshly trained fit nobody activated"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "fresh.db")
+        incumbent = conn.execute("SELECT MAX(id) FROM model_fits").fetchone()[0]
+        baseline.train(conn, "spread", (2025,), sport="nfl", l2=400.0,
+                       note="planted: fresh, and never activated")
+        fresh = conn.execute("SELECT MAX(id) FROM model_fits").fetchone()[0]
+        fits = {"incumbent": _fit_of(conn, incumbent),
+                "fresh": _fit_of(conn, fresh)}
+        _run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                       use_llm=False, snapshot=False)
+        lawful = _which_fit_wrote(conn, 6, fits)
+        door = _activation.active_fit
+        _activation.active_fit = _newest_fit_the_old_way
+        try:
+            _run.run_slate(conn, "nfl", 2025, 5, include_props=False,
+                           use_llm=False, snapshot=False)
+        finally:
+            _activation.active_fit = door
+        unguarded = _which_fit_wrote(conn, 5, fits)
+        conn.close()
+
+        bare = seeded_database(Path(tmp) / "bare.db", activate=False)
+        # A backtest world, so the only reason to write nothing is the gate:
+        # a live world skips a started 2025 slate before it asks for a model.
+        db.set_meta(bare, "kind", "backtest")
+        ran = _run.run_slate(bare, "nfl", 2025, 6, include_props=False,
+                             use_llm=False, snapshot=False)
+        bare_written = bare.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
+        said = [s for s in ran["skipped"] if "no activated model" in s]
+        bare.close()
+
+    if (lawful and set(lawful) == {"incumbent"} and unguarded
+            and set(unguarded) == {"fresh"} and bare_written == 0 and said):
+        return Result(LAW_ACTIVATION, violation, guard, True,
+                      f"all {len(lawful)} rows came from the incumbent (fit "
+                      f"{incumbent}), not the fresh fit {fresh}; with no "
+                      f"activation nothing was written and the run said "
+                      f"'{said[0]}'. With the door put back to the newest-fit "
+                      f"rule, all {len(unguarded)} rows came from the fresh fit")
+    return Result(
+        LAW_ACTIVATION, violation, guard, False,
+        f"NOT CAUGHT - after a training step the rows came from {lawful} (the "
+        f"incumbent is fit {incumbent}, the fresh one {fresh}); a world with "
+        f"no activation wrote {bare_written} rows ({'said so' if said else 'and said nothing'}); "
+        f"the newest-fit rule gave {unguarded}. A catch-up after training "
+        f"publishes from a fit nobody measured, which is 24 September again")
+
+
+def plant_an_activation_without_holdout_scores() -> Result:
+    """Activate a fit fitted after the rule's birthday with no holdout.
+
+    Two shapes, because both were available on 24 September to a session in
+    a hurry: a measured activation that carries no scores, and the same fit
+    recorded as an 'incumbent', which carries none by design. The first is
+    refused because the scores are missing; the second because the fit
+    post-dates the rule, and an incumbent that did would be a way round the
+    measurement. Each is shown landing on a copy with its trigger dropped.
+    """
+    from gridiron.model import activation as _activation
+
+    guard = ("triggers fit_activation_carries_its_holdout and "
+             "fit_activation_incumbent_predates_the_rule")
+    violation = "activate a post-birthday fit with no holdout scores"
+    reason = "planted: no holdout, activated anyway, as on 24 September"
+
+    def unscored(conn, candidate, incumbent):
+        return _activation.activate_measured(
+            conn, candidate, incumbent_fit_id=incumbent, holdout=None,
+            holdout_n=None, log_loss=None, brier=None,
+            incumbent_log_loss=None, incumbent_brier=None,
+            interval=(None, None), reason=reason)
+
+    refusals, landed = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "unscored.db")
+        incumbent = conn.execute("SELECT MAX(id) FROM model_fits").fetchone()[0]
+        baseline.train(conn, "spread", (2025,), sport="nfl", l2=400.0,
+                       note="planted: a candidate with no holdout")
+        candidate = conn.execute("SELECT MAX(id) FROM model_fits").fetchone()[0]
+        for attempt in (lambda c: unscored(c, candidate, incumbent),
+                        lambda c: _activation.activate_incumbent(
+                            c, candidate, reason=reason)):
+            try:
+                attempt(conn)
+            except _activation.ActivationRefused as exc:
+                refusals.append(str(exc))
+        still = _activation.active_fit(conn, "nfl", "spread")["fit_id"]
+        for trigger, attempt in (
+                ("fit_activation_carries_its_holdout",
+                 lambda c: unscored(c, candidate, incumbent)),
+                ("fit_activation_incumbent_predates_the_rule",
+                 lambda c: _activation.activate_incumbent(
+                     c, candidate, reason=reason))):
+            other = _a_copy_without(conn, Path(tmp) / f"{trigger}.db", trigger)
+            try:
+                attempt(other)
+                if _activation.active_fit(other, "nfl", "spread")["fit_id"] == candidate:
+                    landed.append(trigger)
+            except _activation.ActivationRefused:
+                pass
+            other.close()
+        conn.close()
+
+    named = (len(refusals) == 2
+             and "without its holdout scores" in refusals[0]
+             and "on or after 2026-09-24T05:16:00Z" in refusals[1])
+    if named and still == incumbent and len(landed) == 2:
+        return Result(LAW_ACTIVATION, violation, guard, True,
+                      " / ".join(r.split("\n")[0] for r in refusals))
+    return Result(
+        LAW_ACTIVATION, violation, guard, False,
+        f"NOT CAUGHT - refusals {refusals!r}; the market's active fit is "
+        f"{still} (incumbent {incumbent}, candidate {candidate}); with each "
+        f"trigger dropped the violation landed for {landed!r}. A fit nobody "
+        f"measured could become the market's model")
+
+
+def plant_a_tie_activated_over_the_incumbent() -> Result:
+    """Activate a candidate whose holdout interval does not exclude zero.
+
+    THE NUMBERS ARE THE NFL SPREAD'S, fs5 against fs3 on the 2025 season
+    (docs/REPAIR_STATE.md): log loss .68904 against .68361, and the interval
+    of the difference [-.0094, +.0205]. Ties go to the incumbent. And the
+    interval that touches zero exactly is a tie too: the rule asks for an
+    upper bound BELOW zero.
+
+    AND THE MIRROR: an interval wholly below zero is written, and the market
+    then forecasts from the candidate -- a gate that refused everything would
+    pass the first half of this and be useless.
+    """
+    from gridiron.model import activation as _activation
+
+    guard = "trigger fit_activation_ties_go_to_the_incumbent"
+    violation = "activate a candidate that ties the incumbent on the holdout"
+
+    def measured(conn, candidate, incumbent, interval, ll=0.68904, inc_ll=0.68361):
+        return _activation.activate_measured(
+            conn, candidate, incumbent_fit_id=incumbent,
+            holdout="planted: fit through 2024, scored on 2025", holdout_n=272,
+            log_loss=ll, brier=0.24786, incumbent_log_loss=inc_ll,
+            incumbent_brier=0.24535, interval=interval,
+            reason="planted: a tie, activated as if it were a win")
+
+    refusals, landed, lawful = [], False, None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "tie.db")
+        incumbent = conn.execute("SELECT MAX(id) FROM model_fits").fetchone()[0]
+        baseline.train(conn, "spread", (2025,), sport="nfl", l2=400.0,
+                       note="planted: a candidate that ties")
+        candidate = conn.execute("SELECT MAX(id) FROM model_fits").fetchone()[0]
+        for interval in ((-0.0094, 0.0205), (-0.0200, 0.0)):
+            try:
+                measured(conn, candidate, incumbent, interval)
+            except _activation.ActivationRefused as exc:
+                refusals.append(str(exc))
+        still = _activation.active_fit(conn, "nfl", "spread")["fit_id"]
+        other = _a_copy_without(conn, Path(tmp) / "untied.db",
+                                "fit_activation_ties_go_to_the_incumbent")
+        try:
+            measured(other, candidate, incumbent, (-0.0094, 0.0205))
+            landed = _activation.active_fit(other, "nfl", "spread")["fit_id"] == candidate
+        except _activation.ActivationRefused:
+            pass
+        other.close()
+        try:
+            measured(conn, candidate, incumbent, (-0.0300, -0.0040),
+                     ll=0.66100, inc_ll=0.68361)
+            lawful = _activation.active_fit(conn, "nfl", "spread")["fit_id"]
+        except _activation.ActivationRefused as exc:
+            lawful = str(exc)
+        conn.close()
+
+    if (len(refusals) == 2 and all("ties go to the incumbent" in r for r in refusals)
+            and still == incumbent and landed and lawful == candidate):
+        return Result(LAW_ACTIVATION, violation, guard, True,
+                      refusals[0].split("\n")[0])
+    return Result(
+        LAW_ACTIVATION, violation, guard, False,
+        f"NOT CAUGHT - refusals {refusals!r}; active fit after the ties "
+        f"{still} (incumbent {incumbent}); with the trigger dropped the tie "
+        f"landed: {landed}; a clear win activated {lawful!r}. Under the tie "
+        f"rule none of the four fs5 fits activates, NFL moneyline included")
+
+
+def plant_a_scratch_activation_on_a_live_database() -> Result:
+    """Activate a fit the scratch way on a database that is a record.
+
+    THE SCRATCH PATH EXISTS FOR TEST WORLDS, and it skips the holdout. On the
+    operator's record it would be the whole gate switched off. Three locks,
+    each planted:
+
+      * the schema: a scratch row written straight into a database whose
+        meta kind is 'live' -- refused by the trigger, and shown landing on a
+        copy without it;
+      * the file: the helper asked to activate on a connection whose main
+        database is the live record;
+      * the record: the helper asked to activate on a database that already
+        holds an activation made under the gate.
+    """
+    from gridiron.model import activation as _activation
+
+    guard = ("trigger fit_activation_scratch_is_never_live and "
+             "activation.activate_in_a_scratch_world")
+    violation = "a scratch activation on the live record"
+    insert = ("INSERT INTO fit_activations (fit_id, sport, market_type,"
+              " factor_set_version, activated_utc, kind, reason)"
+              " SELECT id, sport, market_type, factor_set_version,"
+              " '2026-09-24T12:00:00Z', 'scratch', 'planted: the holdout skipped'"
+              " FROM model_fits ORDER BY id DESC LIMIT 1")
+    refusals, landed = [], False
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        live = seeded_database(Path(tmp) / "live.db", activate=False)
+        kind = db.get_meta(live, "kind")
+        try:
+            live.execute(insert)
+            live.commit()
+        except sqlite3.IntegrityError as exc:
+            refusals.append(str(exc))
+            live.rollback()
+        other = _a_copy_without(live, Path(tmp) / "unlocked.db",
+                                "fit_activation_scratch_is_never_live")
+        try:
+            other.execute(insert)
+            other.commit()
+            landed = _activation.active_fit(other, "nfl", "spread") is not None
+        except sqlite3.IntegrityError:
+            other.rollback()
+        other.close()
+
+        real = db._is_the_live_record
+        db._is_the_live_record = lambda path: True
+        try:
+            _activation.activate_in_a_scratch_world(live)
+        except _activation.ScratchWorldRefused as exc:
+            refusals.append(str(exc))
+        finally:
+            db._is_the_live_record = real
+
+        # A record: one incumbent, fitted before the rule, activated lawfully.
+        live.execute(
+            "INSERT INTO model_fits (sport, fitted_utc, factor_set_version,"
+            " market_type, train_through, n_train, coefficients_json, note)"
+            " SELECT sport, '2026-09-05T11:16:52Z', factor_set_version,"
+            " market_type, train_through, n_train, coefficients_json,"
+            " 'planted: an incumbent from before the rule' FROM model_fits"
+            " ORDER BY id LIMIT 1")
+        live.commit()
+        _activation.activate_incumbent(
+            live, live.execute("SELECT MAX(id) FROM model_fits").fetchone()[0],
+            reason="planted: the record's incumbent")
+        try:
+            _activation.activate_in_a_scratch_world(live)
+        except _activation.ScratchWorldRefused as exc:
+            refusals.append(str(exc))
+        scratch_rows = live.execute(
+            "SELECT COUNT(*) FROM fit_activations WHERE kind = 'scratch'"
+        ).fetchone()[0]
+        live.close()
+
+    named = (len(refusals) == 3
+             and "refused on a live database" in refusals[0]
+             and "is the live record" in refusals[1]
+             and "it is a record and not a scratch world" in refusals[2])
+    if kind == "live" and named and landed and scratch_rows == 0:
+        return Result(LAW_ACTIVATION, violation, guard, True,
+                      " / ".join(r.split("\n")[0][:120] for r in refusals))
+    return Result(
+        LAW_ACTIVATION, violation, guard, False,
+        f"NOT CAUGHT - kind {kind!r}; refusals {refusals!r}; with the trigger "
+        f"dropped the row landed: {landed}; scratch rows on the record: "
+        f"{scratch_rows}. The holdout could be skipped on the operator's own "
+        f"record")
+
+
+def plant_an_active_fit_of_another_factor_set() -> Result:
+    """Leave a market's active fit on one factor set and declare another.
+
+    What a revert done by halves would leave: the config names fs3 and the
+    activation still names an fs5 fit, or the other way round. Every row
+    would carry one set's name and the other set's numbers. `load_fit`
+    refuses the market by name and the gate's audit names it.
+
+    AND THE MIRROR: declared and active agree, and neither says a word.
+    """
+    from gridiron import audit as _audit
+    from gridiron.model import activation as _activation
+
+    guard = "baseline.load_fit + audit.active_fit_faults"
+    violation = "an active fit whose factor set the config does not declare"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "another.db")
+        active = _activation.active_fit(conn, "nfl", "spread")
+        mirror = _audit.active_fit_faults(conn)
+        try:
+            baseline.load_fit(conn, "nfl:spread")
+            mirror_loads = True
+        except baseline.NotTrained:
+            mirror_loads = False
+        saved = dict(config.FACTOR_SET_VERSIONS)
+        config.FACTOR_SET_VERSIONS[("nfl", "spread")] = "fs-planted"
+        refused = None
+        try:
+            try:
+                baseline.load_fit(conn, "nfl:spread")
+            except baseline.ActiveFitIsAnotherSet as exc:
+                refused = str(exc)
+            faults = _audit.active_fit_faults(conn)
+        finally:
+            config.FACTOR_SET_VERSIONS.clear()
+            config.FACTOR_SET_VERSIONS.update(saved)
+        conn.close()
+
+    if (refused and "THE ACTIVE FIT IS ANOTHER FACTOR SET" in refused
+            and any("NFL spread" in f for f in faults)
+            and not mirror and mirror_loads and active is not None):
+        return Result(LAW_ACTIVATION, violation, guard, True,
+                      refused.split("\n")[0])
+    return Result(
+        LAW_ACTIVATION, violation, guard, False,
+        f"NOT CAUGHT - load_fit said {refused!r}; the audit said {faults!r}; "
+        f"with the two agreeing the audit said {mirror!r} and the fit "
+        f"{'loaded' if mirror_loads else 'did not load'}")
+
+
 LAW_BROWSER_PARSES = "THE BROWSER FILES PARSE"
 
 
@@ -9626,6 +10047,13 @@ def main() -> int:
     results.append(plant_a_close_that_cites_its_own_pricing_read())
     results.append(plant_a_withdrawn_recommendation_in_the_closing_line())
     results.append(plant_a_recommendation_reader_that_goes_round_the_door())
+    # THE ACTIVATION GATE (operator rulings, 2026-09-24): a fit is written
+    # inactive, activated only with its holdout, and ties go to the incumbent.
+    results.append(plant_a_fresh_fit_used_without_activation())
+    results.append(plant_an_activation_without_holdout_scores())
+    results.append(plant_a_tie_activated_over_the_incumbent())
+    results.append(plant_a_scratch_activation_on_a_live_database())
+    results.append(plant_an_active_fit_of_another_factor_set())
     results.append(plant_a_proposed_combo_from_one_game())
     results.append(plant_a_proposed_combo_across_sports())
     results.append(plant_a_proposed_combo_with_a_leg_that_does_not_clear())

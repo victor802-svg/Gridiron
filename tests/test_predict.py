@@ -12,7 +12,7 @@ import pytest
 from gridiron import blind, config, db, run
 from gridiron.factors import compute, context, store
 from gridiron.market import lines
-from gridiron.model import baseline, llm, logistic, predict, questions
+from gridiron.model import activation, baseline, llm, logistic, predict, questions
 
 
 # --- the logistic model ----------------------------------------------------
@@ -130,6 +130,7 @@ def test_the_window_closes_even_when_the_body_raises():
 def trained(league):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
+    activation.activate_in_a_scratch_world(league)
     return league
 
 
@@ -189,7 +190,20 @@ def test_predicting_without_a_fitted_model_skips_loudly(league):
     store.sync_registry(league)
     result = run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     assert result["written"] == 0
-    assert any("no fitted" in s for s in result["skipped"])
+    # "NO ACTIVATED MODEL" from 2026-09-24: with no fit at all there is
+    # nothing activated either, and the skip says the one thing that is true
+    # of both cases.
+    assert any("no activated model" in s for s in result["skipped"])
+
+
+def test_a_fitted_model_nobody_activated_skips_loudly_too(league):
+    """THE ACTIVATION GATE (ruling 2, 2026-09-24): a fit is written inactive.
+    Training alone writes nothing forecastable, and the run says why."""
+    store.sync_registry(league)
+    baseline.train(league, "spread", (2025,), l2=1.0, note="test")
+    result = run.run_week(league, 2025, 7, include_props=False, use_llm=False)
+    assert result["written"] == 0
+    assert any("no activated model for nfl:spread" in s for s in result["skipped"])
 
 
 # --- the market half -------------------------------------------------------

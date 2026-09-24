@@ -779,6 +779,203 @@ CREATE TABLE IF NOT EXISTS model_fits (
     note               TEXT
 );
 
+-- ---------------------------------------------------------------------------
+-- THE ACTIVATION GATE (operator rulings of 2026-09-24: ruling 2 of the
+-- morning, and the tie rule of the three decisions).
+--
+-- A FIT IS WRITTEN INACTIVE. Training inserts a row in `model_fits` and
+-- nothing else; a fit becomes the model a market forecasts from only by a
+-- row here -- explicit, dated, with a reason, and carrying its holdout
+-- against the incumbent. The predict path reads the LATEST row for a market
+-- and nothing else (`model.activation.active_fit`, through
+-- `baseline.load_fit`).
+--
+-- THE CASE THIS EXISTS FOR. Fits 91-94 were trained on the live record at
+-- 05:16Z on 24 September, and the old rule -- the newest fit of the declared
+-- factor set is the model -- made them live the moment they were written.
+-- The logon catch-up published from them twenty minutes later, before
+-- anybody had asked whether they were better than what they replaced; on the
+-- 2025 season they were not.
+--
+-- THREE KINDS, and each is refused where it does not belong:
+--   measured   a candidate that BEAT the market's active fit on a holdout.
+--              Every score is present, the incumbent is the fit active now,
+--              and the bootstrap interval of (candidate - incumbent) log
+--              loss lies wholly below zero. TIES GO TO THE INCUMBENT.
+--   incumbent  a fit fitted BEFORE the rule's birthday (2026-09-24T05:16:00Z)
+--              recorded as the market's model: the bootstrap of every market
+--              in use when the rule landed, and a revert to one of them.
+--              Holdout scores where they exist; the rule binds from its
+--              birthday and cannot be met by a fit that predates it.
+--   scratch    a test world, a planting or the gate's own pipeline, which
+--              trains its own fits and has no incumbent to beat. Refused on
+--              any database whose meta kind is 'live' -- the operator's
+--              record is one, and so is every fresh file until it says not.
+--
+-- A MARKET WITH NO INCUMBENT has no lawful activation on the live record:
+-- ties go to the incumbent, and there is none. That case waits for the
+-- operator's ruling (docs/REPAIR_STATE.md, "Questions for the operator").
+--
+-- APPEND-ONLY. A revert is a new row naming the older fit, never an edit.
+-- (The two words that open a declaration may not appear in a comment in this
+-- file: at_the_line._schema_statements scans the text.)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS fit_activations (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    fit_id              INTEGER NOT NULL REFERENCES model_fits (id),
+    sport               TEXT    NOT NULL,
+    market_type         TEXT    NOT NULL,   -- the storage form: 'spread', 'prop:points'
+    factor_set_version  TEXT    NOT NULL,
+    activated_utc       TEXT    NOT NULL,
+    kind                TEXT    NOT NULL
+                        CHECK (kind IN ('measured', 'incumbent', 'scratch')),
+    reason              TEXT    NOT NULL CHECK (length(trim(reason)) >= 10),
+    -- THE HOLDOUT, in words and numbers: what was held out ('fit through
+    -- 2024, scored on 2025'), how many rows, and the candidate's own scores.
+    holdout             TEXT,
+    holdout_n           INTEGER,
+    log_loss            REAL,
+    brier               REAL,
+    -- AGAINST THE INCUMBENT on the same rows, and the paired bootstrap 95%
+    -- interval of (candidate - incumbent) log loss. Only a measured row
+    -- carries these.
+    incumbent_fit_id    INTEGER REFERENCES model_fits (id),
+    incumbent_log_loss  REAL,
+    incumbent_brier     REAL,
+    diff_low            REAL,
+    diff_high           REAL
+);
+CREATE INDEX IF NOT EXISTS fit_activations_market
+    ON fit_activations (sport, market_type, id);
+
+CREATE TRIGGER IF NOT EXISTS fit_activations_no_update
+BEFORE UPDATE ON fit_activations
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: an activation is append-only. A revert is a '
+        || 'new row naming the older fit, and the record keeps both');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activations_no_delete
+BEFORE DELETE ON fit_activations
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: an activation is never deleted. Which model '
+        || 'forecast a market, and from when, is part of the record');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activation_names_its_fit
+BEFORE INSERT ON fit_activations
+FOR EACH ROW
+WHEN NOT EXISTS (SELECT 1 FROM model_fits f
+                  WHERE f.id = NEW.fit_id AND f.sport = NEW.sport
+                    AND f.market_type = NEW.market_type
+                    AND f.factor_set_version = NEW.factor_set_version)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: an activation names a fit of its own sport, '
+        || 'market and factor set');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activation_holdout_is_whole
+BEFORE INSERT ON fit_activations
+FOR EACH ROW
+WHEN (NEW.holdout IS NOT NULL OR NEW.holdout_n IS NOT NULL
+      OR NEW.log_loss IS NOT NULL OR NEW.brier IS NOT NULL)
+ AND (NEW.holdout IS NULL OR length(trim(NEW.holdout)) < 10
+      OR NEW.holdout_n IS NULL OR NEW.holdout_n <= 0
+      OR NEW.log_loss IS NULL OR NEW.brier IS NULL)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: a holdout is recorded whole -- what was held '
+        || 'out, in words, how many rows, the log loss and the Brier -- or not at all');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activation_only_measured_compares
+BEFORE INSERT ON fit_activations
+FOR EACH ROW
+WHEN NEW.kind <> 'measured'
+ AND (NEW.incumbent_fit_id IS NOT NULL OR NEW.incumbent_log_loss IS NOT NULL
+      OR NEW.incumbent_brier IS NOT NULL OR NEW.diff_low IS NOT NULL
+      OR NEW.diff_high IS NOT NULL)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: a comparison with the incumbent is a measured '
+        || 'activation, and is held to the tie rule as one');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activation_carries_its_holdout
+BEFORE INSERT ON fit_activations
+FOR EACH ROW
+WHEN NEW.kind = 'measured'
+ AND (NEW.holdout IS NULL OR NEW.holdout_n IS NULL OR NEW.log_loss IS NULL
+      OR NEW.brier IS NULL OR NEW.incumbent_fit_id IS NULL
+      OR NEW.incumbent_log_loss IS NULL OR NEW.incumbent_brier IS NULL
+      OR NEW.diff_low IS NULL OR NEW.diff_high IS NULL
+      OR NEW.diff_low > NEW.diff_high)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: an activation without its holdout scores is '
+        || 'refused. A measured activation carries the holdout, its n, the '
+        || 'candidate and incumbent log loss and Brier on the same rows, and the '
+        || 'bootstrap interval of the difference');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activation_ties_go_to_the_incumbent
+BEFORE INSERT ON fit_activations
+FOR EACH ROW
+WHEN NEW.kind = 'measured' AND NEW.diff_high IS NOT NULL
+ AND NOT (NEW.diff_high < 0)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: ties go to the incumbent. A new fit is '
+        || 'activated only when the bootstrap interval of its log loss minus '
+        || 'the incumbent''s lies wholly below zero; this one does not exclude '
+        || 'zero, so the incumbent stays');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activation_beats_the_active_fit
+BEFORE INSERT ON fit_activations
+FOR EACH ROW
+WHEN NEW.kind = 'measured' AND NEW.incumbent_fit_id IS NOT NULL
+ AND (NEW.incumbent_fit_id = NEW.fit_id
+      OR NEW.incumbent_fit_id IS NOT
+         (SELECT a.fit_id FROM fit_activations a
+           WHERE a.sport = NEW.sport AND a.market_type = NEW.market_type
+           ORDER BY a.id DESC LIMIT 1))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: the incumbent a candidate is measured against '
+        || 'is the fit active for that market now. A market with no active fit '
+        || 'has no incumbent to beat, and activating one there waits for the '
+        || 'operator''s ruling');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activation_incumbent_predates_the_rule
+BEFORE INSERT ON fit_activations
+FOR EACH ROW
+WHEN NEW.kind = 'incumbent'
+ AND (SELECT f.fitted_utc FROM model_fits f WHERE f.id = NEW.fit_id)
+     >= '2026-09-24T05:16:00Z'
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: a fit fitted on or after 2026-09-24T05:16:00Z '
+        || 'is activated by measurement, never as an incumbent. The rule binds '
+        || 'from its birthday');
+END;
+
+CREATE TRIGGER IF NOT EXISTS fit_activation_scratch_is_never_live
+BEFORE INSERT ON fit_activations
+FOR EACH ROW
+WHEN NEW.kind = 'scratch'
+ AND COALESCE((SELECT value FROM meta WHERE key = 'kind'), 'live') = 'live'
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON ACTIVATION GATE: a scratch activation is refused on a live '
+        || 'database. Only a world that is not the operator''s record may '
+        || 'activate a fit without a holdout');
+END;
+
 -- LAW 1 / caching: every upstream fetch, by URL.
 CREATE TABLE IF NOT EXISTS http_cache (
     url           TEXT PRIMARY KEY,

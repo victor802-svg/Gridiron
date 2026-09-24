@@ -83,10 +83,11 @@ def test_an_unknown_task_is_refused_by_name(league):
 def test_resolve_run_twice_settles_nothing_the_second_time(league):
     from gridiron import run
     from gridiron.factors import store
-    from gridiron.model import baseline
+    from gridiron.model import activation, baseline
 
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     first = tasks.run_task(league, "resolve", use_llm=False)
     second = tasks.run_task(league, "resolve", use_llm=False)

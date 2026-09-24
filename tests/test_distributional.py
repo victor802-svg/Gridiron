@@ -584,10 +584,11 @@ def test_a_rerun_over_a_written_slate_makes_no_model_calls(league):
     """
     from gridiron import fingerprint, run as _run
     from gridiron.factors import store
-    from gridiron.model import baseline, llm as _llm, predict as _predict
+    from gridiron.model import activation, baseline, llm as _llm, predict as _predict
 
     store.sync_registry(league)
     baseline.train_all(league, (2025,), l2=1.0, note="rerun", min_rows=20)
+    activation.activate_in_a_scratch_world(league)
     # The statistical half, written once.
     _predict.predict_slate(league, "nfl", 2025, 18, final=False,
                            include_props=False, use_llm=False)

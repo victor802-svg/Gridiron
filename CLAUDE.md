@@ -290,6 +290,7 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | RECORD FIRST | `run_task` writes a `running` row before the task runs and finishes it after; `audit.task_run_order_faults` reads the order off the syntax tree | `plant.py::plant_a_run_recorded_only_when_it_ends` |
 | THE CLOSE | A recommendation closes on its OWN contract's last near-start read before kickoff, or UNMEASURED -- never on the price compared with itself, which is what 49 of 49 closes were until 2026-09-23. `recommendation_closes` records how every close was measured, and a trigger refuses a close that is not a later read of the same contract | `plant.py::plant_a_close_read_from_the_first_of_two_reads`, `::plant_a_close_that_cites_its_own_pricing_read` |
 | WITHDRAWN | Operator ruling 1, 2026-09-24: a voided forecast or recommendation is never counted and the page shows it as WITHDRAWN with its reason, never deleted. `recommendation_voids` and `prediction_voids` refuse an edit and a delete. `market.recommend.not_withdrawn` is the one door every read of `recommendations` goes through -- `audit.check_every_recommendation_reader_uses_the_door` names a statement that goes round it -- and `audit.withdrawn_counted_faults` recounts the closing line without the door, inside `views.scorecard` and in the gate. `calibration.standing_row_clause` and `at_the_line.standing_claim_clause` never grade a voided forecast or its claim, even one that settled before it was voided | `plant.py::plant_a_withdrawn_recommendation_in_the_closing_line`, `::plant_a_recommendation_reader_that_goes_round_the_door`, `test_voids.py::test_a_voided_forecast_is_never_graded_even_if_it_settled_first` |
+| THE ACTIVATION GATE | Operator rulings, 2026-09-24. A fit is written inactive: `baseline.train` only inserts into `model_fits`, and `baseline.load_fit` reads only the fit named by the market's latest row in the append-only `fit_activations` (`model.activation.active_fit`), so a run after a training step publishes from the incumbent. `model.activation` is the one door that writes the table and the triggers hold the rules: a `measured` row carries its holdout (what was held out, n, candidate and incumbent log loss and Brier on the same rows, the bootstrap 95% interval of the log-loss difference), names the market's active fit as its incumbent, and is refused unless the interval's upper bound is below zero; an `incumbent` row names a fit fitted before 2026-09-24T05:16:00Z (`config.ACTIVATION_GATE_BIRTHDAY`) and carries a holdout whole or not at all; a `scratch` row (test worlds, plantings, the gate's step 3) is refused on any database whose meta kind is `live`. `db.init` bootstraps, once per market, the fit each market was reading when the rule landed if it predates the birthday. An active fit of a factor set the config does not declare is refused by `load_fit` and by `audit.check_every_active_fit_is_the_declared_set` in the gate. `tools/holdout.py` measures (refit through N-1, score N, paired bootstrap) on a scratch copy and writes nothing but the activation row, through the door | `plant.py::plant_a_fresh_fit_used_without_activation`, `::plant_an_activation_without_holdout_scores`, `::plant_a_tie_activated_over_the_incumbent`, `::plant_a_scratch_activation_on_a_live_database`, `::plant_an_active_fit_of_another_factor_set`, `test_activation.py` |
 | THE GATE READS ONLY | Operator ruling, 2026-09-24, after a worktree gate's step 2 put an unmerged trigger on the operator's record through `open_db`. `tools/verify.py` sets `GRIDIRON_VERIFYING` for its whole run, so `db.connect` refuses the live record by name and `db.refuse_the_live_record` stops `copy_facts` attaching it; `db.read_the_live_record` opens the file `mode=ro` as well as `query_only`, so its holder cannot switch it back to writing. Step 2's record checks and step 3's facts read one scratch copy, backed up through that door and migrated to the tree's schema; step 4 reads the record through the door. The record's schema is read when the gate starts and again when it ends, and a difference fails the gate naming each object. Rows are not counted -- the scheduler writes during every gate -- they are protected by the gate holding no writable handle | `plant.py::plant_a_gate_step_that_opens_the_live_record_writable`, `::plant_a_schema_change_during_the_gate`, `::plant_a_write_through_the_read_handle_switched_back` |
 
 Run them all at once, each violation planted for real:
@@ -349,6 +350,43 @@ python tools/verify.py
   of forbidden market identifiers, so a prediction-path module that imported it
   would make the LAW 1 scan flag itself. The runtime missing-data check
   therefore lives in `factors.compute`, and `audit` re-exports it.
+
+---
+
+## The activation gate — RULED 2026-09-24
+
+**THE ACTIVATION GATE (ruled 2026-09-24): a fit is written inactive; it
+becomes the market's model only by a dated activation recording its holdout
+against the incumbent; ties go to the incumbent — activation needs the
+bootstrap interval of the log-loss difference to exclude zero.**
+
+The operator's words, from ruling 2 of the morning and the tie rule of the
+three decisions (`docs/briefs/2026-09-24-morning-rulings.md`,
+`docs/briefs/2026-09-24-three-decisions.md`): "Training a fit must not make it
+live ... The predict path reads only activated fits. A logon catch-up or
+scheduled run after a training step publishes from the incumbent." And: "A new
+fit is activated only if it beats the incumbent on the holdout with the
+bootstrap interval of the difference in log loss excluding zero; otherwise the
+incumbent stays."
+
+**Why.** Until that day the model a market forecast from was the newest fit of
+its declared factor set, so training a fit was the same act as publishing
+from it. Fits 91-94 were trained on the live record at 05:16Z on 24 September
+and the logon catch-up published from them at 05:32Z; measured afterwards on
+the 2025 season they were not better than what they replaced, and none of the
+four clears the tie rule, NFL moneyline included.
+
+**How it binds.** Training inserts into `model_fits` and nothing else. The one
+door is `gridiron/model/activation.py`; the rules are the triggers on
+`fit_activations`. The rule's birthday is 2026-09-24T05:16:00Z: a fit fitted
+before it may be recorded as an incumbent (the bootstrap of every market in
+use when the rule landed, and a revert to one of them); a fit fitted on or
+after it is activated by measurement or not at all. `tools/holdout.py` makes
+the measurement. A market with no incumbent has no lawful activation on the
+live record until the operator rules (`docs/REPAIR_STATE.md`, "Questions for
+the operator"). Test worlds, plantings and the gate's scratch pipeline train
+their own fits and activate them as `scratch`, which the schema refuses on a
+database whose meta kind is `live`.
 
 ---
 

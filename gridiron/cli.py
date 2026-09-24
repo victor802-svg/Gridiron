@@ -111,6 +111,11 @@ def cmd_train(args: argparse.Namespace) -> int:
         print()
         print(f"{sport}:{market_type}: n={fit.n:,} converged={fit.converged} "
               f"iterations={fit.iterations} intercept={fit.intercept:+.4f}")
+        # SAID AT THE MOMENT IT MATTERS (the activation gate, 2026-09-24):
+        # the fit just printed forecasts nothing until it is activated.
+        print("    WRITTEN INACTIVE: the market keeps forecasting from its "
+              "active fit until this one beats it on a holdout and is "
+              "activated (tools/holdout.py)")
         for name, coef in sorted(zip(fit.names, fit.coefficients), key=lambda t: -abs(t[1])):
             print(f"    {name:22s} {coef:+.4f}")
         if fit.constant:

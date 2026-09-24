@@ -10,7 +10,7 @@ import pytest
 
 from gridiron import audit, config, horizon, language, run
 from gridiron.factors import store
-from gridiron.model import baseline
+from gridiron.model import activation, baseline
 from tests.test_predict import StubClient
 
 
@@ -18,6 +18,7 @@ from tests.test_predict import StubClient
 def trained_all(league):
     store.sync_registry(league)
     baseline.train_all(league, (2025,), l2=1.0, note="test", min_rows=20)
+    activation.activate_in_a_scratch_world(league)
     return league
 
 

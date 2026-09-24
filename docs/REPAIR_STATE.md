@@ -37,6 +37,32 @@
   5. The reasoning-prompt record.
   6. Repair items 3-8.
 
+## Questions for the operator
+
+Each blocks only its own step; the queue moves on where the next step does not
+depend on the answer.
+
+1. **A market with no incumbent (the activation gate, 2026-09-24).** Ties go
+   to the incumbent, and a market that has never had an active fit has none.
+   How may its first fit be activated on the live record? Until ruled there is
+   no lawful path, and the schema refuses every one: a `measured` activation
+   must name the market's active fit as its incumbent, an `incumbent`
+   activation must name a fit fitted before 2026-09-24T05:16:00Z, and a
+   `scratch` activation is refused on a live database. No rule was invented.
+   Today every forecast market has an incumbent except the four fs5 markets,
+   which the revert gives their pre-birthday fits; the case arrives with the
+   next market declared. (The same gap covers a revert to a fit fitted after
+   the birthday that was once activated by measurement: no kind admits it.)
+2. **NBA spread and total forecast from fits trained through 2024 only.**
+   Found by the bootstrap simulation: fits 80 (spread, fs4) and 79 (total,
+   fs2), `season:2024`, written 23:52-23:54Z on 4 September by a walk-forward
+   run on the live record, silently replaced fits 61 and 70 (every season)
+   under the newest-fit rule -- the 91-94 failure, earlier. The bootstrap
+   records 80 and 79 as the incumbents, because they are what those markets
+   were forecasting from. Keep them, or revert to 61 and 70 (lawful as
+   `incumbent` activations; both predate the birthday)? FOLLOWUPS has the
+   numbers.
+
 (Older detail follows; where it conflicts with the block above, the block wins.)
 
 

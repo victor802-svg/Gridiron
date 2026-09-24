@@ -1310,3 +1310,53 @@ the voids gate of 24 September was stopped by hand. It stopped before step 2,
 so it made no copy, but the next one to be stopped might have. The copy is
 left under `gridiron-gate-*` in the temp directory. **What would settle it:**
 the gate removes stale `gridiron-gate-*` folders when it starts.
+
+## Operator ruling 2 of 2026-09-24 — the activation gate *(GRIDIRON_REPAIR, the queue's item 2)*
+
+### BUILT: a fit is written inactive, and ties go to the incumbent *(ruled and built 2026-09-24)*
+
+The root cause of fits 91-94 publishing was a rule nobody had written down:
+the newest fit of a market's declared factor set WAS the model, so training
+and publishing were one act. Now `load_fit` reads only the fit named by the
+market's latest row in `fit_activations`; a `measured` activation needs its
+holdout against the active fit and a bootstrap interval of the log-loss
+difference wholly below zero; an `incumbent` activation is for fits fitted
+before 2026-09-24T05:16:00Z only. Recorded in CLAUDE.md as THE ACTIVATION
+GATE, with five plantings, each shown landing with its guard removed.
+
+**On the live record, at the first open after release**, `db.init` writes 24
+incumbent activations, one per market still asked, each naming the fit that
+market was already reading. The four fs5 markets (NFL and NCAAF spread and
+moneyline, fits 91-94, fitted after the birthday) get none and stay
+unforecast; retired MLB home runs gets none. Simulated on a scratch copy the
+same day: 24 written, 0 on a second run, 0 audit faults. The revert of the
+four is the next commit.
+
+### Two NBA markets forecast from fits trained through 2024 only *(open, measured 2026-09-24)*
+
+Found by the bootstrap simulation, and it is the 91-94 failure, earlier and
+unnoticed. NBA spread's in-use fit is **80** (fs4, `season:2024`, n=3,688)
+and NBA total's is **79** (fs2, `season:2024`, n=3,611), both written at
+23:52-23:54Z on 4 September by a walk-forward run on the live record. Under
+the newest-fit rule they silently replaced fits 61 (n=4,914) and 70
+(n=4,841), which had trained on every season. The bootstrap records 80 and 79
+as the incumbents because they are what those markets were forecasting from;
+changing that is a ruling, not a repair. **What would settle it:** the
+operator rules; a revert to 61 and 70 is lawful as an `incumbent`
+activation, since both predate the birthday. Written under "Questions for
+the operator" in `docs/REPAIR_STATE.md`.
+
+### Tools still train on the live record *(open, 2026-09-24)*
+
+`tools/walkforward_distributional.py` trains on `db.connect()`, the record
+itself, and its fits have the shape of 74-90 (`season:N week:None`, no note;
+which tool wrote those was not established). A fit written that way can no
+longer publish -- it is inactive -- but it is still a row in the operator's
+record that no forecast used. **What would settle it:** the tool
+trains on a scratch copy, as `tools/holdout.py` does.
+
+### The Factors page reads the newest fit, not the active one *(open, 2026-09-24)*
+
+`calibration._fit_status` still picks the newest fit of a version to report
+each factor's training rows, so the page can describe a fit no market is
+forecasting from. **What would settle it:** it reads `activation.active_fit`.

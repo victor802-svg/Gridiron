@@ -778,6 +778,14 @@ def init(conn: sqlite3.Connection) -> None:
         "INSERT OR IGNORE INTO meta (key, value) VALUES ('kind', 'live')"
     )
     conn.commit()
+    # THE ACTIVATION GATE'S BOOTSTRAP (operator rulings, 2026-09-24). Every
+    # market in use when the gate landed is recorded, once, as forecasting
+    # from the fit it was already reading -- if that fit predates the rule.
+    # Here, so the live record comes into the gate on the scheduler's next
+    # open rather than on somebody remembering to run a step. Idempotent: a
+    # market with any activation is never touched again.
+    from .model import activation as _activation
+    _activation.bootstrap_incumbents(conn)
 
 
 def get_meta(conn: sqlite3.Connection, key: str, default: str | None = None) -> str | None:

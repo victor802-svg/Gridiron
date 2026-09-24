@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from gridiron import audit, config, language, run, views
 from gridiron.factors import store
-from gridiron.model import baseline
+from gridiron.model import activation, baseline
 
 
 def _hold(monkeypatch, *markets):
@@ -21,6 +21,7 @@ def _hold(monkeypatch, *markets):
 def test_a_held_market_is_not_forecast(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
+    activation.activate_in_a_scratch_world(league)
     _hold(monkeypatch, "spread")
     result = run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     assert result["written"] == 0
@@ -34,6 +35,7 @@ def test_a_held_market_is_not_forecast(league, monkeypatch):
 def test_the_strip_names_a_held_market(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     _hold(monkeypatch, "spread", "moneyline")
     block = views.freshness(league)
@@ -58,6 +60,7 @@ def test_a_forecast_written_before_the_hold_is_not_shown(league, monkeypatch):
     They stay in the record; the page does not stand behind them."""
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     shown = views.week(league, "nfl", 2025, 7)
     assert shown["n"] == 4

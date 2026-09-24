@@ -593,6 +593,14 @@ def step_2_guards() -> bool:
         ("no withdrawn recommendation is counted",
          lambda: [audit.check_no_withdrawn_recommendation_counted(
              _record_conn(), sport=sport) for sport in _config().SPORTS]),
+        # THE ACTIVATION GATE (operator rulings, 2026-09-24). A market
+        # forecasts from its activated fit, and that fit is the factor set
+        # the config declares. Read on the migrated copy, which holds the
+        # activations the record will hold once this tree merges -- the
+        # birthday bootstrap runs in `open_db`.
+        ("every active fit is the declared factor set",
+         lambda: audit.check_every_active_fit_is_the_declared_set(
+             _record_conn())),
     ):
         try:
             fn()
@@ -659,6 +667,13 @@ def step_3_one_week_end_to_end(source: Path) -> bool:
         for market_type, fit in sorted(fits.items()):
             print(f"  fit {market_type:22s} n={fit.n:>6,}, trained on "
                   f"2016-{season - 1} only")
+        # A FIT IS WRITTEN INACTIVE (operator ruling 2, 2026-09-24), here as
+        # on the record. This pipeline has no incumbent to beat, so it
+        # activates its own fits the one lawful way a scratch world can,
+        # which the schema refuses on a live database.
+        from gridiron.model import activation
+        activated = activation.activate_in_a_scratch_world(conn, sport=sport)
+        print(f"  activated in this scratch world: {len(activated)} fits")
 
         result = run.run_week(conn, season, week, include_props=True, use_llm=False)
         print(f"  predictions written blind: {result['written']}  {result['by_predictor']}")

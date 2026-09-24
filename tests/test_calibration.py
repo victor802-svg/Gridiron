@@ -9,7 +9,7 @@ import pytest
 
 from gridiron import calibration, config, db, resolve, run
 from gridiron.factors import store
-from gridiron.model import baseline
+from gridiron.model import activation, baseline
 
 
 @pytest.fixture
@@ -17,6 +17,7 @@ def settled(league):
     """A trained league with week 7 predicted and resolved."""
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=True, use_llm=False)
     resolve.resolve_all(league)
     return league
@@ -54,6 +55,7 @@ def test_a_half_finished_resolution_completes_rather_than_repeats(league):
     outcomes and only the rest are settled."""
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0)
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
 
     open_rows = resolve.open_predictions(league)
@@ -90,6 +92,7 @@ def test_resolution_never_touches_a_probability(settled):
 def test_an_unplayed_game_is_left_open(league):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0)
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 18, include_props=False, use_llm=False)  # scheduled
     result = resolve.resolve_all(league)
     assert result["settled"] == 0

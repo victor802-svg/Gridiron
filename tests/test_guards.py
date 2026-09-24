@@ -21,7 +21,7 @@ import pytest
 
 from gridiron import audit, blind, calibration, config, db, resolve, run
 from gridiron.factors import registry, store
-from gridiron.model import baseline
+from gridiron.model import activation, baseline
 
 REPO = config.REPO_ROOT
 
@@ -162,6 +162,7 @@ def test_a_prediction_cannot_be_deleted(a_prediction, league):
 def resolved_league(league):
     store.sync_registry(league)
     baseline.train_all(league, (2025,), l2=1.0, note="guards", min_rows=20)
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     resolve.resolve_all(league)
     return league
@@ -490,6 +491,12 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_gate_step_that_opens_the_live_record_writable",
         "plant_a_schema_change_during_the_gate",
         "plant_a_write_through_the_read_handle_switched_back",
+        # THE ACTIVATION GATE (operator rulings, 2026-09-24)
+        "plant_a_fresh_fit_used_without_activation",
+        "plant_an_activation_without_holdout_scores",
+        "plant_a_tie_activated_over_the_incumbent",
+        "plant_a_scratch_activation_on_a_live_database",
+        "plant_an_active_fit_of_another_factor_set",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

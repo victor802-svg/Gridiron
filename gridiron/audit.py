@@ -6880,3 +6880,52 @@ def check_no_withdrawn_recommendation_counted(conn, report: dict | None = None,
             "A WITHDRAWN RECOMMENDATION IS COUNTED (ruling 1, 2026-09-24): "
             "voided rows never count in the closing line or anything it "
             "feeds:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE ACTIVATION GATE (operator rulings, 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# A market forecasts from the fit its latest activation names, and a forecast
+# row is stamped with the factor set the CONFIG declares. The two must be one
+# set: an activation of fs3 under a config that says fs5 would write rows
+# labelled fs5 and computed by fs3, and every curve split on that label would
+# be split on a lie. `baseline.load_fit` refuses such a market by name; this
+# says so in the gate, for every market at once, on the record's own rows.
+
+
+def active_fit_faults(conn) -> list[str]:
+    """Every market whose active fit is not the factor set the config
+    declares for it, in words."""
+    from .model import activation
+
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                    " AND name = 'fit_activations'").fetchone() is None:
+        return []
+    faults: list[str] = []
+    for row in conn.execute(
+            "SELECT DISTINCT sport, market_type FROM fit_activations"
+            " ORDER BY sport, market_type").fetchall():
+        sport, market_type = row[0], row[1]
+        active = activation.active_fit(conn, sport, market_type)
+        declared = config.factor_set_version(sport, market_type)
+        if active is not None and active["factor_set_version"] != declared:
+            faults.append(
+                f"{config.SPORT_LABELS.get(sport, sport.upper())} "
+                f"{market_type.replace('prop:', '').replace('_', ' ')}: the "
+                f"active fit {active['fit_id']} is factor set "
+                f"{active['factor_set_version']} and the config declares "
+                f"{declared}, so every row it wrote would carry the wrong "
+                f"set's name.")
+    return faults
+
+
+def check_every_active_fit_is_the_declared_set(conn) -> None:
+    """Refuse a record whose active fit and declared factor set disagree."""
+    faults = active_fit_faults(conn)
+    if faults:
+        raise LawViolation(
+            "THE ACTIVE FIT IS ANOTHER FACTOR SET (the activation gate, "
+            "2026-09-24): a market forecasts from its activated fit, and "
+            "that fit must be the set the config declares:"
+            + _NL2 + _NL2.join(faults))

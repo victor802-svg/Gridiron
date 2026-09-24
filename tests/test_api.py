@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from gridiron import api, auth, calibration, config, resolve, run
 from gridiron.factors import store
-from gridiron.model import baseline
+from gridiron.model import activation, baseline
 
 
 TOKEN = "test-token-for-the-api-suite"
@@ -21,6 +21,7 @@ def client(league, db_path, monkeypatch):
     store.sync_registry(league)
     # Six markets: the spread plus each prop type, fitted separately.
     baseline.train_all(league, (2025,), l2=1.0, note="test", min_rows=20)
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=True, use_llm=False)
     run.run_week(league, 2025, 8, include_props=True, use_llm=False)
     resolve.resolve_all(league)

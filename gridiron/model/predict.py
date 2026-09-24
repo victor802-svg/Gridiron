@@ -299,6 +299,10 @@ def predict_slate(
         if not include_props and market in config.SPORT_PROP_MARKETS.get(sport, ()):
             continue
         key = baseline.market_key(sport, market)
+        # THE ACTIVE FIT, NEVER THE NEWEST (operator ruling 2, 2026-09-24). A
+        # catch-up or scheduled run that follows a training step publishes
+        # from the incumbent: the fit just trained is inactive until a dated
+        # activation names it, and `load_fit` reads nothing else.
         try:
             fits[key] = baseline.load_fit(conn, key)
         except baseline.NotTrained as exc:
@@ -331,7 +335,10 @@ def predict_slate(
                 )
                 continue
         if q.market_key not in fits:
-            run.skipped.append(f"{q.game_id} {q.market_key}: no fitted model")
+            # NO ACTIVATED MODEL, not "no fitted model", from 2026-09-24: a
+            # fit that exists and was never activated is skipped here too,
+            # and the words should not send a reader off to train one.
+            run.skipped.append(f"{q.game_id} {q.market_key}: no activated model")
             continue
         try:
             fv, ctx = adapter.build_features(conn, q, cache)

@@ -47,7 +47,7 @@ for stream in (sys.stdout, sys.stderr):
 
 from gridiron import calibration, config, db, resolve, run  # noqa: E402
 from gridiron.factors import store  # noqa: E402
-from gridiron.model import baseline  # noqa: E402
+from gridiron.model import activation, baseline  # noqa: E402
 
 from dbcopy import FACT_TABLES, copy_facts  # noqa: E402,F401
 
@@ -101,6 +101,11 @@ def run_backtest(
                 f"  fit {market_type:22s} n={fit.n:,} on seasons "
                 f"{min(train_seasons)}-{max(train_seasons)} (strictly before {season})"
             )
+        # A FIT IS WRITTEN INACTIVE (operator ruling 2, 2026-09-24). A
+        # backtest trains its own fits each season and has no incumbent to
+        # beat, so each season's fits are activated the one lawful way a
+        # scratch world can -- refused by the schema on a live database.
+        activation.activate_in_a_scratch_world(conn, sport=sport)
 
         weeks = [
             r["week"]

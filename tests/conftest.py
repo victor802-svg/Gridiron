@@ -18,7 +18,7 @@ import pytest
 
 from gridiron import api, auth, config, db, resolve, run
 from gridiron.factors import store
-from gridiron.model import baseline
+from gridiron.model import activation, baseline
 
 try:                                   # the browser suite is optional
     from playwright import sync_api as playwright_api
@@ -547,6 +547,9 @@ def _build_world(conn) -> None:
     store.sync_registry(conn)
     # Six markets: the spread plus each prop type, fitted separately.
     baseline.train_all(conn, (2025,), l2=1.0, note="smoke", min_rows=20)
+    # A FIT IS WRITTEN INACTIVE (ruling 2, 2026-09-24): this world has no
+    # incumbent to beat, so it activates its own the scratch way.
+    activation.activate_in_a_scratch_world(conn)
     run.run_week(conn, 2025, 7, include_props=True, use_llm=False)
     run.run_week(conn, 2025, 8, include_props=True, use_llm=False)
     resolve.resolve_all(conn)
@@ -677,6 +680,7 @@ def served_fresh(league, db_path, monkeypatch):
     store.sync_registry(league)
     # Six markets: the spread plus each prop type, fitted separately.
     baseline.train_all(league, (2025,), l2=1.0, note="smoke", min_rows=20)
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=True, use_llm=False)
     run.run_week(league, 2025, 8, include_props=True, use_llm=False)
     resolve.resolve_all(league)

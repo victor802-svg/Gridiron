@@ -16,7 +16,7 @@ import pytest
 
 from gridiron import calibration, config, db, run
 from gridiron.factors import compute, context, registry, store
-from gridiron.model import baseline, logistic
+from gridiron.model import activation, baseline, logistic
 
 
 # --- the honest limit of the change ----------------------------------------
@@ -157,6 +157,7 @@ def test_the_absent_reader_understands_both_factor_sets():
 def test_a_prediction_records_present_and_absent(league):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="d2")
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     row = league.execute("SELECT factors_json, reasoning FROM predictions LIMIT 1").fetchone()
     payload = json.loads(row["factors_json"])
@@ -168,6 +169,7 @@ def test_a_prediction_records_present_and_absent(league):
 def test_the_narrative_names_what_was_unmeasurable(league):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="d2")
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     rows = league.execute("SELECT reasoning, factors_json FROM predictions").fetchall()
     with_absent = [
@@ -299,6 +301,7 @@ def test_versions_are_never_summed(league):
 def test_every_scoring_surface_can_filter_by_version(league):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="d2")
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
 
     current = calibration.curve(league, sport="nfl", factor_set_version="fs2")

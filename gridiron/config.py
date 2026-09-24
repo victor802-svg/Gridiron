@@ -477,6 +477,21 @@ def held_market(sport: str, market: str) -> dict | None:
     return HELD_MARKETS.get((sport, market))
 
 
+#: THE ACTIVATION GATE'S BIRTHDAY (operator rulings of 2026-09-24). From this
+#: instant a fit is written inactive and becomes a market's model only by a
+#: dated activation carrying its holdout against the incumbent, and ties go
+#: to the incumbent. It is the minute fits 91-94 began to be trained on the
+#: live record: the first fits the rule was written about.
+#:
+#: A fit fitted BEFORE it may be recorded as an incumbent -- the bootstrap of
+#: every market in use when the rule landed, and a revert to one of them. A
+#: fit fitted on or after it is activated by measurement or not at all.
+#: `schema.sql` carries the same instant as a literal inside the trigger
+#: `fit_activation_incumbent_predates_the_rule`, because SQLite cannot read
+#: this file; `test_activation` holds the two to one value.
+ACTIVATION_GATE_BIRTHDAY = "2026-09-24T05:16:00Z"
+
+
 def active_prop_markets(sport: str) -> tuple[str, ...]:
     """The prop markets still asked, in the order the day's cap fills them."""
     return tuple(m for m in SPORT_PROP_MARKETS.get(sport, ())

@@ -18,7 +18,7 @@ from .. import config
 from ..db import utcnow
 from ..data import repo
 from ..factors import compute, context, registry
-from . import counts, logistic, questions
+from . import activation, counts, logistic, questions
 
 
 class NotTrained(RuntimeError):
@@ -458,6 +458,11 @@ def train(
         if through_season is not None
         else f"seasons:{min(seasons)}-{max(seasons)}"
     )
+    # WRITTEN INACTIVE (operator ruling 2, 2026-09-24). This INSERT is the
+    # whole of training's effect on the record: the fit forecasts nothing
+    # until `activation` writes a dated row naming it, carrying its holdout
+    # against the incumbent. Nothing here may activate what it has just
+    # trained -- that is the act the ruling separated from this one.
     conn.execute(
         "INSERT INTO model_fits (sport, fitted_utc, factor_set_version, market_type,"
         " train_through, n_train, coefficients_json, note) VALUES (?,?,?,?,?,?,?,?)",
@@ -502,27 +507,50 @@ def train_all(
     return out
 
 
+class ActiveFitIsAnotherSet(NotTrained):
+    """A market's active fit belongs to a factor set the config does not
+    declare for it (the activation gate, 2026-09-24)."""
+
+
 def load_fit(
     conn: sqlite3.Connection,
     key: str,
     factor_set_version: str | None = None,
 ) -> logistic.Fit:
-    """`key` is a full market key: 'nfl:spread', 'mlb:moneyline', ..."""
+    """The model a market forecasts from. `key` is a full market key:
+    'nfl:spread', 'mlb:moneyline', ...
+
+    THE ACTIVE FIT, AND NOTHING ELSE (operator ruling 2, 2026-09-24). Until
+    that day this read the NEWEST fit of the declared factor set, so training
+    a fit made it live: fits 91-94 were written at 05:16Z and published from
+    at 05:32Z, unmeasured. Now a market forecasts from the fit its latest
+    activation names (`activation.active_fit`); a fit nobody has activated is
+    never read, however new it is.
+
+    AND THE ACTIVE FIT MUST BE THE DECLARED SET. A mismatch -- an activation
+    of fs3 while the config says fs5, or the other way round -- would write
+    rows stamped with one factor set and computed by another, splitting a
+    curve on a label that lies. It is refused by name here, which leaves the
+    market unforecast and says why, and
+    `audit.check_every_active_fit_is_the_declared_set` fails the gate on the
+    same fact.
+    """
     sport, market_type = split_key(key)
-    row = conn.execute(
-        "SELECT coefficients_json FROM model_fits"
-        " WHERE sport = ? AND market_type = ? AND factor_set_version = ?"
-        " ORDER BY id DESC LIMIT 1",
-        (sport, market_type,
-         factor_set_version or config.factor_set_version(sport, market_type)),
-    ).fetchone()
-    if row is None:
+    declared = factor_set_version or config.factor_set_version(sport, market_type)
+    active = activation.active_fit(conn, sport, market_type)
+    if active is None:
         raise NotTrained(
-            f"no fitted {key} model for factor set "
-            f"{factor_set_version or config.factor_set_version(sport, market_type)}"
-            f"; run `train` first"
-        )
-    blob = json.loads(row["coefficients_json"])
+            f"no activated model for {key}: a fit is written inactive and "
+            f"forecasts nothing until it is activated with its holdout against "
+            f"the incumbent")
+    if active["factor_set_version"] != declared:
+        raise ActiveFitIsAnotherSet(
+            f"THE ACTIVE FIT IS ANOTHER FACTOR SET: {key} is declared "
+            f"{declared}, and its active fit {active['fit_id']} is "
+            f"{active['factor_set_version']}. Its rows would carry one set's "
+            f"name and another set's numbers, so nothing is forecast until "
+            f"the two agree.")
+    blob = json.loads(active["coefficients_json"])
     # A STORED FIT SAYS WHICH FORM PRODUCED IT. Without the flag a rate model's
     # coefficients would be read back through a logistic's link -- silently,
     # because both are just numbers, and every probability would be wrong in a

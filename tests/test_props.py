@@ -10,7 +10,7 @@ import pytest
 from gridiron import calibration, config, db, resolve, run
 from gridiron.data import repo
 from gridiron.factors import registry, store
-from gridiron.model import baseline, questions
+from gridiron.model import activation, baseline, questions
 
 
 # --- the five markets -------------------------------------------------------
@@ -164,6 +164,7 @@ def test_a_traded_player_leaves_his_old_club(league):
 def settled_props(league):
     store.sync_registry(league)
     baseline.train_all(league, (2025,), l2=1.0, note="d3", min_rows=20)
+    activation.activate_in_a_scratch_world(league)
     run.run_week(league, 2025, 7, include_props=True, use_llm=False)
     resolve.resolve_all(league)
     return league

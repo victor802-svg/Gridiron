@@ -15,7 +15,7 @@ import pytest
 from gridiron import audit, calibration, config, db, views
 from gridiron.factors import compute, context, registry
 from gridiron.market import lines, sources
-from gridiron.model import baseline
+from gridiron.model import activation, baseline
 
 
 # --- the sport column -------------------------------------------------------
@@ -199,6 +199,10 @@ def test_a_fit_is_looked_up_within_its_sport(league):
 
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), sport="nfl", l2=1.0, min_rows=20)
+    # WRITTEN INACTIVE (2026-09-24): nothing is looked up until it is activated.
+    with pytest.raises(baseline.NotTrained, match="no activated model"):
+        baseline.load_fit(league, "nfl:spread")
+    activation.activate_in_a_scratch_world(league)
     assert baseline.load_fit(league, "nfl:spread")
     with pytest.raises(baseline.NotTrained):
         baseline.load_fit(league, "nba:spread")
