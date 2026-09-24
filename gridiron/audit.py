@@ -6929,3 +6929,114 @@ def check_every_active_fit_is_the_declared_set(conn) -> None:
             "2026-09-24): a market forecasts from its activated fit, and "
             "that fit must be the set the config declares:"
             + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE REVERT LIFTS THE HOLD (operator rulings of 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# "The hold is lifted per market only when that market's active fit is the
+# incumbent and its forecasts are from it." Two facts about a record, both
+# read here: each market the revert lifted forecasts from the incumbent the
+# revert named, and every statistical forecast the page shows -- for those
+# four and for every other market -- came from its market's active fit. The
+# gate runs it on its migrated copy of the live record, which is the record
+# as it will be once the tree merges: `db.init` has run the revert there.
+
+
+def _market_words(sport: str, market_type: str) -> str:
+    return (f"{config.SPORT_LABELS.get(sport, sport.upper())} "
+            f"{market_type.replace('prop:', '').replace('_', ' ')}")
+
+
+def hold_lift_faults(conn) -> list[str]:
+    """Each market whose hold the revert lifted, on the record the ruling is
+    about, whose active fit is not the incumbent the revert named."""
+    from .model import activation
+
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                    " AND name = 'fit_activations'").fetchone() is None:
+        return []
+    faults: list[str] = []
+    for (sport, market_type), expected in config.FS5_REVERT.items():
+        if (sport, market_type) in config.HELD_MARKETS:
+            continue            # still held: nothing was lifted
+        if activation.revert_fit_faults(conn, sport, market_type, expected):
+            continue            # not the record the ruling is about
+        active = activation.active_fit(conn, sport, market_type)
+        if active is None or active["fit_id"] != expected["fit_id"]:
+            faults.append(
+                f"{_market_words(sport, market_type)}: the hold was lifted "
+                f"{expected['lifted']} for the revert to fit "
+                f"{expected['fit_id']}, and the market's active fit is "
+                f"{'none' if active is None else active['fit_id']}.")
+    return faults
+
+
+def page_fit_faults(conn, payloads) -> list[str]:
+    """Every statistical forecast a page shows, not withdrawn, that its
+    market's active fit did not write (`baseline.is_its_forecast`: the fit,
+    applied to the row's own stored values and rung, must give back the
+    probability the row stored)."""
+    import json as _json
+
+    from .model import activation, baseline
+
+    faults: list[str] = []
+    fits: dict[tuple[str, str], tuple] = {}
+    for payload in payloads:
+        for card in payload.get("cards") or []:
+            if card.get("predictor") != "statistical":
+                continue
+            row = conn.execute(
+                "SELECT p.id, p.sport, p.market_type, p.prop_type,"
+                "       p.line_asked, p.factor_set_version, p.created_utc,"
+                "       p.factors_json"
+                "  FROM predictions p WHERE p.id = ?"
+                "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+                "                   WHERE v.prediction_id = p.id)",
+                (card["prediction_id"],)).fetchone()
+            if row is None:
+                continue        # withdrawn: not shown as a forecast
+            key = baseline.market_key(
+                row["sport"], row["prop_type"] if row["market_type"] == "prop"
+                else row["market_type"])
+            sport, market_type = baseline.split_key(key)
+            if (sport, market_type) not in fits:
+                active = activation.active_fit(conn, sport, market_type)
+                try:
+                    fits[(sport, market_type)] = (
+                        active["fit_id"] if active else None,
+                        baseline.load_fit(conn, key))
+                except baseline.NotTrained:
+                    fits[(sport, market_type)] = (
+                        active["fit_id"] if active else None, None)
+            fit_id, fit = fits[(sport, market_type)]
+            if fit is not None and baseline.is_its_forecast(
+                    fit, _json.loads(row["factors_json"] or "{}"),
+                    row["line_asked"], sport, market_type):
+                continue
+            faults.append(
+                f"{_market_words(sport, market_type)}: the page shows "
+                f"forecast {row['id']} (written "
+                f"{row['created_utc']}, {row['factor_set_version']}), and "
+                + (f"the market's active fit {fit_id} does not give back its "
+                   f"probability from its own stored factors"
+                   if fit is not None else
+                   "the market has no active fit it could have come from")
+                + ".")
+    return faults
+
+
+def check_the_page_forecasts_from_the_active_fit(conn, payloads) -> None:
+    """Refuse a lifted hold whose market is not on its incumbent, and a page
+    showing a statistical forecast from a fit that is not its market's
+    active fit. `payloads` are the slate pages as `views.week` serves them,
+    read for the statistical forecaster."""
+    faults = hold_lift_faults(conn) + page_fit_faults(conn, payloads)
+    if faults:
+        raise LawViolation(
+            "A FORECAST ON THE PAGE IS NOT FROM ITS MARKET'S ACTIVE FIT "
+            "(operator rulings of 2026-09-24: the hold is lifted per market "
+            "only when its active fit is the incumbent and its forecasts are "
+            "from it):" + _NL2 + _NL2.join(faults))

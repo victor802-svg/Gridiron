@@ -464,12 +464,55 @@ def active_markets(sport: str) -> tuple[str, ...]:
 #: and each clears this for its own run.
 HELD_REASON = ("its new model is being checked against last season, which "
                "it was not fitted on, before it publishes")
-HELD_MARKETS: dict[tuple[str, str], dict] = {
-    ("nfl", "spread"): {"held": "2026-09-24", "reason": HELD_REASON},
-    ("nfl", "moneyline"): {"held": "2026-09-24", "reason": HELD_REASON},
-    ("cfb", "spread"): {"held": "2026-09-24", "reason": HELD_REASON},
-    ("cfb", "moneyline"): {"held": "2026-09-24", "reason": HELD_REASON},
+#: LIFTED 2026-09-24, PER MARKET, BY THE REVERT. The four holds of that
+#: morning are not erased: each is kept in `FS5_REVERT` below with the day it
+#: was held and the day it was lifted. The operator's condition -- "the hold
+#: is lifted per market only when that market's active fit is the incumbent
+#: and its forecasts are from it" -- is two facts about the record, and the
+#: gate checks both on a copy of it before this can release
+#: (`audit.check_the_page_forecasts_from_the_active_fit`): the revert step in
+#: `db.init` activates each market's incumbent, and every statistical
+#: forecast the page shows comes from its market's active fit.
+HELD_MARKETS: dict[tuple[str, str], dict] = {}
+
+#: THE fs5 REVERT (operator rulings of 2026-09-24). "Holdout rule: ties go to
+#: the incumbent ... Under this rule all four fs5 markets revert, including
+#: NFL moneyline." Measured with `tools/holdout.py` on a scratch copy of the
+#: record (each set refit through 2024, scored on 2025, paired bootstrap):
+#: none of fits 91-94 has an interval of the log-loss difference that
+#: excludes zero, so each market goes back to the fit it forecast from
+#: before fs5.
+#:
+#: WHAT EACH ENTRY IS. The incumbent the market reverts to, by the identity
+#: the record gives it -- id, factor set and the instant it was fitted -- and
+#: the fs5 candidate it tied. `activation.apply_the_fs5_revert`, run by
+#: `db.init` BEFORE the generic birthday bootstrap, writes one `incumbent`
+#: activation per market from this, and only on a database whose fit of that
+#: id is exactly this fit: every other database -- a test world, a fresh
+#: file -- is left alone. The holdout scores are not here: they are the
+#: tool's own output, in `gridiron/model/fs5_revert_holdout.json`.
+#:
+#: `held` and `lifted` are the hold of that morning ("fs5 before it
+#: publishes", part 3) and its lifting by this revert.
+FS5_REVERT: dict[tuple[str, str], dict] = {
+    ("nfl", "spread"): {"fit_id": 88, "factor_set_version": "fs3",
+                        "fitted_utc": "2026-09-05T11:16:52Z",
+                        "candidate_fit_id": 91,
+                        "held": "2026-09-24", "lifted": "2026-09-24"},
+    ("nfl", "moneyline"): {"fit_id": 71, "factor_set_version": "fs2",
+                           "fitted_utc": "2026-09-04T11:48:00Z",
+                           "candidate_fit_id": 92,
+                           "held": "2026-09-24", "lifted": "2026-09-24"},
+    ("cfb", "spread"): {"fit_id": 44, "factor_set_version": "fs3",
+                        "fitted_utc": "2026-09-03T21:47:46Z",
+                        "candidate_fit_id": 93,
+                        "held": "2026-09-24", "lifted": "2026-09-24"},
+    ("cfb", "moneyline"): {"fit_id": 35, "factor_set_version": "fs2",
+                           "fitted_utc": "2026-09-01T06:56:30Z",
+                           "candidate_fit_id": 94,
+                           "held": "2026-09-24", "lifted": "2026-09-24"},
 }
+FS5_REVERT_DECLARED = "2026-09-24"
 
 
 def held_market(sport: str, market: str) -> dict | None:
@@ -840,8 +883,15 @@ FACTOR_SET_VERSIONS: dict[tuple[str, str], str] = {
     # THE DECAYED RATING REPLACED THE PLAIN ONE on 2026-09-06 (AT_THE_LINE
     # E2): a different factor set for the NFL game markets, so a new
     # version for both; the rows before it stand on theirs.
-    ("nfl", "spread"): "fs5",
-    ("nfl", "moneyline"): "fs5",
+    #
+    # REVERTED 2026-09-24 (operator rulings of 2026-09-24, the three
+    # decisions: "ties go to the incumbent ... all four fs5 markets revert,
+    # including NFL moneyline"). Each market declares again exactly what it
+    # declared before 04283f8: the spread fs3, and the moneyline NOTHING --
+    # it had no entry, so it reads the default, fs2. fs5 is closed, not
+    # erased: its activation date stays in FACTOR_SET_ACTIVATED and its rows
+    # stand under its name. `FS5_REVERT`, beside the hold, names the fits.
+    ("nfl", "spread"): "fs3",
     # NBA SPREAD GAINED A FACTOR on 2026-09-03 (Session D): `nba_srs_diff`, an
     # opponent-adjusted rating declared beside the rolling net rating. A model
     # with a factor the previous one did not have is a different model, and its
@@ -857,8 +907,10 @@ FACTOR_SET_VERSIONS: dict[tuple[str, str], str] = {
     ("nba", "spread"): "fs4",
     # THE DECAYED RATING REPLACED THE PLAIN ONE on 2026-09-06 (E2), for
     # college football's two margin markets.
-    ("cfb", "spread"): "fs5",
-    ("cfb", "moneyline"): "fs5",
+    #
+    # REVERTED 2026-09-24 by the same ruling: the spread declares fs3 again,
+    # as it did before 0f96968, and the moneyline no entry, so fs2.
+    ("cfb", "spread"): "fs3",
 }
 
 

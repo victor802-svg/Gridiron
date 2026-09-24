@@ -785,6 +785,12 @@ def init(conn: sqlite3.Connection) -> None:
     # open rather than on somebody remembering to run a step. Idempotent: a
     # market with any activation is never touched again.
     from .model import activation as _activation
+    # THE fs5 REVERT FIRST (operator rulings of 2026-09-24: "ties go to the
+    # incumbent ... all four fs5 markets revert"). With the config reverted,
+    # the bootstrap below would claim the same four fits under its own
+    # reason; this records them under the ruling's, with the tie that sent
+    # them back. It touches only the record whose fits the ruling names.
+    _activation.apply_the_fs5_revert(conn)
     _activation.bootstrap_incumbents(conn)
 
 

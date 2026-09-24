@@ -20,6 +20,11 @@ live in the schema's triggers, not here -- a rule the database enforces
 cannot be forgotten by the next caller -- and this module translates a
 refusal into `ActivationRefused` carrying the trigger's own words.
 
+THE REVERT (the three decisions, 2026-09-24). `apply_the_fs5_revert` puts
+the four fs5 markets back on their incumbents, once, from `db.init`.
+`baseline.is_its_forecast` is the door the gate reads to check that every
+statistical forecast the page shows is from its market's active fit.
+
 Nothing here names a market table, and nothing here may: `baseline` imports
 it, so it sits inside the LAW 1 prediction closure.
 """
@@ -225,6 +230,153 @@ def bootstrap_incumbents(conn: sqlite3.Connection) -> list[dict]:
                 written.append({"sport": sport, "market_type": market_type,
                                 "fit_id": newest["id"]})
     return written
+
+
+# ---------------------------------------------------------------------------
+# THE fs5 REVERT (operator rulings of 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# "Ties go to the incumbent ... all four fs5 markets revert, including NFL
+# moneyline." Each market goes back to the fit it forecast from before fs5,
+# recorded as an `incumbent` activation carrying the measurement that decided
+# it. Run by `db.init` BEFORE `bootstrap_incumbents`: with the config reverted,
+# the generic bootstrap would pick the same four fits, and record them with
+# the birthday's reason instead of the ruling's and without the tie that
+# sent them back.
+
+#: THE MEASUREMENT, AS THE TOOL WROTE IT. `tools/holdout.py --record`, run on
+#: a scratch copy of the record on 24 September; nobody typed these numbers.
+REVERT_MEASUREMENT = Path(__file__).with_name("fs5_revert_holdout.json")
+
+
+def revert_fit_faults(conn: sqlite3.Connection, sport: str, market_type: str,
+                      expected: dict) -> list[str]:
+    """Why this database's fit of the revert's id is not the revert's fit,
+    in words; [] when it is exactly that fit.
+
+    THE IDENTITY IS THE WHOLE ROW THE RULING NAMES: its id, sport, market,
+    factor set and the instant it was fitted. An id alone is not an
+    identity -- a test world that has trained eighty-eight fits holds a fit
+    88 too, of whatever it last trained -- and a revert keyed on the market
+    alone would activate whatever fs3 fit a database happened to hold.
+    """
+    fit = conn.execute(
+        "SELECT id, sport, market_type, factor_set_version, fitted_utc"
+        "  FROM model_fits WHERE id = ?", (expected["fit_id"],)).fetchone()
+    if fit is None:
+        return [f"there is no fit {expected['fit_id']}"]
+    faults = []
+    for field, want in (("sport", sport), ("market_type", market_type),
+                        ("factor_set_version", expected["factor_set_version"]),
+                        ("fitted_utc", expected["fitted_utc"])):
+        if fit[field] != want:
+            faults.append(f"fit {fit['id']} has {field} {fit[field]!r}, and the "
+                          f"revert's fit has {want!r}")
+    return faults
+
+
+def _measurement_faults(entry: dict | None, sport: str, market_type: str,
+                        expected: dict) -> list[str]:
+    """Why the recorded measurement does not decide THIS revert; []."""
+    if entry is None:
+        return [f"the measurement file holds nothing for {sport}:{market_type}"]
+    sets = entry.get("sets") or {}
+    incumbent, candidate = sets.get("incumbent") or {}, sets.get("candidate") or {}
+    faults = []
+    for what, got, want in (
+            ("incumbent fit", incumbent.get("fit_id"), expected["fit_id"]),
+            ("incumbent set", incumbent.get("set"), expected["factor_set_version"]),
+            ("incumbent fitted", incumbent.get("fitted_utc"), expected["fitted_utc"]),
+            ("candidate fit", candidate.get("fit_id"), expected["candidate_fit_id"])):
+        if got != want:
+            faults.append(f"the measurement's {what} is {got!r}, not {want!r}")
+    if entry.get("beats") is not False:
+        faults.append("the measurement does not record a tie: a candidate that "
+                      "beat its incumbent is not a revert")
+    return faults
+
+
+def apply_the_fs5_revert(conn: sqlite3.Connection, *,
+                         revert: dict | None = None,
+                         measured: dict | None = None) -> list[dict]:
+    """Activate, once, each fs5 market's incumbent, as the ruling names it.
+
+    ONLY ON THE RECORD THE RULING IS ABOUT. A market is reverted only when
+    this database's fit of the named id is exactly the named fit
+    (`revert_fit_faults`), the tool's measurement names the same incumbent
+    and candidate and records a tie, the config declares the incumbent's
+    factor set, and the market has no activation yet. Any other database --
+    a test world, a fresh file -- is left alone, and so is a market already
+    activated: IDEMPOTENT, like the bootstrap.
+
+    Returns one entry per market: whether it was written, and why not.
+    """
+    import json
+
+    revert = config.FS5_REVERT if revert is None else revert
+    out: list[dict] = []
+    if not (_has_table(conn, "fit_activations") and _has_table(conn, "model_fits")):
+        return out
+    for (sport, market_type), expected in revert.items():
+        entry = {"sport": sport, "market_type": market_type,
+                 "fit_id": expected["fit_id"], "written": False}
+        out.append(entry)
+        faults = revert_fit_faults(conn, sport, market_type, expected)
+        if faults:
+            entry["why"] = "not the record the ruling is about: " + "; ".join(faults)
+            continue
+        if active_fit(conn, sport, market_type) is not None:
+            entry["why"] = "the market already has an activation"
+            continue
+        declared = config.factor_set_version(sport, market_type)
+        if declared != expected["factor_set_version"]:
+            entry["why"] = (f"the config declares {declared}, and the incumbent "
+                            f"is {expected['factor_set_version']}")
+            continue
+        # READ ONLY HERE, on the record the ruling is about, so a test world
+        # never depends on the file.
+        if measured is None:
+            measured = json.loads(REVERT_MEASUREMENT.read_text(encoding="utf-8"))
+        result = measured.get(f"{sport}:{market_type}")
+        faults = _measurement_faults(result, sport, market_type, expected)
+        if faults:
+            entry["why"] = "; ".join(faults)
+            continue
+        fit = conn.execute("SELECT train_through FROM model_fits WHERE id = ?",
+                           (expected["fit_id"],)).fetchone()
+        inc, cand = result["sets"]["incumbent"], result["sets"]["candidate"]
+        low, high = result["interval"]
+        # THE HOLDOUT WORDS SAY WHAT WAS SCORED. The numbers are the
+        # incumbent's FACTOR SET refit through the season before and scored
+        # on the season after; the fit itself was trained on the scored
+        # season and cannot be scored on it.
+        holdout = (
+            f"the {inc['set']} factor set refit on the record's seasons "
+            f"through {result['through']} and scored on {result['score']}, "
+            f"{result['n']} games, paired with fs5 fit {cand['fit_id']} on the "
+            f"same games (tools/holdout.py). Fit {expected['fit_id']} itself "
+            f"was trained on '{fit['train_through']}', which includes "
+            f"{result['score']}, so these are its factor set's scores and not "
+            f"its own")
+        reason = (
+            f"THE fs5 REVERT (operator rulings of 2026-09-24): ties go to the "
+            f"incumbent, and all four fs5 markets revert, NFL moneyline "
+            f"included. fs5 fit {cand['fit_id']} against this market's "
+            f"{inc['set']} set on the same {result['n']} games of "
+            f"{result['score']}: log loss {cand['log_loss']:.5f} against "
+            f"{inc['log_loss']:.5f}, a difference of "
+            f"{result['difference']:+.5f} with a bootstrap 95% interval of "
+            f"[{low:+.5f}, {high:+.5f}], which does not exclude zero. A tie, "
+            f"so the incumbent, fit {expected['fit_id']}, stays. The holdout "
+            f"scores on this row are its factor set's refit, not its own.")
+        written = activate_incumbent(
+            conn, expected["fit_id"], reason=reason, holdout=holdout,
+            holdout_n=result["n"], log_loss=inc["log_loss"],
+            brier=inc["brier"], only_if_the_market_has_none=True)
+        entry["written"] = bool(written)
+        if not written:
+            entry["why"] = "another process activated the market first"
+    return out
 
 
 def activate_in_a_scratch_world(conn: sqlite3.Connection,

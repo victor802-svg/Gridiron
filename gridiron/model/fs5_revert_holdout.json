@@ -1,0 +1,230 @@
+{
+  "cfb:moneyline": {
+    "beats": false,
+    "command": "python tools/holdout.py --sport cfb --market moneyline --candidate 94 --incumbent 35 --through 2024 --score 2025",
+    "difference": 0.0037112209406067057,
+    "holdout": "fit through 2024, scored on 2025",
+    "interval": [
+      -0.014283868339518,
+      0.021535590571740607
+    ],
+    "l2": 2.0,
+    "market": "moneyline",
+    "measured_utc": "2026-09-24T11:45:53Z",
+    "n": 888,
+    "score": 2025,
+    "sets": {
+      "candidate": {
+        "brier": 0.16984343300834587,
+        "factors": [
+          "cfb_non_fbs_visitor",
+          "cfb_rating_decayed_diff",
+          "cfb_rest_diff",
+          "cfb_travel_kmiles"
+        ],
+        "fit_id": 94,
+        "fitted_utc": "2026-09-24T05:17:38Z",
+        "log_loss": 0.5071398902853371,
+        "n_train": 873,
+        "set": "fs5"
+      },
+      "incumbent": {
+        "brier": 0.16912218458784395,
+        "factors": [
+          "cfb_non_fbs_visitor",
+          "cfb_rest_diff",
+          "cfb_srs_diff",
+          "cfb_travel_kmiles"
+        ],
+        "fit_id": 35,
+        "fitted_utc": "2026-09-01T06:56:30Z",
+        "log_loss": 0.5034286693447304,
+        "n_train": 873,
+        "set": "fs2"
+      }
+    },
+    "sport": "cfb",
+    "through": 2024
+  },
+  "cfb:spread": {
+    "beats": false,
+    "command": "python tools/holdout.py --sport cfb --market spread --candidate 93 --incumbent 44 --through 2024 --score 2025",
+    "difference": 0.0016597467710197534,
+    "holdout": "fit through 2024, scored on 2025",
+    "interval": [
+      -0.004114372125968361,
+      0.008371851386595143
+    ],
+    "l2": 2.0,
+    "market": "spread",
+    "measured_utc": "2026-09-24T11:45:06Z",
+    "n": 839,
+    "score": 2025,
+    "sets": {
+      "candidate": {
+        "brier": 0.24570632709385826,
+        "factors": [
+          "cfb_asked_distance",
+          "cfb_non_fbs_visitor",
+          "cfb_rating_decayed_diff",
+          "cfb_rest_diff",
+          "cfb_travel_kmiles"
+        ],
+        "fit_id": 93,
+        "fitted_utc": "2026-09-24T05:17:15Z",
+        "log_loss": 0.6837664158368127,
+        "n_train": 817,
+        "set": "fs5"
+      },
+      "incumbent": {
+        "brier": 0.24468699605851382,
+        "factors": [
+          "cfb_asked_distance",
+          "cfb_non_fbs_visitor",
+          "cfb_rest_diff",
+          "cfb_srs_diff",
+          "cfb_travel_kmiles"
+        ],
+        "fit_id": 44,
+        "fitted_utc": "2026-09-03T21:47:46Z",
+        "log_loss": 0.6821066690657922,
+        "n_train": 817,
+        "set": "fs3"
+      }
+    },
+    "sport": "cfb",
+    "through": 2024
+  },
+  "nfl:moneyline": {
+    "beats": false,
+    "command": "python tools/holdout.py --sport nfl --market moneyline --candidate 92 --incumbent 71 --through 2024 --score 2025",
+    "difference": -0.008926070166387962,
+    "holdout": "fit through 2024, scored on 2025",
+    "interval": [
+      -0.025525174241635307,
+      0.007694701354463388
+    ],
+    "l2": 2.0,
+    "market": "moneyline",
+    "measured_utc": "2026-09-24T11:44:18Z",
+    "n": 271,
+    "score": 2025,
+    "sets": {
+      "candidate": {
+        "brier": 0.21889294405766124,
+        "factors": [
+          "divisional",
+          "home_field",
+          "injury_out_diff",
+          "neutral_site",
+          "nfl_rating_decayed_diff",
+          "qb_out_diff",
+          "recent_form_diff",
+          "rest_diff",
+          "short_week_either",
+          "timezone_shift",
+          "travel_kmiles"
+        ],
+        "fit_id": 92,
+        "fitted_utc": "2026-09-24T05:16:48Z",
+        "log_loss": 0.6277294683222535,
+        "n_train": 2358,
+        "set": "fs5"
+      },
+      "incumbent": {
+        "brier": 0.22342245267156643,
+        "factors": [
+          "divisional",
+          "home_field",
+          "injury_out_diff",
+          "neutral_site",
+          "qb_out_diff",
+          "recent_form_diff",
+          "rest_diff",
+          "short_week_either",
+          "srs_diff",
+          "timezone_shift",
+          "travel_kmiles"
+        ],
+        "fit_id": 71,
+        "fitted_utc": "2026-09-04T11:48:00Z",
+        "log_loss": 0.6366555384886413,
+        "n_train": 2358,
+        "set": "fs2"
+      }
+    },
+    "sport": "nfl",
+    "through": 2024
+  },
+  "nfl:spread": {
+    "beats": false,
+    "command": "python tools/holdout.py --sport nfl --market spread --candidate 91 --incumbent 88 --through 2024 --score 2025",
+    "difference": 0.005425525000887618,
+    "holdout": "fit through 2024, scored on 2025",
+    "interval": [
+      -0.009345615791763177,
+      0.020478728124512527
+    ],
+    "l2": 2.0,
+    "market": "spread",
+    "measured_utc": "2026-09-24T11:44:15Z",
+    "n": 272,
+    "score": 2025,
+    "sets": {
+      "candidate": {
+        "brier": 0.24786216896224497,
+        "factors": [
+          "asked_distance",
+          "cold",
+          "divisional",
+          "home_field",
+          "injury_out_diff",
+          "neutral_site",
+          "nfl_rating_decayed_diff",
+          "pace_sum",
+          "precipitation",
+          "qb_out_diff",
+          "recent_form_diff",
+          "rest_diff",
+          "short_week_either",
+          "timezone_shift",
+          "travel_kmiles",
+          "wind"
+        ],
+        "fit_id": 91,
+        "fitted_utc": "2026-09-24T05:16:46Z",
+        "log_loss": 0.6890390421757326,
+        "n_train": 2360,
+        "set": "fs5"
+      },
+      "incumbent": {
+        "brier": 0.2453529860434383,
+        "factors": [
+          "asked_distance",
+          "cold",
+          "divisional",
+          "home_field",
+          "injury_out_diff",
+          "neutral_site",
+          "pace_sum",
+          "precipitation",
+          "qb_out_diff",
+          "recent_form_diff",
+          "rest_diff",
+          "short_week_either",
+          "srs_diff",
+          "timezone_shift",
+          "travel_kmiles",
+          "wind"
+        ],
+        "fit_id": 88,
+        "fitted_utc": "2026-09-05T11:16:52Z",
+        "log_loss": 0.6836135171748453,
+        "n_train": 2360,
+        "set": "fs3"
+      }
+    },
+    "sport": "nfl",
+    "through": 2024
+  }
+}

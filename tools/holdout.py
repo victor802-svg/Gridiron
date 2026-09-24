@@ -28,6 +28,12 @@ made earlier). Refits are made with `logistic.fit` directly, never with
 tool can make to the live record is the activation row, through the door
 (`activation.activate_measured`), and the schema's triggers decide it.
 
+`--record FILE` (2026-09-24, the fs5 revert) also writes the measurement,
+whole, into a JSON file under the market's key -- a file, never the record.
+It is how a measurement reaches code without anybody typing its numbers:
+the revert's incumbent activations carry exactly what this measured
+(`gridiron/model/fs5_revert_holdout.json`).
+
 GAME MARKETS ONLY, for now: a prop market has many rows per game and a count
 market is a rate rather than a logistic, and pairing either needs a key this
 tool does not build. It says so rather than measuring them badly.
@@ -217,6 +223,31 @@ def _scratch_copy(folder: Path) -> Path:
     return target
 
 
+def record_measurement(path: Path, result: dict, command: str) -> None:
+    """Write one measurement into a JSON file, keyed 'sport:market'.
+
+    MERGED, so four runs build one file; a market measured again replaces
+    its own entry and no other. The file carries the command that made each
+    entry and when, so a reader can run it again and compare.
+    """
+    import json
+
+    from gridiron.db import utcnow
+
+    path = Path(path)
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        existing = {}
+    entry = dict(result)
+    entry["interval"] = list(result["interval"])
+    entry["measured_utc"] = utcnow()
+    entry["command"] = command
+    existing[f"{result['sport']}:{result['market']}"] = entry
+    path.write_text(json.dumps(existing, indent=2, sort_keys=True) + chr(10),
+                    encoding="utf-8")
+
+
 def _refuse_the_network() -> None:
     """A holdout is measured on stored facts. A fetch would change them."""
     from gridiron.data import sources
@@ -243,6 +274,8 @@ def main(argv=None) -> int:
     parser.add_argument("--score", type=int, required=True,
                         help="the season held out and scored")
     parser.add_argument("--scratch", help="an existing scratch copy of the record")
+    parser.add_argument("--record", help="also write the measurement into this "
+                                         "JSON file, under the market's key")
     parser.add_argument("--activate", action="store_true")
     parser.add_argument("--reason", default="")
     args = parser.parse_args(argv)
@@ -283,6 +316,13 @@ def main(argv=None) -> int:
         if folder is not None:
             shutil.rmtree(folder, ignore_errors=True)
 
+    if args.record:
+        record_measurement(
+            Path(args.record), result,
+            "python tools/holdout.py " + " ".join(
+                a for a in (argv if argv is not None else sys.argv[1:])
+                if not a.startswith(("--scratch", "--record"))
+                and a not in (args.scratch, args.record)))
     c, i = result["sets"]["candidate"], result["sets"]["incumbent"]
     low, high = result["interval"]
     print(f"{args.sport} {args.market}: {result['holdout']}, n={result['n']} "

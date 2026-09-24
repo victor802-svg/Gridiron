@@ -1112,6 +1112,12 @@ order, since it writes model fits); make an untrained declared market a
 visible failure rather than a silent skip; and plant a declared market with
 no fit so the gate says so by name.
 
+**2026-09-24, the fs5 revert:** fs5 was trained (fits 91-94), tied its
+incumbents on the 2025 holdout, and the four markets went back to fits 88,
+71, 44 and 35 -- forecast again from the first open after release (below).
+The second half stands open: a declared market with no activated model is
+still skipped in the run's `skipped` list rather than failing visibly.
+
 ### The at-the-line scorecard merges forecasters *(measured 2026-09-23)*
 
 `at_the_line.standing_claims` keeps one claim per PREDICTION, not per
@@ -1360,3 +1366,78 @@ trains on a scratch copy, as `tools/holdout.py` does.
 `calibration._fit_status` still picks the newest fit of a version to report
 each factor's training rows, so the page can describe a fit no market is
 forecasting from. **What would settle it:** it reads `activation.active_fit`.
+
+## The fs5 revert, 2026-09-24 *(the three decisions; GRIDIRON_REPAIR, the queue's item 2)*
+
+### BUILT: all four fs5 markets back on their incumbents, and the hold lifted *(ruled and built 2026-09-24)*
+
+"Ties go to the incumbent ... all four fs5 markets revert, including NFL
+moneyline." `tools/holdout.py`, run read-only on a scratch copy, reproduced
+the 24 September measurement to the fifth place and wrote it to
+`gridiron/model/fs5_revert_holdout.json`: fs5 minus incumbent log loss
++0.00543 [-0.00935, +0.02048] NFL spread (n 272), -0.00893 [-0.02553,
++0.00769] NFL moneyline (271), +0.00166 [-0.00411, +0.00837] NCAAF spread
+(839), +0.00371 [-0.01428, +0.02154] NCAAF moneyline (888) -- four ties.
+`db.init` writes one `incumbent` activation each (fits 88, 71, 44, 35),
+before the birthday bootstrap, only where the record's fit of that id is
+exactly the named one. The config declares the pre-fs5 sets again, and
+`srs_diff` and `cfb_srs_diff` are reactivated by dated entry.
+
+**What the investigation found first.** The feature vector is built from the
+registry's active factors (`compute.feature_vector`), not from the fit, and
+`Fit.log_odds` skips a name the row lacks. All four incumbents carry the
+plain rating fs5 retired, so reverting without reactivating it would have
+forecast every NFL and college game without its rating term and without a
+word: measured on a scratch copy, 0.11 of probability on average on the NFL
+spread and 0.21 on the moneyline. `baseline.assert_the_vector_carries_the_fit`
+now refuses that by name.
+
+**Simulated on a scratch copy of the record, the revert applied:** the
+forecast pass wrote NFL spread 13, NFL moneyline 16, NCAAF spread 68 and
+NCAAF moneyline 71 (the next college slate 1 and 1; the rest of the week's
+days the remainder), every row reproduced by fit 88, 71, 44 or 35 to the
+sixth place with the rating measured on every one; the page check passed;
+the day strip carried no held line.
+
+### Count-market prop rows carry the class's factor set, not their own *(open, measured 2026-09-24)*
+
+Found by the page check on its first run. `predict.write_prediction` stamps
+`config.factor_set_version(sport, q.market_type)`, and for a prop that is
+`(sport, "prop")`, which has no entry, so fs2. `baseline.load_fit` reads
+`config.factor_set_version(sport, "prop:<stat>")`, fs3-rate for the count
+markets since 3 September. So NFL passing touchdowns and receptions and MLB
+batter hits and pitcher strikeouts are computed by fs3-rate rate fits and
+stamped fs2: on the live record's page that day, forecasts 1899, 2081, 2083,
+2087, 2090, 2092 and 2093 (NFL) and 2224 (MLB) are stamped fs2 and are
+reproduced exactly by fits 56, 57 and 66, which are fs3-rate. Every curve or
+version table split on the label splits those markets on a wrong one, and
+`load_fit`'s own note says a label that lies is what it exists to refuse.
+The page check reads the rows' own numbers instead of the label, so it is
+not fooled. **What would settle it:** the operator rules whether future rows
+carry their market's own set (which splits those curves at a date) and how
+the rows already written are described; LAW 3 forbids re-stamping them.
+
+### A prediction stores no fit id *(open, 2026-09-24)*
+
+"Its forecasts come from its active fit" is checked by recomputation:
+`baseline.is_its_forecast` applies the fit to the row's stored factor values
+and rung and compares the probability. That is exact but indirect. It also
+leaves a trap for the first `measured` activation: a new fit of the SAME
+factor set, activated mid-slate, leaves that slate's rows from the old fit
+on the page -- which the gate check then names -- and `already_written`,
+keyed on the factor set, stops the new fit answering those questions again.
+**What would settle it:** a fit-id column on `predictions`, written with the
+row, before the first measured activation.
+
+### The decayed ratings stay active beside the plain ones *(open, 2026-09-24)*
+
+`nfl_rating_decayed_diff` and `cfb_rating_decayed_diff` were not retired:
+nothing breaks with them active today. They are computed on every NFL and
+college spread and moneyline row, stored among its values, counted in its
+factor total and handed to the reasoning pass, and they carry no
+coefficient in fits 88, 71, 44 or 35, so no probability and no factor score
+reads them. **What breaks next:** a retrain of these markets -- the weather
+step's NFL spread retrain is queued next -- would fit both ratings into a fit
+labelled fs3, a different set under the old name. **What would settle it:**
+before that retrain, either retire them by dated entry or declare the set
+the retrain is meant to be.

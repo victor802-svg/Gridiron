@@ -363,11 +363,12 @@ def _config():
     return config
 
 
-def _slate_payload(sport: str):
-    """One sport's current slate as the page would render it."""
+def _slate_payload(sport: str, forecaster: str | None = None):
+    """One sport's current slate as the page would render it -- for one
+    forecaster when named, else the operator's default."""
     from gridiron import views
 
-    return views.week(_record_conn(), sport)
+    return views.week(_record_conn(), sport, forecaster=forecaster)
 
 
 def _at_the_line_payload():
@@ -601,6 +602,15 @@ def step_2_guards() -> bool:
         ("every active fit is the declared factor set",
          lambda: audit.check_every_active_fit_is_the_declared_set(
              _record_conn())),
+        # THE REVERT LIFTS THE HOLD (operator rulings, 2026-09-24): "only
+        # when that market's active fit is the incumbent and its forecasts
+        # are from it". Both halves, on the migrated copy, where `db.init`
+        # has already run the revert the record will run once this merges.
+        ("every forecast on the page is from its market's active fit",
+         lambda: audit.check_the_page_forecasts_from_the_active_fit(
+             _record_conn(),
+             [_slate_payload(sport, "statistical")
+              for sport in _config().SPORTS])),
     ):
         try:
             fn()

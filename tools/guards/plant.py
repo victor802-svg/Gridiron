@@ -9714,6 +9714,278 @@ def plant_an_active_fit_of_another_factor_set() -> Result:
         f"{'loaded' if mirror_loads else 'did not load'}")
 
 
+LAW_REVERT = "THE fs5 REVERT: A HOLD LIFTS ONLY ON THE INCUMBENT'S OWN FORECASTS"
+
+
+def _an_old_fit(conn, market_type: str, version: str, fitted: str,
+                names: tuple[str, ...] = ("home_field",)) -> int:
+    """A fit row as the record holds them from before the gate's birthday."""
+    import json as _json
+
+    blob = {"intercept": 0.1, "coefficients": {n: 0.2 for n in names}, "n": 100}
+    conn.execute(
+        "INSERT INTO model_fits (sport, fitted_utc, factor_set_version,"
+        " market_type, train_through, n_train, coefficients_json, note)"
+        " VALUES ('nfl', ?, ?, ?, 'seasons:2016-2025', 100, ?,"
+        " 'planted: from before the gate')",
+        (fitted, version, market_type, _json.dumps(blob)))
+    conn.commit()
+    return conn.execute("SELECT MAX(id) FROM model_fits").fetchone()[0]
+
+
+def plant_a_page_forecast_from_a_fit_that_is_not_active() -> Result:
+    """Lift a hold, or forecast a market, while the page shows forecasts from
+    a fit that is not its active fit (operator rulings, 2026-09-24).
+
+    "The hold is lifted per market only when that market's active fit is the
+    incumbent and its forecasts are from it." Two shapes, one world:
+
+      * THE PAGE. A slate forecast from fit A, then fit B activated: every
+        card on the page is A's, and the market's model is B's;
+      * THE LIFT. The revert declares A as the market's incumbent and its
+        hold lifted, while the market's active fit is B.
+
+    ESCAPES WITHOUT THE CHECK, and the planting shows it: the page serves the
+    cards, and the gate's other activation check -- the active fit is the
+    declared factor set -- says nothing, because A and B are one set. AND
+    THE MIRROR: with A active, the same page and the same lift say nothing.
+    """
+    from gridiron import run as _run, views as _views
+    from gridiron.model import activation as _activation
+
+    guard = "audit.check_the_page_forecasts_from_the_active_fit"
+    violation = "a page and a lifted hold standing on a fit that is not active"
+    saved_revert, saved_held = dict(config.FS5_REVERT), dict(config.HELD_MARKETS)
+    refused, mirror, served, other_check = None, None, 0, None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "page.db")
+        a = _activation.active_fit(conn, "nfl", "spread")
+        _run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                       use_llm=False, snapshot=False)
+        try:
+            config.HELD_MARKETS = {}
+            config.FS5_REVERT = {("nfl", "spread"): {
+                "fit_id": a["fit_id"],
+                "factor_set_version": a["factor_set_version"],
+                "fitted_utc": a["fitted_utc"], "candidate_fit_id": 0,
+                "held": "2026-09-24", "lifted": "2026-09-24"}}
+            page = _views.week(conn, "nfl", 2025, 6, forecaster="statistical")
+            try:
+                audit.check_the_page_forecasts_from_the_active_fit(conn, [page])
+                mirror = "silent"
+            except audit.LawViolation as exc:
+                mirror = str(exc)
+            baseline.train(conn, "spread", (2025,), sport="nfl", l2=400.0,
+                           note="planted: activated after the slate was written")
+            _activation.activate_in_a_scratch_world(conn)
+            page = _views.week(conn, "nfl", 2025, 6, forecaster="statistical")
+            served = len(page.get("cards") or [])
+            other_check = audit.active_fit_faults(conn)
+            try:
+                audit.check_the_page_forecasts_from_the_active_fit(conn, [page])
+            except audit.LawViolation as exc:
+                refused = str(exc)
+        finally:
+            config.FS5_REVERT = saved_revert
+            config.HELD_MARKETS = saved_held
+            conn.close()
+
+    named = (refused and "NOT FROM ITS MARKET'S ACTIVE FIT" in refused
+             and "the hold was lifted" in refused
+             and "does not give back its probability" in refused)
+    if named and mirror == "silent" and served and other_check == []:
+        return Result(LAW_REVERT, violation, guard, True,
+                      f"{refused.splitlines()[1].strip()} -- {served} cards "
+                      f"from fit {a['fit_id']} while another fit is active; "
+                      f"the declared-set check alone said nothing")
+    return Result(
+        LAW_REVERT, violation, guard, False,
+        f"NOT CAUGHT - the check said {refused!r}; with fit {a['fit_id'] if a else None} "
+        f"active it said {mirror!r}; the page served {served} cards and the "
+        f"declared-set check said {other_check!r}. A hold could lift on "
+        f"forecasts its market's model never made")
+
+
+def plant_a_revert_activating_the_wrong_fit() -> Result:
+    """Run the fs5 revert where the fit it names is not the fit it means.
+
+    The revert names each incumbent by the whole identity the record gives
+    it -- id, sport, market, factor set, the instant it was fitted -- plus
+    the tool's measurement of it. Four shapes, each written nowhere: the id
+    naming a fit of ANOTHER MARKET, the id naming the right market's fit of
+    ANOTHER FACTOR SET, an id with NO FIT, and the right fit with a
+    MEASUREMENT OF ANOTHER. Then the lawful entry writes exactly one
+    `incumbent` activation carrying the ruling and the tie, and a second run
+    writes nothing.
+
+    ESCAPES WITHOUT THE IDENTITY CHECK, and the planting shows it on a copy:
+    the same step with `revert_fit_faults` and the measurement check made
+    blind activates the moneyline fit the "spread" entry named -- a revert
+    keyed on an id alone puts whatever fit carries that number into force.
+    """
+    from gridiron.model import activation as _activation
+
+    guard = "activation.apply_the_fs5_revert (revert_fit_faults)"
+    violation = "the revert activating a fit that is not the one it names"
+    spread_at, money_at, other_at = ("2026-09-05T11:16:52Z",
+                                     "2026-09-04T11:48:00Z",
+                                     "2026-09-03T10:07:29Z")
+    written_wrong, landed, lawful, again, reason = 0, [], [], None, ""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "revert.db", activate=False)
+        spread = _an_old_fit(conn, "spread",
+                             config.factor_set_version("nfl", "spread"), spread_at)
+        money = _an_old_fit(conn, "moneyline",
+                            config.factor_set_version("nfl", "moneyline"), money_at)
+        other_set = _an_old_fit(conn, "spread", "fs-planted", other_at)
+
+        def entry(fit_id, fitted):
+            return {("nfl", "spread"): {
+                "fit_id": fit_id,
+                "factor_set_version": config.factor_set_version("nfl", "spread"),
+                "fitted_utc": fitted, "candidate_fit_id": 991,
+                "held": "2026-09-24", "lifted": "2026-09-24"}}
+
+        def measured(incumbent_id, fitted):
+            sets = {"incumbent": {"fit_id": incumbent_id, "fitted_utc": fitted,
+                                  "set": config.factor_set_version("nfl", "spread"),
+                                  "log_loss": 0.68361, "brier": 0.24535},
+                    "candidate": {"fit_id": 991, "set": "fs5",
+                                  "log_loss": 0.68904, "brier": 0.24786}}
+            return {"nfl:spread": {"sets": sets, "beats": False, "n": 272,
+                                   "through": 2024, "score": 2025,
+                                   "difference": 0.00543,
+                                   "interval": [-0.00935, 0.02048]}}
+
+        wrong = (
+            (entry(money, money_at), measured(money, money_at)),          # market
+            (entry(other_set, other_at), measured(other_set, other_at)),  # set
+            (entry(99999, spread_at), measured(99999, spread_at)),        # no fit
+            (entry(spread, spread_at), measured(money, money_at)),        # measurement
+        )
+        for revert, measure in wrong:
+            _activation.apply_the_fs5_revert(conn, revert=revert, measured=measure)
+        written_wrong = conn.execute(
+            "SELECT COUNT(*) FROM fit_activations").fetchone()[0]
+
+        # THE ESCAPE, on a whole copy -- every trigger kept, so what lands is
+        # what the schema allows once the identity checks are made blind.
+        blind = sqlite3.connect(str(Path(tmp) / "blind.db"))
+        conn.backup(blind)
+        blind.close()
+        other = db.connect(Path(tmp) / "blind.db")
+        real_identity = _activation.revert_fit_faults
+        real_measured = _activation._measurement_faults
+        _activation.revert_fit_faults = lambda *a, **k: []
+        _activation._measurement_faults = lambda *a, **k: []
+        try:
+            _activation.apply_the_fs5_revert(
+                other, revert=wrong[0][0], measured=wrong[0][1])
+        finally:
+            _activation.revert_fit_faults = real_identity
+            _activation._measurement_faults = real_measured
+        landed = [(r["fit_id"], r["market_type"]) for r in other.execute(
+            "SELECT fit_id, market_type FROM fit_activations")]
+        other.close()
+
+        _activation.apply_the_fs5_revert(
+            conn, revert=entry(spread, spread_at),
+            measured=measured(spread, spread_at))
+        lawful = [dict(r) for r in conn.execute(
+            "SELECT fit_id, market_type, kind, reason, holdout_n"
+            "  FROM fit_activations")]
+        again = _activation.apply_the_fs5_revert(
+            conn, revert=entry(spread, spread_at),
+            measured=measured(spread, spread_at))
+        count = conn.execute("SELECT COUNT(*) FROM fit_activations").fetchone()[0]
+        conn.close()
+    if lawful:
+        reason = lawful[0]["reason"]
+
+    if (written_wrong == 0 and landed == [(money, "moneyline")]
+            and len(lawful) == 1 and lawful[0]["fit_id"] == spread
+            and lawful[0]["kind"] == "incumbent" and lawful[0]["holdout_n"] == 272
+            and "ties go to the incumbent" in reason
+            and "does not exclude zero" in reason
+            and count == 1 and again and not again[0]["written"]):
+        return Result(LAW_REVERT, violation, guard, True,
+                      f"another market's fit, another set's fit, no fit and "
+                      f"another fit's measurement each wrote nothing; with the "
+                      f"identity check blind the spread entry activated "
+                      f"moneyline fit {money}; the lawful entry wrote one "
+                      f"incumbent activation of fit {spread} and a second run "
+                      f"wrote none")
+    return Result(
+        LAW_REVERT, violation, guard, False,
+        f"NOT CAUGHT - the four wrong entries wrote {written_wrong} "
+        f"activations; blind, the step wrote {landed!r}; the lawful entry "
+        f"wrote {lawful!r}; a second run said {again!r}. The revert could put "
+        f"a fit into force because it carries the right number")
+
+
+def plant_a_fit_reading_a_retired_factor() -> Result:
+    """Retire a factor a market's active fit was trained on, and forecast.
+
+    THE CASE THE REVERT FOUND (2026-09-24). The feature vector is built from
+    the factors the registry has active, not from the fit, and a fit's term
+    for a factor the vector does not carry is skipped -- not listed absent,
+    because nothing computed it. Fits 88, 71, 44 and 35 all carry the plain
+    rating that fs5 retired, and reverting to them without reactivating it
+    would have forecast every NFL and college game without its biggest term.
+
+    ESCAPES WITHOUT THE GUARD, and the planting shows it: with
+    `assert_the_vector_carries_the_fit` made a no-op, the slate is written
+    and not one row says the rating was missing.
+    """
+    import dataclasses as _dc
+
+    guard = "baseline.assert_the_vector_carries_the_fit"
+    violation = "forecast from a fit whose factor the registry no longer computes"
+    rating = "srs_diff"
+    saved = registry.REGISTRY[rating]
+    guarded, unguarded, said, trained_on, silent = None, None, [], False, 0
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            registry.REGISTRY[rating] = _dc.replace(saved, active=True)
+            conn = seeded_database(Path(tmp) / "retired.db")
+            trained_on = rating in baseline.load_fit(conn, "nfl:spread").names
+            registry.REGISTRY[rating] = _dc.replace(saved, active=False)
+            ran = run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                                use_llm=False, snapshot=False)
+            guarded = ran["written"]
+            said = [s for s in ran["skipped"] if "NEVER COMPUTED" in s]
+            real = baseline.assert_the_vector_carries_the_fit
+            baseline.assert_the_vector_carries_the_fit = lambda fit, fv: None
+            try:
+                unguarded = run.run_slate(conn, "nfl", 2025, 5,
+                                          include_props=False, use_llm=False,
+                                          snapshot=False)["written"]
+            finally:
+                baseline.assert_the_vector_carries_the_fit = real
+            import json as _json
+            for (payload,) in conn.execute(
+                    "SELECT p.factors_json FROM predictions p JOIN games g"
+                    "    ON g.id = p.game_id WHERE g.week = 5"):
+                blob = _json.loads(payload)
+                if rating not in blob["values"] and rating not in blob["absent"]:
+                    silent += 1
+            conn.close()
+        finally:
+            registry.REGISTRY[rating] = saved
+
+    if trained_on and guarded == 0 and said and unguarded and silent == unguarded:
+        return Result(LAW_REVERT, violation, guard, True,
+                      said[0].split(": ", 1)[1].split(". ")[0]
+                      + f" -- unguarded, {unguarded} rows were written and "
+                      f"none of them says the rating was missing")
+    return Result(
+        LAW_REVERT, violation, guard, False,
+        f"NOT CAUGHT - the fit {'was' if trained_on else 'was not'} trained on "
+        f"{rating}; guarded, {guarded} rows were written ({said!r}); "
+        f"unguarded {unguarded}, of which {silent} say nothing. A retired "
+        f"factor's term would vanish from every forecast without a word")
+
+
 LAW_BROWSER_PARSES = "THE BROWSER FILES PARSE"
 
 
@@ -10054,6 +10326,12 @@ def main() -> int:
     results.append(plant_a_tie_activated_over_the_incumbent())
     results.append(plant_a_scratch_activation_on_a_live_database())
     results.append(plant_an_active_fit_of_another_factor_set())
+    # THE fs5 REVERT (operator rulings, 2026-09-24): the hold lifts only on
+    # the incumbent's own forecasts, the revert names its fits whole, and a
+    # fit is never read without every factor it was trained on.
+    results.append(plant_a_page_forecast_from_a_fit_that_is_not_active())
+    results.append(plant_a_revert_activating_the_wrong_fit())
+    results.append(plant_a_fit_reading_a_retired_factor())
     results.append(plant_a_proposed_combo_from_one_game())
     results.append(plant_a_proposed_combo_across_sports())
     results.append(plant_a_proposed_combo_with_a_leg_that_does_not_clear())

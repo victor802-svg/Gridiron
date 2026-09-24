@@ -365,7 +365,14 @@ def predict_slate(
             progress(f"{sport} {q.game_id} {q.market} {q.subject}")
 
         # --- the statistical path ------------------------------------------
-        stat = baseline.predict(fits[q.market_key], fv, rung=q.line_asked)
+        # A FIT THAT READS A FACTOR NOBODY COMPUTED IS NOT FORECAST FROM
+        # (2026-09-24): the question is skipped by name, by both forecasters,
+        # the way a market with no activated model is.
+        try:
+            stat = baseline.predict(fits[q.market_key], fv, rung=q.line_asked)
+        except baseline.FactorNotComputed as exc:
+            run.skipped.append(f"{q.game_id} {q.market_key}: {exc}")
+            continue
 
         # THE PROPS CONFIDENCE FLOOR (config.PROPS_MIN_CLAIM, declared
         # 2026-08-30). A player-prop question whose answer the model is not at

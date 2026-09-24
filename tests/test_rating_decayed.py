@@ -29,9 +29,14 @@ def test_the_successor_is_declared_dated_and_the_plain_rating_retired():
     for word in ("half-life", "28 points", "MEASURED", "NOT tuned"):
         assert word in new.rationale, word
     old = registry.REGISTRY["srs_diff"]
-    assert not old.active and old.deactivated_utc.startswith("2026-09-06")
+    # RETIRED 2026-09-06, and the day it left is still recorded ...
+    assert old.deactivated_utc.startswith("2026-09-06")
     assert "REPLACED, not refuted" in old.note
     assert "nfl_rating_decayed_diff" in old.note
+    # ... and REACTIVATED 2026-09-24 by the fs5 revert, by dated entry, its
+    # added date unmoved (operator rulings of 2026-09-24).
+    assert old.active and old.added_utc.startswith("2026-08-28")
+    assert "REACTIVATED 2026-09-24" in old.note
     assert config.RATING_DECAY["declared"].startswith("2026-09-06")
     for sport in ("nfl", "cfb"):
         m = config.HOME_MARGIN_MEASURED[sport]
@@ -94,8 +99,11 @@ def test_the_context_carries_the_rating_and_stays_blind(league):
 
 
 def test_the_version_bumped_for_the_game_markets_and_nothing_else():
-    assert config.factor_set_version("nfl", "spread") == "fs5"
-    assert config.factor_set_version("nfl", "moneyline") == "fs5"
+    # fs5 WAS DECLARED 2026-09-06 AND IS CLOSED, not erased: the revert of
+    # 2026-09-24 put each market back on what it declared before, and fs5's
+    # activation date stays so its rows keep their place on the Versions page.
+    assert config.factor_set_version("nfl", "spread") == "fs3"
+    assert config.factor_set_version("nfl", "moneyline") == "fs2"
     assert config.factor_set_version("mlb", "moneyline") == "fs2"
     assert config.FACTOR_SET_ACTIVATED["fs5"].startswith("2026-09-06")
     for v in ("fs3", "fs3-rate", "fs4"):
@@ -150,6 +158,10 @@ def test_college_football_decays_by_days_caps_and_adjusts(tmp_path):
     new = registry.REGISTRY["cfb_rating_decayed_diff"]
     old = registry.REGISTRY["cfb_srs_diff"]
     assert new.active and new.added_utc.startswith("2026-09-06") and new.sport == "cfb"
-    assert not old.active and "REPLACED, not refuted" in old.note
-    assert config.factor_set_version("cfb", "spread") == "fs5"
-    assert config.factor_set_version("cfb", "moneyline") == "fs5"
+    assert "REPLACED, not refuted" in old.note
+    assert old.deactivated_utc.startswith("2026-09-06")
+    # REACTIVATED by the fs5 revert of 2026-09-24, and both margin markets
+    # back on the sets they declared before 0f96968.
+    assert old.active and "REACTIVATED 2026-09-24" in old.note
+    assert config.factor_set_version("cfb", "spread") == "fs3"
+    assert config.factor_set_version("cfb", "moneyline") == "fs2"

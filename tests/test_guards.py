@@ -497,6 +497,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_tie_activated_over_the_incumbent",
         "plant_a_scratch_activation_on_a_live_database",
         "plant_an_active_fit_of_another_factor_set",
+        # THE fs5 REVERT (operator rulings, 2026-09-24)
+        "plant_a_page_forecast_from_a_fit_that_is_not_active",
+        "plant_a_revert_activating_the_wrong_fit",
+        "plant_a_fit_reading_a_retired_factor",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

@@ -564,12 +564,86 @@ def load_fit(
 # prediction
 # ---------------------------------------------------------------------------
 
+class FactorNotComputed(NotTrained):
+    """A fit carries a coefficient for a factor the feature vector never
+    computed -- neither measured nor declared absent (2026-09-24)."""
+
+
+def assert_the_vector_carries_the_fit(fit, fv: compute.FeatureVector) -> None:
+    """Every factor the fit has a coefficient for was COMPUTED for this row:
+    measured, or declared absent. Never simply not there.
+
+    THE VECTOR IS BUILT FROM THE REGISTRY, NOT FROM THE FIT. `feature_vector`
+    computes the factors the registry has active for the market today, and
+    `Fit.log_odds` skips a name the row does not carry, so a fit whose factor
+    was retired after it was trained loses that term without a word -- it is
+    not even listed absent, because nothing computed it. MEASURED 2026-09-24,
+    on a scratch copy of the record: the fs5 revert's four incumbents all
+    carry the plain rating, retired with fs5 on 6 September, and a forecast
+    from fits 88 and 71 would have moved by 0.11 and 0.21 of probability on
+    average with nothing on the row saying so. An absent factor is a
+    measurement of absence and stays lawful; a factor never computed is the
+    silent zero LAW 2's registry exists to prevent.
+    """
+    missing = [name for name in fit.names
+               if name not in fv.values and name not in fv.absent]
+    if missing:
+        raise FactorNotComputed(
+            f"THE FIT READS A FACTOR THE VECTOR NEVER COMPUTED: "
+            f"{', '.join(sorted(missing))}. The registry does not compute it "
+            f"for {fv.sport} {fv.market_type} -- retired, or declared for "
+            f"another market -- so a forecast from this fit would drop its "
+            f"term without a word, which is what reverting fits 88, 71, 44 "
+            f"and 35 with their rating retired would have done (2026-09-24). "
+            f"Nothing is forecast from it until the fit and the registry agree.")
+
+
+#: How close a fit's probability must come to a stored one to have written
+#: it. The row stores its factor values and its probability rounded to six
+#: places, so a fit that wrote the row reproduces it far inside this, and a
+#: different fit misses it by orders of magnitude more (measured 2026-09-24
+#: on the live record's count-market props: 0.09 and 0.06).
+REPRODUCED_WITHIN = 1e-4
+
+
+def is_its_forecast(fit, payload: dict, line_asked: float | None,
+                    sport: str, market_type: str) -> bool:
+    """Did `fit` write this statistical forecast? THE ONE DOOR for "which
+    fit a stored forecast came from" (2026-09-24, the fs5 revert).
+
+    A PREDICTION DOES NOT STORE ITS FIT, and its factor-set stamp cannot
+    stand in for one: a count-market prop row is stamped with the set of the
+    market class ('prop', so fs2) while `load_fit` reads the set of its own
+    market ('prop:receptions', fs3-rate) -- measured on the live record's
+    page that day, and in FOLLOWUPS. So this asks the row's own numbers
+    instead: the fit, applied to the factor values the row stored and the
+    rung it was asked at, must give back the probability it stored. A fit
+    that cannot even read the row -- a factor it needs was never computed
+    for it -- did not write it.
+    """
+    stored = payload.get("prob_yes")
+    if stored is None or payload.get("values") is None:
+        return False
+    fv = compute.FeatureVector(
+        sport=sport, market_type=market_type, values=dict(payload["values"]),
+        absent=compute.absent_factors(payload))
+    try:
+        mine = predict(fit, fv, rung=line_asked)["prob_yes"]
+    except (FactorNotComputed, ValueError):
+        return False
+    return abs(mine - float(stored)) < REPRODUCED_WITHIN
+
+
 def predict(fit, fv: compute.FeatureVector, rung: float | None = None) -> dict:
     """Probability plus the decomposition that explains it.
 
     `prob_yes` is P(home covers) for a spread, P(over) for a prop. The caller
     turns that into a stated side and a stated confidence.
+
+    Refused by name (`FactorNotComputed`) when the vector does not carry
+    every factor the fit was trained on.
     """
+    assert_the_vector_carries_the_fit(fit, fv)
     # A RATE MODEL ANSWERS A DIFFERENT WAY (Session C). It predicts the
     # EXPECTED COUNT, and the probability of clearing the rung comes from the
     # distribution rather than from a second squashing -- which is the whole

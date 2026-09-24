@@ -65,13 +65,28 @@ MARGIN_MARKETS = ("spread", "moneyline")
 # the margin markets
 # ---------------------------------------------------------------------------
 
+#: REACTIVATED 2026-09-24 BY THE fs5 REVERT, under the operator's words ("The
+#: retired rating factors reactivate for those markets by dated entry") and
+#: LAW 2's: declared in advance with its rationale, not discovered, returned
+#: by a deliberate dated act, its added date unmoved and nothing backfitted.
+#: The NFL's `srs_diff` carries the full note. `deactivated` stays 2026-09-06,
+#: the day fs5 dropped it; `active` says it is in force again.
 @factor(
     added=ADDED,
     sport="cfb",
     applies_to=("spread", "moneyline"),
-    active=False,
+    active=True,
     deactivated="2026-09-06T00:00:00Z",
     note=(
+        "REACTIVATED 2026-09-24 by the fs5 revert (operator rulings of "
+        "2026-09-24): college football's spread and moneyline went back to "
+        "the factor sets this factor belongs to, because their fs5 fits tied "
+        "the incumbents on the 2025 holdout and ties go to the incumbent. "
+        "Both incumbents (spread fit 44, moneyline fit 35) carry a "
+        "coefficient for it, and while it was retired the feature vector "
+        "never computed it, so a forecast from either would have dropped it "
+        "without a word. Its added date is unchanged and nothing written "
+        "while it was retired is given a value for it. "
         "RETIRED 2026-09-06 by operator ruling (AT_THE_LINE E2) and REPLACED, "
         "not refuted: `cfb_rating_decayed_diff` is the same opponent-adjusted "
         "rating with recency decay over the rolling window, a margin cap and a "

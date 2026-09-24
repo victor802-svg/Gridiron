@@ -477,12 +477,39 @@ def timezone_shift(ctx) -> float | None:
     return float(ctx.subject_tz_delta)
 
 
+#: REACTIVATED 2026-09-24 BY THE fs5 REVERT, and the words that allow it.
+#: The operator's morning ruling 3: "The retired rating factors reactivate for
+#: those markets by dated entry"; the three decisions' tie rule then reverted
+#: all four fs5 markets, so both NFL game markets this factor applies to are
+#: back on the sets it belongs to (spread fs3, fit 88; moneyline fs2, fit 71).
+#: LAW 2's own words cover it: the factor is "declared in advance in one
+#: registry with its rationale" (2026-08-28, unchanged); nothing was
+#: "discovered by scanning historical data"; this entry is "a deliberate act
+#: with a dated note"; and "its performance is scored from the date it was
+#: added, never backfitted" -- the added date does not move
+#: (`store.sync_registry` refuses that), and no row written while it was
+#: retired gains a value for it.
+#:
+#: `deactivated` STAYS 2026-09-06: it is the day fs5 dropped this factor, and
+#: the Versions page reads fs5's history from it. `active` says it is in
+#: force again.
 @factor(
-    active=False,
+    active=True,
     deactivated="2026-09-06T00:00:00Z",
     added="2026-08-28T00:00:00Z",
     applies_to=NFL_GAME_MARKETS,
     note=(
+        "REACTIVATED 2026-09-24 by the fs5 revert (operator rulings of "
+        "2026-09-24): the NFL spread and moneyline went back to the factor "
+        "sets this factor belongs to, because their fs5 fits tied the "
+        "incumbents on the 2025 holdout and ties go to the incumbent. Both "
+        "incumbents (spread fit 88, moneyline fit 71) carry a coefficient for "
+        "it, and while it was retired the feature vector never computed it: "
+        "a forecast from either fit would have dropped it without a word, "
+        "measured on a scratch copy of the record on 24 September at 0.11 of "
+        "probability on average on the spread and 0.21 on the moneyline. Its "
+        "added date is unchanged and nothing written while it was retired is "
+        "given a value for it. "
         "RETIRED 2026-09-06 by operator ruling (AT_THE_LINE E2) and REPLACED, "
         "not refuted: `nfl_rating_decayed_diff` is the same opponent-adjusted "
         "rating with recency decay, a margin cap and a measured home "
