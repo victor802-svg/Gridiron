@@ -55,11 +55,10 @@ def _open_week(page, size):
     # cross, so the accident is gone and the wait has to be honest.
     page.evaluate("location.hash = '#/record'")
     with page.expect_response(lambda r: "/api/week" in r.url):
-        page.evaluate("location.hash = '#/week'")
+        page.evaluate("location.hash = '#/games'")
     page.wait_for_function(
         """() => document.body.dataset.ready === 'true'
-                 && document.querySelectorAll('#today .face').length +
-                    document.querySelectorAll('#today .face').length > 0""",
+                 && document.querySelectorAll('#games-rows .game').length > 0""",
         timeout=15000,
     )
     # AND FOR THE ARRIVAL TO END (R4, 2026-09-05). The grid and the hero come
@@ -67,7 +66,7 @@ def _open_week(page, size):
     # that reads the slide as movement. "Waiting for the slate" now includes
     # waiting for it to settle.
     page.wait_for_function(
-        """() => ['week-cards', 'today'].every(id => {
+        """() => ['games-rows', 'games-notes'].every(id => {
             const el = document.getElementById(id);
             if (!el || el.hidden) return true;
             const cs = getComputedStyle(el);
@@ -77,7 +76,16 @@ def _open_week(page, size):
 
 def _cards(page):
     return page.evaluate(
-        "document.querySelectorAll('#today .face').length")
+        "document.querySelectorAll('#games-rows .game').length")
+
+
+def _open_props(page, size):
+    """The Props page, waited for the same way."""
+    page.set_viewport_size(size)
+    page.evaluate("location.hash = '#/record'")
+    with page.expect_response(lambda r: "/api/week" in r.url):
+        page.evaluate("location.hash = '#/props'")
+    page.wait_for_selector("#props-chips .chip-btn", timeout=15000)
 
 
 # --- what the brief asks the layout to be -----------------------------------
@@ -94,9 +102,9 @@ def test_one_layout_renders_at_every_width(page, size):
     """
     _open_week(page, size)
     shape = page.evaluate("""() => ({
-        faces: document.querySelectorAll('#today .face').length,
+        faces: document.querySelectorAll('#games-rows .game').length,
         tabs: document.querySelectorAll('.market-tab').length,
-        cards: document.querySelectorAll('#today .face').length,
+        cards: document.querySelectorAll('#games-rows .game').length,
     })""")
     assert shape["tabs"] > 0, "the market tabs are absent at this width"
     assert shape["faces"] or shape["cards"], "no card rendered at all"
@@ -111,7 +119,7 @@ def test_no_card_truncates(page):
     reader there is something it is not showing and then not shown it.
     """
     _open_week(page, PHONE)
-    bad = page.evaluate("""() => [...document.querySelectorAll('#view-week *')]
+    bad = page.evaluate("""() => [...document.querySelectorAll('#view-games *')]
         .filter(e => getComputedStyle(e).textOverflow === 'ellipsis')
         .map(e => e.className || e.tagName)""")
     assert not bad, f"these elements truncate: {bad[:6]}"
@@ -130,7 +138,7 @@ def test_every_tap_target_on_the_phone_is_big_enough(page):
     """44px, the platform minimum. A control nobody can hit is not a control."""
     _open_week(page, PHONE)
     small = page.evaluate("""() => [...document.querySelectorAll(
-        '#view-week button, #view-week a, #view-week select')]
+        '#view-games button, #view-games a, #view-games select')]
         .filter(e => e.offsetParent !== null)
         .map(e => ({ what: e.className || e.tagName,
                      h: Math.round(e.getBoundingClientRect().height) }))
@@ -169,8 +177,8 @@ def test_a_collapsed_card_shows_one_number(page):
     # reasons in a `.face-why` that starts hidden. So this reads the card and
     # skips that body, which is the same question asked of the new shape.
     numbers = page.evaluate(r"""() => {
-        const card = document.querySelector('#today .face');
-        const why = card.querySelector('.face-why');
+        const card = document.querySelector('#games-rows .game');
+        const why = card.querySelector('.game-more');
         const out = [];
         card.querySelectorAll('*').forEach(e => {
             if (e.children.length) return;
@@ -195,13 +203,13 @@ def test_a_card_expands_in_place_and_shows_the_why(page):
     # unchanged -- the reasons are one tap away, they arrive, and the card
     # does not move under the reader while they do.
     result = page.evaluate("""async () => {
-        const card = document.querySelector('#today .face');
+        const card = document.querySelector('#games-rows .game');
         const before = card.getBoundingClientRect().top;
-        const control = card.querySelector('.expand');
+        const control = card.querySelector('.game-head');
         if (!control) return {skip: true};
         control.click();
         await new Promise(r => setTimeout(r, 250));
-        const body = card.querySelector('.face-why');
+        const body = card.querySelector('.game-more');
         return {
             open: !!(body && !body.hidden),
             expanded: control.getAttribute('aria-expanded'),
@@ -217,50 +225,52 @@ def test_a_card_expands_in_place_and_shows_the_why(page):
         f"so the reader keeps their place")
 
 
-# --- the market tabs (R4) ---------------------------------------------------
+# --- the filter chips (R4, re-homed 2026-09-24) -----------------------------
+#
+# The market tabs went with the old Picks page (GRIDIRON_BOARD puts no control
+# row above the first game). The promises they carried live on the Props
+# page's chips now: derived from the declared list, never a written row; a
+# zero-count chip stays visible; every chip carries its count.
 
-def test_the_market_tabs_come_from_the_declared_list(page):
-    """R4. A fifth market must appear without a UI change.
+def test_the_props_chips_come_from_the_declared_list(page):
+    """R4. A fifth market must appear without a UI change."""
+    from gridiron import config
 
-    Asserted against `config.SPORT_MARKETS` rather than against a written row,
-    which is the only way to tell a derived list from a hardcoded one that
-    happens to be right today.
-    """
-    from gridiron import config, language
-
-    _open_week(page, WIDE)
-    sport = page.evaluate("document.body.dataset.sport") or "nfl"
-    labels = page.evaluate(
-        """[...document.querySelectorAll('.market-tab')]
-             .map(t => t.dataset.market)""")
-    assert labels and labels[0] == "", "the first tab is not 'All'"
-    assert labels[1:] == list(config.SPORT_MARKETS.get(sport, ())), (
-        f"the tabs for {sport} are {labels[1:]}, and the declared markets are "
-        f"{list(config.SPORT_MARKETS.get(sport, ()))}. A tab row that does not "
-        f"match the declaration is a hardcoded row.")
+    _open_props(page, WIDE)
+    sport = page.evaluate("window.Gridiron.state.sport")
+    keys = page.evaluate(
+        """[...document.querySelectorAll('#props-chips .chip-btn')]
+             .map(t => t.dataset.key)""")
+    assert keys and keys[0] == "", "the first chip is not 'All'"
+    assert keys[1] == "alt", "the second chip is not 'Alt lines'"
+    assert keys[2:] == list(config.SPORT_PROP_MARKETS.get(sport, ())), (
+        f"the chips for {sport} are {keys[2:]}, and the declared prop markets "
+        f"are {list(config.SPORT_PROP_MARKETS.get(sport, ()))}. A chip row "
+        f"that does not match the declaration is a hardcoded row.")
 
 
-def test_a_zero_count_tab_stays_visible(page):
-    """R4. "No strikeout questions tonight" is a fact about the slate."""
-    _open_week(page, WIDE)
+def test_a_zero_count_chip_stays_visible(page):
+    """R4. "No rushing-yards questions tonight" is a fact about the slate."""
+    _open_props(page, WIDE)
     counts = page.evaluate(
-        """[...document.querySelectorAll('.market-tab')]
-             .map(t => ({ n: t.querySelector('.market-tab-n').textContent,
+        """[...document.querySelectorAll('#props-chips .chip-btn')]
+             .map(t => ({ n: t.querySelector('.chip-n').textContent,
                           shown: t.offsetParent !== null }))""")
     zeros = [c for c in counts if c["n"] == "0"]
+    assert zeros, "the fixture slate has no zero-count family to show"
     assert all(c["shown"] for c in zeros), (
-        "a zero-count market tab was hidden, which hides the fact that the "
-        "slate asked nothing in it")
+        "a zero-count chip was hidden, which hides the fact that the slate "
+        "asked nothing in it")
 
 
-def test_every_tab_carries_its_count(page):
-    """LAW 4's habit, applied to a tab: no number without what it counts."""
-    _open_week(page, WIDE)
+def test_every_chip_carries_its_count(page):
+    """LAW 4's habit, applied to a chip: no number without what it counts."""
+    _open_props(page, WIDE)
     missing = page.evaluate(
-        """[...document.querySelectorAll('.market-tab')]
-             .filter(t => !t.querySelector('.market-tab-n'))
+        """[...document.querySelectorAll('#props-chips .chip-btn')]
+             .filter(t => !t.querySelector('.chip-n'))
              .map(t => t.textContent)""")
-    assert not missing, f"tabs with no count: {missing}"
+    assert not missing, f"chips with no count: {missing}"
 
 
 # --- what the hero's test protected, on the card that replaced it ----------
@@ -310,12 +320,12 @@ def test_the_grid_does_not_re_sort_while_a_slate_is_in_progress(page):
         if not seen["ids"] or not _cards(page):
             pytest.skip("no cards on this slate to tick")
         order_before = page.evaluate(
-            """[...document.querySelectorAll('#today .face')]
-                 .map(c => c.dataset.id)""")
+            """[...document.querySelectorAll('#games-rows .game')]
+                 .map(c => c.dataset.game)""")
         page.wait_for_timeout(1400)
         order_after = page.evaluate(
-            """[...document.querySelectorAll('#today .face')]
-                 .map(c => c.dataset.id)""")
+            """[...document.querySelectorAll('#games-rows .game')]
+                 .map(c => c.dataset.game)""")
         assert not errors, (
             f"a live tick threw: {errors}. The throw escapes the loop over "
             f"picks, so every pick after this one stops updating and the "
@@ -332,7 +342,7 @@ def test_the_live_mark_is_never_green(page):
     _open_week(page, WIDE)
     colour = page.evaluate("""() => {
         const probe = document.createElement('span');
-        probe.className = 'card-live';
+        probe.className = 'live-mark';
         document.body.appendChild(probe);
         const c = getComputedStyle(probe).backgroundColor;
         probe.remove();
@@ -344,17 +354,15 @@ def test_the_live_mark_is_never_green(page):
         f"the live mark is drawn in the win colour ({colour['c']})")
 
 
-def test_the_form_streak_is_green_for_a_win_and_red_for_a_loss(page):
-    """W and L in the record's own two colours (operator, 2026-09-08).
-
-    The colour law reserves them for won and lost, and a club's game is
-    exactly that. A DRAW takes neither, and a streak that is not a streak --
-    "no finished games yet" -- is a sentence, not five marks.
-    """
+def test_the_form_streak_wears_neither_value_colour(page):
+    """THE COLOUR LEFT THE STREAK (colour law amended 2026-09-24). The ruling
+    of 2026-09-09 coloured W and L; the amendment names four signals and says
+    nothing else wears the two colours. A win is the heavier mark and a loss
+    the quieter one, and neither borrows a pick's colour."""
     _open_week(page, WIDE)
     palette = page.evaluate("""() => {
         const r = getComputedStyle(document.documentElement);
-        const hex = name => r.getPropertyValue(name).trim();
+        const hex = name => r.getPropertyValue(name).trim().toLowerCase();
         const probe = (cls) => {
             const s = document.createElement('span');
             s.className = cls;
@@ -363,38 +371,15 @@ def test_the_form_streak_is_green_for_a_win_and_red_for_a_loss(page):
             s.remove();
             return c;
         };
-        return { win: hex('--win'), loss: hex('--loss'),
+        const rgb = (h) => 'rgb(' + [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
+        return { win: rgb(hex('--win')), loss: rgb(hex('--loss')),
                  plain: probe('fmark'),
                  winMark: probe('fmark win'),
                  lossMark: probe('fmark loss') };
     }""")
-    assert palette["winMark"] != palette["plain"], (
-        "a W in the form streak is drawn in the context row's own colour")
-    assert palette["lossMark"] != palette["plain"], (
-        "an L in the form streak is drawn in the context row's own colour")
-    assert palette["winMark"] != palette["lossMark"], (
-        "a win and a loss are the same colour in the form streak")
-
-    # AND THE MARKUP THE RENDERER ACTUALLY BUILT, not just the stylesheet.
-    marks = page.evaluate("""() => Array.from(
-        document.querySelectorAll('#today .face-form')).map(
-            f => Array.from(f.children).map(
-                c => [c.textContent, c.className]))""")
-    for streak in marks:
-        for text, cls in streak:
-            assert text in ("W", "L", "D"), (
-                f"{text!r} is in a form streak and is not a result")
-            want = {"W": "fmark win", "L": "fmark loss", "D": "fmark"}[text]
-            assert cls == want, f"{text} is marked {cls!r}, not {want!r}"
-
-    # A SENTENCE IS NOT A STREAK. Whatever the slate holds, nothing that is
-    # not a run of results may be broken into marks.
-    facts = page.eval_on_selector_all(
-        "#today .face-fact:not(.face-form)",
-        "els => els.map(e => e.textContent)")
-    for fact in facts:
-        assert not re.fullmatch(r"[WLD](?: [WLD])*", fact), (
-            f"{fact!r} is a form streak rendered as plain text")
+    assert palette["winMark"] != palette["win"], "a W in the form streak wears the win colour"
+    assert palette["lossMark"] != palette["loss"], "an L in the form streak wears the loss colour"
+    assert palette["winMark"] != palette["lossMark"], "a win and a loss look the same"
 
 
 def test_every_class_the_page_asks_for_is_a_class_it_builds():
@@ -402,135 +387,40 @@ def test_every_class_the_page_asks_for_is_a_class_it_builds():
     audit.check_no_dead_selectors()
 
 
-def test_no_monospace_or_condensed_face_anywhere(page):
-    """The brief: no condensed caps, no monospace anywhere in the UI."""
+def test_the_condensed_face_is_where_the_brief_put_it(page):
+    """GRIDIRON_BOARD (operator ruling 2026-09-24): Barlow Condensed for
+    team names, scores, picks and big numbers; the clean sans for everything
+    else. The cards-UI rule of 2026-09-04 -- no condensed face anywhere --
+    is replaced by that ruling, and this holds the new line in both
+    directions: the loud things are condensed and the prose is not."""
     _open_week(page, WIDE)
+    page.evaluate("() => document.fonts.ready")
     faces = page.evaluate("""() => {
-        const seen = new Set();
-        document.querySelectorAll('#view-week *').forEach(e => {
-            seen.add(getComputedStyle(e).fontFamily);
-        });
-        return [...seen];
+        const face = sel => { const e = document.querySelector(sel); return e ? getComputedStyle(e).fontFamily : null; };
+        return { name: face('#games-rows .tname'), score: face('#games-rows .tri'),
+                 pick: face('#games-rows .pick-line'), prob: face('#games-rows .pick-prob'),
+                 count: face('#games-rows .game-count'), strip: face('#day-counts'),
+                 body: getComputedStyle(document.body).fontFamily,
+                 loaded: [...document.fonts].filter(f => f.family === 'Barlow Condensed' && f.status === 'loaded').length };
     }""")
-    bad = [f for f in faces
-           if re.search(r"monospace|mono|condensed|narrow", f, re.I)]
-    assert not bad, f"a monospace or condensed face is still in use: {bad}"
+    for key in ("name", "score", "pick", "prob"):
+        assert faces[key] and "Barlow Condensed" in faces[key], (key, faces[key])
+    for key in ("count", "strip", "body"):
+        assert faces[key] and "Barlow Condensed" not in faces[key], (key, faces[key])
+        assert "Manrope" in faces[key], (key, faces[key])
+    assert faces["loaded"] >= 1, "no Barlow Condensed face reached `loaded`"
+    assert not any(re.search(r"monospace|mono\b", f or "", re.I) for f in faces.values() if isinstance(f, str))
 
 
 # --- STRONG BY DEFAULT (R5, and GRIDIRON_17 R2) ------------------------------
 #
-# CARRIED ACROSS FROM `test_desk.py` UNCHANGED IN SUBSTANCE. These were never
-# about the desk -- they are about the tier filter opening on STRONG, saying
-# what it narrowed, and being leaveable -- so they are re-pointed at the new
-# layout's widths and otherwise left alone.
-
-def _pressed_tier(page):
-    """Which band the segmented filter is showing as active, '' for all."""
-    return page.evaluate(
-        """() => {
-            const host = document.querySelector('#week-tier-seg');
-            if (!host) return null;
-            const on = host.querySelector('[aria-pressed="true"]');
-            return on ? on.dataset.tier : null;
-        }""")
-
-
-def _tiers_offered(page):
-    return page.evaluate(
-        """() => Array.from(
-            document.querySelectorAll('#week-tier-seg button'))
-            .map(b => b.dataset.tier)""")
-
-
-def test_picks_arrives_on_strong(page):
-    """The reader chose nothing; the page still opens on the strongest band."""
-    _open_week(page, WIDE)
-    if "STRONG" not in _tiers_offered(page):
-        pytest.skip("no STRONG picks on this slate; the default yields by "
-                    "design and test_the_default_yields_on_a_slate_without_it "
-                    "covers that case")
-    assert _pressed_tier(page) == "STRONG", (
-        "Picks did not open on the band ruling R2 named"
-    )
-
-
-def test_the_way_out_of_the_default_is_on_the_page(page):
-    """A filter nobody chose must not be a filter nobody can leave."""
-    _open_week(page, WIDE)
-    offered = _tiers_offered(page)
-    if _pressed_tier(page):
-        assert "" in offered, "no 'all tiers' button beside an active filter"
-        assert not page.evaluate(
-            "document.querySelector('#week-tier-seg').hidden"), (
-            "the filter is active and its control is hidden"
-        )
-
-
-def test_the_arrival_count_says_what_it_narrowed(page):
-    _open_week(page, WIDE)
-    said = page.text_content("#week-counts") or ""
-    if not _pressed_tier(page):
-        return
-    assert "STRONG" in said, f"the count line does not name the band: {said!r}"
-    assert re.search(r"\d+\s+of\s+\d+", said), (
-        f"the count line names no denominator: {said!r}. A reader who never "
-        f"chose a filter reads this as the size of the slate."
-    )
-
-
-def test_the_caveat_names_its_shortfall_and_never_a_rate(page):
-    _open_week(page, WIDE)
-    said = (page.text_content("#tier-caveat") or "").strip()
-    hidden = page.evaluate("document.getElementById('tier-caveat').hidden")
-    if hidden:
-        # The band cleared its gate, or the default yielded. Both are the
-        # sentence's own disappearing conditions, not a missing element.
-        assert said == ""
-        return
-    assert "STRONG" in said and "settled" in said
-    assert "%" not in said, "a caveat about sample size stated a rate"
-
-
-def test_the_caveat_goes_when_the_reader_leaves_the_default(page):
-    """It explains the DEFAULT. Under a band the reader picked it is noise."""
-    _open_week(page, WIDE)
-    if _pressed_tier(page) != "STRONG":
-        pytest.skip("the default did not engage on this slate")
-    page.click('#week-tier-seg button[data-tier=""]')
-    page.wait_for_function(
-        "() => document.getElementById('tier-caveat').hidden === true",
-        timeout=5000)
-
-
-def test_the_toggle_is_remembered_for_the_session(page):
-    """Chosen once, kept across a re-render of the same sport."""
-    _open_week(page, WIDE)
-    if _pressed_tier(page) != "STRONG":
-        pytest.skip("the default did not engage on this slate")
-    page.click('#week-tier-seg button[data-tier=""]')
-    page.wait_for_function(
-        """() => {
-            const on = document.querySelector(
-                '#week-tier-seg [aria-pressed="true"]');
-            return on && on.dataset.tier === '';
-        }""", timeout=5000)
-    page.evaluate("location.hash = '#/record'")
-    page.wait_for_timeout(200)
-    _open_week(page, WIDE)
-    assert _pressed_tier(page) == "", (
-        "the filter reverted to the default after the reader had changed it"
-    )
-
-
-def test_the_default_holds_at_390(page):
-    """Same band, same sentence, no desk."""
-    _open_week(page, PHONE)
-    if "STRONG" not in _tiers_offered(page):
-        pytest.skip("no STRONG picks on this slate")
-    assert _pressed_tier(page) == "STRONG"
-    said = page.text_content("#week-counts") or ""
-    assert "STRONG" in said and re.search(r"\d+\s+of\s+\d+", said), said
-
+# RETIRED 2026-09-24. Eight tests here read `#week-tier-seg` and
+# `#week-counts`: the tier filter THREE_STATES removed on 2026-09-08 and the
+# count line the board removed. Since the 8th every one of them had passed by
+# skipping ("no STRONG picks on this slate") or by finding nothing to press,
+# which is a test of nothing. The default-band rule they guarded has no
+# control on the board to hold it to; the close-out of 2026-09-25 lists them
+# and the ruling that would bring a tier filter back would bring them back.
 
 def _shown_ids(page):
     """Every card id in the grid, with "show all" opened AND WAITED FOR.
@@ -553,15 +443,8 @@ def _shown_ids(page):
     # the hero leads with -- so a helper that returned only `#week-cards` would
     # report the largest pick on the page as absent from it.
     return set(page.evaluate(
-        """(() => {
-             const ids = [...document.querySelectorAll('#today .face')]
-                           .map(c => Number(c.dataset.id));
-             const hero = document.getElementById('week-hero');
-             if (hero && !hero.hidden && hero.dataset.id) {
-               ids.push(Number(hero.dataset.id));
-             }
-             return ids;
-           })()"""))
+        """(() => [...document.querySelectorAll('#games-rows .game .q')]
+                    .map(c => Number(c.dataset.id)))()"""))
 
 
 def _flag_ids(page, ids):
@@ -578,6 +461,11 @@ def _flag_ids(page, ids):
         today = payload.get("today") or {}
         for name in ("clears", "below_floor", "watching", "live", "settled"):
             groups.append(today.get(name) or [])
+        # AND THE BOARD'S OWN ROWS (2026-09-24): the pick on the face and
+        # every question behind it.
+        for game in (payload.get("board") or {}).get("games") or []:
+            groups.append([game["pick"]] if game.get("pick") else [])
+            groups.append(game.get("questions") or [])
         for group in groups:
             for card in group:
                 if card.get("prediction_id") in wanted:
@@ -608,9 +496,10 @@ def test_the_flagged_note_is_readable_without_a_tap(page):
     _flag_ids(page, ids)
     _open_week(page, WIDE)
     _shown_ids(page)
+    # ON THE ROW'S FACE, which is what is visible at rest: the pick's note.
     shown = page.evaluate(
-        """[...document.querySelectorAll('#today .face')].map(c => {
-             const n = c.querySelector('.face-method');
+        """[...document.querySelectorAll('#games-rows .game')].map(c => {
+             const n = c.querySelector('.pick-method');
              return n ? { text: n.textContent.trim(),
                           seen: n.offsetParent !== null &&
                                 getComputedStyle(n).opacity !== '0' }
@@ -675,52 +564,39 @@ def test_no_font_request_is_refused(page):
 
 # --- the tier chip says what it is (2026-09-04) -----------------------------
 
-def test_an_unproven_chip_says_so_where_a_reader_can_see_it(page):
+def test_the_badge_says_how_much_stands_behind_it_where_a_reader_can_see_it(page):
     """MEASURED, and this is the fix. Across four live slates 362 of 379 tier
     chips named a band with no settled record behind it, and the sentence
-    saying so reached a GRID card only through `title` -- a hover tooltip, so
-    nothing at all on a phone. The hero was honest; the thirty cards behind it
-    were not.
-
-    ASSERTED ON THE PHONE, deliberately: `title` is exactly the mechanism that
-    works where this test would not look and fails where a reader actually is.
-    """
+    saying so reached a GRID card only through `title`. THE TIER CHIP WENT
+    WITH THE OLD CARD (GRIDIRON_BOARD, 2026-09-24); the record badge is the
+    count on every row and tile, and it is on the face, on a phone."""
     _open_week(page, PHONE)
     if not _cards(page):
-        pytest.skip("no cards on this slate")
+        pytest.skip("no rows on this slate")
 
-    chips = page.evaluate(
-        """[...document.querySelectorAll('#today .face .face-meta .chip')]
-             .filter(t => t.className.indexOf('tier-none') === -1)
+    badges = page.evaluate(
+        """[...document.querySelectorAll('#games-rows .game .pick .badge')]
              .map(t => ({ text: t.textContent.trim(),
-                          unproven: t.classList.contains('tier-unproven'),
+                          tip: t.dataset.tip || '',
                           seen: t.offsetParent !== null }))""")
-    if not chips:
-        pytest.skip("no tier chips on this slate")
-
-    assert all(c["seen"] for c in chips), "a tier chip rendered and is hidden"
-    # RE-POINTED 2026-09-08. The old card marked an unproven chip with a
-    # `tier-unproven` CLASS and the words followed it; the CARD_FACE chip
-    # carries the state in the server's own string and has no such class. So
-    # the promise is checked where it now lives: the chip a reader sees is the
-    # sentence the server wrote, unproven state included, and never a tier
-    # name with its proof state quietly dropped.
-    from gridiron import language
-
-    for chip in chips:
-        assert chip["text"], "a tier chip rendered with no words in it"
-        tier = chip["text"].split("·")[0].strip()
-        assert tier, f"a chip names no tier: {chip['text']!r}"
-        assert chip["text"] == language.tier_chip_label(tier, "unproven" not in chip["text"]), (
-            f"the chip on the card is not the sentence the server composes: "
-            f"{chip['text']!r}")
+    if not badges:
+        pytest.skip("no picks on this slate")
+    assert all(c["seen"] for c in badges), "a badge rendered and is hidden"
+    for badge in badges:
+        assert re.fullmatch(r"\d+/\d+", badge["text"]), (
+            f"a badge shows something other than settled over the gate: {badge['text']!r}")
+        assert "settled" in badge["tip"], "the badge's words do not say what it counts"
 
 
 def test_the_chip_is_never_composed_in_the_browser(page):
-    """The word comes from the server, like every other word on the page."""
+    """The word comes from the server, like every other word on the page.
+    The tier chip lives on Results now (the settled table), so that is
+    where it is read."""
     from gridiron import language
 
-    _open_week(page, WIDE)
+    page.set_viewport_size(WIDE)
+    page.evaluate("location.hash = '#/results'")
+    page.wait_for_selector("#history-table tbody tr", timeout=15000)
     texts = page.evaluate(
         """[...document.querySelectorAll('.tier')]
              .map(t => t.textContent.trim()).filter(Boolean)""")
@@ -735,18 +611,3 @@ def test_the_chip_is_never_composed_in_the_browser(page):
     assert not unknown, (
         f"these chip labels were not composed by language.tier_chip_label: "
         f"{unknown}")
-
-
-# --- what the hero's flagged-market tests protected -------------------------
-#
-# Three tests were removed on 2026-09-08 with the feature they drove:
-# `test_the_default_yields_on_a_slate_without_it` exercised the tier default,
-# and `test_a_flagged_market_never_leads_the_page` and
-# `test_every_card_flagged_means_no_hero_at_all` exercised the hero's refusal
-# to promote a flagged market. There is no hero, no sort and no tier default.
-#
-# THE HALF THAT MATTERED IS STILL CHECKED. A flagged method says so on the
-# card that carries it (`audit.check_flagged_methods`, on the gate), and
-# nothing unproven leads because the bar decides a card's group and a card
-# below its market's gate says "no measured edge" on its own face.
-

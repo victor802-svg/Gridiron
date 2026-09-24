@@ -491,8 +491,16 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             # that disappears when there is nothing on the card only works on
             # the days a reader least needs it, and one payload shape with a
             # sometimes-missing key is how a renderer learns to guess.
+            from . import board as _board
+
             return {"sport": sport, "season": season, "week": None, "n": 0,
                     "cards": [], "message": _empty_slate_message(conn, sport),
+                    # ONE PAYLOAD SHAPE for the board as well: an empty slate
+                    # carries empty rows and the words that say so.
+                    "board": _board.build(conn, sport=sport, season=season,
+                                          wk=None, cards=[], today=None,
+                                          chosen=forecaster or config.PICKS_DEFAULT_FORECASTER),
+                    "freshness": freshness(conn),
                     # ONE PAYLOAD SHAPE. A key that is present on a full slate
                     # and missing on an empty one is how a renderer learns to
                     # guess, which is the rule the glance already follows.
@@ -946,8 +954,20 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # THE COUNT IS OF ONE FORECASTER'S QUESTIONS, and the strip says which.
         forecaster=chosen, sport=sport)
 
+    # THE BOARD (GRIDIRON_BOARD, 2026-09-24): the Games rows and the Props
+    # tiles, built from these same cards and this same Today block so the
+    # page cannot disagree with itself about what cleared the fee.
+    from . import board as _board
+
+    board_block = _board.build(
+        conn, sport=sport, season=season, wk=wk, cards=cards, today=today_block,
+        chosen=chosen,
+        unit_dollars=(float(_settings.value(conn, "unit_dollars"))
+                      if _settings.value(conn, "unit_dollars") else None))
+
     payload = {
         "sport": sport,
+        "board": board_block,
         # THE SLATE AT A GLANCE (D3), computed from the cards above rather than
         # by asking the database the same questions a second time.
         "glance": _glance(conn, sport, cards),

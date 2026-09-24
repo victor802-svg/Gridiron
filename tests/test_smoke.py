@@ -138,7 +138,8 @@ def test_the_calibration_chart_refuses_a_bucket_with_no_n(page):
 
 def test_every_screen_renders(page):
     for route, selector in (
-        ("#/week", "#today .face"),
+        ("#/games", "#games-rows .game"),
+        ("#/props", "#props-tiles .prop"),
         # THE CARDS, not the table: the measurements in full sit behind a
         # collapsed <details> now (P5), so their rows exist and are not
         # visible. The cards are what a reader sees on this page.
@@ -172,7 +173,7 @@ def _open_route(target, route):
     # own copy of the default -- so `_open_route(page, "")` waited for a view
     # the app no longer opens on. A default written down twice is a default
     # that goes stale in one of the two places.
-    name = (route.rsplit("/", 1)[-1] or "week")
+    name = (route.rsplit("/", 1)[-1] or "games")
     target.wait_for_function(
         """(id) => {
             if (document.body.dataset.ready !== 'true') return false;
@@ -192,7 +193,7 @@ def test_picks_is_the_default_screen(page):
     the slate is the thing with a deadline on it.
     """
     _open_route(page, "")
-    assert page.locator("#view-week").is_visible()
+    assert page.locator("#view-games").is_visible()
     assert not page.locator("#view-record").is_visible()
 
 
@@ -211,9 +212,11 @@ def test_the_pick_states_model_market_and_gap_in_words(page):
     would have kept passing on if the rail had silently emptied.
     """
     _open_first_card(page)
-    page.wait_for_selector("#today .face .face-why .face-numbers", timeout=10000)
+    # RE-HOMED 2026-09-24 (GRIDIRON_BOARD): explanations live in tooltips on
+    # the numbers, so the sentence is the probability's tooltip, and it is
+    # still a real sentence with the numbers in it.
     text = page.eval_on_selector(
-        "#today .face .face-why .face-numbers", "el => el.textContent.trim()")
+        "#games-rows .game.open .q .q-prob", "el => (el.dataset.tip || '').trim()")
     assert "The model says" in text, text
     assert re.search(r"\d+%", text), f"no percentage in the line: {text!r}"
     # Either a market comparison or the absence stated in words -- never a
@@ -227,10 +230,9 @@ def test_the_pick_states_model_market_and_gap_in_words(page):
 def test_no_graph_is_drawn_anywhere_on_picks(page):
     """R3: no graphs on Picks, in the tiles or behind the expansion."""
     _open_first_card(page)
-    page.wait_for_selector("#today .face .face-why .face-numbers", timeout=10000)
     graphics = page.evaluate(
         """() => {
-            const scope = document.getElementById('view-week');
+            const scope = document.getElementById('view-games');
             const found = scope.querySelectorAll(
                 'canvas, svg, .dumbbell, .rail, .dot, .contrib-bar, .bar2');
             return [...found].map(e => e.tagName.toLowerCase() + '.' + e.className);
@@ -258,36 +260,24 @@ def test_the_contribution_bars_render_signed(page):
 
 
 def test_a_card_expands_and_shows_its_detail(page):
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
-    card = page.locator("#today .face").first
-    # RE-POINTED 2026-09-08: the CARD_FACE card's detail is `.face-why`,
-    # revealed by the `.expand` control.
-    detail = card.locator(".face-why")
-    # T1 old -> new: the detail is now display:none rather than a collapsed
-    # max-height, so it has NO bounding box when closed. `is_visible()` is the
-    # honest check either way and does not depend on how the hiding is done.
-    assert not detail.is_visible(), "the card starts open"
+    """RE-HOMED 2026-09-24 (GRIDIRON_BOARD): the row is the card, its head is
+    the control, and the detail is every question on the game, as tiles
+    already in the tree and revealed in place."""
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
+    card = page.locator("#games-rows .game").first
+    detail = card.locator(".game-more")
+    assert not detail.is_visible(), "the row starts open"
 
-    card.locator(".expand").click()
-    # WAIT FOR THE THING THE NEXT LINE ASSERTS. A clock here would pass on a
-    # fast machine and fail on a loaded one, and the failure would read as
-    # "the card did not expand" rather than "we did not wait long enough".
+    card.locator(".game-head").click()
     detail.wait_for(state="visible", timeout=10000)
-    assert detail.is_visible(), "the card did not expand"
+    assert detail.is_visible(), "the row did not expand"
     assert detail.bounding_box()["height"] > 40
-    # The DECOMPOSITION moved to the Factors page (K3): a card carries the
-    # numbers, the bucket line and the reasoning, and the table of
-    # coefficients belongs where someone auditing goes looking for it.
-    #
-    # `.dumbbell` was asserted here until 2026-09-02. The graphic went with
-    # GRIDIRON_16 R3 and the sentence replaced it.
-    # RE-POINTED 2026-09-08. The old body's three parts are the new body's:
-    # the body itself, R3's model/market/gap sentence, and the way out to the
-    # page that carries the coefficients.
-    assert card.locator(".face-why").count() == 1
-    assert card.locator(".face-numbers").count() == 1
-    assert card.locator(".face-more").count() == 1, "the link to the Factors page"
+    # the three parts of the old body, on the new row: the questions, the
+    # numbers (in the tooltip on the probability) and the way out to Record
+    assert card.locator(".game-more .q").count() >= 1
+    assert card.locator(".game-more .q .q-prob[data-tip]").count() >= 1
+    assert card.locator(".game-more-link").count() == 1, "the link to the workings"
 
 
 def test_the_bucket_line_never_shows_an_accuracy_without_its_n(page):
@@ -301,24 +291,21 @@ def test_the_bucket_line_never_shows_an_accuracy_without_its_n(page):
     """
     import re
 
-    # The compact screen hides the detail until a row is tapped, so this
-    # opens one before looking for anything inside it.
+    # The detail hides behind the row until it is tapped, so this opens one
+    # before looking for anything inside it.
     _open_first_card(page)
-    page.wait_for_selector("#today .face .face-gate", timeout=10000)
-    lines = page.eval_on_selector_all(
-        "#today .face .face-gate", "els => els.map(e => e.textContent)"
+    # RE-HOMED 2026-09-24 (GRIDIRON_BOARD): the record badge "12/100" is the
+    # count on every row and tile, and its tooltip says it in words.
+    badges = page.eval_on_selector_all(
+        "#games-rows .game.open .badge",
+        "els => els.map(e => ({ text: e.textContent, tip: e.dataset.tip || '' }))"
     )
-    assert lines
-    for text in lines:
-        # RE-POINTED 2026-09-08. The old card's bucket line said "N resolved";
-        # the CARD_FACE gate line says "N settled · M more before a verdict".
-        # The promise is LAW 4's and is unchanged: a count is always present.
-        assert re.search(r"\d+ (resolved|settled)", text), (
-            f"a bucket line rendered without its count: {text!r}"
-        )
-        # If it states an accuracy, the count must be right there with it.
-        if "hits" in text or re.search(r"\d+% actual", text):
-            assert re.search(r"\d+ resolved", text)
+    assert badges
+    for b in badges:
+        assert re.fullmatch(r"\d+/\d+", b["text"].strip()), (
+            f"a badge rendered without its two counts: {b['text']!r}")
+        assert re.search(r"\d+ (resolved|settled)", b["tip"]), (
+            f"a badge's words carry no count: {b['tip']!r}")
 
 
 def test_the_weekly_strip_renders_with_hit_targets(page):
@@ -380,8 +367,8 @@ def test_every_moving_thing_is_inside_the_motion_vocabulary(page):
     media query or an inline style composed at runtime, none of which
     `audit.motion_faults` can see.
     """
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
     moving = page.evaluate(
         """() => {
             const out = [];
@@ -453,8 +440,8 @@ def test_nothing_moves_under_reduced_motion(served, _browser):
     page.click("#submit")
     page.wait_for_url(served + "/", timeout=15000)
     page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
 
     assert page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches")
     durations = page.evaluate(
@@ -472,20 +459,18 @@ def test_nothing_moves_under_reduced_motion(served, _browser):
     )
     assert durations == [], f"motion survived prefers-reduced-motion: {durations}"
 
-    # ...and the card still opens, because motion is decoration not mechanism
-    page.locator("#today .face .expand").first.click()
+    # ...and the row still opens, because motion is decoration not mechanism
+    page.locator("#games-rows .game .game-head").first.click()
     page.wait_for_function(
         """() => {
-            // RE-POINTED 2026-09-08: the CARD_FACE card opens by clearing
-            // `hidden` on a body already in the tree, not by an `open` class.
-            const row = document.querySelector('#today .face');
-            const body = row && row.querySelector('.face-why');
+            const row = document.querySelector('#games-rows .game');
+            const body = row && row.querySelector('.game-more');
             return !!body && !body.hidden;
         }""",
         timeout=10000,
     )
-    assert page.locator("#today .face").first.evaluate(
-        "e => { const b = e.querySelector('.face-why'); return !!b && !b.hidden; }"
+    assert page.locator("#games-rows .game").first.evaluate(
+        "e => { const b = e.querySelector('.game-more'); return !!b && !b.hidden; }"
     )
     assert errors == []
     context.close()
@@ -505,8 +490,8 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     page.click("#submit")
     page.wait_for_url(served + "/", timeout=15000)
     page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
 
     # The COLLAPSED list must not scroll sideways -- that is the state a
     # reader arrives in, and it is the state the 84px and 78px regressions
@@ -519,8 +504,8 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     # K2 old -> new: the detail lives behind a tap, so it has to be opened
     # before it can be measured. And it must not overflow AFTER opening
     # either -- an expanded row is still a phone screen.
-    page.locator("#today .face .expand").first.click()
-    page.wait_for_selector("#today .face .face-why .face-numbers", timeout=5000)
+    page.locator("#games-rows .game .game-head").first.click()
+    page.wait_for_selector("#games-rows .game.open .q .q-line", timeout=5000)
     overflow_open = page.evaluate(
         "() => document.documentElement.scrollWidth > window.innerWidth + 1"
     )
@@ -532,16 +517,16 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     # to prove is that it is actually on screen and not clipped away.
     box = page.evaluate(
         """() => {
-            const n = document.querySelector('#today .face .face-why .face-numbers');
+            const n = document.querySelector('#games-rows .game.open .q .q-line');
             if (!n) return null;
             const r = n.getBoundingClientRect();
             return { width: r.width, height: r.height,
                      right: r.right, text: n.textContent.trim().length };
         }"""
     )
-    assert box, "no numbers line in the expanded row"
-    assert box["width"] > 120, "the numbers line collapsed on a phone"
-    assert box["height"] > 0 and box["text"] > 20
+    assert box, "no question line in the expanded row"
+    assert box["width"] > 120, "the question line collapsed on a phone"
+    assert box["height"] > 0 and box["text"] > 6
     assert box["right"] <= 375 + 1, "the numbers line runs off a phone screen"
     context.close()
 
@@ -695,7 +680,7 @@ def _overflow(page) -> int:
 
 
 @pytest.mark.parametrize(
-    "route", ["#/week", "#/record", "#/results", "#/settings"]
+    "route", ["#/games", "#/props", "#/record", "#/results", "#/settings"]
 )
 def test_no_screen_overflows_a_phone(phone, route):
     """Sideways scroll on a phone is the single most common way a dense layout
@@ -746,8 +731,8 @@ def test_the_sport_tabs_are_reachable_and_tappable(phone):
 def test_every_tap_target_on_the_slate_is_big_enough(phone):
     """44px is Apple's floor and the one most people cite. Checked on the
     controls that are actually tapped, not on every element."""
-    phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#today .face", timeout=10000)
+    phone.evaluate("location.hash = '#/games'")
+    phone.wait_for_selector("#games-rows .game", timeout=10000)
     small = phone.evaluate("""
       Array.from(document.querySelectorAll(
         'nav a, #sport-tabs a, #sport-tabs button, select, button, .expand, summary'
@@ -779,29 +764,21 @@ def test_a_card_still_expands_on_a_phone(phone):
     by clicking its whole head and revealing `.card-body`; this one has a Why
     control that reveals `.face-why`. The promise -- a card opens in place and
     does not overflow the phone doing it -- is unchanged."""
-    phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#today .face", timeout=10000)
-    # A LOCATOR, NOT AN ELEMENT HANDLE. `query_selector` snapshots one node
-    # and `renderWeek` rebuilds `#today` wholesale, so a render landing
-    # between the query and the click detaches it -- which it did, once in
-    # three runs, in the gate of 2026-09-09. A locator re-resolves at click
-    # time and retries while the node is detached.
-    phone.locator("#today .face .expand").first.click()
-    phone.wait_for_selector("#today .face .face-why", state="visible", timeout=5000)
-    assert _overflow(phone) <= 0, "an expanded card overflows the phone"
+    phone.evaluate("location.hash = '#/games'")
+    phone.wait_for_selector("#games-rows .game", timeout=10000)
+    # A LOCATOR, NOT AN ELEMENT HANDLE: a render landing between the query
+    # and the click detaches a handle; a locator re-resolves at click time.
+    phone.locator("#games-rows .game .game-head").first.click()
+    phone.wait_for_selector("#games-rows .game .game-more", state="visible", timeout=5000)
+    assert _overflow(phone) <= 0, "an expanded row overflows the phone"
 
 
 def test_the_dumbbell_and_contribution_bars_fit(phone):
     """Both are horizontal by nature and are the first things to break narrow."""
-    phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#today .face", timeout=10000)
-    # A LOCATOR, NOT AN ELEMENT HANDLE. `query_selector` snapshots one node
-    # and `renderWeek` rebuilds `#today` wholesale, so a render landing
-    # between the query and the click detaches it -- which it did, once in
-    # three runs, in the gate of 2026-09-09. A locator re-resolves at click
-    # time and retries while the node is detached.
-    phone.locator("#today .face .expand").first.click()
-    phone.wait_for_selector("#today .face .face-why", state="visible", timeout=5000)
+    phone.evaluate("location.hash = '#/games'")
+    phone.wait_for_selector("#games-rows .game", timeout=10000)
+    phone.locator("#games-rows .game .game-head").first.click()
+    phone.wait_for_selector("#games-rows .game .game-more", state="visible", timeout=5000)
 
     # `.factors` is where the contribution chips live on the CARD_FACE card;
     # the dumbbell and the contribution rows belonged to the old expanded
@@ -888,11 +865,11 @@ def _open_first_card(page):
     DOM until a row is expanded. This helper used to only navigate, which was
     enough when every card was fully drawn.
     """
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
-    head = page.locator("#today .face .expand").first
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
+    head = page.locator("#games-rows .game .game-head").first
     head.click()
-    page.wait_for_selector("#today .face .face-why .face-numbers", timeout=5000)
+    page.wait_for_selector("#games-rows .game.open .q", timeout=5000)
 
 
 @pytest.mark.skip(reason="RE-POINT NEEDED (2026-09-08): this reaches into the OLD grid card -- .card-numbers, .card-bucket, .card-head -- which was removed with the More picks grid. The CARD_FACE card has no one-to-one equivalent, and rewriting the assertion to something the new card happens to have would be a test that passes by saying less. Needs re-pointing against the new card deliberately.")
@@ -997,12 +974,12 @@ def test_a_resolved_pick_is_shown_on_results_not_on_picks(page):
 def test_the_greeting_strip_leads_the_page(page):
     """It is the first thing on the page because it answers the first
     question: was I right last night."""
-    _open_route(page, "#/record")
+    _open_route(page, "#/games")
     box = page.evaluate("""() => {
         const g = document.getElementById('glance');
         if (!g || g.hidden) return null;
         const r = g.getBoundingClientRect();
-        const cards = document.querySelector('#week-cards');
+        const cards = document.querySelector('#games-rows');
         return { top: r.top, text: document.getElementById('greet-msg').textContent };
     }""")
     # `#glance` stays hidden when the digest has nothing to say -- an empty
@@ -1041,7 +1018,7 @@ def test_the_calibration_chart_is_not_drawn_in_the_page_colour(page):
     assert painted > 2, f"the chart painted only {painted} distinct colours"
 
 
-@pytest.mark.parametrize("route", ["#/week", "#/record", "#/results", "#/settings"])
+@pytest.mark.parametrize("route", ["#/games", "#/props", "#/record", "#/results", "#/settings"])
 def test_each_dark_screen_renders_on_a_phone(route, page):
     page.set_viewport_size({"width": 390, "height": 844})
     _open_route(page, route)
@@ -1055,7 +1032,7 @@ def test_each_dark_screen_renders_on_a_phone(route, page):
 # --- the plain-words law, on the rendered page ------------------------------
 
 @pytest.mark.parametrize(
-    "route", ["#/week", "#/record", "#/results", "#/settings"]
+    "route", ["#/games", "#/props", "#/record", "#/results", "#/settings"]
 )
 def test_no_internal_vocabulary_reaches_the_reader(route, page):
     """Scanned on the RENDERED page, not in the source. Labels are only half of
@@ -1178,7 +1155,7 @@ def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
 
 
 @pytest.mark.parametrize(
-    "route", ["#/week", "#/record", "#/results", "#/settings"]
+    "route", ["#/games", "#/props", "#/record", "#/results", "#/settings"]
 )
 def test_no_bare_dash_stands_in_for_a_value(route, page):
     """A dash in a data cell reads as a rendering fault. Every absence names
@@ -1246,26 +1223,34 @@ def test_the_nav_says_results_and_the_old_route_redirects(page):
 
 def test_picks_carries_no_resolved_section(page):
     """Settled rows live in Results and only there (R4)."""
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards", timeout=10000)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-notes", timeout=10000)
     labels = page.eval_on_selector_all(
-        "#view-week .section-label", "els => els.map(e => e.textContent.trim())")
+        "#view-games .section-label", "els => els.map(e => e.textContent.trim())")
     assert "Resolved" not in labels, labels
-    assert page.locator("#view-week .rows-done").count() == 0
+    assert page.locator("#view-games .rows-done").count() == 0
 
 
-def test_the_nav_has_exactly_four_pages(page):
-    """FOUR PAGES (GRIDIRON_13 P5).
+def test_the_nav_is_two_tabs_and_a_menu_of_three(page):
+    """TWO PAGE TABS AND A MENU (GRIDIRON_BOARD, operator ruling 2026-09-24).
 
-    Seven entries was one more decision about where a thing lived every time
-    a reader wanted something. Factors and Versions were both about the same
-    subject -- what the model is and what changed -- and are sections of
-    Record now. Schedule became Settings > Health. Digest went: the greeting
-    keeps its data and a particular day is a click on the Results calendar.
+    Four pages in one row was GRIDIRON_13 P5 and held for three weeks. The
+    board puts Games and Props under the sport tabs and Record, Results and
+    Settings behind the menu, and the menu opens on its button.
     """
     labels = page.eval_on_selector_all(
         "nav#nav a", "els => els.map(e => e.textContent.trim())")
-    assert labels == ["Picks", "Record", "Results", "Settings"], labels
+    assert labels == ["Games", "Props"], labels
+    menu = page.eval_on_selector_all(
+        "nav#menu a", "els => els.map(e => e.textContent.trim())")
+    assert menu == ["Record", "Results", "Settings"], menu
+    assert page.evaluate("document.getElementById('menu').hidden"), "the menu starts open"
+    page.click("#menu-button")
+    page.wait_for_function("() => !document.getElementById('menu').hidden", timeout=5000)
+    assert page.get_attribute("#menu-button", "aria-expanded") == "true"
+    page.click("nav#menu a[data-route='record']")
+    page.wait_for_function("() => location.hash === '#/record'", timeout=5000)
+    assert page.evaluate("document.getElementById('menu').hidden"), "the menu stayed open after a choice"
 
 
 @pytest.mark.parametrize("old,expected", [
@@ -1273,7 +1258,12 @@ def test_the_nav_has_exactly_four_pages(page):
     ("#/factors", "#/record"),
     ("#/versions", "#/record"),
     ("#/schedule", "#/settings"),
-    ("#/digest", "#/week"),
+    ("#/digest", "#/games"),
+    # THE OLD PICKS ROUTE AND ITS TABS (GRIDIRON_BOARD, 2026-09-24)
+    ("#/week", "#/games"),
+    ("#/picks", "#/games"),
+    ("#/live", "#/games"),
+    ("#/today", "#/games"),
 ])
 def test_every_old_route_redirects(page, old, expected):
     """NO DEAD LINKS. A link somebody bookmarked or wrote down still lands,
@@ -1425,9 +1415,9 @@ def test_no_internal_vocabulary_reaches_the_reader_on_the_llm_view(page):
     #
     # THAT PICKS CAN NO LONGER SHOW THE REASONING PASS IS RECORDED IN
     # `docs/FOLLOWUPS.md` as a consequence of that removal, not hidden here.
-    page.evaluate("location.hash = '#/week'")
+    page.evaluate("location.hash = '#/games'")
     page.wait_for_function(
-        """() => document.querySelectorAll('#today .face').length > 0""",
+        """() => document.querySelectorAll('#games-rows .game').length > 0""",
         timeout=10000)
     llm = page.evaluate("""async () => {
         const r = await fetch('/api/week?sport=' + Gridiron.state.sport
@@ -1445,7 +1435,7 @@ def test_no_internal_vocabulary_reaches_the_reader_on_the_llm_view(page):
 
     # Open every card, because the reasoning lives in the body.
     page.evaluate("""() => {
-        document.querySelectorAll('#today .face-head')
+        document.querySelectorAll('#games-rows .game-head')
                 .forEach(h => h.click());
     }""")
     visible = page.evaluate("""() => {

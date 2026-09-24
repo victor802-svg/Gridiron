@@ -118,6 +118,10 @@ PAIRS = [
     ("win", "card", "a game the club won, in the form streak", False),
     ("loss", "card", "a game the club lost, in the form streak", False),
     ("chrome", "card-2", "the pressed segment and every focus ring", False),
+    # THE SOLID FILLS (colour law amended 2026-09-24): a settled verdict is
+    # filled with its colour and its words are set in the page ink on it.
+    ("ink", "win", "a pick that won: ink on the solid green fill", False),
+    ("ink", "loss", "a pick that lost: ink on the solid red fill", False),
     ("ink", "chrome", "the STRONG tier chip: dark on white", False),
 ]
 

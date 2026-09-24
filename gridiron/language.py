@@ -4289,3 +4289,217 @@ def freshness_words(label: str, age_hours: float | None, limit: float) -> str:
     if age_hours > limit:
         return f"{label} {shown}, past {limit:g}h"
     return f"{label} {shown}"
+
+
+# ---------------------------------------------------------------------------
+# THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# Every word on a game row, a bet tile, a prop tile, a chip, a badge, a
+# tooltip and the entry rail is composed here. The renderer places them and
+# decides nothing about wording; the plain-words scan, the pressure scan and
+# the advice scan read this payload, tooltips included.
+
+#: The words on the row that never change with the data.
+def board_labels() -> dict:
+    """Every fixed label the board's renderer places.
+
+    Typed once, here, so the browser never composes one: a label the renderer
+    typed for itself is outside the plain-words scan, and "Payspays" is what
+    that produced last time.
+    """
+    return {
+        "starts": "starts",
+        "live": "LIVE",
+        "final": "FINAL",
+        "yours": "Yours",
+        "no_pick": "no forecast on this game",
+        "questions": "questions",
+        "forecaster": "forecaster",
+        "expand": "every question on this game",
+        "collapse": "fewer",
+        "took": "I took this",
+        "taken": "taken",
+        "record": "record",
+        "cushion": "cushion",
+        "breakeven": "break-even",
+        "venue": "venue line",
+        "not_read": "not read yet",
+        "alt": "Alt lines",
+        "all": "All",
+        "high_end": "high-end record",
+        "entry": "Entry",
+        "pays": "venue pays",
+        "legs": "legs",
+        "line_model": "model",
+        "line_half": "if half as good",
+        "line_kalshi": "Kalshi where listed",
+        "line_floor": "floor",
+        "per_dollar": "per dollar",
+        "pregame": "pregame",
+        "how": "How the model works",
+    }
+
+
+def badge_words(n: int, gate: int) -> str:
+    """"12/100": settled in this market against the hundred LAW 4 asks for.
+
+    THE BADGE IS THE SAMPLE SIZE, on every row and every tile, which is what
+    lets a signal be read beside how much stands behind it. It never renders
+    without its two numbers, and a signal never renders without it.
+    """
+    return f"{int(n)}/{int(gate)}"
+
+
+def badge_tip(n: int, gate: int, market_words: str) -> str:
+    """What the badge means, for its tooltip."""
+    if n >= gate:
+        return (f"{n} settled in {market_words}, past the {gate} this app asks "
+                f"for before it claims an edge.")
+    return (f"{n} settled in {market_words}. {gate - n} more before this app "
+            f"claims an edge here; until then a size is a flat unit and a "
+            f"signal is a price comparison, not a verdict.")
+
+
+def high_end_badge_words(n: int, gate: int) -> str:
+    """The second badge an alt-line tile carries: how the record has done at
+    the high end of the probability range, which is where an alt line lives.
+    """
+    return f"{int(n)}/{int(gate)} at 70% and up"
+
+
+def high_end_badge_tip(n: int, gate: int) -> str:
+    return (f"An alt line is a claim near the top of the range, and the "
+            f"record there is its own: {n} settled at 70% and up of the {gate} "
+            f"this app asks for before it trusts that end of the curve.")
+
+
+def signal_tip(signal: str) -> str | None:
+    """What an outline or a fill means, in words, for the tooltip on it."""
+    return {
+        "clears": ("Clears the bar: the model's price beats the venue's by more "
+                   "than the fee, and the return on the money is at least "
+                   "five per cent."),
+        "costs": ("Costs after fees: at this price the venue's fee eats what "
+                  "the model sees, so being right still loses money."),
+        "won": "Settled: it happened.",
+        "lost": "Settled: it did not happen.",
+        "withdrawn": "Withdrawn: this forecast was voided and is never counted.",
+    }.get(signal)
+
+
+def prob_tip(shown: float | None, forecaster_label: str) -> str:
+    """The model's chance, and where it came from."""
+    if shown is None:
+        return "No probability on this row."
+    return (f"The {forecaster_label} forecaster's chance, {round(shown * 100)}%, "
+            f"written before any price was seen and corrected only where the "
+            f"record has earned a correction.")
+
+
+def price_tip(price: float | None, market: str | None, hours: float) -> str:
+    if price is None:
+        if market is not None and market not in MARKETS_READ_AT_THE_VENUE:
+            return ("No venue price: this market is not read at the venue "
+                    "yet, so there is nothing to compare the model with.")
+        return (f"No venue price yet. The first read is taken about {hours:g} "
+                f"hours before the start, and the close is the last read "
+                f"before it.")
+    return (f"The venue's last read of this contract, {round(price * 100)}¢. "
+            f"The fee is charged on top and is largest near a coin flip.")
+
+
+def pays_tip(multiple: float | None) -> str:
+    if multiple is None:
+        return "Nothing to pay out: there is no venue price on this contract."
+    return (f"What a dollar returns if this happens, {multiple:.2f} times, "
+            f"before the fee.")
+
+
+def pick_line_words(item: dict) -> str:
+    """The pick in its loudest honest form, for the row: the same short form
+    the old tiles used, so the side is resolved by the one door."""
+    return tile_line(item)
+
+
+def game_questions_words(n: int) -> str:
+    """"3 questions on this game". Questions, never bets or plays."""
+    return f"{counted(n, 'question')} on this game"
+
+
+def games_empty_words(sport_label: str) -> str:
+    """The Games page with nothing on it."""
+    return f"No {sport_label} games on this slate."
+
+
+def nothing_clears_words() -> str:
+    """The day strip's line when no row carries a green outline."""
+    return "Nothing clears the bar today. Every pick below is priced, and none of them beats the fee."
+
+
+def cushion_words(cushion: float | None) -> str:
+    """The cushion in points of probability, signed."""
+    if cushion is None:
+        return "no cushion to show"
+    return f"{cushion * 100:+.1f} points"
+
+
+def breakeven_words(breakeven: float) -> str:
+    return f"{breakeven * 100:.1f}% to break even"
+
+
+def cushion_tip(shown: float | None, breakeven: float, multiple: float,
+                legs: int, declared: str) -> str:
+    """Why the tile sits where it sits, and what the number is NOT."""
+    when = (declared or "")[:10]
+    if shown is None:
+        return "No probability on this tile, so no cushion."
+    return (f"The model's chance, {round(shown * 100)}%, minus the "
+            f"{breakeven * 100:.1f}% a leg needs to break even in a "
+            f"{legs}-pick entry paying {multiple:g} times. The {multiple:g} "
+            f"times is declared on {when}, not read from a venue: no pick'em "
+            f"venue is read yet, so this is arithmetic against a standard "
+            f"entry and not an edge against a price.")
+
+
+def venue_line_tip() -> str:
+    return ("No pick'em venue is read yet, so the only line here is the one "
+            "the record asked. Other lines from the same venue would sit here "
+            "once one is read.")
+
+
+def props_empty_words(sport_label: str) -> str:
+    return f"No {sport_label} player props forecast on this slate."
+
+
+def props_not_read_words() -> str:
+    """The Props page's standing note: where the lines come from, and that a
+    venue's are not read yet."""
+    return ("Every tile is a question this record asked at its own line. No "
+            "pick'em venue is read yet, so a venue line reads 'not read yet' "
+            "and the cushion is against a declared standard entry.")
+
+
+def alt_lines_empty_words() -> str:
+    return ("No alt lines: a venue's alternate lines are not read yet, so "
+            "there is nothing here to rank.")
+
+
+def chip_words(family: str | None, sport: str) -> str:
+    """A filter chip's label: the market in words, never its key."""
+    return market_words(sport, family) if family else "All"
+
+
+def entry_words() -> dict:
+    """The entry rail's fixed sentences."""
+    return {
+        "heading": "Entry",
+        "empty": ("Tap a tile to mark it taken; taken props are the legs "
+                  "here."),
+        "note": ("Three readings of the same entry: the model's own chance, "
+                 "the same chance with half its cushion taken away, and "
+                 "Kalshi's price where one is listed. The floor is what the "
+                 "entry would have to pay for the model to break even. "
+                 "Nothing here is a balance and nothing is placed."),
+        "kalshi_absent": "Kalshi lists no player props, so there is nothing to price this against.",
+    }

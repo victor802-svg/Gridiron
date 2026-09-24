@@ -534,8 +534,18 @@ def step_2_guards() -> bool:
              audit.PROGRESS_FIXTURE_GOOD)),
         ("the withdrawn feature left nothing behind",
          audit.check_the_calls_feature_stayed_withdrawn),
-        ("four pages, and every old address lands",
+        ("two tabs and a menu, and every old address lands",
          audit.check_the_nav_is_four_pages),
+        # THE BOARD (GRIDIRON_BOARD, 2026-09-24): a signal never renders
+        # without its badge, a club's colour is never typed, and every word
+        # on a row, a tile or a tooltip is one a reader may meet.
+        ("a signal carries its badge",
+         lambda: [audit.check_the_board_signals_carry_their_badges(_slate_payload(sport))
+                  for sport in config.SPORTS]),
+        ("no club colour is typed", audit.check_no_hand_typed_club_hex),
+        ("the board speaks plain, tooltips included",
+         lambda: [audit.check_the_board_speaks_plain(_slate_payload(sport))
+                  for sport in config.SPORTS]),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

@@ -190,9 +190,16 @@ def test_the_card_says_nothing_the_server_did_not_write():
     # THE VENUE BOX IS THE PAYOUT NOW, so its label says what the number is
     # rather than whose it is.
     assert labels["venue"] == "Pays"
+    # THE BOARD'S RENDERER (GRIDIRON_BOARD, 2026-09-24): the row, the tile
+    # and the prop tile place `board_labels()` and type nothing.
+    board = language.board_labels()
+    for key in ("took", "taken", "starts", "live", "final", "venue", "not_read",
+                "pays", "line_model", "line_half", "line_kalshi", "line_floor"):
+        assert board[key], key
     app = (WEB / "app.js").read_text(encoding="utf-8")
-    card = app[app.index("function todayCard"):app.index("function renderToday")]
-    for word in ("'Model'", "'Venue'", "'Edge", "'I took this'"):
+    card = app[app.index("function questionTile"):app.index("function wireMenu")]
+    for word in ("'Model'", "'Venue'", "'Edge", "'I took this'", "'LIVE'",
+                 "'FINAL'", "'starts'", "'not read yet'", "'venue pays'"):
         assert word not in card, f"the renderer types {word} for itself"
     assert audit.js_prose_composition() == []
 
@@ -520,7 +527,7 @@ def test_the_day_is_stated_once_at_the_top(tmp_path):
     assert audit.advice_word_faults(today["count_words"]) == []
     markup = (WEB / "index.html").read_text(encoding="utf-8")
     strip = markup.index('class="day-strip"')
-    assert strip < markup.index('id="today-clears"'), "the strip leads the panel"
+    assert strip < markup.index('id="games-rows"'), "the strip leads the rows"
 
 
 def test_the_price_row_stays_on_one_line_on_a_phone():

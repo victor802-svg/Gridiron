@@ -13,7 +13,8 @@ import pytest
 from gridiron import audit, config
 
 ROUTES = {
-    "#/week": "#today .face, #week-cards .empty",
+    "#/games": "#games-rows .game, #games-notes .empty",
+    "#/props": "#props-tiles .prop, #props-notes .empty",
     "#/record": "#tier-table tr",
     "#/results": "#history-table tbody tr, #history-table .empty",
     "#/settings": "#settings-health .set",
@@ -48,22 +49,17 @@ def test_a_hidden_control_is_hidden_to_the_accessibility_tree_too(page):
     `hidden` attribute must not be painted anyway by a stylesheet rule that
     sets `display`. `.show-all { display: block }` did exactly that.
 
-    It now checks the fold that hides picks under the operator's payout floor,
-    which is the surviving control that spends most of its life hidden."""
+    It now checks the menu (GRIDIRON_BOARD, 2026-09-24), which is the
+    surviving control that spends most of its life hidden."""
     page.set_viewport_size({"width": 1440, "height": 900})
-    _open(page, "#/week")
-    fold = page.query_selector("#today-below-floor")
-    assert fold is not None, "the below-floor group is not on the page at all"
-    if not page.evaluate("document.getElementById('today-below-floor').hidden"):
-        return  # nothing is folded on this slate; there is no hidden state to check
+    _open(page, "#/games")
+    menu = page.query_selector("#menu")
+    assert menu is not None, "the menu is not on the page at all"
+    assert page.evaluate("document.getElementById('menu').hidden"), "the menu opens on its own"
     assert page.evaluate(
-        "getComputedStyle(document.getElementById('today-below-floor')).display"
-    ) == "none", "a hidden group is painted by a display rule anyway"
-    assert not page.is_visible("#today-below-floor")
-    box = page.evaluate(
-        "(() => { const r = document.getElementById('today-below-floor')"
-        ".getBoundingClientRect(); return r.width * r.height; })()")
-    assert box == 0, "the hidden group still has a box"
+        "getComputedStyle(document.getElementById('menu')).display") == "none"
+    assert page.evaluate("document.getElementById('menu').getAttribute('hidden')") is not None
+
 
 def test_the_stylesheet_declares_that_hidden_wins():
     css = (config.PACKAGE_ROOT / "web" / "style.css").read_text(encoding="utf-8")

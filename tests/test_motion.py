@@ -43,19 +43,21 @@ def test_a_duration_over_the_ceiling_is_named():
 
 # --- the page ---------------------------------------------------------------------
 
-def _open_week(page, size=WIDE):
+def _open_props(page, size=WIDE):
+    """RE-HOMED 2026-09-24 (GRIDIRON_BOARD): the market tabs went with the
+    old Picks page; the Props chips are the control that swaps a panel's
+    whole contents now, and the tiles are what arrive."""
     page.set_viewport_size(size)
     page.evaluate("location.hash = '#/record'")
     with page.expect_response(lambda r: "/api/week" in r.url):
-        page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-market-tabs .market-tab", timeout=10000)
+        page.evaluate("location.hash = '#/props'")
+    page.wait_for_selector("#props-chips .chip-btn", timeout=10000)
 
 
-def test_a_tab_switch_arrives_through_the_motion_block(page):
-    _open_week(page)
+def test_a_chip_switch_arrives_through_the_motion_block(page):
+    _open_props(page)
     props = page.evaluate("""() => {
-        // RE-POINTED 2026-09-08: the panel carries the arrival transition.
-        const cs = getComputedStyle(document.getElementById('today'));
+        const cs = getComputedStyle(document.getElementById('props-tiles'));
         return {duration: cs.transitionDuration, property: cs.transitionProperty,
                 timing: cs.transitionTimingFunction};
     }""")
@@ -69,22 +71,18 @@ def test_a_tab_switch_arrives_through_the_motion_block(page):
         const obs = new MutationObserver(list => list.forEach(m => {
             if (m.target.classList.contains('arriving')) window.__arrivals.push(m.target.id);
         }));
-        for (const id of ['week-cards', 'today']) {
+        for (const id of ['games-rows', 'props-tiles']) {
             obs.observe(document.getElementById(id), {attributes: true, attributeFilter: ['class']});
         }
     }""")
-    tabs = page.evaluate("[...document.querySelectorAll('.market-tab')].map(b => b.dataset.market)")
-    target = next((t for t in tabs if t), tabs[0])
+    keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
+    target = next((k for k in keys if k and k != 'alt'), keys[0])
     # AND THE FADE ACTUALLY RUNS: a sampler started by the same observer reads
     # the grid's opacity every frame for a quarter second, and at least one
-    # frame must sit strictly between zero and one. The first version of this
-    # test checked only that the class toggled, and passed while the start
-    # state animated towards zero and was reversed a frame later.
+    # frame must sit strictly between zero and one.
     page.evaluate("""() => {
         window.__opacity = [];
-        // RE-POINTED 2026-09-08: the fade runs on the Today panel, which is
-        // the container the cards arrive in now.
-        const el = document.getElementById('today');
+        const el = document.getElementById('props-tiles');
         const obs = new MutationObserver(() => {
             obs.disconnect();
             const t0 = performance.now();
@@ -96,32 +94,30 @@ def test_a_tab_switch_arrives_through_the_motion_block(page):
         });
         obs.observe(el, {attributes: true, attributeFilter: ['class']});
     }""")
-    page.click(f".market-tab[data-market='{target}']")
+    page.click(f"#props-chips .chip-btn[data-key='{target}']")
     page.wait_for_function("window.__arrivals.length > 0", timeout=5000)
     page.wait_for_timeout(400)
-    # RE-POINTED 2026-09-08: the cards arrive in the Today panel now,
-    # not in the removed grid.
-    assert "today" in page.evaluate("window.__arrivals")
+    assert "props-tiles" in page.evaluate("window.__arrivals")
     assert page.evaluate(
-        "document.getElementById('today').classList.contains('arriving')") is False
+        "document.getElementById('props-tiles').classList.contains('arriving')") is False
     samples = page.evaluate("window.__opacity")
     assert any(0 < s < 1 for s in samples), f"the panel never faded: {samples}"
     assert samples[-1] == 1
 
 
 def test_reduced_motion_is_the_same_layout_with_no_transition(page):
-    _open_week(page)
+    _open_props(page)
     # After the arrival has finished: measured a frame into it, the grid sits
     # one per cent below its place and the comparison reads a 3px lie.
     page.wait_for_timeout(350)
-    boxes = "[...document.querySelectorAll('#today, #week-cards, .market-tab')].map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; })"
+    boxes = "[...document.querySelectorAll('#props-tiles, #props-chips .chip-btn, #entry-rail')].map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; })"
     before = page.evaluate(boxes)
     page.emulate_media(reduced_motion="reduce")
     page.wait_for_timeout(100)
     after = page.evaluate(boxes)
     assert after == before, "reduced motion changed the layout"
     duration = page.evaluate(
-        "getComputedStyle(document.getElementById('week-cards')).transitionDuration")
+        "getComputedStyle(document.getElementById('props-tiles')).transitionDuration")
     assert duration == "0s", duration
     page.emulate_media(reduced_motion="no-preference")
 

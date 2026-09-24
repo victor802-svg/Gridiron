@@ -2077,18 +2077,27 @@ def plant_a_run_line_contradicting_its_moneyline() -> Result:
 
 
 def plant_a_fifth_nav_item() -> Result:
-    """Add a fifth page to the nav.
+    """Add a third page tab.
 
     A nav grows ONE LINK AT A TIME, each defensible on its own, which is how
-    this one got to seven: Picks, Record, Results, Settings, Schedule,
-    Factors, Versions, Digest. Every addition was reasonable and the total was
-    a page a reader had to make a decision about before they could ask a
-    question. Four is the ruling (GRIDIRON_13 R4).
+    the old one got to seven: Picks, Record, Results, Settings, Schedule,
+    Factors, Versions, Digest. The board ruling of 2026-09-24 makes it two
+    tabs and a menu of three; a third tab is the same growth starting again.
     """
-    good = ("const RENAMED = { history: 'results', factors: 'record',"
-            " versions: 'record', schedule: 'settings', digest: 'week' };")
-    faults = audit.nav_faults(good, audit.NAV_FIXTURE_A_FIFTH_ITEM)
-    return _desk_plant(faults, "add a fifth page to the nav",
+    faults = audit.nav_faults(audit.NAV_REDIRECTS_GOOD, audit.NAV_FIXTURE_A_FIFTH_ITEM)
+    return _desk_plant(faults, "add a third page tab",
+                       "audit.nav_faults")
+
+
+def plant_a_menu_missing_a_page() -> Result:
+    """Drop Settings from the menu.
+
+    THE OTHER WAY A NAV DRIFTS: a page quietly leaves it, and the only route
+    to Settings is an address nobody wrote down. The menu holds three pages
+    by ruling and the scan names the one that went.
+    """
+    faults = audit.nav_faults(audit.NAV_REDIRECTS_GOOD, audit.NAV_FIXTURE_A_SHORT_MENU)
+    return _desk_plant(faults, "drop a page from the menu",
                        "audit.nav_faults")
 
 
@@ -2097,11 +2106,9 @@ def plant_an_old_route_left_to_404() -> Result:
 
     A link somebody bookmarked or wrote down still has to land. A 404 tells
     them the app lost something; a redirect tells them where it went, and the
-    address bar says so.
+    address bar says so. `#/week` is the one most likely to be bookmarked.
     """
-    good_nav = "".join(
-        f'<a href="#/{p}" data-route="{p}">x</a>' for p in audit.NAV_PAGES)
-    faults = audit.nav_faults(audit.NAV_FIXTURE_A_DEAD_LINK, good_nav)
+    faults = audit.nav_faults(audit.NAV_FIXTURE_A_DEAD_LINK, audit._nav_markup())
     return _desk_plant(faults, "leave a removed route to 404",
                        "audit.nav_faults")
 
@@ -2386,6 +2393,126 @@ def plant_a_red_warning_border() -> Result:
         ".notices-summary { border-left: 2px solid var(--loss); }")
     return _desk_plant(faults, "draw a warning border in the colour that "
                                "means lost", "audit.colour_law_faults")
+
+
+def plant_a_fill_on_a_pick_that_only_clears() -> Result:
+    """Fill a pick that merely clears the bar solid green.
+
+    THE AMENDED LAW'S FIRST CASE (2026-09-24). A solid green fill means a pick
+    WON; a pick that clears the bar wears a green OUTLINE. Filling it says the
+    game is over and the model was right, about a game that has not started.
+    """
+    faults = audit.colour_law_faults(".sig-clears { background: var(--win); }")
+    return _desk_plant(faults, "fill a pick that only clears the bar solid green",
+                       "audit.colour_law_faults")
+
+
+def plant_an_outline_on_a_pick_that_won() -> Result:
+    """Draw a settled win as a green ring.
+
+    THE SECOND CASE. A win is a solid fill; an outline is the price
+    comparison's mark, so a won pick drawn as a ring reads as one that merely
+    clears the bar -- a verdict demoted to a forecast.
+    """
+    faults = audit.colour_law_faults(".sig-won { box-shadow: 0 0 0 1px var(--win); }")
+    return _desk_plant(faults, "draw a settled win as an outline",
+                       "audit.colour_law_faults")
+
+
+def plant_a_red_fill_on_a_pick_that_only_costs() -> Result:
+    """Fill a pick that costs after fees solid red.
+
+    THE THIRD CASE, the red half of the first: a solid red fill means a pick
+    LOST. A pick the fee eats is still unplayed and wears a red outline.
+    """
+    faults = audit.colour_law_faults(".sig-costs { background: var(--loss); }")
+    return _desk_plant(faults, "fill a pick that only costs after fees solid red",
+                       "audit.colour_law_faults")
+
+
+def plant_a_value_colour_on_a_form_streak() -> Result:
+    """Colour the W and L of a club's last five.
+
+    THE FOURTH CASE, and the one the amendment retired: the ruling of
+    2026-09-09 allowed it, and "nothing else uses those colours" ended it. A
+    club's game is not a pick. The scan names the rule so a session that
+    restores it does so under a ruling rather than by habit.
+    """
+    faults = audit.colour_law_faults(".fmark.win { color: var(--win); }")
+    return _desk_plant(faults, "colour a club's form streak",
+                       "audit.colour_law_faults")
+
+
+def plant_a_glow_without_its_badge() -> Result:
+    """A green outline on a row with no record badge beside it."""
+    from gridiron import audit as _audit
+
+    planted = {"board": {"games": [{"game_id": "g1", "state": "upcoming", "pick": {
+        "prediction_id": 1, "signal": "clears", "line_words": "Over 44.5 total",
+        "prob_words": "64%", "badge_words": None}}]}}
+    try:
+        _audit.check_the_board_signals_carry_their_badges(planted)
+    except _audit.LawViolation as exc:
+        return Result("LAW 4", "a green glow with no record badge beside it",
+                      "audit.board_signal_faults", True, str(exc))
+    return Result("LAW 4", "a green glow with no record badge beside it",
+                  "audit.board_signal_faults", False,
+                  "NOT CAUGHT - the most persuasive mark on the page renders "
+                  "with nothing saying how much stands behind it")
+
+
+def plant_a_hand_typed_club_hex() -> Result:
+    """Type a club's colour into the renderer."""
+    from gridiron import audit as _audit
+    from gridiron.data.team_colours import TEAM_COLOURS
+
+    chiefs = TEAM_COLOURS["nfl"]["KC"][0]
+    faults = _audit.club_hex_faults(texts={
+        "web/app.js": "  const CHIEFS = '#" + chiefs + "';\n"})
+    if faults:
+        return Result("COLOUR", "type a club's hex into the renderer",
+                      "audit.club_hex_faults", True, faults[0])
+    return Result("COLOUR", "type a club's hex into the renderer",
+                  "audit.club_hex_faults", False,
+                  "NOT CAUGHT - a second copy of a measured colour sits in "
+                  "the renderer and will disagree with the file the day the "
+                  "file is re-measured")
+
+
+def plant_a_price_on_a_live_row() -> Result:
+    """A price and a payout on a game row whose game is being played."""
+    from gridiron import audit as _audit
+
+    faults = _audit.live_card_faults(
+        {"board": {"games": [{"state": "live", "pick": {
+            "state": "live", "pregame_words": "pregame 61%",
+            "price_words": "58c", "pays_words": "1.72x", "size_words": "1 unit"}}]}})
+    named = {f.split("carries ")[1].split(":")[0] for f in faults if "carries " in f}
+    if {"'price_words'", "'pays_words'", "'size_words'"} <= named:
+        return Result(LAW_LIVE_PREGAME, "a price, a payout and a size on a live row",
+                      "audit.live_card_faults", True, faults[0])
+    return Result(LAW_LIVE_PREGAME, "a price, a payout and a size on a live row",
+                  "audit.live_card_faults", False,
+                  "NOT CAUGHT - a live row carries " + ", ".join(sorted(
+                      {"'price_words'", "'pays_words'", "'size_words'"} - named)))
+
+
+def plant_a_tooltip_with_internal_vocabulary() -> Result:
+    """A tooltip that says `rushing_yards` and calls the tile hot."""
+    from gridiron import audit as _audit
+
+    planted = {"board": {"props": {"tiles": [{
+        "prediction_id": 1, "signal": "none", "badge_words": "5/100",
+        "tips": {"prob": "a hot rushing_yards claim, the best bet tonight"}}]}}}
+    try:
+        _audit.check_the_board_speaks_plain(planted)
+    except _audit.LawViolation as exc:
+        return Result("PLAIN WORDS", "internal vocabulary and pressure in a tooltip",
+                      "audit.board_words_faults", True, str(exc))
+    return Result("PLAIN WORDS", "internal vocabulary and pressure in a tooltip",
+                  "audit.board_words_faults", False,
+                  "NOT CAUGHT - a tooltip is text a reader meets, and the scan "
+                  "did not read it")
 
 
 def plant_a_green_live_mark() -> Result:
@@ -6553,7 +6680,10 @@ def plant_a_third_control_row_above_the_first_card() -> Result:
     # first draft anchored on `id="today"` and spliced a div INTO the section's
     # opening tag, which is not a row of controls, it is broken markup -- and
     # the scan was right not to count it.
-    anchor = '<nav class="state-tabs"'
+    # RE-POINTED AT THE GAMES PAGE (2026-09-24): the rows are the first card
+    # and nothing is declared above them, so one row with one button is the
+    # whole planting.
+    anchor = '<div id="games-rows"'
     if anchor not in html:
         return Result(LAW_TWO_ROWS, "a third control row above the first card",
                       "audit.picks_control_row_faults", False,
@@ -6900,9 +7030,14 @@ def plant_a_comment_naming_the_forbidden_thing() -> Result:
         ("toggle rebuild", _audit.selection_moves_the_frame,
          js[:tb] + f"{nl}      // never {rebuilder} here{nl}" + js[tb:],
          js[:tb] + f"{nl}      {rebuilder});{nl}" + js[tb:]),
+        # THE WHOLE HEADER, not the one nav: the scan reads the page tabs
+        # and the menu together, so a fragment holding only one of them
+        # reads as the other having gone (re-ruled 2026-09-24).
         ("nav", lambda t: _audit.nav_faults(js, t),
-         nav_open + '<!-- <a data-route="calls">Calls</a> -->' + "</nav>",
-         nav_open + '<a data-route="calls">Calls</a>' + "</nav>"),
+         html.replace(nav.group(0),
+                      nav_open + '<!-- <a data-route="calls">Calls</a> -->' + "</nav>"),
+         html.replace(nav.group(0),
+                      nav_open + '<a data-route="calls">Calls</a>' + "</nav>")),
     ]
     fired_on_prose = [name for name, scan, commented, _real in probes if scan(commented)]
     blind = [name for name, scan, _commented, real in probes if not scan(real)]
@@ -9597,6 +9732,15 @@ def main() -> int:
     results.append(plant_a_resolved_row_on_picks())
     results.append(plant_a_surviving_calls_symbol())
     results.append(plant_a_green_link())
+    results.append(plant_a_fill_on_a_pick_that_only_clears())
+    results.append(plant_an_outline_on_a_pick_that_won())
+    results.append(plant_a_red_fill_on_a_pick_that_only_costs())
+    results.append(plant_a_value_colour_on_a_form_streak())
+    results.append(plant_a_glow_without_its_badge())
+    results.append(plant_a_hand_typed_club_hex())
+    results.append(plant_a_price_on_a_live_row())
+    results.append(plant_a_tooltip_with_internal_vocabulary())
+    results.append(plant_a_menu_missing_a_page())
     results.append(plant_a_red_warning_border())
     results.append(plant_a_green_live_mark())
     results.append(plant_a_re_sort_during_a_live_slate())

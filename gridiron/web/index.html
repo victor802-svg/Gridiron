@@ -28,41 +28,48 @@
      page nav sits right, and the active sport's season record ends the line.
      The tagline and the LAW 6 caption move to the footer: neither is something
      a returning reader needs at the top of every visit. -->
+<!-- THE BOARD'S HEADER (GRIDIRON_BOARD, operator ruling 2026-09-24).
+
+     Sport tabs across the top; beneath them the two page tabs, Games and
+     Props, and the pulse line. The three pages a reader opens less often --
+     Record, Results, Settings -- sit behind the menu. The old Picks route,
+     with its Upcoming/Live tabs and its Today groups, is gone by name:
+     `#/week`, `#/live`, `#/today` and `#/picks` all land on Games, and
+     `audit.nav_faults` rules this shape the way it ruled the last one.
+
+     THE PULSE STAYS IN THE HEADER. The three ages -- daily run, venue read,
+     reasoning pass -- were the day strip's job on the old Picks page; they
+     are the appliance's, not a page's, so they live above every page now,
+     stale in bold warning ink past their threshold (never red: the colour
+     law keeps red for a pick that lost). -->
 <header class="bar">
   <div class="bar-inner">
-    <a class="brand" href="#/week" aria-label="Gridiron, picks">
+    <a class="brand" href="#/games" aria-label="Gridiron, games">
       <span class="brand-a">GRID</span><span class="brand-b">IRON</span>
     </a>
     <nav id="sport-tabs" aria-label="Sport"></nav>
-    <nav id="nav" aria-label="Page">
-      <a href="#/week" data-route="week">Picks</a>
-      <a href="#/record" data-route="record">Record</a>
-      <a href="#/results" data-route="results">Results</a>
-      <a href="#/settings" data-route="settings">Settings</a>
-    </nav>
-    <!-- THE SEASON-RECORD STRIP WAS HERE, and the tab records replaced it
-         (E2/R1). Measured before removing: with each tab carrying its own
-         record the header is exactly saturated, and the strip was being given
-         4px for 67px of content at EVERY width -- present in the layout,
-         invisible to a reader, and still asserted by two tests. The tabs say
-         strictly more: every sport's record rather than the active one's, with
-         the settled, written and void counts on the hover. The season figure
-         remains at /api/record-line and on the Record page. -->
+    <button type="button" id="menu-button" class="menu-button"
+            aria-expanded="false" aria-controls="menu" aria-label="Menu">
+      <span class="menu-glyph" aria-hidden="true">&#9776;</span>
+    </button>
   </div>
+  <div class="bar-under">
+    <nav id="nav" aria-label="Page">
+      <a href="#/games" data-route="games">Games</a>
+      <a href="#/props" data-route="props">Props</a>
+    </nav>
+    <div class="pulse" id="day-jobs" aria-label="The appliance's pulse"></div>
+  </div>
+  <nav id="menu" class="menu" aria-label="More pages" hidden>
+    <a href="#/record" data-route="record">Record</a>
+    <a href="#/results" data-route="results">Results</a>
+    <a href="#/settings" data-route="settings">Settings</a>
+  </nav>
 </header>
 
 <main id="main">
-  <!-- SINCE YOU LAST LOOKED. Leads the page, above the picks, because the
-       first question on opening the app is "what happened while I was away". -->
-  <!-- ONE STRIP. The greeting and the notices were three stacked full-width
-       boxes above the picks; on a phone the first forecast started below the
-       fold. Since-you-last-looked reads on the left, the notice COUNT on the
-       right, and the detail opens only when asked for. -->
-  <!-- THE NOTICES BAR WAS REMOVED (THREE_STATES S1, 2026-09-08). It sat
-       above every card on every route and reported faults -- a silent task, a
-       stale feed -- which is the Health panel's job and is where they still
-       are. What it cost was the top of the screen the operator opens. The
-       greeting's one line stays: it is not a notice. -->
+  <!-- SINCE YOU LAST LOOKED. One line, above the rows on Games: the first
+       question on opening the app is "what happened while I was away". -->
   <div id="greeting-home"><div id="greeting">
     <div id="glance" class="glance" hidden>
       <div class="glance-msg" id="greet-msg"></div>
@@ -247,50 +254,70 @@
     </section>
   </section>
 
-  <section id="view-week" class="view" hidden>
-    <!-- THE DAY, STATED ONCE, AT THE TOP OF THE ROUTE (CARD_FACE F1,
-         2026-09-07). Nothing below it has to be read to know what kind of day
-         it is. Before it existed the answer was thirty rows down, past the
-         clock, the filters and the hero: 916 pixels on a desktop and 1,533 on
-         a phone, both measured.
+  <!-- GAMES (GRIDIRON_BOARD, 2026-09-24). The first screen. One scoreboard
+       row per game on the slate; the model's pick is the loudest thing on
+       the row; a tap expands the row in place to every bet the record holds
+       for that game. NO CONTROL ROW ABOVE THE FIRST GAME: the sport and page
+       tabs are in the header, the strip below is words, and
+       `audit.picks_control_row_faults` is re-pointed here with an empty
+       declared list, so a control that appears above the rows fails by name.
 
-         IT CARRIES NO CONTROLS, and that is deliberate rather than incidental.
-         `audit.picks_control_row_faults` allows exactly two rows above the
-         hero to hold a button, a select or an input -- the filters and the
-         market tabs -- so a panel with "I took this" on every card may not sit
-         here. A strip of words may, and the law is untouched. -->
+       WHERE THE OLD PICKS PAGE'S PIECES WENT is listed in
+       docs/closeouts/2026-09-25-board-overnight.md; the day strip and the
+       yesterday strip are the two that stayed on this page. -->
+  <section id="view-games" class="view" hidden>
     <div class="day-strip" id="day-strip">
       <div class="day-where" id="day-where"></div>
       <div class="day-counts" id="day-counts"></div>
-      <!-- THE APPLIANCE'S PULSE (NIGHT_AUDIT item 1, 2026-09-08). Three ages
-           in words; each is marked stale, with its threshold in the words,
-           past the hours config declares for it.
-           The dead key of 2 September sat unread in task_runs for thirty
-           hours while this screen looked fine. -->
-      <div class="day-jobs" id="day-jobs"></div>
       <p class="day-note" id="day-note" hidden></p>
       <p class="day-fee" id="today-fee" hidden></p>
     </div>
 
-    <!-- ONE controls line: the sort on the left, what the slate contains on
-         the right. The title, the week picker and the market filter move
-         behind the "more" details -- a returning reader wants tonight, and
-         choosing a past week is the rarer act. -->
-    <!-- THE CONTROLS LINE WAS REMOVED (THREE_STATES S1, 2026-09-08): the
-         sort segment, the tier buttons and the View menu. Three segmented
-         controls above the first card, each defensible alone, which together
-         made the operator arrange the page before reading any of it.
+    <!-- THE HEADING, IN WORDS. "Tonight" when it is tonight, the slate's day
+         otherwise -- never the slate KEY. Composed by `language.slate_headline`;
+         the browser places it. -->
+    <h1 id="week-headline" class="slate-headline"></h1>
 
-         Where each one's information went: the sort, because Watching is
-         already in the ranker's order; the tier, to a group heading and a
-         card's own chip; the forecaster, to the day strip, which says whose
-         questions it is counting. -->
-    <div class="slate-counts" id="week-counts"></div>
-    <p class="footnote" id="tier-caveat" hidden></p>
+    <!-- THE ROWS. Built by `renderGames` from the board payload; empty until
+         it runs, and empty on a slate with no games, which the notes beneath
+         say in words. -->
+    <div id="games-rows" class="rows"></div>
 
-    <div class="slate-clock" id="week-clock" hidden>
-      <span id="week-clock-line"></span>
-    </div>
+    <!-- THE SLATE'S OWN SENTENCES: "no forecasts on this slate yet", "every
+         pick has been settled", and the quiet-market lines. A slate that says
+         nothing is a slate a reader cannot read. -->
+    <div id="games-notes" class="slate-notes"></div>
+
+    <!-- COMBOS (GRIDIRON_COMBOS C6, re-homed 2026-09-24). A proposal spans
+         two games, so it cannot live inside one row; it keeps its group
+         beneath the rows. Upcoming only: nothing is sized in-game. -->
+    <section class="panel combos-panel" id="combos-panel" hidden>
+      <h3 class="group-head group-combos" id="combos-heading-row">
+        <span id="combos-heading"></span>
+      </h3>
+      <p class="group-note" id="combos-counts"></p>
+      <p class="group-note" id="combos-fee"></p>
+      <div class="faces" id="today-combos"></div>
+      <p class="group-empty" id="combos-empty" hidden></p>
+    </section>
+
+    <!-- TAKEN TODAY (CARD_FACE F3). A selection record, beneath the rows. No
+         stake, no payout, no total, and the word a book uses for its list is
+         not in this app. -->
+    <aside class="today-rail" id="today-rail" hidden>
+      <h4 id="taken-heading"></h4>
+      <div id="taken-entries"></div>
+      <p class="footnote" id="today-taken"></p>
+    </aside>
+
+    <!-- THE YESTERDAY STRIP. Three facts, side by side, never summed across
+         sports. -->
+    <div id="week-yesterday" class="yesterday" hidden></div>
+
+    <!-- A PAST SLATE, behind a fold beneath the rows: a returning reader
+         wants tonight, and choosing a past week is the rarer act. Below the
+         rows rather than above them because it is a control, and the brief
+         puts none above the first game. -->
     <details class="week-more">
       <summary id="week-title">This week</summary>
       <div class="filters">
@@ -301,149 +328,38 @@
           <select id="week-market"><option value="">all markets</option></select>
         </label>
       </div>
-      <p class="why" id="week-sort"></p>
     </details>
-    <!-- ONE LAYOUT, EVERY WIDTH (cards UI, 2026-09-04). The desk (a scrolling
-         frame beside a fixed rail) and the compact rows below the breakpoint
-         were two layouts describing the same slate, each with its own bugs and
-         its own tests. They are deleted. What replaces them is one hero and
-         one grid of cards, which reflow rather than switch.
 
-         ONE NUMBER PER CARD (R2). A card carries the game, the pick, the
-         model's chance, the time and the tier. The market's number and the
-         three sentences of reasoning are one tap away, inside the card. -->
+    <p class="footnote slate-footer" id="games-footer"></p>
+  </section>
 
-    <!-- THE HEADING, IN WORDS. "Tonight" when it is tonight, the slate's day
-         otherwise -- never the slate KEY. "Day 159, 2026" and "Week 1, 2026"
-         are keys, and a key in the largest type on the page is the database
-         talking to itself; this project has fixed that twice already.
-         Composed by `language.slate_headline`; the browser places it. -->
-    <h1 id="week-headline" class="slate-headline"></h1>
-
-    <!-- MARKET TABS (R4). Filled from the sport's DECLARED market list, never
-         written here: a fifth market must appear without a change to this
-         file. Zero-count tabs stay visible, because "no strikeout questions
-         tonight" is a fact about the slate and a tab that vanishes hides it. -->
-    <nav id="week-market-tabs" class="market-tabs" aria-label="Markets"></nav>
-
-    <!-- THE HERO WAS REMOVED (THREE_STATES S1, 2026-09-08) with its arrows
-         and its dots. It showed one card at five times the size of the rest,
-         and a carousel to reach the other four, above a page that then showed
-         all of them again. Its reasoning is on every card now, behind Why;
-         its "Most confident, with no line to compare against" state is what
-         the Watching group's heading says for the whole group. -->
-
-    <!-- TODAY (GRIDIRON_TODAY T1, 2026-09-07). The screen the operator opens
-         every morning, at the top of the route he opens. Two groups that are
-         never blended: what clears the venue's fee, and what does not -- the
-         second carrying its own edge in cents on every row, including when
-         that number is negative, which is the entire point of showing it.
-         The nav stays four pages: `audit.nav_faults` rules that and a
-         planting proves it, so Today leads Picks rather than becoming a
-         fifth page. -->
-    <!-- TWO TABS, AND THE NAV STAYS AT FOUR PAGES (THREE_STATES S1). A card
-         is born on Upcoming, moves to Live when its game starts, and ends on
-         Results. `audit.nav_faults` rules the nav at four pages and a
-         planting proves it, so Live is a tab on Picks and not a fifth page.
-
-         THE TAB A CARD SITS ON IS DERIVED, NEVER CLICKED. `games.status` is
-         what the poller writes; a state a person could set is a state that
-         can disagree with the game being played. -->
-    <nav class="state-tabs" id="state-tabs" aria-label="Upcoming or live">
-      <button type="button" data-state="upcoming" aria-pressed="true"></button>
-      <button type="button" data-state="live" aria-pressed="false"></button>
-    </nav>
-
-    <section class="panel today" id="today">
-      <div class="today-body">
-        <div class="today-groups">
-          <h3 class="group-head group-clears" id="clears-head-row">
-            <span id="today-clears-heading"></span>
-            <span class="chip group-chip" id="today-clears-chip" hidden></span>
-          </h3>
-          <div class="faces" id="today-clears"></div>
-          <!-- THE OPERATOR'S FLOOR (F2b). A display preference: everything
-               folded here is still on the record and still measured against
-               the close. -->
-          <button type="button" class="fold" id="today-fold" hidden></button>
-          <div class="faces" id="today-below-floor" hidden></div>
-
-          <h3 class="group-head group-watching" id="watching-head-row">
-            <span id="today-watching-heading"></span>
-            <span class="chip group-chip" id="today-watching-chip" hidden></span>
-          </h3>
-          <div class="faces" id="today-watching"></div>
-
-          <!-- COMBOS (GRIDIRON_COMBOS C6, 2026-09-08). Third group, beneath
-               Watching, and on most days it is the heading and one sentence:
-               the venue assembles its own packages and this record can price
-               very few of them. THE COUNTS ARE THE FEATURE -- what was
-               offered, and the reason each refusal was refused.
-
-               Upcoming only. A package cannot be taken once a game in it has
-               started (nothing is sized in-game), and a settled package is a
-               row in `combo_2`/`combo_3`, not a card. -->
-          <h3 class="group-head group-combos" id="combos-heading-row">
-            <span id="combos-heading"></span>
-          </h3>
-          <p class="group-note" id="combos-counts"></p>
-          <p class="group-note" id="combos-fee"></p>
-          <div class="faces" id="today-combos"></div>
-          <p class="group-empty" id="combos-empty" hidden></p>
-
-          <!-- LIVE (S3). A game in progress, with the score where the start
-               time was, and nothing on it that could be acted on: no size, no
-               edge, no payout, no tap. `audit.live_card_faults` fails the
-               gate on any of them and plantings prove each. -->
-          <h3 class="group-head group-live" id="live-heading-row" hidden>
-            <span id="live-heading"></span>
-          </h3>
-          <div class="faces" id="today-live" hidden></div>
-          <p class="live-empty" id="live-empty" hidden>
-            <span id="live-empty-words"></span>
-            <time id="live-empty-time"></time>
-          </p>
-        </div>
-
-        <!-- TAKEN TODAY (F3). A selection record, in the position a book puts
-             its running list. No stake, no payout, no total, and the word a
-             book uses for its list is not in this app. -->
-        <aside class="today-rail" id="today-rail">
-          <h4 id="taken-heading"></h4>
-          <div id="taken-entries"></div>
-          <p class="footnote" id="today-taken"></p>
-        </aside>
+  <!-- PROPS (GRIDIRON_BOARD, 2026-09-24). Tiles, three across on a desk,
+       ranked by cushion; a jersey on every tile drawn from the club's
+       measured colours and nothing else; the entry rail on the right. -->
+  <section id="view-props" class="view" hidden>
+    <div class="props-head">
+      <h1 id="props-headline" class="slate-headline"></h1>
+      <p class="footnote" id="props-note"></p>
+    </div>
+    <nav id="props-chips" class="chips" aria-label="Stat family"></nav>
+    <div class="props-body">
+      <div>
+        <div id="props-tiles" class="props-grid"></div>
+        <div id="props-notes" class="slate-notes"></div>
       </div>
-    </section>
-
-    <!-- The "Worth taking" panel that stood here (R4, 2026-09-07) was
-         SUPERSEDED the same day by Today's own CLEARS THE BAR group, which
-         says the same thing in the same words at the top of the page. Two
-         panels reporting one fact is how a page starts disagreeing with
-         itself; the render showed both saying "nothing" one under the other.
-         The payload key stays and is still tested. -->
-    <!-- THE "More picks" GRID STOOD HERE and was removed on 2026-09-08. It
-         rendered every shortlisted question a second time in the design
-         CARD_FACE replaced -- raw probability largest, a tier chip on every
-         card -- so the page carried two card designs at once. The groups
-         inside #today are the cards now.
-
-         THIS DIV SURVIVES AS THE SLATE'S OWN SENTENCES: "no forecasts on this
-         slate yet", "every pick has been settled", and the quiet-market
-         lines. Those were never part of the old card and a slate that says
-         nothing is a slate a reader cannot read. -->
-    <div id="week-cards" class="slate-notes"></div>
-
-    <!-- THE YESTERDAY STRIP. Three facts, side by side, never summed across
-         sports: what settled yesterday, the season record, and how far the
-         next verdict is. -->
-    <div id="week-yesterday" class="yesterday" hidden></div>
-
-    <p class="footnote slate-footer">
-      One number per card: the model&rsquo;s chance. The market and the reasons
-      are one tap away. Green marks a pick that won and nothing else. Sports are
-      reported side by side and never summed.
-    </p>
+      <aside class="entry-rail" id="entry-rail">
+        <h4 id="entry-heading"></h4>
+        <div id="entry-legs"></div>
+        <p class="footnote" id="entry-empty" hidden></p>
+        <label class="entry-pays" id="entry-pays-label">
+          <span id="entry-pays-words"></span>
+          <input id="entry-pays" type="number" inputmode="decimal" min="1"
+                 step="0.1" autocomplete="off">
+        </label>
+        <div id="entry-lines"></div>
+        <p class="footnote" id="entry-note"></p>
+      </aside>
+    </div>
   </section>
 
   <section id="view-results" class="view" hidden>

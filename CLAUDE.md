@@ -248,6 +248,39 @@ operator's call and the work waits.**
 
 ---
 
+## The colour law — AMENDED 2026-09-24 (GRIDIRON_BOARD)
+
+**Two colours, four jobs, and the FORM says which.** A **green OUTLINE glow**
+means a pick clears the bar. A **red OUTLINE glow** means it costs the
+operator after fees. A **SOLID green fill** means a pick won. A **SOLID red
+fill** means it lost. **Nothing else uses those colours**: not a link, not a
+tally, not a warning, not a club's form, not the edge line, not a calendar
+square. `audit.colour_law_faults` reads the selector for the state and the
+declaration for the form, and four plantings break it one signal at a time.
+
+The tokens keep their names, `--win` and `--loss`, because a colour named
+after its hue is one anybody can reach for. The tint washes are gone: a wash
+is neither an outline nor a fill, and the amended law admits nothing between.
+
+> **What this replaced, kept because a law that quietly vanished is a law
+> nobody can audit.** The rule from GRIDIRON_16 R2 (2026-09-02), as the
+> stylesheet's own token block stated it until 2026-09-24:
+>
+> > THE NAMES ARE THE RULE. `--win` is the colour of a pick that won.
+> > `--loss` is the colour of a pick that lost. Neither has any other job.
+> > WHERE THE TWO COLOURS APPEAR, and the list is the whole of it: the edge
+> > line, a settled verdict, and the W and L of a club's form streak on a
+> > card. Nothing else may reach for them, and a draw takes neither.
+>
+> The third entry — the form streak — was an operator ruling of 2026-09-09
+> (see "Who reads a law" above). The amendment's "nothing else" retires it:
+> a club's game is not a pick, so W and L are now the heavier and the quieter
+> mark rather than the two colours. If the operator meant the amendment to
+> leave that ruling standing, it is one stylesheet rule and one allowance in
+> the scanner, and the close-out of 2026-09-25 says so.
+
+---
+
 ## How the laws are enforced in code
 
 Not as convention. Each law has a structural mechanism and a guard test that is
@@ -266,6 +299,11 @@ proven by planting a violation (`tools/guards/`, `tests/test_guards.py`).
 | 4 | `calibration.assert_every_figure_has_n` walks the payload and raises naming the path; the API returns 500 rather than serving it; `Gridiron.requireN` throws in the browser | `test_guards.py::test_a_removed_sample_size_is_caught_by_name`, `test_smoke.py::test_the_renderer_refuses_a_figure_with_no_sample_size` |
 | 4 | The edge figure is absent from the payload below `MIN_SAMPLE_FOR_EDGE_CLAIM`, replaced by the shortfall | `test_guards.py::test_an_edge_figure_below_threshold_is_not_present_to_render` |
 | 5 | `audit.check_no_venue_credentials` scans the package, the environment and the record for a venue credential; `audit.check_no_order_path` refuses an order verb or an account read; `audit.check_no_wagering_ledger` refuses the operator's own P&L in the repo. Prose is exempt, so the disclaimer may keep saying "bankroll" | `plant.py::plant_a_venue_credential`, `::plant_an_order_path`, `::plant_a_wagering_ledger` |
+| COLOUR | Four signals and nothing else (amended 2026-09-24): `audit.colour_law_faults` refuses a value colour on any selector but `.sig-clears`/`.sig-costs` (outline declarations only) and `.sig-won`/`.sig-lost` (fill declarations only) | `plant.py::plant_a_green_link`, `::plant_a_red_warning_border`, `::plant_a_fill_on_a_pick_that_only_clears`, `::plant_an_outline_on_a_pick_that_won`, `::plant_a_value_colour_on_a_form_streak` |
+| 4 | A signal never renders without its record badge: `audit.board_signal_faults` refuses a board row or tile carrying a glow or a fill with no `badge_words` beside it | `plant.py::plant_a_glow_without_its_badge` |
+| COLOUR | A club's colour is measured, never typed: `audit.club_hex_faults` refuses a hex literal in the web files or the board's composers that matches a club in `data/team_colours.py` | `plant.py::plant_a_hand_typed_club_hex` |
+| 5 | A live row carries no price, no size and no tap: `LIVE_FORBIDDEN` names the board's own fields as well as the old card's | `plant.py::plant_a_price_on_a_live_row` |
+| NAV | Two page tabs and a menu of three (re-ruled 2026-09-24): `audit.nav_faults` refuses a third tab, a menu missing a page, or a removed route left to 404 | `plant.py::plant_a_fifth_nav_item`, `::plant_a_menu_missing_a_page`, `::plant_an_old_route_left_to_404` |
 | 5 | A recommendation below its market's gate is a FLAT UNIT and says "no measured edge"; the fraction above it is a quarter of Kelly and never more | `plant.py::plant_a_sized_bet_below_the_gate`, `::plant_a_full_kelly_stake` |
 | 5 | A package is graded, never built: a same-game, cross-sport, four-leg or unforecast-leg package is refused a price and counted with its reason | `plant.py::plant_a_priced_same_game_package`, `::plant_a_priced_cross_sport_package`, `::plant_a_priced_four_leg_package`, `::plant_a_priced_package_with_an_unforecast_leg` |
 | 5 | A settled package is its own market -- `combo_2`/`combo_3`, per sport -- and its closing line needs a hundred observations where a single leg needs fifty. A package tap is one row in `picks_taken` carrying a package id, and a CHECK admits exactly one of a prediction and a package per row | `test_combos.py::test_a_package_tap_never_enters_a_single_legs_curve`, `::test_the_taken_table_admits_one_kind_of_tap_per_row` |

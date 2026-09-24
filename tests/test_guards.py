@@ -490,6 +490,16 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_gate_step_that_opens_the_live_record_writable",
         "plant_a_schema_change_during_the_gate",
         "plant_a_write_through_the_read_handle_switched_back",
+        # THE BOARD (GRIDIRON_BOARD, 2026-09-24)
+        "plant_a_fill_on_a_pick_that_only_clears",
+        "plant_an_outline_on_a_pick_that_won",
+        "plant_a_red_fill_on_a_pick_that_only_costs",
+        "plant_a_value_colour_on_a_form_streak",
+        "plant_a_glow_without_its_badge",
+        "plant_a_hand_typed_club_hex",
+        "plant_a_price_on_a_live_row",
+        "plant_a_tooltip_with_internal_vocabulary",
+        "plant_a_menu_missing_a_page",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"
@@ -634,17 +644,40 @@ def test_a_red_warning_border_is_caught_by_name():
     """A warning is not a loss. Red was every failed task and stale feed."""
     faults = audit.colour_law_faults(
         ".notices-summary { border-left: 2px solid var(--loss); }")
-    assert faults and "not losses" in faults[0]
+    assert faults and "none of the four signals" in faults[0]
 
 
-def test_a_verdict_chip_may_wear_its_colour():
-    """The one thing each colour is for."""
+def test_the_four_signals_may_wear_their_colours():
+    """The two things each colour is for (amended 2026-09-24): an outline
+    for a state of the price, a fill for a settled verdict."""
     assert not audit.colour_law_faults(
-        ".verdict.win { color: var(--win); background: var(--win-wash); }")
+        ".sig-clears { box-shadow: 0 0 0 1.5px var(--win), 0 0 14px var(--win); }")
     assert not audit.colour_law_faults(
-        ".verdict.loss { color: var(--loss); background: var(--loss-wash); }")
+        ".sig-costs { box-shadow: 0 0 0 1.5px var(--loss); }")
     assert not audit.colour_law_faults(
-        ".tile-verdict.v-win { color: var(--win); }")
+        ".verdict.sig-won { background: var(--win); color: var(--ink); }")
+    assert not audit.colour_law_faults(
+        ".result-chip.sig-lost { background: var(--loss); color: var(--ink); }")
+
+
+def test_a_signal_in_the_wrong_form_is_caught_by_name():
+    """An outline state filled, a fill state outlined: each names its form."""
+    filled = audit.colour_law_faults(".sig-clears { background: var(--win); }")
+    assert filled and "OUTLINE" in filled[0] and "Filling it says it won" in filled[0]
+    ringed = audit.colour_law_faults(".sig-lost { border: 1px solid var(--loss); }")
+    assert ringed and "FILL" in ringed[0]
+
+
+def test_the_retired_uses_are_caught_by_name():
+    """Every place the colours used to be: the tint chip, the tally, the
+    form streak, the edge line, the calendar square."""
+    for rule in (".verdict.win { color: var(--win); background: var(--win-wash); }",
+                 ".yesterday .win { color: var(--win); }",
+                 ".fmark.win { color: var(--win); }",
+                 ".face-edge.up .edge-value { color: var(--win); }",
+                 ".day.down { border-color: var(--loss); }"):
+        faults = audit.colour_law_faults(rule)
+        assert faults and "none of the four signals" in faults[0], rule
 
 
 def test_the_real_stylesheet_obeys_the_colour_law():
@@ -1091,22 +1124,26 @@ def test_the_launcher_never_attaches_to_a_different_build():
     assert _launcher.attach_decision(None, None) == _launcher.ATTACH
 
 
-def test_a_fifth_nav_item_is_caught_by_name():
-    """A nav grows one link at a time, each defensible on its own."""
-    good = ("const RENAMED = { history: 'results', factors: 'record',"
-            " versions: 'record', schedule: 'settings', digest: 'week' };")
-    faults = audit.nav_faults(good, audit.NAV_FIXTURE_A_FIFTH_ITEM)
-    assert faults and "Four pages is the ruling" in faults[0]
+def test_a_third_page_tab_is_caught_by_name():
+    """A nav grows one link at a time, each defensible on its own. Two tabs
+    and a menu of three is the ruling of 2026-09-24 (GRIDIRON_BOARD)."""
+    faults = audit.nav_faults(audit.NAV_REDIRECTS_GOOD, audit.NAV_FIXTURE_A_FIFTH_ITEM)
+    assert faults and "Two tabs is the ruling" in faults[0]
+
+
+def test_a_menu_that_lost_a_page_is_caught_by_name():
+    faults = audit.nav_faults(audit.NAV_REDIRECTS_GOOD, audit.NAV_FIXTURE_A_SHORT_MENU)
+    assert faults and "the menu holds" in faults[0]
 
 
 def test_a_removed_route_left_to_404_is_caught_by_name():
-    good_nav = "".join(
-        f'<a href="#/{p}" data-route="{p}">x</a>' for p in audit.NAV_PAGES)
-    faults = audit.nav_faults(audit.NAV_FIXTURE_A_DEAD_LINK, good_nav)
+    faults = audit.nav_faults(audit.NAV_FIXTURE_A_DEAD_LINK, audit._nav_markup())
     assert faults and "must land, not 404" in faults[0]
+    # THE OLD PICKS ROUTE IS THE ONE MOST LIKELY TO BE BOOKMARKED.
+    assert any("#/week" in f for f in faults)
 
 
-def test_the_shipped_nav_is_the_four_ruled_pages():
+def test_the_shipped_nav_is_the_ruled_shape():
     audit.check_the_nav_is_four_pages()          # must not raise
 
 

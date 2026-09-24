@@ -52,6 +52,53 @@
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+
+/* BARLOW CONDENSED, VENDORED (GRIDIRON_BOARD, 2026-09-24). The condensed
+   bold face for team names, scores, picks and big numbers; everything else
+   stays in Manrope. Static instances, two weights, the same two subsets as
+   Manrope and for the same reason. Provenance and licence in
+   `web/fonts/SOURCE.md` and `web/fonts/OFL-barlow-condensed.txt`. */
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/barlow-condensed-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/barlow-condensed-700-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('fonts/barlow-condensed-800-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('fonts/barlow-condensed-800-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 /* Gridiron.
  *
  * Premium through restraint. The rules, and they are rules:
@@ -159,8 +206,8 @@
      same reason. */
   --win: #22D37A;
   --loss: #FF6B6B;
-  --win-wash: rgba(34, 211, 122, 0.10);
-  --loss-wash: rgba(255, 107, 107, 0.10);
+  /* THE WASHES ARE GONE (amended 2026-09-24): a tint is neither an outline
+     nor a solid fill, and the amended law admits nothing in between. */
   --model-halo: rgba(242, 245, 240, 0.12);
   --span-far: #3A5238;       /* the lit end of the disagreement span */
 
@@ -186,8 +233,6 @@
   /* THE ACCENT IS NO LONGER A COLOUR. It aliased --green, which is how the
      positive value came to paint every link and focus ring on the page. */
   --accent: var(--chrome);
-  --pos: var(--win);
-  --neg: var(--loss);
   --band: rgba(242, 245, 240, 0.07);
   --rule-1: var(--card-2);
   /* A WARNING IS NOT A LOSS (R2). These were red; a stale feed and a pick
@@ -240,7 +285,13 @@
      the body, which is what that property is for. */
   --body: 'Manrope', 'Inter', 'Segoe UI Variable Text', 'Segoe UI',
           system-ui, sans-serif;
-  --cond: var(--body);
+  /* THE CONDENSED FACE IS BACK (GRIDIRON_BOARD, operator ruling 2026-09-24),
+     for team names, scores, picks and big numbers and nothing else. The
+     cards-UI rule of 2026-09-04 -- no condensed caps anywhere -- is replaced
+     by that ruling; `test_the_condensed_face_is_where_the_brief_put_it`
+     holds the new line. Fallbacks share Barlow's proportions. */
+  --cond: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow',
+          'Helvetica Neue Condensed', 'Segoe UI', sans-serif;
   --mono: var(--body);
 
   --t-display: 28px;
@@ -588,8 +639,8 @@ table.grid td.wide {
   font-family: var(--cond); font-weight: 700; font-size: 15px;
   letter-spacing: 0.12em; padding: 3px 10px; border-radius: 6px;
 }
-.verdict.win { color: var(--win); background: var(--win-wash); }
-.verdict.loss { color: var(--loss); background: var(--loss-wash); }
+.verdict.sig-won { background: var(--win); color: var(--ink); }
+.verdict.sig-lost { background: var(--loss); color: var(--ink); }
 .final { font-family: var(--mono); font-size: var(--t-caption); color: var(--muted); }
 
 .section-label {
@@ -665,8 +716,6 @@ table.grid td.wide {
   margin-left: 6px;
 }
 .tag.warn { border-color: var(--warn-rule); background: var(--warn-bg); color: var(--warn-ink); }
-.tag.win { border-color: var(--pos); color: var(--pos); }
-.tag.loss { border-color: var(--neg); color: var(--neg); }
 
 /* expansion: the only motion on the page */
 .card-detail {
@@ -695,8 +744,6 @@ table.grid td.wide {
   padding: 4px 10px; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; font-size: var(--t-caption);
 }
-.outcome-stamp.win { color: var(--pos); border-color: var(--pos); }
-.outcome-stamp.loss { color: var(--neg); border-color: var(--neg); }
 .outcome-stamp.void { color: var(--ink-3); border-color: var(--rule-2); }
 
 /* --- charts ------------------------------------------------------------- */
@@ -898,7 +945,6 @@ button {
 }
 .greet .msg { color: var(--muted); }
 .greet .msg b { color: var(--chrome); font-weight: 600; }
-.greet .msg .up { color: var(--win); }
 .greet .mono-inline { font-family: var(--mono); font-size: var(--t-caption); }
 .countdown {
   font-family: var(--mono); font-size: var(--t-caption); color: var(--faint);
@@ -923,8 +969,8 @@ button {
   font-family: var(--cond); font-weight: 700; font-size: 12px;
   letter-spacing: 0.12em; padding: 1px 7px; border-radius: 4px;
 }
-.settled-row.win .settled-verdict { color: var(--win); background: var(--win-wash); }
-.settled-row.loss .settled-verdict { color: var(--loss); background: var(--loss-wash); }
+.settled-row.sig-won .settled-verdict { background: var(--win); color: var(--ink); }
+.settled-row.sig-lost .settled-verdict { background: var(--loss); color: var(--ink); }
 .settled-match {
   font-family: var(--cond); font-weight: 700; font-size: 15px;
   letter-spacing: 0.04em; text-transform: uppercase; color: var(--chrome);
@@ -986,8 +1032,9 @@ table.grid tr:hover td { background: var(--card-2); }
   letter-spacing: 0.12em; padding: 2px 8px; border-radius: 4px;
   display: inline-block;
 }
-.result-chip.win { color: var(--win); background: var(--win-wash); }
-.result-chip.loss { color: var(--loss); background: var(--loss-wash); }
+/* A SETTLED VERDICT IS A SOLID FILL (amended 2026-09-24). */
+.result-chip.sig-won { background: var(--win); color: var(--ink); }
+.result-chip.sig-lost { background: var(--loss); color: var(--ink); }
 .result-chip.pending { color: var(--muted); border: 1px solid var(--line); }
 /* WITHDRAWN (VOID until 2026-09-24, operator ruling 1). Neither a win nor a
    loss, so it borrows neither colour; the reason sits under it in words,
@@ -1340,8 +1387,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font: 700 11px/1 var(--body); letter-spacing: 0.06em;
   padding: 4px 8px; border-radius: var(--radius-pill);
 }
-.card-verdict.v-win { color: var(--win); background: var(--win-wash); }
-.card-verdict.v-loss { color: var(--loss); background: var(--loss-wash); }
 .card-verdict.v-void { color: var(--faint); border: 1px solid var(--line); }
 
 /* --- the yesterday strip --------------------------------------------------- */
@@ -1351,9 +1396,9 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font: 600 13px/1.5 var(--body); color: var(--muted);
 }
 .yesterday-label { color: var(--faint); margin-right: 4px; }
-/* GREEN ON THE RIGHT COUNT ONLY. The wrong count is drawn in the ordinary ink:
-   `--loss` is the colour of a pick that lost, and a tally is not a pick. */
-.yesterday .win { color: var(--win); }
+/* NO COLOUR ON A TALLY (amended 2026-09-24): the right count is bold, the
+   wrong count is plain, and neither borrows a pick's colour. */
+.yesterday b { color: var(--chrome); }
 .yesterday-season, .yesterday-next { color: var(--faint); }
 
 .slate-footer { margin-top: 18px; }
@@ -1476,8 +1521,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-weight: 700; font-size: 12px; letter-spacing: 0.12em;
   padding: 3px 9px; border-radius: 5px; min-width: 64px; text-align: center;
 }
-.verdict.win { color: var(--win); background: var(--win-wash); }
-.verdict.loss { color: #ff6b6b; background: rgba(255, 107, 107, 0.10); }
 .verdict.void { color: var(--faint); border: 1px solid var(--line); }
 .chip-none { border: 0; }
 
@@ -1696,8 +1739,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px;
 }
-.tile-verdict.v-win { color: var(--win); background: var(--win-wash); }
-.tile-verdict.v-loss { color: var(--loss); background: var(--loss-wash); }
 .tile-verdict.v-void { color: var(--faint); border: 1px solid var(--line); }
 .tile[data-state="final"] .tile-rank { opacity: 0; }
 
@@ -1750,7 +1791,9 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    the grid are both gone and the Today panel is what swaps its whole contents
    when a market chip changes the slate. Same duration, same easing, same one
    per cent. */
-#today {
+/* THE ROWS AND THE TILES ARE WHERE CONTENT ARRIVES NOW (GRIDIRON_BOARD,
+   2026-09-24): a market filter refills the rows, a chip refills the tiles. */
+#games-rows, #props-tiles {
   transition: opacity var(--motion-panel) var(--motion-ease),
               transform var(--motion-panel) var(--motion-ease);
 }
@@ -1762,7 +1805,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    switching the slate refills its groups, and without this rule the swap was
    instantaneous, which is the one thing the motion vocabulary exists to
    prevent. The transition itself is unchanged. */
-#today.arriving { opacity: 0; transform: translateY(1%); transition: none; }
+#games-rows.arriving, #props-tiles.arriving { opacity: 0; transform: translateY(1%); transition: none; }
 /* THE ONE KEYFRAME. A game being played is the only thing on this page that
    repeats, because it is the only thing that is still happening. It pulses
    between full and half opacity -- no scale, no colour change, no glow. */
@@ -1852,8 +1895,11 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    the same as saying nothing is known. */
 .day.empty { opacity: 0.35; }
 .day.has-result { cursor: pointer; color: var(--chrome); }
-.day.up { background: var(--win-wash); border-color: var(--win); }
-.day.down { background: var(--loss-wash); border-color: var(--loss); }
+/* A DAY'S BALANCE IS WEIGHT, NOT HUE (amended 2026-09-24): a day is not a
+   pick, so its square borrows neither colour; the number inside says which
+   way it went. */
+.day.up { border-color: var(--chrome); }
+.day.down { border-color: var(--faintest); }
 .day.even { background: var(--card-2); }
 .day.today { outline: 1px solid var(--muted); outline-offset: 1px; }
 .day.sel { outline: 2px solid var(--chrome); outline-offset: 1px; }
@@ -2191,9 +2237,12 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    the context row's, so five marks read as one run rather than five facts.
    `.win` and `.loss` are the class names the colour law scans for, and they
    are the words themselves: this is a game the club won and a game it lost. */
+/* THE COLOUR LEFT THE STREAK ON 2026-09-24. The amended law names four
+   signals and says nothing else wears the two colours; a club's game is not
+   a pick. A win is the heavier mark, a loss the quieter one. */
 .face-form { display: inline-flex; gap: 5px; font-weight: 600; }
-.fmark.win { color: var(--win); }
-.fmark.loss { color: var(--loss); }
+.fmark.win { color: var(--chrome); font-weight: 800; }
+.fmark.loss { color: var(--faint); }
 
 .face-prices {
   display: grid;
@@ -2245,8 +2294,8 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: rgba(255, 255, 255, 0.82);
 }
 
-/* THE EDGE, ON ITS OWN QUIET LINE, and the only place a value colour appears
-   on this card. */
+/* THE EDGE, ON ITS OWN QUIET LINE. No value colour here since the amendment
+   of 2026-09-24: the outline on the row says whether it clears. */
 .face-edge {
   display: flex;
   align-items: baseline;
@@ -2256,8 +2305,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 .edge-label { color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em; }
 .edge-value { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--muted); }
-.face-edge.up .edge-value { color: var(--win); }
-.face-edge.down .edge-value { color: var(--loss); }
 
 .face-size {
   margin-top: var(--face-rhythm);
@@ -2392,3 +2439,289 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: var(--muted);
 }
 .combo-singles { font-variant-numeric: tabular-nums; }
+
+/* =========================================================================
+   THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
+   =========================================================================
+   Dark sportsbook grammar with none of the pressure: condensed bold for team
+   names, scores, picks and big numbers; Manrope for everything else; nothing
+   animates on a price; no countdown; and the two value colours do exactly
+   four jobs, stated in `--win`/`--loss`'s own comment above and scanned by
+   `audit.colour_law_faults`: a green OUTLINE clears the bar, a red OUTLINE
+   costs after fees, a SOLID green fill won, a SOLID red fill lost. */
+
+/* --- the header ---------------------------------------------------------- */
+.bar { height: auto; }
+.bar-inner { height: 52px; }
+.bar-under {
+  max-width: var(--page, 1100px); margin: 0 auto; padding: 0 16px 6px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.bar #nav { display: flex; gap: 4px; margin: 0; }
+.bar #nav a {
+  font-family: var(--cond); font-weight: 700; font-size: 18px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 6px 10px; min-height: 44px; display: inline-flex; align-items: center;
+  color: var(--muted); border-bottom: 2px solid transparent;
+}
+.bar #nav a.active, .bar #nav a[aria-current="page"] {
+  color: var(--chrome); border-bottom-color: var(--chrome);
+}
+.menu-button {
+  margin-left: auto; min-width: 44px; min-height: 44px;
+  background: none; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--chrome); font-size: 18px; cursor: pointer; flex: none;
+}
+.menu-button:hover, .menu-button[aria-expanded="true"] { border-color: var(--line-lit); background: var(--card-2); }
+.menu {
+  position: absolute; right: 16px; top: 54px; z-index: 50;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--card); border: 1px solid var(--line-lit); border-radius: 10px;
+  padding: 6px; min-width: 180px;
+}
+.menu a {
+  padding: 0 14px; min-height: 44px; display: flex; align-items: center;
+  color: var(--chrome); text-decoration: none; border-radius: 6px; font-size: 14px;
+}
+.menu a:hover, .menu a.active { background: var(--card-2); }
+/* THE PULSE: three ages in words, stale in bold warning ink past its
+   threshold. Never red. */
+.pulse {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin-left: auto;
+  font-size: var(--face-meta); color: var(--faint);
+}
+.bar #sport-tabs button { min-height: 44px; }
+
+/* --- the rows ------------------------------------------------------------ */
+.rows { display: grid; gap: 10px; margin-top: 10px; }
+.game {
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+  overflow: hidden;
+}
+.game:hover { border-color: var(--line-lit); }
+.game-head {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-areas: "teams when pick" "count count pick";
+  gap: 6px 14px; align-items: center; width: 100%; text-align: left;
+  padding: 12px 14px; background: none; border: 0; color: inherit;
+  font: inherit; cursor: pointer;
+}
+.game-head:focus-visible { outline: 2px solid var(--chrome); outline-offset: -2px; }
+.teams { grid-area: teams; display: grid; gap: 6px; min-width: 0; }
+.team {
+  display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: stretch;
+  min-height: 34px; border-radius: 6px; overflow: hidden;
+}
+.tri {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--club, var(--line-lit)); color: var(--white);
+  font-family: var(--cond); font-weight: 800; font-size: 17px; letter-spacing: 0.06em;
+}
+.tname {
+  display: flex; align-items: center; padding: 0 10px;
+  background: color-mix(in srgb, var(--club, var(--line-lit)) 26%, var(--card));
+  font-family: var(--cond); font-weight: 700; font-size: 20px; letter-spacing: 0.02em;
+  text-transform: uppercase; color: var(--chrome); min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tscore {
+  display: flex; align-items: center; justify-content: flex-end; padding: 0 10px;
+  background: color-mix(in srgb, var(--club, var(--line-lit)) 26%, var(--card));
+  font-family: var(--cond); font-weight: 800; font-size: 24px; color: var(--chrome);
+  min-width: 44px;
+}
+.tscore:empty { min-width: 0; padding: 0; }
+.when {
+  grid-area: when; display: flex; flex-direction: column; gap: 3px;
+  font-size: var(--face-meta); color: var(--muted); min-width: 0;
+}
+.when-label { color: var(--faint); }
+.when-time { color: var(--chrome); font-weight: 600; }
+.live-mark {
+  align-self: flex-start; font-family: var(--cond); font-weight: 800; font-size: 13px;
+  letter-spacing: 0.12em; color: var(--chrome); border: 1px solid var(--chrome);
+  border-radius: 4px; padding: 0 6px;
+}
+.final-mark { font-family: var(--cond); font-weight: 700; letter-spacing: 0.12em; color: var(--faint); }
+.game-clock { color: var(--chrome); }
+.game-polled { color: var(--faint); }
+.game-score { font-family: var(--cond); font-weight: 700; font-size: 15px; color: var(--chrome); }
+.game-sport {
+  align-self: flex-start; padding: 1px 8px; border-radius: 999px;
+  background: var(--line-lit); color: var(--white); font-size: 11px; letter-spacing: 0.04em;
+}
+.yours {
+  align-self: flex-start; padding: 2px 8px; border-radius: 999px;
+  background: var(--yours); color: var(--white); font-size: var(--face-meta); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.game-count { grid-area: count; font-size: var(--face-meta); color: var(--faint); }
+
+/* THE PICK, the most pronounced element on the row. */
+.pick {
+  grid-area: pick; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; background: var(--ink); min-width: 0;
+}
+.pick-line {
+  font-family: var(--cond); font-weight: 800; font-size: 26px; line-height: 1.05;
+  letter-spacing: 0.02em; text-transform: uppercase; color: var(--chrome);
+  overflow-wrap: anywhere;
+}
+.pick-line-none { font-size: 16px; font-weight: 700; color: var(--muted); text-transform: none; }
+.pick-under {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px;
+  font-size: var(--face-chip); color: var(--muted);
+}
+.pick-prob { font-family: var(--cond); font-weight: 800; font-size: 22px; color: var(--chrome); }
+.pick-price, .pick-pays { font-variant-numeric: tabular-nums; }
+.pick-pregame, .pick-settled { color: var(--muted); }
+.pick-meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px;
+  font-size: var(--face-meta); color: var(--faint);
+}
+.pick-size { color: var(--chrome); }
+.badge {
+  display: inline-block; padding: 1px 7px; border-radius: 4px;
+  border: 1px solid var(--line-lit); color: var(--muted);
+  font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 600;
+}
+.badge-high { border-style: dashed; }
+.q-signal {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  border: 1px solid var(--line-lit); background: var(--card-2);
+}
+
+/* THE FOUR SIGNALS. Outline means a state of the price; fill means a
+   settled verdict. Nothing else on the page reaches for these tokens. */
+.sig-clears { box-shadow: 0 0 0 1.5px var(--win), 0 0 14px 0 var(--win); }
+.sig-costs { box-shadow: 0 0 0 1.5px var(--loss), 0 0 14px 0 var(--loss); }
+.sig-won { background: var(--win); }
+.sig-lost { background: var(--loss); }
+.pick.sig-won, .pick.sig-lost, .q.sig-won, .q.sig-lost, .prop.sig-won, .prop.sig-lost { border-color: transparent; }
+.sig-won .pick-line, .sig-won .pick-prob, .sig-won .q-line, .sig-won .q-prob,
+.sig-lost .pick-line, .sig-lost .pick-prob, .sig-lost .q-line, .sig-lost .q-prob,
+.sig-won .pick-under, .sig-lost .pick-under, .sig-won .q-nums, .sig-lost .q-nums,
+.sig-won .q-settled, .sig-lost .q-settled, .sig-won .pick-settled, .sig-lost .pick-settled,
+.sig-won .q-head, .sig-lost .q-head, .sig-won .pick-meta, .sig-lost .pick-meta,
+.sig-won .q-foot, .sig-lost .q-foot, .sig-won .badge, .sig-lost .badge,
+.sig-won .prop-player, .sig-lost .prop-player, .sig-won .prop-line, .sig-lost .prop-line,
+.sig-won .prop-nums, .sig-lost .prop-nums { color: var(--ink); border-color: var(--ink); }
+
+/* THE EXPANSION: the questions, already in the tree, revealed in place. */
+.game-more { border-top: 1px solid var(--line); padding: 10px 14px 14px; background: var(--resolved); }
+.q-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.q {
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  background: var(--card); display: grid; gap: 6px; align-content: start;
+}
+.q-taken { box-shadow: inset 3px 0 0 var(--yours); }
+.q.q-taken.sig-clears { box-shadow: inset 3px 0 0 var(--yours), 0 0 0 1.5px var(--win), 0 0 14px 0 var(--win); }
+.q.q-taken.sig-costs { box-shadow: inset 3px 0 0 var(--yours), 0 0 0 1.5px var(--loss), 0 0 14px 0 var(--loss); }
+.q-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--faint); }
+.q-forecaster { text-transform: uppercase; letter-spacing: 0.06em; }
+.q-line {
+  font-family: var(--cond); font-weight: 700; font-size: 18px; line-height: 1.1;
+  text-transform: uppercase; color: var(--chrome); overflow-wrap: anywhere;
+}
+.q-game { font-family: var(--cond); font-weight: 700; font-size: 14px; color: var(--muted); }
+.q-nums { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: var(--face-meta); color: var(--muted); }
+.q-prob { font-family: var(--cond); font-weight: 800; font-size: 20px; color: var(--chrome); }
+.q-pregame, .q-settled, .q-size { font-size: var(--face-meta); color: var(--muted); }
+.q-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.take {
+  margin-left: auto; min-height: 44px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 8px; background: transparent;
+  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
+}
+.take:hover { border-color: var(--line-lit); color: var(--chrome); }
+.take:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
+.take-mark { font-weight: 800; color: var(--yours); }
+.take-done { cursor: default; border-color: var(--yours); color: var(--chrome); }
+.take-done .take-mark { color: var(--yours); }
+
+/* --- props ---------------------------------------------------------------- */
+.props-head { margin-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
+.chip-btn {
+  min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line);
+  background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip-btn[aria-pressed="true"] { background: var(--card-2); border-color: var(--line-lit); color: var(--chrome); }
+.chip-btn:hover { border-color: var(--line-lit); color: var(--chrome); }
+.chip-n { color: var(--faint); font-size: 11px; }
+.props-body { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.props-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.prop {
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+  padding: 12px; display: grid; gap: 8px; align-content: start; min-width: 0;
+}
+.prop-top { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 10px; align-items: center; }
+.prop-jersey { width: 78px; height: 80px; }
+.jersey { width: 100%; height: 100%; display: block; }
+.jersey-name { font-family: var(--cond); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.jersey-number { font-family: var(--cond); font-weight: 800; font-size: 34px; }
+.jersey-shoulder { font-family: var(--cond); font-weight: 700; font-size: 8px; }
+.prop-who { min-width: 0; }
+.prop-player {
+  font-family: var(--cond); font-weight: 800; font-size: 22px; line-height: 1.05;
+  text-transform: uppercase; color: var(--chrome); overflow-wrap: anywhere;
+}
+.prop-club { font-size: 11px; color: var(--faint); margin-top: 2px; }
+.prop-line { font-size: 13px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+.prop-nums { display: flex; align-items: baseline; gap: 12px; }
+.prop-prob { font-family: var(--cond); font-weight: 800; font-size: 28px; color: var(--chrome); }
+.prop-cushion { font-size: var(--face-meta); color: var(--muted); font-variant-numeric: tabular-nums; }
+.pbar { position: relative; height: 8px; border-radius: 4px; background: var(--card-2); overflow: visible; }
+.pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--line-lit); }
+.pbar-tick { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--white); margin-left: -1px; }
+.prop-venue { display: flex; gap: 8px; font-size: var(--face-meta); color: var(--faint); }
+.prop-venue-words { color: var(--muted); }
+
+/* the entry rail */
+.entry-rail {
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 12px;
+  position: sticky; top: 100px; display: grid; gap: 10px;
+}
+.entry-rail h4 { margin: 0; font-family: var(--cond); font-weight: 800; font-size: 20px; letter-spacing: 0.06em; text-transform: uppercase; }
+.entry-leg { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); padding: 4px 0; border-bottom: 1px solid var(--line); }
+.entry-leg-line { overflow-wrap: anywhere; }
+.entry-leg-prob { font-family: var(--cond); font-weight: 700; color: var(--chrome); }
+.entry-pays { display: grid; gap: 4px; font-size: var(--face-meta); color: var(--muted); }
+.entry-pays input { width: 100%; }
+.entry-line { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.entry-label { color: var(--faint); }
+.entry-value { color: var(--chrome); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+
+/* --- widths --------------------------------------------------------------- */
+@media (max-width: 960px) {
+  .props-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .props-body { grid-template-columns: minmax(0, 1fr); }
+  .entry-rail { position: static; }
+}
+@media (max-width: 640px) {
+  /* THE BAR WRAPS ON A PHONE: the sport tabs take their own row (the rule
+     of 2026-09-03 above), so the inner bar's height is its content's. */
+  .bar-inner { gap: 8px; height: auto; }
+  .bar #sport-tabs { gap: 8px; }
+  .bar #sport-tabs button { font-size: 12px; padding: 4px 2px 6px; }
+  .bar-under { padding-bottom: 4px; gap: 8px; }
+  .bar #nav a { font-size: 16px; padding: 4px 8px; }
+  .pulse { flex-basis: 100%; margin-left: 0; gap: 2px 10px; }
+  .game-head {
+    grid-template-columns: minmax(0, 1fr); grid-template-areas: "teams" "when" "pick" "count";
+    gap: 8px; padding: 10px;
+  }
+  .tname { font-size: 17px; }
+  .tscore { font-size: 20px; }
+  .pick-line { font-size: 22px; }
+  .props-grid { grid-template-columns: minmax(0, 1fr); }
+  .menu { right: 8px; }
+}
+
+/* the caveat on the face, the way out to the workings */
+.pick-method, .q-method {
+  margin: 6px 0 0; font-size: var(--face-meta); font-style: italic;
+  color: var(--faint); line-height: 1.45;
+}
+.game-more-link { display: inline-block; margin-top: 10px; font-size: var(--face-meta); color: var(--chrome); }

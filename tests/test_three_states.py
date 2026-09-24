@@ -280,19 +280,20 @@ def test_the_old_picks_page_is_gone_by_name():
                  "renderNotices", "heroIndex"):
         assert gone not in app, gone
     assert ".hero" not in css
-    # and the two tabs took their place
-    assert 'id="state-tabs"' in html
-    assert 'data-state="live"' in html
+    # AND THE STATE TABS WENT TOO (GRIDIRON_BOARD, 2026-09-24): a row's
+    # state is a fact about its game, shown on the row, never a tab.
+    assert 'id="state-tabs"' not in html
+    assert 'data-state="live"' not in html
+    assert 'id="games-rows"' in html
 
 
-def test_the_nav_is_still_four_pages_and_the_controls_still_two_rows():
-    """A LAYOUT DOES NOT GET TO BREAK A LAW. Live is a tab, not a fifth page,
-    and the state tabs replaced three segmented controls rather than joining
-    them."""
+def test_the_nav_is_the_ruled_shape_and_nothing_sits_above_the_rows():
+    """A LAYOUT DOES NOT GET TO BREAK A LAW. Two page tabs and a menu of
+    three (re-ruled 2026-09-24), and no control row above the first game."""
     audit.check_the_nav_is_four_pages()
     assert audit.picks_control_row_faults() == []
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    assert audit.picks_control_rows(html) == ["week-market-tabs", "state-tabs"]
+    assert audit.picks_control_rows(html) == []
 
 
 # --- the forecaster control, and the unit (operator ruling, 2026-09-08) -----

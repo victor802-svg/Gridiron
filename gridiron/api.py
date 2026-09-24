@@ -393,6 +393,14 @@ def digest_page() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
 
 
+@app.get("/api/pulse")
+def pulse() -> dict:
+    """The appliance's pulse for the header: the three ages and the held
+    markets, on every page. NOT sport-scoped, and that is not a LAW 6
+    problem: these are facts about the appliance, not about a record."""
+    return {"freshness": views.freshness(get_conn())}
+
+
 @app.get("/api/record-line")
 def record_line(sport: str | None = None) -> dict:
     """The active sport's settled record for the header. One sport, never a sum."""
