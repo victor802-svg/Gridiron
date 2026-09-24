@@ -1,26 +1,31 @@
 # GRIDIRON_REPAIR — state for the next session
 
-## READ THIS BLOCK FIRST (updated 2026-09-24 ~11:35Z, overnight run)
+## READ THIS BLOCK FIRST (updated 2026-09-24 ~13:10Z, overnight run)
 
-- **Released and serving: ff7e5ab** (`/api/health` = ff7e5ab7546c), on main
-  and pushed: **the activation gate** (repair 2c). Gate: 4/4, 275/275
-  plantings, live record as found.
-- **On the live record since the release:** 24 `incumbent` activations
-  written by the bootstrap at 11:28:31Z, one per market in use, each naming
-  the fit that market was already reading. **The four fs5 markets have
-  none**: fits 91-94 post-date the rule, so NFL and NCAAF spread and
-  moneyline are unforecast (and still held) until the revert.
+- **Released and serving: 4c3bda4** (`/api/health` = 4c3bda439bee), on main
+  and pushed: **the fs5 revert** (repair 2d), after ff7e5ab **the activation
+  gate** (repair 2c). Gates: 4/4 each; 275/275 then 278/278 plantings; live
+  record as found each time. (The revert's first gate failed on the package
+  side-in-prose scan -- its new audit message quoted a raw subject -- fixed
+  and rerun green.)
+- **On the live record since the releases:** 24 `incumbent` activations by
+  the bootstrap at 11:28:31Z, one per market in use; then activations 25-28
+  at 13:00:01Z, the revert: NFL spread fit 88 (fs3), NFL moneyline fit 71
+  (fs2), NCAAF spread fit 44 (fs3), NCAAF moneyline fit 35 (fs2), each with
+  its set's holdout scores. `srs_diff` and `cfb_srs_diff` are active again
+  (dated). **The hold is lifted** (`HELD_MARKETS` empty; the strip shows no
+  held line). No forecast for those markets yet: the first pass that writes
+  them is Final-NFL / Final-CFB at 15:00Z (08:00 local), which answers the
+  whole of NFL week 3 including Sunday. Confirm on the day strip after it.
 - **Earlier today:** 55 restated closes (item 1); 31 forecast voids and
   recommendations 62, 63, 64 and 66 withdrawn (65 stands; the 31
   reasoning-forecaster rows stand).
 - **The overnight queue** (docs/briefs/2026-09-24-overnight.md; the operator
   reordered it because the hold blocks football forecasts before Sunday):
   1. ~~Activation gate~~ -- released ff7e5ab.
-  2. **Revert** all four fs5 markets to their incumbents (NFL spread fs3 fit
-     88, NFL moneyline fs2 fit 71, NCAAF spread fs3 fit 44, NCAAF moneyline
-     fs2 fit 35); lift the hold per market once its forecasts come from its
-     active fit; confirm on the day strip.
-  3. Weather: precipitation, wind and cold carry no value indoors; report
+  2. ~~Revert~~ -- released 4c3bda4; the day-strip confirmation waits for the
+     15:00Z pass.
+  3. **Weather** (in progress): precipitation, wind and cold carry no value indoors; report
      coefficients before and after on the holdout.
   4. The reasoning-pass prompt record.
   5. Schema rulings (below, in the order the brief gives).
