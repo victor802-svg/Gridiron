@@ -1,4 +1,44 @@
-# GRIDIRON_REPAIR — state for the next session (written 2026-09-24 ~07:10Z)
+# GRIDIRON_REPAIR — state for the next session
+
+## READ THIS BLOCK FIRST (updated 2026-09-24 ~10:05Z)
+
+- **Released and serving: fe4dc58** (`/api/health` = fe4dc586b799), on main
+  and pushed. Batch landed: d93c466 voids, fe4dc58 the gate reads the live
+  record only. Gate: 4/4, 270/270 plantings (the first run failed on the auth
+  timing flake, see below; the rerun passed).
+- **Live writes done:** 55 restated closes (item 1); 31 forecast voids and
+  recommendations 62, 63, 64 and 66 withdrawn (65 stands; the 31
+  reasoning-forecaster rows stand).
+- **The hold is still on** (NFL and NCAAF spread and moneyline).
+- **Queue, in order, each its own commit, gate and release** (one operation at
+  a time, never touching the worktree while a gate runs):
+  1. **Schema rulings** (docs/briefs/2026-09-24-schema-rulings.md):
+     - (5) the auth backoff test takes an injectable clock, and no gated test
+       may depend on real elapsed time
+       (`test_auth::test_the_backoff_survives_a_restart` flaked once: its
+       4-second penalty ran out under gate load);
+     - (1) a gate diff of the live schema against a fresh build at the
+       released commit, normalised for quoting, whitespace, comments and
+       column order, failing on any difference in behaviour;
+     - (3) schema.sql declares market_lines_raw.spread_sign_source;
+     - (2) a dated, rehearsed, single-transaction migration of the 8
+       behavioural tables, with row counts and per-column checksums verified,
+       triggers and indexes recreated, a verified backup of the live record
+       taken first, and a rollback if anything fails verification;
+     - (4) the 8 missing market_snapshots ids: rolled-back insert or deletion,
+       and a fix with a planting if any was deleted;
+     - (6) a scan refusing a raw sqlite3.connect to the live path outside the
+       approved handles, with a planting.
+  2. Inactive-until-activated fits, with the activation gate and the tie rule
+     recorded in CLAUDE.md.
+  3. Revert all four fs5 markets; lift the hold per market once its active fit
+     is the incumbent and its forecasts come from it.
+  4. Weather: precipitation, wind and cold give no value indoors.
+  5. The reasoning-prompt record.
+  6. Repair items 3-8.
+
+(Older detail follows; where it conflicts with the block above, the block wins.)
+
 
 Read this first, then `docs/briefs/2026-09-23-repair.md`,
 `docs/briefs/2026-09-24-fs5-before-it-publishes.md` and
