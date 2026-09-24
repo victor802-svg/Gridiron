@@ -1,17 +1,32 @@
 # GRIDIRON_REPAIR — state for the next session
 
-## READ THIS BLOCK FIRST (updated 2026-09-24 ~10:05Z)
+## READ THIS BLOCK FIRST (updated 2026-09-24 ~11:35Z, overnight run)
 
-- **Released and serving: fe4dc58** (`/api/health` = fe4dc586b799), on main
-  and pushed. Batch landed: d93c466 voids, fe4dc58 the gate reads the live
-  record only. Gate: 4/4, 270/270 plantings (the first run failed on the auth
-  timing flake, see below; the rerun passed).
-- **Live writes done:** 55 restated closes (item 1); 31 forecast voids and
+- **Released and serving: ff7e5ab** (`/api/health` = ff7e5ab7546c), on main
+  and pushed: **the activation gate** (repair 2c). Gate: 4/4, 275/275
+  plantings, live record as found.
+- **On the live record since the release:** 24 `incumbent` activations
+  written by the bootstrap at 11:28:31Z, one per market in use, each naming
+  the fit that market was already reading. **The four fs5 markets have
+  none**: fits 91-94 post-date the rule, so NFL and NCAAF spread and
+  moneyline are unforecast (and still held) until the revert.
+- **Earlier today:** 55 restated closes (item 1); 31 forecast voids and
   recommendations 62, 63, 64 and 66 withdrawn (65 stands; the 31
   reasoning-forecaster rows stand).
-- **The hold is still on** (NFL and NCAAF spread and moneyline).
-- **Queue, in order, each its own commit, gate and release** (one operation at
-  a time, never touching the worktree while a gate runs):
+- **The overnight queue** (docs/briefs/2026-09-24-overnight.md; the operator
+  reordered it because the hold blocks football forecasts before Sunday):
+  1. ~~Activation gate~~ -- released ff7e5ab.
+  2. **Revert** all four fs5 markets to their incumbents (NFL spread fs3 fit
+     88, NFL moneyline fs2 fit 71, NCAAF spread fs3 fit 44, NCAAF moneyline
+     fs2 fit 35); lift the hold per market once its forecasts come from its
+     active fit; confirm on the day strip.
+  3. Weather: precipitation, wind and cold carry no value indoors; report
+     coefficients before and after on the holdout.
+  4. The reasoning-pass prompt record.
+  5. Schema rulings (below, in the order the brief gives).
+  6. Repair items 3-8.
+- **The schema rulings, as queued before the overnight reorder** (their
+  content stands; only their place moved):
   1. **Schema rulings** (docs/briefs/2026-09-24-schema-rulings.md):
      - (5) the auth backoff test takes an injectable clock, and no gated test
        may depend on real elapsed time
@@ -29,13 +44,6 @@
        and a fix with a planting if any was deleted;
      - (6) a scan refusing a raw sqlite3.connect to the live path outside the
        approved handles, with a planting.
-  2. Inactive-until-activated fits, with the activation gate and the tie rule
-     recorded in CLAUDE.md.
-  3. Revert all four fs5 markets; lift the hold per market once its active fit
-     is the incumbent and its forecasts come from it.
-  4. Weather: precipitation, wind and cold give no value indoors.
-  5. The reasoning-prompt record.
-  6. Repair items 3-8.
 
 ## Questions for the operator
 
