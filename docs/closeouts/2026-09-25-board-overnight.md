@@ -82,7 +82,7 @@ what follows is what was measured and what is still open.
 - The board's own guards pass on the fixture world: no signal without a
   badge, no typed club hex, no live row with a price, no internal word or
   pressure word on a row, a tile or a tooltip.
-- Ten new plantings caught, plus every existing web planting re-run
+- Nine new plantings caught, plus every existing web planting re-run
   individually and caught (the two that anchored on the old markup were
   re-pointed). `tools/guards/plant.py` as a whole cannot run here: several
   plantings read the operator's live record and the harness stops at the
@@ -157,6 +157,42 @@ table.
   `docs/closeouts/shots/2026-09-25-board/`: every page at 1100 and 390, the
   expanded row, a settled slate, the live row with YOURS, the Props page with a
   taken leg in the entry rail, and the two empty states.
+
+### Checkpoint 3 — `6738a84` (greeting off-home, the rail's Kalshi line, the painted fill)
+
+- The greeting's countdown line no longer renders under the Props tabs
+  (`applyRouteVisibility`); the entry rail's Kalshi line says "not listed"
+  with the reason in its tooltip; `test_a_settled_pick_is_painted_solid_and_its_words_are_ink`
+  reads the computed background and ink, closing the vacuous pass named below.
+
+### The full suite, one run, after checkpoint 3
+
+`pytest -q -m "not slow" --deselect tests/test_the_network_is_shut.py` on
+`6738a84`, in this container, 2026-09-24:
+
+| | count |
+|---|---|
+| passed | 1419 |
+| failed | 17 |
+| skipped | 5 |
+
+**Every one of the 17 fails on the same line:** `db.read_the_live_record`
+raising `unable to open database file`, because this container has no live
+record (the brief: "you have no live record and must not ask for one"). They
+are the record-reading tests in `test_cfb`, `test_distributional`,
+`test_guards`, `test_method_flag`, `test_mlb_markets`, `test_plain_why`,
+`test_side_arithmetic` and `test_tier_table`, and each is in the baseline
+list taken on `origin/master` in this container before the board was built.
+Nothing fails here that did not fail on `master` the same way; two baseline
+failures now pass (`test_the_variable_axis_covers_every_weight_the_page_asks_for`,
+re-homed for the static Barlow faces, and the network test, deselected
+because it probes the block with a real socket). `test_the_csrf_token_is_bound_to_the_session`
+passed in this run because the browser fixtures ran first; its order
+dependence stands in FOLLOWUPS.
+
+Every gate check that reads the tree rather than the record (34 of them, the
+web scanners and the closure, orphan, docstring, order-path and door checks)
+was run directly on this commit and passes.
 
 ---
 
@@ -251,7 +287,7 @@ reading, and is stated as one.
 3. **Run the gate on the machine that has the record:** `python
    tools/verify.py`. Step 2 now carries three more rows (a signal carries its
    badge; no club colour is typed; the board speaks plain, tooltips
-   included). The 270-planting harness should read 280.
+   included). The harness registered 270 plantings on `master` and registers 279 here (nine added, none removed, counted off `main` by name).
 4. **The csrf test's order dependence** (FOLLOWUPS) predates tonight and is
    one line to fix.
 
