@@ -55,6 +55,48 @@ before the hold:
   activation gate -> revert of all four -> weather -> the prompt record ->
   repair items 3-8. Each is its own commit, gate and release.
 
+## The gate reads only, and the schema diff (2026-09-24, late morning)
+
+- **The gate reads only** (docs/briefs/2026-09-24-the-gate-reads-only.md):
+  built and committed with the voids. Record checks run on a migrated scratch
+  copy, and a schema change during the gate fails it. Open: the scheduler's
+  `db.init` still applies whatever schema is in the main checkout, and a raw
+  sqlite3 write inside a gate step is not refused (FOLLOWUPS).
+- **The schema diff** (docs/briefs/2026-09-24-schema-diff.md; measured
+  read-only, report in the 24 September session's scratchpad/schema/
+  diff_live_vs_fresh.txt):
+  - Live against a fresh build at release 4941fa1: 0 objects on live that the
+    release does not create, 0 missing.
+  - 19 objects with different SQL: 17 tables and 2 triggers.
+  - BEHAVIOURAL, 8: CHECKs missing on live for factors.sport,
+    factor_scores.sport, model_fits.sport (9c0bc64), market_snapshots.kind
+    (2d0e98f; the migration code must live in gridiron.market),
+    mlb_lineups.source (8002a38), prediction_ranks.on_shortlist (63d998c) and
+    ufc_events.event_tier (c78af51, bdfaddc). nba_injuries.player_name has an
+    extra DEFAULT ''. Every live row already satisfies the released
+    constraints. Rebuild each by renaming aside with legacy_alter_table=ON,
+    creating the table with the released text, copying by column name with
+    count and hash verified, then restoring sqlite_sequence, triggers and
+    indexes and running foreign_key_check. ufc_events must be renamed aside in
+    legacy mode, or ufc_bouts gets repointed.
+  - COSMETIC, 11: teams, sessions, mlb_pitcher_starts, notifications,
+    task_runs, at_the_line_claims, venue_quotes, recommendations (a comment),
+    prediction_voids, market_snapshots (the quoted "predictions"), plus the
+    triggers snapshot_requires_prediction and snapshot_not_before_prediction.
+  - **Two readings for the operator, not yet ruled:** (A) exact byte match:
+    rebuild all 17 tables, including the dense-trigger claim and quote tables,
+    and re-create the 2 triggers; (B) rebuild the 8 behavioural tables and
+    re-create the 2 triggers, and have the gate's diff compare after
+    normalising quoting, comments, whitespace and column order. Default until
+    ruled: (B), which puts less risk on the live record.
+  - Also found: schema.sql does not declare
+    market_lines_raw.spread_sign_source (only lines.ensure_raw_columns adds
+    it), and market_snapshots holds 2,187 rows with a highest id of 2195, so
+    8 ids are missing from an append-only table. Investigate both.
+- **Order now:** voids + gate-reads-only (this batch) -> the schema diff check
+  and its dated migration -> inactive-until-activated fits -> revert -> weather
+  -> prompt record -> repair items 3-8.
+
 ## Next: rulings 2-4 of 2026-09-24 (the voids are in this batch), BEFORE items 3-8
 
 1. **Voids.** Write one `prediction_voids` row for each of the 31 statistical

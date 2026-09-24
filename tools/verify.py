@@ -19,12 +19,26 @@ Four steps, reported honestly:
 Steps 3 and 4 are reported separately and never added together. Step 3 is a
 retrospective run and proves the pipeline works. Step 4 is the only thing that
 could ever become evidence, and it has not happened yet.
+
+THE GATE READS THE LIVE RECORD, NEVER WRITES IT (operator ruling, 2026-09-24).
+On 24 September a gate run from a worktree put an unmerged trigger on the
+operator's record: step 2 opened it with `db.open_db`, which runs the tree's
+own schema against the file. Now the whole run is verification to `db`, so
+any writable open of the record is refused by name; every read goes through
+`db.read_the_live_record`, which opens the file read-only; step 2's record
+checks and step 3's facts read one scratch copy backed up from that handle and
+migrated to this tree's schema; and the record's schema is read when the gate
+starts and again when it ends, and a difference fails the gate naming each
+object.
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
+import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -159,15 +173,180 @@ def step_1_tests(quick: bool, parallel: int = 0) -> tuple[bool, tuple[str, ...]]
     return result.returncode == 0, skipped
 
 
+class NoRecordToCopy(RuntimeError):
+    """There is no live record for the record checks to read a copy of."""
+
+
+#: THE GATE'S ONE COPY OF THE LIVE RECORD (operator ruling, 2026-09-24).
+#:
+#: Step 2's record checks and step 3's facts read THIS, never the record. It
+#: is backed up once per run through the read-only door, into the temp
+#: directory, and migrated there with `open_db` -- so a check that reads a
+#: table this tree adds and the record does not hold yet (`recommendation_voids`
+#: on the day this was written) reads it from the copy, and the tree's schema
+#: never reaches the operator's file before it merges. ONE BACKUP PER RUN, not
+#: one per check: the record is about a gigabyte.
+#:
+#: What the copy checks is the record as it WILL be once this tree merges: its
+#: rows, under this tree's schema. That is the question a gate is asked.
+_GATE_COPY: dict = {}
+
+
+def _gate_copy_path() -> Path:
+    """The gate's copy of the live record, made on first use."""
+    if "path" in _GATE_COPY:
+        return _GATE_COPY["path"]
+    if not Path(config.DB_PATH).exists():
+        raise NoRecordToCopy(
+            f"no live record at {config.DB_PATH}, so there is nothing for the "
+            f"record checks to read")
+    started = time.time()
+    folder = Path(tempfile.mkdtemp(prefix="gridiron-gate-"))
+    _GATE_COPY.update(folder=folder, conns=[])
+    target = folder / "record.db"
+    source = db.read_the_live_record(
+        "backing the record up into the gate's own scratch copy, which the "
+        "record checks read and migrate instead of the record itself")
+    try:
+        copy = sqlite3.connect(str(target))
+        try:
+            # ONE INSTANT OF THE RECORD. pages=-1 copies every page in one
+            # step, inside one read transaction, so a scheduled task writing
+            # meanwhile cannot leave the copy half of one moment and half of
+            # the next. The record is in WAL, so the read blocks no writer.
+            source.backup(copy, pages=-1)
+        finally:
+            copy.close()
+    finally:
+        source.close()
+    db.open_db(target).close()
+    _GATE_COPY["path"] = target
+    print(f"  the record checks read a copy of the live record, not the "
+          f"record: {target.stat().st_size / 1e9:.2f} GB, migrated to this "
+          f"tree's schema, in {time.time() - started:.0f}s")
+    return target
+
+
 def _record_conn():
-    """A read handle on the live record, for the scans that check stored rows.
+    """A handle on the gate's copy of the live record, for the scans that
+    check stored rows.
 
-    Opened lazily so a machine with no database still runs every scan that
-    does not need one.
+    Until 2026-09-24 this was `db.connect()` on the record itself: a writable
+    handle, opened afresh by every check and never closed.
     """
-    from gridiron import db
+    conn = db.connect(_gate_copy_path())
+    _GATE_COPY["conns"].append(conn)
+    return conn
 
-    return db.connect()
+
+def _close_the_record_handles() -> None:
+    for conn in _GATE_COPY.get("conns", ()):
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    if "conns" in _GATE_COPY:
+        _GATE_COPY["conns"] = []
+
+
+def _drop_the_gate_copy() -> None:
+    """Close every handle on the copy and delete it. Says so if it cannot."""
+    _close_the_record_handles()
+    folder = _GATE_COPY.get("folder")
+    _GATE_COPY.clear()
+    if folder is None:
+        return
+    shutil.rmtree(folder, ignore_errors=True)
+    if folder.exists():
+        print(chr(10) + f"the gate's copy of the record could not be removed: "
+              f"{folder} -- delete it by hand; it is about a gigabyte")
+
+
+def record_schema(conn) -> dict:
+    """Every object a record defines, keyed by kind and name, with its SQL.
+
+    An added column shows here too: `ALTER TABLE ... ADD COLUMN` rewrites the
+    table's stored CREATE statement.
+    """
+    return {(row[0], row[1]): row[2] for row in conn.execute(
+        "SELECT type, name, sql FROM sqlite_master")}
+
+
+def schema_changes(before: dict, after: dict) -> list[str]:
+    """What changed between two readings of a schema, one line per object."""
+    changes = []
+    for key in sorted(set(before) | set(after)):
+        kind, name = key
+        if key not in before:
+            changes.append(f"{kind} {name} was created")
+        elif key not in after:
+            changes.append(f"{kind} {name} was dropped")
+        elif before[key] != after[key]:
+            changes.append(f"{kind} {name} was redefined")
+    return changes
+
+
+def _the_live_schema() -> dict | None:
+    """The live record's schema, read through the read-only door; None when
+    there is no record."""
+    if not Path(config.DB_PATH).exists():
+        return None
+    conn = db.read_the_live_record(
+        "the live record's schema, read when the gate starts and again when "
+        "it ends, so that a gate that changed it fails by name")
+    try:
+        return record_schema(conn)
+    finally:
+        conn.close()
+
+
+def the_record_is_as_found(before: dict | None) -> bool:
+    """THE GATE LEAVES THE LIVE RECORD'S SCHEMA AS IT FOUND IT (2026-09-24).
+
+    Compared, not counted. The scheduled tasks write rows into the record for
+    the whole of a gate's run, so a row count would fail every gate and prove
+    nothing; rows are protected structurally instead -- this process cannot
+    hold a writable handle on the record. The schema is different: nothing
+    changes it except code that has not been gated, which is exactly what
+    happened twice on 23 and 24 September.
+
+    It cannot tell who changed the schema -- a step of this gate, or a
+    scheduled task importing code that has not merged -- and does not need to:
+    a gate that watched the record change underneath it is not evidence that
+    this tree is safe to merge.
+    """
+    rule("THE LIVE RECORD, AS THE GATE FOUND IT")
+    after = _the_live_schema()
+    if before is None and after is None:
+        print(f"  PASS  no live record at {config.DB_PATH}, before or after")
+        return True
+    if before is None:
+        changes = [f"the record at {config.DB_PATH} was created"]
+    elif after is None:
+        changes = [f"the record at {config.DB_PATH} disappeared"]
+    else:
+        changes = schema_changes(before, after)
+    if not changes:
+        print(f"  PASS  the live record's schema is what it was when the gate "
+              f"began: {len(after)} objects")
+        return True
+    for change in changes:
+        print(f"  FAIL  the live record changed during the gate: {change}")
+    print("  Find what wrote it -- a gate step, or a scheduled task running "
+          "code that has not" + chr(10) + "  merged -- and run the gate "
+          "again.")
+    return False
+
+
+def _refused_by_name(step, *args) -> bool:
+    """Run a step. A reach for the live record fails it BY NAME, and the gate
+    goes on to the next step and to its own summary rather than ending in a
+    traceback."""
+    try:
+        return step(*args)
+    except db.LiveRecordTouched as exc:
+        print(f"  FAIL  {str(exc).splitlines()[0]}")
+        return False
 
 
 def _env_file():
@@ -196,7 +375,8 @@ def _at_the_line_payload():
 
     Built from the live record rather than from a fixture: the words that
     matter are the ones a reader would meet today, and a scan that reads a
-    fixture proves only that the fixture is polite.
+    fixture proves only that the fixture is polite. Read from the gate's copy
+    of it from 2026-09-24, which holds the same rows.
     """
     from gridiron import calibration, config
 
@@ -220,16 +400,19 @@ def step_2_guards() -> bool:
     # copy. A planting proves a scan fires; this proves the package passes it.
     # They were reachable only from tests until 2026-08-31, which the orphan
     # scan is what noticed.
-    from gridiron import audit
+    from gridiron import audit, views
 
-    def _live_db():
-        """The database the gate is actually about, opened once per check."""
-        from gridiron import config, db as _db
-
-        return _db.open_db(config.DB_PATH)
-
-
+    # EVERY RECORD CHECK BELOW READS THE GATE'S COPY (operator ruling,
+    # 2026-09-24). Until then the foreign-key check opened the record itself
+    # with `open_db` -- migrating it to this tree's schema, merged or not --
+    # and the rest opened it writable with `db.connect()`. The copy is made
+    # here, before the first check, so its one line of output is not buried
+    # between two of them.
     print()
+    try:
+        _gate_copy_path()
+    except NoRecordToCopy as exc:
+        print(f"  {exc}; every check that reads it fails below")
     for name, fn in (
         # FIRST, AND FIRST FOR A REASON (ruling 4, 2026-09-09). A file that
         # does not parse makes every scan after it meaningless: they read it
@@ -243,8 +426,12 @@ def step_2_guards() -> bool:
         # that no longer existed. Every read worked; the suite was green; the
         # first INSERT in hours is what found it. A schema fault that only
         # breaks on write is the worst kind for a project that mostly reads.
+        #
+        # ON THE COPY, MIGRATED, FROM 2026-09-24 -- which is what this check
+        # was written to ask: whether this tree's migration leaves a foreign
+        # key naming a table that is gone, before it reaches the record.
         ("every foreign key points at a real table",
-         lambda: audit.check_no_dangling_references(_live_db())),
+         lambda: audit.check_no_dangling_references(_record_conn())),
         # OPERATOR RULING 2 (2026-09-04). Both halves: the declaration cannot
         # drift from the code that earns it, and the hero cannot quietly start
         # leading with a market whose own note calls it a coin flip.
@@ -364,9 +551,7 @@ def step_2_guards() -> bool:
          lambda: audit.check_run_line_signs(_record_conn(), "mlb")),
         ("forecasters are never merged",
          lambda: audit.check_forecasters_are_never_merged(
-             __import__("gridiron.views", fromlist=["views"]).scorecard(
-                 __import__("gridiron.db", fromlist=["db"]).connect(),
-                 __import__("gridiron.config", fromlist=["config"]).SPORTS[0]))),
+             views.scorecard(_record_conn(), _config().SPORTS[0]))),
         ("no silent defaults (v2)", audit.check_no_silent_defaults),
         # LAW 5 as amended 2026-09-07. The staking scan is retired; these
         # three are what it was really protecting, and they are not amendable.
@@ -391,7 +576,7 @@ def step_2_guards() -> bool:
         # this is what makes that a fact about the record rather than a
         # promise about the code.
         ("a claim is priced at the line, never at the open",
-         lambda: audit.check_claims_price_at_the_line(_live_db_conn())),
+         lambda: audit.check_claims_price_at_the_line(_record_conn())),
         # THE LIVE RULINGS (2026-09-09). A page that stops asking the first
         # time nothing is on never learns the day started -- which is how the
         # server came to hold six live cards while the screen said nothing was
@@ -401,35 +586,39 @@ def step_2_guards() -> bool:
         # OPERATOR RULING 1 (2026-09-24). A withdrawn recommendation is never
         # counted: every reader of the table goes through the one door, and
         # the live record's closing line is recounted without it, per sport.
+        # The record holds no `recommendation_voids` until this merges, which
+        # is why it is recounted on the migrated copy and not the record.
         ("every reader of a recommendation goes through the door",
          audit.check_every_recommendation_reader_uses_the_door),
         ("no withdrawn recommendation is counted",
          lambda: [audit.check_no_withdrawn_recommendation_counted(
-             _live_db_conn(), sport=sport) for sport in _config().SPORTS]),
+             _record_conn(), sport=sport) for sport in _config().SPORTS]),
     ):
         try:
             fn()
             print(f"  PASS  {name}")
-        except audit.LawViolation as exc:
+        # A CHECK THAT REACHES FOR THE LIVE RECORD FAILS BY NAME (2026-09-24),
+        # and so does one with no record to read, rather than ending the gate.
+        except (audit.LawViolation, db.LiveRecordTouched,
+                NoRecordToCopy) as exc:
             ok = False
             print(f"  FAIL  {name}: {str(exc).splitlines()[0]}")
+    _close_the_record_handles()
     return ok
-
-
-def _live_db_conn():
-    """A QUERY-ONLY handle on the operator's record for the data checks.
-
-    The same door `db.read_the_live_record` opens for a planting: the gate is
-    verification, and verification does not write to the record it is
-    checking. SQLite refuses the write, not this function.
-    """
-    return db.read_the_live_record(
-        "the gate asks the record whether any claim was priced off an "
-        "opening read rather than the near-start look")
 
 
 def step_3_one_week_end_to_end(source: Path) -> bool:
     rule("STEP 3 — one complete week, end to end (retrospective; resolution works)")
+
+    # FROM THE GATE'S COPY, NEVER THE RECORD (operator ruling, 2026-09-24).
+    # `copy_facts` ATTACHes its source, and an attached file is writable from
+    # the attaching connection whatever it is used for; until this date the
+    # source was the operator's record, on every run. `copy_facts` now refuses
+    # the record under verification by name, so this is not optional.
+    if db._is_the_live_record(source):
+        source = _gate_copy_path()
+        print("facts copied from the gate's copy of the live record, "
+              "not from the record")
 
     sport = "nfl"
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
@@ -605,31 +794,52 @@ def main() -> int:
     parser.add_argument("--source", default=str(config.DEFAULT_DB))
     args = parser.parse_args()
 
+    # THE WHOLE RUN IS VERIFICATION (operator ruling, 2026-09-24). With this
+    # set, `db.connect` refuses the live record by name and `copy_facts`
+    # refuses to attach it, in this process and in the suite and the planting
+    # harness it starts, which inherit the environment. Every read of the
+    # record goes through `db.read_the_live_record`, which opens it read-only.
+    # Set BEFORE the first step and before the record's schema is read, so
+    # nothing below runs without it.
+    if not os.environ.get("GRIDIRON_VERIFYING"):
+        os.environ["GRIDIRON_VERIFYING"] = "tools/verify.py"
+    found = _the_live_schema()
+
     outcomes: dict[str, bool] = {}
     # EVERY WAY A TIER CAN GO UNRUN IS COLLECTED HERE. Each of these used to be
     # a line of prose in the middle of the output and nothing at all in the
     # verdict, so the summary could print four PASSes after skipping the whole
     # browser suite -- true about far less than it appeared to be.
     skipped: list[str] = []
-    if args.skip_tests:
-        skipped.append("tests")
-    else:
-        passed, tier_skips = step_1_tests(args.quick, args.parallel)
-        outcomes["1. test suite"] = passed
-        skipped.extend(tier_skips)
-    outcomes["2. planted violations"] = step_2_guards()
+    try:
+        if args.skip_tests:
+            skipped.append("tests")
+        else:
+            passed, tier_skips = step_1_tests(args.quick, args.parallel)
+            outcomes["1. test suite"] = passed
+            skipped.extend(tier_skips)
+        outcomes["2. planted violations"] = _refused_by_name(step_2_guards)
 
-    source = Path(args.source)
-    if source.exists():
-        outcomes["3. one week end to end"] = step_3_one_week_end_to_end(source)
-    else:
-        # chr(10) rather than a backslash-n: this file has now lost that
-        # escape in transit twice, and the second time it produced an
-        # unterminated f-string three hundred lines from where it was typed.
-        print(chr(10) + f"no database at {source}; skipping steps 3 and 4")
-        skipped.append("end to end")
+        source = Path(args.source)
+        if source.exists():
+            outcomes["3. one week end to end"] = _refused_by_name(
+                step_3_one_week_end_to_end, source)
+        else:
+            # chr(10) rather than a backslash-n: this file has now lost that
+            # escape in transit twice, and the second time it produced an
+            # unterminated f-string three hundred lines from where it was typed.
+            print(chr(10) + f"no database at {source}; skipping steps 3 and 4")
+            skipped.append("end to end")
 
-    outcomes["4. live forward week"] = step_4_live_forward_week()
+        outcomes["4. live forward week"] = _refused_by_name(
+            step_4_live_forward_week)
+    finally:
+        # Even when a step ends in a traceback: the copy is a gigabyte in the
+        # temp directory, and whether the record changed is still worth
+        # saying on the way out.
+        _drop_the_gate_copy()
+        outcomes["the live record, as the gate found it"] = (
+            the_record_is_as_found(found))
 
     rule("VERIFICATION SUMMARY")
     code, lines = summarise(outcomes, skipped)

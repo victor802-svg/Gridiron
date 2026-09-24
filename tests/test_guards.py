@@ -487,6 +487,9 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_close_that_cites_its_own_pricing_read",
         "plant_a_withdrawn_recommendation_in_the_closing_line",
         "plant_a_recommendation_reader_that_goes_round_the_door",
+        "plant_a_gate_step_that_opens_the_live_record_writable",
+        "plant_a_schema_change_during_the_gate",
+        "plant_a_write_through_the_read_handle_switched_back",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

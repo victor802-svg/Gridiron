@@ -129,7 +129,17 @@ def copy_facts(conn: sqlite3.Connection, source: Path | str, tables=FACT_TABLES)
     a CHECK constraint rejecting a season number where a sport name belonged —
     had `sport` been declared without a CHECK, the backtest would have run
     happily on transposed data.
+
+    NEVER THE LIVE RECORD UNDER VERIFICATION (operator ruling, 2026-09-24).
+    An ATTACH is a writable handle on the attached file that `db.connect`
+    never sees, and the gate's step 3 attached the operator's record this way
+    on every run. The gate copies from its own scratch copy of the record
+    instead; this refuses by name if anything under verification tries the
+    old way. A backtest run by hand is not verification and is not refused.
     """
+    from gridiron import db
+
+    db.refuse_the_live_record(source, "attach")
     conn.execute("ATTACH DATABASE ? AS live", (str(source),))
     copied: dict[str, int] = {}
     try:

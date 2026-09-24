@@ -56,7 +56,8 @@ def _verifying() -> str | None:
     PYTEST SETS `PYTEST_CURRENT_TEST` for the duration of each test, which is
     how a test is recognised without the test having to announce itself --
     announcing is exactly what a test that reaches for the live record would
-    forget to do. `plant.py` sets `GRIDIRON_VERIFYING` for the same reason.
+    forget to do. `plant.py` sets `GRIDIRON_VERIFYING` for the same reason,
+    and so, from 2026-09-24, does `tools/verify.py` for the whole gate.
     """
     import os
 
@@ -102,22 +103,48 @@ def _is_the_live_record(path: Path) -> bool:
         return False
 
 
-def connect(path: Path | str | None = None, *,
-            _live_read_reason: str | None = None) -> sqlite3.Connection:
-    path = Path(path) if path is not None else config.DB_PATH
+def refuse_the_live_record(path: Path | str, doing: str = "open") -> None:
+    """Raise `LiveRecordTouched` when verification is about to reach the
+    operator's own file.
+
+    ONE RULE, TWO WAYS IN (2026-09-24). `connect` is the obvious way to reach
+    the record; an ATTACH from a scratch connection is the other, and the
+    guard in `connect` never sees it -- the gate's step 3 attached the live
+    record that way, writable, on every run. Both ask here, so the rule is
+    written once.
+    """
+    path = Path(path)
     verifying = _verifying()
-    if verifying and _live_read_reason is None and _is_the_live_record(path):
+    if verifying and _is_the_live_record(path):
         raise LiveRecordTouched(
             f"VERIFICATION MAY NOT OPEN THE LIVE RECORD. {verifying} tried to "
-            f"open {path}, which is the operator's own database. Tests, "
+            f"{doing} {path}, which is the operator's own database. Tests, "
             f"plantings and any temporary slate use a scratch file -- pytest's "
             f"`tmp_path` fixture, or a path under the system temp directory. "
             f"If this really has to read the live record, say so in words: "
-            f"`db.read_the_live_record(\"why\")` hands back a query-only "
+            f"`db.read_the_live_record(\"why\")` hands back a read-only "
             f"connection that SQLite itself refuses to write through.")
-    if str(path) != ":memory:":
-        path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), timeout=30.0)
+
+
+def connect(path: Path | str | None = None, *,
+            _live_read_reason: str | None = None) -> sqlite3.Connection:
+    path = Path(path) if path is not None else config.DB_PATH
+    if _live_read_reason is None:
+        refuse_the_live_record(path)
+    if _live_read_reason is not None and str(path) != ":memory:":
+        # READ-ONLY AT THE FILE, FROM 2026-09-24 (operator ruling: the gate
+        # opens the live record `mode=ro` or through the query-only handle).
+        # `query_only` alone is a setting, and the holder of the handle can
+        # turn it off again with one PRAGMA; a file opened `mode=ro` cannot be
+        # written through by anything said on the connection afterwards. And
+        # a missing record is an error here rather than an empty file quietly
+        # created where the operator's database belongs.
+        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True,
+                               timeout=30.0)
+    else:
+        if str(path) != ":memory:":
+            path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     if _live_read_reason is not None:
@@ -128,8 +155,9 @@ def connect(path: Path | str | None = None, *,
 
 
 def read_the_live_record(why: str) -> sqlite3.Connection:
-    """A QUERY-ONLY handle on the operator's record, for verification that
-    genuinely has to ask it something.
+    """A READ-ONLY handle on the operator's record -- opened `mode=ro` and
+    `query_only` both -- for verification that genuinely has to ask it
+    something.
 
     Some plantings and tests are about THIS deployment: that no venue
     credential sits in its record, that the ratings it holds actually vary. A
@@ -780,8 +808,9 @@ def open_db(path: Path | str | None = None) -> sqlite3.Connection:
 
     NEVER REACHABLE FROM VERIFICATION ON THE LIVE FILE: `init` writes -- it
     migrates, creates and backfills -- so `connect` refuses the live path under
-    pytest or a planting before any of that runs. Read the live record with
-    `read_the_live_record` instead, which does no `init` at all.
+    pytest, a planting or the gate (`tools/verify.py`, from 2026-09-24)
+    before any of that runs. Read the live record with `read_the_live_record`
+    instead, which does no `init` at all.
     """
     conn = connect(path)
     init(conn)

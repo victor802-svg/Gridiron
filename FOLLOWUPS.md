@@ -1257,3 +1257,56 @@ built from the slate's cards, and a voided forecast is not a card, so such a
 tap is kept in `picks_taken` and not listed. `picks_taken` holds no single-pick
 tap today (one package tap), so nothing is hidden now. **What would settle
 it:** the rail lists a tap whose forecast was withdrawn, saying so.
+
+## Operator ruling of 2026-09-24 — the gate reads the live record, never writes it
+
+### REPAIRED: the gate opened the live record writable and ran the tree's schema on it *(ruled and repaired 2026-09-24)*
+
+Step 2's foreign-key check opened the record with `db.open_db`, which runs
+`db.init`, which runs the tree's own `schema.sql`. So a gate run from a
+worktree put unmerged schema on the operator's record: on 24 September, the
+trigger `recommendation_close_cites_its_own_priced_read`, by 05:53Z, 55
+minutes before item 1 merged. Measured while repairing it, the same gate also
+opened the record writable in fifteen other step-2 checks and one more inline
+(`db.connect()`, never closed), and step 3 ATTACHed it writable on every run.
+The read door itself was only `query_only`, which its holder can switch off
+with one PRAGMA.
+
+Now the whole run is verification to `db`, every read goes through a door that
+opens the file `mode=ro`, the record checks and step 3 read one migrated
+scratch copy, and the gate fails naming any schema object that changed on the
+record while it ran. Three plantings, each escaped on the unfixed code. The
+occasions and their evidence: `docs/closeouts/2026-09-24-unmerged-schema.md`.
+
+### The scheduler still applies whatever schema the main checkout holds *(open, 2026-09-24)*
+
+The first occasion's path is untouched by the repair above. `Gridiron-Live`
+runs `db.init` from the main checkout's working tree every 90 seconds, so an
+uncommitted `schema.sql` there reaches the record within 90 seconds, gate or
+no gate. The only defence is the worktree rule. The gate now notices it only
+if it happens during a gate, when the start-and-end schema comparison fails
+by name. **What would settle it:** the scheduled tasks open the record
+without running `init`, leaving migration to the release step, or `init`
+refuses a `schema.sql` that differs from the one committed at `HEAD`.
+
+### Rows the gate might write are prevented, not measured *(open, 2026-09-24)*
+
+The gate does not compare rows, because the scheduler writes to the record
+for the whole of every run. Instead nothing in the gate can hold a writable
+handle through `db`. That covers `db.connect` and `copy_facts`. It does not
+cover a raw `sqlite3.connect` in a gate step, and it does not cover a child
+process started with `GRIDIRON_VERIFYING` removed, which is exactly what the
+three plantings do against their stand-in. A row written either way would
+not be seen. **What would settle it:** an audit scan that refuses
+`sqlite3.connect(` outside `gridiron/db.py` and the plantings' stand-in, run
+in the gate, with a planting.
+
+### A gate that is killed leaves a gigabyte in the temp directory *(open, 2026-09-24)*
+
+The gate's copy of the record is about 1.02 GB, made in about 3 seconds. It
+is deleted when the gate ends, even when a step fails, and the gate says so
+if it cannot delete it. A gate that is killed never reaches that line, and
+the voids gate of 24 September was stopped by hand. It stopped before step 2,
+so it made no copy, but the next one to be stopped might have. The copy is
+left under `gridiron-gate-*` in the temp directory. **What would settle it:**
+the gate removes stale `gridiron-gate-*` folders when it starts.

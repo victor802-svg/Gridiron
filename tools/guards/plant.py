@@ -7128,6 +7128,7 @@ LAW_NEVER_TRANSACTS = "THE APP RECOMMENDS, IT NEVER TRANSACTS"
 
 LAW_LIVE_RECORD = "VERIFICATION NEVER TOUCHES THE LIVE RECORD"
 LAW_FIRST_SCREEN = "A JOB THAT FAILS IS VISIBLE ON THE FIRST SCREEN"
+LAW_THE_GATE_READS_ONLY = "THE GATE READS THE LIVE RECORD, NEVER WRITES IT"
 
 
 def _tree_with(module: str, source: str):
@@ -7504,6 +7505,213 @@ def plant_a_write_through_the_live_read_handle() -> Result:
                   "NOT CAUGHT - the read-only door carried a write, so the "
                   "only door verification has into the record is a door in "
                   "both directions")
+
+
+# ---------------------------------------------------------------------------
+# THE GATE READS THE LIVE RECORD, NEVER WRITES IT (operator ruling 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# ON 24 SEPTEMBER A GATE RUN FROM A WORKTREE CREATED A TRIGGER ON THE
+# OPERATOR'S RECORD before the code that defined it had merged: step 2 opened
+# the record with `db.open_db`, and `open_db` runs the tree's own schema.
+#
+# These plantings run the real `verify.main` -- its steps stubbed, one of them
+# planted -- in a child process whose settings name a STAND-IN as the live
+# record. The operator's own file is never opened: the child stops before any
+# step if the record it was given is not the stand-in.
+
+_GATE_ON_A_STAND_IN = textwrap.dedent('''
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    tools, stand_in = sys.argv[1], sys.argv[2]
+    sys.argv = ["verify.py"]
+    sys.path.insert(0, tools)
+    import verify
+    from gridiron import config, db
+
+    if Path(config.DB_PATH).resolve() != Path(stand_in).resolve():
+        raise SystemExit("PLANTING ABORTED: this process's record is not the stand-in")
+
+
+    def planted_step(*args, **kwargs):
+        PLANTED_STEP
+        return True
+
+
+    verify.step_1_tests = lambda *args, **kwargs: (True, ())
+    verify.step_2_guards = planted_step
+    verify.step_3_one_week_end_to_end = lambda *args, **kwargs: True
+    verify.step_4_live_forward_week = lambda *args, **kwargs: True
+    raise SystemExit(verify.main())
+''')
+
+_WRITE_THROUGH_THE_READ_DOOR = textwrap.dedent('''
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    repo, stand_in = sys.argv[1], sys.argv[2]
+    sys.path.insert(0, repo)
+    from gridiron import config, db
+
+    if Path(config.DB_PATH).resolve() != Path(stand_in).resolve():
+        raise SystemExit("PLANTING ABORTED: this process's record is not the stand-in")
+    conn = db.read_the_live_record(
+        "planting a write through the gate's read handle, switched back")
+    conn.execute("PRAGMA query_only = OFF")
+    try:
+        conn.execute("CREATE TABLE planted_write (x INTEGER)")
+        conn.commit()
+        print("WRITTEN")
+    except sqlite3.OperationalError as exc:
+        print("REFUSED: " + str(exc))
+    conn.close()
+''')
+
+
+def _a_stand_in_for_the_live_record(tmp: Path) -> tuple[dict, Path]:
+    """A small record a child process will take for the operator's own.
+
+    `GRIDIRON_DB` and `GRIDIRON_STATE` name it as the record. The temp
+    directory is moved BESIDE it, because `db` treats anything under the temp
+    directory as scratch by definition and would never call it live. The two
+    verification flags are taken out of the child's environment, so whatever
+    refuses the open is what `verify.main` sets, never what this harness
+    passed down.
+    """
+    state, scratch = tmp / "state", tmp / "scratch"
+    state.mkdir()
+    scratch.mkdir()
+    stand_in = state / "gridiron.db"
+    conn = sqlite3.connect(str(stand_in))
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    conn.execute("INSERT INTO meta (key, value) VALUES ('kind', 'live')")
+    conn.commit()
+    conn.close()
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("GRIDIRON_VERIFYING", "PYTEST_CURRENT_TEST")}
+    env.update({"GRIDIRON_DB": str(stand_in), "GRIDIRON_STATE": str(state),
+                "TMPDIR": str(scratch), "TEMP": str(scratch),
+                "TMP": str(scratch), "PYTHONIOENCODING": "utf-8"})
+    return env, stand_in
+
+
+def _schema_of(path: Path) -> dict:
+    """Every object a database defines, read through a `mode=ro` handle."""
+    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        return {(r[0], r[1]): r[2] for r in conn.execute(
+            "SELECT type, name, sql FROM sqlite_master")}
+    finally:
+        conn.close()
+
+
+def _in_a_child_against_a_stand_in(tmp: Path, script: str,
+                                   first: Path) -> tuple[int, str, dict, dict]:
+    """Run `script` in a child whose live record is a stand-in.
+
+    Returns the exit code, everything printed, and the stand-in's schema
+    before and after the child ran.
+    """
+    import subprocess
+
+    env, stand_in = _a_stand_in_for_the_live_record(tmp)
+    before = _schema_of(stand_in)
+    done = subprocess.run(
+        [sys.executable, "-c", script, str(first), str(stand_in)],
+        cwd=str(REPO), env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=300)
+    return (done.returncode, done.stdout + done.stderr, before,
+            _schema_of(stand_in))
+
+
+def plant_a_gate_step_that_opens_the_live_record_writable() -> Result:
+    """A gate step opens the live record with `open_db` (ruling 2026-09-24).
+
+    What step 2 did on 24 September: `open_db` runs `db.init`, and `init`
+    runs the tree's own `schema.sql` against the file -- so a gate run from a
+    worktree put an unmerged trigger on the operator's record.
+    """
+    violation = "a gate step opens the live record with open_db"
+    guard = "verify.main sets GRIDIRON_VERIFYING, so db.connect refuses"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        code, out, before, after = _in_a_child_against_a_stand_in(
+            Path(tmp),
+            _GATE_ON_A_STAND_IN.replace(
+                "PLANTED_STEP", "db.open_db(config.DB_PATH).close()"),
+            REPO / "tools")
+    refused = [line for line in out.splitlines()
+               if "MAY NOT OPEN THE LIVE RECORD" in line]
+    if refused and code != 0 and after == before:
+        return Result(LAW_THE_GATE_READS_ONLY, violation, guard, True,
+                      refused[0].strip())
+    created = sorted(name for _, name in set(after) - set(before))
+    return Result(
+        LAW_THE_GATE_READS_ONLY, violation, guard, False,
+        f"NOT CAUGHT - the gate (exit {code}) let a step open the live record "
+        f"writable, and {len(created)} objects were created on it, among "
+        f"them {', '.join(created[:3]) or 'none'}. That is how an unmerged "
+        f"trigger reached the operator's record on 24 September."
+        + ("" if code == 0 else
+           " " + (out.strip().splitlines() or [""])[-1][:200]))
+
+
+def plant_a_schema_change_during_the_gate() -> Result:
+    """The live record's schema changes while the gate runs (2026-09-24).
+
+    Planted through a raw `sqlite3` handle, the way a writer the gate's own
+    environment cannot see would do it -- a scheduled task running unmerged
+    code, which is how item 1's draft reached the record on 23 September.
+    """
+    violation = "a table created on the live record while the gate runs"
+    guard = "verify.the_record_is_as_found"
+    step = ("conn = sqlite3.connect(str(config.DB_PATH)); conn.execute("
+            "'CREATE TABLE recommendation_voids (recommendation_id INTEGER "
+            "PRIMARY KEY, reason TEXT NOT NULL)'); conn.commit(); conn.close()")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        code, out, before, after = _in_a_child_against_a_stand_in(
+            Path(tmp), _GATE_ON_A_STAND_IN.replace("PLANTED_STEP", step),
+            REPO / "tools")
+    if ("table", "recommendation_voids") not in after:
+        return Result(LAW_THE_GATE_READS_ONLY, violation, guard, False,
+                      "the planting did not land; nothing was tested. "
+                      + (out.strip().splitlines() or [""])[-1][:200])
+    named = [line for line in out.splitlines()
+             if "recommendation_voids" in line and "FAIL" in line]
+    if named and code != 0:
+        return Result(LAW_THE_GATE_READS_ONLY, violation, guard, True,
+                      named[0].strip())
+    return Result(
+        LAW_THE_GATE_READS_ONLY, violation, guard, False,
+        f"NOT CAUGHT - a table appeared on the live record during the gate "
+        f"and the gate exited {code} without naming it: nothing compared "
+        f"the record's schema at the start with the schema at the end")
+
+
+def plant_a_write_through_the_read_handle_switched_back() -> Result:
+    """Turn `query_only` off on the read door, then write (2026-09-24).
+
+    `query_only` is a setting the holder of the handle can change. A handle
+    opened `mode=ro` is read-only at the file, and no PRAGMA undoes that.
+    """
+    violation = "query_only switched off on the live read handle, then a write"
+    guard = "db.read_the_live_record opens the file mode=ro"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        code, out, before, after = _in_a_child_against_a_stand_in(
+            Path(tmp), _WRITE_THROUGH_THE_READ_DOOR, REPO)
+    refused = [line for line in out.splitlines() if line.startswith("REFUSED")]
+    if refused and after == before:
+        return Result(LAW_THE_GATE_READS_ONLY, violation, guard, True,
+                      refused[0].strip())
+    return Result(
+        LAW_THE_GATE_READS_ONLY, violation, guard, False,
+        f"NOT CAUGHT - the read door carried a write once its holder turned "
+        f"query_only off (exit {code}), so the gate held a writable handle on "
+        f"the record the whole time. "
+        + (out.strip().splitlines() or [""])[-1][:200])
 
 
 def plant_a_deleted_tap() -> Result:
@@ -9431,6 +9639,11 @@ def main() -> int:
     results.append(plant_a_urllib_post_at_the_venue())
     results.append(plant_a_test_that_opens_the_live_record())
     results.append(plant_a_write_through_the_live_read_handle())
+    # THE GATE READS ONLY (operator ruling 2026-09-24): each runs in a child
+    # process against a stand-in for the live record, never the record.
+    results.append(plant_a_gate_step_that_opens_the_live_record_writable())
+    results.append(plant_a_schema_change_during_the_gate())
+    results.append(plant_a_write_through_the_read_handle_switched_back())
     results.append(plant_a_deleted_tap())
     results.append(plant_a_same_game_label_on_a_combo_card())
     results.append(plant_a_priced_same_game_package())
