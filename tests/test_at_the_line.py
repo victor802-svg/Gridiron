@@ -358,6 +358,11 @@ def test_advice_words_are_caught_wherever_the_record_composes_them():
     assert audit.tipster_faults_in_quoted_prose(_Prose("this is a lock"))
     assert audit.tipster_faults_in_quoted_prose(
         _Prose("the value of the run game showed")) == []
+    # EVERY WORD IS BOUND ON BOTH SIDES (2026-09-24): "lock" inside
+    # "body-clock" is not a tip, and "a lock" still is
+    assert audit.tipster_faults_in_quoted_prose(
+        _Prose("a 1pm body-clock start after three time zones")) == []
+    assert audit.tipster_faults_in_quoted_prose(_Prose("it is a lock, trust it"))
 
 
 class _Prose:

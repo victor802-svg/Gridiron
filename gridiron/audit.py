@@ -5291,8 +5291,11 @@ TIPSTER_WORDS: tuple[str, ...] = (
 
 
 def _word_scan(words: tuple[str, ...]) -> "re.Pattern[str]":
+    # GROUPED (2026-09-24). Without the group the two boundaries bound only the
+    # first word and the last: "lock" matched inside "body-clock", and the gate
+    # refused two reasoning lines about a west-coast team's 1pm start as tips.
     joined = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
-    return re.compile(rf"(?<![A-Za-z]){joined}(?![A-Za-z])", re.IGNORECASE)
+    return re.compile(rf"(?<![A-Za-z])(?:{joined})(?![A-Za-z])", re.IGNORECASE)
 
 
 _ADVICE_SCAN = _word_scan(ADVICE_WORDS)
