@@ -1391,7 +1391,7 @@ const Gridiron = (function () {
       half = pays * shrunk.reduce((a, b) => a * b, 1) - 1;
     }
     line(labels.line_half, perDollar(half));
-    line(labels.line_kalshi, words.kalshi_absent || '', null);
+    line(labels.line_kalshi, labels.not_listed || '', words.kalshi_absent);
     line(labels.line_floor, product > 0 ? num(1 / product, 2) + 'x' : ABSENT);
   }
 
@@ -3397,6 +3397,10 @@ const Gridiron = (function () {
       if (msg) msg.hidden = !home;
       greeting.hidden = !home || greeting.dataset.empty === 'true';
     }
+    // THE WHOLE GREETING GOES QUIET OFF-HOME, its countdown line included:
+    // that line sat under the Props tabs until the first capture showed it.
+    const countdown = document.getElementById('greet-countdown');
+    if (countdown) countdown.hidden = !home || !countdown.textContent;
     const settled = document.getElementById('greet-settled');
     if (settled) settled.hidden = !home;
   }

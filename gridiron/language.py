@@ -4325,6 +4325,7 @@ def board_labels() -> dict:
         "breakeven": "break-even",
         "venue": "venue line",
         "not_read": "not read yet",
+        "not_listed": "not listed",
         "alt": "Alt lines",
         "all": "All",
         "high_end": "high-end record",

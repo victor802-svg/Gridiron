@@ -209,3 +209,33 @@ def test_the_row_expands_in_place_to_every_question_on_the_game(page):
     page.click("#games-rows .game .game-head")
     page.wait_for_function("() => !document.querySelector('#games-rows .game .game-more').hidden", timeout=5000)
     assert page.get_attribute("#games-rows .game .game-head", "aria-expanded") == "true"
+
+
+def test_a_settled_pick_is_painted_solid_and_its_words_are_ink(page):
+    """THE FILL IS ON THE PAGE, not only in the payload. The first render of
+    this lost to the tile's own ground -- both rules one class deep, the
+    tile's declared later -- and no test saw it; a computed-style probe did."""
+    _open_games(page)
+    page.evaluate("document.querySelector('.week-more').open = true")
+    options = page.evaluate("[...document.querySelectorAll('#week-picker option')].map(o => o.value)")
+    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+        page.select_option("#week-picker", options[-1])
+    page.wait_for_selector("#games-rows .game.game-final", timeout=15000)
+    page.click("#games-rows .game .game-head")
+    page.wait_for_function("() => !document.querySelector('#games-rows .game .game-more').hidden", timeout=5000)
+    painted = page.evaluate("""() => {
+        const rgb = (h) => 'rgb(' + [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
+        const r = getComputedStyle(document.documentElement);
+        const win = rgb(r.getPropertyValue('--win').trim().toLowerCase());
+        const loss = rgb(r.getPropertyValue('--loss').trim().toLowerCase());
+        const ink = rgb(r.getPropertyValue('--ink').trim().toLowerCase());
+        return [...document.querySelectorAll('#games-rows .pick.sig-won, #games-rows .pick.sig-lost, #games-rows .q.sig-won, #games-rows .q.sig-lost')]
+            .map(e => ({ cls: e.className, bg: getComputedStyle(e).backgroundColor,
+                         line: getComputedStyle(e.querySelector('.pick-line, .q-line')).color,
+                         win, loss, ink }));
+    }""")
+    assert painted, "the settled slate painted no verdict"
+    for p in painted:
+        want = p["win"] if "sig-won" in p["cls"] else p["loss"]
+        assert p["bg"] == want, f"{p['cls']} is painted {p['bg']}, not its fill {want}"
+        assert p["line"] == p["ink"], f"the words on a fill are {p['line']}, not the ink"
