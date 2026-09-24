@@ -35,6 +35,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from gridiron import config, db  # noqa: E402
+from gridiron.market import recommend  # noqa: E402
 
 
 def spans(conn, sport: str) -> dict:
@@ -45,10 +46,13 @@ def spans(conn, sport: str) -> dict:
             "SELECT DISTINCT substr(created_utc, 1, 10) FROM at_the_line_claims"
             " WHERE sport = ?", (sport,))
     }
+    # THROUGH THE DOOR (ruling 1, 2026-09-24). A day whose only
+    # recommendations were withdrawn is a day nothing that stands cleared the
+    # bar; counting it as cleared would count a withdrawn recommendation.
     rec_days = {
         r[0] for r in conn.execute(
-            "SELECT DISTINCT substr(created_utc, 1, 10) FROM recommendations"
-            " WHERE sport = ?", (sport,))
+            "SELECT DISTINCT substr(r.created_utc, 1, 10) FROM recommendations r"
+            " WHERE r.sport = ?" + recommend.not_withdrawn(conn), (sport,))
     }
     out = {"sport": sport, "split_on": split, "spans": []}
     for name, days in (("before " + split, {d for d in claim_days if d < split}),

@@ -991,7 +991,7 @@ def test_a_resolved_pick_is_shown_on_results_not_on_picks(page):
         "#history-table tbody tr .verdict, #history-table tbody tr .result-chip",
         "els => els.map(e => e.textContent.trim())")
     assert verdicts, "Results lists no settled pick"
-    assert any(v in ("WIN", "LOSS", "VOID") for v in verdicts), verdicts
+    assert any(v in ("WIN", "LOSS", "WITHDRAWN") for v in verdicts), verdicts
 
 
 def test_the_greeting_strip_leads_the_page(page):
@@ -1132,7 +1132,8 @@ def test_the_result_reads_as_a_word_not_as_open(page):
     chips = page.eval_on_selector_all(
         "#history-table tbody .result-chip", "els => els.map(e => e.textContent)")
     assert chips
-    assert all(c in ("PENDING", "WIN", "LOSS", "VOID") for c in chips), chips
+    # WITHDRAWN, not VOID, from 2026-09-24 (operator ruling 1).
+    assert all(c in ("PENDING", "WIN", "LOSS", "WITHDRAWN") for c in chips), chips
     assert "open" not in " ".join(chips).lower()
 
 

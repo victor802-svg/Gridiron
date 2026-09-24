@@ -610,11 +610,54 @@ def chance_clause(item: dict) -> str:
         f"its own words here; it does not inherit the spread's.")
 
 
+#: WHAT A VOIDED FORECAST IS CALLED ON THE PAGE (operator ruling 1,
+#: 2026-09-24): "the page shows them as withdrawn in those words, never
+#: deleted." One word for every void, whatever voided it -- a forecast
+#: published from a fit that then failed its holdout, or a question that was
+#: never answered -- because a reader who meets two words for one state
+#: assumes two states. It said VOID until this date.
+WITHDRAWN_WORD = "WITHDRAWN"
+
+
 def result_word(item: dict) -> str:
-    """PENDING / WIN / LOSS / VOID. "open" is not a word anybody says."""
+    """PENDING / WIN / LOSS / WITHDRAWN. "open" is not a word anybody says."""
     if item.get("voided"):
-        return "VOID"
+        return WITHDRAWN_WORD
     return RESULT_WORDS.get(item.get("outcome"), "PENDING")
+
+
+def withdrawn_words(reason: str | None) -> str | None:
+    """The reason beside the word, so a withdrawn row says why on its face.
+
+    A hover is not an answer on a phone, and "withdrawn" alone invites the
+    worst guess about what happened. None for a row that is not withdrawn.
+    """
+    if not reason:
+        return None
+    return f"withdrawn: {plain_reason(reason)}"
+
+
+#: A game's key as the resolver wrote it into a reason: `mlb_824785`, or the
+#: football form `2025_08_DAL_SEA`. The row it sits beside already names the
+#: game in words.
+_GAME_KEY = _re.compile(
+    r"\b(?:(?:nfl|mlb|nba|cfb|ufc)_\d+|\d{4}_\d{2}_[A-Z]{2,4}_[A-Z]{2,4})\b")
+_CODE_WORD = _re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+
+
+def plain_reason(reason: str) -> str:
+    """A stored void reason in plain words, AT RENDER TIME, NEVER BY REWRITING.
+
+    MEASURED 2026-09-24, the day the reason moved out of a hover and onto the
+    page: 6 of the 38 distinct reasons in the live record carry an identifier
+    -- a game key (`mlb_824785 finished level`) or a market's code name
+    (`Tua Tagovailoa passing_yards has no box score`). A void is append-only,
+    so the row keeps what the resolver wrote and the reader is shown "the game
+    finished level" and "passing yards", the same door `humanise_reasoning`
+    is for a forecaster's prose.
+    """
+    text = _GAME_KEY.sub("the game", reason.strip())
+    return _CODE_WORD.sub(lambda m: humanise(m.group(0)), text)
 
 
 #: WHAT A SPORT CALLS ITS OWN MARKETS. A handicap is a "point spread" in
@@ -1786,7 +1829,8 @@ def sport_record_detail(label: str, wins: int, losses: int, settled: int,
     if settled:
         parts.append(f"{wins} right, {losses} wrong")
     if voided:
-        parts.append(f"{voided} void")
+        # "withdrawn" from 2026-09-24, the word every void now carries.
+        parts.append(f"{voided} withdrawn")
     return " · ".join(parts)
 
 
@@ -1905,14 +1949,15 @@ def running_total_line(home_score, away_score, line, side: str | None) -> str | 
             f"{side or 'over'} {_number(line)}")
 
 
-#: What a settled tile says about how the forecast did. VOID is not a verdict
-#: about the model -- the question was never answered -- so it is named
-#: separately rather than folded into a loss.
+#: What a settled tile says about how the forecast did. WITHDRAWN (VOID until
+#: 2026-09-24) is not a verdict about the model -- the forecast was taken back
+#: or the question never answered -- so it is named separately rather than
+#: folded into a loss.
 VERDICT_WORDS = {1: "WIN", 0: "LOSS", None: ""}
 
 
 def verdict_word(outcome, voided: bool = False) -> str:
-    return "VOID" if voided else VERDICT_WORDS.get(outcome, "")
+    return WITHDRAWN_WORD if voided else VERDICT_WORDS.get(outcome, "")
 
 
 #: The three states a tile can be in. Declared so the renderer branches on a
@@ -2638,11 +2683,12 @@ def least_tested_tier_line(tier: str, settled: int, gate: int) -> str | None:
 
 
 def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
-    """"Wednesday 2 September - 5 right, 2 wrong, 1 void".
+    """"Wednesday 2 September - 5 right, 2 wrong, 1 withdrawn".
 
     THE WHOLE DAY IN ONE SENTENCE, because the square shows "5-2" and a
-    reader hovering it deserves the rest -- particularly the voids, which the
-    square deliberately does not fold into either number.
+    reader hovering it deserves the rest -- particularly the withdrawn
+    forecasts (the voids), which the square deliberately does not fold into
+    either number. "withdrawn" from 2026-09-24, the word every void carries.
     """
     when = date_words_from_iso(day) or day
     if not (won or lost or void):
@@ -2651,14 +2697,15 @@ def calendar_day_line(day: str, won: int, lost: int, void: int) -> str:
     if won or lost:
         parts.append(f"{won} right, {lost} wrong")
     if void:
-        parts.append(f"{void} void" if void == 1 else f"{void} void")
+        parts.append(f"{void} withdrawn")
     return f"{when} - " + ", ".join(parts)
 
 
 def calendar_note() -> str:
     """What the colours mean, said once under the calendar."""
     return ("Green when more went right than wrong that day, red when fewer, "
-            "grey when even. Voids are counted separately and are neither: a "
+            "grey when even. Withdrawn forecasts are counted separately and "
+            "are neither: a forecast taken back is not a result, and a "
             "question that was never answered is not a loss.")
 
 
@@ -3300,6 +3347,25 @@ def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
         line += (f" · {unaccounted} more closed before 23 September on their "
                  f"own price and have not been worked out again")
     return line
+
+
+def withdrawn_recommendations_line(n: int, reasons: list[str | None]) -> str:
+    """The recommendations the closing line does not count, and why.
+
+    OPERATOR RULING 1, 2026-09-24: withdrawn recommendations are shown "as
+    withdrawn in those words, never deleted", and never counted. Said beside
+    the closing line rather than inside it, with every distinct reason once,
+    so a reader can see what was taken back without the record pretending it
+    was never said.
+    """
+    said = []
+    for reason in reasons:
+        text = plain_reason(reason) if reason else ""
+        if text and text not in said:
+            said.append(text)
+    head = ("1 recommendation withdrawn and never counted" if n == 1 else
+            f"{n} recommendations withdrawn and never counted")
+    return head + (": " + "; and ".join(said) if said else "")
 
 
 def clv_finding_line(mean_cents: float, n: int) -> str:

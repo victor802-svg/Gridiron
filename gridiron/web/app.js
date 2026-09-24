@@ -392,7 +392,7 @@ const Gridiron = (function () {
     head.appendChild(el('div', '', curve.largest_gap));
     head.appendChild(el('div', 'sub',
       marketLabel(market) + ', ' + predictor + '. ' + int(curve.n) + ' resolved' +
-      (curve.voided ? ', ' + int(curve.voided) + ' void' : '') +
+      (curve.voided ? ', ' + int(curve.voided) + ' withdrawn' : '') +
       '. The sentence above always names the largest gap, never the best bucket.'));
 
     // These moved to the Factors page (R1), so they are not guaranteed to be
@@ -494,7 +494,7 @@ const Gridiron = (function () {
     const wrap = el('div', 'table-scroll');
     const t = el('table', 'grid');
     table(t,
-      [{ label: 'Category' }, { label: 'N' }, { label: 'Void' }, { label: 'Brier' },
+      [{ label: 'Category' }, { label: 'N' }, { label: 'Withdrawn' }, { label: 'Brier' },
        { label: 'Log loss' }, { label: 'Hit rate' }],
       sc.categories.map(c => {
         requireN(c.score, 'category ' + c.category);
@@ -708,6 +708,16 @@ const Gridiron = (function () {
         if (entry.finding) row.appendChild(el('div', 'gate-why', entry.finding));
         clv.appendChild(row);
       });
+      // WITHDRAWN RECOMMENDATIONS, NAMED AND NEVER COUNTED (ruling 1,
+      // 2026-09-24). Beside the closing line, never inside it.
+      const gone = line.withdrawn_line;
+      if (gone) {
+        requireN(gone, 'the withdrawn recommendations');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', gone.label));
+        row.appendChild(el('div', 'gate-why', gone.words));
+        clv.appendChild(row);
+      }
     }
 
     if (priced) {
@@ -1763,7 +1773,7 @@ const Gridiron = (function () {
   }
 
   function outcomeStamp(card) {
-    if (card.voided) return el('span', 'outcome-stamp void', 'void');
+    if (card.voided) return el('span', 'outcome-stamp void', 'withdrawn');
     if (card.outcome === 1) return el('span', 'outcome-stamp win', 'correct');
     if (card.outcome === 0) return el('span', 'outcome-stamp loss', 'wrong');
     return null;
@@ -2901,7 +2911,7 @@ const Gridiron = (function () {
     return p.toString();
   }
 
-  // PENDING / WIN / LOSS / VOID, in the card language. "open" is not a word
+  // PENDING / WIN / LOSS / WITHDRAWN, in the card language. "open" is not a word
   // anybody says about a forecast that has not happened yet.
   // "receiving_yards / statistical" -> "receiving yards, statistical"
   // THE SERVER'S WORDS, never the key (audit 2026-09-05). Splitting the
@@ -2919,11 +2929,19 @@ const Gridiron = (function () {
       || String(name).replace(/_/g, ' ');
   }
 
+  // WITHDRAWN, AND WHY, ON ITS FACE (operator ruling 1, 2026-09-24). A void
+  // read VOID with its reason in a hover, which a phone never shows; the
+  // ruling says the page shows a voided forecast "as withdrawn in those
+  // words, never deleted". The word and the reason are the server's.
   function resultChip(item) {
     const word = item.result || 'PENDING';
     const chip = el('span', 'result-chip ' + word.toLowerCase(), word);
-    if (word === 'VOID' && item.void_reason) chip.title = item.void_reason;
-    return chip;
+    if (!item.withdrawn_words) return chip;
+    chip.title = item.withdrawn_words;
+    const cell = el('span', 'result-withdrawn');
+    cell.appendChild(chip);
+    cell.appendChild(el('span', 'withdrawn-why', item.withdrawn_words));
+    return cell;
   }
 
   // THE SEASON AS A SHAPE (GRIDIRON_13 P2).
@@ -2980,7 +2998,7 @@ const Gridiron = (function () {
       cell.title = d.words || '';
       if (d.void) {
         const dot = el('span', 'voids');
-        dot.title = d.void + ' void';
+        dot.title = d.void + ' withdrawn';
         cell.appendChild(dot);
       }
       if (d.settled) {

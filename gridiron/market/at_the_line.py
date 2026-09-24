@@ -594,8 +594,17 @@ def standing_claim_clause(alias: str = "c") -> str:
     look -- about four. Anything that counts claim ROWS as a sample size would
     then call one question four, and a gate would clear on duplicates, which
     LAW 4 forbids. Every count of claims goes through here.
+
+    AND NOT ON A VOIDED FORECAST (operator ruling 1, 2026-09-24). A claim is
+    the forecast read at the venue's line, so a forecast withdrawn is a claim
+    withdrawn. `resolve_claims` settles claims from the score, not from the
+    forecast, so until this date a claim on a voided forecast would have
+    settled and been counted in the at-the-line record the night its game
+    finished: 58 claims on 29 of the 31 forecasts that ruling voids.
     """
-    return (f" {alias}.id = (SELECT c2.id FROM at_the_line_claims c2"
+    return (f" NOT EXISTS (SELECT 1 FROM prediction_voids vc"
+            f"             WHERE vc.prediction_id = {alias}.prediction_id) AND"
+            f" {alias}.id = (SELECT c2.id FROM at_the_line_claims c2"
             f"   JOIN games g2 ON g2.id = c2.game_id"
             f"  WHERE c2.prediction_id = {alias}.prediction_id"
             f"    AND (g2.kickoff_utc IS NULL"

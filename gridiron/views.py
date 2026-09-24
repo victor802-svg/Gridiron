@@ -421,8 +421,9 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         model were standing behind it. Forty-seven voided NBA rows -- written
         52 days before tip, then voided for exactly that reason -- were
         rendering as live forecasts on This week, twenty of them additionally
-        showing the opposite side (K1). They belong in History with a VOID chip
-        and their reason, which is where they now are and the only place.
+        showing the opposite side (K1). They belong in History with a chip
+        and their reason, which is where they now are and the only place. The
+        chip reads WITHDRAWN from 2026-09-24 (operator ruling 1); it read VOID.
         """
         if w is None:
             return []
@@ -1076,16 +1077,21 @@ def _least_tested_line(conn: sqlite3.Connection, sport: str) -> str | None:
     what stands behind the band, not how many picks are in it tonight.
     """
     tier = config.PICKS_DEFAULT_TIER
+    # A VOID IS NOT SETTLED (ruling 1, 2026-09-24), even one written after its
+    # game finished.
+    unvoided = ("   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+                "                   WHERE v.prediction_id = p.id)")
     settled = conn.execute(
-        "SELECT COUNT(*) FROM predictions"
-        " WHERE sport = ? AND resolved_utc IS NOT NULL"
-        "   AND calibrated_prob IS NOT NULL"
-        "   AND calibrated_prob >= ?",
+        "SELECT COUNT(*) FROM predictions p"
+        " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"
+        "   AND p.calibrated_prob IS NOT NULL"
+        "   AND p.calibrated_prob >= ?" + unvoided,
         (sport, config.PROPS_MIN_CLAIM)).fetchone()[0]
     if not settled:
         settled = conn.execute(
-            "SELECT COUNT(*) FROM predictions"
-            " WHERE sport = ? AND resolved_utc IS NOT NULL AND model_prob >= ?",
+            "SELECT COUNT(*) FROM predictions p"
+            " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"
+            "   AND p.model_prob >= ?" + unvoided,
             (sport, config.PROPS_MIN_CLAIM)).fetchone()[0]
     return language.least_tested_tier_line(
         tier, settled, calibration.TIER_MIN_SETTLED)
@@ -2252,6 +2258,8 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
     operator marked and when, which is the comparison `calibration
     .taken_comparison` exists to make.
     """
+    from .market import recommend as _recommend
+
     by_id = {c["prediction_id"]: c for c in cards}
     # A RETRACTED TAP IS NOT ON THE LIST. Both rows stay in the record -- the
     # tap and the retraction -- and the running list shows what currently
@@ -2273,10 +2281,14 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
         # Later recommendations for the same question are ignored on purpose:
         # a number that moved afterwards would make this a scoreboard, and it
         # is a record of what was chosen.
+        # THROUGH THE DOOR (2026-09-24): a withdrawn recommendation's edge is
+        # not the edge the pick was taken at. The tap stands -- it was his
+        # choice -- and says it had none on record.
         edge = conn.execute(
-            "SELECT edge_cents FROM recommendations"
-            " WHERE prediction_id = ? AND created_utc <= ?"
-            " ORDER BY created_utc DESC, id DESC LIMIT 1",
+            "SELECT r.edge_cents FROM recommendations r"
+            " WHERE r.prediction_id = ? AND r.created_utc <= ?"
+            + _recommend.not_withdrawn(conn) +
+            " ORDER BY r.created_utc DESC, r.id DESC LIMIT 1",
             (row["prediction_id"], row["taken_utc"])).fetchone()
         entries.append({
             "prediction_id": row["prediction_id"],
@@ -2878,10 +2890,14 @@ def login_glance(conn: sqlite3.Connection) -> dict:
     """
     out = []
     for sport in config.SPORTS:
+        # A VOID IS NOT A WIN OR A LOSS (ruling 1, 2026-09-24), even one
+        # written after its game settled.
         row = conn.execute(
             "SELECT COUNT(*) AS settled,"
-            "       COALESCE(SUM(outcome), 0) AS won"
-            "  FROM predictions WHERE sport = ? AND resolved_utc IS NOT NULL",
+            "       COALESCE(SUM(p.outcome), 0) AS won"
+            "  FROM predictions p WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"
+            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                   WHERE v.prediction_id = p.id)",
             (sport,)).fetchone()
         settled = row["settled"] or 0
         won = row["won"] or 0
@@ -3179,7 +3195,9 @@ def history(
         where.append("p.outcome = 1")
     elif outcome == "wrong":
         where.append("p.outcome = 0")
-    elif outcome == "void":
+    elif outcome in ("withdrawn", "void"):
+        # "withdrawn" is the page's word from 2026-09-24; "void" is still
+        # answered, so a link written before then keeps working.
         where.append(
             "EXISTS (SELECT 1 FROM prediction_voids v WHERE v.prediction_id = p.id)"
         )
@@ -3276,6 +3294,9 @@ def history(
         # came to have two columns both called "Market".
         item["phrase"] = language.phrase(item)
         item["result"] = language.result_word(item)
+        # WITHDRAWN, WITH ITS REASON ON ITS FACE (ruling 1, 2026-09-24). The
+        # reason sat only in a hover until then, which a phone never shows.
+        item["withdrawn_words"] = language.withdrawn_words(item["void_reason"])
         item["sport"] = sport
         item["market_label"] = language.market_label(item)
         item["player"] = language.strip_market_suffix(item["subject"], item["market"])
@@ -3299,7 +3320,15 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
         return None
     snap = lines.snapshots_for(conn, [prediction_id]).get(prediction_id) or {}
     payload = json.loads(r["factors_json"] or "{}")
+    # A WITHDRAWN FORECAST SAYS SO HERE TOO (ruling 1, 2026-09-24). Until this
+    # date the detail of a voided prediction read exactly like a pending one.
+    void_reason = _voids_for(conn, [prediction_id]).get(prediction_id)
     return {
+        "voided": void_reason is not None,
+        "void_reason": void_reason,
+        "withdrawn_words": language.withdrawn_words(void_reason),
+        "result": language.result_word({"voided": void_reason is not None,
+                                        "outcome": r["outcome"]}),
         "prediction_id": r["id"],
         "sport": r["sport"],
         "created_utc": r["created_utc"],
@@ -3383,6 +3412,10 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     calibration.assert_every_figure_has_n(payload)
     # EVERY GATE ON THIS PAGE COUNTS, and none of them renders a share (P1).
     audit.check_progress_is_counted(payload)
+    # AND NO WITHDRAWN RECOMMENDATION IS IN THE CLOSING LINE (ruling 1,
+    # 2026-09-24), recounted here without the door the report used, so a
+    # counted withdrawal cannot reach the API.
+    audit.check_no_withdrawn_recommendation_counted(conn, payload["closing_line"])
     calibration.assert_single_sport(payload, sport)
     return payload
 
@@ -3468,10 +3501,14 @@ def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
         latest = versions[-1] if versions else None
         # HOW CLOSE THIS CATEGORY IS to its first correction (P1). The same
         # component the tier rows use: counts, an N, and no percentage.
+        # A VOID NEVER COUNTS TOWARD A GATE (ruling 1, 2026-09-24), including
+        # one written after its game settled, which a hand-written void can be.
         settled = conn.execute(
-            "SELECT COUNT(*) FROM predictions WHERE sport = ?"
-            "   AND market_type = ? AND predictor = ?"
-            "   AND resolved_utc IS NOT NULL",
+            "SELECT COUNT(*) FROM predictions p WHERE p.sport = ?"
+            "   AND p.market_type = ? AND p.predictor = ?"
+            "   AND p.resolved_utc IS NOT NULL"
+            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                   WHERE v.prediction_id = p.id)",
             (sport, market_type, forecaster)).fetchone()[0]
         out.append({
             "market_type": market_type,

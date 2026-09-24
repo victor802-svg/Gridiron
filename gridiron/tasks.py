@@ -550,7 +550,7 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     drift, and storing it would make the count of pairs disagree with the count
     of rows.
     """
-    from .market import espn, lines
+    from .market import espn, lines, recommend
 
     now = db.utcnow()
     horizon = _plus_hours(now, NEAR_START_HOURS)
@@ -588,12 +588,16 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # And the status as well, the same pair of checks `at_the_line.evaluate`
     # makes: a game the record shows under way before its listed time (a
     # doubleheader's second game) is priced off the game, not before it.
+    # A WITHDRAWN RECOMMENDATION IS NOT READ AGAIN (ruling 1, 2026-09-24): its
+    # close is never counted, so a look at its contract on every firing would
+    # spend a venue read and write a claim on a forecast nobody stands behind.
     recs = [r["prediction_id"] for r in conn.execute(
         "SELECT DISTINCT r.prediction_id FROM recommendations r"
         " JOIN games g ON g.id = r.game_id"
         " WHERE r.closed_utc IS NULL"
         "   AND (g.status IS NULL OR g.status IN ('scheduled', 'pre'))"
-        "   AND g.kickoff_utc > ? AND g.kickoff_utc <= ?",
+        "   AND g.kickoff_utc > ? AND g.kickoff_utc <= ?"
+        + recommend.not_withdrawn(conn),
         (now, horizon),
     )]
     firsts = [pid for pid in drift if not conn.execute(

@@ -945,6 +945,20 @@ BEGIN
         'GRIDIRON LAW 3: a void is terminal and its reason cannot be rewritten');
 END;
 
+-- AND NEVER DELETED (operator ruling 1, 2026-09-24: "one append-only void row
+-- each"). The table was called append-only from the day it was made, and the
+-- enforcement table said so, while nothing but the update above was refused:
+-- a DELETE would have put a voided forecast back into every count. Found when
+-- that ruling voided 31 forecasts by hand, which is the first time a void was
+-- ever written by anything but the resolver.
+CREATE TRIGGER IF NOT EXISTS voids_no_delete
+BEFORE DELETE ON prediction_voids
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a void is terminal and is never deleted; the forecast '
+        || 'it withdrew stays withdrawn');
+END;
+
 CREATE TRIGGER IF NOT EXISTS voided_prediction_stays_void
 BEFORE UPDATE OF resolved_utc, outcome ON predictions
 FOR EACH ROW
@@ -1906,6 +1920,53 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON: a close cites the read its own recommendation was priced '
         || 'from, and its closing-line value is the difference between them');
+END;
+
+-- ---------------------------------------------------------------------------
+-- A RECOMMENDATION WITHDRAWN (operator ruling 1, 2026-09-24).
+--
+-- THE CASE THIS EXISTS FOR. Recommendations 62, 63, 64 and 66 were published
+-- at 05:36Z on 24 September from fits 91-94, trained minutes earlier on the
+-- live record and never checked against a holdout -- which they then failed.
+-- The ruling voids them. They stand in the record, because they were made;
+-- they are never counted in the closing line, a calibration curve, a
+-- correction, readiness or any gate; and the page shows them as withdrawn,
+-- in that word.
+--
+-- A COMPANION ROW, the shape `prediction_voids` and `picks_retracted` already
+-- have: the recommendation itself is untouched, and this says that it no
+-- longer stands, when, and why -- ten characters of reason at least, because
+-- a withdrawal with no reason is a delete with extra steps. Terminal and
+-- append-only, like both of those: a withdrawal that could be edited or
+-- removed would be a record of the last edit rather than of what happened.
+--
+-- ONE DOOR READS IT. `market.recommend.not_withdrawn` is the clause every
+-- reader that counts a recommendation or its close goes through; it leaves
+-- out a row named here AND a row whose prediction is in `prediction_voids`.
+-- `audit.check_every_recommendation_reader_uses_the_door` refuses a reader
+-- that goes round it. (The two words that open a declaration may not appear
+-- in a comment in this file: at_the_line._schema_statements scans the text.)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recommendation_voids (
+    recommendation_id INTEGER PRIMARY KEY REFERENCES recommendations (id),
+    voided_utc        TEXT NOT NULL,
+    reason            TEXT NOT NULL CHECK (length(trim(reason)) >= 10)
+);
+
+CREATE TRIGGER IF NOT EXISTS recommendation_voids_no_update
+BEFORE UPDATE ON recommendation_voids
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a withdrawal is terminal and its reason cannot be '
+        || 'rewritten');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendation_voids_no_delete
+BEFORE DELETE ON recommendation_voids
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a withdrawal is never deleted. The recommendation was '
+        || 'made and was taken back, and the record keeps both');
 END;
 
 -- ---------------------------------------------------------------------------

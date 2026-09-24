@@ -398,6 +398,14 @@ def step_2_guards() -> bool:
         # being played.
         ("the live poll keeps asking, and never asks for a price",
          audit.check_the_live_poll_keeps_asking),
+        # OPERATOR RULING 1 (2026-09-24). A withdrawn recommendation is never
+        # counted: every reader of the table goes through the one door, and
+        # the live record's closing line is recounted without it, per sport.
+        ("every reader of a recommendation goes through the door",
+         audit.check_every_recommendation_reader_uses_the_door),
+        ("no withdrawn recommendation is counted",
+         lambda: [audit.check_no_withdrawn_recommendation_counted(
+             _live_db_conn(), sport=sport) for sport in _config().SPORTS]),
     ):
         try:
             fn()

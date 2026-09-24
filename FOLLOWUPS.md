@@ -1177,3 +1177,83 @@ byte-identical, so the live copies are exactly what ships. The stronger checks
 went into a new trigger, because `CREATE TRIGGER IF NOT EXISTS` would never
 replace one the live record already holds. This is why the worktree rule
 (ruled 2026-09-23) exists.
+
+## Operator ruling 1 of 2026-09-24 — the voids *(GRIDIRON_REPAIR item 2)*
+
+### VOIDED: 31 forecasts and 4 recommendations published from fits 91-94 *(ruled 2026-09-24)*
+
+Fits 91-94 (fs5) were trained on the live record at 05:16-05:17Z on 24
+September, and the logon catch-up at 05:32-05:36Z published from them before
+the hold existed. The fits then failed their holdout. Voided, one append-only
+row each, reason exactly "published from an unvalidated fit before the hold;
+fit subsequently failed holdout":
+
+- **31 statistical forecasts** (`prediction_voids`): 2225, 2228, 2230, 2233,
+  2235, 2238, 2240, 2243, 2245, 2248, 2251, 2254, 2256, 2259, 2261, 2264,
+  2266, 2269, 2271, 2274, 2276, 2279, 2281, 2284, 2287, 2289, 2292, 2294,
+  2297, 2299, 2301 -- NFL spread 13, NFL moneyline 16, NCAAF spread 1, NCAAF
+  moneyline 1. Selected by the ruling's criteria (created at or after
+  05:16Z, NFL or NCAAF, spread or moneyline, statistical, fs5) and checked
+  against those ids.
+- **4 recommendations** (`recommendation_voids`, new): 62, 63, 64 and 66, all
+  NFL spread, all on those forecasts.
+
+Written by `tools/void_fs5.py --write` once this commit is released; the dry
+run on 2026-09-24 listed exactly these and nothing else, and the tool refuses
+to write if the record has drifted from them by one row. NFL moneyline carries
+the same reason as the rest: under ruling 3 of the three decisions (ties go to
+the incumbent) it failed its holdout too, so "not yet validated" was not used.
+
+**What stands.** Recommendation 65 (an NFL total, reasoning forecaster, fs2)
+is not voided: it was not written from a fit (ruling 1 of the three
+decisions). The **31 reasoning-forecaster rows** written in the same runs are
+not voided either: their prompts were rebuilt and read one by one, and none
+carried fit output (ruling 2). They stand in the record and on the page. They
+exist only because fits 91-94 existed -- the catch-up that wrote them was the
+one those fits set off -- and a reader of the NFL and NCAAF reasoning curves
+should know that 31 of their rows came from that run.
+
+**Found while building it, and fixed in the same commit** (each proved on the
+unfixed code first):
+
+- Every read of `recommendations` counted straight off the table -- seven
+  statements in six functions, including the closing line and the kill
+  criterion behind it. A recommendation made on a voided forecast was counted
+  in the closing line at +6.0c on the unfixed code. Now one door,
+  `recommend.not_withdrawn`, with a source scan and a recount as guards.
+- `calibration.standing_row_clause` let a voided row that had SETTLED be
+  graded, and let it displace an earlier forecast of the same question that
+  still stands. The resolver never produces that case (a trigger refuses to
+  settle a voided row); a hand-written void can, if its game finishes first.
+- `at_the_line.standing_claim_clause` counted claims on voided forecasts:
+  `resolve_claims` settles claims from the score, so the 58 claims on 29 of
+  the 31 would have entered the at-the-line record the night their games
+  finished.
+- `prediction_voids` refused an edit and not a delete, while this file and
+  the enforcement table both called it append-only.
+
+### Readers that still rely on a void coming before the settle *(open, measured 2026-09-24)*
+
+Four counts of settled forecasts outside the standing clause were given an
+explicit void exclusion in this commit (the early-versus-final pairs, the
+correction gate's settled count, the least-tested tier line, the login page's
+record). What remains relies on the trigger that refuses to settle a voided
+row: `resolve.summary`'s resolved count, and the History page's "correct" and
+"wrong" filters, which would list a row voided after it settled (its chip
+still reads WITHDRAWN). Harmless for every void the resolver writes, and for
+the ruling's 31 if they are written before tonight's games settle
+(401869941 at 23:30Z, Atlanta at Green Bay at 00:15Z on the 25th); the tool
+names any that settled first. **What would settle it:** route every count of
+settled forecasts through `calibration.standing_row_clause`, or an audit scan
+that refuses `resolved_utc IS NOT NULL` over `predictions` without it, with a
+planting.
+
+### The rail drops a tap on a withdrawn forecast *(open, recorded 2026-09-24)*
+
+The ruling keeps a tap on a voided forecast ("it is the operator's choice")
+and takes it out of the model's curves, which `calibration.taken_comparison`
+now does through the standing clause. But the running list beside the slate is
+built from the slate's cards, and a voided forecast is not a card, so such a
+tap is kept in `picks_taken` and not listed. `picks_taken` holds no single-pick
+tap today (one package tap), so nothing is hidden now. **What would settle
+it:** the rail lists a tap whose forecast was withdrawn, saying so.

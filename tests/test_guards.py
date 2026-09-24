@@ -485,6 +485,8 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_held_market_that_is_forecast_anyway",
         "plant_a_held_market_the_strip_leaves_off",
         "plant_a_close_that_cites_its_own_pricing_read",
+        "plant_a_withdrawn_recommendation_in_the_closing_line",
+        "plant_a_recommendation_reader_that_goes_round_the_door",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"
@@ -830,7 +832,8 @@ def test_a_calendar_day_states_its_voids_in_words():
     from gridiron import language
 
     line = language.calendar_day_line("2026-08-31", 14, 4, 4)
-    assert "14 right, 4 wrong" in line and "4 void" in line
+    # "withdrawn" from 2026-09-24 (operator ruling 1): the page's word for a void.
+    assert "14 right, 4 wrong" in line and "4 withdrawn" in line
     assert "Monday 31 August" in line
     quiet = language.calendar_day_line("2026-08-31", 0, 0, 0)
     assert "nothing settled" in quiet

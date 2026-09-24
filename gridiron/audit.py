@@ -6671,3 +6671,212 @@ LIVE_POLL_FIXTURE_POSITIVE = """
     tick();
   }
 """
+
+
+# ---------------------------------------------------------------------------
+# A WITHDRAWN RECOMMENDATION IS NEVER COUNTED (operator ruling 1, 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# "Voided rows never count in CLV, calibration, correction, readiness, or any
+# gate ... Planting: a voided recommendation counted anywhere fails by name."
+#
+# Recommendations 62, 63, 64 and 66 were published from fits 91-94 before the
+# hold and voided by that ruling. On the day it arrived seven statements in
+# six functions read `recommendations` straight off the table, and every one
+# would have treated those four as standing without a sound: nothing in the
+# record said a recommendation could be withdrawn, so nothing asked.
+#
+# TWO GUARDS, because "anywhere" has two halves:
+#
+#   * THE SOURCE. Every SQL string in the package and its tools that reads
+#     FROM or JOINs `recommendations` sits in a statement that also calls the
+#     door, `market.recommend.not_withdrawn`. A new reader that goes round it
+#     is named by file, function and line before it can count anything.
+#   * THE ARITHMETIC. The closing line -- the one figure on the page made of
+#     recommendations, and the one the kill criterion reads -- is recounted
+#     WITHOUT the door and compared. A door that stopped excluding, or a
+#     report that stopped using it, shows up as a difference, and the
+#     withdrawn recommendations that make it up are named by id.
+
+#: The door, by name. A call to it in the same statement is what makes a read
+#: of the table lawful.
+RECOMMENDATION_DOOR = "not_withdrawn"
+
+#: What a read of the table looks like in SQL: FROM or JOIN it, or name it
+#: after a comma in a FROM list. Case-insensitive, because SQLite is.
+_READS_RECOMMENDATIONS = re.compile(
+    r"(?:\b(?:FROM|JOIN)\s+|,\s*)recommendations\b", re.I)
+
+#: The readers allowed round the door, each with its reason. Keyed by the
+#: file's path from the repository root and the function it is in.
+RECOMMENDATION_DOOR_EXEMPT = {
+    "gridiron/market/recommend.py:withdrawn":
+        "the other side of the door: it lists what the door leaves out, so "
+        "the page can show a withdrawn recommendation as withdrawn",
+    "gridiron/audit.py:withdrawn_counted_faults":
+        "the recount: it must not share the door it is checking, or a broken "
+        "door would agree with itself",
+    "tools/void_fs5.py:select_tainted":
+        "the tool that writes the withdrawals reads every recommendation on "
+        "the tainted forecasts, withdrawn or not, to prove the set is exactly "
+        "the four the ruling names",
+}
+
+
+def _door_scan_files(root: Path) -> list[tuple[str, Path]]:
+    """(path from the repository root, file) for the package and its tools.
+
+    `tools/guards/` is not read: the plantings break the rule on purpose, in
+    a copy. A package planted into a scratch directory has no tools beside
+    it, and the scan reads what is there.
+    """
+    base = root.parent
+    files = [(p.relative_to(base).as_posix(), p) for p in sorted(root.rglob("*.py"))
+             if "__pycache__" not in p.parts]
+    tools = base / "tools"
+    if tools.is_dir():
+        files += [(p.relative_to(base).as_posix(), p)
+                  for p in sorted(tools.glob("*.py"))]
+    return files
+
+
+def recommendation_door_faults(root: Path | None = None) -> list[str]:
+    """Every read of `recommendations` in a statement that does not call the
+    door, named by file, function and line."""
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    faults: list[str] = []
+    for where, path in _door_scan_files(root):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        prose = _docstring_nodes(tree)
+        parents: dict[int, ast.AST] = {}
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                parents[id(child)] = node
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+                continue
+            if id(node) in prose or not _READS_RECOMMENDATIONS.search(node.value):
+                continue
+            statement, function = node, None
+            while statement is not None and not isinstance(statement, ast.stmt):
+                statement = parents.get(id(statement))
+            outer = statement
+            while outer is not None:
+                if isinstance(outer, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    function = outer.name
+                    break
+                outer = parents.get(id(outer))
+            if f"{where}:{function}" in RECOMMENDATION_DOOR_EXEMPT:
+                continue
+            if statement is not None and any(
+                    isinstance(n, ast.Call) and (
+                        (isinstance(n.func, ast.Name)
+                         and n.func.id == RECOMMENDATION_DOOR)
+                        or (isinstance(n.func, ast.Attribute)
+                            and n.func.attr == RECOMMENDATION_DOOR))
+                    for n in ast.walk(statement)):
+                continue
+            faults.append(
+                f"{where}:{node.lineno} ({function or 'module level'}) reads "
+                f"`recommendations` without the door. A withdrawn "
+                f"recommendation is counted there. Add "
+                f"`recommend.{RECOMMENDATION_DOOR}(conn)` to the same "
+                f"statement, or a dated reason to "
+                f"audit.RECOMMENDATION_DOOR_EXEMPT.")
+    return faults
+
+
+def check_every_recommendation_reader_uses_the_door(root: Path | None = None) -> None:
+    faults = recommendation_door_faults(root)
+    if faults:
+        raise LawViolation(
+            "A READER COUNTS RECOMMENDATIONS PAST THE DOOR (ruling 1, "
+            "2026-09-24): a withdrawn recommendation is never counted, and "
+            "`market.recommend.not_withdrawn` is the one place that says which "
+            "those are:" + _NL2 + _NL2.join(faults))
+
+
+def withdrawn_counted_faults(conn, report: dict) -> list[str]:
+    """The closing line, recounted without the door, against `report`.
+
+    Written against the table directly, on purpose: a recount that went
+    through `not_withdrawn` would agree with a broken `not_withdrawn`. The
+    rules are clv_report's own -- measured means an account written at the
+    time with a closing value; every closed recommendation is in one of its
+    four buckets; an open one is awaiting its close -- applied to the
+    recommendations that still stand.
+    """
+    sport = report["sport"]
+    own = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+        "   AND name = 'recommendation_voids'").fetchone() is not None
+    withdrawn_sql = (
+        "(EXISTS (SELECT 1 FROM prediction_voids v"
+        "          WHERE v.prediction_id = r.prediction_id)"
+        + (" OR EXISTS (SELECT 1 FROM recommendation_voids w"
+           "             WHERE w.recommendation_id = r.id)" if own else "")
+        + ")")
+    rows = conn.execute(
+        "SELECT r.id, r.closed_utc IS NOT NULL AS closed,"
+        "       c.recommendation_id IS NOT NULL AND c.restated = 0"
+        "         AND c.clv_cents IS NOT NULL AS measured,"
+        f"      {withdrawn_sql} AS withdrawn"
+        "  FROM recommendations r"
+        "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
+        " WHERE r.sport = ? ORDER BY r.id", (sport,)).fetchall()
+    standing = [r for r in rows if not r["withdrawn"]]
+    gone = [r for r in rows if r["withdrawn"]]
+    expected = {
+        "n": sum(1 for r in standing if r["closed"] and r["measured"]),
+        "closed": sum(1 for r in standing if r["closed"]),
+        "awaiting_close": sum(1 for r in standing if not r["closed"]),
+        "withdrawn": len(gone),
+    }
+    got = {
+        "n": report.get("n", 0),
+        "closed": sum((report.get(k) or 0) for k in
+                      ("n", "unmeasured", "restated", "unaccounted")),
+        "awaiting_close": report.get("awaiting_close", 0),
+        "withdrawn": report.get("withdrawn", 0),
+    }
+    culprits = {
+        "n": [r["id"] for r in gone if r["closed"] and r["measured"]],
+        "closed": [r["id"] for r in gone if r["closed"]],
+        "awaiting_close": [r["id"] for r in gone if not r["closed"]],
+        "withdrawn": [r["id"] for r in gone],
+    }
+    what = {
+        "n": "measured closes in its count",
+        "closed": "closed recommendations in its buckets",
+        "awaiting_close": "recommendations awaiting a close",
+        "withdrawn": "withdrawn recommendations named beside it",
+    }
+    faults = []
+    for key in ("n", "closed", "awaiting_close", "withdrawn"):
+        if got[key] == expected[key]:
+            continue
+        named = ", ".join(str(i) for i in culprits[key][:12]) or "none"
+        faults.append(
+            f"{sport}: the closing line reports {got[key]} {what[key]} where "
+            f"the recommendations that stand hold {expected[key]}. Withdrawn "
+            f"recommendation(s) that would make the difference: {named}.")
+    return faults
+
+
+def check_no_withdrawn_recommendation_counted(conn, report: dict | None = None,
+                                              *, sport: str | None = None) -> None:
+    """Refuse a closing line that counts a withdrawn recommendation.
+
+    Runs inside `views.scorecard` on the payload the API is about to serve,
+    and in the gate against the live record for every sport.
+    """
+    if report is None:
+        from . import calibration
+
+        report = calibration.clv_report(conn, sport=sport)
+    faults = withdrawn_counted_faults(conn, report)
+    if faults:
+        raise LawViolation(
+            "A WITHDRAWN RECOMMENDATION IS COUNTED (ruling 1, 2026-09-24): "
+            "voided rows never count in the closing line or anything it "
+            "feeds:" + _NL2 + _NL2.join(faults))

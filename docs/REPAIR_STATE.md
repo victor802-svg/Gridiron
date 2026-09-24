@@ -37,7 +37,25 @@ before the hold:
   `factor_set_version = 'fs5'`, `predictor = 'statistical'`
 - recommendations 62, 63, 64 and 66, all NFL spread fs5
 
-## Next: rulings 1-4 of 2026-09-24 (they complete item 2), BEFORE items 3-8
+## Rulings since this file was first written (all in docs/briefs/)
+
+- **Three decisions (2026-09-24-three-decisions.md).** Rec 65 stands. Of the 31
+  reasoning-forecaster rows, 0 carried fs5 output (prompts rebuilt; none was
+  saved), so all 31 stand. **Holdout rule: ties go to the incumbent.** A new
+  fit activates only if it beats the incumbent's holdout log loss with the
+  bootstrap interval of the difference excluding zero. So **all four fs5
+  markets revert, NFL moneyline included** (fs2, fit 71). Record the rule in
+  CLAUDE.md as part of the activation gate. Lift the hold per market only when
+  that market's active fit is the incumbent and its forecasts come from it.
+- **Two additions (2026-09-24-two-additions.md).** The reasoning pass stores
+  the exact prompt it sent, or its hash plus the full inputs, with every row,
+  append-only. No reasoning row without one; planting. Queued after the
+  revert and weather, before item 3.
+- **Order now:** voids (this batch) -> inactive-until-activated fits with the
+  activation gate -> revert of all four -> weather -> the prompt record ->
+  repair items 3-8. Each is its own commit, gate and release.
+
+## Next: rulings 2-4 of 2026-09-24 (the voids are in this batch), BEFORE items 3-8
 
 1. **Voids.** Write one `prediction_voids` row for each of the 31 statistical
    rows. Reason: "published from an unvalidated fit before the hold; fit
@@ -64,18 +82,18 @@ before the hold:
    - **Expect a large fixture ripple.** Every test, planting and the gate's
      step 3 trains and then predicts, so each needs a lawful activation path
      (a real holdout helper).
-3. **Disposition.**
-   - Activate fit 92 (NFL moneyline fs5; holdout 2025: .62773 log loss / .21889
-     Brier, n=271, against the fs2 set's .63666 / .22342).
-   - Revert NFL spread to fs3 (fit 88), NCAAF spread to fs3 (fit 44) and NCAAF
-     moneyline to fs2 (fit 35), dated.
-   - Registry: `srs_diff` active with applies_to ("spread",);
-     `nfl_rating_decayed_diff` applies_to ("moneyline",); `cfb_srs_diff` active;
-     `cfb_rating_decayed_diff` retired, dated. Every note cites the holdout
-     numbers.
-   - The page shows only forecasts from each market's active fit. Otherwise the
-     fs5 rows reappear when the hold lifts.
-   - Lift the hold when this lands.
+3. **Disposition (SUPERSEDED by the tie rule: all four revert).**
+   - Revert NFL spread to fs3 (fit 88), NFL moneyline to fs2 (fit 71), NCAAF
+     spread to fs3 (fit 44) and NCAAF moneyline to fs2 (fit 35), dated. Fit 92
+     is NOT activated: it did not beat the incumbent with the interval
+     excluding zero.
+   - Registry: `srs_diff` active again for the NFL game markets it had
+     (`NFL_GAME_MARKETS`); `nfl_rating_decayed_diff` retired, dated;
+     `cfb_srs_diff` active; `cfb_rating_decayed_diff` retired, dated. Every
+     note cites the holdout numbers and the tie rule.
+   - The page shows only forecasts from each market's active fit.
+   - Lift the hold per market once its active fit is the incumbent and its
+     forecasts come from it.
 4. **Weather.** Precipitation, wind and cold give no value for an indoor game.
    Today the weather lookup (`factors/context.py` `_weather`) and each factor's
    `if ctx.indoors` branch fill 0.0. The fit reports each factor's rows used.

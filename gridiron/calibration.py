@@ -130,7 +130,10 @@ def early_vs_final(conn: sqlite3.Connection, *, sport: str) -> dict:
         # of one question, so a disagreement about what happened would be a
         # resolution bug rather than a timing finding.
         "   AND e.resolved_utc IS NOT NULL AND f.resolved_utc IS NOT NULL"
-        "   AND e.outcome = f.outcome",
+        "   AND e.outcome = f.outcome"
+        # NEITHER ROW VOIDED (ruling 1, 2026-09-24), even after it settled.
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id IN (e.id, f.id))",
         (sport,)).fetchall()
 
     pairs = len(rows)
@@ -221,6 +224,27 @@ def standing_row_clause(same_set: bool) -> str:
     """
     same = (" AND p2.factor_set_version = p.factor_set_version"
             if same_set else "")
+    # A VOIDED ROW IS NEVER THE STANDING ONE (operator ruling 1, 2026-09-24).
+    #
+    # Until this date a void stayed out of the arithmetic only because a
+    # trigger refuses to resolve a voided row, so it never reached a count
+    # that asks for an outcome. That holds for a void written BEFORE the game
+    # settles, and it is the only case the resolver produces. The ruling's
+    # voids are written by hand, and a game can settle first -- after which
+    # the row carries an outcome and nothing here would have left it out.
+    #
+    # TWO PLACES, for two reasons. The row itself is excluded, so a voided
+    # forecast is never graded. And it is skipped when choosing the standing
+    # row, so a voided later row does not displace an earlier forecast of the
+    # same question that still stands -- a withdrawal takes one row back, not
+    # the question. The fallback below (every row written after the start)
+    # still sees voided rows: a question whose pre-start forecasts were all
+    # withdrawn had a forecast before the start, and a row written afterwards
+    # must not become its standing one.
+    voided = (" AND NOT EXISTS (SELECT 1 FROM prediction_voids vs"
+              "                 WHERE vs.prediction_id = p.id)")
+    skip_voided = ("                AND NOT EXISTS (SELECT 1 FROM prediction_voids v2"
+                   "                                WHERE v2.prediction_id = p2.id)")
     # THE LATEST ROW **BEFORE START**, not simply the latest (2026-09-03).
     #
     # The final pass (config.FINAL_PASS) writes a second forecast close to
@@ -234,6 +258,7 @@ def standing_row_clause(same_set: bool) -> str:
     # `g2.kickoff_utc IS NULL` keeps a game with no scheduled time eligible
     # rather than silently dropping every question about it.
     return (
+        f"{voided}"
         " AND p.id = (SELECT p2.id FROM predictions p2"
         "              JOIN games g2 ON g2.id = p2.game_id"
         "              WHERE p2.game_id = p.game_id"
@@ -242,6 +267,7 @@ def standing_row_clause(same_set: bool) -> str:
         "                AND p2.predictor = p.predictor"
         "                AND IFNULL(p2.line_asked, -1e9) = IFNULL(p.line_asked, -1e9)"
         f"{same}"
+        f"{skip_voided}"
         "                AND (g2.kickoff_utc IS NULL"
         "                     OR p2.created_utc <= g2.kickoff_utc"
         # A SLATE OF ROWS ALL WRITTEN AFTER START is a backtest, and a
@@ -2040,14 +2066,22 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
         somebody who knew how the games went, so it is shown and never counted.
       * UNACCOUNTED -- an old close not yet restated. Its recorded value is
         its own price; counted beside, with its own words, until it is.
+      * WITHDRAWN (ruling 1, 2026-09-24) -- a recommendation voided, or made
+        on a voided forecast. Not in N, not in any bucket above, not awaiting
+        a close: named once beside the closing line, in that word, and never
+        counted anywhere. Every read below goes through
+        `recommend.not_withdrawn`, the one door.
     """
+    from .market import recommend
+
     require_sport(sport, "calibration.clv_report")
     rows = conn.execute(
         "SELECT r.market, r.side, r.price, c.clv_cents, c.restated,"
         "       c.recommendation_id IS NOT NULL AS accounted"
         "  FROM recommendations r"
         "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
-        " WHERE r.sport = ? AND r.closed_utc IS NOT NULL", (sport,)).fetchall()
+        " WHERE r.sport = ? AND r.closed_utc IS NOT NULL"
+        + recommend.not_withdrawn(conn), (sport,)).fetchall()
     by_market: dict[str, list] = {}
     for row in rows:
         by_market.setdefault(row["market"], []).append(row)
@@ -2092,8 +2126,13 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
         entries.append(entry)
 
     open_rows = conn.execute(
-        "SELECT COUNT(*) FROM recommendations WHERE sport = ? AND closed_utc IS NULL",
+        "SELECT COUNT(*) FROM recommendations r"
+        " WHERE r.sport = ? AND r.closed_utc IS NULL" + recommend.not_withdrawn(conn),
         (sport,)).fetchone()[0]
+    # SHOWN, NEVER COUNTED. A withdrawn recommendation that simply vanished
+    # from this report would be a deletion by omission; it is named here, with
+    # its reason, and in no figure above.
+    withdrawn = recommend.withdrawn(conn, sport=sport)
     return {
         "sport": sport,
         "record": "closing_line",
@@ -2103,6 +2142,13 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
         "restated": sum(e["restated"] for e in entries),
         "unaccounted": sum(e["unaccounted"] for e in entries),
         "awaiting_close": open_rows,
+        "withdrawn": len(withdrawn),
+        "withdrawn_line": ({
+            "label": "Withdrawn",
+            "n": len(withdrawn),
+            "words": language.withdrawn_recommendations_line(
+                len(withdrawn), [w["reason"] for w in withdrawn]),
+        } if withdrawn else None),
         "markets": entries,
         "note": (
             "The price the app recommended against the market's own final "

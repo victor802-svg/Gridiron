@@ -989,7 +989,14 @@ table.grid tr:hover td { background: var(--card-2); }
 .result-chip.win { color: var(--win); background: var(--win-wash); }
 .result-chip.loss { color: var(--loss); background: var(--loss-wash); }
 .result-chip.pending { color: var(--muted); border: 1px solid var(--line); }
-.result-chip.void { color: var(--faint); border: 1px dashed var(--line); }
+/* WITHDRAWN (VOID until 2026-09-24, operator ruling 1). Neither a win nor a
+   loss, so it borrows neither colour; the reason sits under it in words,
+   because the ruling says the page shows it as withdrawn, never deleted. */
+.result-chip.withdrawn { color: var(--faint); border: 1px dashed var(--line); }
+.result-withdrawn { display: inline-flex; flex-direction: column; gap: 3px;
+  align-items: flex-end; text-align: right; max-width: 34ch; }
+.withdrawn-why { color: var(--faint); font-size: var(--t-caption);
+  line-height: 1.35; white-space: normal; }
 
 /* An absence, said in words. Styled apart from a value so it cannot be
    mistaken for one, and never rendered as a bare dash — a dash reads as an

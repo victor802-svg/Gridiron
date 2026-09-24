@@ -42,9 +42,10 @@ def test_the_hover_explains_the_gap_between_written_and_settled():
     """Voids are the difference nothing else on the tab accounts for."""
     detail = language.sport_record_detail("MLB", 33, 18, 51, 82, 10)
     assert "51 settled of 82 written" in detail
-    assert "10 void" in detail
+    # "withdrawn" from 2026-09-24 (operator ruling 1): the page's word for a void.
+    assert "10 withdrawn" in detail
     # No voids, no clause about them.
-    assert "void" not in language.sport_record_detail("NFL", 0, 0, 0, 104, 0)
+    assert "withdrawn" not in language.sport_record_detail("NFL", 0, 0, 0, 104, 0)
 
 
 def test_a_filtered_count_always_carries_its_denominator():

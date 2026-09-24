@@ -8912,6 +8912,179 @@ def plant_a_close_that_cites_its_own_pricing_read() -> Result:
                   f"NOT CAUGHT - the table took: {', '.join(escaped)}")
 
 
+LAW_WITHDRAWN = "A WITHDRAWN RECOMMENDATION IS NEVER COUNTED"
+
+
+def plant_a_withdrawn_recommendation_in_the_closing_line() -> Result:
+    """Count a withdrawn recommendation's measured close (ruling 1, 2026-09-24).
+
+    "Voided rows never count in CLV ... Planting: a voided recommendation
+    counted anywhere fails by name." Two recommendations, each with a real
+    measured close -- a later near-start read of its own contract -- and each
+    then withdrawn, one each way: a row in `recommendation_voids`, and a void
+    on the forecast it was made from.
+
+    THE VIOLATION: the door removed. `recommend.not_withdrawn` answers nothing,
+    which is exactly what every reader of the table did before 2026-09-24, and
+    the closing line counts both closes. The recount must refuse that report
+    and name both recommendations by id.
+
+    AND THE MIRROR: with the door in place, both are out of the count and
+    named beside it, and the recount is silent. A guard that fired on the
+    lawful report would be one nobody could leave switched on.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit, calibration as _cal, db as _db
+    from gridiron.market import at_the_line as _atl, recommend as _rec
+
+    def one(conn, gid):
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'nfl', 2026, 3,"
+            " 'REG', 'WAS', 'SEA', '2026-09-07T02:00:00Z', 'scheduled',"
+            " '2026-09-06')", (gid,))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-07T00:00:00Z', 'nfl', ?, 'spread', 'WAS', 7.5, 0.6,"
+            " 'cover', 'statistical', 'final', 'fs5', '{}', 'x')", (gid,))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        quotes = []
+        for stamp, bid in (("00:30", 0.45), ("01:40", 0.51)):
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                " volume, fetched_utc, read_kind) VALUES (?, ?, 'E', 'nfl', ?,"
+                " 'spread', 'home_margin', 7.5, 'home', ?, ?, 900, ?,"
+                " 'near_start')",
+                (_atl.VENUE, f"T-{gid}", gid, bid, bid + 0.02,
+                 f"2026-09-07T{stamp}:00Z"))
+            quotes.append(conn.execute(
+                "SELECT MAX(id) FROM venue_quotes").fetchone()[0])
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+            " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+            " created_utc) VALUES (?, ?, ?, 'nfl', ?, 'spread', 'home_margin',"
+            " 7.5, 'home', 'rung_matched', NULL, NULL, 0.6, 0.46, 0.46, 'mid',"
+            " '2026-09-07T00:31:00Z')", (pid, quotes[0], _atl.VENUE, gid))
+        conn.execute(
+            "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
+            " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+            " created_utc) VALUES (?, 'nfl', ?, 'spread', 'yes', 0.6, 0.46, 10.0,"
+            " 'flat', 1.0, 0, '2026-09-07T00:32:00Z')", (pid, gid))
+        return pid, conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+
+    guard = "audit.withdrawn_counted_faults"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        _, own = one(conn, "g-own")
+        pid, through = one(conn, "g-forecast")
+        conn.commit()
+        _rec.record_closing_prices(conn)
+        measured = conn.execute(
+            "SELECT COUNT(*) FROM recommendation_closes WHERE clv_cents IS NOT NULL"
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO recommendation_voids (recommendation_id, voided_utc,"
+            " reason) VALUES (?, '2026-09-24T08:00:00Z', 'published from an"
+            " unvalidated fit before the hold; fit subsequently failed holdout')",
+            (own,))
+        conn.execute(
+            "INSERT INTO prediction_voids (prediction_id, voided_utc, reason)"
+            " VALUES (?, '2026-09-24T08:00:00Z', 'published from an unvalidated"
+            " fit before the hold; fit subsequently failed holdout')", (pid,))
+        conn.commit()
+
+        # THE MIRROR FIRST: the lawful report, through the door.
+        lawful = _cal.clv_report(conn, sport="nfl")
+        mirror_faults = _audit.withdrawn_counted_faults(conn, lawful)
+
+        # THE VIOLATION: the door removed, as every reader was before the ruling.
+        door = _rec.not_withdrawn
+        _rec.not_withdrawn = lambda conn, alias="r": ""
+        try:
+            counted = _cal.clv_report(conn, sport="nfl")
+        finally:
+            _rec.not_withdrawn = door
+        try:
+            _audit.check_no_withdrawn_recommendation_counted(conn, counted)
+            caught, detail = False, None
+        except _audit.LawViolation as exc:
+            caught, detail = True, str(exc)
+        conn.close()
+
+    # BY NAME: the fault about the count itself ends on the two ids, exactly.
+    count_fault = next((line for line in (detail or "").splitlines()
+                        if "measured closes in its count" in line), "")
+    named = count_fault.rstrip().endswith(
+        f"make the difference: {own}, {through}.")
+    if (measured == 2 and caught and named and counted["n"] == 2
+            and lawful["n"] == 0 and lawful["withdrawn"] == 2
+            and not mirror_faults):
+        return Result(LAW_WITHDRAWN,
+                      "count two withdrawn recommendations' closes in the "
+                      "closing line", guard, True, count_fault.strip())
+    return Result(LAW_WITHDRAWN,
+                  "count two withdrawn recommendations' closes in the closing line",
+                  guard, False,
+                  f"NOT CAUGHT - {measured} measured closes; with the door "
+                  f"removed the closing line counted n={counted['n']} and the "
+                  f"recount said {detail!r}; through the door n={lawful['n']}, "
+                  f"withdrawn={lawful['withdrawn']}, recount faults "
+                  f"{mirror_faults}. Recommendations 62, 63, 64 and 66 would "
+                  f"be in the closing line and nothing would say so")
+
+
+def plant_a_recommendation_reader_that_goes_round_the_door() -> Result:
+    """Read `recommendations` without the door, in a copy of the package.
+
+    Two shapes, because the second is the one a careful author writes: a
+    count straight off the table, and a function that DOES call the door --
+    into a variable it never uses in the statement that reads. The door is a
+    clause in the SQL or it is nothing, so both must be named by file and
+    function.
+    """
+    from gridiron import audit as _audit, config as _config
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(_config.PACKAGE_ROOT, root)
+        victim = root / "views.py"
+        victim.write_text(
+            victim.read_text(encoding="utf-8")
+            + "\n\n# PLANTED VIOLATIONS\n"
+              "def planted_recommendations_counted(conn):\n"
+              "    return conn.execute(\n"
+              "        \"SELECT COUNT(*) FROM recommendations r\"\n"
+              "        \" WHERE r.sport = ?\", ('nfl',)).fetchone()[0]\n"
+              "\n\n"
+              "def planted_door_in_another_statement(conn):\n"
+              "    from .market import recommend\n"
+              "    clause = recommend.not_withdrawn(conn)\n"
+              "    n = conn.execute(\"SELECT COUNT(*) FROM recommendations r\""
+              ").fetchone()[0]\n"
+              "    return n, clause\n",
+            encoding="utf-8")
+        faults = _audit.recommendation_door_faults(root)
+
+    wanted = ("planted_recommendations_counted", "planted_door_in_another_statement")
+    hit = [f for f in faults if any(w in f for w in wanted)]
+    if all(any(w in f for f in hit) for w in wanted) and len(faults) == len(hit):
+        return Result(LAW_WITHDRAWN,
+                      "read recommendations round the door, twice, in views.py",
+                      "audit.recommendation_door_faults", True, " / ".join(hit))
+    return Result(LAW_WITHDRAWN,
+                  "read recommendations round the door, twice, in views.py",
+                  "audit.recommendation_door_faults", False,
+                  f"NOT CAUGHT - the scan said {faults!r}. A reader that goes "
+                  f"round the door counts a withdrawn recommendation and "
+                  f"nothing names it")
+
+
 LAW_BROWSER_PARSES = "THE BROWSER FILES PARSE"
 
 
@@ -9243,6 +9416,8 @@ def main() -> int:
     results.append(plant_a_held_market_the_strip_leaves_off())
     results.append(plant_a_close_read_from_the_first_of_two_reads())
     results.append(plant_a_close_that_cites_its_own_pricing_read())
+    results.append(plant_a_withdrawn_recommendation_in_the_closing_line())
+    results.append(plant_a_recommendation_reader_that_goes_round_the_door())
     results.append(plant_a_proposed_combo_from_one_game())
     results.append(plant_a_proposed_combo_across_sports())
     results.append(plant_a_proposed_combo_with_a_leg_that_does_not_clear())

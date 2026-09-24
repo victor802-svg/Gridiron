@@ -299,7 +299,13 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         "      WHERE c2.prediction_id = p.id"
         "        AND (g.kickoff_utc IS NULL OR c2.created_utc < g.kickoff_utc)"
         "      ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
-        f" WHERE p.id IN ({placeholders})", list(prediction_ids)).fetchall()
+        f" WHERE p.id IN ({placeholders})"
+        # A VOIDED FORECAST IS NEVER A LIVE PICK (ruling 1, 2026-09-24). The
+        # page passes only standing cards, but a caller handed a voided id
+        # must get nothing back rather than a price and a size for it.
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id)",
+        list(prediction_ids)).fetchall()
     ranks = ranker.ranks_for(conn, prediction_ids)
 
     out = []
@@ -481,6 +487,80 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     return counts
 
 
+# ---------------------------------------------------------------------------
+# A RECOMMENDATION WITHDRAWN (operator ruling 1, 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# Recommendations 62, 63, 64 and 66 were published from fits 91-94 before the
+# hold, and the fits then failed their holdout. The ruling voids them: they
+# stay in the record and are never counted -- not in the closing line, a
+# curve, a correction, readiness or any gate.
+#
+# ONE DOOR, because "never counted" is only true if every count agrees on it.
+# Until this date seven statements in six functions read `recommendations`
+# straight off the table (the closing line and its awaiting count, the closer,
+# the restatement, the near-start reader, the taken rail's edge, the empty-bar
+# tool), and every one of them would have treated a withdrawn recommendation
+# as standing without anybody seeing it happen.
+# `audit.check_every_recommendation_reader_uses_the_door` reads the source and
+# refuses a reader that goes round this; `audit.withdrawn_counted_faults`
+# recomputes the closing line's counts without it and refuses a difference.
+
+
+def not_withdrawn(conn: sqlite3.Connection, alias: str = "r") -> str:
+    """` AND ...`: the recommendation `alias` still stands.
+
+    TWO WAYS TO BE WITHDRAWN, and a reader asks neither itself: a row in
+    `recommendation_voids`, or a void on the prediction it was made from --
+    a recommendation on a forecast that no longer stands cannot stand either.
+
+    A RECORD WITHOUT THE TABLE HAS WITHDRAWN NOTHING, which is exact rather
+    than an approximation: the table is the only place a withdrawal can be
+    written. It matters on a query-only handle to a record the schema has not
+    reached yet -- the gate and the dry-run tools read the live record without
+    applying the schema, and a clause naming a missing table would stop them.
+    """
+    if not alias.isidentifier():
+        raise ValueError(f"{alias!r} is not a table alias")
+    clause = (f" AND NOT EXISTS (SELECT 1 FROM prediction_voids wp"
+              f"                 WHERE wp.prediction_id = {alias}.prediction_id)")
+    if _has_withdrawals(conn):
+        clause += (f" AND NOT EXISTS (SELECT 1 FROM recommendation_voids wr"
+                   f"                 WHERE wr.recommendation_id = {alias}.id)")
+    return clause
+
+
+def _has_withdrawals(conn: sqlite3.Connection) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+        "   AND name = 'recommendation_voids'").fetchone() is not None
+
+
+def withdrawn(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
+    """The recommendations the door leaves out, each with its reason.
+
+    THE OTHER SIDE OF THE DOOR, and the only reader allowed round it: it lists
+    what `not_withdrawn` excludes so the page can say so, in words, rather
+    than letting a withdrawn recommendation vanish. Never deleted, never
+    counted, always shown as withdrawn.
+    """
+    config.require_sport(sport, "recommend.withdrawn")
+    own = (" LEFT JOIN recommendation_voids wr ON wr.recommendation_id = r.id"
+           if _has_withdrawals(conn) else "")
+    reason = "wr.reason" if own else "NULL"
+    rows = conn.execute(
+        f"SELECT r.id, r.market, r.prediction_id,"
+        f"       COALESCE({reason}, wp.reason) AS reason"
+        f"  FROM recommendations r{own}"
+        f"  LEFT JOIN prediction_voids wp ON wp.prediction_id = r.prediction_id"
+        f" WHERE r.sport = ?"
+        f"   AND ({reason} IS NOT NULL OR wp.prediction_id IS NOT NULL)"
+        f" ORDER BY r.id", (sport,)).fetchall()
+    return [{"id": r["id"], "market": r["market"],
+             "prediction_id": r["prediction_id"], "reason": r["reason"]}
+            for r in rows]
+
+
 #: What a close with no later read of its own contract says about itself.
 UNMEASURED_WHY = ("no near-start read of the same contract after the price it "
                   "was recommended at, before the start")
@@ -608,11 +688,15 @@ def record_closing_prices(conn: sqlite3.Connection) -> dict:
     one transaction, so no close exists without its account.
     """
     counts = {"closed": 0, "unmeasured": 0, "still_open": 0}
+    # A WITHDRAWN RECOMMENDATION IS NOT FOLLOWED TO ITS CLOSE (2026-09-24).
+    # Its close would never be counted, and closing it would write an account
+    # -- "no later read", say -- about a recommendation nobody stands behind.
+    # It stays open, withdrawn, and said so.
     rows = conn.execute(
         "SELECT r.id, r.prediction_id, r.side, r.price, r.created_utc,"
         "       g.kickoff_utc"
         "  FROM recommendations r JOIN games g ON g.id = r.game_id"
-        " WHERE r.closed_utc IS NULL").fetchall()
+        " WHERE r.closed_utc IS NULL" + not_withdrawn(conn)).fetchall()
     now = utcnow()
     for row in rows:
         # A START NOBODY KNOWS YET IS STILL AHEAD. Closing it now would write,
@@ -665,11 +749,13 @@ def restate_old_closes(conn: sqlite3.Connection, *, write: bool) -> dict:
     unaccounted = (" AND NOT EXISTS (SELECT 1 FROM recommendation_closes c"
                    "                  WHERE c.recommendation_id = r.id)"
                    if has_table else "")
+    # THROUGH THE DOOR (2026-09-24): a withdrawn recommendation's close is
+    # never counted, so there is nothing to restate for one.
     rows = conn.execute(
         "SELECT r.id, r.prediction_id, r.sport, r.market, r.side, r.price,"
         "       r.created_utc, r.close_price, g.kickoff_utc"
         "  FROM recommendations r JOIN games g ON g.id = r.game_id"
-        " WHERE r.closed_utc IS NOT NULL" + unaccounted +
+        " WHERE r.closed_utc IS NOT NULL" + unaccounted + not_withdrawn(conn) +
         " ORDER BY r.id").fetchall()
     if write and not has_table:
         raise RuntimeError("the record has no recommendation_closes table; "
