@@ -371,3 +371,30 @@ previous render exists, the busy mark, and the label; a second test reads
 the stylesheet's rule for `transition: none` and runs the motion scan.
 The earlier "opacity 0" reading of the fix (commits `0f24780` and
 `d66a7fd`) is replaced by this one.
+
+## The second merge brief (2026-09-25, later again)
+
+Target branch master. Steps 3, 4 and 5 (the gate against the record, the
+captures from the record including the updating state, the release) wait
+for the machine with the record, as before.
+
+**1. First load.** Before any slate answer exists, Games says "Loading
+today's games" and Props "Loading today's props": a static line in the
+page's own file, no spinner, no motion, replaced by the first answer
+(`#games-loading`, `#props-loading`, hidden on the first render).
+`test_the_first_load_says_it_is_loading_in_words_and_nothing_moves` holds
+the slate's own endpoint through sign-in and reads the placeholder, its
+words, its stillness, and its going.
+
+**2. Ten runs of the failing order on the dimmed-slate version
+(`421a67b`)**: 10 of 10 green, each run the whole of `test_smoke.py` then
+the whole of `test_cards.py`, on this container.
+
+**3, 4, 5** wait for the machine with the record: merge `board` into the
+worktree branch; `python tools/verify.py` read-only against the record (283
+plantings or more); the captures from the record at 1300 and 390 -- Games,
+Props, My day, one game expanded, Record, the updating state, the empty
+states -- into this close-out with every difference from the fixture
+captures listed; then merge to master, push, restart, `/api/health`. The
+old Picks, Live and Today routes redirect to Games on this branch and are
+removed in that release, not before.
