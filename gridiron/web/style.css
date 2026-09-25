@@ -220,6 +220,14 @@ html { scrollbar-gutter: stable; }
   --sport-nba: #5a2f57;
   --sport-cfb: #4a3520;
   --sport-ufc: #5c2a2a;
+  /* A HUE PER STAT FAMILY (PrizePicks polish, 2026-09-25): chips and the
+     tag on a tile. Blue, violet, teal, amber, slate -- never the two value
+     colours. Each is measured with white on it by tools/contrast.py. */
+  --family-passing: #2f5f9e;
+  --family-receiving: #5a2f9e;
+  --family-rushing: #1d6b6b;
+  --family-scoring: #7a4b12;
+  --family-other: #4b5563;
 
 
   /* ---- the two colours, and their ONE job each (GRIDIRON_16 R2) ---------
@@ -2811,6 +2819,39 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 .entry-label { color: var(--muted); }
 .entry-value { font: 800 16px/1 var(--cond); color: var(--chrome); text-align: right; font-variant-numeric: tabular-nums; }
 .entry-rail .footnote { font-size: 11px; color: var(--muted); margin: 12px 0 0; line-height: 1.5; }
+
+/* THE VERDICT (ruling c, 2026-09-25): the mockup's `.verdict` and `.v`,
+   wearing the outline the typed multiple earns, with a leg's badge beside it. */
+.verdict { border-radius: 12px; padding: 14px; background: var(--card-2); display: flex; align-items: center; justify-content: space-between; gap: 10px; grid-column: 1 / -1; margin-bottom: 6px; }
+.verdict .v { font: 800 22px/1.05 var(--cond); color: var(--chrome); display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+.verdict .v-mult { font-weight: 800; }
+.verdict .v-untyped { font-size: 12px; color: var(--muted); }
+
+/* THE FAMILY HUE on a chip's dot and its pressed state, and on the tile's tag. */
+.chip-btn[style*="--family"]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--family); display: inline-block; }
+.chip-btn[style*="--family"][aria-pressed="true"] { background: var(--family); border-color: var(--family); color: var(--white); }
+.chip-btn[style*="--family"][aria-pressed="true"] .chip-n { color: var(--white); }
+.chip-btn[style*="--family"][aria-pressed="true"]::before { background: var(--white); }
+.prop-family { display: inline-block; padding: 2px 7px; border-radius: 6px; background: var(--family, var(--card-3)); color: var(--white); font: 700 10px/1.2 var(--body); letter-spacing: 0.08em; text-transform: uppercase; }
+.prop-club > .prop-family::before { content: none; }
+
+/* THE SPORT PILL beside the heading, in the sport's declared colour. */
+.sport-pill { display: inline-block; padding: 5px 10px; border-radius: 999px; color: var(--white); font: 700 12px/1 var(--cond); letter-spacing: 0.1em; text-transform: uppercase; align-self: center; }
+.sport-pill:empty { display: none; }
+
+/* THE HERO TILE (PrizePicks polish, 2026-09-25): a bigger jersey, a richer
+   club gradient behind it, rounder corners, more room between cards. */
+.props-grid { gap: 18px; }
+.prop { border-radius: 16px; }
+.prop-top { padding: 12px 16px 12px 12px; background: linear-gradient(120deg, var(--club-on-white) 0%, color-mix(in srgb, var(--club) 55%, var(--card-2)) 50%, var(--card-2) 100%); }
+.jsvg { width: 108px; height: 117px; }
+.prop-player { font-size: 24px; }
+.prop-q { font-size: 28px; }
+.prop-prob { font-size: 34px; }
+.prop-body { padding: 14px 16px 16px; }
+.pbar { height: 7px; }
+.game { border-radius: 16px; }
+.rows { gap: 12px; }
 
 /* --- widths ---------------------------------------------------------------- */
 @media (max-width: 1000px) {

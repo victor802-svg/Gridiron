@@ -301,3 +301,31 @@ def test_a_priced_question_carries_its_price_in_words_and_as_a_number():
     assert live["price"] is None and live["pays"] is None
     for field in audit.LIVE_FORBIDDEN:
         assert not live.get(field), field
+
+
+def test_the_rail_verdict_wears_the_colour_a_prop_earns_from_the_typed_multiple(page):
+    """RULING c, 2026-09-25: a prop tile wears no outline; the entry rail's
+    verdict, from the multiple the operator typed, is where the colour is
+    earned -- and it never stands without a leg's record badge beside it."""
+    page.set_viewport_size(WIDE)
+    page.evaluate("location.hash = '#/props'")
+    page.wait_for_selector("#props-tiles .prop[data-state='upcoming'] .chk", timeout=15000)
+    assert page.evaluate(
+        "[...document.querySelectorAll('#props-tiles .prop')].every(p => !p.classList.contains('sig-clears') && !p.classList.contains('sig-costs'))"), \
+        "a prop tile wears an outline"
+    with page.expect_response(lambda r: "/api/taken/" in r.url, timeout=20000):
+        page.click("#props-tiles .prop[data-state='upcoming'] .chk")
+    page.wait_for_selector("#entry-legs .entry-leg", timeout=15000)
+    def verdict(multiple):
+        page.fill("#entry-pays", str(multiple))
+        page.wait_for_timeout(200)
+        return page.evaluate("""() => { const v = document.querySelector('#entry-lines .verdict');
+            return { cls: v ? v.className : null, words: v ? v.textContent : '',
+                     badge: v ? !!v.querySelector('.badge') : false }; }""")
+    high = verdict(9)
+    assert "sig-clears" in high["cls"] and high["badge"], high
+    assert "Clears the bar" in high["words"] and "9" in high["words"]
+    low = verdict(1.1)
+    assert "sig-costs" in low["cls"] and low["badge"], low
+    assert "Falls short" in low["words"]
+    assert "worth" not in (high["words"] + low["words"]).lower()

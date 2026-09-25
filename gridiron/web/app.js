@@ -1125,6 +1125,14 @@ const Gridiron = (function () {
     return row;
   }
 
+  // THE SPORT PILL beside the heading, in the sport's own declared colour.
+  function sportPill(id, board) {
+    const pill = document.getElementById(id);
+    if (!pill) return;
+    pill.textContent = board.sport_label || '';
+    pill.className = 'sport-pill sport-' + (board.sport_key || '');
+  }
+
   // THE LEGEND: four swatches, each wearing the signal it explains, so the
   // legend cannot drift from the rows. Words the server's.
   function renderLegend(labels) {
@@ -1215,6 +1223,7 @@ const Gridiron = (function () {
     rows.innerHTML = '';
     notes.innerHTML = '';
     renderLegend(labels);
+    sportPill('games-sport', board);
     // THE MARKET FILTER NARROWS EVERY ROW, not only the list: a row on a
     // filtered slate shows that market's questions and leads with the one
     // of them that clears the bar, else the surest. Chosen here from the
@@ -1361,6 +1370,17 @@ const Gridiron = (function () {
     return bar;
   }
 
+  // A HUE PER STAT FAMILY (PrizePicks polish, 2026-09-25): five tokens in
+  // the stylesheet, chosen by the family's key, never green or red.
+  const FAMILY_HUES = { passing: 'passing', receiving: 'receiving', rushing: 'rushing',
+                        receptions: 'receiving', touchdowns: 'scoring', points: 'scoring',
+                        rebounds: 'rushing', assists: 'receiving', strikeouts: 'passing',
+                        hits: 'receiving', home_runs: 'scoring', total_bases: 'rushing' };
+  function familyHue(key) {
+    const found = Object.keys(FAMILY_HUES).find(k => key.indexOf(k) !== -1);
+    return 'var(--family-' + (found ? FAMILY_HUES[found] : 'other') + ')';
+  }
+
   function propTile(t, labels, after, seqId) {
     const node = el('article', 'prop ' + signalClass(t.signal) + (t.taken ? ' q-taken' : ''));
     node.dataset.id = t.prediction_id;
@@ -1379,7 +1399,9 @@ const Gridiron = (function () {
     who.appendChild(el('b', 'prop-player', t.player || ''));
     const under = el('span', 'prop-club');
     under.appendChild(el('span', 'prop-matchup', t.matchup || (club.name || '')));
-    under.appendChild(el('span', 'prop-family', t.family_words || ''));
+    const fam = el('span', 'prop-family', t.family_words || '');
+    fam.style.setProperty('--family', familyHue(t.family || ''));
+    under.appendChild(fam);
     who.appendChild(under);
     top.appendChild(who);
     node.appendChild(top);
@@ -1457,6 +1479,22 @@ const Gridiron = (function () {
       ? ABSENT : signed(x, 2);
     const be = pays && pays > 1 ? Math.pow(pays, -1 / n) : null;
     const modelLine = pays ? pays * product - 1 : null;
+    // THE VERDICT (ruling c, 2026-09-25): the one place a prop earns its
+    // colour, against the multiple the operator typed, with the thinnest
+    // record among the legs beside it so the glow never stands alone.
+    const verdict = el('div', 'verdict');
+    if (modelLine !== null && be !== null) {
+      verdict.classList.add(modelLine > 0 ? 'sig-clears' : 'sig-costs');
+      const v = el('div', 'v');
+      v.appendChild(el('span', 'v-words', modelLine > 0 ? words.verdict_clears : words.verdict_short));
+      v.appendChild(el('b', 'v-mult', num(pays, 2) + 'x'));
+      verdict.appendChild(tip(v, words.verdict_tip));
+      const thinnest = legs.slice().sort((a, b) => (a.badge_n || 0) - (b.badge_n || 0))[0];
+      if (thinnest) verdict.appendChild(badge(thinnest, labels));
+    } else {
+      verdict.appendChild(el('div', 'v-untyped', words.verdict_untyped || ''));
+    }
+    host.appendChild(verdict);
     line(labels.line_model, perDollar(modelLine));
     let half = null;
     if (pays && be !== null) {
@@ -1521,6 +1559,7 @@ const Gridiron = (function () {
     const again = () => renderProps();
     const headline = document.getElementById('props-headline');
     if (headline) headline.textContent = data.headline || '';
+    sportPill('props-sport', board);
     const note = document.getElementById('props-note');
     if (note) note.textContent = props.note || '';
 
@@ -1530,6 +1569,7 @@ const Gridiron = (function () {
       const b = el('button', 'chip-btn');
       b.type = 'button';
       b.dataset.key = c.key || '';
+      if (c.key && c.key !== 'alt') b.style.setProperty('--family', familyHue(c.key));
       b.setAttribute('aria-pressed', String((c.key || '') === active));
       b.appendChild(el('span', 'chip-label', c.label));
       b.appendChild(el('span', 'chip-n', String(c.n)));

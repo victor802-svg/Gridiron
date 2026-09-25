@@ -81,3 +81,43 @@ carry it); the Manrope-loads test now asserts the vendored body face (Inter)
 loads, same assertion; the font-axis test learns Inter's variable axis.
 `scrollbar-gutter: stable` on `html` because a row opening on a short page
 summoned a scrollbar and moved the page 8.5px (the in-place test caught it).
+
+**Law-caused differences from the mockup**, each with what causes it. The
+pairs are `mockup-*` beside `shaped-*` in `docs/closeouts/shots/2026-09-25-visual/`.
+
+| in the mockup | in the app | why |
+|---|---|---|
+| the active sport tab underlines green; the pulse dots are green | chrome | the colour law: green is the outline of a pick that clears the bar and nothing else |
+| the pressed props chip is green | chrome | the colour law |
+| the cushion's sign is green or red | ink | the colour law; a cushion is arithmetic against a declared multiple, not a signal (ruling c) |
+| prop tiles wear the green or red outline; a props legend explains it | no outline on a tile, no props legend; the verdict in the entry rail wears the colour | ruling c, 2026-09-25 |
+| a badge turns green at "proven" | the badge stays n/100 in the record's ink | the colour law; LAW 4 says the count, not a verdict on it |
+| "Worth it at 4.8x" | "Clears the bar at 4.8x" / "Falls short at" | plain words: "worth it" is an advice word the scan refuses |
+| the live row carries a checkmark | the live row carries YOURS and no control | LAW 5: nothing is sized, priced or taken in-game |
+| a 30px checkmark and caret | the same 30px square drawn inside a 44px target | the tap-size rule (`test_every_tap_target_on_the_phone_is_big_enough`) |
+| rows are two bands tall | rows carry the flagged-method note on the pick's face | operator ruling 2, 2026-09-04: the caveat stays on the face |
+| "best: Underdog 1.2x", ALT/BASE/DEMON/GOBLIN tags, alt-line tiles | "best line not read yet", an ALT tag only when the record holds an alt line (never yet) | ruling b: the pick'em read stays suspended |
+| every club carries a typed second colour | the second colour only where the measured file records the club's alternate, white otherwise | no hand-typed club hex, and no network to re-measure |
+| the caret rotates | the caret's glyph flips | the motion vocabulary: rotate is a gesture |
+| the menu opens on hover | on a press, with `aria-expanded` | not a law: a hover menu has no keyboard or touch path; stated as a choice |
+| glow halos as rgba literals | `color-mix` on the token | the colour scan reads `var(--win)`; the hue is written once |
+| the pulse hides under 1000px | it wraps under the pills | FIRST SCREEN: a dead job is visible on the first screen the operator opens |
+| "Q3 8:14 · polled 0:40 ago" | "3rd Quarter · 8:41 · read just now" | the server composes every word |
+| six prop tiles, four alt | the three the fixture week poses, none alt | the fixture, and ruling b |
+| the day strip's sentences are absent | "the model has 1 pick that clears the bar…" and the fee line sit under the heading | FIRST SCREEN and LAW 4: the counts and the fee are said in words |
+
+### Step 2 — the PrizePicks polish, and ruling c's verdict
+
+- The tile is the hero: the jersey at 108px, the club gradient behind it at
+  55% strength, 16px corners, 18px between cards, the name at 24px and the
+  line and chance at 28 and 34px.
+- A hue per stat family (`--family-passing/-receiving/-rushing/-scoring/
+  -other`, blue/violet/teal/amber/slate, never the two value colours), on
+  the chip's dot, the pressed chip and the tile's family tag; each measured
+  with white on it in `tools/contrast.py`. A sport pill in the sport's
+  declared colour beside both headings.
+- **Ruling c's colour, where it is earned:** the entry rail's verdict --
+  "Clears the bar at 4.8x" / "Falls short at" from the typed multiple, the
+  outline on the verdict block, the thinnest leg's record badge beside it,
+  the words the server's. `test_the_rail_verdict_wears_the_colour_a_prop_earns_from_the_typed_multiple`
+  takes a prop, types 9 and 1.1, and reads the class and the badge.

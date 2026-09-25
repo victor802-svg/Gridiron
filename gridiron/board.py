@@ -534,6 +534,8 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         "labels": labels,
         "games": games,
         "games_n": len(games),
+        "sport_key": sport,
+        "sport_label": sport_label,
         "games_empty_words": language.games_empty_words(sport_label) if not games else None,
         # NOTHING CLEARS THE BAR, said once, and only on a slate that has a
         # price to clear it against: on an unpriced slate the day strip

@@ -4530,4 +4530,14 @@ def entry_words() -> dict:
                  "entry would have to pay for the model to break even. "
                  "Nothing here is a balance and nothing is placed."),
         "kalshi_absent": "Kalshi lists no player props, so there is nothing to price this against.",
+        # THE VERDICT (ruling c, 2026-09-25): the one place a prop earns a
+        # colour, against the multiple the operator typed. "Worth it" is an
+        # advice word and stays out; the bar is the same bar the rows use.
+        "verdict_clears": "Clears the bar at",
+        "verdict_short": "Falls short at",
+        "verdict_untyped": "Type what the venue pays to read a verdict.",
+        "verdict_tip": ("From the multiple you typed and the model's own numbers: "
+                        "the entry returns more than a dollar per dollar at the "
+                        "model's chances, or it does not. A venue read would "
+                        "replace the typed number; none is read yet."),
     }

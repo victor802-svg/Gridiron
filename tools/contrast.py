@@ -126,6 +126,12 @@ PAIRS = [
     ("ink", "win", "a pick that won: ink on the solid green fill", False),
     ("ink", "loss", "a pick that lost: ink on the solid red fill", False),
     ("ink", "chrome", "the STRONG tier chip: dark on white", False),
+    # THE FAMILY HUES (PrizePicks polish, 2026-09-25): white on each.
+    ("white", "family-passing", "a passing chip, pressed", False),
+    ("white", "family-receiving", "a receiving chip, pressed", False),
+    ("white", "family-rushing", "a rushing chip, pressed", False),
+    ("white", "family-scoring", "a scoring chip, pressed", False),
+    ("white", "family-other", "any other family's chip, pressed", False),
 ]
 
 
