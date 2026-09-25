@@ -2034,3 +2034,299 @@ route `widen_sport_checks` (and the two hand-written widenings) through
   corrupted copy": the first case had committed every table, so the second
   rebuilt nothing. It now reports what each run did ("tested nothing -- an
   earlier case had committed"). The verdict's condition is unchanged.
+
+## The prompt record -- built 2026-09-25 *(the ruling of 2026-09-24, two additions, item 1; the ruling on question 4, 2026-09-25; GRIDIRON_REPAIR item 4)*
+
+### BUILT: every reasoning forecast carries the prompt it was sent, or a labelled reconstruction *(ruled 2026-09-24 and 2026-09-25; built 2026-09-25)*
+
+- **Sent.** `llm.reason` builds the request once (`reasoning_request`),
+  serializes it canonically (keys sorted, no spaces, UTF-8) BEFORE the call and
+  sends the parse of those bytes, so what `reasoning_prompts` keeps is what the
+  client received by construction; `StubClient` now records every keyword and
+  `test_prompt_record.py` compares the two byte for byte. The reformatting
+  request, whose user message is the reasoning model's raw reply (stored
+  nowhere else until now), is kept with it when that runs.
+  `write_prediction` refuses a reasoning row without the prompt and writes the
+  record, the row citing it in its factors, and the fingerprint in one
+  savepoint. The link lives in `factors_json` (already frozen and
+  fingerprinted), so `predictions`, `fingerprint.PROTECTED` and
+  `RECORD_BASELINE` are unchanged.
+- **The release instant** is written once into `meta` by the first `db.init`
+  under the new schema -- now, or one second after the newest reasoning row
+  if that is later -- and triggers refuse a second value, an edit, a delete
+  and a replacing insert. The trigger and the gate read it from there.
+- **Reconstructed.** `tools/reconstruct_prompts.py`. Rehearsed on a scratch
+  copy of the live record (backup door, 19:37Z on 25 September): **510
+  reasoning rows, 14 commits, 6.8 s**, every row matched to exactly one
+  reasoning call in the ledger; a second run wrote nothing; the gate's audit
+  passed on the result. The 467 rows the dry run of the morning rebuilt
+  independently are byte-identical to this tool's (467 of 467), and that dry
+  run matched the 24 September rebuild of 31 rows (31 of 31). By commit:
+  48628e5 23, b80c5ca 42, 148e484 22, 57dcc78 1, 65b698b 5, 25d83b8 30,
+  d3bce31 6, 9e4203f 31, 9ac0ac4 64, fb6dcdf 10, c44f508 128, e1d9632 71,
+  fddd61b 34 (ids 2358-2441), 3603300 43 (ids 2448-2507, written since 5a's
+  release). By sport: CFB 25, MLB 301, NFL 90, UFC 94.
+- **The gate** applies the reconstruction to its migrated copy (about 7 s on
+  top of the copy it already makes) WHILE THE RECORD HAS NO RELEASE INSTANT,
+  and then names, on the copy, every row after the instant without its sent
+  record, every row with none at all, and every record whose text does not
+  hash to what was written with it. From the release on it rebuilds nothing
+  and checks the record's own records as they stand (changed by the
+  rehearsal, below).
+
+### NEXT, AFTER THE RELEASE: the reconstruction on the live record *(operator step, not run)*
+
+After the fast-forward and the scheduler's first task (which writes the
+release instant), from the main checkout, at a quiet hour:
+`python tools/reconstruct_prompts.py --database var/gridiron.db --live`. It
+appends one reconstructed record per reasoning row before the instant and
+writes nothing else; it is idempotent, and its last line says how many of
+the record's reasoning forecasts carry a record after the run, of each
+kind, and which carry none (exit 1 while any does). UNTIL IT RUNS, EVERY
+GATE FAILS BY NAME on each pre-release row without a record, as the ruling
+asks: from the release on the gate checks the record as it holds it. A pass that writes reasoning rows between the
+release and the scheduler's first `db.init` is impossible (that init writes
+the instant); an old-code process still running after it is refused loudly
+by the trigger, and its task run is recorded as failed.
+
+### THE REHEARSAL *(2026-09-25, about 20:20-20:45Z; scratch copies of the live record through the backup door, never the record, never `--live`)*
+
+- **The instant.** The first `db.open_db` of a fresh copy wrote
+  `prompt_record_binds_from` once (20:41:59Z; the newest reasoning row was
+  19:33:02Z); a second open two seconds later and a direct second call of
+  `write_the_release_instant` left it where it was, one row under the key.
+- **The tool, from its command line.** 510 reasoning rows, 510
+  reconstructed records, 14 commits, 6.7 s; every reasoning row has exactly
+  one record, every record names one ledger call (510 distinct), and the
+  audit finds nothing. A second run wrote nothing. Two independent runs
+  (before and after the fixes below) wrote identical records but for the
+  rebuild date. Rows per commit and the caveat each carries, as the tool now
+  prints them: 48628e5 23 (working tree 23, a halfway digit 1); b80c5ca 42
+  (working tree 42, no scheduled task 42); 148e484 22, 57dcc78 1, 65b698b 5,
+  d3bce31 6, 9ac0ac4 64, fb6dcdf 10 (working tree, all); 25d83b8 30 (working
+  tree 30, no scheduled task 30, halfway 1); 9e4203f 31 (working tree 31,
+  halfway 1); c44f508 128 (working tree 128, halfway 3); e1d9632 71,
+  fddd61b 34, 3603300 43 (no caveat beyond the commit). For every row the
+  commit at its minute is also the commit its own task run started under
+  (measured: 0 differ), so no process ran code older than the row's minute.
+- **Against the 24 September rebuild.** The 31 prompts rebuilt that morning
+  (ids 2226-2302) are byte-identical to the tool's, through e1d9632, and the
+  ledger calls named agree 31 of 31. No difference, so no cause to give.
+- **Against the ledger's own counts.** The rebuilt request's length over the
+  call's input tokens is 3.9 to 4.4 characters a token for all 510 rows,
+  none more than 15% off the median -- nothing rebuilt lost or gained a
+  section, which a byte comparison with no original cannot show.
+- **A post-release pass**, MLB slate 182's late pass through the tests'
+  `StubClient`, the network blocked: 28 reasoning rows, 28 sent records
+  byte for byte what the client received, each cited, sent before its row,
+  hashed, tied to its ledger call; each record, its row and the fingerprint
+  sit between one `SAVEPOINT write_prediction` and its `RELEASE`, with no
+  COMMIT between. Refused by name: a raw reasoning row after the instant with
+  no record, citing a record that does not exist, reusing another row's,
+  citing another game's, citing a reconstruction, with factors that are not
+  JSON; a reconstruction of a post-instant row through the door and round
+  it; a second reconstruction; an edit, a delete, a moved instant. Nothing
+  changed.
+- **The gate's three checks** pass on the copy (538 forecasts, 510
+  reconstructed and 28 sent, the label scan reading all 538). On throwaway
+  copies the audit named a reasoning row planted dated before the instant
+  with no record ("NO PROMPT RECORD AT ALL"), and one after it with the
+  trigger dropped ("WRITTEN AFTER THE RELEASE ..." and the missing rule).
+
+### FIXED BY THE REHEARSAL: the gate rebuilt a released record before checking it *(2026-09-25)*
+
+`verify._gate_copy_path` applied the reconstruction to every copy, so the
+check the ruling asks for -- "the gate fails by name ... on any row of any
+date with no record at all" -- could never fire for a row dated before the
+instant. Measured on a released throwaway copy: forecast 2582, written
+round the door dated 20:00Z against an instant of 20:24Z, was rebuilt on the
+gate's copy through 3603300 (which never wrote it) and the check passed.
+The same step would have passed every gate after the release while the live
+record still lacked its reconstructions (what the build's notes called a
+known gap). Now `verify._bring_the_copy_to_this_tree` reads the record's own
+instant before it migrates the copy, and rebuilds the copy only while the
+record has none; from the release on the copy is checked as the record holds
+it. Planting `plant_a_released_record_the_gate_rebuilds_before_checking`
+(ESCAPED on HEAD d835fff and on the build before this fix; CAUGHT after);
+tests in `test_prompt_record.py` for both sides of the release.
+
+### FIXED BY THE REHEARSAL: "no scheduled task was running" *(2026-09-25)*
+
+The tool asked whether ANY task run enclosed the forecast's minute, and a
+run never finished enclosed every minute after it: `live` polls every few
+minutes and `refresh` writes no forecast, and a `final:cfb` run begun at
+19:41Z on 9 September was still "running" on 25 September. A forecast
+written by hand beside either would have been told a scheduled task wrote
+it. Now only the sport's own predict and final tasks and the catch-up count,
+and a run never finished counts until its task next started. No record on
+the live record changes (72 rows carry the caveat before and after); a row
+planted at 20:00Z on 25 September now carries it, where the stale `final:cfb`
+run of 19:24Z would have hidden it.
+
+### FIXED BY THE REHEARSAL: what the tool prints *(2026-09-25)*
+
+The run that writes the live record now prints each commit's caveat counts,
+the coverage it leaves behind (how many reasoning forecasts carry a record,
+of each kind, and which carry none), and exits 1 while any carries none.
+
+### OPEN: a row dated before the instant but committed after it is rebuilt, not refused *(found by the rehearsal, 2026-09-25)*
+
+The tool and the trigger `reasoning_prompt_reconstructed_only_before_the_release`
+decide "written before the release" by the forecast's own `created_utc`, which
+its writer chose. A reasoning row inserted round the door after the release
+with an earlier date is therefore rebuilt by `--live` and labelled
+reconstructed -- after the fix above the gate names it until then, and the
+tool now names it as it rebuilds it and exits 1 ("REBUILT, BUT COMMITTED
+AFTER THE RELEASE INSTANT", read off its fingerprint's time or its missing
+fingerprint above the record's fingerprint baseline). Not refused, because
+both ways of refusing it also refuse a lawful row: old code that took its
+`created_utc` just before the first `db.init` of the release and committed
+just after (waiting on the write lock) writes a row dated before the instant
+and fingerprinted after it, which could never carry a sent record and would
+fail every gate for good. Options: refuse above the baseline by fingerprint
+time and accept that race (it needs a reasoning write inside the same
+second as the release's first open); or freeze the last forecast id at the
+instant, with the same race. Neither was needed for the rehearsal.
+
+### READINGS TAKEN, for the operator to overrule *(2026-09-25)*
+
+- **"The Record page".** The Record tab shows only aggregates; the per-row
+  record is Results. Both readings are built with one component: a panel on
+  the Record tab, shown only while its forecaster picker is on the reasoning
+  pass (a count with its N, and the sport's newest twenty), and the same
+  disclosure under every reasoning row in Results -- plus the card's Why
+  panel for "the page". Nothing on the statistical record changes.
+- **The prompt is shown verbatim**, in a `.code-literal` block -- the
+  existing exemption from the plain-words scan for "an identifier stamped on
+  a prediction" and strings a reader must see exactly. Measured: 70 of 467
+  prompts rebuilt through today's code contain snake_case, from 17 registry
+  rationales that name other factors by code name (the `what it measures:`
+  lines), and the pre-5 September prompts named every factor that way.
+  Humanised, it would match no stored hash and would not be the prompt the
+  ruling asks to be shown. The label, the note and every other word stay
+  plain and are scanned (`audit.prompt_label_faults`).
+
+### The prompt of a call that wrote no row is not kept *(open, 2026-09-25)*
+
+The ruling binds "every row it writes"; a call that failed, or answered with
+something unparseable, writes no row, and its request is not stored. 33
+failed reasoning calls are on the ledger (read 2026-09-25). If a rejected
+answer's prompt is ever wanted, `llm.record_call` would carry the request.
+
+### `llm_calls` has no append-only triggers *(open, found by the item 4 maps, 2026-09-25)*
+
+The conventions call it append-only; the schema has only its day index, and
+row 37 (`key_probe`) was written by hand. A prompt record now cites a ledger
+row by foreign key, which stops a cited row being deleted but not edited.
+
+### The Results "Prediction" column is outside the rendered plain-words scan *(open, found 2026-09-25)*
+
+`td.wide` is excluded to spare the Factors table's rationale column, and the
+Results table's first column carries the same class -- so the scan never
+reads the column whose `rushing_yards` leak is why the rendered scan exists,
+nor the prompt disclosure's label and note placed there. The server-side
+audit covers the disclosure's words; the column itself is unscanned. Scope
+the exclusion to the Factors table.
+
+### FIXED BY THE RENDER CHECK: two defects a green suite passed *(2026-09-25)*
+
+The disclosure was rendered from the browser suite's own world (one sent and
+one reconstructed reasoning forecast, stub data, never the live record) at
+1100 and 390 wide, each prompt collapsed and opened, on a card's Why panel,
+in Results and on the Record page. Labels, overflow (0 px), tap floor (44
+px) and the collapsed card were right. Two things were not:
+
+- **A reconstruction's text was headed as the prompt sent.** Opened, it read
+  "What it was told before the question" and "The question and the factors
+  it was given" above the rebuilt text -- headings asserting what the
+  forecast was told, over text the ruling says "is never presented as the
+  prompt sent" -- and on a phone the one "reconstructed" sat about 4,000 px
+  above the end of it. `language.prompt_part_label` now takes the record's
+  kind and a reconstruction's parts read "..., reconstructed"; a sent
+  prompt's never do. Asserted in `test_prompt_disclosure.py` (every heading
+  of each open disclosure, both kinds, on all three surfaces and both
+  widths) and `test_prompt_record.py`.
+- **An opened prompt in Results floated its row's facts out of sight.** The
+  row grew to about 3,000 px and the table's middle alignment put the date,
+  model, tier and result about 520 px below the sentence at both widths, so
+  the screen showed prompt text beside an empty band. A row with its prompt
+  open now aligns its cells to the top (`style.css`, only while open);
+  `test_prompt_disclosure.py` measures each cell against the sentence.
+
+Both assertions were shown failing on the unfixed code first (headings; 522
+and 532 px of drift) and passing after. Not changed, and why: the prompt
+stays in the Prediction column's width at a desk (widening the column broke
+the other columns' lines); the commit and the model's name are shown as
+`.code-literal`, the reading already recorded above.
+
+### FIXED BY THE PROOF: a planting that crashed where it should have said NOT CAUGHT *(2026-09-25)*
+
+Each of the six prompt-record plantings was proved twice before this commit:
+against `git archive` of HEAD d835fff with the new `plant.py` (all six
+ESCAPED), and against a copy of the new tree with ONLY that planting's own
+guard neutralised -- the trigger kept by name with its condition made false,
+or the one audit branch made unreachable, or the gate's copy rebuilt
+whatever the record's instant (nine copies: (a) trigger, (a) audit, (b)
+audit, (c) each of the three append-only triggers, (d) audit, (e) audit, (f)
+gate). Eight ESCAPED. The ninth, (a) with its trigger neutralised, did not
+report at all: the row the trigger let in stayed on the world, the planting
+then copied that world and wrote the same question again for the audit, and
+the one-answer index refused it -- an `IntegrityError` traceback that would
+have ended the whole harness at that line instead of printing a verdict.
+`plant_a_reasoning_row_after_the_release_without_its_prompt` now reads a row
+that landed with the audit on the world it landed on, and says NOT CAUGHT in
+words (the schema did not refuse it; whether the audit named it). Shown
+crashing on the unfixed planting and ESCAPED after; CAUGHT on the new tree
+as before; the harness 294 of 294.
+
+### FIXED BY THE PROOF: one sent prompt shared by two forecasts through a cite spelled as text *(2026-09-25)*
+
+Probed on a scratch world after the plantings: a reasoning forecast after
+the release instant whose factors cite its sent record as the TEXT "1"
+rather than the number 1 landed, and a second forecast citing the same
+record as the number landed beside it (and the other way round). SQLite
+matched the text to the record by the id column's integer affinity, so
+`reasoning_row_carries_its_prompt`'s record test passed; its
+no-other-forecast test and the one-forecast index compare two cites as
+stored, where a number and a text never match. The page (`records_for`,
+matching the same way) showed one prompt under both forecasts. The gate's
+audit already named the text cite ("WRITTEN AFTER THE RELEASE WITHOUT THE
+PROMPT IT WAS SENT ... it cites '1'"), so the second lock held; the first,
+the schema, did not. Only a write round the door can do it --
+`write_prediction` writes the id the door returned, a number.
+
+Now the trigger refuses any cite whose JSON type is not an integer (a text,
+a real, a boolean, none), and `prompt_record.records_for` reads only an
+integer cite, as the audit does, so the page and the gate agree that a
+text cite is no record. `plant_a_second_forecast_citing_a_sent_prompt_as_text`
+ESCAPED on the build before the fix and on `git archive` HEAD d835fff and is
+CAUGHT after; `test_prompt_record.py::test_a_cite_that_is_not_the_records_own_number_is_refused`
+failed on the build before the fix and passes after. Not changed: the
+audit's "ONE PROMPT FOR TWO FORECASTS" still keys cites as stored, which is
+moot now that a post-release text cite cannot land and a pre-release one is
+named as having no record at all.
+
+### Found in passing *(2026-09-25)*
+
+- **A made-up identifier in stored reasoning.** Row 2471 (NFL, written
+  19:26Z on 25 September) says "(neither_neutral=1)"; no factor declares the
+  name, so no registry phrase could replace it, and
+  `test_stored_reasoning_is_humanised_at_render_time_not_rewritten` went red
+  on live data. `language.humanise_reasoning` now reads any code-shaped word
+  left over in words, the rule `plain_reason` has used for a void's reason
+  since 2026-09-24. The row keeps what was written.
+- **Six rows where one digit of the prompt cannot be known** (467, 1226,
+  1328, 1779, 1821, 2035): each stores a number exactly halfway at the fourth
+  decimal place, which the prompt showed rounded from full precision. The
+  reconstruction names the factor on each record.
+- **Corroboration outside the record** (session transcripts, not stored on
+  any record): the 5 September hand run was on a clean checkout at b80c5ca
+  (02:38:43Z and 02:58:21Z); the 9 September final:mlb run at 21:30Z ran on
+  uncommitted non-prompt edits later committed in fb6dcdf; the 24 September
+  e1d9632 rows were on a clean checkout (05:29:31Z).
+- **A reasoning card hides its own reasoning when a market line exists**
+  (12 of 39 cards the live record would show): the Why panel shows the market
+  sentence instead. The prompt disclosure sits beside it.
+- **The Results "Forecaster" column prints the raw value** `llm` when both
+  forecasters are shown, and the Record headline's sub-line glues the raw
+  predictor in the renderer; neither word is on a scan's list.

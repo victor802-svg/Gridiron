@@ -7,6 +7,7 @@ nflverse data are marked `slow` and say so.
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import sqlite3
@@ -18,7 +19,7 @@ import pytest
 
 from gridiron import api, auth, config, db, resolve, run
 from gridiron.factors import store
-from gridiron.model import activation, baseline
+from gridiron.model import activation, baseline, prompt_record
 
 try:                                   # the browser suite is optional
     from playwright import sync_api as playwright_api
@@ -598,11 +599,18 @@ def _seed_llm_row_with_a_code_name(conn) -> None:
     scan could not have caught it even if somebody had pointed it at the view.
     """
     row = conn.execute(
-        "SELECT game_id, market_type, subject, line_asked, factor_set_version"
+        "SELECT game_id, market_type, subject, line_asked, factor_set_version,"
+        "       factors_json"
         "  FROM predictions WHERE predictor = 'statistical'"
         "   AND market_type = 'spread' ORDER BY id DESC LIMIT 1").fetchone()
     if row is None:
         return
+    # WITH THE PROMPT IT WAS SENT, through the one door (the prompt record,
+    # 2026-09-25): this row is written after the world's release instant, so
+    # the schema refuses it without a sent record of its own game and claim.
+    question = json.loads(row["factors_json"])["question"]
+    cite = seed_a_sent_prompt(conn, game_id=row["game_id"],
+                              claim=question["claim"])
     conn.execute(
         "INSERT INTO predictions (created_utc, game_id, market_type, subject,"
         " line_asked, model_prob, model_side, predictor, factor_set_version,"
@@ -612,10 +620,29 @@ def _seed_llm_row_with_a_code_name(conn) -> None:
          # would be hidden by the default and the view the render test exists
          # to look at would be empty again.
          row["line_asked"], 0.78, "cover", "llm", row["factor_set_version"],
-         '{"prob_yes": 0.61}',
+         json.dumps({"prob_yes": 0.61, "question": question,
+                     prompt_record.CITE: cite}),
          "The home side is the stronger team here: srs_diff is well positive "
          "and recent_form_diff agrees with it, while travel_kmiles is small "
          "enough not to matter."))
+
+
+def seed_a_sent_prompt(conn, *, game_id: str, claim: str,
+                       sent_utc: str | None = None, notes=()) -> int:
+    """A sent prompt record for a test's reasoning row, through the one door,
+    and its id for the row to cite (the prompt record, 2026-09-25).
+
+    THE REQUEST IS A REAL ONE: `llm.reasoning_request` over `build_prompt`,
+    the same bytes the pass would send for this claim with no factor rows.
+    Not committed: the caller writes the row on the same transaction.
+    """
+    from gridiron.model import llm
+
+    prompt = llm.build_prompt(claim, [], list(notes))
+    return prompt_record.keep_sent(
+        conn, prompt_record.sent(llm.reasoning_request(prompt),
+                                 sent_utc=sent_utc or db.utcnow()),
+        game_id=game_id, claim=claim)
 
 
 def _serve(db_file):

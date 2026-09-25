@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from .. import config
 from ..factors import compute
 from ..db import utcnow
+from . import prompt_record
 
 SYSTEM_PROMPT = """You are a football forecaster. You are given a fixed set of \
 measured factors about one upcoming question and nothing else.
@@ -74,6 +75,11 @@ class LLMResult:
     input_tokens: int
     output_tokens: int
     repaired: bool = False
+    #: WHAT WAS SENT, as the bytes it was sent from (the prompt record,
+    #: 2026-09-25). `predict.write_prediction` keeps it with the forecast, on
+    #: the forecast's own transaction; a reasoning forecast is refused
+    #: without it.
+    prompt: prompt_record.SentPrompt | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -112,8 +118,10 @@ def record_call(
     game_id: str | None,
     ok: bool = True,
     error: str | None = None,
-) -> None:
-    conn.execute(
+) -> int:
+    """Write one call to the ledger, committed at once; return its id, which
+    the prompt record keeps beside the request the call carried."""
+    cur = conn.execute(
         "INSERT INTO llm_calls (called_utc, day_utc, purpose, model, input_tokens,"
         " output_tokens, usd, game_id, ok, error) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (
@@ -130,6 +138,7 @@ def record_call(
         ),
     )
     conn.commit()
+    return int(cur.lastrowid)
 
 
 def ledger_summary(conn: sqlite3.Connection) -> dict:
@@ -247,6 +256,44 @@ def build_prompt(question: str, factor_rows: list[dict], notes: list[str]) -> st
     return "\n".join(lines)
 
 
+def reasoning_request(prompt: str) -> dict:
+    """THE EXACT REQUEST THE REASONING CALL SENDS, built once (2026-09-25).
+
+    Every keyword `messages.create` is given, and nothing else: the model, its
+    output cap, the system prompt and the one user message. The prompt record
+    stores this as canonical JSON before the call, and the call is made from
+    the parse of those stored bytes -- so the record is what was sent by
+    construction, not by a second copy kept in step with the first.
+    """
+    return {
+        "model": config.LLM_REASONING_MODEL,
+        "max_tokens": config.LLM_MAX_OUTPUT_TOKENS,
+        "system": SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+
+#: The reformatting call's instruction. Its user message is the reasoning
+#: model's own reply, which the prompt record keeps with the request.
+REPAIR_SYSTEM_PROMPT = (
+    'Return only a JSON object of the form {"probability": <float>, '
+    '"reasoning": "<text>"} carrying the content of the message. '
+    "Invent nothing; if there is no probability in it, return "
+    '{"probability": null, "reasoning": ""}.'
+)
+
+
+def repair_request(text: str) -> dict:
+    """The exact request the reformatting call sends: the cheap model, a
+    small cap, the fixed instruction, and the reasoning model's reply."""
+    return {
+        "model": config.LLM_CHEAP_MODEL,
+        "max_tokens": 400,
+        "system": REPAIR_SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": text}],
+    }
+
+
 def _extract_json(text: str) -> dict | None:
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
@@ -281,14 +328,15 @@ def reason(
         )
 
     prompt = build_prompt(question, factor_rows, notes)
-    model = config.LLM_REASONING_MODEL
+    # SERIALIZED BEFORE IT IS SENT, AND SENT FROM THOSE BYTES (the prompt
+    # record, 2026-09-25): the request the model receives is the parse of the
+    # text the record keeps, so the two cannot differ.
+    request_json = prompt_record.canonical(reasoning_request(prompt))
+    request = json.loads(request_json)
+    model = request["model"]
+    sent_utc = utcnow()
     try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=config.LLM_MAX_OUTPUT_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        response = client.messages.create(**request)
     except Exception as exc:  # noqa: BLE001 - any SDK failure degrades
         record_call(
             conn,
@@ -307,7 +355,7 @@ def reason(
     tin = int(getattr(response.usage, "input_tokens", 0))
     tout = int(getattr(response.usage, "output_tokens", 0))
     usd = price(model, tin, tout)
-    record_call(
+    call_id = record_call(
         conn,
         purpose="reasoning",
         model=model,
@@ -319,10 +367,11 @@ def reason(
 
     parsed = _extract_json(text)
     repaired = False
+    repair_json = None
     if parsed is None:
         # Routing: reshaping text into JSON is a formatting job, so it goes to
         # the cheap model rather than paying reasoning rates twice.
-        parsed, repair_usd = _repair(conn, text, game_id, client)
+        parsed, repair_usd, repair_json = _repair(conn, text, game_id, client)
         usd += repair_usd
         repaired = True
     if parsed is None:
@@ -347,25 +396,22 @@ def reason(
         input_tokens=tin,
         output_tokens=tout,
         repaired=repaired,
+        prompt=prompt_record.SentPrompt(request_json, sent_utc, repair_json,
+                                        call_id),
     )
 
 
 def _repair(
     conn: sqlite3.Connection, text: str, game_id: str | None, client
-) -> tuple[dict | None, float]:
-    model = config.LLM_CHEAP_MODEL
+) -> tuple[dict | None, float, str]:
+    """Reformat a malformed answer on the cheap model. Returns the parsed
+    answer, its cost, and the request as the canonical bytes it was sent
+    from, which the prompt record keeps (2026-09-25)."""
+    repair_json = prompt_record.canonical(repair_request(text))
+    request = json.loads(repair_json)
+    model = request["model"]
     try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=400,
-            system=(
-                'Return only a JSON object of the form {"probability": <float>, '
-                '"reasoning": "<text>"} carrying the content of the message. '
-                "Invent nothing; if there is no probability in it, return "
-                '{"probability": null, "reasoning": ""}.'
-            ),
-            messages=[{"role": "user", "content": text}],
-        )
+        response = client.messages.create(**request)
     except Exception as exc:  # noqa: BLE001
         record_call(
             conn,
@@ -378,7 +424,7 @@ def _repair(
             ok=False,
             error=f"{type(exc).__name__}: {exc}",
         )
-        return None, 0.0
+        return None, 0.0, repair_json
 
     tin = int(getattr(response.usage, "input_tokens", 0))
     tout = int(getattr(response.usage, "output_tokens", 0))
@@ -392,4 +438,5 @@ def _repair(
         usd=usd,
         game_id=game_id,
     )
-    return _extract_json("".join(getattr(b, "text", "") for b in response.content)), usd
+    return (_extract_json("".join(getattr(b, "text", "") for b in response.content)),
+            usd, repair_json)

@@ -597,8 +597,19 @@ def test_a_rerun_over_a_written_slate_makes_no_model_calls(league):
     ).fetchall()
     assert stat, "the world wrote nothing to re-run over"
     # ONE question answered by the reasoning pass already: a copy of the first
-    # statistical row under the other predictor, through the fingerprint door.
+    # statistical row under the other predictor, through the fingerprint door
+    # -- and, from 2026-09-25, with the prompt it was sent, through the prompt
+    # record's door, which the schema requires of a row written after the
+    # world's release instant.
+    import json as _json
+    from gridiron.model import prompt_record
+    from tests.conftest import seed_a_sent_prompt
+
     first = stat[0]
+    factors = _json.loads(first["factors_json"])
+    factors[prompt_record.CITE] = seed_a_sent_prompt(
+        league, game_id=first["game_id"], claim=factors["question"]["claim"],
+        sent_utc=first["created_utc"])
     cur = league.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
         " prop_type, subject, line_asked, model_prob, model_side, predictor,"
@@ -607,12 +618,11 @@ def test_a_rerun_over_a_written_slate_makes_no_model_calls(league):
         (first["created_utc"], first["sport"], first["game_id"],
          first["market_type"], first["prop_type"], first["subject"],
          first["line_asked"], first["model_prob"], first["model_side"],
-         first["pass_kind"], first["factor_set_version"], first["factors_json"]))
+         first["pass_kind"], first["factor_set_version"], _json.dumps(factors)))
     fingerprint.write(league, cur.lastrowid)
     league.commit()
 
-    import json as _json
-    seeded_claim = _json.loads(first["factors_json"])["question"]["claim"]
+    seeded_claim = factors["question"]["claim"]
     calls = []
     original = _llm.reason
     try:
@@ -684,6 +694,21 @@ def test_every_declared_factor_has_a_phrase_for_the_prompt_to_use():
 
     missing = [f.name for f in registry.all_factors() if not (f.why or "").strip()]
     assert not missing, missing
+
+
+def test_a_name_no_factor_declares_is_read_out_in_words():
+    """Row 2471 (2026-09-25): the model made up `neither_neutral`, which no
+    registry phrase can replace. It is read out in words at render time, the
+    rule a void's reason already follows, and a declared name still becomes
+    its phrase."""
+    from gridiron import language, views
+
+    phrases = views._why_phrases()
+    said = language.humanise_reasoning(
+        "This is a neutral-site game (neither_neutral=1), and srs_diff favours "
+        "Baltimore.", phrases)
+    assert audit.plain_words_violations(said) == [], said
+    assert "srs_diff" not in said and phrases["srs_diff"] in said
 
 
 def test_stored_reasoning_is_humanised_at_render_time_not_rewritten():

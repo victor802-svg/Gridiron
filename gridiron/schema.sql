@@ -1218,6 +1218,215 @@ END;
 
 
 -- ---------------------------------------------------------------------------
+-- THE PROMPT RECORD (operator ruling of 2026-09-24, two additions, item 1;
+-- and the ruling on question 4, 2026-09-25).
+--
+-- "The reasoning pass stores the exact prompt it sent, or its hash plus the
+-- full inputs, with every row it writes, append-only. No reasoning row may
+-- exist without it." And: "the prompt-record rule binds from the release
+-- that ships it, and the gap before it is labelled, not exempted."
+--
+-- ONE RECORD PER REASONING FORECAST, of one of two kinds:
+--   sent           the exact request the pass sent -- every message, the
+--                  system prompt, the model and its parameters -- as
+--                  canonical JSON with its SHA-256, and the request that
+--                  reformatted the answer when that ran. Written by the one
+--                  door (`model.prompt_record`) on the forecast's own
+--                  transaction, BEFORE the forecast, which cites it in its
+--                  frozen and fingerprinted factors (`reasoning_prompt_id`).
+--   reconstructed  for a forecast written before the release: the request
+--                  rebuilt from what the forecast stored, through the prompt
+--                  code of the commit the scheduler ran when it was written,
+--                  with that commit, the day it was rebuilt, and words
+--                  saying what that commit can and cannot vouch for. It is
+--                  never presented as the prompt sent.
+--
+-- THE RELEASE INSTANT is written once into `meta`, under the key
+-- 'prompt_record_binds_from', by the first `db.init` under this schema --
+-- never guessed ahead of a release whose minute nobody knows, and never moved
+-- afterwards. A reasoning forecast written at or after it carries its sent
+-- record or is refused; a reconstructed record is refused for one.
+--
+-- APPEND-ONLY, like everything else that records what a forecaster said.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS reasoning_prompts (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind               TEXT    NOT NULL CHECK (kind IN ('sent', 'reconstructed')),
+    -- The forecast a reconstructed record was rebuilt for. A sent record has
+    -- none: it is written first, and its forecast cites it.
+    prediction_id      INTEGER REFERENCES predictions (id),
+    game_id            TEXT    NOT NULL,
+    claim              TEXT    NOT NULL CHECK (length(trim(claim)) > 0),
+    -- The request as canonical JSON (keys sorted, no spaces, UTF-8), and the
+    -- SHA-256 of exactly those bytes.
+    request_json       TEXT    NOT NULL CHECK (json_valid(request_json)),
+    request_sha256     TEXT    NOT NULL
+                       CHECK (length(request_sha256) = 64
+                              AND request_sha256 NOT GLOB '*[^0-9a-f]*'),
+    -- The request that reformatted a malformed answer, when that ran: its
+    -- user message is the reasoning model's own reply, stored nowhere else.
+    repair_json        TEXT    CHECK (repair_json IS NULL OR json_valid(repair_json)),
+    repair_sha256      TEXT    CHECK (repair_sha256 IS NULL
+                                      OR (length(repair_sha256) = 64
+                                          AND repair_sha256 NOT GLOB '*[^0-9a-f]*')),
+    -- When a sent request left for the model.
+    sent_utc           TEXT,
+    -- The ledger row of the call that carried it, where one is known.
+    llm_call_id        INTEGER REFERENCES llm_calls (id),
+    -- A reconstruction's full commit id, the day it was rebuilt, and in
+    -- words what that commit can vouch for and what it cannot.
+    code_version       TEXT,
+    reconstructed_utc  TEXT,
+    provenance         TEXT,
+    CHECK ((repair_json IS NULL) = (repair_sha256 IS NULL)),
+    CHECK (kind <> 'sent'
+           OR (prediction_id IS NULL AND reconstructed_utc IS NULL
+               AND sent_utc GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z')),
+    CHECK (kind <> 'reconstructed'
+           OR (prediction_id IS NOT NULL AND sent_utc IS NULL
+               AND repair_json IS NULL
+               AND reconstructed_utc GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'
+               AND length(code_version) = 40
+               AND code_version NOT GLOB '*[^0-9a-f]*'
+               AND length(trim(provenance)) >= 40))
+);
+-- One reconstruction per forecast.
+CREATE UNIQUE INDEX IF NOT EXISTS reasoning_prompts_one_reconstruction
+    ON reasoning_prompts (prediction_id);
+-- One forecast per sent record: the cite, read off the frozen factors.
+CREATE UNIQUE INDEX IF NOT EXISTS pred_cites_one_sent_prompt
+    ON predictions (CASE WHEN json_valid(factors_json)
+                         THEN json_extract(factors_json, '$.reasoning_prompt_id') END)
+    WHERE predictor = 'llm';
+
+CREATE TRIGGER IF NOT EXISTS reasoning_prompts_no_update
+BEFORE UPDATE ON reasoning_prompts
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON PROMPT RECORD: a prompt record is what was sent, or what was '
+        || 'rebuilt and when; it is never rewritten');
+END;
+
+CREATE TRIGGER IF NOT EXISTS reasoning_prompts_no_delete
+BEFORE DELETE ON reasoning_prompts
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON PROMPT RECORD: a prompt record is never deleted; a reasoning '
+        || 'forecast without one is the gap the record exists to close');
+END;
+
+-- NOR REPLACED. A replacing insert removes the row it collides with without
+-- firing the delete rule above (FOLLOWUPS: the replacing insert goes round
+-- every append-only trigger in this schema), so an insert that names a
+-- record's id, or a forecast already rebuilt, is refused before it can.
+CREATE TRIGGER IF NOT EXISTS reasoning_prompts_never_replaced
+BEFORE INSERT ON reasoning_prompts
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM reasoning_prompts r WHERE r.id = NEW.id)
+  OR (NEW.prediction_id IS NOT NULL
+      AND EXISTS (SELECT 1 FROM reasoning_prompts r
+                   WHERE r.prediction_id = NEW.prediction_id))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON PROMPT RECORD: a prompt record is never replaced; one '
+        || 'record per forecast, written once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS reasoning_prompt_reconstructed_only_before_the_release
+BEFORE INSERT ON reasoning_prompts
+FOR EACH ROW
+WHEN NEW.kind = 'reconstructed'
+ AND (NOT EXISTS (SELECT 1 FROM meta m WHERE m.key = 'prompt_record_binds_from')
+      OR NOT EXISTS (SELECT 1 FROM predictions p
+                      WHERE p.id = NEW.prediction_id AND p.predictor = 'llm'
+                        AND p.game_id = NEW.game_id
+                        AND p.created_utc < (SELECT m.value FROM meta m
+                                              WHERE m.key = 'prompt_record_binds_from'))
+      OR EXISTS (SELECT 1 FROM predictions p
+                  WHERE p.id = NEW.prediction_id
+                    AND json_valid(p.factors_json)
+                    AND json_extract(p.factors_json, '$.reasoning_prompt_id') IS NOT NULL))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON PROMPT RECORD: a reconstructed prompt is written only for a '
+        || 'reasoning forecast of its own game written before the release instant, '
+        || 'which carries no sent record. From the release on, a forecast carries '
+        || 'the prompt it was sent');
+END;
+
+-- THE CITE IS THE RECORD'S OWN NUMBER, AND NOTHING SPELLED LIKE IT (the
+-- prover of item 4, 2026-09-25). A cite stored as the text of an id matched
+-- its record here by the id column's affinity, but the no-other-forecast
+-- test below and the one-forecast index compare two cites as stored, and a
+-- number and a text never match there -- so a second forecast citing a sent
+-- record as text landed beside the first, both sharing one prompt. The
+-- forecast door writes the id as a number; anything else is refused.
+CREATE TRIGGER IF NOT EXISTS reasoning_row_carries_its_prompt
+BEFORE INSERT ON predictions
+FOR EACH ROW
+WHEN NEW.predictor = 'llm'
+ AND NEW.created_utc >= (SELECT m.value FROM meta m
+                          WHERE m.key = 'prompt_record_binds_from')
+ AND (NOT json_valid(NEW.factors_json)
+      OR (CASE WHEN json_valid(NEW.factors_json)
+               THEN json_type(NEW.factors_json, '$.reasoning_prompt_id') END)
+         IS NOT 'integer'
+      OR NOT EXISTS (
+          SELECT 1 FROM reasoning_prompts r
+           WHERE r.id = json_extract(NEW.factors_json, '$.reasoning_prompt_id')
+             AND r.kind = 'sent'
+             AND r.game_id = NEW.game_id
+             AND r.claim = json_extract(NEW.factors_json, '$.question.claim')
+             AND r.sent_utc <= NEW.created_utc)
+      OR EXISTS (
+          SELECT 1 FROM predictions p
+           WHERE p.predictor = 'llm'
+             AND (CASE WHEN json_valid(p.factors_json)
+                       THEN json_extract(p.factors_json, '$.reasoning_prompt_id') END)
+                 = json_extract(NEW.factors_json, '$.reasoning_prompt_id')))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON PROMPT RECORD: a reasoning forecast written from the release on '
+        || 'carries the exact prompt it was sent, written first on its own '
+        || 'transaction: a sent record of the same game and claim, sent no later '
+        || 'than the forecast, that no other forecast cites');
+END;
+
+-- THE RELEASE INSTANT, written once and never moved or removed. A second
+-- value, an edit, a delete and a value that is not a time are all refused.
+CREATE TRIGGER IF NOT EXISTS prompt_record_instant_is_written_once
+BEFORE INSERT ON meta
+FOR EACH ROW
+WHEN NEW.key = 'prompt_record_binds_from'
+ AND (EXISTS (SELECT 1 FROM meta m WHERE m.key = NEW.key)
+      OR NEW.value NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z')
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON PROMPT RECORD: the release instant is written once, as a UTC '
+        || 'time, by the first open under the schema that ships the rule');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prompt_record_instant_never_moves
+BEFORE UPDATE ON meta
+FOR EACH ROW
+WHEN OLD.key = 'prompt_record_binds_from' OR NEW.key = 'prompt_record_binds_from'
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON PROMPT RECORD: the release instant never moves; a rule whose '
+        || 'start can be edited binds from whenever suits');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prompt_record_instant_never_removed
+BEFORE DELETE ON meta
+FOR EACH ROW
+WHEN OLD.key = 'prompt_record_binds_from'
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON PROMPT RECORD: the release instant is never removed');
+END;
+
+
+-- ---------------------------------------------------------------------------
 -- LAW 1 — the prediction row exists before its market snapshot.
 -- ---------------------------------------------------------------------------
 

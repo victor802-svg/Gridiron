@@ -212,12 +212,88 @@ def _gate_copy_path() -> Path:
         target,
         "backing the record up into the gate's own scratch copy, which the "
         "record checks read and migrate instead of the record itself")
-    db.open_db(target).close()
+    _bring_the_copy_to_this_tree(target, started)
     _GATE_COPY["path"] = target
+    return target
+
+
+def _the_records_release_instant(copy: Path) -> str | None:
+    """The prompt record's release instant AS THE RECORD HOLDS IT: read off
+    the copy before this tree migrates it, when the copy is still exactly the
+    record at the instant it was backed up. None before the release."""
+    from gridiron.model import prompt_record
+
+    conn = db.read_only(copy, "reading whether the record itself carries the "
+                              "prompt record's release instant, before the "
+                              "gate migrates its copy")
+    try:
+        return prompt_record.binds_from(conn)
+    finally:
+        conn.close()
+
+
+def _bring_the_copy_to_this_tree(target: Path, started: float | None = None) -> None:
+    """Migrate the gate's copy to this tree's schema and, ONLY WHILE THE
+    RECORD ITSELF HAS NO RELEASE INSTANT, apply the prompt reconstruction.
+
+    THE RECORD'S OWN INSTANT DECIDES (2026-09-25, found by the rehearsal of
+    item 4). The gate used to reconstruct every copy, so "the gate fails by
+    name ... on any row of any date with no record at all" (the ruling on
+    question 4) could never fire for a row dated before the instant: after
+    the release, the gate passed while the live record still lacked its
+    reconstructions, and a reasoning row written round the door with an
+    earlier date was rebuilt on the copy -- labelled with a commit that never
+    wrote it -- and passed as well. Measured on a scratch copy: forecast
+    2582, planted dated 20:00Z against an instant of 20:24Z, rebuilt through
+    3603300, audit clean. Now: before the release the copy is reconstructed,
+    because nothing else can show that every forecast WILL be rebuilt; from
+    the release on it is checked exactly as the record holds it."""
+    released = _the_records_release_instant(target)
+    db.open_db(target).close()
     print(f"  the record checks read a copy of the live record, not the "
           f"record: {target.stat().st_size / 1e9:.2f} GB, migrated to this "
-          f"tree's schema, in {time.time() - started:.0f}s")
-    return target
+          f"tree's schema"
+          + (f", in {time.time() - started:.0f}s" if started is not None else ""))
+    _reconstruct_the_copy(target, released)
+
+
+def _reconstruct_the_copy(target: Path, released: str | None = None) -> None:
+    """THE PROMPT RECONSTRUCTION, APPLIED TO THE COPY (the ruling on question
+    4, 2026-09-25) -- BEFORE THE RELEASE ONLY. While the record has no
+    release instant, bringing the copy to this tree includes it, so the check
+    that every reasoning forecast has its prompt record reads the state the
+    live record will have once `tools/reconstruct_prompts.py` has run after
+    the release: each forecast before the copy's release instant rebuilt
+    through its own commit's code, in a child, from `git archive` (measured
+    2026-09-25: 510 forecasts, 14 commits, 6.8 s). Nothing here reaches the
+    record. A reconstruction that cannot run is said, and the check below
+    then fails by name on every forecast left without a record.
+
+    `released` is the record's own instant; given, nothing is rebuilt, and a
+    forecast the operator's run has not reached fails the check by name."""
+    if released is not None:
+        print(f"  the record carries its prompt record's release instant "
+              f"({released}), so its prompt records are checked as it holds "
+              f"them: nothing is rebuilt on the copy, and a reasoning forecast "
+              f"without a record fails the check below by name")
+        return
+    from reconstruct_prompts import ReconstructionFailed, Refused, reconstruct
+
+    try:
+        report = reconstruct(target)
+    except (Refused, ReconstructionFailed, Exception) as exc:  # noqa: BLE001
+        # SAID, NOT RAISED: the check it feeds names every forecast left
+        # without a record, which is the failure worth reading.
+        print(f"  the prompt reconstruction did not run on the copy: "
+              f"{type(exc).__name__}: {exc}")
+        return
+    for pid, why in report.failed:
+        print(f"  the prompt reconstruction could not rebuild forecast {pid}: "
+              f"{why}")
+    print(f"  prompts reconstructed on the copy, never the record: "
+          f"{report.written} of {report.considered} reasoning forecasts "
+          f"before its release instant, through {len(report.by_commit)} "
+          f"commits' own code, in {report.seconds:.0f}s")
 
 
 def _record_conn():
@@ -658,6 +734,23 @@ def step_2_guards() -> bool:
         ("no retired market is a tab on Picks", audit.check_no_retired_market_in_picks),
         ("the record matches its fingerprint (LAW 3)",
          lambda: audit.check_record_fingerprint(_record_conn())),
+        # THE PROMPT RECORD (the rulings of 2026-09-24 and 2026-09-25). On
+        # the copy -- reconstructed while the record has no release instant,
+        # as the record holds it from the release on -- a forecast after the
+        # release instant without the prompt it was sent, one of any date
+        # with no record at all, and a record whose text no longer hashes to
+        # what was written, each by name.
+        ("every reasoning forecast carries its prompt record (question 4)",
+         lambda: audit.check_every_reasoning_row_has_its_prompt(_record_conn())),
+        ("the prompt record has one door",
+         audit.check_the_prompt_record_has_one_door),
+        ("a reconstructed prompt is labelled reconstructed",
+         lambda: audit.check_the_prompt_says_what_it_is(
+             _record_conn(),
+             [_slate_payload(sport, "llm") for sport in _config().SPORTS]
+             + [views.history(_record_conn(), sport=sport, predictor="llm",
+                              limit=500)
+                for sport in _config().SPORTS])),
         ("no confidence floor on game markets",
          audit.check_no_floor_on_game_markets),
         ("vendored fonts match their provenance", audit.check_vendored_fonts),

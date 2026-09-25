@@ -362,6 +362,7 @@ const Gridiron = (function () {
     // operator's own informed calls, stood here until 2026-09-02.)
     renderForecasterPicker(sc);
     renderTierTable(sc.tier_table);
+    renderPromptRecord(sc).catch(showError);
     // THE MODEL SECTION IS PART OF THIS PAGE NOW (P5): the calibration
     // chart, the factor cards and the dated "what changed, when" timeline.
     renderFactors().catch(showError);
@@ -562,6 +563,7 @@ const Gridiron = (function () {
         forecasterChoice = f.forecaster;
         renderForecasterPicker(sc);
         refreshTierTable().catch(showError);
+        renderPromptRecord(sc).catch(showError);
       });
       host.appendChild(b);
     });
@@ -570,6 +572,32 @@ const Gridiron = (function () {
     // forecasts had seen the model and the market first. No forecaster is
     // informed any more, so the note could only ever be empty -- and it read
     // from `operator_tier_table`, a payload key that no longer exists.
+  }
+
+  // THE RECORD PAGE SHOWS WHAT THE REASONING PASS WAS SENT (the ruling of
+  // 2026-09-25), while the picker is on the reasoning pass and only then, so
+  // the model's record reads exactly as it did. The count is the server's
+  // sentence with its N; the list is the sport's newest reasoning forecasts,
+  // through the Results door, each with the same disclosure.
+  async function renderPromptRecord(sc) {
+    const panel = document.getElementById('prompt-record');
+    if (!panel) return;
+    const block = sc.prompt_record;
+    if (forecasterChoice !== 'llm' || !block) { panel.hidden = true; return; }
+    requireN(block, 'prompt record');
+    panel.hidden = false;
+    document.getElementById('prompt-record-line').textContent = block.line;
+    const host = document.getElementById('prompt-record-list');
+    const seq = sportSeq;
+    const data = await fetchJSON(withSport('/api/history', { predictor: 'llm', limit: '20' }));
+    if (stale(seq)) return;
+    host.innerHTML = '';
+    data.items.forEach(i => {
+      const row = el('div', 'prompt-row');
+      row.appendChild(el('p', 'prompt-row-phrase', i.phrase));
+      if (i.prompt) row.appendChild(promptDisclosure(i.prediction_id, i.prompt));
+      host.appendChild(row);
+    });
   }
 
   // HOW CLOSE A GATE IS (GRIDIRON_13 P1). ONE COMPONENT, used by the tier
@@ -805,6 +833,42 @@ const Gridiron = (function () {
     return pill;
   }
 
+  // THE PROMPT A REASONING FORECAST WAS SENT (the ruling of 2026-09-25: "The
+  // page and the Record page show reconstructed rows' prompts labelled
+  // 'reconstructed' in those words"). ONE COMPONENT, used on a card's Why
+  // panel, in the Results table and on the Record page. Collapsed by
+  // default; the label and the note are the server's words, read off the
+  // record's own kind, and the text is fetched only when it is opened, from
+  // the one door, and placed verbatim in a literal block: it is the model's
+  // input exactly, and a prompt with its words rewritten would not be it.
+  function promptDisclosure(predictionId, block) {
+    const box = el('details', 'prompt-box');
+    box.dataset.promptKind = block.kind || 'none';
+    box.appendChild(el('summary', 'prompt-summary', block.label));
+    box.appendChild(el('p', 'prompt-note', block.note));
+    if (!block.available) return box;
+    const body = el('div', 'prompt-body');
+    box.appendChild(body);
+    let asked = false;
+    box.addEventListener('toggle', () => {
+      if (!box.open || asked) return;
+      asked = true;
+      fetchJSON('/api/prompt/' + predictionId).then(p => {
+        if (p.settings_line) body.appendChild(el('p', 'prompt-settings', p.settings_line));
+        if (p.model) body.appendChild(el('code', 'code-literal prompt-model', p.model));
+        if (p.code_version) {
+          body.appendChild(el('p', 'prompt-settings', p.commit_words));
+          body.appendChild(el('code', 'code-literal prompt-commit', p.code_version));
+        }
+        (p.parts || []).forEach(part => {
+          body.appendChild(el('h4', 'prompt-part', part.label));
+          body.appendChild(el('pre', 'code-literal prompt-text', part.text));
+        });
+      }).catch(err => { asked = false; showError(err); });
+    });
+    return box;
+  }
+
   function todayCard(entry, labels) {
     requireN(entry, 'a card on today');
     const state = entry.state || 'upcoming';
@@ -1017,6 +1081,9 @@ const Gridiron = (function () {
       }
       const chips = factorChips(entry);
       if (chips) body.appendChild(chips);
+      // WHAT THE REASONING PASS WAS SENT (2026-09-25), inside the panel that
+      // already holds its reasoning, so the card face does not change.
+      if (entry.prompt) body.appendChild(promptDisclosure(entry.prediction_id, entry.prompt));
       // THE WAY OUT TO THE WORKINGS. The coefficient table moved to the
       // Factors page (R1) and the old card's body carried this link to it;
       // the CARD_FACE card never did, so removing the grid on 2026-09-08 left
@@ -3378,6 +3445,16 @@ const Gridiron = (function () {
     if (heading) heading.textContent = today.settled_heading || '';
   }
 
+  // A ROW OF THE RECORD, AND UNDER A REASONING ROW THE PROMPT IT WAS SENT
+  // (2026-09-25). A statistical row stays the sentence alone.
+  function phraseWithPrompt(i) {
+    if (!i.prompt) return i.phrase;
+    const cell = el('div', 'phrase-cell');
+    cell.appendChild(el('span', '', i.phrase));
+    cell.appendChild(promptDisclosure(i.prediction_id, i.prompt));
+    return cell;
+  }
+
   async function renderResults() {
     const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
@@ -3406,8 +3483,9 @@ const Gridiron = (function () {
       data.items.map(i => {
         const row = [
           // One sentence, built on the server so the card, this table and the
-          // digest cannot drift into three vocabularies.
-          i.phrase,
+          // digest cannot drift into three vocabularies -- and under a
+          // reasoning row, what it was sent (2026-09-25).
+          phraseWithPrompt(i),
           (i.created_utc || '').slice(0, 10),
           // The slate in the server's words: "Week 7, 2025", "Saturday 5
           // September". `'wk ' + i.week` put the college key on the page.

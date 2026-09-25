@@ -204,6 +204,25 @@ depend on the answer.
    implied_prob, fetched_utc, source, kind). Freezing it goes beyond ruling
    4's words, so it was not built; FOLLOWUPS has it.
 
+7. **"Written before the release": the row's own date, or when it was
+   committed? (Question-4 ruling; asked 2026-09-25.)** The reconstruction
+   tool and the trigger that admits a `reconstructed` record decide "before
+   the release" from the row's own `created_utc`, which its writer chooses.
+   A reasoning row inserted after the release with an earlier date would be
+   rebuilt and labelled reconstructed. Refusing it would also refuse a
+   lawful old-code row that took its date just before the first open under
+   the new schema and committed just after, which could never carry a sent
+   record and would fail every gate. Built meanwhile: the tool names such a
+   row ("REBUILT, BUT COMMITTED AFTER THE RELEASE INSTANT", with its
+   fingerprint time) and exits 1, so it cannot pass silently. FOLLOWUPS,
+   OPEN.
+8. **Which page is "the Record page"? (Question-4 ruling; asked
+   2026-09-25.)** The Record tab shows aggregates only; the per-forecast
+   record is Results. Built meanwhile, as the conservative default: both,
+   with one component -- a panel on the Record tab (reasoning pass picked)
+   listing the newest twenty with their prompts, and the prompt under each
+   reasoning row in Results.
+
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 
 - **Ruling 4, "find the code path that did it and fix it":** no repository

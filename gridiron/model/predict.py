@@ -28,7 +28,7 @@ from datetime import date
 from .. import config, fingerprint, sports
 from ..db import utcnow
 from ..factors import compute, context
-from . import baseline, llm
+from . import baseline, llm, prompt_record
 from .question import Question
 from . import questions, rungs
 from .. import correction
@@ -125,6 +125,7 @@ def write_prediction(
     extra: dict | None = None,
     degraded: str | None = None,
     final: bool = False,
+    prompt: prompt_record.SentPrompt | None = None,
 ) -> WrittenPrediction | None:
     """Insert one prediction row. Returns None if this exact question has
     already been answered by this predictor under this factor set — a rerun of
@@ -135,7 +136,19 @@ def write_prediction(
     and close to start, and the newer row supersedes the older as the standing
     forecast. Both rows are kept (LAW 3) and the early one is labelled rather
     than hidden.
+
+    A REASONING FORECAST IS WRITTEN WITH THE PROMPT IT WAS SENT (the ruling
+    of 2026-09-24, two additions, item 1, binding from the release that
+    ships it by the ruling on question 4, 2026-09-25). `prompt` is required
+    for `predictor="llm"` and refused by name without it; its record is
+    written first, on this row's own transaction, and the row cites it.
     """
+    if predictor == "llm" and not isinstance(prompt, prompt_record.SentPrompt):
+        raise prompt_record.PromptNotKept(
+            "A REASONING FORECAST IS WRITTEN WITH THE PROMPT IT WAS SENT (the "
+            "ruling of 2026-09-24, two additions, item 1): "
+            f"{q.game_id} came to be written without one, so nothing was "
+            "written.")
     questions.assert_market_active(q)
     side, confidence = baseline.stated_side(prob_yes, q.yes_label, q.no_label)
     payload = fv.to_json_dict()
@@ -189,38 +202,52 @@ def write_prediction(
         claim=claimed)
     calibrated = shown if correction_version is not None else None
 
-    cur = conn.execute(
-        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
-        " prop_type, subject, line_asked, model_prob, model_side, predictor,"
-        " pass_kind, factor_set_version, factors_json, reasoning, degraded,"
-        " calibrated_prob, correction_version)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (
-            utcnow(),
-            q.sport,
-            q.game_id,
-            q.market_type,
-            q.stat if q.market_type == "prop" else None,
-            q.subject,
-            q.line_asked,
-            claimed,
-            side,
-            predictor,
-            "final" if final else "early",
-            # PER MARKET (2026-09-03). A spread row written today carries fs3
-            # and an MLB moneyline row still carries fs2, because only the
-            # spread factor sets changed.
-            config.factor_set_version(q.sport, q.market_type),
-            json.dumps(payload),
-            reasoning,
-            degraded,
-            calibrated,
-            correction_version,
-        ),
-    )
-    # THE FINGERPRINT, ON THE SAME TRANSACTION (2026-09-05): the row and its
-    # hash exist together or not at all.
-    fingerprint.write(conn, cur.lastrowid)
+    # ONE TRANSACTION FOR THE ROW, ITS PROMPT AND ITS FINGERPRINT (2026-09-25).
+    # A savepoint rather than a rollback, so a refusal undoes this row's
+    # writes and nothing a caller had pending: the prompt record and the
+    # forecast citing it exist together or not at all.
+    conn.execute("SAVEPOINT write_prediction")
+    try:
+        if predictor == "llm":
+            payload[prompt_record.CITE] = prompt_record.keep_sent(
+                conn, prompt, game_id=q.game_id, claim=q.claim)
+        cur = conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning, degraded,"
+            " calibrated_prob, correction_version)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                utcnow(),
+                q.sport,
+                q.game_id,
+                q.market_type,
+                q.stat if q.market_type == "prop" else None,
+                q.subject,
+                q.line_asked,
+                claimed,
+                side,
+                predictor,
+                "final" if final else "early",
+                # PER MARKET (2026-09-03). A spread row written today carries
+                # fs3 and an MLB moneyline row still carries fs2, because only
+                # the spread factor sets changed.
+                config.factor_set_version(q.sport, q.market_type),
+                json.dumps(payload),
+                reasoning,
+                degraded,
+                calibrated,
+                correction_version,
+            ),
+        )
+        # THE FINGERPRINT, ON THE SAME TRANSACTION (2026-09-05): the row and
+        # its hash exist together or not at all.
+        fingerprint.write(conn, cur.lastrowid)
+    except BaseException:
+        conn.execute("ROLLBACK TO SAVEPOINT write_prediction")
+        conn.execute("RELEASE SAVEPOINT write_prediction")
+        raise
+    conn.execute("RELEASE SAVEPOINT write_prediction")
     conn.commit()
     if cur.lastrowid is None:
         return None
@@ -508,6 +535,8 @@ def predict_slate(
                 "llm_usd": round(result.usd, 6),
                 "llm_repaired": result.repaired,
             },
+            # WHAT IT WAS SENT, kept with it (the prompt record, 2026-09-25).
+            prompt=result.prompt,
         )
         if llm_written:
             run.written.append(llm_written)

@@ -2392,3 +2392,43 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: var(--muted);
 }
 .combo-singles { font-variant-numeric: tabular-nums; }
+
+/* THE PROMPT A REASONING FORECAST WAS SENT (the ruling of 2026-09-25). One
+   quiet line, collapsed, inside a panel that is already collapsed on a card;
+   the same line under a row of Results and on the Record page. The summary
+   keeps the tap floor at every width. The text is the model's input verbatim,
+   so it wraps rather than scrolls: a phone gets no nested scroller. */
+.prompt-box { margin: 8px 0 4px; }
+.prompt-summary {
+  min-height: 44px; display: flex; align-items: center;
+  cursor: pointer; font-size: 13px; color: var(--muted); list-style: none;
+}
+/* THE SAME MARK AS "This week" (.week-more): a flex summary loses the
+   browser's own triangle, and a label with no mark reads as a sentence
+   rather than as something that opens -- which the first render showed. */
+.prompt-summary::-webkit-details-marker { display: none; }
+.prompt-summary::after { content: " \25BE"; color: var(--faint); margin-left: 4px; }
+.prompt-box[open] > .prompt-summary::after { content: " \25B4"; }
+.prompt-summary:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
+.prompt-note, .prompt-settings {
+  margin: 0 0 6px; font-size: 12px; color: var(--muted); line-height: 1.45;
+}
+.prompt-part { margin: 10px 0 4px; font-size: 12px; font-weight: 600; color: var(--chrome); }
+.prompt-model, .prompt-commit { display: block; margin: 0 0 6px; font-size: 12px; }
+.prompt-text {
+  margin: 0; padding: 8px 10px;
+  background: var(--card-2); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12px; line-height: 1.45;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.phrase-cell .prompt-box { margin-top: 4px; }
+/* A RESULTS ROW WITH ITS PROMPT OPEN KEEPS ITS FACTS BESIDE ITS SENTENCE
+   (render check, 2026-09-25). Opened, a prompt makes the row thousands of
+   pixels tall, and the table's middle alignment floated the date, the model,
+   the tier and the result to the middle of it, out of sight of the row they
+   belong to; at 1100 the screen showed prompt text beside an empty band.
+   Only while open, so a closed row reads exactly as it did. */
+#history-table tr:has(.prompt-box[open]) > td { vertical-align: top; }
+.prompt-row { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.prompt-row:last-child { border-bottom: 0; }
+.prompt-row-phrase { margin: 0; font-size: 13px; color: var(--chrome); }

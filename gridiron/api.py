@@ -639,6 +639,20 @@ def prediction(prediction_id: int) -> dict:
     return detail
 
 
+@app.get("/api/prompt/{prediction_id}")
+def prompt(prediction_id: int) -> dict:
+    """One reasoning forecast's prompt, verbatim, with its words (the ruling
+    of 2026-09-25). Fetched when a prompt disclosure is opened, so no slate
+    carries prompts it will never show. Behind the session like every other
+    route; the text is the model's input and never carries a secret
+    (`model.prompt_record` refuses one at the door)."""
+    detail = views.prompt_detail(get_conn(), prediction_id)
+    if detail is None:
+        raise HTTPException(status_code=404,
+                            detail=f"no reasoning forecast {prediction_id}")
+    return detail
+
+
 @app.get("/api/learning")
 def learning(sport: str | None = None) -> dict:
     """What the record has taught the model (T3, 2026-09-07)."""

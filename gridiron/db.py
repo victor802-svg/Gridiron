@@ -441,6 +441,11 @@ PREDICTION_TRIGGERS = (
     "predictions_no_update",
     "predictions_resolve_once",
     "voided_prediction_stays_void",
+    # THE PROMPT RECORD (2026-09-25). Named here like the rest, so a rebuild
+    # drops it with the table and the schema script puts it back. The rows a
+    # rebuild copies back pass it: a row before the release instant is not
+    # bound, and a row after it cites the sent record it was written with.
+    "reasoning_row_carries_its_prompt",
 )
 
 
@@ -870,6 +875,14 @@ def init(conn: sqlite3.Connection) -> None:
         "INSERT OR IGNORE INTO meta (key, value) VALUES ('kind', 'live')"
     )
     conn.commit()
+    # THE PROMPT RECORD'S RELEASE INSTANT (the ruling on question 4,
+    # 2026-09-25: "the prompt-record rule binds from the release that ships
+    # it"). Written here, once, by the first open under the schema that
+    # carries the rule -- on the live record, the scheduler's first task after
+    # the release -- so no literal is guessed ahead of a release whose minute
+    # nobody knows. Never moved afterwards: the schema refuses a second value.
+    from .model import prompt_record as _prompt_record
+    _prompt_record.write_the_release_instant(conn)
     # THE ACTIVATION GATE'S BOOTSTRAP (operator rulings, 2026-09-24). Every
     # market in use when the gate landed is recorded, once, as forecasting
     # from the fit it was already reading -- if that fit predates the rule.

@@ -10,12 +10,14 @@ question that `calibration.early_vs_final` measures rather than assumes.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
 
 from gridiron import calibration, config, db, language, run, tasks, views
-from gridiron.model import predict
+from gridiron.model import predict, prompt_record
+from tests.conftest import seed_a_sent_prompt
 
 
 def _question_rows(conn, game_id):
@@ -244,6 +246,15 @@ def _seed_forecaster_rows(conn, predictor, created, n=3):
     game = conn.execute(
         "SELECT id FROM games WHERE sport='nfl' LIMIT 1").fetchone()["id"]
     for i in range(n):
+        factors = {"values": {}, "present": [], "absent": []}
+        # A REASONING ROW CARRIES ITS PROMPT (2026-09-25): one written from
+        # the world's release instant on is refused without a sent record of
+        # its own game and claim, kept through the one door first.
+        if predictor == "llm" and created >= prompt_record.binds_from(conn):
+            claim = f"SEED{predictor}{i} covers -3.5"
+            factors["question"] = {"claim": claim}
+            factors[prompt_record.CITE] = seed_a_sent_prompt(
+                conn, game_id=game, claim=claim, sent_utc=created)
         conn.execute(
             "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
             " subject, line_asked, model_prob, model_side, predictor,"
@@ -251,7 +262,7 @@ def _seed_forecaster_rows(conn, predictor, created, n=3):
             " VALUES (?,?,?,?,?,?,?,?,?,'early',?,?,?)",
             (created, "nfl", game, "spread", f"SEED{predictor}{i}", -3.5,
              0.6, "cover", predictor, config.FACTOR_SET_VERSION,
-             '{"values": {}, "present": [], "absent": []}', "seeded"))
+             json.dumps(factors), "seeded"))
     conn.commit()
 
 

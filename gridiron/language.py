@@ -2640,7 +2640,13 @@ def humanise_reasoning(text: str | None, phrases: dict[str, str]) -> str | None:
         if not phrase or name not in out:
             continue
         out = out.replace(name, phrase)
-    return out
+    # AND A NAME NO FACTOR HAS (2026-09-25). Row 2471, an NFL forecast the
+    # reasoning pass wrote at 19:26Z on 25 September, says "(neither_neutral
+    # =1)": an identifier the model made up, which no registry phrase can
+    # replace because nothing declares it. The same render-time rule as a
+    # void's reason (`plain_reason`, 2026-09-24): a code-shaped word left over
+    # is read out in words, and the row keeps what was written.
+    return _CODE_WORD.sub(lambda m: humanise(m.group(0)), out)
 
 
 def tier_chip_label(tier: str | None, proven: bool) -> str:
@@ -4315,3 +4321,139 @@ def freshness_words(label: str, age_hours: float | None, limit: float) -> str:
     if age_hours > limit:
         return f"{label} {shown}, past {limit:g}h"
     return f"{label} {shown}"
+
+
+# ---------------------------------------------------------------------------
+# THE PROMPT RECORD, IN WORDS (operator rulings of 2026-09-24 and 2026-09-25)
+# ---------------------------------------------------------------------------
+#
+# "The page and the Record page show reconstructed rows' prompts labelled
+# 'reconstructed' in those words." Every word the prompt disclosure shows is
+# composed here; the renderer only places it. The prompt itself is shown
+# verbatim, as the operator's ruling asks for the prompt and a humanised one
+# would match no stored hash (FOLLOWUPS, 2026-09-25), and it sits in a
+# literal block like the other strings a reader must see exactly.
+
+#: What the disclosure is called, by the record's own kind. A reconstructed
+#: prompt carries the word in those letters and never the sent label.
+PROMPT_LABELS = {
+    "sent": "The prompt it was sent",
+    "reconstructed": "The prompt, reconstructed",
+}
+
+#: A reasoning forecast with no record at all: written before the record
+#: existed and not yet rebuilt. The gate fails on one; the page still says so.
+PROMPT_NOT_KEPT = "No prompt kept for this forecast"
+
+#: Beside a reconstruction's commit, which is placed as a literal.
+PROMPT_COMMIT_WORDS = "Rebuilt through the prompt code of this commit:"
+
+#: The parts of a request, as a reader would name them.
+PROMPT_PART_LABELS = {
+    "system": "What it was told before the question",
+    "user": "The question and the factors it was given",
+    "repair": "The request that reformatted its answer",
+}
+
+
+def prompt_label(kind: str | None) -> str:
+    """The disclosure's label for a prompt record of this kind."""
+    return PROMPT_LABELS.get(kind or "", PROMPT_NOT_KEPT)
+
+
+def _utc_words(stamp: str | None) -> str | None:
+    """"2026-09-24T14:22:25Z" -> "Thursday 24 September at 14:22 UTC"."""
+    day = date_words_from_iso(stamp)
+    if day is None:
+        return None
+    clock = (stamp or "")[11:16]
+    return f"{day} at {clock} UTC" if len(clock) == 5 and clock[2] == ":" else day
+
+
+def prompt_note(kind: str | None, reconstructed_utc: str | None = None,
+                provenance: str | None = None) -> str:
+    """What the disclosure says about where its prompt came from."""
+    if kind == "sent":
+        return ("This is the exact request the reasoning pass sent, kept with "
+                "the forecast when it was written.")
+    if kind == "reconstructed":
+        when = date_words_from_iso(reconstructed_utc) or "a later day"
+        lead = (f"Reconstructed on {when} from what this forecast stored, "
+                f"through the prompt code as it stood when it ran. The prompt "
+                f"actually sent was not kept, so this is not it.")
+        return f"{lead} {provenance.strip()}" if provenance else lead
+    return ("This forecast was written before the reasoning pass kept its "
+            "prompts, and its prompt has not been reconstructed yet.")
+
+
+def prompt_part_label(part: str, kind: str | None = None) -> str:
+    """One part of a request, named -- and of a reconstruction, named as one.
+
+    THE WORD TRAVELS WITH EVERY BLOCK OF TEXT (render check, 2026-09-25). The
+    first render put "What it was told before the question" above a
+    reconstructed system prompt: a heading asserting the forecast was told
+    that, over text the ruling says "is never presented as the prompt sent",
+    and on a phone the one "reconstructed" was four thousand pixels above the
+    end of the text it described. So each part of a reconstruction carries
+    the word beside it, in those letters, and a sent part never does.
+    """
+    label = PROMPT_PART_LABELS[part]
+    return f"{label}, reconstructed" if kind == "reconstructed" else label
+
+
+def prompt_request_line(kind: str | None, max_tokens) -> str:
+    """The request's settings in a sentence; the model's name is placed
+    beside it as a literal, never glued in."""
+    verb = "Rebuilt as a request to" if kind == "reconstructed" else "Sent to"
+    room = (f", with room for an answer of at most {int(max_tokens)} tokens"
+            if isinstance(max_tokens, (int, float)) else "")
+    return f"{verb} the model named here{room}."
+
+
+def reconstruction_provenance(*, commit_utc: str | None, before_merged_only: bool,
+                              no_task_run: bool,
+                              uncertain: list[str] | tuple[str, ...] = ()) -> str:
+    """What a reconstruction's commit can vouch for and what it cannot, in
+    words. Stored on the record when it is written; shown beside it.
+
+    THE COMMIT IS THE MAIN CHECKOUT'S AT THE FORECAST'S MINUTE, read from its
+    own history, and until the evening of 23 September the scheduler ran that
+    checkout's working tree, uncommitted edits and all -- so for those the
+    commit is the committed code nearest the run, never proof of what ran.
+    """
+    moved = _utc_words(commit_utc)
+    parts = [
+        "Built by the code the scheduler's checkout had committed when this "
+        "forecast was written"
+        + (f", the commit it moved to on {moved} by its own history." if moved
+           else ", by its own history.")]
+    if before_merged_only:
+        parts.append(
+            "Until the evening of 23 September the scheduler also ran edits "
+            "that were never committed, so this is the committed code nearest "
+            "the run, not proof of the code that ran.")
+    else:
+        parts.append("From the evening of 23 September the scheduler ran only "
+                     "merged commits.")
+    if no_task_run:
+        parts.append("No scheduled task was recorded running when this "
+                     "forecast was written.")
+    for name in uncertain:
+        parts.append(
+            f"The number for {name} sits exactly halfway at its fourth decimal "
+            f"place as stored, and the prompt showed it rounded from more "
+            f"places than the record keeps, so its last digit may differ from "
+            f"what was sent.")
+    return " ".join(parts)
+
+
+def prompt_record_line(n: int, sent: int, reconstructed: int) -> str:
+    """The Record page's count of reasoning forecasts and their prompts."""
+    missing = n - sent - reconstructed
+    if not n:
+        return "The reasoning pass has no forecasts in this sport yet."
+    line = (f"{n} reasoning forecast{'' if n == 1 else 's'}: {sent} with the "
+            f"prompt as sent, {reconstructed} with the prompt reconstructed")
+    if missing:
+        line += f", and {missing} with no prompt kept"
+    return line + "."

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import random
@@ -241,16 +242,25 @@ def test_a_prediction_keeps_its_first_snapshot(trained):
 # --- the LLM pass and its ledger -------------------------------------------
 
 class StubClient:
-    """Stands in for the Anthropic client. Records what it was asked."""
+    """Stands in for the Anthropic client. Records what it was asked.
+
+    THE WHOLE REQUEST, from 2026-09-25: every keyword it was called with, so
+    a test can hold the prompt record to what the client actually received,
+    byte for byte, rather than comparing `build_prompt` with itself.
+    """
 
     def __init__(self, replies, usage=(1200, 180)):
         self._replies = list(replies)
         self.usage = usage
         self.prompts = []
         self.models = []
+        self.requests = []
         self.messages = types.SimpleNamespace(create=self._create)
 
     def _create(self, *, model, max_tokens, system, messages):
+        self.requests.append(copy.deepcopy(
+            {"model": model, "max_tokens": max_tokens, "system": system,
+             "messages": messages}))
         self.prompts.append(messages[0]["content"])
         self.models.append(model)
         text = self._replies.pop(0)

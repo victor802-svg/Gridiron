@@ -609,6 +609,9 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     ids = [r["id"] for r in rows]
     snapshots = lines.snapshots_for(conn, ids)
     voided = _voids_for(conn, ids)
+    # WHAT EACH REASONING FORECAST WAS SENT (the prompt record, 2026-09-25),
+    # one lookup through the one reader.
+    prompts = _prompts_for(conn, rows)
     # One lookup for the slate, not one per card. Empty when the team table has
     # not been loaded, and every name then falls back to its tricode.
     team_names = teams.names(conn, sport)
@@ -798,6 +801,10 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
                 # ever, and the READER is shown the plain phrase instead.
                 "reasoning": language.humanise_reasoning(
                     r["reasoning"], _why_phrases()),
+                # THE PROMPT IT WAS SENT, OR ITS RECONSTRUCTION, labelled by
+                # the record's own kind (the ruling of 2026-09-25). Words
+                # only: the text is fetched when the disclosure opens.
+                "prompt": prompts.get(r["id"]),
                 "degraded": r["degraded"],
                 "outcome": r["outcome"],
                 "resolved_utc": r["resolved_utc"],
@@ -1611,6 +1618,10 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # the reasoning pass already wrote is one click away rather than one
         # page away.
         "reasoning": card.get("reasoning"),
+        # THE PROMPT DISCLOSURE TRAVELS WITH THE REASONING (2026-09-25): a
+        # reasoning card shows what it was sent, inside the same collapsed
+        # Why panel, so the card face is unchanged.
+        "prompt": card.get("prompt"),
         "why": card.get("why"),
         "top_factors": card.get("top_factors") or [],
         # THE PAYOUT IS THE BIG CHIP from 2026-09-08, with the price beneath
@@ -3221,6 +3232,7 @@ def history(
     ids = [r["id"] for r in rows]
     snapshots = lines.snapshots_for(conn, ids)
     voided = _voids_for(conn, ids)
+    prompts = _prompts_for(conn, rows)
     team_names = teams.names(conn, sport)
 
     items = []
@@ -3274,6 +3286,9 @@ def history(
                 "resolved_utc": r["resolved_utc"],
                 "voided": r["id"] in voided,
                 "void_reason": voided.get(r["id"]),
+                # THE PER-FORECAST RECORD SHOWS THE PROMPT TOO (the ruling of
+                # 2026-09-25): a reasoning row carries its disclosure's words.
+                "prompt": prompts.get(r["id"]),
                 "degraded": r["degraded"],
                 "factor_set_version": r["factor_set_version"],
                 # THE TIER CHIP, on every history row (R3). The Record tab now
@@ -3360,6 +3375,7 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
         # what `check_no_code_names_in_llm_prose` exists to refuse.
         "reasoning": language.humanise_reasoning(
             r["reasoning"], _why_phrases()),
+        "prompt": _prompts_for(conn, [r]).get(r["id"]),
         "degraded": r["degraded"],
         "outcome": r["outcome"],
         "resolved_utc": r["resolved_utc"],
@@ -3367,6 +3383,95 @@ def prediction_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | No
         "factors": payload,
         "market": snap,
     }
+
+
+def _prompt_block(record: dict | None) -> dict:
+    """A reasoning forecast's prompt disclosure, in words, from its record's
+    OWN kind (the ruling of 2026-09-25: "labelled 'reconstructed' in those
+    words"). Small on purpose: the text travels only on `prompt_detail`,
+    fetched when the disclosure opens, so a slate does not carry every
+    prompt it will never show."""
+    kind = record["kind"] if record else None
+    return {
+        "kind": kind,
+        "label": language.prompt_label(kind),
+        "note": language.prompt_note(
+            kind, (record or {}).get("reconstructed_utc"),
+            (record or {}).get("provenance")),
+        "available": record is not None,
+    }
+
+
+def _prompts_for(conn: sqlite3.Connection, rows) -> dict[int, dict]:
+    """Forecast id -> its prompt disclosure, for the reasoning rows among
+    `rows`, through the one reader. A statistical row gets none."""
+    from .model import prompt_record
+
+    ids = [r["id"] for r in rows if r["predictor"] == "llm"]
+    records = prompt_record.records_for(conn, ids)
+    return {pid: _prompt_block(records.get(pid)) for pid in ids}
+
+
+def prompt_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | None:
+    """ONE reasoning forecast's prompt, verbatim, with its words (the ruling
+    of 2026-09-25). The one door the disclosure's text comes through.
+
+    VERBATIM, NOT HUMANISED. The ruling asks for the prompt; a prompt with its
+    identifiers rewritten would match no stored hash and would not be it. So
+    each part travels as the exact text, for a literal block like the other
+    strings a reader must see exactly, and every word around it is composed
+    by `language`. None for a statistical forecast or an unknown id.
+    """
+    from .model import prompt_record
+
+    row = conn.execute("SELECT id, predictor FROM predictions WHERE id = ?",
+                       (prediction_id,)).fetchone()
+    if row is None or row["predictor"] != "llm":
+        return None
+    record = prompt_record.record_for(conn, prediction_id)
+    block = _prompt_block(record)
+    out = {"prediction_id": prediction_id, **block, "parts": [],
+           "model": None, "settings_line": None, "code_version": None,
+           "commit_words": None, "sha256": None}
+    if record is None:
+        return out
+    request = json.loads(record["request_json"])
+    out["model"] = request.get("model")
+    out["settings_line"] = language.prompt_request_line(
+        record["kind"], request.get("max_tokens"))
+    out["sha256"] = record["request_sha256"]
+    out["code_version"] = record.get("code_version")
+    if out["code_version"]:
+        out["commit_words"] = language.PROMPT_COMMIT_WORDS
+    # EACH PART NAMED BY THE RECORD'S OWN KIND (render check, 2026-09-25): a
+    # reconstruction's headings say "reconstructed" beside its text.
+    kind = record["kind"]
+    out["parts"] = [
+        {"label": language.prompt_part_label("system", kind),
+         "text": request.get("system") or ""},
+        {"label": language.prompt_part_label("user", kind),
+         "text": request["messages"][0]["content"]},
+    ]
+    if record.get("repair_json"):
+        repair = json.loads(record["repair_json"])
+        out["parts"].append({"label": language.prompt_part_label("repair", kind),
+                             "text": repair["messages"][0]["content"]})
+    return out
+
+
+def prompt_record_summary(conn: sqlite3.Connection, sport: str) -> dict:
+    """How many of one sport's reasoning forecasts carry the prompt as sent,
+    a reconstruction, or nothing -- the Record page's count, with its N."""
+    from .model import prompt_record
+
+    ids = [r[0] for r in conn.execute(
+        "SELECT id FROM predictions WHERE sport = ? AND predictor = 'llm'",
+        (sport,))]
+    kinds = [rec["kind"] for rec in prompt_record.records_for(conn, ids).values()]
+    sent = kinds.count(prompt_record.KIND_SENT)
+    rebuilt = kinds.count(prompt_record.KIND_RECONSTRUCTED)
+    return {"n": len(ids), "sent": sent, "reconstructed": rebuilt,
+            "line": language.prompt_record_line(len(ids), sent, rebuilt)}
 
 
 def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
@@ -3383,6 +3488,10 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
         {"forecaster": "llm", "label": "LLM", "informed": False},
     ]
     payload["meta"] = meta(conn, sport)
+    # THE PROMPT RECORD ON THE RECORD PAGE (the ruling of 2026-09-25): how
+    # many of this sport's reasoning forecasts carry the prompt as sent and
+    # how many a reconstruction, beside the list that shows them.
+    payload["prompt_record"] = prompt_record_summary(conn, sport)
     payload["corrections"] = corrections_report(conn, sport)
     payload["drift"] = drift_report(conn, sport)
     # DATED READING WINDOWS (GRIDIRON_13 P1). A measurement that must not be

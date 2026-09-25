@@ -5630,14 +5630,23 @@ def plant_a_code_name_in_rendered_llm_reasoning() -> Result:
         "INSERT INTO games (id, sport, season, week, game_type, home, away,"
         " kickoff_utc, status, league_date) VALUES ('planted', 'mlb', 2026, 1,"
         " 'R', 'AAA', 'BBB', '2026-12-01T18:00:00Z', 'scheduled', '2026-12-01')")
+    # WITH THE PROMPT IT WAS SENT (2026-09-25): a reasoning row after the
+    # world's release instant is refused without one, and this planting is
+    # about the prose, not the prompt record.
+    import json as _json
+    claim = "AAA (home) beat BBB"
+    factors = {"question": {"claim": claim}}
+    cite = _a_sent_prompt(conn, "planted", claim, "2026-12-01T00:00:00Z")
+    if cite is not None:
+        factors["reasoning_prompt_id"] = cite
     conn.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
         " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
         " factor_set_version, factors_json, reasoning)"
         " VALUES ('2026-12-01T00:00:00Z', 'mlb', 'planted', 'moneyline', 'AAA',"
-        " NULL, 0.61, 'win', 'llm', 'final', 'fs2', '{}',"
+        " NULL, 0.61, 'win', 'llm', 'final', 'fs2', ?,"
         " 'srs_diff = 1.3322 pushes toward the yes side, and rest_days_diff"
-        " adds to it.')")
+        " adds to it.')", (_json.dumps(factors),))
     conn.commit()
 
     # The humaniser repairs a stored code name at render time, so this plants
@@ -5735,6 +5744,16 @@ def plant_a_rerun_that_reasons_the_written_half_again() -> Result:
                 return Result(LAW_REASON_ONCE, what,
                               "audit.reason_before_check_faults", False,
                               "the harness league wrote nothing to re-run over")
+            # WITH THE PROMPT IT WAS SENT (2026-09-25), through the prompt
+            # record's door, which the schema requires of a reasoning row
+            # written after the world's release instant.
+            import json as _json
+            factors = _json.loads(first["factors_json"])
+            seeded_claim = factors["question"]["claim"]
+            cite = _a_sent_prompt(conn, first["game_id"], seeded_claim,
+                                  first["created_utc"])
+            if cite is not None:
+                factors["reasoning_prompt_id"] = cite
             cur = conn.execute(
                 "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
                 " prop_type, subject, line_asked, model_prob, model_side, predictor,"
@@ -5744,11 +5763,9 @@ def plant_a_rerun_that_reasons_the_written_half_again() -> Result:
                  first["market_type"], first["prop_type"], first["subject"],
                  first["line_asked"], first["model_prob"], first["model_side"],
                  first["pass_kind"], first["factor_set_version"],
-                 first["factors_json"]))
+                 _json.dumps(factors)))
             _fingerprint.write(conn, cur.lastrowid)
             conn.commit()
-            import json as _json
-            seeded_claim = _json.loads(first["factors_json"])["question"]["claim"]
             calls = []
             original = _llm.reason
             try:
@@ -10976,6 +10993,461 @@ def plant_a_club_crest_in_the_data_directory() -> Result:
                   "audit.mark_faults", True, faults[0])
 
 
+# ---------------------------------------------------------------------------
+# THE PROMPT RECORD (the ruling of 2026-09-24, two additions, item 1: "No
+# reasoning row may exist without it; planting." And the ruling on question
+# 4, 2026-09-25: "The gate fails by name on any post-release row without it,
+# and on any row of any date with no record at all. Plantings for both.")
+# Each planting runs on the unfixed tree too, where it reports NOT CAUGHT:
+# there, nothing stores a prompt, nothing refuses a row without one and
+# nothing names it.
+# ---------------------------------------------------------------------------
+
+LAW_PROMPT_RECORD = "A REASONING FORECAST CARRIES THE PROMPT IT WAS SENT"
+
+_PLANTED_GAME = "planted-prompt"
+_PLANTED_CLAIM = "AAA (home) beat BBB"
+
+
+def _prompt_record_module():
+    """The prompt record's door, or None on a tree that has none."""
+    try:
+        from gridiron.model import prompt_record
+    except ImportError:
+        return None
+    return prompt_record
+
+
+def _a_sent_prompt(conn, game_id: str, claim: str, sent_utc: str) -> int | None:
+    """A sent prompt record through the one door, for a planted reasoning row
+    to cite; None on a tree with no prompt record. Not committed."""
+    prompt_record = _prompt_record_module()
+    if prompt_record is None:
+        return None
+    from gridiron.model import llm as _llm
+
+    request = _llm.reasoning_request(_llm.build_prompt(claim, [], []))
+    return prompt_record.keep_sent(
+        conn, prompt_record.sent(request, sent_utc=sent_utc),
+        game_id=game_id, claim=claim)
+
+
+def _a_reasoning_world(path: Path) -> sqlite3.Connection:
+    """A scratch record with one game, opened under this tree's schema, so
+    its release instant is the moment it was made."""
+    conn = db.open_db(path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1, 'R',"
+        " 'AAA', 'BBB', '2026-12-01T18:00:00Z', 'scheduled', '2026-12-01')",
+        (_PLANTED_GAME,))
+    conn.commit()
+    return conn
+
+
+def _a_reasoning_row(conn, *, created: str, factors: dict,
+                     subject: str = "AAA", pass_kind: str = "final") -> int:
+    """One reasoning row, written straight into the table -- round the door,
+    which is the violation some of these plantings are."""
+    import json as _json
+
+    cur = conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES (?, 'mlb', ?, 'moneyline', ?, NULL, 0.61, 'win', 'llm', ?,"
+        " 'fs2', ?, 'The home side is the stronger club on these factors.')",
+        (created, _PLANTED_GAME, subject, pass_kind, _json.dumps(factors)))
+    return int(cur.lastrowid)
+
+
+def _after_the_instant(conn) -> str:
+    """A moment after the world's release instant (now, on a tree with none)."""
+    prompt_record = _prompt_record_module()
+    instant = prompt_record.binds_from(conn) if prompt_record else None
+    base = (datetime.strptime(instant, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc) if instant else datetime.now(timezone.utc))
+    return (base + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _named(faults: list[str], opening: str, forecast: int | None = None,
+           record: int | None = None) -> list[str]:
+    return [f for f in faults if f.startswith(opening)
+            and (forecast is None or f"reasoning forecast {forecast} " in f)
+            and (record is None or f"prompt record {record} " in f)]
+
+
+def plant_a_reasoning_row_after_the_release_without_its_prompt() -> Result:
+    """(a) A reasoning forecast written after the release instant with no sent
+    prompt record. The schema must refuse it, AND -- on a copy with that
+    trigger dropped, where it lands -- the gate's audit must name it: a
+    trigger can be dropped, and the audit is the second lock."""
+    violation = "a reasoning forecast after the release instant with no sent prompt"
+    guard = ("trigger reasoning_row_carries_its_prompt, and "
+             "audit.prompt_record_faults on a copy without it")
+    audit_fn = getattr(audit, "prompt_record_faults", None)
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _a_reasoning_world(Path(tmp) / "a.db")
+        when = _after_the_instant(conn)
+        factors = {"question": {"claim": _PLANTED_CLAIM}}
+        refused = ""
+        landed = None
+        try:
+            landed = _a_reasoning_row(conn, created=when, factors=factors)
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            refused = str(exc)
+        named: list[str] = []
+        has_trigger = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'trigger'"
+            " AND name = 'reasoning_row_carries_its_prompt'").fetchone()
+        after = "WRITTEN AFTER THE RELEASE WITHOUT THE PROMPT IT WAS SENT"
+        if audit_fn is not None and landed is not None:
+            # A TRIGGER THAT LET IT IN (the prover, 2026-09-25). The row is
+            # already on this world, so the audit reads it here: a second
+            # copy of the same question would be refused by the one-answer
+            # index and end the harness in a traceback instead of a verdict.
+            named = _named(audit_fn(conn), after, forecast=landed)
+        elif audit_fn is not None and has_trigger:
+            copy = _a_copy_without(conn, Path(tmp) / "a-copy.db",
+                                   "reasoning_row_carries_its_prompt")
+            try:
+                pid = _a_reasoning_row(copy, created=when, factors=factors)
+                copy.commit()
+                named = _named(audit_fn(copy), after, forecast=pid)
+            finally:
+                copy.close()
+        conn.close()
+    if "GRIDIRON PROMPT RECORD" in refused and named:
+        return Result(LAW_PROMPT_RECORD, violation, guard, True,
+                      refused.split(":")[0] + " refused it; " + named[0])
+    return Result(
+        LAW_PROMPT_RECORD, violation, guard, False,
+        "NOT CAUGHT - a reasoning forecast written after the release with no "
+        "record of what it was sent "
+        + ("was refused by the schema, but on a copy without the trigger the "
+           "gate's audit did not name it" if refused
+           else "landed on the record: the schema did not refuse it"
+           + (", though the gate's audit named it" if named
+              else ", and nothing named it")))
+
+
+def plant_a_reasoning_row_with_no_record_at_all() -> Result:
+    """(b) A reasoning forecast of any date with no prompt record at all:
+    here one written before the release instant, which the schema lets in --
+    the gap before the release is labelled, not exempted -- and which the
+    gate's audit must therefore name until it is reconstructed."""
+    violation = "a reasoning forecast with no prompt record at all"
+    guard = "audit.prompt_record_faults"
+    audit_fn = getattr(audit, "prompt_record_faults", None)
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _a_reasoning_world(Path(tmp) / "b.db")
+        pid = _a_reasoning_row(conn, created="2026-09-02T06:02:12Z",
+                               factors={"question": {"claim": _PLANTED_CLAIM}})
+        conn.commit()
+        named = (_named(audit_fn(conn), "NO PROMPT RECORD AT ALL", forecast=pid)
+                 if audit_fn is not None else [])
+        conn.close()
+    if named:
+        return Result(LAW_PROMPT_RECORD, violation, guard, True, named[0])
+    return Result(LAW_PROMPT_RECORD, violation, guard, False,
+                  "NOT CAUGHT - a reasoning forecast with no record of what it "
+                  "was sent stands on the record and nothing names it")
+
+
+def _a_kept_forecast(conn) -> tuple[int | None, int]:
+    """A reasoning forecast written lawfully, its sent record first on the
+    same transaction: (record id or None on a tree with none, forecast id)."""
+    when = _after_the_instant(conn)
+    cite = _a_sent_prompt(conn, _PLANTED_GAME, _PLANTED_CLAIM, when)
+    factors = {"question": {"claim": _PLANTED_CLAIM}}
+    if cite is not None:
+        factors["reasoning_prompt_id"] = cite
+    pid = _a_reasoning_row(conn, created=when, factors=factors)
+    conn.commit()
+    return cite, pid
+
+
+def plant_an_edited_prompt_record() -> Result:
+    """(c) A prompt record edited, deleted, or replaced by an insert naming
+    its id -- each must be refused by name. Append-only, like every record
+    of what a forecaster said."""
+    violation = "a prompt record edited, deleted or replaced"
+    guard = ("triggers reasoning_prompts_no_update, reasoning_prompts_no_delete "
+             "and reasoning_prompts_never_replaced")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _a_reasoning_world(Path(tmp) / "c.db")
+        cite, _pid = _a_kept_forecast(conn)
+        if cite is None:
+            conn.close()
+            return Result(LAW_PROMPT_RECORD, violation, guard, False,
+                          "NOT CAUGHT - nothing stores the prompt a reasoning "
+                          "forecast was sent, so there is no record to protect")
+        refusals = []
+        for sql in (
+                "UPDATE reasoning_prompts SET request_json = replace("
+                "request_json, 'CLAIM', 'CLAIMED') WHERE id = ?",
+                "DELETE FROM reasoning_prompts WHERE id = ?",
+                "INSERT OR REPLACE INTO reasoning_prompts (id, kind, game_id,"
+                " claim, request_json, request_sha256, sent_utc)"
+                " SELECT id, kind, game_id, claim, request_json, request_sha256,"
+                " sent_utc FROM reasoning_prompts WHERE id = ?"):
+            try:
+                conn.execute(sql, (cite,))
+                conn.commit()
+                refusals.append("")
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                refusals.append(str(exc))
+        kept = conn.execute("SELECT COUNT(*) FROM reasoning_prompts"
+                            " WHERE id = ?", (cite,)).fetchone()[0]
+        conn.close()
+    if all("GRIDIRON PROMPT RECORD" in r for r in refusals) and kept == 1:
+        return Result(LAW_PROMPT_RECORD, violation, guard, True,
+                      " / ".join(r.split(";")[0] for r in refusals))
+    return Result(LAW_PROMPT_RECORD, violation, guard, False,
+                  f"NOT CAUGHT - of an edit, a delete and a replacing insert, "
+                  f"{sum(1 for r in refusals if not r)} went through: "
+                  f"{refusals!r}")
+
+
+def plant_a_prompt_whose_text_does_not_match_its_hash() -> Result:
+    """(d) A stored prompt whose text does not hash to the SHA-256 written
+    with it -- written round the door, which is the only way to make one.
+    The gate's audit must name the record."""
+    violation = "a stored prompt whose text does not match its hash"
+    guard = "audit.prompt_record_faults"
+    audit_fn = getattr(audit, "prompt_record_faults", None)
+    prompt_record = _prompt_record_module()
+    if audit_fn is None or prompt_record is None:
+        return Result(LAW_PROMPT_RECORD, violation, guard, False,
+                      "NOT CAUGHT - no prompt is stored, so no hash is kept "
+                      "and nothing compares one with its text")
+    import json as _json
+    from gridiron.model import llm as _llm
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _a_reasoning_world(Path(tmp) / "d.db")
+        when = _after_the_instant(conn)
+        stored = prompt_record.canonical(_llm.reasoning_request(
+            _llm.build_prompt(_PLANTED_CLAIM, [], [])))
+        other = stored.replace("CLAIM", "CLAIMED", 1)
+        cur = conn.execute(
+            "INSERT INTO reasoning_prompts (kind, game_id, claim, request_json,"
+            " request_sha256, sent_utc) VALUES ('sent', ?, ?, ?, ?, ?)",
+            (_PLANTED_GAME, _PLANTED_CLAIM, stored, prompt_record.digest(other),
+             when))
+        record = int(cur.lastrowid)
+        _a_reasoning_row(conn, created=when, factors={
+            "question": {"claim": _PLANTED_CLAIM}, "reasoning_prompt_id": record})
+        conn.commit()
+        named = _named(audit_fn(conn), "A PROMPT WHOSE TEXT DOES NOT MATCH ITS "
+                       "HASH", record=record)
+        conn.close()
+    if named:
+        return Result(LAW_PROMPT_RECORD, violation, guard, True, named[0])
+    return Result(LAW_PROMPT_RECORD, violation, guard, False,
+                  "NOT CAUGHT - a stored prompt no longer hashes to what was "
+                  "written with it, and the gate's audit did not name it")
+
+
+def plant_a_reconstructed_prompt_shown_without_the_word() -> Result:
+    """(e) A reconstructed prompt shown on the page without the word
+    "reconstructed": once with the word dropped from its label, once under
+    the label of a prompt that was sent. The payload scan must name both --
+    the ruling asks for the word "in those words", and the label is read off
+    the record's own kind."""
+    violation = "a reconstructed prompt shown without the word 'reconstructed'"
+    guard = "audit.prompt_label_faults"
+    audit_fn = getattr(audit, "prompt_label_faults", None)
+    prompt_record = _prompt_record_module()
+    from gridiron import language as _language, views as _views
+    import json as _json
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _a_reasoning_world(Path(tmp) / "e.db")
+        pid = _a_reasoning_row(conn, created="2026-09-02T06:02:12Z",
+                               factors={"question": {"claim": _PLANTED_CLAIM},
+                                        "sport": "mlb",
+                                        "market_type": "moneyline",
+                                        "values": {}, "absent": []})
+        conn.commit()
+        if prompt_record is not None:
+            from gridiron.model import llm as _llm
+
+            prompt_record.keep_reconstructed(
+                conn, prediction_id=pid, game_id=_PLANTED_GAME,
+                claim=_PLANTED_CLAIM,
+                request_json=prompt_record.canonical(_llm.reasoning_request(
+                    _llm.build_prompt(_PLANTED_CLAIM, [], []))),
+                code_version="48628e53df75" + "0" * 28,
+                provenance=_language.reconstruction_provenance(
+                    commit_utc="2026-09-02T05:44:27Z", before_merged_only=True,
+                    no_task_run=False))
+            conn.commit()
+        labels = getattr(_language, "PROMPT_LABELS", None)
+        found = []
+        for planted in ("The prompt", "The prompt it was sent"):
+            saved = dict(labels) if labels is not None else None
+            try:
+                if labels is not None:
+                    labels["reconstructed"] = planted
+                payload = _views.history(conn, sport="mlb", predictor="llm")
+                faults = audit_fn(conn, [payload]) if audit_fn else []
+            finally:
+                if labels is not None:
+                    labels.clear()
+                    labels.update(saved)
+            found.append(_named(faults, "A RECONSTRUCTED PROMPT NOT LABELLED "
+                                "RECONSTRUCTED"))
+        conn.close()
+    if all(found):
+        return Result(LAW_PROMPT_RECORD, violation, guard, True,
+                      found[0][0].split(". ")[0])
+    return Result(LAW_PROMPT_RECORD, violation, guard, False,
+                  "NOT CAUGHT - a prompt rebuilt after the fact reaches the "
+                  "page without the word that says so, or under the label of "
+                  "the prompt that was sent, and no scan names it")
+
+
+def _the_trees_verify():
+    """`tools/verify.py` of the tree whose `gridiron` this process imported --
+    this repository's, or a tree under test -- loaded under its own name."""
+    import importlib.util
+    import gridiron as _package
+
+    path = Path(_package.__file__).resolve().parents[1] / "tools" / "verify.py"
+    spec = importlib.util.spec_from_file_location("planted_gate_verify", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def plant_a_released_record_the_gate_rebuilds_before_checking() -> Result:
+    """(f) After the release, a reasoning forecast with no prompt record,
+    dated before the instant -- the live record before the operator's run
+    reaches it, or a row written round the door with an earlier date. The
+    gate must name it, as the record holds it (the ruling on question 4,
+    2026-09-25: "The gate fails by name ... on any row of any date with no
+    record at all").
+
+    Found by the rehearsal of item 4 (2026-09-25): the gate rebuilt every
+    copy before checking it, so such a row was reconstructed on the copy --
+    labelled with a commit that never wrote it -- and the check passed. The
+    row is dated where the main checkout's history names a commit whose
+    prompt code rebuilds it, so the rebuild that hid it can run."""
+    violation = ("a reasoning forecast with no record on a released record, "
+                 "rebuilt by the gate before its check")
+    guard = ("verify._bring_the_copy_to_this_tree, which rebuilds the copy "
+             "only while the record has no release instant, and "
+             "audit.prompt_record_faults")
+    audit_fn = getattr(audit, "prompt_record_faults", None)
+    prompt_record = _prompt_record_module()
+    if audit_fn is None or prompt_record is None:
+        return Result(LAW_PROMPT_RECORD, violation, guard, False,
+                      "NOT CAUGHT - nothing keeps a prompt, so the gate has no "
+                      "record to find missing")
+    saved_path = list(sys.path)
+    try:
+        return _released_record_rebuilt(violation, guard, audit_fn, prompt_record)
+    finally:
+        # verify.py puts its tree and its tools first on the path when it is
+        # loaded; the plantings after this one import as they did before it.
+        sys.path[:] = saved_path
+
+
+def _released_record_rebuilt(violation, guard, audit_fn, prompt_record) -> Result:
+    verify = _the_trees_verify()
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        record = Path(tmp) / "released.db"
+        conn = _a_reasoning_world(record)
+        instant = prompt_record.binds_from(conn)
+        pid = _a_reasoning_row(conn, created="2026-09-25T20:00:00Z", factors={
+            "sport": "mlb", "market_type": "moneyline", "values": {},
+            "absent": [], "failed": {}, "notes": [], "sources": {},
+            "question": {"claim": _PLANTED_CLAIM},
+            "llm_model": "claude-sonnet-4-5"})
+        conn.commit()
+        conn.close()
+        copy = Path(tmp) / "gate-copy.db"
+        db.back_up(record, copy, "the gate's copy of a planted released record")
+        bring = getattr(verify, "_bring_the_copy_to_this_tree", None)
+        import contextlib
+        import io
+
+        # What the gate prints about its copy is its own; the harness prints
+        # the verdict.
+        with contextlib.redirect_stdout(io.StringIO()):
+            if bring is not None:
+                bring(copy)
+            else:
+                # THE GATE AS IT WAS: migrate, then rebuild every copy.
+                db.open_db(copy).close()
+                verify._reconstruct_the_copy(copy)
+        conn = db.connect(copy)
+        record_kind = (prompt_record.record_for(conn, pid) or {}).get("kind")
+        named = _named(audit_fn(conn), "NO PROMPT RECORD AT ALL", forecast=pid)
+        conn.close()
+    if named and record_kind is None:
+        return Result(LAW_PROMPT_RECORD, violation, guard, True, named[0])
+    return Result(
+        LAW_PROMPT_RECORD, violation, guard, False,
+        f"NOT CAUGHT - on a record released at {instant}, forecast {pid} has "
+        f"no prompt record, and the gate "
+        + (f"rebuilt it on its copy ({record_kind}) before checking, so the "
+           f"check passed" if record_kind else "did not name it"))
+
+
+def plant_a_second_forecast_citing_a_sent_prompt_as_text() -> Result:
+    """(g) A second reasoning forecast after the release instant that cites a
+    sent record another forecast already cites, spelled as the text of its
+    id. The schema must refuse it: one sent prompt, one forecast.
+
+    Found by the prover of item 4 (2026-09-25). SQLite matched the text cite
+    to the record by the id column's affinity, so the trigger's record test
+    passed; its no-other-forecast test and the one-forecast index compare the
+    two cites as stored, and a number and a text never match there -- so the
+    second forecast landed beside the first, and the page showed one prompt
+    under both. The gate's audit named it (a text is no id), but the schema,
+    the first lock, let it in."""
+    violation = ("a second reasoning forecast sharing one sent prompt, its "
+                 "cite spelled as text")
+    guard = ("trigger reasoning_row_carries_its_prompt: the cite is the "
+             "record's own integer id")
+    prompt_record = _prompt_record_module()
+    if prompt_record is None:
+        return Result(LAW_PROMPT_RECORD, violation, guard, False,
+                      "NOT CAUGHT - nothing keeps a prompt, so any number of "
+                      "reasoning forecasts carry none and nothing refuses one")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _a_reasoning_world(Path(tmp) / "g.db")
+        cite, first = _a_kept_forecast(conn)
+        refused, second = "", None
+        try:
+            second = _a_reasoning_row(
+                conn, created=_after_the_instant(conn), subject="BBB",
+                factors={"question": {"claim": _PLANTED_CLAIM},
+                         prompt_record.CITE: str(cite)})
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            refused = str(exc)
+        shown = (prompt_record.record_for(conn, second) or {}).get("kind") \
+            if second is not None else None
+        conn.close()
+    if "GRIDIRON PROMPT RECORD" in refused:
+        return Result(LAW_PROMPT_RECORD, violation, guard, True,
+                      refused.split(":")[0] + f" refused a second forecast "
+                      f"citing prompt record {cite} as the text '{cite}' "
+                      f"beside forecast {first}")
+    return Result(
+        LAW_PROMPT_RECORD, violation, guard, False,
+        f"NOT CAUGHT - forecast {second} cites prompt record {cite} as the "
+        f"text '{cite}', which forecast {first} already cites, and it landed"
+        + (f"; the page reads it as {shown}" if shown else ""))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -11219,6 +11691,23 @@ def main() -> int:
     results.append(plant_a_new_schema_difference_on_the_record())
     results.append(plant_a_cleared_difference_left_in_the_register())
     results.append(plant_a_rebuild_that_alters_a_row())
+    # THE PROMPT RECORD (the rulings of 2026-09-24 and 2026-09-25): a
+    # reasoning forecast after the release without the prompt it was sent,
+    # one of any date with none at all, a record edited or deleted, a text
+    # that no longer matches its hash, and a reconstruction on the page
+    # without the word.
+    results.append(plant_a_reasoning_row_after_the_release_without_its_prompt())
+    results.append(plant_a_reasoning_row_with_no_record_at_all())
+    results.append(plant_an_edited_prompt_record())
+    results.append(plant_a_prompt_whose_text_does_not_match_its_hash())
+    results.append(plant_a_reconstructed_prompt_shown_without_the_word())
+    # AND THE GATE CHECKS A RELEASED RECORD AS IT HOLDS IT (the rehearsal of
+    # item 4, 2026-09-25): a forecast with no record is never rebuilt on the
+    # gate's copy once the record carries its release instant.
+    results.append(plant_a_released_record_the_gate_rebuilds_before_checking())
+    # ONE SENT PROMPT, ONE FORECAST, WHATEVER THE SPELLING (the prover of
+    # item 4, 2026-09-25): a cite written as text is refused by the schema.
+    results.append(plant_a_second_forecast_citing_a_sent_prompt_as_text())
     results.append(plant_a_same_game_label_on_a_combo_card())
     results.append(plant_a_priced_same_game_package())
     results.append(plant_a_priced_cross_sport_package())

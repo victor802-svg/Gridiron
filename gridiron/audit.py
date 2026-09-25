@@ -7595,10 +7595,12 @@ _CLEARED_BY_RULING_2 = "cleared by the dated migration of ruling 2"
 #: after the release that carries it, with a verified backup, by the
 #: operator. The commit after it runs empties this register.
 #:
-#: AND A NINTH, for the release comparison only: the record's
-#: `spread_sign_source`, which the release's `schema.sql` does not declare
-#: (schema ruling 3, built 2026-09-25 in this same batch). It clears the
-#: moment the release carries ruling 3, and the gate then says so.
+#: THE NINTH IS GONE (2026-09-25). The record's `spread_sign_source`, which
+#: the release's `schema.sql` did not declare, was registered for the
+#: release comparison until schema ruling 3 was released; 3603300 carried
+#: the declaration, every gate from then on reported the entry "CLEARED,
+#: STILL REGISTERED", and the next commit -- item 4, the prompt record --
+#: removed it, as the register's own rule requires.
 _SPORTS_CHECK = "column sport: check (sport in ('nfl', 'mlb', 'nba', 'cfb', 'ufc'))"
 _BOTH = ("release", "tree")
 
@@ -7646,14 +7648,6 @@ SCHEMA_DIFFERENCES_REGISTERED: tuple[RegisteredDifference, ...] = (
         "719004d, which declared the column with no default; the record's "
         "came by the ALTER in db.MIGRATIONS, and SQLite requires a default "
         "to add a NOT NULL column", _BOTH, "2026-09-25", _CLEARED_BY_RULING_2),
-    RegisteredDifference(
-        "table market_lines_raw",
-        "column spread_sign_source (text default 'unverified' not null)",
-        "record",
-        "3fe3179 added it by lines.ensure_raw_columns only; schema.sql "
-        "declares it from schema ruling 3 (built 2026-09-25)", ("release",),
-        "2026-09-25",
-        "cleared by the release that carries schema ruling 3's declaration"),
 )
 
 
@@ -7704,3 +7698,266 @@ def check_the_schema_matches(record, reference, comparison: str,
             f"(schema ruling 1 of 2026-09-24): {len(faults)} fault(s); the "
             f"first is {faults[0]}" + _NL2 + _NL2.join(faults))
     return summary
+
+
+# ---------------------------------------------------------------------------
+# THE PROMPT RECORD (the ruling of 2026-09-24, two additions, item 1; the
+# ruling on question 4, 2026-09-25)
+# ---------------------------------------------------------------------------
+#
+# "The reasoning pass stores the exact prompt it sent ... with every row it
+# writes, append-only. No reasoning row may exist without it." And: "From the
+# release onward, every reasoning row must carry kind = "sent" ... The gate
+# fails by name on any post-release row without it, and on any row of any
+# date with no record at all." The schema is the first lock; a trigger can be
+# dropped, so this is the second, checked in the gate on its migrated copy of
+# the record once the reconstruction has been applied to it -- the state the
+# live record will have once `tools/reconstruct_prompts.py` has run after the
+# release.
+
+#: Every rule the schema holds for the prompt record, by name.
+PROMPT_RECORD_TRIGGERS = (
+    "reasoning_prompts_no_update",
+    "reasoning_prompts_no_delete",
+    "reasoning_prompts_never_replaced",
+    "reasoning_prompt_reconstructed_only_before_the_release",
+    "reasoning_row_carries_its_prompt",
+    "prompt_record_instant_is_written_once",
+    "prompt_record_instant_never_moves",
+    "prompt_record_instant_never_removed",
+)
+
+#: The one module that writes the table.
+PROMPT_RECORD_DOOR = "gridiron/model/prompt_record.py"
+
+_PROMPT_RECORD_INSERT = re.compile(r"\bINTO\s+reasoning_prompts\b", re.IGNORECASE)
+_UTC_STAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+
+
+def prompt_record_faults(conn) -> list[str]:
+    """Every reasoning forecast without the record the rulings require, and
+    every record that is not what it says, named one by one."""
+    from .model import prompt_record
+
+    objects = {(r[0], r[1]) for r in conn.execute(
+        "SELECT type, name FROM sqlite_master")}
+    if ("table", "reasoning_prompts") not in objects:
+        return ["NO PROMPT RECORD: the database has no reasoning_prompts "
+                "table, so no reasoning forecast on it carries its prompt"]
+    faults = [f"A RULE OF THE PROMPT RECORD IS MISSING: trigger {name} is not "
+              f"on the database. A trigger can be dropped; this is the "
+              f"second lock, and it says so by name."
+              for name in PROMPT_RECORD_TRIGGERS if ("trigger", name) not in objects]
+    instant = prompt_record.binds_from(conn)
+    if instant is None or not _UTC_STAMP.fullmatch(instant):
+        faults.append(
+            f"NO RELEASE INSTANT: meta holds {instant!r} under "
+            f"{prompt_record.BINDS_FROM!r}. The first open under the schema "
+            f"that ships the rule writes it, once; without it nothing says "
+            f"from when a forecast must carry the prompt it was sent.")
+        instant = None
+
+    records = {r["id"]: dict(r) for r in conn.execute(
+        "SELECT * FROM reasoning_prompts ORDER BY id")}
+    rebuilt: dict[int, dict] = {}
+    for rec in records.values():
+        where = f"prompt record {rec['id']} ({rec['kind']})"
+        if prompt_record.digest(rec["request_json"]) != rec["request_sha256"]:
+            faults.append(
+                f"A PROMPT WHOSE TEXT DOES NOT MATCH ITS HASH: {where}. The "
+                f"stored request no longer hashes to the SHA-256 written with "
+                f"it, so it is not the request that was recorded.")
+        if rec["repair_json"] is not None and (
+                prompt_record.digest(rec["repair_json"]) != rec["repair_sha256"]):
+            faults.append(
+                f"A PROMPT WHOSE TEXT DOES NOT MATCH ITS HASH: {where}, its "
+                f"reformatting request.")
+        try:
+            request = json.loads(rec["request_json"])
+            content = request["messages"][0]["content"]
+        except (ValueError, TypeError, KeyError, IndexError):
+            faults.append(f"A PROMPT THAT IS NOT A REQUEST: {where} holds no "
+                          f"user message.")
+            continue
+        if prompt_record.canonical(request) != rec["request_json"]:
+            faults.append(f"A PROMPT NOT IN ITS ONE FORM: {where} is not "
+                          f"canonical JSON, so its hash names bytes no other "
+                          f"copy of the same request would have.")
+        if not str(content).startswith(f"CLAIM: {rec['claim']}"):
+            faults.append(f"A PROMPT ABOUT ANOTHER QUESTION: {where} does not "
+                          f"open with the claim it records.")
+        if rec["kind"] == prompt_record.KIND_RECONSTRUCTED:
+            rebuilt[rec["prediction_id"]] = rec
+
+    cited: dict[int, list[int]] = {}
+    forecasts = conn.execute(
+        "SELECT id, created_utc, sport, market_type, game_id, factors_json"
+        "  FROM predictions WHERE predictor = 'llm' ORDER BY id").fetchall()
+    for row in forecasts:
+        try:
+            payload = json.loads(row["factors_json"])
+        except (TypeError, ValueError):
+            payload = {}
+        payload = payload if isinstance(payload, dict) else {}
+        cite = payload.get(prompt_record.CITE)
+        claim = (payload.get("question") or {}).get("claim")
+        where = (f"reasoning forecast {row['id']} ({row['sport']} "
+                 f"{row['market_type']}, written {row['created_utc']})")
+        sent = records.get(cite) if isinstance(cite, int) else None
+        if cite is not None:
+            cited.setdefault(cite, []).append(row["id"])
+        kept = (sent is not None and sent["kind"] == prompt_record.KIND_SENT
+                and sent["game_id"] == row["game_id"] and sent["claim"] == claim
+                and (sent["sent_utc"] or "") <= row["created_utc"])
+        after = instant is not None and row["created_utc"] >= instant
+        if after and not kept:
+            faults.append(
+                f"WRITTEN AFTER THE RELEASE WITHOUT THE PROMPT IT WAS SENT: "
+                f"{where} is at or after the release instant {instant} and "
+                f"carries no sent record of its own game and claim"
+                + (f" (it cites {cite!r})." if cite is not None else "."))
+        elif not kept and row["id"] not in rebuilt:
+            faults.append(
+                f"NO PROMPT RECORD AT ALL: {where} has neither the prompt it "
+                f"was sent nor a reconstruction"
+                + (f" (it cites {cite!r}, which is no sent record of its "
+                   f"own)." if cite is not None else "."))
+        if row["id"] in rebuilt and (after or kept):
+            faults.append(
+                f"A RECONSTRUCTION WHERE THE PROMPT SENT IS KEPT OR OWED: "
+                f"{where} has a reconstructed record, and "
+                + ("was written after the release." if after
+                   else "carries the prompt it was sent."))
+    for cite, ids in cited.items():
+        if len(ids) > 1:
+            faults.append(f"ONE PROMPT FOR TWO FORECASTS: prompt record {cite} "
+                          f"is cited by reasoning forecasts {ids}.")
+    ids = {row["id"] for row in forecasts}
+    for pid, rec in rebuilt.items():
+        if pid not in ids:
+            faults.append(f"A RECONSTRUCTION OF NO REASONING FORECAST: prompt "
+                          f"record {rec['id']} names forecast {pid}.")
+    return faults
+
+
+def check_every_reasoning_row_has_its_prompt(conn) -> None:
+    faults = prompt_record_faults(conn)
+    if faults:
+        raise LawViolation(
+            "A REASONING FORECAST WITHOUT ITS PROMPT RECORD (the rulings of "
+            "2026-09-24 and 2026-09-25): " + f"{len(faults)} fault(s); the "
+            f"first is {faults[0]}" + _NL2 + _NL2.join(faults))
+
+
+def prompt_record_door_faults(root: Path | None = None) -> list[str]:
+    """Every statement outside the one door that writes the prompt record,
+    in the package and the tools. The plantings write around it on purpose,
+    to prove the schema refuses them, and are not read."""
+    root = config.REPO_ROOT if root is None else Path(root)
+    faults = []
+    for base in ("gridiron", "tools"):
+        for path in sorted((root / base).rglob("*.py")):
+            where = path.relative_to(root).as_posix()
+            if where == PROMPT_RECORD_DOOR or where.startswith("tools/guards/"):
+                continue
+            text = _python_without_comments(path.read_text(encoding="utf-8"))
+            for match in _PROMPT_RECORD_INSERT.finditer(text):
+                line = text.count(chr(10), 0, match.start()) + 1
+                faults.append(
+                    f"{where}:{line} writes the prompt record itself. Every "
+                    f"record goes through `model.prompt_record`, which checks "
+                    f"the request is one canonical request and hashes it the "
+                    f"one way.")
+    return faults
+
+
+def check_the_prompt_record_has_one_door(root: Path | None = None) -> None:
+    faults = prompt_record_door_faults(root)
+    if faults:
+        raise LawViolation("THE PROMPT RECORD WRITTEN ROUND ITS DOOR:" + _NL2
+                           + _NL2.join(faults))
+
+
+def _forecast_entries(payload, path: str = "$"):
+    """Every forecast a payload shows a reader: a card, a face, a detail or a
+    row of the record -- a dict naming a prediction and carrying its words."""
+    if isinstance(payload, dict):
+        if "prediction_id" in payload and (
+                "reasoning" in payload or "slate_label" in payload
+                or "prompt" in payload):
+            yield path, payload
+        for key, value in payload.items():
+            yield from _forecast_entries(value, f"{path}.{key}")
+    elif isinstance(payload, list):
+        for i, value in enumerate(payload):
+            yield from _forecast_entries(value, f"{path}[{i}]")
+
+
+def prompt_label_faults(conn, payloads) -> list[str]:
+    """A reasoning forecast shown without its prompt disclosure, or with one
+    that says something other than what its record is.
+
+    THE RULING'S WORDS: "The page and the Record page show reconstructed rows'
+    prompts labelled 'reconstructed' in those words." So the label is read off
+    the RECORD's kind, through the one reader, never off the payload's own
+    claim about itself: a reconstructed prompt under the sent label, or a
+    label that lost the word, is named here.
+    """
+    from . import language
+    from .model import prompt_record
+
+    entries = [(path, e) for payload in payloads
+               for path, e in _forecast_entries(payload)]
+    ids = sorted({e["prediction_id"] for _p, e in entries
+                  if isinstance(e.get("prediction_id"), int)})
+    if not ids:
+        return []
+    predictor = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        predictor.update({r[0]: r[1] for r in conn.execute(
+            f"SELECT id, predictor FROM predictions WHERE id IN "
+            f"({','.join('?' * len(chunk))})", chunk)})
+    records = prompt_record.records_for(conn, ids)
+    faults = []
+    for path, entry in entries:
+        pid = entry.get("prediction_id")
+        if predictor.get(pid) != "llm":
+            continue
+        block = entry.get("prompt")
+        record = records.get(pid)
+        kind = record["kind"] if record else None
+        where = f"{path} (reasoning forecast {pid})"
+        if not isinstance(block, dict):
+            faults.append(f"A REASONING FORECAST SHOWN WITHOUT ITS PROMPT: "
+                          f"{where} carries no prompt disclosure.")
+            continue
+        label = str(block.get("label") or "")
+        if block.get("kind") != kind or label != language.prompt_label(kind):
+            faults.append(
+                f"A PROMPT LABELLED AS SOMETHING IT IS NOT: {where} is "
+                f"labelled {label!r} as {block.get('kind')!r}; its record is "
+                f"{kind!r}, labelled {language.prompt_label(kind)!r}.")
+        if kind == prompt_record.KIND_RECONSTRUCTED and (
+                "reconstructed" not in label.lower()):
+            faults.append(
+                f"A RECONSTRUCTED PROMPT NOT LABELLED RECONSTRUCTED: {where} "
+                f"reads {label!r}. The ruling of 2026-09-25 asks for the word "
+                f"'reconstructed', in those letters.")
+        if kind != prompt_record.KIND_RECONSTRUCTED and "reconstructed" in label.lower():
+            faults.append(f"A PROMPT CALLED RECONSTRUCTED THAT IS NOT: {where} "
+                          f"reads {label!r}.")
+        for text in (label, str(block.get("note") or "")):
+            for fault in (plain_words_violations(text) + advice_word_faults(text)
+                          + pressure_word_faults(text)):
+                faults.append(f"{where}: {fault}")
+    return faults
+
+
+def check_the_prompt_says_what_it_is(conn, payloads) -> None:
+    faults = prompt_label_faults(conn, payloads)
+    if faults:
+        raise LawViolation(
+            "A PROMPT DISCLOSURE THAT DOES NOT SAY WHAT ITS PROMPT IS (the "
+            "ruling of 2026-09-25): " + f"{len(faults)} fault(s); the first "
+            f"is {faults[0]}" + _NL2 + _NL2.join(faults))

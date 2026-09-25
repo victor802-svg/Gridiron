@@ -518,6 +518,21 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_new_schema_difference_on_the_record",
         "plant_a_cleared_difference_left_in_the_register",
         "plant_a_rebuild_that_alters_a_row",
+        # THE PROMPT RECORD (the rulings of 2026-09-24 and 2026-09-25): after
+        # the release without the prompt sent, none at all, edited or
+        # deleted, a text off its hash, and a reconstruction on the page
+        # without the word.
+        "plant_a_reasoning_row_after_the_release_without_its_prompt",
+        "plant_a_reasoning_row_with_no_record_at_all",
+        "plant_an_edited_prompt_record",
+        "plant_a_prompt_whose_text_does_not_match_its_hash",
+        "plant_a_reconstructed_prompt_shown_without_the_word",
+        # ...and the gate checks a released record as it holds it (the
+        # rehearsal of item 4, 2026-09-25).
+        "plant_a_released_record_the_gate_rebuilds_before_checking",
+        # ...and one sent prompt is cited by one forecast, as its number
+        # (the prover of item 4, 2026-09-25).
+        "plant_a_second_forecast_citing_a_sent_prompt_as_text",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"
