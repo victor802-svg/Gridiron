@@ -324,6 +324,10 @@
     <!-- THE ROWS. Built by `renderGames` from the board payload; empty until
          it runs, and empty on a slate with no games, which the notes beneath
          say in words. -->
+    <!-- FIRST LOAD (ruled 2026-09-25): before any slate answer exists the
+         page says so in words, static, no spinner, no motion; the first
+         answer replaces it. -->
+    <p class="loading-words" id="games-loading">Loading today's games</p>
     <p class="updating-label" id="games-updating" hidden></p>
     <div id="games-rows" class="rows"></div>
 
@@ -391,6 +395,7 @@
     </div>
     <div class="props-body">
       <div>
+        <p class="loading-words" id="props-loading">Loading today's props</p>
         <p class="updating-label" id="props-updating" hidden></p>
         <div id="props-tiles" class="props-grid"></div>
         <div id="props-notes" class="slate-notes"></div>

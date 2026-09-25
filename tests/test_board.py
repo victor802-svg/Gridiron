@@ -465,3 +465,36 @@ def test_the_dim_is_applied_at_once_and_never_transitioned():
     rule = re.search(r"#games-rows\.updating[^{]*\{([^}]*)\}", css)
     assert rule and "transition: none" in rule.group(1) and "pointer-events: none" in rule.group(1), rule and rule.group(0)
     audit.check_motion_vocabulary()
+
+
+def test_the_first_load_says_it_is_loading_in_words_and_nothing_moves(served, _browser):
+    """RULED 2026-09-25: before any slate answer exists the page shows a static
+    placeholder in its own words -- no spinner, no motion -- and the first
+    answer replaces it."""
+    from tests.conftest import SMOKE_TOKEN
+    context = _browser.new_context(viewport={"width": 1300, "height": 900})
+    page = context.new_page()
+    held = []
+    # `/api/week` and `/api/week?…` only: `/api/weeks` is the picker the boot
+    # awaits, and holding it would hold the boot.
+    page.route(re.compile(r"/api/week(\?|$)"), lambda route: held.append(route))
+    page.goto(served + "/login", wait_until="networkidle")
+    page.fill("#token", SMOKE_TOKEN)
+    page.click("#submit")
+    page.wait_for_url(served + "/", timeout=15000)
+    page.wait_for_selector("#view-games:not([hidden])", timeout=15000)
+    page.wait_for_timeout(300)
+    probe = page.evaluate("""() => { const p = document.getElementById('games-loading'); const cs = getComputedStyle(p);
+        return { shown: !p.hidden && cs.display !== 'none', words: p.textContent.trim(), animation: cs.animationName,
+                 transition: cs.transitionProperty, rows: document.querySelectorAll('#games-rows .game').length,
+                 spinners: document.querySelectorAll('[class*="spinner"], [class*="spin"]').length }; }""")
+    assert probe["shown"] and probe["words"] == "Loading today's games", probe
+    assert probe["rows"] == 0 and probe["spinners"] == 0, probe
+    assert probe["animation"] in ("none", "") and probe["transition"] in ("all", "none", ""), probe
+    assert audit.plain_words_violations(probe["words"]) == []
+    for r in held:
+        r.continue_()
+    page.unroute(re.compile(r"/api/week(\?|$)"))
+    page.wait_for_selector("#games-rows .game", timeout=15000)
+    assert page.evaluate("document.getElementById('games-loading').hidden")
+    context.close()

@@ -1461,6 +1461,9 @@ const Gridiron = (function () {
     const again = () => renderGames();
     rows.innerHTML = '';
     notes.innerHTML = '';
+    // THE FIRST ANSWER REPLACES THE PLACEHOLDER (ruled 2026-09-25).
+    const loading = document.getElementById('games-loading');
+    if (loading) loading.hidden = true;
     renderLegend(labels);
     sportPill('games-sport', board);
     // THE MARKET FILTER NARROWS EVERY ROW, not only the list: a row on a
@@ -1857,6 +1860,8 @@ const Gridiron = (function () {
 
     host.innerHTML = '';
     notes.innerHTML = '';
+    const propsLoading = document.getElementById('props-loading');
+    if (propsLoading) propsLoading.hidden = true;
     const sortSel = document.getElementById('props-sort');
     const sortBy = prefGet('props.sort', 'cushion');
     fillSelect(sortSel, [['cushion', labels.sort_cushion], ['prob', labels.sort_prob]], sortBy);
