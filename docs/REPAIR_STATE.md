@@ -1,6 +1,23 @@
 # GRIDIRON_REPAIR — state for the next session
 
-## READ THIS BLOCK FIRST (updated 2026-09-24 ~14:30Z, overnight run)
+## READ THIS BLOCK FIRST (updated 2026-09-25 ~03:50Z, overnight run)
+
+- **Revert confirmed on the day strip.** The 15:00Z passes on 24 September
+  (final:nfl, final:cfb, both ok) wrote NFL spread 13 rows (fs3), NFL
+  moneyline 16 (fs2), NCAAF spread 1 (fs3) and NCAAF moneyline 1 (fs2); the
+  strip shows no held line; the gate's page check, run read-only on the live
+  record at 03:20Z on 25 September, passes: every statistical forecast on
+  the page is reproduced by its market's active fit, and every active fit is
+  its declared set.
+- **The machine was off 23:13:50Z (24 Sep) - 03:17:12Z (25 Sep)**: a power
+  off initiated by winlogon for SYSTEM (event 1074; no title), not a sleep.
+  Thursday's NFL game kicked off at 00:15Z inside that gap, so no near-start
+  read was taken for it. The logon catch-up ran at 03:17Z.
+- **Item 4 (the prompt record) is BLOCKED on question 4** (below): the
+  reasoning pass came back at 03:30Z and wrote 34 rows without a prompt, and
+  when the rule binds decides what the gate does with them. The design is
+  ready (question 4 and FOLLOWUPS); it is one gate from release once ruled.
+  The queue moved on to item 5.
 
 - **Released and serving: fddd61b** (`/api/health` = fddd61b8d635), on main
   and pushed: **weather** (repair 2e), after 4c3bda4 **the fs5 revert**
@@ -31,8 +48,8 @@
   2. ~~Revert~~ -- released 4c3bda4; the day-strip confirmation waits for the
      15:00Z pass.
   3. ~~Weather~~ -- released fddd61b.
-  4. **The reasoning-pass prompt record** (in progress).
-  5. Schema rulings (below, in the order the brief gives).
+  4. The reasoning-pass prompt record -- BLOCKED on question 4.
+  5. **Schema rulings** (in progress; below, in the order the brief gives).
   6. Repair items 3-8.
 - **The schema rulings, as queued before the overnight reorder** (their
   content stands; only their place moved):
@@ -94,6 +111,39 @@ depend on the answer.
    restated -- an identical refit activated under a ruling that says so, or
    a dated measured count shown beside the stored one? Default until ruled:
    the stored counts, with the words.
+4. **From when does the prompt record bind? (Two additions, item 1; asked
+   2026-09-25.)** The ruling says "No reasoning row may exist without it", and
+   the operator's message arrived at 2026-09-24T08:04:32Z. No code that keeps a
+   prompt has been released, and the scheduler has kept running the reasoning
+   pass without one. When the API came back, `predict:mlb` wrote 34 reasoning
+   rows between 03:30:13Z and 03:33:07Z on 25 September: ids 2358-2441, 17 MLB
+   moneyline and 17 MLB total, early pass, one successful call each (llm_calls
+   502-535). None of their prompts was kept. A rebuild would not be the prompt
+   that was sent, and LAW 3 forbids editing the rows. Every pass until the
+   release adds more; a day's pass is 40 to 70 rows. The 433 rows written
+   before the ruling are historic under either reading. (Read through the
+   read-only door at 03:37Z on 25 September.)
+   - **(A) The rule binds from the ruling, 2026-09-24T08:04:32Z.** This is how
+     the activation gate binds: from its birthday, which came before its
+     release. The 34 rows, and any written before the release, are then in
+     breach. The gate fails and names each one. A future rebuild of
+     `predictions` (for a new sport or market type) would refuse to copy them
+     back. Both stay that way until you say what happens to the rows: void
+     them, as with the earlier voids, or exempt them by a dated list of ids.
+   - **(B) The rule binds from the release of the code that keeps the
+     prompt.** Every reasoning row before that instant, the 34 included, is
+     historic and exempt by date, and the close-out counts them. The instant
+     is either a literal confirmed through the read-only door just before the
+     fast-forward, or the moment `db.init` first opens the record under the
+     new schema, which leaves no gap. The gate passes. But "no reasoning row
+     may exist without it" then lets through rows written after the ruling by
+     code that could not keep a prompt.
+
+   From the release on, under either reading, the database refuses a
+   reasoning row without its prompt. Nothing has been built; the prompt
+   record waits for this answer. Until it is ruled, each scheduled pass adds
+   to the count. Stopping the pass means unsetting the key in `.env`, which
+   is an operator step.
 
 (Older detail follows; where it conflicts with the block above, the block wins.)
 
