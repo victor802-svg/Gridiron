@@ -4931,6 +4931,8 @@ def task_run_order_faults(source: str | None = None) -> list[str]:
 #: put none above the rows; the later brief asks for this one by name, so it
 #: is declared here with its date rather than slipped past the scan. A second
 #: one is still a fault, and the planting still plants an undeclared row.
+#: RULED BY THE OPERATOR the same day (the merge brief, ruling 2): "the sort
+#: and filter bar stays above the rows, as built."
 PICKS_FIRST_CARD = "id=\"games-rows\""
 PICKS_CONTROL_ROWS: tuple[str, ...] = ("games-controls",)
 

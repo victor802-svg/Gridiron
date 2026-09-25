@@ -1419,6 +1419,15 @@ const Gridiron = (function () {
     }
     if (view.early) qs += (qs ? '&' : '?') + 'early_view=true';
     const seq = ++weekSeq;
+    // THE OLD ROWS ARE STALE THE MOMENT A NEW SLATE IS ASKED FOR (found
+    // 2026-09-25): the rows were cleared only after the answer arrived, so
+    // for the length of a fetch the previous render stood on the page as if
+    // it were current -- a reader, or a test, could open a row that the
+    // answer then replaced under them. The container goes to its arriving
+    // state now and comes back with the new rows, so nothing stale reads as
+    // settled. Offline this leaves the last numbers hidden, which is the
+    // rule: offline says offline.
+    rows.classList.add('arriving');
     const data = await fetchJSON(withSport('/api/week' + qs));
     if (seq !== weekSeq) return;
     clearError();
@@ -1802,6 +1811,7 @@ const Gridiron = (function () {
     const chosen = picker && picker.value ? JSON.parse(picker.value) : {};
     const qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
     const seq = sportSeq;
+    host.classList.add('arriving');   // the same rule as the rows, above
     const data = await fetchJSON(withSport('/api/week' + qs));
     if (stale(seq)) return;
     clearError();

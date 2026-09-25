@@ -421,3 +421,33 @@ def test_a_my_day_chip_scrolls_to_its_game(page):
     assert " taken" in page.text_content("#my-day-counts")
     strip = page.text_content("#my-day")
     assert "$" not in strip and "stake" not in strip.lower()
+
+
+def test_stale_rows_never_read_as_settled_while_a_new_slate_is_fetched(page):
+    """THE ORDER-DEPENDENT FAILURE OF 2026-09-25, at its root: the rows were
+    cleared only after the answer arrived, so during a fetch the previous
+    render stood on the page as current -- a reader could open a row the
+    answer then replaced under them, and two tests measured exactly that.
+    Now the container is in its arriving state from the moment a slate is
+    asked for until the new rows land."""
+    page.set_viewport_size(WIDE)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=15000)
+    page.wait_for_function("getComputedStyle(document.getElementById('games-rows')).opacity === '1'", timeout=5000)
+    held = []
+
+    def slow(route):
+        held.append(route)   # answered later, by hand
+
+    page.route("**/api/week*", slow)
+    page.evaluate("location.hash = '#/record'")
+    page.wait_for_timeout(200)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_function("document.getElementById('games-rows').classList.contains('arriving')", timeout=5000)
+    assert page.evaluate("getComputedStyle(document.getElementById('games-rows')).opacity") == "0", (
+        "the old rows read as the current slate while the new one was still being fetched")
+    for r in held:
+        r.continue_()
+    page.unroute("**/api/week*")
+    page.wait_for_function("!document.getElementById('games-rows').classList.contains('arriving') && document.querySelectorAll('#games-rows .game').length > 0", timeout=15000)
+    page.wait_for_function("getComputedStyle(document.getElementById('games-rows')).opacity === '1'", timeout=5000)

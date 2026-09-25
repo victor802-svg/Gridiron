@@ -310,3 +310,45 @@ pass is smaller and inside the $50 cap; stated as an estimate, not a reading.
 
 Three verdicts (yours, not mine): strongest thing ___ ; weakest thing ___ ;
 what to do next ___ .
+
+## The merge brief (2026-09-25, later the same day)
+
+Saved verbatim at `docs/briefs/2026-09-25-board-merge.md`. This session is
+the cloud container that built the board: it has no live record and is not
+the operator's machine, so steps 3, 4 and 5 (the gate against the record,
+the captures from the record, the release and the restart) cannot run here
+and wait for that machine. What could be done here was done.
+
+**1. The order-dependent failure -- cause found, fixed in the page, not the
+test.** `renderGames` cleared the rows only after `/api/week` answered, so
+for the length of a fetch the previous render stood on the page as if it
+were current. A reader -- or a test that waited for the response and then
+for rows -- could open a row that the answer then replaced under them, which
+is exactly the movement `test_a_card_expands_in_place_and_shows_the_why`
+measured (the card's own top: detached) and the un-intercepted note
+`test_the_flagged_note_is_readable_without_a_tap` read once in the same
+order. Reproduced in 2 of 5 runs of `pytest tests/test_smoke.py
+tests/test_cards.py`; the instrumented runs showed the boot render, the
+route to Record and the route to Games landing within 300ms of each other,
+which is the window. The fix: the rows' container goes to its arriving
+state (opacity 0, no transition) the moment a new slate is asked for, and
+comes back with the new rows; the tiles' container the same. Nothing stale
+reads as settled, and offline the last numbers stay hidden, which is the
+rule the page already had. `test_stale_rows_never_read_as_settled_while_a_new_slate_is_fetched`
+holds a `/api/week` answer by hand and reads the container's state; it
+fails on the page before the fix and passes after.
+Ten runs of the failing order on the fixed page: RESULT_PLACEHOLDER
+
+**2. Ruling recorded**: the sort-and-filter bar stays above the rows, as
+built; noted beside `audit.PICKS_CONTROL_ROWS`.
+
+**3, 4, 5 -- for the machine with the record**, in the brief's order: merge
+`board` into the worktree branch; `python tools/verify.py` read-only against
+the record (step 2 gains "the bar fills once, on load"; the harness should
+register 283 plantings, 13 more than `master`'s 270); the captures from the
+record at 1300 and 390 into this close-out, with a list of what differs from
+the fixture captures; then merge, push, restart, `/api/health`. The old
+Picks, Live and Today routes already redirect to Games on this branch and
+are removed from the page in that release and not before, as the brief
+says. **Note the branch name:** the repository's default branch is `master`;
+the brief says "main".
