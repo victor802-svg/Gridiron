@@ -13,11 +13,22 @@
   off initiated by winlogon for SYSTEM (event 1074; no title), not a sleep.
   Thursday's NFL game kicked off at 00:15Z inside that gap, so no near-start
   read was taken for it. The logon catch-up ran at 03:17Z.
-- **Question 4 is RULED** (docs/briefs/2026-09-25-question-4.md). Order now:
-  ~~5a~~ -> **item 4, the prompt record** (in progress: build, gate,
-  release, then the reconstruction written to the live record) -> 5a' (the
-  review's fixes to the migration tool, the diff and the scans) -> the
-  verified backup and the live migration -> 5b (the register emptied).
+- **Item 4, the prompt record, is RELEASED: f6e57f3** (`/api/health` =
+  f6e57f3d27d7, 22:36:19Z on 25 September; gate 4/4, 295/295 plantings;
+  released in a quiet window, no pass running). The release instant on the
+  record is **2026-09-25T22:36:19Z**. `tools/reconstruct_prompts.py --live`
+  then wrote **538 reconstructed records, 538 of 538 reasoning forecasts**
+  (14 commits; 7.2 s; exit 0; none committed after the instant), and the
+  gate's audit passes on the live record read-only. The first `sent`
+  records come from the next reasoning pass (Predict-MLB, 05:00Z).
+- **The machine was off again 08:35:30Z - 19:18:03Z on 25 September.** Both
+  overnight gaps (and nine more since 21 September) are event 1074 from
+  winlogon for SYSTEM with reason 0x500ff, "power off" -- the signature of a
+  power-button or sign-in-screen shutdown, not an update restart (those say
+  "Operating System: Upgrade (Planned)").
+- **Order now:** ~~5a~~ -> ~~item 4~~ -> **5a'** (the review's fixes to the
+  migration tool, the diff and the scans) -> the verified backup and the
+  live migration -> 5b (the register emptied) -> repair items 3-8.
 - **5a is RELEASED: 3603300** (`/api/health` = 3603300cbde0, 08:05Z on 25
   September; gate 4/4, 288/288 plantings, both schema comparisons pass with
   only registered differences; the first gate run failed on a browser race,
