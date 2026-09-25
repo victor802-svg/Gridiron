@@ -211,3 +211,102 @@ synthetic series and the payload's shape on an empty report.
 `plant_a_score_that_animates`; `plant_a_value_colour_on_a_form_streak`
 reversed. Each run in-process and CAUGHT; the harness as a whole still
 needs the live record to run end to end.
+
+### The brief's phase list
+
+| phase | verdict | evidence |
+|---|---|---|
+| Before anything: branch `board`, the overnight log read, the mockup opened and captured at both widths | **DONE** | commits from `9341a7f`; `mockup-games/props-{1300,390}.jpg` |
+| 1. Match the mockup: port the CSS, the jersey verbatim | **DONE** | the board block and tokens are the mockup's; `jerseySVG` is the mockup's template with the page's two neutrals; `shaped-*` beside `mockup-*` |
+| 1. Contrast without muting; every club measured | **DONE** | `--club-on-white` behind text only, the primary in the fade; `tools/contrast.py` measures 562 club pairs, worst 4.51:1 (CFB TOW), all pass |
+| 1. The fixture slate in the mockup's shape; side-by-side pairs; the law-caused list | **PARTIAL** | five game states built and captured; **props are three tiles and no alt line** (ruling b, no venue read); the difference list is in the Step 1 section with a law on each row |
+| 2. PrizePicks polish: hero tiles, family chips, sport pill, club colours everywhere | **DONE** | `shaped-props-*`; a hue per family measured; the tile's gradient is the club's |
+| 3a. Game detail: form, injuries, weather, factors | **DONE** | `board._detail`, `detailPanel`; NFL injuries only (the other loaders carry no report); `test_the_detail_panel_says_every_absence_in_words` |
+| 3b. My day strip | **DONE** | `board._my_day`, `renderMyDay`; two tests; the won/lost fill at two classes -- a defect caught by looking, see below |
+| 3c. Sort and filter, persisted | **PARTIAL** | Games: time / chance, market, clears only; Props: cushion / chance, family chips. **No "clears the bar only" on Props** (ruling c: nothing on a tile clears). The control row is declared with its date (two readings in the Step 3 section) |
+| 4. Motion | **PARTIAL** | stagger, arrival, hover lift, one-shot fill, pop, live pulse, reduced-motion; **no height animation and no stronger hover glow** (the vocabulary and the colour law); two plantings, the price planting covers the new classes |
+| 5. Record: closing-line chart per market, three curves per sport, tables as now | **DONE** | `taken_record`, `series`, `drawSeries`; below the gate the words "NN of 100"; `tests/test_record_charts.py`; the drawer on real closes is unverified here |
+| 6a. jersey numbers from nflverse | **DONE** | see the rulings table |
+| 6b. pick'em reads suspended | **DONE** | nothing read |
+| 6c. prop outlines neutral; planting | **DONE** | `plant_an_outline_on_a_prop_against_an_assumed_multiple` |
+| 6d. the colour law lists its uses; scan and plantings | **DONE** | CLAUDE.md, `colour_law_faults`, the form-mark planting reversed |
+| 7. Unchanged laws | **DONE** | every existing scanner and planting re-run; Live rows carry no control; sports side by side; the footer and Settings text from CLAUDE.md untouched |
+| After each step: tests, captures, commit, push | **PARTIAL** | five commits, not eight: steps 3, 4 and 5 share one (stated above); captures at 1300 and 390 after each |
+| Running log | **DONE** | this file |
+
+### Bugs I introduced, and how they were caught
+
+- **A comment ate a rule** (2026-09-24, mine): the bar's `height: auto` never
+  applied on either build. Caught by measuring, not by a test; the scanner
+  `stray_comment_marker_faults` and its planting close the class.
+- **"Venue has not listed this yet" beside a payout** (2026-09-24, mine): the
+  Today card never carried the price as a number. Caught by looking at the
+  first priced slate; `test_a_priced_question_carries_its_price_in_words_and_as_a_number`.
+- **The name column wrapped one letter per line** in the detail panel
+  (today): a grid column sized `auto` beside long words. Caught by looking;
+  no test reads layout at that grain.
+- **A won chip in My day lost its fill** to the chip's own ground (today,
+  the same class of defect the tile's fill had on 2026-09-24). Caught by
+  looking at `shaped-props-390.jpg`; fixed at two classes; **no test asserts
+  the chip's painted colour** -- a FOLLOWUPS line, because the shared world
+  has no taken settled pick on the current slate to paint.
+- **A stray block pasted into `language.py`** by a script that reused a
+  variable name; caught at once by `py_compile` before anything ran.
+- **The page scrolled 8.5px on opening a row** (a scrollbar appearing);
+  caught by the existing in-place test, fixed with `scrollbar-gutter`.
+
+### Vacuous passes named
+
+- `test_a_my_day_chip_scrolls_to_its_game` takes a pick if none is taken and
+  asserts the page scrolled; it does not assert the chip's colour.
+- The closing-line chart is exercised on a synthetic series only.
+
+### What could not be verified here
+
+- `python tools/verify.py` and `plant.py` end to end (the live record).
+  Every web planting and every new one ran in-process and was caught; every
+  gate check that reads the tree passes on the final commit.
+- The board against the live record: real club names on the bands, a real
+  jersey with a real number, the closing-line chart on fifty real closes, a
+  live game's pulse and score patching under the new classes.
+- The roster file's columns (`gsis_id`, `jersey_number`, `team`) are as
+  nflverse documents them; no fetch was made, so the first refresh on the
+  operator's machine is the first read.
+- **An order-dependent failure I could not root-cause inside the cap:**
+  `test_a_card_expands_in_place_and_shows_the_why` fails when `test_smoke.py`
+  runs before `test_cards.py` (`pytest tests/test_smoke.py tests/test_cards.py`,
+  reproduced twice) and passes alone, with its neighbours, and with
+  `test_cards.py` first. The measured movement equals the card's own top, so
+  the node the test holds is detached after the click -- a re-render landed
+  during the 250ms wait. Not reproduced by hand on a world with taken picks
+  and chips. It began with this pass; the candidates are the arrival stagger
+  (`--i`, a transition-delay on `.game`) and a second `renderGames` after the
+  one the opener awaits. Left open, named in FOLLOWUPS, not loosened.
+
+### Spend
+
+Not measurable in dollars from inside the session. This pass ran in one
+context window from the morning brief to the close-out with no sub-agents;
+the window's own usage is not reported to it. Measured against the previous
+night (2.34M sub-agent tokens for the map alone, "well inside $60"), this
+pass is smaller and inside the $50 cap; stated as an estimate, not a reading.
+
+### For the operator, in order
+
+1. **Look at the pairs** in `docs/closeouts/shots/2026-09-25-visual/`
+   (`mockup-*` beside `shaped-*`) and rule on the differences table: each row
+   names its law, and two are choices rather than laws (the hover menu; the
+   400 to 700 Inter axis).
+2. **Rule on the control row**: the sort-and-filter bar is declared in
+   `audit.PICKS_CONTROL_ROWS` on the strength of this brief against the
+   2026-09-24 one; if that reading is wrong the bar moves under the rows.
+3. **Run the gate** on the machine with the record: `python tools/verify.py`
+   (step 2 gains "the bar fills once, on load"). The harness registers 283
+   plantings.
+4. **Run a refresh** so `player_numbers` fills from the roster file, then
+   open Props and look at a real jersey.
+5. **Open Record** with the live record: the closing-line chart draws only
+   where a market has fifty measured closes.
+
+Three verdicts (yours, not mine): strongest thing ___ ; weakest thing ___ ;
+what to do next ___ .

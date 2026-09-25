@@ -2870,7 +2870,10 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 .my-chip-club { align-self: stretch; display: grid; place-items: center; padding: 0 8px; background: var(--club-on-white); color: var(--white); font: 800 13px/1 var(--cond); letter-spacing: 0.04em; }
 .my-chip-line { font: 700 14px/1 var(--cond); text-transform: uppercase; }
 .my-chip-state { color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
-.my-chip.sig-won, .my-chip.sig-lost { border-color: transparent; }
+/* THE FILL AT TWO CLASSES, so it wins over the chip's own ground (the same
+   lesson the tile's fill taught on 2026-09-24). */
+.my-chip.sig-won { background: var(--win); border-color: transparent; }
+.my-chip.sig-lost { background: var(--loss); border-color: transparent; }
 .my-chip.sig-won .my-chip-line, .my-chip.sig-lost .my-chip-line, .my-chip.sig-won .my-chip-state, .my-chip.sig-lost .my-chip-state,
 .my-chip.sig-won .badge, .my-chip.sig-lost .badge { color: var(--ink); }
 .my-chip.sig-won .badge, .my-chip.sig-lost .badge { background: transparent; opacity: .85; }

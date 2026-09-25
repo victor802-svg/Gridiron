@@ -1183,3 +1183,23 @@ is not one of them, so it is amendable -- by him, by name.
   record.
 
 Nothing else is in flight. The observation window's other terms stand.
+
+### 2026-09-25 — the My day chip's painted fill has no test
+
+`.my-chip.sig-won` lost its fill to the chip's own ground and was caught by
+looking at a capture (`docs/closeouts/2026-09-25-board-visual.md`). Fixed at
+two classes, like the tile's fill on 2026-09-24. **What would settle it:** a
+browser test that takes a pick on a settled slate and reads the chip's
+computed background, the way `test_a_settled_pick_is_painted_solid_and_its_words_are_ink`
+reads the tile's; the shared world has no taken settled pick on the current
+slate, so the test needs a fresh world.
+
+### 2026-09-25 — `test_a_card_expands_in_place_and_shows_the_why` depends on test order
+
+Fails when `tests/test_smoke.py` runs before `tests/test_cards.py`, passes in
+every other order tried (`docs/closeouts/2026-09-25-board-visual.md`). The
+card the test holds is detached by the time it measures, so a re-render
+landed inside its 250ms wait. Began with the visual pass. **What would settle
+it:** run that order with the renderer logging each `renderGames` call and
+its trigger; the two candidates are the arrival stagger on `.game` and a
+second render after the one `_open_week` awaits.
