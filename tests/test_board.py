@@ -446,6 +446,8 @@ def test_stale_rows_never_read_as_settled_while_a_new_slate_is_fetched(page):
     page.wait_for_function("document.getElementById('games-rows').classList.contains('arriving')", timeout=5000)
     assert page.evaluate("getComputedStyle(document.getElementById('games-rows')).opacity") == "0", (
         "the old rows read as the current slate while the new one was still being fetched")
+    assert page.evaluate("getComputedStyle(document.getElementById('games-rows')).pointerEvents") == "none", (
+        "the old rows could still be tapped while the new slate was being fetched")
     for r in held:
         r.continue_()
     page.unroute("**/api/week*")

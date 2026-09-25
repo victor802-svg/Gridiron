@@ -1851,7 +1851,10 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    switching the slate refills its groups, and without this rule the swap was
    instantaneous, which is the one thing the motion vocabulary exists to
    prevent. The transition itself is unchanged. */
-#games-rows.arriving, #props-tiles.arriving { opacity: 0; transform: translateY(1%); transition: none; }
+/* AND A STALE SLATE CANNOT BE TAPPED (2026-09-25): from the moment a new
+   slate is asked for until its rows land, the old rows are neither seen
+   nor touchable, so nothing is opened that the answer then replaces. */
+#games-rows.arriving, #props-tiles.arriving { opacity: 0; transform: translateY(1%); transition: none; pointer-events: none; }
 /* THE ONE KEYFRAME. A game being played is the only thing on this page that
    repeats, because it is the only thing that is still happening. It pulses
    between full and half opacity -- no scale, no colour change, no glow. */
