@@ -167,12 +167,93 @@ def read_the_live_record(why: str) -> sqlite3.Connection:
     `why` is not decoration. A caller that cannot say in a sentence why the
     real record is needed is a caller that should be using a scratch one.
     """
+    return read_only(config.DB_PATH, why)
+
+
+def read_only(path: Path | str, why: str) -> sqlite3.Connection:
+    """A read-only handle on ANY database file, opened as the live-record door
+    opens the record: `mode=ro` and `query_only`, with a reason in words.
+
+    ONE WAY IN (schema ruling 6 of 2026-09-24, built 2026-09-25). A tool
+    handed `--database <path>` used to open it with a raw `sqlite3.connect`,
+    and nothing stopped that path being the operator's record -- a handle
+    with no reason, no `query_only`, and nothing under verification to
+    refuse it. `audit.check_no_raw_connect_to_the_live_record` now refuses a
+    raw open anywhere but `connect`, so a read of a named file comes here,
+    and a named file that happens to be the record is read exactly as
+    `read_the_live_record` reads it.
+    """
     if not why or len(why.strip()) < 10:
         raise LiveRecordTouched(
             "READING THE LIVE RECORD NEEDS A REASON, in words: what question "
             "does the operator's own database answer that a scratch one "
             "cannot? Ten characters at least.")
-    return connect(config.DB_PATH, _live_read_reason=why.strip())
+    return connect(Path(path), _live_read_reason=why.strip())
+
+
+def back_up_the_live_record(target: Path | str, why: str) -> Path:
+    """Copy one instant of the operator's record into `target`, which may
+    never be the record itself.
+
+    THE BACKUP DOOR (schema ruling 6 of 2026-09-24, built 2026-09-25). The
+    gate's copy and the holdout's scratch copy each carried this by hand,
+    with a raw `sqlite3.connect` on the target. The source is read through
+    `read_the_live_record`; the target is opened through `connect`; and a
+    target that resolves to the record is refused whether or not anything
+    is verifying, because a backup written over its own source destroys it.
+
+    ONE INSTANT OF THE RECORD. `pages=-1` copies every page in one step,
+    inside one read transaction, so a scheduled task writing meanwhile
+    cannot leave the copy half of one moment and half of the next. The
+    record is in WAL, so the read blocks no writer.
+    """
+    return back_up(config.DB_PATH, target, why)
+
+
+def back_up(source: Path | str, target: Path | str, why: str, *,
+            then=None) -> Path:
+    """Copy one instant of any database into `target`: the one backup door,
+    of which `back_up_the_live_record` is the record's case.
+
+    THE SOURCE IS READ THROUGH `read_only`, so the record, when it is the
+    source, is read exactly as `read_the_live_record` reads it. A target
+    that is the record, or is the source, is refused whether or not anything
+    is verifying.
+
+    AND `then`, IF GIVEN, SEES THE SAME INSTANT (schema ruling 2 of
+    2026-09-24, built 2026-09-25: "Take a verified backup of the live record
+    before running it"). The source is held in one read transaction from
+    before the copy until `then(source)` returns, so a proof that the copy
+    matches its source compares the copy with the moment it was taken, not
+    with whatever a scheduled task has written since. Measured the same
+    day: a backup taken inside a read transaction copies that transaction's
+    snapshot, while another connection commits.
+    """
+    target = Path(target)
+    if _is_the_live_record(target) or (
+            _LIVE_PATH is not None and target.resolve() == _LIVE_PATH):
+        raise LiveRecordTouched(
+            f"A BACKUP MAY NOT BE WRITTEN OVER THE LIVE RECORD: {target} is "
+            f"the operator's own database.")
+    if str(source) != ":memory:" and target.resolve() == Path(source).resolve():
+        raise LiveRecordTouched(
+            f"A BACKUP MAY NOT BE WRITTEN OVER ITS OWN SOURCE: {target}.")
+    original = read_only(source, why)
+    try:
+        original.isolation_level = None
+        original.execute("BEGIN")
+        original.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+        copy = connect(target)
+        try:
+            original.backup(copy, pages=-1)
+        finally:
+            copy.close()
+        if then is not None:
+            then(original)
+        original.execute("COMMIT")
+    finally:
+        original.close()
+    return target
 
 
 #: Columns added to existing tables after the first release. Additive only:
@@ -751,6 +832,17 @@ def widen_taken_for_packages(conn: sqlite3.Connection) -> bool:
 
 def init(conn: sqlite3.Connection) -> None:
     """Create the schema. Idempotent — every object is IF NOT EXISTS."""
+    # THE DATED MIGRATION OF SCHEMA RULING 2 IS NOT RUN HERE (2026-09-25).
+    # It rebuilds eight tables of the live record to their released
+    # definitions (`tools/migrate_2026_09_25_behaviour.py`, through
+    # `gridiron.rebuild`), and the ruling asks for a verified backup of the
+    # record first and a rehearsal on a scratch copy -- steps the operator
+    # takes by hand, after the release that carries it, at a quiet hour.
+    # Run from here, every scheduled task that opens the record would race
+    # to do it, none of them with a backup, each holding the write lock
+    # while the others wait on it. So `init` does not do it, and a record
+    # still in the old shapes is named by gate step 2's schema check (the
+    # dated register in `audit`) until the migration has run.
     _migrate(conn)
     # AFTER the widenings and BEFORE the schema script, so a withdrawn object
     # is gone before anything tries to recreate it.

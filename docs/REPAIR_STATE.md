@@ -13,11 +13,14 @@
   off initiated by winlogon for SYSTEM (event 1074; no title), not a sleep.
   Thursday's NFL game kicked off at 00:15Z inside that gap, so no near-start
   read was taken for it. The logon catch-up ran at 03:17Z.
-- **Item 4 (the prompt record) is BLOCKED on question 4** (below): the
-  reasoning pass came back at 03:30Z and wrote 34 rows without a prompt, and
-  when the rule binds decides what the gate does with them. The design is
-  ready (question 4 and FOLLOWUPS); it is one gate from release once ruled.
-  The queue moved on to item 5.
+- **Question 4 is RULED** (docs/briefs/2026-09-25-question-4.md). Order now:
+  5a (gate and release) -> item 4, the prompt record (build, gate, release,
+  then the reconstruction written to the live record) -> the verified backup
+  and the live migration -> 5b (the register emptied).
+- **5a is built** (schema rulings 1, 3, 4, 5, 6 and the migration tool,
+  rehearsed on a verified copy: every row and column checksum equal, the
+  write lock held ~3 s, a forced failure rolled back with nothing swapped;
+  REHEARSAL.md in the session scratchpad, schema5a/).
 
 - **Released and serving: fddd61b** (`/api/health` = fddd61b8d635), on main
   and pushed: **weather** (repair 2e), after 4c3bda4 **the fs5 revert**
@@ -111,8 +114,13 @@ depend on the answer.
    restated -- an identical refit activated under a ruling that says so, or
    a dated measured count shown beside the stored one? Default until ruled:
    the stored counts, with the words.
-4. **From when does the prompt record bind? (Two additions, item 1; asked
-   2026-09-25.)** The ruling says "No reasoning row may exist without it", and
+4. **RULED 2026-09-25 (docs/briefs/2026-09-25-question-4.md): the rule binds
+   from the release that ships it, and the gap before it is labelled, not
+   exempted** -- every earlier reasoning row gets a `reconstructed` record,
+   every later one a `sent` record, and the gate fails on either missing.
+   Item 4 goes next, after 5a, ahead of the live migration and 5b. The
+   question as asked, kept: **From when does the prompt record bind? (Two
+   additions, item 1; asked 2026-09-25.)** The ruling says "No reasoning row may exist without it", and
    the operator's message arrived at 2026-09-24T08:04:32Z. No code that keeps a
    prompt has been released, and the scheduler has kept running the reasoning
    pass without one. When the API came back, `predict:mlb` wrote 34 reasoning
@@ -144,6 +152,58 @@ depend on the answer.
    record waits for this answer. Until it is ruled, each scheduled pass adds
    to the count. Stopping the pass means unsetting the key in `.env`, which
    is an operator step.
+5. **How far does "No test in the gate may depend on elapsed real time"
+   reach? (Schema ruling 5, second sentence; asked 2026-09-25.)** The first
+   sentence is built: auth reads one clock, the backoff and handoff tests move
+   it by hand, and a scan refuses a sleep, a clock reading or a real-time
+   comparison in `tests/`. The browser tier holds 44 fixed waits in 9 files:
+   43 `page.wait_for_timeout(N)` after an action, before an assertion, and
+   one `time.sleep(1.2)` inside a route handler that makes a response late
+   (`test_rapid.py`). Each can pass without testing anything, or go red, on a
+   slow machine. The app signals no "render finished" event the tests could
+   wait for instead.
+   - **(A) Literal: they depend on elapsed real time and must go.** Each is
+     rebuilt on an event (a signal the app would add when a render lands, or
+     a response the test holds and releases) or on Playwright's `page.clock`,
+     and the held register empties. Upper-limit timeouts (server start 20 s,
+     Playwright `timeout=`) stay: they turn a hang into a failure and change
+     no result below the limit. Nine test files, and likely `app.js` for the
+     render signal: its own step, with renders.
+   - **(B) Narrow: the ruling means a test whose assertion compares a
+     measured duration with a limit in the code under test** -- the two
+     backoff tests and the handoff's minute, all now on the manual clock. The
+     fixed waits stay, listed.
+   Default until ruled: the 44 are held by function and count in
+   `audit.ELAPSED_TIME_HELD`; none was changed, none may be added, and the
+   register can only shrink. FOLLOWUPS, "HELD: the browser tier's fixed
+   waits".
+6. **A companion no-update trigger on `market_snapshots`? (Schema ruling 4;
+   asked 2026-09-25.)** The 8 missing ids (174-181) were DELETED by hand at
+   2026-09-01T00:08:32Z through a writable `db.connect()` -- a LAW 3
+   violation, now refused by `market_snapshots_no_delete` with a planting.
+   A snapshot row can still be rewritten in place with no trace (line,
+   implied_prob, fetched_utc, source, kind). Freezing it goes beyond ruling
+   4's words, so it was not built; FOLLOWUPS has it.
+
+## Rulings taken in your absence (2026-09-25, schema rulings 5a)
+
+- **Ruling 4, "find the code path that did it and fix it":** no repository
+  code deleted the 8 snapshots; it was an ad hoc statement. Read as: the
+  table itself refuses the delete (a BEFORE DELETE trigger), with a planting
+  that runs the same statement. Conservative default: it would have stopped
+  the 00:08:32Z statement.
+- **Ruling 4, "a rolled-back insert (a normal AUTOINCREMENT gap)":**
+  measured on SQLite 3.49.1 with the live triggers, a rolled-back or
+  trigger-aborted insert leaves NO gap; only OR IGNORE, DO NOTHING,
+  REPLACE, explicit ids or a DELETE do. Recorded in FOLLOWUPS; today's
+  classification rests on direct evidence either way.
+- **The register's ninth entry:** `market_lines_raw.spread_sign_source` is on
+  the record and not in the released schema.sql until ruling 3's
+  declaration ships; the release comparison registers it and it must be
+  removed at the next commit after 5a merges ("CLEARED, STILL REGISTERED"
+  fails the gate otherwise).
+- **Ruling 5, second sentence:** question 5; both readings require the auth
+  clock and its guard, which are built; the browser waits are held.
 
 (Older detail follows; where it conflicts with the block above, the block wins.)
 

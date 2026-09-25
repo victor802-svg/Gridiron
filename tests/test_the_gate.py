@@ -114,9 +114,9 @@ def test_the_suite_is_not_run_with_its_output_captured():
 
 def _a_record_at(path: Path) -> Path:
     """A small record at an OLD schema: one table, one row, in WAL."""
-    import sqlite3
+    from gridiron import db
 
-    conn = sqlite3.connect(str(path))
+    conn = db.connect(path)          # scratch, through `db` (ruling 6)
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     conn.execute("INSERT INTO meta (key, value) VALUES ('kind', 'live')")
@@ -141,10 +141,10 @@ def test_a_schema_change_is_named_object_by_object():
 
 def test_an_added_column_changes_the_recorded_schema(tmp_path):
     """A migration that only adds a column is still a schema change."""
-    import sqlite3
+    from gridiron import db
 
     verify = _verify()
-    conn = sqlite3.connect(str(_a_record_at(tmp_path / "r.db")))
+    conn = db.connect(_a_record_at(tmp_path / "r.db"))
     before = verify.record_schema(conn)
     conn.execute("ALTER TABLE meta ADD COLUMN note TEXT")
     assert verify.schema_changes(before, verify.record_schema(conn)) == [
@@ -183,15 +183,15 @@ def test_the_gate_reads_a_migrated_copy_and_leaves_the_record_alone(
 
 def test_a_schema_change_during_the_gate_fails_it_by_name(
         tmp_path, monkeypatch, capsys):
-    import sqlite3
-
-    from gridiron import config
+    from gridiron import config, db
 
     verify = _verify()
     record = _a_record_at(tmp_path / "gridiron.db")
     monkeypatch.setattr(config, "DB_PATH", record)
     found = verify._the_live_schema()
-    conn = sqlite3.connect(str(record))
+    # A writer the gate cannot see, as the scheduler is: a writable handle
+    # through `db` on a file that is scratch to this process (ruling 6).
+    conn = db.connect(record)
     conn.execute("CREATE TRIGGER recommendation_close_cites_its_own_priced_read"
                  " BEFORE DELETE ON meta BEGIN SELECT 1; END")
     conn.commit()
@@ -247,15 +247,13 @@ def test_the_read_door_creates_no_record_where_there_was_none(
 
 def test_verification_may_not_attach_the_live_record():
     """The gate's step 3 attached the record, writable, on every run."""
-    import sqlite3
-
     from gridiron import config, db
 
     spec = importlib.util.spec_from_file_location(
         "gridiron_dbcopy", REPO / "tools" / "dbcopy.py")
     dbcopy = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(dbcopy)
-    conn = sqlite3.connect(":memory:")
+    conn = db.connect(":memory:")
     try:
         with pytest.raises(db.LiveRecordTouched, match="tried to attach"):
             dbcopy.copy_facts(conn, config.DB_PATH)

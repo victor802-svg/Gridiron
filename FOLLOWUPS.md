@@ -1305,7 +1305,9 @@ process started with `GRIDIRON_VERIFYING` removed, which is exactly what the
 three plantings do against their stand-in. A row written either way would
 not be seen. **What would settle it:** an audit scan that refuses
 `sqlite3.connect(` outside `gridiron/db.py` and the plantings' stand-in, run
-in the gate, with a planting.
+in the gate, with a planting. **The raw-connect half is closed 2026-09-25**
+(schema ruling 6; "BUILT: one way into a database file", below). The child
+started without `GRIDIRON_VERIFYING` is still open.
 
 ### A gate that is killed leaves a gigabyte in the temp directory *(open, 2026-09-24)*
 
@@ -1596,3 +1598,439 @@ it), and the context reads that venue's flag and coordinates.
 stored (2026_01_BUF_HOU, 2026_01_BAL_IND) are for games now listed with a
 closed roof: their cards print a forecast no factor read. **What would settle
 it:** the card asks `weather.roof_state` first, the same door.
+
+## Schema rulings 3, 4, 5 and 6 of 2026-09-24 — built 2026-09-25 *(GRIDIRON_REPAIR, the overnight queue's item 5; rulings 1 and 2 are the diff check and the migration, built after these)*
+
+### BUILT: schema.sql declares `market_lines_raw.spread_sign_source` *(ruling 3; built 2026-09-25)*
+
+"A fresh database built at the released commit must match the live record
+without relying on ensure code." Measured before building: of the 34 ADD
+COLUMN declarations in the code, this was the only column `schema.sql` did
+not declare. `lines.ensure_raw_columns` adds it, and only
+`repair_run_line_signs` calls that, after an MLB line fetch -- so a fresh
+`db.init` at the release lacked it, and `audit.check_run_line_signs` raised
+"no such column: r.spread_sign_source" on a fresh build (it passes in the
+gate only because the gate reads a copy of the live record).
+
+Declared exactly as the step adds it -- `TEXT NOT NULL DEFAULT 'unverified'`,
+no CHECK, as the last column, where the live record holds it. A CHECK would
+have made a new behavioural difference and a ninth table to rebuild. The live
+record's text differs only cosmetically (the column arrived by ALTER). The
+ensure step stays, now a no-op on every database built from this file: it is
+for a record built before 2026-09-02 that never met it, where `CREATE TABLE
+IF NOT EXISTS` leaves the old table alone. `var/` holds three such files by
+their dates -- `backtest.db`, `mlb-backtest.db` and `nba-backtest.db`, last
+written 2026-08-29 (listed, not opened). The live record already has the
+column. `test_schema.py::test_a_fresh_build_holds_every_column_an_ensure_step_adds`
+failed on the unfixed tree ("a fresh build lacks
+['market_lines_raw.spread_sign_source']") and passes on the fix, and its
+companion holds the two declarations to the same `table_xinfo` row.
+
+### DELETED BY HAND: market_snapshots ids 174-181 *(ruling 4; measured 2026-09-25; the table now refuses it)*
+
+The ruling asked, for each of the 8 missing ids, whether it was a
+rolled-back insert or a deletion. **All eight were deleted.** Evidence,
+read from a scratch copy of the record taken through the read-only door:
+
+- **The hole.** Ids 174, 175, 176, 177, 178, 179, 180, 181: one block.
+  `sqlite_sequence` for the table is 2355, equal to its highest id, with
+  2,347 rows, so exactly these 8 are missing (the same 8 as the 2026-09-24
+  measurement: then 2,187 rows, highest 2195). No other AUTOINCREMENT table in
+  the record has a hole.
+- **The rows around it.** 152-173 are the opening rows for predictions
+  191-212 (the MLB slate of task run 35, fetched 2026-08-31T18:00:47Z).
+  182-185 are the near-start rows of task run 41 (fetched
+  2026-09-01T00:07:56Z). Nothing above 181 carries an earlier stamp.
+- **The task log.** Task run 40 (refresh, 22:33:39Z-22:33:46Z on 31 August,
+  started by hand from the main checkout) reported "near_start taken 8, due
+  8". Re-running its due query selects exactly predictions 192-199. Those 8
+  rows were copies of the cached opening quote -- near equal to open to the
+  last decimal -- not a second look at the market.
+- **The deletion.** At 2026-09-01T00:08:32Z the development session ran, from
+  the main checkout, through the ordinary writable `db.connect()`:
+  `DELETE FROM market_snapshots WHERE kind='near_start' AND fetched_utc <
+  '2026-09-01T00:00:00Z'`. It printed 8. Commit 2d0e98f says "The eight stale
+  rows were DELETED", and docs/closeouts/2026-08-31-calibration.md says so too.
+- **Per id**, by insertion order (the set of 8 predictions is certain; which
+  id held which was not recorded before the delete): 174 prediction 192,
+  175 193, 176 194, 177 195, 178 196, 179 197, 180 198, 181 199. Each:
+  DELETION, not a rolled-back or aborted insert.
+- **Why not a rolled-back insert.** Measured on SQLite 3.49.1 with the
+  table's own triggers: an insert a BEFORE trigger aborts, a ROLLBACK, a
+  savepoint rollback, a close without commit and a process killed
+  mid-transaction all leave `sqlite_sequence` where it was. Only INSERT OR
+  IGNORE / ON CONFLICT DO NOTHING (an id is used up), INSERT OR REPLACE (the
+  old row is deleted), an explicit id or a DELETE leave a hole. The only
+  writer in the code is a plain INSERT (`lines.py`). So in this table a hole
+  is a deletion or an ignored insert, never "a normal AUTOINCREMENT gap".
+- **A second ad hoc delete**, at 07:00:05Z the same day, aimed at 29 college
+  predictions' opening rows before re-snapshotting them, matched none: ids
+  186-347 are contiguous and the 13 new rows follow 347 directly.
+
+**The code path, and the fix.** No code in the repository deletes from this
+table, on master or here. The path was a writable handle and a statement typed
+by hand, and nothing refused it: the table's only rules were the two LAW 1
+insert triggers. The trigger `market_snapshots_no_delete` now refuses every
+delete, whoever types it, and `plant.py::plant_a_deleted_snapshot` runs the
+exact 00:08:32Z statement: on the unfixed schema it removed the row, and on
+the fix it is refused ("GRIDIRON LAW 3: a market snapshot is never deleted").
+It reaches the live record through the release's `CREATE TRIGGER IF NOT
+EXISTS`. Ruling 6's raw-connect scan would not have caught this: the delete
+went through `db.connect()`.
+
+**The rows are not restored.** They were cache replays, not observations;
+putting them back would write a look at the market that was never taken.
+
+**Still open.** (1) No BEFORE UPDATE trigger: an opening row can be rewritten
+in place, and that leaves no hole to find. Freezing it goes beyond ruling 4's
+words, so it waits for the operator. (2) `INSERT OR REPLACE` walks past the new
+trigger as it walks past every `no_delete` trigger (the entry of 2026-09-23
+above); no code writes this table that way. (3) For ruling 2's rebuild of this
+table: recreate this trigger with the other two, and carry `sqlite_sequence`
+explicitly -- a rebuild resets it to the highest id (measured). **Done
+2026-09-25:** `gridiron.rebuild` recreates every index and trigger from the
+released text and carries the sequence exactly; rehearsed, 2355 -> 2355
+(schema rulings 1 and 2, below).
+
+### BUILT: one way into a database file *(ruling 6; built 2026-09-25)*
+
+`audit.check_no_raw_connect_to_the_live_record`, in gate step 2, refuses every
+raw SQLite open outside `db.connect`, in the package, `tools/` (plantings
+included), `tests/` and `desktop/`. A scan cannot know which file a call
+opens, so refusing every raw open is the reading that covers "to the live
+record path". Run on the unfixed tree it names fourteen raw opens: two that
+could reach the record (`tools/restate_closes.py` and `tools/void_fs5.py`
+opened whatever `--database` named, `mode=ro` but with no reason, no
+`query_only` and nothing under verification to refuse it) and twelve on
+scratch files (the gate's and the holdout's backup targets, four in the
+plantings, two in `conftest.world_copy`, four in `test_the_gate.py`). All
+fourteen now go through a door: `db.read_only(path, why)` (new; `read_the_live_record` is now
+that door on the record), `db.back_up_the_live_record(target, why)` (new; the
+gate's copy and the holdout's copy had each written it by hand, and it refuses
+the record as its own target) or `db.connect` on a scratch path. The exemption
+list is empty. This closes the raw-connect half of "Rows the gate might write
+are prevented, not measured" above.
+
+**Found proving it, and fixed (2026-09-25).** `from sqlite3 import *` (which
+brings `connect` in under a bare name) and the driver underneath, `_sqlite3`,
+each opened a database past the scan as built. Both are now refused at the
+import; `test_one_way_in.py::test_a_star_import_and_the_driver_underneath_are_named`
+was red on the build as handed over and is green on the fix, and the real tree
+gains no fault.
+
+**Not covered, and what would settle each:**
+- A module named at run time: `importlib.import_module("sqlite3")` or
+  `__import__("sqlite3")` and then `.connect`. A static scan cannot follow a
+  computed name; the audit hook below would.
+- A connect written inside a string and run by a child
+  (`plant_a_schema_change_during_the_gate` does it on purpose, against a
+  stand-in). A `sys.addaudithook` in `db` on the `sqlite3.connect` event would
+  see every spelling at run time, including this one, for any process that
+  imports `gridiron`; measured 2026-09-25 that the event fires for every
+  spelling and that raising from the hook stops the open before a file is
+  made. Not built: the ruling asks for a scan.
+- An ATTACH opens a file without calling connect. `tools/backtest.py` defaults
+  `--source` to the live record and ATTACHes it from a scratch connection,
+  writable, when run by hand; `refuse_the_live_record` stops it only under
+  verification. Settle it by backing the record up through the backup door
+  and attaching the copy.
+- `db._is_the_live_record` applies the temp-directory rule before comparing
+  with the record's path, so a TMP that contains the record (the user folder,
+  say) would make the record scratch and switch every refusal off. Settle it
+  by comparing with the record's path first.
+- Hand-run tools that open the record writable through `db.connect()`
+  (`fingerprint.py`, the `measure_*` tools, `walkforward_distributional.py`,
+  `backfill_lines.py`). That is the path the 2026-09-01 snapshot delete took,
+  and fits 79 and 80 were written the same way (question 2). Settle it by
+  giving each tool that only reads `db.read_the_live_record`.
+
+### BUILT: the auth backoff on a clock a test moves *(ruling 5, first sentence; built 2026-09-25)*
+
+The cause, measured 2026-09-25, is not the "4-second penalty" the state file
+recorded. After three failures the penalty is 2 s; the stamps are cut to whole
+seconds and the wait is rounded down, so the restart test held only while the
+third stamp's fraction of a second plus the real time of the restart (a new
+client, a new connection, a full `db.init`) stayed under one second: 0 of 60
+red idle, 3 of 3 red with a 1.1 s pause at the restart. Reproduced on the
+unfixed tree: red with a 1.1 s and a 4.1 s pause. On the fix, with the same
+pauses, green at 0, 1.1 and 4.1 s.
+
+`auth._now()` reads `auth.clock`, which is the real clock in production and is
+never reassigned there. `test_auth.py` installs a clock it moves by hand,
+starting months in the past on a whole second, so a reading of the real clock
+that leaked into the backoff would fail every run rather than now and then.
+The backoff tests now assert the exact Retry-After and move the clock to lift
+it; the handoff tests are on the same clock (their 60-second limit was real
+time too); new tests cover the 30-minute window and the handoff's minute.
+`audit.check_auth_reads_one_clock` refuses another reading of the clock in
+`auth.py`; `plant_a_wall_clock_read_in_the_backoff` plants one.
+
+**Found proving it, and fixed (2026-09-25).** The auth scan knew a clock by its
+usual spellings only: `import time as t; t.monotonic()`, `from time import
+perf_counter` and `from datetime import datetime as D; D.now()` each read the
+machine's clock in `auth.py` and passed it, while the tests scan beside it
+already resolved the first two (neither resolved the third). Both scans now
+read a module's clock names from its own imports through one helper,
+`audit._clock_names`. Tests: `test_the_clock.py::test_every_spelling_of_a_clock_reading_in_auth_is_named`
+and `::test_an_aliased_datetime_in_a_test_is_still_the_real_clock`, both red
+on the build as handed over and green on the fix; the real tree gains no
+fault. Still not seen: a clock read through another function (`db.just_after`
+reads `db.utcnow`), which would need a call graph; auth calls neither.
+
+### HELD: the browser tier's fixed waits *(ruling 5, second sentence; operator question 5, asked 2026-09-25)*
+
+`audit.check_no_test_waits_on_the_clock` refuses, in `tests/`, a sleep, a fixed
+browser wait, a reading of the elapsed-time clocks, and a difference or
+comparison reckoned from the real clock. It found 44 in the browser tier -- 43
+`page.wait_for_timeout` in 9 files and one `time.sleep(1.2)` in a route
+handler that makes a response late (`test_rapid.py`) -- plus the two server
+start-up loops, which are exempt by date as real timeouts (a 20-second upper
+limit, nothing asserted about how long start-up took). Whether the ruling
+reaches the fixed waits is question 5 in docs/REPAIR_STATE.md, because it
+needs either a reading of "depend on elapsed real time" or a rework of the
+browser tier onto events the app does not yet signal. Until it is answered the
+44 are held by function and count in `audit.ELAPSED_TIME_HELD`: none was
+changed, a function may not gain one, and the register can only shrink.
+Upper-limit timeouts (Playwright's `timeout=`, the plantings' 600 s subprocess
+limit, a socket's 5 s) are not refused: they change a hang into a failure and
+change no result below the limit.
+
+**What the scan cannot see:** a test whose code under test reads the clock
+while the test reads none -- which is exactly what the backoff test did. The
+auth half is closed by the clock seam and its scan. The rest of the suite's
+wall-clock dependence, listed 2026-09-25 so it can be checked: unit tests that
+place a row at now plus or minus a gap the code compares with its own clock,
+each with an hour or more of margin (`test_near_start_reads`, `test_scheduler`
+311, `test_night_audit`, `test_at_the_line`, `test_kalshi`, `test_paper`,
+`test_multisport`, `test_login_count`, `test_guards` 1032 and 1051,
+`test_mlb_props` 372, and two plantings that place a row six hours and two
+days back), and the fixtures that seat a season on today's date. None can change its result
+inside a run; each could take a `now=` if the operator wants them clock-free.
+The production caches keyed on `time.monotonic` (`scheduler.read_os`, 30 s;
+`buildinfo.freshness`, 60 s) have no test that waits on them.
+
+### The browser-test skip guard misses ten files *(open, found 2026-09-25 in passing)*
+
+Only `tests/test_smoke.py` carries `pytest.mark.browser`, and the hook in
+`tests/conftest.py` that turns a skip for an unallowed reason into a failure
+looks only at browser-marked tests. So the ten other files that drive the
+browser through the `page` fixture escape it (`test_cards`, `test_empty`,
+`test_every_control`, `test_health_words`, `test_hidden`,
+`test_login_redirect`, `test_motion`, `test_rapid`, `test_settled_line`,
+`test_tabs`), and `test_cards.py` has eleven skips that depend on the slate
+("no cards on this slate") that would read as green. `verify.py --quick`
+("not browser and not slow") does not deselect them either. **What would
+settle it:** the `page` fixture marks its test as browser, or the hook keys on
+the fixture rather than the mark.
+
+## Schema rulings 1 and 2 of 2026-09-24 — built 2026-09-25 *(GRIDIRON_REPAIR, the overnight queue's item 5, after rulings 3-6 above)*
+
+### BUILT: the gate compares the schema with the release *(ruling 1; built 2026-09-25)*
+
+"The diff check compares after normalising quoting, whitespace, comments and
+column order, and fails on any difference in behaviour." `gridiron.schema_diff`
+is the one door; `audit.check_the_schema_matches` holds a comparison to the
+dated register; gate step 2 runs it twice.
+
+- **The live record against the release.** The release is the branch master,
+  read as git objects (`git archive master gridiron` into the temp directory),
+  and a child runs that tree's own `db.open_db` on a new scratch file with a
+  scratch home, so no settings file and no record is in its reach; it asserts
+  the package it imported is the archive's. The live record is read through
+  `db.read_the_live_record`. Measured on 2026-09-25 against master fddd61b:
+  213 objects each side; 11 objects differ only in what the ruling
+  normalises (at_the_line_claims, mlb_pitcher_starts, notifications,
+  prediction_voids, recommendations, sessions, task_runs, teams, venue_quotes,
+  and the two LAW 1 snapshot triggers); 9 differ in behaviour, all registered.
+  The fresh build takes under a second.
+- **The gate's migrated copy against this tree.** The copy of the record that
+  step 2 already makes and migrates with this tree's `db.init`, against a
+  database this tree built from nothing in the same kind of child. This is the
+  pre-merge half the map proposed: every one of the eight arose from an ALTER
+  without the CHECK, or an edit to a table the record already had, and the
+  release comparison sees such a drift only after it has reached the record.
+  Here it fails the gate that would release it. Measured: 214 objects each
+  side (the tree adds `market_snapshots_no_delete`); 12 cosmetic
+  (`market_lines_raw` joins them, ruling 3 now declaring its column); the 8.
+- **The register, and why it has nine lines.** `audit.SCHEMA_DIFFERENCES_REGISTERED`
+  holds each measured difference by object, property and side, with the
+  commit its reference definition came from and what clears it. Eight are
+  "cleared by the dated migration of ruling 2", in both comparisons. The ninth
+  is the release comparison's `market_lines_raw.spread_sign_source`, which the
+  record has and master's `schema.sql` does not: it is cleared by the release
+  that carries ruling 3's declaration, and without it the gate would fail on
+  the commit that fixes it. A difference not in the register fails by name
+  ("NEW"); a registered one no longer found fails too ("CLEARED, STILL
+  REGISTERED -- remove it"). **The lifecycle:** this commit's gate passes with
+  9 and 8 outstanding; once merged, the ninth clears and the next gate says
+  so; once the operator has run the migration, the eight clear; the commit
+  after that empties the register, and from then on any difference fails.
+- **Not covered.** Rows are not compared, only the schema (the tree
+  comparison's copy carries rows, but only its schema is read). A difference
+  inside a trigger body that normalises equal but behaves differently cannot
+  exist (the token sequence is the body), but `<>` against `!=` or
+  `DEFAULT (0)` against `DEFAULT 0` is reported although it behaves the same:
+  the check fails safe. Planner statistics (`sqlite_stat*`) are left out by
+  name; there are none today. **The map's static check (c)** -- every ADD
+  COLUMN declaration in the code equal to `schema.sql`'s column -- was not
+  built; the tree comparison catches the same drift at the gate, from the
+  record's side.
+
+### BUILT, NOT RUN ON THE LIVE RECORD: the dated migration *(ruling 2; built and rehearsed 2026-09-25)*
+
+`tools/migrate_2026_09_25_behaviour.py`, through `gridiron.rebuild`, rebuilds
+factors, factor_scores, model_fits, market_snapshots (its entry is
+`market.lines.SNAPSHOT_REBUILD`, LAW 1), mlb_lineups, prediction_ranks,
+ufc_events and nba_injuries to the released definitions, in one transaction,
+with the rename-aside the ruling's "then swap" needs: the old table is renamed
+aside with foreign keys off and `legacy_alter_table` on, the new one is created
+under its own name from the released text -- so the record's stored text
+becomes byte for byte the release's, quotes included -- and the old is dropped
+after the copy is verified.
+
+**The rehearsal** (2026-09-25T05:05:54Z-05:06:38Z, `--rehearse`, the live
+record read through the read-only door, the copy in the session's scratch
+directory): the verified backup took 39.7 s -- `integrity_check` ok, 59 tables
+and 1,172,119 rows, every row count and column checksum equal on both sides at
+the instant copied. Then, rows before -> after and the table checksum (a
+digest of every column's SHA-256) before -> after:
+
+| table | rows | table checksum | sequence |
+|---|---|---|---|
+| factors | 105 -> 105 | 52aa956d629885fa -> 52aa956d629885fa | none -> none |
+| factor_scores | 0 -> 0 | 413f59a448bc39f6 -> 413f59a448bc39f6 | none -> none |
+| model_fits | 94 -> 94 | 217c810c4324add6 -> 217c810c4324add6 | 94 -> 94 |
+| market_snapshots | 2,347 -> 2,347 | eb2127c49ac10bcf -> eb2127c49ac10bcf | 2355 -> 2355 |
+| mlb_lineups | 130,392 -> 130,392 | c82c392d619c8729 -> c82c392d619c8729 | none -> none |
+| prediction_ranks | 4,981 -> 4,981 | 33ca7b1ca3d27184 -> 33ca7b1ca3d27184 | 4981 -> 4981 |
+| ufc_events | 269 -> 269 | f4a62721d07b8128 -> f4a62721d07b8128 | none -> none |
+| nba_injuries | 70 -> 70 | f4cbaf910af6d1af -> f4cbaf910af6d1af | none -> none |
+
+Every column's own checksum is equal too (the report prints each). The write
+lock was held **3.18 s** (mlb_lineups 1.92 s of it), against the scheduler's
+30 s busy timeout; `foreign_key_check` returned 0 rows before and after.
+Afterwards, on the rehearsed copy: against a fresh build of this tree, **0
+differences in behaviour with an empty register** (10 cosmetic; the two LAW 1
+snapshot triggers are now byte for byte the release's); this tree's `db.init`
+changed nothing; `widen_sport_checks` returned []; a snapshot of an unknown
+kind, a snapshot delete, a factor or fit of an unknown sport, a rank off the
+shortlist domain, a lineup from an unknown source, a card of an unknown tier,
+an injury with no name, a factor delete and a rank update were each refused
+by name; `ufc_bouts` still names `ufc_events`. The copy also gained
+`market_snapshots_no_delete`, which the live record gets from the release
+before the migration runs. Reports: the session scratchpad's
+`schema5a/i2_rehearsal.txt`, `.json` and `i2_after_rehearsal.txt`.
+
+**For the operator, after the release that carries it** (from the main
+checkout; not run by `db.init`, the gate or this session):
+
+1. At a quiet hour -- 10:15Z measured quietest (Resolve at 09:20, Capture at
+   11:15, no game on); never at :05 or :35, never during a gate, never within
+   half an hour of a logon; the machine must be on.
+2. `python tools/migrate_2026_09_25_behaviour.py --database var/gridiron.db --rehearse`
+   -- a fresh verified copy, migrated; read its report.
+3. `python tools/migrate_2026_09_25_behaviour.py --database var/gridiron.db --live --backup var/gridiron.before-ruling-2.<date>.db`
+   -- the verified backup (about 40 s, about 1 GB, never over an existing
+   file), then the one transaction. A failed backup migrates nothing; a table
+   that fails verification rolls everything back and names it.
+4. The next commit empties `audit.SCHEMA_DIFFERENCES_REGISTERED`; its gate
+   fails until it does ("CLEARED, STILL REGISTERED").
+
+It is idempotent: a table already at its definition is skipped, and a record
+already migrated is not even copied. The plan is asked read-only first.
+
+### The second rehearsal, and three defects it fixed *(2026-09-25, 05:42Z-06:09Z)*
+
+A separate rehearsal of the tool, never `--live`: a verified copy of the
+record through the read-only door's backup, the tool's `--rehearse` on that
+copy, then everything checked from outside the tool. It ran three times,
+because each fix was followed by a rerun from a fresh copy. The last run
+(copy at 06:04:24Z, 1,172,242 rows, 59 tables) found this:
+
+- **Before**: against a fresh `db.init` of master fddd61b, 9 differences in
+  behaviour: the 8, plus `market_lines_raw.spread_sign_source` (ruling 3's
+  ensure-only column, which this tree declares). There are 11 cosmetic
+  objects, and a crude second reading that does not use `schema_diff` agrees
+  on each of them.
+- **The rehearsal**: every table's rows and all 81 column checksums were
+  equal before and after, with the sequences at 94 -> 94, 2355 -> 2355 and
+  4981 -> 4981. `foreign_key_check` returned 0 rows, and the write lock was
+  held **2.69 s**.
+- **Checked outside the tool**: all 59 tables' checksums, every
+  `sqlite_sequence` (name, seq) pair, and the 189 objects that are not the
+  eight's are byte for byte as before. The eight were also joined on rowid
+  and compared value by value (`IS NOT` and `typeof`). The one difference is
+  in `sqlite_sequence`'s own rowids: the three rebuilt tables' rows were
+  written again, and no code reads them.
+- **After**: 0 differences from this tree, even with an empty register.
+  Against master, 2 differences remain, and neither is one of the 8:
+  `market_snapshots_no_delete` (ruling 4) and `spread_sign_source`. Both clear
+  when this tree is released. `integrity_check` was ok and
+  `foreign_key_check` returned 0 rows. This tree's `db.open_db` changed
+  nothing. Every new CHECK, both LAW 1 insert triggers, `ranks_no_update`,
+  `ranks_no_delete`, `factors_no_delete` and the new snapshot delete trigger
+  each refused, and the `ufc_bouts` foreign key still refuses deleting a card.
+- **Second run**: every table was skipped. The file's SHA-256 and mtime were
+  unchanged, and `rebuild_tables` called directly began no transaction.
+- **Forced failure** (on a new copy, through the planting's `_copy_rows`
+  hook): one TEXT value was altered in the last table (after seven swaps), and
+  one REAL was moved by 1e-12 in `market_snapshots`. Each rolled back. The
+  schema, the sequences and every table's checksums were identical, and
+  nothing was left aside. The unpatched control run on the same copy then
+  committed.
+
+Fixed in `tools/migrate_2026_09_25_behaviour.py` and `gridiron/rebuild.py`,
+each with a test that failed on the unfixed code:
+
+1. `--report` was ignored on the nothing-to-do exit and on both
+   unverified-copy exits, so a run asked for its record left none. It is now
+   written on every exit that reaches a verdict
+   (`test_a_report_asked_for_is_written_when_there_is_nothing_to_do`,
+   `::..._when_the_copy_does_not_verify`).
+2. A refusal whose rollback was NOT proved used to print "ROLLED BACK.
+   NOTHING WAS SWAPPED: ROLLED BACK, AND THE SCHEMA IS NOT WHAT IT WAS". That
+   happens when another connection changes the schema between the plan and
+   the lock. Now "nothing was swapped" is printed only when the library
+   attaches its report, which it does exactly when it re-read the schema and
+   found it unchanged. Otherwise the line reads "NOT COMMITTED: ..."
+   (`test_a_rollback_that_is_not_proven_is_never_called_nothing_swapped`).
+3. A table that failed part way printed "sequence 2355 -> None" for a
+   sequence it never measured, and the rollback had kept it.
+   `TableReport.finished` now marks a table whose rebuild ran to its end, and
+   an unfinished one prints "not reached"
+   (`test_a_sequence_the_failure_never_reached_is_not_reported_as_lost`).
+
+The column order changes on five tables. Checked the same day, every
+`SELECT *` reader of the eight reads by name, and none inserts without a
+column list. The report is in the session scratchpad at
+`schema5a/REHEARSAL.md`.
+
+### OPEN: `widen_sport_checks` renames with foreign keys on *(found by the ruling-2 map, 2026-09-25)*
+
+Today it skips factors, factor_scores and model_fits because their stored
+text lacks "sport IN" (their column came by ALTER). After ruling 2's rebuild
+they carry the five-sport CHECK, so declaring a sixth sport rebuilds them on
+sight -- through a rename to `<table>_narrow` with `legacy_alter_table` on but
+foreign keys ON (set by `db.connect`), which measured 2026-09-25 repoints
+children (factor_scores.factor, fit_activations.fit_id and incumbent_fit_id)
+at the renamed-aside table that is then dropped. That path also copies with
+INSERT OR IGNORE, checks only that no row was lost, and does not carry the
+sequence. `games` is exposed the same way today. **What would settle it:**
+route `widen_sport_checks` (and the two hand-written widenings) through
+`gridiron.rebuild`.
+
+### Found in passing *(2026-09-25)*
+
+- `db.back_up` (the backup door, which `back_up_the_live_record` now calls)
+  refuses a target that resolves to the record by comparing paths directly,
+  before the temp-directory rule `_is_the_live_record` applies; the wider flaw
+  recorded above under ruling 6 -- a TMP that contains the record switches
+  every other refusal off -- is still open.
+- The rehearsal's 1 GB copy (`schema5a/i2_rehearsal.db` in the session
+  scratchpad) is scratch and may be deleted.
+- *Fixed 2026-09-25, found proving the plantings.* With the rebuild's checks
+  switched off in a copy, `plant_a_rebuild_that_alters_a_row` still said NOT
+  CAUGHT, rightly, but reported its second case as "factors: COMMITTED a
+  corrupted copy": the first case had committed every table, so the second
+  rebuilt nothing. It now reports what each run did ("tested nothing -- an
+  earlier case had committed"). The verdict's condition is unchanged.

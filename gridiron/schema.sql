@@ -607,7 +607,16 @@ CREATE TABLE IF NOT EXISTS market_lines_raw (
     spread_line     REAL,      -- home-team spread, nflverse convention
     total_line      REAL,
     home_moneyline  INTEGER,
-    away_moneyline  INTEGER
+    away_moneyline  INTEGER,
+    -- WHERE THE SIGN OF spread_line CAME FROM (R2, 2026-09-02): 'espn-flag',
+    -- 'contradicted', 'unknown', or 'unverified' for a row nobody has checked.
+    -- Declared here from 2026-09-25 (schema ruling 3 of 2026-09-24). Until
+    -- then only lines.ensure_raw_columns added it, so a database built fresh
+    -- from this file had no such column while the live record did, and the
+    -- run-line check could not even be asked of it. Same type, default and
+    -- constraints as that step adds, as the last column, where the live
+    -- record holds it; the step stays for a record older than 2026-09-02.
+    spread_sign_source TEXT NOT NULL DEFAULT 'unverified'
 );
 
 CREATE TABLE IF NOT EXISTS market_snapshots (
@@ -1229,6 +1238,24 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 1: market snapshot is timestamped before the prediction '
         || 'it is attached to; the line was fetched too early');
+END;
+
+-- LAW 3 -- a market snapshot is never deleted (schema ruling 4 of 2026-09-24,
+-- built 2026-09-25). Ids 174 to 181 are missing from this table because
+-- eight near-start rows were deleted by hand at 2026-09-01T00:08:32Z, through
+-- an ordinary writable handle, for being copies of the opening quote rather
+-- than a second look. Nothing refused it: the only rules on this table were
+-- the two above, and both are about inserting. What the market said beside a
+-- forecast is part of that forecast's record, so a row found wrong is left
+-- standing and the reason written down, never removed; a hole in the ids is
+-- the only trace a removal leaves. The measurement is in FOLLOWUPS,
+-- 2026-09-25.
+CREATE TRIGGER IF NOT EXISTS market_snapshots_no_delete
+BEFORE DELETE ON market_snapshots
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a market snapshot is never deleted; what the market '
+        || 'said beside a forecast stays in its record');
 END;
 
 

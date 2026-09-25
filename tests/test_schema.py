@@ -28,6 +28,81 @@ def test_market_columns_live_only_in_quarantine(conn):
     assert "line" in db.table_columns(conn, "market_snapshots")
 
 
+# --- schema ruling 3 (2026-09-24): a fresh build needs no ensure step -------
+
+def _every_column_an_ensure_step_adds() -> list[tuple[str, str]]:
+    """(table, column) for every ADD COLUMN the code can run on an old record:
+    `db.MIGRATIONS` inside `db.init`, and the market module's own steps
+    outside it, which are the ones a fresh build never runs."""
+    from gridiron.market import lines
+
+    return ([(table, column) for table, column, _ in db.MIGRATIONS]
+            + [("market_snapshots", c) for c, _ in lines.SNAPSHOT_MIGRATIONS]
+            + [("market_lines_raw", c) for c, _ in lines.RAW_MIGRATIONS]
+            + [("venue_quotes", "read_kind")])
+
+
+def test_a_fresh_build_holds_every_column_an_ensure_step_adds(tmp_path):
+    """"A fresh database built at the released commit must match the live
+    record without relying on ensure code" (schema ruling 3, 2026-09-24).
+
+    Until 2026-09-25 `market_lines_raw.spread_sign_source` existed only
+    through `lines.ensure_raw_columns`, which runs after an MLB line fetch
+    and never in `db.init`. A fresh build lacked it, and the gate's run-line
+    check raised "no such column" on one -- it passed only because the gate
+    reads a copy of the live record, which had met the ensure step.
+    """
+    from gridiron import audit
+    from gridiron.market import lines
+
+    conn = db.open_db(tmp_path / "fresh.db")
+    try:
+        missing = [f"{table}.{column}"
+                   for table, column in _every_column_an_ensure_step_adds()
+                   if column not in db.table_columns(conn, table)]
+        assert missing == [], (
+            f"a fresh build lacks {missing}: schema.sql does not declare a "
+            f"column the code adds to an older record, so a database built at "
+            f"the release differs from the live record")
+        assert lines.ensure_raw_columns(conn) == [], "the step still adds a column"
+        assert lines.ensure_snapshot_columns(conn) == []
+        audit.check_run_line_signs(conn, "mlb")        # asks the column; must not raise
+    finally:
+        conn.close()
+
+
+def test_the_declared_sign_column_is_the_one_the_ensure_step_adds(tmp_path):
+    """The same type, default and constraints, not merely the same name: an
+    old table given the column by the ensure step reads back exactly as the
+    fresh one declares it (schema ruling 3, 2026-09-24)."""
+    from gridiron.market import lines
+
+    fresh = db.open_db(tmp_path / "fresh.db")
+    old = db.connect(tmp_path / "old.db")
+    try:
+        # The table as every record held it before 2026-09-02.
+        old.execute(
+            "CREATE TABLE market_lines_raw (game_id TEXT PRIMARY KEY,"
+            " fetched_utc TEXT NOT NULL, source TEXT NOT NULL,"
+            " spread_line REAL, total_line REAL, home_moneyline INTEGER,"
+            " away_moneyline INTEGER)")
+        assert lines.ensure_raw_columns(old) == ["spread_sign_source"]
+
+        def shape(conn):
+            return [tuple(r) for r in conn.execute(
+                "PRAGMA table_xinfo(market_lines_raw)")]
+
+        assert shape(fresh) == shape(old)
+        sql = fresh.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'market_lines_raw'"
+        ).fetchone()[0].lower()
+        assert "check" not in sql.split("spread_sign_source", 1)[1], (
+            "the declaration carries a CHECK the ensure step never added")
+    finally:
+        fresh.close()
+        old.close()
+
+
 # --- LAW 3: append-only ----------------------------------------------------
 
 def test_prediction_cannot_be_deleted(a_prediction, league):

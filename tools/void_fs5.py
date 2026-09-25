@@ -188,9 +188,12 @@ def main(argv: list[str] | None = None) -> int:
             "listing the forecasts and recommendations ruling 1 of 2026-09-24 "
             "voids, before writing the voids")
     else:
-        conn = sqlite3.connect(Path(args.database).resolve().as_uri() + "?mode=ro",
-                               uri=True)
-        conn.row_factory = sqlite3.Row
+        # THROUGH THE DOOR, NOT ROUND IT (schema ruling 6, 2026-09-24;
+        # 2026-09-25): the named file may be the operator's record.
+        conn = db.read_only(
+            args.database,
+            "listing the forecasts and recommendations ruling 1 of 2026-09-24 "
+            "voids, before writing the voids")
 
     try:
         chosen = select_tainted(conn)

@@ -528,8 +528,39 @@ def ensure_snapshot_columns(conn: sqlite3.Connection) -> list[str]:
     return added
 
 
+#: THE SNAPSHOT TABLE'S PART OF THE DATED MIGRATION (schema ruling 2 of
+#: 2026-09-24, built 2026-09-25): (table, what the rebuild gives it, the
+#: commit that introduced the released definition). The `kind` column above
+#: reached every record built before 2026-08-31 by the ALTER in
+#: `SNAPSHOT_MIGRATIONS`, which carries no CHECK, so the live record's
+#: `market_snapshots` admits any kind while the released definition admits
+#: 'open_at_predict' and 'near_start' only. Every stored row is one of the
+#: two (measured 2026-09-25: 2,005 and 342). The rebuild itself is the
+#: generic one in `gridiron.rebuild`, which names no table; the entry lives
+#: here because this package is the only one that may name this table in
+#: code. The rebuild recreates all three of the table's triggers -- the two
+#: LAW 1 insert rules and the LAW 3 delete rule -- from the released text,
+#: and carries its AUTOINCREMENT sequence exactly, the hole at 174-181
+#: included.
+SNAPSHOT_REBUILD = (
+    "market_snapshots",
+    "CHECK (kind IN ('open_at_predict', 'near_start')) on kind",
+    "2d0e98f",
+)
+
+
 #: Columns added to `market_lines_raw` after the first databases were built.
 #: Same quarantine argument as `SNAPSHOT_MIGRATIONS` above.
+#:
+#: SCHEMA.SQL DECLARES IT TOO, FROM 2026-09-25 (schema ruling 3 of
+#: 2026-09-24: "A fresh database built at the released commit must match the
+#: live record without relying on ensure code"). A fresh build therefore has
+#: the column and this step finds nothing to add. It stays for a record built
+#: before 2026-09-02 that never met it, where `CREATE TABLE IF NOT EXISTS`
+#: leaves the old table as it was: `var/` holds three, the backtest databases
+#: dated 2026-08-29 (judged by their dates; not opened). The live record
+#: already has it. `tests/test_schema.py` holds the two declarations to each
+#: other.
 RAW_MIGRATIONS = (
     # R2, 2026-09-02: WHERE THE SIGN CAME FROM.
     #

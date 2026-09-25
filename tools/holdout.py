@@ -47,7 +47,6 @@ import inspect
 import math
 import random
 import shutil
-import sqlite3
 import sys
 import tempfile
 from pathlib import Path
@@ -208,19 +207,12 @@ def measure(scratch, sport: str, market: str, candidate: int, incumbent: int,
 
 
 def _scratch_copy(folder: Path) -> Path:
-    target = folder / "record.db"
-    source = db.read_the_live_record(
+    # THROUGH THE BACKUP DOOR (schema ruling 6, 2026-09-24; 2026-09-25): the
+    # same copy the gate makes, with no raw `sqlite3.connect` of its own.
+    return db.back_up_the_live_record(
+        folder / "record.db",
         "backing the record up into a scratch copy for a holdout measurement, "
         "which reads the copy and never the record")
-    try:
-        copy = sqlite3.connect(str(target))
-        try:
-            source.backup(copy, pages=-1)
-        finally:
-            copy.close()
-    finally:
-        source.close()
-    return target
 
 
 def record_measurement(path: Path, result: dict, command: str) -> None:

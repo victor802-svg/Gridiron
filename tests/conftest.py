@@ -905,10 +905,12 @@ def world_copy(_shared_world, tmp_path):
     """A private, consistent copy of the browser world's database, for a unit
     test that needs its shape (resolved weeks, an open slate, a failed run)
     and may write to it (UI audit, 2026-09-05)."""
-    import sqlite3 as _sqlite3
+    # THROUGH `db`, NOT RAW (schema ruling 6, 2026-09-25): both files are
+    # scratch, and the one door for a read-only open is `db.read_only`.
     target = tmp_path / "world.db"
-    source = _sqlite3.connect(f"file:{_shared_world['db']}?mode=ro", uri=True)
-    copy = _sqlite3.connect(target)
+    source = db.read_only(_shared_world["db"],
+                          "copying the browser world for a test that writes")
+    copy = db.connect(target)
     source.backup(copy)
     source.close(); copy.close()
     conn = db.open_db(target)

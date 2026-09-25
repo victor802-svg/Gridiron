@@ -47,11 +47,12 @@ def main(argv: list[str] | None = None) -> int:
         conn = db.read_the_live_record(
             "counting the closes the old closer made, before restating them")
     else:
-        import sqlite3
-
-        conn = sqlite3.connect(Path(args.database).resolve().as_uri() + "?mode=ro",
-                               uri=True)
-        conn.row_factory = sqlite3.Row
+        # THROUGH THE DOOR, NOT ROUND IT (schema ruling 6, 2026-09-24;
+        # 2026-09-25). This was a raw `sqlite3.connect` of whatever path was
+        # named, and the path could be the operator's record.
+        conn = db.read_only(
+            args.database,
+            "counting the closes the old closer made, before restating them")
     report = recommend.restate_old_closes(conn, write=args.write)
     print(f"{report['rows']} closes made by the old closer carry no account")
     for (sport, market), got in sorted(report["by"].items()):

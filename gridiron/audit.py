@@ -7040,3 +7040,667 @@ def check_the_page_forecasts_from_the_active_fit(conn, payloads) -> None:
             "(operator rulings of 2026-09-24: the hold is lifted per market "
             "only when its active fit is the incumbent and its forecasts are "
             "from it):" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# ONE WAY INTO A DATABASE FILE (schema ruling 6 of 2026-09-24, built
+# 2026-09-25): "add a scan that refuses a raw sqlite3.connect to the live
+# record path outside the approved handles, with a planting."
+# ---------------------------------------------------------------------------
+#
+# A SCAN OF THE SOURCE CANNOT KNOW WHICH FILE A CALL WILL OPEN. The path is
+# an argument, a setting, a string a person typed on a command line -- and
+# two tools opened whatever `--database` named with a raw `sqlite3.connect`,
+# which could be the operator's record and was read with no reason, no
+# `query_only` and nothing under verification to refuse it. So the scan
+# refuses EVERY raw open outside `db.connect`: the approved handles are
+# `db.connect` for a scratch file, `db.read_only(path, why)` and
+# `db.read_the_live_record(why)` for a read, and `db.back_up_the_live_record`
+# for a copy. A raw open that genuinely has to stay is named in
+# `RAW_CONNECT_EXEMPT` with its dated reason; there were none on the day
+# this was written.
+#
+# WHAT IT DOES NOT SEE: a `sqlite3.connect` written inside a string and run
+# by a child process (`plant_a_schema_change_during_the_gate` plants one on
+# purpose, against a stand-in), and an ATTACH, which opens a file without
+# calling connect at all. FOLLOWUPS has both.
+#
+# THE SCHEDULER APPLYING THE SCHEMA FROM THE MAIN CHECKOUT STAYS AS IT IS,
+# by the same ruling: it opens the record through `db.connect`, which is how
+# a release migrates, and only merged code reaches the main checkout.
+
+#: The one place a raw `sqlite3.connect` belongs: the connection factory
+#: every approved handle is built on.
+RAW_CONNECT_HOME = "gridiron/db.py:connect"
+
+#: Raw opens allowed anywhere else, keyed `path:function` from the
+#: repository root, each with a dated reason. Empty when written.
+RAW_CONNECT_EXEMPT: dict[str, str] = {}
+
+#: What `sqlite3` calls the two ways to open a file.
+_SQLITE_OPENERS = ("connect", "Connection")
+
+
+def _python_files_beside(root: Path) -> list[tuple[str, Path]]:
+    """(path from the repository root, file) for the package and, where they
+    exist beside it, `tools/` (the plantings included), `tests/` and
+    `desktop/`: everything the gate or the operator runs."""
+    base = root.parent
+    files = [(p.relative_to(base).as_posix(), p) for p in sorted(root.rglob("*.py"))
+             if "__pycache__" not in p.parts]
+    for extra in ("tools", "tests", "desktop"):
+        folder = base / extra
+        if folder.is_dir():
+            files += [(p.relative_to(base).as_posix(), p)
+                      for p in sorted(folder.rglob("*.py"))
+                      if "__pycache__" not in p.parts]
+    return files
+
+
+def _enclosing_functions(tree: ast.AST) -> dict[int, str | None]:
+    """id() of every node, to the name of the function it sits in."""
+    where: dict[int, str | None] = {}
+
+    def visit(node: ast.AST, function: str | None) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = (child.name if isinstance(
+                child, (ast.FunctionDef, ast.AsyncFunctionDef)) else function)
+            where[id(child)] = inner
+            visit(child, inner)
+
+    visit(tree, None)
+    return where
+
+
+def raw_connect_faults(root: Path | None = None) -> list[str]:
+    """Every raw SQLite open outside `db.connect`, named by file, line and
+    function: `sqlite3.connect` under any alias (read, called or handed on),
+    `sqlite3.dbapi2.connect`, a call of `sqlite3.Connection`, a `getattr` of
+    either, a star import from `sqlite3`, and any import of `apsw`, the other
+    driver, or of `_sqlite3`, the one underneath."""
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    faults: list[str] = []
+    for where, path in _python_files_beside(root):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError:
+            continue
+        modules: set[str] = set()          # names bound to sqlite3 or dbapi2
+        openers: dict[str, str] = {}       # name -> "connect" | "Connection"
+        found: list[tuple[ast.AST, str]] = []
+        # A STAR IMPORT AND THE DRIVER UNDERNEATH (2026-09-25, found proving
+        # this scan). `from sqlite3 import *` brings `connect` in under a bare
+        # name no import line shows, and `_sqlite3` is the C driver `sqlite3`
+        # wraps: each opened a database past the first version. Both are
+        # refused at the import, as apsw is.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    top = alias.name.split(".")[0]
+                    if top == "sqlite3":
+                        modules.add(alias.asname or "sqlite3")
+                    elif top == "apsw":
+                        found.append((node, "imports apsw, a second SQLite driver"))
+                    elif top == "_sqlite3":
+                        found.append((node, "imports _sqlite3, the driver "
+                                            "underneath sqlite3"))
+            elif isinstance(node, ast.ImportFrom):
+                top = (node.module or "").split(".")[0]
+                if top == "apsw":
+                    found.append((node, "imports from apsw, a second SQLite driver"))
+                elif top == "_sqlite3":
+                    found.append((node, "imports from _sqlite3, the driver "
+                                        "underneath sqlite3"))
+                if top != "sqlite3":
+                    continue
+                for alias in node.names:
+                    if alias.name == "*":
+                        found.append((node, "imports * from sqlite3, which "
+                                            "brings `connect` in under a bare "
+                                            "name no import line shows"))
+                    elif alias.name == "dbapi2":
+                        modules.add(alias.asname or alias.name)
+                    elif alias.name in _SQLITE_OPENERS:
+                        openers[alias.asname or alias.name] = alias.name
+
+        def is_module(node: ast.AST) -> bool:
+            if isinstance(node, ast.Name):
+                return node.id in modules
+            return (isinstance(node, ast.Attribute) and node.attr == "dbapi2"
+                    and is_module(node.value))
+
+        called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and is_module(node.value) \
+                    and not isinstance(node.ctx, ast.Store):
+                if node.attr == "connect":
+                    found.append((node, "opens a database with a raw "
+                                        "`sqlite3.connect`"))
+                elif node.attr == "Connection" and id(node) in called:
+                    found.append((node, "opens a database by calling "
+                                        "`sqlite3.Connection`"))
+            elif isinstance(node, ast.Name) and node.id in openers \
+                    and isinstance(node.ctx, ast.Load):
+                if openers[node.id] == "connect" or id(node) in called:
+                    found.append((node, f"opens a database through "
+                                        f"`sqlite3.{openers[node.id]}`, "
+                                        f"imported as `{node.id}`"))
+            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                  and node.func.id == "getattr" and len(node.args) >= 2
+                  and is_module(node.args[0])
+                  and isinstance(node.args[1], ast.Constant)
+                  and node.args[1].value in _SQLITE_OPENERS):
+                found.append((node, f"reaches `sqlite3.{node.args[1].value}` "
+                                    f"through getattr"))
+        functions = _enclosing_functions(tree)
+        for node, what in found:
+            function = functions.get(id(node))
+            key = f"{where}:{function}"
+            if key == RAW_CONNECT_HOME or key in RAW_CONNECT_EXEMPT:
+                continue
+            faults.append(
+                f"{where}:{node.lineno} ({function or 'module level'}) {what}. "
+                f"A raw open cannot say which file it reaches, and any of them "
+                f"could be the operator's record. Open it through "
+                f"`db.connect` (scratch), `db.read_only(path, why)`, "
+                f"`db.read_the_live_record(why)` or "
+                f"`db.back_up_the_live_record(target, why)`, or give a dated "
+                f"reason in audit.RAW_CONNECT_EXEMPT.")
+    return faults
+
+
+def check_no_raw_connect_to_the_live_record(root: Path | None = None) -> None:
+    faults = raw_connect_faults(root)
+    if faults:
+        raise LawViolation(
+            "A RAW SQLITE OPEN GOES ROUND THE APPROVED HANDLES (schema ruling "
+            "6 of 2026-09-24: no raw sqlite3.connect to the live record path "
+            "outside the approved handles):" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# NO GATED TEST DEPENDS ON ELAPSED REAL TIME (schema ruling 5 of 2026-09-24,
+# built 2026-09-25): "The auth backoff test takes an injectable clock instead
+# of wall time. No test in the gate may depend on elapsed real time."
+# ---------------------------------------------------------------------------
+#
+# THE FLAKE THAT ASKED FOR THIS. `test_the_backoff_survives_a_restart` held
+# only while the fraction of a second in the third failure's stamp plus the
+# real time the restart took stayed under one second: the stamps are cut to
+# whole seconds and the wait is rounded down, so a two-second penalty had at
+# most one second of margin (measured 2026-09-25: 0/60 red idle, 3/3 red with
+# a 1.1 s pause at the restart). Under the gate's load it ran out once. Auth
+# now reads one clock, a test replaces it with one it moves by hand, and the
+# two scans below keep both halves true.
+#
+# WHAT THE TEST SCAN CANNOT SEE: a test that depends on elapsed time without
+# reading a clock itself -- which is exactly what the backoff test did, the
+# clock being inside the code under test. `auth_clock_faults` closes that for
+# auth; FOLLOWUPS has the general gap.
+
+#: The one function in `gridiron/auth.py` that reads the real clock. Every
+#: other time auth needs comes from `auth.clock`, through `auth._now`.
+AUTH_CLOCK = "_the_real_clock"
+
+#: Calls on the `time` module that measure elapsed time. A test has no other
+#: use for them.
+_ELAPSED_CLOCKS = frozenset(
+    name + suffix for name in ("time", "monotonic", "perf_counter",
+                               "process_time", "thread_time")
+    for suffix in ("", "_ns"))
+
+#: The waits and clock reads a gated test may still hold, each with its
+#: dated reason: a real timeout, where the waiting IS the thing, and nothing
+#: is asserted about how long it took. Keyed `path:function`.
+ELAPSED_TIME_EXEMPT: dict[str, str] = {
+    "tests/conftest.py:_serve":
+        "2026-09-25: waits for the shared server's thread to report it has "
+        "started, polling every 50 ms, and fails after 20 s. A real timeout: "
+        "the fixture's result is the same at 50 ms or 19 s, and only a "
+        "server that never starts reaches the limit",
+    "tests/conftest.py:served_fresh":
+        "2026-09-25: the same 20 s start-up limit as `_serve`, for the "
+        "fixture that starts a server on a world of its own",
+}
+
+#: HELD, NOT ALLOWED: the browser tier's fixed waits, by function and how
+#: many, as they stood on 2026-09-25 -- a `page.wait_for_timeout` after an
+#: action, and one `time.sleep(1.2)` inside a route handler that makes a
+#: response late. Whether ruling 5 reaches them is operator question 5 in
+#: docs/REPAIR_STATE.md, asked 2026-09-25. Until it is answered none is
+#: changed and none may be ADDED: a function holding more than its count
+#: here fails by name, and one holding fewer must lower its count, so this
+#: register can only shrink.
+ELAPSED_TIME_HELD: dict[str, int] = {
+    "tests/test_cards.py:test_the_grid_does_not_re_sort_while_a_slate_is_in_progress": 1,
+    "tests/test_cards.py:test_the_toggle_is_remembered_for_the_session": 1,
+    "tests/test_empty.py:_nothing_but_the_message": 1,
+    "tests/test_empty.py:_open_week": 1,
+    "tests/test_empty.py:test_a_sport_with_no_forecasts_shows_nothing_of_the_last_one": 1,
+    "tests/test_empty.py:test_a_sport_with_no_forecasts_starts_no_live_poll": 1,
+    "tests/test_every_control.py:_open_record": 1,
+    "tests/test_every_control.py:test_a_settings_switch_reads_what_it_saved": 3,
+    "tests/test_every_control.py:test_every_record_control_asks_or_changes_something": 2,
+    "tests/test_every_control.py:test_the_forecaster_picker_fetches_the_tier_table_it_names": 2,
+    "tests/test_every_control.py:test_the_market_select_fetches_the_tier_table_it_names": 1,
+    "tests/test_hidden.py:_open": 1,
+    "tests/test_motion.py:test_a_tab_switch_arrives_through_the_motion_block": 1,
+    "tests/test_motion.py:test_reduced_motion_is_the_same_layout_with_no_transition": 2,
+    "tests/test_rapid.py:_open_week": 1,
+    "tests/test_rapid.py:_select": 1,
+    "tests/test_rapid.py:slow": 1,
+    "tests/test_rapid.py:test_a_double_clicked_tab_renders_each_pick_once": 2,
+    "tests/test_rapid.py:test_a_slower_earlier_slate_does_not_take_the_page": 2,
+    "tests/test_rapid.py:test_offline_says_so_in_words_and_a_later_success_clears_it": 2,
+    "tests/test_rapid.py:test_two_tabs_in_quick_succession_leave_the_second_one": 2,
+    "tests/test_settled_line.py:test_the_counts_line_names_the_settled_picks": 2,
+    "tests/test_smoke.py:test_the_sport_tabs_are_reachable_and_tappable": 1,
+    "tests/test_tabs.py:_open_week": 2,
+    "tests/test_tabs.py:test_a_market_tab_shows_only_that_markets_picks": 2,
+    "tests/test_tabs.py:test_a_tab_the_next_sport_does_not_ask_falls_back_to_all": 3,
+    "tests/test_tabs.py:test_a_tab_with_no_picks_shows_nothing_of_the_last_one": 2,
+    "tests/test_tabs.py:test_the_hidden_market_select_presses_the_tab": 2,
+}
+
+
+def _call_name(node: ast.AST) -> tuple[str | None, str | None]:
+    """(what it is called on, what is called) for a call's function."""
+    if isinstance(node, ast.Attribute):
+        owner = node.value
+        return (owner.id if isinstance(owner, ast.Name)
+                else owner.attr if isinstance(owner, ast.Attribute) else None,
+                node.attr)
+    if isinstance(node, ast.Name):
+        return None, node.id
+    return None, None
+
+
+def _reads_the_wall_clock(node: ast.AST, owners=frozenset()) -> bool:
+    """`datetime.now()`, `.utcnow()`, `.today()`, or this project's
+    `utcnow()`: a reading of what time it is now. `owners` are the module's
+    own other names for the `datetime` and `date` classes (`_clock_names`)."""
+    if not isinstance(node, ast.Call):
+        return False
+    owner, name = _call_name(node.func)
+    return (name in ("now", "utcnow", "today")
+            and (owner is None or owner in ("datetime", "date", "db", "dt")
+                 or owner in owners or name == "utcnow"))
+
+
+def _is_a_timedelta(node: ast.AST) -> bool:
+    return isinstance(node, ast.Call) and _call_name(node.func)[1] == "timedelta"
+
+
+@dataclass(frozen=True)
+class _ClockNames:
+    """What one module calls the clocks: names bound to the `time` and
+    `asyncio` modules, bare names imported from them ("tick" ->
+    "time.perf_counter"), and other names for the `datetime` and `date`
+    classes ("D" -> datetime)."""
+    time: frozenset
+    asyncio: frozenset
+    imported: dict
+    owners: frozenset
+
+    def full(self, owner: str | None, name: str | None) -> str | None:
+        """"time.monotonic", "asyncio.sleep" and the like for a call, or None."""
+        if owner is None and name:
+            return self.imported.get(name)
+        if owner in self.time:
+            return f"time.{name}"
+        if owner in self.asyncio:
+            return f"asyncio.{name}"
+        return None
+
+
+def _clock_names(tree: ast.AST) -> _ClockNames:
+    """Every name a module can read a clock through, from its own imports.
+
+    ONE RESOLUTION FOR BOTH SCANS (2026-09-25, found proving the ruling 5
+    build). The tests scan resolved `import time as t` and `from time import
+    perf_counter` and the auth scan did not, so `auth_clock_faults` passed
+    all three of `t.monotonic()`, `perf_counter()` and, in neither scan,
+    `from datetime import datetime as D; D.now()`. Both read the names here.
+    """
+    time_names = {"time"}
+    asyncio_names = {"asyncio"}
+    imported: dict[str, str] = {}             # bare name -> "time.sleep" etc.
+    owners: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "time":
+                    time_names.add(alias.asname or "time")
+                elif alias.name == "asyncio":
+                    asyncio_names.add(alias.asname or "asyncio")
+        elif isinstance(node, ast.ImportFrom) and node.module in ("time", "asyncio"):
+            for alias in node.names:
+                imported[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        elif isinstance(node, ast.ImportFrom) and node.module == "datetime":
+            for alias in node.names:
+                if alias.name in ("datetime", "date") and alias.asname:
+                    owners.add(alias.asname)
+    return _ClockNames(frozenset(time_names), frozenset(asyncio_names),
+                       imported, frozenset(owners))
+
+
+def _clock_faults_in(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+    """Every sleep, fixed browser wait, elapsed-clock reading and real-time
+    difference in one test file's syntax tree."""
+    names = _clock_names(tree)
+
+    found: list[tuple[ast.AST, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            owner, name = _call_name(node.func)
+            full = names.full(owner, name)
+            if full in ("time.sleep", "asyncio.sleep"):
+                found.append((node, f"sleeps (`{full}`)"))
+            elif full and full.startswith("time.") \
+                    and full[5:] in _ELAPSED_CLOCKS:
+                found.append((node, f"reads the elapsed-time clock (`{full}`)"))
+            elif owner is not None and name == "wait_for_timeout":
+                found.append((node, "waits a fixed time in the browser "
+                                    "(`wait_for_timeout`)"))
+        elif isinstance(node, ast.Compare):
+            for side in (node.left, *node.comparators):
+                if isinstance(side, ast.BinOp) and any(
+                        _reads_the_wall_clock(n, names.owners)
+                        for n in ast.walk(side)):
+                    found.append((node, "compares a time reckoned from the "
+                                        "real clock"))
+                    break
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub) \
+                and _reads_the_wall_clock(node.left, names.owners) \
+                and not _is_a_timedelta(node.right):
+            found.append((node, "measures the real time since an earlier "
+                                "reading"))
+    return found
+
+
+def elapsed_time_faults(root: Path | None = None) -> list[str]:
+    """Every gated test that waits on or measures the real clock, named by
+    file, line and function, less the dated exemptions and the held register.
+
+    Reads `tests/` beside the package. What it refuses: a sleep; a fixed
+    wait in the browser; a reading of `time.time`, `monotonic`,
+    `perf_counter` and their kin, which only ever measure elapsed time; a
+    comparison with a time reckoned from the real clock (`now - start < 5`,
+    `now + delta > kickoff`); and a difference between now and an earlier
+    reading. Placing a fixture at "now plus two days" is not refused: that
+    is a date, and nothing in it waits.
+    """
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    tests = root.parent / "tests"
+    if not tests.is_dir():
+        return []
+    by_function: dict[str, list[str]] = {}
+    for path in sorted(tests.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        where = path.relative_to(root.parent).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError:
+            continue
+        functions = _enclosing_functions(tree)
+        for node, what in _clock_faults_in(tree):
+            function = functions.get(id(node))
+            by_function.setdefault(f"{where}:{function}", []).append(
+                f"{where}:{node.lineno} ({function or 'module level'}) {what}")
+    faults: list[str] = []
+    for key, found in sorted(by_function.items()):
+        if key in ELAPSED_TIME_EXEMPT:
+            continue
+        held = ELAPSED_TIME_HELD.get(key, 0)
+        if len(found) <= held:
+            continue
+        for fault in found:
+            faults.append(
+                f"{fault}. A test whose result can change with how long the "
+                f"machine took is a test that goes red under load and green "
+                f"when watched. Move the clock by hand, as test_auth does "
+                f"with `auth.clock`, or wait for the event itself"
+                + (f" ({held} held for operator question 5 in this "
+                   f"function; {len(found)} found)." if held else "."))
+    for key, held in sorted(ELAPSED_TIME_HELD.items()):
+        found = len(by_function.get(key, []))
+        if found < held:
+            faults.append(
+                f"{key}: audit.ELAPSED_TIME_HELD holds {held} and {found} "
+                f"remain. The register only shrinks: lower it to {found}"
+                + (" or remove the entry." if not found else "."))
+    for key in sorted(ELAPSED_TIME_EXEMPT):
+        if key not in by_function:
+            faults.append(
+                f"{key}: exempt in audit.ELAPSED_TIME_EXEMPT and no longer "
+                f"waits on the clock. Remove the entry.")
+    return faults
+
+
+def check_no_test_waits_on_the_clock(root: Path | None = None) -> None:
+    faults = elapsed_time_faults(root)
+    if faults:
+        raise LawViolation(
+            "A GATED TEST DEPENDS ON ELAPSED REAL TIME (schema ruling 5 of "
+            "2026-09-24: no test in the gate may):" + _NL2 + _NL2.join(faults))
+
+
+def auth_clock_faults(root: Path | None = None) -> list[str]:
+    """Every reading of the real clock in `gridiron/auth.py` outside the one
+    function allowed to make it, named by line and function."""
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    path = root / "auth.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    functions = _enclosing_functions(tree)
+    # UNDER ANY NAME (2026-09-25): the clocks are resolved from auth's own
+    # imports, as the tests scan resolves them (`_clock_names`), so an alias
+    # of `time`, a clock imported bare, or another name for `datetime` is
+    # still a reading of the machine's clock.
+    names = _clock_names(tree)
+    faults: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        full = names.full(*_call_name(node.func)) or ""
+        if not (_reads_the_wall_clock(node, names.owners)
+                or (full.startswith("time.") and full[5:] in _ELAPSED_CLOCKS)):
+            continue
+        function = functions.get(id(node))
+        if function == AUTH_CLOCK:
+            continue
+        faults.append(
+            f"gridiron/auth.py:{node.lineno} ({function or 'module level'}) "
+            f"reads the real clock itself. Auth reads time through "
+            f"`auth._now()`, which asks `auth.clock`; a test replaces that "
+            f"clock and moves it by hand, and a reading made anywhere else "
+            f"is one the test cannot move, so the backoff it decides runs "
+            f"on the machine's speed again.")
+    return faults
+
+
+def check_auth_reads_one_clock(root: Path | None = None) -> None:
+    faults = auth_clock_faults(root)
+    if faults:
+        raise LawViolation(
+            "AUTH READS A CLOCK A TEST CANNOT MOVE (schema ruling 5 of "
+            "2026-09-24: the auth backoff takes an injectable clock):"
+            + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE SCHEMA MATCHES THE RELEASE (schema ruling 1 of 2026-09-24, built
+# 2026-09-25)
+# ---------------------------------------------------------------------------
+#
+# The brief: "build a fresh database by migrating from nothing at the
+# released commit, and compare its schema object by object ... From then on,
+# the gate runs this diff read-only and fails on any difference." And the
+# ruling: "The diff check compares after normalising quoting, whitespace,
+# comments and column order, and fails on any difference in behaviour."
+#
+# TWO COMPARISONS, BOTH IN GATE STEP 2. "release": the live record, read
+# through the read-only door, against a database `db.init` built from nothing
+# with the released commit's own code -- the live record matches the release.
+# "tree": the gate's copy of the record, after this tree's `db.init` migrated
+# it, against a database this tree built from nothing -- this tree's
+# migration makes the record match this tree. The first finds what reached
+# the record without a release; the second finds, before a merge, what a
+# release would leave behind: every one of the eight below arose that way, an
+# ALTER or an edit to a table the record already had, and the first
+# comparison could only have seen each after it was released.
+#
+# THE NORMALISING IS `schema_diff`, the one door; this is the register and
+# the rule. A difference not in the register fails by name. A register entry
+# that no longer differs fails too, so the register cannot outlive what it
+# records: it is emptied by the commit after the dated migration of ruling 2
+# runs, and from then on the check fails on any difference at all -- the
+# brief's "from then on".
+
+
+@dataclass(frozen=True)
+class RegisteredDifference:
+    """A difference in behaviour the gate knows about, with where it came
+    from and what clears it. Matched by object, property and side exactly,
+    so a second difference in a registered table is still new."""
+    object: str
+    property: str
+    #: "record" or "reference": the side that has the property.
+    held_by: str
+    #: The commit that introduced the reference's definition.
+    released_in: str
+    #: Which of `SCHEMA_COMPARISONS` measures it.
+    comparisons: tuple[str, ...]
+    registered: str
+    cleared_by: str
+
+
+#: The two comparisons: what is checked, and what it is checked against.
+SCHEMA_COMPARISONS: dict[str, tuple[str, str]] = {
+    "release": ("the live record", "the release"),
+    "tree": ("the gate's migrated copy of the record", "this tree"),
+}
+
+_CLEARED_BY_RULING_2 = "cleared by the dated migration of ruling 2"
+
+#: THE DIFFERENCES THE LIVE RECORD HOLDS, measured 2026-09-24 and again
+#: 2026-09-25 (live record read through the read-only door at 03:48Z,
+#: against a fresh `db.init` of master fddd61b): eight in behaviour, each the
+#: released definition's CHECK or DEFAULT that the record's copy of the
+#: table does not have, because the column reached the record by ALTER or
+#: the definition changed after the table existed. Every stored row already
+#: satisfies every released constraint (measured the same day). The dated
+#: migration of ruling 2 (`tools/migrate_2026_09_25_behaviour.py`) rebuilds
+#: the eight tables to the released definitions; it runs on the live record
+#: after the release that carries it, with a verified backup, by the
+#: operator. The commit after it runs empties this register.
+#:
+#: AND A NINTH, for the release comparison only: the record's
+#: `spread_sign_source`, which the release's `schema.sql` does not declare
+#: (schema ruling 3, built 2026-09-25 in this same batch). It clears the
+#: moment the release carries ruling 3, and the gate then says so.
+_SPORTS_CHECK = "column sport: check (sport in ('nfl', 'mlb', 'nba', 'cfb', 'ufc'))"
+_BOTH = ("release", "tree")
+
+SCHEMA_DIFFERENCES_REGISTERED: tuple[RegisteredDifference, ...] = (
+    RegisteredDifference(
+        "table factors", _SPORTS_CHECK, "reference",
+        "9c0bc64 (its five sports from b09e1c2); the record's column came by "
+        "the CHECK-less ALTER in db.MIGRATIONS", _BOTH, "2026-09-25",
+        _CLEARED_BY_RULING_2),
+    RegisteredDifference(
+        "table factor_scores", _SPORTS_CHECK, "reference",
+        "9c0bc64 (its five sports from b09e1c2); the record's column came by "
+        "the CHECK-less ALTER in db.MIGRATIONS", _BOTH, "2026-09-25",
+        _CLEARED_BY_RULING_2),
+    RegisteredDifference(
+        "table model_fits", _SPORTS_CHECK, "reference",
+        "9c0bc64 (its five sports from b09e1c2); the record's column came by "
+        "the CHECK-less ALTER in db.MIGRATIONS", _BOTH, "2026-09-25",
+        _CLEARED_BY_RULING_2),
+    RegisteredDifference(
+        "table market_snapshots",
+        "column kind: check (kind in ('open_at_predict', 'near_start'))",
+        "reference",
+        "2d0e98f; the record's column came by the CHECK-less ALTER in "
+        "lines.SNAPSHOT_MIGRATIONS", _BOTH, "2026-09-25", _CLEARED_BY_RULING_2),
+    RegisteredDifference(
+        "table mlb_lineups",
+        "column source: check (source in ('live', 'backfill'))", "reference",
+        "8002a38; the record's column came by the CHECK-less ALTER in "
+        "db.MIGRATIONS", _BOTH, "2026-09-25", _CLEARED_BY_RULING_2),
+    RegisteredDifference(
+        "table prediction_ranks",
+        "column on_shortlist: check (on_shortlist in (0, 1))", "reference",
+        "63d998c; the record's column came by the CHECK-less ALTER in "
+        "db.MIGRATIONS", _BOTH, "2026-09-25", _CLEARED_BY_RULING_2),
+    RegisteredDifference(
+        "table ufc_events",
+        "column event_tier: check (event_tier is null or event_tier in "
+        "('numbered', 'fight_night', 'contender'))", "reference",
+        "c78af51 (and bdfaddc, which moved it); the record's column came by "
+        "the CHECK-less ALTER in db.MIGRATIONS", _BOTH, "2026-09-25",
+        _CLEARED_BY_RULING_2),
+    RegisteredDifference(
+        "table nba_injuries", "column player_name: default ''", "record",
+        "719004d, which declared the column with no default; the record's "
+        "came by the ALTER in db.MIGRATIONS, and SQLite requires a default "
+        "to add a NOT NULL column", _BOTH, "2026-09-25", _CLEARED_BY_RULING_2),
+    RegisteredDifference(
+        "table market_lines_raw",
+        "column spread_sign_source (text default 'unverified' not null)",
+        "record",
+        "3fe3179 added it by lines.ensure_raw_columns only; schema.sql "
+        "declares it from schema ruling 3 (built 2026-09-25)", ("release",),
+        "2026-09-25",
+        "cleared by the release that carries schema ruling 3's declaration"),
+)
+
+
+def schema_difference_faults(record, reference, comparison: str,
+                             register=None) -> tuple[list[str], str]:
+    """(faults, summary) for one comparison: every difference in behaviour
+    not in the register, and every registered one no longer found."""
+    from . import schema_diff
+
+    record_label, reference_label = SCHEMA_COMPARISONS[comparison]
+    register = SCHEMA_DIFFERENCES_REGISTERED if register is None else register
+    expected = {(r.object, r.property, r.held_by): r for r in register
+                if comparison in r.comparisons}
+    result = schema_diff.compare(record, reference)
+    measured = {(d.object, d.property, d.held_by): d for d in result.differences}
+    faults = []
+    for key in sorted(set(measured) - set(expected)):
+        faults.append(
+            "NEW: " + measured[key].words(record_label, reference_label)
+            + ". Nothing registers it. Find where it came from: a record "
+              "changed by code that was never released, or a release whose "
+              "migration leaves the record short of its own schema.")
+    for key in sorted(set(expected) - set(measured)):
+        entry = expected[key]
+        faults.append(
+            "CLEARED, STILL REGISTERED: "
+            + schema_diff.Difference(*key).words(record_label, reference_label)
+            + f" -- no longer found (registered {entry.registered}, "
+              f"{entry.cleared_by}). Remove it from "
+              f"audit.SCHEMA_DIFFERENCES_REGISTERED.")
+    summary = (f"{len(result.cosmetic)} objects differ only in quoting, "
+               f"whitespace, comments or column order; "
+               f"{len(expected)} registered difference(s) outstanding")
+    return faults, summary
+
+
+def check_the_schema_matches(record, reference, comparison: str,
+                             register=None) -> str:
+    """Raise naming every difference in behaviour between the record's
+    schema and the reference's that the register does not hold, and every
+    registered one that is gone. Returns the summary line when it passes."""
+    faults, summary = schema_difference_faults(record, reference, comparison,
+                                               register)
+    if faults:
+        record_label, reference_label = SCHEMA_COMPARISONS[comparison]
+        raise LawViolation(
+            f"{record_label.upper()} DOES NOT MATCH {reference_label.upper()} "
+            f"(schema ruling 1 of 2026-09-24): {len(faults)} fault(s); the "
+            f"first is {faults[0]}" + _NL2 + _NL2.join(faults))
+    return summary

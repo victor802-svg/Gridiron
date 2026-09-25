@@ -505,6 +505,19 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_an_indoor_forecast_carrying_the_weather",
         "plant_an_indoor_training_row_carrying_the_weather",
         "plant_a_training_row_with_no_weather_carrying_precipitation",
+        # THE SCHEMA RULINGS OF 2026-09-24 (built 2026-09-25): 4, the snapshot
+        # deleted by hand; 6, one way into a database file; 5, no gated test
+        # on the real clock.
+        "plant_a_deleted_snapshot",
+        "plant_a_raw_connect_past_the_door",
+        "plant_a_test_that_waits_on_the_clock",
+        "plant_a_wall_clock_read_in_the_backoff",
+        # SCHEMA RULINGS 1 AND 2 (built 2026-09-25): the schema matches the
+        # release, the register cannot outlive what it records, and a
+        # rebuild is verified or not done.
+        "plant_a_new_schema_difference_on_the_record",
+        "plant_a_cleared_difference_left_in_the_register",
+        "plant_a_rebuild_that_alters_a_row",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

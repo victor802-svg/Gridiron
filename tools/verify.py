@@ -204,21 +204,14 @@ def _gate_copy_path() -> Path:
     folder = Path(tempfile.mkdtemp(prefix="gridiron-gate-"))
     _GATE_COPY.update(folder=folder, conns=[])
     target = folder / "record.db"
-    source = db.read_the_live_record(
+    # THROUGH THE BACKUP DOOR (schema ruling 6, 2026-09-24; 2026-09-25). One
+    # instant of the record, read through the read-only door, into a target
+    # that may never be the record; this copy used to open its target with a
+    # raw `sqlite3.connect`, which the gate now refuses anywhere but `db`.
+    db.back_up_the_live_record(
+        target,
         "backing the record up into the gate's own scratch copy, which the "
         "record checks read and migrate instead of the record itself")
-    try:
-        copy = sqlite3.connect(str(target))
-        try:
-            # ONE INSTANT OF THE RECORD. pages=-1 copies every page in one
-            # step, inside one read transaction, so a scheduled task writing
-            # meanwhile cannot leave the copy half of one moment and half of
-            # the next. The record is in WAL, so the read blocks no writer.
-            source.backup(copy, pages=-1)
-        finally:
-            copy.close()
-    finally:
-        source.close()
     db.open_db(target).close()
     _GATE_COPY["path"] = target
     print(f"  the record checks read a copy of the live record, not the "
@@ -250,8 +243,18 @@ def _close_the_record_handles() -> None:
 
 
 def _drop_the_gate_copy() -> None:
-    """Close every handle on the copy and delete it. Says so if it cannot."""
+    """Close every handle on the copy and delete it. Says so if it cannot.
+    The fresh builds the schema checks compared with go too."""
     _close_the_record_handles()
+    for conn in _FRESH.get("conns", ()):
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    fresh = _FRESH.get("folder")
+    _FRESH.clear()
+    if fresh is not None:
+        shutil.rmtree(fresh, ignore_errors=True)
     folder = _GATE_COPY.get("folder")
     _GATE_COPY.clear()
     if folder is None:
@@ -260,6 +263,158 @@ def _drop_the_gate_copy() -> None:
     if folder.exists():
         print(chr(10) + f"the gate's copy of the record could not be removed: "
               f"{folder} -- delete it by hand; it is about a gigabyte")
+
+
+# ---------------------------------------------------------------------------
+# THE SCHEMA MATCHES THE RELEASE (schema ruling 1 of 2026-09-24, built
+# 2026-09-25): "build a fresh database by migrating from nothing at the
+# released commit, and compare its schema object by object ... the gate runs
+# this diff read-only and fails on any difference."
+# ---------------------------------------------------------------------------
+
+#: THE RELEASED COMMIT IS THE BRANCH MASTER. The main checkout has it
+#: checked out, the scheduler runs that checkout, and it moves only by a
+#: fast-forward after a green gate -- so master is the code that migrates
+#: the live record. Read here as git objects, never from the main checkout's
+#: files, which the gate does not touch.
+RELEASED_BRANCH = "master"
+
+#: The fresh builds, made once per gate run and dropped with the gate's copy.
+_FRESH: dict = {}
+
+#: What the child runs: `db.init` from nothing, by the named tree's own
+#: code, on a new scratch file. Lines joined with chr(10) -- see the note in
+#: `main` about this file and the backslash-n escape.
+_BUILD_FROM_NOTHING = chr(10).join((
+    "import pathlib, sys",
+    "tree = pathlib.Path(sys.argv[1]).resolve()",
+    "target = pathlib.Path(sys.argv[2]).resolve()",
+    "sys.path.insert(0, str(tree))",
+    "import gridiron",
+    "from gridiron import config, db",
+    "here = pathlib.Path(gridiron.__file__).resolve()",
+    "assert here.is_relative_to(tree), f'imported {here}, not from {tree}'",
+    "assert not target.exists(), f'{target} exists; a fresh build starts from nothing'",
+    "assert target != pathlib.Path(config.DB_PATH).resolve(), 'the target is the record'",
+    "db.open_db(target).close()",
+))
+
+
+class FreshBuildFailed(RuntimeError):
+    """A database could not be built from nothing at a commit or a tree, so
+    the schema it would be compared with does not exist."""
+
+
+def _fresh_folder() -> Path:
+    if "folder" not in _FRESH:
+        _FRESH.update(folder=Path(tempfile.mkdtemp(prefix="gridiron-fresh-")),
+                      conns=[])
+    return _FRESH["folder"]
+
+
+def _git(*args: str) -> bytes:
+    try:
+        done = subprocess.run(["git", "-C", str(REPO), *args],
+                              capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise FreshBuildFailed(f"git {' '.join(args)} did not run: {exc}")
+    if done.returncode != 0:
+        raise FreshBuildFailed(
+            f"git {' '.join(args)} failed: "
+            + done.stderr.decode("utf-8", "replace").strip()[:300])
+    return done.stdout
+
+
+def _build_from_nothing(tree: Path, label: str) -> Path:
+    """A new scratch database that `db.init` built from nothing, run in a
+    child by `tree`'s own code -- `tree` holds the `gridiron` package -- with
+    a scratch home, so no settings file and no record of any kind is in
+    reach."""
+    folder = _fresh_folder()
+    home = folder / f"{label}-home"
+    home.mkdir()
+    target = folder / f"{label}.db"
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("GRIDIRON_DB", "GRIDIRON_STATE", "GRIDIRON_HOME",
+                        "PYTHONPATH")}
+    env.update(GRIDIRON_HOME=str(home), PYTHONDONTWRITEBYTECODE="1")
+    try:
+        done = subprocess.run(
+            [sys.executable, "-B", "-c", _BUILD_FROM_NOTHING, str(tree),
+             str(target)],
+            cwd=str(tree), env=env, capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise FreshBuildFailed(f"{label}: db.init from nothing did not run: {exc}")
+    if done.returncode != 0 or not target.exists():
+        tail = (done.stderr or done.stdout).strip().splitlines()[-1:] or [""]
+        raise FreshBuildFailed(
+            f"{label}: db.init from nothing failed in {tree}: {tail[0][:300]}")
+    return target
+
+
+def _the_release_built_fresh() -> tuple[Path, str]:
+    """The released commit's package, archived out of git into the temp
+    directory, and the database its `db.init` builds from nothing."""
+    if "release" not in _FRESH:
+        import io
+        import tarfile
+
+        commit = _git("rev-parse", "--short=12", RELEASED_BRANCH).decode().strip()
+        tree = _fresh_folder() / "release-tree"
+        tree.mkdir()
+        archive = _git("archive", "--format=tar", RELEASED_BRANCH, "gridiron")
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
+            tar.extractall(tree, filter="data")
+        _FRESH["release"] = (_build_from_nothing(tree, "release"), commit)
+    return _FRESH["release"]
+
+
+def _this_tree_built_fresh() -> Path:
+    """The database this tree's own `db.init` builds from nothing."""
+    if "tree" not in _FRESH:
+        _FRESH["tree"] = _build_from_nothing(REPO, "tree")
+    return _FRESH["tree"]
+
+
+def _a_read_of(path: Path, why: str):
+    conn = db.read_only(path, why)
+    _FRESH["conns"].append(conn)
+    return conn
+
+
+def _the_schema_matches(comparison: str) -> None:
+    """Run one schema comparison, printing what it found.
+
+    EVERY DIFFERENCE IS PRINTED, not the first line: the step's loop prints
+    one line of a failure, and a check that fails "on any difference" must
+    say which.
+    """
+    from gridiron import audit
+
+    if comparison == "release":
+        if not Path(config.DB_PATH).exists():
+            raise NoRecordToCopy(f"no live record at {config.DB_PATH} to "
+                                 f"compare with the release")
+        fresh, commit = _the_release_built_fresh()
+        record = db.read_the_live_record(
+            "the live record's schema, compared object by object with a "
+            "database the released commit built from nothing (schema "
+            "ruling 1)")
+        _FRESH["conns"].append(record)
+        reference = _a_read_of(fresh, "the release's schema, built fresh")
+        where = f"the release is {RELEASED_BRANCH} at {commit}"
+    else:
+        record = _record_conn()
+        reference = _a_read_of(_this_tree_built_fresh(),
+                               "this tree's schema, built fresh")
+        where = "the gate's copy was migrated by this tree's db.init"
+    try:
+        summary = audit.check_the_schema_matches(record, reference, comparison)
+    except audit.LawViolation as exc:
+        for line in str(exc).splitlines()[1:]:
+            print(f"        {line.strip()}")
+        raise
+    print(f"        {where}; {summary}")
 
 
 def record_schema(conn) -> dict:
@@ -433,6 +588,18 @@ def step_2_guards() -> bool:
         # key naming a table that is gone, before it reaches the record.
         ("every foreign key points at a real table",
          lambda: audit.check_no_dangling_references(_record_conn())),
+        # SCHEMA RULING 1 (2026-09-24, built 2026-09-25). The live record
+        # against a database the released commit built from nothing, and
+        # the gate's migrated copy against one this tree built from
+        # nothing, each compared after normalising quoting, whitespace,
+        # comments and column order. A difference in behaviour that
+        # audit.SCHEMA_DIFFERENCES_REGISTERED does not hold fails by name,
+        # and so does a registered one that is gone.
+        ("the live record matches the release (schema ruling 1)",
+         lambda: _the_schema_matches("release")),
+        ("this tree's migration makes the record match this tree "
+         "(schema ruling 1)",
+         lambda: _the_schema_matches("tree")),
         # OPERATOR RULING 2 (2026-09-04). Both halves: the declaration cannot
         # drift from the code that earns it, and the hero cannot quietly start
         # leading with a market whose own note calls it a coin flip.
@@ -611,6 +778,18 @@ def step_2_guards() -> bool:
              _record_conn(),
              [_slate_payload(sport, "statistical")
               for sport in _config().SPORTS])),
+        # THE SCHEMA RULINGS OF 2026-09-24 (built 2026-09-25). Ruling 6: no
+        # raw sqlite3.connect outside the approved handles, in the package,
+        # the tools, the plantings or the tests. Ruling 5: no gated test
+        # waits on or measures the real clock (the browser tier's fixed
+        # waits are held, by count, for operator question 5), and auth reads
+        # only the clock a test can move.
+        ("no raw open goes round the approved handles (ruling 6)",
+         audit.check_no_raw_connect_to_the_live_record),
+        ("no gated test waits on the real clock (ruling 5)",
+         audit.check_no_test_waits_on_the_clock),
+        ("auth reads one clock, and a test can move it (ruling 5)",
+         audit.check_auth_reads_one_clock),
     ):
         try:
             fn()
@@ -618,7 +797,7 @@ def step_2_guards() -> bool:
         # A CHECK THAT REACHES FOR THE LIVE RECORD FAILS BY NAME (2026-09-24),
         # and so does one with no record to read, rather than ending the gate.
         except (audit.LawViolation, db.LiveRecordTouched,
-                NoRecordToCopy) as exc:
+                NoRecordToCopy, FreshBuildFailed) as exc:
             ok = False
             print(f"  FAIL  {name}: {str(exc).splitlines()[0]}")
     _close_the_record_handles()

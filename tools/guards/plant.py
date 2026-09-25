@@ -7592,7 +7592,10 @@ def _a_stand_in_for_the_live_record(tmp: Path) -> tuple[dict, Path]:
     state.mkdir()
     scratch.mkdir()
     stand_in = state / "gridiron.db"
-    conn = sqlite3.connect(str(stand_in))
+    # THROUGH `db`, NOT RAW (schema ruling 6, 2026-09-25). In this process the
+    # stand-in is a file under the temp directory, which is scratch; it is the
+    # record only in the child, whose settings name it so.
+    conn = db.connect(stand_in)
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     conn.execute("INSERT INTO meta (key, value) VALUES ('kind', 'live')")
@@ -7608,7 +7611,8 @@ def _a_stand_in_for_the_live_record(tmp: Path) -> tuple[dict, Path]:
 
 def _schema_of(path: Path) -> dict:
     """Every object a database defines, read through a `mode=ro` handle."""
-    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+    conn = db.read_only(path, "reading a stand-in's schema around a planted "
+                              "gate step, to see whether the step changed it")
     try:
         return {(r[0], r[1]): r[2] for r in conn.execute(
             "SELECT type, name, sql FROM sqlite_master")}
@@ -7721,6 +7725,174 @@ def plant_a_write_through_the_read_handle_switched_back() -> Result:
         + (out.strip().splitlines() or [""])[-1][:200])
 
 
+# ---------------------------------------------------------------------------
+# THE LIVE RECORD HAS ONE WAY IN (schema ruling 6 of 2026-09-24, built
+# 2026-09-25): "add a scan that refuses a raw sqlite3.connect to the live
+# record path outside the approved handles, with a planting."
+# ---------------------------------------------------------------------------
+
+LAW_ONE_WAY_IN = "THE LIVE RECORD HAS ONE WAY IN"
+
+
+def _a_whole_tree(tmp: Path) -> Path:
+    """The package with `tools/`, `tests/` and `desktop/` beside it, copied,
+    for a scan that reads more than the package. Returns the package root."""
+    skip = shutil.ignore_patterns("__pycache__")
+    for name in ("gridiron", "tools", "tests", "desktop"):
+        if (REPO / name).is_dir():
+            shutil.copytree(REPO / name, tmp / name, ignore=skip)
+    return tmp / "gridiron"
+
+
+def plant_a_raw_connect_past_the_door() -> Result:
+    """Open a database raw, four ways, in a copy of the tree: a tool calling
+    `sqlite3.connect` on the record's path, the package calling it under
+    another name, a test calling `sqlite3.Connection` through an alias
+    imported inside the test, and a test reaching `connect` by `getattr`.
+
+    The first is the shape two tools had until 2026-09-25 -- `--database`
+    opened raw, and the path it named could be the operator's record. Each
+    must be named by file and function, and nothing else in the copied tree
+    may be, so the real tree passes the same scan.
+    """
+    from gridiron import audit as _audit
+
+    violation = "four raw SQLite opens: a tool, the package, two tests"
+    guard = "audit.raw_connect_faults"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = _a_whole_tree(Path(tmp))
+        (Path(tmp) / "tools" / "planted_reader.py").write_text(
+            "import sqlite3\n\nfrom gridiron import config\n\n\n"
+            "def planted_raw_read():\n"
+            "    return sqlite3.connect(str(config.DB_PATH))\n",
+            encoding="utf-8")
+        views = root / "views.py"
+        views.write_text(
+            views.read_text(encoding="utf-8")
+            + "\n\n# PLANTED VIOLATION\n"
+              "from sqlite3 import connect as _planted_open  # noqa: E402\n\n\n"
+              "def planted_aliased_open():\n"
+              "    return _planted_open(config.DB_PATH)\n",
+            encoding="utf-8")
+        (Path(tmp) / "tests" / "test_planted_open.py").write_text(
+            "def test_planted_connection_call(tmp_path):\n"
+            "    import sqlite3 as _s\n"
+            "    _s.Connection(str(tmp_path / 'x.db')).close()\n\n\n"
+            "def test_planted_getattr_open():\n"
+            "    import sqlite3\n"
+            "    getattr(sqlite3, 'connect')(':memory:').close()\n",
+            encoding="utf-8")
+        faults = _audit.raw_connect_faults(root)
+    wanted = ("(planted_raw_read)", "(planted_aliased_open)",
+              "(test_planted_connection_call)", "(test_planted_getattr_open)")
+    hit = [f for f in faults if any(w in f for w in wanted)]
+    if all(any(w in f for f in hit) for w in wanted) and len(hit) == len(faults):
+        return Result(LAW_ONE_WAY_IN, violation, guard, True,
+                      " / ".join(f.split(". ")[0] for f in hit))
+    return Result(
+        LAW_ONE_WAY_IN, violation, guard, False,
+        f"NOT CAUGHT - the scan said {faults!r}. A raw open cannot say which "
+        f"file it reaches, and one that reaches the operator's record goes "
+        f"round every door verification has")
+
+
+# ---------------------------------------------------------------------------
+# NO GATED TEST DEPENDS ON ELAPSED REAL TIME (schema ruling 5 of 2026-09-24,
+# built 2026-09-25): "The auth backoff test takes an injectable clock instead
+# of wall time. No test in the gate may depend on elapsed real time."
+# ---------------------------------------------------------------------------
+
+LAW_NO_REAL_TIME = "NO GATED TEST DEPENDS ON ELAPSED REAL TIME"
+
+_TESTS_ON_THE_REAL_CLOCK = '''
+
+# PLANTED VIOLATIONS
+def test_planted_sleep(client):
+    import time
+    time.sleep(4)
+    assert client.post("/auth/login", json={"token": "wrong"}).status_code == 401
+
+
+def test_planted_monotonic(client):
+    from time import monotonic as tick
+    started = tick()
+    client.post("/auth/login", json={"token": "wrong"})
+    assert tick() - started < 2
+
+
+def test_planted_fixed_wait(page):
+    page.wait_for_timeout(300)
+
+
+def test_planted_wall_clock_difference(client):
+    started = datetime.now(timezone.utc)
+    client.post("/auth/login", json={"token": "wrong"})
+    assert datetime.now(timezone.utc) - started < timedelta(seconds=2)
+'''
+
+
+def plant_a_test_that_waits_on_the_clock() -> Result:
+    """Four tests that depend on how long the machine takes, in a copy of
+    `tests/test_auth.py`: a sleep, a `monotonic` reading imported under
+    another name, a fixed wait in the browser, and a difference between now
+    and an earlier reading compared with a limit. Each must be named by
+    function, and nothing else in the copied tests may be -- the browser
+    waits held for operator question 5 stay within their register."""
+    from gridiron import audit as _audit
+
+    violation = "four tests on the real clock, in test_auth.py"
+    guard = "audit.elapsed_time_faults"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = _a_whole_tree(Path(tmp))
+        victim = Path(tmp) / "tests" / "test_auth.py"
+        victim.write_text(victim.read_text(encoding="utf-8")
+                          + _TESTS_ON_THE_REAL_CLOCK, encoding="utf-8")
+        faults = _audit.elapsed_time_faults(root)
+    wanted = ("(test_planted_sleep)", "(test_planted_monotonic)",
+              "(test_planted_fixed_wait)", "(test_planted_wall_clock_difference)")
+    hit = [f for f in faults if any(w in f for w in wanted)]
+    if all(any(w in f for f in hit) for w in wanted) and len(hit) == len(faults):
+        return Result(LAW_NO_REAL_TIME, violation, guard, True,
+                      " / ".join(f.split(". ")[0] for f in hit))
+    return Result(
+        LAW_NO_REAL_TIME, violation, guard, False,
+        f"NOT CAUGHT - the scan said {faults!r}. A test that sleeps or times "
+        f"itself goes red under load and green when watched, which is how "
+        f"the backoff test failed a gate on 2026-09-24")
+
+
+def plant_a_wall_clock_read_in_the_backoff() -> Result:
+    """Measure the backoff's elapsed time on the machine's clock again, in a
+    copy of `gridiron/auth.py` -- the reading the manual clock in test_auth
+    cannot move, which is the race the restart test lost."""
+    from gridiron import audit as _audit
+
+    violation = "the backoff reads the machine's clock, not auth.clock"
+    guard = "audit.auth_clock_faults"
+    source = (config.PACKAGE_ROOT / "auth.py").read_text(encoding="utf-8")
+    anchor = "    elapsed = (_now() - datetime.strptime("
+    if anchor not in source:
+        return Result(LAW_NO_REAL_TIME, violation, guard, False,
+                      "the planting's anchor moved; nothing was tested")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        (root / "auth.py").write_text(source.replace(
+            anchor,
+            "    elapsed = (datetime.now(timezone.utc) - datetime.strptime(", 1),
+            encoding="utf-8")
+        faults = _audit.auth_clock_faults(root)
+    hit = [f for f in faults if "(backoff_seconds)" in f]
+    if hit and len(hit) == len(faults):
+        return Result(LAW_NO_REAL_TIME, violation, guard, True,
+                      hit[0].split(". ")[0])
+    return Result(
+        LAW_NO_REAL_TIME, violation, guard, False,
+        f"NOT CAUGHT - the scan said {faults!r}. The backoff would run on "
+        f"the machine's speed again, and the test's clock could not reach it")
+
+
 def plant_a_deleted_tap() -> Result:
     """Delete a tap instead of retracting it (LAW 3, CARD_FACE F3)."""
     import sqlite3 as _sqlite3
@@ -7748,6 +7920,412 @@ def plant_a_deleted_tap() -> Result:
                   "NOT CAUGHT - a tap was deleted rather than retracted. The "
                   "table's comment said append-only and until 2026-09-08 "
                   "nothing enforced it, which is how one was removed")
+
+
+#: THE STATEMENT THAT MADE THE HOLE (schema ruling 4 of 2026-09-24). Run by
+#: hand at 2026-09-01T00:08:32Z through an ordinary writable `db.connect()`,
+#: it removed market_snapshots ids 174-181: the near-start rows task run 40
+#: wrote at 22:33:46Z, copies of the cached opening quote. Kept verbatim.
+DELETED_SNAPSHOTS_STATEMENT = (
+    "DELETE FROM market_snapshots WHERE kind='near_start'"
+    " AND fetched_utc < '2026-09-01T00:00:00Z'")
+
+
+def plant_a_deleted_snapshot() -> Result:
+    """Delete market snapshots the way eight were deleted on 2026-09-01
+    (schema ruling 4 of 2026-09-24: "If any was a deletion, it's a LAW 3
+    violation: find the code path that did it and fix it with a planting").
+
+    No code in the repository did it; the path was a writable handle and a
+    statement typed by hand, and the fix is the table refusing the statement
+    whoever types it. Run on a scratch record built from `schema.sql`, then
+    again on the same record with the trigger dropped, where it must land:
+    a planting that some other rule stopped, or that matched no row, would
+    otherwise pass for this one.
+    """
+    violation = "delete near-start market snapshots, as at 2026-09-01T00:08:32Z"
+    guard = "SQL trigger market_snapshots_no_delete"
+    conn = db.connect(":memory:")
+    try:
+        db.init(conn)
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+            " home, away, status) VALUES ('2026_mlb_planted', 'mlb', 2026, 243,"
+            " 'REG', '2026-08-31T23:10:00Z', 'NYY', 'BOS', 'scheduled')")
+        pid = conn.execute(
+            "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " factor_set_version, factors_json, reasoning)"
+            " VALUES ('2026-08-31T18:00:04Z', '2026_mlb_planted', 'mlb',"
+            " 'moneyline', 'NYY', NULL, 0.6, 'win', 'statistical', 'fs2', '{}',"
+            " 'planted')").lastrowid
+        for fetched, kind in (("2026-08-31T18:00:47Z", "open_at_predict"),
+                              ("2026-08-31T22:33:46Z", "near_start")):
+            conn.execute(
+                "INSERT INTO market_snapshots (prediction_id, fetched_utc,"
+                " source, line, implied_prob, kind)"
+                " VALUES (?, ?, 'planted', NULL, 0.6175, ?)",
+                (pid, fetched, kind))
+        conn.commit()
+        refused = None
+        try:
+            conn.execute(DELETED_SNAPSHOTS_STATEMENT)
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            refused = str(exc)
+        kept = conn.execute("SELECT COUNT(*) FROM market_snapshots").fetchone()[0]
+        conn.execute("DROP TRIGGER IF EXISTS market_snapshots_no_delete")
+        landed = conn.execute(DELETED_SNAPSHOTS_STATEMENT).rowcount
+    finally:
+        conn.close()
+    if refused and "LAW 3" in refused and kept == 2 and landed == 1:
+        return Result("LAW 3", violation, guard, True, refused)
+    if refused is None and kept < 2:
+        return Result(
+            "LAW 3", violation, guard, False,
+            f"NOT CAUGHT - the statement typed at 2026-09-01T00:08:32Z "
+            f"removed {2 - kept} snapshot and nothing refused it. That is how "
+            f"ids 174-181 went: the table held two rules, both about inserting")
+    return Result(
+        "LAW 3", violation, guard, False,
+        f"the planting did not test the trigger: refused={refused!r}, "
+        f"{kept} of 2 rows kept, and {landed} removed once it was dropped")
+
+
+# ---------------------------------------------------------------------------
+# THE SCHEMA MATCHES THE RELEASE (schema ruling 1 of 2026-09-24, built
+# 2026-09-25): "the gate runs this diff read-only and fails on any
+# difference." AND A REBUILD IS VERIFIED OR NOT DONE (schema ruling 2, the
+# same day): "If any table fails verification, the transaction rolls back and
+# nothing is swapped."
+# ---------------------------------------------------------------------------
+
+LAW_THE_SCHEMA_MATCHES = "THE SCHEMA MATCHES THE RELEASE"
+LAW_A_VERIFIED_REBUILD = "A REBUILD IS VERIFIED OR NOT DONE"
+
+#: The eight tables of ruling 2 as the live record holds them, read through
+#: the read-only door on 2026-09-25. The plantings put a scratch record into
+#: these shapes, so the register's differences are really there beside the
+#: planted one.
+LIVE_SHAPES = REPO / "tests" / "fixtures" / "live_shapes_2026_09_25.sql"
+
+#: A table changed ONLY in what the ruling normalises -- its name and
+#: columns quoted three ways, comments, new whitespace, keywords in lower
+#: case, and its columns in another order. It must not be named.
+_AUTH_FAILURES_COSMETIC = (
+    'CREATE TABLE "auth_failures" (  -- planted: the same table, rewritten\n'
+    '    [reason]   TEXT   NOT   NULL,  /* the columns in another order */\n'
+    '    `ip` text not null,\n'
+    '    "at_utc" TEXT NOT NULL,\n'
+    '    id INTEGER PRIMARY KEY\n'
+    ')')
+_AUTH_FAILURES_INDEX_COSMETIC = (
+    'CREATE INDEX "auth_failures_ip"\n'
+    '    ON auth_failures ("ip", at_utc desc)')
+
+#: A column that lost its CHECK: the shape of every registered difference.
+_SESSION_SEEN_WITHOUT_ITS_CHECK = (
+    "CREATE TABLE session_seen (\n"
+    "    session_id    TEXT NOT NULL,\n"
+    "    sport         TEXT NOT NULL,\n"
+    "    last_seen_utc TEXT NOT NULL,\n"
+    "    PRIMARY KEY (session_id, sport)\n"
+    ")")
+
+#: A trigger no release creates -- the shape of 24 September, when a gate
+#: run from a worktree put an unmerged trigger on the operator's record.
+_AN_UNRELEASED_TRIGGER = (
+    "CREATE TRIGGER planted_unreleased_trigger BEFORE DELETE ON teams "
+    "BEGIN SELECT RAISE(ABORT, 'planted'); END")
+
+
+def _live_shapes() -> dict[str, list[str]]:
+    """Table -> its CREATE, then every index and trigger on it, as the live
+    record holds them, in the order the fixture declares the tables."""
+    scratch = db.connect(":memory:")
+    try:
+        scratch.executescript(LIVE_SHAPES.read_text(encoding="utf-8"))
+        shapes = {}
+        for name, sql in scratch.execute(
+                "SELECT name, sql FROM sqlite_master WHERE type = 'table'"
+                " AND name NOT LIKE 'sqlite_%' ORDER BY rowid").fetchall():
+            shapes[name] = [sql] + [r[0] for r in scratch.execute(
+                "SELECT sql FROM sqlite_master WHERE tbl_name = ?"
+                " AND type IN ('index', 'trigger') AND sql IS NOT NULL"
+                " ORDER BY type, name", (name,))]
+        return shapes
+    finally:
+        scratch.close()
+
+
+def _registered_tables(comparison: str) -> list[str]:
+    """The tables the schema register holds a difference in, for one
+    comparison. None on code with no register."""
+    return sorted({e.object.split(" ", 1)[1]
+                   for e in getattr(audit, "SCHEMA_DIFFERENCES_REGISTERED", ())
+                   if comparison in e.comparisons and e.object.startswith("table ")})
+
+
+def _reshaped(conn: sqlite3.Connection, table: str, statements: list[str]) -> None:
+    """Replace an EMPTY table in a scratch record: drop it -- its indexes
+    and triggers go with it -- and create it, and them, from the statements
+    given. Nothing is copied, so a table with rows is refused: the plantings
+    reshape only what a fresh build leaves empty."""
+    if conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]:
+        raise RuntimeError(f"PLANTING ABORTED: {table} has rows to lose")
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("PRAGMA legacy_alter_table = ON")
+    conn.execute(f"DROP TABLE {table}")
+    for sql in statements:
+        conn.execute(sql)
+    conn.commit()
+    conn.execute("PRAGMA legacy_alter_table = OFF")
+    conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _a_record_in_the_live_shapes(path: Path, tables) -> sqlite3.Connection:
+    """A fresh build of this tree, with the named tables put back into the
+    shapes the live record holds them in."""
+    conn = db.open_db(path)
+    shapes = _live_shapes()
+    for table in tables:
+        _reshaped(conn, table, shapes[table])
+    return conn
+
+
+def _schema_check(record_path: Path, reference_path: Path,
+                  register=None) -> str | None:
+    """Run ruling 1's check of a record against a reference: "" when it
+    passes, its message when it fails, None when there is no check."""
+    check = getattr(audit, "check_the_schema_matches", None)
+    if check is None:
+        return None
+    record = db.read_only(record_path, "a planted record's schema, compared")
+    reference = db.read_only(reference_path, "a fresh build's schema, compared")
+    try:
+        check(record, reference, "tree", register)
+        return ""
+    except audit.LawViolation as exc:
+        return str(exc)
+    finally:
+        record.close()
+        reference.close()
+
+
+def plant_a_new_schema_difference_on_the_record() -> Result:
+    """Two new differences in behaviour on a record: a trigger no release
+    creates, and a column that lost its CHECK. Beside them, the record
+    holds every difference the register holds (its eight tables are in the
+    live record's own shapes) and a table rewritten only in what the ruling
+    normalises. Both planted differences must be named, as NEW, and nothing
+    else may be: not a registered difference, and not the rewritten table.
+    """
+    violation = ("a trigger no release creates, and a column that lost its "
+                 "CHECK, on the record")
+    guard = "audit.check_the_schema_matches"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        fresh = Path(tmp) / "fresh.db"
+        db.open_db(fresh).close()
+        conn = _a_record_in_the_live_shapes(Path(tmp) / "record.db",
+                                            _registered_tables("tree"))
+        try:
+            _reshaped(conn, "auth_failures", [_AUTH_FAILURES_COSMETIC,
+                                              _AUTH_FAILURES_INDEX_COSMETIC])
+            _reshaped(conn, "session_seen", [_SESSION_SEEN_WITHOUT_ITS_CHECK])
+            conn.execute(_AN_UNRELEASED_TRIGGER)
+            conn.commit()
+        finally:
+            conn.close()
+        failure = _schema_check(Path(tmp) / "record.db", fresh)
+    if failure is None:
+        return Result(
+            LAW_THE_SCHEMA_MATCHES, violation, guard, False,
+            "NOT CAUGHT - nothing compares the record's schema with a fresh "
+            "build's, so a trigger no release creates and a column that lost "
+            "its CHECK reach the record and pass the gate unseen")
+    faults = [line.strip() for line in failure.splitlines()[1:]]
+    wanted = ("NEW: trigger planted_unreleased_trigger, the whole object:",
+              "NEW: table session_seen, column sport: check (sport in ")
+    named = [f for f in faults if f.startswith(wanted)]
+    if len(named) == 2 and len(faults) == 2 \
+            and all(any(f.startswith(w) for f in named) for w in wanted):
+        return Result(LAW_THE_SCHEMA_MATCHES, violation, guard, True,
+                      " / ".join(f.split(". ")[0] for f in named))
+    return Result(
+        LAW_THE_SCHEMA_MATCHES, violation, guard, False,
+        f"NOT CAUGHT as planted - the check said {faults!r}. It must name "
+        f"the trigger and the lost CHECK, and nothing else: not the "
+        f"registered differences, and not a table changed only in quoting, "
+        f"whitespace, comments and column order")
+
+
+def plant_a_cleared_difference_left_in_the_register() -> Result:
+    """A register entry whose difference is gone: the record holds every
+    registered difference but one, as it will once the migration of ruling
+    2 has rebuilt a table and nobody has emptied the register. The entry
+    must be named as cleared, and nothing else may be -- a register that
+    can outlive what it records is a list of exceptions nobody re-reads."""
+    violation = "a register entry left in place after its difference cleared"
+    guard = "audit.check_the_schema_matches"
+    register = getattr(audit, "SCHEMA_DIFFERENCES_REGISTERED", None)
+    if register is None:
+        return Result(
+            LAW_THE_SCHEMA_MATCHES, violation, guard, False,
+            "NOT CAUGHT - there is no register of known differences and no "
+            "check to hold it to the record")
+    tree = [e for e in register if "tree" in e.comparisons]
+    if tree:
+        stale = tree[0]
+    else:
+        # AN EMPTY REGISTER (after the migration): plant the stale entry.
+        stale = audit.RegisteredDifference(
+            "table session_seen", "column sport: default 'nfl'", "record",
+            "planted", ("tree",), "2026-09-25", "planted")
+        register = (stale,)
+    kept = [t for t in _registered_tables("tree") if f"table {t}" != stale.object]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        fresh = Path(tmp) / "fresh.db"
+        db.open_db(fresh).close()
+        _a_record_in_the_live_shapes(Path(tmp) / "record.db", kept).close()
+        failure = _schema_check(Path(tmp) / "record.db", fresh, register)
+    faults = [line.strip() for line in (failure or "").splitlines()[1:]]
+    if len(faults) == 1 and faults[0].startswith(
+            f"CLEARED, STILL REGISTERED: {stale.object}, {stale.property}"):
+        return Result(LAW_THE_SCHEMA_MATCHES, violation, guard, True,
+                      faults[0].split(" -- ")[0])
+    return Result(
+        LAW_THE_SCHEMA_MATCHES, violation, guard, False,
+        f"NOT CAUGHT - the check said {faults!r} of an entry whose difference "
+        f"is gone: {stale.object}, {stale.property}")
+
+
+def plant_a_rebuild_that_alters_a_row() -> Result:
+    """Corrupt the copy step of ruling 2's rebuild, twice, on a record in
+    the live shapes with rows in it: one value altered in the LAST table
+    rebuilt, after seven have already been swapped inside the transaction,
+    and one row lost from the FIRST. Each must be refused naming the table,
+    with nothing swapped -- the schema byte for byte as it was, every
+    table's rows and checksums as they were, nothing left aside. Then the
+    same altered copy with the checksums blinded, which must land: proof
+    that the corruption is real and the checksums are what stopped it."""
+    violation = ("a rebuild whose copy alters one value in the last table, "
+                 "or loses one row from the first")
+    guard = "rebuild.rebuild_tables (count and column checksums, one transaction)"
+    try:
+        from gridiron import rebuild
+    except ImportError as exc:
+        return Result(
+            LAW_A_VERIFIED_REBUILD, violation, guard, False,
+            f"NOT CAUGHT - there is no rebuild door ({exc}); a table rebuilt "
+            f"here is copied and counted at most, never checksummed")
+    shapes = _live_shapes()
+    tables = list(shapes)
+    first, last = tables[0], tables[-1]
+    if (first, last) != ("factors", "nba_injuries"):
+        return Result(LAW_A_VERIFIED_REBUILD, violation, guard, False,
+                      f"PLANTING ABORTED: the fixture's tables run {first} to "
+                      f"{last}, and the corruptions below are written for "
+                      f"factors and nba_injuries")
+    outcomes: list[str] = []
+    landed = 0
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _a_record_in_the_live_shapes(Path(tmp) / "record.db", tables)
+        try:
+            store.sync_registry(conn)
+            conn.execute(
+                "INSERT INTO nba_injuries (player_id, player_name, team, status,"
+                " detail, fetched_utc) VALUES (6430, 'A Player', 'BOS', 'Out',"
+                " NULL, '2026-09-25T00:00:00Z'), (5289900, 'Another', 'NYK',"
+                " 'Questionable', 'ankle', '2026-09-25T00:00:00Z')")
+            conn.commit()
+            released = rebuild.released_definitions(tables)
+            plan = [released[t] for t in tables]
+
+            def as_it_is():
+                return ([tuple(r) for r in conn.execute(
+                            "SELECT type, name, tbl_name, sql FROM sqlite_master"
+                            " ORDER BY type, name")],
+                        [tuple(r) for r in conn.execute(
+                            "SELECT name, seq FROM sqlite_sequence ORDER BY name")],
+                        {t: rebuild.column_checksums(conn, t) for t in tables})
+
+            before = as_it_is()
+            copy = rebuild._copy_rows
+            cases = (
+                (last, f"UPDATE {last} SET status = status || ' (altered)'"
+                       f" WHERE rowid = (SELECT MIN(rowid) FROM {last})"),
+                (first, f"DELETE FROM {first}"
+                        f" WHERE rowid = (SELECT MAX(rowid) FROM {first})"),
+            )
+            for victim, corruption in cases:
+                def corrupting(c, table, aside, columns, with_rowid,
+                               victim=victim, corruption=corruption):
+                    copy(c, table, aside, columns, with_rowid)
+                    if table == victim:
+                        c.execute(corruption)
+                rebuild._copy_rows = corrupting
+                try:
+                    report = rebuild.rebuild_tables(conn, plan)
+                    # WHAT THE RUN DID, NOT WHAT IT WAS ASKED (2026-09-25,
+                    # found proving this planting with the checks switched
+                    # off). Once one case has committed, every table is at
+                    # its definition and the next case is skipped whole; it
+                    # used to report "COMMITTED a corrupted copy" of a table
+                    # that was never rebuilt, and so never copied.
+                    rebuilt = {e.table for e in report.tables
+                               if e.action == "rebuilt"}
+                    outcomes.append(
+                        f"{victim}: COMMITTED a corrupted copy" if victim in rebuilt
+                        else f"{victim}: tested nothing -- an earlier case had "
+                             f"committed, so no table was rebuilt")
+                except rebuild.TableFailedVerification as exc:
+                    whole = as_it_is() == before
+                    aside = conn.execute(
+                        "SELECT COUNT(*) FROM sqlite_master"
+                        " WHERE name LIKE '%__before_rebuild'").fetchone()[0]
+                    outcomes.append(
+                        f"{victim}: refused ({str(exc).split(':')[0]}), "
+                        + ("nothing swapped" if whole and not aside
+                           else "BUT THE RECORD CHANGED"))
+                except rebuild.RebuildRefused as exc:
+                    outcomes.append(f"{victim}: refused, but not by the "
+                                    f"verification: {exc}")
+                finally:
+                    rebuild._copy_rows = copy
+            # THE CONTROL: the altered copy, with the checksums blinded.
+            def altering(c, table, aside, columns, with_rowid):
+                copy(c, table, aside, columns, with_rowid)
+                if table == last:
+                    c.execute(cases[0][1])
+
+            def blind(c, table):
+                return 0, {}
+
+            checksums = rebuild.column_checksums
+            rebuild._copy_rows = altering
+            rebuild.column_checksums = blind
+            try:
+                rebuild.rebuild_tables(conn, plan)
+                landed = conn.execute(
+                    f"SELECT COUNT(*) FROM {last} WHERE status LIKE '%(altered)'"
+                ).fetchone()[0]
+            finally:
+                rebuild._copy_rows = copy
+                rebuild.column_checksums = checksums
+        finally:
+            conn.close()
+    refused = [o for o in outcomes if o.endswith("nothing swapped")]
+    if len(refused) == 2 and landed == 1:
+        return Result(LAW_A_VERIFIED_REBUILD, violation, guard, True,
+                      "; ".join(refused) + "; with the checksums blinded, "
+                      "the altered value landed")
+    return Result(
+        LAW_A_VERIFIED_REBUILD, violation, guard, False,
+        f"NOT CAUGHT as planted - {outcomes}; with the checksums blinded "
+        f"{landed} altered row(s) landed")
+
 
 def plant_a_same_game_label_on_a_combo_card() -> Result:
     """Print "same game" on a package card (GRIDIRON_COMBOS C5, 2026-09-08).
@@ -9329,7 +9907,7 @@ def _a_copy_without(conn, path: Path, trigger: str) -> sqlite3.Connection:
     if conn.in_transaction:
         raise RuntimeError("PLANTING ABORTED: copying a connection that is "
                            "still inside a transaction would never finish")
-    copy = sqlite3.connect(str(path))
+    copy = db.connect(path)          # a scratch path; no raw open (ruling 6)
     conn.backup(copy)
     copy.close()
     other = db.connect(path)
@@ -9870,7 +10448,8 @@ def plant_a_revert_activating_the_wrong_fit() -> Result:
 
         # THE ESCAPE, on a whole copy -- every trigger kept, so what lands is
         # what the schema allows once the identity checks are made blind.
-        blind = sqlite3.connect(str(Path(tmp) / "blind.db"))
+        # Through `db.connect`, a scratch path (ruling 6, 2026-09-25).
+        blind = db.connect(Path(tmp) / "blind.db")
         conn.backup(blind)
         blind.close()
         other = db.connect(Path(tmp) / "blind.db")
@@ -10623,7 +11202,23 @@ def main() -> int:
     results.append(plant_a_gate_step_that_opens_the_live_record_writable())
     results.append(plant_a_schema_change_during_the_gate())
     results.append(plant_a_write_through_the_read_handle_switched_back())
+    # SCHEMA RULING 6 (2026-09-24): no raw open past the approved handles.
+    results.append(plant_a_raw_connect_past_the_door())
+    # SCHEMA RULING 5 (2026-09-24): no gated test on the real clock, and auth
+    # reads only the clock a test can move.
+    results.append(plant_a_test_that_waits_on_the_clock())
+    results.append(plant_a_wall_clock_read_in_the_backoff())
     results.append(plant_a_deleted_tap())
+    # SCHEMA RULING 4 (2026-09-24): the eight missing snapshot ids were a
+    # deletion by hand, and the table now refuses the statement that made
+    # them (built 2026-09-25).
+    results.append(plant_a_deleted_snapshot())
+    # SCHEMA RULINGS 1 AND 2 (2026-09-24, built 2026-09-25): a new schema
+    # difference fails the gate by name, a cleared one cannot stay
+    # registered, and a rebuild whose copy is not exact swaps nothing.
+    results.append(plant_a_new_schema_difference_on_the_record())
+    results.append(plant_a_cleared_difference_left_in_the_register())
+    results.append(plant_a_rebuild_that_alters_a_row())
     results.append(plant_a_same_game_label_on_a_combo_card())
     results.append(plant_a_priced_same_game_package())
     results.append(plant_a_priced_cross_sport_package())

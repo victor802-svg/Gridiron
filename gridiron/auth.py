@@ -159,8 +159,25 @@ def token_matches(candidate: str) -> bool:
 # sessions
 # ---------------------------------------------------------------------------
 
-def _now() -> datetime:
+def _the_real_clock() -> datetime:
+    """What time it is: the one reading of the machine's clock in this module."""
     return datetime.now(timezone.utc)
+
+
+#: THE CLOCK AUTH READS (schema ruling 5 of 2026-09-24, built 2026-09-25:
+#: "The auth backoff test takes an injectable clock instead of wall time").
+#: Sessions, the backoff and the handoff all ask `_now()`, and `_now()` asks
+#: this. Production never reassigns it. A test replaces it with a clock it
+#: moves by hand, so a two-second penalty is two seconds on that clock and
+#: not a race against how long the machine takes to restart a server -- the
+#: race `test_the_backoff_survives_a_restart` lost once under the gate's load.
+#: `audit.check_auth_reads_one_clock` refuses a reading made anywhere else in
+#: this module, which a test's clock could not move.
+clock = _the_real_clock
+
+
+def _now() -> datetime:
+    return clock()
 
 
 def _iso(when: datetime) -> str:
