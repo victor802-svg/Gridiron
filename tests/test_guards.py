@@ -673,11 +673,22 @@ def test_the_retired_uses_are_caught_by_name():
     form streak, the edge line, the calendar square."""
     for rule in (".verdict.win { color: var(--win); background: var(--win-wash); }",
                  ".yesterday .win { color: var(--win); }",
-                 ".fmark.win { color: var(--win); }",
                  ".face-edge.up .edge-value { color: var(--win); }",
                  ".day.down { border-color: var(--loss); }"):
         faults = audit.colour_law_faults(rule)
         assert faults and "none of the four signals" in faults[0], rule
+
+
+def test_the_form_row_keeps_its_ink_and_nothing_more():
+    """RULED 2026-09-25 (ruling d): the W and L of a club's last five keep
+    green and red as the letter's ink. A form mark filled or ringed is a
+    pick's signal on a club's game and is refused by name."""
+    assert audit.colour_law_faults(".fmark.win { color: var(--win); }") == []
+    assert audit.colour_law_faults(".fmark.loss { color: var(--loss); }") == []
+    filled = audit.colour_law_faults(".fmark.win { background: var(--win); }")
+    assert filled and "form mark" in filled[0] and "not a pick" in filled[0]
+    ringed = audit.colour_law_faults(".fmark.loss { box-shadow: 0 0 0 1px var(--loss); }")
+    assert ringed and "form mark" in ringed[0]
 
 
 def test_the_real_stylesheet_obeys_the_colour_law():

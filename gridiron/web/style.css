@@ -2241,8 +2241,10 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    signals and says nothing else wears the two colours; a club's game is not
    a pick. A win is the heavier mark, a loss the quieter one. */
 .face-form { display: inline-flex; gap: 5px; font-weight: 600; }
-.fmark.win { color: var(--chrome); font-weight: 800; }
-.fmark.loss { color: var(--faint); }
+/* THE FORM ROW'S LETTERS (ruled 2026-09-25, the ruling of 2026-09-08
+   standing): the colour is the letter's ink and nothing else. */
+.fmark.win { color: var(--win); font-weight: 800; }
+.fmark.loss { color: var(--loss); }
 
 .face-prices {
   display: grid;

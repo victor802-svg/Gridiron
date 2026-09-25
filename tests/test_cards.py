@@ -359,11 +359,10 @@ def test_the_live_mark_is_never_green(page):
         f"the live mark is drawn in the win colour ({colour['c']})")
 
 
-def test_the_form_streak_wears_neither_value_colour(page):
-    """THE COLOUR LEFT THE STREAK (colour law amended 2026-09-24). The ruling
-    of 2026-09-09 coloured W and L; the amendment names four signals and says
-    nothing else wears the two colours. A win is the heavier mark and a loss
-    the quieter one, and neither borrows a pick's colour."""
+def test_the_form_streak_wears_its_ink_and_nothing_more(page):
+    """RULED 2026-09-25 (ruling d): the ruling of 2026-09-08 stands. A W in
+    the form row wears the win colour and an L the loss colour, as the
+    letter's ink; neither is filled, because a filled W is a pick that won."""
     _open_week(page, WIDE)
     palette = page.evaluate("""() => {
         const r = getComputedStyle(document.documentElement);
@@ -372,19 +371,21 @@ def test_the_form_streak_wears_neither_value_colour(page):
             const s = document.createElement('span');
             s.className = cls;
             document.body.appendChild(s);
-            const c = getComputedStyle(s).color;
+            const c = getComputedStyle(s);
+            const out = { color: c.color, bg: c.backgroundColor, shadow: c.boxShadow };
             s.remove();
-            return c;
+            return out;
         };
         const rgb = (h) => 'rgb(' + [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
         return { win: rgb(hex('--win')), loss: rgb(hex('--loss')),
-                 plain: probe('fmark'),
                  winMark: probe('fmark win'),
                  lossMark: probe('fmark loss') };
     }""")
-    assert palette["winMark"] != palette["win"], "a W in the form streak wears the win colour"
-    assert palette["lossMark"] != palette["loss"], "an L in the form streak wears the loss colour"
-    assert palette["winMark"] != palette["lossMark"], "a win and a loss look the same"
+    assert palette["winMark"]["color"] == palette["win"], "a W in the form row does not wear the win colour"
+    assert palette["lossMark"]["color"] == palette["loss"], "an L in the form row does not wear the loss colour"
+    for mark in (palette["winMark"], palette["lossMark"]):
+        assert mark["bg"] in ("rgba(0, 0, 0, 0)", "transparent"), "a form mark is filled like a verdict"
+        assert mark["shadow"] == "none", "a form mark is ringed like a price comparison"
 
 
 def test_every_class_the_page_asks_for_is_a_class_it_builds():

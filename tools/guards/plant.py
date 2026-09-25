@@ -2431,15 +2431,27 @@ def plant_a_red_fill_on_a_pick_that_only_costs() -> Result:
 
 
 def plant_a_value_colour_on_a_form_streak() -> Result:
-    """Colour the W and L of a club's last five.
+    """Fill the W of a club's last five solid green.
 
-    THE FOURTH CASE, and the one the amendment retired: the ruling of
-    2026-09-09 allowed it, and "nothing else uses those colours" ended it. A
-    club's game is not a pick. The scan names the rule so a session that
-    restores it does so under a ruling rather than by habit.
+    THE FOURTH CASE, re-ruled: the overnight build of 2026-09-24 read the
+    amendment as retiring the form row's colours and planted the letter's
+    ink; the operator ruled on 2026-09-25 (ruling d) that the 2026-09-08
+    ruling stands. So the allowance is the LETTER'S INK ONLY, and what is
+    planted now is the form mark wearing the colour as a fill -- a club's
+    game dressed as a pick that won. The ink itself is in the scan's own
+    negative fixture, proved at import.
     """
-    faults = audit.colour_law_faults(".fmark.win { color: var(--win); }")
-    return _desk_plant(faults, "colour a club's form streak",
+    faults = audit.colour_law_faults(".fmark.win { background: var(--win); }")
+    ringed = audit.colour_law_faults(".fmark.loss { border: 1px solid var(--loss); }")
+    ink = audit.colour_law_faults(".fmark.win { color: var(--win); }")
+    if ink:
+        return Result("THE DESK", "fill a club's form mark like a verdict",
+                      "audit.colour_law_faults", False,
+                      "NOT CAUGHT THE RIGHT WAY - the scan refuses the form "
+                      "row's own ink, which the ruling of 2026-09-25 allows: "
+                      + ink[0])
+    return _desk_plant(faults if (faults and ringed) else [],
+                       "fill a club's form mark like a verdict",
                        "audit.colour_law_faults")
 
 

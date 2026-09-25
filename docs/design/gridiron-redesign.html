@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gridiron — Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07090c;--panel:#0f1318;--tile:#131820;--tile2:#1a2029;--ink:#f2f5f8;--mute:#8a94a3;--line:#222a35;
+--win:#22e07a;--loss:#ff4d4f;--you:#ffb020;--live:#3d8bff;
+--cond:'Barlow Condensed','Arial Narrow',Impact,sans-serif;--sans:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 var(--sans)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+/* ---------- header ---------- */
+.top{position:sticky;top:0;z-index:20;background:rgba(7,9,12,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.bar1{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:28px;padding:12px 28px 0}
+.logo{font:800 22px/1 var(--cond);letter-spacing:.06em}
+.logo i{color:var(--win);font-style:normal}
+.sports{display:flex;gap:4px}
+.sports button{font:700 16px/1 var(--cond);letter-spacing:.05em;color:var(--mute);padding:10px 14px 12px;border-bottom:3px solid transparent}
+.sports button.on{color:var(--ink);border-color:var(--win)}
+.menu{margin-left:auto;position:relative}
+.menu>button{width:38px;height:38px;border:1px solid var(--line);border-radius:10px;font-size:18px}
+.menu .drop{display:none;position:absolute;right:0;top:44px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;min-width:170px}
+.menu:hover .drop{display:block}.menu .drop a{display:block;padding:9px 12px;border-radius:8px;color:var(--ink);text-decoration:none}.menu .drop a:hover{background:var(--tile2)}
+.bar2{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:8px;padding:10px 28px 12px}
+.pages button{font:700 15px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;padding:9px 18px;border-radius:999px;color:var(--mute);border:1px solid var(--line)}
+.pages button.on{background:var(--ink);color:#07090c;border-color:var(--ink)}
+.pulse{margin-left:auto;display:flex;gap:16px;font-size:12px;color:var(--mute)}.pulse b{color:var(--ink);font-weight:600}
+.pulse .ok:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--win);margin-right:6px;vertical-align:1px}
+main{max-width:1240px;margin:0 auto;padding:20px 28px 60px}
+.day{display:flex;align-items:baseline;gap:14px;margin:4px 0 16px}
+.day h1{font:800 34px/1 var(--cond);letter-spacing:.02em;margin:0;text-transform:uppercase}
+.day .legend{display:flex;gap:14px;font-size:12px;color:var(--mute)}
+.lg{display:inline-flex;align-items:center;gap:6px}.lg i{width:14px;height:14px;border-radius:4px;display:inline-block}
+/* ---------- tooltip ---------- */
+[data-tip]{position:relative}
+[data-tip]:hover:after{content:attr(data-tip);position:absolute;z-index:30;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:max-content;max-width:260px;background:#fff;color:#0b0d10;font:500 12px/1.35 var(--sans);padding:8px 10px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);white-space:normal;text-align:left;letter-spacing:0;text-transform:none}
+/* ---------- glow system ---------- */
+.g-bet{box-shadow:0 0 0 1.5px var(--win),0 0 22px rgba(34,224,122,.28)}
+.g-risk{box-shadow:0 0 0 1.5px var(--loss),0 0 22px rgba(255,77,79,.24)}
+.g-none{box-shadow:0 0 0 1px var(--line)}
+.f-won{background:var(--win)!important;color:#04150b!important}
+.f-lost{background:var(--loss)!important;color:#1a0405!important}
+/* ---------- game rows ---------- */
+.games{display:flex;flex-direction:column;gap:10px}
+.game{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:grid;grid-template-columns:96px 1fr 290px 150px;align-items:stretch;cursor:pointer}
+.status{display:flex;flex-direction:column;justify-content:center;padding:0 16px;border-right:1px solid var(--line)}
+.status b{font:700 18px/1.1 var(--cond);letter-spacing:.03em}.status span{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.status .lv{color:var(--live);font-weight:700}.status .lv:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--live);margin-right:5px}
+.teams{display:flex;flex-direction:column}
+.team{display:flex;align-items:center;gap:12px;height:44px;padding-right:18px;
+ background:linear-gradient(90deg,var(--c) 0 58px,color-mix(in srgb,var(--c) 70%,#07090c) 58px,color-mix(in srgb,var(--c) 22%,#0f1318) 62%,transparent 100%)}
+.team+.team{border-top:1px solid rgba(0,0,0,.35)}
+.team .blk{width:58px;align-self:stretch;display:grid;place-items:center;font:800 18px/1 var(--cond);letter-spacing:.04em;color:#fff;border-right:3px solid var(--c2);text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.team .nm{font:700 20px/1 var(--cond);letter-spacing:.03em;text-transform:uppercase;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.team .sc{margin-left:auto;font:800 26px/1 var(--cond);color:#fff}
+.team.lead .sc{color:#fff}.team.trail .sc{color:rgba(255,255,255,.55)}
+.pick{margin:10px 12px;border-radius:12px;background:var(--tile);display:flex;flex-direction:column;justify-content:center;padding:8px 16px}
+.pick small{font:600 10px/1 var(--sans);letter-spacing:.14em;color:var(--mute)}
+.pick .pk{font:800 30px/1.05 var(--cond);letter-spacing:.02em;margin-top:3px}
+.pick .pp{font-size:13px;color:var(--mute)}.pick .pp b{color:var(--ink);font-weight:700}
+.pick.f-won small,.pick.f-lost small,.pick.f-won .pp,.pick.f-lost .pp,.pick.f-won .pp b,.pick.f-lost .pp b{color:inherit;opacity:.85}
+.meta{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:8px;padding:0 16px;border-left:1px solid var(--line)}
+.badge{font:600 11px/1 var(--sans);padding:5px 8px;border-radius:999px;background:var(--tile2);color:var(--mute);letter-spacing:.02em}
+.badge.proven{color:var(--win);background:rgba(34,224,122,.12)}
+.take{display:flex;align-items:center;gap:8px}
+.chk{width:30px;height:30px;border-radius:9px;border:1.5px solid var(--line);display:grid;place-items:center;font-size:15px;color:transparent}
+.chk.on{border-color:var(--you);background:var(--you);color:#1a1100}
+.car{font-size:12px;color:var(--mute);transition:transform .15s}.game.open .car{transform:rotate(180deg)}
+.yours{font:800 11px/1 var(--cond);letter-spacing:.1em;color:var(--you);display:none}.game.mine .yours{display:inline}
+/* expanded */
+.exp{display:none;padding:16px;border-top:1px solid var(--line);background:linear-gradient(180deg,#0c1015,#0a0d11)}
+.game.open .exp{display:block}
+.exp h3{font:700 13px/1 var(--cond);letter-spacing:.14em;color:var(--mute);margin:0 0 10px;text-transform:uppercase}
+.mkts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.mkt{background:var(--tile);border-radius:12px;padding:12px 14px;position:relative}
+.mkt .lab{font:600 11px/1 var(--sans);letter-spacing:.12em;color:var(--mute);text-transform:uppercase;display:flex;justify-content:space-between}
+.mkt .pk{font:800 24px/1.05 var(--cond);margin:8px 0 2px}
+.mkt .mini{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px}
+.mkt .mini .p{font:800 22px/1 var(--cond)}.mkt .mini .p small{font:600 11px var(--sans);color:var(--mute);margin-left:4px}
+.pay{font:700 14px/1 var(--cond);letter-spacing:.03em;padding:6px 10px;border-radius:8px;background:var(--tile2)}
+.probar{height:6px;border-radius:3px;background:#262e3a;position:relative;margin:10px 0 2px}
+.probar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--c,#8a94a3)}
+.probar em{position:absolute;top:-4px;width:2px;height:14px;background:#fff;border-radius:1px}
+.mkt .chk{position:absolute;top:10px;right:10px;width:24px;height:24px;font-size:12px;border-radius:7px}
+/* ---------- props ---------- */
+.propsgrid{display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.ptile{background:var(--tile);border-radius:14px;overflow:hidden;position:relative}
+.ptop{display:flex;gap:12px;align-items:center;padding:12px 14px;background:linear-gradient(120deg,var(--c) 0%,color-mix(in srgb,var(--c) 35%,#131820) 55%,#131820 100%)}
+.jersey{width:54px;height:58px;flex:0 0 auto;clip-path:polygon(22% 0,78% 0,100% 18%,88% 30%,84% 100%,16% 100%,12% 30%,0 18%);
+ background:linear-gradient(180deg,var(--c) 0 60%,var(--c2) 60% 67%,var(--c) 67%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;
+ filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.jersey small{font:700 7px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;margin-top:7px}
+.jersey b{font:800 24px/1 var(--cond)}
+.pwho b{display:block;font:800 21px/1 var(--cond);letter-spacing:.02em;text-transform:uppercase;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.pwho span{font-size:12px;color:rgba(255,255,255,.8)}
+.pbody{padding:12px 14px 14px}
+.pline{display:flex;justify-content:space-between;align-items:baseline}
+.pline .q{font:800 26px/1 var(--cond)}.pline .q small{font:600 13px var(--sans);color:var(--mute);margin-left:6px}
+.pline .p{font:800 30px/1 var(--cond)}
+.pfoot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
+.app{font-size:12px;color:var(--mute)}.app b{color:var(--ink)}
+.ptile .chk{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.35);border-color:rgba(255,255,255,.35)}
+.ptile .chk.on{background:var(--you);border-color:var(--you)}
+.rail{position:sticky;top:130px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.rail h2{font:800 20px/1 var(--cond);letter-spacing:.04em;text-transform:uppercase;margin:0 0 4px}
+.rail .sub{font-size:12px;color:var(--mute);margin-bottom:12px}
+.leg{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.leg b{font:700 16px/1 var(--cond);letter-spacing:.02em}.leg span{color:var(--mute)}
+.fld{display:flex;justify-content:space-between;align-items:center;margin:12px 0 4px;font-size:12px;color:var(--mute)}
+.fld input{width:96px;background:var(--tile2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--ink);font:800 18px/1 var(--cond);text-align:right}
+.verdict{margin-top:12px;border-radius:12px;padding:14px;background:var(--tile)}
+.verdict .v{font:800 26px/1 var(--cond);color:var(--win)}
+.ev{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:12px;margin-top:10px;color:var(--mute)}.ev b{font:800 16px/1 var(--cond);color:var(--win);text-align:right}
+.note{font-size:11px;color:var(--mute);margin-top:12px;line-height:1.5}
+
+.pchips{display:flex;gap:8px;align-items:center;margin:-4px 0 16px;flex-wrap:wrap}
+.pchips button{font:700 14px/1 var(--cond);letter-spacing:.06em;text-transform:uppercase;padding:8px 14px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
+.pchips button.on{border-color:var(--win);color:var(--win)}
+.sortlab{margin-left:auto;font-size:12px;color:var(--mute)}
+.ptop{padding:10px 14px 10px 10px!important}
+.jsvg{width:92px;height:100px;flex:0 0 auto;filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))}
+.jsvg .nmT{font-family:var(--cond);font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.jsvg .numT{font:800 50px var(--cond);paint-order:stroke;stroke-width:3.2px;stroke-linejoin:round}
+.jsvg .snT{font:800 12px var(--cond);paint-order:stroke;stroke-width:1.2px}
+.cush{display:flex;gap:10px;align-items:baseline;font-size:12px;color:var(--mute);margin-top:4px}
+.cush b{font:800 16px/1 var(--cond);color:var(--ink)}
+.cush .up{color:var(--win)}.cush .dn{color:var(--loss)}
+.tag{font:700 10px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;padding:4px 7px;border-radius:6px;background:rgba(255,255,255,.08);color:var(--mute);margin-left:6px;vertical-align:4px}
+.tag.alt{background:rgba(61,139,255,.16);color:#8fb8ff}
+.hide{display:none}
+footer{max-width:1240px;margin:0 auto;padding:0 28px 30px;font-size:11px;color:var(--mute)}
+@media(max-width:1000px){.row{grid-template-columns:78px 1fr}.pick{grid-column:1/-1;margin:0 12px 10px}.meta{grid-column:1/-1;flex-direction:row;justify-content:space-between;border:0;border-top:1px solid var(--line);padding:8px 16px}.mkts{grid-template-columns:1fr 1fr}.propsgrid{grid-template-columns:1fr}.tiles{grid-template-columns:1fr 1fr}.pulse{display:none}}
+@media(max-width:560px){.tiles,.mkts{grid-template-columns:1fr}.bar1,.bar2,main{padding-left:14px;padding-right:14px}}
+</style></head><body>
+
+<div class="top">
+ <div class="bar1">
+  <div class="logo">GRID<i>I</i>RON</div>
+  <div class="sports"><button class="on">NFL</button><button>MLB</button><button>NBA</button><button>NCAAF</button><button>UFC</button></div>
+  <div class="menu"><button aria-label="menu">☰</button><div class="drop"><a href="#">Record</a><a href="#">Results</a><a href="#">Settings</a></div></div>
+ </div>
+ <div class="bar2">
+  <div class="pages"><button class="on" data-page="games">Games</button> <button data-page="props">Props</button></div>
+  <div class="pulse"><span class="ok" data-tip="The daily forecast ran and finished. Goes amber after 36 hours.">daily run <b>41m</b></span><span class="ok" data-tip="Last time the app read Kalshi's public prices.">prices <b>2h</b></span><span class="ok" data-tip="Last read of PrizePicks, Underdog and Chalkboard boards.">boards <b>1h</b></span></div>
+ </div>
+</div>
+
+<main>
+<!-- ================= GAMES ================= -->
+<section id="games">
+ <div class="day"><h1>Week 4 · Sunday</h1>
+  <div class="legend"><span class="lg"><i class="g-bet" style="background:transparent"></i>worth taking</span><span class="lg"><i class="g-risk" style="background:transparent"></i>costs you after fees</span><span class="lg"><i style="background:var(--win)"></i>won</span><span class="lg"><i style="background:var(--loss)"></i>lost</span></div></div>
+
+ <div class="games">
+
+  <!-- live -->
+  <div class="game mine" style="--x:0">
+   <div class="row" onclick="tog(this)">
+    <div class="status"><span class="lv">LIVE</span><b>Q3 8:14</b><span>polled 0:40 ago</span></div>
+    <div class="teams">
+     <div class="team lead" style="--c:#00338D;--c2:#C60C30"><span class="blk">BUF</span><span class="nm">Bills</span><span class="sc">24</span></div>
+     <div class="team trail" style="--c:#008E97;--c2:#FC4C02"><span class="blk">MIA</span><span class="nm">Dolphins</span><span class="sc">17</span></div>
+    </div>
+    <div class="pick g-none"><small>MODEL'S PICK · PREGAME</small><div class="pk">BUF −2.5</div><div class="pp" data-tip="What the model said before kickoff. No live model exists, so nothing here is sized or priced in-game."><b>64%</b> pregame</div></div>
+    <div class="meta"><span class="badge" data-tip="NFL spread: 12 settled of the 100 needed before this number means anything.">12/100</span><span class="take"><span class="yours">YOURS</span><span class="chk on">✓</span><span class="car">▾</span></span></div>
+   </div>
+   <div class="exp"><h3>Every bet on this game</h3><div class="mkts">
+    <div class="mkt g-none"><div class="lab"><span>Spread</span><span>live</span></div><div class="pk">BUF −2.5</div><div class="probar" style="--c:#00338D"><i style="width:64%"></i></div><div class="mini"><span class="p">64%<small>pregame</small></span><span class="pay">taken</span></div></div>
+    <div class="mkt g-none"><div class="lab"><span>Moneyline</span><span>live</span></div><div class="pk">BUF to win</div><div class="probar" style="--c:#00338D"><i style="width:69%"></i></div><div class="mini"><span class="p">69%<small>pregame</small></span><span class="pay">—</span></div></div>
+    <div class="mkt g-none"><div class="lab"><span>Total</span><span>live</span></div><div class="pk">Under 48.5</div><div class="probar" style="--c:#8a94a3"><i style="width:55%"></i></div><div class="mini"><span class="p">55%<small>pregame</small></span><span class="pay">—</span></div></div>
+    <div class="mkt g-none"><div class="lab"><span>Allen pass yds</span><span>live</span></div><div class="pk">Over 235.5</div><div class="probar" style="--c:#00338D"><i style="width:68%"></i></div><div class="mini"><span class="p">68%<small>pregame</small></span><span class="pay">—</span></div></div>
+   </div></div>
+  </div>
+
+  <!-- worth taking, open -->
+  <div class="game open">
+   <div class="row" onclick="tog(this)">
+    <div class="status"><b>1:00 PM</b><span>Sunday</span></div>
+    <div class="teams">
+     <div class="team" style="--c:#241773;--c2:#9E7C0C"><span class="blk">BAL</span><span class="nm">Ravens</span><span class="sc"></span></div>
+     <div class="team" style="--c:#E31837;--c2:#FFB81C"><span class="blk">KC</span><span class="nm">Chiefs</span><span class="sc"></span></div>
+    </div>
+    <div class="pick g-bet"><small>MODEL'S PICK</small><div class="pk">BAL +3.5</div><div class="pp"><b data-tip="The model's chance, after the correction learned from its own record.">61%</b> · <span data-tip="Kalshi's price right now. The model thinks it's worth 61¢.">market 54¢</span> · <b data-tip="What $1 returns if it hits.">pays 1.85x</b></div></div>
+    <div class="meta"><span class="badge" data-tip="NFL spread: 12 settled of the 100 needed. Worth taking on the arithmetic; the model isn't proven yet.">12/100</span><span class="take"><span class="yours">YOURS</span><span class="chk" onclick="mark(event,this)">✓</span><span class="car">▾</span></span></div>
+   </div>
+   <div class="exp"><h3>Every bet on this game</h3><div class="mkts">
+    <div class="mkt g-bet"><span class="chk" onclick="mark(event,this)">✓</span><div class="lab"><span>Spread</span></div><div class="pk">BAL +3.5</div><div class="probar" style="--c:#241773"><i style="width:61%;background:#6b5bd6"></i><em style="left:54%"></em></div><div class="mini"><span class="p" data-tip="Model 61% vs market 54¢: +4.1¢ after the fee.">61%<small>+4.1¢</small></span><span class="pay">1.85x</span></div></div>
+    <div class="mkt g-risk"><span class="chk" onclick="mark(event,this)">✓</span><div class="lab"><span>Moneyline</span></div><div class="pk">KC to win</div><div class="probar"><i style="width:58%;background:#E31837"></i><em style="left:63%"></em></div><div class="mini"><span class="p" data-tip="Market has KC at 63¢; the model says 58%. Taking it costs about 6¢ per dollar.">58%<small>−6.2¢</small></span><span class="pay">1.59x</span></div></div>
+    <div class="mkt g-risk"><span class="chk" onclick="mark(event,this)">✓</span><div class="lab"><span>Total</span></div><div class="pk">Over 47.5</div><div class="probar"><i style="width:51%;background:#8a94a3"></i><em style="left:50%"></em></div><div class="mini"><span class="p" data-tip="A coin flip, and the fee makes it a loser.">51%<small>−1.6¢</small></span><span class="pay">2.00x</span></div></div>
+    <div class="mkt g-bet"><span class="chk" onclick="mark(event,this)">✓</span><div class="lab"><span>Jackson rush yds</span></div><div class="pk">Over 49.5</div><div class="probar"><i style="width:63%;background:#6b5bd6"></i><em style="left:56%"></em></div><div class="mini"><span class="p" data-tip="Best line: Underdog 49.5 at 1.0x. Props record 38/100.">63%<small>Underdog</small></span><span class="pay">1.0x</span></div></div>
+   </div></div>
+  </div>
+
+  <!-- risky -->
+  <div class="game">
+   <div class="row" onclick="tog(this)">
+    <div class="status"><b>1:00 PM</b><span>Sunday</span></div>
+    <div class="teams">
+     <div class="team" style="--c:#4F2683;--c2:#FFC62F"><span class="blk">MIN</span><span class="nm">Vikings</span><span class="sc"></span></div>
+     <div class="team" style="--c:#203731;--c2:#FFB612"><span class="blk">GB</span><span class="nm">Packers</span><span class="sc"></span></div>
+    </div>
+    <div class="pick g-risk"><small>MODEL'S PICK</small><div class="pk">GB −1.5</div><div class="pp"><b>52%</b> · market 55¢ · <b>pays 1.79x</b></div></div>
+    <div class="meta"><span class="badge" data-tip="NFL spread: 12 settled of 100.">12/100</span><span class="take"><span class="yours">YOURS</span><span class="chk" onclick="mark(event,this)">✓</span><span class="car">▾</span></span></div>
+   </div>
+   <div class="exp"><h3>Every bet on this game</h3><div class="mkts">
+    <div class="mkt g-risk"><div class="lab"><span>Spread</span></div><div class="pk">GB −1.5</div><div class="probar"><i style="width:52%;background:#3d7a5f"></i><em style="left:55%"></em></div><div class="mini"><span class="p">52%<small>−4.8¢</small></span><span class="pay">1.79x</span></div></div>
+    <div class="mkt g-none"><div class="lab"><span>Moneyline</span></div><div class="pk">GB to win</div><div class="probar"><i style="width:57%;background:#3d7a5f"></i></div><div class="mini"><span class="p">57%<small>not listed</small></span><span class="pay">—</span></div></div>
+    <div class="mkt g-bet"><div class="lab"><span>Total</span></div><div class="pk">Under 44.5</div><div class="probar"><i style="width:59%;background:#8a94a3"></i><em style="left:52%"></em></div><div class="mini"><span class="p">59%<small>+5.0¢</small></span><span class="pay">1.92x</span></div></div>
+    <div class="mkt g-risk"><div class="lab"><span>Jefferson rec yds</span></div><div class="pk">Over 84.5</div><div class="probar"><i style="width:51%;background:#4F2683"></i></div><div class="mini"><span class="p">51%<small>Underdog</small></span><span class="pay">1.0x</span></div></div>
+   </div></div>
+  </div>
+
+  <!-- final won -->
+  <div class="game mine">
+   <div class="row" onclick="tog(this)">
+    <div class="status"><b>FINAL</b><span>Thursday</span></div>
+    <div class="teams">
+     <div class="team trail" style="--c:#041E42;--c2:#869397"><span class="blk">DAL</span><span class="nm">Cowboys</span><span class="sc">20</span></div>
+     <div class="team lead" style="--c:#004C54;--c2:#A5ACAF"><span class="blk">PHI</span><span class="nm">Eagles</span><span class="sc">27</span></div>
+    </div>
+    <div class="pick f-won"><small>MODEL'S PICK · WON</small><div class="pk">PHI −3.5</div><div class="pp"><b>63%</b> · closed 60¢</div></div>
+    <div class="meta"><span class="badge">12/100</span><span class="take"><span class="yours">YOURS</span><span class="chk on">✓</span><span class="car">▾</span></span></div>
+   </div>
+  </div>
+
+  <!-- final lost -->
+  <div class="game">
+   <div class="row" onclick="tog(this)">
+    <div class="status"><b>FINAL</b><span>Thursday</span></div>
+    <div class="teams">
+     <div class="team lead" style="--c:#FB4F14;--c2:#000000"><span class="blk">CIN</span><span class="nm">Bengals</span><span class="sc">31</span></div>
+     <div class="team trail" style="--c:#0076B6;--c2:#B0B7BC"><span class="blk">DET</span><span class="nm">Lions</span><span class="sc">28</span></div>
+    </div>
+    <div class="pick f-lost"><small>MODEL'S PICK · LOST</small><div class="pk">DET −2.5</div><div class="pp"><b>58%</b> · closed 57¢</div></div>
+    <div class="meta"><span class="badge">12/100</span><span class="take"><span class="yours">YOURS</span><span class="chk">✓</span><span class="car">▾</span></span></div>
+   </div>
+  </div>
+
+ </div>
+</section>
+
+<!-- ================= PROPS ================= -->
+<section id="props" class="hide">
+ <div class="day"><h1>Week 4 · Player props</h1>
+  <div class="legend"><span class="lg"><i class="g-bet" style="background:transparent"></i>clears what the leg needs</span><span class="lg"><i class="g-risk" style="background:transparent"></i>short of it</span></div></div>
+ <div class="pchips"><button class="on" data-f="all">All</button><button data-f="alt">Alt lines</button><button data-f="pass">Passing</button><button data-f="rec">Receiving</button><button data-f="rush">Rushing</button><span class="sortlab" data-tip="Cushion = the model's chance minus what the leg needs at that multiplier in a 2-pick. Alt lines rise when their cushion is real, not because they're alt.">sorted by cushion ⓘ</span></div>
+ <div class="propsgrid"><div class="tiles" id="ptiles"></div>
+ <aside class="rail">
+  <h2>My entry</h2><div class="sub">2 picks · Underdog · standard</div>
+  <div class="leg"><b>Allen 190+ pass</b><span>1.2x · 84%</span></div>
+  <div class="leg"><b>St. Brown 5+ rec</b><span>1.15x · 79%</span></div>
+  <div class="fld"><span data-tip="Type what the app shows you, promo included. The app can't see your promos.">venue pays</span><input value="4.8x"></div>
+  <div class="verdict"><div class="v">Worth it at 4.8x</div>
+   <div class="ev"><span data-tip="Expected return per $1 using the model's numbers.">at the model's numbers</span><b>+$2.19</b><span data-tip="Every leg pulled halfway to 50%. Read this one until alt-line calls pass 100.">if half as good</span><b>+$1.07</b><span data-tip="Below this payout the entry loses money even at the model's numbers.">floor</span><b style="color:var(--ink)">1.51x</b></div></div>
+  <div class="note">Both legs are alt lines: the numbers are the model's high-end calls, its least proven. Alt-line record 9/100. Flat $15. Different games.</div>
+ </aside>
+ </div>
+</section>
+</main>
+<footer>Placeholder games, players and numbers for layout only. Team colours and jersey numbers are real; matchups are not this week's schedule. Hover any number for what it means.</footer>
+
+<script>
+function tog(r){r.parentElement.classList.toggle('open')}
+function mark(e,el){e.stopPropagation();el.classList.toggle('on');const g=el.closest('.game');if(g)g.classList.toggle('mine',!!g.querySelector('.chk.on'))}
+document.querySelectorAll('.pages button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.pages button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+ document.getElementById('games').classList.toggle('hide',b.dataset.page!=='games');document.getElementById('props').classList.toggle('hide',b.dataset.page!=='props')});
+
+const BASE={Underdog:3.5,PrizePicks:3.0,Chalkboard:3.0};
+const P=[
+ {n:'Josh Allen',s:'Allen',no:17,t:'BUF at MIA',st:'passing yds',k:'pass',c:'#00338D',c2:'#C60C30',nc:'#fff',mk:'Kalshi 235.5 at 62¢ · market agrees',
+  L:[{a:'Underdog',l:'190+',kind:'alt',m:1.2,p:.84},{a:'PrizePicks',l:'O 247.5',kind:'base',m:1,p:.59},{a:'Chalkboard',l:'O 265.5',kind:'base',m:.8,p:.41}]},
+ {n:'Amon-Ra St. Brown',s:'St. Brown',no:14,t:'DET at CIN',st:'receptions',k:'rec',c:'#0076B6',c2:'#B0B7BC',nc:'#fff',mk:'Kalshi 5.5 at 71¢',
+  L:[{a:'Underdog',l:'5+',kind:'alt',m:1.15,p:.79},{a:'PrizePicks',l:'O 6.5',kind:'base',m:1,p:.55}]},
+ {n:'Saquon Barkley',s:'Barkley',no:26,t:'PHI vs TB',st:'rushing yds',k:'rush',c:'#004C54',c2:'#A5ACAF',nc:'#fff',mk:'not listed at Kalshi',
+  L:[{a:'Underdog',l:'60+',kind:'alt',m:1.1,p:.74},{a:'PrizePicks',l:'O 89.5',kind:'base',m:1,p:.49}]},
+ {n:'Lamar Jackson',s:'Jackson',no:8,t:'BAL at KC',st:'rushing yds',k:'rush',c:'#241773',c2:'#9E7C0C',nc:'#fff',mk:'Kalshi 45.5 at 60¢',
+  L:[{a:'Chalkboard',l:'35+',kind:'alt',m:.85,p:.80},{a:'Underdog',l:'O 49.5',kind:'base',m:1,p:.63}]},
+ {n:'Patrick Mahomes',s:'Mahomes',no:15,t:'KC vs BAL',st:'passing TDs',k:'pass',c:'#E31837',c2:'#FFB81C',nc:'#fff',mk:'Kalshi 1.5 at 61¢',
+  L:[{a:'Underdog',l:'1+',kind:'alt',m:.7,p:.91},{a:'Chalkboard',l:'O 1.5',kind:'base',m:1,p:.66}]},
+ {n:"Ja'Marr Chase",s:'Chase',no:1,t:'CIN vs DET',st:'receptions',k:'rec',c:'#FB4F14',c2:'#000000',nc:'#fff',mk:'Kalshi 6.5 at 48¢ · market disagrees',
+  L:[{a:'Underdog',l:'U 6.5',kind:'base',m:1,p:.63},{a:'PrizePicks',l:'O 5.5',kind:'demon',m:1.5,p:.47}]},
+ {n:'Justin Jefferson',s:'Jefferson',no:18,t:'MIN at GB',st:'receiving yds',k:'rec',c:'#4F2683',c2:'#FFC62F',nc:'#fff',mk:'Kalshi 80.5 at 54¢',
+  L:[{a:'PrizePicks',l:'O 64.5',kind:'goblin',m:.85,p:.72},{a:'Underdog',l:'O 84.5',kind:'base',m:1,p:.51}]},
+ {n:'CeeDee Lamb',s:'Lamb',no:88,t:'DAL vs NYG',st:'receptions',k:'rec',c:'#041E42',c2:'#869397',nc:'#fff',mk:'not listed at Kalshi',
+  L:[{a:'PrizePicks',l:'O 8.5',kind:'demon',m:1.5,p:.31},{a:'Underdog',l:'O 6.5',kind:'base',m:1,p:.52}]}
+];
+const needs=(a,m)=>Math.sqrt(1/(BASE[a]*m));
+function jersey(o){
+ const id='j'+o.no+o.s.replace(/\W/g,'');
+ return `<svg class="jsvg" viewBox="0 0 120 130" aria-label="${o.s} ${o.no} jersey">
+ <defs>
+  <linearGradient id="${id}sh" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".28"/></linearGradient>
+  <pattern id="${id}mesh" width="3" height="3" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r=".45" fill="#000" opacity=".22"/></pattern>
+  <path id="${id}arc" d="M26 45 Q60 31 94 45"/>
+  <clipPath id="${id}clip"><path d="M30 10 L47 4 Q60 16 73 4 L90 10 L116 31 L103 56 L94 50 L94 124 Q60 131 26 124 L26 50 L17 56 L4 31 Z"/></clipPath>
+ </defs>
+ <g clip-path="url(#${id}clip)">
+  <rect width="120" height="130" fill="${o.c}"/>
+  <path d="M26 50 L34 50 L34 126 L26 124 Z M94 50 L86 50 L86 126 L94 124 Z" fill="#000" opacity=".2"/>
+  <path d="M10 27 L22 51 M14 24 L26 47" stroke="${o.c2}" stroke-width="3.2"/>
+  <path d="M110 27 L98 51 M106 24 L94 47" stroke="${o.c2}" stroke-width="3.2"/>
+  <path d="M8 29 L21 54 M112 29 L99 54" stroke="#fff" stroke-width="1" opacity=".5"/>
+  <rect width="120" height="130" fill="url(#${id}mesh)"/>
+  <rect width="120" height="130" fill="url(#${id}sh)"/>
+  <path d="M26 122 Q60 129 94 122" stroke="#fff" stroke-width=".8" stroke-dasharray="2 2" fill="none" opacity=".45"/>
+  <path d="M26 52 L26 122 M94 52 L94 122" stroke="#fff" stroke-width=".7" stroke-dasharray="2 2" opacity=".35"/>
+ </g>
+ <path d="M45 4 L60 24 L75 4 L71 3 L60 17 L49 3 Z" fill="${o.c2}"/>
+ <path d="M47.5 5 L60 21 L72.5 5" stroke="#fff" stroke-width=".8" fill="none" opacity=".6"/>
+ <text class="nmT" fill="#fff" style="font-size:${Math.min(11,86/o.s.length)}px"><textPath href="#${id}arc" startOffset="50%" text-anchor="middle">${o.s}</textPath></text>
+ <text class="numT" x="60" y="93" text-anchor="middle" fill="${o.nc}" stroke="${o.c2}">${o.no}</text>
+ <text class="snT" x="15" y="42" text-anchor="middle" fill="${o.nc}" stroke="${o.c2}" transform="rotate(-26 15 42)">${o.no}</text>
+ <text class="snT" x="105" y="42" text-anchor="middle" fill="${o.nc}" stroke="${o.c2}" transform="rotate(26 105 42)">${o.no}</text>
+</svg>`}
+function render(f){
+ const rows=P.map(o=>{const L=o.L.map(x=>({...x,nd:needs(x.a,x.m)})).map(x=>({...x,cu:x.p-x.nd}));L.sort((a,b)=>b.cu-a.cu);return {...o,best:L[0],rest:L.slice(1)}})
+  .filter(o=>f==='all'||(f==='alt'?o.best.kind==='alt':o.k===f)).sort((a,b)=>b.best.cu-a.best.cu);
+ document.getElementById('ptiles').innerHTML=rows.map(o=>{const b=o.best,cu=Math.round(b.cu*100),g=cu>=5?'g-bet':cu<=0?'g-risk':'g-none';
+  const alt=b.kind==='alt',tip=o.rest.map(x=>`${x.a} ${x.l} ${x.kind}${x.m!==1?' '+x.m+'x':''} · ${Math.round(x.p*100)}% vs needs ${Math.round(x.nd*100)}%`).join(' · ')+' · '+o.mk;
+  return `<div class="ptile ${g}" style="--c:${o.c};--c2:${o.c2}"><span class="chk" onclick="mark(event,this)">✓</span>
+  <div class="ptop">${jersey(o)}<div class="pwho"><b>${o.n}</b><span>${o.t} · ${o.st}</span></div></div>
+  <div class="pbody"><div class="pline"><span class="q">${b.l}<span class="tag ${alt?'alt':''}">${b.kind}</span></span><span class="p" data-tip="The model's chance at ${b.a}'s line.">${Math.round(b.p*100)}%</span></div>
+  <div class="probar"><i style="width:${b.p*100}%;background:${o.c}"></i><em style="left:${b.nd*100}%" data-tip="What this leg needs"></em></div>
+  <div class="cush"><span data-tip="Paired with a leg like it in a ${b.a} 2-pick at ${b.m}x, this is the chance each leg needs to break even.">needs <b>${Math.round(b.nd*100)}%</b></span><span>cushion <b class="${cu>0?'up':'dn'}">${cu>0?'+':''}${cu}</b></span></div>
+  <div class="pfoot"><span class="app" data-tip="${tip}">best: <b>${b.a}${b.m!==1?' '+b.m+'x':''}</b></span><span class="badge" data-tip="${alt?'Alt-line calls (the model at 75%+): 9 settled of 100. Its least proven numbers.':'NFL props: 38 settled of 100.'}">${alt?'alt 9/100':'38/100'}</span></div></div></div>`}).join('');
+}
+render('all');
+document.querySelectorAll('.pchips button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.pchips button').forEach(x=>x.classList.remove('on'));b.classList.add('on');render(b.dataset.f)});
+</script>
+</body></html>

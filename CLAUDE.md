@@ -253,10 +253,13 @@ operator's call and the work waits.**
 **Two colours, four jobs, and the FORM says which.** A **green OUTLINE glow**
 means a pick clears the bar. A **red OUTLINE glow** means it costs the
 operator after fees. A **SOLID green fill** means a pick won. A **SOLID red
-fill** means it lost. **Nothing else uses those colours**: not a link, not a
-tally, not a warning, not a club's form, not the edge line, not a calendar
-square. `audit.colour_law_faults` reads the selector for the state and the
-declaration for the form, and four plantings break it one signal at a time.
+fill** means it lost. **And the W and L of a club's form row keep green and
+red** (RULED 2026-09-25, the ruling of 2026-09-08 standing: the letter's ink
+only, never a fill or an outline, because a filled W would read as a pick that
+won). **Nothing else uses those colours**: not a link, not a tally, not a
+warning, not the edge line, not a calendar square. `audit.colour_law_faults`
+reads the selector for the state and the declaration for the form, and the
+plantings break it one signal at a time, the form row included.
 
 The tokens keep their names, `--win` and `--loss`, because a colour named
 after its hue is one anybody can reach for. The tint washes are gone: a wash
@@ -273,11 +276,12 @@ is neither an outline nor a fill, and the amended law admits nothing between.
 > > card. Nothing else may reach for them, and a draw takes neither.
 >
 > The third entry — the form streak — was an operator ruling of 2026-09-09
-> (see "Who reads a law" above). The amendment's "nothing else" retires it:
-> a club's game is not a pick, so W and L are now the heavier and the quieter
-> mark rather than the two colours. If the operator meant the amendment to
-> leave that ruling standing, it is one stylesheet rule and one allowance in
-> the scanner, and the close-out of 2026-09-25 says so.
+> (see "Who reads a law" above). The overnight build of 2026-09-24 read the
+> amendment's "nothing else" as retiring it and took the colours off the W
+> and L; the operator ruled the next morning (2026-09-25, ruling d) that the
+> 2026-09-08 ruling stands, and the form row is listed above as a permitted
+> use. That reading and its reversal are in
+> `docs/closeouts/2026-09-25-board-overnight.md`.
 
 ---
 

@@ -2303,15 +2303,25 @@ _LOSS_TOKENS = ("--loss", "--loss-wash", "--neg")
 #:   a SOLID green fill     a pick won                     `.sig-won`
 #:   a SOLID red fill       a pick lost                    `.sig-lost`
 #:
+#: AND THE FORM ROW (ruling d, 2026-09-25, the ruling of 2026-09-08
+#: standing): the W and L of a club's last five keep green and red, as the
+#: LETTER'S INK ONLY. `.fmark.win` may set `color` to `--win` and
+#: `.fmark.loss` `color` to `--loss`; a form mark filled or ringed is refused,
+#: because a solid green W is a pick that won, which a club's game is not.
+#:
 #: Nothing else uses those colours: not a link, not a tally, not a warning,
-#: not a club's form, not the edge line. So the scan reads the selector for
-#: the state AND the declaration for the form: an outline state painted as a
-#: fill is a pick that merely clears the bar dressed as one that won, and a
-#: verdict drawn as an outline is a win that looks like a price comparison.
+#: not the edge line. So the scan reads the selector for the state AND the
+#: declaration for the form: an outline state painted as a fill is a pick
+#: that merely clears the bar dressed as one that won, and a verdict drawn as
+#: an outline is a win that looks like a price comparison.
 _OUTLINE_WIN = re.compile(r"\.sig-clears\b")
 _OUTLINE_LOSS = re.compile(r"\.sig-costs\b")
 _FILL_WIN = re.compile(r"\.sig-won\b")
 _FILL_LOSS = re.compile(r"\.sig-lost\b")
+_FORM_WIN = re.compile(r"\.fmark\.win\b")
+_FORM_LOSS = re.compile(r"\.fmark\.loss\b")
+#: The one declaration a form mark may make with its colour.
+_INK_PROPERTIES = ("color",)
 
 #: Declarations that draw an OUTLINE: a ring, a glow, a border. Anything
 #: else -- background, color, fill, stroke -- is a fill or ink.
@@ -2460,22 +2470,38 @@ def colour_law_faults(css: str) -> list[str]:
                 f"A link, a tab, a focus ring and a pressed segment are none "
                 f"of the four signals. Interactive is chrome (R2).")
             continue
-        for tokens, colour, outline_sel, fill_sel, outline_word, fill_word in (
-                (used_win, "green", _OUTLINE_WIN, _FILL_WIN,
+        for tokens, colour, outline_sel, fill_sel, form_sel, outline_word, fill_word in (
+                (used_win, "green", _OUTLINE_WIN, _FILL_WIN, _FORM_WIN,
                  "clears the bar", "won"),
-                (used_loss, "red", _OUTLINE_LOSS, _FILL_LOSS,
+                (used_loss, "red", _OUTLINE_LOSS, _FILL_LOSS, _FORM_LOSS,
                  "costs the operator after fees", "lost")):
             if not tokens:
                 continue
             is_outline = bool(outline_sel.search(selector))
             is_fill = bool(fill_sel.search(selector))
+            if form_sel.search(selector) and not (is_outline or is_fill):
+                # THE FORM ROW'S LETTER (ruling d, 2026-09-25): ink and
+                # nothing else. A filled or ringed W is a pick's signal.
+                for prop, value in _declarations(body):
+                    if not any(f"var({t})" in value for t in tokens):
+                        continue
+                    if prop not in _INK_PROPERTIES:
+                        faults.append(
+                            f"{one_line!r} paints `{prop}` {colour} on a form "
+                            f"mark. The form row's W and L wear {colour} as "
+                            f"the letter's ink only (ruled 2026-09-25); a "
+                            f"{colour} fill or ring on a club's game says a "
+                            f"pick {fill_word if prop in _FILL_PROPERTIES else outline_word}, "
+                            f"and a club's game is not a pick.")
+                continue
             if not (is_outline or is_fill):
                 faults.append(
                     f"{one_line!r} uses {', '.join(tokens)} and is none of the "
                     f"four signals. A {colour} OUTLINE means a pick "
                     f"{outline_word}; a SOLID {colour} fill means a pick "
-                    f"{fill_word}; nothing else wears {colour} (amended "
-                    f"2026-09-24).")
+                    f"{fill_word}; the form row's letter is the one other "
+                    f"place (ruled 2026-09-25); nothing else wears {colour} "
+                    f"(amended 2026-09-24).")
                 continue
             for prop, value in _declarations(body):
                 if not any(f"var({t})" in value for t in tokens):
@@ -2498,20 +2524,22 @@ def colour_law_faults(css: str) -> list[str]:
 
 #: THE FIVE MISUSES THE PLANTINGS REPRODUCE: a green link, a red warning
 #: border, a fill on a pick that only clears the bar, an outline on a pick
-#: that won, and the form streak's W -- which the ruling of 2026-09-09 allowed
-#: and the amendment of 2026-09-24 retired.
+#: that won, and a form mark FILLED green -- the form row keeps the colour
+#: for its letter (ruled 2026-09-25) and for nothing else.
 COLOUR_LAW_FIXTURE_POSITIVE = """
 .row-more { color: var(--win); text-decoration: none; }
 .notices-summary { border-left: 2px solid var(--loss); }
 .sig-clears { background: var(--win); }
 .sig-won { box-shadow: 0 0 0 1px var(--win); }
-.fmark.win { color: var(--win); }
+.fmark.win { background: var(--win); }
 """
 COLOUR_LAW_FIXTURE_NEGATIVE = """
 .sig-clears { box-shadow: 0 0 0 1.5px var(--win), 0 0 14px 0 var(--win); }
 .sig-costs { box-shadow: 0 0 0 1.5px var(--loss), 0 0 14px 0 var(--loss); }
 .sig-won { background: var(--win); color: var(--ink); }
 .sig-lost { background: var(--loss); color: var(--ink); }
+.fmark.win { color: var(--win); }
+.fmark.loss { color: var(--loss); }
 .row-more { color: var(--chrome); text-decoration: none; }
 """
 
