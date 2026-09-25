@@ -357,4 +357,17 @@ the fixture captures; then merge, push, restart, `/api/health`. The old
 Picks, Live and Today routes already redirect to Games on this branch and
 are removed from the page in that release and not before, as the brief
 says. **Note the branch name:** the repository's default branch is `master`;
-the brief says "main".
+the brief says "main". **Answered 2026-09-25: "main" meant master.**
+
+**Ruled the same day, the stale slate:** during a fetch the previous rows
+and tiles stay on screen, dimmed to 45% at once and never transitioned,
+untouchable (`pointer-events: none`), the container `aria-busy`, with a
+small "updating" label above them in the server's word; the new ones swap
+in when the answer arrives. Offline keeps its rule (the bar says so), and a
+failed fetch leaves the last rows as they were, undimmed, with the error
+box. The regression test keeps its guarantee (a stale row cannot be opened)
+and now also asserts the slate is never empty during a fetch when a
+previous render exists, the busy mark, and the label; a second test reads
+the stylesheet's rule for `transition: none` and runs the motion scan.
+The earlier "opacity 0" reading of the fix (commits `0f24780` and
+`d66a7fd`) is replaced by this one.

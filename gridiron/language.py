@@ -4364,6 +4364,7 @@ def board_labels() -> dict:
         "weather": "weather",
         "factors": "what the model read",
         "my_day": my_day_heading(),
+        "updating": "updating",
     }
 
 

@@ -428,28 +428,40 @@ def test_stale_rows_never_read_as_settled_while_a_new_slate_is_fetched(page):
     cleared only after the answer arrived, so during a fetch the previous
     render stood on the page as current -- a reader could open a row the
     answer then replaced under them, and two tests measured exactly that.
-    Now the container is in its arriving state from the moment a slate is
-    asked for until the new rows land."""
+    RULED the same day: the previous rows stay on screen, dimmed, untouchable
+    and marked busy, with an "updating" label, until the new ones land."""
     page.set_viewport_size(WIDE)
     page.evaluate("location.hash = '#/games'")
     page.wait_for_selector("#games-rows .game", timeout=15000)
     page.wait_for_function("getComputedStyle(document.getElementById('games-rows')).opacity === '1'", timeout=5000)
     held = []
-
-    def slow(route):
-        held.append(route)   # answered later, by hand
-
-    page.route("**/api/week*", slow)
+    page.route("**/api/week*", lambda route: held.append(route))
     page.evaluate("location.hash = '#/record'")
     page.wait_for_timeout(200)
     page.evaluate("location.hash = '#/games'")
-    page.wait_for_function("document.getElementById('games-rows').classList.contains('arriving')", timeout=5000)
-    assert page.evaluate("getComputedStyle(document.getElementById('games-rows')).opacity") == "0", (
-        "the old rows read as the current slate while the new one was still being fetched")
-    assert page.evaluate("getComputedStyle(document.getElementById('games-rows')).pointerEvents") == "none", (
-        "the old rows could still be tapped while the new slate was being fetched")
+    page.wait_for_function("document.getElementById('games-rows').classList.contains('updating')", timeout=5000)
+    probe = page.evaluate("""() => { const rows = document.getElementById('games-rows');
+        const cs = getComputedStyle(rows);
+        return { rows: rows.querySelectorAll('.game').length, opacity: cs.opacity, pointer: cs.pointerEvents,
+                 busy: rows.getAttribute('aria-busy'), label: document.getElementById('games-updating').textContent,
+                 labelShown: !document.getElementById('games-updating').hidden }; }""")
+    assert probe["rows"] > 0, "the slate went empty during a fetch although a previous render existed"
+    assert probe["pointer"] == "none", "the old rows could still be tapped while the new slate was being fetched"
+    assert probe["busy"] == "true" and probe["labelShown"] and probe["label"], probe
+    assert 0 < float(probe["opacity"]) < 1, "the old rows read as the current slate while the new one was still being fetched"
     for r in held:
         r.continue_()
     page.unroute("**/api/week*")
-    page.wait_for_function("!document.getElementById('games-rows').classList.contains('arriving') && document.querySelectorAll('#games-rows .game').length > 0", timeout=15000)
+    page.wait_for_function("!document.getElementById('games-rows').classList.contains('updating') && document.querySelectorAll('#games-rows .game').length > 0", timeout=15000)
     page.wait_for_function("getComputedStyle(document.getElementById('games-rows')).opacity === '1'", timeout=5000)
+    assert page.evaluate("document.getElementById('games-updating').hidden")
+    assert page.evaluate("document.getElementById('games-rows').getAttribute('aria-busy')") is None
+
+
+def test_the_dim_is_applied_at_once_and_never_transitioned():
+    """The ruling's own words: the dim is instant. The stylesheet's updating
+    rule carries `transition: none`, and the motion scan still passes."""
+    css = (config.PACKAGE_ROOT / "web" / "style.css").read_text(encoding="utf-8")
+    rule = re.search(r"#games-rows\.updating[^{]*\{([^}]*)\}", css)
+    assert rule and "transition: none" in rule.group(1) and "pointer-events: none" in rule.group(1), rule and rule.group(0)
+    audit.check_motion_vocabulary()

@@ -324,6 +324,7 @@
     <!-- THE ROWS. Built by `renderGames` from the board payload; empty until
          it runs, and empty on a slate with no games, which the notes beneath
          say in words. -->
+    <p class="updating-label" id="games-updating" hidden></p>
     <div id="games-rows" class="rows"></div>
 
     <!-- THE SLATE'S OWN SENTENCES: "no forecasts on this slate yet", "every
@@ -390,6 +391,7 @@
     </div>
     <div class="props-body">
       <div>
+        <p class="updating-label" id="props-updating" hidden></p>
         <div id="props-tiles" class="props-grid"></div>
         <div id="props-notes" class="slate-notes"></div>
       </div>

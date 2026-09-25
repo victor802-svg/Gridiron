@@ -1851,10 +1851,14 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    switching the slate refills its groups, and without this rule the swap was
    instantaneous, which is the one thing the motion vocabulary exists to
    prevent. The transition itself is unchanged. */
-/* AND A STALE SLATE CANNOT BE TAPPED (2026-09-25): from the moment a new
-   slate is asked for until its rows land, the old rows are neither seen
-   nor touchable, so nothing is opened that the answer then replaces. */
-#games-rows.arriving, #props-tiles.arriving { opacity: 0; transform: translateY(1%); transition: none; pointer-events: none; }
+#games-rows.arriving, #props-tiles.arriving { opacity: 0; transform: translateY(1%); transition: none; }
+/* A STALE SLATE IS DIMMED AND CANNOT BE TAPPED (operator ruling, 2026-09-25):
+   from the moment a new slate is asked for until its rows land, the previous
+   rows stay on screen dimmed, take no pointer events, and the slate is
+   `aria-busy` with a small "updating" label above it. The dim is applied
+   instantly, never transitioned; the new rows arrive as before. */
+#games-rows.updating, #props-tiles.updating { opacity: 0.45; pointer-events: none; transition: none; }
+.updating-label { margin: 0 0 6px; font: 700 11px/1 var(--cond); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 /* THE ONE KEYFRAME. A game being played is the only thing on this page that
    repeats, because it is the only thing that is still happening. It pulses
    between full and half opacity -- no scale, no colour change, no glow. */

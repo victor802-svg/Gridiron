@@ -1423,13 +1423,20 @@ const Gridiron = (function () {
     // 2026-09-25): the rows were cleared only after the answer arrived, so
     // for the length of a fetch the previous render stood on the page as if
     // it were current -- a reader, or a test, could open a row that the
-    // answer then replaced under them. The container goes to its arriving
-    // state now and comes back with the new rows, so nothing stale reads as
-    // settled. Offline this leaves the last numbers hidden, which is the
-    // rule: offline says offline.
-    rows.classList.add('arriving');
-    const data = await fetchJSON(withSport('/api/week' + qs));
+    // answer then replaced under them. RULED the same day: the previous rows
+    // stay on screen, dimmed and untouchable, under an "updating" label, and
+    // the new ones swap in when the answer arrives. Offline keeps its rule:
+    // the bar says so, and a failed fetch leaves the last rows as they were.
+    updating(rows, 'games-updating', true);
+    let data;
+    try {
+      data = await fetchJSON(withSport('/api/week' + qs));
+    } catch (err) {
+      if (seq === weekSeq) updating(rows, 'games-updating', false);
+      throw err;
+    }
     if (seq !== weekSeq) return;
+    updating(rows, 'games-updating', false);
     clearError();
     csrfToken = data.csrf || csrfToken;
     state.slate = data;
@@ -1811,9 +1818,16 @@ const Gridiron = (function () {
     const chosen = picker && picker.value ? JSON.parse(picker.value) : {};
     const qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
     const seq = sportSeq;
-    host.classList.add('arriving');   // the same rule as the rows, above
-    const data = await fetchJSON(withSport('/api/week' + qs));
+    updating(host, 'props-updating', true);   // the same rule as the rows
+    let data;
+    try {
+      data = await fetchJSON(withSport('/api/week' + qs));
+    } catch (err) {
+      if (!stale(seq)) updating(host, 'props-updating', false);
+      throw err;
+    }
     if (stale(seq)) return;
+    updating(host, 'props-updating', false);
     clearError();
     csrfToken = data.csrf || csrfToken;
     paintPulse(data.freshness);
@@ -2600,6 +2614,22 @@ const Gridiron = (function () {
   // `renderYesterday`, `placeGreeting`, `probBlock` and `clamp01`.
   // The page threw `placeGreeting is not defined` on boot, which is
   // how it was found. Only `applyCardState` was meant to go.
+  // THE UPDATING STATE (ruled 2026-09-25): the container dims at once and
+  // takes no taps, the slate says it is busy, and a small label says so in
+  // the server's word -- the last labels the page received, since the new
+  // ones travel with the answer that has not arrived yet.
+  function updating(node, labelId, on) {
+    if (!node) return;
+    node.classList.toggle('updating', on);
+    if (on) node.setAttribute('aria-busy', 'true'); else node.removeAttribute('aria-busy');
+    const label = document.getElementById(labelId);
+    if (label) {
+      const words = ((state.slate || {}).board || {}).labels || {};
+      label.textContent = words.updating || '';
+      label.hidden = !on || !node.children.length || !words.updating;
+    }
+  }
+
   function arrive(node) {
     if (!node) return;
     node.classList.add('arriving');
