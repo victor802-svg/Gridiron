@@ -910,11 +910,18 @@ const Gridiron = (function () {
 
   // THE TAP THAT RECORDS A PICK: writes to `picks_taken` exactly as the old
   // card did, then re-renders the route so the row shows YOURS.
-  function takeButton(q, labels, after) {
-    const mark = el('button', 'take' + (q.taken ? ' take-done' : ''));
+  function takeButton(q, labels, after, compact) {
+    // THE CHECKMARK (mockup, 2026-09-25): a square that fills amber once the
+    // pick is taken. The word travels in the accessible name when the mark
+    // is compact, and beside it otherwise.
+    const mark = el('button', (compact ? 'chk' : 'take') + (q.taken ? (compact ? ' on' : ' take-done') : ''));
     mark.type = 'button';
     mark.appendChild(el('span', 'take-mark', '✓'));
-    mark.appendChild(el('span', 'take-word', q.taken ? labels.taken : labels.took));
+    if (compact) {
+      mark.setAttribute('aria-label', q.taken ? labels.taken : labels.took);
+    } else {
+      mark.appendChild(el('span', 'take-word', q.taken ? labels.taken : labels.took));
+    }
     mark.disabled = !!q.taken;
     mark.onclick = async (event) => {
       event.stopPropagation();
@@ -934,34 +941,40 @@ const Gridiron = (function () {
     const node = el('article', 'q ' + signalClass(q.signal) + (q.taken ? ' q-taken' : ''));
     node.dataset.id = q.prediction_id;
     node.dataset.state = q.state || 'upcoming';
+    if (q.state === 'upcoming') node.appendChild(takeButton(q, labels, after, true));
     const head = el('div', 'q-head');
-    head.appendChild(el('span', 'q-forecaster', q.forecaster_label || ''));
     head.appendChild(el('span', 'q-market', q.market_label || ''));
+    head.appendChild(el('span', 'q-forecaster', q.forecaster_label || ''));
+    if (q.state === 'live') head.appendChild(el('span', 'q-state', labels.live || ''));
     node.appendChild(head);
     node.appendChild(tip(el('div', 'q-line', q.line_words || ''), (q.tips || {}).line || q.question));
-    const nums = el('div', 'q-nums');
+    if (q.state !== 'live') node.appendChild(probBar(q, q.price));
+    const mini = el('div', 'q-mini');
+    const nums = el('span', 'q-nums');
     if (q.state !== 'live') {
       nums.appendChild(tip(el('span', 'q-prob', q.prob_words || ''), (q.tips || {}).prob));
     }
     if (q.state === 'upcoming') {
-      nums.appendChild(tip(el('span', 'q-price', q.price_words || ''), (q.tips || {}).price));
-      nums.appendChild(tip(el('span', 'q-pays', q.pays_words || ''), (q.tips || {}).pays));
+      nums.appendChild(tip(el('small', 'q-price', q.edge_words || q.price_words || ''), (q.tips || {}).price));
     }
     if (q.state === 'live' && q.pregame_words) {
       nums.appendChild(el('span', 'q-pregame', q.pregame_words));
     }
-    node.appendChild(nums);
+    if (q.state === 'final' && q.settled_words) {
+      nums.appendChild(el('span', 'q-settled', q.settled_words));
+    }
+    mini.appendChild(nums);
+    if (q.state === 'upcoming') {
+      mini.appendChild(tip(el('span', 'pay', q.taken ? (labels.taken || '') : (q.pays_words || ABSENT)), (q.tips || {}).pays));
+    }
+    node.appendChild(mini);
     if (q.size_words) node.appendChild(el('div', 'q-size', q.size_words));
     if (q.method_note) node.appendChild(el('p', 'q-method', q.method_note));
-    if (q.state === 'final' && q.settled_words) {
-      node.appendChild(el('div', 'q-settled', q.settled_words));
-    }
     const foot = el('div', 'q-foot');
     foot.appendChild(badge(q, labels));
     if ((q.tips || {}).signal) {
       foot.appendChild(tip(el('span', 'q-signal'), q.tips.signal));
     }
-    if (q.state === 'upcoming') foot.appendChild(takeButton(q, labels, after));
     node.appendChild(foot);
     return node;
   }
@@ -970,17 +983,16 @@ const Gridiron = (function () {
   // band tinted from the same colour, the score when live or final. Colours
   // are the measured pair from `data/team_colours.py`, arriving with the
   // payload; nothing here types a hex.
-  function teamLine(team, showScore) {
-    const line = el('div', 'team');
+  function teamLine(team, showScore, lead) {
+    const line = el('div', 'team' + (lead === true ? ' lead' : lead === false ? ' trail' : ''));
     line.style.setProperty('--club', '#' + (team.colour || ''));
     line.style.setProperty('--club-on-white', '#' + (team.on_white || team.colour || ''));
-    const tri = el('span', 'tri', team.tricode || '');
-    line.appendChild(tri);
+    line.style.setProperty('--club-2', team.secondary ? '#' + team.secondary : 'var(--white)');
+    line.appendChild(el('span', 'tri', team.tricode || ''));
     line.appendChild(el('span', 'tname', team.name || team.tricode || ''));
-    const score = el('span', 'tscore',
+    line.appendChild(el('span', 'tscore',
       showScore && team.score !== null && team.score !== undefined
-        ? String(team.score) : '');
-    line.appendChild(score);
+        ? String(team.score) : ''));
     return line;
   }
 
@@ -994,61 +1006,61 @@ const Gridiron = (function () {
     row.dataset.game = g.game_id;
     row.dataset.state = state;
 
-    const head = el('button', 'game-head');
-    head.type = 'button';
+    const head = el('div', 'game-head');
     head.setAttribute('aria-expanded', 'false');
+
+    // THE STATUS COLUMN: the time and the day, or LIVE with the clock and
+    // when the score was last read, or FINAL.
+    const when = el('div', 'when');
+    if (state === 'live') {
+      when.appendChild(el('span', 'live-mark', labels.live || ''));
+      when.appendChild(el('b', 'game-clock', g.period_words || ''));
+      when.appendChild(el('span', 'game-polled', g.polled_words || ''));
+    } else if (state === 'final') {
+      when.appendChild(el('b', 'final-mark', labels.final || ''));
+      if (g.kickoff_utc) when.appendChild(el('span', 'when-day', localDay(g.kickoff_utc)));
+    } else if (g.kickoff_utc) {
+      when.appendChild(el('b', 'when-time', localClock(g.kickoff_utc)));
+      when.appendChild(el('span', 'when-day', localDay(g.kickoff_utc)));
+    }
+    head.appendChild(when);
 
     const teams = el('div', 'teams');
     const showScore = state === 'live' || state === 'final';
-    teams.appendChild(teamLine(g.away || {}, showScore));
-    teams.appendChild(teamLine(g.home || {}, showScore));
-    head.appendChild(teams);
-
-    const when = el('div', 'when');
-    if (state === 'live') {
-      const mark = el('span', 'live-mark', labels.live || '');
-      when.appendChild(mark);
-      when.appendChild(el('span', 'game-clock', g.period_words || ''));
-      when.appendChild(el('span', 'game-polled', g.polled_words || ''));
-      when.appendChild(el('span', 'game-score', g.score_words || ''));
-    } else if (state === 'final') {
-      when.appendChild(el('span', 'final-mark', labels.final || ''));
-      when.appendChild(el('span', 'game-score', g.score_words || ''));
-    } else if (g.kickoff_utc) {
-      when.appendChild(el('span', 'when-label', labels.starts || ''));
-      when.appendChild(el('time', 'when-time', localDayTime(g.kickoff_utc)));
+    const a = g.away || {}, h = g.home || {};
+    let awayLead = null, homeLead = null;
+    if (showScore && a.score !== null && a.score !== undefined && h.score !== null && h.score !== undefined && a.score !== h.score) {
+      awayLead = a.score > h.score; homeLead = !awayLead;
     }
-    when.appendChild(el('span', 'game-sport sport-' + (g.sport_key || ''), g.sport_label || ''));
-    if (g.yours_words) when.appendChild(el('span', 'yours', g.yours_words));
-    head.appendChild(when);
+    teams.appendChild(teamLine(a, showScore, awayLead));
+    teams.appendChild(teamLine(h, showScore, homeLead));
+    if (g.score_words) teams.appendChild(el('span', 'game-score', g.score_words));
+    head.appendChild(teams);
 
     // THE MODEL'S PICK, the most pronounced element on the row.
     const pickBox = el('div', 'pick ' + (pick ? signalClass(pick.signal) : 'pick-none'));
     if (pick) {
+      pickBox.appendChild(el('small', 'pick-label', g.pick_label_words || ''));
       pickBox.appendChild(tip(el('div', 'pick-line', pick.line_words || ''), (pick.tips || {}).line || pick.question));
       const under = el('div', 'pick-under');
       // A LIVE ROW SHOWS "pregame NN%" AND NOTHING ELSE about the number:
       // the word is the point (ruled 2026-09-09), and a second, undated copy
       // of the figure beside it would be the opinion the app does not have.
       if (state !== 'live') {
-        under.appendChild(tip(el('span', 'pick-prob', pick.prob_words || ''), (pick.tips || {}).prob));
+        under.appendChild(tip(el('b', 'pick-prob', pick.prob_words || ''), (pick.tips || {}).prob));
       }
       if (state === 'upcoming') {
         under.appendChild(tip(el('span', 'pick-price', pick.price_words || ''), (pick.tips || {}).price));
-        under.appendChild(tip(el('span', 'pick-pays', pick.pays_words || ''), (pick.tips || {}).pays));
+        under.appendChild(tip(el('b', 'pick-pays', pick.pays_words || ''), (pick.tips || {}).pays));
       }
       if (state === 'live' && pick.pregame_words) {
-        under.appendChild(el('span', 'pick-pregame', pick.pregame_words));
+        under.appendChild(tip(el('span', 'pick-pregame', pick.pregame_words), (pick.tips || {}).prob));
       }
       if (state === 'final' && pick.settled_words) {
         under.appendChild(el('span', 'pick-settled', pick.settled_words));
       }
       pickBox.appendChild(under);
-      const meta = el('div', 'pick-meta');
-      meta.appendChild(badge(pick, labels));
-      if ((pick.tips || {}).signal) meta.appendChild(tip(el('span', 'q-signal'), pick.tips.signal));
-      if (pick.size_words) meta.appendChild(el('span', 'pick-size', pick.size_words));
-      pickBox.appendChild(meta);
+      if (pick.size_words) pickBox.appendChild(el('div', 'pick-size', pick.size_words));
       // THE FLAGGED-METHOD NOTE, on the face and not one tap in (operator
       // ruling 2, 2026-09-04).
       if (pick.method_note) pickBox.appendChild(el('p', 'pick-method', pick.method_note));
@@ -1056,11 +1068,38 @@ const Gridiron = (function () {
       pickBox.appendChild(el('div', 'pick-line pick-line-none', g.no_pick_words || labels.no_pick || ''));
     }
     head.appendChild(pickBox);
-    head.appendChild(el('span', 'game-count', g.questions_words || ''));
+
+    // THE META COLUMN: the record badge, YOURS, the checkmark, the caret.
+    const meta = el('div', 'meta');
+    if (pick) {
+      meta.appendChild(badge(pick, labels));
+      if ((pick.tips || {}).signal) meta.appendChild(tip(el('span', 'q-signal'), pick.tips.signal));
+    }
+    const take = el('span', 'take-row');
+    if (g.yours_words) take.appendChild(el('span', 'yours', g.yours_words));
+    // NO TAKEN CONTROL ON A LIVE ROW, and none on a settled one: the mark
+    // stands as a record where the pick was taken.
+    if (pick && state === 'upcoming') {
+      take.appendChild(takeButton(pick, labels, after, true));
+    } else if (pick && pick.taken) {
+      const stood = el('span', 'chk on');
+      stood.appendChild(el('span', 'take-mark', '✓'));
+      take.appendChild(stood);
+    }
+    const caret = el('button', 'car');
+    caret.type = 'button';
+    caret.setAttribute('aria-expanded', 'false');
+    caret.setAttribute('aria-label', labels.expand || '');
+    caret.textContent = '▾';
+    take.appendChild(caret);
+    meta.appendChild(take);
+    meta.appendChild(el('span', 'game-count', g.questions_words || ''));
+    head.appendChild(meta);
     row.appendChild(head);
 
     const more = el('div', 'game-more');
     more.hidden = true;
+    more.appendChild(el('h3', 'game-more-head', labels.every_bet || ''));
     const tiles = el('div', 'q-grid');
     (g.questions || []).forEach(q => tiles.appendChild(questionTile(q, labels, after)));
     more.appendChild(tiles);
@@ -1073,11 +1112,32 @@ const Gridiron = (function () {
 
     const toggle = () => {
       more.hidden = !more.hidden;
+      caret.setAttribute('aria-expanded', more.hidden ? 'false' : 'true');
       head.setAttribute('aria-expanded', more.hidden ? 'false' : 'true');
+      caret.textContent = more.hidden ? '▾' : '▴';
       row.classList.toggle('open', !more.hidden);
     };
-    head.onclick = toggle;
+    head.onclick = (event) => {
+      if (event.target.closest('button') && !event.target.closest('.car')) return;
+      if (event.target.closest('a')) return;
+      toggle();
+    };
     return row;
+  }
+
+  // THE LEGEND: four swatches, each wearing the signal it explains, so the
+  // legend cannot drift from the rows. Words the server's.
+  function renderLegend(labels) {
+    const host = document.getElementById('games-legend');
+    if (!host) return;
+    host.innerHTML = '';
+    [['sig-clears', labels.legend_clears], ['sig-costs', labels.legend_costs],
+     ['sig-won', labels.legend_won], ['sig-lost', labels.legend_lost]].forEach(([cls, words]) => {
+      const item = el('span', 'lg');
+      item.appendChild(el('i', cls));
+      item.appendChild(el('span', 'lg-words', words || ''));
+      host.appendChild(item);
+    });
   }
 
   // THE DAY STRIP: the day, the counts, the fee line. All words the server's.
@@ -1154,6 +1214,7 @@ const Gridiron = (function () {
     const again = () => renderGames();
     rows.innerHTML = '';
     notes.innerHTML = '';
+    renderLegend(labels);
     // THE MARKET FILTER NARROWS EVERY ROW, not only the list: a row on a
     // filtered slate shows that market's questions and leads with the one
     // of them that clears the bar, else the surest. Chosen here from the
@@ -1217,83 +1278,64 @@ const Gridiron = (function () {
   }
 
   function jerseySVG(tile, seqId) {
+    // THE JERSEY, ported from docs/design/gridiron-redesign.html (2026-09-25)
+    // as it was drawn there: the body clipped from one path, the sleeve
+    // bands in the second colour, the mesh, the sheen, the hem and side
+    // seams, the V-collar, the surname on an arc scaled to fit, and the
+    // number on the chest and both shoulders. Colours arrive on the tile
+    // from data/team_colours.py; the two neutrals are the page's own tokens
+    // (the mockup typed #fff and #000). A player with no number on record
+    // gets an empty slot, never a guess.
+    const uid = 'j' + (seqId || tile.prediction_id || 0);
     const club = tile.club || {};
-    const primary = '#' + (club.colour || '');
+    const primary = club.colour ? '#' + club.colour : 'var(--line-lit)';
     const second = club.secondary ? '#' + club.secondary : 'var(--white)';
-    const uid = 'j' + seqId;
-    const svg = svgEl('svg', { viewBox: '0 0 120 124', class: 'jersey',
-                               role: 'img', 'aria-label': tile.surname || '' });
+    const svg = svgEl('svg', { class: 'jsvg', viewBox: '0 0 120 130', role: 'img',
+                               'aria-label': tile.surname || '' });
     const defs = svgEl('defs');
-    const mesh = svgEl('pattern', { id: uid + '-mesh', width: '4', height: '4',
-                                    patternUnits: 'userSpaceOnUse' });
-    mesh.appendChild(svgEl('circle', { cx: '2', cy: '2', r: '0.55',
-                                       fill: 'var(--white)', opacity: '0.10' }));
-    defs.appendChild(mesh);
-    const sheen = svgEl('linearGradient', { id: uid + '-sheen', x1: '0', y1: '0', x2: '1', y2: '1' });
-    sheen.appendChild(svgEl('stop', { offset: '0', 'stop-color': 'var(--white)', 'stop-opacity': '0.22' }));
-    sheen.appendChild(svgEl('stop', { offset: '0.55', 'stop-color': 'var(--white)', 'stop-opacity': '0' }));
-    sheen.appendChild(svgEl('stop', { offset: '1', 'stop-color': 'var(--ink)', 'stop-opacity': '0.25' }));
+    const sheen = svgEl('linearGradient', { id: uid + 'sh', x1: '0', y1: '0', x2: '1', y2: '1' });
+    sheen.appendChild(svgEl('stop', { offset: '0', 'stop-color': 'var(--white)', 'stop-opacity': '.22' }));
+    sheen.appendChild(svgEl('stop', { offset: '.45', 'stop-color': 'var(--white)', 'stop-opacity': '0' }));
+    sheen.appendChild(svgEl('stop', { offset: '1', 'stop-color': 'var(--ink)', 'stop-opacity': '.28' }));
     defs.appendChild(sheen);
-    const arc = svgEl('path', { id: uid + '-arc', d: 'M 28 66 Q 60 52 92 66', fill: 'none' });
-    defs.appendChild(arc);
+    const mesh = svgEl('pattern', { id: uid + 'mesh', width: '3', height: '3', patternUnits: 'userSpaceOnUse' });
+    mesh.appendChild(svgEl('circle', { cx: '1.5', cy: '1.5', r: '.45', fill: 'var(--ink)', opacity: '.22' }));
+    defs.appendChild(mesh);
+    defs.appendChild(svgEl('path', { id: uid + 'arc', d: 'M26 45 Q60 31 94 45' }));
+    const clip = svgEl('clipPath', { id: uid + 'clip' });
+    clip.appendChild(svgEl('path', { d: 'M30 10 L47 4 Q60 16 73 4 L90 10 L116 31 L103 56 L94 50 L94 124 Q60 131 26 124 L26 50 L17 56 L4 31 Z' }));
+    defs.appendChild(clip);
     svg.appendChild(defs);
-
-    // the body: torso with two sleeves, one path, the same for every club
-    const body = 'M 34 12 L 48 6 Q 60 14 72 6 L 86 12 L 108 26 L 100 46 L 88 40 ' +
-                 'L 88 112 Q 60 118 32 112 L 32 40 L 20 46 L 12 26 Z';
-    svg.appendChild(svgEl('path', { d: body, fill: primary, stroke: 'var(--ink)',
-                                    'stroke-opacity': '0.35', 'stroke-width': '1' }));
-    svg.appendChild(svgEl('path', { d: body, fill: 'url(#' + uid + '-mesh)' }));
-    svg.appendChild(svgEl('path', { d: body, fill: 'url(#' + uid + '-sheen)' }));
-    // TWO SLEEVE BANDS on each sleeve, the same on every jersey: a strip
-    // across the sleeve at two points along it, computed from the body
-    // path's own sleeve edges so they follow the sleeve rather than sit on
-    // it. The left sleeve runs from the shoulder (34,12) to (12,26) along
-    // its upper edge and from (32,40) to (20,46) along its lower one; the
-    // right sleeve is the mirror.
-    const band = (t0, t1, mirror) => {
-      const top = t => [34 - 22 * t, 12 + 14 * t];
-      const bottom = t => [32 - 12 * t, 40 + 6 * t];
-      const pts = [top(t0), top(t1), bottom(t1), bottom(t0)]
-        .map(([x, y]) => [mirror ? 120 - x : x, y]);
-      return 'M ' + pts.map(([x, y]) => x.toFixed(1) + ' ' + y.toFixed(1)).join(' L ') + ' Z';
-    };
-    [[0.70, 0.84], [0.48, 0.58]].forEach(([t0, t1]) => {
-      svg.appendChild(svgEl('path', { d: band(t0, t1, false), fill: second, opacity: '0.95' }));
-      svg.appendChild(svgEl('path', { d: band(t0, t1, true), fill: second, opacity: '0.95' }));
-    });
-    // the V-neck
-    svg.appendChild(svgEl('path', { d: 'M 48 6 L 60 22 L 72 6 L 68 5 L 60 16 L 52 5 Z',
-                                    fill: second }));
-    // stitched seams: sleeve joins and the side seams
-    const seams = svgEl('g', { fill: 'none', stroke: 'var(--ink)', 'stroke-opacity': '0.45',
-                               'stroke-width': '0.8', 'stroke-dasharray': '2 2' });
-    seams.appendChild(svgEl('path', { d: 'M 32 40 L 34 14' }));
-    seams.appendChild(svgEl('path', { d: 'M 88 40 L 86 14' }));
-    seams.appendChild(svgEl('path', { d: 'M 34 110 L 34 44' }));
-    seams.appendChild(svgEl('path', { d: 'M 86 110 L 86 44' }));
-    svg.appendChild(seams);
-    // the nameplate: the surname on an arc, scaled to the plate's width
-    const name = svgEl('text', { class: 'jersey-name', fill: second });
-    const path = svgEl('textPath', { href: '#' + uid + '-arc', startOffset: '50%',
-                                     'text-anchor': 'middle' });
+    const g = svgEl('g', { 'clip-path': 'url(#' + uid + 'clip)' });
+    g.appendChild(svgEl('rect', { width: '120', height: '130', fill: primary }));
+    g.appendChild(svgEl('path', { d: 'M26 50 L34 50 L34 126 L26 124 Z M94 50 L86 50 L86 126 L94 124 Z', fill: 'var(--ink)', opacity: '.2' }));
+    g.appendChild(svgEl('path', { d: 'M10 27 L22 51 M14 24 L26 47', stroke: second, 'stroke-width': '3.2' }));
+    g.appendChild(svgEl('path', { d: 'M110 27 L98 51 M106 24 L94 47', stroke: second, 'stroke-width': '3.2' }));
+    g.appendChild(svgEl('path', { d: 'M8 29 L21 54 M112 29 L99 54', stroke: 'var(--white)', 'stroke-width': '1', opacity: '.5' }));
+    g.appendChild(svgEl('rect', { width: '120', height: '130', fill: 'url(#' + uid + 'mesh)' }));
+    g.appendChild(svgEl('rect', { width: '120', height: '130', fill: 'url(#' + uid + 'sh)' }));
+    g.appendChild(svgEl('path', { d: 'M26 122 Q60 129 94 122', stroke: 'var(--white)', 'stroke-width': '.8', 'stroke-dasharray': '2 2', fill: 'none', opacity: '.45' }));
+    g.appendChild(svgEl('path', { d: 'M26 52 L26 122 M94 52 L94 122', stroke: 'var(--white)', 'stroke-width': '.7', 'stroke-dasharray': '2 2', opacity: '.35' }));
+    svg.appendChild(g);
+    svg.appendChild(svgEl('path', { d: 'M45 4 L60 24 L75 4 L71 3 L60 17 L49 3 Z', fill: second }));
+    svg.appendChild(svgEl('path', { d: 'M47.5 5 L60 21 L72.5 5', stroke: 'var(--white)', 'stroke-width': '.8', fill: 'none', opacity: '.6' }));
     const surname = (tile.surname || '').slice(0, 14);
+    const name = svgEl('text', { class: 'jersey-name nmT', fill: 'var(--white)' });
+    name.style.fontSize = Math.min(11, 86 / Math.max(1, surname.length)) + 'px';
+    const path = svgEl('textPath', { href: '#' + uid + 'arc', startOffset: '50%', 'text-anchor': 'middle' });
     path.textContent = surname;
-    const len = Math.max(1, surname.length);
-    name.setAttribute('font-size', String(Math.max(9, Math.min(15, 96 / len))));
     name.appendChild(path);
     svg.appendChild(name);
-    // the number, only where the record holds one, outlined in the second colour
     if (tile.number !== null && tile.number !== undefined && tile.number !== '') {
-      const num = svgEl('text', { x: '60', y: '100', class: 'jersey-number',
-                                  'text-anchor': 'middle', fill: primary,
-                                  stroke: second, 'stroke-width': '1.5' });
-      num.textContent = String(tile.number);
+      const number = String(tile.number);
+      const num = svgEl('text', { class: 'jersey-number numT', x: '60', y: '93', 'text-anchor': 'middle',
+                                  fill: 'var(--white)', stroke: second });
+      num.textContent = number;
       svg.appendChild(num);
-      ['30', '90'].forEach(x => {
-        const small = svgEl('text', { x: x, y: '30', class: 'jersey-shoulder',
-                                      'text-anchor': 'middle', fill: second });
-        small.textContent = String(tile.number);
+      [['15', 'rotate(-26 15 42)'], ['105', 'rotate(26 105 42)']].forEach(([x, rot]) => {
+        const small = svgEl('text', { class: 'jersey-shoulder snT', x: x, y: '42', 'text-anchor': 'middle',
+                                      fill: 'var(--white)', stroke: second, transform: rot });
+        small.textContent = number;
         svg.appendChild(small);
       });
     }
@@ -1301,15 +1343,21 @@ const Gridiron = (function () {
   }
 
   // THE PROBABILITY BAR with the break-even as a white tick.
-  function probBar(t) {
+  function probBar(t, tickAt) {
+    // THE BAR AND ITS TICK (mockup, 2026-09-25): the fill is the club's
+    // colour where the question has one, the tick is white and sits at the
+    // price on a game question or at the break-even on a prop.
     const bar = el('div', 'pbar');
     const fill = el('span', 'pbar-fill');
     const p = Math.max(0, Math.min(1, t.prob || 0));
     fill.style.width = (p * 100).toFixed(1) + '%';
     bar.appendChild(fill);
-    const tick = el('span', 'pbar-tick');
-    tick.style.left = ((t.breakeven || 0) * 100).toFixed(1) + '%';
-    bar.appendChild(tip(tick, t.breakeven_words));
+    const at = tickAt === undefined ? t.breakeven : tickAt;
+    if (at !== null && at !== undefined) {
+      const tick = el('span', 'pbar-tick');
+      tick.style.left = (Math.max(0, Math.min(1, at)) * 100).toFixed(1) + '%';
+      bar.appendChild(tip(tick, tickAt === undefined ? t.breakeven_words : ((t.tips || {}).price)));
+    }
     return bar;
   }
 
@@ -1319,45 +1367,70 @@ const Gridiron = (function () {
     node.dataset.family = t.family || '';
     node.dataset.alt = t.alt ? 'true' : 'false';
     node.dataset.state = t.state || 'upcoming';
+    const club = t.club || {};
+    node.style.setProperty('--club', '#' + (club.colour || ''));
+    node.style.setProperty('--club-on-white', '#' + (club.on_white || club.colour || ''));
+    node.style.setProperty('--club-2', club.secondary ? '#' + club.secondary : 'var(--white)');
+    if (t.state === 'upcoming') node.appendChild(takeButton(t, labels, after, true));
+
     const top = el('div', 'prop-top');
-    const jersey = el('div', 'prop-jersey');
-    jersey.appendChild(jerseySVG(t, seqId));
-    top.appendChild(tip(jersey, (t.tips || {}).number));
+    top.appendChild(tip(jerseySVG(t, seqId), (t.tips || {}).number));
     const who = el('div', 'prop-who');
-    who.appendChild(el('div', 'prop-player', t.player || ''));
-    who.appendChild(el('div', 'prop-club', t.club && t.club.name ? t.club.name : ''));
-    who.appendChild(tip(el('div', 'prop-line', t.line_words || ''), t.question));
+    who.appendChild(el('b', 'prop-player', t.player || ''));
+    const under = el('span', 'prop-club');
+    under.appendChild(el('span', 'prop-matchup', t.matchup || (club.name || '')));
+    under.appendChild(el('span', 'prop-family', t.family_words || ''));
+    who.appendChild(under);
     top.appendChild(who);
     node.appendChild(top);
 
-    const nums = el('div', 'prop-nums');
+    const body = el('div', 'prop-body');
+    const line = el('div', 'prop-line');
+    const q = el('span', 'prop-q');
+    q.appendChild(tip(el('span', 'prop-q-words', t.line_words || ''), t.question));
+    if (t.alt && t.high_end_badge_words) {
+      q.appendChild(tip(el('span', 'tag tag-alt', labels.alt || ''), (t.tips || {}).high_end));
+    }
+    line.appendChild(q);
     if (t.state === 'live') {
       // A LIVE TILE: the pregame figure, its word, and nothing to act on.
-      nums.appendChild(el('span', 'q-pregame', t.pregame_words || ''));
+      line.appendChild(el('span', 'q-pregame', t.pregame_words || ''));
     } else {
-      nums.appendChild(tip(el('span', 'prop-prob', t.prob_words || ''), (t.tips || {}).prob));
-      nums.appendChild(tip(el('span', 'prop-cushion', t.cushion_words || ''), (t.tips || {}).cushion));
+      line.appendChild(tip(el('span', 'prop-prob', t.prob_words || ''), (t.tips || {}).prob));
     }
-    node.appendChild(nums);
+    body.appendChild(line);
     if (t.state !== 'live') {
-      node.appendChild(probBar(t));
-      const venue = el('div', 'prop-venue');
-      venue.appendChild(el('span', 'prop-venue-label', labels.venue || ''));
-      venue.appendChild(tip(el('span', 'prop-venue-words', t.venue_words || ''), (t.tips || {}).venue));
-      node.appendChild(venue);
+      body.appendChild(probBar(t));
+      const cush = el('div', 'cush');
+      const needs = el('span', 'cush-needs');
+      needs.appendChild(el('span', 'cush-label', labels.needs || ''));
+      needs.appendChild(tip(el('b', 'cush-be', t.breakeven_words || ''), (t.tips || {}).cushion));
+      cush.appendChild(needs);
+      const c = el('span', 'cush-cushion');
+      c.appendChild(el('span', 'cush-label', labels.cushion || ''));
+      c.appendChild(tip(el('b', 'prop-cushion', t.cushion_words || ''), (t.tips || {}).cushion));
+      cush.appendChild(c);
+      body.appendChild(cush);
     }
     if (t.state === 'final' && t.settled_words) {
-      node.appendChild(el('div', 'q-settled', t.settled_words));
+      body.appendChild(el('div', 'q-settled', t.settled_words));
     }
-
-    const foot = el('div', 'q-foot');
-    foot.appendChild(badge(t, labels));
+    const foot = el('div', 'pfoot');
+    if (t.state !== 'live') {
+      const venue = el('span', 'prop-venue');
+      venue.appendChild(el('span', 'prop-venue-label', labels.best || ''));
+      venue.appendChild(tip(el('b', 'prop-venue-words', t.venue_words || ''), (t.tips || {}).venue));
+      foot.appendChild(venue);
+    }
+    const badges = el('span', 'pfoot-badges');
+    badges.appendChild(badge(t, labels));
     if (t.alt && t.high_end_badge_words) {
-      foot.appendChild(tip(el('span', 'badge badge-high', t.high_end_badge_words),
-                           (t.tips || {}).high_end));
+      badges.appendChild(tip(el('span', 'badge badge-high', t.high_end_badge_words),
+                             (t.tips || {}).high_end));
     }
-    if (t.state === 'upcoming') foot.appendChild(takeButton(t, labels, after));
-    node.appendChild(foot);
+    foot.appendChild(badges);
+    body.appendChild(foot);
+    node.appendChild(body);
     return node;
   }
 
@@ -2272,6 +2345,21 @@ const Gridiron = (function () {
         weekday: 'short', month: 'short', day: 'numeric',
         hour: 'numeric', minute: '2-digit',
       });
+    } catch (e) { return ''; }
+  }
+
+  // THE STATUS COLUMN'S TWO LINES (mockup, 2026-09-25): the clock large,
+  // the weekday small beneath it. `localDayTime` stays for the yesterday
+  // strip and the picker.
+  function localClock(iso) {
+    try {
+      return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch (e) { return ''; }
+  }
+
+  function localDay(iso) {
+    try {
+      return new Date(iso).toLocaleDateString([], { weekday: 'long' });
     } catch (e) { return ''; }
   }
 

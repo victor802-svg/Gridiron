@@ -98,6 +98,7 @@ def _club(sport: str, tricode: str | None, names: dict) -> dict:
         "name": language.team_name(tricode, names, "full"),
         "colour": colours["primary"],
         "on_white": colours["on_white"],
+        "secondary": _secondary(colours),
         "known": colours["known"],
     }
 
@@ -138,6 +139,11 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         # three different ways and a reader of the payload should not have
         # to parse them.
         "priced": price is not None,
+        # THE NUMBERS THE BAR AND ITS TICK ARE DRAWN FROM, on an upcoming
+        # question only: a live row carries nothing a price could be read
+        # off, and a settled one is a verdict.
+        "price": price if state == "upcoming" else None,
+        "pays": pays if state == "upcoming" else None,
         "tips": {
             "prob": language.prob_tip(shown, label),
             "badge": language.badge_tip(n_settled, config.MIN_SAMPLE_FOR_EDGE_CLAIM,
@@ -302,6 +308,26 @@ def _player_club(conn: sqlite3.Connection, sport: str, player: str | None,
     return team if team in (home, away) else None
 
 
+def _player_number(conn: sqlite3.Connection, sport: str, player: str | None,
+                   club: str | None) -> int | None:
+    """The jersey number on record for this player on this club, or None.
+
+    NFL only, through the player id the stats table already carries, so no
+    name is matched against the roster. Other sports load no roster numbers
+    yet and get None, which the jersey draws as an empty slot.
+    """
+    if sport != "nfl" or not player or not club:
+        return None
+    row = conn.execute(
+        "SELECT n.jersey_number FROM player_numbers n"
+        " JOIN (SELECT player_id FROM player_week_stats WHERE player_name = ?"
+        "        ORDER BY season DESC, week DESC LIMIT 1) s ON s.player_id = n.player_id"
+        " WHERE n.team = ? ORDER BY n.season DESC LIMIT 1", (player, club)).fetchone()
+    if row is None or row["jersey_number"] is None:
+        return None
+    return int(row["jersey_number"])
+
+
 def _secondary(colours: dict) -> str | None:
     """The club's second colour, where the colour file records one.
 
@@ -380,6 +406,8 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         row = {
             "game_id": game_id,
             "state": state,
+            "pick_label_words": language.pick_label_words(
+                state, pick["signal"] if pick else "none"),
             "n": pick["badge_n"] if pick else 0,
             "away": away,
             "home": home,
@@ -437,9 +465,10 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         block.update({
             "player": player,
             "surname": language.surname(player),
-            # NO NUMBER ON RECORD (close-out, deviation 2): the roster the
-            # record loads carries none, so this is None until it does.
-            "number": None,
+            # THE NUMBER FROM THE ROSTER (ruling a, 2026-09-25): the record's
+            # own `player_numbers` row for this player on this club, else
+            # None and an empty slot. Never a guess.
+            "number": _player_number(conn, sport, player, club_code),
             "club": {
                 "tricode": club_code or "",
                 "name": language.team_name(club_code, names, "full") if club_code else "",
@@ -452,6 +481,10 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             "family_words": language.market_words(sport, family),
             "breakeven": be,
             "breakeven_words": language.breakeven_words(be),
+            # WHERE THE MULTIPLE CAME FROM (ruling c, 2026-09-25): declared
+            # until a venue is read, and `audit.board_signal_faults` refuses
+            # an outline on a tile whose multiple was not read.
+            "multiple_source": "declared",
             "cushion": cushion,
             "cushion_words": language.cushion_words(cushion),
             "venue_words": language.board_labels()["not_read"],
@@ -467,7 +500,7 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             shown, be, config.PICKEM_TWO_PICK_MULTIPLE, config.PICKEM_LEGS,
             config.PICKEM_TWO_PICK_DECLARED)
         block["tips"]["venue"] = language.venue_line_tip()
-        block["tips"]["number"] = "No number on record for this player."
+        block["tips"]["number"] = language.number_tip(block["number"])
         if block["alt"]:
             high = _settled_n(conn, settled_cache, sport=sport,
                               market_type=card["market_type"],

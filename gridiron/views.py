@@ -1620,6 +1620,12 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "edge_state": language.edge_state(entry.get("edge_cents")),
         "edge_cents": entry.get("edge_cents"),
         "payout": entry.get("payout"),
+        # THE PRICE AS A NUMBER (visual pass, 2026-09-25): the board's row
+        # draws its tick from it and its price words with it. Until now the
+        # card carried the words and the payout and not the price itself,
+        # so a priced row read "venue has not listed this yet" beside a
+        # payout -- unseen because the fixture world had no prices.
+        "price": entry.get("price"),
         "gate_words": language.gate_status_words(entry["gate_n"], entry["gate"]),
         # THE TIER CHIP ONLY WHEN IT SAYS SOMETHING. Twelve chips reading
         # "STRONG · unproven" down one page is a group heading wearing a
@@ -1685,7 +1691,7 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     if state == "live":
         for field in ("payout_words", "price_words", "edge_words",
                       "edge_line_words", "edge_label", "size_words",
-                      "model_words", "venue_words"):
+                      "model_words", "venue_words", "price", "payout"):
             out.pop(field, None)
         out["edge_state"] = "none"
         # A CHIP EVERY CARD IN A GROUP WOULD WEAR belongs to the heading, and

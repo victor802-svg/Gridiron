@@ -94,7 +94,10 @@ PAIRS = [
     # colour is told rather than trusted. The club colours themselves are
     # measured per club by tools/measure_team_colours.py, which records for
     # each one the shade white can be read on.
-    ("white", "yours", "the Yours badge on a live card", False),
+    # YOURS IS AMBER INK (mockup, 2026-09-25): the word on the panel, and the
+    # page ink on the amber checkmark once a pick is taken.
+    ("yours", "card", "the word YOURS on a row", False),
+    ("ink", "yours", "the checkmark on a taken pick", False),
     ("white", "sport-nfl", "the sport tag: football", False),
     ("white", "sport-mlb", "the sport tag: baseball", False),
     ("white", "sport-nba", "the sport tag: basketball", False),
@@ -126,6 +129,32 @@ PAIRS = [
 ]
 
 
+def mix(a: str, b: str, a_share: float) -> str:
+    """`color-mix(in srgb, a a_share%, b)`, as the stylesheet writes it."""
+    ra, rb = rgb(a), rgb(b)
+    out = [ra[i] * a_share + rb[i] * (1 - a_share) for i in range(3)]
+    return "#" + "".join(f"{round(c * 255):02x}" for c in out)
+
+
+def club_pairs(palette: dict[str, str]) -> list[tuple[str, str, str, bool]]:
+    """EVERY CLUB, ON EVERY GROUND ITS NAME IS DRAWN ON (visual pass,
+    2026-09-25, contrast without muting). The row's block and its tinted band
+    are text backgrounds and take the club's reading shade (`on_white`); the
+    band behind the name is that shade mixed 70% into the page. Both are
+    measured here for every club in the file, so a club whose declared shade
+    fails is named rather than dimmed."""
+    sys.path.insert(0, str(REPO))
+    from gridiron.data.team_colours import TEAM_COLOURS
+
+    pairs = []
+    for sport, clubs in TEAM_COLOURS.items():
+        for code, (primary, on_white, how) in clubs.items():
+            pairs.append(("white", "#" + on_white, f"{sport.upper()} {code}: white on the club block", False))
+            pairs.append(("white", mix("#" + on_white, palette["ink"], 0.70),
+                          f"{sport.upper()} {code}: white on the tinted band", False))
+    return pairs
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     palette = tokens()
@@ -148,6 +177,21 @@ def main() -> int:
             failures.append(f"{fg} on {bg} — {what}: {r:.2f} < {need}")
         print(f"{what:<44} {r:>6.2f}:1  {need:>5.1f}  {'ok' if ok else 'FAILS AA'}")
 
+    clubs = club_pairs(palette)
+    club_failures = []
+    club_worst = (999.0, "")
+    for fg, bg, what, large in clubs:
+        r = ratio(palette[fg], bg)
+        if r < club_worst[0]:
+            club_worst = (r, what)
+        if r < AA_BODY:
+            club_failures.append(f"{what}: {r:.2f} < {AA_BODY}")
+    print()
+    print(f"every club, on its block and its band: {len(clubs)} pairs measured, "
+          f"worst {club_worst[1]} at {club_worst[0]:.2f}:1")
+    for f in club_failures:
+        failures.append(f)
+        print("  FAILS AA  " + f)
     print()
     print(f"worst pair: {worst[1]} at {worst[0]:.2f}:1")
     if failures:

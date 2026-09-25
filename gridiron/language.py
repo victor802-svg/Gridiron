@@ -4339,7 +4339,39 @@ def board_labels() -> dict:
         "per_dollar": "per dollar",
         "pregame": "pregame",
         "how": "How the model works",
+        # THE MOCKUP'S FIXED WORDS (visual pass, 2026-09-25), placed by the
+        # renderer and never composed there.
+        "every_bet": "Every bet on this game",
+        "legend_clears": "clears the bar",
+        "legend_costs": "costs after fees",
+        "legend_won": "won",
+        "legend_lost": "lost",
+        "needs": "needs",
+        "best": "best line",
+        "sorted": "sorted by cushion",
+        "polled": "polled",
     }
+
+
+def number_tip(number: int | None) -> str:
+    """What the jersey's number slot means, on hover."""
+    if number is None:
+        return "No number on record for this player, so the slot stays empty."
+    return f"Number {number}, from the roster file read at the last refresh."
+
+
+def pick_label_words(state: str, signal: str) -> str:
+    """The small label over the row's pick: whose it is, and its state."""
+    base = "Model's pick"
+    if state == "live":
+        return base + " · pregame"
+    if signal == "won":
+        return base + " · won"
+    if signal == "lost":
+        return base + " · lost"
+    if signal == "withdrawn":
+        return base + " · withdrawn"
+    return base
 
 
 def badge_words(n: int, gate: int) -> str:

@@ -313,6 +313,7 @@ def load_all(
     totals["player_week_stats"] = 0
     totals["injuries"] = 0
     totals["snap_counts"] = 0
+    totals["player_numbers"] = 0
     warnings: list[str] = []
     expected = seasons_expecting_data(conn, seasons)
 
@@ -330,6 +331,9 @@ def load_all(
         say(f"snap counts {season}")
         totals["snap_counts"] += load_snap_counts(conn, season)
 
+        say(f"rosters {season}")
+        totals["player_numbers"] += load_rosters(conn, season)
+
         say(f"injuries {season}")
         n_injuries = load_injuries(conn, season)
         totals["injuries"] += n_injuries
@@ -343,6 +347,41 @@ def load_all(
     totals["team_week_stats"] = rebuild_team_week_stats(conn, seasons)
 
     return {"rows": totals, "warnings": warnings}
+
+
+def load_rosters(conn: sqlite3.Connection, season: int) -> int:
+    """Jersey numbers for one season, from nflverse's roster file (operator
+    ruling a, 2026-09-25). Keyed by the same `gsis_id` the stats file calls
+    `player_id`, so no name is matched. A row with no number is stored with
+    NULL and the jersey shows an empty slot; nothing is guessed.
+
+    Returns the row count; a missing file (the upcoming season) is zero, not
+    an error, like every other per-season file here.
+    """
+    url = sources.ROSTERS_URL.format(season=season)
+    immutable = season < config.CURRENT_SEASON
+    try:
+        rows = sources.fetch_csv(conn, url, immutable=immutable)
+    except sources.SourceUnavailable:
+        return 0
+    now = utcnow()
+    n = 0
+    with conn:
+        for r in rows:
+            player_id = (r.get("gsis_id") or "").strip()
+            team = (r.get("team") or "").strip()
+            if not player_id or not team:
+                continue
+            conn.execute(
+                "INSERT INTO player_numbers (season, player_id, team, jersey_number, fetched_utc)"
+                " VALUES (?,?,?,?,?)"
+                " ON CONFLICT(season, player_id, team) DO UPDATE SET"
+                " jersey_number=excluded.jersey_number, fetched_utc=excluded.fetched_utc",
+                (_int(r.get("season")) or season, player_id, team,
+                 _int(r.get("jersey_number")), now),
+            )
+            n += 1
+    return n
 
 
 def load_snap_counts(conn: sqlite3.Connection, season: int) -> int:

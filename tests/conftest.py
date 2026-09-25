@@ -183,6 +183,19 @@ def seed_league(conn) -> sqlite3.Connection:
                             ),
                         )
 
+    # FIXTURE ROSTERS CARRY NUMBERS (operator ruling a, 2026-09-25): every
+    # quarterback and every receiver but one, so the jersey draws a number
+    # where the record holds one and an empty slot where it does not.
+    with conn:
+        for i, team in enumerate(TEAMS):
+            conn.execute(
+                "INSERT INTO player_numbers (season, player_id, team, jersey_number, fetched_utc)"
+                " VALUES (?,?,?,?,?)", (2025, f"QB-{team}", team, 10 + i, _iso(start)))
+            if team != TEAMS[-1]:
+                conn.execute(
+                    "INSERT INTO player_numbers (season, player_id, team, jersey_number, fetched_utc)"
+                    " VALUES (?,?,?,?,?)", (2025, f"WR-{team}", team, 80 + i, _iso(start)))
+
     # This fixture is a BACKTEST database and says so, because that is what it
     # is: every test needing a resolvable prediction forecasts a week already
     # played. Declaring it lets the live rule - a forecast must precede its own

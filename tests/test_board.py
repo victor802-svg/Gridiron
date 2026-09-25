@@ -90,7 +90,7 @@ def test_props_rank_by_cushion_against_the_declared_multiple(world_copy):
         assert "declared" in tile["tips"]["cushion"] and "not read" in tile["tips"]["cushion"]
         # A PROP WEARS NO OUTLINE for a cushion (the conservative reading).
         assert tile["signal"] in ("none", "won", "lost", "withdrawn")
-        assert tile["alt"] is False and tile["number"] is None
+        assert tile["alt"] is False and (tile["number"] is None or isinstance(tile["number"], int))
     keys = [c["key"] for c in props["chips"]]
     assert keys[:2] == ["", "alt"]
     assert keys[2:] == list(config.SPORT_PROP_MARKETS["nfl"])
@@ -152,9 +152,9 @@ def _open_games(page):
 def test_a_tooltip_shows_the_payloads_words_on_hover(page):
     """Explanations live in tooltips on the numbers."""
     _open_games(page)
-    words = page.get_attribute("#games-rows .game .pick .badge", "data-tip")
+    words = page.get_attribute("#games-rows .game .meta .badge", "data-tip")
     assert words and "settled" in words
-    page.hover("#games-rows .game .pick .badge")
+    page.hover("#games-rows .game .meta .badge")
     page.wait_for_function("() => !document.getElementById('tooltip').hidden", timeout=5000)
     shown = page.text_content("#tooltip")
     assert shown.strip() == words.strip()
@@ -164,8 +164,8 @@ def test_a_tooltip_shows_the_payloads_words_on_hover(page):
 def test_the_jersey_is_drawn_from_the_payload_and_no_hex_is_typed(page):
     page.set_viewport_size(WIDE)
     page.evaluate("location.hash = '#/props'")
-    page.wait_for_selector("#props-tiles .prop .jersey", timeout=15000)
-    fills = page.evaluate("""() => [...document.querySelectorAll('#props-tiles .prop .jersey [fill]')]
+    page.wait_for_selector("#props-tiles .prop .jsvg", timeout=15000)
+    fills = page.evaluate("""() => [...document.querySelectorAll('#props-tiles .prop .jsvg [fill]')]
         .map(e => e.getAttribute('fill'))""")
     assert fills
     clubs = {p for s in TEAM_COLOURS.values() for p, _o, _h in s.values()}
@@ -177,8 +177,22 @@ def test_the_jersey_is_drawn_from_the_payload_and_no_hex_is_typed(page):
     assert typed <= clubs, typed - clubs
     names = page.evaluate("[...document.querySelectorAll('#props-tiles .prop .jersey-name')].map(e => e.textContent)")
     assert names and all(n for n in names), names
-    assert page.evaluate("document.querySelectorAll('#props-tiles .prop .jersey-number').length") == 0, (
-        "a number rendered with none on record")
+    # RULING a, 2026-09-25: the number is drawn where the record holds one
+    # and the slot stays empty where it does not -- the fixture roster leaves
+    # one receiver without a number on purpose.
+    drawn = page.evaluate("""[...document.querySelectorAll('#props-tiles .prop')].map(p => ({
+        id: p.dataset.id, number: (p.querySelector('.jersey-number') || {}).textContent || null,
+        shoulders: p.querySelectorAll('.jersey-shoulder').length }))""")
+    tiles = page.evaluate("fetch('/api/week').then(r => r.json()).then(d => d.board.props.tiles.map(t => ({id: String(t.prediction_id), number: t.number})))")
+    by_id = {t["id"]: t["number"] for t in tiles}
+    assert drawn, "no tiles"
+    for d in drawn:
+        expected = by_id.get(d["id"])
+        if expected is None:
+            assert d["number"] is None and d["shoulders"] == 0, f"a number drawn with none on record: {d}"
+        else:
+            assert d["number"] == str(expected) and d["shoulders"] == 2, f"the number drawn is not the record's: {d} vs {expected}"
+    assert any(d["number"] is None for d in drawn) or all(by_id[d["id"]] is not None for d in drawn)
 
 
 def test_the_entry_rail_reads_the_typed_multiple_and_nothing_is_placed(page):
@@ -208,7 +222,7 @@ def test_the_row_expands_in_place_to_every_question_on_the_game(page):
         assert n == c["tiles"], c
     page.click("#games-rows .game .game-head")
     page.wait_for_function("() => !document.querySelector('#games-rows .game .game-more').hidden", timeout=5000)
-    assert page.get_attribute("#games-rows .game .game-head", "aria-expanded") == "true"
+    assert page.get_attribute("#games-rows .game .car", "aria-expanded") == "true"
 
 
 def test_a_settled_pick_is_painted_solid_and_its_words_are_ink(page):
@@ -239,3 +253,51 @@ def test_a_settled_pick_is_painted_solid_and_its_words_are_ink(page):
         want = p["win"] if "sig-won" in p["cls"] else p["loss"]
         assert p["bg"] == want, f"{p['cls']} is painted {p['bg']}, not its fill {want}"
         assert p["line"] == p["ink"], f"the words on a fill are {p['line']}, not the ink"
+
+
+def test_the_roster_file_fills_player_numbers_and_never_guesses(league, monkeypatch):
+    """RULING a, 2026-09-25: jersey numbers come from nflverse's roster file,
+    keyed by the id the stats file already carries, at the NFL refresh. A row
+    with no number is stored as NULL and drawn as an empty slot."""
+    from gridiron.data import loader, sources
+
+    rows = [
+        {"season": "2025", "team": "KC", "gsis_id": "QB-KC", "jersey_number": "15", "full_name": "KC Quarterback"},
+        {"season": "2025", "team": "KC", "gsis_id": "WR-KC", "jersey_number": "", "full_name": "KC Receiver"},
+        {"season": "2025", "team": "", "gsis_id": "X", "jersey_number": "1"},
+    ]
+    seen = []
+    monkeypatch.setattr(sources, "fetch_csv", lambda conn, url, **kw: seen.append(url) or rows)
+    n = loader.load_rosters(league, 2025)
+    assert n == 2 and seen == [sources.ROSTERS_URL.format(season=2025)]
+    got = dict(league.execute("SELECT player_id, jersey_number FROM player_numbers WHERE team = 'KC'").fetchall())
+    assert got["QB-KC"] == 15 and got["WR-KC"] is None
+    from gridiron import board
+    assert board._player_number(league, "nfl", "KC Quarterback", "KC") == 15
+    assert board._player_number(league, "nfl", "KC Receiver", "KC") is None
+    assert board._player_number(league, "nfl", "KC Quarterback", "BUF") is None, "a number followed the name to another club"
+    assert config.ROSTER_NUMBERS_DECLARED.endswith("Z")
+
+
+def test_a_priced_question_carries_its_price_in_words_and_as_a_number():
+    """CAUGHT BY LOOKING, 2026-09-25: a priced row said "venue has not listed
+    this yet" beside a payout, because the Today card carried the words and
+    the payout and not the price. The block reads the number now, and a live
+    row carries neither number nor words."""
+    card = {"prediction_id": 1, "market": "total", "market_type": "total",
+            "shown_prob": 0.64, "phrase": "over 41.5", "side_words": "over 41.5",
+            "line_asked": 41.5, "subject": "over", "model_side": "over"}
+    entry = {"price": 0.54, "payout": 1.85, "group": "clears", "edge_cents": 8.0,
+             "edge_line_words": "+8.0¢"}
+    block = board._question_block(card, entry, state="upcoming", taken=False,
+                                  forecaster="statistical", n_settled=12, hours=3.0,
+                                  unit_dollars=None)
+    assert block["price"] == 0.54 and block["pays"] == 1.85
+    assert "54" in block["price_words"] and "not listed" not in block["price_words"]
+    assert block["pays_words"]
+    live = board._question_block(card, entry, state="live", taken=False,
+                                 forecaster="statistical", n_settled=12, hours=3.0,
+                                 unit_dollars=None)
+    assert live["price"] is None and live["pays"] is None
+    for field in audit.LIVE_FORBIDDEN:
+        assert not live.get(field), field

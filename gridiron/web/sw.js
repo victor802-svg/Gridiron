@@ -19,7 +19,7 @@
 
 // Bumped whenever the shell changes shape. The activate handler deletes every
 // cache that is not this one, so a bump purges the old shell.
-const SHELL_CACHE = 'gridiron-shell-v4';
+const SHELL_CACHE = 'gridiron-shell-v5';
 
 // THE FONTS ARE SHELL (operator ruling 4, 2026-09-04). They are served from
 // this app's own origin, they are part of what the page looks like, and a
@@ -40,6 +40,8 @@ const SHELL = [
   '/static/manifest.webmanifest',
   '/static/fonts/manrope-latin.woff2',
   '/static/fonts/manrope-latin-ext.woff2',
+  '/static/fonts/inter-latin.woff2',
+  '/static/fonts/inter-latin-ext.woff2',
   '/static/fonts/barlow-condensed-700-latin.woff2',
   '/static/fonts/barlow-condensed-700-latin-ext.woff2',
   '/static/fonts/barlow-condensed-800-latin.woff2',

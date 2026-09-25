@@ -232,6 +232,12 @@ def test_the_variable_axis_covers_every_weight_the_page_asks_for():
             assert "font-weight: 200 800" in face, (
                 "a Manrope face declares a single weight; the stylesheet asks "
                 "for 640, which a static instance rounds to 600 or 700 in silence")
+        elif "'Inter'" in face:
+            # INTER (visual pass, 2026-09-25) is the body face now and is
+            # variable too, 400 to 700; 640 sits inside that axis.
+            assert "font-weight: 400 700" in face, (
+                "an Inter face declares a single weight; the stylesheet asks "
+                "for 640, which a static instance rounds in silence")
         elif "'Barlow Condensed'" in face:
             found = re.search(r"font-weight:\s*(\d{3})\s*;", face)
             assert found, "a Barlow Condensed face declares no weight"

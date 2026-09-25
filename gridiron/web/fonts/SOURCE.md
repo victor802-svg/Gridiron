@@ -16,6 +16,9 @@ no-committing instinct protects against."*
 | `barlow-condensed-800-latin.woff2` | 22,464 | `2515494e8cc2ca07c86ea78766cfa104b796aa6ed5d66821c01d51dbb0b52bce` |
 | `barlow-condensed-800-latin-ext.woff2` | 14,548 | `22539b785b3cbcee08e0722ff37fa16a18e71e4482d9078f7da79da1258e7614` |
 | `OFL-barlow-condensed.txt` | 4,377 | `186d750eb496a4c17a76385f82be6aea2ac1cf2de074a811d63786cf374ea73f` |
+| `inter-latin.woff2` | 48,256 | `3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62` |
+| `inter-latin-ext.woff2` | 85,068 | `34b9c504cab7a73e37b746343a449132e56cf7b5481af2cb81dc74dcff25c956` |
+| `OFL-inter.txt` | 4,380 | `262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a` |
 
 **The hashes are the point.** A binary in a repository is checkable exactly to
 the extent that its provenance is recorded, and a table nobody can reproduce is
@@ -127,3 +130,35 @@ https://raw.githubusercontent.com/google/fonts/main/ofl/barlowcondensed/OFL.txt
 Authors (https://github.com/jpt/barlow). The same conditions as Manrope's
 apply and are met the same way: the licence travels with the files, the
 files are unmodified and not renamed, and the font is not sold on its own.
+
+# Inter — where these files came from
+
+Vendored 2026-09-25 for the visual pass (`docs/briefs/2026-09-25-board-visual.md`):
+the mockup at `docs/design/gridiron-redesign.html` sets everything that is not
+condensed in Inter, and the brief says port, not reinterpret. Same ruling as
+Manrope's. Manrope stays vendored as the fallback.
+
+## What is here
+
+The variable font, weight axis 400 to 700 as Google serves it, in the latin
+and latin-ext subsets -- the same two subsets Manrope ships and for the same
+reason.
+
+## Where
+
+Google Fonts, Inter **v20**:
+
+```
+https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap
+```
+
+which resolves to
+
+```
+latin      https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2
+latin-ext  https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7SUc.woff2
+```
+
+The `unicode-range` declarations in `style.css` are Google's own, copied with
+the files they describe. `OFL-inter.txt` is the licence as published with the
+family (https://github.com/rsms/inter/blob/master/LICENSE.txt).

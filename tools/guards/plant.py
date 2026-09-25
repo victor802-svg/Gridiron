@@ -2455,6 +2455,29 @@ def plant_a_value_colour_on_a_form_streak() -> Result:
                        "audit.colour_law_faults")
 
 
+def plant_an_outline_on_a_prop_against_an_assumed_multiple() -> Result:
+    """Light a prop tile green against the declared 3x, as if it were read.
+
+    RULING c, 2026-09-25: a prop tile's outline needs a real multiplier for
+    its line -- read, or typed in the entry rail -- and the tile's own
+    multiple is a declared constant. The cushion shows; the colour does not.
+    """
+    from gridiron import audit as _audit
+
+    planted = {"board": {"props": {"tiles": [{
+        "prediction_id": 9, "state": "upcoming", "signal": "clears",
+        "badge_words": "12/100", "badge_n": 12, "alt": False,
+        "multiple_source": "declared", "cushion_words": "+11"}]}}}
+    try:
+        _audit.check_the_board_signals_carry_their_badges(planted)
+    except _audit.LawViolation as exc:
+        return Result("RULING c", "a green outline on a prop tile against an assumed multiplier",
+                      "audit.board_signal_faults", True, str(exc))
+    return Result("RULING c", "a green outline on a prop tile against an assumed multiplier",
+                  "audit.board_signal_faults", False,
+                  "NOT CAUGHT - a tile lights up against a number nobody read")
+
+
 def plant_a_glow_without_its_badge() -> Result:
     """A green outline on a row with no record badge beside it."""
     from gridiron import audit as _audit
@@ -6984,6 +7007,25 @@ def plant_a_horizon_that_counts_days_for_a_weekly_sport() -> Result:
 LAW_COMMENTS = "A SCANNER READS CODE, NOT COMMENTS"
 
 
+def plant_a_comment_that_eats_a_rule() -> Result:
+    """Open a comment inside a comment, so its tail stands outside one.
+
+    THIS SHIPPED, 2026-09-24: the board's banner comment did exactly this and
+    the browser dropped `.bar { height: auto }` on both builds. Found by
+    measuring the bar at 52px on 2026-09-25, not by any scan.
+    """
+    css = ("/* a banner\n/* nested */\n   the tail of the banner */\n"
+           ".bar { height: auto; }\n")
+    faults = audit.stray_comment_marker_faults(css)
+    clean = audit.stray_comment_marker_faults("/* one */\n.bar { height: auto; }\n")
+    if clean:
+        return Result("THE GATE", "a comment that eats the next rule",
+                      "audit.stray_comment_marker_faults", False,
+                      "NOT CAUGHT THE RIGHT WAY - a well-formed comment is refused: " + clean[0])
+    return _desk_plant(faults, "a comment that eats the next rule",
+                       "audit.stray_comment_marker_faults")
+
+
 def plant_a_comment_naming_the_forbidden_thing() -> Result:
     """Write the forbidden thing into a COMMENT, in front of eight scanners.
 
@@ -9702,6 +9744,7 @@ def main() -> int:
     results.append(plant_a_drawn_game_graded_as_a_loss())
     results.append(plant_an_unfitted_market_that_blocks_a_rerun_refusal())
     results.append(plant_a_comment_naming_the_forbidden_thing())
+    results.append(plant_a_comment_that_eats_a_rule())
     results.append(plant_a_horizon_that_counts_days_for_a_weekly_sport())
     results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_run_recorded_only_when_it_ends())
@@ -9749,6 +9792,7 @@ def main() -> int:
     results.append(plant_a_red_fill_on_a_pick_that_only_costs())
     results.append(plant_a_value_colour_on_a_form_streak())
     results.append(plant_a_glow_without_its_badge())
+    results.append(plant_an_outline_on_a_prop_against_an_assumed_multiple())
     results.append(plant_a_hand_typed_club_hex())
     results.append(plant_a_price_on_a_live_row())
     results.append(plant_a_tooltip_with_internal_vocabulary())

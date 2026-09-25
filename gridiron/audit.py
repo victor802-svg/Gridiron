@@ -6348,7 +6348,7 @@ def check_no_marks(directory=None) -> None:
 #: with, carrying the word "pregame". Everything else here stands.
 LIVE_FORBIDDEN = ("size_words", "edge_words", "edge_line_words", "edge_label",
                   "payout_words", "price_words", "model_words", "venue_words",
-                  "tier_chip")
+                  "tier_chip", "price", "payout")
 
 #: The word a live card's probability must carry. WITHOUT IT the figure reads
 #: as the model's opinion of the game in front of the reader, and there is no
@@ -6669,8 +6669,36 @@ def browser_syntax_faults(root: Path | None = None) -> list[str]:
     return faults
 
 
+_STRAY_MARKER = re.compile(r"\*/|/\*")
+
+
+def stray_comment_marker_faults(css: str) -> list[str]:
+    """A comment marker left standing once every comment is blanked.
+
+    A COMMENT THAT ATE A RULE (2026-09-24/25): a banner comment opened a
+    second comment inside itself, so the first `*​/` closed both and the
+    banner's second half stood outside any comment. A browser reads such
+    text as the prelude of the next rule and drops that rule whole -- which
+    is how `.bar { height: auto }` was written twice and never applied. The
+    JS syntax check cannot see this: CSS never fails to parse, it drops.
+    """
+    stripped = _without_comments(css, "css")
+    faults = []
+    for n, line in enumerate(stripped.split("\n"), 1):
+        if _STRAY_MARKER.search(line):
+            faults.append(
+                f"style.css line {n} carries a comment marker outside any "
+                f"comment ({line.strip()[:60]!r}). The browser reads what "
+                f"follows as a rule's prelude and drops the next rule whole.")
+    return faults
+
+
 def check_the_browser_files_parse() -> None:
     faults = browser_syntax_faults()
+    from . import config as _config
+    css_path = _config.PACKAGE_ROOT / "web" / "style.css"
+    if css_path.exists():
+        faults += stray_comment_marker_faults(css_path.read_text(encoding="utf-8"))
     if faults:
         raise LawViolation(
             "A BROWSER FILE DOES NOT PARSE, so nothing on any route renders "
@@ -7076,6 +7104,19 @@ def board_signal_faults(payload) -> list[str]:
             check(q, f"board.games[{i}].questions[{j}]")
     for i, tile in enumerate((board.get("props") or {}).get("tiles") or []):
         check(tile, f"board.props.tiles[{i}]")
+        # RULING c, 2026-09-25: a prop tile wears no outline until a real
+        # multiplier exists for its line -- read from a venue, or typed in
+        # the entry rail. The tile's own multiple is DECLARED, and a cushion
+        # against a declared number is arithmetic, not an edge. The colour is
+        # earned in the rail, against the number the operator typed.
+        if tile.get("signal") in ("clears", "costs") and tile.get("multiple_source") != "read":
+            faults.append(
+                f"board.props.tiles[{i}] wears the {tile.get('signal')!r} outline "
+                f"against a multiplier the app assumed "
+                f"({tile.get('multiple_source') or 'none'}). A prop tile's "
+                f"outline needs a multiplier that was READ for that line; until "
+                f"one is, the cushion shows and the colour does not (ruled "
+                f"2026-09-25).")
         if tile.get("alt") and not tile.get("high_end_badge_words"):
             faults.append(
                 f"board.props.tiles[{i}] is an alt line with no high-end "
@@ -7095,6 +7136,14 @@ BOARD_SIGNAL_FIXTURE_GOOD = {"board": {"games": [{"pick": {
     "signal": "clears", "badge_words": "12/100", "badge_n": 12}}]}}
 BOARD_SIGNAL_FIXTURE_BARE = {"board": {"games": [{"pick": {
     "signal": "clears", "badge_words": None}}]}}
+#: A prop tile lit against the DECLARED multiple (ruling c, 2026-09-25) and
+#: the same tile against one that was read, which the scan must let stand.
+BOARD_SIGNAL_FIXTURE_ASSUMED = {"board": {"props": {"tiles": [{
+    "signal": "clears", "badge_words": "12/100", "badge_n": 12,
+    "multiple_source": "declared"}]}}}
+BOARD_SIGNAL_FIXTURE_READ = {"board": {"props": {"tiles": [{
+    "signal": "clears", "badge_words": "12/100", "badge_n": 12,
+    "multiple_source": "read"}]}}}
 
 
 #: Where a hand-typed club hex would sit: the web files and the composers
@@ -7221,6 +7270,12 @@ def _check_the_board_scanners_can_see() -> None:
         problems.append("board_signal_faults flags a badged signal")
     if not board_signal_faults(BOARD_SIGNAL_FIXTURE_BARE):
         problems.append("board_signal_faults misses a glow with no badge")
+    if not board_signal_faults(BOARD_SIGNAL_FIXTURE_ASSUMED):
+        problems.append("board_signal_faults misses an outline on a prop tile "
+                        "against an assumed multiplier")
+    if board_signal_faults(BOARD_SIGNAL_FIXTURE_READ):
+        problems.append("board_signal_faults refuses an outline against a "
+                        "multiplier that was read")
     sample = next(iter(_club_hexes()))
     if not club_hex_faults(texts={"web/app.js": f"const x = '#{sample}';"}):
         problems.append("club_hex_faults misses a typed club hex")

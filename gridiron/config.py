@@ -1534,6 +1534,13 @@ PICKEM_TWO_PICK_MULTIPLE = 3.0
 PICKEM_TWO_PICK_DECLARED = "2026-09-24T00:00:00Z"
 PICKEM_LEGS = 2
 
+#: JERSEY NUMBERS ARE A DECLARED, DATED DATA ADDITION (operator ruling a,
+#: 2026-09-25): nflverse's roster file, the provider already used under the
+#: same licence, read at the existing NFL refresh into `player_numbers`. Not
+#: a factor. A player with no row shows an empty slot on the jersey, never a
+#: guess.
+ROSTER_NUMBERS_DECLARED = "2026-09-25T00:00:00Z"
+
 FRESHNESS_HOURS = {"daily_run": 36.0, "venue_read": 30.0, "reasoning": 36.0}
 FRESHNESS_DECLARED = "2026-09-08T00:00:00Z"
 

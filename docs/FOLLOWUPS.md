@@ -69,6 +69,15 @@ every width.
 
 Recorded by the overnight build of 2026-09-24/25 (`docs/closeouts/2026-09-25-board-overnight.md`).
 
+**RULED 2026-09-25, all four** (`docs/briefs/2026-09-25-board-visual.md`,
+built in `docs/closeouts/2026-09-25-board-visual.md`): (a) numbers from
+nflverse's roster file into `player_numbers` at the NFL refresh, fixture
+rosters carry them, an absent number is an empty slot; (b) the pick'em read
+stays suspended; (c) a prop tile wears no outline until a multiplier is read
+or typed, and `audit.board_signal_faults` refuses one against the declared
+multiple; (d) the form row keeps green and red as the letter's ink. The four
+entries below are kept as they were written, for the record.
+
 - **No jersey numbers in the record.** The brief assumed the roster carried
   them; no table does (`schema.sql`, every player table read). The jersey
   renders the surname on its plate and a number only when the payload carries

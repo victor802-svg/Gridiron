@@ -266,17 +266,20 @@
        docs/closeouts/2026-09-25-board-overnight.md; the day strip and the
        yesterday strip are the two that stayed on this page. -->
   <section id="view-games" class="view" hidden>
+    <!-- THE DAY HEADER (mockup, 2026-09-25): the heading in words -- "Tonight"
+         when it is tonight, the slate's day otherwise, never the slate KEY,
+         composed by `language.slate_headline` -- and the legend of the four
+         signals, each swatch wearing the signal it explains. -->
+    <div class="day-head">
+      <h1 id="week-headline" class="slate-headline"></h1>
+      <div class="legend" id="games-legend"></div>
+    </div>
     <div class="day-strip" id="day-strip">
       <div class="day-where" id="day-where"></div>
       <div class="day-counts" id="day-counts"></div>
       <p class="day-note" id="day-note" hidden></p>
       <p class="day-fee" id="today-fee" hidden></p>
     </div>
-
-    <!-- THE HEADING, IN WORDS. "Tonight" when it is tonight, the slate's day
-         otherwise -- never the slate KEY. Composed by `language.slate_headline`;
-         the browser places it. -->
-    <h1 id="week-headline" class="slate-headline"></h1>
 
     <!-- THE ROWS. Built by `renderGames` from the board payload; empty until
          it runs, and empty on a slate with no games, which the notes beneath
@@ -337,10 +340,10 @@
        ranked by cushion; a jersey on every tile drawn from the club's
        measured colours and nothing else; the entry rail on the right. -->
   <section id="view-props" class="view" hidden>
-    <div class="props-head">
+    <div class="day-head">
       <h1 id="props-headline" class="slate-headline"></h1>
-      <p class="footnote" id="props-note"></p>
     </div>
+    <p class="footnote" id="props-note"></p>
     <nav id="props-chips" class="chips" aria-label="Stat family"></nav>
     <div class="props-body">
       <div>

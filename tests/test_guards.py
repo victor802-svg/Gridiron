@@ -496,6 +496,8 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_red_fill_on_a_pick_that_only_costs",
         "plant_a_value_colour_on_a_form_streak",
         "plant_a_glow_without_its_badge",
+        "plant_an_outline_on_a_prop_against_an_assumed_multiple",
+        "plant_a_comment_that_eats_a_rule",
         "plant_a_hand_typed_club_hex",
         "plant_a_price_on_a_live_row",
         "plant_a_tooltip_with_internal_vocabulary",

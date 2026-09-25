@@ -526,7 +526,7 @@ def test_the_flagged_note_is_readable_without_a_tap(page):
 # card from the page entirely once the hero can refuse the top one. There is
 # no hero, no lead and no slice: the grid shows the slate.
 
-def test_manrope_actually_loads_and_is_the_face_the_page_draws_in(page):
+def test_the_vendored_body_face_actually_loads_and_is_the_face_the_page_draws_in(page):
     """A file in the repository is not a font on the page.
 
     Everything else about ruling 4 is checkable without a browser -- the bytes
@@ -541,13 +541,18 @@ def test_manrope_actually_loads_and_is_the_face_the_page_draws_in(page):
     """
     _open_week(page, WIDE)
     page.evaluate("() => document.fonts.ready")
+    # INTER IS THE BODY FACE from the visual pass of 2026-09-25 (the mockup's
+    # sans, vendored the same way); the assertion is the same one it was for
+    # Manrope, pointed at the face `--body` now names first.
     loaded = page.evaluate(
         """() => [...document.fonts]
-             .filter(f => f.family === 'Manrope' && f.status === 'loaded')
+             .filter(f => f.family === 'Inter' && f.status === 'loaded')
              .map(f => f.unicodeRange ? 'range' : 'all')""")
     assert loaded, (
-        "no Manrope face reached `loaded`, so the page is drawing in the "
+        "no Inter face reached `loaded`, so the page is drawing in the "
         "fallback stack and the vendored file is decoration")
+    body = page.evaluate("getComputedStyle(document.body).fontFamily")
+    assert body.startswith("Inter"), body
 
     # AND IT IS THE FACE ACTUALLY USED, not merely one that downloaded.
     used = page.evaluate(
@@ -581,7 +586,7 @@ def test_the_badge_says_how_much_stands_behind_it_where_a_reader_can_see_it(page
         pytest.skip("no rows on this slate")
 
     badges = page.evaluate(
-        """[...document.querySelectorAll('#games-rows .game .pick .badge')]
+        """[...document.querySelectorAll('#games-rows .game .meta .badge')]
              .map(t => ({ text: t.textContent.trim(),
                           tip: t.dataset.tip || '',
                           seen: t.offsetParent !== null }))""")
