@@ -315,6 +315,11 @@ def capture(base: str, out: Path, tag: str, *, sport: str | None = None,
                     if head:
                         head.click()
                         page.wait_for_timeout(300)
+                # FROM THE TOP: a sticky header paints where the page was
+                # scrolled, and a full-page capture taken mid-scroll shows it
+                # mid-page.
+                page.evaluate("window.scrollTo(0, 0)")
+                page.wait_for_timeout(150)
                 page.screenshot(path=str(out / f"{tag}-{route}-{width}.jpg"), full_page=True, type="jpeg", quality=82)
             ctx.close()
         browser.close()

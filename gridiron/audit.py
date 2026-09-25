@@ -2055,6 +2055,9 @@ MOTION_MAX_MS = 200
 #: The one curve, and the one keyframe.
 MOTION_EASE = "ease-out"
 ALLOWED_KEYFRAMES = frozenset({"live-pulse"})
+#: ONE-SHOT KEYFRAMES (motion, 2026-09-25): a small pop when a pick is marked
+#: taken, and nothing else. They run once, under the ceiling, and never loop.
+ONE_SHOT_KEYFRAMES = frozenset({"pop"})
 
 #: THE CEILING GOVERNS CHANGES; THE PULSE HAS A FLOOR INSTEAD.
 #:
@@ -2195,6 +2198,10 @@ def motion_faults(css: str) -> list[str]:
         pulse = any(name in value for name in ALLOWED_KEYFRAMES)
         if not pulse:
             check_duration(where, value)
+            if "infinite" in value:
+                faults.append(
+                    f"{where}: a one-shot keyframe may not loop. The only thing "
+                    f"that repeats is the live mark.")
             continue
         # The one repeating animation, held to its floor rather than the
         # ceiling. See MOTION_PULSE_MIN_MS.
@@ -2208,7 +2215,7 @@ def motion_faults(css: str) -> list[str]:
                     f"attention.")
 
     for name in _CSS_KEYFRAMES.findall(css):
-        if name not in ALLOWED_KEYFRAMES:
+        if name not in ALLOWED_KEYFRAMES and name not in ONE_SHOT_KEYFRAMES:
             faults.append(
                 f"@keyframes {name!r} is not in the vocabulary. The only thing "
                 f"on this page that repeats is the mark saying a game is being "
@@ -3637,6 +3644,11 @@ def check_the_live_mark_is_not_an_opinion(path: Path | None = None) -> None:
 #: somebody reading it -- by confidence, the finished games climb over the ones
 #: still on.
 RESORT_CALLS = ("renderGames", ".sort(")
+#: AND NOTHING MAY MOVE ON THE WAY (motion, 2026-09-25): the class that starts
+#: the bar's one first-load fill, and an arrival, are out of a live patch's
+#: reach. Declared here, above the scanner that reads them.
+BAR_FILL_START = "filling"
+LIVE_PATCH_FORBIDDEN = ("pbar", BAR_FILL_START, "arrive(", "arriving")
 
 
 def live_update_faults(js: str) -> list[str]:
@@ -3656,6 +3668,13 @@ def live_update_faults(js: str) -> list[str]:
                 f"or reorder the grid. A tile changing state re-renders IN "
                 f"PLACE -- the reader is part way down a slate and the thing "
                 f"they were looking at must not move.")
+    for word in LIVE_PATCH_FORBIDDEN:
+        if word in body:
+            faults.append(
+                f"applyLive() reaches {word!r}: a score arriving may set the "
+                f"new value and nothing may move on its way there -- not the "
+                f"bar, not an arrival. The bar fills once, on load (motion, "
+                f"2026-09-25).")
     return faults
 
 
@@ -4907,8 +4926,13 @@ def task_run_order_faults(source: str | None = None) -> list[str]:
 #: the pulse is words, and the week picker sits beneath the rows behind a
 #: <details>. So the declared list is empty, and any control row that
 #: appears above the first game row is a fault by name.
+#: ONE ROW DECLARED, 2026-09-25: the sort-and-filter bar the visual brief
+#: asks for ("Sort and filter bar on Games and Props"). The 2026-09-24 brief
+#: put none above the rows; the later brief asks for this one by name, so it
+#: is declared here with its date rather than slipped past the scan. A second
+#: one is still a fault, and the planting still plants an undeclared row.
 PICKS_FIRST_CARD = "id=\"games-rows\""
-PICKS_CONTROL_ROWS: tuple[str, ...] = ()
+PICKS_CONTROL_ROWS: tuple[str, ...] = ("games-controls",)
 
 _VOID_TAGS = frozenset({"input", "br", "img", "hr", "meta", "link", "source", "wbr"})
 
@@ -6045,7 +6069,48 @@ def pressure_word_faults(text: str) -> list[str]:
 #: The selectors that carry a price. A transition or an animation on one of
 #: these is a number that MOVES when it changes, which is the single most
 #: effective piece of pressure a book has.
-PRICE_SELECTORS = (".box", ".box-value", ".edge", ".face-prices")
+#: EXTENDED FOR THE BOARD (motion, 2026-09-25): every class a price, a
+#: probability, a payout or a score is drawn in. A transition on any of them
+#: would make a number move on its way to a new value.
+PRICE_SELECTORS = (".box", ".box-value", ".edge", ".face-prices",
+                   ".pick-price", ".pick-pays", ".pick-prob", ".q-price", ".q-prob",
+                   ".pay", ".prop-prob", ".cush", ".entry-value", ".tscore", ".game-score",
+                   ".my-chip-state", ".v-mult")
+#: THE BAR FILL may move once, on first load, and never on an update: the
+#: stylesheet may transition `.pbar-fill` on `transform` alone, and the JS
+#: that patches a live score may not reach the bar or the class that starts
+#: the fill. Both are scanned; both are planted.
+BAR_FILL_CLASS = ".pbar-fill"
+
+
+def bar_fill_faults(css: str | None = None) -> list[str]:
+    """A bar fill that would move on anything but its one first-load transform."""
+    if css is None:
+        path = Path(__file__).resolve().parent / "web" / "style.css"
+        css = path.read_text(encoding="utf-8") if path.exists() else ""
+    css = _without_comments(css, "css")
+    faults = []
+    for match in _CSS_RULE.finditer(css):
+        selector = " ".join(match.group("selector").split()).split("*/")[-1].strip()
+        if BAR_FILL_CLASS not in selector:
+            continue
+        for animated in _CSS_ANIMATED.finditer(match.group("body")):
+            value = animated.group(0)
+            if "none" in value.split(":", 1)[-1].split(";")[0]:
+                continue   # the start state snaps into place; nothing moves
+            if animated.group(1) == "animation" or "transform" not in value or "width" in value:
+                faults.append(
+                    f"{selector!r} sets {value.strip()[:50]!r}: the bar fills once on "
+                    f"first load, by a transform and nothing else, and never "
+                    f"on an update (motion, 2026-09-25).")
+    return faults
+
+
+def check_the_bar_fills_once(css: str | None = None) -> None:
+    faults = bar_fill_faults(css)
+    if faults:
+        raise LawViolation("THE BAR FILLS ONCE, ON LOAD:" + _NL2 + _NL2.join(faults))
+
 
 _CSS_ANIMATED = re.compile(r"(?:^|[;\s])(transition|animation)\b[^;]*")
 
@@ -7102,6 +7167,8 @@ def board_signal_faults(payload) -> list[str]:
         check(game.get("pick"), f"board.games[{i}].pick")
         for j, q in enumerate(game.get("questions") or []):
             check(q, f"board.games[{i}].questions[{j}]")
+    for i, chip in enumerate((board.get("my_day") or {}).get("entries") or []):
+        check(chip, f"board.my_day.entries[{i}]")
     for i, tile in enumerate((board.get("props") or {}).get("tiles") or []):
         check(tile, f"board.props.tiles[{i}]")
         # RULING c, 2026-09-25: a prop tile wears no outline until a real
@@ -7215,6 +7282,9 @@ BOARD_TEXT_KEYS = (
     "venue_words", "family_words", "questions_words", "no_pick_words",
     "yours_words", "score_words", "period_words", "polled_words",
     "games_empty_words", "nothing_clears_words", "note", "empty_words",
+    "status_words", "counts_words", "heading", "home_form_words", "away_form_words",
+    "home_form_tip", "away_form_tip", "injuries_words", "weather_words",
+    "factors_words", "factor_words",
     "alt_empty_words", "label", "heading", "empty", "kalshi_absent",
     "market_label", "forecaster_label", "player", "surname", "name",
 )
@@ -7233,8 +7303,13 @@ def board_words_faults(payload) -> list[str]:
             faults.append(f"{where}: {fault}")
         for fault in pressure_word_faults(text):
             faults.append(f"{where}: {fault}")
-        for fault in advice_word_faults(text, where):
-            faults.append(fault)
+        # A DECLARED FACTOR'S PHRASE ("how many plays both offences run") is
+        # the registry's own name for it, read for internal vocabulary and
+        # pressure like everything else, and not for advice: the advice scan
+        # reads "plays" as a verb, and the phrase is a noun about the game.
+        if not where.endswith(".factor_words"):
+            for fault in advice_word_faults(text, where):
+                faults.append(fault)
 
     def walk(node, path):
         if isinstance(node, dict):

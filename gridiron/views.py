@@ -3408,6 +3408,27 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
          "informed": False},
         {"forecaster": "llm", "label": "LLM", "informed": False},
     ]
+    # TAKEN, PASSED OVER, EVERY FORECAST (Record page, 2026-09-25): three
+    # curves per market, never merged, behind the same gate as every curve.
+    # Read from the operator's own marks and never from the model's inputs.
+    taken_markets = []
+    for market in config.SPORT_MARKETS.get(sport, ()):
+        taken_markets.append(calibration.taken_comparison(conn, sport=sport, market_type=market))
+    for prop in config.SPORT_PROP_MARKETS.get(sport, ()):
+        taken_markets.append(calibration.taken_comparison(
+            conn, sport=sport, market_type="prop", prop_type=prop))
+    for entry in taken_markets:
+        entry["market_label"] = language.market_words(sport, entry["market"])
+        for group in ("taken", "not_taken", "all"):
+            entry[group]["gate_words"] = language.chart_gate_words(entry[group]["n"], entry["gate"])
+    # A MARKET WITH NOTHING SETTLED gets one sentence, not three empty
+    # cards: the page already runs long, and "0 of 100" three times over says
+    # less than the market's name in a list.
+    silent = [e["market_label"] for e in taken_markets if not e["n"]]
+    payload["taken_record"] = {"n": sum(e["n"] for e in taken_markets),
+                               "markets": [e for e in taken_markets if e["n"]],
+                               "silent_words": language.taken_record_silent_words(silent)}
+    payload["record_words"] = language.record_page_words()
     payload["meta"] = meta(conn, sport)
     payload["corrections"] = corrections_report(conn, sport)
     payload["drift"] = drift_report(conn, sport)

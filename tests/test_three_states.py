@@ -293,7 +293,9 @@ def test_the_nav_is_the_ruled_shape_and_nothing_sits_above_the_rows():
     audit.check_the_nav_is_four_pages()
     assert audit.picks_control_row_faults() == []
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    assert audit.picks_control_rows(html) == []
+    # ONE ROW DECLARED, 2026-09-25: the sort-and-filter bar the visual brief
+    # asks for, by name in `audit.PICKS_CONTROL_ROWS`; nothing else.
+    assert audit.picks_control_rows(html) == list(audit.PICKS_CONTROL_ROWS)
 
 
 # --- the forecaster control, and the unit (operator ruling, 2026-09-08) -----

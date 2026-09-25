@@ -121,3 +121,93 @@ pairs are `mockup-*` beside `shaped-*` in `docs/closeouts/shots/2026-09-25-visua
   outline on the verdict block, the thinnest leg's record badge beside it,
   the words the server's. `test_the_rail_verdict_wears_the_colour_a_prop_earns_from_the_typed_multiple`
   takes a prop, types 9 and 1.1, and reads the class and the badge.
+
+### Steps 3, 4 and 5 — My day, sort and filter, game detail, motion, Record
+
+Built together and committed together, because the three features and the
+motion all touch the same three files and no half-way state passed the
+scans; each is listed here on its own. **Deviation from "commit after each
+step"**, stated.
+
+**3b, My day** (`board._my_day`, `renderMyDay`): the taken picks on the
+slate as chips under the header on every page -- the club block in the
+club's reading shade, the pick, the state in a word (upcoming / live with
+the score / won / lost / withdrawn), the record badge. A won or lost chip is
+filled like any settled verdict, so `audit.board_signal_faults` walks the
+chips too. Counts of picks only; the payload's keys and words are scanned
+for stake, payout and total (`test_my_day_holds_the_taken_picks_and_never_money`).
+A tap scrolls to the game (`test_a_my_day_chip_scrolls_to_its_game`).
+
+**3c, sort and filter** (`prefGet/prefSet`, one row on Games, one on Props):
+start time or the model's chance on Games; cushion or the model's chance on
+Props; the market select moved up from the week picker; "clears the bar
+only" on Games. Kept per page in the browser, wrapped in try/catch, and the
+page renders the same when storage refuses. **Two readings:** the 2026-09-24
+brief put no control row above the rows and `audit.PICKS_CONTROL_ROWS` was
+empty; the 2026-09-25 brief asks for this bar by name. The later brief is
+the operator's later word, so the row is DECLARED in the scanner with its
+date rather than slipped past it; a second row is still a fault and the
+planting still plants an undeclared one. No "clears the bar only" on Props:
+under ruling c nothing on a tile clears, so the filter would match nothing.
+
+**3a, game detail** (`board._detail`, `detailPanel`): inside the expanded
+row, above the tiles -- last five for each club from the record's own
+finished games (W and L in the ruled colours, the letter's ink), the injury
+report as an icon with the names in its tooltip (the report the model
+already reads; NFL only, the other sports' loaders carry none), the weather
+as an icon with the forecast the weather pass already fetched, and the
+factors the pick read as a bar list from the same decomposition the Factors
+page shows. Every absence is the server's sentence. The factor phrases are
+the registry's own and are read for internal vocabulary and pressure, not
+for advice ("how many plays both offences run" is a noun about the game).
+
+**4, motion**, inside the vocabulary the scans enforce (opacity and
+transform only, one curve, 200ms, nothing on a number): rows and tiles
+arrive with a 30ms stagger; an expansion arrives once when opened; a row
+lifts one per cent on hover; the bar fills once on first load by a
+transform (`.filling` cleared a frame later) and never on an update
+(`audit.bar_fill_faults`, `LIVE_PATCH_FORBIDDEN` in the live-patch scan);
+the checkmark pops two per cent when a pick is marked taken (`pop`, the one
+one-shot keyframe, which may not loop); the LIVE dot pulses at 1.6s; all of
+it off under prefers-reduced-motion. `PRICE_SELECTORS` now names every board
+class a price, chance, payout or score is drawn in. Plantings:
+`plant_a_bar_that_fills_on_an_update` (a width transition, and a live patch
+that re-arms the fill), `plant_a_score_that_animates`.
+**Law-caused differences from the brief's list:** no height animation on
+expand/collapse (a layout property may not be animated: the expansion
+arrives by opacity and a one per cent rise instead), no stronger glow on
+hover (an interactive selector may not wear a value colour), 200ms not
+250ms (the ceiling).
+
+**5, Record**: two panels. The closing line over time -- `clv_report`
+entries carry their measured closes in order as `series` only past the
+market's floor, and `gate_words` ("12 of 50") beneath it; `drawSeries` draws
+the line with the N in the title and refuses an entry without its N. Taken,
+passed over, every forecast -- `calibration.taken_comparison` per market
+of the sport, wired into `views.scorecard` as `taken_record`, three curves
+each behind the hundred, drawn with the same calibration drawer, words
+below the gate; markets with nothing settled are one sentence rather than
+three empty cards. Voided and withdrawn rows never enter either (both read
+through `resolved` and the door). `tests/test_record_charts.py`.
+**Unverified here:** the closing-line chart's drawing on real closes -- the
+fixture holds no closed recommendation, so the drawer is tested on a
+synthetic series and the payload's shape on an empty report.
+
+## Close-out
+
+### The four rulings, as built
+
+| ruling | built | evidence |
+|---|---|---|
+| a. jersey numbers from nflverse rosters | `sources.ROSTERS_URL` (`rosters/roster_{season}.csv`, same provider and licence), `loader.load_rosters` at the NFL refresh in `load_all`, table `player_numbers` (declared, dated, `config.ROSTER_NUMBERS_DECLARED`), `board._player_number` by player id and club, never by name alone; fixture rosters carry numbers with one receiver left without; an absent number is an empty slot and its tooltip says so | `test_the_roster_file_fills_player_numbers_and_never_guesses`, `test_the_jersey_is_drawn_from_the_payload_and_no_hex_is_typed` (numbers drawn only where the payload holds one) |
+| b. pick'em reads stay suspended | nothing read; every tile says "not read yet"; the Alt lines chip stays empty; `multiple_source` is "declared" on every tile | `test_props_rank_by_cushion_against_the_declared_multiple` |
+| c. prop outlines neutral until a multiplier is read or typed | `audit.board_signal_faults` refuses `clears`/`costs` on a tile whose multiple was not read; the entry rail's verdict wears the colour from the typed multiple with a leg's badge beside it | `plant_an_outline_on_a_prop_against_an_assumed_multiple`, `test_the_rail_verdict_wears_the_colour_a_prop_earns_from_the_typed_multiple` |
+| d. the form row keeps green and red | CLAUDE.md lists the form row's letters as a permitted use; the scan allows `color` on `.fmark.win`/`.fmark.loss` and refuses a fill or ring on a form mark; the form strip renders in the expanded row | `plant_a_value_colour_on_a_form_streak` (reversed: plants the fill), `test_the_form_row_keeps_its_ink_and_nothing_more`, `test_the_form_streak_wears_its_ink_and_nothing_more` |
+
+### Plantings added today
+
+`plant_an_outline_on_a_prop_against_an_assumed_multiple`,
+`plant_a_comment_that_eats_a_rule`, `plant_a_bar_that_fills_on_an_update`,
+`plant_a_score_that_animates`; `plant_a_value_colour_on_a_form_streak`
+reversed. Each run in-process and CAUGHT; the harness as a whole still
+needs the live record to run end to end.

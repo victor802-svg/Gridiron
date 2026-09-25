@@ -329,3 +329,95 @@ def test_the_rail_verdict_wears_the_colour_a_prop_earns_from_the_typed_multiple(
     assert "sig-costs" in low["cls"] and low["badge"], low
     assert "Falls short" in low["words"]
     assert "worth" not in (high["words"] + low["words"]).lower()
+
+
+# --- 3a, 3b, 3c (visual pass, 2026-09-25) --------------------------------------
+
+def test_my_day_holds_the_taken_picks_and_never_money(world_copy):
+    """3b: chips for the taken picks on the slate, counts of picks, and not a
+    stake, payout or total anywhere on them."""
+    from gridiron import db
+    pid = world_copy.execute(
+        "SELECT p.id FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE g.status = 'scheduled' AND p.predictor = 'statistical' ORDER BY p.id LIMIT 1").fetchone()[0]
+    world_copy.execute("INSERT INTO picks_taken (prediction_id, taken_utc) VALUES (?, ?)", (pid, db.utcnow()))
+    world_copy.commit()
+    day = _payload(world_copy)["board"]["my_day"]
+    assert day["n"] >= 1 and any(e["prediction_id"] == pid for e in day["entries"])
+    for e in day["entries"]:
+        assert e["status_words"] in ("upcoming", "won", "lost", "settled", "withdrawn") or e["status_words"].startswith("live")
+        assert e["badge_words"] and e["club"]["tricode"]
+        for key in e:
+            assert "stake" not in key and "payout" not in key and "total" not in key and "size" not in key, key
+    words = " ".join(str(v) for e in day["entries"] for v in e.values() if isinstance(v, str)) + day["counts_words"]
+    assert "$" not in words and "stake" not in words.lower() and "payout" not in words.lower()
+    assert audit.board_words_faults({"board": {"my_day": day}}) == []
+
+
+def test_the_detail_panel_says_every_absence_in_words(world_copy):
+    """3a: form from the record's own finished games, injuries, weather and
+    factors; each absent thing says so, nothing is fetched."""
+    games = _payload(world_copy)["board"]["games"]
+    assert games
+    for g in games:
+        d = g["detail"]
+        for side in ("home", "away"):
+            marks = d[f"{side}_form_marks"]
+            assert all(m in ("W", "L", "D") for m in marks) and len(marks) <= 5
+            assert d[f"{side}_form_words"] and d[f"{side}_form_tip"]
+        assert d["injuries_words"]
+        assert d["weather_words"]
+        assert d["factors"] or d["factors_words"]
+        for f in d["factors"]:
+            assert f["factor_words"] and "_" not in f["factor_words"], f
+
+
+def test_the_controls_bar_is_the_one_declared_row():
+    """3c: the sort-and-filter bar is declared by name and a second row is
+    still a fault."""
+    assert audit.picks_control_row_faults() == []
+    assert audit.PICKS_CONTROL_ROWS == ("games-controls",)
+
+
+def test_sort_and_filter_persist_and_the_clears_filter_speaks_when_empty(page):
+    page.set_viewport_size(WIDE)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=15000)
+    page.wait_for_selector("#games-sort option", state="attached", timeout=15000)
+    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+        page.select_option("#games-sort", "prob")
+    page.wait_for_timeout(300)
+    probs = page.evaluate("[...document.querySelectorAll('#games-rows .game .pick-prob')].map(e => parseFloat(e.textContent))")
+    assert probs == sorted(probs, reverse=True), probs
+    assert page.evaluate("(() => { try { return localStorage.getItem('gridiron.games.sort'); } catch (e) { return 'refused'; } })()") in ("prob", "refused")
+    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+        page.check("#games-clears")
+    page.wait_for_timeout(300)
+    rows = page.evaluate("[...document.querySelectorAll('#games-rows .game')].map(g => g.querySelector('.pick').className)")
+    assert all("sig-clears" in c for c in rows), rows
+    if not rows:
+        assert page.text_content("#games-notes").strip(), "the filter hid every row and said nothing"
+    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+        page.uncheck("#games-clears")
+    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+        page.select_option("#games-sort", "time")
+    page.wait_for_timeout(300)
+
+
+def test_a_my_day_chip_scrolls_to_its_game(page):
+    page.set_viewport_size({"width": 1300, "height": 500})
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=15000)
+    chip = page.query_selector("#my-day .my-chip:not(.sig-won):not(.sig-lost)")
+    if chip is None:
+        with page.expect_response(lambda r: "/api/taken/" in r.url, timeout=20000):
+            page.click("#games-rows .game[data-state='upcoming'] .meta .chk")
+        page.wait_for_selector("#my-day .my-chip", timeout=15000)
+    page.evaluate("window.scrollTo(0, 0)")
+    page.click("#my-day .my-chip")
+    page.wait_for_timeout(200)
+    top = page.evaluate("""() => { const c = document.querySelector('#my-day .my-chip'); return null; }""")
+    assert page.evaluate("window.scrollY") > 0, "tapping a chip did not move to its game"
+    assert " taken" in page.text_content("#my-day-counts")
+    strip = page.text_content("#my-day")
+    assert "$" not in strip and "stake" not in strip.lower()

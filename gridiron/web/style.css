@@ -2853,6 +2853,89 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 .game { border-radius: 16px; }
 .rows { gap: 12px; }
 
+/* MY DAY (3b, 2026-09-25): chips under the header, the club block on each,
+   the state in a word, the badge beside it. A won or lost chip is filled
+   like any settled verdict. */
+.my-day { border-bottom: 1px solid var(--line); background: var(--card); }
+.my-day-inner { max-width: var(--page, 1240px); margin: 0 auto; padding: 8px 28px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.my-day h4 { margin: 0; font: 800 14px/1 var(--cond); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.my-day-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.my-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px 0 0;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card-2); color: var(--chrome);
+  font: inherit; font-size: 12px; cursor: pointer; overflow: hidden;
+}
+.my-chip:hover { border-color: var(--line-lit); }
+.my-chip:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
+.my-chip-club { align-self: stretch; display: grid; place-items: center; padding: 0 8px; background: var(--club-on-white); color: var(--white); font: 800 13px/1 var(--cond); letter-spacing: 0.04em; }
+.my-chip-line { font: 700 14px/1 var(--cond); text-transform: uppercase; }
+.my-chip-state { color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+.my-chip.sig-won, .my-chip.sig-lost { border-color: transparent; }
+.my-chip.sig-won .my-chip-line, .my-chip.sig-lost .my-chip-line, .my-chip.sig-won .my-chip-state, .my-chip.sig-lost .my-chip-state,
+.my-chip.sig-won .badge, .my-chip.sig-lost .badge { color: var(--ink); }
+.my-chip.sig-won .badge, .my-chip.sig-lost .badge { background: transparent; opacity: .85; }
+.my-day-counts { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+/* SORT AND FILTER (3c, 2026-09-25): one quiet row of controls. */
+.controls-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: -6px 0 12px; font-size: 12px; color: var(--muted); }
+.controls-bar label { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+.controls-bar select { background: var(--card-2); color: var(--chrome); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 12px; min-height: 44px; }
+.controls-bar input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--chrome); }
+.controls-bar label.check { padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; }
+
+/* THE DETAIL PANEL (3a, 2026-09-25) above the tiles in an expanded row. */
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr); gap: 14px 22px; align-items: start; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.detail-cell { display: grid; gap: 6px; font-size: 12px; color: var(--muted); min-width: 0; }
+.detail-label { font: 700 11px/1 var(--cond); letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+.form-strip { display: flex; align-items: center; gap: 6px; }
+.form-club { font: 800 12px/1 var(--cond); letter-spacing: 0.04em; color: var(--chrome); min-width: 34px; }
+.fmark { font: 800 13px/1 var(--cond); letter-spacing: 0.04em; }
+.fmark.draw { color: var(--muted); }
+.form-none { color: var(--faint); }
+.detail-icon { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); color: var(--faint); font-size: 14px; }
+.detail-icon-on { color: var(--chrome); border-color: var(--line-lit); }
+.detail-n { font: 800 12px/1 var(--cond); }
+.detail-words { color: var(--faint); line-height: 1.4; }
+.factor { display: grid; grid-template-columns: minmax(0, 1fr) 90px 44px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.factor-words { overflow-wrap: break-word; min-width: 0; }
+.factor-bar { height: 6px; border-radius: 3px; background: var(--line-lit); position: relative; overflow: hidden; }
+.factor-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--chrome); border-radius: 3px; }
+.factor-fill.factor-neg { background: var(--muted); }
+.factor-value { font: 700 12px/1 var(--cond); color: var(--chrome); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* MOTION, A BIT MORE THAN SUBTLE (2026-09-25), inside the vocabulary:
+   opacity and transform only, one curve, 200ms, nothing on a number.
+   - a row or a tile arrives with a stagger on first load (`--i` from the
+     renderer, capped there at eight);
+   - an expansion arrives the same way, once, when it opens;
+   - a row lifts one per cent on hover (the glow does not change: a stronger
+     glow on hover would be an interactive selector wearing a value colour);
+   - the bar fills once on first load, by a transform, never on an update;
+   - a checkmark pops by two per cent when a pick is marked taken;
+   - the LIVE dot pulses at 1.6s, the one loop on the page.
+   All of it is off under prefers-reduced-motion (the block above). */
+.game, .prop { transition: opacity 200ms ease-out, transform 200ms ease-out; transition-delay: calc(var(--i, 0) * 30ms); }
+#games-rows.arriving .game, #props-tiles.arriving .prop { opacity: 0; transform: translateY(1%); transition: none; }
+.game:hover { transform: translateY(-1%); }
+.game-more { transition: opacity 200ms ease-out, transform 200ms ease-out; }
+.game-more.arriving { opacity: 0; transform: translateY(1%); transition: none; }
+.pbar-fill { transform-origin: left center; transition: transform 200ms ease-out; }
+.pbar-fill.filling { transform: scaleX(0); transition: none; }
+@keyframes pop {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+.chk.on .take-mark { animation: pop 200ms ease-out; }
+.live-mark::before { animation: live-pulse 1.6s ease-out infinite; }
+
+/* THE RECORD PAGE'S TWO CHART PANELS (2026-09-25). */
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.chart-card { border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); padding: 10px 12px; display: grid; gap: 8px; min-width: 0; }
+.chart-card canvas { width: 100%; height: auto; display: block; }
+.chart-title { font: 700 13px/1.2 var(--body); color: var(--chrome); }
+.chart-empty { font: 800 22px/1 var(--cond); color: var(--muted); padding: 18px 0; text-align: center; }
+.taken-block { display: grid; gap: 8px; margin-bottom: 16px; }
+
 /* --- widths ---------------------------------------------------------------- */
 @media (max-width: 1000px) {
   .game-head { grid-template-columns: 78px 1fr; }
@@ -2875,6 +2958,8 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
   .bar #nav a { font-size: 14px; padding: 8px 14px; }
   .menu { right: 14px; }
   .props-grid, .q-grid { grid-template-columns: minmax(0, 1fr); }
+  .detail { grid-template-columns: minmax(0, 1fr); }
+  .my-day-inner { padding: 8px 14px; }
   .when { padding: 0 10px; }
   .tname { font-size: 17px; }
   .pick-line { font-size: 26px; }

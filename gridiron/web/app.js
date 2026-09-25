@@ -320,6 +320,113 @@ const Gridiron = (function () {
       pad.l + w / 2, pad.t + h + 12);
   }
 
+  // THE CLOSING LINE OVER TIME (Record page, 2026-09-25): one line per
+  // market, drawn only past its floor. The N is in the title; below the
+  // floor the area carries the server's words and no drawing.
+  function drawSeries(canvas, entry) {
+    requireN(entry, 'the closing line series for ' + entry.market);
+    const points = entry.series || [];
+    const ctx = canvas.getContext('2d');
+    const dims = prepareCanvas(canvas, ctx);
+    const W = dims.W, H = dims.H;
+    const pad = { l: 48, r: 14, t: 12, b: 22 };
+    const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+    const ink = css('--chrome'), faint = css('--faint'), rule = css('--line');
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    if (!points.length) return;
+    const span = Math.max(1, Math.max.apply(null, points.map(p => Math.abs(p.cents))) * 1.25);
+    const X = i => pad.l + (points.length === 1 ? w / 2 : (i / (points.length - 1)) * w);
+    const Y = c => pad.t + h / 2 - (c / span) * (h / 2);
+    ctx.strokeStyle = rule; ctx.lineWidth = 1;
+    [-span / 2, 0, span / 2].forEach(c => {
+      ctx.beginPath(); ctx.moveTo(pad.l, Y(c)); ctx.lineTo(pad.l + w, Y(c)); ctx.stroke();
+      ctx.fillStyle = faint; ctx.textAlign = 'right';
+      ctx.fillText(signed(c, 1) + '¢', pad.l - 6, Y(c));
+    });
+    ctx.strokeStyle = ink; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    points.forEach((p, i) => { const x = X(i), y = Y(p.cents); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.stroke();
+    ctx.fillStyle = faint; ctx.textAlign = 'left';
+    ctx.fillText(localDay(points[0].when), pad.l, pad.t + h + 11);
+    ctx.textAlign = 'right';
+    ctx.fillText(localDay(points[points.length - 1].when), pad.l + w, pad.t + h + 11);
+  }
+
+  function chartCard(title, note) {
+    const card = el('div', 'chart-card');
+    card.appendChild(el('div', 'chart-title', title));
+    if (note) card.appendChild(el('div', 'chart-empty', note));
+    return card;
+  }
+
+  function renderClosingCharts(sc) {
+    const panel = document.getElementById('closing-charts');
+    const host = document.getElementById('closing-charts-list');
+    const heading = document.getElementById('closing-charts-heading');
+    const note = document.getElementById('closing-charts-note');
+    if (!panel || !host) return;
+    const words = sc.record_words || {};
+    const line = sc.closing_line || null;
+    host.innerHTML = '';
+    if (!line || !(line.markets || []).length) { panel.hidden = true; return; }
+    if (heading) heading.textContent = words.closing_heading || '';
+    if (note) note.textContent = words.closing_note || '';
+    (line.markets || []).forEach(entry => {
+      requireN(entry, 'the closing line for "' + entry.market + '"');
+      const title = marketLabel(entry.market) + ' · ' + int(entry.n) + ' ' + (words.resolved || '');
+      if (!entry.renderable) { host.appendChild(chartCard(title, entry.gate_words)); return; }
+      const card = chartCard(title, null);
+      const canvas = document.createElement('canvas');
+      canvas.width = 420; canvas.height = 140; canvas.setAttribute('role', 'img');
+      canvas.setAttribute('aria-label', title);
+      card.appendChild(canvas);
+      host.appendChild(card);
+      drawSeries(canvas, entry);
+    });
+    panel.hidden = false;
+  }
+
+  // TAKEN, PASSED OVER, EVERY FORECAST: three curves per market, never
+  // merged, each behind the gate, each with its N in its title.
+  function renderTakenRecord(sc) {
+    const panel = document.getElementById('taken-record');
+    const host = document.getElementById('taken-record-list');
+    const heading = document.getElementById('taken-record-heading');
+    const note = document.getElementById('taken-record-note');
+    if (!panel || !host) return;
+    const words = sc.record_words || {};
+    const record = sc.taken_record || null;
+    host.innerHTML = '';
+    if (!record || (!(record.markets || []).length && !record.silent_words)) { panel.hidden = true; return; }
+    if (heading) heading.textContent = words.taken_heading || '';
+    if (note) note.textContent = words.taken_note || '';
+    if (record.silent_words) host.appendChild(el('p', 'footnote', record.silent_words));
+    (record.markets || []).forEach(entry => {
+      requireN(entry, 'the taken record for "' + entry.market + '"');
+      const block = el('div', 'taken-block');
+      block.appendChild(el('div', 'chart-title', entry.market_label || marketLabel(entry.market)));
+      const grid = el('div', 'chart-grid');
+      ['taken', 'not_taken', 'all'].forEach(key => {
+        const group = entry[key];
+        requireN(group, 'the ' + key + ' curve for "' + entry.market + '"');
+        const title = group.label + ' · ' + int(group.n) + ' ' + (words.resolved || '');
+        if (!entry.renderable || group.n < entry.gate) { grid.appendChild(chartCard(title, group.gate_words)); return; }
+        const card = chartCard(title, null);
+        const canvas = document.createElement('canvas');
+        canvas.width = 300; canvas.height = 220; canvas.setAttribute('role', 'img');
+        canvas.setAttribute('aria-label', title);
+        card.appendChild(canvas);
+        grid.appendChild(card);
+        drawCalibration(canvas, group);
+      });
+      block.appendChild(grid);
+      host.appendChild(block);
+    });
+    panel.hidden = false;
+  }
+
   function attachStripTooltip(canvas) {
     if (canvas._tooltipBound) return;
     canvas._tooltipBound = true;
@@ -423,6 +530,8 @@ const Gridiron = (function () {
       }));
 
     renderScores(sc, curve, market, predictor);
+    renderClosingCharts(sc);
+    renderTakenRecord(sc);
     renderEdge(sc.edge);
     document.getElementById('separation-note').textContent = sc.separation_note;
     renderOverTime(market, predictor).catch(showError);
@@ -1099,6 +1208,7 @@ const Gridiron = (function () {
 
     const more = el('div', 'game-more');
     more.hidden = true;
+    more.appendChild(detailPanel(g, labels));
     more.appendChild(el('h3', 'game-more-head', labels.every_bet || ''));
     const tiles = el('div', 'q-grid');
     (g.questions || []).forEach(q => tiles.appendChild(questionTile(q, labels, after)));
@@ -1112,6 +1222,7 @@ const Gridiron = (function () {
 
     const toggle = () => {
       more.hidden = !more.hidden;
+      if (!more.hidden) arrive(more);
       caret.setAttribute('aria-expanded', more.hidden ? 'false' : 'true');
       head.setAttribute('aria-expanded', more.hidden ? 'false' : 'true');
       caret.textContent = more.hidden ? '▾' : '▴';
@@ -1123,6 +1234,118 @@ const Gridiron = (function () {
       toggle();
     };
     return row;
+  }
+
+  // THE SORT AND FILTER CHOICE, per page, kept in the browser (3c,
+  // 2026-09-25). Wrapped: storage can be absent or refuse, and the page
+  // renders the same either way.
+  function prefGet(key, fallback) {
+    try { const v = localStorage.getItem('gridiron.' + key); return v === null ? fallback : v; }
+    catch (e) { return fallback; }
+  }
+  function prefSet(key, value) {
+    try { localStorage.setItem('gridiron.' + key, value); } catch (e) { /* storage refused */ }
+  }
+  function fillSelect(select, options, chosen) {
+    if (!select) return;
+    select.innerHTML = '';
+    options.forEach(([value, words]) => {
+      const o = document.createElement('option');
+      o.value = value; o.textContent = words || '';
+      select.appendChild(o);
+    });
+    select.value = chosen;
+  }
+
+  // MY DAY (3b, 2026-09-25): the taken picks as chips under the header. A
+  // tap scrolls to the game; the words are the server's; nothing is money.
+  function renderMyDay(board) {
+    const strip = document.getElementById('my-day');
+    const host = document.getElementById('my-day-chips');
+    const heading = document.getElementById('my-day-heading');
+    const counts = document.getElementById('my-day-counts');
+    if (!strip || !host) return;
+    const day = board.my_day || { entries: [] };
+    if (heading) heading.textContent = day.heading || '';
+    if (counts) counts.textContent = day.n ? (day.counts_words || '') : (day.empty_words || '');
+    host.innerHTML = '';
+    (day.entries || []).forEach(e => {
+      const chip = el('button', 'my-chip' + (e.signal === 'won' || e.signal === 'lost' ? ' ' + signalClass(e.signal) : ''));
+      chip.type = 'button';
+      const club = e.club || {};
+      chip.style.setProperty('--club', '#' + (club.colour || ''));
+      chip.style.setProperty('--club-on-white', '#' + (club.on_white || club.colour || ''));
+      chip.appendChild(el('span', 'my-chip-club', club.tricode || ''));
+      chip.appendChild(tip(el('span', 'my-chip-line', e.line_words || ''), (e.tips || {}).line));
+      chip.appendChild(el('span', 'my-chip-state' + (e.state === 'live' ? ' live-mark' : ''), e.status_words || ''));
+      chip.appendChild(badge(e, {}));
+      chip.onclick = () => {
+        const target = e.prop
+          ? document.querySelector('.prop[data-id="' + e.prediction_id + '"]')
+          : document.querySelector('.game[data-game="' + e.game_id + '"]');
+        if (target) target.scrollIntoView({ block: 'start' });
+      };
+      host.appendChild(chip);
+    });
+    strip.hidden = false;
+  }
+
+  // THE DETAIL PANEL (3a, 2026-09-25) inside an expanded row: last five for
+  // each club, the injury report, the weather, the factors the pick read.
+  // Only what the record holds; every absence arrives as the server's words.
+  function detailPanel(g, labels) {
+    const d = g.detail || {};
+    const panel = el('div', 'detail');
+    const form = el('div', 'detail-cell detail-form');
+    form.appendChild(el('span', 'detail-label', labels.form || ''));
+    [['away', g.away], ['home', g.home]].forEach(([side, club]) => {
+      const strip = el('div', 'form-strip');
+      strip.appendChild(el('span', 'form-club', (club || {}).tricode || ''));
+      const marks = d[side + '_form_marks'] || [];
+      if (marks.length) {
+        marks.forEach(m => strip.appendChild(el('span', 'fmark ' + (m === 'W' ? 'win' : m === 'L' ? 'loss' : 'draw'), m)));
+      } else {
+        strip.appendChild(el('span', 'form-none', d[side + '_form_words'] || ''));
+      }
+      form.appendChild(tip(strip, d[side + '_form_tip']));
+    });
+    panel.appendChild(form);
+    const injuries = el('div', 'detail-cell');
+    injuries.appendChild(el('span', 'detail-label', labels.injuries || ''));
+    const inj = el('span', 'detail-icon' + (d.injuries_n ? ' detail-icon-on' : ''));
+    inj.appendChild(el('span', 'detail-glyph', '✚'));
+    inj.appendChild(el('span', 'detail-n', d.injuries_n ? String(d.injuries_n) : ''));
+    injuries.appendChild(tip(inj, d.injuries_words));
+    if (!d.injuries_n) injuries.appendChild(el('span', 'detail-words', d.injuries_words || ''));
+    panel.appendChild(injuries);
+    const weather = el('div', 'detail-cell');
+    weather.appendChild(el('span', 'detail-label', labels.weather || ''));
+    const wx = el('span', 'detail-icon' + (d.weather_read ? ' detail-icon-on' : ''));
+    wx.appendChild(el('span', 'detail-glyph', '☁'));
+    weather.appendChild(tip(wx, d.weather_words));
+    weather.appendChild(el('span', 'detail-words', d.weather_words || ''));
+    panel.appendChild(weather);
+    const factors = el('div', 'detail-cell detail-factors');
+    factors.appendChild(el('span', 'detail-label', labels.factors || ''));
+    const list = d.factors || [];
+    if (list.length) {
+      const most = Math.max(...list.map(f => Math.abs(f.contribution || 0)), 0.001);
+      list.forEach(f => {
+        const row = el('div', 'factor');
+        row.appendChild(el('span', 'factor-words', f.factor_words || ''));
+        const bar = el('span', 'factor-bar');
+        const fill = el('span', 'factor-fill' + ((f.contribution || 0) < 0 ? ' factor-neg' : ''));
+        fill.style.width = (Math.abs(f.contribution || 0) / most * 100).toFixed(0) + '%';
+        bar.appendChild(fill);
+        row.appendChild(bar);
+        row.appendChild(el('span', 'factor-value', signed(f.contribution || 0, 2)));
+        factors.appendChild(row);
+      });
+    } else {
+      factors.appendChild(el('span', 'detail-words', d.factors_words || ''));
+    }
+    panel.appendChild(factors);
+    return panel;
   }
 
   // THE SPORT PILL beside the heading, in the sport's own declared colour.
@@ -1236,9 +1459,36 @@ const Gridiron = (function () {
         ((b.prob || 0) - (a.prob || 0)))[0] || null;
       return Object.assign({}, g, { questions: qs, pick: lead });
     };
-    const games = (board.games || []).map(narrow).filter(g => (g.questions || []).length);
+    // SORT AND FILTER (3c, 2026-09-25): the choice is the reader's and is
+    // kept in the browser; the order is computed here from the payload's
+    // own numbers, once, at render -- never when a score arrives.
+    const sortSel = document.getElementById('games-sort');
+    const clearsBox = document.getElementById('games-clears');
+    const sortBy = prefGet('games.sort', 'time');
+    const clearsOnly = prefGet('games.clears', '0') === '1';
+    fillSelect(sortSel, [['time', labels.sort_time], ['prob', labels.sort_prob]], sortBy);
+    if (clearsBox) clearsBox.checked = clearsOnly;
+    ['games-sort-label', 'games-market-label', 'games-clears-label'].forEach((id, i) => {
+      const node = document.getElementById(id);
+      if (node) node.textContent = [labels.sort, labels.market, labels.clears_only][i] || '';
+    });
+    if (sortSel) sortSel.onchange = () => { prefSet('games.sort', sortSel.value); renderGames().catch(showError); };
+    if (clearsBox) clearsBox.onchange = () => { prefSet('games.clears', clearsBox.checked ? '1' : '0'); renderGames().catch(showError); };
+    let games = (board.games || []).map(narrow).filter(g => (g.questions || []).length);
+    if (clearsOnly) games = games.filter(g => g.pick && g.pick.signal === 'clears');
+    if (sortBy === 'prob') {
+      games = games.slice().sort((a, b) => ((b.pick || {}).prob || 0) - ((a.pick || {}).prob || 0));
+    }
     arrive(rows);
-    games.forEach(g => rows.appendChild(gameRow(g, labels, again)));
+    games.forEach((g, i) => {
+      const row = gameRow(g, labels, again);
+      row.style.setProperty('--i', String(Math.min(i, 8)));
+      rows.appendChild(row);
+    });
+    renderMyDay(board);
+    if (clearsOnly && !games.length && board.nothing_clears_words) {
+      notes.appendChild(el('div', 'empty', board.nothing_clears_words));
+    }
 
     const today = data.today || null;
     const combos = document.getElementById('combos-panel');
@@ -1357,10 +1607,14 @@ const Gridiron = (function () {
     // colour where the question has one, the tick is white and sits at the
     // price on a game question or at the break-even on a prop.
     const bar = el('div', 'pbar');
-    const fill = el('span', 'pbar-fill');
+    const fill = el('span', 'pbar-fill filling');
     const p = Math.max(0, Math.min(1, t.prob || 0));
     fill.style.width = (p * 100).toFixed(1) + '%';
     bar.appendChild(fill);
+    // ONCE, ON LOAD: the start state is cleared a frame after the bar is in
+    // the tree, and nothing sets it again -- `audit.live_update_faults`
+    // refuses a live patch that reaches for it.
+    requestAnimationFrame(() => requestAnimationFrame(() => fill.classList.remove('filling')));
     const at = tickAt === undefined ? t.breakeven : tickAt;
     if (at !== null && at !== undefined) {
       const tick = el('span', 'pbar-tick');
@@ -1579,11 +1833,23 @@ const Gridiron = (function () {
 
     host.innerHTML = '';
     notes.innerHTML = '';
+    const sortSel = document.getElementById('props-sort');
+    const sortBy = prefGet('props.sort', 'cushion');
+    fillSelect(sortSel, [['cushion', labels.sort_cushion], ['prob', labels.sort_prob]], sortBy);
+    const sortLabel = document.getElementById('props-sort-label');
+    if (sortLabel) sortLabel.textContent = labels.sort || '';
+    if (sortSel) sortSel.onchange = () => { prefSet('props.sort', sortSel.value); renderProps().catch(showError); };
     let tiles = props.tiles || [];
     if (active === 'alt') tiles = tiles.filter(t => t.alt);
     else if (active) tiles = tiles.filter(t => (t.family || '') === active);
+    if (sortBy === 'prob') tiles = tiles.slice().sort((a, b) => (b.prob || 0) - (a.prob || 0));
+    renderMyDay(board);
     arrive(host);
-    tiles.forEach((t, i) => host.appendChild(propTile(t, labels, again, i)));
+    tiles.forEach((t, i) => {
+      const tile = propTile(t, labels, again, i);
+      tile.style.setProperty('--i', String(Math.min(i, 8)));
+      host.appendChild(tile);
+    });
     if (!tiles.length) {
       notes.appendChild(el('div', 'empty',
         active === 'alt' ? (props.alt_empty_words || '')
@@ -3643,7 +3909,7 @@ const Gridiron = (function () {
   }
 
   return { boot, route, state, requireN, MissingSampleSize,
-           drawCalibration, drawOverTime, dumbbell, contributions, bucketChip,
+           drawCalibration, drawOverTime, drawSeries, dumbbell, contributions, bucketChip,
            fetchJSON };
 })();
 

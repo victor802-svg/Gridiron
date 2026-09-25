@@ -127,6 +127,7 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         "forecaster_label": label,
         "market": market,
         "market_label": language.market_label(card),
+        "subject": card.get("subject"),
         "line_words": language.pick_line_words(card),
         "question": card.get("phrase") or "",
         "prob": shown,
@@ -328,6 +329,100 @@ def _player_number(conn: sqlite3.Connection, sport: str, player: str | None,
     return int(row["jersey_number"])
 
 
+def _detail(conn: sqlite3.Connection, sport: str, game: sqlite3.Row, game_id: str,
+            season: int, wk: int, pick: dict | None, first: dict, names: dict) -> dict:
+    """The game's detail for the expanded row (3a, 2026-09-25): last five for
+    each club, the injury report, the weather and the factors the pick read.
+    Only what the record already holds; every absence is said in words."""
+    from .views import _recent_form, _weather
+    from .data import repo
+
+    out: dict = {}
+    for side in ("home", "away"):
+        team = game[side]
+        marks = _recent_form(conn, sport, team, game["kickoff_utc"])
+        out[f"{side}_form_marks"] = marks
+        out[f"{side}_form_words"] = language.form_words(marks)
+        out[f"{side}_form_tip"] = language.form_marks_tip(
+            language.team_name(team, names, "full"), marks)
+    listed: list[str] = []
+    if sport == "nfl":
+        for team in (game["home"], game["away"]):
+            for r in repo.injuries_for(conn, season, wk, team):
+                status = (r["report_status"] or "").strip()
+                if status in ("Out", "Doubtful", "Questionable") and r["player_name"]:
+                    listed.append(f"{r['player_name']} ({status})")
+    out["injuries_n"] = len(listed)
+    out["injuries_words"] = language.injuries_words(listed)
+    weather = _weather(conn, game_id)
+    out["weather_words"] = weather or language.no_weather_words()
+    out["weather_read"] = weather is not None
+    factors = []
+    for f in (first.get("top_factors") or [])[:5]:
+        if f.get("contribution") is None:
+            continue
+        factors.append({
+            # THE FACTOR'S OWN PHRASE, the one the Factors table uses. It is a
+            # declared factor's name, not advice, so the words scan reads it
+            # for internal vocabulary only.
+            "factor_words": language.factor_line_words(f.get("plain_name"), f.get("factor") or ""),
+            "contribution": round(float(f["contribution"]), 3),
+            "present": bool(f.get("present", True)),
+        })
+    out["factors"] = factors
+    out["factors_words"] = None if factors else language.factors_absent_words()
+    return out
+
+
+def _my_day(games: list[dict], tiles: list[dict]) -> dict:
+    """The taken picks on this slate as chips (3b, 2026-09-25): club, pick,
+    state, badge. Counts of picks and nothing else -- no stake, no payout,
+    no total, which is the law the taken rail already keeps."""
+    entries = []
+    for g in games:
+        for b in g.get("questions") or []:
+            if not b.get("taken"):
+                continue
+            subject = (b.get("subject") or "")
+            club = g["home"] if subject == g["home"].get("tricode") else (
+                g["away"] if subject == g["away"].get("tricode") else g["home"])
+            entries.append(_my_day_entry(b, g["game_id"], g["state"], club, g.get("score_words")))
+    for tile in tiles:
+        if tile.get("taken"):
+            entries.append(_my_day_entry(tile, tile["game_id"], tile["state"],
+                                         tile.get("club") or {}, None, prop=True))
+    live = sum(1 for e in entries if e["state"] == "live")
+    won = sum(1 for e in entries if e["signal"] == "won")
+    lost = sum(1 for e in entries if e["signal"] == "lost")
+    return {
+        "heading": language.my_day_heading(),
+        "n": len(entries),
+        "entries": entries,
+        "counts_words": language.my_day_counts_words(len(entries), live, won, lost),
+        "empty_words": language.my_day_empty_words(),
+    }
+
+
+def _my_day_entry(block: dict, game_id: str, state: str, club: dict,
+                  score_words: str | None, prop: bool = False) -> dict:
+    return {
+        "prediction_id": block["prediction_id"],
+        "game_id": game_id,
+        "prop": prop,
+        "state": state,
+        "signal": block.get("signal") if state == "final" else "none",
+        "line_words": block.get("line_words") or "",
+        "status_words": language.my_day_status_words(state, block.get("signal") or "none",
+                                                     score_words),
+        "badge_words": block.get("badge_words"),
+        "badge_n": block.get("badge_n"),
+        "club": {"tricode": club.get("tricode") or "", "colour": club.get("colour"),
+                 "on_white": club.get("on_white")},
+        "tips": {"badge": (block.get("tips") or {}).get("badge"),
+                 "line": block.get("question") or ""},
+    }
+
+
 def _secondary(colours: dict) -> str | None:
     """The club's second colour, where the colour file records one.
 
@@ -420,6 +515,8 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             "yours_words": (language.taken_badge_words()
                             if any(b["taken"] for b in bets) else None),
         }
+        row["detail"] = _detail(conn, sport, game, game_id, season, wk, pick,
+                                first, names)
         if pick is None:
             row["no_pick_words"] = language.board_labels()["no_pick"]
         if state == "live":
@@ -536,6 +633,7 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         "games_n": len(games),
         "sport_key": sport,
         "sport_label": sport_label,
+        "my_day": _my_day(games, tiles),
         "games_empty_words": language.games_empty_words(sport_label) if not games else None,
         # NOTHING CLEARS THE BAR, said once, and only on a slate that has a
         # price to clear it against: on an unpriced slate the day strip

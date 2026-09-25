@@ -4350,6 +4350,20 @@ def board_labels() -> dict:
         "best": "best line",
         "sorted": "sorted by cushion",
         "polled": "polled",
+        # SORT AND FILTER (visual pass, 2026-09-25) and the detail panel.
+        "sort": "sort",
+        "sort_time": "start time",
+        "sort_prob": "the model's chance",
+        "sort_cushion": "cushion",
+        "show": "show",
+        "clears_only": "clears the bar only",
+        "market": "market",
+        "all_markets": "all markets",
+        "form": "last five",
+        "injuries": "injuries",
+        "weather": "weather",
+        "factors": "what the model read",
+        "my_day": my_day_heading(),
     }
 
 
@@ -4358,6 +4372,96 @@ def number_tip(number: int | None) -> str:
     if number is None:
         return "No number on record for this player, so the slot stays empty."
     return f"Number {number}, from the roster file read at the last refresh."
+
+
+def chart_gate_words(n: int, gate: int) -> str:
+    """"12 of 50": what a chart area says below its gate, and draws nothing."""
+    return f"{n} of {gate}"
+
+
+def record_page_words() -> dict:
+    """The Record page's fixed words for the two chart panels (2026-09-25)."""
+    return {
+        "closing_heading": "The closing line, over time",
+        "closing_note": ("Each point is one recommendation against the market's own "
+                         "final price for the same question, in the order they "
+                         "closed. A chart draws only past its floor; below it the "
+                         "area says how many of the floor there are."),
+        "taken_heading": "Taken, passed over, every forecast",
+        "taken_note": ("Three curves on the same questions, never merged: the "
+                       "picks the operator marked, the ones he passed over, and "
+                       "all of them. Each draws only past the gate. Voided and "
+                       "withdrawn forecasts are never counted."),
+        "resolved": "resolved",
+    }
+
+
+def taken_record_silent_words(markets: list[str]) -> str | None:
+    if not markets:
+        return None
+    return "Nothing settled yet in " + ", ".join(markets) + "."
+
+
+def my_day_heading() -> str:
+    return "My day"
+
+
+def my_day_empty_words() -> str:
+    return "Nothing taken on this slate yet."
+
+
+def my_day_counts_words(n: int, live: int, won: int, lost: int) -> str:
+    """"3 taken · 1 live · 1 won · 1 lost": counts of picks, never money."""
+    parts = [f"{n} taken"]
+    if live:
+        parts.append(f"{live} live")
+    if won:
+        parts.append(f"{won} won")
+    if lost:
+        parts.append(f"{lost} lost")
+    return " · ".join(parts)
+
+
+def my_day_status_words(state: str, signal: str, score_words: str | None) -> str:
+    """The chip's state in a word: upcoming, live with the score, won, lost."""
+    if state == "live":
+        return f"live · {score_words}" if score_words else "live"
+    if signal == "won":
+        return "won"
+    if signal == "lost":
+        return "lost"
+    if signal == "withdrawn":
+        return "withdrawn"
+    if state == "final":
+        return "settled"
+    return "upcoming"
+
+
+def form_marks_tip(team: str, marks: list[str]) -> str:
+    if not marks:
+        return f"{team}: no finished games in this record yet."
+    return f"{team}'s last {len(marks)}, most recent first, from this record's own finished games."
+
+
+def injuries_words(names: list[str]) -> str:
+    """"Two out or doubtful: A. Player (Out), B. Player (Doubtful)", or the
+    absence in words. Only what the injury report the model already reads
+    lists; nothing is fetched for this."""
+    if not names:
+        return "No injuries on the report the model read."
+    return f"{len(names)} on the injury report: " + ", ".join(names) + "."
+
+
+def no_weather_words() -> str:
+    return "No forecast was read for this game (the weather pass runs for outdoor football only)."
+
+
+def factors_absent_words() -> str:
+    return "No factor reading on this pick: the forecaster shows no decomposition."
+
+
+def factor_line_words(plain_name: str | None, factor: str) -> str:
+    return plain_name or humanise(factor)
 
 
 def pick_label_words(state: str, signal: str) -> str:

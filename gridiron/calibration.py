@@ -2076,7 +2076,7 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
 
     require_sport(sport, "calibration.clv_report")
     rows = conn.execute(
-        "SELECT r.market, r.side, r.price, c.clv_cents, c.restated,"
+        "SELECT r.market, r.side, r.price, c.clv_cents, c.restated, r.closed_utc,"
         "       c.recommendation_id IS NOT NULL AS accounted"
         "  FROM recommendations r"
         "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
@@ -2123,6 +2123,16 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
         }
         if entry["renderable"] and mean is not None and mean < 0:
             entry["finding"] = language.clv_finding_line(mean, n)
+        # THE SERIES (Record page, 2026-09-25): every measured close in the
+        # order it closed, for the chart -- drawn only past the floor. Below
+        # it the chart area says how many of the floor there are and draws
+        # nothing. The points carry no claim key, so LAW 4's walk reads the
+        # entry's own `n` beside them.
+        entry["series"] = [
+            {"when": r["closed_utc"], "cents": round(r["clv_cents"], 2)}
+            for r in sorted(got, key=lambda r: r["closed_utc"] or "")
+        ] if entry["renderable"] else []
+        entry["gate_words"] = language.chart_gate_words(n, floor)
         entries.append(entry)
 
     open_rows = conn.execute(

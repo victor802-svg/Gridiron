@@ -8352,6 +8352,42 @@ def plant_a_word_that_only_looks_like_pressure() -> Result:
                   "ordinary English passes: the rule matches whole words only")
 
 
+def plant_a_bar_that_fills_on_an_update() -> Result:
+    """Two halves: a bar whose width transitions, and a live patch that
+    re-arms the fill. Either would make a probability move when a score
+    arrives (motion, 2026-09-25)."""
+    from gridiron import audit as _audit
+
+    css_faults = _audit.bar_fill_faults(".pbar-fill { transition: width 200ms ease-out; }")
+    js_faults = _audit.live_update_faults(
+        "  function applyLive(live) {\n"
+        "    (live.picks || []).forEach(pick => {\n"
+        "      const bar = document.querySelector('.pbar-fill');\n"
+        "      bar.classList.add('filling');\n"
+        "    });\n  }\n")
+    if css_faults and js_faults:
+        return Result(LAW_NO_PRESSURE, "a bar that fills again on a live update",
+                      "audit.bar_fill_faults, audit.live_update_faults", True,
+                      css_faults[0] + " | " + js_faults[0])
+    return Result(LAW_NO_PRESSURE, "a bar that fills again on a live update",
+                  "audit.bar_fill_faults, audit.live_update_faults", False,
+                  "NOT CAUGHT - a probability bar would move when a score arrives")
+
+
+def plant_a_score_that_animates() -> Result:
+    """A transition on the score in the club band."""
+    from gridiron import audit as _audit
+
+    faults = _audit.price_chip_animation_faults(".tscore { transition: color 200ms ease-out; }")
+    faults += _audit.price_chip_animation_faults(".game-score { animation: pop 200ms ease-out; }")
+    if len(faults) >= 2:
+        return Result(LAW_NO_PRESSURE, "a score that moves when it changes",
+                      "audit.price_chip_animation_faults", True, faults[0])
+    return Result(LAW_NO_PRESSURE, "a score that moves when it changes",
+                  "audit.price_chip_animation_faults", False,
+                  "NOT CAUGHT - the score in the band would animate on a live tick")
+
+
 def plant_a_price_that_moves_when_it_changes() -> Result:
     """Put a transition on the price box.
 
@@ -9709,6 +9745,8 @@ def main() -> int:
     results.append(plant_a_pressure_word_in_a_card_label())
     results.append(plant_a_word_that_only_looks_like_pressure())
     results.append(plant_a_price_that_moves_when_it_changes())
+    results.append(plant_a_bar_that_fills_on_an_update())
+    results.append(plant_a_score_that_animates())
     results.append(plant_a_countdown_to_kickoff())
     results.append(plant_a_renderer_function_defined_twice())
     results.append(plant_a_thin_edge_on_an_expensive_contract())

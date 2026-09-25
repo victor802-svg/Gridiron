@@ -419,6 +419,7 @@ def step_2_guards() -> bool:
         # as text and pass, while the browser runs none of it. This is the
         # check that was missing on 2026-09-08.
         ("the browser files parse", audit.check_the_browser_files_parse),
+        ("the bar fills once, on load", audit.check_the_bar_fills_once),
         ("prediction closures (LAW 1)", audit.check_all_prediction_closures),
         ("no orphan functions", audit.check_no_orphan_functions),
         # ADDED 2026-09-03 AFTER IT HAPPENED. Widening a sport CHECK on `games`

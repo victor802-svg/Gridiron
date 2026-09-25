@@ -67,6 +67,16 @@
   </nav>
 </header>
 
+<!-- MY DAY (3b, 2026-09-25): the taken picks on the slate as chips, under the
+     header on every page. Counts of picks and nothing else. -->
+<section class="my-day" id="my-day" hidden>
+  <div class="my-day-inner">
+    <h4 id="my-day-heading"></h4>
+    <div class="my-day-chips" id="my-day-chips"></div>
+    <span class="my-day-counts" id="my-day-counts"></span>
+  </div>
+</section>
+
 <main id="main">
   <!-- SINCE YOU LAST LOOKED. One line, above the rows on Games: the first
        question on opening the app is "what happened while I was away". -->
@@ -143,6 +153,20 @@
       <div id="clv-list"></div>
       <div id="priced-list"></div>
       <p class="footnote" id="priced-note"></p>
+    </section>
+
+    <!-- THE CLOSING LINE OVER TIME and TAKEN VS PASSED OVER (Record page,
+         2026-09-25). A chart draws only past its gate; below it the area
+         says "NN of 100" in words and draws nothing. Never merged. -->
+    <section class="panel" id="closing-charts" hidden>
+      <h3 id="closing-charts-heading"></h3>
+      <p class="footnote" id="closing-charts-note"></p>
+      <div class="chart-grid" id="closing-charts-list"></div>
+    </section>
+    <section class="panel" id="taken-record" hidden>
+      <h3 id="taken-record-heading"></h3>
+      <p class="footnote" id="taken-record-note"></p>
+      <div id="taken-record-list"></div>
     </section>
 
     <!-- DID THE ORDERING EARN ITS PLACE (THE_SHORTLIST S3, 2026-09-07)?
@@ -282,6 +306,21 @@
       <p class="day-fee" id="today-fee" hidden></p>
     </div>
 
+    <!-- SORT AND FILTER (3c, 2026-09-25): the one control row declared above
+         the rows, `audit.PICKS_CONTROL_ROWS`. Labels are the server's; the
+         choice persists per page in the browser. -->
+    <div class="controls-bar" id="games-controls">
+      <label><span id="games-sort-label"></span>
+        <select id="games-sort"></select>
+      </label>
+      <label><span id="games-market-label"></span>
+        <select id="week-market"><option value="">all markets</option></select>
+      </label>
+      <label class="check"><input type="checkbox" id="games-clears">
+        <span id="games-clears-label"></span>
+      </label>
+    </div>
+
     <!-- THE ROWS. Built by `renderGames` from the board payload; empty until
          it runs, and empty on a slate with no games, which the notes beneath
          say in words. -->
@@ -328,9 +367,6 @@
         <label>Week
           <select id="week-picker"></select>
         </label>
-        <label>Market
-          <select id="week-market"><option value="">all markets</option></select>
-        </label>
       </div>
     </details>
 
@@ -347,6 +383,11 @@
     </div>
     <p class="footnote" id="props-note"></p>
     <nav id="props-chips" class="chips" aria-label="Stat family"></nav>
+    <div class="controls-bar" id="props-controls">
+      <label><span id="props-sort-label"></span>
+        <select id="props-sort"></select>
+      </label>
+    </div>
     <div class="props-body">
       <div>
         <div id="props-tiles" class="props-grid"></div>
