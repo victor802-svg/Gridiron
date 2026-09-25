@@ -14,13 +14,32 @@
   Thursday's NFL game kicked off at 00:15Z inside that gap, so no near-start
   read was taken for it. The logon catch-up ran at 03:17Z.
 - **Question 4 is RULED** (docs/briefs/2026-09-25-question-4.md). Order now:
-  5a (gate and release) -> item 4, the prompt record (build, gate, release,
-  then the reconstruction written to the live record) -> the verified backup
-  and the live migration -> 5b (the register emptied).
-- **5a is built** (schema rulings 1, 3, 4, 5, 6 and the migration tool,
-  rehearsed on a verified copy: every row and column checksum equal, the
-  write lock held ~3 s, a forced failure rolled back with nothing swapped;
-  REHEARSAL.md in the session scratchpad, schema5a/).
+  ~~5a~~ -> **item 4, the prompt record** (in progress: build, gate,
+  release, then the reconstruction written to the live record) -> 5a' (the
+  review's fixes to the migration tool, the diff and the scans) -> the
+  verified backup and the live migration -> 5b (the register emptied).
+- **5a is RELEASED: 3603300** (`/api/health` = 3603300cbde0, 08:05Z on 25
+  September; gate 4/4, 288/288 plantings, both schema comparisons pass with
+  only registered differences; the first gate run failed on a browser race,
+  `test_the_weekly_strip_renders_with_hit_targets`, a canvas read before its
+  paint while a review agent loaded the machine -- it passes alone; the
+  rerun alone was green). `market_snapshots_no_delete` is on the live
+  record. The migration tool is NOT run.
+- **Before the migration runs, the tool must be fixed** (an adversarial
+  review of 3603300, meant for the cloud but run locally -- see the
+  close-out): `--report` can overwrite the record or the backup; the `--live`
+  guard is keyed on the running checkout's config path and can be bypassed;
+  the released definitions are not checked against master; schema_diff
+  lower-cases double-quoted text (a CHECK against "NFL" and "nfl" compare
+  equal -- latent, no such literal today); `INSERT OR REPLACE` gets round
+  the snapshot no-delete trigger; the raw-connect scan misses aliasing;
+  checksums miss -0.0 and text after a NUL; after the migration,
+  `widen_sport_checks` would rename `model_fits` with foreign keys on and
+  leave `fit_activations` pointing at a dropped table. These go in 5a' after
+  item 4 and before the migration.
+- **Next commit must remove the register's ninth entry**
+  (`market_lines_raw.spread_sign_source`): 5a's release cleared it, so every
+  gate now reports it "CLEARED, STILL REGISTERED" until it goes.
 
 - **Released and serving: fddd61b** (`/api/health` = fddd61b8d635), on main
   and pushed: **weather** (repair 2e), after 4c3bda4 **the fs5 revert**
