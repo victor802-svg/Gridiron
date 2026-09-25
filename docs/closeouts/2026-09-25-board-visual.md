@@ -337,7 +337,13 @@ reads as settled, and offline the last numbers stay hidden, which is the
 rule the page already had. `test_stale_rows_never_read_as_settled_while_a_new_slate_is_fetched`
 holds a `/api/week` answer by hand and reads the container's state; it
 fails on the page before the fix and passes after.
-Ten runs of the failing order on the fixed page: RESULT_PLACEHOLDER
+A second face of the same cause surfaced in the first ten-run proof: the
+smoke suite's phone test tapped a row from the previous render and the
+answer replaced it collapsed (1 of 6 runs). So the arriving container also
+takes no pointer events -- a stale slate is neither seen nor touchable --
+and the regression test reads that too.
+**Ten runs of the failing order on the final page (`d66a7fd`): 10 of 10
+green**, each run the whole of `test_smoke.py` then `test_cards.py`.
 
 **2. Ruling recorded**: the sort-and-filter bar stays above the rows, as
 built; noted beside `audit.PICKS_CONTROL_ROWS`.
