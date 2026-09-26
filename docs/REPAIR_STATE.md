@@ -47,8 +47,15 @@
   then fails by name for any active market without one, and the day strip
   says so; no scheduled pass turns red (measured read-only first).
 - **Order now:** ~~5a~~ -> ~~item 4~~ -> ~~5a'~~ -> ~~migration~~ -> ~~5b~~
-  -> ~~item 2's remainder~~ -> ~~item 3~~ -> **item 4** (in progress) ->
-  items 5-8 of the repair.
+  -> ~~item 2's remainder~~ -> ~~item 3~~ -> ~~item 4~~ -> **item 5** (in
+  progress) -> items 6-8 of the repair.
+- **Item 4 RELEASED: 3c43509** (`/api/health` = 3c43509a055c, 08:25Z on 26
+  September; gate 4/4, 305/305): a no-side edge divides by the no-side
+  cost. **The re-grade labels are NOT written**: the old divisor let four
+  through (3, 10, 26 and 56), not three; `tools/regrade_return_on_stake.py`
+  refuses the live record by naming 56 until question 9 is answered. Once
+  ruled: set RULED / LEFT_BY_RULING, gate, release, then run it with
+  `--write --live`.
 - **Item 3 RELEASED: 36e863f** (`/api/health` = 36e863f09439, 06:35Z on 26
   September; gate 4/4, 303/303): a recommendation is priced from the
   correction in force (now before the start; the claim's own instant once
