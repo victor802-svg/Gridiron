@@ -7080,6 +7080,9 @@ RAW_CONNECT_EXEMPT: dict[str, str] = {}
 #: What `sqlite3` calls the two ways to open a file.
 _SQLITE_OPENERS = ("connect", "Connection")
 
+#: The SQLite drivers, as a module named at run time would name them.
+_SQLITE_DRIVERS = ("sqlite3", "_sqlite3", "apsw")
+
 
 def _python_files_beside(root: Path) -> list[tuple[str, Path]]:
     """(path from the repository root, file) for the package and, where they
@@ -7112,12 +7115,107 @@ def _enclosing_functions(tree: ast.AST) -> dict[int, str | None]:
     return where
 
 
+def _qualified_functions(tree: ast.AST) -> dict[int, str | None]:
+    """id() of every node, to the QUALIFIED name of the function it sits in:
+    `connect`, `back_up.connect`, `Record.open` (2026-09-25).
+
+    THE EXEMPTION IS THE FACTORY, NOT THE WORD. `RAW_CONNECT_HOME` was
+    matched against the bare name of the enclosing function, so a helper
+    named `connect` nested anywhere in `db.py` -- inside `back_up`, say --
+    opened a database raw under the connection factory's exemption (the
+    adversarial review of 3603300). Qualified, only the module-level
+    `connect` is `gridiron/db.py:connect`."""
+    where: dict[int, str | None] = {}
+
+    def visit(node: ast.AST, function: str | None, prefix: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                name = prefix + child.name
+                where[id(child)] = name
+                visit(child, name, name + ".")
+            elif isinstance(child, ast.ClassDef):
+                where[id(child)] = function
+                visit(child, function, prefix + child.name + ".")
+            else:
+                where[id(child)] = function
+                visit(child, function, prefix)
+
+    visit(tree, None, "")
+    return where
+
+
+def _in_an_annotation(node: ast.AST, parents: dict[int, ast.AST]) -> bool:
+    """Is `node` inside a type annotation, or the class argument of an
+    isinstance or issubclass -- the places naming `sqlite3.Connection`
+    opens nothing?"""
+    child, parent = node, parents.get(id(node))
+    while parent is not None:
+        if isinstance(parent, ast.arg) and parent.annotation is child:
+            return True
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and parent.returns is child:
+            return True
+        if isinstance(parent, ast.AnnAssign) and parent.annotation is child:
+            return True
+        if (isinstance(parent, ast.Call) and isinstance(parent.func, ast.Name)
+                and parent.func.id in ("isinstance", "issubclass")
+                and len(parent.args) == 2 and parent.args[1] is child):
+            return True
+        if isinstance(parent, (ast.stmt, ast.Call, ast.Lambda)):
+            return False
+        child, parent = parent, parents.get(id(parent))
+    return False
+
+
+def _names_a_driver(node: ast.AST | None) -> str | None:
+    """The driver a constant module name names -- 'sqlite3', 'sqlite3.dbapi2',
+    '_sqlite3', 'apsw' -- or None."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+            and node.value.split(".")[0] in _SQLITE_DRIVERS:
+        return node.value
+    return None
+
+
 def raw_connect_faults(root: Path | None = None) -> list[str]:
     """Every raw SQLite open outside `db.connect`, named by file, line and
     function: `sqlite3.connect` under any alias (read, called or handed on),
     `sqlite3.dbapi2.connect`, a call of `sqlite3.Connection`, a `getattr` of
     either, a star import from `sqlite3`, and any import of `apsw`, the other
-    driver, or of `_sqlite3`, the one underneath."""
+    driver, or of `_sqlite3`, the one underneath.
+
+    AND EVERY WAY ROUND THOSE THE REVIEW OF 3603300 FOUND (2026-09-25): the
+    module bound to another name (`s = sqlite3; s.connect(...)`) or handed
+    on as a value at all (`vars(sqlite3)["connect"]`, a `getattr` with a
+    computed name); a dunder read off it (`sqlite3.__dict__`); a subclass of
+    `sqlite3.Connection`, which opens a file when called -- the class may be
+    named only in an annotation or an isinstance; the driver imported at run
+    time by a constant name (`importlib.import_module("sqlite3")`,
+    `__import__("sqlite3")`, `sys.modules["sqlite3"]`); and a function named
+    `connect` nested anywhere in `db.py`, which the exemption, keyed on the
+    bare name, let through.
+
+    AND THE DRIVER THROUGH ANOTHER MODULE (2026-09-25, the rehearsal of those
+    fixes): every module that imports sqlite3 holds it as an attribute, and
+    seven shapes opened a database past the scan that way --
+    `db.sqlite3.connect`, `from gridiron.db import sqlite3`,
+    `gridiron.db.sqlite3.connect`, `vars(db)["sqlite3"]`,
+    `getattr(db, "sqlite3")`, `db.__dict__["sqlite3"]` and
+    `sys.modules["gridiron.db"].sqlite3`. An attribute named `sqlite3` is
+    now read as the module on any base, a `from ... import sqlite3` from any
+    module binds it, and any namespace looked up by a driver's constant name
+    (a subscript, `.get`, `getattr`) is refused, as is `_sqlite3` read off
+    anything and `getattr(sqlite3, "dbapi2")`.
+
+    AND ANY CALL HANDED A DRIVER'S NAME (2026-09-26, the prover of those
+    fixes): the importer was known only by the names it was written with,
+    so `import_module` or `__import__` bound to another name first,
+    `__import__` read out of the builtins, `importlib.util.find_spec`, and
+    `import_module(name="sqlite3")` each opened a database past the scan. A
+    constant naming the driver, as any call's argument, is refused now.
+
+    Still unseen, a static scan cannot see them: a module name computed at
+    run time, and the class of a live connection (`type(conn)(path)`) --
+    FOLLOWUPS."""
     root = config.PACKAGE_ROOT if root is None else Path(root)
     faults: list[str] = []
     for where, path in _python_files_beside(root):
@@ -7127,7 +7225,11 @@ def raw_connect_faults(root: Path | None = None) -> list[str]:
             continue
         modules: set[str] = set()          # names bound to sqlite3 or dbapi2
         openers: dict[str, str] = {}       # name -> "connect" | "Connection"
+        importers: set[str] = {"__import__"}   # names that import by string
+        loaders: set[str] = set()              # names bound to importlib
         found: list[tuple[ast.AST, str]] = []
+        parents = {id(child): node for node in ast.walk(tree)
+                   for child in ast.iter_child_nodes(node)}
         # A STAR IMPORT AND THE DRIVER UNDERNEATH (2026-09-25, found proving
         # this scan). `from sqlite3 import *` brings `connect` in under a bare
         # name no import line shows, and `_sqlite3` is the C driver `sqlite3`
@@ -7144,6 +7246,8 @@ def raw_connect_faults(root: Path | None = None) -> list[str]:
                     elif top == "_sqlite3":
                         found.append((node, "imports _sqlite3, the driver "
                                             "underneath sqlite3"))
+                    elif top == "importlib":
+                        loaders.add(alias.asname or "importlib")
             elif isinstance(node, ast.ImportFrom):
                 top = (node.module or "").split(".")[0]
                 if top == "apsw":
@@ -7151,7 +7255,23 @@ def raw_connect_faults(root: Path | None = None) -> list[str]:
                 elif top == "_sqlite3":
                     found.append((node, "imports from _sqlite3, the driver "
                                         "underneath sqlite3"))
+                elif top == "importlib":
+                    importers.update(alias.asname or alias.name for alias in node.names
+                                     if alias.name == "import_module")
                 if top != "sqlite3":
+                    # THE DRIVER THROUGH ANOTHER MODULE'S NAMESPACE (2026-09-25,
+                    # the rehearsal of the fixes for the review of 3603300):
+                    # every module that imports sqlite3 holds it as an
+                    # attribute, so `from gridiron.db import sqlite3` binds
+                    # the driver as surely as an import line -- and opened a
+                    # database past the scan.
+                    for alias in node.names:
+                        if alias.name in ("sqlite3", "dbapi2"):
+                            modules.add(alias.asname or alias.name)
+                        elif alias.name in ("_sqlite3", "apsw"):
+                            found.append((node, f"imports `{alias.name}`, a "
+                                                f"SQLite driver, through "
+                                                f"`{node.module or '.'}`"))
                     continue
                 for alias in node.names:
                     if alias.name == "*":
@@ -7164,35 +7284,167 @@ def raw_connect_faults(root: Path | None = None) -> list[str]:
                         openers[alias.asname or alias.name] = alias.name
 
         def is_module(node: ast.AST) -> bool:
+            """The driver module, under any name this file gives it -- and,
+            from 2026-09-25 (the rehearsal of these fixes), read off ANY
+            other module that holds it: `db.sqlite3`, `gridiron.db.sqlite3`,
+            `sys.modules["gridiron.db"].sqlite3` each opened a database
+            past the scan with `.connect`."""
             if isinstance(node, ast.Name):
                 return node.id in modules
-            return (isinstance(node, ast.Attribute) and node.attr == "dbapi2"
-                    and is_module(node.value))
+            return (isinstance(node, ast.Attribute)
+                    and (node.attr == "sqlite3"
+                         or (node.attr == "dbapi2" and is_module(node.value))))
+
+        def is_connection(node: ast.AST) -> bool:
+            """`sqlite3.Connection`, under any spelling the file imports."""
+            if isinstance(node, ast.Attribute):
+                return node.attr == "Connection" and is_module(node.value)
+            return (isinstance(node, ast.Name)
+                    and openers.get(node.id) == "Connection")
+
+        # A MODULE BOUND TO ANOTHER NAME IS THE MODULE (2026-09-25): `s =
+        # sqlite3` then `s.connect(...)` opened past the first version. The
+        # binding is refused below, and the name is read as the module too.
+        grew = True
+        while grew:
+            grew = False
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign) and is_module(node.value):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id not in modules:
+                            modules.add(target.id)
+                            grew = True
+        # A SUBCLASS OF THE CONNECTION OPENS A FILE WHEN IT IS CALLED.
+        subclasses = {node.name for node in ast.walk(tree)
+                      if isinstance(node, ast.ClassDef)
+                      and any(is_connection(base) for base in node.bases)}
 
         called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
         for node in ast.walk(tree):
+            parent = parents.get(id(node))
             if isinstance(node, ast.Attribute) and is_module(node.value) \
                     and not isinstance(node.ctx, ast.Store):
                 if node.attr == "connect":
                     found.append((node, "opens a database with a raw "
                                         "`sqlite3.connect`"))
-                elif node.attr == "Connection" and id(node) in called:
-                    found.append((node, "opens a database by calling "
-                                        "`sqlite3.Connection`"))
+                elif node.attr.startswith("__"):
+                    found.append((node, f"reads `sqlite3.{node.attr}`, which "
+                                        f"reaches `connect` round this scan"))
+            if is_connection(node) and not isinstance(node.ctx, ast.Store) \
+                    and not _in_an_annotation(node, parents):
+                spelled = ("`sqlite3.Connection`" if isinstance(node, ast.Attribute)
+                           else f"`sqlite3.Connection`, imported as `{node.id}`")
+                if id(node) in called:
+                    found.append((node, f"opens a database by calling {spelled}"))
+                elif isinstance(parent, ast.ClassDef):
+                    found.append((node, f"subclasses {spelled}; calling the "
+                                        f"subclass `{parent.name}` opens a "
+                                        f"database"))
+                else:
+                    found.append((node, f"hands {spelled} on as a value; "
+                                        f"calling it opens a database -- it may "
+                                        f"be named only in an annotation or an "
+                                        f"isinstance"))
             elif isinstance(node, ast.Name) and node.id in openers \
+                    and openers[node.id] == "connect" \
                     and isinstance(node.ctx, ast.Load):
-                if openers[node.id] == "connect" or id(node) in called:
-                    found.append((node, f"opens a database through "
-                                        f"`sqlite3.{openers[node.id]}`, "
-                                        f"imported as `{node.id}`"))
-            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                  and node.func.id == "getattr" and len(node.args) >= 2
-                  and is_module(node.args[0])
-                  and isinstance(node.args[1], ast.Constant)
-                  and node.args[1].value in _SQLITE_OPENERS):
-                found.append((node, f"reaches `sqlite3.{node.args[1].value}` "
-                                    f"through getattr"))
-        functions = _enclosing_functions(tree)
+                found.append((node, f"opens a database through "
+                                    f"`sqlite3.connect`, imported as `{node.id}`"))
+            elif isinstance(node, ast.Name) and node.id in subclasses \
+                    and id(node) in called:
+                found.append((node, f"opens a database by calling `{node.id}`, "
+                                    f"a subclass of `sqlite3.Connection`"))
+            if (isinstance(node, ast.Name) or is_module(node)) and is_module(node) \
+                    and isinstance(getattr(node, "ctx", None), ast.Load) \
+                    and not (isinstance(parent, ast.Attribute) and parent.value is node):
+                # THE MODULE AS A VALUE (2026-09-25): bound to another name,
+                # passed to `vars`, `getattr` with a name computed at run
+                # time -- each reaches `connect` without writing it.
+                if (isinstance(parent, ast.Call) and isinstance(parent.func, ast.Name)
+                        and parent.func.id in ("getattr", "hasattr")
+                        and parent.args and parent.args[0] is node):
+                    name = (parent.args[1] if len(parent.args) > 1 else None)
+                    if not (isinstance(name, ast.Constant)
+                            and isinstance(name.value, str)):
+                        found.append((node, "reaches an attribute of `sqlite3` "
+                                            "through getattr, by a name computed "
+                                            "at run time"))
+                    elif (name.value in _SQLITE_OPENERS or name.value.startswith("__")
+                          or name.value == "dbapi2"):
+                        found.append((node, f"reaches `sqlite3.{name.value}` "
+                                            f"through getattr"))
+                elif isinstance(parent, ast.Assign) and parent.value is node:
+                    found.append((node, "binds the `sqlite3` module to another "
+                                        "name, whose `connect` opens a database"))
+                else:
+                    found.append((node, "hands the `sqlite3` module on as a "
+                                        "value, whose `connect` opens a database"))
+            if isinstance(node, ast.Call) and (node.args or node.keywords):
+                func = node.func
+                by_name = (
+                    (isinstance(func, ast.Name) and func.id in importers)
+                    or (isinstance(func, ast.Attribute)
+                        and (func.attr == "__import__"
+                             or (func.attr == "import_module"
+                                 and isinstance(func.value, ast.Name)
+                                 and func.value.id in loaders))))
+                driver = _names_a_driver(node.args[0]) if node.args else None
+                handed = [name for name in (
+                    _names_a_driver(arg) for arg in
+                    [*node.args, *(k.value for k in node.keywords)]) if name]
+                if by_name and driver:
+                    found.append((node, f"imports `{driver}` at run time, by "
+                                        f"name, round every import line"))
+                elif (isinstance(func, ast.Attribute) and func.attr == "get"
+                      and isinstance(func.value, ast.Attribute)
+                      and func.value.attr == "modules" and driver):
+                    found.append((node, f"reaches `{driver}` through "
+                                        f"sys.modules"))
+                # ANY NAMESPACE, LOOKED UP BY THE DRIVER'S NAME (2026-09-25,
+                # the rehearsal of these fixes): `getattr(db, "sqlite3")`,
+                # `vars(db).get("sqlite3")` -- another module's copy of the
+                # driver, fetched by a constant name.
+                elif (isinstance(func, ast.Attribute)
+                      and func.attr in ("get", "pop", "setdefault") and driver):
+                    found.append((node, f"reaches `{driver}` through a "
+                                        f"namespace, by name"))
+                elif (isinstance(func, ast.Name) and func.id in ("getattr", "hasattr")
+                      and len(node.args) > 1 and _names_a_driver(node.args[1])):
+                    found.append((node, f"reaches `{_names_a_driver(node.args[1])}` "
+                                        f"through getattr on another module"))
+                # ANY CALL HANDED A DRIVER'S NAME (2026-09-26, found by the
+                # prover of the 5a' fixes). The importer was recognised only
+                # under the names `import_module` and `__import__` were
+                # written with, so each of these opened a database unnamed,
+                # measured on a scratch tree: `load = importlib.import_module`
+                # then `load("sqlite3")`, the same with `builtins.__import__`,
+                # `__builtins__["__import__"]("sqlite3")`,
+                # `getattr(builtins, "__import__")("sqlite3")`, and
+                # `importlib.util.find_spec("sqlite3")`. A constant naming the
+                # driver, handed to any call, is how a module is fetched by
+                # name; which callee does the fetching the scan cannot know,
+                # so it refuses the call, as it refuses the module handed on
+                # as a value. The real tree hands the name to no call.
+                elif handed:
+                    found.append((node, f"hands the name `{handed[0]}` to a "
+                                        f"call, which fetches the driver by "
+                                        f"name round every import line"))
+            elif (isinstance(node, ast.Subscript)
+                  and isinstance(node.value, ast.Attribute)
+                  and node.value.attr == "modules"
+                  and _names_a_driver(node.slice)):
+                found.append((node, f"reaches `{_names_a_driver(node.slice)}` "
+                                    f"through sys.modules"))
+            elif isinstance(node, ast.Subscript) and _names_a_driver(node.slice):
+                # `vars(db)["sqlite3"]`, `db.__dict__["sqlite3"]`,
+                # `globals()["sqlite3"]` (2026-09-25, the same rehearsal).
+                found.append((node, f"reaches `{_names_a_driver(node.slice)}` "
+                                    f"through a namespace, by name"))
+            if (isinstance(node, ast.Attribute) and node.attr == "_sqlite3"
+                    and not isinstance(node.ctx, ast.Store)):
+                found.append((node, "reads `_sqlite3`, the driver underneath "
+                                    "sqlite3, off another module"))
+        functions = _qualified_functions(tree)
         for node, what in found:
             function = functions.get(id(node))
             key = f"{where}:{function}"

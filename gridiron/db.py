@@ -103,6 +103,66 @@ def _is_the_live_record(path: Path) -> bool:
         return False
 
 
+def the_main_worktree() -> Path | None:
+    """The main working tree of this repository -- the checkout the
+    scheduler runs -- from git's own list, whichever worktree this runs
+    from; None where git cannot say (a frozen build, no git)."""
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(config.REPO_ROOT), "worktree", "list", "--porcelain"],
+            capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    for line in done.stdout.decode("utf-8", "replace").splitlines():
+        if line.startswith("worktree "):
+            return Path(line[len("worktree "):].strip())
+    return None
+
+
+def live_record_candidates() -> list[Path]:
+    """Every place the operator's record may be reached from here: the
+    configured record, the default one, this checkout's `var`, and the main
+    worktree's `var`."""
+    places = [Path(config.DB_PATH), Path(config.DEFAULT_DB),
+              config.REPO_ROOT / "var" / "gridiron.db"]
+    main = the_main_worktree()
+    if main is not None:
+        places.append(main / "var" / "gridiron.db")
+    return places
+
+
+def is_the_live_record_file(path: Path | str) -> bool:
+    """Is `path` the operator's record? BY THE FILE'S IDENTITY: the same
+    file on the same volume, whatever the spelling, junction or hard link,
+    against every place the record may be reached from.
+
+    ONE DOOR FOR A TOOL'S --live (2026-09-25). `tools/reconstruct_prompts.py`
+    asked this first; the dated migration asked instead whether the path
+    resolved to the RUNNING checkout's `config.DB_PATH`, so run from a
+    worktree, through a hard link, or with GRIDIRON_DB, GRIDIRON_HOME or
+    GRIDIRON_STATE set, the record was "not the record" and was migrated in
+    place with no backup (the adversarial review of 3603300). Both tools ask
+    here now. Not `_is_the_live_record`, the verification guard's question,
+    which exempts the temp directory on purpose and is keyed on the path the
+    deployment was configured with at import."""
+    import os
+
+    path = Path(path)
+    if str(path) == ":memory:" or not path.exists():
+        return False
+    for candidate in live_record_candidates():
+        try:
+            if candidate.exists() and os.path.samefile(path, candidate):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def refuse_the_live_record(path: Path | str, doing: str = "open") -> None:
     """Raise `LiveRecordTouched` when verification is about to reach the
     operator's own file.
@@ -191,6 +251,82 @@ def read_only(path: Path | str, why: str) -> sqlite3.Connection:
     return connect(Path(path), _live_read_reason=why.strip())
 
 
+#: The files SQLite keeps beside a database while it has it open, and
+#: reads, rewrites or deletes on its own when it next opens it.
+SQLITE_BESIDE = ("-wal", "-shm", "-journal")
+
+
+def the_same_place(a: Path | str, b: Path | str) -> bool:
+    """Do two paths name the same file, existing or not? The same folder by
+    identity (junctions and links followed) and the same name, as Windows
+    compares names."""
+    import os
+
+    a, b = Path(a), Path(b)
+    if os.path.normcase(a.name) != os.path.normcase(b.name):
+        return False
+    try:
+        if a.parent.exists() and b.parent.exists():
+            return os.path.samefile(a.parent, b.parent)
+    except OSError:
+        pass
+    return (os.path.normcase(str(a.parent.resolve()))
+            == os.path.normcase(str(b.parent.resolve())))
+
+
+def not_a_file_of_its_own(path: Path | str, beside=()) -> str | None:
+    """Why `path`, a file about to be CREATED, would not be a file of its
+    own; None when it would be. The one rule for every new file a tool
+    writes beside the record -- a backup, a scratch copy, a report.
+
+    A WINDOWS SPELLING IS NOT A NEW FILE (2026-09-25, the rehearsal of the
+    fixes for the adversarial review of 3603300). A colon in a name makes an
+    NTFS alternate data stream INSIDE the file named before it: measured on
+    a scratch install, `--report <record>:report` wrote the report into the
+    record's own file, `--backup <record>:backup` put the "verified backup"
+    (and its -wal and -shm) inside the file it was meant to protect, and
+    `--rehearse --scratch <record>:scratch` wrote the whole rehearsal copy
+    into it -- each exit 0, because the checks compare a folder and a name,
+    and a stream's name is not its file's. An ISO time in a name
+    (`gridiron.before-ruling-2.2026-09-26T10:15.db`) makes the same stream
+    by accident, inside a new empty file most copies drop it from. And a
+    name ending in a dot or a space is the name without it, which Windows
+    strips: `--report <backup>.` passed every check and met the backup only
+    after the migration had committed. Both are refused before anything is
+    done. Elsewhere than Windows a colon is an ordinary character.
+
+    NOR A FILE SQLITE KEEPS BESIDE A DATABASE (2026-09-26, the same
+    rehearsal): `path` may not be any database in `beside` or its -wal, -shm
+    or -journal. SQLite deletes such a file the next time it opens and
+    closes the database -- measured -- and takes a -journal for a hot
+    journal at once: `--live --backup <record>-journal` wrote and "verified"
+    the backup, and the migration's own open of the record deleted it before
+    the run ended, exit 0, the record migrated with no backup anywhere. Only
+    `--report` was held to this rule until then."""
+    import os
+
+    name = Path(path).name
+    if os.name == "nt" and ":" in name:
+        return (f"has a colon in its name ({name!r}): on Windows that is a "
+                f"stream inside the file {name.split(':')[0]!r}, not a file "
+                f"of its own")
+    if os.name == "nt" and name and name != name.rstrip(" ."):
+        return (f"ends in a dot or a space ({name!r}), which Windows strips, "
+                f"so it names {name.rstrip(' .')!r}")
+    for database in beside:
+        database = Path(database)
+        if str(database) == ":memory:":
+            continue
+        for suffix in ("",) + SQLITE_BESIDE:
+            kept = database.with_name(database.name + suffix)
+            if the_same_place(path, kept):
+                return (f"is the database {database} itself" if not suffix else
+                        f"is {kept}, the {suffix[1:]} file SQLite keeps beside "
+                        f"the database {database} and deletes when it next "
+                        f"opens it")
+    return None
+
+
 def back_up_the_live_record(target: Path | str, why: str) -> Path:
     """Copy one instant of the operator's record into `target`, which may
     never be the record itself.
@@ -238,6 +374,14 @@ def back_up(source: Path | str, target: Path | str, why: str, *,
     if str(source) != ":memory:" and target.resolve() == Path(source).resolve():
         raise LiveRecordTouched(
             f"A BACKUP MAY NOT BE WRITTEN OVER ITS OWN SOURCE: {target}.")
+    # A BACKUP IS A FILE OF ITS OWN (2026-09-25/26, the rehearsal of the
+    # fixes for the review of 3603300): never a stream inside another file,
+    # nor a name Windows reads as another's, nor a file SQLite keeps beside
+    # the source or the record -- it would delete it. `not_a_file_of_its_own`
+    # says why.
+    elsewhere = not_a_file_of_its_own(target, beside=[source, config.DB_PATH])
+    if elsewhere:
+        raise LiveRecordTouched(f"A BACKUP IS A FILE OF ITS OWN: {target} {elsewhere}.")
     original = read_only(source, why)
     try:
         original.isolation_level = None
@@ -543,13 +687,28 @@ def widen_sport_checks(conn: sqlite3.Connection) -> list[str]:
     about one, then served a 500 on the college digest because the
     session-marker table had the old list too.
 
-    These tables hold no forecast and no claim -- `session_seen` records when a
-    browser last looked -- so the rebuild is a plain copy rather than the
-    verified one `predictions` gets. What matters is that it happens at all.
+    THROUGH THE REBUILD DOOR (2026-09-25, the adversarial review of 3603300).
+    This used to rename the table aside with `legacy_alter_table` on but
+    foreign keys ON -- the connection's own setting -- and with foreign keys
+    on, SQLite rewrites every child's REFERENCES to follow a renamed parent
+    whatever `legacy_alter_table` says. Before schema ruling 2's migration
+    the live record's `factors`, `factor_scores` and `model_fits` carried no
+    "sport IN" and were never rebuilt here; after it they do, so the next
+    declared sport would have renamed `model_fits` aside, pointed
+    `fit_activations` at `model_fits_narrow`, and dropped it (reproduced with
+    a simulated sixth sport; `games` and its seven children had the same
+    exposure all along). Every table to widen is now rebuilt by
+    `gridiron.rebuild` in one transaction, as ruling 2's migration is:
+    foreign keys off and `legacy_alter_table` on, so no child is repointed;
+    every row count and column checksum verified; indexes, triggers and the
+    AUTOINCREMENT sequence carried; any failure rolled back with nothing
+    swapped. `tests/test_rebuild.py` declares a sixth sport on a migrated
+    copy and holds every foreign key and every row to it.
     """
-    from . import config
+    from . import config, rebuild
 
     done = []
+    plan = []
     for table in WIDEN_ON_SIGHT:
         # RECOVER A REBUILD THAT DIED HALF WAY. If `<table>_narrow` is still
         # here, a previous attempt renamed the table aside and never finished.
@@ -574,12 +733,14 @@ def widen_sport_checks(conn: sqlite3.Connection) -> list[str]:
         stored = row[0]
         if all(f"'{sport}'" in stored for sport in config.SPORTS):
             continue
-        expected = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-        conn.execute("PRAGMA legacy_alter_table = ON")
-        conn.execute(f"ALTER TABLE {table} RENAME TO {table}_narrow")
-        conn.execute("PRAGMA legacy_alter_table = OFF")
-        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-        done.append(_finish_widening_table(conn, table, expected))
+        plan.append(table)
+    if plan:
+        if conn.in_transaction:
+            conn.commit()
+        definitions = rebuild.released_definitions(plan)
+        report = rebuild.rebuild_tables(conn, [definitions[t] for t in plan])
+        done += [f"{entry.table} ({entry.rows_after} rows)"
+                 for entry in report.tables if entry.action == "rebuilt"]
     return done
 
 

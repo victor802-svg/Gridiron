@@ -9,9 +9,12 @@
 -- DEFAULT the release does not). The two LAW 1 snapshot triggers name
 -- "predictions" quoted, as a RENAME wrote them.
 --
--- ONE ADDITION, market_snapshots_no_delete (schema ruling 4, built
--- 2026-09-25): the release that carries the migration creates it on the
--- record, through CREATE TRIGGER IF NOT EXISTS, before the migration runs.
+-- THREE ADDITIONS, market_snapshots_no_delete (schema ruling 4, built
+-- 2026-09-25), market_snapshots_never_replaced (the adversarial review of
+-- 3603300, the same day) and market_snapshots_never_replaced_by_update (the
+-- rehearsal of its fixes, the same day): the release that carries the
+-- migration creates each on the record, through the schema script's
+-- if-absent form, before the migration runs.
 --
 -- Used by the tests and the plantings to put a scratch record into the
 -- shapes the migration is measured against. Not schema; nothing runs it on
@@ -188,4 +191,30 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 3: a market snapshot is never deleted; what the market '
         || 'said beside a forecast stays in its record');
+END;
+
+CREATE TRIGGER market_snapshots_never_replaced
+BEFORE INSERT ON market_snapshots
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM market_snapshots s WHERE s.id = NEW.id)
+  OR EXISTS (SELECT 1 FROM market_snapshots s
+              WHERE s.prediction_id = NEW.prediction_id AND s.kind = NEW.kind)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a market snapshot is never replaced; one look of '
+        || 'each kind per forecast, written once');
+END;
+
+CREATE TRIGGER market_snapshots_never_replaced_by_update
+BEFORE UPDATE OF id, prediction_id, kind ON market_snapshots
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM market_snapshots s
+              WHERE s.id = NEW.id AND s.id IS NOT OLD.id)
+  OR EXISTS (SELECT 1 FROM market_snapshots s
+              WHERE s.prediction_id = NEW.prediction_id AND s.kind = NEW.kind
+                AND s.id IS NOT OLD.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a market snapshot is never replaced; an update may '
+        || 'not take the place of another stored snapshot');
 END;

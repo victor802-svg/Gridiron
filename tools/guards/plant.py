@@ -7761,11 +7761,72 @@ def _a_whole_tree(tmp: Path) -> Path:
     return tmp / "gridiron"
 
 
+#: EVERY WAY ROUND THE FIRST SCAN (the adversarial review of 3603300,
+#: 2026-09-25), each in a function of its own; each opened a database past
+#: it, and each must now be named by its function.
+_RAW_OPENS_ROUND_THE_SCAN = '''import importlib
+import sqlite3
+import sys
+
+from gridiron import config
+
+
+def planted_module_bound_to_another_name():
+    s = sqlite3
+    return s.connect(str(config.DB_PATH))
+
+
+class PlantedConnection(sqlite3.Connection):
+    pass
+
+
+def planted_subclass_called():
+    return PlantedConnection(str(config.DB_PATH))
+
+
+def planted_import_module_by_name():
+    return importlib.import_module("sqlite3").connect(str(config.DB_PATH))
+
+
+def planted_dunder_import_by_name():
+    return __import__("sqlite3").connect(str(config.DB_PATH))
+
+
+def planted_vars_of_the_module():
+    return vars(sqlite3)["connect"](str(config.DB_PATH))
+
+
+def planted_getattr_computed():
+    return getattr(sqlite3, "conn" + "ect")(str(config.DB_PATH))
+
+
+def planted_sys_modules():
+    return sys.modules["sqlite3"].connect(str(config.DB_PATH))
+'''
+
+#: And a helper named `connect` nested in db.py, which the connection
+#: factory's exemption, keyed on the bare name, let through.
+_A_NESTED_CONNECT_IN_DB = '''
+
+# PLANTED VIOLATION
+def planted_backup_helper(path):
+    def connect(p):
+        return sqlite3.connect(p)
+    return connect(path)
+'''
+
+
 def plant_a_raw_connect_past_the_door() -> Result:
-    """Open a database raw, four ways, in a copy of the tree: a tool calling
+    """Open a database raw in a copy of the tree: a tool calling
     `sqlite3.connect` on the record's path, the package calling it under
     another name, a test calling `sqlite3.Connection` through an alias
-    imported inside the test, and a test reaching `connect` by `getattr`.
+    imported inside the test, and a test reaching `connect` by `getattr` --
+    and, from the adversarial review of 3603300 (2026-09-25), every way it
+    found round the scan: the module bound to another name, a subclass of
+    the connection called, the driver imported by name through importlib
+    and through `__import__`, `vars` of the module, a `getattr` with a
+    computed name, `sys.modules`, and a helper named `connect` nested in
+    `db.py`.
 
     The first is the shape two tools had until 2026-09-25 -- `--database`
     opened raw, and the path it named could be the operator's record. Each
@@ -7774,7 +7835,8 @@ def plant_a_raw_connect_past_the_door() -> Result:
     """
     from gridiron import audit as _audit
 
-    violation = "four raw SQLite opens: a tool, the package, two tests"
+    violation = ("raw SQLite opens in a tool, the package and two tests, and "
+                 "every way round the first scan the review of 3603300 found")
     guard = "audit.raw_connect_faults"
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         root = _a_whole_tree(Path(tmp))
@@ -7783,6 +7845,11 @@ def plant_a_raw_connect_past_the_door() -> Result:
             "def planted_raw_read():\n"
             "    return sqlite3.connect(str(config.DB_PATH))\n",
             encoding="utf-8")
+        (Path(tmp) / "tools" / "planted_round_the_scan.py").write_text(
+            _RAW_OPENS_ROUND_THE_SCAN, encoding="utf-8")
+        factory = root / "db.py"
+        factory.write_text(factory.read_text(encoding="utf-8")
+                           + _A_NESTED_CONNECT_IN_DB, encoding="utf-8")
         views = root / "views.py"
         views.write_text(
             views.read_text(encoding="utf-8")
@@ -7801,7 +7868,12 @@ def plant_a_raw_connect_past_the_door() -> Result:
             encoding="utf-8")
         faults = _audit.raw_connect_faults(root)
     wanted = ("(planted_raw_read)", "(planted_aliased_open)",
-              "(test_planted_connection_call)", "(test_planted_getattr_open)")
+              "(test_planted_connection_call)", "(test_planted_getattr_open)",
+              "(planted_module_bound_to_another_name)",
+              "subclass `PlantedConnection`", "(planted_subclass_called)",
+              "(planted_import_module_by_name)", "(planted_dunder_import_by_name)",
+              "(planted_vars_of_the_module)", "(planted_getattr_computed)",
+              "(planted_sys_modules)", "(planted_backup_helper.connect)")
     hit = [f for f in faults if any(w in f for w in wanted)]
     if all(any(w in f for f in hit) for w in wanted) and len(hit) == len(faults):
         return Result(LAW_ONE_WAY_IN, violation, guard, True,
@@ -7811,6 +7883,170 @@ def plant_a_raw_connect_past_the_door() -> Result:
         f"NOT CAUGHT - the scan said {faults!r}. A raw open cannot say which "
         f"file it reaches, and one that reaches the operator's record goes "
         f"round every door verification has")
+
+
+#: THE DRIVER THROUGH ANOTHER MODULE (the rehearsal of the fixes for the
+#: review of 3603300, 2026-09-25): every module that imports sqlite3 holds
+#: it as an attribute. Each of these opened a database past the scan as the
+#: builder left it, measured on scratch files.
+_RAW_OPENS_THROUGH_ANOTHER_MODULE = '''import sys
+
+import gridiron.db
+from gridiron import db
+from gridiron.db import sqlite3 as lite
+
+
+def planted_attribute_of_another_module():
+    return db.sqlite3.connect(":memory:")
+
+
+def planted_imported_from_another_module():
+    return lite.connect(":memory:")
+
+
+def planted_dotted_through_the_package():
+    return gridiron.db.sqlite3.connect(":memory:")
+
+
+def planted_vars_of_another_module():
+    return vars(db)["sqlite3"].connect(":memory:")
+
+
+def planted_getattr_of_another_module():
+    return getattr(db, "sqlite3").connect(":memory:")
+
+
+def planted_dict_of_another_module():
+    return db.__dict__["sqlite3"].connect(":memory:")
+
+
+def planted_sys_modules_of_another_module():
+    return sys.modules["gridiron.db"].sqlite3.connect(":memory:")
+
+
+def planted_getattr_dbapi2():
+    import sqlite3
+    return getattr(sqlite3, "dbapi2").connect(":memory:")
+'''
+
+
+def plant_a_raw_connect_through_another_module() -> Result:
+    """Open a database raw through ANOTHER module's copy of the driver, eight
+    ways, in a copy of the tree (the rehearsal of the fixes for the review
+    of 3603300, 2026-09-25): `db.sqlite3.connect`, `from gridiron.db import
+    sqlite3`, `gridiron.db.sqlite3.connect`, `vars(db)["sqlite3"]`,
+    `getattr(db, "sqlite3")`, `db.__dict__["sqlite3"]`,
+    `sys.modules["gridiron.db"].sqlite3`, and `getattr(sqlite3, "dbapi2")`.
+    Each must be named by its function, and nothing else in the copied tree
+    may be."""
+    from gridiron import audit as _audit
+
+    violation = ("raw SQLite opens through another module's namespace, eight "
+                 "ways, in a tool")
+    guard = "audit.raw_connect_faults"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = _a_whole_tree(Path(tmp))
+        (Path(tmp) / "tools" / "planted_through_another_module.py").write_text(
+            _RAW_OPENS_THROUGH_ANOTHER_MODULE, encoding="utf-8")
+        faults = _audit.raw_connect_faults(root)
+    wanted = ("(planted_attribute_of_another_module)",
+              "(planted_imported_from_another_module)",
+              "(planted_dotted_through_the_package)",
+              "(planted_vars_of_another_module)",
+              "(planted_getattr_of_another_module)",
+              "(planted_dict_of_another_module)",
+              "(planted_sys_modules_of_another_module)",
+              "(planted_getattr_dbapi2)")
+    hit = [f for f in faults if any(w in f for w in wanted)]
+    missed = [w for w in wanted if not any(w in f for f in hit)]
+    if not missed and len(hit) == len(faults):
+        return Result(LAW_ONE_WAY_IN, violation, guard, True,
+                      " / ".join(f.split(". ")[0] for f in hit))
+    return Result(
+        LAW_ONE_WAY_IN, violation, guard, False,
+        f"NOT CAUGHT - {len(missed)} of {len(wanted)} opens went past the "
+        f"scan unnamed ({', '.join(missed) or 'none'}); it said {faults!r}. "
+        f"Any module that imports sqlite3 hands the driver to whoever reads "
+        f"it off that module")
+
+
+#: THE DRIVER FETCHED BY NAME THROUGH ANY CALL (found by the prover of the
+#: fixes for the review of 3603300, 2026-09-26): the importer was recognised
+#: only under the names `import_module` and `__import__` were written with,
+#: and only with the name as its first positional argument. Each of these
+#: opened a database past the scan as the rehearsal left it, measured on a
+#: scratch tree.
+_RAW_OPENS_BY_NAME_THROUGH_ANY_CALL = '''import builtins
+import importlib
+import importlib.util
+
+
+def planted_import_module_bound_first():
+    load = importlib.import_module
+    return load("sqlite3").connect(":memory:")
+
+
+def planted_dunder_import_bound_first():
+    load = builtins.__import__
+    return load("sqlite3").connect(":memory:")
+
+
+def planted_import_through_the_builtins_dict():
+    return builtins.__dict__["__import__"]("sqlite3").connect(":memory:")
+
+
+def planted_getattr_dunder_import():
+    return getattr(builtins, "__import__")("sqlite3").connect(":memory:")
+
+
+def planted_find_spec():
+    spec = importlib.util.find_spec("sqlite3")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.connect(":memory:")
+
+
+def planted_import_module_by_keyword():
+    return importlib.import_module(name="sqlite3").connect(":memory:")
+'''
+
+
+def plant_a_raw_connect_through_any_call_by_name() -> Result:
+    """Fetch the driver by its name through an importer the scan did not
+    know, six ways, in a copy of the tree (found by the prover of the fixes
+    for the review of 3603300, 2026-09-26): `importlib.import_module` and
+    `builtins.__import__` each bound to another name first, `__import__`
+    read out of the builtins' namespace and through `getattr`,
+    `importlib.util.find_spec`, and `import_module` given the name by
+    keyword. Each must be named by its function, and nothing else in the
+    copied tree may be."""
+    from gridiron import audit as _audit
+
+    violation = ("raw SQLite opens through an importer fetched under another "
+                 "name, six ways, in a tool")
+    guard = "audit.raw_connect_faults"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = _a_whole_tree(Path(tmp))
+        (Path(tmp) / "tools" / "planted_by_name_through_any_call.py").write_text(
+            _RAW_OPENS_BY_NAME_THROUGH_ANY_CALL, encoding="utf-8")
+        faults = _audit.raw_connect_faults(root)
+    wanted = ("(planted_import_module_bound_first)",
+              "(planted_dunder_import_bound_first)",
+              "(planted_import_through_the_builtins_dict)",
+              "(planted_getattr_dunder_import)",
+              "(planted_find_spec)",
+              "(planted_import_module_by_keyword)")
+    hit = [f for f in faults if any(w in f for w in wanted)]
+    missed = [w for w in wanted if not any(w in f for f in hit)]
+    if not missed and len(hit) == len(faults):
+        return Result(LAW_ONE_WAY_IN, violation, guard, True,
+                      " / ".join(f.split(". ")[0] for f in hit))
+    return Result(
+        LAW_ONE_WAY_IN, violation, guard, False,
+        f"NOT CAUGHT - {len(missed)} of {len(wanted)} opens went past the "
+        f"scan unnamed ({', '.join(missed) or 'none'}); it said {faults!r}. "
+        f"An importer bound to another name fetches the driver by name round "
+        f"every import line")
 
 
 # ---------------------------------------------------------------------------
@@ -8008,6 +8244,171 @@ def plant_a_deleted_snapshot() -> Result:
         "LAW 3", violation, guard, False,
         f"the planting did not test the trigger: refused={refused!r}, "
         f"{kept} of 2 rows kept, and {landed} removed once it was dropped")
+
+
+def plant_a_replaced_snapshot() -> Result:
+    """Replace a market snapshot with an insert, twice (the adversarial
+    review of 3603300, 2026-09-25): OR REPLACE on the forecast and look a
+    stored snapshot already holds -- the one-of-each-kind index -- and OR
+    REPLACE naming a stored snapshot's id. Either removes the stored row
+    without firing `market_snapshots_no_delete`, because SQLite runs no
+    delete rule for a replacement unless recursive triggers are on, and
+    leaves a hole in the ids exactly like 174-181.
+
+    Both must be refused by name with every row where it was; then the same
+    two with the replace rule dropped, where they must land -- proof that
+    the replacement is real and the rule is what stopped it, not the delete
+    rule or anything else."""
+    violation = ("INSERT OR REPLACE over a stored market snapshot, by its "
+                 "forecast and look, and by its id")
+    guard = "SQL trigger market_snapshots_never_replaced"
+    replacements = (
+        "INSERT OR REPLACE INTO market_snapshots (prediction_id, fetched_utc,"
+        " source, line, implied_prob, kind) VALUES (?, '2026-08-31T23:59:00Z',"
+        " 'planted', NULL, 0.5, 'near_start')",
+        "INSERT OR REPLACE INTO market_snapshots (id, prediction_id, fetched_utc,"
+        " source, line, implied_prob, kind) VALUES (1, ?, '2026-08-31T23:59:00Z',"
+        " 'planted', NULL, 0.5, 'open_at_predict')",
+    )
+    conn = db.connect(":memory:")
+    try:
+        db.init(conn)
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+            " home, away, status) VALUES ('2026_mlb_planted', 'mlb', 2026, 243,"
+            " 'REG', '2026-09-01T23:10:00Z', 'NYY', 'BOS', 'scheduled')")
+        pid = conn.execute(
+            "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " factor_set_version, factors_json, reasoning)"
+            " VALUES ('2026-08-31T18:00:04Z', '2026_mlb_planted', 'mlb',"
+            " 'moneyline', 'NYY', NULL, 0.6, 'win', 'statistical', 'fs2', '{}',"
+            " 'planted')").lastrowid
+        for fetched, kind in (("2026-08-31T18:00:47Z", "open_at_predict"),
+                              ("2026-08-31T22:33:46Z", "near_start")):
+            conn.execute(
+                "INSERT INTO market_snapshots (prediction_id, fetched_utc,"
+                " source, line, implied_prob, kind)"
+                " VALUES (?, ?, 'planted', NULL, 0.6175, ?)",
+                (pid, fetched, kind))
+        conn.commit()
+
+        def rows():
+            return [tuple(r) for r in conn.execute(
+                "SELECT id, fetched_utc, kind FROM market_snapshots ORDER BY id")]
+
+        stored = rows()
+        refused = []
+        for statement in replacements:
+            try:
+                conn.execute(statement, (pid,))
+                conn.commit()
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                refused.append(str(exc))
+        kept = rows()
+        conn.execute("DROP TRIGGER IF EXISTS market_snapshots_never_replaced")
+        for statement in replacements:
+            conn.execute(statement, (pid,))
+        landed = rows()
+    finally:
+        conn.close()
+    if (len(refused) == 2 and all("LAW 3" in r and "replaced" in r for r in refused)
+            and kept == stored and len(stored) == 2 and landed != stored
+            and [r[0] for r in landed] != [r[0] for r in stored]):
+        return Result("LAW 3", violation, guard, True, refused[0])
+    if kept != stored:
+        return Result(
+            "LAW 3", violation, guard, False,
+            f"NOT CAUGHT - the snapshots went from {stored} to {kept} and "
+            f"nothing refused it. A replacing insert removes the stored row "
+            f"without firing the delete rule, and the hole it leaves in the "
+            f"ids is the only trace")
+    return Result(
+        "LAW 3", violation, guard, False,
+        f"the planting did not test the rule: refused={refused!r}, kept "
+        f"{kept} of {stored}, and {landed} once the rule was dropped")
+
+
+def plant_a_snapshot_replaced_by_an_update() -> Result:
+    """Replace a market snapshot with an UPDATE, twice (the rehearsal of the
+    fixes for the adversarial review of 3603300, 2026-09-25): UPDATE OR
+    REPLACE moving the near-start look onto the forecast's opening look --
+    the one-of-each-kind index -- and moving it onto the opening look's id.
+    Either removes the other stored row round `market_snapshots_no_delete`,
+    exactly as the replacing insert did, and the id it held becomes a hole.
+
+    Both must be refused by name with every row where it was; then the same
+    two with the rule dropped, where the other row must go -- proof that the
+    replacement is real and this rule is what stopped it. Nothing else about
+    an update is tested here: freezing a snapshot is question 6."""
+    violation = ("UPDATE OR REPLACE moving a market snapshot onto another's "
+                 "forecast and look, and onto another's id")
+    guard = "SQL trigger market_snapshots_never_replaced_by_update"
+    conn = db.connect(":memory:")
+    try:
+        db.init(conn)
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+            " home, away, status) VALUES ('2026_mlb_planted', 'mlb', 2026, 243,"
+            " 'REG', '2026-09-01T23:10:00Z', 'NYY', 'BOS', 'scheduled')")
+        pid = conn.execute(
+            "INSERT INTO predictions (created_utc, game_id, sport, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " factor_set_version, factors_json, reasoning)"
+            " VALUES ('2026-08-31T18:00:04Z', '2026_mlb_planted', 'mlb',"
+            " 'moneyline', 'NYY', NULL, 0.6, 'win', 'statistical', 'fs2', '{}',"
+            " 'planted')").lastrowid
+        ids = []
+        for fetched, kind in (("2026-08-31T18:00:47Z", "open_at_predict"),
+                              ("2026-08-31T22:33:46Z", "near_start")):
+            ids.append(conn.execute(
+                "INSERT INTO market_snapshots (prediction_id, fetched_utc,"
+                " source, line, implied_prob, kind)"
+                " VALUES (?, ?, 'planted', NULL, 0.6175, ?)",
+                (pid, fetched, kind)).lastrowid)
+        conn.commit()
+        opening, near = ids
+        replacements = (
+            f"UPDATE OR REPLACE market_snapshots SET kind = 'open_at_predict'"
+            f" WHERE id = {near}",
+            f"UPDATE OR REPLACE market_snapshots SET id = {opening}"
+            f" WHERE id = {near}",
+        )
+
+        def rows():
+            return [tuple(r) for r in conn.execute(
+                "SELECT id, fetched_utc, kind FROM market_snapshots ORDER BY id")]
+
+        stored = rows()
+        refused = []
+        for statement in replacements:
+            try:
+                conn.execute(statement)
+                conn.commit()
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                refused.append(str(exc))
+        kept = rows()
+        conn.execute("DROP TRIGGER IF EXISTS market_snapshots_never_replaced_by_update")
+        conn.execute(replacements[0])
+        landed = rows()
+    finally:
+        conn.close()
+    if (len(refused) == 2 and all("LAW 3" in r and "replaced" in r for r in refused)
+            and kept == stored and len(stored) == 2 and len(landed) == 1):
+        return Result("LAW 3", violation, guard, True, refused[0])
+    if kept != stored:
+        return Result(
+            "LAW 3", violation, guard, False,
+            f"NOT CAUGHT - the snapshots went from {stored} to {kept} and "
+            f"nothing refused it. An update under OR REPLACE removes the row "
+            f"it collides with without firing the delete rule, and the hole it "
+            f"leaves in the ids is the only trace")
+    return Result(
+        "LAW 3", violation, guard, False,
+        f"the planting did not test the rule: refused={refused!r}, kept "
+        f"{kept} of {stored}, and {landed} once the rule was dropped")
 
 
 # ---------------------------------------------------------------------------
@@ -8219,16 +8620,20 @@ def plant_a_cleared_difference_left_in_the_register() -> Result:
 
 
 def plant_a_rebuild_that_alters_a_row() -> Result:
-    """Corrupt the copy step of ruling 2's rebuild, twice, on a record in
-    the live shapes with rows in it: one value altered in the LAST table
-    rebuilt, after seven have already been swapped inside the transaction,
-    and one row lost from the FIRST. Each must be refused naming the table,
-    with nothing swapped -- the schema byte for byte as it was, every
-    table's rows and checksums as they were, nothing left aside. Then the
-    same altered copy with the checksums blinded, which must land: proof
-    that the corruption is real and the checksums are what stopped it."""
+    """Corrupt the copy step of ruling 2's rebuild, three times, on a record
+    in the live shapes with rows in it: one value altered in the LAST table
+    rebuilt, after seven have already been swapped inside the transaction;
+    one row lost from the FIRST; and -- from the adversarial review of
+    3603300, 2026-09-25 -- one text changed only AFTER its NUL in the last,
+    which the first checksum, SQLite's `quote()`, could not see. Each must be
+    refused naming the table, with nothing swapped -- the schema byte for
+    byte as it was, every table's rows and checksums as they were, nothing
+    left aside. Then the same altered copy with the checksums blinded, which
+    must land: proof that the corruption is real and the checksums are what
+    stopped it."""
     violation = ("a rebuild whose copy alters one value in the last table, "
-                 "or loses one row from the first")
+                 "loses one row from the first, or changes a text after its "
+                 "NUL")
     guard = "rebuild.rebuild_tables (count and column checksums, one transaction)"
     try:
         from gridiron import rebuild
@@ -8255,7 +8660,8 @@ def plant_a_rebuild_that_alters_a_row() -> Result:
                 "INSERT INTO nba_injuries (player_id, player_name, team, status,"
                 " detail, fetched_utc) VALUES (6430, 'A Player', 'BOS', 'Out',"
                 " NULL, '2026-09-25T00:00:00Z'), (5289900, 'Another', 'NYK',"
-                " 'Questionable', 'ankle', '2026-09-25T00:00:00Z')")
+                " 'Questionable', 'ankle' || char(0) || 'left',"
+                " '2026-09-25T00:00:00Z')")
             conn.commit()
             released = rebuild.released_definitions(tables)
             plan = [released[t] for t in tables]
@@ -8275,6 +8681,8 @@ def plant_a_rebuild_that_alters_a_row() -> Result:
                        f" WHERE rowid = (SELECT MIN(rowid) FROM {last})"),
                 (first, f"DELETE FROM {first}"
                         f" WHERE rowid = (SELECT MAX(rowid) FROM {first})"),
+                (last, f"UPDATE {last} SET detail = 'ankle' || char(0) || 'right'"
+                       f" WHERE player_id = 5289900"),
             )
             for victim, corruption in cases:
                 def corrupting(c, table, aside, columns, with_rowid,
@@ -8334,7 +8742,7 @@ def plant_a_rebuild_that_alters_a_row() -> Result:
         finally:
             conn.close()
     refused = [o for o in outcomes if o.endswith("nothing swapped")]
-    if len(refused) == 2 and landed == 1:
+    if len(refused) == len(cases) and landed == 1:
         return Result(LAW_A_VERIFIED_REBUILD, violation, guard, True,
                       "; ".join(refused) + "; with the checksums blinded, "
                       "the altered value landed")
@@ -11676,6 +12084,12 @@ def main() -> int:
     results.append(plant_a_write_through_the_read_handle_switched_back())
     # SCHEMA RULING 6 (2026-09-24): no raw open past the approved handles.
     results.append(plant_a_raw_connect_past_the_door())
+    # ...nor through another module's copy of the driver (the rehearsal of
+    # the fixes for the review of 3603300, 2026-09-25).
+    results.append(plant_a_raw_connect_through_another_module())
+    # ...nor through an importer under another name (the prover of those
+    # fixes, 2026-09-26).
+    results.append(plant_a_raw_connect_through_any_call_by_name())
     # SCHEMA RULING 5 (2026-09-24): no gated test on the real clock, and auth
     # reads only the clock a test can move.
     results.append(plant_a_test_that_waits_on_the_clock())
@@ -11685,6 +12099,12 @@ def main() -> int:
     # deletion by hand, and the table now refuses the statement that made
     # them (built 2026-09-25).
     results.append(plant_a_deleted_snapshot())
+    # ...AND NOT REPLACED EITHER (the adversarial review of 3603300,
+    # 2026-09-25): OR REPLACE removed a stored snapshot round the delete rule.
+    results.append(plant_a_replaced_snapshot())
+    # ...NOR BY AN UPDATE UNDER OR REPLACE (the rehearsal of those fixes,
+    # 2026-09-25): the same removal, by the other statement that replaces.
+    results.append(plant_a_snapshot_replaced_by_an_update())
     # SCHEMA RULINGS 1 AND 2 (2026-09-24, built 2026-09-25): a new schema
     # difference fails the gate by name, a cleared one cannot stay
     # registered, and a rebuild whose copy is not exact swaps nothing.

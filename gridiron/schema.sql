@@ -1467,6 +1467,56 @@ BEGIN
         || 'said beside a forecast stays in its record');
 END;
 
+-- NOR REPLACED (2026-09-25, the adversarial review of 3603300). An insert
+-- that collides with a stored snapshot -- on its id, or on the one-of-each-
+-- kind rule for its forecast -- under OR REPLACE removes the stored row
+-- without firing the delete rule above, because SQLite runs no delete rule
+-- for a replacement unless recursive triggers are on, and they are not.
+-- The review reproduced it: the stored row went, and a new id took its
+-- place, a hole exactly like 174-181. So an insert naming a stored id, or a
+-- forecast and look already stored, is refused before it can collide. No
+-- writer in the package, the tools or the tests inserts a snapshot that way
+-- (every one checks first and inserts plainly); a plain duplicate was
+-- already refused by the unique index, and is now refused here, by name.
+-- The same rule the prompt record's table carries.
+CREATE TRIGGER IF NOT EXISTS market_snapshots_never_replaced
+BEFORE INSERT ON market_snapshots
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM market_snapshots s WHERE s.id = NEW.id)
+  OR EXISTS (SELECT 1 FROM market_snapshots s
+              WHERE s.prediction_id = NEW.prediction_id AND s.kind = NEW.kind)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a market snapshot is never replaced; one look of '
+        || 'each kind per forecast, written once');
+END;
+
+-- NOR REPLACED BY AN UPDATE (2026-09-25, the rehearsal of the fixes for the
+-- adversarial review of 3603300). An update under OR REPLACE that moves one
+-- snapshot onto the id, or onto the forecast and look, of another stored
+-- snapshot removes that other row exactly as the replacing insert did, and
+-- the delete rule above never runs: measured on these definitions, the
+-- other row went and its id became a hole. So an update that would take
+-- another stored snapshot's place is refused before it can collide. That is
+-- all this rule refuses. Whether a snapshot may be rewritten in place at all
+-- is the operator's open question 6, and this rule freezes nothing: an
+-- update that takes no other row's place is untouched. No writer updates
+-- these columns, and a plain update that collided was already refused by
+-- the unique key, now by name.
+CREATE TRIGGER IF NOT EXISTS market_snapshots_never_replaced_by_update
+BEFORE UPDATE OF id, prediction_id, kind ON market_snapshots
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM market_snapshots s
+              WHERE s.id = NEW.id AND s.id IS NOT OLD.id)
+  OR EXISTS (SELECT 1 FROM market_snapshots s
+              WHERE s.prediction_id = NEW.prediction_id AND s.kind = NEW.kind
+                AND s.id IS NOT OLD.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a market snapshot is never replaced; an update may '
+        || 'not take the place of another stored snapshot');
+END;
+
 
 -- ---------------------------------------------------------------------------
 -- LAW 2 — a factor is never deleted, only deactivated.

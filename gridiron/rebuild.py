@@ -21,7 +21,8 @@ cannot disagree.
 
 HOW A TABLE IS REBUILT, all inside one BEGIN IMMEDIATE:
 
-  1. its row count and a SHA-256 of every column are taken, with its
+  1. its row count and a SHA-256 of every column are taken -- each value
+     exactly, its storage class and its bytes (2026-09-25) -- with its
      AUTOINCREMENT sequence (or the fact that it has none);
   2. it is renamed aside, with `legacy_alter_table` on and foreign keys off,
      so no other table's foreign key and no trigger on another table is
@@ -44,13 +45,18 @@ does not belong to a rebuilt table must be byte for byte what it was. Only
 then COMMIT. Anything raised on the way is a ROLLBACK, and the schema is read
 again to prove nothing was swapped.
 
-`db.init` DOES NOT RUN THIS. See the note there.
+`db.init` DOES NOT RUN THE MIGRATION. See the note there. It does run
+`rebuild_tables` for one thing, from 2026-09-25 (the adversarial review of
+3603300): `db.widen_sport_checks`, when a newly declared sport widens a
+table's sport CHECK, rebuilds the tables it names through this door, so no
+child is repointed at a table renamed aside.
 """
 
 from __future__ import annotations
 
 import hashlib
 import sqlite3
+import struct
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -131,6 +137,12 @@ def differences_from(conn: sqlite3.Connection, definition: Definition) -> list[s
                  here.create, definition.create, f"table {definition.table}")]
     mine = {name: (kind, sql) for kind, name, sql in here.dependants}
     theirs = {name: (kind, sql) for kind, name, sql in definition.dependants}
+    # AN INDEX'S EXPRESSIONS RESOLVE AGAINST ITS TABLE'S COLUMNS, each side
+    # its own (2026-09-25): `schema_diff.object_tokens` is the same door
+    # the gate's comparison uses, so a quoted word that is a string in an
+    # index's WHERE is never read as a name here either.
+    own = schema_diff.table_shape(here.create).order
+    released = schema_diff.table_shape(definition.create).order
     for name in sorted(set(mine) | set(theirs)):
         if name not in theirs:
             found.append(f"{mine[name][0]} {name}: this database has it and "
@@ -138,8 +150,9 @@ def differences_from(conn: sqlite3.Connection, definition: Definition) -> list[s
         elif name not in mine:
             found.append(f"{theirs[name][0]} {name}: the definition has it and "
                          f"this database does not")
-        elif (schema_diff.tokens(mine[name][1])
-              != schema_diff.tokens(theirs[name][1])):
+        elif (schema_diff.object_tokens(mine[name][0], mine[name][1], own)
+              != schema_diff.object_tokens(theirs[name][0], theirs[name][1],
+                                           released)):
             found.append(f"{mine[name][0]} {name}: defined differently")
     if here.automatic_indexes != definition.automatic_indexes:
         found.append(f"table {definition.table}: {here.automatic_indexes} "
@@ -164,16 +177,36 @@ def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return [r[1] for r in conn.execute(f"PRAGMA table_info({_q(table)})")]
 
 
+def _exactly(kind: str, value) -> bytes:
+    """One stored value as bytes that no other stored value shares: its
+    storage class, then its content -- an integer's digits, a real's eight
+    IEEE-754 bytes (so -0.0 is not 0.0), and a text's or a blob's own bytes,
+    every one of them, as SQLite's `hex()` gives them."""
+    if kind == "integer":
+        return b"integer:" + str(value).encode()
+    if kind == "real":
+        return b"real:" + struct.pack(">d", value).hex().encode()
+    if kind in ("text", "blob"):
+        return kind.encode() + b":" + value.encode()
+    return b"null:"
+
+
 def column_checksums(conn: sqlite3.Connection, table: str) -> tuple[int, dict[str, str]]:
     """The table's row count, and a SHA-256 of every column by name.
 
     Each column's digest runs over its rows in rowid order, one line per
-    row: the rowid, a unit separator, and SQLite's own `quote()` of the
-    value -- which tells 1 from 1.0 from '1', a NULL from '', and a real
-    from any other real to the last bit. The rowids get a digest of their
-    own. A lost row, a changed value, a changed type or a renumbered rowid
-    each change at least one digest. Keyed by name, so a new column order
+    row: the rowid, a unit separator, and the value EXACTLY -- its storage
+    class and its bytes (`_exactly`). The rowids get a digest of their own.
+    A lost row, a changed value, a changed type or a renumbered rowid each
+    change at least one digest. Keyed by name, so a new column order
     compares equal when every value is where it was.
+
+    NOT `quote()` (2026-09-25, the adversarial review of 3603300). The first
+    version hashed SQLite's `quote()` of each value, measured then to tell 1
+    from 1.0 from '1' and a NULL from ''. It does not tell -0.0 from 0.0 --
+    both quote as 0.0 -- and it ends a text at its first NUL, so
+    'a'||char(0)||'b' and 'a'||char(0)||'c' quoted alike: a copy that changed
+    either verified. `test_rebuild.py` holds every such pair apart.
     """
     names = _columns(conn, table)
     digests = {name: hashlib.sha256() for name in names}
@@ -184,7 +217,9 @@ def column_checksums(conn: sqlite3.Connection, table: str) -> tuple[int, dict[st
             key=lambda r: r[5]))
     if rowid:
         digests["<rowid>"] = hashlib.sha256()
-    select = ", ".join(f"quote({_q(n)})" for n in names)
+    select = ", ".join(
+        f"typeof({_q(n)}), CASE WHEN typeof({_q(n)}) IN ('text', 'blob')"
+        f" THEN hex({_q(n)}) ELSE {_q(n)} END" for n in names)
     lead = "rowid, " if rowid else "NULL, "
     count = 0
     for row in conn.execute(
@@ -192,9 +227,9 @@ def column_checksums(conn: sqlite3.Connection, table: str) -> tuple[int, dict[st
         key = str(row[0]).encode()
         if rowid:
             digests["<rowid>"].update(key + b"\n")
-        for name, value in zip(names, row[1:]):
+        for k, name in enumerate(names):
             digests[name].update(key + b"\x1f"
-                                 + value.encode("utf-8", "surrogatepass") + b"\n")
+                                 + _exactly(row[1 + 2 * k], row[2 + 2 * k]) + b"\n")
         count += 1
     return count, {name: h.hexdigest() for name, h in sorted(digests.items())}
 
@@ -436,16 +471,33 @@ class BackupReport:
     seconds: float
 
 
+def _schema_rows(conn: sqlite3.Connection) -> dict[tuple[str, str], tuple]:
+    """Every sqlite_master row, byte for byte: each text as SQLite's hex of
+    its bytes, the root page as stored, keyed by kind and name."""
+    return {(r[0], r[1]): tuple(r) for r in conn.execute(
+        "SELECT type, name, hex(CAST(type AS BLOB)), hex(CAST(name AS BLOB)),"
+        " hex(CAST(tbl_name AS BLOB)), rootpage, hex(CAST(sql AS BLOB)),"
+        " typeof(sql) FROM sqlite_master")}
+
+
 def verified_backup(source: Path | str, target: Path | str, why: str) -> BackupReport:
     """Back `source` up into `target` through the backup door, then prove
-    the copy: `PRAGMA integrity_check` on it, and every table's row count
-    and column checksums equal on both sides.
+    the copy: `PRAGMA integrity_check` on it, every sqlite_master row byte
+    for byte, and every table's row count and column checksums equal on
+    both sides.
 
     ONE INSTANT, BOTH SIDES. The source's checksums are read inside the same
     read transaction the backup copied, so a scheduled task writing to the
     record meanwhile cannot make a true copy look false. Raises
     `BackupFailedVerification`, naming each table, when anything differs;
     the target is left where it is, for the operator to look at.
+
+    THE SCHEMA TOO (2026-09-25, the adversarial review of 3603300). The
+    first version compared tables only, so a backup whose index, trigger or
+    view differed from the record's -- a trigger missing, a unique index on
+    other columns -- verified, and a restore from it would have brought the
+    record back without the rule. Every sqlite_master row is compared now,
+    and each object that differs is named.
     """
     source, target = Path(source), Path(target)
     if target.exists():
@@ -465,6 +517,11 @@ def verified_backup(source: Path | str, target: Path | str, why: str) -> BackupR
                 "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
             if copied != tables:
                 report.mismatched.append(f"the tables differ: {tables} against {copied}")
+            here, there = _schema_rows(original), _schema_rows(copy)
+            for kind, name in sorted(set(here) | set(there)):
+                if here.get((kind, name)) != there.get((kind, name)):
+                    report.mismatched.append(
+                        f"{kind} {name} (its sqlite_master row, byte for byte)")
             for table in tables:
                 count, sums = column_checksums(original, table)
                 report.tables[table] = (count, table_digest(sums))

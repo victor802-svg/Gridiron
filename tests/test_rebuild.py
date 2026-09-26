@@ -17,7 +17,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
+import sqlite3
+import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -429,6 +433,22 @@ def _as_the_record(monkeypatch, path: Path) -> None:
     monkeypatch.setattr(config, "DB_PATH", path)
 
 
+def _release_is_this_tree(monkeypatch, tool, **changed) -> None:
+    """--live reads the release from the branch master through git
+    (2026-09-25); here the release is this tree's own files, as it is on the
+    main checkout after the merge -- with any file in `changed` (a path, as
+    git names it, with `/` written `__`) transformed, to make the release
+    differ. Set without raising, so a test also runs on a tool that has no
+    such reader."""
+    wanted = {name.replace("__", "/"): how for name, how in changed.items()}
+
+    def released(path: str) -> str:
+        text = (REPO / path).read_text(encoding="utf-8")
+        return wanted[path](text) if path in wanted else text
+
+    monkeypatch.setattr(tool, "_released_file", released, raising=False)
+
+
 def test_the_record_is_refused_without_live(tmp_path, plant, tool, monkeypatch,
                                             capsys):
     path = tmp_path / "gridiron.db"
@@ -469,6 +489,7 @@ def test_live_takes_a_verified_backup_first_and_keeps_it(
     old_shapes, state = _master(conn), _state(conn, tables)
     conn.close()
     _as_the_record(monkeypatch, path)
+    _release_is_this_tree(monkeypatch, tool)
     backup = tmp_path / "gridiron.before-ruling-2.db"
     assert tool.main(["--database", str(path), "--live",
                       "--backup", str(backup)]) == 0
@@ -541,3 +562,615 @@ def test_the_rehearsal_migrates_a_verified_copy_and_only_reads_the_source(
     finally:
         source.close()
         rehearsed.close()
+
+
+# ---------------------------------------------------------------------------
+# THE ADVERSARIAL REVIEW OF 3603300 (2026-09-25): eight findings, each held
+# here by a test that fails on the code the review read.
+# ---------------------------------------------------------------------------
+
+def _is_a_database(path: Path) -> bool:
+    return path.read_bytes()[:16] == b"SQLite format 3\x00"
+
+
+# --- 1. --report is a new file, never the record, the backup or a database --
+
+def test_a_report_is_never_written_over_the_record_the_backup_or_a_database(
+        tmp_path, plant, tool, monkeypatch, capsys):
+    """The review's reproductions: `--live --backup X --report X` turned the
+    verified backup into JSON; `--report <record>` overwrote the record; a
+    rehearsal with nothing to do overwrote it too, exit 0. Each is refused
+    now, before anything is done: no backup written, no copy made, the
+    record as it was."""
+    path = tmp_path / "gridiron.db"
+    conn = _a_record(path, plant, tool)
+    schema = _master(conn)
+    conn.close()
+    _as_the_record(monkeypatch, path)
+    _release_is_this_tree(monkeypatch, tool)
+    backup, scratch = tmp_path / "before.db", tmp_path / "rehearsal.db"
+    live = ["--database", str(path), "--live", "--backup", str(backup)]
+    for argv in (
+            live + ["--report", str(backup)],
+            live + ["--report", str(tmp_path / "elsewhere" / ".." / "before.db")],
+            live + ["--report", str(backup) + "-wal"],
+            live + ["--report", str(path)],
+            live + ["--report", str(path) + "-journal"],
+            live + ["--report", str(tmp_path / "no-such-folder" / "report.json")],
+            # A "folder" that is a file, the record itself (the prover of
+            # these fixes, 2026-09-26): passed `exists()`, and the run ended
+            # in a traceback where the report was to be written.
+            live + ["--report", str(path / "report.json")],
+            ["--database", str(path), "--rehearse", "--scratch", str(scratch),
+             "--report", str(scratch)],
+            ["--database", str(path), "--rehearse", "--report", str(path)]):
+        with pytest.raises(SystemExit) as refused:
+            tool.main(argv)
+        assert refused.value.code == 2, argv
+        assert "REFUSED: --report" in capsys.readouterr().out, argv
+        assert not backup.exists() and not scratch.exists(), argv
+        assert _is_a_database(path), argv
+    conn = db.read_only(path, "the stand-in, after every refused report")
+    try:
+        assert _master(conn) == schema
+    finally:
+        conn.close()
+
+
+def test_a_report_that_appears_during_the_run_is_not_written_over(
+        tmp_path, plant, tool, monkeypatch, capsys):
+    """Created exclusively: a file that turns up at the report's path while
+    the migration runs is left as it is, and the run says so."""
+    path = tmp_path / "record.db"
+    _a_record(path, plant, tool).close()
+    report = tmp_path / "report.json"
+    real = rebuild.rebuild_tables
+
+    def someone_writes_there(*args, **kwargs):
+        report.write_text("the operator's own notes", encoding="utf-8")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rebuild, "rebuild_tables", someone_writes_there)
+    tool.main(["--database", str(path), "--report", str(report)])
+    assert report.read_text(encoding="utf-8") == "the operator's own notes"
+    assert "REPORT NOT WRITTEN" in capsys.readouterr().out
+
+
+def test_a_report_that_cannot_be_created_is_named_not_a_traceback(
+        tmp_path, plant, tool, monkeypatch, capsys):
+    """The prover of these fixes (2026-09-26): a report whose folder is gone
+    by the time it is written ended the run in a traceback, after the COMMIT
+    on a live run. The run's verdict stands and the missing report is
+    named."""
+    path = tmp_path / "record.db"
+    _a_record(path, plant, tool).close()
+    folder = tmp_path / "reports"
+    folder.mkdir()
+    report = folder / "report.json"
+    real = rebuild.rebuild_tables
+
+    def the_folder_goes(*args, **kwargs):
+        folder.rmdir()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rebuild, "rebuild_tables", the_folder_goes)
+    assert tool.main(["--database", str(path), "--report", str(report)]) == 0
+    out = capsys.readouterr().out
+    assert any(line.startswith("COMMITTED:") for line in out.splitlines()), out
+    assert f"REPORT NOT WRITTEN: {report} could not be created" in out
+    assert not report.exists()
+
+
+@pytest.mark.skipif(os.name != "nt",
+                    reason="a stream and a stripped dot are Windows spellings")
+def test_a_file_the_run_creates_is_never_a_stream_or_another_name(
+        tmp_path, plant, tool, monkeypatch, capsys):
+    """The rehearsal of these fixes (2026-09-25), on a scratch install:
+    `--report <record>:report` wrote the report INTO the record's own file,
+    as an NTFS alternate data stream; `--backup <record>:backup` put the
+    verified backup inside the record it was to protect;
+    `--rehearse --scratch <record>:scratch` wrote the whole rehearsal copy
+    into it; and `--report <backup>.` passed every name check and was
+    refused only after the migration had committed. Each exited 0. Each is
+    refused now, before anything is done, and the backup door refuses a
+    stream for every other caller too."""
+    path = tmp_path / "gridiron.db"
+    conn = _a_record(path, plant, tool)
+    schema = _master(conn)
+    conn.close()
+    _as_the_record(monkeypatch, path)
+    _release_is_this_tree(monkeypatch, tool)
+    backup, scratch = tmp_path / "before.db", tmp_path / "rehearsal.db"
+    live = ["--database", str(path), "--live", "--backup", str(backup)]
+    rehearse = ["--database", str(path), "--rehearse", "--scratch", str(scratch)]
+    timed = tmp_path / "gridiron.before-ruling-2.2026-09-26T10:15.db"
+    cases = (
+        (rehearse + ["--report", str(path) + ":report"], "--report"),
+        (live + ["--report", str(backup) + ":report"], "--report"),
+        (live + ["--report", str(backup) + "."], "--report"),
+        (live + ["--report", str(tmp_path / "report.json ")], "--report"),
+        (["--database", str(path), "--live", "--backup", str(path) + ":backup"],
+         "--backup"),
+        (["--database", str(path), "--live", "--backup", str(timed)], "--backup"),
+        (["--database", str(path), "--rehearse", "--scratch",
+          str(path) + ":scratch"], "--scratch"),
+    )
+    streams = [str(path) + ":report", str(path) + ":backup",
+               str(path) + ":scratch", str(backup) + ":report"]
+    for argv, flag in cases:
+        with pytest.raises(SystemExit) as refused:
+            tool.main(argv)
+        assert refused.value.code == 2, argv
+        out = capsys.readouterr().out
+        assert f"REFUSED: {flag}" in out and "of its own" in out, (argv, out)
+        assert not backup.exists() and not scratch.exists(), argv
+        assert not any(os.path.exists(s) for s in streams), argv
+        assert not (tmp_path / "gridiron.before-ruling-2.2026-09-26T10").exists(), argv
+        assert _is_a_database(path), argv
+    conn = db.read_only(path, "the stand-in, after every refused spelling")
+    try:
+        assert _master(conn) == schema
+    finally:
+        conn.close()
+    with pytest.raises(db.LiveRecordTouched, match="A BACKUP IS A FILE OF ITS OWN"):
+        db.back_up(path, str(tmp_path / "copy.db") + ":stream",
+                   "a backup into a stream, refused")
+    assert not (tmp_path / "copy.db").exists()
+
+
+def test_a_backup_or_a_copy_is_never_a_file_sqlite_keeps_beside_a_database(
+        tmp_path, plant, tool, monkeypatch, capsys):
+    """The rehearsal of these fixes (2026-09-26): SQLite deletes a file at a
+    database's -wal, -shm or -journal the next time it opens the database
+    (measured), and takes a -journal for a hot journal at once. On a scratch
+    install `--live --backup <record>-journal` wrote and verified the
+    backup, then the migration's own open of the record deleted it: exit 0,
+    the record migrated, no backup anywhere. -wal and -shm mangled it, and
+    `--rehearse --scratch <record>-journal` lost its copy the same way. Only
+    --report was held to the rule. Each is refused now, before anything is
+    done; so is the backup door, for every caller."""
+    path = tmp_path / "gridiron.db"
+    conn = _a_record(path, plant, tool)
+    schema = _master(conn)
+    conn.close()
+    _as_the_record(monkeypatch, path)
+    _release_is_this_tree(monkeypatch, tool)
+    copy = tmp_path / "copy.db"
+    db.back_up(path, copy, "a scratch copy of the stand-in")
+    for argv, flag, named in (
+            (["--database", str(path), "--live", "--backup", str(path) + "-journal"],
+             "--backup", "journal"),
+            (["--database", str(path), "--live", "--backup", str(path) + "-wal"],
+             "--backup", "wal"),
+            (["--database", str(path), "--live", "--backup", str(path) + "-shm"],
+             "--backup", "shm"),
+            (["--database", str(path), "--rehearse", "--scratch", str(path) + "-journal"],
+             "--scratch", "journal"),
+            (["--database", str(copy), "--rehearse", "--scratch", str(copy) + "-wal"],
+             "--scratch", "wal"),
+            (["--database", str(copy), "--rehearse", "--scratch", str(path) + "-journal"],
+             "--scratch", "journal"),
+            (["--database", str(copy), "--rehearse", "--scratch", str(path)],
+             "--scratch", "itself")):
+        with pytest.raises(SystemExit) as refused:
+            tool.main(argv)
+        assert refused.value.code == 2, argv
+        out = capsys.readouterr().out
+        assert f"REFUSED: {flag}" in out and named in out, (argv, out)
+        # SQLite's own -wal and -shm may be there; no copy of ours may be.
+        for beside in (path, copy):
+            assert not Path(str(beside) + "-journal").exists(), argv
+            for suffix in ("-wal", "-shm"):
+                kept = Path(str(beside) + suffix)
+                assert not kept.exists() or not _is_a_database(kept), (argv, kept)
+    conn = db.read_only(path, "the stand-in, after every refused sidecar")
+    try:
+        assert _master(conn) == schema, "the record was migrated"
+    finally:
+        conn.close()
+    for target in (str(copy) + "-journal", str(path) + "-wal"):
+        with pytest.raises(db.LiveRecordTouched, match="A BACKUP IS A FILE OF ITS OWN"):
+            db.back_up(copy, target, "a backup beside a database, refused")
+
+
+# --- 2. the live record is known by the file's identity, from anywhere -------
+
+def test_the_record_is_known_by_its_identity_whatever_runs_the_tool(
+        tmp_path, plant, tool, monkeypatch, capsys):
+    """The review ran the tool from a worktree (GRIDIRON_HOME there, so its
+    configured record was another file) and through a hard link: the record
+    was "not the record", and without --live it was migrated in place with
+    no backup. Here the stand-in is the MAIN worktree's record, and this
+    process's settings name another file."""
+    main = tmp_path / "main"
+    (main / "var").mkdir(parents=True)
+    record = main / "var" / "gridiron.db"
+    conn = _a_record(record, plant, tool)
+    schema = _master(conn)
+    conn.close()
+    elsewhere = tmp_path / "worktree" / "var" / "gridiron.db"
+    monkeypatch.setattr(config, "DB_PATH", elsewhere)
+    monkeypatch.setattr(config, "DEFAULT_DB", elsewhere)
+    monkeypatch.setattr(db, "the_main_worktree", lambda: main, raising=False)
+    linked = tmp_path / "another-name.db"
+    os.link(record, linked)
+    for name in (record, linked, tmp_path / "main" / "var" / ".." / "var" / "gridiron.db"):
+        with pytest.raises(SystemExit) as refused:
+            tool.main(["--database", str(name)])
+        assert refused.value.code == 2, name
+        assert "is the operator's record" in capsys.readouterr().out, name
+    copy = tmp_path / "copy.db"
+    db.back_up(record, copy, "a copy of the stand-in, which is not the record")
+    with pytest.raises(SystemExit):
+        tool.main(["--database", str(copy), "--live", "--backup",
+                   str(tmp_path / "b.db")])
+    assert "is not it" in capsys.readouterr().out
+    conn = db.read_only(record, "the stand-in, after the refusals")
+    try:
+        assert _master(conn) == schema, "the record was migrated without --live"
+    finally:
+        conn.close()
+    assert not (tmp_path / "b.db").exists()
+
+
+def test_the_migration_and_the_prompt_reconstruction_ask_one_door():
+    """"Exactly as tools/reconstruct_prompts.py does": both tools ask
+    `db.is_the_live_record_file`, so the rule is written once."""
+    source = (REPO / "tools" / "migrate_2026_09_25_behaviour.py").read_text(
+        encoding="utf-8")
+    other = (REPO / "tools" / "reconstruct_prompts.py").read_text(encoding="utf-8")
+    assert "db.is_the_live_record_file(path)" in source
+    assert "db.is_the_live_record_file(path)" in other
+    assert "config.DB_PATH).resolve()" not in source
+
+
+# --- 3. with --live, the definitions are the release's or nothing is done ----
+
+@pytest.mark.parametrize("changed, named", [
+    ({"gridiron__schema.sql": lambda text: text.replace(
+        "('numbered', 'fight_night', 'contender')",
+        "('numbered', 'fight_night')")},
+     ["ufc_events: its CREATE text is not the release's", "schema.sql"]),
+    ({"gridiron__schema.sql": lambda text: text.replace(
+        "one look of '\n        || 'each kind per forecast, written once'",
+        "one look of each kind'")},
+     ["market_snapshots: trigger market_snapshots_never_replaced is not the "
+      "release's"]),
+    ({"gridiron__schema.sql": lambda text: text + "\n-- a line the release has\n"},
+     ["is not master's gridiron/schema.sql"]),
+    ({"gridiron__market__lines.py": lambda text: text.replace(
+        '"2d0e98f",\n)', '"0000000",\n)')},
+     ["lines.SNAPSHOT_REBUILD"]),
+], ids=["a table's CHECK", "a trigger", "the file outside the eight",
+        "the map's snapshot entry"])
+def test_live_refuses_definitions_that_are_not_the_release(
+        tmp_path, plant, tool, monkeypatch, capsys, changed, named):
+    """The review: the "released definitions" were whatever schema.sql the
+    running checkout held, and nothing checked them against the release.
+    With --live the tool reads master's schema.sql and lines.py through git
+    and refuses, by name, before the backup, unless what it would write is
+    exactly the release's."""
+    path = tmp_path / "gridiron.db"
+    conn = _a_record(path, plant, tool)
+    schema = _master(conn)
+    conn.close()
+    _as_the_record(monkeypatch, path)
+    _release_is_this_tree(monkeypatch, tool, **changed)
+    for key in changed:
+        text = (REPO / key.replace("__", "/")).read_text(encoding="utf-8")
+        assert changed[key](text) != text, "the planted release is this tree"
+    backup = tmp_path / "before.db"
+    with pytest.raises(SystemExit) as refused:
+        tool.main(["--database", str(path), "--live", "--backup", str(backup)])
+    assert refused.value.code == 2
+    out = capsys.readouterr().out
+    assert "REFUSED: --live writes the RELEASED definitions" in out
+    for words in named:
+        assert words in out, (words, out)
+    assert not backup.exists()
+    conn = db.read_only(path, "the stand-in, after a refused --live")
+    try:
+        assert _master(conn) == schema
+    finally:
+        conn.close()
+
+
+def test_the_release_is_read_from_the_branch_master_through_git(
+        tmp_path, tool, monkeypatch):
+    """The reader itself, on a scratch repository: master's file as git
+    holds it, whatever the working tree says; no master, refused by name."""
+    repo = tmp_path / "repo"
+    (repo / "gridiron").mkdir(parents=True)
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(repo), *args], check=True,
+                       capture_output=True)
+
+    git("init", "-q")
+    git("symbolic-ref", "HEAD", "refs/heads/master")
+    (repo / "gridiron" / "schema.sql").write_text("-- as released\n",
+                                                   encoding="utf-8")
+    git("add", "gridiron/schema.sql")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "r")
+    (repo / "gridiron" / "schema.sql").write_text("-- as edited since\n",
+                                                   encoding="utf-8")
+    monkeypatch.setattr(tool, "REPO", repo)
+    assert tool._released_file("gridiron/schema.sql").replace("\r\n", "\n") \
+        == "-- as released\n"
+    monkeypatch.setattr(tool, "RELEASED_BRANCH", "no-such-branch-2026-09-25")
+    with pytest.raises(SystemExit) as refused:
+        tool._released_file("gridiron/schema.sql")
+    assert refused.value.code == 2
+
+
+# --- 5. the replace rule comes with the snapshot table ----------------------
+
+def test_the_migrated_snapshot_table_refuses_a_replacing_insert(
+        tmp_path, plant, tool):
+    """INSERT OR REPLACE removed a stored snapshot round the delete rule
+    (the review of 3603300). The migration's definition of the table carries
+    `market_snapshots_never_replaced`, so the rebuilt table refuses it."""
+    definition = rebuild.released_definitions(["market_snapshots"])["market_snapshots"]
+    assert "market_snapshots_never_replaced" in {n for _k, n, _s in definition.dependants}
+    path = tmp_path / "record.db"
+    _a_record(path, plant, tool).close()
+    assert tool.main(["--database", str(path)]) == 0
+    conn = db.connect(path)
+    try:
+        before = [tuple(r) for r in conn.execute(
+            "SELECT id, prediction_id, kind, fetched_utc FROM market_snapshots"
+            " ORDER BY id")]
+        pid = before[0][1]
+        for statement in (
+                "INSERT OR REPLACE INTO market_snapshots (prediction_id,"
+                " fetched_utc, source, line, implied_prob, kind) VALUES (?,"
+                " '2026-09-01T23:00:00Z', 'test', NULL, 0.5, 'open_at_predict')",
+                "INSERT OR REPLACE INTO market_snapshots (id, prediction_id,"
+                " fetched_utc, source, line, implied_prob, kind) VALUES ("
+                + str(before[0][0]) + ", ?, '2026-09-01T23:00:00Z', 'test', NULL,"
+                " 0.5, 'near_start')"):
+            with pytest.raises(sqlite3.IntegrityError, match="never replaced"):
+                conn.execute(statement, (pid,))
+            conn.rollback()
+        # A new look of the other kind is still written, plainly.
+        conn.execute(
+            "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+            " line, implied_prob, kind) VALUES (?, '2026-09-01T23:00:00Z',"
+            " 'test', NULL, 0.5, 'near_start')", (pid,))
+        conn.commit()
+        after = [tuple(r) for r in conn.execute(
+            "SELECT id, prediction_id, kind, fetched_utc FROM market_snapshots"
+            " ORDER BY id")]
+    finally:
+        conn.close()
+    assert after[:len(before)] == before and len(after) == len(before) + 1
+
+
+def test_the_migrated_snapshot_table_refuses_an_update_that_replaces(
+        tmp_path, plant, tool):
+    """The rehearsal of these fixes (2026-09-25): UPDATE OR REPLACE moving
+    one snapshot onto another's forecast and look, or onto another's id,
+    removed that other row round the delete rule exactly as the replacing
+    insert did -- measured on the fixed definitions, the other row went and
+    its id became a hole. `market_snapshots_never_replaced_by_update` comes
+    with the table and refuses it; and it freezes nothing else (question 6):
+    an update that takes no other row's place still lands."""
+    definition = rebuild.released_definitions(["market_snapshots"])["market_snapshots"]
+    assert "market_snapshots_never_replaced_by_update" in {
+        n for _k, n, _s in definition.dependants}
+    path = tmp_path / "record.db"
+    _a_record(path, plant, tool).close()
+    assert tool.main(["--database", str(path)]) == 0
+    conn = db.connect(path)
+    try:
+        first, second = [tuple(r) for r in conn.execute(
+            "SELECT id, prediction_id FROM market_snapshots ORDER BY id LIMIT 2")]
+        later = conn.execute(
+            "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+            " line, implied_prob, kind) VALUES (?, '2026-09-01T23:00:00Z',"
+            " 'test', NULL, 0.5, 'near_start')", (first[1],)).lastrowid
+        conn.commit()
+
+        def rows():
+            return [tuple(r) for r in conn.execute(
+                "SELECT id, prediction_id, kind, fetched_utc, implied_prob"
+                " FROM market_snapshots ORDER BY id")]
+
+        stored = rows()
+        for statement in (
+                f"UPDATE OR REPLACE market_snapshots SET kind = 'open_at_predict'"
+                f" WHERE id = {later}",
+                f"UPDATE OR REPLACE market_snapshots SET id = {second[0]}"
+                f" WHERE id = {first[0]}",
+                f"UPDATE OR REPLACE market_snapshots SET prediction_id = {second[1]},"
+                f" kind = 'open_at_predict' WHERE id = {later}"):
+            with pytest.raises(sqlite3.IntegrityError, match="never replaced"):
+                conn.execute(statement)
+            conn.rollback()
+            assert rows() == stored, statement
+        # NOTHING ELSE IS FROZEN: question 6 is open, and this rule is not it.
+        conn.execute(f"UPDATE market_snapshots SET implied_prob = 0.25 WHERE id = {later}")
+        conn.commit()
+        assert [r[4] for r in rows() if r[0] == later] == [0.25]
+    finally:
+        conn.close()
+
+
+# --- 7. the checksum sees every stored value; the backup, every object ------
+
+#: Values `quote()` could not tell apart, and their neighbours, as SQL.
+EDGE_VALUES = ("-0.0", "0.0", "0", "'0'", "'a' || char(0) || 'b'",
+               "'a' || char(0) || 'c'", "'a'", "x'61'", "x'00ff10'", "x'00ff11'",
+               "9223372036854775807", "-9223372036854775808",
+               "9223372036854775806", "NULL", "''", "x''")
+
+
+def test_the_checksum_tells_every_stored_value_apart(tmp_path):
+    """On a scratch table whose column has no affinity, so each value is
+    stored exactly as given (-0.0 included: a REAL column would store it as
+    the integer 0). The first checksum hashed `quote()`, under which -0.0
+    and 0.0 are both 0.0 and a text ends at its first NUL."""
+    conn = db.connect(tmp_path / "values.db")
+    try:
+        conn.execute("CREATE TABLE t (v)")
+        conn.execute("INSERT INTO t (v) VALUES (NULL)")
+        conn.commit()
+        seen = {}
+        for value in EDGE_VALUES:
+            conn.execute(f"UPDATE t SET v = {value}")
+            if value == "-0.0":
+                stored = conn.execute("SELECT v FROM t").fetchone()[0]
+                assert struct.pack(">d", stored) == b"\x80" + bytes(7), \
+                    "the scratch table did not keep the sign of zero"
+            seen[value] = rebuild.column_checksums(conn, "t")[1]["v"]
+    finally:
+        conn.close()
+    clashes = [(a, b) for i, a in enumerate(EDGE_VALUES) for b in EDGE_VALUES[i + 1:]
+               if seen[a] == seen[b]]
+    assert clashes == [], f"stored values the checksum cannot tell apart: {clashes}"
+
+
+def test_a_copy_that_changes_a_text_after_its_nul_fails_verification(
+        tmp_path, plant, tool, monkeypatch):
+    path = tmp_path / "record.db"
+    conn = _a_record(path, plant, tool)
+    conn.execute("UPDATE nba_injuries SET detail = 'ankle' || char(0) || 'left'"
+                 " WHERE player_id = 6430")
+    conn.commit()
+    tables = _tables(tool)
+    schema = _master(conn)
+    copy = rebuild._copy_rows
+
+    def after_the_nul(c, table, aside, columns, with_rowid):
+        copy(c, table, aside, columns, with_rowid)
+        if table == "nba_injuries":
+            c.execute("UPDATE nba_injuries SET detail = 'ankle' || char(0) ||"
+                      " 'right' WHERE player_id = 6430")
+
+    monkeypatch.setattr(rebuild, "_copy_rows", after_the_nul)
+    definitions = rebuild.released_definitions(tables)
+    with pytest.raises(rebuild.TableFailedVerification, match="detail"):
+        rebuild.rebuild_tables(conn, [definitions[t] for t in tables])
+    assert _master(conn) == schema
+    conn.close()
+
+
+def test_a_backup_whose_schema_differs_from_its_source_is_refused(
+        tmp_path, plant, tool, monkeypatch):
+    """Every table equal, and an index and a trigger not: the first backup
+    verified it, and a restore would have brought the record back without
+    the rule. Every sqlite_master row is compared now, byte for byte."""
+    path = tmp_path / "record.db"
+    _a_record(path, plant, tool).close()
+    real = db.back_up
+
+    def a_copy_with_other_rules(source, target, why, *, then=None):
+        def tampered(original):
+            copy = db.connect(target)
+            copy.execute("DROP INDEX snap_pred")
+            copy.execute("CREATE INDEX snap_pred ON market_snapshots (fetched_utc)")
+            copy.execute("DROP TRIGGER market_snapshots_no_delete")
+            copy.commit()
+            copy.close()
+            then(original)
+        return real(source, target, why, then=tampered)
+
+    monkeypatch.setattr(db, "back_up", a_copy_with_other_rules)
+    with pytest.raises(rebuild.BackupFailedVerification) as failed:
+        rebuild.verified_backup(path, tmp_path / "copy.db", "a backup, proved")
+    assert "index snap_pred" in str(failed.value)
+    assert "trigger market_snapshots_no_delete" in str(failed.value)
+
+
+# --- 8. a sixth sport after the migration repoints nothing ------------------
+
+def test_a_sixth_sport_after_the_migration_repoints_nothing_and_changes_no_row(
+        tmp_path, plant, tool, monkeypatch):
+    """After the migration, factors, factor_scores and model_fits carry
+    "sport IN", so the next declared sport makes `db.init` widen them. It
+    renamed each aside with foreign keys on, which repoints every child
+    whatever legacy_alter_table says: fit_activations ended up naming the
+    dropped `model_fits_narrow` (the review's e8). Simulated here with a
+    sixth sport declared in the config and in a copy of schema.sql."""
+    from gridiron.model import activation
+
+    path = tmp_path / "record.db"
+    _a_record(path, plant, tool).close()
+    assert tool.main(["--database", str(path)]) == 0
+    conn = db.connect(path)
+    activation.bootstrap_incumbents(conn)
+    conn.commit()
+    fit = conn.execute("SELECT fit_id FROM fit_activations").fetchone()
+    assert fit is not None, "the record should hold an activation of its fit"
+    conn.close()
+
+    text = db.SCHEMA_PATH.read_text(encoding="utf-8")
+    assert text.count("'ufc')") == 6
+    sixth = tmp_path / "schema_with_a_sixth_sport.sql"
+    sixth.write_text(text.replace("'ufc')", "'ufc','xfl')"), encoding="utf-8")
+    monkeypatch.setattr(config, "SPORTS", tuple(config.SPORTS) + ("xfl",))
+    monkeypatch.setattr(db, "SCHEMA_PATH", sixth)
+
+    conn = db.connect(path)
+    try:
+        tables = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+            " AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+        rows = {t: rebuild.column_checksums(conn, t) for t in tables}
+        sequence = sorted(tuple(r) for r in conn.execute(
+            "SELECT name, seq FROM sqlite_sequence"))
+        widened = db.widen_sport_checks(conn)
+        assert sorted(w.split(" ")[0] for w in widened) == sorted(
+            ("session_seen", "games", "factors", "factor_scores", "model_fits"))
+        now = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        for table in tables:
+            for fk in conn.execute(f'PRAGMA foreign_key_list("{table}")'):
+                assert fk[2] in now, f"{table} now references {fk[2]}, which is gone"
+        assert {fk[2] for fk in conn.execute(
+            "PRAGMA foreign_key_list(fit_activations)")} == {"model_fits"}
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert {t: rebuild.column_checksums(conn, t) for t in tables} == rows
+        assert sorted(tuple(r) for r in conn.execute(
+            "SELECT name, seq FROM sqlite_sequence")) == sequence
+        # And the parent is really there to write against, with foreign keys on.
+        activation.activate_incumbent(conn, fit[0], reason="a second incumbent row, "
+                                      "written after the sixth sport to prove the key")
+        conn.commit()
+        for table in ("factors", "factor_scores", "model_fits", "games", "session_seen"):
+            assert "'xfl'" in conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name = ?", (table,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
+# --- note 9: the backup is one instant, and the run says so ----------------
+
+def test_the_live_run_says_what_the_backup_does_not_hold(
+        tmp_path, plant, tool, monkeypatch, capsys):
+    path = tmp_path / "gridiron.db"
+    _a_record(path, plant, tool).close()
+    _as_the_record(monkeypatch, path)
+    _release_is_this_tree(monkeypatch, tool)
+    assert tool.main(["--database", str(path), "--live", "--backup",
+                      str(tmp_path / "before.db")]) == 0
+    out = capsys.readouterr().out
+    assert "THE BACKUP IS ONE INSTANT" in out
+    assert "THE BACKUP IS NOT THE RECORD AS MIGRATED" in out
+    assert "quiet hour" in out
+
+
+def test_a_rehearsal_does_not_say_its_copy_lost_rows(
+        tmp_path, plant, tool, monkeypatch, capsys):
+    """The rehearsal of these fixes (2026-09-25): a --rehearse printed THE
+    BACKUP IS NOT THE RECORD AS MIGRATED -- rows "in the migrated record and
+    not in the backup" -- of a scratch copy it had just migrated, which no
+    task writes. Note 9 is about the live record, and is said on that run."""
+    path = tmp_path / "gridiron.db"
+    _a_record(path, plant, tool).close()
+    _as_the_record(monkeypatch, path)
+    assert tool.main(["--database", str(path), "--rehearse", "--scratch",
+                      str(tmp_path / "rehearsal.db")]) == 0
+    out = capsys.readouterr().out
+    assert "COMMITTED" in out and "THE BACKUP IS ONE INSTANT" in out
+    assert "THE BACKUP IS NOT THE RECORD AS MIGRATED" not in out

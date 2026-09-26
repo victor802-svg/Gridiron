@@ -1685,7 +1685,9 @@ putting them back would write a look at the market that was never taken.
 in place, and that leaves no hole to find. Freezing it goes beyond ruling 4's
 words, so it waits for the operator. (2) `INSERT OR REPLACE` walks past the new
 trigger as it walks past every `no_delete` trigger (the entry of 2026-09-23
-above); no code writes this table that way. (3) For ruling 2's rebuild of this
+above); no code writes this table that way. **Fixed 2026-09-25 (5a', the
+adversarial review of 3603300):** `market_snapshots_never_replaced` refuses
+it; see "5a'" below. (3) For ruling 2's rebuild of this
 table: recreate this trigger with the other two, and carry `sqlite_sequence`
 explicitly -- a rebuild resets it to the highest id (measured). **Done
 2026-09-25:** `gridiron.rebuild` recreates every index and trigger from the
@@ -1721,7 +1723,10 @@ gains no fault.
 **Not covered, and what would settle each:**
 - A module named at run time: `importlib.import_module("sqlite3")` or
   `__import__("sqlite3")` and then `.connect`. A static scan cannot follow a
-  computed name; the audit hook below would.
+  computed name; the audit hook below would. **Narrowed 2026-09-25 (5a'):**
+  a CONSTANT name through `importlib`, `__import__` or `sys.modules` is now
+  refused, with six more shapes the review found; a name computed at run
+  time is still out of reach (see "5a'" below).
 - A connect written inside a string and run by a child
   (`plant_a_schema_change_during_the_gate` does it on purpose, against a
   stand-in). A `sys.addaudithook` in `db` on the `sqlite3.connect` event would
@@ -2017,7 +2022,10 @@ at the renamed-aside table that is then dropped. That path also copies with
 INSERT OR IGNORE, checks only that no row was lost, and does not carry the
 sequence. `games` is exposed the same way today. **What would settle it:**
 route `widen_sport_checks` (and the two hand-written widenings) through
-`gridiron.rebuild`.
+`gridiron.rebuild`. **Fixed 2026-09-25 (5a') for `widen_sport_checks`**; the
+two hand-written widenings (`notifications`, `task_runs`) are unchanged --
+each turns foreign keys off inside its own script and no table references
+either. See "5a'" below.
 
 ### Found in passing *(2026-09-25)*
 
@@ -2034,6 +2042,390 @@ route `widen_sport_checks` (and the two hand-written widenings) through
   corrupted copy": the first case had committed every table, so the second
   rebuilt nothing. It now reports what each run did ("tested nothing -- an
   earlier case had committed"). The verdict's condition is unchanged.
+
+## 5a': the adversarial review of 3603300 -- fixed 2026-09-25 *(GRIDIRON_REPAIR, after item 4, before the live migration)*
+
+The review (meant for the cloud, run on this machine; reproduction scripts
+`e1_dqs.py` .. `e8_widen_after.py` in the 25 September session's scratchpad)
+found eight defects in the migration tool, the diff and the scans. Each is
+fixed with a test or a planting that fails on the code the review read (a
+`git archive` of a1df279, the new tests or plantings laid over it) and passes
+on the fix, and each reproduction was run again on the fix. None of them was
+ever run on the live record; the live record was read only through the
+read-only door, for its schema text.
+
+### FIXED: `--report` wrote over whatever it named *(finding 1)*
+
+`Path.write_text`, never checked: `--live --backup X --report X` turned the
+verified backup into JSON, `--report <record>` overwrote the record, and a
+rehearsal with nothing to do overwrote it too, exit 0 (all three reproduced on
+a1df279). Now, before anything is done, the report must be a new file in an
+existing folder and must not be the database, the record (every place it is
+reached from), the backup, the scratch copy, or a `-wal`, `-shm` or
+`-journal` beside any of them, compared by the folder's identity and the
+name; and it is created exclusively (`open(..., "x")`), so a file that
+appears during the run is left alone and the run says "REPORT NOT WRITTEN".
+`test_rebuild.py::test_a_report_is_never_written_over_the_record_the_backup_or_a_database`,
+`::test_a_report_that_appears_during_the_run_is_not_written_over`.
+
+### FIXED: the record was known by the running checkout's settings *(finding 2)*
+
+The `--live` refusal compared the path with the RUNNING checkout's
+`config.DB_PATH`, resolved: from a worktree, through a hard link, or with
+GRIDIRON_DB, GRIDIRON_HOME or GRIDIRON_STATE set, the record was "not it", and
+without `--live` it was migrated in place with no backup. The identity rule
+`tools/reconstruct_prompts.py` used is now the one door,
+`db.is_the_live_record_file` (the configured record, the default one, this
+checkout's `var` and the main worktree's `var`, from `git worktree list`, each
+by `os.path.samefile`), and both tools ask it. Proved on a scratch git
+repository standing in for the install (a main checkout whose master is the
+fixed tree, a worktree of it, a stand-in record): from the worktree, through a
+hard link, with GRIDIRON_DB or GRIDIRON_STATE elsewhere, each refused, the
+record unchanged; the same run on a1df279 migrated the record in place from
+the worktree and then wrote the report over it.
+`test_rebuild.py::test_the_record_is_known_by_its_identity_whatever_runs_the_tool`.
+
+### FIXED: `--live` wrote whatever `schema.sql` the checkout held *(finding 3)*
+
+With `--live` the tool now reads `gridiron/schema.sql` and
+`gridiron/market/lines.py` from the branch master (`git show`) and refuses,
+by name and before the backup, unless the definitions it would write (each
+table's CREATE, every index and trigger, the automatic indexes), the map's
+snapshot entry (`lines.SNAPSHOT_REBUILD`) and the running tree's `schema.sql`
+itself equal master's, line endings apart. The consequence the operator will
+see: `--live` runs only from a checkout whose two files are master's -- the
+main checkout after the merge. A worktree, or local edits, are refused.
+`test_rebuild.py::test_live_refuses_definitions_that_are_not_the_release`
+(a table's CHECK, a trigger, the file outside the eight, the snapshot entry),
+`::test_the_release_is_read_from_the_branch_master_through_git`.
+
+### FIXED: the diff read quoted text as a name everywhere *(finding 4)*
+
+Double-quoted, bracketed and backquoted text was unquoted and lower-cased, so
+`DEFAULT CURRENT_TIMESTAMP` equalled `DEFAULT "CURRENT_TIMESTAMP"` (a clock
+against a string), `CHECK (sport IN ("nfl"))` equalled `("NFL")`,
+`CHECK (s != NULL)` equalled `(s != "NULL")`, `DEFAULT live` equalled
+`DEFAULT LIVE`, a trigger's `WHEN OLD.kind = "near_start"` and an index's
+WHERE equalled their upper-case twins, and two COLLATE clauses swapped
+compared equal though the last one wins. Now a quoted word is a name only
+where only a name can stand (the list is in `schema_diff`'s docstring) or
+where, inside a table's or an index's expression, it names one of that
+table's columns -- which is what SQLite resolves it to; anywhere else it keeps
+its quotes and its case. A bare word after DEFAULT keeps its case (SQLite
+stores it as a string) unless it is NULL, TRUE, FALSE or a CURRENT_ keyword.
+Of a COLLATE, DEFAULT or NOT NULL written twice only the last is compared.
+The PRAGMA check reads the default as a default. **Measured the same day** on
+the live record's own schema text (read through the read-only door) against
+fresh builds of master f6e57f3 and of this tree: the same eight differences
+with the same register keys, and the same twelve cosmetic objects as before
+(the eleven of 24 September, market_snapshots now behavioural, plus
+`market_lines_raw`). A false alarm stays possible where SQLite would agree
+(a quoted literal and a single-quoted one in a DEFAULT, say); the check fails
+safe. `test_schema_diff.py` (every example above, each first shown to behave
+differently in SQLite), `test_the_schema_matches.py`.
+
+### FIXED: `INSERT OR REPLACE` got round the snapshot delete rule *(finding 5)*
+
+A replacing insert on (prediction_id, kind), or on a stored id, deleted the
+stored row without firing `market_snapshots_no_delete` (SQLite runs no delete
+trigger for a replacement unless recursive_triggers is on) and gave the new
+row a new id -- a hole like 174-181. `market_snapshots_never_replaced`, a
+BEFORE INSERT trigger in the form the prompt record's table already carries,
+refuses an insert whose id or whose (prediction_id, kind) is already stored.
+**Every writer read first:** the package's only writer is
+`lines.snapshot_prediction` (a lookup, then a plain INSERT); `tasks.py` calls it
+for the near-start look inside a try that counts a failure; the plantings
+(`plant.py` 207, 224, the deleted-snapshot planting) and the tests
+(`test_drift`, `test_guards`, `test_near_start_reads`, `test_priced`,
+`test_rebuild`, `test_recommend`, `test_schema`, `test_shortlist`) insert
+plainly; the rebuild copies into the new table before its triggers exist;
+`dbcopy.FACT_TABLES` does not copy the table. None uses OR REPLACE, OR IGNORE
+or ON CONFLICT on it, so no lawful behaviour changes: a plain duplicate was
+already an IntegrityError from the unique index and is now the same error,
+named (`test_drift.py::test_only_one_snapshot_of_each_kind_per_prediction`
+still holds). The migration's definition of the table carries the trigger, and
+the live-shapes fixture has it, as the release will create it on the record
+before the migration runs. `plant.py::plant_a_replaced_snapshot` (ESCAPED on
+a1df279: rows 1 and 2 became 1 and 3; CAUGHT on the fix),
+`test_rebuild.py::test_the_migrated_snapshot_table_refuses_a_replacing_insert`.
+An UPDATE is still not refused: question 6.
+
+### FIXED: the raw-connect scan missed aliasing *(finding 6)*
+
+Seven opens went past it (`s = sqlite3; s.connect`, a subclass of
+`sqlite3.Connection` called, `importlib.import_module("sqlite3")`,
+`__import__("sqlite3")`, `vars(sqlite3)["connect"]`, `getattr` by a computed
+name) and an eighth through a helper named `connect` nested in `db.py`, which
+the exemption, keyed on the bare function name, let through. The scan now
+refuses the module bound to another name or used as a value at all (the name
+is then read as the module too), a dunder read off it, `sqlite3.Connection`
+anywhere but an annotation or an isinstance/issubclass (so a subclass, and
+its call, are named), and a constant driver name through `importlib`,
+`__import__` or `sys.modules`; the exemption is keyed on the qualified name,
+so only the module-level `db.connect` is exempt. The real tree gains no
+fault. `plant.py::plant_a_raw_connect_past_the_door` now plants every shape
+(ESCAPED on a1df279, CAUGHT on the fix);
+`test_one_way_in.py::test_every_way_round_the_first_scan_is_named`.
+**Still not seen by a static scan:** a module name computed at run time, the
+class of a live connection (`type(conn)(path)`, `conn.__class__`), a connect
+inside a string a child runs, an ATTACH. The audit hook described under
+ruling 6 above would see all of them.
+
+### FIXED: the checksum missed -0.0 and text after a NUL; the backup compared tables only *(finding 7)*
+
+The per-column checksum hashed `quote()`, under which -0.0 and 0.0 are both
+`0.0` and a text ends at its first NUL (`'a'||char(0)||'b'` quoted as `'a'`).
+Each value is now hashed exactly: its storage class, then an integer's
+digits, a real's eight IEEE-754 bytes, a text's or a blob's bytes as SQLite's
+`hex()` gives them. `verified_backup` also compares every sqlite_master row
+byte for byte (type, name, table, root page, text), naming each object that
+differs. Measured on the way: -0.0 survives only in a column with no REAL,
+INTEGER or NUMERIC affinity -- a REAL column stores it as the integer 0 --
+and none of the eight tables has such a column, so this closes a gap in the
+proof rather than a loss that happened. The rehearsal digests in the table
+above were taken with the old checksum and are not comparable with the next
+rehearsal's. `plant.py::plant_a_rebuild_that_alters_a_row` gains a third
+corruption, a text changed only after its NUL (ESCAPED on a1df279: "COMMITTED
+a corrupted copy"; CAUGHT on the fix);
+`test_rebuild.py::test_the_checksum_tells_every_stored_value_apart`
+(16 values, every pair apart; on a1df279 four pairs clash),
+`::test_a_copy_that_changes_a_text_after_its_nul_fails_verification`,
+`::test_a_backup_whose_schema_differs_from_its_source_is_refused`.
+
+### FIXED: a sixth sport after the migration *(finding 8)*
+
+`db.widen_sport_checks` now rebuilds every table it must widen through
+`gridiron.rebuild` in one transaction -- foreign keys off, `legacy_alter_table`
+on, rows and column checksums verified, indexes, triggers and sequence
+carried -- instead of renaming aside with foreign keys on. The review's e8,
+run on the fix: on the migrated copy all five tables widen, `fit_activations`
+names `model_fits`, 0 `foreign_key_check` rows, no sequence moved. It also
+settles `games`: on the unmigrated copy a1df279 left five
+`foreign_key_check` rows, children repointed at the dropped `games_narrow`;
+the fix leaves none.
+`test_rebuild.py::test_a_sixth_sport_after_the_migration_repoints_nothing_and_changes_no_row`
+(every foreign key of every table resolves, `fit_activations` takes a new row
+against `model_fits` with foreign keys on, every table's checksums and every
+sequence as before).
+
+### NOTE 9: the backup is one instant *(reported, not changed)*
+
+The verified backup holds the record as it was at the instant it was copied.
+The migration's write lock (`BEGIN IMMEDIATE`) comes after the backup has been
+verified -- about 40 s on the live record. Any row a scheduled task writes in
+between is in the migrated record and NOT in the backup, so a restore from the
+backup would lose it silently. The tool now prints both instants ("THE BACKUP
+IS ONE INSTANT", and after COMMIT "THE BACKUP IS NOT THE RECORD AS
+MIGRATED", with the time of each) (`test_rebuild.py::test_the_live_run_says_what_the_backup_does_not_hold`).
+What it means for the operator: run it at a quiet hour -- 10:15Z measured
+quietest, never at :05 or :35, never during a gate or within half an hour of a
+logon -- and if a restore is ever needed, compare the task log between the two
+printed instants first.
+
+### Found in passing *(2026-09-25, 5a')*
+
+- `db.widen_taken_for_packages` renames `picks_taken` aside with
+  `legacy_alter_table` on and foreign keys ON, and `picks_retracted`
+  references it: the same repointing as finding 8, but it runs only on a
+  database made before 2026-09-08 (no `package_id`), which the live record is
+  not. Open; settle it through `gridiron.rebuild` like the sport widening.
+- `db._is_the_live_record` (the verification guard) and
+  `db.is_the_live_record_file` (a tool's `--live`) are two questions on
+  purpose: the guard exempts the temp directory and is keyed on the path the
+  deployment was configured with at import. The temp-directory flaw recorded
+  under ruling 6 is still open.
+
+### The rehearsal of the 5a' fixes *(2026-09-25T23:47Z to 2026-09-26T01:00Z)*
+
+A separate rehearsal of the fixes above, never `--live` on the record: the
+review's eight reproductions run again, the fixed tool rehearsed on verified
+copies of the record, the `--live` refusals shown on a scratch stand-in
+install in the real topology (a git main checkout whose master is this
+tree, a worktree of it whose `var` is a junction to main's), and every
+defect it found fixed with a test or planting that fails on the unfixed code
+(a1df279) and on the fix as the builder left it. The report is in the 25
+September session's scratchpad at `fix5a/REHEARSAL.md`.
+
+**The copies.** Each through `db.back_up_the_live_record`, proved against
+a snapshot of the record held through `db.read_the_live_record` (integrity
+ok, all 225 schema rows byte for byte, all 60 tables' exact column
+checksums): 00:12:05Z (1,190,414 rows) and 00:35:36Z (1,190,591), each
+with a second copy for the forced failure.
+
+**The rehearsal** (`--rehearse` on a copy; the tool copied it again,
+verified, and migrated that): all 8 tables rebuilt in one transaction, all
+81 column checksums equal before and after, sequences 94 -> 94, 2546 ->
+2546 (2558 -> 2558 in the second run) and 5116 -> 5116, `foreign_key_check`
+0 rows, **the write lock held 3.28 s** (3.96 s in the second run, with the
+full test suite running beside it). Outside the tool: every table's rows and
+exact checksums equal (only `sqlite_sequence`'s own rowids moved, as
+before), the 200 objects not the eight's byte for byte, the eight joined on
+rowid with no value, type or rowid differing, the snapshot table carrying
+all five of its triggers, `fit_activations` still naming `model_fits`.
+Against a fresh build of this tree: **0 differences in behaviour** with an
+empty register (10 cosmetic). Against master: only the two new snapshot
+triggers. A second run skipped all 8 and left the file's bytes as they
+were; this tree's `db.open_db` changed nothing. Forced failures on a fresh
+copy (the planting's hook) in nba_injuries after seven swaps, in
+market_snapshots by 1e-12, and in mlb_lineups by a character after a NUL
+each rolled back with the schema, sequences and every checksum as they
+were; the unfixed tool, given the NUL case on a copy of the same rows,
+COMMITTED the corrupted name. A sixth sport on copies of the real record,
+migrated and not: every foreign key resolves, no row changes; the unfixed
+tree, on the migrated copy, left 18 tables pointing at dropped tables (17
+at `games_narrow`, `fit_activations` at `model_fits_narrow`), 357,247
+`foreign_key_check` rows, `games` itself changed and a sequence moved --
+and on the unmigrated copy, as the record stands today, 17 tables and
+357,219 rows: `games` was exposed all along.
+
+### FIXED BY THE REHEARSAL: a file the tool creates could be a stream inside the record *(2026-09-25)*
+
+On Windows a colon names an NTFS alternate data stream inside the file
+before it. On the builder's fix, each exit 0: `--rehearse --report
+<record>:report` wrote the report into the record's own file;
+`--live --backup <record>:backup` put the verified backup (and its -wal and
+-shm) inside the record it was meant to protect; `--rehearse --scratch
+<record>:scratch` wrote the whole rehearsal copy into it; and
+`--report <backup>.` (Windows strips a trailing dot) passed every check and
+met the backup only after the migration had committed. An ISO time in a
+backup's name (`...2026-09-26T10:15.db`) makes such a stream by accident,
+inside a new empty file most copies drop it from. One door now,
+`db.not_a_file_of_its_own`, asked by the tool for `--report`, `--backup`
+and `--scratch` before anything is done and by `db.back_up` for every
+caller. `test_rebuild.py::test_a_file_the_run_creates_is_never_a_stream_or_another_name`.
+
+### FIXED BY THE REHEARSAL: a backup named as the record's -journal was deleted by SQLite *(2026-09-26)*
+
+Measured: SQLite deletes a file at a database's -wal, -shm or -journal the
+next time it opens and closes the database, and takes a -journal for a hot
+journal at once. On the builder's fix `--live --backup <record>-journal`
+wrote and verified the backup, then the migration's own open of the record
+deleted it: exit 0, COMMITTED, no backup anywhere (the record itself
+intact). `-wal` and `-shm` mangled the backup ("did not verify") and it was
+gone after the next open; `--rehearse --scratch <record>-journal` lost its
+copy the same way. Only `--report` had been held to the sidecar rule. The
+same door refuses any new file that is the database, the record or a
+sidecar of either. `test_rebuild.py::test_a_backup_or_a_copy_is_never_a_file_sqlite_keeps_beside_a_database`.
+
+### FIXED BY THE REHEARSAL: `UPDATE OR REPLACE` still removed a snapshot round the delete rule *(2026-09-25)*
+
+The fix for finding 5 refused a replacing INSERT. An `UPDATE OR REPLACE`
+moving one snapshot onto another's forecast and look, or onto another's
+id, removed that other row exactly the same way (measured on the fixed
+definitions: ids 2 and 1 went). `market_snapshots_never_replaced_by_update`
+(BEFORE UPDATE OF id, prediction_id, kind) refuses an update that would take
+another stored row's place, and nothing else: no writer updates those
+columns (read: `lines.py` inserts only; the only UPDATE of the table in
+the tree is a test's corruption of `implied_prob`), a plain colliding
+update was already refused by the unique key, and an update that takes no
+other row's place still lands. **It is not question 6's no-update trigger**
+and freezes nothing; it refuses a deletion, which is ruling 4's own words.
+The migration's definition of the table carries it (five triggers), and the
+live-shapes fixture has it, as the release's `db.init` creates it on the
+record before the migration runs. `plant.py::plant_a_snapshot_replaced_by_an_update`
+(ESCAPED on a1df279 and on the builder's fix: rows 1 and 2 became 1;
+CAUGHT on this), `test_rebuild.py::test_the_migrated_snapshot_table_refuses_an_update_that_replaces`.
+
+### FIXED BY THE REHEARSAL: the driver read off another module went past the scan *(2026-09-25)*
+
+Every module that imports sqlite3 holds it as an attribute. Seven shapes
+opened a database past the builder's scan, each measured on a scratch
+file: `db.sqlite3.connect`, `from gridiron.db import sqlite3`,
+`gridiron.db.sqlite3.connect`, `vars(db)["sqlite3"]`,
+`getattr(db, "sqlite3")`, `db.__dict__["sqlite3"]` and
+`sys.modules["gridiron.db"].sqlite3`; an eighth, `getattr(sqlite3,
+"dbapi2")`, was found writing the planting. An attribute named `sqlite3`
+is now the module on any base, a `from ... import sqlite3` from any module
+binds it, and a namespace looked up by a driver's constant name (subscript,
+`.get`, `getattr`) is refused. The real tree still has 0 faults.
+`plant.py::plant_a_raw_connect_through_another_module` (ESCAPED on a1df279
+and on the builder's fix, 8 of 8 unnamed; CAUGHT on this),
+`test_one_way_in.py::test_the_driver_read_off_another_module_is_named`.
+
+### FIXED BY THE REHEARSAL: a rehearsal said its own copy had lost rows *(2026-09-25)*
+
+The note-9 line, THE BACKUP IS NOT THE RECORD AS MIGRATED ("rows ... in the
+migrated record and not in the backup"), printed on a `--rehearse`, of a
+scratch copy nothing writes. It is said on the live run only.
+`test_rebuild.py::test_a_rehearsal_does_not_say_its_copy_lost_rows`.
+
+### OPEN, found by the rehearsal *(2026-09-26)*
+
+- **The record can go unrecognised where git cannot answer.** The candidates
+  are the configured record, the default one, this checkout's `var` and the
+  main worktree's `var` from `git worktree list`. Run from a worktree with
+  no `var` junction, with GRIDIRON_DB/HOME/STATE elsewhere, and with git
+  unavailable, the record is "not the record" and would be migrated in
+  place. `--live` needs git anyway (the release check). Not changed: failing
+  closed would refuse every scratch run outside a repository.
+- **The review's e5 case 3 still "migrates"** under its own model, where the
+  "main checkout" is only a GRIDIRON_HOME folder that no git lists: nothing
+  a process can read identifies it. In the real topology (a git main
+  worktree, the worktree's `var` junction) the same run is refused, and so
+  are GRIDIRON_DB and GRIDIRON_HOME set elsewhere, a hard link and a `..`
+  spelling (`fix5a/rehearsal/s10_final.txt`). The meta `kind` is no second
+  witness: every `db.init` writes `live` by default.
+- **A column name's case is still normalised.** `Sport` and `sport`
+  compare equal; they read the same in SQL and differ as `dict(row)` keys.
+  Measured on the live record: no table's column names differ in case from
+  either build, so nothing is hidden today. Unchanged, as ruling 1's
+  normalisation has always read it.
+- The rehearsal's copies (about 1 GB each, `fix5a/rehearsal/*.db` and
+  `fix5a/rehearsal/final/*.db`) are scratch and may be deleted.
+
+### FIXED BY THE PROVER: the last-one-wins rule erased a NOT NULL and a DEFAULT *(2026-09-26)*
+
+Finding 4's fix compares only the last COLLATE, DEFAULT or NOT NULL of a
+column, as SQLite keeps it. But `NOT DEFERRABLE` and `ON DELETE/UPDATE SET
+DEFAULT`, the tail of a REFERENCES clause, each opened a clause of their own
+whose kind was "not" or "default" -- so `x INTEGER NOT NULL REFERENCES p (id)
+NOT DEFERRABLE` lost its NOT NULL, and `x INTEGER DEFAULT 5 REFERENCES p (id)
+ON DELETE SET DEFAULT` its DEFAULT 5. Measured on scratch tables: SQLite
+refused a NULL in one and took it in the other, and stored 5 in one and NULL
+in the other, while `table_differences` found nothing and
+`rebuild.differences_from` said "already at its definition" -- the
+migration would have skipped the table. a1df279 saw both (it compared every
+clause); the regression came with the fix. The gate's `compare` still caught
+each through SQLite's own PRAGMA reading. Neither shape is in `schema.sql` or
+on the live record today, so no comparison changed. `schema_diff._column`
+now keeps both inside their REFERENCES.
+`test_schema_diff.py::test_quoted_text_that_changes_behaviour_is_a_difference`
+gains both pairs, each shown first to behave differently; both fail on the
+tree as built and pass now.
+
+### FIXED BY THE PROVER: an importer under another name fetched the driver past the scan *(2026-09-26)*
+
+The raw-connect scan knew the importer only by the names `import_module` and
+`__import__` were written with, and only with the driver's name as its first
+positional argument. Six shapes opened a database unnamed, measured on a
+scratch tree: `load = importlib.import_module` then `load("sqlite3")`, the
+same with `builtins.__import__`, `builtins.__dict__["__import__"]("sqlite3")`,
+`getattr(builtins, "__import__")("sqlite3")`, `importlib.util.find_spec`, and
+`importlib.import_module(name="sqlite3")`. A constant naming a driver, as
+any call's argument or keyword, is refused now; the real tree hands the name
+to no call (0 faults). `plant.py::plant_a_raw_connect_through_any_call_by_name`
+ESCAPED on a1df279 and on the tree as built, and is CAUGHT;
+`test_one_way_in.py::test_the_driver_fetched_by_name_through_any_call_is_named`
+runs each shape first to show it opens a database. Still unseen: a driver
+name computed at run time (`"sql" + "ite3"`), as before.
+
+### FIXED BY THE PROVER: a report "folder" that was a file *(2026-09-26)*
+
+`--report <record>/report.json` passed the folder check -- `exists()` is
+true of a file -- so a `--live` run migrated the record and then ended in a
+traceback where the report was to be written, after the COMMIT (measured on
+a stand-in record). The folder must be a folder now, checked before
+anything is done, and a report that cannot be created at the end is named
+("REPORT NOT WRITTEN ... could not be created"), never a traceback in the
+verdict's place. `test_rebuild.py::test_a_report_is_never_written_over_the_record_the_backup_or_a_database`
+gains the case; `::test_a_report_that_cannot_be_created_is_named_not_a_traceback`
+is new; both fail on the tree as built.
+
+Found in passing, not changed: a `--scratch` whose "folder" is a file ends
+in a traceback (`FileExistsError`, the backup door making the folder) BEFORE
+anything is migrated -- measured on a scratch database in the live shapes,
+the source byte for byte unchanged; only the message is unkind. A missing
+folder is made by the backup door, and the run goes on.
 
 ## The prompt record -- built 2026-09-25 *(the ruling of 2026-09-24, two additions, item 1; the ruling on question 4, 2026-09-25; GRIDIRON_REPAIR item 4)*
 

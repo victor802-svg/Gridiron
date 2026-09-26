@@ -142,30 +142,14 @@ def main_checkout() -> Path:
     raise ReconstructionFailed("git lists no main worktree")
 
 
-def live_record_candidates() -> list[Path]:
-    """Every place the operator's record may be reached from here."""
-    places = [Path(config.DB_PATH), Path(config.DEFAULT_DB),
-              REPO / "var" / "gridiron.db"]
-    try:
-        places.append(main_checkout() / "var" / "gridiron.db")
-    except ReconstructionFailed:
-        pass
-    return places
-
-
 def is_the_live_record(path: Path) -> bool:
     """Is `path` the operator's record? BY THE FILE'S IDENTITY: the same file
-    on the same volume, whatever the spelling, junction or link."""
-    path = Path(path)
-    if not path.exists():
-        return False
-    for candidate in live_record_candidates():
-        try:
-            if candidate.exists() and os.path.samefile(path, candidate):
-                return True
-        except OSError:
-            continue
-    return False
+    on the same volume, whatever the spelling, junction or link.
+
+    ONE DOOR from 2026-09-25: the dated migration asks the same question, so
+    the rule -- and its list of every place the record may be reached from --
+    is written once, as `db.is_the_live_record_file`."""
+    return db.is_the_live_record_file(path)
 
 
 # ---------------------------------------------------------------------------

@@ -538,10 +538,12 @@ def ensure_snapshot_columns(conn: sqlite3.Connection) -> list[str]:
 #: two (measured 2026-09-25: 2,005 and 342). The rebuild itself is the
 #: generic one in `gridiron.rebuild`, which names no table; the entry lives
 #: here because this package is the only one that may name this table in
-#: code. The rebuild recreates all three of the table's triggers -- the two
-#: LAW 1 insert rules and the LAW 3 delete rule -- from the released text,
-#: and carries its AUTOINCREMENT sequence exactly, the hole at 174-181
-#: included.
+#: code. The rebuild recreates all five of the table's triggers -- the two
+#: LAW 1 insert rules, the LAW 3 delete rule and, from 2026-09-25 (the
+#: adversarial review of 3603300 and the rehearsal of its fixes), the two
+#: LAW 3 replace rules `market_snapshots_never_replaced` (an insert) and
+#: `market_snapshots_never_replaced_by_update` -- from the released text, and
+#: carries its AUTOINCREMENT sequence exactly, the hole at 174-181 included.
 SNAPSHOT_REBUILD = (
     "market_snapshots",
     "CHECK (kind IN ('open_at_predict', 'near_start')) on kind",

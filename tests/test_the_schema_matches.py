@@ -196,5 +196,9 @@ def test_the_normaliser_is_the_one_door():
     rebuild_source = (REPO / "gridiron" / "rebuild.py").read_text(encoding="utf-8")
     audit_source = inspect.getsource(audit.schema_difference_faults)
     assert "schema_diff.table_differences" in rebuild_source
+    assert "schema_diff.object_tokens" in rebuild_source
     assert "schema_diff.compare" in audit_source
-    assert schema_diff.tokens("-- x\n\"A\"") == ["a"]
+    # A QUOTED WORD IS A NAME ONLY WHERE ONLY A NAME CAN STAND (2026-09-25):
+    # after REFERENCES it is the table; alone, it may be a string.
+    assert schema_diff.tokens('-- x\nREFERENCES "A"') == ["references", "a"]
+    assert schema_diff.tokens('-- x\n"A"') == ['"A"']
