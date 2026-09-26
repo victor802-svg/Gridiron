@@ -38,7 +38,7 @@ from __future__ import annotations
 import sqlite3
 
 from .. import config, correction
-from ..db import just_after, utcnow
+from ..db import just_after, transaction, utcnow
 from ..priced import coverage
 from . import paper
 
@@ -64,24 +64,39 @@ def fee(price: float) -> float:
     return paper.fee_per_contract(price)
 
 
+def _cost_of(side: str, price: float) -> float:
+    """What one contract of `side` costs, from the venue's YES price: the
+    price itself on the yes side, the rest of the dollar on the no side.
+
+    ONE ORIENTATION FOR THE EDGE AND THE RETURN (GRIDIRON_REPAIR item 4,
+    2026-09-26). `edge_cents` worked the cost out for itself and the bar
+    did not work it out at all -- it divided by the yes price whichever side
+    the edge was on -- so the two disagreed about what a no-side contract
+    costs. Both ask here now. A side that is neither is refused by name
+    rather than read as the no side, which is what the old `else:` did.
+    """
+    if side == "yes":
+        return float(price)
+    if side == "no":
+        return 1.0 - float(price)
+    raise ValueError(f"a side is 'yes' or 'no', not {side!r}")
+
+
 def edge_cents(model_prob: float | None, price: float | None,
-               side: str = "yes") -> float | None:
+               side: str) -> float | None:
     """What one contract is worth after the fee, in cents.
 
     The yes side costs `price` and returns a dollar if it happens; the no side
     costs the rest of the dollar. Both are the same subtraction, and the fee is
     charged either way -- which is the whole reason a small edge is usually not
-    one.
+    one. The side has no default (2026-09-26): the one caller names it, and a
+    default is how the bar came to assume one.
     """
     if model_prob is None or price is None or not 0 < price < 1:
         return None
-    if side == "yes":
-        raw = float(model_prob) - float(price)
-        cost = float(price)
-    else:
-        raw = (1.0 - float(model_prob)) - (1.0 - float(price))
-        cost = 1.0 - float(price)
-    return round((raw - fee(cost)) * 100.0, 2)
+    cost = _cost_of(side, price)
+    worth = float(model_prob) if side == "yes" else 1.0 - float(model_prob)
+    return round((worth - cost - fee(cost)) * 100.0, 2)
 
 
 def side_for(model_prob: float | None, price: float | None) -> dict:
@@ -104,7 +119,8 @@ def side_for(model_prob: float | None, price: float | None) -> dict:
             "why": f"{best:+.1f} cents a contract after the venue's fee"}
 
 
-def return_on_stake(edge_cents: float | None, price: float | None) -> float | None:
+def return_on_stake(edge_cents: float | None, price: float | None, *,
+                    side: str | None) -> float | None:
     """The edge as a share of the money put up, not as cents on a contract.
 
     THE TWO NUMBERS DISAGREE ABOUT WHICH BET IS BETTER, which is the whole
@@ -112,12 +128,25 @@ def return_on_stake(edge_cents: float | None, price: float | None) -> float | No
     20-cent one are the same edge and are 2.2% and 10% on the stake; the
     second is worth four and a half times as much per dollar risked.
 
-    None where either input is missing, because absent and zero are different
-    facts here as everywhere else in this project.
+    THE MONEY PUT UP IS WHAT THE SIDE TAKEN COSTS (GRIDIRON_REPAIR item 4,
+    the operator's ruling of 2026-09-23: "a no-side edge divides by the
+    no-side cost"; built 2026-09-26). `price` is the venue's YES price, and
+    until this date it was the divisor whichever side the edge was on. A
+    no-side contract costs the rest of the dollar, so below a 50c yes price
+    a no-side edge read larger than it was: THE READ of 2026-09-23 found
+    recs 3, 10 and 26 cleared the 5% bar at 5.6%, 6.1% and 7.2% of the yes
+    price and are 3.3%, 3.7% and 4.7% of what the no side cost -- and rec 56
+    did the same on 24 September. Above 50c it read smaller, and a real edge
+    was refused. `side` is required and has no default, so a caller that
+    forgets it is a TypeError rather than a yes price.
+
+    None where an input is missing or the side is not known, because absent
+    and zero are different facts here as everywhere else in this project.
     """
-    if edge_cents is None or price is None or price <= 0:
+    if edge_cents is None or price is None or side is None \
+            or not 0 < price < 1:
         return None
-    return round((float(edge_cents) / 100.0) / float(price), 4)
+    return round((float(edge_cents) / 100.0) / _cost_of(side, price), 4)
 
 
 def payout_multiple(price: float | None) -> float | None:
@@ -132,29 +161,42 @@ def payout_multiple(price: float | None) -> float | None:
     return round(1.0 / float(price), 3)
 
 
-def clears_the_bar(edge_cents: float | None, price: float | None) -> dict:
+def clears_the_bar(edge_cents: float | None, price: float | None, *,
+                   side: str | None) -> dict:
     """Both conditions, in one place, with the reason it failed in words.
 
     ONE DOOR, for the same reason `refuse_in_game` is one: two callers deciding
     what "clears the bar" means is how a page starts disagreeing with itself
     about which group a pick belongs in.
+
+    `price` is the yes price and `side` the side the edge is on; the return is
+    on what that side costs (`return_on_stake`, 2026-09-26), and the words
+    name that cost, to the tenth of a cent where it has one -- the yes price
+    rounded to a whole cent named 62c for a contract that cost 62.5c, and 50c
+    for one that cost 49.5c.
     """
-    got = return_on_stake(edge_cents, price)
+    got = return_on_stake(edge_cents, price, side=side)
     if got is None:
         return {"clears": False, "return_on_stake": None,
                 "why": "no recorded price to compare against"}
+    cost = _cents(_cost_of(side, price))
     if got < config.MIN_RETURN_ON_STAKE:
         return {
             "clears": False,
             "return_on_stake": got,
             "why": (f"the price is wrong by {edge_cents:+.1f}¢ and that is "
-                    f"{got * 100:.1f}% of the {round(price * 100)}¢ it costs, "
+                    f"{got * 100:.1f}% of the {cost}¢ it costs, "
                     f"under the {config.MIN_RETURN_ON_STAKE * 100:.0f}% this "
                     f"app asks for before it calls something worth the click"),
         }
     return {"clears": True, "return_on_stake": got,
-            "why": (f"{got * 100:.1f}% of the {round(price * 100)}¢ it costs, "
+            "why": (f"{got * 100:.1f}% of the {cost}¢ it costs, "
                     f"after the venue's fee")}
+
+
+def _cents(share: float) -> str:
+    """A cost in cents as a reader says it: 62.5, 89, never 89.0."""
+    return f"{share * 100:.1f}".rstrip("0").rstrip(".")
 
 
 def kelly_fraction(model_prob: float, price: float) -> float:
@@ -409,7 +451,12 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         # face, and a number with no side is the defect this project has had
         # more often than any other.
         edge_side = chosen["side"]
-        stake = clears_the_bar(chosen.get("edge_cents"), price)
+        # ON WHAT THE SIDE COSTS (GRIDIRON_REPAIR item 4, 2026-09-26). This
+        # line asked the bar with the yes price whichever side the edge was
+        # on; a no-side edge is now divided by the no side's cost. With no
+        # side -- the fee not cleared, or the market not covered -- there is
+        # no return to state, and none is (`chosen` already says why).
+        stake = clears_the_bar(chosen.get("edge_cents"), price, side=edge_side)
         if chosen["side"] is not None and not stake["clears"]:
             chosen = {"side": None, "edge_cents": chosen["edge_cents"],
                       "why": stake["why"]}
@@ -645,6 +692,169 @@ def withdrawn(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
         f" ORDER BY r.id", (sport,)).fetchall()
     return [{"id": r["id"], "market": r["market"],
              "prediction_id": r["prediction_id"], "reason": r["reason"]}
+            for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# A RECOMMENDATION THE BAR SHOULD HAVE REFUSED (GRIDIRON_REPAIR item 4, the
+# operator's ruling of 2026-09-23, built 2026-09-26)
+# ---------------------------------------------------------------------------
+#
+# "Return-on-stake denominator: a no-side edge divides by the no-side cost.
+# Re-grade the three recommendations it let through as 'would not have
+# cleared'." Until 2026-09-26 the bar divided every edge by the yes price, so
+# a no-side pick below a 50c yes price could clear 5% of the yes price while
+# returning less than 5% of what it cost. THE READ of 2026-09-23 counted
+# three: recs 3, 10 and 26. Measured again on 2026-09-26, the rule selects
+# four -- rec 56, written on 24 September by the code still carrying the
+# defect, is the fourth -- which is a question for the operator
+# (docs/REPAIR_STATE.md), so `tools/regrade_return_on_stake.py` writes only
+# the set he names and refuses a difference.
+#
+# A LABEL, NEVER AN EDIT (LAW 3). The recommendation stays exactly as it was
+# written; `recommendation_regrades` holds a second row beside it, and the
+# schema checks the label against the row's own frozen side, price and edge.
+# A re-grade is not a withdrawal: it takes nothing out of any count, and the
+# closing line names it beside itself, in the words "would not have cleared".
+
+#: The one verdict a re-grade carries, as `recommendation_regrades` admits it.
+WOULD_NOT_HAVE_CLEARED = "would_not_have_cleared"
+
+#: What every re-grade says, in words, with its own numbers -- to the
+#: hundredth of a per cent, because rec 56 is 4.97% of its cost and one place
+#: would print it as 5.0% "under the 5%".
+REGRADE_WHY = ("the bar divided this {side}-side edge of {edge:+.2f}¢ by the "
+               "{price}¢ yes price and passed it at {on_yes:.2%}; on the "
+               "{cost}¢ the {side} side cost it is {on_cost:.2%}, under the "
+               "{minimum:.0%} declared on {declared} (GRIDIRON_REPAIR item 4, "
+               "the operator's ruling of 2026-09-23)")
+
+
+def _has_regrades(conn: sqlite3.Connection) -> bool:
+    """A record the schema has not reached holds no re-grade -- exactly, as
+    `_has_withdrawals` says of a withdrawal: the dry-run tools and the gate
+    read the live record without applying the schema."""
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+        "   AND name = 'recommendation_regrades'").fetchone() is not None
+
+
+def let_through_by_the_yes_price(conn: sqlite3.Connection) -> list[dict]:
+    """Every standing recommendation the bar passed on the yes price and
+    refuses on the cost of the side it was on, each with its arithmetic.
+
+    BY RULE, FROM THE FROZEN ROW, NEVER BY OUTCOME: the side, the price and
+    the edge as written, divided the way the bar divided them until
+    2026-09-26 -- by the yes price, whatever the side -- and the way it
+    divides now, through `clears_the_bar` itself, so the rule that selects a
+    re-grade is the rule that decides a pick. Only rows written once the bar
+    had been declared: before that nothing was let through, because nothing
+    was asked. Withdrawn rows go through the door like every other reader:
+    a withdrawn recommendation is already never counted, and is shown as
+    withdrawn rather than labelled twice.
+    """
+    has = _has_regrades(conn)
+    labelled = ("EXISTS (SELECT 1 FROM recommendation_regrades g"
+                "        WHERE g.recommendation_id = r.id)" if has else "0")
+    rows = conn.execute(
+        f"SELECT r.id, r.sport, r.market, r.side, r.price, r.edge_cents,"
+        f"       r.created_utc, {labelled} AS already"
+        f"  FROM recommendations r"
+        f" WHERE r.created_utc >= ?" + not_withdrawn(conn) +
+        " ORDER BY r.id", (config.MIN_RETURN_ON_STAKE_DECLARED,)).fetchall()
+    out = []
+    for row in rows:
+        # WHAT THE BAR COMPUTED UNTIL 2026-09-26: the edge over the yes
+        # price, whatever the side. Written out here and nowhere else, as the
+        # record of a divisor that is no longer used.
+        on_yes = round((float(row["edge_cents"]) / 100.0) / float(row["price"]), 4)
+        now = clears_the_bar(row["edge_cents"], row["price"], side=row["side"])
+        if now["clears"] or on_yes < config.MIN_RETURN_ON_STAKE:
+            continue
+        cost = round(_cost_of(row["side"], row["price"]), 4)
+        out.append({
+            "id": row["id"], "sport": row["sport"], "market": row["market"],
+            "side": row["side"], "price": row["price"],
+            "edge_cents": row["edge_cents"], "created_utc": row["created_utc"],
+            "side_cost": cost, "return_on_cost": now["return_on_stake"],
+            "return_on_yes_price": on_yes,
+            "minimum_return": config.MIN_RETURN_ON_STAKE,
+            "already": bool(row["already"]),
+            "reason": REGRADE_WHY.format(
+                side=row["side"], edge=row["edge_cents"],
+                price=_cents(row["price"]), on_yes=on_yes, cost=_cents(cost),
+                on_cost=now["return_on_stake"],
+                minimum=config.MIN_RETURN_ON_STAKE,
+                declared=config.MIN_RETURN_ON_STAKE_DECLARED[:10]),
+        })
+    return out
+
+
+def write_regrades(conn: sqlite3.Connection, ids: list[int], *,
+                   now: str | None = None) -> dict:
+    """One re-grade for each of `ids`, in one transaction, or none at all.
+
+    EVERY ID IS CHECKED AGAINST THE ARITHMETIC FIRST: an id the rule does
+    not select (`let_through_by_the_yes_price`, read in the same call) is
+    refused by name and nothing is written. The schema checks each row's
+    numbers again as it is written. IDEMPOTENT: an id already re-graded is
+    counted and skipped -- the table would refuse a second row anyway, and
+    the first stands.
+    """
+    if not _has_regrades(conn):
+        raise RuntimeError(
+            "the record has no recommendation_regrades table: it has not been "
+            "opened under the schema that carries it (db.init does that, on "
+            "any scheduled pass or the server's start after the release)")
+    chosen = {r["id"]: r for r in let_through_by_the_yes_price(conn)}
+    stray = sorted(set(ids) - set(chosen))
+    if stray:
+        raise ValueError(
+            f"recommendation(s) {stray} would have cleared on the cost of "
+            f"their own side, or are withdrawn, or were never let through by "
+            f"the yes price: nothing written")
+    stamp = now or utcnow()
+    counts = {"written": 0, "already": 0}
+    with transaction(conn):
+        for rid in sorted(set(ids)):
+            got = chosen[rid]
+            if got["already"]:
+                counts["already"] += 1
+                continue
+            conn.execute(
+                "INSERT INTO recommendation_regrades (recommendation_id,"
+                " regraded_utc, verdict, side_cost, return_on_cost,"
+                " return_on_yes_price, minimum_return, reason)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (rid, stamp, WOULD_NOT_HAVE_CLEARED, got["side_cost"],
+                 got["return_on_cost"], got["return_on_yes_price"],
+                 got["minimum_return"], got["reason"]))
+            counts["written"] += 1
+    return counts
+
+
+def regraded(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
+    """This sport's standing recommendations that carry a re-grade.
+
+    WHAT THE PAGE SAYS BESIDE THE CLOSING LINE: named, with the return on
+    the side's own cost, and counted where they always were -- a label, not
+    a withdrawal. Through the door: a withdrawn recommendation is shown as
+    withdrawn, once.
+    """
+    config.require_sport(sport, "recommend.regraded")
+    if not _has_regrades(conn):
+        return []
+    rows = conn.execute(
+        "SELECT r.id, r.market, g.side_cost, g.return_on_cost,"
+        "       g.return_on_yes_price, g.minimum_return, g.reason"
+        "  FROM recommendation_regrades g"
+        "  JOIN recommendations r ON r.id = g.recommendation_id"
+        " WHERE r.sport = ?" + not_withdrawn(conn) +
+        " ORDER BY r.id", (sport,)).fetchall()
+    return [{"id": r["id"], "market": r["market"], "side_cost": r["side_cost"],
+             "return_on_cost": r["return_on_cost"],
+             "return_on_yes_price": r["return_on_yes_price"],
+             "minimum_return": r["minimum_return"], "reason": r["reason"]}
             for r in rows]
 
 

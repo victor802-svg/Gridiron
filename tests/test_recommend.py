@@ -456,6 +456,391 @@ def test_a_correction_reaches_only_its_own_forecasters_picks(tmp_path):
     assert got[theirs]["fair_value"] == pytest.approx(0.43)
 
 
+# --- the return on what the side costs (GRIDIRON_REPAIR item 4) --------------
+#
+# The operator's ruling of 2026-09-23, built 2026-09-26: "Return-on-stake
+# denominator: a no-side edge divides by the no-side cost. Re-grade the three
+# recommendations it let through as 'would not have cleared'. Planting."
+
+def test_a_no_side_edge_is_a_share_of_what_the_no_side_costs():
+    """REC 3'S NUMBERS: 2.09c on the no side of a 37.5c yes price. On the yes
+    price it read 5.6% and cleared; the no side costs 62.5c, and on that it
+    is 3.3%, under the 5% bar. The words name the cost to the tenth of a
+    cent -- the old words rounded the yes price to 38c and called that what
+    the pick cost."""
+    got = recommend.clears_the_bar(2.09, 0.375, side="no")
+    assert got["clears"] is False
+    assert got["return_on_stake"] == pytest.approx(0.0334)
+    assert "3.3%" in got["why"] and "62.5¢" in got["why"] and "5%" in got["why"]
+    assert recommend.return_on_stake(2.09, 0.375, side="no") == pytest.approx(0.0334)
+    # the yes side of the same price is divided by the price, as it always was
+    assert recommend.return_on_stake(2.09, 0.375, side="yes") == pytest.approx(0.0557)
+
+
+def test_above_fifty_cents_a_real_no_side_edge_now_clears():
+    """THE MIRROR (prediction 1774 in THE READ of 2026-09-23): 2.5c on the no
+    side of a 50.5c yes price was 4.95% of the yes price and refused; it is
+    5.05% of the 49.5c the no side costs."""
+    got = recommend.clears_the_bar(2.5, 0.505, side="no")
+    assert got["clears"] is True
+    assert got["return_on_stake"] == pytest.approx(0.0505)
+    assert "49.5¢" in got["why"]
+
+
+def test_the_bar_cannot_be_asked_without_naming_the_side():
+    """A KEYWORD WITH NO DEFAULT: a caller that forgets the side is a
+    TypeError, not a quiet division by the yes price. A side that is neither
+    is refused by name, and an unknown side has no return rather than one."""
+    with pytest.raises(TypeError):
+        recommend.clears_the_bar(2.09, 0.375)
+    with pytest.raises(TypeError):
+        recommend.return_on_stake(2.09, 0.375)
+    with pytest.raises(TypeError):
+        recommend.clears_the_bar(2.09, 0.375, "no")       # not positionally either
+    with pytest.raises(ValueError, match="'yes' or 'no'"):
+        recommend.return_on_stake(2.09, 0.375, side="home")
+    assert recommend.return_on_stake(2.09, 0.375, side=None) is None
+    assert recommend.clears_the_bar(2.09, 0.375, side=None)["clears"] is False
+    # a price that is not a price has no return, on either side
+    assert recommend.return_on_stake(2.0, 1.0, side="no") is None
+    assert recommend.return_on_stake(2.0, 0.0, side="yes") is None
+
+
+def test_the_edge_did_not_move_when_it_shared_the_cost_with_the_return():
+    """`edge_cents` asks `_cost_of` now instead of working the cost out for
+    itself. Bit for bit what it was, on both sides, across the price range."""
+    def before(model_prob, price, side):
+        if side == "yes":
+            raw, cost = model_prob - price, price
+        else:
+            raw, cost = (1.0 - model_prob) - (1.0 - price), 1.0 - price
+        return round((raw - recommend.fee(cost)) * 100.0, 2)
+
+    for p in (0.05, 0.3341, 0.43, 0.5, 0.54, 0.62, 0.91):
+        for c in (0.02, 0.2, 0.375, 0.485, 0.505, 0.89, 0.98):
+            for side in ("yes", "no"):
+                assert recommend.edge_cents(p, c, side) == before(p, c, side)
+
+
+def test_rec_3s_numbers_are_not_recommended_and_the_mirror_is(tmp_path):
+    """THROUGH THE ONE CALL SITE. Rec 3's numbers leave the pick with no side
+    -- the edge still on the no side, with its number on the card -- and
+    nothing is written; the mirror's is recommended on the no side."""
+    conn = _world(tmp_path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1, 'R',"
+        " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')")
+    dear = _away_pick(conn, confidence=0.6659, price=0.375)
+    mirror = _away_pick(conn, game="g1", confidence=0.54, price=0.505)
+    got = {e["prediction_id"]: e for e in recommend.for_predictions(conn, [dear, mirror])}
+    a, b = got[dear], got[mirror]
+    assert (a["edge_side"], a["edge_cents"]) == ("no", pytest.approx(2.09))
+    assert a["side"] is None
+    assert a["return_on_stake"] == pytest.approx(0.0334)
+    assert "62.5¢" in a["side_why"]
+    assert (b["side"], b["edge_cents"]) == ("no", pytest.approx(2.5))
+    assert b["return_on_stake"] == pytest.approx(0.0505)
+    counts = recommend.record_for(conn, [dear, mirror])
+    assert counts["recommended"] == 1 and counts["no_side"] == 1
+    row = conn.execute("SELECT prediction_id, side FROM recommendations").fetchone()
+    assert (row["prediction_id"], row["side"]) == (mirror, "no")
+
+
+def test_a_pick_with_no_side_carries_no_return(tmp_path):
+    """NO SIDE, NO RETURN: when neither side clears the fee there is no cost
+    to divide by, and the entry says None rather than a share of the yes
+    price (absent is not zero)."""
+    conn = _world(tmp_path)
+    pid = _pick(conn, prob=0.51, implied=0.50)
+    entry = recommend.for_predictions(conn, [pid])[0]
+    assert entry["side"] is None and entry["edge_side"] is None
+    assert entry["return_on_stake"] is None
+
+
+def _recorded(conn, rid, *, side, price, edge, created, fair=0.40, pid=None):
+    """A recommendation as the record holds one, written straight in."""
+    conn.execute(
+        "INSERT INTO recommendations (id, prediction_id, sport, game_id, market,"
+        " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+        " created_utc) VALUES (?, ?, 'mlb', 'g0', 'spread', ?, ?, ?, ?, 'flat',"
+        " 1.0, 53, ?)", (rid, pid, side, fair, price, edge, created))
+
+
+def _let_through_world(tmp_path, *, with_56=False):
+    """Recs 3, 10 and 26 as the record holds them, and around them the rows
+    the rule must leave alone."""
+    conn = _world(tmp_path)
+    pid = _pick(conn, implied=None)
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-09-06T00:00:00Z', 'mlb', 'g0', 'spread', 'AAA', -1.5,"
+        " 0.62, 'cover', 'statistical', 'final', 'fs2', ?, 'test')", (WHOLE,))
+    early = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    rows = [(3, "no", 0.375, 2.09, "2026-09-07T20:52:31Z"),
+            (10, "no", 0.375, 2.30, "2026-09-08T21:33:31Z"),
+            (26, "no", 0.395, 2.84, "2026-09-09T21:32:20Z"),
+            # the no side above 50c: 5.05% of its 49.5c cost -- clears
+            (30, "no", 0.505, 2.50, "2026-09-10T00:00:00Z"),
+            # the no side with room to spare: 5.6% of 62.5c -- clears
+            (31, "no", 0.375, 3.50, "2026-09-10T00:00:01Z"),
+            # the yes side: its divisor was always its cost -- 10% of 20c
+            (32, "yes", 0.20, 2.00, "2026-09-10T00:00:02Z"),
+            # let through by the yes price, and withdrawn: shown as withdrawn
+            (33, "no", 0.375, 2.09, "2026-09-10T00:00:03Z")]
+    if with_56:
+        rows.append((56, "no", 0.39, 3.03, "2026-09-24T05:21:25Z"))
+    for rid, side, price, edge, created in rows:
+        _recorded(conn, rid, side=side, price=price, edge=edge,
+                  created=created, pid=pid)
+    # WRITTEN BEFORE THE BAR WAS DECLARED: nothing let it through, because
+    # nothing was asked.
+    _recorded(conn, 2, side="no", price=0.375, edge=2.09,
+              created="2026-09-06T23:59:59Z", pid=early)
+    conn.execute("INSERT INTO recommendation_voids (recommendation_id,"
+                 " voided_utc, reason) VALUES (33, '2026-09-11T00:00:00Z',"
+                 " 'withdrawn in this test world')")
+    conn.commit()
+    return conn
+
+
+def test_the_regrade_is_chosen_by_rule_from_the_frozen_row(tmp_path):
+    conn = _let_through_world(tmp_path)
+    got = recommend.let_through_by_the_yes_price(conn)
+    assert [g["id"] for g in got] == [3, 10, 26]
+    by = {g["id"]: g for g in got}
+    assert (by[3]["side_cost"], by[3]["return_on_cost"],
+            by[3]["return_on_yes_price"]) == (0.625, pytest.approx(0.0334),
+                                              pytest.approx(0.0557))
+    assert by[26]["side_cost"] == pytest.approx(0.605)
+    assert by[26]["return_on_cost"] == pytest.approx(0.0469)
+    assert not any(g["already"] for g in got)
+    assert "62.5¢ the no side cost it is 3.34%" in by[3]["reason"]
+    # AND NEVER BY OUTCOME: nothing about how the games went is read
+    assert "outcome" not in by[3] and "clv_cents" not in by[3]
+
+
+def test_a_regrade_is_written_once_for_ids_the_arithmetic_supports(tmp_path):
+    conn = _let_through_world(tmp_path)
+    with pytest.raises(ValueError, match=r"\[32\]"):
+        recommend.write_regrades(conn, [3, 32])
+    assert conn.execute("SELECT COUNT(*) FROM recommendation_regrades").fetchone()[0] == 0
+    assert recommend.write_regrades(conn, [3, 10, 26]) == {"written": 3, "already": 0}
+    assert recommend.write_regrades(conn, [3, 10, 26]) == {"written": 0, "already": 3}
+    rows = conn.execute("SELECT * FROM recommendation_regrades ORDER BY 1").fetchall()
+    assert [r["recommendation_id"] for r in rows] == [3, 10, 26]
+    assert {r["verdict"] for r in rows} == {recommend.WOULD_NOT_HAVE_CLEARED}
+    assert all(r["minimum_return"] == config.MIN_RETURN_ON_STAKE for r in rows)
+    # THE RECOMMENDATIONS THEMSELVES ARE UNTOUCHED (LAW 3)
+    rec = conn.execute("SELECT side, price, edge_cents FROM recommendations"
+                       " WHERE id = 3").fetchone()
+    assert tuple(rec) == ("no", 0.375, 2.09)
+
+
+def test_a_regrade_is_true_and_permanent(tmp_path):
+    conn = _let_through_world(tmp_path)
+    recommend.write_regrades(conn, [3])
+
+    def insert(rid, *, cost, got, on_yes, at="2026-09-26T00:00:00Z",
+               reason="the bar divided by the yes price", verb="INSERT"):
+        conn.execute(
+            f"{verb} INTO recommendation_regrades (recommendation_id,"
+            " regraded_utc, verdict, side_cost, return_on_cost,"
+            " return_on_yes_price, minimum_return, reason)"
+            " VALUES (?, ?, 'would_not_have_cleared', ?, ?, ?, 0.05, ?)",
+            (rid, at, cost, got, on_yes, reason))
+
+    # a pick that clears on its own cost, however it is stated
+    with pytest.raises(sqlite3.IntegrityError, match="numbers are that"):
+        insert(32, cost=0.20, got=0.10, on_yes=0.10)
+    with pytest.raises(sqlite3.IntegrityError, match="numbers are that"):
+        insert(32, cost=0.20, got=0.02, on_yes=0.10)
+    with pytest.raises(sqlite3.IntegrityError, match="numbers are that"):
+        insert(10, cost=0.375, got=0.0613, on_yes=0.0613)   # the yes price as cost
+    with pytest.raises(sqlite3.IntegrityError, match="after the recommendation"):
+        insert(10, cost=0.625, got=0.0368, on_yes=0.0613, at="2026-09-08T21:33:31Z")
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+        insert(10, cost=0.625, got=0.0368, on_yes=0.0613, reason="short")
+    with pytest.raises(sqlite3.IntegrityError, match="never replaced"):
+        insert(3, cost=0.625, got=0.0334, on_yes=0.0557, verb="INSERT OR REPLACE")
+    with pytest.raises(sqlite3.IntegrityError, match="cannot be rewritten"):
+        conn.execute("UPDATE recommendation_regrades SET reason = 'a different one'")
+    with pytest.raises(sqlite3.IntegrityError, match="never deleted"):
+        conn.execute("DELETE FROM recommendation_regrades")
+    conn.rollback()
+    assert conn.execute("SELECT COUNT(*) FROM recommendation_regrades").fetchone()[0] == 1
+
+
+def test_a_regrade_labels_only_what_the_yes_price_let_through(tmp_path):
+    """THE PROVER OF ITEM 4 (2026-09-26). The table checked a label's figures
+    against the row but took the bar from the label, trusted its figures
+    within a tolerance, and took any row -- so each of these, on the row's
+    own numbers, was taken as "would not have cleared". The one exception is
+    rec 32 read as if on the no side, which the rule now needs the side to
+    refuse, because it reads the no side's cost off the row."""
+    conn = _let_through_world(tmp_path)
+    # 4.996% of the 62.45c the no side costs: the bar rounds it to 5.0% and
+    # clears it, so it was written, rightly
+    _recorded(conn, 34, side="no", price=0.3755, edge=3.12,
+              created="2026-09-10T00:00:05Z",
+              pid=conn.execute("SELECT prediction_id FROM recommendations"
+                               " WHERE id = 3").fetchone()[0])
+    assert recommend.clears_the_bar(3.12, 0.3755, side="no")["clears"] is True
+
+    def insert(rid, *, cost, got, on_yes, minimum=0.05):
+        conn.execute(
+            "INSERT INTO recommendation_regrades (recommendation_id,"
+            " regraded_utc, verdict, side_cost, return_on_cost,"
+            " return_on_yes_price, minimum_return, reason)"
+            " VALUES (?, '2026-09-26T00:00:00Z', 'would_not_have_cleared',"
+            " ?, ?, ?, ?, 'the bar divided by the yes price')",
+            (rid, cost, got, on_yes, minimum))
+
+    refused = "one the yes price let through"
+    # rec 31 cleared 5.6% of its 62.5c: not under a bar it was never asked
+    with pytest.raises(sqlite3.IntegrityError, match=refused):
+        insert(31, cost=0.625, got=0.056, on_yes=0.0933, minimum=0.08)
+    # rec 32 cleared 10% of its 20c on the yes side: not as if it were no
+    with pytest.raises(sqlite3.IntegrityError, match=refused):
+        insert(32, cost=0.80, got=0.025, on_yes=0.10)
+    # rec 34, cleared at the bar's own four places, stated a hair under
+    with pytest.raises(sqlite3.IntegrityError, match=refused):
+        insert(34, cost=0.6245, got=0.04991, on_yes=0.0831)
+    # rec 30, the no side above 50c: the yes price never passed it
+    with pytest.raises(sqlite3.IntegrityError, match=refused):
+        insert(30, cost=0.495, got=0.0505, on_yes=0.0495, minimum=0.06)
+    # rec 2, rec 3's numbers written before the bar was declared
+    with pytest.raises(sqlite3.IntegrityError, match=refused):
+        insert(2, cost=0.625, got=0.0334, on_yes=0.0557)
+    conn.rollback()
+    # and the true ones, as `write_regrades` states them, are taken
+    assert recommend.write_regrades(conn, [3, 10, 26]) == {"written": 3,
+                                                          "already": 0}
+
+
+def test_the_regrade_rule_pins_the_bar_as_declared():
+    """The schema cannot read config, so the bar and the day it was declared
+    are written into the rule -- as the activation gate's birthday is -- and
+    must be the config's own."""
+    from pathlib import Path
+
+    schema = (Path(db.__file__).resolve().parent / "schema.sql").read_text(
+        encoding="utf-8")
+    at = schema.index(
+        "CREATE TRIGGER IF NOT EXISTS recommendation_regrade_is_its_own_arithmetic")
+    trigger = schema[at:schema.index("END;", at)]
+    assert f"NEW.minimum_return = {config.MIN_RETURN_ON_STAKE}" in trigger
+    assert f"'{config.MIN_RETURN_ON_STAKE_DECLARED}'" in trigger
+    assert "r.side = 'no'" in trigger
+
+
+def test_the_closing_line_names_a_regrade_and_counts_it_where_it_was(tmp_path):
+    """A LABEL, NOT A WITHDRAWAL. Every count the closing line gives is the
+    same before and after; beside it, "would not have cleared", with its N
+    and the return on what each side cost."""
+    conn = _let_through_world(tmp_path)
+    before = calibration.clv_report(conn, sport="mlb")
+    assert before["regraded"] == 0 and before["regraded_line"] is None
+    recommend.write_regrades(conn, [3, 10, 26])
+    after = calibration.clv_report(conn, sport="mlb")
+    for key in ("n", "unmeasured", "restated", "unaccounted", "awaiting_close",
+                "withdrawn"):
+        assert after[key] == before[key], key
+    assert after["regraded"] == 3
+    line = after["regraded_line"]
+    assert line["label"] == "Would not have cleared" and line["n"] == 3
+    assert line["words"].startswith("3 recommendations would not have cleared")
+    assert "3.34%, 3.68% and 4.69%" in line["words"] and "5%" in line["words"]
+    assert "counted where they were" in line["words"]
+    assert audit.plain_words_violations(line["words"]) == []
+    assert audit.advice_word_faults(line["words"]) == []
+    calibration.assert_every_figure_has_n(after)
+    audit.check_no_withdrawn_recommendation_counted(conn, after)
+    # rec 56's 4.97% is never printed as "5.0%, under the 5%"
+    assert "4.97%" in language.regraded_recommendations_line([(0.0497, 0.05)])
+    assert language.regraded_recommendations_line([(0.0334, 0.05)]).startswith(
+        "1 recommendation would not have cleared the bar: its edge")
+
+
+def test_a_record_without_the_table_has_regraded_nothing(tmp_path):
+    """The gate and the dry runs read the live record without applying the
+    schema; a reader must not stop at a table the record does not hold yet."""
+    conn = _let_through_world(tmp_path)
+    conn.execute("DROP TABLE recommendation_regrades")
+    assert recommend.regraded(conn, sport="mlb") == []
+    assert [g["id"] for g in recommend.let_through_by_the_yes_price(conn)] == [3, 10, 26]
+    with pytest.raises(RuntimeError, match="db.init"):
+        recommend.write_regrades(conn, [3])
+
+
+def test_the_renderer_draws_the_regrade_beside_the_closing_line():
+    from pathlib import Path
+
+    js = (Path(recommend.__file__).resolve().parents[1] / "web" / "app.js").read_text(
+        encoding="utf-8")
+    assert "line.regraded_line" in js
+    at = js.index("line.regraded_line")
+    assert "requireN(regraded" in js[at:at + 400]
+
+
+def _regrade_tool():
+    import importlib.util
+
+    path = config.PACKAGE_ROOT.parent / "tools" / "regrade_return_on_stake.py"
+    spec = importlib.util.spec_from_file_location("regrade_tool_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_tool_writes_the_ruled_set_once_and_reads_only_until_told(tmp_path, capsys):
+    tool = _regrade_tool()
+    assert tool.RULED == (3, 10, 26) and tool.LEFT_BY_RULING == ()
+    path = tmp_path / "rec.db"
+    _let_through_world(tmp_path).close()
+    assert tool.main(["--database", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "3 recommendation(s) cleared 5% of the yes price" in out
+    assert "nothing written" in out
+    check = db.connect(path)
+    assert check.execute("SELECT COUNT(*) FROM recommendation_regrades").fetchone()[0] == 0
+    check.close()
+    assert tool.main(["--database", str(path), "--write"]) == 0
+    assert tool.main(["--database", str(path), "--write"]) == 0     # idempotent
+    assert "3 already re-graded" in capsys.readouterr().out
+    check = db.connect(path)
+    assert [r[0] for r in check.execute(
+        "SELECT recommendation_id FROM recommendation_regrades ORDER BY 1")] == [3, 10, 26]
+
+
+def test_the_tool_refuses_a_selection_the_ruling_did_not_name(tmp_path, capsys):
+    """REC 56, AS THE LIVE RECORD HOLDS IT ON 2026-09-26: let through by the
+    yes price after the ruling was measured. The ruling says "the three";
+    the tool names the fourth and writes nothing."""
+    tool = _regrade_tool()
+    path = tmp_path / "rec.db"
+    _let_through_world(tmp_path, with_56=True).close()
+    with pytest.raises(SystemExit) as exc:
+        tool.main(["--database", str(path), "--write"])
+    assert exc.value.code == 2
+    out = capsys.readouterr().out
+    assert "REFUSED, NOTHING WRITTEN" in out and "rec 56" in out
+    assert "4.97% of the 61.0c" in out
+    check = db.connect(path)
+    assert check.execute("SELECT COUNT(*) FROM recommendation_regrades").fetchone()[0] == 0
+
+
+def test_the_tool_refuses_live_on_anything_but_the_record(tmp_path):
+    tool = _regrade_tool()
+    path = tmp_path / "rec.db"
+    _let_through_world(tmp_path).close()
+    with pytest.raises(SystemExit) as exc:
+        tool.main(["--database", str(path), "--write", "--live"])
+    assert exc.value.code == 2
+
+
 def _read(conn, pid, *, at, bid, ask, ticker=None, kind="near_start",
           last=None):
     """A later look at the venue. The recommendation's own contract unless told

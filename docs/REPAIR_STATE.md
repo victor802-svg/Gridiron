@@ -139,6 +139,19 @@
      - (6) a scan refusing a raw sqlite3.connect to the live path outside the
        approved handles, with a planting.
 
+## Queued for AFTER the repair's close-out (operator ruling of 2026-09-26)
+
+The edge read (docs/briefs/2026-09-26-edge-read.md; recorded in
+docs/READINESS.md as a dated finding: the model shows no edge; MLB moneyline
+market better beyond noise for both forecasters; nowhere does the model beat
+the market). **No feature work from it now.** After close-out, in this order:
+
+1. The Record page states "market ahead" per sport and market, with its
+   interval.
+2. Model plan M3, the market blend, moves to the front of M1-M6. (No document
+   naming M1-M6 is in this repository; the order is recorded as ruled for
+   whoever holds the plan.)
+
 ## Questions for the operator
 
 Each blocks only its own step; the queue moves on where the next step does not
@@ -268,6 +281,68 @@ depend on the answer.
    with one component -- a panel on the Record tab (reasoning pass picked)
    listing the newest twenty with their prompts, and the prompt under each
    reasoning row in Results.
+9. **"The three recommendations it let through": the divisor let a fourth
+   through after the ruling. (Repair item 4; asked 2026-09-26.)** The ruling:
+   "Re-grade the three recommendations it let through as 'would not have
+   cleared'." THE READ of 2026-09-23 counted three -- recs 3, 10 and 26.
+   Measured again on 2026-09-26 through the read-only door, the rule
+   (cleared 5% of the yes price, does not clear 5% of what its own side
+   cost, written after the bar was declared, not withdrawn) selects FOUR:
+
+   | rec | written | MLB spread, side | edge | yes price | on the yes price | on its own cost |
+   |---|---|---|---|---|---|---|
+   | 3 | 2026-09-07T20:52:31Z | no | +2.09c | 37.5c | 5.57% | 3.34% of 62.5c |
+   | 10 | 2026-09-08T21:33:31Z | no | +2.30c | 37.5c | 6.13% | 3.68% of 62.5c |
+   | 26 | 2026-09-09T21:32:20Z | no | +2.84c | 39.5c | 7.19% | 4.69% of 60.5c |
+   | 56 | 2026-09-24T05:21:25Z | no | +3.03c | 39.0c | 7.77% | 4.97% of 61.0c |
+
+   Rec 56 (PIT -1.5 not covered, game mlb_823326, prediction 2165, gate 144)
+   was written by the logon catch-up's predict:mlb run (task run 2325) on 24
+   September, after the ruling and before the fix; its close is unmeasured
+   (no later read of its contract). Until the fix is released the scheduler
+   can let more through the same way; the tool names any it finds.
+   - **(A) The three named.** "The three" is the set the ruling answered;
+     re-grade 3, 10 and 26 only. Rec 56 stands unlabelled -- or waits for a
+     ruling of its own -- and the tool lists it as selected and left.
+   - **(B) Every one it let through.** "The three" described the class as it
+     was counted then; re-grade 3, 10, 26 and 56, and any more the old code
+     writes before the release.
+   Built meanwhile, the same under both: the fix, the table, the page's
+   words, and `tools/regrade_return_on_stake.py`, which REFUSES on the live
+   record today, naming rec 56 and its arithmetic, because its selection is
+   not the ruled set. Your answer is one line in it: rec 56 into `RULED`
+   (B) or into `LEFT_BY_RULING` (A). Rehearsed both ways on scratch copies.
+   Taken as the conservative default, not asked: a re-grade is a LABEL, not
+   a withdrawal -- the re-graded rows stay in every count they were in (the
+   ruling says "re-grade", where ruling 1 said "void" for out of the
+   counts); today none of the four is in any closing-line N (3, 10 and 26
+   are restated closes, 56 unmeasured), so no figure moves either way.
+10. **Does "a no-side edge divides by the no-side cost" reach the SIZE?
+    (Repair item 4; asked 2026-09-26.)** Above a market's gate, with its
+    edge measured ahead, `recommend.size_for` passes the claim's YES
+    probability and the YES price to `kelly_fraction` whatever the side, so a
+    no-side pick with a real edge is sized as the yes bet: 43% against 48.5c
+    is +3.5c on the no side and a quarter of Kelly of 0.0 units, written as a
+    `fraction` (item 3's prover found it). Measured 2026-09-26, read-only:
+    every one of the 101 recommendations is a flat unit; six categories have
+    their hundred settled (NCAAF spread statistical 132; MLB moneyline
+    statistical 233 and reasoning 121; MLB spread statistical 175; MLB total
+    statistical 182 and reasoning 110), and in none is the model measured
+    ahead (three behind, three with nothing settled beside a price) -- so the
+    defect has touched no recommendation, and is one measurement away in
+    each of the six.
+    - **(A) Yes: one ruling, one orientation.** The ruling names the rule
+      that every quantity of a no-side pick is the no side's; the size is
+      computed on the no side (the no side's probability and cost into
+      `kelly_fraction`), with its own planting, in item 4.
+    - **(B) No: the ruling names the return-on-stake denominator.** Kelly's
+      arithmetic divides no edge by a cost the way the bar does (a no-side
+      Kelly fraction is the edge over the YES price), the brief allows no
+      fix beyond what is named, and item 3's prover already wrote "a fix is
+      its own ruling". It waits for one.
+    Default until ruled: (B); not built; FOLLOWUPS has it with two more of
+    the same shape, also not named -- the payout floor and a proposed
+    combo's no-side legs.
 
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 

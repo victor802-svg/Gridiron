@@ -3400,6 +3400,35 @@ def withdrawn_recommendations_line(n: int, reasons: list[str | None]) -> str:
     return head + (": " + "; and ".join(said) if said else "")
 
 
+def regraded_recommendations_line(graded: list[tuple[float, float]]) -> str:
+    """The recommendations the corrected bar would have refused, and by how
+    much -- each as (return on what its side cost, the bar it was under).
+
+    GRIDIRON_REPAIR item 4, the operator's ruling of 2026-09-23: "Re-grade
+    the three recommendations it let through as 'would not have cleared'."
+    In those words, beside the closing line. A LABEL, NOT A WITHDRAWAL: they
+    were made, so they stay on the record and are counted where they were,
+    and this says what the bar makes of them now that it divides by what the
+    side taken cost rather than by the yes price.
+    """
+    n = len(graded)
+    # TO THE HUNDREDTH: 4.97% to one place is "5.0%, under the 5%".
+    figures = _joined([f"{got * 100:.2f}%" for got, _ in graded])
+    bars = sorted({minimum for _, minimum in graded})
+    bar = _joined([f"{minimum * 100:.0f}%" for minimum in bars])
+    if n == 1:
+        return (f"1 recommendation would not have cleared the bar: its edge "
+                f"was measured against the yes price rather than against what "
+                f"the side taken cost, and on that cost it came to {figures}, "
+                f"under the {bar} asked for. It was made, so it stays on the "
+                f"record and is counted where it was")
+    return (f"{n} recommendations would not have cleared the bar: each edge "
+            f"was measured against the yes price rather than against what the "
+            f"side taken cost, and on that cost they came to {figures}, under "
+            f"the {bar} asked for. They were made, so they stay on the record "
+            f"and are counted where they were")
+
+
 def clv_finding_line(mean_cents: float, n: int) -> str:
     """The sentence for a negative closing line, written before it is needed."""
     return (f"THE MODEL IS BUYING RICH: {mean_cents:+.1f}¢ a contract against "

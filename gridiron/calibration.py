@@ -2095,6 +2095,13 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
         a close: named once beside the closing line, in that word, and never
         counted anywhere. Every read below goes through
         `recommend.not_withdrawn`, the one door.
+      * WOULD NOT HAVE CLEARED (GRIDIRON_REPAIR item 4, 2026-09-26) -- a
+        recommendation the bar let through by dividing a no-side edge by the
+        yes price, re-graded after the fact. A LABEL, NOT A WITHDRAWAL: it
+        stays in whichever count above it was in -- the ruling says re-grade,
+        where it says void when it means out of the counts -- and it is
+        named once beside the closing line, with its N and its return on
+        what its side cost.
     """
     from .market import recommend
 
@@ -2157,6 +2164,10 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
     # from this report would be a deletion by omission; it is named here, with
     # its reason, and in no figure above.
     withdrawn = recommend.withdrawn(conn, sport=sport)
+    # NAMED, AND COUNTED WHERE THEY WERE (GRIDIRON_REPAIR item 4, 2026-09-26):
+    # the recommendations the corrected bar would have refused, beside the
+    # closing line and never taken out of it.
+    regraded = recommend.regraded(conn, sport=sport)
     return {
         "sport": sport,
         "record": "closing_line",
@@ -2173,6 +2184,13 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
             "words": language.withdrawn_recommendations_line(
                 len(withdrawn), [w["reason"] for w in withdrawn]),
         } if withdrawn else None),
+        "regraded": len(regraded),
+        "regraded_line": ({
+            "label": "Would not have cleared",
+            "n": len(regraded),
+            "words": language.regraded_recommendations_line(
+                [(g["return_on_cost"], g["minimum_return"]) for g in regraded]),
+        } if regraded else None),
         "markets": entries,
         "note": (
             "The price the app recommended against the market's own final "

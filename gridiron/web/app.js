@@ -746,6 +746,17 @@ const Gridiron = (function () {
         row.appendChild(el('div', 'gate-why', gone.words));
         clv.appendChild(row);
       }
+      // WOULD NOT HAVE CLEARED, NAMED AND STILL COUNTED (GRIDIRON_REPAIR
+      // item 4, 2026-09-26): a re-grade is a label beside the closing line,
+      // not a withdrawal, and the words say so.
+      const regraded = line.regraded_line;
+      if (regraded) {
+        requireN(regraded, 'the recommendations that would not have cleared');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', regraded.label));
+        row.appendChild(el('div', 'gate-why', regraded.words));
+        clv.appendChild(row);
+      }
     }
 
     if (priced) {

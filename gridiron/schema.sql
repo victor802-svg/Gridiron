@@ -2480,6 +2480,127 @@ BEGIN
 END;
 
 -- ---------------------------------------------------------------------------
+-- A RECOMMENDATION THE BAR SHOULD HAVE REFUSED (GRIDIRON_REPAIR item 4, the
+-- operator's ruling of 2026-09-23, built 2026-09-26: "Return-on-stake
+-- denominator: a no-side edge divides by the no-side cost. Re-grade the three
+-- recommendations it let through as 'would not have cleared'.")
+--
+-- THE DEFECT. Until 2026-09-26 the return-on-stake bar divided every edge by
+-- the venue's yes price, whichever side it was on. A no-side contract costs
+-- the rest of the dollar, so below a 50c yes price a no-side edge read larger
+-- than it was: recs 3, 10 and 26 cleared the 5% bar at 5.6%, 6.1% and 7.2% of
+-- the yes price, and are 3.3%, 3.7% and 4.7% of what the no side cost.
+--
+-- A LABEL, NEVER AN EDIT. The recommendation stands exactly as written (LAW
+-- 3: what the app said at the time is the evidence). This is a companion row
+-- beside it, the shape recommendation_voids and recommendation_closes have:
+-- when, the verdict, the arithmetic that makes the verdict true, and a reason
+-- in words. It is NOT a withdrawal and takes nothing out of any count; the
+-- closing line names it beside itself, in the words "would not have cleared".
+--
+-- TRUE BY ITS OWN ARITHMETIC: a rule below recomputes, from the row's frozen
+-- side, price and edge, what the side cost and what the edge was on it, and
+-- refuses a label those numbers do not support. PERMANENT: one per
+-- recommendation, never edited, removed or replaced, and stamped after the
+-- recommendation it is about. (The two words that open a declaration may not
+-- appear in a comment in this file: at_the_line._schema_statements scans it.)
+--
+-- AND ONLY WHAT THE DIVISOR LET THROUGH (the prover of item 4, 2026-09-26).
+-- The rule checked the numbers against the row but took the bar from the
+-- label, and took any row: a pick that cleared 5% of its own cost was taken
+-- as "would not have cleared" by stating a 6% bar, and a yes-side pick, or a
+-- no-side one above 50c, that the yes price never passed was taken on its
+-- own numbers. So the label now also needs what the ruling names: a no-side
+-- row, written once the bar was declared (2026-09-07T00:00:00Z), the bar as
+-- declared (0.05, config.MIN_RETURN_ON_STAKE, pinned here as the activation
+-- gate's birthday is and tested equal to it), passed on the yes price and
+-- under the bar on its own cost -- both read off the row itself, rounded to
+-- the four places the bar rounds to, as well as off the label's own figures,
+-- which were trusted within a tolerance: a pick at 4.996% of its cost, which
+-- the bar rounds to 5.0% and clears, was taken labelled 4.99%.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recommendation_regrades (
+    recommendation_id   INTEGER PRIMARY KEY REFERENCES recommendations (id),
+    regraded_utc        TEXT NOT NULL,
+    verdict             TEXT NOT NULL CHECK (verdict IN ('would_not_have_cleared')),
+    -- what the side taken cost: the yes price on the yes side, the rest of
+    -- the dollar on the no side
+    side_cost           REAL NOT NULL CHECK (side_cost > 0 AND side_cost < 1),
+    -- the edge as a share of that cost, and of the yes price as the bar
+    -- divided it until 2026-09-26
+    return_on_cost      REAL NOT NULL,
+    return_on_yes_price REAL NOT NULL,
+    -- the bar, as declared when the label was written
+    minimum_return      REAL NOT NULL CHECK (minimum_return > 0 AND minimum_return < 1),
+    reason              TEXT NOT NULL CHECK (length(trim(reason)) >= 10)
+);
+
+CREATE TRIGGER IF NOT EXISTS recommendation_regrade_is_its_own_arithmetic
+BEFORE INSERT ON recommendation_regrades
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1 FROM recommendations r
+     WHERE r.id = NEW.recommendation_id
+       AND r.side = 'no'
+       AND r.created_utc >= '2026-09-07T00:00:00Z'
+       AND NEW.minimum_return = 0.05
+       AND abs(NEW.side_cost - (1.0 - r.price)) < 0.00005
+       AND abs(NEW.return_on_cost - r.edge_cents / 100.0 / NEW.side_cost) < 0.00006
+       AND abs(NEW.return_on_yes_price - r.edge_cents / 100.0 / r.price) < 0.00006
+       AND round(r.edge_cents / 100.0 / (1.0 - r.price), 4) < NEW.minimum_return
+       AND round(r.edge_cents / 100.0 / r.price, 4) >= NEW.minimum_return
+       AND NEW.return_on_cost < NEW.minimum_return
+       AND NEW.return_on_yes_price >= NEW.minimum_return)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a re-grade says a recommendation would not have cleared, so '
+        || 'its numbers are that recommendation''s own -- what its side cost, '
+        || 'the edge as a share of that cost, and that share under the bar -- '
+        || 'and it is one the yes price let through: a no-side pick written '
+        || 'under the 5% bar declared on 2026-09-07, which passed on the yes '
+        || 'price and does not on its own cost');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendation_regrade_comes_after_its_recommendation
+BEFORE INSERT ON recommendation_regrades
+FOR EACH ROW
+WHEN NEW.regraded_utc <= (SELECT created_utc FROM recommendations
+                           WHERE id = NEW.recommendation_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a re-grade is written after the recommendation it is '
+        || 'about, never at or before it');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendation_regrades_never_replaced
+BEFORE INSERT ON recommendation_regrades
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM recommendation_regrades g
+              WHERE g.recommendation_id = NEW.recommendation_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a re-grade is written once and never replaced; the '
+        || 'first stands');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendation_regrades_no_update
+BEFORE UPDATE ON recommendation_regrades
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a re-grade is terminal and its reason cannot be '
+        || 'rewritten');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendation_regrades_no_delete
+BEFORE DELETE ON recommendation_regrades
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a re-grade is never deleted. The recommendation was '
+        || 'made and the corrected bar says it would not have cleared, and the '
+        || 'record keeps both');
+END;
+
+-- ---------------------------------------------------------------------------
 -- PRICED FORECASTS (THE_PRICED P1, 2026-09-07). The second forecaster, which
 -- reads the price and says so on every row.
 --

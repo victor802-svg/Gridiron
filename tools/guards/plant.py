@@ -9785,7 +9785,9 @@ def plant_a_thin_edge_on_an_expensive_contract() -> Result:
     from gridiron import config as _config
     from gridiron.market import recommend as _recommend
 
-    verdict = _recommend.clears_the_bar(2.0, 0.89)
+    # THE YES SIDE, NAMED (2026-09-26): the bar is never asked without the
+    # side any more, and "two cents on an 89-cent contract" is the yes side.
+    verdict = _recommend.clears_the_bar(2.0, 0.89, side="yes")
     if verdict["clears"]:
         return Result(LAW_RETURN_ON_STAKE, "a thin edge on an expensive contract",
                       "market.recommend.clears_the_bar", False,
@@ -9793,7 +9795,7 @@ def plant_a_thin_edge_on_an_expensive_contract() -> Result:
                       f"the money is called worth taking, under a declared "
                       f"minimum of {_config.MIN_RETURN_ON_STAKE * 100:.0f}%")
     # and the mirror: the same edge on a cheap contract must still clear
-    cheap = _recommend.clears_the_bar(2.0, 0.20)
+    cheap = _recommend.clears_the_bar(2.0, 0.20, side="yes")
     if not cheap["clears"]:
         return Result(LAW_RETURN_ON_STAKE, "a thin edge on an expensive contract",
                       "market.recommend.clears_the_bar", False,
@@ -9802,6 +9804,354 @@ def plant_a_thin_edge_on_an_expensive_contract() -> Result:
                       "being turned away")
     return Result(LAW_RETURN_ON_STAKE, "a thin edge on an expensive contract",
                   "market.recommend.clears_the_bar", True, verdict["why"])
+
+
+def plant_a_no_side_edge_divided_by_the_yes_price() -> Result:
+    """Rec 3's numbers: 2.09c on the no side of a 37.5c yes price.
+
+    GRIDIRON_REPAIR item 4, the operator's ruling of 2026-09-23 (built
+    2026-09-26): "Return-on-stake denominator: a no-side edge divides by the
+    no-side cost. Re-grade the three recommendations it let through as
+    'would not have cleared'. Planting."
+
+    THE DEFECT. `for_predictions` asked `clears_the_bar(edge, price)` with
+    the venue's YES price whichever side the edge was on. A no-side contract
+    costs the rest of the dollar, so 2.09c on the no side of a 37.5c yes
+    price -- rec 3 on the live record -- read 5.6% of the yes price, cleared
+    the 5% bar and was recorded, where it is 3.3% of the 62.5c the no side
+    costs. And the mirror: above a 50c yes price the no side costs LESS than
+    the yes price, so a real edge was refused -- 2.5c on the no side of 50.5c
+    (prediction 1774 in THE READ of 2026-09-23) is 4.95% of the yes price and
+    5.05% of the 49.5c it costs.
+
+    CAUGHT means all three: the bar cannot be asked without naming the side
+    (a keyword with no default, on `clears_the_bar` and on `return_on_stake`),
+    so a caller that forgets fails loudly instead of dividing by the yes
+    price; the arithmetic refuses rec 3's numbers and takes the mirror's; and
+    THROUGH THE ONE CALL SITE, on a scratch record with the market covered,
+    rec 3's numbers leave the pick with no side -- its edge still on the no
+    side, with its number -- and `record_for` writes nothing, while the
+    mirror's is recommended on the no side. So a call site that names a
+    fixed side, or none, is caught as well as a bar that divides wrongly.
+    Every check runs and every failure is named, so on the code before the
+    fix the escape shows all three rather than the first.
+    """
+    import inspect
+
+    from gridiron import db as _db
+    from gridiron import shortlist as _shortlist
+    from gridiron.market import at_the_line as _atl, recommend as _rec
+    from gridiron.priced import coverage as _coverage
+
+    law, what = LAW_RETURN_ON_STAKE, "a no-side edge divided by the yes price"
+    guard = "market.recommend.clears_the_bar(side=) at recommend.for_predictions"
+    faults: list[str] = []
+
+    # 1. THE DOOR CANNOT BE ASKED BLIND.
+    for door in (_rec.clears_the_bar, _rec.return_on_stake):
+        side = inspect.signature(door).parameters.get("side")
+        if side is None or side.kind is not inspect.Parameter.KEYWORD_ONLY \
+                or side.default is not inspect.Parameter.empty:
+            faults.append(
+                f"`{door.__name__}` can be asked without naming the side, so a "
+                f"caller that forgets it divides a no-side edge by the yes price")
+
+    # 2. THE ARITHMETIC, on rec 3's numbers and on the mirror's.
+    try:
+        dear = _rec.clears_the_bar(2.09, 0.375, side="no")
+        mirror = _rec.clears_the_bar(2.5, 0.505, side="no")
+    except TypeError as exc:
+        faults.append(f"the bar does not take the side at all ({exc})")
+    else:
+        if dear["clears"] or dear["return_on_stake"] is None \
+                or abs(dear["return_on_stake"] - 0.0334) > 0.00005:
+            faults.append(
+                f"2.09c on the no side of a 37.5c yes price came back "
+                f"{dear['return_on_stake']} and clears={dear['clears']}: it is "
+                f"5.6% of the yes price and 3.3% of the 62.5c the no side "
+                f"costs, under the 5% bar")
+        if not mirror["clears"]:
+            faults.append(
+                f"the rule refuses a real no-side edge above 50c: 2.5c on the "
+                f"no side of a 50.5c yes price is 5.05% of the 49.5c it costs "
+                f"({mirror['why']})")
+
+    # 3. THROUGH THE ONE CALL SITE.
+    def stamp(delta: timedelta) -> str:
+        return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def forecast(gid: str, away: float, claim: float, yes: float,
+                 ticker: str) -> int:
+        """The away side at `away`; its claim stated from the home side."""
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1,"
+            " 'R', 'AAA', 'BBB', ?, 'scheduled', ?)",
+            (gid, stamp(timedelta(days=2)), stamp(timedelta(days=2))[:10]))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES (?, 'mlb',"
+            " ?, 'moneyline', 'BBB', NULL, ?, 'win', 'statistical', 'final',"
+            " 'fs2', '{\"coverage\": 1.0}', 'planted')",
+            (stamp(timedelta(hours=-3)), gid, away))
+        new = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+            " implied_prob, kind) VALUES (?, ?, 'planted', ?, 'open_at_predict')",
+            (new, stamp(timedelta(hours=-2)), yes))
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " fetched_utc) VALUES (?, ?, ?, 'mlb', ?, 'moneyline',"
+            " 'home_win', NULL, 'home', ?, ?, ?)",
+            (_atl.VENUE, ticker, "E" + ticker, gid, round(yes - 0.01, 4),
+             round(yes + 0.01, 4), stamp(timedelta(hours=-2))))
+        qid = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+            " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+            " created_utc) VALUES (?, ?, ?, 'mlb', ?, 'moneyline',"
+            " 'home_win', NULL, 'home', 'line_less', NULL, NULL, ?, ?, ?,"
+            " 'mid', ?)",
+            (new, qid, _atl.VENUE, gid, claim, yes, yes,
+             stamp(timedelta(hours=-1))))
+        return new
+
+    saved = _coverage.priceable
+    _coverage.priceable = lambda conn, sport, market: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    conn = _db.connect(":memory:")
+    try:
+        _db.init(conn)
+        # REC 3: the away side at 66.59%, so the home claim is 33.41%, against
+        # a 37.5c yes price. THE MIRROR: 54% away, a 46% claim, at 50.5c.
+        dear_pid = forecast("g1", 0.6659, 0.3341, 0.375, "T1")
+        mirror_pid = forecast("g2", 0.54, 0.46, 0.505, "T2")
+        conn.commit()
+        _shortlist.rank_rows(conn, [dear_pid, mirror_pid])
+        got = {e["prediction_id"]: e
+               for e in _rec.for_predictions(conn, [dear_pid, mirror_pid])}
+        a, b = got.get(dear_pid), got.get(mirror_pid)
+        # NO CANDIDATE IS NOT A CATCH: a world that prices nothing proves
+        # nothing, and says so rather than passing.
+        for label, entry, edge in (("rec 3's numbers", a, 2.09),
+                                   ("the mirror's", b, 2.5)):
+            if entry is None or entry.get("edge_side") != "no" \
+                    or abs((entry.get("edge_cents") or 0) - edge) > 0.005:
+                return Result(law, what, guard, False,
+                              f"NOT CAUGHT - the planted world is wrong: "
+                              f"{label} should carry +{edge}c on the no side, "
+                              f"and gave {entry and entry.get('edge_side')} at "
+                              f"{entry and entry.get('edge_cents')}. Fix the "
+                              f"world before trusting this planting")
+        if a["side"] is not None:
+            faults.append(
+                f"through the call site, 2.09c on the no side of a 37.5c yes "
+                f"price was recommended on the {a['side']} side (return "
+                f"{a['return_on_stake']}): 5.6% of the yes price, 3.3% of the "
+                f"62.5c the no side costs (recs 3, 10 and 26 on the live record, "
+                f"and 56)")
+        if b["side"] != "no":
+            faults.append(
+                f"through the call site, 2.5c on the no side of a 50.5c yes "
+                f"price was refused ({b['side_why']}): it is 5.05% of the 49.5c "
+                f"the no side costs")
+        wrote = _rec.record_for(conn, [dear_pid])
+        if wrote["recommended"] != 0:
+            faults.append(
+                f"record_for wrote {wrote['recommended']} recommendation(s) on "
+                f"rec 3's numbers, which the no side's own cost refuses")
+    finally:
+        _coverage.priceable = saved
+        conn.close()
+    if faults:
+        return Result(law, what, guard, False, "NOT CAUGHT - " + "; ".join(faults))
+    return Result(law, what, guard, True,
+                  f"asked blind, the bar is a TypeError; {dear['why']}; the "
+                  f"mirror clears: {mirror['why']}; through the call site rec "
+                  f"3's numbers have no side (edge still +{a['edge_cents']}c on "
+                  f"the no side) and nothing is written, and the mirror is "
+                  f"recommended on the no side")
+
+
+def plant_a_regrade_that_is_false_or_rewritten() -> Result:
+    """A re-grade the arithmetic does not support, and a true one rewritten.
+
+    GRIDIRON_REPAIR item 4 (the operator's ruling of 2026-09-23, built
+    2026-09-26): "Re-grade the three recommendations it let through as 'would
+    not have cleared'." A re-grade is a LABEL beside a recommendation that
+    stays exactly as written (LAW 3), in `recommendation_regrades`, the shape
+    `recommendation_voids` and `recommendation_closes` have. A label that
+    could say "would not have cleared" of a pick that did, or be edited,
+    removed or replaced afterwards, would be a record of the last writer's
+    opinion rather than of the arithmetic.
+
+    CAUGHT means: a re-grade of a pick that clears on its own cost is
+    refused, whether it states that return honestly or states a false one;
+    a re-grade of rec 3's numbers stating a cost other than the no side's is
+    refused; one stamped before its recommendation is refused; the true one
+    is taken; and then an edit, a delete and a replacing insert are each
+    refused under LAW 3.
+
+    AND ONLY WHAT THE DIVISOR LET THROUGH (the prover, 2026-09-26). The rule
+    took the bar from the label, trusted the label's figures within a
+    tolerance, and took any row, so each of these was taken as "would not
+    have cleared": a no-side pick that cleared 5.6% of its own 62.5c,
+    labelled against an 8% bar; a no-side pick at 4.996% of its cost, which
+    the bar rounds to 5.0% and clears, labelled 4.99%; a no-side pick above
+    50c that the yes price never passed; and rec 3's numbers written before
+    the bar was declared. The rule now reads the no side's cost off the row,
+    so it requires the no side outright: without that, a yes-side pick that
+    cleared 6.7% of its 30c is taken labelled as if on the no side. Each is
+    refused now, and each probe is the one that escapes when its own
+    condition is removed.
+    """
+    from gridiron import db as _db
+
+    law, what = (LAW_RETURN_ON_STAKE,
+                 "a re-grade the arithmetic does not support, then rewritten")
+    guard = ("schema: recommendation_regrade_is_its_own_arithmetic, "
+             "_comes_after_its_recommendation, recommendation_regrades_no_update, "
+             "_no_delete, _never_replaced")
+    conn = _db.connect(":memory:")
+    try:
+        _db.init(conn)
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1,"
+            " 'R', 'AAA', 'BBB', '2026-09-09T22:45:00Z', 'scheduled',"
+            " '2026-09-09')")
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-06T20:50:15Z', 'mlb', 'g1', 'moneyline', 'BBB', NULL,"
+            " 0.6659, 'win', 'statistical', 'final', 'fs2',"
+            " '{\"coverage\": 1.0}', 'planted')")
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        for side, fair, price, edge, at in (
+                ("no", 0.3341, 0.375, 2.09, "2026-09-07T20:52:31Z"),   # rec 3
+                ("yes", 0.24, 0.20, 2.0, "2026-09-07T20:52:32Z"),      # 10% on 20c
+                # 5.6% of the 62.5c the no side costs: it cleared, rightly
+                ("no", 0.3, 0.375, 3.5, "2026-09-07T20:52:33Z"),
+                # 6.7% of 30c on the yes side: it cleared, rightly
+                ("yes", 0.34, 0.30, 2.0, "2026-09-07T20:52:34Z"),
+                # 4.996% of the 62.45c the no side costs, which the bar
+                # rounds to four places -- 5.0% -- and clears
+                ("no", 0.3, 0.3755, 3.12, "2026-09-07T20:52:35Z"),
+                # the no side above 50c: 3.95% of its 38c and 2.4% of the
+                # yes price, so the yes price never passed it either
+                ("no", 0.36, 0.62, 1.5, "2026-09-07T20:52:36Z"),
+                # rec 3's numbers, written before the bar was declared
+                ("no", 0.3341, 0.375, 2.09, "2026-09-06T23:59:59Z")):
+            conn.execute(
+                "INSERT INTO recommendations (prediction_id, sport, game_id,"
+                " market, side, fair_value, price, edge_cents, size_kind,"
+                " size_units, gate_n, created_utc) VALUES (?, 'mlb', 'g1',"
+                " 'moneyline', ?, ?, ?, ?, 'flat', 1.0, 53, ?)",
+                (pid, side, fair, price, edge, at))
+        (true_id, cheap_id, roomy_id, yes30_id, knife_id, above_id,
+         early_id) = [r[0] for r in conn.execute(
+             "SELECT id FROM recommendations ORDER BY id")]
+        conn.commit()
+    except sqlite3.Error as exc:
+        conn.close()
+        return Result(law, what, guard, False,
+                      f"NOT CAUGHT - the planted world could not be built: {exc}")
+
+    def regrade(rid: int, *, cost: float, got: float, on_yes: float,
+                at: str = "2026-09-26T12:00:00Z", verb: str = "INSERT",
+                minimum: float = 0.05) -> str | None:
+        """None if the table took it; the refusal's words if it did not."""
+        try:
+            conn.execute(
+                f"{verb} INTO recommendation_regrades (recommendation_id,"
+                " regraded_utc, verdict, side_cost, return_on_cost,"
+                " return_on_yes_price, minimum_return, reason) VALUES"
+                " (?, ?, 'would_not_have_cleared', ?, ?, ?, ?,"
+                " 'planted: the bar divided by the yes price')",
+                (rid, at, cost, got, on_yes, minimum))
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            return str(exc)
+        conn.commit()
+        return None
+
+    faults: list[str] = []
+    try:
+        for label, kwargs in (
+                ("a pick that clears on its own cost, stated honestly (10% "
+                 "of the 20c yes side)",
+                 dict(rid=cheap_id, cost=0.20, got=0.10, on_yes=0.10)),
+                ("the same pick stated falsely as 2% of its cost",
+                 dict(rid=cheap_id, cost=0.20, got=0.02, on_yes=0.10)),
+                ("rec 3's numbers stating the yes price as the no side's cost",
+                 dict(rid=true_id, cost=0.375, got=0.0557, on_yes=0.0557)),
+                ("rec 3's numbers stamped before rec 3 was written",
+                 dict(rid=true_id, cost=0.625, got=0.0334, on_yes=0.0557,
+                      at="2026-09-07T20:52:30Z")),
+                # THE PROVER'S FIVE (2026-09-26): none of them a pick the
+                # yes price let through, each the probe of one condition.
+                ("a no-side pick that cleared 5.6% of its own 62.5c, "
+                 "labelled against an 8% bar it was never asked",
+                 dict(rid=roomy_id, cost=0.625, got=0.056, on_yes=0.0933,
+                      minimum=0.08)),
+                ("a yes-side pick that cleared 6.7% of its 30c, labelled as "
+                 "if it had been on the no side",
+                 dict(rid=yes30_id, cost=0.70, got=0.0286, on_yes=0.0667)),
+                ("a no-side pick at 4.996% of its 62.45c, which the bar "
+                 "rounds to 5.0% and clears, labelled 4.99%",
+                 dict(rid=knife_id, cost=0.6245, got=0.04991, on_yes=0.0831)),
+                ("a no-side pick above 50c, 3.95% of its 38c and 2.4% of the "
+                 "yes price, which the yes price never passed",
+                 dict(rid=above_id, cost=0.38, got=0.0395, on_yes=0.0242)),
+                ("rec 3's numbers written before the bar was declared",
+                 dict(rid=early_id, cost=0.625, got=0.0334, on_yes=0.0557))):
+            if regrade(**kwargs) is None:
+                faults.append(f"the table took a false re-grade: {label}")
+        refused = regrade(true_id, cost=0.625, got=0.0334, on_yes=0.0557)
+        if refused is not None:
+            faults.append(f"the TRUE re-grade of rec 3's numbers (3.3% of the "
+                          f"62.5c the no side costs) was refused: {refused}")
+        else:
+            for label, statement in (
+                    ("rewritten", "UPDATE recommendation_regrades SET reason ="
+                                  " 'somebody changed their mind'"),
+                    ("deleted", "DELETE FROM recommendation_regrades")):
+                try:
+                    conn.execute(statement)
+                except sqlite3.IntegrityError as exc:
+                    conn.rollback()
+                    if "LAW 3" not in str(exc):
+                        faults.append(f"a re-grade {label} was refused, but not "
+                                      f"by LAW 3: {exc}")
+                else:
+                    conn.rollback()
+                    faults.append(f"a re-grade was {label} and the table took it")
+            replaced = regrade(true_id, cost=0.625, got=0.0334, on_yes=0.0557,
+                               verb="INSERT OR REPLACE")
+            if replaced is None:
+                faults.append("a re-grade was replaced round the delete rule "
+                              "and the table took it")
+            elif "LAW 3" not in replaced:
+                faults.append(f"a replacing insert was refused, but not by LAW "
+                              f"3: {replaced}")
+    except sqlite3.Error as exc:
+        faults.append(f"the record has nowhere to hold a re-grade "
+                      f"({type(exc).__name__}: {exc})")
+    finally:
+        conn.close()
+    if faults:
+        return Result(law, what, guard, False, "NOT CAUGHT - " + "; ".join(faults))
+    return Result(law, what, guard, True,
+                  "a re-grade of a pick that clears on its own cost, stated "
+                  "honestly or falsely or against a bar it was never asked, "
+                  "of a pick the yes price never passed, a false cost and an "
+                  "early stamp are refused; the true one of rec 3's numbers "
+                  "is taken, then an edit, a delete and a replacing insert "
+                  "are refused by LAW 3")
 
 
 LAW_CLAIM_SHAPE = "A CLAIM CARRIES THE INPUTS ITS SHAPE USES, AND NO OTHERS"
@@ -12482,6 +12832,12 @@ def main() -> int:
     results.append(plant_a_countdown_to_kickoff())
     results.append(plant_a_renderer_function_defined_twice())
     results.append(plant_a_thin_edge_on_an_expensive_contract())
+    # GRIDIRON_REPAIR item 4 (the operator's ruling of 2026-09-23, built
+    # 2026-09-26): a no-side edge is divided by what the no side costs, and
+    # the re-grade of a pick the old divisor let through is true and
+    # permanent.
+    results.append(plant_a_no_side_edge_divided_by_the_yes_price())
+    results.append(plant_a_regrade_that_is_false_or_rewritten())
     # AT_THE_PRICE (2026-09-07): four claim shapes, and the four mistakes
     # the first live run made.
     results.append(plant_a_winner_question_read_from_the_wrong_side())

@@ -1593,12 +1593,12 @@ FRESHNESS_DECLARED = "2026-09-08T00:00:00Z"
 #: smallest difference the venue itself can express.
 MIN_EDGE_CENTS = 1.0
 
-#: HOW MUCH EDGE IS WORTH THE CLICK, as a share of the price paid (CARD_FACE
-#: F2b, operator ruling 2026-09-07). Cents and percentage answer two different
-#: questions and the second one was not being asked: a 2-cent edge on an
-#: 89-cent contract clears `MIN_EDGE_CENTS` comfortably and is 2.2% on the
-#: money, for a position that can settle at zero. The same 2 cents on a
-#: 20-cent contract is 10%.
+#: HOW MUCH EDGE IS WORTH THE CLICK, as a share of what the side taken costs
+#: (CARD_FACE F2b, operator ruling 2026-09-07). Cents and percentage answer
+#: two different questions and the second one was not being asked: a 2-cent
+#: edge on an 89-cent contract clears `MIN_EDGE_CENTS` comfortably and is 2.2%
+#: on the money, for a position that can settle at zero. The same 2 cents on
+#: a 20-cent contract is 10%.
 #:
 #: DECLARED, NOT FITTED. Five per cent is the operator's number, chosen before
 #: any recommendation existed to test it against -- there are none in the
@@ -1611,6 +1611,11 @@ MIN_EDGE_CENTS = 1.0
 #: enough to be worth it" is a thing a reader should be able to see.
 MIN_RETURN_ON_STAKE = 0.05
 MIN_RETURN_ON_STAKE_DECLARED = "2026-09-07T00:00:00Z"
+#: WHAT THE SIDE TAKEN COSTS, NOT THE YES PRICE (GRIDIRON_REPAIR item 4, the
+#: operator's ruling of 2026-09-23, built 2026-09-26): the bar divided every
+#: edge by the yes price whichever side it was on, so a no-side pick under a
+#: 50c yes price could clear it on less than 5% of what it cost. The number
+#: did not change; the share it is a share of did (`recommend.return_on_stake`).
 
 
 # ---------------------------------------------------------------------------

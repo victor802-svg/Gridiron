@@ -1036,6 +1036,14 @@ not counted. Every test and planting of `clears_the_bar` is yes-side.
 **What would settle it:** pass the cost of the side taken, and add a no-side
 planting at a yes price under 50¢.
 
+**Settled, GRIDIRON_REPAIR item 4 (built 2026-09-26; see "The return on what
+the side costs" at the end).** The bar divides by what the side taken costs,
+and cannot be asked without the side. Planted:
+`plant_a_no_side_edge_divided_by_the_yes_price`,
+`plant_a_regrade_that_is_false_or_rewritten`. Re-measured on 2026-09-26 the
+divisor let through FOUR, not three -- rec 56 on 24 September -- so the
+re-grade waits on operator question 9.
+
 ### Both sides of one total were recommended *(measured 2026-09-23)*
 
 Recs 45 and 46, 2026-09-21T22:13:03Z, game `mlb_824787` (Toronto at
@@ -3159,3 +3167,210 @@ before the next gate.
   a `fraction`. Latent while every market is under its gate (all flat
   units). The same shape as item 4's return-on-stake denominator; a fix is
   its own ruling.
+
+## The return on what the side costs -- built 2026-09-26 *(GRIDIRON_REPAIR item 4; the operator's ruling of 2026-09-23)*
+
+"Return-on-stake denominator: a no-side edge divides by the no-side cost.
+Re-grade the three recommendations it let through as 'would not have
+cleared'. Planting." (The line has moved since THE READ: the call was
+`clears_the_bar(chosen.get("edge_cents"), price)` at recommend.py:412 on
+01b6c97.)
+
+### BUILT *(2026-09-26)*
+
+- **The divisor**: `recommend._cost_of(side, price)` is the one orientation
+  -- the yes price on the yes side, the rest of the dollar on the no side, a
+  ValueError for anything else (the old `else:` read any other word as the
+  no side). `edge_cents` asks it (bit for bit what it was, tested across the
+  price range, and its `side` lost its default: the one caller names it);
+  `return_on_stake(edge, price, *, side)` and `clears_the_bar(edge, price, *,
+  side)` divide by it. `side` is keyword-only with NO default on both, so a
+  caller that forgets it is a TypeError; `side=None` has no return (absent,
+  not zero), and a price outside (0, 1) has none on either side. The bar's
+  words name the side's cost to the tenth of a cent ("62.5¢"; the old words
+  rounded the yes price and printed "38¢" or "50¢").
+- **The call site**: `for_predictions` asks the bar with `side=edge_side`.
+  With no side (the fee not cleared, the market not covered) the entry's
+  `return_on_stake` is None where it was a share of the yes price; nothing
+  reads it but a test. A package is bought on its yes: `combos.package_edge`
+  names `side="yes"`, so every package figure is unchanged.
+- **The re-grade**: `recommendation_regrades`, a companion row in the shape
+  of `recommendation_voids` -- the recommendation id (terminal primary key),
+  when, the verdict `would_not_have_cleared` (the only one the CHECK
+  admits), what the side cost, the return on that cost and on the yes price,
+  the bar as declared, a reason of ten characters or more. Triggers refuse a
+  label whose numbers are not the row's own (side cost, both returns,
+  recomputed from the frozen side, price and edge) or whose return is not
+  under its bar; one stamped at or before its recommendation; an edit; a
+  delete; and a replacing insert (INSERT OR REPLACE removes a row without a
+  delete trigger, as the snapshot review found). A new table, so `db.init`
+  creates it and no migration entry is needed.
+- **The re-grade rule, tightened by the prover (2026-09-26).** The
+  arithmetic rule checked a label's figures against the row but took the
+  bar from the label itself, trusted the figures within a tolerance, and
+  admitted any row. Measured on a scratch world, each of these was taken
+  as "would not have cleared": a no-side pick that cleared 5.6% of its
+  62.5c, labelled against an 8% bar; one that cleared 5.05% of 49.5c,
+  against 6%; a yes-side pick that cleared 10% of 20c, against 50%; a
+  no-side pick at 4.996% of its cost, which the bar rounds to 5.0% and
+  clears, labelled 4.99%; a yes-side pick at 3.2% and a no-side one above
+  50c that the yes price never passed; and rec 3's numbers written before
+  the bar was declared. The rule now also requires a no-side row written on
+  or after 2026-09-07T00:00:00Z (the side is required outright, because the
+  rule now reads the no side's cost off the row: without it a yes-side pick
+  that cleared 6.7% of 30c is taken labelled as if on the no side),
+  `minimum_return` equal to the declared 0.05 (pinned in the trigger, as
+  `ACTIVATION_GATE_BIRTHDAY` is; a test holds both literals equal to
+  `config`), and the row's OWN returns, rounded to the bar's four places,
+  at or over the bar on the yes price and under it on the no side's cost.
+  `plant_a_regrade_that_is_false_or_rewritten` carries a probe for each
+  condition; each probe ESCAPES with its own condition removed from a copy,
+  and the implementer's rule lets through the 8% bar, the 4.996% and the
+  pick above 50c among them.
+  The four live labels (3, 10, 26, 56) satisfy it, rehearsed on a scratch
+  copy. If the operator ever moves `MIN_RETURN_ON_STAKE`, the rule still
+  names 5%, which is the bar these recommendations were let through under;
+  the pin test then fails by name and says which to keep.
+- **The page**: `calibration.clv_report` carries `regraded` and a
+  `regraded_line` ("Would not have cleared", its N, and the words: "3
+  recommendations would not have cleared the bar: each edge was measured
+  against the yes price rather than against what the side taken cost, and on
+  that cost they came to 3.34%, 3.68% and 4.69%, under the 5% asked for.
+  They were made, so they stay on the record and are counted where they
+  were"); `app.js` draws it beside the closing line under the withdrawn
+  line, through `requireN`. To the hundredth of a per cent, because rec 56's
+  4.97% prints as "5.0%, under the 5%" to one place.
+- **The tool**: `tools/regrade_return_on_stake.py --database PATH [--write]
+  [--live]`. Dry by default, through the read-only door; `--write` through
+  `db.connect`, applying no schema (a record without the table is refused by
+  name); refused on the record without `--live` and `--live` refused on
+  anything else (`db.is_the_live_record_file`). It selects by rule
+  (`recommend.let_through_by_the_yes_price`: written after the bar was
+  declared, standing, cleared 5% of the yes price, and refused by
+  `clears_the_bar` on its own side -- never the outcome), then refuses,
+  writing nothing, unless the selection is exactly `RULED` (3, 10, 26) plus
+  `LEFT_BY_RULING` (empty). `recommend.write_regrades` checks every id
+  against the arithmetic again and writes in one transaction; an id already
+  re-graded is counted and skipped.
+- **Plantings**: `plant_a_no_side_edge_divided_by_the_yes_price` (the door
+  cannot be asked blind; rec 3's numbers refused and the 50.5c mirror taken;
+  through the call site on a scratch record, rec 3's numbers get no side and
+  `record_for` writes nothing, the mirror is recommended on the no side --
+  every check runs and every failure is named) and
+  `plant_a_regrade_that_is_false_or_rewritten` (a re-grade of a pick that
+  clears on its own cost, stated honestly or falsely, a false cost and an
+  early stamp refused; the true one taken; an edit, a delete and a replacing
+  insert refused by LAW 3). BOTH ESCAPE on 01b6c97 (`git archive` into
+  scratch, this plant.py over it): the first names all five failures -- both
+  doors callable blind, the bar taking no side, rec 3's numbers recommended
+  on the no side at 0.0557, the mirror refused ("5.0% of the 50¢ it costs"),
+  and `record_for` writing 1 -- and the second "no such table:
+  recommendation_regrades". Both are CAUGHT on this tree.
+
+### MEASURED ON THE LIVE RECORD, read-only *(2026-09-26 about 06:40Z, `db.read_the_live_record`)*
+
+- **101 recommendations** (86 no side, 15 yes; the newest 2026-09-26T05:02:40Z);
+  withdrawn 62, 63, 64 and 66. **The rule selects four**, not three: 3, 10,
+  26 and **56** (MLB spread, PIT -1.5 not covered, prediction 2165, written
+  2026-09-24T05:21:25Z by the logon catch-up's predict:mlb run, task run
+  2325): +3.03c at a 39c yes price, 7.77% of it, 4.97% of the 61c the no side
+  cost. None was written before the bar was declared; no recorded row would
+  clear only on its cost (a refused pick is never written). Operator
+  question 9.
+- **The closes**: 3, 10 and 26 carry restated closes (item 1's restatement:
+  a later near-start read of their own contract, at 0.00c); 56 closed
+  unmeasured, with no later read. None of the four is in any closing-line N,
+  so labelling them moves no figure.
+- **Recs 3 and 10 are one bet** (mlb_824714, BOS -1.5 not covered, early and
+  final pass; BOS lost 1-6, so the no side won), and rec 26 is the
+  final-pass twin of rec 21 (mlb_823416, which cleared correctly at 6.45% of
+  59.5c; PHI won 11-7, so the no side lost) -- the map of 2026-09-23, re-read
+  today. The re-grade reads none of that.
+- **The size** (question 10): every recommendation is a flat unit. Six
+  categories have their hundred settled -- NCAAF spread statistical 132, MLB
+  moneyline statistical 233 and reasoning 121, MLB spread statistical 175,
+  MLB total statistical 182 and reasoning 110 -- and none is measured ahead
+  (the three moneyline and college rows behind the market, the three others
+  with nothing settled beside a price), so a fraction has never been sized
+  and the no-side Kelly defect has touched nothing.
+
+### THE REHEARSAL *(2026-09-26; scratch copies through `db.back_up_the_live_record`, never the record, never `--live`)*
+
+- Before the schema reached the copy, the dry run read it (no table: nothing
+  already re-graded), listed the four and exited 2, refusing, naming rec 56.
+- `db.init` of this tree added exactly the table and its five triggers;
+  nothing removed, no object's text changed, no stored row of any table
+  changed (every table's row count and a hash of its rows equal); a second
+  `db.init` changed nothing.
+- The tool as built: dry and `--write` both refuse (exit 2), naming rec 56
+  and its arithmetic, writing nothing; `--write --live` on the copy refused
+  as not the record.
+- Each reading, set in-process on a fresh copy (the committed constants
+  untouched): (A) `LEFT_BY_RULING = (56,)` wrote 3 rows (3, 10, 26), (B)
+  `RULED = (3, 10, 26, 56)` wrote 4; a second run wrote none ("already
+  re-graded"); the rows read back with side costs 0.625 / 0.625 / 0.605 /
+  0.61 and returns 0.0334 / 0.0368 / 0.0469 / 0.0497; every closing-line
+  count and every market's N the same before and after; the page line
+  carries N and passes the plain-words and advice scans; an edit and a
+  delete of a written re-grade refused by LAW 3; the recommendations
+  untouched.
+
+### THE LIVE WRITE THE RULING REQUIRES *(after the release, and after question 9)*
+
+1. **Schema, by `db.init`**: the first open of the live record by the
+   released code (the release's own `/api/health` after the restart, or the
+   scheduler's next task) creates `recommendation_regrades` and its five
+   triggers. Nothing else changes. Confirm through the read-only door before
+   the next gate, as with item 3.
+2. **The labels, by the tool, once question 9 is ruled**: first
+   `python tools/regrade_return_on_stake.py --database var/gridiron.db`
+   (dry, read-only), then with `--write --live`. It refuses today (the rule
+   selects 56 as well); the ruling's answer is one line in the tool --
+   rec 56 into `RULED` (B) or into `LEFT_BY_RULING` (A) -- committed through
+   the gate. It writes 3 or 4 rows into `recommendation_regrades` and
+   nothing else: no recommendation is updated or deleted. Any recommendation
+   the old code lets through before the release makes it refuse again, by
+   name.
+
+### READINGS TAKEN, for the operator to overrule *(2026-09-26)*
+
+- **A re-grade is a label, not a withdrawal.** The ruling says "re-grade
+  ... as 'would not have cleared'", where ruling 1 said "void" for rows out
+  of the counts, and the recommendations table's own text makes the row the
+  evidence of what the app said. So a re-graded row stays in every count it
+  was in (none of the four is in a closing-line N today), and the page names
+  it beside the closing line with its N. The other reading -- re-graded rows
+  counted like withdrawn ones -- is one clause in `clv_report` and the door.
+- **Selected by rule from the frozen row, checked against the named set.**
+  The rule is the bar itself on the row's side, price and edge; the tool
+  writes only the set the ruling names and refuses any difference (the
+  precedent of `tools/void_fs5.py`).
+- **Withdrawn rows are not re-graded**: a withdrawn recommendation is never
+  counted and is shown as withdrawn; none of 62, 63, 64 and 66 (the four
+  withdrawn) was let through anyway.
+- **The reverse case writes nothing.** THE READ found one candidate refused
+  only by the divisor (prediction 1774, under 7.5 on mlb_824787, 2.5c on
+  the no side of 50.5c; the early-pass twin of rec 46). A recommendation
+  written for it now would be stamped after its game and would not be what
+  the app said (LAW 3; item 3's "re-derive nothing retroactively"). Not
+  re-measured for claims since 2026-09-23.
+- **`edge_cents` shares the helper** (bit for bit unchanged): the ruling's
+  rule is one orientation, and two copies of it are how the bar and the
+  edge came to disagree.
+
+### OPEN, found by this item *(2026-09-26)*
+
+- **The size of a no-side pick** (item 3's prover; question 10): measured
+  latent above.
+- **The payout floor reads the yes price's payout on a no-side pick.**
+  `for_predictions` carries `payout = payout_multiple(price)` -- one over the
+  YES price -- and `views` folds a clearing pick below `min_payout` (1.5 by
+  default) on that number whatever the side, while the card's own chip turns
+  it for a flipped question. A no-side pick at a 30c yes price shows 3.33
+  where it pays 1.43 and is not folded; at 70c it shows 1.43, pays 3.33, and
+  is. Display only (`record_for` ignores the floor); not named by the
+  ruling, which is about an edge; not built.
+- **A proposed combo's no-side legs** (item 3's entry above): not built.
+- **The bar's own words print the return to one place**, so a pick at 4.97%
+  of its cost would read "5.0% ... under the 5%" in `side_why`. Nothing
+  renders `side_why`; the re-grade and the page line use two places.

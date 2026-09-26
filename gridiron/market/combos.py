@@ -256,7 +256,10 @@ def package_edge(fair: float | None, price: float | None) -> dict:
     edge = (fair - price - fee) * 100.0
     return {
         "edge_cents": round(edge, 2),
-        "return_on_stake": recommend.return_on_stake(round(edge, 2), price),
+        # A PACKAGE IS BOUGHT ON ITS YES, so what it costs is its price
+        # (2026-09-26: the side is named wherever the bar is asked).
+        "return_on_stake": recommend.return_on_stake(round(edge, 2), price,
+                                                     side="yes"),
         "fee": fee,
     }
 

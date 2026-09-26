@@ -556,6 +556,11 @@ def test_every_new_guard_is_in_the_planted_harness():
         # 2026-09-26): an active correction that would flip a side flips the
         # pick, an inactive one does not, and the row carries it, frozen.
         "plant_a_correction_that_does_not_reach_the_pick",
+        # GRIDIRON_REPAIR item 4 (the operator's ruling of 2026-09-23, built
+        # 2026-09-26): a no-side edge divides by the no-side cost, and a
+        # re-grade is true by its arithmetic and never rewritten.
+        "plant_a_no_side_edge_divided_by_the_yes_price",
+        "plant_a_regrade_that_is_false_or_rewritten",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

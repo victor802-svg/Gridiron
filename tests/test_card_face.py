@@ -112,15 +112,18 @@ def test_a_thin_edge_on_an_expensive_contract_does_not_clear_the_bar():
     question -- is being right worth the click -- is only answered by the
     second number.
     """
-    dear = recommend.clears_the_bar(2.0, 0.89)
+    # THE YES SIDE, NAMED: the bar is never asked without its side
+    # (GRIDIRON_REPAIR item 4, 2026-09-26).
+    dear = recommend.clears_the_bar(2.0, 0.89, side="yes")
     assert dear["clears"] is False
     assert "2.2%" in dear["why"] and "5%" in dear["why"]
-    cheap = recommend.clears_the_bar(2.0, 0.20)
+    cheap = recommend.clears_the_bar(2.0, 0.20, side="yes")
     assert cheap["clears"] is True
-    assert recommend.return_on_stake(2.0, 0.20) == 0.1
+    assert recommend.return_on_stake(2.0, 0.20, side="yes") == 0.1
     # absent stays absent rather than becoming a zero
-    assert recommend.return_on_stake(None, 0.5) is None
-    assert recommend.return_on_stake(2.0, None) is None
+    assert recommend.return_on_stake(None, 0.5, side="yes") is None
+    assert recommend.return_on_stake(2.0, None, side="yes") is None
+    assert recommend.return_on_stake(2.0, 0.5, side=None) is None
     assert recommend.payout_multiple(0.80) == 1.25
     assert recommend.payout_multiple(None) is None
 
