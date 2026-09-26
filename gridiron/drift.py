@@ -158,13 +158,17 @@ def report(conn: sqlite3.Connection, *, sport: str, market_type: str,
 # opening.
 
 
-def venue_pairs(conn: sqlite3.Connection, *, sport: str,
-                market_type: str) -> list[dict]:
+def venue_pairs(conn: sqlite3.Connection, *, sport: str, market_type: str,
+                predictor: str, event_tier: str | None = None) -> list[dict]:
     """Every at-the-line claim that also has an opening read to compare with.
 
     `toward` carries the same meaning as in `pairs()`: positive is movement in
     the direction the model was pointing. The sign comes from the two stored
     probabilities, both written for the same fixed proposition.
+
+    ONE FORECASTER'S BETS (GRIDIRON_REPAIR item 6, 2026-09-26): the claims
+    are the at-the-line record's own, through its door, one per game and
+    market -- a game is one pair however many passes forecast it.
     """
     from .market import at_the_line
 
@@ -181,19 +185,13 @@ def venue_pairs(conn: sqlite3.Connection, *, sport: str,
         # gate's query-only handle refused, correctly, the first time this ran.
         return []
 
-    # ONE PAIR PER PREDICTION, not per claim row (2026-09-23): the venue is
-    # read on every firing now, and each look writes a claim.
-    claims = conn.execute(
-        "SELECT c.id, c.game_id, c.market, c.model_prob, c.venue_implied,"
-        "       c.prediction_id"
-        "  FROM at_the_line_claims c"
-        "  JOIN predictions p ON p.id = c.prediction_id"
-        " WHERE c.sport = ? AND c.market = ?"
-        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
-        "                   WHERE v.prediction_id = c.prediction_id)"
-        "   AND" + at_the_line.standing_claim_clause("c")
-        + " ORDER BY c.id",
-        (sport, market_type)).fetchall()
+    # ONE PAIR PER BET, not per claim row (2026-09-23) nor per forecast
+    # (2026-09-26): the venue is read on every firing, each look writes a
+    # claim, and the morning and final pass each hold one. The door keeps the
+    # last claim before the start on each game, for one forecaster.
+    claims = at_the_line.standing_claims(
+        conn, sport=sport, market=market_type, predictor=predictor,
+        event_tier=event_tier)
 
     out = []
     for claim in claims:
@@ -230,19 +228,22 @@ def venue_pairs(conn: sqlite3.Connection, *, sport: str,
     return out
 
 
-def venue_report(conn: sqlite3.Connection, *, sport: str,
-                 market_type: str) -> dict:
+def venue_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
+                 predictor: str, event_tier: str | None = None) -> dict:
     """The venue's open-to-close drift for one category, or the count alone.
 
     Same gate as `report`, and it is the same rule rather than a copy of it:
     below fifty pairs a direction is a number a reader will remember and the
-    sample is not.
+    sample is not. One forecaster's category (item 6, 2026-09-26).
     """
-    found = venue_pairs(conn, sport=sport, market_type=market_type)
+    found = venue_pairs(conn, sport=sport, market_type=market_type,
+                        predictor=predictor, event_tier=event_tier)
     n = len(found)
     base = {
         "sport": sport,
         "market_type": market_type,
+        "predictor": predictor,
+        "event_tier": event_tier,
         "source": "venue",
         "n": n,
         "min_pairs": MIN_PAIRS,

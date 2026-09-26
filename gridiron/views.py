@@ -1192,9 +1192,9 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
     """The venue's line beside each pick on this slate, as words.
 
     ONE LOOKUP FOR THE SLATE. The standing claim per prediction -- the last
-    one written -- with the settled count for its market beside it, because
-    LAW 4 wants the sample next to the figure and this figure is a comparison
-    with a price.
+    one written -- with the settled count of its forecaster's distinct bets in
+    its market beside it (item 6, 2026-09-26), because LAW 4 wants the sample
+    next to the figure and this figure is a comparison with a price.
 
     A forecast, and nothing more. The sentence says what the model gives the
     proposition and what the venue's price implies for the same one; it does
@@ -1213,27 +1213,38 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
         ids).fetchall()
     if not rows:
         return {}
-    # ONE CLAIM PER PREDICTION (2026-09-23): the venue is read on every
-    # firing now, and a count of rows would call one question four.
-    from .market import at_the_line
-    settled = {
-        r["market"]: r["n"] for r in conn.execute(
-            "SELECT c.market, COUNT(*) AS n FROM at_the_line_claims c"
-            " WHERE c.sport = ? AND c.resolved_utc IS NOT NULL AND"
-            + at_the_line.standing_claim_clause("c") + " GROUP BY c.market",
-            (sport,))
-    }
     forecasts = {
         r["id"]: r for r in conn.execute(
-            f"SELECT p.id, p.sport, p.market_type, p.predictor, g.home,"
-            f"       g.status, g.kickoff_utc"
+            f"SELECT p.id, p.sport, p.market_type, p.predictor, p.game_id,"
+            f"       g.home, g.status, g.kickoff_utc"
             f"  FROM predictions p JOIN games g ON g.id = p.game_id"
             f" WHERE p.id IN ({placeholders})", ids)
     }
+    # THE CARD'S COUNT IS ITS OWN FORECASTER'S DISTINCT BETS (GRIDIRON_REPAIR
+    # item 6, 2026-09-26), through the at-the-line record's one door, and the
+    # same number as that forecaster's curve on the Record page. Until this
+    # date it counted every forecast's standing claim in the market, both
+    # forecasters and both passes: every MLB moneyline card said "283 settled
+    # so far" where each forecaster had 92, and "past the 100" beside it.
+    counts: dict[tuple, int] = {}
+
+    def settled_for(market: str, predictor: str, game_id: str) -> int:
+        tier = venue.event_tier_of(conn, sport, game_id)
+        if config.event_tiers(sport) and tier is None:
+            return 0     # a bout on a card of no declared tier is in no count
+        key = (market, predictor, tier)
+        if key not in counts:
+            counts[key] = len(venue.settled(venue.standing_claims(
+                conn, sport=sport, market=market, predictor=predictor,
+                event_tier=tier)))
+        return counts[key]
+
     out: dict[int, dict] = {}
     for row in rows:
-        n = settled.get(row["market"], 0)
         forecast = forecasts.get(row["prediction_id"])
+        n = (settled_for(row["market"], forecast["predictor"], row["game_id"])
+             if forecast is not None and row["market"] in venue.BET_MARKETS
+             else 0)
         home = language.team_name(forecast["home"] if forecast else None,
                                   team_names, "club")
         # THE SAME NUMBER THE PICK IS PRICED FROM (GRIDIRON_REPAIR item 3,
@@ -3627,9 +3638,21 @@ def drift_report(conn: sqlite3.Connection, sport: str) -> dict:
     # question about two different prices: what ESPN republished, and what
     # could actually have been taken. A single averaged figure would describe
     # neither, which is the argument LAW 6 makes about sports one level up.
+    #
+    # ONE FORECASTER'S BETS AT A TIME (GRIDIRON_REPAIR item 6, 2026-09-26):
+    # the venue pair is read off the at-the-line record's own door, so a
+    # game's morning and final pass are one pair and the two forecasters are
+    # two reports. Its gate is fifty; pooled, MLB moneyline stood at 132 and
+    # spread at 69 on 26 September. The sum that stood beside them
+    # (`venue_n`) added both forecasters and is gone.
+    from .market import at_the_line
+
+    tiers = config.event_tiers(sport) or (None,)
     venue_markets = [
-        drift.venue_report(conn, sport=sport, market_type=m)
-        for m in markets if m in ("spread", "total", "moneyline")
+        drift.venue_report(conn, sport=sport, market_type=m, predictor=p,
+                           event_tier=t)
+        for m in markets if m in at_the_line.BET_MARKETS
+        for t in tiers for p in at_the_line.FORECASTERS
     ]
     return {
         "sport": sport,
@@ -3637,7 +3660,6 @@ def drift_report(conn: sqlite3.Connection, sport: str) -> dict:
         "min_pairs": drift.MIN_PAIRS,
         "markets": per_market,
         "venue_markets": venue_markets,
-        "venue_n": sum(m["n"] for m in venue_markets),
         "venue_question": (
             "And between the venue's own opening read and its price at the "
             "line -- the price that could actually have been taken -- did it "

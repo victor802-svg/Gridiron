@@ -318,9 +318,11 @@ def test_a_claim_on_a_voided_forecast_leaves_the_at_the_line_record(conn):
     _game(conn, "g1")
     pid = _forecast(conn, "g1")
     _priced(conn, "g1", pid, closes=False)
-    assert len(at_the_line.standing_claims(conn, sport="nfl", market="spread")) == 1
+    assert len(at_the_line.standing_claims(conn, sport="nfl", market="spread",
+                                           predictor="statistical")) == 1
     _void(conn, pid)
-    assert at_the_line.standing_claims(conn, sport="nfl", market="spread") == []
+    assert at_the_line.standing_claims(conn, sport="nfl", market="spread",
+                                       predictor="statistical") == []
 
 
 def test_a_voided_forecast_is_never_priced_as_a_pick(conn, monkeypatch):

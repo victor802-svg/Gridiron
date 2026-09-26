@@ -112,7 +112,7 @@ def test_only_a_disagreement_is_counted():
 
 def test_the_ledger_is_absent_below_the_gate_and_says_how_far_short(tmp_path):
     conn = _slate(tmp_path, 4)
-    led = paper.ledger(conn, sport="nfl", market="spread")
+    led = paper.ledger(conn, sport="nfl", market="spread", predictor="statistical")
     assert led["n"] == 4 and led["renderable"] is False
     assert led["shortfall"] == config.MIN_SAMPLE_FOR_EDGE_CLAIM - 4
     # the figures are ABSENT, not zeroed
@@ -120,12 +120,13 @@ def test_the_ledger_is_absent_below_the_gate_and_says_how_far_short(tmp_path):
     words = language.paper_ledger_line(led)
     assert words.startswith("hypothetical") and "4 of 100" in words
     assert "point spread" in words   # which market, said on the row itself
+    assert "statistical" in words    # and whose (item 6, 2026-09-26)
 
 
 def test_past_the_gate_the_figures_appear_with_the_fee_beside_them(tmp_path, monkeypatch):
     conn = _slate(tmp_path, 4)
     monkeypatch.setattr(config, "MIN_SAMPLE_FOR_EDGE_CLAIM", 4)
-    led = paper.ledger(conn, sport="nfl", market="spread")
+    led = paper.ledger(conn, sport="nfl", market="spread", predictor="statistical")
     assert led["renderable"] is True and led["n"] == 4 and led["hypothetical"] is True
     # two of the four home sides covered -3.5, each carried at 0.40
     assert led["right"] == 2
@@ -136,7 +137,7 @@ def test_past_the_gate_the_figures_appear_with_the_fee_beside_them(tmp_path, mon
     assert led["units_after_fees"] < led["units"]
     assert led["units_per_forecast"] == pytest.approx(led["units"] / 4, abs=1e-6)
     words = language.paper_ledger_line(led)
-    assert words.startswith("hypothetical, point spread:")
+    assert words.startswith("hypothetical, point spread, statistical:")
     assert "after the venue's fee" in words
     assert "not been checked" in language.paper_fee_line(led)
 
@@ -146,9 +147,14 @@ def test_the_label_and_the_law_survive_the_ledger(tmp_path):
     from gridiron import calibration
 
     card = calibration.at_the_line_scorecard(conn, sport="nfl")
-    rows = {row["market"]: row for row in card["paper"]}
-    assert rows["spread"]["hypothetical"] is True
-    assert rows["spread"]["words"].startswith("hypothetical")
+    # KEYED BY MARKET AND FORECASTER (item 6, 2026-09-26): keyed by market
+    # alone, the second forecaster's row silently replaced the first's.
+    rows = {(row["market"], row["predictor"]): row for row in card["paper"]}
+    assert len(rows) == len(card["paper"])
+    assert rows[("spread", "statistical")]["hypothetical"] is True
+    assert rows[("spread", "statistical")]["n"] == 2
+    assert rows[("spread", "statistical")]["words"].startswith("hypothetical")
+    assert rows[("spread", "llm")]["n"] == 0
     # LAW 5 AS AMENDED 2026-09-07: the staking scan is retired, and what this
     # module must still not do is hold a credential, an order path or the
     # operator's own ledger.

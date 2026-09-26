@@ -33,6 +33,7 @@ import math
 import sqlite3
 from pathlib import Path
 
+from .. import config
 from ..db import utcnow
 
 #: The venue whose ladder is read. One venue today; the column carries the name
@@ -586,39 +587,97 @@ def evaluate(conn: sqlite3.Connection,
     return counts_out
 
 
-def standing_claim_clause(alias: str = "c") -> str:
-    """The SQL that keeps ONE claim per prediction: the last before its game.
+#: THE TWO FORECASTERS A CLAIM CAN BELONG TO -- `predictions.predictor`'s own
+#: CHECK. A claim carries no forecaster column; it is its forecast's, read
+#: through the forecast it cites (GRIDIRON_REPAIR item 6, 2026-09-26).
+FORECASTERS = ("statistical", "llm")
 
-    ONE DOOR (2026-09-23). From that date the near-start pass reads the venue
-    on every firing inside the window, so a prediction gathers a claim per
-    look -- about four. Anything that counts claim ROWS as a sample size would
-    then call one question four, and a gate would clear on duplicates, which
-    LAW 4 forbids. Every count of claims goes through here.
+#: The markets whose claims are counted as BETS: one proposition per game,
+#: with its side fixed by `CLAIM_SIDE`. A prop is not among them -- its bet
+#: would need the player as well, and no count of prop claims is made.
+BET_MARKETS = ("spread", "total", "moneyline")
 
-    AND NOT ON A VOIDED FORECAST (operator ruling 1, 2026-09-24). A claim is
-    the forecast read at the venue's line, so a forecast withdrawn is a claim
-    withdrawn. `resolve_claims` settles claims from the score, not from the
-    forecast, so until this date a claim on a voided forecast would have
-    settled and been counted in the at-the-line record the night its game
-    finished: 58 claims on 29 of the 31 forecasts that ruling voids.
+
+class PooledCount(ValueError):
+    """A count of claims asked for without saying whose, or across tiers."""
+
+
+def refuse_a_pooled_count(sport: str, market: str, predictor,
+                          event_tier) -> None:
+    """The questions every count of claims must answer before it is made.
+
+    ONE FORECASTER, ONE MARKET, AND FOR A SPORT THAT SPLITS BELOW THE MARKET,
+    ONE TIER (LAW 4, LAW 6; GRIDIRON_REPAIR item 6, 2026-09-26). Asked here,
+    in the door, so a pooled count cannot be written by leaving an argument
+    out: the arguments are required, and an answer that is not one
+    forecaster or one declared tier is refused by name.
     """
-    return (f" NOT EXISTS (SELECT 1 FROM prediction_voids vc"
-            f"             WHERE vc.prediction_id = {alias}.prediction_id) AND"
-            f" {alias}.id = (SELECT c2.id FROM at_the_line_claims c2"
-            f"   JOIN games g2 ON g2.id = c2.game_id"
-            f"  WHERE c2.prediction_id = {alias}.prediction_id"
-            f"    AND (g2.kickoff_utc IS NULL"
-            f"         OR c2.created_utc < g2.kickoff_utc)"
-            f"  ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)")
+    config.require_sport(sport, "at_the_line.standing_claims")
+    if predictor not in FORECASTERS:
+        raise PooledCount(
+            f"LAW 4 / LAW 6: a count of {sport} {market} claims at the venue's "
+            f"line was asked for forecaster {predictor!r}. The statistical "
+            f"model and the reasoning pass are two forecasters, counted apart "
+            f"and never pooled: name one of {list(FORECASTERS)}.")
+    if market not in BET_MARKETS:
+        raise PooledCount(
+            f"LAW 4: {market!r} is not a market whose claims are counted as "
+            f"bets at the venue's line ({list(BET_MARKETS)}).")
+    tiers = config.event_tiers(sport)
+    if tiers and event_tier not in tiers:
+        raise PooledCount(
+            f"LAW 6: a count of {sport} {market} claims names event tier "
+            f"{event_tier!r}, not one of {sport}'s declared tiers "
+            f"{list(tiers)}; tiers are reported side by side, never summed.")
+    if not tiers and event_tier is not None:
+        raise PooledCount(
+            f"LAW 6: {sport} declares no event tiers, so a count naming tier "
+            f"{event_tier!r} counts nothing that exists.")
 
 
-def standing_claims(conn: sqlite3.Connection, *, sport: str,
-                    market: str) -> list[sqlite3.Row]:
-    """ONE CLAIM PER PREDICTION: the last one written before the game started.
+def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
+                    predictor: str,
+                    event_tier: str | None = None) -> list[sqlite3.Row]:
+    """ONE CLAIM PER BET, PER FORECASTER: THE ONE DOOR every count of the
+    at-the-line record goes through (GRIDIRON_REPAIR item 6, 2026-09-26).
 
-    The same rule the rung record uses for a superseded answer, for the same
-    reason. A ladder read twice would otherwise put two correlated rows in one
-    curve and call the sample twice the size it is.
+    A BET is one game and market at the venue's line: the proposition is
+    fixed by the market (`CLAIM_SIDE`: the home side, or the over), and the
+    line is the venue's number at the last look before the start. However
+    many passes forecast it, however many rungs asked it, and however many
+    looks read it, the forecaster holds ONE claim on it -- the last written
+    before the game started, the id breaking a tie -- and that claim is the
+    one the record grades.
+
+    THE OPERATOR'S RULING of 2026-09-23 (item 6): "The at-the-line scorecard
+    never pools forecasters or duplicates; per-forecaster, per-distinct-bet
+    counts only, LAW 4 and LAW 6." Until this date the rule kept one claim per
+    PREDICTION and asked no forecaster, so the morning and the final pass of
+    one question each put a claim in the count, and the two forecasters were
+    summed: THE READ found MLB moneyline's "174 settled comparisons, past the
+    100" to be 87 statistical and 87 reasoning on 54 games -- 54 bets each.
+    On 26 September the page said 283 for 92 games a forecaster.
+
+    WHAT IT REPLACED, kept because each step was a count that cleared on
+    duplicates. Until 2026-09-10 it matched `MAX(created_utc)` and returned
+    two claims for one forecast read twice in a second (below). From
+    2026-09-23 (`standing_claim_clause`, "ONE DOOR") the near-start pass reads
+    the venue on every firing inside the window, so a forecast gathers a
+    claim per look -- about four -- and the clause kept one per forecast. From
+    2026-09-24 it never counted a claim on a voided forecast: `resolve_claims`
+    settles claims from the score, not the forecast, and 58 claims on 29 of
+    the 31 forecasts ruling 1 voided would have been counted the night their
+    games finished. The clause is folded into this door; nothing else counts.
+
+    Every row carries its forecast's `predictor` and its game's `season` and
+    `week`, so the outlook can pace the same bets it counts. A voided
+    forecast's claim is never a candidate (operator ruling 1, 2026-09-24): a
+    forecast withdrawn is a claim withdrawn, and a withdrawal takes one
+    forecast back, not the bet -- an earlier forecast's claim on the same
+    game still stands, as `calibration.standing_row_clause` treats a row.
+    A claim written at or after the start never stands (a forecast written
+    exactly at the start stands in the blind record with a claim it cannot
+    have: `standing_row_clause` reads `<=`, this reads `<`).
     """
     # THE TIE-BREAK IS THE ROW ID, and it is not decoration (2026-09-10).
     #
@@ -631,10 +690,76 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str,
     # test that asserts "there is one" started reporting two.
     #
     # `id` is monotonic and is how the rest of this record breaks the same tie.
+    #
+    # ONE PER GAME, MARKET AND SIDE, NOT PER LINE (2026-09-26). THE READ's
+    # "distinct bets" were game-market pairs, and item 5's ruling keys a
+    # recommendation by game and market whatever the rung; the side is fixed
+    # by the market. A later look at another rung is the same bet read again,
+    # which is how the rule already treated one forecast's looks. Measured on
+    # the live record that day: no forecaster's claims on one game carry two
+    # lines, so the two keys count the same today.
+    refuse_a_pooled_count(sport, market, predictor, event_tier)
+    tier_clause, params = "", [sport, market, predictor]
+    if event_tier is not None:
+        # LAW 6 ONE LEVEL DOWN (R2, 2026-09-03), reached through the bout to
+        # the card, exactly as `calibration.resolved` reaches it.
+        tier_clause = (
+            " AND EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
+            "               ON e.id = b.event_id"
+            "              WHERE b.id = c.game_id AND e.event_tier = ?)")
+        params.append(event_tier)
     return conn.execute(
-        "SELECT c.* FROM at_the_line_claims c"
-        " WHERE c.sport = ? AND c.market = ? AND" + standing_claim_clause("c")
-        + " ORDER BY c.id", (sport, market)).fetchall()
+        "SELECT * FROM ("
+        " SELECT c.*, p.predictor, g.season, g.week,"
+        "        ROW_NUMBER() OVER (PARTITION BY c.game_id, c.market, c.side"
+        "                           ORDER BY c.created_utc DESC, c.id DESC)"
+        "          AS latest_first"
+        "   FROM at_the_line_claims c"
+        "   JOIN predictions p ON p.id = c.prediction_id"
+        "   JOIN games g ON g.id = c.game_id"
+        "  WHERE c.sport = ? AND c.market = ? AND p.predictor = ?"
+        "    AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                     WHERE v.prediction_id = c.prediction_id)"
+        "    AND (g.kickoff_utc IS NULL OR c.created_utc < g.kickoff_utc)"
+        f"{tier_clause})"
+        " WHERE latest_first = 1 ORDER BY id", params).fetchall()
+
+
+def bet_of(claim) -> tuple:
+    """Which bet a claim is on: its game, market and side. The key the door
+    keeps one claim per, and the key a payload's `distinct_bets` counts --
+    read off a stored row or off a scored item alike, so there is one key."""
+    if hasattr(claim, "keys"):
+        return (claim["game_id"], claim["market"], claim["side"])
+    return (claim.game_id, claim.market, claim.side)
+
+
+def count_of_bets(claims) -> int:
+    """How many distinct bets a list of claims is on."""
+    return len({bet_of(c) for c in claims})
+
+
+def settled(claims) -> list:
+    """The claims whose game has settled them: an outcome and its time.
+
+    ONE PREDICATE for every count of settled claims -- the curve, the edge,
+    the ledger, the outlook and the card -- so two of them cannot disagree
+    about what "settled" means.
+    """
+    return [c for c in claims
+            if c["resolved_utc"] is not None and c["outcome"] is not None]
+
+
+def event_tier_of(conn: sqlite3.Connection, sport: str,
+                  game_id: str) -> str | None:
+    """The tier a game is counted under: its card's, for a sport that splits
+    below the market (UFC), and None for one that does not."""
+    if not config.event_tiers(sport):
+        return None
+    row = conn.execute(
+        "SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+        "    ON e.id = b.event_id WHERE b.id = ?", (game_id,)).fetchone()
+    return row[0] if row else None
 
 
 def resolve_claims(conn: sqlite3.Connection) -> dict:
@@ -678,34 +803,86 @@ def resolve_claims(conn: sqlite3.Connection) -> dict:
     return counts
 
 
-def coverage(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
-    """Per market: how many predictions could be read at the venue's line, and
-    the named reason for every one that could not.
+def coverage(conn: sqlite3.Connection, *, sport: str, predictor: str,
+             event_tier: str | None = None) -> list[dict]:
+    """Per market, for ONE forecaster: on how many of the games it forecast
+    the venue's line could be read, and the named reason for every one where
+    it could not.
 
     A share with no reasons beside it is a number that hides its own holes.
+
+    ITS BETS, EACH ONCE (GRIDIRON_REPAIR item 6, 2026-09-26). Until this
+    date it counted every prediction row of the market -- both forecasters,
+    and a question's morning and final pass as two -- so on 26 September MLB
+    moneyline read "315 of 531", where the statistical model's own questions
+    were 102 of 246 and the reasoning pass's 102 of 134. The forecasts are
+    each question's standing one (`calibration.standing_row_clause`, the
+    blind record's own rule), and they are counted ONE PER BET -- per game,
+    the market fixing the side -- because the ruling allows "per-forecaster,
+    per-distinct-bet counts only" on this scorecard, and a game asked at two
+    rungs is two standing questions and one bet. The prover of 2026-09-26
+    found it counting questions: NCAAF point spread, statistical, "4 of 133
+    forecasts" where the forecaster held 88 bets (45 games asked at two
+    rungs), and one game asked at two rungs "2 of 2" beside a curve of 1. A
+    bet was read if its forecaster's claim on it stands in the at-the-line
+    record (`standing_claims`), so the share and the curve beside it count
+    the same bets; a bet not read is put down to a missing distribution only
+    when no standing forecast of it carried one. `distinct_bets` is counted
+    off the rows' own games, beside `n`, for the guard
+    (`calibration.assert_no_pooled_claims`) to compare.
     """
+    from .. import calibration
+
+    # THE DOOR ASKS FIRST: the first market's count below refuses a pooled
+    # forecaster or tier by name before anything is read.
+    tier_clause, tier_params = "", []
+    if event_tier is not None:
+        tier_clause = (
+            " AND EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
+            "               ON e.id = b.event_id"
+            "              WHERE b.id = p.game_id AND e.event_tier = ?)")
+        tier_params = [event_tier]
+
+    def carries(forecasts) -> bool:
+        """Did any of a bet's standing forecasts carry a frozen distribution?"""
+        return any('"margin_distribution"' in (r["factors_json"] or "")
+                   for r in forecasts)
+
     out = []
-    for market in ("spread", "total", "moneyline"):
+    for market in BET_MARKETS:
+        read = {c["game_id"] for c in standing_claims(
+            conn, sport=sport, market=market, predictor=predictor,
+            event_tier=event_tier)}
         rows = conn.execute(
-            "SELECT p.id, p.factors_json,"
-            "  (SELECT COUNT(*) FROM at_the_line_claims c WHERE c.prediction_id = p.id) AS claims,"
+            "SELECT p.id, p.game_id, p.factors_json,"
             "  (SELECT COUNT(*) FROM venue_quotes q WHERE q.game_id = p.game_id"
             "     AND q.market = p.market_type) AS quotes"
-            " FROM predictions p WHERE p.sport = ? AND p.market_type = ?",
-            (sport, market)).fetchall()
+            " FROM predictions p JOIN games g ON g.id = p.game_id"
+            " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
+            + tier_clause + calibration.standing_row_clause(False),
+            [sport, market, predictor] + tier_params).fetchall()
         if not rows:
             continue
-        with_claim = sum(1 for r in rows if r["claims"])
-        no_dist = sum(1 for r in rows if not r["claims"]
-                      and '"margin_distribution"' not in (r["factors_json"] or ""))
-        no_quotes = sum(1 for r in rows if not r["claims"] and not r["quotes"]
-                        and '"margin_distribution"' in (r["factors_json"] or ""))
-        rest = len(rows) - with_claim - no_dist - no_quotes
+        # ONE PER BET (the prover, 2026-09-26): the standing forecasts of one
+        # game in this market are one bet, whatever rungs asked it.
+        bets: dict[str, list] = {}
+        for r in rows:
+            bets.setdefault(r["game_id"], []).append(r)
+        unread = [fs for game, fs in bets.items() if game not in read]
+        with_claim = len(bets) - len(unread)
+        no_dist = sum(1 for fs in unread if not carries(fs))
+        no_quotes = sum(1 for fs in unread if carries(fs)
+                        and not any(r["quotes"] for r in fs))
+        rest = len(bets) - with_claim - no_dist - no_quotes
         out.append({
             "market": market,
-            "n": len(rows),
+            "predictor": predictor,
+            "event_tier": event_tier,
+            "n": len(bets),
+            "distinct_bets": len({r["game_id"] for r in rows}),
+            "forecasts": len(rows),
             "with_a_claim": with_claim,
-            "share": round(with_claim / len(rows), 4) if rows else None,
+            "share": round(with_claim / len(bets), 4) if bets else None,
             "holes": [
                 {"reason": "the prediction carries no frozen distribution",
                  "n": no_dist},

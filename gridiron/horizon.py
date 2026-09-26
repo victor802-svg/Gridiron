@@ -199,7 +199,9 @@ def llm_routed_off_outlook(conn: sqlite3.Connection, sport: str, market: str,
     }
 
 
-def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str,
+def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
+                        predictor: str, bets: list,
+                        event_tier: str | None = None,
                         season: int | None = None) -> dict:
     """When the at-the-line gate opens, at the rate claims are actually being
     written (E4, 2026-09-06).
@@ -209,30 +211,33 @@ def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str,
     ladder from the venue, and a price on it -- so its gate is always further
     away than the rung gate for the same market, and projecting one from the
     other would flatter by exactly the size of the coverage hole.
+
+    THE CURVE'S OWN BETS, NOT A QUERY OF ITS OWN (GRIDIRON_REPAIR item 6,
+    2026-09-26). `bets` is the list `at_the_line.standing_claims` gave the
+    curve beside this line -- one forecaster's, one claim per bet -- so
+    `resolved` is the curve's n by construction: every settled bet, whatever
+    its season, because that is what the gate counts. The pace is this
+    season's: the bets written in it, over the slates (`games.week`) they
+    were written on -- the unit `slates_remaining` counts. Until this date
+    the outlook counted every forecaster's claims itself and said "128 of
+    100 · ~228 expected" beside a curve of 80 (2026-09-23).
     """
     from . import language
+    from .market import at_the_line
 
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
         if season is None else season
-    # ONE CLAIM PER PREDICTION (2026-09-23): the venue is read on every
-    # firing now, and a count of rows would call one question four.
-    from .market import at_the_line
-    row = conn.execute(
-        "SELECT COUNT(*) AS written, COUNT(DISTINCT g.week) AS slates,"
-        " SUM(CASE WHEN c.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
-        " FROM at_the_line_claims c JOIN games g ON g.id = c.game_id"
-        " WHERE c.sport = ? AND c.market = ? AND g.season = ? AND"
-        + at_the_line.standing_claim_clause("c"),
-        (sport, market, season)).fetchone()
-    written = int(row["written"] or 0)
-    slates_used = int(row["slates"] or 0)
-    resolved = int(row["resolved"] or 0)
+    this_season = [b for b in bets if b["season"] == season]
+    written = len(this_season)
+    slates_used = len({b["week"] for b in this_season})
+    resolved = len(at_the_line.settled(bets))
     remaining = slates_remaining(conn, sport, season)
     gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
     per_slate = (written / slates_used) if slates_used else None
     expected = int(round(resolved + per_slate * remaining)) if per_slate else None
     out = {
-        "sport": sport, "market": market, "gate": gate, "resolved": resolved,
+        "sport": sport, "market": market, "predictor": predictor,
+        "event_tier": event_tier, "gate": gate, "resolved": resolved,
         "written": written, "n": resolved, "slates_used": slates_used,
         "slates_remaining": remaining, "season_ends": season_ends(conn, sport, season),
         "per_slate": round(per_slate, 2) if per_slate is not None else None,
@@ -241,7 +246,11 @@ def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str,
     }
     if per_slate is None:
         out["reachable"] = None
-        out["message"] = language.at_the_line_pace_line(resolved, gate, None, None)
+        # NOTHING THIS SEASON IS NOT NOTHING EVER (the prover, 2026-09-26):
+        # `resolved` counts every season's bets, so the words must not deny
+        # the claims it has just counted.
+        out["message"] = language.at_the_line_pace_line(
+            resolved, gate, None, None, written_before=bool(bets))
         return out
     out["reachable"] = expected >= gate
     out["message"] = language.at_the_line_pace_line(

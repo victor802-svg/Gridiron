@@ -1114,6 +1114,14 @@ expected" and the gate line says "80 of 100 settled comparisons · 20 more".
 The outlook counts claims; the gate counts standing comparisons. The first
 reads as cleared and is not. This is the ONE CLAUSE failure again.
 
+**2026-09-26, GRIDIRON_REPAIR item 6: CLOSED.** The curve asks the door once
+and the outlook is handed the curve's own bets, so the gate line and the
+outlook are one count, and `calibration.assert_no_pooled_claims` refuses a
+payload where they differ ("two counts of one record"). (Not the learning
+panel, which states no at-the-line count: this was the at-the-line section
+of the Record page.) At the end of this file, "At the venue's line, one bet
+per game per forecaster".
+
 ### BROKEN: NFL and NCAAF spread and moneyline have not been forecast since 5 September *(measured 2026-09-23)*
 
 `config.FACTOR_SET_VERSIONS` maps `("nfl", "spread")`, `("nfl",
@@ -1156,6 +1164,13 @@ and 29 on 20 games. Spread's 80 are all statistical but sit on 53 games. The
 panel reads "174 settled comparisons, past the 100". Per forecaster on graded
 rows it is 54. `calibration.assert_no_merged_categories` refuses exactly this
 on the blind record, and nothing checks it here.
+
+**2026-09-26, GRIDIRON_REPAIR item 6: CLOSED.** One claim per game and market
+per forecaster, through one door, and a guard that refuses a pooled or
+repeated count by name. On the record that day the same curve said "283
+settled comparisons, past the 100"; it is 92 of 100 for each forecaster. At
+the end of this file, "At the venue's line, one bet per game per
+forecaster", with every figure before and after.
 
 ### The machine was off for nine days *(measured 2026-09-23, not a code defect)*
 
@@ -3592,3 +3607,282 @@ ruling's words.
   and market -- the new rule refuses a replacement onto a game and market
   holding one -- but it erases what was said (LAW 3). No writer does it;
   not built here, because no ruling names it.
+
+## At the venue's line, one bet per game per forecaster -- built 2026-09-26 *(GRIDIRON_REPAIR item 6; the operator's ruling of 2026-09-23)*
+
+"The at-the-line scorecard never pools forecasters or duplicates;
+per-forecaster, per-distinct-bet counts only, LAW 4 and LAW 6. Re-state every
+gate distance on the corrected counts." (THE READ's map of 2026-09-23 was
+re-verified against 5499520 before anything was built: since it was drawn,
+item 1 had put `at_the_line.standing_claim_clause` -- one claim per forecast,
+the last before the start -- into the outlook, the card count and the venue
+drift, and ruling 1 had put voids into it; nothing else it named had moved,
+and none of it asked the forecaster.)
+
+### BUILT *(2026-09-26)*
+
+- **The door**: `market.at_the_line.standing_claims(conn, *, sport, market,
+  predictor, event_tier=None)`. The forecaster is required and refused by
+  name unless it is one of the two (`at_the_line.PooledCount`, "never
+  pooled"); a sport that splits below the market must name one declared
+  tier, and one that does not may name none (LAW 6). It keeps ONE claim per
+  game, market and side (the side is fixed by the market) per forecaster: the
+  last written before the start, the id breaking a tie, however many passes,
+  rungs or looks wrote one. A voided forecast's claim is never a candidate,
+  so a withdrawal takes back that forecast and not the bet. Every row carries
+  its forecaster, season and week. `standing_claim_clause` is folded into it
+  (its history is in the door's docstring); `at_the_line.settled`,
+  `bet_of` and `count_of_bets` are the one predicate and the one key the
+  counts share.
+- **Every count reads it**: the curve (`calibration.at_the_line_curve`, one
+  per market, tier and forecaster, asking the door ONCE); its gate line and
+  its outlook (`horizon.at_the_line_outlook` is handed the curve's own bets:
+  resolved is the curve's n, the pace is this season's bets over the slates
+  they were written on); the edge (the statistical model's, in the headline
+  market); the hypothetical ledger (`paper.ledger`, one per curve); the
+  coverage share (`at_the_line.coverage`, per forecaster, over the standing
+  forecast of each question, read if that forecaster's bet on the game
+  stands); the count beside a pick card (`views._at_the_line`, its own
+  forecaster's bets in its market, and tier); and the venue's drift pair
+  (`drift.venue_pairs` / `venue_report`, per forecaster; `views.drift_report`
+  lost `venue_n`, a sum of both). The scorecard's total `n` (a sum of both
+  forecasters' curves, never rendered) is gone.
+- **The guard**: `calibration.assert_no_pooled_claims`, inside
+  `at_the_line_scorecard` (so the API answers 500 rather than serve a pool,
+  and the gate's build of every sport on its copy of the record runs it).
+  It first runs `assert_no_merged_categories` on the at-the-line payload --
+  nothing did until today; on 23 September it raised "merges the
+  statistical and LLM forecasters" on the live payload -- then refuses by
+  name: a count of more claims than distinct bets (`distinct_bets`, counted
+  off the items beside the door, so a door that let a bet in twice is seen);
+  claims of another forecaster than the one named (`forecasters_counted`);
+  an outlook, or a gate line, stating another count than the curve's ("two
+  counts of one record"); a ledger, edge or coverage line naming no
+  forecaster or tier; and a total.
+- **Words**: `language.at_the_line_category_label` ("point spread at the
+  venue's line, reasoning pass"; a UFC row names its card), and the ledger
+  and coverage lines name the forecaster (and the tier) after the market.
+  The pace line with nothing written now says "no claim from this forecaster
+  has been written in this market yet": the old words, "no claim has been
+  written in this market", would have stood under the reasoning pass's MLB
+  spread row one line below a statistical row with 88.
+- **The plantings**: `plant_an_at_the_line_curve_pooling_two_forecasters`
+  (THE READ's payload: both forecasters in one curve, both under one
+  forecaster's name, one forecaster's two passes counted twice, an outlook of
+  128 beside a curve of 80, and a total -- each refused by name, the honest
+  pair passing) and `plant_an_at_the_line_game_counted_twice` (a scratch
+  world, every row through the triggers: one MLB game forecast by the morning
+  and final pass and by both forecasters at the moneyline, and at two rungs
+  at the spread; the door counts one bet per forecaster, the card the same;
+  the door as it stood, and the same asking the forecaster, swapped back in,
+  are refused by the Record page's own builder). **Both ESCAPE on 5499520**
+  (`git archive`, scratch): the unfixed scorecard runs no check that sees
+  them, and it builds the planted world as moneyline 3, spread 2, ledger 3
+  and a card saying 3 -- one game.
+- **Tests** (`test_at_the_line.py`): one bet per forecaster per game through
+  the curve, the ledger, the edge, the card, the coverage and the drift pair;
+  the outlook and the gate line count the curve's bets; a withdrawn forecast
+  takes back its claim and not the bet; every pooled shape refused by name,
+  the door refusing a pooled forecaster or tier, and UFC in six curves. All
+  four fail on 5499520. `test_paper.py`'s ledger keyed by market alone (the
+  second forecaster's row silently replaced the first) is keyed by market and
+  forecaster.
+
+### MEASURED ON THE LIVE RECORD, read-only *(2026-09-26 about 10:50Z, `db.read_the_live_record`; newest claim 05:02:39Z)*
+
+Every gate distance the app states at the venue's line, as the shipped code
+(5499520) states it and as this tree does. "PRINTED": the figure itself is on
+the page. The projections (~) move with every slate; the orchestrator
+re-reads them at release.
+
+| sport | figure | before (pooled) | after (per forecaster, per bet) |
+|---|---|---|---|
+| MLB | spread curve | 130, past the 100 (outlook 130, ~157) | statistical 88 of 100, 12 more (~107); reasoning 0 (no claim written) |
+| MLB | total curve | 67 of 100 (~81, cannot clear) | statistical 24 of 100, 76 more (~29, cannot clear); reasoning 24 (~29) |
+| MLB | moneyline curve | **283, past the 100** (~344) | statistical 92 of 100, 8 more (~112); reasoning 92 of 100, 8 more (~112) |
+| MLB | spread ledger | 88 of 100 | statistical 59; reasoning 0 |
+| MLB | total ledger | 35 of 100 | statistical 10; reasoning 16 |
+| MLB | moneyline ledger | **176, PRINTED "-0.47 units, or -3.98 after the venue's fee"** | statistical 49 of 100; reasoning 66 of 100 -- **the figure is withdrawn** |
+| MLB | edge (spread) | n 130, 2 of 100 disagreements | statistical n 88, 1 of 100 |
+| MLB | pick-card count (slate payload; painted nowhere, below) | moneyline 283 "past the 100", spread 130 "past the 100", total 67 | moneyline 92, spread 88, total 24 (each forecaster's) |
+| MLB | venue drift, gate 50 (payload only) | moneyline 132 and spread 69, past the 50; total 21 | moneyline statistical 38, reasoning **55 (past the 50)**; spread 49 and 0; total 6 and 10 |
+| MLB | coverage | spread 140 of 286; total 71 of 452; moneyline 315 of 531 | spread statistical 95 of 188; total 25 of 195 and 25 of 123; moneyline 102 of 246 and 102 of 134 |
+| NFL | curves | spread 4 (~132); total 0 (~48); moneyline 2 (~754) | spread statistical 2 (~114), reasoning 0; total 0 and 0 (~16 each, cannot clear); moneyline 1 and 1 (~257 each) |
+| NFL | ledgers | spread 1; total 0; moneyline 2 | spread 1 and 0; total 0 and 0; moneyline 1 and 1 |
+| NFL | edge (spread) | n 4, 1 of 100 | statistical n 2, 1 of 100 |
+| NFL | pick-card count | moneyline 2, spread 4, total 0 | moneyline 1, spread 2, total 0 |
+| NFL | venue drift | moneyline 30, spread 12, total 0 | moneyline 11 and 8; spread 12 and 0; total 0 and 0 |
+| NFL | coverage | spread 29 of 99; total 3 of 68; moneyline 63 of 79 | spread 14 of 42 and 0 of 13; total 1 of 18 and 1 of 17; moneyline 16 of 32 and 16 of 16 |
+| NCAAF | curves | spread 3 (~183); total 0; moneyline 6 (~366) | spread statistical 3 (~183), reasoning 0; total 0 and 0; moneyline 3 and 3 (~183 each) |
+| NCAAF | ledgers | spread 3; moneyline 4 | spread 3 and 0; moneyline 1 and 3 |
+| NCAAF | pick-card count | moneyline 6, spread 3 | moneyline 3, spread 3 |
+| NCAAF | venue drift | moneyline 2, spread 1 | moneyline 1 and 1; spread 1 and 0 |
+| NCAAF | coverage | spread 4 of 147; total 0 of 157; moneyline 8 of 150 | spread 4 of 133 and 0 of 6; total 0 of 90 and 0 of 13; moneyline 4 of 88 and 4 of 6 |
+| NBA | every figure | 0 | 0, per forecaster |
+| UFC | every figure | 0 (one moneyline curve, all tiers) | 0, in six curves: three cards by two forecasters |
+
+Nothing at the venue's line is past its hundred for any forecaster in any
+sport. Three things the page showed are withdrawn by LAW 4 working: the MLB
+moneyline and spread curves' "past the 100" and the PRINTED moneyline ledger
+(and, in the slate payload, every MLB moneyline and spread card's "past the
+100"). The nearest gates are MLB moneyline, 8 more
+for each forecaster, and MLB spread, 12 more for the statistical model, both
+projected to reach the hundred by 27 September at this season's pace -- a
+projection, and the season's last slates. The one count now past a gate is a
+venue drift pair (MLB moneyline, reasoning pass, 55 of 50), in the payload
+and on no page. No forecaster's claims on one game carry two venue lines
+(measured: 0), so a bet keyed by line as well would count the same today.
+
+### RENDERED *(2026-09-26; this tree and 5499520 served against one scratch copy of the record, signed in with the browser suite's test token)*
+
+The Record page's "At the venue's line" section for MLB, at 1100px and
+390px, read: six curves, each naming its forecaster ("point spread at the
+venue's line, statistical" / "..., reasoning pass"), the gate line and the
+outlook in each saying the same count (88, 0, 24, 24, 92, 92); six ledger
+lines, none printing a figure; five coverage lines, each naming its
+forecaster. On 5499520 the same copy rendered "283 settled comparisons,
+past the 100 this record needs" and the moneyline ledger's units. No
+horizontal page scroll, no console error, at either width. The row where
+the reasoning pass has no claim says "no claim from this forecaster has been
+written in this market yet". **The count beside a pick card is not on
+screen**: `views._at_the_line` puts it in the slate payload, and the only
+code that paints it, `app.js` `buildCardBody`, has no caller -- 0 of 50 MLB
+card faces show it, before and after (found in passing; not changed).
+
+### THE LIVE WRITE THE RULING REQUIRES *(none)*
+
+**No row is written, updated or deleted, and the schema does not change.**
+Item 6 is read-side: the counts, the payload, the guard and the words. The
+pooled figures were never stored (they were computed on every request), so
+there is nothing to void or relabel. Rehearsed on a scratch copy through
+`db.back_up_the_live_record`: `db.init` under this tree changed no schema
+object (235 before and after, byte for byte) and no claim (1,293); the
+migrated copy against a fresh build of this tree: 0 differences in
+behaviour (ten tables cosmetic, as at item 5); and the at-the-line
+scorecard of every sport built on it with the guard passing. The Record
+page's payload for MLB builds in 0.34 s against 0.29 s before (best of
+three, read-only on the record).
+
+### READINGS TAKEN, for the operator to overrule *(2026-09-26)*
+
+- **A distinct bet is a game and market** (with its fixed side), per
+  forecaster -- THE READ's "distinct bets" (game-market pairs) and item 5's
+  key. The other reading, a game, market and venue LINE, would count a later
+  look at another rung as a second bet; it counts the same on the record
+  today (no forecaster's claims on one game carry two lines).
+- **The claim that stands for a bet is the last written before the start**
+  -- the standing-claim rule, which already chose one forecast's last look --
+  from whichever of that forecaster's forecasts wrote it, so a question whose
+  final pass was never read at the venue still holds its morning claim
+  (none today). The other reading, only the standing forecast's claim, would
+  drop such a bet from the count.
+- **UFC splits by card at the line**, as its blind record does (LAW 6 one
+  level down): six curves, six ledgers, and the edge on the numbered card.
+  Nothing moves: UFC has no claim.
+- ~~**Coverage counts forecasts, not bets** ("forecasts could be read at the
+  venue's line"): the standing forecast of each question, per forecaster, so
+  two standing rungs of one game are two forecasts read by one bet.~~
+  **REPLACED by the prover, 2026-09-26** (below): the ruling allows
+  "per-distinct-bet counts only" on this scorecard, and the coverage line is
+  on it, so it counts one bet per game the forecaster forecast. Kept struck
+  through, not deleted, so the reading and its reversal can both be read.
+- **The venue's drift pair is counted per forecaster and per bet**: it is
+  read off the claims, and states a gate (fifty).
+- **The learning panel states no at-the-line count.** Its two figures are the
+  correction's settled count (`calibration.resolved`, statistical, one per
+  question) and the media line's drift (below); THE READ's "174, past the
+  100" was the at-the-line section of the Record page.
+- **Recommendations are not counted here** (item 5; question 12).
+
+### OPEN, found by this item *(2026-09-26)* -- the first, second and fourth are `docs/REPAIR_STATE.md` question 14
+
+- **The priced forecaster's record pools the same way, on the same page.**
+  `calibration.priced_scorecard` counts one priced row per blind forecast --
+  both blind forecasters, both passes -- and words its gate with
+  `at_the_line_gate_line`: MLB moneyline shows "261 settled comparisons, past
+  the 100 this record needs", which are 139 rows on the statistical model's
+  forecasts (96 standing questions, 96 games) and 122 on the reasoning
+  pass's (84 standing). Neither is past the hundred. Not the at-the-line
+  scorecard; not built here.
+- **The learning panel's drift line counts superseded passes.**
+  `drift.report` (the media line, statistical model only, gate fifty) pairs
+  every forecast with both looks: MLB moneyline "75 games", past the fifty,
+  is 58 questions, 48 of them standing rows. Not at the venue's line; not
+  built here.
+- **Nothing scans for a claim count written round the door**, as
+  `audit.check_every_recommendation_reader_uses_the_door` does for
+  recommendations: the card's count reads the door, and a planting proves
+  the door by the page it builds, but a new `COUNT(*) FROM
+  at_the_line_claims` elsewhere would not fail a scan.
+- **The blind record's outlooks count every row.** `horizon.market_outlook`
+  (the line beside each statistical curve, through `_written_so_far`) counts
+  every forecast of the market that is not voided -- a question's morning
+  and final pass twice -- and for UFC the whole market beside each tier's
+  curve: MLB moneyline "330 of 100" beside a curve of 233; spread and total
+  "272 of 100" beside 175 and 182; UFC moneyline "62 of 100" beside a
+  Numbered-card curve of 0 (Fight Night 27, Contender Series 10). The same
+  "two counts of one record" the at-the-line outlook was, in the blind
+  record; not item 6's scorecard, not built here.
+
+### PROVED, and one count fixed *(the prover, 2026-09-26)*
+
+- **Both plantings ESCAPE on 5499520 and are CAUGHT here** (`git archive`
+  of HEAD into the scratchpad; each planting's own code run against it, with
+  the checks the unfixed `at_the_line_scorecard` ran and the gate's
+  at-the-line scan standing in for the guard it lacks). Independently built,
+  one MLB game forecast by both passes of both forecasters and read at two
+  looks: the unfixed page says moneyline 4, spread 2, a total of 6 and a
+  card of 4; this tree says 1 for each forecaster. With the guard made a
+  no-op in the process, both plantings report NOT CAUGHT, so they prove the
+  guard and not the world.
+- **FOUND AND FIXED: the coverage line counted a bet more than once.** The
+  builder's coverage counted each forecaster's standing QUESTIONS, so a game
+  asked at two rungs was two forecasts, both "read" by its one bet: on the
+  live record (read-only, 2026-09-26) NCAAF point spread, statistical, said
+  "4 of 133 forecasts" for 88 bets (45 games asked at two rungs), NFL point
+  spread "14 of 42" for 29, MLB total "25 of 195" and "25 of 123" for 188 and
+  119; the planted game said "2 of 2 forecasts" beside a curve of 1. The
+  ruling allows "per-distinct-bet counts only" on the at-the-line scorecard,
+  and the coverage line is on it. Now `at_the_line.coverage` counts one bet
+  per game the forecaster forecast (the standing forecasts grouped by game;
+  a bet not read is put down to a missing distribution only when none of its
+  forecasts carried one), carries `distinct_bets` and `forecasts` beside
+  `n`, and the line says games: "point spread, statistical: the venue's line
+  could be read for 4 of 88 games it forecast (5%)".
+  `assert_no_pooled_claims` refuses a coverage line whose `n` is not its
+  distinct bets, or that reads more bets than it counts. Planted: two more
+  shapes in `plant_an_at_the_line_curve_pooling_two_forecasters`, and the
+  coverage lines in `plant_an_at_the_line_game_counted_twice`'s world -- both
+  ESCAPE on 5499520 and on the builder's tree before this fix, and are
+  CAUGHT here. The builder's test that asserted "2 of 2" asserts one bet.
+- **The coverage lines on the live record after the fix** (read-only,
+  2026-09-26; the forecasts each counts in brackets where they differ): NFL
+  spread 14 of 29 (42), 0 of 13; total 1 of 17 (18), 1 of 17; moneyline 16
+  of 32, 16 of 16. MLB spread 95 of 188; total 25 of 188 (195), 25 of 119
+  (123); moneyline 102 of 246, 102 of 134. NCAAF spread 4 of 88 (133), 0 of
+  6; total 0 of 90, 0 of 13; moneyline 4 of 88, 4 of 6. UFC Fight Night 0 of
+  41 and 0 of 41, Contender Series 0 of 10 and 0 of 10. NBA none: all 47 of
+  its forecasts are withdrawn. No coverage line states a gate, so no gate
+  distance moves; the curves, ledgers, edges and cards above are unchanged.
+- **FOUND AND FIXED, BY THE RENDER: the pace line denied the claims it
+  counted.** The builder made the outlook's count the curve's (every
+  season's settled bets) and kept the pace this season's, so a forecaster
+  whose claims were all written in an earlier season read "2 of 100 · no
+  claim from this forecaster has been written in this market yet" -- a
+  count and its denial in one sentence. Every curve on the browser test
+  world's Record page said it (its games are last season's); on the live
+  record every claim is this season's, so it would first have shown when a
+  season turned over. The line now says "... has been written in this
+  market this season" when a claim exists from an earlier one, and "yet"
+  only when none ever has (`language.at_the_line_pace_line(...,
+  written_before=)`, from `horizon.at_the_line_outlook`).
+  `test_at_the_line.py::test_the_pace_line_never_denies_the_claims_it_counts`
+  fails on 5499520 and on the builder's tree, and passes here.
+- **OPEN, not built: the tier is checked by label only.** A UFC curve names
+  its card, and the guard refuses one that names none, but its claims do not
+  carry their card, so a door that stopped filtering by tier would put every
+  card's bouts in each card's curve and pass -- as the blind record's tier
+  guard is also label-only (`assert_no_merged_categories`). UFC has no claim
+  at the line today. Carrying the tier on each claim and refusing a curve
+  whose claims span cards, as `forecasters_counted` does for forecasters,
+  would close it.

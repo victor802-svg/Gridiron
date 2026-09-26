@@ -9625,6 +9625,296 @@ def plant_an_at_the_line_curve_in_the_blind_record() -> Result:
                   "own rung with a forecast against a price")
 
 
+LAW_AT_THE_LINE_COUNTS = "AT THE LINE, ONE BET PER GAME PER FORECASTER (LAW 4, LAW 6)"
+
+
+def _atl_category(predictor, n: int, bets: int, *, market: str = "moneyline",
+                  resolved: int | None = None, counted=None) -> dict:
+    """One MLB at-the-line category shaped as `at_the_line_curve` builds it:
+    the counts it carries, its own gate line, and its outlook."""
+    from gridiron import language as _language
+
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    resolved = n if resolved is None else resolved
+    return {
+        "sport": "mlb", "record": "at_the_line", "market": market,
+        "predictor": predictor, "event_tier": None,
+        "category": f"{market} / {predictor} / at the venue's line",
+        "filters": {"sport": "mlb", "market": market, "predictor": predictor,
+                    "record": "at_the_line"},
+        "n": n, "distinct_bets": bets,
+        "forecasters_counted": (counted if counted is not None
+                                else ([predictor] if n else [])),
+        "gate": gate, "gate_line": _language.at_the_line_gate_line(n, gate),
+        "outlook": {"resolved": resolved, "n": resolved, "gate": gate},
+    }
+
+
+def plant_an_at_the_line_curve_pooling_two_forecasters() -> Result:
+    """Put THE READ's MLB moneyline curve back on the Record page.
+
+    THE SHIPPED PAYLOAD OF 2026-09-23 (GRIDIRON_REPAIR item 6): "174 settled
+    comparisons, past the 100 this record needs", which were 87 claims of the
+    statistical model and 87 of the reasoning pass on 54 games -- 54 bets
+    each. Beside it, one MLB spread row said "80 of 100" over an outlook of
+    "128 of 100". No guard ran on the at-the-line payload but the two-records
+    one, so every one of these reached the page. Four shapes of it are
+    planted here, and each must be refused by name; two honest
+    per-forecaster categories must pass.
+
+    AND THE COVERAGE LINE BESIDE THEM (the prover, 2026-09-26). It counted
+    one per standing QUESTION after the builder's fix, so a game asked at two
+    rungs was two: NCAAF point spread, statistical, "4 of 133 forecasts" on
+    the record that day for 88 bets. Two more shapes: a coverage line
+    counting one bet's two rungs as two, and one reading a bet twice.
+    """
+    guard = "calibration.assert_no_pooled_claims"
+    violation = "two forecasters and repeated claims in one at-the-line count"
+
+    def coverage_row(predictor, n, bets, read):
+        return {"market": "spread", "predictor": predictor, "event_tier": None,
+                "n": n, "distinct_bets": bets, "with_a_claim": read}
+
+    honest = {"sport": "mlb", "record": "at_the_line", "categories": [
+        _atl_category("statistical", 54, 54), _atl_category("llm", 54, 54)],
+        "coverage": [coverage_row("statistical", 88, 88, 4),
+                     coverage_row("llm", 6, 6, 0)]}
+    try:
+        calibration.assert_no_pooled_claims(honest)
+    except calibration.MergedCurve as wrong:
+        return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, False,
+                      f"the guard refuses honest per-forecaster categories: {wrong}")
+    pooled = _atl_category(None, 174, 54, counted=["llm", "statistical"])
+    probes = {
+        "both forecasters in one curve": {"categories": [pooled]},
+        "both forecasters under one forecaster's name": {"categories": [
+            _atl_category("statistical", 174, 54, counted=["llm", "statistical"])]},
+        "one forecaster's morning and final pass counted twice": {"categories": [
+            _atl_category("statistical", 87, 54)]},
+        "an outlook counting other claims than its curve": {"categories": [
+            _atl_category("statistical", 80, 80, market="spread", resolved=128)]},
+        "a coverage line counting one bet's two rungs as two": {"coverage": [
+            coverage_row("statistical", 133, 88, 4)]},
+        "a coverage line reading one bet twice": {"coverage": [
+            coverage_row("statistical", 1, 1, 2)]},
+    }
+    caught, missed = [], []
+    for name, planted in probes.items():
+        payload = {"sport": "mlb", "record": "at_the_line",
+                   "categories": honest["categories"]
+                   + planted.get("categories", []),
+                   "coverage": honest["coverage"] + planted.get("coverage", [])}
+        try:
+            calibration.assert_no_pooled_claims(payload)
+        except calibration.MergedCurve as exc:
+            caught.append(f"{name}: {exc}")
+        else:
+            missed.append(name)
+    totalled = dict(honest, n=108)
+    try:
+        calibration.assert_no_pooled_claims(totalled)
+    except calibration.MergedCurve as exc:
+        caught.append(f"a total across both forecasters: {exc}")
+    else:
+        missed.append("a total across both forecasters")
+    if missed:
+        return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, False,
+                      "NOT CAUGHT - the Record page counts at the venue's "
+                      "line as pooled as it did on 23 September: "
+                      + "; ".join(missed))
+    return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, True,
+                  f"{caught[0]} (and {len(caught) - 1} more shapes, each "
+                  f"refused by name)")
+
+
+def plant_an_at_the_line_game_counted_twice() -> Result:
+    """Count one MLB game's claims once per forecast instead of once per bet.
+
+    THE SHIPPED DOOR OF 2026-09-23 TO 2026-09-26: `standing_claims` kept one
+    claim per PREDICTION and asked no forecaster, so a game forecast by the
+    morning and the final pass, and by both forecasters, was three claims in
+    one moneyline count -- and a spread asked at two rungs was two. This
+    world plants exactly that on a scratch database (every row through the
+    schema's own triggers, the one permitted settling write), proves the
+    shipped door counts one bet per forecaster -- the coverage lines too,
+    where the spread's two standing rungs are one game (the prover,
+    2026-09-26) -- and then swaps the old door
+    back in, as it stood and as it would stand filtered by forecaster, and
+    demands the Record page's own builder refuse both by name.
+    """
+    import tempfile
+
+    from gridiron import db as _db, views as _views
+    from gridiron.market import at_the_line as _atl
+
+    guard = "calibration.assert_no_pooled_claims"
+    violation = "one MLB game's claims counted once per forecast, not per bet"
+    season = config.SPORT_CURRENT_SEASON["mlb"]
+    kickoff = "2026-09-07T23:05:00Z"
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES ('mlb_plant_1', 'mlb', ?, 1, 'R', 'SEA', 'HOU', ?,"
+            " 'final', '2026-09-07', 5, 3)", (season, kickoff))
+        forecasts = (
+            # (market, subject, rung, side, forecaster, pass, written)
+            ("moneyline", "SEA", None, "win", "statistical", "early",
+             "2026-09-07T03:05:00Z"),
+            ("moneyline", "SEA", None, "win", "statistical", "final",
+             "2026-09-07T21:05:00Z"),
+            ("moneyline", "SEA", None, "win", "llm", "final",
+             "2026-09-07T21:05:01Z"),
+            # TWO STANDING RUNGS OF ONE BET -- the live NCAAF "ALA@-24.5 |
+            # ALA@-14.5" shape: a morning question at one rung and a final
+            # one at another, both standing, both read at one venue number.
+            ("spread", "SEA", -1.5, "cover", "statistical", "early",
+             "2026-09-07T03:05:00Z"),
+            ("spread", "SEA", 1.5, "cover", "statistical", "final",
+             "2026-09-07T21:05:00Z"),
+        )
+        ids = {}
+        for market, subject, rung, side, who, pass_kind, written in forecasts:
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning) VALUES (?, 'mlb', 'mlb_plant_1', ?, ?, ?, 0.58, ?,"
+                " ?, ?, 'fs2', '{}', 'planted')",
+                (written, market, subject, rung, side, who, pass_kind))
+            ids[(market, who, pass_kind)] = conn.execute(
+                "SELECT MAX(id) FROM predictions").fetchone()[0]
+        quotes = {}
+        for market, quantity, line in (("moneyline", "home_win", None),
+                                       ("spread", "home_margin", -1.5)):
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                " last_price, fetched_utc, read_kind) VALUES (?, ?, 'E', 'mlb',"
+                " 'mlb_plant_1', ?, ?, ?, 'home', 0.44, 0.46, 0.45,"
+                " '2026-09-07T21:35:00Z', 'near_start')",
+                (_atl.VENUE, f"T-{market}", market, quantity, line))
+            quotes[market] = conn.execute(
+                "SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        for (market, who, pass_kind), pid in ids.items():
+            conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+                " sport, game_id, market, quantity, line, side, shape,"
+                " dist_mean, dist_sd, model_prob, venue_price, venue_implied,"
+                " price_basis, created_utc) VALUES (?, ?, ?, 'mlb',"
+                " 'mlb_plant_1', ?, ?, ?, 'home', ?, NULL, NULL, 0.58, 0.45,"
+                " 0.45, 'mid', '2026-09-07T21:45:00Z')",
+                (pid, quotes[market], _atl.VENUE, market,
+                 "home_win" if market == "moneyline" else "home_margin",
+                 None if market == "moneyline" else -1.5,
+                 "line_less" if market == "moneyline" else "rung_matched"))
+        conn.execute("UPDATE at_the_line_claims SET resolved_utc ="
+                     " '2026-09-08T03:00:00Z', outcome = 1")
+        conn.commit()
+
+        def counts() -> tuple[dict, dict]:
+            card = calibration.at_the_line_scorecard(conn, sport="mlb")
+            # AND THE COVERAGE LINES (the prover, 2026-09-26): the statistical
+            # spread's two standing rungs are one bet there too, as "1 of 1
+            # game", never "2 of 2 forecasts" beside a curve of one.
+            return ({(c["market"], c["predictor"]): (c["n"], c["outlook"]["resolved"])
+                     for c in card["categories"]},
+                    {(r["market"], r["predictor"]): (r["n"], r["with_a_claim"])
+                     for r in card["coverage"]})
+
+        try:
+            shipped, covered = counts()
+            card_n = _views._at_the_line(
+                conn, "mlb", [ids[("moneyline", "statistical", "final")]],
+                {})[ids[("moneyline", "statistical", "final")]]["n"]
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, False,
+                          f"the shipped door refuses an honest world: {exc}")
+        want = {("moneyline", "statistical"): (1, 1), ("moneyline", "llm"): (1, 1),
+                ("spread", "statistical"): (1, 1), ("spread", "llm"): (0, 0),
+                ("total", "statistical"): (0, 0), ("total", "llm"): (0, 0)}
+        want_covered = {("moneyline", "statistical"): (1, 1),
+                        ("moneyline", "llm"): (1, 1),
+                        ("spread", "statistical"): (1, 1)}
+        if shipped != want or covered != want_covered or card_n != 1:
+            conn.close()
+            return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, False,
+                          f"the shipped door counts {shipped}, the coverage "
+                          f"lines {covered} and the card {card_n} for one game "
+                          f"forecast by two passes and two forecasters; wanted "
+                          f"one bet each")
+
+        shipped_door = _atl.standing_claims
+
+        def per_forecast(conn, *, sport, market, predictor, event_tier=None,
+                         ask_the_forecaster=False):
+            # THIS IS THE SHIPPED CODE OF 2026-09-23: one claim per
+            # prediction, the last before the start, from any forecaster --
+            # with the columns the new builder reads added, and nothing else.
+            return conn.execute(
+                "SELECT c.*, p.predictor, g.season, g.week"
+                "  FROM at_the_line_claims c"
+                "  JOIN predictions p ON p.id = c.prediction_id"
+                "  JOIN games g ON g.id = c.game_id"
+                " WHERE c.sport = ? AND c.market = ?"
+                + (" AND p.predictor = ?" if ask_the_forecaster else "") +
+                "   AND NOT EXISTS (SELECT 1 FROM prediction_voids vc"
+                "                   WHERE vc.prediction_id = c.prediction_id)"
+                "   AND c.id = (SELECT c2.id FROM at_the_line_claims c2"
+                "                 JOIN games g2 ON g2.id = c2.game_id"
+                "                WHERE c2.prediction_id = c.prediction_id"
+                "                  AND (g2.kickoff_utc IS NULL"
+                "                       OR c2.created_utc < g2.kickoff_utc)"
+                "                ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
+                " ORDER BY c.id",
+                (sport, market) + ((predictor,) if ask_the_forecaster else ())
+            ).fetchall()
+
+        def the_page():
+            calibration.at_the_line_scorecard(conn, sport="mlb")
+
+        def the_moneyline_curve():
+            # THE MONEYLINE ALONE, where the old door put both forecasters
+            # and both passes in the statistical model's count -- the page
+            # above stops at the spread's two rungs, the first row it builds.
+            curve = calibration.at_the_line_curve(
+                conn, sport="mlb", market="moneyline", predictor="statistical")
+            calibration.assert_no_pooled_claims(
+                {"sport": "mlb", "record": "at_the_line", "categories": [curve]})
+
+        caught, missed = [], []
+        for name, door, build in (
+                ("the door as it stood (every forecaster), the page",
+                 per_forecast, the_page),
+                ("the door as it stood, the moneyline curve",
+                 per_forecast, the_moneyline_curve),
+                ("the door asking the forecaster, one claim per forecast",
+                 lambda conn, **kw: per_forecast(conn, ask_the_forecaster=True, **kw),
+                 the_moneyline_curve)):
+            _atl.standing_claims = door
+            try:
+                build()
+            except calibration.MergedCurve as exc:
+                caught.append(f"{name}: {exc}")
+            else:
+                missed.append(name)
+            finally:
+                _atl.standing_claims = shipped_door
+        conn.close()
+    if missed:
+        return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, False,
+                      "NOT CAUGHT - the Record page counts one game's morning "
+                      "pass, final pass and second forecaster as three bets: "
+                      + "; ".join(missed))
+    return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, True,
+                  "one game counts one bet per forecaster on the shipped door "
+                  "(the card too); with the old door swapped back in -- "
+                  + " | ".join(caught))
+
+
 LAW_NO_PRESSURE = "THE GRAMMAR OF A SPORTSBOOK, NEVER ITS PRESSURE"
 
 
@@ -13287,6 +13577,10 @@ def main() -> int:
     results.append(plant_a_tip_sheet_headline_on_the_shortlist())
     results.append(plant_advice_words_at_the_line())
     results.append(plant_an_at_the_line_curve_in_the_blind_record())
+    # ONE BET PER GAME PER FORECASTER AT THE VENUE'S LINE (GRIDIRON_REPAIR
+    # item 6, the operator's ruling of 2026-09-23).
+    results.append(plant_an_at_the_line_curve_pooling_two_forecasters())
+    results.append(plant_an_at_the_line_game_counted_twice())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

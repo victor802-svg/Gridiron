@@ -90,29 +90,43 @@ def qualifying(model_prob: float, venue_implied: float,
 
 
 def ledger(conn: sqlite3.Connection, *, sport: str, market: str,
+           predictor: str, event_tier: str | None = None,
            threshold: float | None = None) -> dict:
-    """The hypothetical one-unit record for one sport and one market.
+    """The hypothetical one-unit record for one sport, market and forecaster.
 
     Gated: below `config.MIN_SAMPLE_FOR_EDGE_CLAIM` settled qualifying rows the
     figures are ABSENT from the payload, replaced by the shortfall, exactly as
     the edge figure is. A number this suggestive at n=9 is worse than no
     number.
+
+    ONE FORECASTER'S DISTINCT BETS (GRIDIRON_REPAIR item 6, 2026-09-26). The
+    ledger read every forecast's standing claim for the market, so on the
+    live record MLB moneyline's two forecasters and their morning and final
+    passes were one count, past the hundred, and the Record page PRINTED its
+    units -- a figure LAW 4 forbade. On 26 September: 176, "-0.47 units, or
+    -3.98 after the venue's fee", where the statistical model held 49 and
+    the reasoning pass 66 (on 23 September, 106 and "-4.34 units", for 30 and
+    37). It reads the door (`at_the_line.standing_claims`) now, one
+    forecaster and one bet at a time, and says whose it is.
     """
     from . import at_the_line
 
     config.require_sport(sport, "paper.ledger")
-    claims = [c for c in at_the_line.standing_claims(conn, sport=sport, market=market)
-              if c["resolved_utc"] is not None and c["outcome"] is not None]
+    claims = at_the_line.settled(at_the_line.standing_claims(
+        conn, sport=sport, market=market, predictor=predictor,
+        event_tier=event_tier))
 
     counted = 0
     units = 0.0
     units_after_fees = 0.0
     right = 0
+    carried = []
     for claim in claims:
         side = qualifying(claim["model_prob"], claim["venue_implied"], threshold)
         if side is None:
             continue
         counted += 1
+        carried.append(claim)
         # THE PRICE OF THE SIDE THE MODEL DISAGREES ON. `venue_implied` is the
         # venue's price read for OUR proposition, so the complement costs the
         # rest of the dollar and settles on the opposite answer.
@@ -130,10 +144,14 @@ def ledger(conn: sqlite3.Connection, *, sport: str, market: str,
     payload = {
         "sport": sport,
         "market": market,
+        "predictor": predictor,
+        "event_tier": event_tier,
         "record": "at_the_line",
         "hypothetical": True,
         "threshold": threshold if threshold is not None else config.EDGE_DISAGREEMENT_THRESHOLD,
         "n": counted,
+        "distinct_bets": at_the_line.count_of_bets(carried),
+        "forecasters_counted": sorted({c["predictor"] for c in carried}),
         "minimum_for_a_claim": gate,
         "fee_source": FEE_SOURCE,
         "fee_declared": FEE_FORMULA_DECLARED,

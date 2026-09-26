@@ -565,6 +565,11 @@ def test_every_new_guard_is_in_the_planted_harness():
         # 2026-09-26): one recommendation per game and market, never both
         # sides -- recs 45 and 46, replayed.
         "plant_both_sides_of_one_total_recommended",
+        # GRIDIRON_REPAIR item 6 (the operator's ruling of 2026-09-23, built
+        # 2026-09-26): at the venue's line, one bet per game per forecaster --
+        # never two forecasters in one count, never a game counted twice.
+        "plant_an_at_the_line_curve_pooling_two_forecasters",
+        "plant_an_at_the_line_game_counted_twice",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

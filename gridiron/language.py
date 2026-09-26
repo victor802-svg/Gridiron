@@ -3118,11 +3118,28 @@ def at_the_line_gate_line(n: int, gate: int) -> str:
 
 
 def at_the_line_pace_line(n: int, gate: int, expected: int | None,
-                          ends: str | None) -> str:
-    """When the at-the-line gate opens at the rate claims are being written."""
+                          ends: str | None, *,
+                          written_before: bool = False) -> str:
+    """When the at-the-line gate opens at the rate claims are being written.
+
+    ONE FORECASTER'S PACE (item 6, 2026-09-26): each line sits in a row that
+    names its forecaster, and "no claim ... in this market" under the
+    reasoning pass's row would contradict the statistical row above it,
+    which has claims. It says whose claims it means.
+
+    AND WHEN (the prover of item 6, 2026-09-26). `n` counts every settled
+    bet, whatever its season, and the pace only this season's, so a
+    forecaster whose claims were all written in an earlier season read
+    "2 of 100 · no claim from this forecaster has been written in this
+    market yet" -- a count and its denial in one sentence (the browser
+    world, whose games are last season's). `written_before` says a claim
+    exists from an earlier season, and the line then says "this season".
+    """
     if expected is None:
-        return (f"{n} of {gate} · no claim has been written in this market yet, "
-                f"so there is no rate to project from")
+        when = "this season" if written_before else "yet"
+        return (f"{n} of {gate} · no claim from this forecaster has been "
+                f"written in this market {when}, so there is no rate to "
+                f"project from")
     ends_words = date_words_from_iso(ends) if ends else None
     tail = f" · season ends {ends_words}" if ends_words else ""
     if expected >= gate:
@@ -3131,13 +3148,48 @@ def at_the_line_pace_line(n: int, gate: int, expected: int | None,
             f"CLEAR THIS SEASON")
 
 
-def at_the_line_coverage_line(market: str, with_claim: int, n: int) -> str:
-    """How much of a market could be read at the venue's line."""
+def at_the_line_category_label(market: str, predictor: str,
+                               tier: str | None = None) -> str:
+    """"point spread at the venue's line, reasoning pass" -- whose curve it is.
+
+    ONE CURVE PER FORECASTER (GRIDIRON_REPAIR item 6, 2026-09-26). The label
+    named the market alone because the curve pooled both forecasters; each
+    row now says whose claims it counts, in the Record page's own filter
+    words, and a tier in its words for a sport that splits below the market.
+    """
+    parts = [f"{humanise(market)} at the venue's line"]
+    if tier:
+        parts.append(tier_label(tier) or "")
+    parts.append(FORECASTER_FILTER_WORDS.get(predictor, predictor))
+    return ", ".join(p for p in parts if p)
+
+
+def _whose(predictor: str | None, tier: str | None) -> str:
+    """", Fight Night, statistical" -- the tier and forecaster a line is about."""
+    parts = [tier_label(tier) if tier else "",
+             FORECASTER_FILTER_WORDS.get(predictor, predictor) if predictor else ""]
+    return "".join(f", {p}" for p in parts if p)
+
+
+def at_the_line_coverage_line(market: str, with_claim: int, n: int, *,
+                              predictor: str | None = None,
+                              event_tier: str | None = None) -> str:
+    """How much of one forecaster's market could be read at the venue's line.
+
+    WHOSE FORECASTS (item 6, 2026-09-26): one line per forecaster, and it
+    names which, so two lines about one market never read as one count.
+
+    COUNTED IN GAMES, NOT FORECASTS (the prover of item 6, 2026-09-26):
+    `at_the_line.coverage` counts one bet per game, so the line says games.
+    It said "forecasts" over a count of questions, and a game asked at two
+    rungs read "2 of 2 forecasts" beside a curve of one comparison.
+    """
+    what = f"{humanise(market)}{_whose(predictor, event_tier)}"
     if not n:
-        return f"{humanise(market)}: nothing written yet"
+        return f"{what}: nothing written yet"
     share = round(with_claim / n * 100)
-    return (f"{humanise(market)}: {with_claim} of {n} forecasts could be read "
-            f"at the venue's line ({share}%)")
+    return (f"{what}: the venue's line could be read for {with_claim} of "
+            f"{counted(n, 'game')} it forecast ({share}%)")
 
 
 # ---------------------------------------------------------------------------
@@ -3160,7 +3212,11 @@ def paper_ledger_line(ledger: dict) -> str:
     which market each one was about.
     """
     gate = ledger.get("minimum_for_a_claim")
-    market = humanise(ledger.get("market"))
+    # AND WHOSE (item 6, 2026-09-26): one ledger per forecaster, so two
+    # sentences about each market sit under one another, and the forecaster
+    # follows the market in each or the pair reads as one figure said twice.
+    market = humanise(ledger.get("market")) + _whose(
+        ledger.get("predictor"), ledger.get("event_tier"))
     n = ledger.get("n", 0)
     if not ledger.get("renderable"):
         return (f"hypothetical, {market}, and not shown yet: {n} of {gate} "

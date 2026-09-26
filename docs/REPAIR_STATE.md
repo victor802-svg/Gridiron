@@ -416,6 +416,33 @@ depend on the answer.
     "class (a) defects only ... in this order", and this is not among items
     1-8. Build it as its own commit now, or after close-out? Default until
     ruled: not built; FOLLOWUPS has it.
+14. **Three counts on the Record page pool the way item 6's did, outside its
+    words: fix them under item 6, or each by its own ruling? (Found by item
+    6, 2026-09-26.)** Item 6 ("The at-the-line scorecard never pools
+    forecasters or duplicates ... Re-state every gate distance on the
+    corrected counts") is built for every count stated at the venue's line.
+    Measured read-only on 2026-09-26, three more counts on the same page
+    count a question's morning and final pass twice, or two forecasters as
+    one:
+    - **The priced forecaster** (`calibration.priced_scorecard`, worded by the
+      at-the-line gate line): MLB moneyline "261 settled comparisons, past
+      the 100 this record needs" is one priced row per blind forecast -- 139
+      on the statistical model's (96 standing questions), 122 on the
+      reasoning pass's (84). Neither is past the hundred.
+    - **The learning panel's drift line** (`drift.report`, the media line,
+      statistical, gate 50): MLB moneyline "over 75 games", past the fifty,
+      is 58 questions, 48 of them standing rows.
+    - **The blind record's outlooks** (`horizon.market_outlook`, the line
+      beside each statistical curve) count every row, superseded passes
+      included, and for UFC every tier: MLB moneyline "330 of 100" beside a
+      curve of 233, spread and total "272 of 100" beside 175 and 182; UFC
+      "62 of 100" beside a Numbered-card curve of 0.
+    - **(A) Item 6's words name the at-the-line scorecard.** These stay as
+      they are, recorded in FOLLOWUPS, each for a ruling of its own.
+    - **(B) "Every gate distance" reaches every count on the Record page that
+      pools.** Each is rebuilt through its record's standing rule, per
+      forecaster (and per tier for UFC), with a planting, under item 6.
+    Default until ruled: (A); nothing built for (B).
 
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 

@@ -1756,46 +1756,110 @@ AT_THE_LINE_NOTE = (
 
 @dataclass(frozen=True)
 class AtTheLineResolved:
-    """One settled claim, in the shape the bucket and score functions read."""
+    """One settled claim, in the shape the bucket and score functions read.
+
+    It carries its BET (the game; the market and its fixed side) and its
+    forecaster (GRIDIRON_REPAIR item 6, 2026-09-26), so a payload can say how
+    many distinct bets its count is, and a guard can refuse one that counts a
+    bet twice or two forecasters as one.
+    """
     model_prob: float
     implied_prob: float
     outcome: int
     market: str
     line: float | None
+    game_id: str
+    side: str
+    predictor: str
 
 
-def at_the_line_items(conn: sqlite3.Connection, *, sport: str,
-                      market: str) -> list[AtTheLineResolved]:
-    """The settled standing claims for one sport and market.
+def _at_the_line_items_of(claims) -> list[AtTheLineResolved]:
+    """The settled claims among the door's rows, as items."""
+    from .market import at_the_line
 
-    ONE PER PREDICTION (the market module's standing rule), so a ladder read
-    twice does not put two correlated rows in one curve.
+    return [
+        AtTheLineResolved(model_prob=c["model_prob"], implied_prob=c["venue_implied"],
+                          outcome=c["outcome"], market=c["market"], line=c["line"],
+                          game_id=c["game_id"], side=c["side"],
+                          predictor=c["predictor"])
+        for c in at_the_line.settled(claims)
+    ]
+
+
+def distinct_bets(items) -> int:
+    """How many bets a set of claims is on, counted by their own keys.
+
+    COUNTED BESIDE THE DOOR, NOT BY IT (item 6, 2026-09-26): a door that let a
+    bet in twice -- two passes, or two forecasters, on one game -- returns two
+    items on one key, and this says one, which is what
+    `assert_no_pooled_claims` compares with the category's n.
+    """
+    from .market import at_the_line
+
+    return at_the_line.count_of_bets(items)
+
+
+def forecasters_counted(items) -> list[str]:
+    """Whose claims a set of items holds, read off the items themselves."""
+    return sorted({i.predictor for i in items})
+
+
+def at_the_line_items(conn: sqlite3.Connection, *, sport: str, market: str,
+                      predictor: str,
+                      event_tier: str | None = None) -> list[AtTheLineResolved]:
+    """The settled standing claims for one sport, market and forecaster --
+    and, for a sport that splits below the market, one tier.
+
+    ONE PER BET (the market module's door, `at_the_line.standing_claims`):
+    a game's morning and final pass, its two rungs and its every look are one
+    claim, and the two forecasters are never counted together (item 6).
     """
     from .market import at_the_line
 
     require_sport(sport, "calibration.at_the_line_items")
-    return [
-        AtTheLineResolved(model_prob=c["model_prob"], implied_prob=c["venue_implied"],
-                          outcome=c["outcome"], market=c["market"], line=c["line"])
-        for c in at_the_line.standing_claims(conn, sport=sport, market=market)
-        if c["resolved_utc"] is not None and c["outcome"] is not None
-    ]
+    return _at_the_line_items_of(at_the_line.standing_claims(
+        conn, sport=sport, market=market, predictor=predictor,
+        event_tier=event_tier))
 
 
-def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str) -> dict:
-    """One market's at-the-line curve, with the venue's own prices as the
-    baseline it has to beat."""
-    items = at_the_line_items(conn, sport=sport, market=market)
+def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str,
+                      predictor: str, event_tier: str | None = None) -> dict:
+    """One forecaster's at-the-line curve in one market, with the venue's own
+    prices as the baseline it has to beat.
+
+    ONE LIST, THREE COUNTS (GRIDIRON_REPAIR item 6, 2026-09-26). The door is
+    asked once; the curve's n, the gate line and the outlook beside it are all
+    read off that list. Until this date the outlook asked a query of its own,
+    and MLB spread said "80 of 100" beside "128 of 100" -- two counts of one
+    record, the ONE CLAUSE failure again (FOLLOWUPS, 2026-09-23).
+    """
+    from .market import at_the_line
+
+    require_sport(sport, "calibration.at_the_line_curve")
+    bets = at_the_line.standing_claims(conn, sport=sport, market=market,
+                                       predictor=predictor, event_tier=event_tier)
+    items = _at_the_line_items_of(bets)
     buckets = calibration_buckets(items)
+    filters = {"sport": sport, "market": market, "predictor": predictor,
+               "record": "at_the_line"}
+    if event_tier is not None:
+        filters["event_tier"] = event_tier
     return {
         "sport": sport,
         "record": "at_the_line",
         "venue": at_the_line_venue(),
         "market": market,
-        "category": f"{market} / at the venue's line",
-        "category_label": language.humanise(market) + " at the venue's line",
-        "filters": {"sport": sport, "market": market, "record": "at_the_line"},
+        "predictor": predictor,
+        "event_tier": event_tier,
+        "category": " / ".join(
+            [market] + ([event_tier] if event_tier else [])
+            + [predictor, "at the venue's line"]),
+        "category_label": language.at_the_line_category_label(
+            market, predictor, event_tier),
+        "filters": filters,
         "n": len(items),
+        "distinct_bets": distinct_bets(items),
+        "forecasters_counted": forecasters_counted(items),
         "buckets": buckets,
         "largest_gap": largest_gap_sentence(buckets),
         "score": score(items),
@@ -1803,7 +1867,9 @@ def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str) -> d
         "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
         "gate_line": language.at_the_line_gate_line(
             len(items), config.MIN_SAMPLE_FOR_EDGE_CLAIM),
-        "outlook": horizon.at_the_line_outlook(conn, sport, market),
+        "outlook": horizon.at_the_line_outlook(
+            conn, sport, market, predictor=predictor, bets=bets,
+            event_tier=event_tier),
         "note": AT_THE_LINE_NOTE,
     }
 
@@ -1816,6 +1882,7 @@ def at_the_line_venue() -> str:
 
 
 def at_the_line_edge(conn: sqlite3.Connection, *, sport: str, market: str,
+                     predictor: str, event_tier: str | None = None,
                      threshold: float | None = None) -> dict:
     """Where the model and the venue's price disagree, who was right?
 
@@ -1823,9 +1890,14 @@ def at_the_line_edge(conn: sqlite3.Connection, *, sport: str, market: str,
     a record lies while staying technically accurate, and this figure is the
     most decision-relevant one the project can produce, so it carries the same
     gate and the same standing caveat as the blind edge figure.
+
+    ONE FORECASTER'S (item 6, 2026-09-26), as the blind edge figure has
+    always been: the scorecard asks for the statistical model's, and the
+    payload says whose it is.
     """
     threshold = config.EDGE_DISAGREEMENT_THRESHOLD if threshold is None else threshold
-    items = at_the_line_items(conn, sport=sport, market=market)
+    items = at_the_line_items(conn, sport=sport, market=market,
+                              predictor=predictor, event_tier=event_tier)
     model_bolder = [r for r in items if r.model_prob - r.implied_prob > threshold]
     venue_bolder = [r for r in items if r.implied_prob - r.model_prob > threshold]
 
@@ -1849,8 +1921,12 @@ def at_the_line_edge(conn: sqlite3.Connection, *, sport: str, market: str,
         "record": "at_the_line",
         "venue": at_the_line_venue(),
         "market": market,
+        "predictor": predictor,
+        "event_tier": event_tier,
         "threshold": threshold,
         "n": len(items),
+        "distinct_bets": distinct_bets(items),
+        "forecasters_counted": forecasters_counted(items),
         "n_disagreements": len(model_bolder),
         "minimum_for_a_claim": minimum,
         "standing_note": EDGE_STANDING_NOTE,
@@ -1872,26 +1948,44 @@ def at_the_line_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     from .market import at_the_line
 
     require_sport(sport, "calibration.at_the_line_scorecard")
-    markets = [m for m in ("spread", "total", "moneyline")
+    markets = [m for m in at_the_line.BET_MARKETS
                if m in config.SPORT_MARKETS.get(sport, ())]
-    categories = [at_the_line_curve(conn, sport=sport, market=m) for m in markets]
-    # THE HYPOTHETICAL LEDGER, one per market (ruling D1, 2026-09-06). Beside
-    # the curves and never inside them: a curve says whether 58% means 58%, and
-    # this says what the same rows would have come to at the venue's prices,
-    # which is a fact about those prices as much as about the forecast.
+    # ONE CATEGORY PER MARKET, TIER AND FORECASTER (GRIDIRON_REPAIR item 6,
+    # 2026-09-26): "The at-the-line scorecard never pools forecasters or
+    # duplicates; per-forecaster, per-distinct-bet counts only, LAW 4 and
+    # LAW 6." The tiers are `(None,)` for the four sports that do not split,
+    # as in `scorecard`; the statistical model comes first in each market.
+    tiers = config.event_tiers(sport) or (None,)
+    cells = [(m, t, p) for m in markets for t in tiers
+             for p in at_the_line.FORECASTERS]
+    categories = [at_the_line_curve(conn, sport=sport, market=m, predictor=p,
+                                    event_tier=t) for m, t, p in cells]
+    # THE HYPOTHETICAL LEDGER, one per category (ruling D1, 2026-09-06; one
+    # per forecaster from item 6). Beside the curves and never inside them: a
+    # curve says whether 58% means 58%, and this says what the same rows
+    # would have come to at the venue's prices, which is a fact about those
+    # prices as much as about the forecast.
     from .market import paper
 
     ledgers = []
-    for m in markets:
-        entry = paper.ledger(conn, sport=sport, market=m)
+    for m, t, p in cells:
+        entry = paper.ledger(conn, sport=sport, market=m, predictor=p,
+                             event_tier=t)
         entry["words"] = language.paper_ledger_line(entry)
         entry["fee_words"] = language.paper_fee_line(entry)
         ledgers.append(entry)
 
-    coverage = at_the_line.coverage(conn, sport=sport)
+    coverage = [row for t in tiers for p in at_the_line.FORECASTERS
+                for row in at_the_line.coverage(conn, sport=sport, predictor=p,
+                                                event_tier=t)]
+    order = {m: i for i, m in enumerate(markets)}
+    coverage.sort(key=lambda row: (order.get(row["market"], 99),
+                                   tiers.index(row["event_tier"]),
+                                   at_the_line.FORECASTERS.index(row["predictor"])))
     for row in coverage:
         row["words"] = language.at_the_line_coverage_line(
-            row["market"], row["with_a_claim"], row["n"])
+            row["market"], row["with_a_claim"], row["n"],
+            predictor=row["predictor"], event_tier=row["event_tier"])
     headline_market = markets[0] if markets else None
     payload = {
         "sport": sport,
@@ -1901,15 +1995,123 @@ def at_the_line_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
         "markets": markets,
         "coverage": coverage,
         "paper": ledgers,
-        "n": sum(c["n"] for c in categories),
+        # NO TOTAL. The `n` that stood here summed every category -- both
+        # forecasters -- and described nobody's record (item 6, 2026-09-26).
         "note": AT_THE_LINE_NOTE,
-        "edge": (at_the_line_edge(conn, sport=sport, market=headline_market)
+        # THE STATISTICAL MODEL'S EDGE in the headline market, as the blind
+        # record's edge figure is (`scorecard`); for a sport that splits, the
+        # first declared tier's, which is the numbered card.
+        "edge": (at_the_line_edge(conn, sport=sport, market=headline_market,
+                                  predictor="statistical", event_tier=tiers[0])
                  if headline_market else None),
     }
     assert_the_records_stay_apart(payload)
+    assert_no_pooled_claims(payload)
     assert_every_figure_has_n(payload)
     assert_single_sport(payload, sport)
     return payload
+
+
+def assert_no_pooled_claims(payload: dict) -> None:
+    """Every count at the venue's line is ONE forecaster's DISTINCT BETS.
+
+    The operator's ruling of 2026-09-23 (GRIDIRON_REPAIR item 6): "The
+    at-the-line scorecard never pools forecasters or duplicates;
+    per-forecaster, per-distinct-bet counts only, LAW 4 and LAW 6." Checked on
+    the payload, as `assert_no_merged_categories` checks the blind record's
+    -- and it runs that check first, so the forecaster, the sport, the market
+    and the tier are one rule for both records.
+
+    Then, by name: a curve, a ledger or the edge that counts more claims than
+    it has distinct bets (a morning and a final pass on one game, two rungs,
+    two looks, or two forecasters' claims on one game); one whose claims are
+    another forecaster's than the one it names; a gate line or an outlook
+    that states another count than the curve's own (the live record said "80
+    of 100" beside "128 of 100" for one MLB category, 2026-09-23); a
+    coverage line that names no forecaster, or counts one bet more than once
+    (the prover, 2026-09-26); and a total across categories.
+    Raised inside `at_the_line_scorecard`, so the API answers 500 rather
+    than serving a pool, the same as LAW 4 everywhere else.
+    """
+    from .market import at_the_line
+
+    assert_no_merged_categories(payload)
+    sport = payload.get("sport")
+    tiers = config.event_tiers(sport)
+    law = "LAW 4 / LAW 6 AT THE VENUE'S LINE"
+
+    def whose(entry: dict, what: str) -> None:
+        named = entry.get("predictor")
+        filtered = (entry.get("filters") or {}).get("predictor", named)
+        if named not in at_the_line.FORECASTERS or filtered != named:
+            raise MergedCurve(
+                f"{law}: {what} names forecaster {named!r} (filtered by "
+                f"{filtered!r}). The statistical model and the reasoning pass "
+                f"are counted apart and never pooled.")
+        counted = entry.get("forecasters_counted")
+        if counted is not None and counted not in ([], [named]):
+            raise MergedCurve(
+                f"{law}: {what} is the {named!r} forecaster's and counts the "
+                f"claims of {counted}: two forecasters pooled into one count.")
+        if tiers and entry.get("event_tier") not in tiers:
+            raise MergedCurve(
+                f"{law}: {what} names event tier {entry.get('event_tier')!r}, "
+                f"not one of {sport}'s {list(tiers)}; tiers are reported side "
+                f"by side, never summed.")
+
+    def once(entry: dict, what: str) -> None:
+        n, bets = entry.get("n"), entry.get("distinct_bets")
+        if bets is None or n != bets:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled claims for {bets} distinct "
+                f"bet{'' if bets == 1 else 's'}. A distinct bet is counted once, "
+                f"however many passes, rungs, looks or forecasters repeated it.")
+
+    if "n" in payload:
+        raise MergedCurve(
+            f"{law}: the at-the-line payload carries a total n of "
+            f"{payload['n']}, a sum across its categories and so across both "
+            f"forecasters, which is nobody's record.")
+    for category in payload.get("categories") or []:
+        what = f"category {category.get('category')!r}"
+        whose(category, what)
+        once(category, what)
+        n = category.get("n")
+        outlook = category.get("outlook") or {}
+        if outlook.get("resolved") != n:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled beside an outlook of "
+                f"{outlook.get('resolved')!r}: two counts of one record.")
+        said = language.at_the_line_gate_line(n, category.get("gate"))
+        if category.get("gate_line") != said:
+            raise MergedCurve(
+                f"{law}: {what}'s gate line says {category.get('gate_line')!r}, "
+                f"which is not its own count of {n}.")
+    for entry in payload.get("paper") or []:
+        what = (f"the hypothetical ledger for {entry.get('market')!r}, "
+                f"{entry.get('predictor')!r}")
+        whose(entry, what)
+        once(entry, what)
+    edge = payload.get("edge")
+    if edge:
+        whose(edge, "the at-the-line edge figure")
+        once(edge, "the at-the-line edge figure")
+    for row in payload.get("coverage") or []:
+        what = (f"the coverage line for {row.get('market')!r}, "
+                f"{row.get('predictor')!r}")
+        whose(row, what)
+        # AND ONCE PER BET (the prover of item 6, 2026-09-26): the coverage
+        # line counted a game asked at two rungs as two forecasts -- NCAAF
+        # point spread "4 of 133" for 88 bets -- and a game's two rungs, both
+        # read, as "2 of 2" beside a curve of 1.
+        n, bets, read = row.get("n"), row.get("distinct_bets"), row.get("with_a_claim")
+        if (bets is None or n != bets or not isinstance(read, int)
+                or not 0 <= read <= n):
+            raise MergedCurve(
+                f"{law}: {what} counts {n} forecast games, "
+                f"{read!r} of them read, for {bets} distinct "
+                f"bet{'' if bets == 1 else 's'}. A game is one bet however many "
+                f"rungs or passes forecast it.")
 
 
 def assert_the_records_stay_apart(payload: dict) -> None:
