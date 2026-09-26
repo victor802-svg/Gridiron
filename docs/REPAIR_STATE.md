@@ -26,9 +26,28 @@
   winlogon for SYSTEM with reason 0x500ff, "power off" -- the signature of a
   power-button or sign-in-screen shutdown, not an update restart (those say
   "Operating System: Upgrade (Planned)").
-- **Order now:** ~~5a~~ -> ~~item 4~~ -> **5a'** (the review's fixes to the
-  migration tool, the diff and the scans) -> the verified backup and the
-  live migration -> 5b (the register emptied) -> repair items 3-8.
+- **5a' RELEASED: f4c4db2** (02:12Z on 26 September; gate 4/4, 299/299):
+  the eight review findings fixed, plus five more holes the rehearsal of the
+  fixes found (NTFS streams and sidecar names as report/backup targets,
+  UPDATE OR REPLACE on snapshots, the driver read off another module, a
+  false note).
+- **THE LIVE MIGRATION RAN** at 02:12:57Z on 26 September from f4c4db2: a
+  final rehearsal on a fresh copy first (clean), then the verified backup
+  `var/gridiron.db.pre-behaviour-migration-2026-09-26.bak` (60 tables,
+  1,191,063 rows, every count, checksum and schema object equal), then one
+  transaction: all eight tables rebuilt and verified, every column's exact
+  checksum equal before and after, sequences 94 / 2558 / 5116 carried,
+  foreign_key_check 0 rows, lock 3.52 s. COMMITTED.
+- **5b RELEASED: 9d7af57** (`/api/health` = 9d7af570e047; gate 4/4,
+  299/299): the register is empty; the live record matches the release
+  with 0 registered differences, and from now on any difference fails the
+  gate. **The schema rulings are complete.**
+- **Order now:** ~~5a~~ -> ~~item 4~~ -> ~~5a'~~ -> ~~migration~~ -> ~~5b~~
+  -> **item 2's remainder** ("run.py:99 may never skip an untrained market
+  silently -- a predict run with a skipped market fails by name, and the day
+  strip shows it"; never applied: the activation gate made fits explicit
+  but `run.already_answered` still drops a market with no model in silence)
+  -> repair items 3-8.
 - **5a is RELEASED: 3603300** (`/api/health` = 3603300cbde0, 08:05Z on 25
   September; gate 4/4, 288/288 plantings, both schema comparisons pass with
   only registered differences; the first gate run failed on a browser race,
