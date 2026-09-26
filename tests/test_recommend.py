@@ -219,6 +219,243 @@ def test_a_question_with_no_side_is_not_recorded(tmp_path):
     assert conn.execute("SELECT COUNT(*) FROM recommendations").fetchone()[0] == 0
 
 
+# --- corrections reach recommendations (GRIDIRON_REPAIR item 3) --------------
+#
+# The operator's ruling of 2026-09-23, built 2026-09-26: "recommend.py:324
+# reads the corrected probability, never the raw claim. Re-derive nothing
+# retroactively (LAW 3); from the fix forward, every recommendation carries
+# the correction that was current."
+
+#: The live record's baseball total fit for the reasoning pass, version 2
+#: (measured 2026-09-26), put on this world's category.
+_SKEWED = dict(slope=0.449, intercept=-0.270, n_train=106)
+
+
+def _away_pick(conn, *, game="g0", created="2026-09-07T00:00:00Z",
+               claimed="2026-09-07T01:30:00Z", confidence=0.57, price=0.485,
+               predictor="statistical"):
+    """The away side at 57%, so a claim of 43% on the home side, line-less,
+    against a 48.5c price: the no side, raw, at +3.5c."""
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES (?, 'mlb', ?,"
+        " 'moneyline', 'BBB', NULL, ?, 'win', ?, 'final', 'fs2',"
+        " ?, 'test')", (created, game, confidence, predictor, WHOLE))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.execute(
+        "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+        " implied_prob, kind) VALUES (?, ?, 'test', ?, 'open_at_predict')",
+        (pid, claimed, price))
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+        " VALUES ('kalshi', ?, 'e', 'mlb', ?, 'moneyline', 'home_win', NULL,"
+        " 'home', ?, ?, ?)",
+        (f"t{pid}", game, price - 0.01, price + 0.01, claimed))
+    quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'mlb', ?, 'moneyline', 'home_win', NULL,"
+        " 'home', 'line_less', NULL, NULL, ?, ?, ?, 'mid', ?)",
+        (pid, quote, game, round(1.0 - confidence, 6), price, price, claimed))
+    conn.commit()
+    shortlist.rank_rows(conn, [pid])
+    return pid
+
+
+def _correct(conn, *, active_from="2026-09-01T00:00:00Z", **model):
+    from gridiron import correction
+
+    return correction.record_fit(
+        conn, sport="mlb", market_type="moneyline", forecaster="statistical",
+        model=correction.Platt(**(model or _SKEWED)), status="test",
+        active_from=active_from, fitted_utc="2026-09-01T00:00:00Z")
+
+
+def test_an_active_correction_that_would_flip_the_side_flips_the_pick(tmp_path):
+    conn = _world(tmp_path)
+    pid = _away_pick(conn)
+    raw = recommend.for_predictions(conn, [pid])[0]
+    assert (raw["side"], raw["edge_cents"]) == ("no", pytest.approx(3.5))
+    assert raw["correction_version"] is None
+    assert raw["fair_value"] == raw["raw_fair_value"] == pytest.approx(0.43)
+    version = _correct(conn)
+    got = recommend.for_predictions(conn, [pid])[0]
+    assert got["side"] == "yes" and got["edge_side"] == "yes"
+    assert got["edge_cents"] == pytest.approx(3.08, abs=0.01)
+    assert got["fair_value"] == pytest.approx(0.5358, abs=1e-4)
+    assert got["raw_fair_value"] == pytest.approx(0.43)
+    assert got["correction_version"] == version
+
+
+def test_a_fitted_correction_that_was_never_activated_decides_nothing(tmp_path):
+    conn = _world(tmp_path)
+    pid = _away_pick(conn)
+    _correct(conn, active_from=None)
+    got = recommend.for_predictions(conn, [pid])[0]
+    assert got["side"] == "no" and got["correction_version"] is None
+    # and one whose activation is still ahead is not in force yet
+    _correct(conn, active_from="2099-01-01T00:00:00Z")
+    assert recommend.for_predictions(conn, [pid])[0]["side"] == "no"
+
+
+def test_the_row_carries_the_correction_that_was_current_and_keeps_it(tmp_path):
+    conn = _world(tmp_path)
+    before = _away_pick(conn, game="g0")
+    recommend.record_for(conn, [before])
+    version = _correct(conn)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g9', 'mlb', 2026, 1, 'R',"
+        " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')")
+    after = _away_pick(conn, game="g9")
+    recommend.record_for(conn, [after])
+    rows = {r["prediction_id"]: r for r in conn.execute(
+        "SELECT * FROM recommendations ORDER BY id")}
+    # WRITTEN BEFORE THE ACTIVATION: the raw no side and no correction, and
+    # nothing re-derived when one arrived (LAW 3).
+    first = rows[before]
+    assert first["side"] == "no" and first["fair_value"] == pytest.approx(0.43)
+    assert first["correction_version"] is None
+    assert first["calibrated_fair_value"] is None
+    # WRITTEN UNDER IT: the raw claim's number where it always was, the number
+    # the side was chosen from beside it, and the version
+    row = rows[after]
+    assert row["side"] == "yes" and row["fair_value"] == pytest.approx(0.43)
+    assert row["calibrated_fair_value"] == pytest.approx(0.5358, abs=1e-4)
+    assert row["correction_version"] == version
+    assert row["edge_cents"] == pytest.approx(3.08, abs=0.01)
+    # FROZEN WITH IT, even to "no correction" -- which the pairing would allow
+    with pytest.raises(sqlite3.IntegrityError, match="LAW 3"):
+        conn.execute("UPDATE recommendations SET correction_version = NULL,"
+                     " calibrated_fair_value = NULL WHERE id = ?", (row["id"],))
+    with pytest.raises(sqlite3.IntegrityError, match="LAW 3"):
+        conn.execute("UPDATE recommendations SET calibrated_fair_value = 0.6,"
+                     " correction_version = 9 WHERE id = ?", (first["id"],))
+    # and a version is never written without its number, nor a number without
+    # its version, nor a number that is not a probability
+    for version_, number in ((2, None), (None, 0.5), (2, 1.0)):
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+            conn.execute(
+                "INSERT INTO recommendations (prediction_id, sport, game_id,"
+                " market, side, fair_value, price, edge_cents, size_kind,"
+                " size_units, gate_n, created_utc, correction_version,"
+                " calibrated_fair_value) VALUES (?, 'mlb', 'g9', 'moneyline',"
+                " 'yes', 0.43, 0.485, 3.0, 'flat', 1.0, 0,"
+                " '2099-01-01T00:00:00Z', ?, ?)", (after, version_, number))
+
+
+def test_the_card_the_line_sentence_and_the_pregame_figure_read_one_number(tmp_path):
+    """ONE DOOR ON THE PAGE TOO. With a correction in force, the price row's
+    model chip, the at-the-line sentence beside it and the recommendation line
+    all state the corrected number; a live card's pregame figure is the claim
+    corrected by the version in force when the claim was written."""
+    from gridiron import views
+
+    conn = _world(tmp_path, kickoff="2099-01-01T00:00:00Z")
+    pid = _away_pick(conn)
+    _correct(conn)
+    entry = recommend.for_predictions(conn, [pid])[0]
+    beside = views._at_the_line(conn, "mlb", [pid], {})[pid]
+    assert beside["model_prob"] == pytest.approx(entry["fair_value"], abs=1e-4)
+    assert "is a 54% chance" in beside["words"]
+    card = views._today_card(entry, {"prediction_id": pid, "phrase": "x"},
+                             taken=False, group_tier=None, unit_dollars=None)
+    # the question names the away side, so the chip is the other half of 54%
+    assert card["model_words"] == "46¢"
+    line = views._recommendations_block(
+        conn, [{"prediction_id": pid, "on_shortlist": True, "phrase": "x"}])
+    assert "54¢" in line["lines"][0]["words"]
+    # A LIVE CARD: the claim's own instant. A correction activated after the
+    # claim was written does not reach the pregame figure.
+    assert views._pregame_probability(conn, entry, {}) == pytest.approx(0.5358, abs=1e-4)
+    later = _world(tmp_path / "later", kickoff="2099-01-01T00:00:00Z")
+    lpid = _away_pick(later)
+    _correct(later, active_from="2026-09-08T00:00:00Z")
+    assert views._pregame_probability(later, {"prediction_id": lpid}, {}) \
+        == pytest.approx(0.43)
+
+
+def test_a_finished_games_pick_is_never_re_derived_by_a_later_correction(tmp_path):
+    """RE-DERIVE NOTHING RETROACTIVELY, ON THE PAGE TOO (the prover of item 3,
+    2026-09-26). A finished game is still priced for the Today block and the
+    recommendation lines, and the pick read the correction in force NOW: a
+    correction that activated on the 20th turned a pick on a game played on
+    the 9th to the yes side, while the at-the-line sentence on the same card
+    kept the claim's 43%. Once a game has started, its pick is corrected by
+    what was in force when its claim was written, as the sentence is."""
+    from gridiron import views
+
+    conn = _world(tmp_path, status="final", kickoff="2026-09-09T00:00:00Z")
+    pid = _away_pick(conn)                    # its claim: 2026-09-07T01:30Z
+    recommend.record_for(conn, [pid])
+    _correct(conn, active_from="2026-09-20T00:00:00Z")
+    got = recommend.for_predictions(conn, [pid])[0]
+    assert (got["side"], got["correction_version"]) == ("no", None)
+    assert got["fair_value"] == pytest.approx(0.43)
+    beside = views._at_the_line(conn, "mlb", [pid], {})[pid]
+    assert beside["model_prob"] == pytest.approx(got["fair_value"])
+    row = conn.execute("SELECT side, correction_version FROM recommendations").fetchone()
+    assert (row["side"], row["correction_version"]) == ("no", None)
+    # A CORRECTION IN FORCE WHEN THE CLAIM WAS WRITTEN is the one that was
+    # current for it, and the finished card keeps it -- pick and sentence.
+    earlier = _world(tmp_path / "earlier", status="final",
+                     kickoff="2026-09-09T00:00:00Z")
+    epid = _away_pick(earlier)
+    version = _correct(earlier, active_from="2026-09-01T00:00:00Z")
+    kept = recommend.for_predictions(earlier, [epid])[0]
+    assert (kept["side"], kept["correction_version"]) == ("yes", version)
+    beside = views._at_the_line(earlier, "mlb", [epid], {})[epid]
+    assert beside["model_prob"] == pytest.approx(kept["fair_value"], abs=1e-4)
+
+
+def test_the_size_is_computed_from_the_corrected_claim(tmp_path, monkeypatch):
+    """THE SIZE READS THE NUMBER THE SIDE READS (the prover of item 3,
+    2026-09-26). Below a market's gate every size is one flat unit, so the
+    flip test cannot tell which number the size was asked about; a copy of
+    the fix that sized from the raw claim passed every item-3 test. Above
+    the gate, a quarter of Kelly on the raw 43% against a 48.5c yes price is
+    nothing, and on the corrected 54% it is a stake."""
+    monkeypatch.setattr(config, "MIN_SAMPLE_FOR_EDGE_CLAIM", 0)
+    monkeypatch.setattr(recommend, "measured_edge", lambda conn, **_: {
+        "ahead": True, "n": 100, "model_brier": 0.2, "market_brier": 0.25,
+        "why": "measured and ahead, in this test"})
+    conn = _world(tmp_path)
+    pid = _away_pick(conn)
+    _correct(conn)
+    got = recommend.for_predictions(conn, [pid])[0]
+    assert got["side"] == "yes" and got["size"]["kind"] == "fraction"
+    corrected = recommend.size_for(model_prob=got["fair_value"], price=0.485,
+                                   settled=got["gate_n"], measured_edge=True)
+    raw = recommend.size_for(model_prob=0.43, price=0.485,
+                             settled=got["gate_n"], measured_edge=True)
+    assert raw["units"] == 0 < corrected["units"]
+    assert got["size"]["units"] == pytest.approx(corrected["units"], abs=1e-3)
+
+
+def test_a_correction_reaches_only_its_own_forecasters_picks(tmp_path):
+    """A CORRECTION IS ITS OWN CATEGORY'S -- sport, market type AND forecaster
+    (the prover of item 3, 2026-09-26). The statistical pass's fit in force
+    leaves the reasoning pass's pick, on another game with the same numbers,
+    exactly where its raw claim prices it."""
+    conn = _world(tmp_path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g9', 'mlb', 2026, 1, 'R',"
+        " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')")
+    ours = _away_pick(conn)
+    theirs = _away_pick(conn, game="g9", predictor="llm")
+    version = _correct(conn)
+    got = {e["prediction_id"]: e
+           for e in recommend.for_predictions(conn, [ours, theirs])}
+    assert (got[ours]["side"], got[ours]["correction_version"]) == ("yes", version)
+    assert (got[theirs]["side"], got[theirs]["correction_version"]) == ("no", None)
+    assert got[theirs]["fair_value"] == pytest.approx(0.43)
+
+
 def _read(conn, pid, *, at, bid, ask, ticker=None, kind="near_start",
           last=None):
     """A later look at the venue. The recommendation's own contract unless told

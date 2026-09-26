@@ -3302,6 +3302,254 @@ def plant_a_retroactive_correction() -> Result:
                   "NOT CAUGHT - a written prediction's shown number was rewritten")
 
 
+LAW_CORRECTION_REACHES_THE_PICK = "CORRECTIONS REACH RECOMMENDATIONS"
+
+
+def plant_a_correction_that_does_not_reach_the_pick() -> Result:
+    """An active correction that would flip a side, and a pick that ignores it.
+
+    GRIDIRON_REPAIR item 3, the operator's ruling of 2026-09-23 (built
+    2026-09-26): "Corrections reach recommendations. recommend.py:324 reads
+    the corrected probability, never the raw claim. Re-derive nothing
+    retroactively (LAW 3); from the fix forward, every recommendation carries
+    the correction that was current. Planting: a fitted correction that would
+    flip a side must flip it."
+
+    THE WORLD. A baseball moneyline forecast of the away side at 57%, so its
+    claim at the line -- stated from the home side -- is 43%, against a venue
+    price of 48.5c: the no side, +3.5c raw. THE CORRECTION is the live
+    record's baseball total fit for the reasoning pass (version 2 there:
+    slope 0.449, intercept -0.270, 106 rows), which turns a 57% confidence
+    into 46%: the home side is now the favourite, at 54%, and the pick must
+    be the yes side at +3.1c. Applied to the claim unturned it would read 40%
+    and keep the no side at +6.3c, so a pick that skipped the turn to the
+    favoured side escapes too.
+
+    CAUGHT means, in order: raw, the no side; the same fit recorded but NOT
+    activated (C2's gate) leaves it there; activated, the side flips; the row
+    written carries the raw number, the corrected one and the version; and
+    that correction cannot be rewritten afterwards (LAW 3).
+
+    AND THREE MORE WAYS ROUND IT, each found by the prover of 2026-09-26 as a
+    broken copy of the fix that this planting and the item's tests both let
+    through, or as the fix itself on a finished game. Now CAUGHT as well:
+    the side flips but the SIZE is still computed from the raw claim (a
+    quarter of Kelly on 43% is nothing, on 54% it is a stake); the statistical
+    forecaster's correction reaches the REASONING PASS's pick on another game
+    (a correction is its own category's: sport, market type and forecaster);
+    and a FINISHED game's pick, its claim written before the correction
+    activated, is re-derived by it -- the pick "now" turned it to the yes side
+    while the at-the-line sentence on the same card kept 43%.
+    """
+    from gridiron import config as _config, correction as _c, db as _db
+    from gridiron import shortlist as _shortlist
+    from gridiron.market import at_the_line as _atl, recommend as _rec
+    from gridiron.priced import coverage as _coverage
+
+    law, what = (LAW_CORRECTION_REACHES_THE_PICK,
+                 "price a pick from the raw claim while a correction that "
+                 "flips it is in force")
+    guard = ("market.recommend.for_predictions through "
+             "correction.shown_proposition at recommend.correction_instant; "
+             "trigger recommendation_correction_is_frozen")
+
+    def stamp(delta: timedelta) -> str:
+        return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def escaped(step: str) -> Result:
+        return Result(law, what, guard, False, f"NOT CAUGHT - {step}")
+
+    def game(gid: str, kickoff: timedelta, *, final: bool = False) -> None:
+        # A FINISHED GAME CARRIES ITS SCORE: the schema checks the pair.
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES (?, 'mlb', 2026, 1, 'R', 'AAA', 'BBB', ?, ?, ?, ?, ?)",
+            (gid, stamp(kickoff), "final" if final else "scheduled",
+             stamp(kickoff)[:10], 2 if final else None, 1 if final else None))
+
+    def forecast(gid: str, predictor: str, written: timedelta,
+                 quoted: timedelta, claimed: timedelta, ticker: str) -> int:
+        """The away side at 57%, its claim 43% on the home side, at 48.5c."""
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES (?, 'mlb',"
+            " ?, 'moneyline', 'BBB', NULL, 0.57, 'win', ?, 'final', 'fs2',"
+            " '{\"coverage\": 1.0}', 'planted')",
+            (stamp(written), gid, predictor))
+        new = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+            " implied_prob, kind) VALUES (?, ?, 'planted', 0.485,"
+            " 'open_at_predict')", (new, stamp(quoted)))
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " fetched_utc) VALUES (?, ?, ?, 'mlb', ?, 'moneyline',"
+            " 'home_win', NULL, 'home', 0.475, 0.495, ?)",
+            (_atl.VENUE, ticker, "E" + ticker, gid, stamp(quoted)))
+        qid = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+            " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+            " created_utc) VALUES (?, ?, ?, 'mlb', ?, 'moneyline',"
+            " 'home_win', NULL, 'home', 'line_less', NULL, NULL, 0.43, 0.485,"
+            " 0.485, 'mid', ?)", (new, qid, _atl.VENUE, gid, stamp(claimed)))
+        return new
+
+    saved = _coverage.priceable
+    _coverage.priceable = lambda conn, sport, market: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    conn = _db.connect(":memory:")
+    try:
+        _db.init(conn)
+        # THE STARTS ARE COMPUTED, never typed: a fixed kickoff expires and the
+        # claim guard then refuses the world, which is a different failure.
+        game("g1", timedelta(days=2))
+        pid = forecast("g1", "statistical", timedelta(hours=-3),
+                       timedelta(hours=-2), timedelta(hours=-1), "T1")
+        # THE REASONING PASS, on a game of its own, with the same numbers.
+        game("g2", timedelta(days=2))
+        lpid = forecast("g2", "llm", timedelta(hours=-3),
+                        timedelta(hours=-2), timedelta(hours=-1), "T2")
+        # A FINISHED GAME: played two days ago, its claim written the day
+        # before that -- before the correction below activates.
+        game("g3", timedelta(days=-2), final=True)
+        fpid = forecast("g3", "statistical", timedelta(days=-4),
+                        timedelta(days=-3, hours=-12), timedelta(days=-3), "T3")
+        conn.commit()
+        _shortlist.rank_rows(conn, [pid, lpid, fpid])
+
+        def pick(which: int = pid) -> dict | None:
+            got = _rec.for_predictions(conn, [which])
+            return got[0] if got else None
+
+        first = pick()
+        for label, got in (("the forecast", first),
+                           ("the reasoning pass's forecast", pick(lpid)),
+                           ("the finished game's forecast", pick(fpid))):
+            if got is None or got["side"] != "no" \
+                    or abs((got["edge_cents"] or 0) - 3.5) > 0.05:
+                return escaped(
+                    f"the planted world is wrong before any correction: "
+                    f"expected {label} on the no side at +3.5c, got "
+                    f"{got and got['side']} at {got and got['edge_cents']}. "
+                    f"Fix that before trusting this planting")
+
+        fit = _c.Platt(slope=0.449, intercept=-0.270, n_train=106)
+        _c.record_fit(conn, sport="mlb", market_type="moneyline",
+                      forecaster="statistical", model=fit,
+                      status="fitted but not applied - planted",
+                      active_from=None, fitted_utc=stamp(timedelta(days=-2)))
+        inert = pick()
+        if inert is None or inert["side"] != "no":
+            return escaped(
+                f"a fit the holdout never activated decided the side: "
+                f"{inert and inert['side']} at {inert and inert['edge_cents']}c. "
+                f"C2's gate says a fitted correction is inert until activated")
+
+        _c.record_fit(conn, sport="mlb", market_type="moneyline",
+                      forecaster="statistical", model=fit,
+                      status="active - planted",
+                      active_from=stamp(timedelta(days=-1)),
+                      fitted_utc=stamp(timedelta(days=-1)))
+        flipped = pick()
+        if flipped is None or flipped["side"] != "yes" \
+                or flipped.get("correction_version") != 2 \
+                or abs((flipped["fair_value"] or 0) - 0.5358) > 0.0005:
+            return escaped(
+                f"an active correction that turns the 57% away claim into 46% "
+                f"left the pick on {flipped and flipped['side']} at "
+                f"{flipped and flipped['edge_cents']}c with fair value "
+                f"{flipped and flipped['fair_value']} (version "
+                f"{flipped and flipped.get('correction_version')}); the "
+                f"corrected claim is 54% home and the yes side is +3.1c")
+        # THE SIZE READS THE NUMBER THE SIDE READS. Below its market's gate
+        # every size is one flat unit whatever the number, so the pick is
+        # asked once more with the gate met and the edge measured ahead: a
+        # quarter of Kelly on the raw 43% against the 48.5c yes price is
+        # nothing, and on the corrected 54% it is a stake.
+        gate, measured = _config.MIN_SAMPLE_FOR_EDGE_CLAIM, _rec.measured_edge
+        _config.MIN_SAMPLE_FOR_EDGE_CLAIM = 0
+        _rec.measured_edge = lambda conn, **_: {
+            "ahead": True, "n": 100, "model_brier": 0.2, "market_brier": 0.25,
+            "why": "measured and ahead, in this planting"}
+        try:
+            gated = pick()
+        finally:
+            _config.MIN_SAMPLE_FOR_EDGE_CLAIM, _rec.measured_edge = gate, measured
+        if gated is None or gated["side"] != "yes" \
+                or gated["size"]["kind"] != "fraction" \
+                or not gated["size"]["units"] > 0:
+            return escaped(
+                f"the side flipped, but with the gate met the pick was sized "
+                f"{gated and gated['size'].get('units')} units "
+                f"({gated and gated['size'].get('kind')}): a quarter of Kelly "
+                f"on the corrected 54% is a stake and on the raw 43% nothing, "
+                f"so the size was read from the raw claim")
+        other = pick(lpid)
+        if other is None or other["side"] != "no" \
+                or other.get("correction_version") is not None:
+            return escaped(
+                f"the statistical forecaster's correction reached the "
+                f"reasoning pass's pick on another game: "
+                f"{other and other['side']} at "
+                f"{other and other['edge_cents']}c (version "
+                f"{other and other.get('correction_version')}). A correction "
+                f"is its own category's -- sport, market type and forecaster "
+                f"-- and the reasoning pass has none here")
+        over = pick(fpid)
+        if over is None or over["side"] != "no" \
+                or over.get("correction_version") is not None:
+            return escaped(
+                f"a finished game's pick was re-derived by a correction that "
+                f"activated after its claim was written and after the game "
+                f"was played: {over and over['side']} at "
+                f"{over and over['edge_cents']}c (version "
+                f"{over and over.get('correction_version')}). Re-derive "
+                f"nothing retroactively (LAW 3)")
+
+        _rec.record_for(conn, [pid])
+        row = conn.execute("SELECT * FROM recommendations").fetchone()
+        keys = row.keys() if row is not None else []
+        if row is None or row["side"] != "yes" \
+                or "correction_version" not in keys \
+                or row["correction_version"] != 2 \
+                or abs(row["fair_value"] - 0.43) > 1e-9 \
+                or row["calibrated_fair_value"] is None \
+                or abs(row["calibrated_fair_value"] - 0.5358) > 0.0005:
+            return escaped(
+                "the recommendation written does not carry the correction it "
+                "was priced with: " + (str(dict(row)) if row is not None
+                                       else "no row was written"))
+        try:
+            conn.execute("UPDATE recommendations SET correction_version = NULL,"
+                         " calibrated_fair_value = NULL")
+        except sqlite3.IntegrityError as exc:
+            frozen = str(exc)
+        else:
+            return escaped("the correction a written recommendation carried was "
+                           "rewritten to none, and the table took it")
+        if "LAW 3" not in frozen:
+            return escaped(f"the rewrite was refused, but not by LAW 3: {frozen}")
+        return Result(law, what, guard, True,
+                      f"raw: no at +{first['edge_cents']}c; fitted, not "
+                      f"active: still no; active v2: yes at "
+                      f"+{flipped['edge_cents']}c from {flipped['fair_value']}, "
+                      f"and with the gate met sized {gated['size']['units']} "
+                      f"units; the reasoning pass's pick and "
+                      f"the finished game's stay no, uncorrected; "
+                      f"written with fair value {row['fair_value']}, corrected "
+                      f"{row['calibrated_fair_value']}, version "
+                      f"{row['correction_version']}; the rewrite refused: "
+                      f"{frozen}")
+    finally:
+        _coverage.priceable = saved
+        conn.close()
+
+
 def _memory_record():
     """A throwaway database with one game to hang predictions on."""
     from gridiron import db as _db
@@ -12479,6 +12727,10 @@ def main() -> int:
     results.append(plant_a_correction_that_does_not_help())
     results.append(plant_a_genuine_correction_refused())
     results.append(plant_a_retroactive_correction())
+    # GRIDIRON_REPAIR item 3 (the operator's ruling of 2026-09-23, built
+    # 2026-09-26): an active correction that would flip a side flips the
+    # pick, an inactive one does not, and the row carries it, frozen.
+    results.append(plant_a_correction_that_does_not_reach_the_pick())
     results.append(plant_a_correction_that_reads_the_score())
     results.append(plant_a_correction_that_reads_the_line())
     results.append(plant_a_correction_that_can_see_its_own_future())

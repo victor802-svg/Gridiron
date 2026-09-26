@@ -552,6 +552,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         # ...even a sport never forecast, once its run has failed so (the
         # prover of item 2, 2026-09-26).
         "plant_a_first_run_failed_by_name_off_the_strip",
+        # GRIDIRON_REPAIR item 3 (the operator's ruling of 2026-09-23, built
+        # 2026-09-26): an active correction that would flip a side flips the
+        # pick, an inactive one does not, and the row carries it, frozen.
+        "plant_a_correction_that_does_not_reach_the_pick",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

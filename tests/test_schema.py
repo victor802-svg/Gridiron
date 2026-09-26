@@ -103,6 +103,82 @@ def test_the_declared_sign_column_is_the_one_the_ensure_step_adds(tmp_path):
         old.close()
 
 
+#: `recommendations` exactly as every record held it until 2026-09-26: the
+#: released text, comments aside.
+_RECOMMENDATIONS_BEFORE_ITEM_3 = """
+CREATE TABLE recommendations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_id   INTEGER NOT NULL REFERENCES predictions (id),
+    sport           TEXT    NOT NULL,
+    game_id         TEXT    NOT NULL REFERENCES games (id),
+    market          TEXT    NOT NULL,
+    side            TEXT    NOT NULL CHECK (side IN ('yes', 'no')),
+    fair_value      REAL    NOT NULL CHECK (fair_value > 0 AND fair_value < 1),
+    price           REAL    NOT NULL CHECK (price > 0 AND price < 1),
+    edge_cents      REAL    NOT NULL,
+    size_kind       TEXT    NOT NULL CHECK (size_kind IN ('flat', 'fraction')),
+    size_units      REAL    NOT NULL,
+    gate_n          INTEGER NOT NULL,
+    created_utc     TEXT    NOT NULL,
+    close_price     REAL,
+    clv_cents       REAL,
+    closed_utc      TEXT,
+    UNIQUE (prediction_id, created_utc)
+)"""
+
+
+def test_an_older_record_gains_the_correction_columns_exactly_as_declared(tmp_path):
+    """GRIDIRON_REPAIR item 3 (2026-09-26): `db.init` alone brings an older
+    `recommendations` to the declared table -- the same columns, types and
+    clauses in the same place, the new rule freezing them, and every stored
+    row as it was with both new columns NULL. The gate compares a copy the
+    same `db.init` migrated with a fresh build, with an empty register."""
+    from gridiron import schema_diff
+
+    fresh = db.open_db(tmp_path / "fresh.db")
+    old = db.connect(tmp_path / "old.db")
+    try:
+        old.execute("PRAGMA foreign_keys = OFF")
+        old.execute(_RECOMMENDATIONS_BEFORE_ITEM_3)
+        old.execute(
+            "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
+            " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+            " created_utc) VALUES (7, 'mlb', 'g1', 'total', 'no', 0.41, 0.46,"
+            " 3.2, 'flat', 1.0, 0, '2026-09-07T20:52:31Z')")
+        old.commit()
+        db.init(old)
+
+        def shape(conn):
+            return [tuple(r) for r in conn.execute(
+                "PRAGMA table_xinfo(recommendations)")]
+
+        assert shape(old) == shape(fresh)
+
+        def sql(conn):
+            return conn.execute("SELECT sql FROM sqlite_master"
+                                " WHERE name = 'recommendations'").fetchone()[0]
+
+        assert schema_diff.table_differences(sql(old), sql(fresh)) == []
+        frozen = "recommendation_correction_is_frozen"
+        for conn in (old, fresh):
+            assert conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'trigger'"
+                                " AND name = ?", (frozen,)).fetchone(), frozen
+        row = old.execute("SELECT * FROM recommendations").fetchone()
+        assert (row["side"], row["fair_value"], row["created_utc"]) == (
+            "no", 0.41, "2026-09-07T20:52:31Z")
+        assert row["correction_version"] is None
+        assert row["calibrated_fair_value"] is None
+        # AND IT IS FROZEN FROM THE FIRST OPEN, on the old row too
+        with pytest.raises(sqlite3.IntegrityError, match="LAW 3"):
+            old.execute("UPDATE recommendations SET correction_version = 1,"
+                        " calibrated_fair_value = 0.5")
+        db.init(old)                     # a second open adds nothing
+        assert shape(old) == shape(fresh)
+    finally:
+        fresh.close()
+        old.close()
+
+
 # --- LAW 3: append-only ----------------------------------------------------
 
 def test_prediction_cannot_be_deleted(a_prediction, league):

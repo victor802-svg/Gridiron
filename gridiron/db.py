@@ -481,6 +481,32 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # The CITY form of a club's name. Prose reads "the market has St. Louis at
     # 48%"; a heading reads "St. Louis Cardinals". Both come from the feed.
     ("teams", "location", "TEXT"),
+    # THE CORRECTION A RECOMMENDATION WAS PRICED WITH (GRIDIRON_REPAIR item 3,
+    # the operator's ruling of 2026-09-23, added 2026-09-26). Every row
+    # written before is NULL in both, which reads correctly as "no correction
+    # was in force", because none ever had been: 0 of the 63 fits on the live
+    # record carried an activation that day -- the same words, and the same
+    # truth, as the forecast's two columns above.
+    #
+    # HERE, AND NOT IN THE MARKET MODULE, for two reasons. `recommendations`
+    # is not a LAW 1 quarantined table -- none of its names is in
+    # `audit.FORBIDDEN_IDENTIFIERS`, and the closing line in `calibration`,
+    # the near-start pass in `tasks` and the views read it outside the
+    # market module -- so naming it in `db` trips no closure scan, which is
+    # what kept the snapshot table's columns out. And since 5b (2026-09-26)
+    # the gate compares a copy of the record that `db.init` alone has
+    # migrated with a fresh build of the tree, with an empty register: a
+    # column that reached the record only when `recommend.record_for` next
+    # ran would fail that comparison, and the release comparison after it.
+    # So `db.init` adds them, on the first open after the release, with
+    # EXACTLY the clauses `schema.sql` declares (`test_schema.py` holds the
+    # two to one `table_xinfo`), the version first because the pairing CHECK
+    # names it.
+    ("recommendations", "correction_version", "INTEGER"),
+    ("recommendations", "calibrated_fair_value",
+     "REAL CHECK ((calibrated_fair_value IS NULL) = (correction_version IS NULL)"
+     " AND (calibrated_fair_value IS NULL OR (calibrated_fair_value > 0 AND"
+     " calibrated_fair_value < 1)))"),
 )
 
 

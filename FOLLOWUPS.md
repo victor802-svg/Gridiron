@@ -2906,3 +2906,256 @@ turned red either. **No live-record write is needed.**
 - **"total" on the strip, "Total points" on the tab.** `language.market_words`
   has no entry for the total, so the held line and this one say "total";
   plain, but not the tab's word.
+
+## Corrections reach recommendations -- built 2026-09-26 *(GRIDIRON_REPAIR item 3; the operator's ruling of 2026-09-23)*
+
+"Corrections reach recommendations. recommend.py:324 reads the corrected
+probability, never the raw claim. Re-derive nothing retroactively (LAW 3);
+from the fix forward, every recommendation carries the correction that was
+current. Planting: a fitted correction that would flip a side must flip it."
+(The line has moved since the ruling: the raw read was `model_prob =
+row["claim_prob"]` at recommend.py:330 on 7aedf30.)
+
+### BUILT *(2026-09-26)*
+
+- **One door for a number stated from a proposition**:
+  `correction.shown_proposition(conn, sport=, market_type=, forecaster=,
+  proposition=, at_utc=None)`. A claim at the line is stated from the home
+  side or the over, so it sits either side of a half (628 of the live
+  record's 1,264 claims were below it on 2026-09-26), while every fit is
+  fitted on confidences (0 of 2,581 forecasts below a half). The door turns
+  the number to the side it favours (a half favours the proposition, as
+  `baseline.stated_side`), corrects it through `shown_claim`, and turns it
+  back -- the order `predict.write_prediction` already uses. It has no SQL of
+  its own. `shown_claim` gained `at_utc` (passed to `active_correction`,
+  which already took it); every existing caller is unchanged.
+- **The pick**: `recommend.for_predictions` reads the claim through the door
+  (the correction in force now -- before the start only, from the prover of
+  2026-09-26; see "PROVED" below), so the side, the edge, the bar and the size
+  come from the corrected number. Each entry carries `fair_value` (corrected:
+  what the card's model chip, the recommendation line, a combo's legs and a
+  package's legs read, so they agree with no second door), `raw_fair_value`
+  and `correction_version`.
+- **The row**: `record_for` writes `fair_value` = the raw claim's number, as
+  every earlier row has it, and beside it `calibrated_fair_value` and
+  `correction_version` -- NULL together when nothing was in force, which a
+  column CHECK holds (paired, and the number strictly between 0 and 1). The
+  version is looked up before the row is stamped (`just_after` is never
+  earlier), so a row never carries one that activated after it. The same
+  shape as a forecast's `model_prob` / `calibrated_prob` /
+  `correction_version`.
+- **Frozen**: `recommendation_correction_is_frozen`, a NEW trigger, refuses an
+  update of either column (LAW 3). `recommendations_no_update`'s column list
+  is untouched: its text never reaches a record that holds it, and dropping a
+  LAW 3 guard to restate it would leave the table unguarded meanwhile.
+- **The migration**: two `db.MIGRATIONS` entries, correction_version first
+  (the CHECK names it), with exactly the clauses `schema.sql` declares, last
+  in the table as on a record that gains them by ALTER. In `db`, not the
+  market module: `recommendations` is not a LAW 1 quarantined table (nothing
+  in `audit.FORBIDDEN_IDENTIFIERS`; the closing line in `calibration`, the
+  near-start pass in `tasks` and the views already read it), and since 5b the
+  gate compares a copy that `db.init` alone migrated with a fresh build, so a
+  column added only when `record_for` next ran would fail it.
+- **The page**: `views._at_the_line` reads the claim through the same door --
+  the correction in force now before the start, as the pick beside it; the
+  claim's own instant once the game has started, so a started card is never
+  corrected afterwards (`views._claim_instant`). `views._pregame_probability`
+  (a live card) corrects as of the claim's writing, which makes its docstring
+  -- and `language.pregame_words`' -- true: both already said "the corrected
+  probability the claim was written with" and it returned the raw claim.
+  `combos.fair_value`'s docstring ("the corrected ones where a correction is
+  in force") is true from today and says so.
+- **Planting** `plant_a_correction_that_does_not_reach_the_pick` (a baseball
+  away forecast at 57%, a 43% home claim, a 48.5c price; the correction is
+  the live baseball total reasoning fit, v2: slope 0.449, intercept -0.270):
+  raw, the no side at +3.5c; the fit recorded INACTIVE, still the no side;
+  activated, the yes side at +3.08c from 0.5358, version 2; the row written
+  with 0.43 / 0.5358 / 2; an update of the pair to NULL refused by LAW 3.
+  ESCAPES on HEAD 7aedf30 with this plant.py ("left the pick on no at 3.5c
+  with fair value 0.43 (version None)"), and on six broken copies of this
+  tree, each ESCAPED at its own step: the fit applied to the proposition
+  unturned (no at +6.29c from 0.4021), the latest fit applied whether active
+  or not (the inactive fit flipped it), the raw claim read, the row written
+  without its correction, the corrected number written over the raw one, and
+  the freezing rule disabled. CAUGHT on this tree (303/303). The eight new
+  tests and the harness-list test each fail on HEAD 7aedf30's package; the
+  full suite passes on this tree (1,643 passed, the standing 8 skipped).
+- **Tests**: `test_correction.py` (no correction, an inert fit, the turn and
+  the tie, the version in force at an instant, another forecaster's fit);
+  `test_recommend.py` (the flip, an inert or future fit decides nothing, the
+  row and its freeze and its CHECK, one number on the card, the at-the-line
+  sentence, the recommendation line and the pregame figure);
+  `test_schema.py::test_an_older_record_gains_the_correction_columns_exactly_as_declared`
+  (an older table through `db.init` equals a fresh one by `table_xinfo` and
+  by `schema_diff`, keeps its row, and is frozen from the first open);
+  `test_schema.py::test_a_fresh_build_holds_every_column_an_ensure_step_adds`
+  now covers the two columns through `db.MIGRATIONS`.
+
+### MEASURED ON THE LIVE RECORD, read-only *(2026-09-26 about 05:00Z, `db.read_the_live_record`)*
+
+- **63 fits, 0 ever active** (`calibration_corrections` is append-only, so
+  that is its whole history); the last refit 2026-09-21T22:11:39Z, weekly, so
+  the next about 2026-09-28. **The fix changes no recommendation today**: every
+  row written until a refit activates a category carries NULL / NULL, and the
+  pick is the raw claim's, exactly as before.
+- **The rehearsal** (a scratch copy through the backup door, never the
+  record): before, the copy against a fresh build of master: 10 objects
+  differ only cosmetically, 0 differences. `db.init` of this tree added the
+  two columns and the trigger; 96 rows, every stored column's checksum
+  unchanged, both new columns NULL on all 96. The migrated copy against a
+  fresh build of this tree: 10 cosmetic, **0 differences**. Against master it
+  shows exactly the two columns and the trigger, as it must until the
+  release. A second `db.init` changed nothing.
+- **Hindsight only, nothing written** (97 standing recommendations at about
+  05:05Z; `recommend.not_withdrawn`): as built (the correction ACTIVE at each
+  row's stamp) all 97 are unchanged. Had the latest FITTED version at each
+  row's stamp been applied, active or not, 10 would differ: 3 flip (46 and
+  49, baseball totals from the reasoning pass, no to yes; 88, a college
+  spread, no to yes) and 7 lose their side (43, 45, 47, 81, 82, 91, 99). With
+  the latest fit of today applied to all, 20 would differ, 8 of them flips.
+  They keep their sides, edges and fair values as written (LAW 3).
+
+### THE LIVE WRITE THE RULING REQUIRES *(after the release; no tool)*
+
+Schema only, additive, and `db.init` makes it: the first open of the live
+record by the released code -- the release step's own `/api/health` call
+after the restart (it opens the record through `db.open_db`), or the
+scheduler's next task, whichever comes first -- adds `correction_version`
+and `calibrated_fair_value` to `recommendations` (NULL on every existing
+row) and creates `recommendation_correction_is_frozen`. Nothing is updated,
+deleted or backfilled, and no tool is needed. Until that open, the gate's
+release comparison would name the two columns and the trigger as missing
+from the record, so confirm through the read-only door after the restart,
+before the next gate.
+
+### READINGS TAKEN, for the operator to overrule *(2026-09-26)*
+
+- **"The correction that was current" is the ACTIVE correction** for (sport,
+  market type, forecaster) at the moment the recommendation is written --
+  never a fitted version the holdout did not activate, and never a later
+  one. The C2 gate's ruling (a fit is inert until activated) and every other
+  consumer of `shown_claim` read it so. "A fitted correction" in the planting
+  is read as fitted and activated; the planting also proves an inactive one
+  decides nothing. The other reading (the latest fitted version, active or
+  not) would have applied fits the holdout refused -- two with NEGATIVE
+  slopes (baseball moneyline reasoning v3, -0.353; UFC rounds statistical v3,
+  -0.127) -- and in hindsight changed 10 of 97 standing recommendations.
+- **`fair_value` keeps its meaning**; the corrected number goes beside it
+  with the version, as a forecast's does. The other way (the corrected number
+  in `fair_value`, the raw one beside it) would change what an existing
+  column means from a date on. No reader of the table reads `fair_value`.
+- **The migration lives in `db.MIGRATIONS`** (above), where the house rule
+  puts a market table's migration in the market module: that rule rests on
+  the LAW 1 scan, which does not cover this table, and only `db.init` reaches
+  the gate's migrated copy.
+- **The page's numbers go through the same door** (the at-the-line sentence,
+  the pregame figure): the brief's "no new features" is kept -- no label,
+  layout or word changed, and while nothing is active every number is the
+  one it was.
+
+### OPEN, found by this item *(2026-09-26)*
+
+- **The ranker orders on the raw claim.** `shortlist.rank_rows` scores
+  confidence and the edge from `predictions.model_prob` and the snapshot,
+  while `shown_claim`'s docstring names "the sort order" as a consumer of the
+  corrected number. The brief forbids ranker changes, so it stays raw; once a
+  category activates, the shortlist and the pick can disagree about how
+  strong a question is.
+- **A card computed after a later activation differs from its stored row.**
+  The page calls `for_predictions` at view time, so a correction activated
+  after a recommendation was written shows on the card's pick and not on the
+  row -- the drift the card already has on price. The row is the record.
+  BEFORE THE START ONLY, from the prover of 2026-09-26: once the game has
+  started the pick is corrected as of its claim's writing and a later
+  activation no longer reaches it (below).
+- **The fit's reach at another number.** A `rung_differs_margin` claim (86 on
+  the live record on 2026-09-26; the map of 2026-09-23 counted none) is the
+  frozen distribution read at the venue's line, while the category's fit was
+  fitted on confidences at the model's own line; the door corrects it all
+  the same. For `line_less` and `rung_matched` claims the corrected claim is
+  exactly the forecast's corrected confidence restated.
+- **Props merge every prop type into one correction category**
+  (`category_of` is sport, market type, forecaster), so if a prop is ever
+  recommended, one fit across all prop types decides its side. No prop
+  recommendation exists.
+- **`tasks._run_recalibrate` says "activates nothing"**, and
+  `correction.refit_all` sets `active_from` when the holdout passes. From
+  today an activation reaches the picks; the docstring is wrong.
+- **A corrected number of exactly 0 or 1 after rounding** is refused by the
+  pairing CHECK (as `fair_value`'s own CHECK refuses the raw one), and
+  `record_for` raises, failing the run by name. Only a fit of a very large
+  slope on an extreme claim could produce one.
+- **Found in passing, not item 3 -- a combo prices a no-side leg on the yes
+  side** (read in the code 2026-09-26, flagged by the map of 2026-09-23, not
+  measured on a rendered card). `combos.propose` multiplies each leg's
+  `fair_value` and `_proposal_card` prints it, but `fair_value` is the
+  probability of the claim's proposition, and a leg recommended on the no
+  side wins with one minus it; `singles_alternative` is handed the yes
+  prices the same way. 82 of the 96 recommendations on the record at 04:50Z
+  were no-side. Item 3 changes which number reaches these legs, not how they
+  are oriented; a fix is its own ruling.
+
+### PROVED, and three holes closed *(the prover, 2026-09-26)*
+
+- **The planting ESCAPES on HEAD 7aedf30** (`git archive` into scratch, this
+  `plant.py` over it: "left the pick on no at 3.5c with fair value 0.43
+  (version None)") and is CAUGHT on this tree; `plant.py` whole is all
+  caught. Twelve broken copies of the fix were each run against the
+  planting and the item's tests (scratch copies of this tree; nothing else
+  touched): the planting escapes on the eleven that break the pick or the
+  row, and the tests fail on all twelve.
+- **A FINISHED GAME'S PICK WAS RE-DERIVED BY A LATER CORRECTION** (a defect
+  of the fix, fixed). `for_predictions` prices every shortlisted question
+  whose game is not being played, a finished one included -- the Today
+  block and the recommendation lines still show it -- and it corrected all
+  of them by the correction in force NOW. Measured on a scratch world: a
+  baseball pick on a game played on 9 September, on the no side as written
+  and as recorded, moved to the yes side at +3.08c when a correction
+  activated on the 20th, while the at-the-line sentence on the same card,
+  which already read the claim's own instant once the game had started,
+  kept the claim's 43%. "Re-derive nothing retroactively" forbids it, and
+  the build's own words ("a started card is never corrected afterwards")
+  were true of the sentence and not of the pick. NOW
+  `recommend.correction_instant` is the one rule for both: the correction in
+  force now before the start, the one in force when the claim was written
+  once it has started. `views._claim_instant` reads it; a started card's
+  pick and sentence agree and a later activation reaches neither. Before
+  the start nothing changed. The reading taken: "the correction that was
+  current" for a started card is the claim's, the precedent the build had
+  already set for the sentence and the pregame figure; the kickoff instant
+  would differ only if a correction activated between the last claim and
+  the start.
+- **Two broken copies passed every item-3 guard** (holes in the guard,
+  closed). A pick SIZED from the raw claim while its side came from the
+  corrected one: below a market's gate every size is one flat unit, so the
+  flip could not show it. And a pick corrected by the STATISTICAL
+  forecaster's fit whatever its forecaster: the planting had one forecaster.
+  The planting now asks the pick again with the gate met and the edge
+  measured ahead (a quarter of Kelly on the corrected 54% is a stake, on the
+  raw 43% nothing), prices a reasoning-pass pick on another game beside the
+  statistical fit (it must stay raw), and prices a finished game whose claim
+  predates the activation (it must stay raw). Three tests say the same:
+  `test_recommend.py::test_a_finished_games_pick_is_never_re_derived_by_a_later_correction`,
+  `::test_the_size_is_computed_from_the_corrected_claim`,
+  `::test_a_correction_reaches_only_its_own_forecasters_picks`; each fails
+  on HEAD's package and on its broken copy. The at-the-line sentence left raw
+  is caught by the build's own one-number test, not by the planting, which
+  guards the pick.
+- **The live write, rehearsed again on a fresh copy** (backup door, 101
+  recommendations that morning): `db.init` added the two columns and the
+  trigger and nothing else, every stored column's exact checksum unchanged,
+  both new columns NULL on all 101; a second and third `db.init` changed
+  nothing; on the migrated copy the freeze refused an edit of either column,
+  the old rule still refused a rewrite of the side, the pairing CHECK
+  refused a version without its number and a number without its version,
+  the range CHECK refused 1, and a paired row was taken. Gate step 2's
+  record and schema rows, dry-run on the gate's own migrated copy: both
+  schema comparisons 0 registered, nothing new; every record check passes.
+- **Found in passing, not item 3 -- above the gate, a no-side pick sizes
+  nothing.** `size_for` asks `kelly_fraction(model_prob, price)` with the
+  claim's YES probability and the YES price whatever the side, so a pick on
+  the no side with a real edge (43% against 48.5c: +3.5c on the no side)
+  gets a quarter of Kelly of the yes bet, which is zero units, recorded as
+  a `fraction`. Latent while every market is under its gate (all flat
+  units). The same shape as item 4's return-on-stake denominator; a fix is
+  its own ruling.

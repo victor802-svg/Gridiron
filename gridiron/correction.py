@@ -48,6 +48,14 @@ better, which is what LAW 3 exists to prevent, so corrections reach only
 predictions written after they activate. The version is stored on the row,
 which is what makes a correction gradeable: "did v1 help" is answerable with an
 N, over the forward predictions written under v1.
+
+AND RECOMMENDATIONS, FROM 2026-09-26 (GRIDIRON_REPAIR item 3). A
+recommendation is priced from the claim at the line through
+`shown_proposition`, and the version in force when it is written is stored on
+its row beside the corrected number, with the raw claim's number kept in
+`fair_value` as it always was. The recommendations written before that date
+carry neither, and that is true rather than missing: no correction had ever
+been active (0 of 63 fits on the live record that day).
 """
 
 from __future__ import annotations
@@ -236,7 +244,8 @@ def active_correction(
 
 
 def shown_claim(conn: sqlite3.Connection, *, sport: str, market_type: str,
-                forecaster: str, claim: float) -> tuple[float, int | None]:
+                forecaster: str, claim: float,
+                at_utc: str | None = None) -> tuple[float, int | None]:
     """The number a reader will see, and the correction version behind it.
 
     ONE DOOR, for the same reason `side_named` is one door. Every consumer of a
@@ -248,14 +257,63 @@ def shown_claim(conn: sqlite3.Connection, *, sport: str, market_type: str,
 
     Returns the raw claim unchanged when the category has no active
     correction, which is every category today.
+
+    `claim` is a CONFIDENCE -- the probability of the side the model took,
+    at least 0.5 -- because that is what every fit is fitted on. A number
+    stated from a fixed proposition goes through `shown_proposition`.
+
+    `at_utc` (2026-09-26, GRIDIRON_REPAIR item 3): the correction in force AT
+    that instant rather than now, so a figure describing a claim written
+    earlier is corrected by the version that was current when it was written
+    and never by a later one. Left out, it is now, as it always was.
     """
     active = active_correction(conn, sport=sport, market_type=market_type,
-                              forecaster=forecaster)
+                              forecaster=forecaster, at_utc=at_utc)
     if active is None:
         return claim, None
     model = Platt(slope=active["slope"], intercept=active["intercept"],
                   n_train=active["n_train"])
     return round(model.apply(claim), 6), int(active["version"])
+
+
+def shown_proposition(conn: sqlite3.Connection, *, sport: str,
+                      market_type: str, forecaster: str, proposition: float,
+                      at_utc: str | None = None) -> tuple[float, int | None]:
+    """A number stated from a fixed proposition, corrected, and its version.
+
+    GRIDIRON_REPAIR item 3 (the operator's ruling of 2026-09-23, built
+    2026-09-26): "Corrections reach recommendations. recommend.py:324 reads the
+    corrected probability, never the raw claim." A claim at the line is stated
+    from ONE FIXED PROPOSITION -- the home side of a spread or a winner
+    market, the over of a total -- so it can sit either side of a half, where
+    every fit was fitted on confidences: 0 of the 2,581 forecasts on the live
+    record was below 0.5 on 2026-09-26, and 628 of its 1,264 claims were.
+
+    SO THE NUMBER IS TURNED TO THE SIDE IT FAVOURS, CORRECTED THERE, AND
+    TURNED BACK. The same order `model.predict` uses to write a forecast
+    (`baseline.stated_side`, then `shown_claim`), with the same tie rule: a
+    number of exactly one half favours the proposition. Applying the fit to
+    the proposition's number directly is not the same thing -- with a nonzero
+    intercept the correction of `1 - p` is not one minus the correction of
+    `p`. Under the live record's baseball total fit for the reasoning pass
+    (version 2: slope 0.449, intercept -0.270), a home claim of 43% is 40%
+    applied directly and 54% turned first: against a price of 48.5 cents,
+    the no side one way and the yes side the other, on the same claim
+    (measured 2026-09-26; the planting's own numbers).
+
+    Returns the number unchanged, with no version, when the category has no
+    correction in force at `at_utc` (now, when left out) -- which is every
+    category on 2026-09-26. A fitted version whose holdout did not activate
+    it is never applied: that is C2's gate, and this is the same door.
+    """
+    favoured = float(proposition) >= 0.5
+    confidence = float(proposition) if favoured else 1.0 - float(proposition)
+    shown, version = shown_claim(conn, sport=sport, market_type=market_type,
+                                 forecaster=forecaster, claim=confidence,
+                                 at_utc=at_utc)
+    if version is None:
+        return proposition, None
+    return (shown if favoured else round(1.0 - shown, 6)), version
 
 
 def next_version(conn: sqlite3.Connection, *, sport: str, market_type: str,

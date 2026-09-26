@@ -1223,22 +1223,38 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
             + at_the_line.standing_claim_clause("c") + " GROUP BY c.market",
             (sport,))
     }
-    homes = {
-        r["id"]: r["home"] for r in conn.execute(
-            f"SELECT p.id, g.home FROM predictions p JOIN games g ON g.id = p.game_id"
+    forecasts = {
+        r["id"]: r for r in conn.execute(
+            f"SELECT p.id, p.sport, p.market_type, p.predictor, g.home,"
+            f"       g.status, g.kickoff_utc"
+            f"  FROM predictions p JOIN games g ON g.id = p.game_id"
             f" WHERE p.id IN ({placeholders})", ids)
     }
     out: dict[int, dict] = {}
     for row in rows:
         n = settled.get(row["market"], 0)
-        home = language.team_name(homes.get(row["prediction_id"]), team_names, "club")
+        forecast = forecasts.get(row["prediction_id"])
+        home = language.team_name(forecast["home"] if forecast else None,
+                                  team_names, "club")
+        # THE SAME NUMBER THE PICK IS PRICED FROM (GRIDIRON_REPAIR item 3,
+        # 2026-09-26). The recommendation reads the claim through the
+        # correction's one door, so the sentence beside it does too: a card
+        # whose price row is corrected and whose at-the-line sentence is raw
+        # would state two numbers for one proposition the day a category
+        # activates. Before the start, the correction in force now, as the
+        # pick on the same card; once the game has started, the one in force
+        # when the claim was written, so a started card is never corrected
+        # again afterwards (`_claim_instant`, which reads the pick's own rule,
+        # `recommend.correction_instant`, from the prover of 2026-09-26).
+        model_prob, _version = ((row["model_prob"], None) if forecast is None
+                                else _corrected_claim(conn, forecast, row))
         out[row["prediction_id"]] = {
             "words": language.at_the_line_line(
-                row["market"], row["line"], row["model_prob"], row["venue_implied"],
+                row["market"], row["line"], model_prob, row["venue_implied"],
                 n, home=home),
             "venue": venue.VENUE,
             "line": row["line"],
-            "model_prob": row["model_prob"],
+            "model_prob": model_prob,
             "venue_implied": row["venue_implied"],
             "price_basis": row["price_basis"],
             "n": n,
@@ -1247,6 +1263,45 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
                 n, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
         }
     return out
+
+
+def _claim_instant(claim, game) -> str | None:
+    """Which correction a number from this claim is shown with: None (now)
+    before the game starts, the claim's own instant once it has.
+
+    NOW BEFORE THE START, because that is what the pick beside it is priced
+    with (`recommend.for_predictions`), and a card stating two numbers for
+    one proposition is the disagreement the one door exists to prevent. THE
+    CLAIM'S OWN INSTANT AFTER IT, because a started card describes what was
+    thought then: a correction that activated during or after the game never
+    rewrites it (LAW 3's reason, applied to a figure on a page). 2026-09-26.
+
+    THE RULE ITSELF IS `recommend.correction_instant` (the prover, 2026-09-26):
+    it was written here alone, and the pick beside this sentence read "now"
+    on a finished game, so the two disagreed on every started card after an
+    activation. One rule, read by both; this only unpacks the rows.
+    """
+    from .market import recommend as _recommend
+
+    return _recommend.correction_instant(
+        claim["created_utc"],
+        game["status"] if game is not None else None,
+        game["kickoff_utc"] if game is not None else None)
+
+
+def _corrected_claim(conn: sqlite3.Connection, forecast, claim
+                     ) -> tuple[float, int | None]:
+    """The claim at the line through the correction's one door, as the pick.
+
+    `forecast` carries the category -- sport, market type and forecaster --
+    and the game's status and start; `claim` is an `at_the_line_claims` row.
+    """
+    from . import correction
+
+    return correction.shown_proposition(
+        conn, sport=forecast["sport"], market_type=forecast["market_type"],
+        forecaster=forecast["predictor"], proposition=claim["model_prob"],
+        at_utc=_claim_instant(claim, forecast))
 
 
 def _attach_priced(conn: sqlite3.Connection, cards: list[dict]) -> None:
@@ -1516,6 +1571,13 @@ def _pregame_probability(conn, entry: dict, card: dict) -> float | None:
     for the venue's own proposition, frozen when it was written, which is
     exactly what "pregame" means. The claim guard already refuses one written
     after first pitch, so the row this finds cannot be a mid-game read.
+
+    CORRECTED, AS THIS DOCSTRING ALWAYS SAID (2026-09-26, GRIDIRON_REPAIR
+    item 3). It returned the raw claim until then -- the same number, while
+    no correction had ever been active. Now it is the claim through the
+    correction's one door with the version in force WHEN THE CLAIM WAS
+    WRITTEN, so a correction activated mid-game never rewrites a pregame
+    figure.
     """
     if conn is None:
         return None
@@ -1527,12 +1589,21 @@ def _pregame_probability(conn, entry: dict, card: dict) -> float | None:
     if "at_the_line_claims" not in tables:
         return None
     row = conn.execute(
-        "SELECT model_prob FROM at_the_line_claims"
-        " WHERE prediction_id = ? ORDER BY created_utc DESC, id DESC LIMIT 1",
+        "SELECT c.model_prob, c.created_utc, p.sport, p.market_type,"
+        "       p.predictor"
+        "  FROM at_the_line_claims c JOIN predictions p ON p.id = c.prediction_id"
+        " WHERE c.prediction_id = ?"
+        " ORDER BY c.created_utc DESC, c.id DESC LIMIT 1",
         (pid,)).fetchone()
     if row is None or row["model_prob"] is None:
         return None
-    return float(row["model_prob"])
+    from . import correction
+
+    shown, _version = correction.shown_proposition(
+        conn, sport=row["sport"], market_type=row["market_type"],
+        forecaster=row["predictor"], proposition=float(row["model_prob"]),
+        at_utc=row["created_utc"])
+    return float(shown)
 
 
 def _today_card(entry: dict, card: dict, *, taken: bool,

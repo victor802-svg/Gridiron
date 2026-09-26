@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .. import config
+from .. import config, correction
 from ..db import just_after, utcnow
 from ..priced import coverage
 from . import paper
@@ -263,6 +263,37 @@ def refuse_in_game(game_status: str | None) -> None:
             "never sized.")
 
 
+def correction_instant(claim_utc: str | None, status: str | None,
+                       kickoff_utc: str | None) -> str | None:
+    """Which correction a number read from this claim is corrected by: None,
+    meaning the one in force now, before the game starts; the claim's own
+    instant once it has.
+
+    ONE RULE FOR THE PICK AND THE WORDS BESIDE IT (the prover of
+    GRIDIRON_REPAIR item 3, 2026-09-26). `for_predictions` prices every
+    shortlisted question whose game is not being played -- a finished one
+    included, which the Today block and the recommendation lines still show
+    -- and it corrected all of them by the correction in force NOW. Measured
+    on a scratch world: a baseball pick on a game that ended on 9 September,
+    on the no side as written and recorded, moved to the yes side when a
+    correction activated on the 20th, while the at-the-line sentence on the
+    same card, which already read the claim's own instant once the game had
+    started, kept the claim's 43%. That is a finished game re-derived by a
+    correction that did not exist when it was played, which the ruling
+    forbids ("Re-derive nothing retroactively (LAW 3)").
+
+    BEFORE THE START, NOW: that is the correction a recommendation written
+    now carries (`record_for`). ONCE IT HAS STARTED, the claim's own instant:
+    nothing can be recommended on a game in play or over, so the number is
+    the one the claim stood for when it was written, and an activation
+    afterwards never reaches it. `views` reads the at-the-line sentence by
+    this rule too, so the pick and the words beside it cannot disagree.
+    """
+    started = ((status or "").lower() in IN_PLAY_STATUSES + ("final",)
+               or (kickoff_utc is not None and kickoff_utc <= utcnow()))
+    return claim_utc if started else None
+
+
 def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list[dict]:
     """One recommendation per shortlisted question that has a recorded price.
 
@@ -270,6 +301,13 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
     market's settled count. Computes nothing about a game in progress and
     writes nothing anywhere: a recommendation is a reading of rows that already
     exist.
+
+    The model's number is the claim at the line CORRECTED by the correction in
+    force now, through `correction.shown_proposition` (2026-09-26); the raw
+    claim's number and the version travel with each entry. NOW BEFORE THE
+    START, and the claim's own instant once the game has started
+    (`correction_instant`, the prover of 2026-09-26), so a finished game's
+    pick is never re-derived by a correction that activated after it.
     """
     from .. import shortlist as ranker
     from ..priced import shape as _shapes
@@ -292,7 +330,7 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         " p.line_asked, p.model_prob, p.model_side, p.predictor, p.created_utc,"
         " g.status, g.kickoff_utc, g.home, g.away,"
         " c.model_prob AS claim_prob, c.venue_implied AS implied_prob,"
-        " c.line AS venue_line, c.venue AS venue"
+        " c.line AS venue_line, c.venue AS venue, c.created_utc AS claim_utc"
         f" FROM predictions p JOIN games g ON g.id = p.game_id"
         " LEFT JOIN at_the_line_claims c ON c.id = ("
         "     SELECT c2.id FROM at_the_line_claims c2"
@@ -327,7 +365,31 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         # read at the venue's line; the prediction's probability answers a
         # question asked at ours, and comparing that with the venue's price
         # would be comparing two different propositions.
-        model_prob = row["claim_prob"]
+        #
+        # CORRECTED, THROUGH THE ONE DOOR (GRIDIRON_REPAIR item 3; the
+        # operator's ruling of 2026-09-23, built 2026-09-26: "recommend.py:324
+        # reads the corrected probability, never the raw claim"). Until this
+        # date the raw claim went straight to the side, the edge, the bar and
+        # the size, so a category whose correction was in force would have
+        # shown one number on the forecast and priced another. The correction
+        # in force for this forecaster's category NOW -- which, for the row
+        # `record_for` writes, is no later than the row's own stamp -- turned
+        # to the side the claim favours and back (`shown_proposition`). A fit
+        # the holdout did not activate is never applied. The raw claim stays
+        # beside it, and is what `fair_value` stores.
+        #
+        # NOW ONLY BEFORE THE START (the prover, 2026-09-26). A finished game
+        # is priced here too, and "now" let a correction activated after the
+        # game turn its pick; once the game has started the number is the
+        # claim's as it stood when written (`correction_instant`), the rule
+        # the at-the-line sentence beside it already read.
+        raw_claim = row["claim_prob"]
+        model_prob, correction_version = (
+            (None, None) if raw_claim is None else correction.shown_proposition(
+                conn, sport=row["sport"], market_type=row["market_type"],
+                forecaster=row["predictor"], proposition=raw_claim,
+                at_utc=correction_instant(row["claim_utc"], row["status"],
+                                          row["kickoff_utc"])))
         settled = rank["edge_gate_n"] or 0
         # COVERAGE FIRST (THE_PRICED P2/P5, 2026-09-07). A market the engine is
         # not allowed to price gets a forecast and no opinion, and the reason
@@ -365,7 +427,16 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             "subject": row["subject"],
             "line_asked": row["line_asked"],
             "model_side": row["model_side"],
+            # THE NUMBER THE SIDE WAS CHOSEN FROM, corrected where a
+            # correction is in force: the card's model chip, the recommendation
+            # line, a combo's legs and a package's legs all read this, so they
+            # agree with the pick without a second door (2026-09-26).
             "fair_value": fair_value(model_prob),
+            # ...and the raw claim's number beside it, with the version that
+            # made the difference (None while the category is raw). The record
+            # keeps both, as a forecast keeps its raw and its shown claim.
+            "raw_fair_value": fair_value(raw_claim),
+            "correction_version": correction_version,
             "venue": row["venue"],
             "venue_line": row["venue_line"],
             "price": round(price, 4) if price is not None else None,
@@ -457,6 +528,18 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     The price is stored because the closing line cannot be compared with
     anything otherwise, and closing-line value is the first honest verdict this
     project can reach: fifty observations rather than several hundred.
+
+    AND THE CORRECTION THAT WAS CURRENT (GRIDIRON_REPAIR item 3, 2026-09-26:
+    "from the fix forward, every recommendation carries the correction that
+    was current"). `fair_value` keeps the meaning it has on every row before
+    this date, the raw claim's number; beside it, `calibrated_fair_value` --
+    the number the side, the edge and the size were computed from -- and
+    `correction_version`, both NULL when no correction was in force, which is
+    what they say on every earlier row because none ever was. The same shape
+    as a forecast's `model_prob`, `calibrated_prob` and `correction_version`.
+    The version is looked up before the row is stamped, so it is never one
+    that activated after the row. Nothing already written is touched (LAW 3),
+    and `recommendation_correction_is_frozen` refuses an edit of either.
     """
     counts = {"recommended": 0, "no_side": 0, "already": 0, "in_game": 0}
     for entry in for_predictions(conn, prediction_ids):
@@ -467,17 +550,21 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
         if size["kind"] not in ("flat", "fraction"):
             counts["no_side"] += 1
             continue
+        corrected = entry["correction_version"] is not None
         try:
             conn.execute(
                 "INSERT INTO recommendations (prediction_id, sport, game_id,"
                 " market, side, fair_value, price, edge_cents, size_kind,"
-                " size_units, gate_n, created_utc)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                " size_units, gate_n, created_utc, correction_version,"
+                " calibrated_fair_value)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (entry["prediction_id"], entry["sport"], entry["game_id"],
-                 entry["market"], entry["side"], entry["fair_value"],
+                 entry["market"], entry["side"], entry["raw_fair_value"],
                  entry["price"], entry["edge_cents"], size["kind"],
                  size["units"], entry["gate_n"],
-                 just_after(entry.get("written_utc"))))
+                 just_after(entry.get("written_utc")),
+                 entry["correction_version"],
+                 entry["fair_value"] if corrected else None))
             counts["recommended"] += 1
         except sqlite3.IntegrityError as exc:
             if "UNIQUE" not in str(exc):

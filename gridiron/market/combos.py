@@ -217,7 +217,11 @@ def fair_value(leg_probabilities: list[float]) -> float | None:
 
     THE PUBLISHED ONES, which are the corrected ones where a correction is in
     force: a package is priced against what the reader was shown, not against
-    a raw claim they never saw.
+    a raw claim they never saw. TRUE ONLY FROM 2026-09-26 (GRIDIRON_REPAIR
+    item 3): the legs come from `recommend.for_predictions`, whose
+    `fair_value` was the raw claim until that date and is now the claim
+    through `correction.shown_proposition` -- the number each leg's own side
+    was chosen from.
 
     Independence is ASSUMED and is only defensible because `classify` has
     already refused every same-game package. Two games on one evening are not

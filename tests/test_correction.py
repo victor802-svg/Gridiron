@@ -192,6 +192,77 @@ def test_a_fitted_correction_is_inert_until_it_is_activated(league):
                                forecaster="statistical") is None
 
 
+# --- a number stated from a fixed proposition (GRIDIRON_REPAIR item 3) -------
+#
+# The operator's ruling of 2026-09-23, built 2026-09-26: "Corrections reach
+# recommendations." A claim at the line is stated from the home side or the
+# over, so it can sit below a half; every fit is fitted on confidences. The
+# door turns it to the side it favours, corrects it there, and turns it back.
+
+#: The live record's baseball total fit for the reasoning pass, version 2
+#: (measured 2026-09-26): an intercept far from zero, where turning matters.
+_SKEWED = C.Platt(slope=0.449, intercept=-0.270, n_train=106)
+
+
+def _active(conn, model, *, sport="mlb", market="moneyline",
+            forecaster="statistical", active_from="2026-01-01T00:00:00Z"):
+    return C.record_fit(conn, sport=sport, market_type=market,
+                        forecaster=forecaster, model=model, status="planted",
+                        active_from=active_from,
+                        fitted_utc="2026-01-01T00:00:00Z")
+
+
+def _prop(conn, p, at_utc=None):
+    return C.shown_proposition(conn, sport="mlb", market_type="moneyline",
+                               forecaster="statistical", proposition=p,
+                               at_utc=at_utc)
+
+
+def test_a_proposition_with_no_active_correction_is_its_own_number(conn):
+    assert _prop(conn, 0.43) == (0.43, None)
+    assert _prop(conn, 0.61) == (0.61, None)
+    # FITTED IS NOT ACTIVE (C2): the same fit, recorded inert, changes nothing.
+    C.record_fit(conn, sport="mlb", market_type="moneyline",
+                 forecaster="statistical", model=_SKEWED, status="fitted")
+    assert _prop(conn, 0.43) == (0.43, None)
+
+
+def test_a_proposition_is_turned_to_its_favoured_side_corrected_and_turned_back(conn):
+    version = _active(conn, _SKEWED)
+    below, v = _prop(conn, 0.43)
+    assert v == version
+    # the forecast's own confidence is 57% on the away side, and that is the
+    # number the fit knows how to correct
+    away, _ = C.shown_claim(conn, sport="mlb", market_type="moneyline",
+                            forecaster="statistical", claim=0.57)
+    assert below == pytest.approx(1.0 - away, abs=1e-6)
+    assert below == pytest.approx(0.5358, abs=5e-5)
+    # NOT the fit applied to the home number directly: 40%, the other side of
+    # a 48.5c price
+    assert _SKEWED.apply(0.43) == pytest.approx(0.4021, abs=5e-5)
+    # above a half the proposition is the confidence, so nothing turns
+    above, _ = _prop(conn, 0.61)
+    assert above == pytest.approx(_SKEWED.apply(0.61), abs=1e-6)
+    # the tie favours the proposition, as `baseline.stated_side` does
+    assert _prop(conn, 0.5)[0] == pytest.approx(_SKEWED.apply(0.5), abs=1e-6)
+
+
+def test_a_proposition_is_corrected_by_the_version_in_force_at_its_instant(conn):
+    _active(conn, _SKEWED, active_from="2026-09-20T00:00:00Z")
+    assert _prop(conn, 0.43, at_utc="2026-09-19T23:59:59Z") == (0.43, None)
+    at, version = _prop(conn, 0.43, at_utc="2026-09-20T00:00:00Z")
+    assert version == 1 and at == pytest.approx(0.5358, abs=5e-5)
+    # and a later version never reaches back before its own activation
+    _active(conn, C.Platt(slope=1.0, intercept=0.5, n_train=200),
+            active_from="2026-09-27T00:00:00Z")
+    assert _prop(conn, 0.43, at_utc="2026-09-26T00:00:00Z")[1] == 1
+    assert _prop(conn, 0.43, at_utc="2026-09-27T00:00:00Z")[1] == 2
+    # another forecaster's correction is not this one's (LAW 6's reasoning)
+    assert C.shown_proposition(conn, sport="mlb", market_type="moneyline",
+                               forecaster="llm", proposition=0.43,
+                               at_utc="2026-09-27T00:00:00Z") == (0.43, None)
+
+
 def test_a_category_under_the_gate_is_recorded_with_its_shortfall_in_words(league):
     for _ in range(3):
         _write(league, prob=0.7, outcome=1)

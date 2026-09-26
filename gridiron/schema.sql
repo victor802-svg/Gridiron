@@ -2240,6 +2240,18 @@ CREATE TABLE IF NOT EXISTS recommendations (
     close_price     REAL,
     clv_cents       REAL,
     closed_utc      TEXT,
+    -- THE CORRECTION THAT WAS CURRENT (GRIDIRON_REPAIR item 3, the operator's
+    -- ruling of 2026-09-23, added 2026-09-26). fair_value is the raw claim's
+    -- number, as on every row before; calibrated_fair_value is the number the
+    -- side, edge and size were computed from when a correction was in force,
+    -- and correction_version is the version that made it. Both NULL together,
+    -- meaning no correction was in force, which is true of every row written
+    -- before the fix: none had ever been active. Stored BESIDE the raw number
+    -- and never instead of it, as a forecast's calibrated_prob is. Last, and
+    -- in this order, because an older record gains them by db.MIGRATIONS
+    -- with exactly these clauses, and the pairing names correction_version.
+    correction_version    INTEGER,
+    calibrated_fair_value REAL CHECK ((calibrated_fair_value IS NULL) = (correction_version IS NULL) AND (calibrated_fair_value IS NULL OR (calibrated_fair_value > 0 AND calibrated_fair_value < 1))),
     UNIQUE (prediction_id, created_utc)
 );
 CREATE INDEX IF NOT EXISTS recommendations_sport
@@ -2264,6 +2276,21 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 3: a recommendation is append-only. The close is written '
         || 'once; what was recommended is never rewritten');
+END;
+
+-- THE CORRECTION A RECOMMENDATION CARRIES IS FROZEN WITH IT (2026-09-26).
+-- A rule of its own rather than two more names in the list above: the
+-- statement of an existing rule is never replaced on a record that already
+-- holds it, and dropping a LAW 3 guard to restate it would leave the table
+-- unguarded for as long as that took.
+CREATE TRIGGER IF NOT EXISTS recommendation_correction_is_frozen
+BEFORE UPDATE OF correction_version, calibrated_fair_value ON recommendations
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: the correction a recommendation was priced with is '
+        || 'written with it and never rewritten; a later correction reaches '
+        || 'only recommendations written after it');
 END;
 
 CREATE TRIGGER IF NOT EXISTS recommendation_closes_once
