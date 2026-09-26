@@ -48,7 +48,14 @@
   says so; no scheduled pass turns red (measured read-only first).
 - **Order now:** ~~5a~~ -> ~~item 4~~ -> ~~5a'~~ -> ~~migration~~ -> ~~5b~~
   -> ~~item 2's remainder~~ -> ~~item 3~~ -> ~~item 4~~ -> ~~item 5~~ ->
-  **item 6** (in progress) -> items 7-8 of the repair.
+  ~~item 6~~ -> **item 7** (in progress) -> item 8 -> close-out.
+- **Item 6 RELEASED: 6cb20eb** (`/api/health` = 6cb20eb21ec7, 21:35Z on 26
+  September; gate 4/4, 308/308): every at-the-line count is one bet per
+  forecaster (UFC per card). MLB moneyline's "283, past the 100" is 92 of
+  100 for each forecaster, MLB spread's 130 is 88, the moneyline ledger's
+  "176, past the 100" is 49 and 66: nothing at the line is past its 100.
+  Question 14 (three more pooled counts outside the ruling's words)
+  written.
 - **Item 5 RELEASED: 9014add** (`/api/health` = 9014addcf403, 10:49Z on 26
   September; gate 4/4, 306/306): one recommendation per game and market,
   never both sides, in the door and a new trigger that binds new rows only.
