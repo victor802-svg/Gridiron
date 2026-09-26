@@ -2480,6 +2480,54 @@ BEGIN
 END;
 
 -- ---------------------------------------------------------------------------
+-- ONE RECOMMENDATION PER GAME AND MARKET, AND NEVER BOTH SIDES
+-- (GRIDIRON_REPAIR item 5, the operator's ruling of 2026-09-23, built
+-- 2026-09-26: "One recommendation per game and market, and never both sides.
+-- Recs 45 and 46 are the planting.")
+--
+-- THE DEFECT. Until 2026-09-26 the only rule on this table's keys was one
+-- forecast written twice in one second. So the morning and final passes
+-- each recorded the same game and market, and two forecasters in one pass
+-- each recorded their own side: recs 45 and 46 took the over and the under
+-- of one total at 48.5c, a certain loss of two fees.
+--
+-- THE SECOND LOCK. market.recommend.one_per_game_and_market decides what a
+-- pass may write and says why in words; this refuses any insert on a game
+-- and market that already hold a STANDING recommendation, on either side,
+-- however the row is written. Standing means not withdrawn, exactly as
+-- market.recommend.not_withdrawn reads it: no row in recommendation_voids
+-- and no void on its forecast. So a game and market whose only
+-- recommendation was withdrawn may carry a new one, as NFL spreads 73, 75,
+-- 76 and 78 did after 62, 63, 64 and 66. It follows the withdrawal table
+-- here because it reads it.
+--
+-- NEW ROWS ONLY (LAW 3). A rule on insert reads nothing already stored, so
+-- the pairs written before it stand as written: eighteen game-markets, 36
+-- standing rows, 45 and 46 among them, measured read-only at 08:50Z on
+-- 2026-09-26. No rule over the two columns that inspected stored rows could
+-- even be built over them. The refusal's words carry the ruling and never
+-- the word the forecast-twice rule's refusal carries, so the writer cannot
+-- file one under the other.
+-- ---------------------------------------------------------------------------
+CREATE TRIGGER IF NOT EXISTS recommendation_one_per_game_and_market
+BEFORE INSERT ON recommendations
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1 FROM recommendations r
+     WHERE r.game_id = NEW.game_id
+       AND r.market = NEW.market
+       AND NOT EXISTS (SELECT 1 FROM recommendation_voids w
+                        WHERE w.recommendation_id = r.id)
+       AND NOT EXISTS (SELECT 1 FROM prediction_voids v
+                        WHERE v.prediction_id = r.prediction_id))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON RULING 2026-09-23 (repair item 5): one recommendation per '
+        || 'game and market, and never both sides. One already stands on this '
+        || 'game and market, so a second is refused on either side');
+END;
+
+-- ---------------------------------------------------------------------------
 -- A RECOMMENDATION THE BAR SHOULD HAVE REFUSED (GRIDIRON_REPAIR item 4, the
 -- operator's ruling of 2026-09-23, built 2026-09-26: "Return-on-stake
 -- denominator: a no-side edge divides by the no-side cost. Re-grade the three

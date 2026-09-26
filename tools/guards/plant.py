@@ -10046,12 +10046,23 @@ def plant_a_regrade_that_is_false_or_rewritten() -> Result:
                 ("no", 0.36, 0.62, 1.5, "2026-09-07T20:52:36Z"),
                 # rec 3's numbers, written before the bar was declared
                 ("no", 0.3341, 0.375, 2.09, "2026-09-06T23:59:59Z")):
+            # EACH ON A GAME OF ITS OWN (GRIDIRON_REPAIR item 5, 2026-09-26):
+            # one recommendation per game and market, so seven rows are seven
+            # games. The arithmetic this planting probes is the row's own.
+            game = f"g{conn.execute('SELECT COUNT(*) FROM recommendations').fetchone()[0] + 1}"
+            if game != "g1":
+                conn.execute(
+                    "INSERT INTO games (id, sport, season, week, game_type,"
+                    " home, away, kickoff_utc, status, league_date) VALUES"
+                    " (?, 'mlb', 2026, 1, 'R', 'AAA', 'BBB',"
+                    " '2026-09-09T22:45:00Z', 'scheduled', '2026-09-09')",
+                    (game,))
             conn.execute(
                 "INSERT INTO recommendations (prediction_id, sport, game_id,"
                 " market, side, fair_value, price, edge_cents, size_kind,"
-                " size_units, gate_n, created_utc) VALUES (?, 'mlb', 'g1',"
+                " size_units, gate_n, created_utc) VALUES (?, 'mlb', ?,"
                 " 'moneyline', ?, ?, ?, ?, 'flat', 1.0, 53, ?)",
-                (pid, side, fair, price, edge, at))
+                (pid, game, side, fair, price, edge, at))
         (true_id, cheap_id, roomy_id, yes30_id, knife_id, above_id,
          early_id) = [r[0] for r in conn.execute(
              "SELECT id FROM recommendations ORDER BY id")]
@@ -10152,6 +10163,226 @@ def plant_a_regrade_that_is_false_or_rewritten() -> Result:
                   "early stamp are refused; the true one of rec 3's numbers "
                   "is taken, then an edit, a delete and a replacing insert "
                   "are refused by LAW 3")
+
+
+#: GRIDIRON_REPAIR item 5 -- the operator's ruling of 2026-09-23. A ruling,
+#: not one of the six LAWS, so it claims no LAW number.
+LAW_ONE_PER_GAME = "ONE RECOMMENDATION PER GAME AND MARKET, NEVER BOTH SIDES"
+
+
+def plant_both_sides_of_one_total_recommended() -> Result:
+    """Recs 45 and 46, replayed: the over and the under of one total.
+
+    GRIDIRON_REPAIR item 5, the operator's ruling of 2026-09-23 (built
+    2026-09-26): "One recommendation per game and market, and never both
+    sides. Recs 45 and 46 are the planting."
+
+    THE DEFECT. At 22:13:03Z on 21 September the final pass for Toronto at
+    Baltimore (`mlb_824787`) recorded rec 45, the over 7.5 from the
+    statistical forecaster (a 54.9% claim), and rec 46, the under 7.5 from
+    the reasoning forecaster (a 43% claim on the over), both against one
+    48.5c quote: both sides of one total, a certain loss of two fees.
+    `record_for` wrote a row for every pick that cleared the bar, and nothing
+    on the table looked at the game and the market -- the morning and final
+    passes had been recording the same game and market twice since 7
+    September.
+
+    THE WORLD is the record's own shape for those two rows: the game, both
+    forecasts, the quote, both claims and both ranks, as written. CAUGHT
+    means all three, each checked and each failure named, so on the code
+    before the fix the escape shows every one:
+      1. THE PASS AS IT RAN -- both forecasts handed to `record_for` at once
+         -- writes neither, counts both by name and says "both sides" in
+         words (the conservative default when one pass disagrees with
+         itself);
+      2. REPLAYED IN ORDER -- rec 45's forecast recorded, then rec 46's --
+         the second is refused by the door and counted by name, and asking
+         again for rec 45's own forecast adds nothing;
+      3. THE SCHEMA'S SECOND LOCK: rec 46 inserted as written, straight into
+         the table, is refused by `recommendation_one_per_game_and_market`
+         in the ruling's words, and so is a second over -- either side.
+    """
+    import pathlib
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl, recommend as _rec
+    from gridiron.priced import coverage as _coverage
+
+    law = LAW_ONE_PER_GAME
+    what = "both sides of one total recommended in one pass (recs 45 and 46, mlb_824787, total 7.5)"
+    guard = ("market.recommend.one_per_game_and_market at record_for + schema "
+             "trigger recommendation_one_per_game_and_market")
+    # THE RULING'S WORDS, which the schema's refusal carries. Read off the
+    # module where it has them, so the code before the fix -- which has not
+    # -- still runs every check and escapes by name rather than on a name.
+    phrase = getattr(_rec, "ONE_PER_GAME_AND_MARKET",
+                     "one recommendation per game and market")
+    faults: list[str] = []
+
+    def world(conn) -> tuple[int, int]:
+        """Recs 45 and 46's game, forecasts, quote, claims and ranks."""
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('mlb_824787', 'mlb',"
+            " 2026, 178, 'REG', 'BAL', 'TOR', '2026-09-21T22:35:00Z',"
+            " 'scheduled', '2026-09-21')")
+        pids = []
+        for created, prob, side, predictor in (
+                ("2026-09-21T22:12:07Z", 0.549476, "over", "statistical"),
+                ("2026-09-21T22:12:14Z", 0.57, "under", "llm")):
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning) VALUES (?, 'mlb', 'mlb_824787', 'total',"
+                " 'TOR at BAL', 7.5, ?, ?, ?, 'final', 'fs2', '{}', 'planted')",
+                (created, prob, side, predictor))
+            pids.append(conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0])
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " last_price, volume, fetched_utc) VALUES (?,"
+            " 'KXMLBTOTAL-26SEP211835TORBAL-8', 'KXMLBTOTAL-26SEP211835TORBAL',"
+            " 'mlb', 'mlb_824787', 'total', 'total', 7.5, 'over', 0.48, 0.49,"
+            " 0.49, 214573.78, '2026-09-21T22:13:03Z')", (_atl.VENUE,))
+        quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        for pid, claim, place, gate in ((pids[0], 0.549476, 15, 116),
+                                        (pids[1], 0.43, 11, 63)):
+            conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id,"
+                " venue, sport, game_id, market, quantity, line, side, shape,"
+                " dist_mean, dist_sd, model_prob, venue_price, venue_implied,"
+                " price_basis, created_utc) VALUES (?, ?, ?, 'mlb',"
+                " 'mlb_824787', 'total', 'total', 7.5, 'over', 'rung_matched',"
+                " NULL, NULL, ?, 0.485, 0.485, ?, '2026-09-21T22:13:03Z')",
+                (pid, quote, _atl.VENUE, claim, _atl.PRICE_BASIS_MID))
+            conn.execute(
+                "INSERT INTO prediction_ranks (prediction_id, ranker_version,"
+                " sport, market_type, rank_score, confidence, completeness,"
+                " edge, edge_counted, edge_gate_n, factor_set_version,"
+                " on_shortlist, shortlist_place, created_utc) VALUES (?, ?,"
+                " 'mlb', 'total', 0.5, 0.5, 1.0, NULL, 0, ?, 'fs2', 1, ?,"
+                " '2026-09-21T22:13:03Z')",
+                (pid, config.RANKER_VERSION, gate, place))
+        conn.commit()
+        return pids[0], pids[1]
+
+    def standing(conn) -> list[tuple]:
+        return [tuple(r) for r in conn.execute(
+            "SELECT prediction_id, side FROM recommendations"
+            " WHERE game_id = 'mlb_824787' AND market = 'total' ORDER BY id")]
+
+    saved = _coverage.priceable
+    _coverage.priceable = lambda conn, sport, market: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    try:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            # 1. THE PASS AS IT RAN.
+            conn = _db.open_db(pathlib.Path(tmp) / "one_pass.db")
+            try:
+                over, under = world(conn)
+                # NO CANDIDATE IS NOT A CATCH: a world that prices neither
+                # side proves nothing, and says so rather than passing.
+                got = {e["prediction_id"]: e
+                       for e in _rec.for_predictions(conn, [over, under])}
+                for pid, side, edge in ((over, "yes", 4.45), (under, "no", 3.5)):
+                    entry = got.get(pid) or {}
+                    if entry.get("side") != side \
+                            or abs((entry.get("edge_cents") or 0) - edge) > 0.005:
+                        return Result(
+                            law, what, guard, False,
+                            f"NOT CAUGHT - the planted world is wrong: forecast "
+                            f"{pid} should clear the bar on the {side} side at "
+                            f"+{edge}c, and gave {entry.get('side')} at "
+                            f"{entry.get('edge_cents')} ({entry.get('side_why')}). "
+                            f"Fix the world before trusting this planting")
+                wrote = _rec.record_for(conn, [over, under])
+                rows = standing(conn)
+                words = [r.get("why") or "" for r in wrote.get("refused") or []]
+                # SAID AS IT IS (the prover, 2026-09-26): with the door
+                # neutralised the schema still refuses the second row, so the
+                # pass writes ONE side -- which is not "both sides", and the
+                # escape said it was. The words now fit the rows found.
+                if rows:
+                    both = len({s for _, s in rows}) > 1
+                    faults.append(
+                        f"the pass as it ran took both sides of one total and "
+                        f"wrote {len(rows)} recommendation(s) there "
+                        f"({', '.join(s for _, s in rows)}) where it should "
+                        f"write neither"
+                        + (": both sides of one game and market, a certain "
+                           "loss of two fees" if both else
+                           ": one side of a pass that disagreed with itself"))
+                if wrote.get("both_sides") != 2 \
+                        or not any("both sides" in w for w in words):
+                    faults.append(
+                        f"the pass did not count and say that it took both "
+                        f"sides (counted {wrote.get('both_sides')}; said "
+                        f"{words or 'nothing'})")
+            finally:
+                conn.close()
+
+            # 2. REPLAYED IN ORDER, and 3. THE SCHEMA'S SECOND LOCK.
+            conn = _db.open_db(pathlib.Path(tmp) / "replay.db")
+            try:
+                over, under = world(conn)
+                first = _rec.record_for(conn, [over])
+                if standing(conn) != [(over, "yes")]:
+                    return Result(
+                        law, what, guard, False,
+                        f"NOT CAUGHT - the planted world is wrong: rec 45's "
+                        f"forecast alone should be recorded on the over, and "
+                        f"the table holds {standing(conn)} ({first})")
+                second = _rec.record_for(conn, [under])
+                again = _rec.record_for(conn, [over])
+                rows = standing(conn)
+                if len(rows) != 1:
+                    faults.append(
+                        f"replayed in order, rec 46's forecast was written "
+                        f"beside rec 45's: the table holds {rows} on one total")
+                if second.get("second_on_game_market") != 1:
+                    faults.append(
+                        f"rec 46's forecast was not counted as a second on "
+                        f"its game and market ({second})")
+                if again.get("recommended"):
+                    faults.append("asking again for rec 45's own forecast "
+                                  "wrote another row")
+                for label, side, pid, fair, edge, gate, created in (
+                        ("rec 46 as written", "no", under, 0.43, 3.5, 63,
+                         "2026-09-21T22:13:03Z"),
+                        ("a second over", "yes", over, 0.549476, 4.45, 116,
+                         "2026-09-21T22:13:04Z")):
+                    try:
+                        conn.execute(
+                            "INSERT INTO recommendations (prediction_id, sport,"
+                            " game_id, market, side, fair_value, price,"
+                            " edge_cents, size_kind, size_units, gate_n,"
+                            " created_utc) VALUES (?, 'mlb', 'mlb_824787',"
+                            " 'total', ?, ?, 0.485, ?, 'flat', 1.0, ?, ?)",
+                            (pid, side, fair, edge, gate, created))
+                    except sqlite3.IntegrityError as exc:
+                        if phrase not in str(exc):
+                            faults.append(
+                                f"{label}, inserted straight into the table, "
+                                f"was refused for another reason: {exc}")
+                        continue
+                    faults.append(
+                        f"{label}, inserted straight into the table, was "
+                        f"accepted: the schema admits a second recommendation "
+                        f"on a game and market")
+                conn.rollback()
+            finally:
+                conn.close()
+    finally:
+        _coverage.priceable = saved
+    if faults:
+        return Result(law, what, guard, False, "NOT CAUGHT - " + "; ".join(faults))
+    return Result(law, what, guard, True,
+                  f"the pass as it ran wrote neither side ({words[0]}); replayed "
+                  f"in order, rec 45 stands and rec 46's forecast is refused "
+                  f"({(second.get('refused') or [{}])[0].get('why')}); rec 46 "
+                  f"as written and a second over are refused by the schema")
 
 
 LAW_CLAIM_SHAPE = "A CLAIM CARRIES THE INPUTS ITS SHAPE USES, AND NO OTHERS"
@@ -12838,6 +13069,10 @@ def main() -> int:
     # permanent.
     results.append(plant_a_no_side_edge_divided_by_the_yes_price())
     results.append(plant_a_regrade_that_is_false_or_rewritten())
+    # GRIDIRON_REPAIR item 5 (the operator's ruling of 2026-09-23, built
+    # 2026-09-26): one recommendation per game and market, never both
+    # sides -- recs 45 and 46, replayed.
+    results.append(plant_both_sides_of_one_total_recommended())
     # AT_THE_PRICE (2026-09-07): four claim shapes, and the four mistakes
     # the first live run made.
     results.append(plant_a_winner_question_read_from_the_wrong_side())

@@ -256,6 +256,22 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
     except Exception as exc:  # noqa: BLE001 - a failed task must be recorded, not raised away
         result, detail = "failed", f"{type(exc).__name__}: {exc}"
         payload = {"traceback": traceback.format_exc()[-2000:]}
+        # A RUN FAILED FOR WANT OF A MODEL HAS STILL RECOMMENDED (the prover
+        # of GRIDIRON_REPAIR item 5, 2026-09-26). `run.MarketNotTrained` is
+        # raised after the markets that have a model are written, priced and
+        # recorded, and carries what the run did; until this date the
+        # payload kept only the traceback, so what such a run recommended,
+        # and what it kept off the record as a second on its game and market
+        # or as both sides of one, with why, went unsaid -- while a run that
+        # ended ok kept it. Kept here the same way, and never at the cost of
+        # recording the failure itself.
+        try:
+            from . import run as _run
+
+            if isinstance(exc, _run.MarketNotTrained):
+                payload["recommended"] = (exc.result or {}).get("recommended")
+        except Exception:  # noqa: BLE001 - keeping it must never mask the fault
+            pass
         # A FAILED TASK IS EXACTLY WHEN THE SECOND CHANNEL EXISTS (ruling R4).
         # Checked here rather than on a schedule of its own, which could go
         # silent in the same way the thing it watches did.
@@ -915,6 +931,11 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
         # data rather than opinion: if most slates are forecast without a
         # starter, the task is running too early in the day.
         "absent_starters": _absent_starters(conn, sport, season, week),
+        # WHAT THE PASS RECOMMENDED AND WHAT IT KEPT OFF THE RECORD, with
+        # why in words (GRIDIRON_REPAIR item 5, 2026-09-26): a pick refused
+        # as a second on its game and market, or because the pass took both
+        # sides of one, is said, and kept with the run that refused it.
+        "recommended": result.get("recommended"),
     }
     floor_note = (
         f"; {language.counted(result['below_floor'], 'prop question')} "
@@ -1021,6 +1042,9 @@ def _run_final_pass(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> t
         "snapshots": result.get("snapshots"),
         "absent_starters": _absent_starters(conn, sport, season, week),
         "fetch_note": fetch_note or None,
+        # And here, for the same reason (item 5, 2026-09-26): the final pass
+        # is where a second on a morning's game and market is refused.
+        "recommended": result.get("recommended"),
     }
     if written == 0:
         return ("noop",

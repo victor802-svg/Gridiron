@@ -1055,6 +1055,13 @@ fees. Nothing reconciles two forecasters' opinions about one question.
 recommends when both clear. Then a planting that fails on two sides of one
 question.
 
+**Settled, GRIDIRON_REPAIR item 5 (built 2026-09-26; see "One
+recommendation per game and market" at the end).** The ruling: "One
+recommendation per game and market, and never both sides." A pass that
+takes both sides of one game and market records neither and says so; a
+game and market holding a standing recommendation get no second. Planted:
+`plant_both_sides_of_one_total_recommended` (recs 45 and 46, replayed).
+
 ### Duplicate recommendations inflate the closing-line count *(measured 2026-09-23)*
 
 13 game-market pairs carry more than one recommendation, because the morning
@@ -1062,6 +1069,14 @@ and final passes each write a prediction for the same question. **35 closed
 spread recommendations are 26 distinct bets; 14 totals are 11.** The gate of 50
 counts rows. `standing_row_clause` exists for exactly this and is not used
 here.
+
+**Forward only, GRIDIRON_REPAIR item 5 (built 2026-09-26).** No second
+recommendation is written on a game and market from the release on. The
+pairs already written -- eighteen standing on 2026-09-26, not thirteen, and
+45 and 46 are one game and market, so "14 totals are 11" is 10 by the
+ruling's key -- stand as written and are counted as written, because the
+ruling names none of them; whether the closing line should count each game
+and market once is operator question 12 in `docs/REPAIR_STATE.md`.
 
 ### Corrections cannot reach a recommendation *(measured 2026-09-23)*
 
@@ -3374,3 +3389,206 @@ cleared'. Planting." (The line has moved since THE READ: the call was
 - **The bar's own words print the return to one place**, so a pick at 4.97%
   of its cost would read "5.0% ... under the 5%" in `side_why`. Nothing
   renders `side_why`; the re-grade and the page line use two places.
+
+## One recommendation per game and market -- built 2026-09-26 *(GRIDIRON_REPAIR item 5; the operator's ruling of 2026-09-23)*
+
+"One recommendation per game and market, and never both sides. Recs 45 and
+46 are the planting." (THE READ's map of 2026-09-23 was re-verified against
+b039020 before anything was built: the insert is in `record_for`, the table
+has had `recommendation_voids` and its door since, and item 3 added two
+columns; nothing else it named had moved.)
+
+### BUILT *(2026-09-26)*
+
+- **The door**: `recommend.one_per_game_and_market(conn, entries)` decides,
+  for one pass's picks that cleared the bar, which may be written. By game
+  and `recommendations.market`: a game and market that already hold a
+  standing recommendation (`recommend.standing_recommendations`: first by
+  stamp then id, through `not_withdrawn`) get none -- "already" for a
+  forecast whose own recommendation is there, "second" for any other, on
+  either side; where none stands and the pass's picks take both sides,
+  NEITHER is written ("both_sides"); where several take one side, the
+  forecast written first is ("write") and the rest are "second". Every
+  verdict that writes nothing carries its words: `STANDS_WHY` (names the
+  standing recommendation, its side, price and time), `BOTH_SIDES_WHY`,
+  `FIRST_IN_THE_PASS_WHY`.
+- **The writer**: `record_for` asks the door once per pass, before any
+  insert, and counts each pick not written by name -- `already`,
+  `second_on_game_market`, `both_sides` (the old keys unchanged) -- with the
+  words in `refused`. `run.run_slate` carries them on `result["recommended"]`
+  as before, and `tasks._run_predict` and `_run_final_pass` now keep that in
+  the run's payload, so a refused pick is said and kept with the run.
+- **The schema's second lock**: `recommendation_one_per_game_and_market`,
+  a BEFORE INSERT trigger on `recommendations`, refuses any row on a game
+  and market that already hold a standing one -- standing as the door reads
+  it: no row in `recommendation_voids`, no void on its forecast. Its words
+  carry `recommend.ONE_PER_GAME_AND_MARKET` and not "UNIQUE", and
+  `record_for` counts its refusal (a second writer between the look and the
+  insert) as a second, by those words -- not as `already`, the forecast
+  written twice, which is where a "UNIQUE" message would have been filed.
+  Declared in `schema.sql` after the withdrawal table it reads; `db.init`
+  makes it on the next open, over the existing pairs, reading none of them.
+  No uniqueness index could be built there: the live record's pairs would
+  make it fail, and `schema.sql` runs on every open.
+- **Fixtures that wrote a second row on one game and market**, moved to a
+  game each (nothing they assert changed): `test_priced.py`'s kill
+  criterion (fifty recommendations on one total were fifty rows on one game
+  and market; now fifty games), `test_recommend.py::_recorded` (the item-4
+  re-grade world), two single inserts in `test_recommend.py` (another
+  market of the same game), and `plant_a_regrade_that_is_false_or_rewritten`
+  (seven rows, seven games; still caught, every probe as before).
+- **The planting**: `plant_both_sides_of_one_total_recommended` replays recs
+  45 and 46 as the record holds them -- game `mlb_824787`, both forecasts,
+  quote `KXMLBTOTAL-26SEP211835TORBAL-8` at 48/49c, both claims (54.9% and
+  43% on the over), both ranks (places 15 and 11, gates 116 and 63) -- and
+  checks the pass as it ran (neither written, both counted, "both sides" in
+  words), the replay in order (45 recorded, 46's forecast refused and
+  counted, 45's own forecast adds nothing) and the schema (46 as written,
+  and a second over, refused in the ruling's words). On b039020 (`git
+  archive`, before the fix) it ESCAPES with all six named; on the tree it
+  is CAUGHT.
+- **Words**: the Settings "Minimum payout" line said the closing line "is
+  still measured on all of them", which stopped being true of a second pick
+  on a game already recommended; it now says "a folded pick is recorded
+  exactly as a card is" (rendered at 1100px and 390px through the suite's
+  signed-in scratch world: no page scroll, no console error). The
+  `_today_block` docstring says the same.
+
+### MEASURED ON THE LIVE RECORD, read-only *(2026-09-26 about 08:20Z, `db.read_the_live_record`)*
+
+- 101 recommendations (ids 1-101, newest 05:02:40Z on 26 September); 4
+  withdrawn (62, 63, 64, 66). No forecast holds two recommendations.
+- **18 game-markets hold two standing recommendations each, 36 rows** (22
+  counting withdrawn rows; the other four -- NFL spreads 62/73, 63/75, 64/76,
+  66/78 -- have a withdrawn first and one standing, which the rule allows):
+  mlb_823414 spread 1, 9; mlb_824714 spread 3, 10; mlb_824875 total 4, 12;
+  mlb_823738 spread 5, 13; mlb_824957 spread 6, 14; mlb_824791 spread 20, 25;
+  mlb_823416 spread 21, 26; mlb_824064 total 23, 28; mlb_824550 spread 32,
+  34; mlb_824787 spread 41, 44; mlb_823169 spread 42, 48; mlb_823169 total
+  43, 49; **mlb_824787 total 45 (yes), 46 (no)**; mlb_823411 spread 60, 79;
+  mlb_824707 spread 61, 80; mlb_822681 spread 84, 93; mlb_824058 spread 86,
+  94; mlb_823652 spread 87, 95. Seventeen are one forecaster, early then
+  final, the same side; 45 and 46 are two forecasters in one pass, opposite
+  sides, the same second (the id breaks the tie). THE READ counted thirteen;
+  the scheduler wrote five more since, and until the release it can write
+  more the same way -- each stands as written.
+- **In the closing line**: MLB spread n = 9 measured closes, three of them
+  (93, 94, 95) the second row of their game and market; MLB total n = 0;
+  45 and 46 are restated and unmeasured. The second rows are 9, 10, 12, 13,
+  14, 25, 26, 28, 34, 44, 46, 48, 49, 79, 80, 93, 94 and 95.
+
+### THE LIVE WRITE THE RULING REQUIRES *(after the release; no tool)*
+
+**No row is written, updated or deleted.** The one change that reaches the
+record is the trigger, made by `db.init` on the first open by the released
+code (the server's restart or the scheduler's next task), as item 3's
+columns and item 4's table were. Confirm through the read-only door before
+the next gate: `sqlite_master` holds `recommendation_one_per_game_and_market`
+and the 36 rows are as measured.
+
+### READINGS TAKEN, for the operator to overrule *(2026-09-26)*
+
+- **Both sides in one pass: neither.** The ruling says "never both sides"
+  and names no survivor; the app's two forecasters cancelling is not an
+  opinion. The other reading -- the first written stands, which would keep
+  45 -- is one branch in the door.
+- **A standing recommendation decides first**: a later pass that takes both
+  sides of a game and market already recommended adds nothing and is
+  counted as a second, not as both sides.
+- **One side, several forecasts in one pass: the forecast written first**
+  (its stamp, then its id) -- the statistical row of a question, which is
+  written before the reasoning row.
+- **"Market" is `recommendations.market`**, whatever the rung and, for a
+  prop, whatever the player: the literal words and the stricter reading.
+  No prop is priced today (every claim on the record is a game market), so
+  nothing turns on it yet; a priced prop market would hold one
+  recommendation per prop type per game.
+- **A withdrawn recommendation does not stand**, by ruling 1's door.
+- **Nothing written before is touched, relabelled or re-counted** (the
+  ruling names no row): question 12.
+- **The page is not changed**: question 11.
+
+### OPEN, found by this item *(2026-09-26)*
+
+- **The page can show a pick the record refused** (question 11): after the
+  final pass the final card's pick shows at its new price while the record
+  keeps the morning's; if the two forecasters split in one pass each
+  forecaster's page shows its own side while the record holds neither.
+- **No withdrawal**: a morning recommendation stands even when the final
+  pass no longer clears it, or clears the other side; the morning price is
+  what the closing line measures. A rule that withdraws one would be a new
+  feature, not in the ruling.
+- **The taken rail's edge is keyed by forecast** (`views.taken_today`): a
+  pick marked on a final card whose recommendation was refused shows "no
+  price recorded at the time" rather than the standing recommendation's
+  edge.
+- **The trigger restates `not_withdrawn` in SQL** (no row in
+  `recommendation_voids`, no void on its forecast). A third way to withdraw
+  a recommendation would have to be added to both; a test holds them to the
+  same answer on the two that exist.
+- **Found in passing, not this item's: a browser test that fails about two
+  runs in five.** `test_smoke.py::test_every_tap_target_on_the_slate_is_big_enough`
+  measured a `BUTTON.expand` at 43.99951171875px against its 44px floor on
+  the first full suite run of this item; rerun alone it failed 1 of 3 on the
+  tree and 2 of 5 on b039020 (before the fix, `git archive`), the same
+  height each time -- a sub-pixel height, not a change. It can turn a gate
+  red by itself; not touched here.
+
+### THE REHEARSAL *(2026-09-26 about 09:20Z; a scratch copy through `db.back_up_the_live_record`, never the record)*
+
+A 1.06 GB copy of the live record, opened with `db.open_db` under this tree:
+the trigger was made (absent before), all 101 recommendations byte for byte
+as before, the 18 standing pairs (36 rows) intact; `schema_diff.compare`
+against a fresh build of the tree found 0 differences in behaviour (235
+objects each; ten tables differ only in what the ruling normalises, the
+new trigger not among them: its text is the tree's). On the migrated copy, a
+third row on 45 and 46's total and a second on a game and market with one
+standing row (`mlb_823083` spread, rec 101) were both refused in the
+ruling's words.
+
+### PROVED, and one gap closed *(the prover, 2026-09-26)*
+
+- **The planting ESCAPES on b039020** (`git archive` into scratch, this
+  `plant.py`'s planting run over it: all six faults named) and is CAUGHT
+  on this tree. **Each lock alone is proved by it**: with the door
+  neutralised in a scratch copy (every pick "write"), the schema still
+  refuses the second row, so the pass writes ONE side, counts the refusal
+  as a second and never says "both sides" -- ESCAPED; with the trigger
+  neutralised, rec 46 as written and a second over go straight into the
+  table -- ESCAPED. The escape's first words said "both sides ... two fees"
+  of the one row the neutralised door leaves; they now fit the rows found.
+- **The eight new tests fail on b039020** (the new `test_recommend.py` run
+  over the unfixed tree) and pass here.
+- **Other ways in, tried on scratch databases, all refused on this tree and
+  all accepted on b039020**: two rows in one multi-row VALUES, INSERT OR
+  IGNORE, INSERT OR REPLACE on the other side, INSERT ... SELECT of the
+  stored row turned over, and an UPSERT. An UPDATE of the side or of the
+  game is `recommendations_no_update`'s (LAW 3), on both.
+- **A RUN FAILED FOR WANT OF A MODEL KEPT NO ACCOUNT** (a gap in the build,
+  closed). `run.MarketNotTrained` is raised after the markets with a model
+  are recorded, and `run_task`'s failure payload held the traceback alone,
+  so what such a run recommended and refused, and why, was not kept -- while
+  the build said the predict and final tasks keep it. `run_task` now keeps
+  `exc.result["recommended"]` beside the traceback, inside a guard that can
+  never stop the failure being recorded.
+  `test_recommend.py::test_a_run_failed_for_want_of_a_model_keeps_what_it_recommended`
+  fails on the tree before the fix (a scratch copy: no `recommended` in the
+  stored payload) and passes after. The live record has no such failure
+  since 19 September (measured read-only), so nothing was lost there.
+- **The gate's step 2, dry-run on a fresh copy** (the record rows and the
+  two schema comparisons only, through `verify`'s own helpers; the
+  credential scan handed an empty scratch settings file): every row passes.
+  Both comparisons: 0 differences in behaviour, 0 registered, and the same
+  ten tables differing only cosmetically in each (234 objects against the
+  release, 235 against this tree: the trigger, its text on the migrated
+  copy byte for byte the fresh build's).
+- **Found in passing, not this item's: a recommendation can be REPLACED.**
+  `INSERT OR REPLACE` naming a stored recommendation's id removes it and
+  writes another in its place -- SQLite fires no delete trigger for a
+  replacement unless recursive triggers are on, so `recommendations_no_delete`
+  never sees it (measured on scratch databases, on this tree and on
+  b039020). The snapshot table had the same hole until
+  `market_snapshots_never_replaced`. It cannot put both sides on one game
+  and market -- the new rule refuses a replacement onto a game and market
+  holding one -- but it erases what was said (LAW 3). No writer does it;
+  not built here, because no ruling names it.

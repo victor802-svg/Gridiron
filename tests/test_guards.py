@@ -561,6 +561,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         # re-grade is true by its arithmetic and never rewritten.
         "plant_a_no_side_edge_divided_by_the_yes_price",
         "plant_a_regrade_that_is_false_or_rewritten",
+        # GRIDIRON_REPAIR item 5 (the operator's ruling of 2026-09-23, built
+        # 2026-09-26): one recommendation per game and market, never both
+        # sides -- recs 45 and 46, replayed.
+        "plant_both_sides_of_one_total_recommended",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

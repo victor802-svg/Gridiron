@@ -233,15 +233,15 @@ _SKEWED = dict(slope=0.449, intercept=-0.270, n_train=106)
 
 def _away_pick(conn, *, game="g0", created="2026-09-07T00:00:00Z",
                claimed="2026-09-07T01:30:00Z", confidence=0.57, price=0.485,
-               predictor="statistical"):
+               predictor="statistical", pass_kind="final"):
     """The away side at 57%, so a claim of 43% on the home side, line-less,
     against a 48.5c price: the no side, raw, at +3.5c."""
     conn.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
         " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
         " factor_set_version, factors_json, reasoning) VALUES (?, 'mlb', ?,"
-        " 'moneyline', 'BBB', NULL, ?, 'win', ?, 'final', 'fs2',"
-        " ?, 'test')", (created, game, confidence, predictor, WHOLE))
+        " 'moneyline', 'BBB', NULL, ?, 'win', ?, ?, 'fs2',"
+        " ?, 'test')", (created, game, confidence, predictor, pass_kind, WHOLE))
     pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
     conn.execute(
         "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
@@ -336,14 +336,16 @@ def test_the_row_carries_the_correction_that_was_current_and_keeps_it(tmp_path):
         conn.execute("UPDATE recommendations SET calibrated_fair_value = 0.6,"
                      " correction_version = 9 WHERE id = ?", (first["id"],))
     # and a version is never written without its number, nor a number without
-    # its version, nor a number that is not a probability
+    # its version, nor a number that is not a probability. On a market of the
+    # game with nothing standing: g9's moneyline holds `after`, and a second
+    # there is refused before any CHECK is read (item 5, 2026-09-26).
     for version_, number in ((2, None), (None, 0.5), (2, 1.0)):
         with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
             conn.execute(
                 "INSERT INTO recommendations (prediction_id, sport, game_id,"
                 " market, side, fair_value, price, edge_cents, size_kind,"
                 " size_units, gate_n, created_utc, correction_version,"
-                " calibrated_fair_value) VALUES (?, 'mlb', 'g9', 'moneyline',"
+                " calibrated_fair_value) VALUES (?, 'mlb', 'g9', 'spread',"
                 " 'yes', 0.43, 0.485, 3.0, 'flat', 1.0, 0,"
                 " '2099-01-01T00:00:00Z', ?, ?)", (after, version_, number))
 
@@ -559,12 +561,23 @@ def test_a_pick_with_no_side_carries_no_return(tmp_path):
 
 
 def _recorded(conn, rid, *, side, price, edge, created, fair=0.40, pid=None):
-    """A recommendation as the record holds one, written straight in."""
+    """A recommendation as the record holds one, written straight in.
+
+    EACH ON A GAME OF ITS OWN (GRIDIRON_REPAIR item 5, 2026-09-26): one game
+    and market hold one recommendation, so a row here is a game here -- as
+    recs 3, 10 and 26 were on the record. What these tests read is the
+    row's own side, price and edge."""
+    game = f"r{rid}"
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1, 'R',"
+        " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')",
+        (game,))
     conn.execute(
         "INSERT INTO recommendations (id, prediction_id, sport, game_id, market,"
         " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
-        " created_utc) VALUES (?, ?, 'mlb', 'g0', 'spread', ?, ?, ?, ?, 'flat',"
-        " 1.0, 53, ?)", (rid, pid, side, fair, price, edge, created))
+        " created_utc) VALUES (?, ?, 'mlb', ?, 'spread', ?, ?, ?, ?, 'flat',"
+        " 1.0, 53, ?)", (rid, pid, game, side, fair, price, edge, created))
 
 
 def _let_through_world(tmp_path, *, with_56=False):
@@ -1030,11 +1043,14 @@ def test_the_account_of_a_close_is_append_only_and_refuses_the_old_defect(tmp_pa
         conn.execute("UPDATE recommendation_closes SET clv_cents = 9")
     with pytest.raises(sqlite3.IntegrityError, match="never deleted"):
         conn.execute("DELETE FROM recommendation_closes")
-    # a second recommendation, still open, on the same prediction
+    # a second recommendation, still open, on the same prediction -- under
+    # another market of its game, because one game and market hold one
+    # recommendation (GRIDIRON_REPAIR item 5, 2026-09-26); the close's rules
+    # read the game and the contract, never the market
     conn.execute(
         "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
         " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
-        " created_utc) SELECT prediction_id, sport, game_id, market, side,"
+        " created_utc) SELECT prediction_id, sport, game_id, 'spread', side,"
         " fair_value, price, edge_cents, size_kind, size_units, gate_n,"
         " '2099-01-01T00:00:00Z' FROM recommendations")
     open_id = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
@@ -1085,3 +1101,255 @@ def test_the_words_are_plain_and_recommend_without_tipping():
                                     restated=33)):
         assert audit.advice_word_faults(words) == [], words
         assert audit.plain_words_violations(words) == [], words
+
+
+# --- one recommendation per game and market (GRIDIRON_REPAIR item 5) --------
+#
+# The operator's ruling of 2026-09-23, built 2026-09-26: "One recommendation
+# per game and market, and never both sides. Recs 45 and 46 are the
+# planting." Recs 45 and 46's numbers, put on this world's moneyline: the
+# statistical forecast's 54.9% claim and the reasoning forecast's 43%, both
+# against 48.5c -- the yes side at +4.45c and the no side at +3.5c.
+
+def _both_sides(conn, *, game="g0"):
+    """Rec 45's forecast and rec 46's, on one game and market, one pass."""
+    over = _away_pick(conn, game=game, confidence=0.450524,
+                      created="2026-09-07T00:00:00Z")
+    under = _away_pick(conn, game=game, predictor="llm",
+                       created="2026-09-07T00:00:07Z")
+    return over, under
+
+
+def _rows(conn):
+    return [tuple(r) for r in conn.execute(
+        "SELECT prediction_id, game_id, market, side FROM recommendations"
+        " ORDER BY id")]
+
+
+def _insert(conn, pid, side, created, *, game="g0", market="moneyline"):
+    """A recommendation written straight into the table, round the door."""
+    conn.execute(
+        "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
+        " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+        " created_utc) VALUES (?, 'mlb', ?, ?, ?, 0.5, 0.485, 3.5, 'flat',"
+        " 1.0, 0, ?)", (pid, game, market, side, created))
+    return conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+
+
+def test_one_pass_taking_both_sides_of_a_game_and_market_recommends_neither(tmp_path):
+    """THE PASS OF 22:13:03Z ON 21 SEPTEMBER, as it ran: both forecasts clear
+    the bar, on opposite sides of one game and market. Neither is written,
+    both are counted by name, and each says why in words."""
+    conn = _world(tmp_path)
+    over, under = _both_sides(conn)
+    got = {e["prediction_id"]: e
+           for e in recommend.for_predictions(conn, [over, under])}
+    assert (got[over]["side"], got[over]["edge_cents"]) == ("yes", pytest.approx(4.45))
+    assert (got[under]["side"], got[under]["edge_cents"]) == ("no", pytest.approx(3.5))
+    counts = recommend.record_for(conn, [over, under])
+    assert _rows(conn) == []
+    assert counts["recommended"] == 0 and counts["both_sides"] == 2
+    words = {r["prediction_id"]: r["why"] for r in counts["refused"]}
+    assert set(words) == {over, under}
+    assert "both sides" in words[over]
+    assert "1 on the yes side and 1 on the no side" in words[over]
+    assert audit.plain_words_violations(words[over]) == []
+    assert audit.advice_word_faults(words[over]) == []
+
+
+def test_a_game_and_market_with_a_standing_recommendation_gets_no_second(tmp_path):
+    """THE MORNING AND FINAL PASSES, and recs 45 and 46 replayed in order:
+    once a game and market hold a standing recommendation, a later pass adds
+    none -- the same side at a new price, or the other side from another
+    forecaster -- and says which one stands. A pass that would take both
+    sides of it is counted as a second, not as both sides: the standing one
+    decides first."""
+    conn = _world(tmp_path)
+    morning = _away_pick(conn, confidence=0.450524, pass_kind="early",
+                         created="2026-09-06T00:00:00Z")
+    assert recommend.record_for(conn, [morning])["recommended"] == 1
+    first = conn.execute("SELECT id FROM recommendations").fetchone()[0]
+    over, under = _both_sides(conn)
+    for ids in ([over], [under], [over, under]):
+        counts = recommend.record_for(conn, ids)
+        assert counts["recommended"] == 0 and counts["both_sides"] == 0
+        assert counts["second_on_game_market"] == len(ids)
+        why = counts["refused"][0]["why"]
+        assert f"recommendation {first} standing" in why
+        assert "the yes side at 48.5¢" in why
+        assert audit.plain_words_violations(why) == []
+    # its own forecast, asked again, is the recommendation already there
+    again = recommend.record_for(conn, [morning])
+    assert again["already"] == 1 and again["refused"] == []
+    assert _rows(conn) == [(morning, "g0", "moneyline", "yes")]
+
+
+def test_one_sides_picks_in_one_pass_are_recommended_once_from_the_first(tmp_path):
+    """TWO FORECASTS CLEARING ONE SIDE IN ONE PASS: the forecast written
+    first is the recommendation, whichever order they are handed in."""
+    conn = _world(tmp_path)
+    earlier = _away_pick(conn, created="2026-09-07T00:00:00Z")
+    later = _away_pick(conn, predictor="llm", created="2026-09-07T00:00:07Z")
+    counts = recommend.record_for(conn, [later, earlier])
+    assert counts["recommended"] == 1 and counts["second_on_game_market"] == 1
+    assert _rows(conn) == [(earlier, "g0", "moneyline", "no")]
+    assert counts["refused"][0]["prediction_id"] == later
+    assert "from the forecast it wrote first" in counts["refused"][0]["why"]
+
+
+def test_another_game_or_another_market_is_its_own(tmp_path):
+    """ONE PER GAME AND MARKET, not one per game, and not one per pass."""
+    conn = _world(tmp_path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1, 'R',"
+        " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')")
+    here = _away_pick(conn)
+    there = _away_pick(conn, game="g1", predictor="llm")
+    other_market = _pick(conn, prob=0.62, implied=0.46, market="spread")
+    counts = recommend.record_for(conn, [here, there, other_market])
+    assert counts["recommended"] == 3 and counts["refused"] == []
+    assert sorted((g, m) for _, g, m, _ in _rows(conn)) == [
+        ("g0", "moneyline"), ("g0", "spread"), ("g1", "moneyline")]
+
+
+def test_the_schema_refuses_a_second_standing_recommendation_on_either_side(tmp_path):
+    """THE SECOND LOCK, however the row is written: straight into the table,
+    a second recommendation on a game and market is refused in the ruling's
+    words, on either side, and never in the words of a forecast written
+    twice. A withdrawn one does not stand -- by its own void or by its
+    forecast's -- so the game and market may be recommended again, as NFL
+    spreads 73, 75, 76 and 78 were after 62, 63, 64 and 66."""
+    conn = _world(tmp_path)
+    over, under = _both_sides(conn)
+    first = _insert(conn, over, "yes", "2026-09-07T02:00:00Z")
+    for pid, side in ((under, "no"), (over, "yes")):
+        with pytest.raises(sqlite3.IntegrityError) as refused:
+            _insert(conn, pid, side, "2026-09-07T02:00:01Z")
+        assert recommend.ONE_PER_GAME_AND_MARKET in str(refused.value)
+        assert "UNIQUE" not in str(refused.value)
+    conn.execute("INSERT INTO recommendation_voids (recommendation_id,"
+                 " voided_utc, reason) VALUES (?, '2026-09-07T03:00:00Z',"
+                 " 'withdrawn in this test world')", (first,))
+    _insert(conn, under, "no", "2026-09-07T03:00:01Z")
+    conn.execute("INSERT INTO prediction_voids (prediction_id, voided_utc,"
+                 " reason) VALUES (?, '2026-09-07T04:00:00Z',"
+                 " 'withdrawn in this test world')", (under,))
+    _insert(conn, over, "yes", "2026-09-07T04:00:01Z")
+    assert conn.execute("SELECT COUNT(*) FROM recommendations").fetchone()[0] == 3
+    # and the door reads standing exactly as the rule does: one, the last
+    assert [s["prediction_id"] for s in
+            recommend.standing_recommendations(conn, "g0", "moneyline")] == [over]
+
+
+def test_the_rule_reads_no_row_already_written(tmp_path):
+    """NEW ROWS ONLY (LAW 3). A record that holds a pair written before the
+    rule -- the shape of recs 45 and 46, and of the seventeen early and final
+    pairs -- is opened under the schema that carries it: the rule is made
+    over the pair without refusing or touching it, both rows stand exactly
+    as written, and only a third is refused."""
+    conn = _world(tmp_path)
+    # a third forecast of the question, ranked while it led the slate (the
+    # ranker shortlists one question once, so it is written first)
+    third = _away_pick(conn, confidence=0.450524, pass_kind="early",
+                       created="2026-09-06T00:00:00Z")
+    over, under = _both_sides(conn)
+    conn.execute("DROP TRIGGER recommendation_one_per_game_and_market")
+    _insert(conn, over, "yes", "2026-09-07T02:00:00Z")
+    _insert(conn, under, "no", "2026-09-07T02:00:00Z")
+    conn.commit()
+    before = [tuple(r) for r in conn.execute(
+        "SELECT * FROM recommendations ORDER BY id")]
+    db.init(conn)
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'trigger'"
+        "   AND name = 'recommendation_one_per_game_and_market'").fetchone()
+    assert [tuple(r) for r in conn.execute(
+        "SELECT * FROM recommendations ORDER BY id")] == before
+    # the pair reads as it stands, first first -- 45 before 46, by its id
+    # where the stamp ties -- and each forecast finds its own there
+    assert [s["prediction_id"] for s in recommend.standing_recommendations(
+        conn, "g0", "moneyline")] == [over, under]
+    counts = recommend.record_for(conn, [over, under])
+    assert counts["recommended"] == 0 and counts["already"] == 2
+    assert recommend.for_predictions(conn, [third])[0]["side"] == "yes"
+    assert recommend.record_for(conn, [third])["second_on_game_market"] == 1
+    with pytest.raises(sqlite3.IntegrityError,
+                       match=recommend.ONE_PER_GAME_AND_MARKET):
+        _insert(conn, third, "yes", "2026-09-08T02:00:00Z")
+
+
+def test_a_refusal_by_the_record_is_counted_by_its_own_name(tmp_path, monkeypatch):
+    """TWO WRITERS AT ONCE: the door looked and found nothing standing, and
+    another pass wrote first. The schema's refusal is counted as a second on
+    the game and market, and said -- never as "already", which is a forecast
+    written twice, and which is what a refusal carrying "UNIQUE" would have
+    been filed under."""
+    conn = _world(tmp_path)
+    over, under = _both_sides(conn)
+    recommend.record_for(conn, [over])
+    monkeypatch.setattr(recommend, "standing_recommendations",
+                        lambda conn, game_id, market: [])
+    counts = recommend.record_for(conn, [under])
+    assert counts["recommended"] == 0 and counts["already"] == 0
+    assert counts["second_on_game_market"] == 1
+    assert "the record refused it" in counts["refused"][0]["why"]
+    assert len(_rows(conn)) == 1
+
+
+def test_the_run_keeps_what_it_refused_and_why(tmp_path):
+    """SAID IN PLAIN WORDS, AND KEPT: the counts and the words travel on the
+    run's result, which the predict and final tasks store with the run."""
+    import inspect
+
+    from gridiron import tasks
+
+    source = inspect.getsource(tasks)
+    assert source.count('"recommended": result.get("recommended")') == 2
+    conn = _world(tmp_path)
+    over, under = _both_sides(conn)
+    counts = recommend.record_for(conn, [over, under])
+    json.dumps(counts)          # it is stored as JSON with the run
+    assert [r["side"] for r in counts["refused"]] == ["yes", "no"]
+
+
+def test_a_run_failed_for_want_of_a_model_keeps_what_it_recommended(
+        league, monkeypatch):
+    """AND A RUN THAT FAILS BY NAME KEEPS IT TOO (the prover of item 5,
+    2026-09-26). `run.MarketNotTrained` is raised after the markets that have
+    a model are written and recorded, so such a run has recommended -- and
+    until the prover its stored payload held the traceback alone, while a
+    run that ended ok kept the account. The same world as
+    `test_untrained.py`'s: NFL moneyline has no model, spread and total do."""
+    from gridiron import run, tasks
+    from gridiron.factors import store
+    from gridiron.model import activation, baseline
+
+    seasons = dict(config.SPORT_CURRENT_SEASON)
+    seasons["nfl"] = 2025
+    monkeypatch.setattr(config, "SPORT_CURRENT_SEASON", seasons)
+    store.sync_registry(league)
+    for market in ("spread", "total"):
+        baseline.train(league, market, (2025,), l2=1.0, note="test")
+    activation.activate_in_a_scratch_world(league)
+    raised = {}
+    real = run.run_slate
+
+    def watched(*args, **kwargs):
+        try:
+            return real(*args, **kwargs)
+        except run.MarketNotTrained as exc:
+            raised["result"] = exc.result
+            raise
+
+    monkeypatch.setattr(run, "run_slate", watched)
+    got = tasks.run_task(league, "predict:nfl", use_llm=False)
+    assert got["result"] == "failed" and got["detail"].startswith("MarketNotTrained")
+    recorded = raised["result"]["recommended"]
+    assert {"recommended", "second_on_game_market", "both_sides",
+            "refused"} <= set(recorded)
+    stored = json.loads(league.execute(
+        "SELECT payload_json FROM task_runs WHERE task = 'predict:nfl'"
+        " ORDER BY id DESC LIMIT 1").fetchone()[0])
+    assert "Traceback" in stored["traceback"]
+    assert stored["recommended"] == json.loads(json.dumps(recorded))

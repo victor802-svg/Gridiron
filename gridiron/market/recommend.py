@@ -565,6 +565,158 @@ def measured_edge(conn: sqlite3.Connection, *, sport: str, market_type: str,
     }
 
 
+# ---------------------------------------------------------------------------
+# ONE RECOMMENDATION PER GAME AND MARKET, AND NEVER BOTH SIDES
+# (GRIDIRON_REPAIR item 5, the operator's ruling of 2026-09-23, built
+# 2026-09-26: "One recommendation per game and market, and never both sides.
+# Recs 45 and 46 are the planting.")
+# ---------------------------------------------------------------------------
+#
+# THE DEFECT. `record_for` wrote a row for every forecast whose pick cleared
+# the bar, and the only refusal on the table was one forecast written twice
+# in one second. So the morning and final passes each recorded the same game
+# and market -- twelve pairs by THE READ of 2026-09-23, seventeen by
+# 2026-09-26 -- and two forecasters in one pass each recorded their own
+# side: recs 45 and 46, Toronto at Baltimore over 7.5 from the statistical
+# pass and under 7.5 from the reasoning pass, both at 48.5c, a certain loss
+# of two fees.
+#
+# THE RULE IS DECIDED HERE, ONCE (`one_per_game_and_market`), and the
+# schema's `recommendation_one_per_game_and_market` refuses a second row
+# however it is written:
+#   * a game and market that already hold a standing recommendation get no
+#     second one, on either side, from any later pass or forecaster;
+#   * when one pass would recommend BOTH sides of a game and market -- two
+#     forecasters, or two rungs, disagreeing -- it recommends NEITHER, and
+#     says so: the conservative default, because the ruling names no
+#     survivor, and the app's two opinions cancelling is not an opinion;
+#   * several picks on one side in one pass: the forecast written first is
+#     recommended, and the others are not added.
+# "The market" is the table's own `market` -- the market type, or the prop
+# type for a prop -- whatever the rung or the player: the ruling's words
+# read literally, which is also the stricter reading. No prop is priced
+# today, so no case on the record turns on it.
+#
+# A WITHDRAWN RECOMMENDATION DOES NOT STAND (`not_withdrawn`): a game and
+# market whose only recommendation was withdrawn may be recommended again,
+# as NFL spreads 73, 75, 76 and 78 were after 62, 63, 64 and 66.
+#
+# NOTHING ALREADY WRITTEN IS TOUCHED (LAW 3). The pairs written before the
+# fix stand as written and are counted as written: the ruling names none of
+# them, and whether they should be counted once is the operator's question
+# (docs/REPAIR_STATE.md, question 12). Whether the page follows the record
+# is question 11; until it is ruled, the rule binds what is written.
+
+#: THE RULING'S WORDS, which the schema's refusal carries too: `record_for`
+#: knows that refusal by them, never by "UNIQUE", which would file it under
+#: a forecast written twice.
+ONE_PER_GAME_AND_MARKET = "one recommendation per game and market"
+
+#: Why a pick that cleared the bar was not written, in words. Kept with the
+#: run (`record_for`'s `refused`, in the predict and final tasks' payload).
+STANDS_WHY = ("not written: " + ONE_PER_GAME_AND_MARKET + ", and this one "
+              "already has recommendation {id} standing -- the {side} side "
+              "at {price}¢, written {when} -- so no second is added on "
+              "either side (the operator's ruling of 2026-09-23)")
+FIRST_IN_THE_PASS_WHY = ("not written: " + ONE_PER_GAME_AND_MARKET + ", and "
+                         "this pass recommends this one once, on the {side} "
+                         "side, from the forecast it wrote first (the "
+                         "operator's ruling of 2026-09-23)")
+BOTH_SIDES_WHY = ("not written: this pass's forecasts take both sides of "
+                  "this game and market -- {yes} on the yes side and {no} "
+                  "on the no side -- and a game and market are never "
+                  "recommended on both sides, so neither side is (the "
+                  "operator's ruling of 2026-09-23)")
+REFUSED_BY_THE_RECORD_WHY = ("not written: the record refused it -- "
+                             + ONE_PER_GAME_AND_MARKET + ", and another was "
+                             "written on this game and market first")
+
+
+def standing_recommendations(conn: sqlite3.Connection, game_id: str,
+                             market: str) -> list[dict]:
+    """The recommendations standing on one game and market, first first.
+
+    FIRST BY ITS STAMP, THEN ITS ID: recs 45 and 46 were written in the same
+    second, and "first" must not depend on the order SQLite hands rows back.
+    Through the door (`not_withdrawn`), so a withdrawn one never stands.
+    More than one comes back only for a pair written before 2026-09-26,
+    which stands as written.
+    """
+    return [dict(r) for r in conn.execute(
+        "SELECT r.id, r.prediction_id, r.side, r.price, r.created_utc"
+        "  FROM recommendations r"
+        " WHERE r.game_id = ? AND r.market = ?" + not_withdrawn(conn) +
+        " ORDER BY r.created_utc, r.id", (game_id, market))]
+
+
+def one_per_game_and_market(conn: sqlite3.Connection,
+                            entries: list[dict]) -> dict[int, dict]:
+    """What one pass may write: the ruling, applied in one place.
+
+    `entries` are one pass's picks that cleared the bar (`for_predictions`
+    entries with a side). Returns each one's verdict by its prediction id:
+    "write"; "already", its own recommendation stands; "second", another
+    stands on its game and market, or this pass's first on the same side is
+    written instead; or "both_sides", the pass took both sides of its game
+    and market and neither is written. Every verdict that writes nothing
+    carries why, in words; `standing` is the recommendation that stands,
+    where one does.
+
+    A STANDING RECOMMENDATION DECIDES FIRST: a pass that takes both sides of
+    a game and market already recommended adds nothing to it, and is
+    counted as a second, not as both sides.
+
+    THE FIRST IN A PASS IS THE FORECAST WRITTEN FIRST (its stamp, then its
+    id): the statistical row of a question is written before the reasoning
+    row, so it is the statistical pick that stands when both clear one side.
+    """
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for entry in sorted(entries, key=lambda e: (e.get("written_utc") or "",
+                                                e["prediction_id"])):
+        groups.setdefault((entry["game_id"], entry["market"]), []).append(entry)
+    verdicts: dict[int, dict] = {}
+    for (game_id, market), group in groups.items():
+        standing = standing_recommendations(conn, game_id, market)
+        if standing:
+            first = standing[0]
+            own = {s["prediction_id"] for s in standing}
+            why = STANDS_WHY.format(
+                id=first["id"], side=first["side"], price=_cents(first["price"]),
+                when=_stamp_words(first["created_utc"]))
+            for entry in group:
+                mine = entry["prediction_id"] in own
+                verdicts[entry["prediction_id"]] = {
+                    "verdict": "already" if mine else "second",
+                    "why": None if mine else why, "standing": first}
+            continue
+        sides = [entry["side"] for entry in group]
+        if len(set(sides)) > 1:
+            why = BOTH_SIDES_WHY.format(yes=sides.count("yes"),
+                                        no=sides.count("no"))
+            for entry in group:
+                verdicts[entry["prediction_id"]] = {
+                    "verdict": "both_sides", "why": why, "standing": None}
+            continue
+        verdicts[group[0]["prediction_id"]] = {
+            "verdict": "write", "why": None, "standing": None}
+        for entry in group[1:]:
+            verdicts[entry["prediction_id"]] = {
+                "verdict": "second", "standing": None,
+                "why": FIRST_IN_THE_PASS_WHY.format(side=group[0]["side"])}
+    return verdicts
+
+
+def _stamp_words(stamp: str) -> str:
+    """"2026-09-21T22:13:03Z" -> "2026-09-21 at 22:13 UTC"."""
+    return f"{stamp[:10]} at {stamp[11:16]} UTC" if len(stamp) >= 16 else stamp
+
+
+def _refusal(entry: dict, why: str) -> dict:
+    """One pick the ruling kept off the record, and why."""
+    return {"prediction_id": entry["prediction_id"], "game_id": entry["game_id"],
+            "market": entry["market"], "side": entry["side"], "why": why}
+
+
 def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     """Write down what was recommended, at the price it was recommended at.
 
@@ -587,15 +739,46 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     The version is looked up before the row is stamped, so it is never one
     that activated after the row. Nothing already written is touched (LAW 3),
     and `recommendation_correction_is_frozen` refuses an edit of either.
+
+    ONE PER GAME AND MARKET, NEVER BOTH SIDES (GRIDIRON_REPAIR item 5, the
+    operator's ruling of 2026-09-23, built 2026-09-26). Until this date every
+    pick that cleared the bar was written, so a morning and a final pass
+    each recorded one game and market, and recs 45 and 46 recorded both
+    sides of one total in one pass. The ids handed in are one pass, and
+    `one_per_game_and_market` decides, before anything is written, which of
+    their picks may be: none on a game and market that already hold a
+    standing recommendation, neither side where the pass took both, and the
+    first written where several took one side. Each one not written is
+    counted by name -- `already`, `second_on_game_market`, `both_sides` --
+    and said in words in `refused`. The schema's
+    `recommendation_one_per_game_and_market` refuses a second row however it
+    is written, and a refusal from it -- another writer got there between
+    the look and the insert -- is counted as a second by the ruling's words,
+    never as `already`, which means a forecast written twice.
     """
-    counts = {"recommended": 0, "no_side": 0, "already": 0, "in_game": 0}
-    for entry in for_predictions(conn, prediction_ids):
+    counts = {"recommended": 0, "no_side": 0, "already": 0, "in_game": 0,
+              "second_on_game_market": 0, "both_sides": 0}
+    refused: list[dict] = []
+    entries = for_predictions(conn, prediction_ids)
+    decided = one_per_game_and_market(conn, [
+        e for e in entries
+        if e["side"] is not None and e["size"]["kind"] in ("flat", "fraction")])
+    for entry in entries:
         if entry["side"] is None:
             counts["no_side"] += 1
             continue
         size = entry["size"]
         if size["kind"] not in ("flat", "fraction"):
             counts["no_side"] += 1
+            continue
+        verdict = decided[entry["prediction_id"]]
+        if verdict["verdict"] == "already":
+            counts["already"] += 1
+            continue
+        if verdict["verdict"] != "write":
+            counts["both_sides" if verdict["verdict"] == "both_sides"
+                   else "second_on_game_market"] += 1
+            refused.append(_refusal(entry, verdict["why"]))
             continue
         corrected = entry["correction_version"] is not None
         try:
@@ -614,10 +797,18 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
                  entry["fair_value"] if corrected else None))
             counts["recommended"] += 1
         except sqlite3.IntegrityError as exc:
+            # THE SCHEMA'S REFUSAL, BY THE RULING'S WORDS, before the
+            # forecast-twice one: a second on the game and market is not a
+            # forecast written twice, and is counted and said as what it is.
+            if ONE_PER_GAME_AND_MARKET in str(exc):
+                counts["second_on_game_market"] += 1
+                refused.append(_refusal(entry, REFUSED_BY_THE_RECORD_WHY))
+                continue
             if "UNIQUE" not in str(exc):
                 raise
             counts["already"] += 1
     conn.commit()
+    counts["refused"] = refused
     return counts
 
 

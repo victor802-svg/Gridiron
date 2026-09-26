@@ -350,6 +350,67 @@ depend on the answer.
     Default until ruled: (B); not built; FOLLOWUPS has it with two more of
     the same shape, also not named -- the payout floor and a proposed
     combo's no-side legs.
+11. **Does "never both sides" bind the page, or the record? (Repair item 5;
+    asked 2026-09-26.)** The ruling: "One recommendation per game and
+    market, and never both sides." Built: the record -- `record_for` asks
+    one door (`recommend.one_per_game_and_market`) before it writes, and a
+    schema trigger refuses a second standing row however it is written. The
+    page (Upcoming's "Clears the bar", the recommendation lines and the
+    combos, all from `recommend.for_predictions`) shows one forecaster at a
+    time, the latest forecast per question, and is unchanged.
+    - **(A) The record.** A recommendation is a row in `recommendations` --
+      recs 45 and 46 are rows -- and the rule binds what is written. The
+      page can then show a pick the record refused: after the final pass, a
+      game whose morning pick stands shows the final card's pick at its new
+      price (17 of the 18 pairs on the record are this shape, same side);
+      when the two forecasters split in one pass, each forecaster's page
+      shows its own side while the record holds neither; and if a final
+      pass ever turned the side of a standing morning pick (none has on the
+      record), the page would show the other side of a recommendation that
+      stands. A pick marked from such a card has no edge on record.
+    - **(B) The page follows the record.** `for_predictions` asks the same
+      door: a pick on a game and market with a standing recommendation from
+      another forecast, or on which the pass took both sides, is shown with
+      its edge but not as a pick, and says why. After a final pass the
+      morning's pick then leaves "Clears the bar" (the recommendation that
+      stands is the morning's, and the card on the page is the final's),
+      so a card would need to say which recommendation stands and at what
+      price -- new words on the card, the Watching heading and the empty
+      sentence, and renders at both widths.
+    Default until ruled: (A), built; (B) not built.
+12. **The pairs written before the rule: counted as written, or once per
+    game and market? (Repair item 5; asked 2026-09-26.)** Measured read-only
+    at about 08:20Z on 2026-09-26: 18 game-markets hold two standing
+    recommendations each, 36 rows -- 1/9, 3/10, 4/12, 5/13, 6/14, 20/25,
+    21/26, 23/28, 32/34, 41/44, 42/48, 43/49, **45/46** (the only pair on
+    opposite sides), 60/79, 61/80, 84/93, 86/94, 87/95 (THE READ counted
+    13; the scheduler wrote five more since, and can until the release).
+    The trigger reads none of them, and nothing was voided, re-graded or
+    labelled: the ruling names none. They are counted as written today:
+    MLB spread's closing line holds 9 measured closes, 3 of them (93, 94,
+    95) the second row of their game and market; MLB total holds none (45
+    and 46 are restated, unmeasured). The kill criterion
+    (`coverage.stopped`, 50) and READINESS count the same rows.
+    - **(A) As written.** The ruling says what may be written from now on;
+      every existing row stays in every count it is in. Item 6 restates the
+      at-the-line scorecard per distinct bet by its own words.
+    - **(B) Once per game and market.** The closing line, and so the kill
+      criterion, counts only the first standing row of each game and market
+      -- a read-time clause beside `standing_row_clause`, nothing written --
+      and names the later rows beside the count; for 45/46 that is 45 alone,
+      or neither if "never both sides" is read back onto the pair.
+    Default until ruled: (A); nothing built for (B).
+13. **A LAW 3 hole outside the named items: fix it? (Found by item 5's
+    prover, 2026-09-26.)** `INSERT OR REPLACE` naming a stored
+    recommendation's id removes it and writes another in its place: SQLite
+    fires no delete trigger for a replacement, so `recommendations_no_delete`
+    never sees it. It is the shape `market_snapshots` had until
+    `market_snapshots_never_replaced` (5a'), and it exists on every release
+    so far. No code does it today (every writer inserts plainly). The fix is
+    one trigger of a new name and a planting -- but the repair brief says
+    "class (a) defects only ... in this order", and this is not among items
+    1-8. Build it as its own commit now, or after close-out? Default until
+    ruled: not built; FOLLOWUPS has it.
 
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 

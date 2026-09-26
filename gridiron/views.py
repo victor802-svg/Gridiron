@@ -2140,11 +2140,14 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
     including when that number is negative, which is the point of showing it.
 
     THE FLOOR IS A DISPLAY PREFERENCE AND IS APPLIED HERE, on the way to the
-    screen, never on the way to the record: `recommend.record_for` writes
-    every pick that clears the bar whatever the floor says, so the closing
-    line on the 21st is measured over all of them. A taste that could hide
-    rows from the measurement would be the operator rewriting his own
-    evidence.
+    screen, never on the way to the record: `recommend.record_for` never
+    reads the floor, so the closing line is measured over every pick it
+    writes, folded or not. A taste that could hide rows from the measurement
+    would be the operator rewriting his own evidence. (What it writes is one
+    recommendation per game and market, never both sides -- the operator's
+    ruling of 2026-09-23, GRIDIRON_REPAIR item 5, from 2026-09-26 -- a rule
+    of the record, and not the floor's; whether this page follows it is
+    docs/REPAIR_STATE.md question 11.)
     """
     from . import settings as _settings
 

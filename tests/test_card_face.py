@@ -342,7 +342,8 @@ def test_every_card_carries_its_own_sample_size(tmp_path):
 def test_the_floor_folds_cards_and_hides_nothing_from_the_record(tmp_path, covered):
     """A FLOOR THAT HID PICKS FROM THE MEASUREMENT would be the operator's
     taste rewriting his own evidence. It is applied on the way to the screen;
-    `record_for` writes every pick that clears the bar whatever it says."""
+    `record_for` never reads it (and writes one recommendation per game and
+    market, the operator's ruling of 2026-09-23, whatever it says)."""
     conn = _world(tmp_path)
     pid = _pick(conn, prob=0.92)
     _claim(conn, pid, model_prob=0.92, venue_implied=0.80)   # pays 1.25x

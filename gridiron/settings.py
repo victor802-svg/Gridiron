@@ -224,15 +224,20 @@ EDITABLE: dict[str, dict] = {
         "default": "statistical",
     },
     # THE OPERATOR'S FLOOR (CARD_FACE F2b, 2026-09-07). A DISPLAY PREFERENCE,
-    # and the distinction is load-bearing: the engine records every pick that
+    # and the distinction is load-bearing: the engine records a pick that
     # clears the bar whatever this says, so the closing line is measured over
-    # all of them and, separately, over the ones this let through. Both
-    # figures render with their own N.
+    # every one it records and, separately, over the ones this let through.
+    # Both figures render with their own N. (From 2026-09-26 the record holds
+    # one recommendation per game and market, never both sides -- the
+    # operator's ruling of 2026-09-23, GRIDIRON_REPAIR item 5 -- so "the
+    # closing line is still measured on all of them" stopped being true of a
+    # second pick on a game already recommended. The floor still decides
+    # nothing about the record, and the words now say only that.)
     "min_payout": {
         "label": "Minimum payout",
         "why": ("picks that clear the bar but pay less than this fold into "
                 "one line instead of a card. It hides nothing from the "
-                "record: the closing line is still measured on all of them"),
+                "record: a folded pick is recorded exactly as a card is"),
         "section": "what the day shows",
         "kind": "multiple",
         "check": _a_multiple,
