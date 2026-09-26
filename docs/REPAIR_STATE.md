@@ -47,8 +47,19 @@
   then fails by name for any active market without one, and the day strip
   says so; no scheduled pass turns red (measured read-only first).
 - **Order now:** ~~5a~~ -> ~~item 4~~ -> ~~5a'~~ -> ~~migration~~ -> ~~5b~~
-  -> ~~item 2's remainder~~ -> **item 3** (in progress) -> items 4-8 of the
-  repair. (Was: item 2's remainder ("run.py:99 may never skip an untrained market
+  -> ~~item 2's remainder~~ -> ~~item 3~~ -> **item 4** (in progress) ->
+  items 5-8 of the repair.
+- **Item 3 RELEASED: 36e863f** (`/api/health` = 36e863f09439, 06:35Z on 26
+  September; gate 4/4, 303/303): a recommendation is priced from the
+  correction in force (now before the start; the claim's own instant once
+  the game is under way or over), stores raw, corrected and version, frozen.
+  On the live record no correction has ever been activated (63 fits, 0
+  active), so nothing changes until one is. The two columns and the trigger
+  reached the record through db.init.
+- **The first pass after items 4 and 2's remainder** (Predict-MLB, 05:00Z
+  on 26 September): ok, 68 forecasts, 26 reasoning rows each with a `sent`
+  prompt record; the audit passes on the record (538 reconstructed, 26
+  sent). (Was: item 2's remainder ("run.py:99 may never skip an untrained market
   silently -- a predict run with a skipped market fails by name, and the day
   strip shows it"; never applied: the activation gate made fits explicit
   but `run.already_answered` still drops a market with no model in silence)
