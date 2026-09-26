@@ -47,8 +47,13 @@
   then fails by name for any active market without one, and the day strip
   says so; no scheduled pass turns red (measured read-only first).
 - **Order now:** ~~5a~~ -> ~~item 4~~ -> ~~5a'~~ -> ~~migration~~ -> ~~5b~~
-  -> ~~item 2's remainder~~ -> ~~item 3~~ -> ~~item 4~~ -> **item 5** (in
-  progress) -> items 6-8 of the repair.
+  -> ~~item 2's remainder~~ -> ~~item 3~~ -> ~~item 4~~ -> ~~item 5~~ ->
+  **item 6** (in progress) -> items 7-8 of the repair.
+- **Item 5 RELEASED: 9014add** (`/api/health` = 9014addcf403, 10:49Z on 26
+  September; gate 4/4, 306/306): one recommendation per game and market,
+  never both sides, in the door and a new trigger that binds new rows only.
+  The 18 existing pairs are untouched (questions 11, 12); question 13 (a
+  LAW 3 hole: INSERT OR REPLACE on recommendations) written.
 - **Item 4 RELEASED: 3c43509** (`/api/health` = 3c43509a055c, 08:25Z on 26
   September; gate 4/4, 305/305): a no-side edge divides by the no-side
   cost. **The re-grade labels are NOT written**: the old divisor let four
