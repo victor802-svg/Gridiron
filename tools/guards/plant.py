@@ -7070,6 +7070,492 @@ def plant_a_run_recorded_only_when_it_ends() -> Result:
                   "audit.task_run_order_faults", True, faults[0])
 
 
+# ---------------------------------------------------------------------------
+# THE JOBS (GRIDIRON_REPAIR item 7, the operator's ruling of 2026-09-23,
+# built 2026-09-26): "SlateAlreadyAnswered is a noop, not a failure; the
+# run_task closing UPDATE moves inside the try and a hung 'running' row older
+# than its task's silent_after_hours is marked abandoned; every Gridiron-*
+# task gains WakeToRun."
+# ---------------------------------------------------------------------------
+
+LAW_THE_JOBS = "A JOB'S RECORD SAYS WHAT HAPPENED TO IT, AND EVERY JOB WAKES THE MACHINE"
+
+
+def _utc_stamp(when: datetime) -> str:
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _quiet_failures():
+    """Keep a planting's failure path off the operator's desktop and phone:
+    `notify_failures` reads this before it sends anything. Returns what to
+    put back."""
+    kept = os.environ.get("GRIDIRON_NOTIFY_FAILURES")
+    os.environ["GRIDIRON_NOTIFY_FAILURES"] = "0"
+    return kept
+
+
+def _restore_failures(kept) -> None:
+    if kept is None:
+        os.environ.pop("GRIDIRON_NOTIFY_FAILURES", None)
+    else:
+        os.environ["GRIDIRON_NOTIFY_FAILURES"] = kept
+
+
+def plant_a_refusal_recorded_as_a_failure() -> Result:
+    """A scheduled rerun of an answered slate, recorded as a failure.
+
+    THE SHAPE ON THE RECORD UNTIL 2026-09-26: 90 of its 114 failed rows were
+    `SlateAlreadyAnswered` -- the record correctly refusing to answer a slate
+    twice -- and all 18 catch-ups that ever finished were called failed for
+    it alone, a push sent for each. The planting: one NFL game two days out
+    (computed from now, so the fixture never expires), `run.run_slate`
+    swapped for one that refuses exactly as the real one does, and the
+    scheduled task run. CAUGHT only if the run AND its stored row are
+    'noop', the detail names the slate in words (never "slate 3"), and the
+    payload carries no "week" (the slate card reads that key to find the run
+    that wrote it). THE CONTROL: the same task with `run_slate` raising a
+    plain RuntimeError must still be 'failed' -- the conversion is the one
+    class, never a blanket catch of what it subclasses.
+    """
+    import tempfile
+
+    from gridiron import tasks as _tasks
+
+    guard = "tasks._run_predict"
+    violation = "a refused rerun of an answered slate recorded as a failure"
+    real = run.run_slate
+    kept = _quiet_failures()
+    refused = control = refused_row = control_row = None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(Path(tmp) / "refusal.db")
+        try:
+            season = config.SPORT_CURRENT_SEASON.get("nfl", config.CURRENT_SEASON)
+            kickoff = datetime.now(timezone.utc) + timedelta(hours=48)
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+                " kickoff_utc, status, league_date) VALUES ('nfl_plant_refusal',"
+                " 'nfl', ?, 3, 'REG', 'KC', 'BUF', ?, 'scheduled', ?)",
+                (season, _utc_stamp(kickoff), kickoff.strftime("%Y-%m-%d")))
+            conn.commit()
+
+            def refuses(*_args, **_kwargs):
+                raise run.SlateAlreadyAnswered(
+                    f"nfl {season} slate 3 already has 49 forecasts in every "
+                    f"market it asks (moneyline, prop, spread, total), written "
+                    f"2026-09-23T05:38 under factor set 'fs3'. A slate is "
+                    f"answered once. Nothing was written.")
+
+            def breaks(*_args, **_kwargs):
+                raise RuntimeError("the source went away")
+
+            last = ("SELECT result, detail, payload_json FROM task_runs"
+                    " WHERE task = 'predict:nfl' ORDER BY id DESC LIMIT 1")
+            run.run_slate = refuses
+            refused = _tasks.run_task(conn, "predict:nfl", use_llm=False)
+            refused_row = conn.execute(last).fetchone()
+            run.run_slate = breaks
+            control = _tasks.run_task(conn, "predict:nfl", use_llm=False)
+            control_row = conn.execute(last).fetchone()
+        finally:
+            run.run_slate = real
+            _restore_failures(kept)
+            conn.close()
+
+    said = (refused or {}).get("detail") or ""
+    if control is None or control.get("result") != "failed" \
+            or control_row["result"] != "failed":
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "NOT CAUGHT - a task that raised a plain RuntimeError was "
+                      f"recorded {(control or {}).get('result')!r}: the refusal's "
+                      f"conversion catches more than the one class")
+    if refused.get("result") != "noop" or refused_row["result"] != "noop":
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      f"NOT CAUGHT - a refused rerun was recorded "
+                      f"{refused_row['result']!r} ({said[:80]}); a correct "
+                      f"refusal reads as a failure, and a real one hides "
+                      f"among them")
+    if re.search(r"\bslate \d", said) or "Week 3" not in said:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      f"NOT CAUGHT - the refusal is recorded noop but its "
+                      f"detail does not name the slate in words: {said!r}")
+    if '"week"' in (refused_row["payload_json"] or ""):
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "NOT CAUGHT - the refusal's payload carries a week, so "
+                      "the slate card would read it as the run that wrote "
+                      "the slate")
+    return Result(LAW_THE_JOBS, violation, guard, True,
+                  f"a refused rerun is recorded noop ({said[:110]}); a plain "
+                  f"RuntimeError from the same task is still failed")
+
+
+def plant_a_hung_run_left_running() -> Result:
+    """A run that never recorded an ending, left 'running' for ever.
+
+    THIRTEEN STOOD ON THE RECORD ON 26 SEPTEMBER, the oldest a `final:cfb`
+    run begun at 19:41Z on 9 September. The planting, on a scratch record,
+    with every stamp computed from now: a `refresh` row 'running' for 13
+    hours (past refresh's 12), another for 3 (past the scheduler's two-hour
+    limit, inside the silence), a `catch-up` row 'running' for 13 hours
+    (catch-up declares a year: the ruling reads each task's own figure), and
+    a finished row. Then an ordinary scheduled run. CAUGHT only if the first
+    is 'abandoned' with no finished time, a detail in plain words and a
+    payload saying when and by which run; the second and third are still
+    'running'; the finished row is byte for byte as it was; the only new row
+    is the run's own; and a second run touches the abandoned row no more
+    (it is terminal).
+    """
+    import json as _json
+    import tempfile
+
+    from gridiron import language as _language, tasks as _tasks
+
+    guard = "tasks.abandon_hung_runs (in run_task)"
+    violation = "a run that never recorded an ending left 'running' for ever"
+    kept = _quiet_failures()
+    rows = before_ended = after_second = None
+    ids = {}
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(Path(tmp) / "hung.db")
+        try:
+            now = datetime.now(timezone.utc)
+            stale = "started; no ending recorded yet"
+            for key, task, hours, result in (
+                    ("hung", "refresh", 13, "running"),
+                    ("young", "refresh", 3, "running"),
+                    ("yearly", "catch-up", 13, "running"),
+                    ("ended", "resolve", 20, "ok")):
+                started = _utc_stamp(now - timedelta(hours=hours))
+                ids[key] = conn.execute(
+                    "INSERT INTO task_runs (task, started_utc, finished_utc,"
+                    " result, detail) VALUES (?, ?, ?, ?, ?)",
+                    (task, started, started if result == "ok" else None,
+                     result, "settled 2 predictions" if result == "ok" else stale),
+                ).lastrowid
+            conn.commit()
+            before_ended = tuple(conn.execute(
+                "SELECT * FROM task_runs WHERE id = ?", (ids["ended"],)).fetchone())
+            _tasks.run_task(conn, "resolve", use_llm=False)
+            rows = {r["id"]: r for r in conn.execute("SELECT * FROM task_runs")}
+            first_mark = tuple(rows[ids["hung"]])
+            _tasks.run_task(conn, "resolve", use_llm=False)
+            after_second = tuple(conn.execute(
+                "SELECT * FROM task_runs WHERE id = ?", (ids["hung"],)).fetchone())
+        finally:
+            _restore_failures(kept)
+            conn.close()
+
+    hung = rows[ids["hung"]]
+    if hung["result"] == "running":
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "NOT CAUGHT - a refresh 13 hours into a 12-hour silence "
+                      "is still 'running' after the next scheduled run: a run "
+                      "that never ended stays running for ever, as thirteen "
+                      "did on the record")
+    faults = []
+    if hung["result"] != "abandoned" or hung["finished_utc"] is not None:
+        faults.append(f"the hung row reads {hung['result']!r}, finished "
+                      f"{hung['finished_utc']!r}")
+    said = _language.task_detail_words(hung["detail"]) or ""
+    if audit.plain_words_violations(said) or "never recorded an ending" not in said:
+        faults.append(f"its detail is not plain words: {said!r}")
+    payload = _json.loads(hung["payload_json"] or "{}")
+    if not payload.get("abandoned_utc") or payload.get("silent_after_hours") != 12.0:
+        faults.append(f"its payload does not say when and why: {payload}")
+    for key in ("young", "yearly"):
+        if rows[ids[key]]["result"] != "running":
+            faults.append(f"the {key} row was marked {rows[ids[key]]['result']!r}")
+    if tuple(rows[ids["ended"]]) != before_ended:
+        faults.append("a finished row was rewritten")
+    if len(rows) != 5:
+        faults.append(f"{len(rows)} rows after one run, where the four planted "
+                      f"and the run's own make five")
+    if after_second != first_mark:
+        faults.append("a second run wrote to the abandoned row again")
+    if faults:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(faults))
+    return Result(LAW_THE_JOBS, violation, guard, True,
+                  f"marked abandoned past its 12-hour silence ({said[:100]}); "
+                  f"the 3-hour row and catch-up's year-long one stay running")
+
+
+class _LockedOnce:
+    """A handle whose FIRST write ending a run is refused as locked -- what a
+    second writer holding the record past the 30-second wait does -- and
+    which passes everything else to the real one. A plain object, never a
+    subclass of the driver's connection (the one-way-in scan refuses those)."""
+
+    def __init__(self, real):
+        self._real = real
+        self.refused = 0
+
+    def execute(self, sql, parameters=()):
+        if not self.refused and str(sql).lstrip().upper().startswith(
+                "UPDATE TASK_RUNS SET FINISHED_UTC"):
+            self.refused += 1
+            raise sqlite3.OperationalError("database is locked")
+        return self._real.execute(sql, parameters)
+
+    def commit(self):
+        return self._real.commit()
+
+    def rollback(self):
+        return self._real.rollback()
+
+    @property
+    def in_transaction(self):
+        return self._real.in_transaction
+
+
+#: `run_task` as it stood until 2026-09-26, reduced to its order: the row
+#: written first, the task in a `try`, and the write that ends the row
+#: AFTER the handler, where nothing catches it.
+_RUN_TASK_WITH_THE_CLOSE_OUTSIDE = chr(10).join([
+    "def run_task(conn, task):",
+    "    cursor = conn.execute(",
+    "        \"INSERT INTO task_runs (task, started_utc, result, detail)\"",
+    "        \" VALUES (?,?,'running','started; no ending recorded yet')\",",
+    "        (task, 'now'))",
+    "    row_id = cursor.lastrowid",
+    "    conn.commit()",
+    "    try:",
+    "        result, detail, payload = _run_resolve(conn)",
+    "    except Exception as exc:",
+    "        result, detail, payload = 'failed', str(exc), {}",
+    "    conn.execute(",
+    "        \"UPDATE task_runs SET finished_utc = ?, result = ?, detail = ?,\"",
+    "        \" payload_json = ? WHERE id = ?\", ('now', result, detail, '{}', row_id))",
+    "    conn.commit()",
+    "    return {}",
+    "",
+])
+
+
+def _run_task_with_the_close_under(handler: list[str]) -> str:
+    """`run_task` with its closing write INSIDE the try, under a handler that
+    does not catch what the write raises (the prover of item 7, 2026-09-26:
+    the first order check passed any handler at all)."""
+    return chr(10).join([
+        "def run_task(conn, task):",
+        "    cursor = conn.execute(",
+        "        \"INSERT INTO task_runs (task, started_utc, result, detail)\"",
+        "        \" VALUES (?,?,'running','started; no ending recorded yet')\",",
+        "        (task, 'now'))",
+        "    row_id = cursor.lastrowid",
+        "    conn.commit()",
+        "    try:",
+        "        result, detail, payload = _run_resolve(conn)",
+        "        conn.execute(",
+        "            \"UPDATE task_runs SET finished_utc = ?, result = ?, detail = ?,\"",
+        "            \" payload_json = ? WHERE id = ?\", ('now', result, detail, '{}', row_id))",
+        "        conn.commit()",
+        *handler,
+        "    return {}",
+        "",
+    ])
+
+
+#: The close inside the try, under a handler that lets the locked write out:
+#: one that catches only another class, and one that catches everything and
+#: raises it again.
+_RUN_TASK_WITH_THE_CLOSE_UNDER_A_NARROW_HANDLER = _run_task_with_the_close_under([
+    "    except ValueError as exc:",
+    "        result, detail, payload = 'failed', str(exc), {}",
+])
+_RUN_TASK_WITH_THE_CLOSE_UNDER_A_HANDLER_THAT_RAISES = _run_task_with_the_close_under([
+    "    except Exception as exc:",
+    "        result, detail, payload = 'failed', str(exc), {}",
+    "        raise",
+])
+
+
+def plant_a_closing_write_that_escapes_the_try() -> Result:
+    """The write that ends a run's row raises, and nothing catches it.
+
+    `final:cfb` ON 9, 21, 23 AND 25 SEPTEMBER: each started inside a burst
+    of concurrent refreshes, exited 1, and left its row 'running' -- the
+    shape of a closing write that sat after the handler and met a locked
+    record (never reproduced; the lock is the likeliest cause). The
+    planting, twice. BEHAVIOUR: a scratch record whose first closing write is
+    refused as locked, under a resolve that finishes normally; CAUGHT only
+    if `run_task` returns rather than raising, and the row ends with what the
+    task did ('ok', not 'failed': the task did not raise) and the write's
+    error beside it. THE GATE: `audit.task_run_order_faults` must refuse
+    `run_task` with its closing write outside the try -- or inside one whose
+    handler catches only another class, or catches it and raises it again
+    (the prover, 2026-09-26: the first check passed any handler) -- and
+    pass the shipped one.
+    """
+    import json as _json
+    import tempfile
+
+    from gridiron import tasks as _tasks
+
+    guard = "tasks.run_task + audit.task_run_order_faults"
+    violation = "a closing write that raises out of run_task"
+    shipped = audit.task_run_order_faults()
+    if shipped:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "the shipped run_task already fails the order check; fix "
+                      "that before trusting this planting: " + shipped[0])
+    real = _tasks._run_resolve
+    kept = _quiet_failures()
+    escaped = out = row = None
+    handle = None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        path = Path(tmp) / "locked.db"
+        db.open_db(path).close()
+        conn = db.connect(path)
+        handle = _LockedOnce(conn)
+        try:
+            _tasks._run_resolve = lambda _conn: (
+                "ok", "settled 1 prediction", {"settled": 1})
+            try:
+                out = _tasks.run_task(handle, "resolve", use_llm=False)
+            except Exception as exc:  # noqa: BLE001 - the violation, if it escapes
+                escaped = f"{type(exc).__name__}: {exc}"
+            row = conn.execute(
+                "SELECT * FROM task_runs WHERE task = 'resolve'"
+                " ORDER BY id DESC LIMIT 1").fetchone()
+        finally:
+            _tasks._run_resolve = real
+            _restore_failures(kept)
+            conn.close()
+
+    if escaped is not None:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      f"NOT CAUGHT - the closing write raised out of run_task "
+                      f"({escaped}); the process exits 1 and the row stays "
+                      f"{row['result'] if row else 'unwritten'!r}, which is "
+                      f"final:cfb on 9, 21, 23 and 25 September")
+    faults = []
+    if handle.refused != 1:
+        faults.append("the planted lock was never met")
+    if row is None or row["result"] != "ok" or not row["finished_utc"]:
+        faults.append(f"the row reads {row['result'] if row else None!r} "
+                      f"where the task finished ok")
+    else:
+        payload = _json.loads(row["payload_json"] or "{}")
+        if "database is locked" not in str(payload.get("closing_write")):
+            faults.append(f"the write's error is not recorded beside the "
+                          f"ending: {payload}")
+    if (out or {}).get("result") != "ok":
+        faults.append(f"run_task returned {(out or {}).get('result')!r}")
+    static = audit.task_run_order_faults(_RUN_TASK_WITH_THE_CLOSE_OUTSIDE)
+    if not any("outside any try" in f for f in static):
+        faults.append("the order check passes run_task with its closing "
+                      "write outside the try")
+    for shape, source in (
+            ("under a handler that catches only ValueError",
+             _RUN_TASK_WITH_THE_CLOSE_UNDER_A_NARROW_HANDLER),
+            ("under a handler that raises it again",
+             _RUN_TASK_WITH_THE_CLOSE_UNDER_A_HANDLER_THAT_RAISES)):
+        if not any("outside any try" in f for f in audit.task_run_order_faults(source)):
+            faults.append(f"the order check passes run_task with its closing "
+                          f"write inside the try {shape}")
+    if faults:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(faults))
+    return Result(LAW_THE_JOBS, violation, guard, True,
+                  "a locked closing write is caught and written again, the "
+                  "task's own ending kept ('ok') with the error beside it; "
+                  "and " + next(f for f in static if "outside any try" in f))
+
+
+def plant_a_task_definition_without_wake_to_run() -> Result:
+    """A Gridiron-* task defined without -WakeToRun.
+
+    NONE HAD IT UNTIL 2026-09-26 (all 18 read back WakeToRun=False on
+    23 September), and the ruling says every one gains it -- Live and Serve
+    included. Planted four ways in the installer's own text, each read by
+    `audit.installer_wake_faults`, which must name exactly the tasks it
+    takes the wake from: Serve's own settings without it (Serve alone); the
+    helper's settings without it (the seventeen registered through
+    `New-GridironTask`); the switch written off (`-WakeToRun:$false`); and
+    the switch removed with a comment left claiming it -- a comment is not
+    code. The shipped installer must pass.
+
+    AND FOUR MORE, THE PROVER'S (2026-09-26), each of which the first scan
+    passed while the seventeen registered without the wake: the switch
+    removed with the claiming comment on the settings statement itself (the
+    comment above the function could never have satisfied the scan, so it
+    proved nothing about comments); the switch bound to a value PowerShell
+    reads as false that is not `$false` (`-WakeToRun:0`); the set made with
+    the switch and then changed (`$settings.WakeToRun = $false`); and the
+    set made with it and then made again without it.
+    """
+    guard = "audit.installer_wake_faults"
+    violation = "a scheduled task defined without WakeToRun"
+    script = audit.INSTALLER.read_text(encoding="utf-8")
+    shipped = audit.installer_wake_faults(script)
+    if shipped:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "the shipped installer already fails; fix that before "
+                      "trusting this planting: " + shipped[0])
+    helper_line = "        -WakeToRun `" + chr(10)
+    serve_at = script.find('Register-ScheduledTask -TaskName "$($Prefix)Serve"')
+    if script.count(helper_line) != 1 or serve_at < 0 \
+            or "New-ScheduledTaskSettingsSet -WakeToRun " not in script[serve_at:]:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "the installer is no longer written the way this "
+                      "planting expects; re-point it")
+    listed = re.findall(r'"\$\(\$Prefix\)([^"]+)"',
+                        script.split("$TaskNames = @(")[1].split(chr(10) + ")")[0])
+    helped = sorted(f"Gridiron-{name}" for name in listed if name != "Serve")
+    limit_line = "-StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)" + chr(10)
+    register = "    Register-ScheduledTask -TaskName $Name -Action $action -Trigger $Trigger `"
+    if script.count(limit_line) != 1 or script.count(register) != 1:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "the installer's helper is no longer written the way this "
+                      "planting expects; re-point it")
+
+    def before_register(line: str) -> str:
+        return script.replace(register, line + chr(10) + register, 1)
+
+    plantings = {
+        "Serve without it": (
+            script[:serve_at] + script[serve_at:].replace(
+                "New-ScheduledTaskSettingsSet -WakeToRun ",
+                "New-ScheduledTaskSettingsSet ", 1),
+            ["Gridiron-Serve"]),
+        "the helper without it": (script.replace(helper_line, "", 1), helped),
+        "the switch written off": (
+            script.replace(helper_line, "        -WakeToRun:$false `" + chr(10), 1),
+            helped),
+        "a comment claiming it": (
+            script.replace(helper_line, "", 1).replace(
+                "function New-GridironTask {",
+                "# every task: New-ScheduledTaskSettingsSet -WakeToRun" + chr(10)
+                + "function New-GridironTask {", 1),
+            helped),
+        "a comment on the settings statement claiming it": (
+            script.replace(helper_line, "", 1).replace(
+                limit_line, limit_line[:-1] + "  # -WakeToRun" + chr(10), 1),
+            helped),
+        "the switch bound to 0": (
+            script.replace(helper_line, "        -WakeToRun:0 `" + chr(10), 1), helped),
+        "the wake taken off the set after it is made":
+            (before_register("    $settings.WakeToRun = $false"), helped),
+        "the set made again without it":
+            (before_register("    $settings = (New-ScheduledTaskSettingsSet"
+                             " -AllowStartIfOnBatteries)"), helped),
+    }
+    missed = []
+    for name, (planted, expected) in plantings.items():
+        faults = audit.installer_wake_faults(planted)
+        named = sorted(f.split(":", 1)[0] for f in faults)
+        if named != sorted(expected):
+            missed.append(f"{name}: named {named or 'nothing'}")
+    if missed:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(missed))
+    return Result(LAW_THE_JOBS, violation, guard, True,
+                  f"Serve named alone, and the {len(helped)} tasks through "
+                  f"New-GridironTask named by name, when the wake is removed, "
+                  f"written off, bound to 0, left only in a comment, taken off "
+                  f"the set after it is made or made again without it")
+
+
 LAW_ONE_CLAUSE = "EVERY COUNT OF THE RECORD USES THE STANDING CLAUSE"
 
 
@@ -13402,6 +13888,14 @@ def main() -> int:
     results.append(plant_a_horizon_that_counts_days_for_a_weekly_sport())
     results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_run_recorded_only_when_it_ends())
+    # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
+    # 2026-09-26): a refused rerun is a noop, the write that ends a run is
+    # caught, a run that never ended is marked abandoned past its task's
+    # silence, and every scheduled task wakes the machine.
+    results.append(plant_a_refusal_recorded_as_a_failure())
+    results.append(plant_a_closing_write_that_escapes_the_try())
+    results.append(plant_a_hung_run_left_running())
+    results.append(plant_a_task_definition_without_wake_to_run())
     results.append(plant_a_protected_field_edited_behind_the_trigger())
     results.append(plant_a_third_control_row_above_the_first_card())
     results.append(plant_a_retired_market_written())

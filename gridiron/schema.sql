@@ -482,10 +482,14 @@ CREATE INDEX IF NOT EXISTS nba_injuries_team ON nba_injuries (team);
 -- quietly forgets its failures is worse than no panel.
 --
 -- `result` is deliberately coarse and honest:
---   ok      the task ran and did what it was for
---   noop    it ran and there was correctly nothing to do
---   missed  the slate's games had already started, so it was NOT predicted
---   failed  it raised
+--   ok         the task ran and did what it was for
+--   noop       it ran and there was correctly nothing to do; a rerun
+--              refused because its slate is already answered is one
+--              (GRIDIRON_REPAIR item 7, 2026-09-26; 'failed' until then)
+--   missed     the slate's games had already started, so it was NOT predicted
+--   failed     it raised
+--   abandoned  it never recorded an ending, and a later run found it older
+--              than its task's silence and marked it so (item 7, 2026-09-26)
 CREATE TABLE IF NOT EXISTS task_runs (
     id            INTEGER PRIMARY KEY,
     task          TEXT    NOT NULL,
@@ -495,8 +499,13 @@ CREATE TABLE IF NOT EXISTS task_runs (
     -- 2026-09-05): a run killed mid-way used to leave no row at all, and the
     -- Health panel showed the last run that finished as if nothing had
     -- happened since. The same shape as a notification's 'sending'.
+    -- 'abandoned' is such a row past its task's silence (the operator's
+    -- ruling of 2026-09-23, GRIDIRON_REPAIR item 7, built 2026-09-26):
+    -- written once, by a later run, on a row with no ending; its
+    -- finished_utc stays empty, because none was recorded.
     result        TEXT    NOT NULL
-                  CHECK (result IN ('running', 'ok', 'noop', 'missed', 'failed')),
+                  CHECK (result IN ('running', 'ok', 'noop', 'missed', 'failed',
+                                    'abandoned')),
     detail        TEXT,
     payload_json  TEXT
 );

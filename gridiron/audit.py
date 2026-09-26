@@ -4744,7 +4744,303 @@ def task_run_order_faults(source: str | None = None) -> list[str]:
     if update_line is None or (run_line and update_line < run_line):
         faults.append("`run_task` does not finish its row after the task "
                       "runs, so every run reads as still running.")
+    faults += _closing_write_faults(fn)
     return faults
+
+
+def _closing_write_faults(fn: ast.FunctionDef) -> list[str]:
+    """Is every write that ends the run's row inside a `try` that catches?
+
+    THE OPERATOR'S RULING of 2026-09-23 (GRIDIRON_REPAIR item 7, built
+    2026-09-26): "the run_task closing UPDATE moves inside the try". It sat
+    after the handler, so a write that raised left `run_task` with the row
+    still 'running' and the process exiting 1 -- `final:cfb` on 9, 21, 23
+    and 25 September. Read here as the gate reads the rest of the order:
+    every `UPDATE task_runs` in `run_task`, and every commit after the task
+    is dispatched, must lie in the BODY of a `try` that has a handler (an
+    exception raised inside a handler is not caught by that handler's own
+    `try`, so a retry there needs a `try` of its own).
+
+    AND A HANDLER THAT CATCHES WHAT THE WRITE RAISES (the prover of item 7,
+    2026-09-26). Any handler used to do: a close inside `try: ... except
+    ValueError:` passed this scan while the locked write it exists for, an
+    `OperationalError`, still left `run_task`, and so did one whose handler
+    caught everything and raised it again. A `try` guards here only if one of
+    its handlers catches `Exception` or wider (bare, `Exception`,
+    `BaseException`, alone or in a tuple) and raises nothing itself.
+    """
+    broad = {"Exception", "BaseException"}
+
+    def catches_the_write(handler: ast.ExceptHandler) -> bool:
+        kinds = (handler.type.elts if isinstance(handler.type, ast.Tuple)
+                 else [handler.type])
+        if not any(kind is None or (isinstance(kind, ast.Name) and kind.id in broad)
+                   or (isinstance(kind, ast.Attribute) and kind.attr in broad)
+                   for kind in kinds):
+            return False
+        return not any(isinstance(sub, ast.Raise)
+                       for statement in handler.body for sub in ast.walk(statement))
+
+    guarded: set[int] = set()
+    tries = (ast.Try,) + ((ast.TryStar,) if hasattr(ast, "TryStar") else ())
+    for node in ast.walk(fn):
+        if isinstance(node, tries) and any(catches_the_write(h) for h in node.handlers):
+            for statement in node.body:
+                guarded.update(id(sub) for sub in ast.walk(statement))
+    dispatched = min((node.lineno for node in ast.walk(fn)
+                      if isinstance(node, ast.Call)
+                      and str(getattr(node.func, "attr", None)
+                              or getattr(node.func, "id", None) or "").startswith("_run_")),
+                     default=None)
+    faults = []
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call) or id(node) in guarded:
+            continue
+        name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+        if (name == "execute" and node.args and isinstance(node.args[0], ast.Constant)
+                and re.match(r"UPDATE TASK_RUNS[\s(]",
+                             str(node.args[0].value).lstrip().upper())):
+            faults.append(
+                f"the write that ends the run's row, at line {node.lineno}, "
+                f"sits outside any try that catches what it raises: if it "
+                f"raises -- a second writer holding the record past the wait, "
+                f"a payload that cannot be written -- it leaves run_task, the "
+                f"process exits 1 and the row stays running (GRIDIRON_REPAIR "
+                f"item 7).")
+        elif (name == "commit" and dispatched is not None
+                and node.lineno > dispatched):
+            faults.append(
+                f"the commit at line {node.lineno}, after the task runs, sits "
+                f"outside any try that catches what it raises: if it raises, "
+                f"the run's ending is lost and the row stays running "
+                f"(GRIDIRON_REPAIR item 7).")
+    return faults
+
+
+# ---------------------------------------------------------------------------
+# EVERY SCHEDULED TASK WAKES THE MACHINE (GRIDIRON_REPAIR item 7, 2026-09-26)
+# ---------------------------------------------------------------------------
+
+#: Where every Gridiron-* task is defined. Registering the tasks is the
+#: operator's act; what they are registered WITH is this file's.
+INSTALLER = config.REPO_ROOT / "tools" / "schedule_install.ps1"
+
+
+def _powershell_code(script: str) -> str:
+    """The script as PowerShell reads it: comments blanked (a `#` line, a
+    `<# ... #>` block) and each backtick line continuation joined, strings
+    kept whole -- so a comment can neither satisfy nor trip the scan."""
+    out: list[str] = []
+    i, n = 0, len(script)
+    while i < n:
+        if script.startswith("<#", i):
+            end = script.find("#>", i + 2)
+            end = n if end < 0 else end + 2
+            out.append(chr(10) * script.count(chr(10), i, end))
+            i = end
+        elif script[i] == "#":
+            end = script.find(chr(10), i)
+            i = n if end < 0 else end
+        elif script[i] in "\"'":
+            quote, j = script[i], i + 1
+            while j < n:
+                if quote == '"' and script[j] == "`":
+                    j += 2
+                    continue
+                if script[j] == quote:
+                    if j + 1 < n and script[j + 1] == quote:
+                        j += 2
+                        continue
+                    break
+                j += 1
+            out.append(script[i:j + 1])
+            i = j + 1
+        else:
+            out.append(script[i])
+            i += 1
+    return re.sub(r"`[ \t]*\r?\n", " ", "".join(out))
+
+
+def _powershell_extent(code: str, start: int, *, until_newline: bool = True) -> str:
+    """From `start` to the end of its statement: the next line break outside
+    brackets and strings (or, with `until_newline=False`, the bracket that
+    closes the one at `start`)."""
+    depth, i, n = 0, start, len(code)
+    while i < n:
+        c = code[i]
+        if c in "\"'":
+            j = i + 1
+            while j < n and code[j] != c:
+                j += 2 if (c == '"' and code[j] == "`") else 1
+            i = j + 1
+            continue
+        if c in "({":
+            depth += 1
+        elif c in ")}":
+            depth -= 1
+            if not until_newline and depth == 0:
+                return code[start:i + 1]
+        elif c == chr(10) and depth <= 0 and until_newline:
+            return code[start:i]
+        i += 1
+    return code[start:]
+
+
+#: THE SWITCH AS THE SCAN ACCEPTS IT: bare, or bound to `$true`, and nothing
+#: else (the prover of item 7, 2026-09-26). The first scan refused only
+#: `-WakeToRun:$false`, so `-WakeToRun:0`, `:$null`, `:$off` and
+#: `:(1 -eq 2)` -- each a switch PowerShell binds to false -- passed as waking.
+#: The value after a colon is read as one token and must be `$true`.
+_WAKE_SWITCH = re.compile(r"(?<![\w-])-WakeToRun\b(?:\s*:\s*([^\s`)]*))?", re.I)
+
+
+def _wakes(settings: str) -> bool:
+    """Does this settings expression carry the switch in a form read as true?"""
+    return any(m.group(1) is None or m.group(1).lower() == "$true"
+               for m in _WAKE_SWITCH.finditer(settings))
+
+
+def _settings_wake(statement: str, scope: str) -> str | None:
+    """Why a registration's settings do not wake the machine, or None if
+    they do. `scope` is the code a `$variable` given as the settings is
+    looked up in.
+
+    A VARIABLE IS READ ONLY IF IT IS MADE ONCE AND ONLY PASSED ON (the prover
+    of item 7, 2026-09-26). The first scan read the last assignment that
+    called `New-ScheduledTaskSettingsSet` and nothing else, so a set made with
+    the switch and then changed (`$settings.WakeToRun = $false`, a property
+    set through `PSObject`) or made again (`$settings = (New-...)`, `$settings
+    = $plain`) passed while the task registered without the wake. Now the
+    variable must be assigned exactly once, straight from
+    `New-ScheduledTaskSettingsSet`, and mentioned nowhere else in its scope
+    than that assignment and `-Settings $it`; anything more is named.
+    """
+    # THE PARAMETER, never the end of a command's name (`Update-Settings`).
+    found = re.search(r"(?<![\w-])-Settings\s+", statement, re.I)
+    if found is None:
+        return "it is registered with no settings at all"
+    rest = statement[found.end():]
+    if rest.startswith("("):
+        settings = _powershell_extent(rest, 0, until_newline=False)
+    elif (var := re.match(r"\$\{?(?:(?:script|global|local|private):)?(\w+)\}?", rest, re.I)):
+        name = var.group(1)
+        mention = (r"\$\{?(?:(?:script|global|local|private):)?"
+                   + re.escape(name) + r"\b\}?")
+        assigned = list(re.finditer(mention + r"\s*[-+*/%]?=", scope, re.I))
+        assigned += list(re.finditer(
+            r"(?<![\w-])(?:Set|New)-Variable\b[^" + chr(10) + r"]*?(?<![\w$])"
+            + re.escape(name) + r"\b", scope, re.I))
+        if not assigned:
+            return f"its settings, ${name}, are made nowhere the scan can read"
+        if len(assigned) > 1:
+            return (f"its settings, ${name}, are assigned {len(assigned)} times; "
+                    f"the scan reads only a settings set made once")
+        mentions = len(re.findall(mention, scope, re.I))
+        passed = len(re.findall(r"(?<![\w-])-Settings\s+" + mention, scope, re.I))
+        if mentions != 1 + passed:
+            return (f"its settings, ${name}, are used or changed after they are "
+                    f"made, which the scan cannot read")
+        made = scope[assigned[0].end():]
+        if not re.match(r"\s*\(?\s*New-ScheduledTaskSettingsSet\b", made, re.I):
+            return (f"its settings, ${name}, are not made by "
+                    f"New-ScheduledTaskSettingsSet")
+        settings = _powershell_extent(scope, assigned[0].end())
+    else:
+        return "its settings are an expression the scan cannot read"
+    if not re.search(r"New-ScheduledTaskSettingsSet\b", settings, re.I):
+        return "its settings are not made by New-ScheduledTaskSettingsSet"
+    return (None if _wakes(settings) else
+            "its settings do not carry -WakeToRun in a form read as true")
+
+
+def installer_wake_faults(script: str | None = None) -> list[str]:
+    """Every Gridiron-* task the installer defines without -WakeToRun, by name.
+
+    THE OPERATOR'S RULING of 2026-09-23 (GRIDIRON_REPAIR item 7, built
+    2026-09-26): "every Gridiron-* task gains WakeToRun". EVERY: Live and
+    Serve too. Read from the installer's code, never its comments: each
+    task registered through `New-GridironTask` carries that helper's
+    settings, each registered directly its own, and a name in `$TaskNames`
+    the file registers nowhere the scan can read is named too, as is any
+    other way of defining a task (`schtasks`, `Set-ScheduledTask`,
+    `New-ScheduledTask`), whose settings it cannot see. The registered tasks
+    on the machine are the operator's; this reads what they are made from.
+    """
+    if script is None:
+        script = INSTALLER.read_text(encoding="utf-8")
+    code = _powershell_code(script)
+    faults: list[str] = []
+
+    def named(text: str) -> str:
+        return text.replace("$($Prefix)", "Gridiron-")
+
+    block = re.search(r"\$TaskNames\s*=\s*@\(", code)
+    listed = ([named(m) for m in re.findall(
+        r'"([^"]+)"', _powershell_extent(code, block.end() - 1, until_newline=False))]
+        if block else [])
+    if not listed:
+        faults.append("the installer lists no $TaskNames, so the scan cannot "
+                      "say which tasks it must find.")
+
+    helper = re.search(r"function\s+New-GridironTask\s*\{", code, re.I)
+    body = (_powershell_extent(code, helper.end() - 1, until_newline=False)
+            if helper else "")
+    outside = (code[:helper.start()] + code[helper.end() - 1 + len(body):]
+               if helper else code)
+    through_helper = None
+    if helper:
+        inner = re.search(r"Register-ScheduledTask\b", body, re.I)
+        through_helper = ("it registers nothing" if inner is None else
+                          _settings_wake(_powershell_extent(body, inner.start()), body))
+
+    registered: dict[str, str | None] = {}
+    for call in re.finditer(r"(?<![\w-])New-GridironTask\b", outside, re.I):
+        statement = _powershell_extent(outside, call.start())
+        name = re.search(r'-Name\s+"([^"]+)"', statement, re.I)
+        if name is None:
+            faults.append("a task is registered through New-GridironTask with "
+                          "no name the scan can read.")
+            continue
+        if helper is None:
+            registered[named(name.group(1))] = "New-GridironTask is defined nowhere"
+        else:
+            registered[named(name.group(1))] = (
+                None if through_helper is None
+                else f"it is registered through New-GridironTask, and {through_helper}")
+    for call in re.finditer(r"(?<![\w-])Register-ScheduledTask\b", outside, re.I):
+        statement = _powershell_extent(outside, call.start())
+        name = re.search(r'-TaskName\s+"([^"]+)"', statement, re.I)
+        if name is None:
+            faults.append("a task is registered directly with no name the scan "
+                          "can read.")
+            continue
+        registered[named(name.group(1))] = _settings_wake(statement, outside)
+    for other in re.finditer(r"(?<![\w-])(schtasks|Set-ScheduledTask|New-ScheduledTask)"
+                             r"(?![\w-])", code, re.I):
+        faults.append(f"a task is defined or changed by {other.group(1)}, whose "
+                      f"settings the scan cannot read; define every task "
+                      f"through New-GridironTask or Register-ScheduledTask.")
+    for name, why in sorted(registered.items()):
+        if why is not None:
+            faults.append(
+                f"{name}: {why}, so a sleeping machine sleeps through it. The "
+                f"operator's ruling of 2026-09-23 (GRIDIRON_REPAIR item 7): "
+                f"every Gridiron-* task gains WakeToRun.")
+    for name in listed:
+        if name not in registered:
+            faults.append(f"{name} is in $TaskNames and the installer registers "
+                          f"it nowhere the scan can read, so nothing says it "
+                          f"wakes the machine.")
+    return faults
+
+
+def check_every_task_wakes_to_run() -> None:
+    """Raise, naming each task, unless every Gridiron-* task the installer
+    defines wakes the machine to run (GRIDIRON_REPAIR item 7)."""
+    faults = installer_wake_faults()
+    if faults:
+        raise LawViolation(
+            "EVERY SCHEDULED TASK WAKES THE MACHINE TO RUN:" + _NL2 + _NL2.join(faults))
 
 
 #: THE ROWS OF CONTROLS ABOVE THE HERO ON PICKS (R2, 2026-09-05), declared.

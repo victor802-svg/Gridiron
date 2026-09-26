@@ -711,6 +711,12 @@ def step_2_guards() -> bool:
         ("an indicator is handed over in words", audit.check_indicators_are_words),
         ("the outlook counts in one unit", audit.check_the_horizon_counts_in_one_unit),
         ("the record precedes the run", audit.check_a_run_is_recorded_before_it_runs),
+        # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
+        # 2026-09-26): every Gridiron-* task the installer defines wakes the
+        # machine to run, named task by task. (The closing write inside the
+        # try is read by the check above.)
+        ("every scheduled task wakes the machine to run",
+         audit.check_every_task_wakes_to_run),
         ("two control rows above the hero, no more",
          audit.check_picks_has_two_control_rows),
         ("hidden means not painted", audit.check_hidden_is_not_painted),

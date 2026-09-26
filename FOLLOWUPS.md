@@ -676,6 +676,11 @@ sum calls a refusal a failure, so the panel's only logon task has never shown
 green. Reading (i): count `SlateAlreadyAnswered` as `noop` inside catch-up;
 reading (ii): leave it, since the detail line names the reason.
 
+**RULED 2026-09-23 and REPAIRED 2026-09-26 (GRIDIRON_REPAIR item 7):**
+"SlateAlreadyAnswered is a noop, not a failure" -- wider than reading (i):
+the predict task itself records the refusal as `noop`, so catch-up's sum
+needs no change of its own. At the end of this file, "The jobs".
+
 ### "Turns red" against the colour law *(RULED 2026-09-08: the colour law stands)*
 
 NIGHT_AUDIT item 1 asked that a stale job on the day strip turn red.
@@ -1098,6 +1103,11 @@ correct, and it is written as `failed`. That accounts for 50 of the `failed`
 rows since 12 September, and catch-up has never once recorded success in 19
 runs. A real failure would now sit invisibly among them.
 
+**2026-09-26, GRIDIRON_REPAIR item 7: REPAIRED from the release on.** A
+refused rerun is recorded `noop`, the slate in words. The 90 refusal rows
+and 18 catch-up sums already written `failed` stand as written (history is
+not relabelled). At the end of this file, "The jobs".
+
 ### `final:cfb` leaves `running` rows and exits 1 *(measured 2026-09-23, cause not proven)*
 
 4 of its rows never recorded an ending: 2026-09-09T19:41:45Z,
@@ -1106,6 +1116,13 @@ for the last. **Hypothesis:** the closing `UPDATE task_runs` in `run_task`
 (`tasks.py:268`) is outside the `try`, and each orphan started inside a burst
 of catch-up firings after a wake. A locked database on that one write leaves
 the row `running`. Not reproduced, because reproducing it writes.
+
+**2026-09-26, GRIDIRON_REPAIR item 7: the write is inside the try, and a
+row it cannot end is marked abandoned past 36 hours.** A fifth orphan came
+first: 3358, begun 2026-09-25T19:24:12Z inside two concurrent refreshes
+(3346, 19:18:41-19:31:22; 3353, 19:24:11-19:31:22) -- every orphan so far
+started so. The cause is still not proven. At the end of this file, "The
+jobs".
 
 ### Two counts of one record on the learning panel *(measured 2026-09-23)*
 
@@ -1179,6 +1196,12 @@ hours since the 12th, and 17 slates were missed for good. Every `Gridiron-*`
 task has `WakeToRun = False`. Sleep, wake timers and whether the tasks may
 wake the machine are the operator's to set. Recorded so nobody reads the
 missing days as the model's.
+
+**RULED 2026-09-23 (GRIDIRON_REPAIR item 7): "every Gridiron-* task gains
+WakeToRun"** -- in the installer from 2026-09-26, on the registered tasks
+once the orchestrator applies it after the release. It cannot help a
+machine that is switched off, which these nine days were. At the end of
+this file, "The jobs".
 
 ## GRIDIRON_REPAIR item 1, 2026-09-23 — found in review, not in scope
 
@@ -3886,3 +3909,231 @@ three, read-only on the record).
   at the line today. Carrying the tier on each claim and refusing a curve
   whose claims span cards, as `forecasters_counted` does for forecasters,
   would close it.
+
+## The jobs -- built 2026-09-26 *(GRIDIRON_REPAIR item 7; the operator's ruling of 2026-09-23)*
+
+"Jobs: SlateAlreadyAnswered is a noop, not a failure; the run_task closing
+UPDATE moves inside the try and a hung "running" row older than its task's
+silent_after_hours is marked abandoned; every Gridiron-* task gains
+WakeToRun. Report awake fraction since the fix in each close-out." (The map
+of 2026-09-23 was re-verified against f58b3a1 first: since it was drawn,
+item 2 had made a market the run cannot answer keep its slate open, so a
+refusal now means every market the run asks is answered -- the ordering the
+map required before a refusal could become a noop.)
+
+### MEASURED FIRST, read-only *(2026-09-26 about 21:37Z, `db.read_the_live_record`)*
+
+- `task_runs`: 4,498 rows. failed 114, of which `SlateAlreadyAnswered` 90
+  and catch-up sums 18; since 21 September, 58 refusals (predict:cfb 15,
+  predict:mlb 17, predict:nfl 9, predict:ufc 17) and 12 catch-up sums.
+  Catch-up: 18 failed, 4 running, never ok or noop; every one of the 18 was
+  failed by refusing members and nothing else. Failure notices: 95 sent, 1
+  failed; the last three bodies "Predict baseball missed a slate (and 3
+  more)".
+- 13 rows 'running', none with an ending: 969, 1742, 1847, 2057, 3358
+  (final:cfb), 1983, 1986, 1989 (refresh), 1981 (predict:nfl), 1978, 1982,
+  1985, 1988 (catch-up). Against each task's own `silent_after_hours`, 7
+  were past it: 969, 1742, 1847, 1983, 1986, 1989, 2057.
+- 3358 is new since the map: `final:cfb` begun 2026-09-25T19:24:12Z inside
+  two concurrent refreshes (3346, 3353), as every final:cfb orphan was.
+  final:cfb has ended ok 4 times, noop 6 and never 5.
+
+### BUILT *(2026-09-26)*
+
+- **A refused rerun is a noop**: `tasks._run_predict` catches exactly
+  `run.SlateAlreadyAnswered` and records 'noop' -- "the NFL slate of Week 3,
+  2026 already has 35 forecasts in every market this run asks. A slate is
+  answered once, so this rerun was refused and nothing was written." -- with
+  `{"refused_slate", "already_written"}` as its payload (no "week":
+  `views._below_floor` reads that key to find the run that wrote a slate).
+  `RuntimeError` (which it subclasses) and `run.MarketNotTrained` (its
+  sibling) stay failures. `run.run_slate` still raises it (the CLI, the
+  backtest and two tests rely on the raise). Catch-up's own sum needed no
+  change.
+- **The closing write is inside the try**: kept as an inline literal (the
+  order check reads constants), now `... WHERE id = ? AND result =
+  'running'`. The dispatch's outcome is held once it returns; a closing
+  write that raises records THAT outcome with the error beside it
+  (`closing_write`), retried once with `json.dumps(..., default=str)`; if the
+  retry fails too, nothing is raised and the row is left for the sweep. A
+  task that raised is recorded failed as before, notice and all.
+  `audit.task_run_order_faults` now also refuses a write ending the row, or a
+  commit after the dispatch, outside a `try` body (it names f58b3a1's lines
+  283 and 288).
+- **A hung run is marked abandoned**: `tasks.abandon_hung_runs(conn, *,
+  by_task, by_run, now)`, called by every `run_task` just after its own row
+  is committed, in its own `try` (a failing sweep rolls back only itself and
+  never stops the run). Per 'running' row whose task is declared and whose
+  age from `started_utc` exceeds that task's `silent_after_hours`: `result`
+  'abandoned', `detail` from `language.abandoned_run_line` (lower case first:
+  a leading "Word:" is cut on the panel as a class name), `payload_json`
+  `{abandoned_utc, silent_after_hours, marked_by_task, marked_by_run}`,
+  `finished_utc` left empty. `tasks.status` treats an abandoned latest row
+  as unfinished, like a hung running one.
+- **The ledger admits it**: `schema.sql`'s CHECK gains 'abandoned' (and the
+  glossary two lines); `db.widen_task_run_results` gates on "'abandoned'"
+  and rebuilds through `gridiron.rebuild` in ONE `BEGIN IMMEDIATE` (it used to
+  copy and swap in two transactions, which a concurrent `open_db` could
+  split, losing a row written between them).
+- **Every task wakes the machine**: `-WakeToRun` in `New-GridironTask`'s
+  settings (17 tasks) and Serve's own (1); PowerShell's own parser reads both
+  settings sets back with it (parse only, nothing run). `audit.
+  installer_wake_faults` / `check_every_task_wakes_to_run`, in gate step 2,
+  name by task any the installer defines without it, read from code (a
+  comment neither satisfies nor trips it), keyed on `$TaskNames`, and name a
+  `schtasks`, `Set-ScheduledTask` or `New-ScheduledTask` it cannot read.
+- **The awake fraction**: `tools/awake.py --since <UTC> [--until <UTC>]
+  [--json]`, read-only, described in its docstring. On the log today:
+  12-23 September (the map's window) awake 6.75 of 286.38 hours (2.4%),
+  asleep 30.32, off 249.31 -- the map's own figures to the second place;
+  since 2026-09-21T06:23:11Z to 22:00Z on 26 September, 60.60 of 135.61
+  hours (44.7%), asleep 30.32, off 44.69; no wake by a timer, ever.
+- **Plantings** (each ESCAPES on f58b3a1, `git archive`, scratch, notices
+  off; each CAUGHT here): `plant_a_refusal_recorded_as_a_failure` (recorded
+  'failed' on the head; the control -- a plain RuntimeError -- must stay
+  failed), `plant_a_closing_write_that_escapes_the_try` (OperationalError
+  raised out of run_task on the head, and the head's order check passes the
+  close outside the try), `plant_a_hung_run_left_running` (the 13-hour
+  refresh stays running on the head), `plant_a_task_definition_without_
+  wake_to_run` (the head defines all 18 without it, and nothing reads it).
+- **Tests**: the item 7 block of `test_scheduler.py` (13, every one failing
+  on f58b3a1) and `test_awake.py` (the tool absent there).
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **"Older than its task's silent_after_hours" is literal**: each TaskSpec's
+  own figure. `catch-up` and `live` declare 8,760 hours (a year), so the four
+  hung catch-up rows (1978, 1982, 1985, 1988) stay 'running' until
+  2027-09-23; 1981 (predict:nfl, 216 h) goes after 2026-10-02T06:36Z and 3358
+  (final:cfb, 36 h) after 2026-09-27T07:24Z. The figures are not named by
+  the ruling and were not changed. (Reversal, if ruled: a per-task ceiling
+  in `abandon_hung_runs`.)
+- **'abandoned' is a result value, written once on the row that has no
+  ending** -- the lawful form: `task_runs` refuses a delete and permits the
+  one write that ends a row, which `run_task` makes itself; nothing is
+  deleted or rewritten, `finished_utc` stays empty, and both writes carry
+  `AND result = 'running'`, so the mark is terminal. Consequence: a run that
+  outlives its task's silence (impossible under the installer's two-hour
+  limit; possible by hand past six hours) finds its row marked and its own
+  ending is not written; `run_task` still returns it. (Reversal: drop the
+  clause from the two closing writes.)
+- **A closing write that fails after the task finished records what the
+  task did**, not 'failed': the ledger's own words are "failed: it raised",
+  and final:cfb had written its forecasts. No failure notice is sent for it.
+  (Reversal: set `result, detail = "failed", ...` in that branch.)
+- **The retry does not roll back first.** Under a held lock in WAL mode the
+  same transaction may fail again at once; a rollback would give it a fresh
+  start but could drop a task's own uncommitted writes on a journal-mode
+  database. The row then waits for the sweep (36 hours for final:cfb); the
+  Health panel says it never recorded an ending after two.
+- **WakeToRun on every task, Live and Serve included**: the ruling says
+  every. Live fires every 90 seconds and Serve every 2 minutes, so a
+  sleeping machine will be woken within two minutes of going to sleep --
+  whether it then stays awake or cycles in and out of sleep (each sleep here
+  writes about 1.3-1.5 GB of hibernation file) depends on a hidden
+  unattended-sleep timeout nobody read. Recorded, not decided.
+- **The registered tasks are not touched here, and the installer is not
+  run**: re-running it is not neutral on this machine (it resets Live's and
+  NearStart's hand-set limits and Refresh's and Resolve's phase). The
+  orchestrator applies WakeToRun in place after the release
+  (`$t = Get-ScheduledTask -TaskName $n; $t.Settings.WakeToRun = $true;
+  Set-ScheduledTask -TaskName $n -Settings $t.Settings`, the
+  `scheduler.apply_time` precedent) and reads back 18 of 18; that instant is
+  "the fix" the close-outs measure from.
+
+### THE LIVE RECORD AFTER THE RELEASE *(no tool to run by hand)*
+
+1. The first `open_db` of the record under the release (the Serve restart,
+   or any task or request) rebuilds `task_runs` through the rebuild door to
+   admit 'abandoned': rehearsed on a copy made through the backup door at
+   22:02Z on 26 September -- 4,516 rows before and after, every column's
+   checksum equal, the index and the no-delete trigger recreated, no
+   difference from this tree's definition, the whole copy against a fresh
+   build passing the gate's "tree" comparison, 0.5 seconds, and a second open
+   changing nothing.
+2. The first `run_task` after that (Live, within 90 seconds) marks
+   abandoned the rows then past their silence: 7 in the rehearsal (969,
+   1742, 1847, 1983, 1986, 1989, 2057), nothing else touched, the Health
+   panel plain words on the swept copy.
+3. Nothing retroactive: the 114 failed rows (90 refusals, 18 catch-up sums)
+   stand, no notification row changes, no forecast or recommendation is
+   touched.
+
+### OPEN
+
+- **The push channel quietens.** Refusals were its main trigger (the last
+  three failure notices were refusals). A missed slate still shows on the
+  Health panel and the first screen, and a real failure still pushes.
+- **WakeToRun is unproven on this machine**: every wake since 1 September
+  records TargetState 4 and EffectiveState 5, and `powercfg /waketimers`
+  needs elevation. The only proof is a wake by a timer in `tools/awake.py`'s
+  count, which has never been above 0. Most lost time was switched off,
+  which no wake setting reaches.
+- **`scheduler.NOT_INSTALLED` still says Live has no registered timer** --
+  stale since 2026-09-08; out of scope.
+- **A suite run can show a real desktop notice**:
+  `test_scheduler.py::test_a_failing_task_is_recorded_not_raised` takes the
+  failure path without `GRIDIRON_NOTIFY_FAILURES=0`, so `notify_failures`
+  sends (the phone push is stopped by the suite's shut network; the toast is
+  not). Every item 7 test and planting sets it; the old test is out of
+  scope.
+
+### THE PROVER *(2026-09-26)*
+
+Every planting escaped on f58b3a1 (`git archive`) and was caught here; each
+guard, neutralised in a copy of the tree, let its planting escape (17
+neutralisations). Then the defect was reached by other paths the gate
+passed, and each was closed and planted:
+
+- **The wake scan passed a task that would not wake.** It refused only
+  `-WakeToRun:$false`, and read a settings variable by its last assignment
+  from `New-ScheduledTaskSettingsSet`, so 13 shapes passed while the
+  seventeen tasks through `New-GridironTask` registered without the wake:
+  `-WakeToRun:0`, `:$null`, `:$off`, `:(1 -eq 2)`; `$settings.WakeToRun =
+  $false` (or `= 0`, `${settings}.WakeToRun`, a `PSObject` property) after
+  the set was made; the set made again (`$settings = (New-...)`, `= $plain`,
+  `Set-Variable`, `$script:settings`); and the set handed to a command that
+  may change it (`Update-Settings $settings`, whose name ends in
+  `-Settings` and was read as the parameter). Now the switch counts only
+  bare or as `:$true`, and a variable only if it is assigned once, straight
+  from the cmdlet, and otherwise only passed as `-Settings`. Four of the
+  shapes are now in `plant_a_task_definition_without_wake_to_run`; all of
+  them in `test_scheduler.py::test_a_wake_taken_away_another_way_is_named`.
+  The planting's first comment shape (above the function) could never have
+  satisfied the scan; the comment on the settings statement is the one that
+  proves comments are blanked.
+- **The order check passed a close under a handler that lets it out.** Any
+  handler made a `try` count, so a close inside `try: ... except
+  ValueError:` -- or under `except Exception:` that raises again -- passed
+  while the locked write left `run_task`. The suite's behaviour tests would
+  have failed on the shipped code; the gate's own check did not. Now a
+  `try` guards only if a handler catches `Exception` or wider and raises
+  nothing; both shapes are in `plant_a_closing_write_that_escapes_the_try`
+  and `test_scheduler.py::test_the_gate_sees_a_closing_write_under_a_
+  handler_that_lets_it_out`.
+- **The Health row of an abandoned run was hard to read.** The panel's
+  value column is `auto`, so the abandoned detail (and, before item 7, a
+  failed run's) took the row and left the warning -- the sentence the panel
+  exists to say -- a few words a line, 25 lines down at 1100px and at 390.
+  `.set-v .set-how` now wraps inside 62ch, and a Health row stacks at 640px
+  and below (the Health panel only; a row with a control keeps it beside
+  its label). Rendered from the browser world at 1100 and 390 before and
+  after; `test_health_words.py::test_a_long_detail_leaves_the_label_room_
+  to_be_read` measures the label column's share of each Health row (4% at
+  1120px and 12% at 390 on the unfixed stylesheet; above 30% and 90% now).
+
+Seen and left as they are:
+
+- **A refused rerun now counts as the day's run on the first screen.**
+  `views.freshness` reads the last predict run ended `ok` or `noop`, so a
+  refusal -- recorded `failed` until now -- keeps "daily run" fresh, as
+  "every question on this slate was already answered" always has. It
+  follows from the ruling's word; the strip's other two lines (the venue
+  read, the reasoning pass) are unchanged.
+- **An abandoned row says its cause twice**: the panel's warning ("The
+  process was killed, or the machine slept ...") and the stored detail end
+  in nearly the same sentence. The detail is stored and stands alone in the
+  ledger; the warning is the panel's. Not changed.
+- **The widening, three processes at once**: on a copy through the backup
+  door, three children opening it together all opened (0.5 to 1.7 s), and
+  every row and column checksum survived, and no table was left aside.

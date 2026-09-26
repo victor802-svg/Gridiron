@@ -2864,6 +2864,24 @@ def unfinished_run_line(age_hours: float) -> str:
             "what happened; whatever it was doing may be half done.")
 
 
+def abandoned_run_line(started_iso: str, marked_iso: str,
+                       silent_after_hours: float) -> str:
+    """The detail an abandoned run is stored with (GRIDIRON_REPAIR item 7,
+    2026-09-26): when it started, when a later run marked it, and the
+    silence it was past.
+
+    STORED, so it keeps its stamps as the record writes them and the Health
+    panel says them as dates on the way out (`task_detail_words`). It starts
+    in lower case on purpose: a leading "Word:" is read there as an
+    exception's class name and cut off.
+    """
+    return (f"never recorded an ending: it started {started_iso} and was "
+            f"marked abandoned {marked_iso}, past the {silent_after_hours:g} "
+            "hours after which this task counts as silent. The process was "
+            "killed, or the machine slept or lost power, before it could say "
+            "how it ended; whatever it was doing may be half done.")
+
+
 def counted(n: int, noun: str, plural: str | None = None) -> str:
     """"1 prediction", "41 predictions". Never "prediction(s)".
 

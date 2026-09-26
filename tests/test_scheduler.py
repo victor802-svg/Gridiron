@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from gridiron import config, db, tasks
+from gridiron import audit, config, db, language, tasks
 
 
 @pytest.fixture
@@ -379,3 +380,448 @@ def test_catch_up_is_a_task_with_a_row_of_its_own(league):
     entry = next(t for t in tasks.status(league)["tasks"] if t["task"] == "catch-up")
     assert entry["last_result"] == out["result"]
     assert ":" not in entry["task_label"] and "catch" not in entry["task_label"].lower() or entry["task_label"]
+
+
+# --- THE JOBS (GRIDIRON_REPAIR item 7, the operator's ruling of 2026-09-23) ----
+#
+# "SlateAlreadyAnswered is a noop, not a failure; the run_task closing UPDATE
+# moves inside the try and a hung 'running' row older than its task's
+# silent_after_hours is marked abandoned; every Gridiron-* task gains
+# WakeToRun." Built 2026-09-26. Every test that can take the failure path
+# keeps the notice off the desktop.
+
+#: A fixed instant for the sweep, so no test here reads the clock.
+NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+
+
+def _at(hours_before: float) -> str:
+    return (NOW - timedelta(hours=hours_before)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _row(conn, task, started, result="running", finished=None,
+         detail="started; no ending recorded yet"):
+    return conn.execute(
+        "INSERT INTO task_runs (task, started_utc, finished_utc, result, detail)"
+        " VALUES (?, ?, ?, ?, ?)", (task, started, finished, result, detail)).lastrowid
+
+
+def _a_slate_two_days_out(conn, sport="nfl", week=3):
+    season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
+    kickoff = datetime.now(timezone.utc) + timedelta(hours=48)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES (?, ?, ?, ?, 'REG', 'HOM',"
+        " 'AWY', ?, 'scheduled', ?)",
+        (f"{sport}_item7_{week}", sport, season, week,
+         kickoff.strftime("%Y-%m-%dT%H:%M:%SZ"), kickoff.strftime("%Y-%m-%d")))
+    conn.commit()
+    return season
+
+
+def test_a_refused_rerun_is_a_noop_and_every_other_fault_still_fails(conn, monkeypatch):
+    import re
+
+    from gridiron import run
+
+    monkeypatch.setenv("GRIDIRON_NOTIFY_FAILURES", "0")
+    season = _a_slate_two_days_out(conn)
+
+    def refuses(*_args, **_kwargs):
+        raise run.SlateAlreadyAnswered(
+            f"nfl {season} slate 3 already has 35 forecasts in every market it "
+            f"asks (moneyline, prop, spread, total). A slate is answered once.")
+
+    monkeypatch.setattr(run, "run_slate", refuses)
+    out = tasks.run_task(conn, "predict:nfl", use_llm=False)
+    stored = conn.execute("SELECT * FROM task_runs WHERE task = 'predict:nfl'"
+                          " ORDER BY id DESC LIMIT 1").fetchone()
+    assert out["result"] == stored["result"] == "noop"
+    assert stored["finished_utc"]
+    detail = stored["detail"]
+    assert detail.startswith("the NFL slate of Week 3, ") and "refused" in detail
+    assert re.search(r"\bslate \d", detail) is None, detail
+    assert audit_plain(detail) == [], detail
+    payload = json.loads(stored["payload_json"])
+    assert payload == {"refused_slate": 3, "already_written": 0}
+    assert '"week"' not in stored["payload_json"], "the slate card reads that key"
+    # EXACTLY THE ONE CLASS: what it subclasses, and its sibling, still fail.
+    for fault in (RuntimeError("the source went away"),
+                  run.MarketNotTrained("no model", markets=[], result={})):
+        def raises(*_args, _fault=fault, **_kwargs):
+            raise _fault
+        monkeypatch.setattr(run, "run_slate", raises)
+        assert tasks.run_task(conn, "predict:nfl", use_llm=False)["result"] == "failed"
+
+
+def audit_plain(text):
+    return audit.plain_words_violations(language.task_detail_words(text))
+
+
+def test_a_catch_up_is_not_failed_by_a_member_that_correctly_refuses(conn, monkeypatch):
+    """ALL 18 CATCH-UPS THAT EVER FINISHED WERE 'failed' for this alone
+    (measured read-only on 2026-09-26)."""
+    from gridiron import run
+
+    monkeypatch.setenv("GRIDIRON_NOTIFY_FAILURES", "0")
+    for sport in config.SPORTS:
+        _a_slate_two_days_out(conn, sport, week=3)
+    monkeypatch.setattr(tasks, "_run_refresh", lambda c: ("noop", "stubbed", {}))
+    monkeypatch.setattr(tasks, "_run_resolve", lambda c: ("noop", "stubbed", {}))
+
+    def refuses(conn_, sport, *_args, **_kwargs):
+        raise run.SlateAlreadyAnswered(f"{sport} slate answered once")
+
+    monkeypatch.setattr(run, "run_slate", refuses)
+    out = tasks.run_task(conn, "catch-up", use_llm=False)
+    members = {r["task"]: r["result"] for r in out["runs"]}
+    assert "failed" not in members.values(), members
+    assert out["result"] == "noop"
+    assert conn.execute("SELECT COUNT(*) FROM task_runs WHERE result = 'failed'"
+                        ).fetchone()[0] == 0
+
+
+def test_a_hung_run_past_its_own_silence_is_marked_abandoned_once(conn):
+    ids = {
+        "refresh_hung": _row(conn, "refresh", _at(13)),       # past refresh's 12
+        "refresh_young": _row(conn, "refresh", _at(3)),       # past two hours only
+        "nfl_hung": _row(conn, "predict:nfl", _at(217)),      # past the NFL's 216
+        "nfl_young": _row(conn, "predict:nfl", _at(215)),
+        "catch_up": _row(conn, "catch-up", _at(87)),          # a year's silence
+        "unknown": _row(conn, "a task nobody declares", _at(1000)),
+        "ended": _row(conn, "resolve", _at(20), "ok", _at(20), "settled 2 predictions"),
+    }
+    conn.commit()
+    before = {k: tuple(conn.execute("SELECT * FROM task_runs WHERE id = ?", (i,)).fetchone())
+              for k, i in ids.items()}
+    marked = tasks.abandon_hung_runs(conn, by_task="live", by_run=99, now=NOW)
+    assert sorted(marked) == sorted([ids["refresh_hung"], ids["nfl_hung"]])
+    rows = {k: conn.execute("SELECT * FROM task_runs WHERE id = ?", (i,)).fetchone()
+            for k, i in ids.items()}
+    for key in ("refresh_hung", "nfl_hung"):
+        row = rows[key]
+        assert row["result"] == "abandoned" and row["finished_utc"] is None
+        assert row["started_utc"] == before[key][2], "the start is never rewritten"
+        payload = json.loads(row["payload_json"])
+        assert payload["abandoned_utc"] == "2026-09-26T12:00:00Z"
+        assert payload["marked_by_task"] == "live" and payload["marked_by_run"] == 99
+        words = language.task_detail_words(row["detail"])
+        assert words.startswith("never recorded an ending: it started ")
+        assert "26 September 2026 at 12:00 UTC" in words
+        assert audit_plain(row["detail"]) == [], words
+    assert json.loads(rows["refresh_hung"]["payload_json"])["silent_after_hours"] == 12.0
+    assert json.loads(rows["nfl_hung"]["payload_json"])["silent_after_hours"] == 216.0
+    for key in ("refresh_young", "nfl_young", "catch_up", "unknown", "ended"):
+        assert tuple(rows[key]) == before[key], f"{key} was touched"
+    # TERMINAL: a second sweep, later still, marks nothing and changes nothing.
+    marked_once = {k: tuple(rows[k]) for k in ("refresh_hung", "nfl_hung")}
+    later = NOW.replace(day=27)
+    assert tasks.abandon_hung_runs(conn, now=later) == [ids["refresh_young"],
+                                                        ids["nfl_young"]]
+    for key, row in marked_once.items():
+        assert tuple(conn.execute("SELECT * FROM task_runs WHERE id = ?",
+                                  (ids[key],)).fetchone()) == row
+
+
+def test_an_abandoned_run_says_so_on_the_panel_in_words(conn):
+    _row(conn, "predict:nfl", "2026-01-01T00:00:00Z")
+    conn.commit()
+    tasks.abandon_hung_runs(conn, now=NOW)
+    status = tasks.status(conn)
+    entry = next(t for t in status["tasks"] if t["task"] == "predict:nfl")
+    assert entry["last_result"] == "abandoned"
+    assert entry["unfinished"] is True
+    assert "never recorded an ending" in entry["warning"]
+    assert "1 January 2026 at 00:00 UTC" in entry["last_detail"]
+    assert audit.health_detail_faults(status) == []
+
+
+def test_every_run_sweeps_and_a_failing_sweep_never_stops_it(league, monkeypatch):
+    hung = _row(league, "refresh", _hours_ago(13))
+    league.commit()
+    out = tasks.run_task(league, "resolve", use_llm=False)
+    assert league.execute("SELECT result FROM task_runs WHERE id = ?",
+                          (hung,)).fetchone()[0] == "abandoned"
+    marker = json.loads(league.execute("SELECT payload_json FROM task_runs WHERE id = ?",
+                                       (hung,)).fetchone()[0])
+    own = league.execute("SELECT id FROM task_runs WHERE task = 'resolve'"
+                         " ORDER BY id DESC LIMIT 1").fetchone()[0]
+    assert marker["marked_by_task"] == "resolve" and marker["marked_by_run"] == own
+    assert out["result"] in ("ok", "noop")
+
+    def broken(*_args, **_kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(tasks, "abandon_hung_runs", broken)
+    again = tasks.run_task(league, "resolve", use_llm=False)
+    assert again["result"] in ("ok", "noop")
+    last = league.execute("SELECT result, finished_utc FROM task_runs"
+                          " ORDER BY id DESC LIMIT 1").fetchone()
+    assert last["result"] == again["result"] and last["finished_utc"]
+
+
+class _Handle:
+    """A scratch handle whose closing writes on the ledger are refused as
+    locked, `times` of them -- what a second writer holding the record past
+    the 30-second wait does. A plain object: the one-way-in scan refuses a
+    subclass of the driver's connection."""
+
+    def __init__(self, real, times):
+        self._real, self.times, self.refused = real, times, 0
+
+    def execute(self, sql, parameters=()):
+        if self.refused < self.times and str(sql).lstrip().upper().startswith(
+                "UPDATE TASK_RUNS SET FINISHED_UTC"):
+            self.refused += 1
+            raise sqlite3.OperationalError("database is locked")
+        return self._real.execute(sql, parameters)
+
+    def commit(self):
+        return self._real.commit()
+
+    def rollback(self):
+        return self._real.rollback()
+
+    @property
+    def in_transaction(self):
+        return self._real.in_transaction
+
+
+def test_a_closing_write_that_raises_is_recorded_not_raised(conn, monkeypatch):
+    """THE TASK FINISHED; only its ending failed to be written the first time.
+    What it did is kept -- 'ok', not 'failed' -- with the write's error."""
+    monkeypatch.setenv("GRIDIRON_NOTIFY_FAILURES", "0")
+    monkeypatch.setattr(tasks, "_run_resolve",
+                        lambda c: ("ok", "settled 1 prediction", {"settled": 1}))
+    noticed = []
+    monkeypatch.setattr(tasks, "notify_failures", lambda c: noticed.append(1))
+    handle = _Handle(conn, times=1)
+    out = tasks.run_task(handle, "resolve", use_llm=False)
+    row = conn.execute("SELECT * FROM task_runs WHERE task = 'resolve'").fetchone()
+    assert handle.refused == 1
+    assert out["result"] == row["result"] == "ok" and row["finished_utc"]
+    payload = json.loads(row["payload_json"])
+    assert payload["settled"] == 1
+    assert payload["closing_write"] == "OperationalError: database is locked"
+    assert noticed == [], "nothing failed, so no failure notice"
+
+
+def test_a_payload_json_cannot_write_is_recorded_not_raised(conn, monkeypatch):
+    unwritable = {"settled": 1, "seen": {"a set is not JSON"}}
+    monkeypatch.setattr(tasks, "_run_resolve",
+                        lambda c: ("ok", "settled 1 prediction", unwritable))
+    out = tasks.run_task(conn, "resolve", use_llm=False)
+    row = conn.execute("SELECT * FROM task_runs WHERE task = 'resolve'").fetchone()
+    assert out["result"] == row["result"] == "ok"
+    payload = json.loads(row["payload_json"])
+    assert payload["closing_write"].startswith("TypeError: ")
+    assert payload["seen"] == str({"a set is not JSON"})
+
+
+def test_a_closing_write_that_cannot_be_made_is_left_for_the_sweep(conn, monkeypatch):
+    monkeypatch.setenv("GRIDIRON_NOTIFY_FAILURES", "0")
+    monkeypatch.setattr(tasks, "_run_resolve", lambda c: ("noop", "nothing", {}))
+    out = tasks.run_task(_Handle(conn, times=2), "resolve", use_llm=False)
+    assert out["result"] == "noop", "the task's own result, returned, not raised"
+    row = conn.execute("SELECT * FROM task_runs WHERE task = 'resolve'").fetchone()
+    assert row["result"] == "running" and row["finished_utc"] is None
+    later = tasks._parse(row["started_utc"]) + timedelta(hours=12, seconds=1)
+    assert tasks.abandon_hung_runs(conn, now=later) == [row["id"]]
+
+
+def test_a_failed_task_whose_ending_cannot_be_written_returns_failed(conn, monkeypatch):
+    """The task raised, so the handler's write is the only one -- and it is
+    refused too. Nothing is raised out of `run_task`: the failure is
+    returned, and the row waits for the sweep."""
+    monkeypatch.setenv("GRIDIRON_NOTIFY_FAILURES", "0")
+
+    def boom(c):
+        raise RuntimeError("the source went away")
+
+    monkeypatch.setattr(tasks, "_run_resolve", boom)
+    handle = _Handle(conn, times=1)
+    out = tasks.run_task(handle, "resolve", use_llm=False)
+    row = conn.execute("SELECT * FROM task_runs WHERE task = 'resolve'").fetchone()
+    assert out["result"] == "failed" and "the source went away" in out["detail"]
+    assert handle.refused == 1 and row["result"] == "running"
+    # and with the write let through, it is recorded failed, as ever
+    out = tasks.run_task(_Handle(conn, times=0), "resolve", use_llm=False)
+    row = conn.execute("SELECT * FROM task_runs WHERE task = 'resolve'"
+                       " ORDER BY id DESC LIMIT 1").fetchone()
+    assert out["result"] == row["result"] == "failed"
+    assert "Traceback" in json.loads(row["payload_json"])["traceback"]
+
+
+def test_an_abandoned_row_is_never_given_a_second_ending(conn, monkeypatch):
+    """'abandoned' IS TERMINAL. A run that outlives its task's silence -- by
+    hand past the scheduler's limits -- finds its row marked by another run
+    and does not overwrite the mark."""
+    def outlives(c):
+        c.execute("UPDATE task_runs SET result = 'abandoned', detail = 'marked'"
+                  " WHERE result = 'running'")
+        c.commit()
+        return "ok", "settled 1 prediction", {}
+
+    monkeypatch.setattr(tasks, "_run_resolve", outlives)
+    out = tasks.run_task(conn, "resolve", use_llm=False)
+    row = conn.execute("SELECT * FROM task_runs WHERE task = 'resolve'").fetchone()
+    assert out["result"] == "ok"
+    assert row["result"] == "abandoned" and row["detail"] == "marked"
+    assert row["finished_utc"] is None
+
+
+def test_the_gate_sees_a_closing_write_outside_the_try():
+    from pathlib import Path
+
+    source = (Path(config.PACKAGE_ROOT) / "tasks.py").read_text(encoding="utf-8")
+    assert audit.task_run_order_faults(source) == []
+    head_shape = "\n".join([
+        "def run_task(conn, task):",
+        "    cursor = conn.execute(\"INSERT INTO task_runs (task) VALUES (?)\", (task,))",
+        "    conn.commit()",
+        "    try:",
+        "        result = _run_resolve(conn)",
+        "    except Exception:",
+        "        result = 'failed'",
+        "    conn.execute(\"UPDATE task_runs SET result = ? WHERE id = ?\", (result, 1))",
+        "    conn.commit()",
+    ])
+    faults = audit.task_run_order_faults(head_shape)
+    assert any("line 8" in f and "outside any try" in f for f in faults), faults
+    assert any("commit at line 9" in f for f in faults), faults
+
+
+def test_the_gate_sees_a_closing_write_under_a_handler_that_lets_it_out():
+    """THE PROVER, 2026-09-26: the first order check passed a close inside
+    ANY try with a handler, so `except ValueError:` -- or a handler that
+    catches everything and raises it again -- let the locked write out of
+    `run_task` with a clean gate."""
+    def shape(*handler):
+        return "\n".join([
+            "def run_task(conn, task):",
+            "    cursor = conn.execute(\"INSERT INTO task_runs (task) VALUES (?)\", (task,))",
+            "    conn.commit()",
+            "    try:",
+            "        result = _run_resolve(conn)",
+            "        conn.execute(\"UPDATE task_runs SET result = ? WHERE id = ?\", (result, 1))",
+            "        conn.commit()",
+            *handler,
+        ])
+
+    for handler in (["    except ValueError:", "        result = 'failed'"],
+                    ["    except (KeyError, TypeError):", "        result = 'failed'"],
+                    ["    except Exception:", "        result = 'failed'", "        raise"]):
+        faults = audit.task_run_order_faults(shape(*handler))
+        assert any("line 6" in f and "outside any try" in f for f in faults), (handler, faults)
+        assert any("commit at line 7" in f for f in faults), (handler, faults)
+    for handler in (["    except Exception:", "        result = 'failed'"],
+                    ["    except:", "        result = 'failed'"],
+                    ["    except (OSError, BaseException):", "        result = 'failed'"]):
+        assert audit.task_run_order_faults(shape(*handler)) == [], handler
+
+
+def test_an_older_ledger_is_widened_to_admit_abandoned(tmp_path):
+    """The live record's ledger as released until 2026-09-26: its CHECK
+    admits 'running' and not 'abandoned'. Widened through the rebuild door:
+    every row kept with its id, the index and the no-delete trigger
+    recreated, and the table exactly the one a fresh build has."""
+    from gridiron import rebuild
+
+    conn = db.open_db(tmp_path / "released.db")
+    try:
+        conn.executescript(
+            "DROP TABLE task_runs;"
+            "CREATE TABLE task_runs ("
+            " id INTEGER PRIMARY KEY, task TEXT NOT NULL, started_utc TEXT NOT NULL,"
+            " finished_utc TEXT, result TEXT NOT NULL"
+            " CHECK (result IN ('running', 'ok', 'noop', 'missed', 'failed')),"
+            " detail TEXT, payload_json TEXT);"
+            "CREATE INDEX IF NOT EXISTS task_runs_lookup ON task_runs (task, started_utc DESC);"
+            "CREATE TRIGGER IF NOT EXISTS task_runs_no_delete BEFORE DELETE ON task_runs"
+            " BEGIN SELECT RAISE(ABORT, 'task_runs is append-only: a run that failed is a fact'); END;")
+        for n, result in enumerate(("ok", "running", "failed", "noop", "missed"), start=1):
+            conn.execute(
+                "INSERT INTO task_runs (id, task, started_utc, finished_utc, result,"
+                " detail, payload_json) VALUES (?, 'refresh', ?, NULL, ?, ?, '{}')",
+                (n * 7, f"2026-09-0{n}T00:00:00Z", result, f"row {n}"))
+        conn.commit()
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE task_runs SET result = 'abandoned' WHERE id = 14")
+        conn.rollback()
+        before = [tuple(r) for r in conn.execute("SELECT * FROM task_runs ORDER BY id")]
+
+        assert db.widen_task_run_results(conn) is True
+        assert [tuple(r) for r in conn.execute("SELECT * FROM task_runs ORDER BY id")] == before
+        definition = rebuild.released_definitions(["task_runs"])["task_runs"]
+        assert rebuild.differences_from(conn, definition) == []
+        conn.execute("UPDATE task_runs SET result = 'abandoned' WHERE id = 14")
+        conn.commit()
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute("DELETE FROM task_runs WHERE id = 14")
+        conn.rollback()
+        assert db.widen_task_run_results(conn) is False
+        db.init(conn)
+        assert rebuild.differences_from(conn, definition) == []
+    finally:
+        conn.close()
+
+
+def test_every_task_the_installer_defines_wakes_the_machine():
+    """ALL 18 READ BACK WakeToRun=False ON 23 SEPTEMBER, and the ruling says
+    every one gains it -- Live and Serve included. Read from the installer's
+    code, keyed on its own list of names, not on `scheduler.NOT_INSTALLED`
+    (which would skip Live)."""
+    script = audit.INSTALLER.read_text(encoding="utf-8")
+    assert audit.installer_wake_faults(script) == []
+    listed = script.split("$TaskNames = @(")[1].split(chr(10) + ")")[0]
+    assert listed.count('"$($Prefix)') == 18
+    serve = script.index('Register-ScheduledTask -TaskName "$($Prefix)Serve"')
+    without = script[:serve] + script[serve:].replace(
+        "New-ScheduledTaskSettingsSet -WakeToRun ", "New-ScheduledTaskSettingsSet ", 1)
+    faults = audit.installer_wake_faults(without)
+    assert [f.split(":", 1)[0] for f in faults] == ["Gridiron-Serve"], faults
+    helper = script.replace("        -WakeToRun `" + chr(10), "", 1)
+    named = sorted(f.split(":", 1)[0] for f in audit.installer_wake_faults(helper))
+    assert len(named) == 17 and "Gridiron-Live" in named and "Gridiron-Serve" not in named
+    audit.check_every_task_wakes_to_run()
+
+
+def test_a_wake_taken_away_another_way_is_named():
+    """THE PROVER, 2026-09-26: the first scan refused only `-WakeToRun:$false`
+    and read the last assignment of the settings made by the settings
+    cmdlet, so each of these passed while the seventeen tasks registered
+    through the helper would not wake the machine. Every one now names all
+    seventeen; `-WakeToRun:$true` still passes."""
+    script = audit.INSTALLER.read_text(encoding="utf-8")
+    switch = "        -WakeToRun `" + chr(10)
+    limit = "-StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)" + chr(10)
+    register = "    Register-ScheduledTask -TaskName $Name -Action $action -Trigger $Trigger `"
+    assert script.count(switch) == script.count(limit) == script.count(register) == 1
+
+    def before_register(line):
+        return script.replace(register, line + chr(10) + register, 1)
+
+    variants = {
+        "a comment on the statement": script.replace(switch, "", 1).replace(
+            limit, limit[:-1] + "  # -WakeToRun" + chr(10), 1),
+        **{f"bound to {value}": script.replace(
+            switch, f"        -WakeToRun:{value} `" + chr(10), 1)
+           for value in ("0", "$null", "$off", "(1 -eq 2)", "$False")},
+        "taken off by property": before_register("    $settings.WakeToRun = $false"),
+        "taken off through PSObject": before_register(
+            "    $settings.PSObject.Properties['WakeToRun'].Value = $false"),
+        "made again in brackets": before_register(
+            "    $settings = (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries)"),
+        "made again from another variable": before_register(
+            "    $plain = New-ScheduledTaskSettingsSet" + chr(10) + "    $settings = $plain"),
+        "made again by Set-Variable": before_register(
+            "    Set-Variable -Name settings -Value (New-ScheduledTaskSettingsSet)"),
+        "made again in another scope": before_register(
+            "    $script:settings = New-ScheduledTaskSettingsSet"),
+        "handed to a command that may change it": before_register(
+            "    Update-Settings $settings"),
+    }
+    for label, planted in variants.items():
+        named = sorted(f.split(":", 1)[0] for f in audit.installer_wake_faults(planted))
+        assert len(named) == 17 and "Gridiron-Serve" not in named, (label, named)
+    lawful = script.replace(switch, "        -WakeToRun:$true `" + chr(10), 1)
+    assert audit.installer_wake_faults(lawful) == []

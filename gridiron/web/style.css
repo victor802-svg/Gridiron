@@ -1888,6 +1888,22 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .set-v { text-align: right; font-family: var(--mono); font-size: 12px; }
 .set-v code { color: var(--muted); }
 .set-how { margin-top: 4px; font-size: 10px; color: var(--faint); }
+/* A LONG DETAIL WRAPS INSIDE ITS OWN MEASURE (the prover of GRIDIRON_REPAIR
+   item 7, 2026-09-26). The value column is `auto`, so one long line -- a
+   failed run's detail, and from item 7 an abandoned run's -- took the whole
+   row and left the label column a few words wide: the warning beside an
+   abandoned run, the line the panel exists to say, ran twenty-five lines
+   down at 1100px. Held to the 62ch the label's own lines already use. */
+.set-v .set-how { max-width: 62ch; margin-left: auto; }
+/* AND AT PHONE WIDTH A HEALTH ROW STACKS (the same prover, the same day):
+   two columns cannot share 390px with a detail beside a warning, so the
+   warning ran nine letters wide. The Health panel's rows only -- a row with
+   a control keeps its control beside its label. */
+@media (max-width: 640px) {
+  #settings-health .set { grid-template-columns: 1fr; gap: 6px; }
+  #settings-health .set-v { text-align: left; }
+  #settings-health .set-v .set-how { margin-left: 0; }
+}
 .set-said { grid-column: 1 / -1; font-family: var(--mono); font-size: 11px;
             color: var(--muted); }
 /* A DISAGREEMENT IS NOT A LOSS (GRIDIRON_16 R2), so it carries weight and a

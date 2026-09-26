@@ -914,52 +914,42 @@ def db_columns(conn: sqlite3.Connection, table: str) -> list[str]:
 
 
 def widen_task_run_results(conn: sqlite3.Connection) -> bool:
-    """Admit the 'running' result on a database created before 2026-09-05.
+    """Admit every result the run ledger declares on an older record:
+    'running' (audit 2026-09-05) and 'abandoned' (GRIDIRON_REPAIR item 7,
+    the operator's ruling of 2026-09-23, built 2026-09-26).
 
-    Same reason and same shape as `widen_notification_states`: SQLite keeps
-    the CHECK it was created with, so an older record would refuse the row
-    `run_task` now writes first -- and refuse it before the task ran, which
-    would stop every scheduled task on the machine at once.
+    Same reason as `widen_notification_states`: SQLite keeps the CHECK it
+    was created with, so an older record would refuse the row `run_task`
+    writes first -- and refuse it before the task ran, which would stop
+    every scheduled task on the machine at once -- or, for 'abandoned', the
+    one write that marks a run that never ended.
+
+    THROUGH THE REBUILD DOOR FROM 2026-09-26, no longer by hand. The first
+    widening copied the table in one transaction and dropped and renamed in
+    a second; `open_db` runs this on every task start and every API request,
+    so a row a second process wrote between the two was lost, and a second
+    process arriving mid-way met `task_runs_wide` already there.
+    `gridiron.rebuild` does it in ONE `BEGIN IMMEDIATE` -- every row copied
+    with its id, the count and a checksum of every column verified, the
+    index and the no-delete trigger recreated from `schema.sql`'s own text,
+    anything amiss rolled back with nothing swapped -- so the table stored
+    is exactly the one a fresh build has, which the gate compares with an
+    empty register. A process that planned the rebuild before another
+    finished it rebuilds a table already there; that is verified the same
+    way and changes nothing.
     """
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='task_runs'"
     ).fetchone()
-    if row is None or "'running'" in (row[0] or ""):
+    if row is None or "'abandoned'" in (row[0] or ""):
         return False
+    from . import rebuild
 
-    before = conn.execute("SELECT COUNT(*) FROM task_runs").fetchone()[0]
-    conn.executescript("""
-        PRAGMA foreign_keys=OFF;
-        BEGIN;
-        CREATE TABLE task_runs_wide (
-            id            INTEGER PRIMARY KEY,
-            task          TEXT    NOT NULL,
-            started_utc   TEXT    NOT NULL,
-            finished_utc  TEXT,
-            result        TEXT    NOT NULL
-                          CHECK (result IN ('running', 'ok', 'noop', 'missed', 'failed')),
-            detail        TEXT,
-            payload_json  TEXT
-        );
-        INSERT INTO task_runs_wide
-            SELECT id, task, started_utc, finished_utc, result, detail, payload_json
-              FROM task_runs;
-        COMMIT;
-    """)
-    after = conn.execute("SELECT COUNT(*) FROM task_runs_wide").fetchone()[0]
-    if after != before:
-        conn.execute("DROP TABLE task_runs_wide")
+    if conn.in_transaction:
         conn.commit()
-        raise MigrationRefused(
-            f"task_runs: copied {after} of {before} rows; the original is untouched")
-    conn.executescript("""
-        BEGIN;
-        DROP TABLE task_runs;
-        ALTER TABLE task_runs_wide RENAME TO task_runs;
-        COMMIT;
-        PRAGMA foreign_keys=ON;
-    """)
-    return True
+    definition = rebuild.released_definitions(["task_runs"])["task_runs"]
+    report = rebuild.rebuild_tables(conn, [definition])
+    return any(entry.action == "rebuilt" for entry in report.tables)
 
 
 #: Triggers attached to `picks_taken`. Named for the same reason
@@ -1045,7 +1035,10 @@ def init(conn: sqlite3.Connection) -> None:
     # `notify.send` writes.
     widen_notification_states(conn)
     # AND THE RUN LEDGER'S RESULTS (audit 2026-09-05): a 'running' row is
-    # written before a task does anything, and an older CHECK would refuse it.
+    # written before a task does anything, and an older CHECK would refuse
+    # it -- and from 2026-09-26 (GRIDIRON_REPAIR item 7) an 'abandoned' one,
+    # the mark a later run writes on a run that never ended. On the live
+    # record this is the first open after the release that carries it.
     widen_task_run_results(conn)
     # AND THE TAKEN TABLE'S SHAPE (GRIDIRON_COMBOS C4, 2026-09-08): a package
     # tap has no prediction, so `prediction_id` had to stop being NOT NULL.

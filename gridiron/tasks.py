@@ -230,6 +230,24 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
     row_id = cursor.lastrowid
     conn.commit()
 
+    # A RUN THAT NEVER ENDED IS MARKED ONCE IT IS PAST ITS TASK'S SILENCE
+    # (GRIDIRON_REPAIR item 7, the operator's ruling of 2026-09-23, built
+    # 2026-09-26). Here, after this run's own row exists -- the record still
+    # precedes the run -- and never at the cost of the run: a sweep that
+    # fails leaves every row as it was, for the next run to try, and takes
+    # nothing of this one with it (its row is already committed above).
+    try:
+        abandon_hung_runs(conn, by_task=task, by_run=row_id)
+    except Exception:  # noqa: BLE001 - the sweep must never stop the run
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # WHAT THE TASK DID, once it has done it (GRIDIRON_REPAIR item 7,
+    # 2026-09-26). Set only when the dispatch returned, so the handler below
+    # can tell a task that raised from a task whose closing write raised.
+    done = None
     try:
         if task == "refresh":
             result, detail, payload = _run_refresh(conn)
@@ -253,40 +271,148 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
             result, detail, payload = _run_predict(
                 conn, task.split(":", 1)[1], use_llm=use_llm
             )
+        # THE CLOSING WRITE IS INSIDE THE TRY (GRIDIRON_REPAIR item 7, the
+        # operator's ruling of 2026-09-23: "the run_task closing UPDATE moves
+        # inside the try"). It sat after the handler until 2026-09-26, so a
+        # write that raised -- a second writer holding the record past the
+        # 30-second wait, or a payload `json` cannot write -- left
+        # `run_task`, the process exited 1 and the row stayed 'running':
+        # `final:cfb` on 9, 21, 23 and 25 September, each started inside a
+        # burst of concurrent refreshes (the lock is the likeliest cause and
+        # was never reproduced). Now the handler below records it.
+        #
+        # AN ENDING IS WRITTEN ONCE (`AND result = 'running'`): a row a later
+        # run has marked abandoned keeps that mark -- 'abandoned' is terminal
+        # -- and no closing write ever replaces another ending.
+        done = (result, detail, payload)
+        conn.execute(
+            "UPDATE task_runs SET finished_utc = ?, result = ?, detail = ?,"
+            " payload_json = ? WHERE id = ? AND result = 'running'",
+            (db.utcnow(), result, detail, json.dumps(payload), row_id),
+        )
+        conn.commit()
     except Exception as exc:  # noqa: BLE001 - a failed task must be recorded, not raised away
-        result, detail = "failed", f"{type(exc).__name__}: {exc}"
-        payload = {"traceback": traceback.format_exc()[-2000:]}
-        # A RUN FAILED FOR WANT OF A MODEL HAS STILL RECOMMENDED (the prover
-        # of GRIDIRON_REPAIR item 5, 2026-09-26). `run.MarketNotTrained` is
-        # raised after the markets that have a model are written, priced and
-        # recorded, and carries what the run did; until this date the
-        # payload kept only the traceback, so what such a run recommended,
-        # and what it kept off the record as a second on its game and market
-        # or as both sides of one, with why, went unsaid -- while a run that
-        # ended ok kept it. Kept here the same way, and never at the cost of
-        # recording the failure itself.
-        try:
-            from . import run as _run
+        if done is not None:
+            # THE TASK FINISHED; ONLY ITS ENDING FAILED TO BE WRITTEN. What
+            # it did is recorded as it did it -- `failed` means the task
+            # raised (schema.sql), and final:cfb had written its forecasts --
+            # with the write's own error beside it, and no failure notice.
+            result, detail, payload = done
+            payload = {**payload,
+                       "closing_write": f"{type(exc).__name__}: {exc}"}
+        else:
+            result, detail = "failed", f"{type(exc).__name__}: {exc}"
+            payload = {"traceback": traceback.format_exc()[-2000:]}
+            # A RUN FAILED FOR WANT OF A MODEL HAS STILL RECOMMENDED (the
+            # prover of GRIDIRON_REPAIR item 5, 2026-09-26).
+            # `run.MarketNotTrained` is raised after the markets that have a
+            # model are written, priced and recorded, and carries what the
+            # run did; until this date the payload kept only the traceback,
+            # so what such a run recommended, and what it kept off the
+            # record as a second on its game and market or as both sides of
+            # one, with why, went unsaid -- while a run that ended ok kept
+            # it. Kept here the same way, and never at the cost of recording
+            # the failure itself.
+            try:
+                from . import run as _run
 
-            if isinstance(exc, _run.MarketNotTrained):
-                payload["recommended"] = (exc.result or {}).get("recommended")
-        except Exception:  # noqa: BLE001 - keeping it must never mask the fault
-            pass
-        # A FAILED TASK IS EXACTLY WHEN THE SECOND CHANNEL EXISTS (ruling R4).
-        # Checked here rather than on a schedule of its own, which could go
-        # silent in the same way the thing it watches did.
+                if isinstance(exc, _run.MarketNotTrained):
+                    payload["recommended"] = (exc.result or {}).get("recommended")
+            except Exception:  # noqa: BLE001 - keeping it must never mask the fault
+                pass
+            # A FAILED TASK IS EXACTLY WHEN THE SECOND CHANNEL EXISTS (ruling
+            # R4). Checked here rather than on a schedule of its own, which
+            # could go silent in the same way the thing it watches did.
+            try:
+                notify_failures(conn)
+            except Exception:  # noqa: BLE001 - the notifier must never mask the fault
+                pass
+        # ONE MORE ATTEMPT, AND THEN THE SWEEP (2026-09-26). The same write,
+        # with a payload `json` can always write; if it cannot be made
+        # either, nothing is raised: the row stays 'running', the Health
+        # panel says it never recorded an ending, and the first run after
+        # its task's silence marks it abandoned (`abandon_hung_runs`).
         try:
-            notify_failures(conn)
-        except Exception:  # noqa: BLE001 - the notifier must never mask the fault
+            conn.execute(
+                "UPDATE task_runs SET finished_utc = ?, result = ?, detail = ?,"
+                " payload_json = ? WHERE id = ? AND result = 'running'",
+                (db.utcnow(), result, detail, json.dumps(payload, default=str),
+                 row_id),
+            )
+            conn.commit()
+        except Exception:  # noqa: BLE001 - left for the sweep, never raised
             pass
-
-    conn.execute(
-        "UPDATE task_runs SET finished_utc = ?, result = ?, detail = ?,"
-        " payload_json = ? WHERE id = ?",
-        (db.utcnow(), result, detail, json.dumps(payload), row_id),
-    )
-    conn.commit()
     return {"task": task, "result": result, "detail": detail, **payload}
+
+
+def abandon_hung_runs(conn: sqlite3.Connection, *, by_task: str | None = None,
+                      by_run: int | None = None,
+                      now: datetime | None = None) -> list[int]:
+    """Mark abandoned every 'running' row older than its task's silence.
+
+    THE OPERATOR'S RULING of 2026-09-23 (GRIDIRON_REPAIR item 7, built
+    2026-09-26): "a hung 'running' row older than its task's
+    silent_after_hours is marked abandoned". Until then nothing ended such a
+    row: thirteen stood on the record on 26 September, the oldest a
+    `final:cfb` run begun at 19:41Z on 9 September.
+
+    LITERAL, PER TASK: the age is measured from the row's start against
+    ITS OWN task's `silent_after_hours`, the figure the Health panel already
+    calls that task silent past. So a hung `refresh` row goes after 12
+    hours, `final:cfb` after 36, `predict:nfl` after 216 -- and `catch-up`
+    and `live`, which declare a year because neither has a cadence, keep a
+    hung row 'running' for a year. That follows from the ruling's words and
+    those figures, which the ruling does not name; it is recorded, not
+    changed (FOLLOWUPS).
+
+    WRITTEN ONCE, ON A ROW WITH NO ENDING, never by deleting or rewriting
+    one. `task_runs` refuses a delete; what it has always allowed is the one
+    write that ends a row, which `run_task` makes itself. This is that write,
+    made by a later run for a run that could not make it: `result` from
+    'running' to 'abandoned', the detail in words, and a payload saying when
+    and by which run. `finished_utc` stays NULL -- no ending was recorded,
+    and the row does not pretend one was -- and `AND result = 'running'`
+    keeps it from touching a row that has ended, including one ended while
+    this ran. 'abandoned' is terminal: `run_task`'s own closing write
+    carries the same clause.
+
+    SAFE BY THE SCHEDULER'S LIMITS: every task's silence (six hours at the
+    least, `near-start`) is longer than the longest execution the installer
+    allows (two hours), so a row past it belongs to no process still
+    running under the scheduler. `now` is for tests; it is the real clock
+    otherwise. Returns the ids it marked.
+    """
+    now = now or datetime.now(timezone.utc)
+    marked_at = _iso(now)
+    marked = []
+    for row in conn.execute(
+            "SELECT id, task, started_utc FROM task_runs"
+            " WHERE result = 'running' ORDER BY id").fetchall():
+        spec = TASKS.get(row["task"])
+        if spec is None:
+            continue            # no declared task, so no silence to be past
+        try:
+            started = _parse(row["started_utc"])
+        except (TypeError, ValueError):
+            continue            # a stamp nobody can age is left as it is
+        age = (now - started).total_seconds() / 3600.0
+        if age <= spec.silent_after_hours:
+            continue
+        cursor = conn.execute(
+            "UPDATE task_runs SET result = 'abandoned', detail = ?,"
+            " payload_json = ? WHERE id = ? AND result = 'running'",
+            (language.abandoned_run_line(row["started_utc"], marked_at,
+                                         spec.silent_after_hours),
+             json.dumps({"abandoned_utc": marked_at,
+                         "silent_after_hours": spec.silent_after_hours,
+                         "marked_by_task": by_task,
+                         "marked_by_run": by_run}),
+             row["id"]))
+        if cursor.rowcount:
+            marked.append(row["id"])
+    if marked:
+        conn.commit()
+    return marked
 
 
 def failed_for_want_of_a_model(conn: sqlite3.Connection, sport: str) -> bool:
@@ -919,7 +1045,40 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
             )
         return "noop", f"no upcoming {sport} slate is scheduled", {}
 
-    result = run.run_slate(conn, sport, season, week, use_llm=use_llm)
+    try:
+        result = run.run_slate(conn, sport, season, week, use_llm=use_llm)
+    except run.SlateAlreadyAnswered:
+        # A REFUSED RERUN IS A NOOP, NOT A FAILURE (GRIDIRON_REPAIR item 7,
+        # the operator's ruling of 2026-09-23: "SlateAlreadyAnswered is a
+        # noop, not a failure"). The refusal is the record keeping a slate
+        # answered once, and `noop` is the ledger's own word for it: "it ran
+        # and there was correctly nothing to do". Until 2026-09-26 it was
+        # recorded 'failed' -- 90 of the 114 failed rows on the record that
+        # day, every one of the 18 catch-ups that ever finished called
+        # failed for it alone, and each one raising the failure notice -- so
+        # a real failure sat unseen among them.
+        #
+        # EXACTLY THIS CLASS, never `RuntimeError`, which it subclasses: a
+        # run that fails for want of a model (`run.MarketNotTrained`) and any
+        # other fault stay failures. Item 2 made the refusal honest first --
+        # a market the run asks and cannot answer keeps the slate open, so a
+        # refusal now means every market it asks is answered. The run's own
+        # `run_slate` still raises it; only the scheduled task's record
+        # changes.
+        #
+        # THE SLATE IN WORDS, never the refusal's text, which names it by
+        # key ("slate 180"); and no "week" in the payload, which the slate
+        # card reads to find the run that wrote it (`views._below_floor`).
+        answered = run.already_answered(conn, sport, season, week)
+        return (
+            "noop",
+            f"the {config.SPORT_LABELS.get(sport, sport.upper())} slate of "
+            f"{_slate_words(conn, sport, season, week)} already has "
+            f"{language.counted(answered['written'], 'forecast')} in every "
+            "market this run asks. A slate is answered once, so this rerun "
+            "was refused and nothing was written.",
+            {"refused_slate": week, "already_written": answered["written"]},
+        )
     written = result.get("written", 0)
     payload = {
         "week": week,
@@ -1262,8 +1421,11 @@ def status(conn: sqlite3.Connection) -> dict:
             # A ROW WITH NO ENDING. Past the scheduler's own two-hour limit
             # on a task, a 'running' row is a run that died -- killed, or the
             # machine slept -- and the panel says so rather than showing the
-            # last good ending as if nothing had happened since.
-            if last["result"] == "running" and age > RUN_CEILING_HOURS:
+            # last good ending as if nothing had happened since. An
+            # 'abandoned' row is the same run, marked by a later one past its
+            # task's silence (GRIDIRON_REPAIR item 7, 2026-09-26): it still
+            # never recorded an ending, and the panel still says so.
+            if last["result"] in ("running", "abandoned") and age > RUN_CEILING_HOURS:
                 entry["unfinished"] = True
                 entry["warning"] = language.unfinished_run_line(age)
         out.append(entry)

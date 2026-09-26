@@ -570,6 +570,14 @@ def test_every_new_guard_is_in_the_planted_harness():
         # never two forecasters in one count, never a game counted twice.
         "plant_an_at_the_line_curve_pooling_two_forecasters",
         "plant_an_at_the_line_game_counted_twice",
+        # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
+        # 2026-09-26): a refused rerun is a noop, the closing write is
+        # caught, a hung run is marked abandoned past its task's silence,
+        # and every scheduled task wakes the machine.
+        "plant_a_refusal_recorded_as_a_failure",
+        "plant_a_closing_write_that_escapes_the_try",
+        "plant_a_hung_run_left_running",
+        "plant_a_task_definition_without_wake_to_run",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

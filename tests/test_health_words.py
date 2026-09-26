@@ -54,3 +54,27 @@ def test_the_settings_page_shows_the_failed_run_in_words(page):
     assert "SlateAlreadyAnswered" not in text
     assert "20260905" not in text
     assert "the slate of 5 September" in text
+
+
+#: Each Health row's label column against the row, as the page lays it out.
+_LABEL_SHARE = (
+    "() => [...document.querySelectorAll('#settings-health .set')].map(r => ["
+    " r.querySelector('.set-k b').textContent,"
+    " r.querySelector('.set-k').getBoundingClientRect().width"
+    " / r.getBoundingClientRect().width])")
+
+
+def test_a_long_detail_leaves_the_label_room_to_be_read(page):
+    """THE PROVER OF GRIDIRON_REPAIR item 7 (2026-09-26). The value column
+    is `auto`, so a long detail -- this world's failed catch-up, and from
+    item 7 every abandoned run's -- took the row and left the label column,
+    where the warning sits, a few words a line: 4% of the row at 1120px and
+    12% at 390, measured on the unfixed stylesheet. A detail now wraps
+    inside 62ch, and a Health row stacks at phone width."""
+    page.evaluate("location.hash = '#/settings'")
+    page.wait_for_selector("#settings-health .set", timeout=15000)
+    wide = page.evaluate(_LABEL_SHARE)
+    assert wide and min(share for _label, share in wide) > 0.3, wide
+    page.set_viewport_size({"width": 390, "height": 844})
+    narrow = page.evaluate(_LABEL_SHARE)
+    assert narrow and min(share for _label, share in narrow) > 0.9, narrow

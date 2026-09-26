@@ -140,7 +140,18 @@ function New-GridironTask {
         -Argument "-m gridiron.cli task $TaskArg" -WorkingDirectory $Repo
     # Run whether or not the user is logged on would need stored credentials;
     # this runs as the logged-on user, which is what a personal appliance wants.
+    #
+    # -WakeToRun: EVERY Gridiron-* TASK WAKES THE MACHINE (the operator's
+    # ruling of 2026-09-23, GRIDIRON_REPAIR item 7, written here 2026-09-26).
+    # Until then none did: a machine asleep at a slate's hour slept through
+    # it, and StartWhenAvailable ran the pass only once someone woke it,
+    # however late that was. It cannot wake a machine that is switched off,
+    # which was most of the time lost in September (30 hours asleep, 249
+    # off, 12 to 23 September); tools/awake.py says which was which.
+    # audit.check_every_task_wakes_to_run names any task defined here
+    # without it.
     $settings = New-ScheduledTaskSettingsSet `
+        -WakeToRun `
         -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
     Register-ScheduledTask -TaskName $Name -Action $action -Trigger $Trigger `
@@ -400,6 +411,11 @@ New-GridironTask -Name "$($Prefix)Live" -TaskArg "live" `
 #
 # It does NOT go through New-GridironTask: that helper runs `-m gridiron.cli
 # task <name>` and exits, and this runs `serve` and does not.
+#
+# -WakeToRun HERE TOO (GRIDIRON_REPAIR item 7, 2026-09-26): the ruling says
+# every Gridiron-* task, and this is one. Its two-minute trigger then wakes a
+# sleeping machine within two minutes, as the Live poll's ninety seconds
+# does -- the ruling's consequence, recorded in FOLLOWUPS, not decided here.
 Register-ScheduledTask -TaskName "$($Prefix)Serve" `
     -Action (New-ScheduledTaskAction -Execute $Python `
         -Argument "-m gridiron.cli serve" -WorkingDirectory $Repo) `
@@ -408,7 +424,7 @@ Register-ScheduledTask -TaskName "$($Prefix)Serve" `
         (New-ScheduledTaskTrigger -Once -At "00:00" `
             -RepetitionInterval (New-TimeSpan -Minutes 2))
     ) `
-    -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+    -Settings (New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries `
         -DontStopIfGoingOnBatteries -StartWhenAvailable `
         -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
         -MultipleInstances IgnoreNew `
