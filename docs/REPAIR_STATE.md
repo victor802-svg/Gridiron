@@ -42,8 +42,13 @@
   299/299): the register is empty; the live record matches the release
   with 0 registered differences, and from now on any difference fails the
   gate. **The schema rulings are complete.**
+- **Item 2's remainder RELEASED: d7b4dfa** (`/api/health` = d7b4dfa40ecb,
+  04:49Z on 26 September; gate 4/4, 302/302): a run writes what has a model,
+  then fails by name for any active market without one, and the day strip
+  says so; no scheduled pass turns red (measured read-only first).
 - **Order now:** ~~5a~~ -> ~~item 4~~ -> ~~5a'~~ -> ~~migration~~ -> ~~5b~~
-  -> **item 2's remainder** ("run.py:99 may never skip an untrained market
+  -> ~~item 2's remainder~~ -> **item 3** (in progress) -> items 4-8 of the
+  repair. (Was: item 2's remainder ("run.py:99 may never skip an untrained market
   silently -- a predict run with a skipped market fails by name, and the day
   strip shows it"; never applied: the activation gate made fits explicit
   but `run.already_answered` still drops a market with no model in silence)
