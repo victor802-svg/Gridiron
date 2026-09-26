@@ -49,16 +49,20 @@ def plant():
 def test_every_register_entry_is_dated_and_says_what_clears_it():
     """"Until the migration of ruling 2 has run": each entry names its
     object, its property, the commit the reference's definition came from,
-    and what clears it; nothing is registered without a reason."""
-    for entry in audit.SCHEMA_DIFFERENCES_REGISTERED:
+    and what clears it; nothing is registered without a reason. Read over
+    the cleared history too, so the eight the migration of 2026-09-26
+    cleared stay held to the same shape."""
+    for entry in (audit.SCHEMA_DIFFERENCES_REGISTERED
+                  + audit.SCHEMA_DIFFERENCES_CLEARED_2026_09_26):
         assert entry.object.startswith(("table ", "index ", "trigger ", "view "))
         assert entry.property and entry.held_by in ("record", "reference")
         assert entry.released_in
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry.registered), entry
         assert entry.cleared_by.startswith("cleared by ")
         assert set(entry.comparisons) <= set(audit.SCHEMA_COMPARISONS)
-    by_ruling_2 = [e for e in audit.SCHEMA_DIFFERENCES_REGISTERED
+    by_ruling_2 = [e for e in audit.SCHEMA_DIFFERENCES_CLEARED_2026_09_26
                    if e.cleared_by == "cleared by the dated migration of ruling 2"]
+    assert len(by_ruling_2) == 8
     tool = _load("gridiron_migrate_for_register",
                  REPO / "tools" / "migrate_2026_09_25_behaviour.py")
     migrated = {table for table, _what, _commit in tool.MIGRATION}

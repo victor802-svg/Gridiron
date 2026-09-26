@@ -7847,6 +7847,17 @@ _CLEARED_BY_RULING_2 = "cleared by the dated migration of ruling 2"
 #: after the release that carries it, with a verified backup, by the
 #: operator. The commit after it runs empties this register.
 #:
+#: EMPTIED 2026-09-26 (5b). The migration ran on the live record at
+#: 2026-09-26T02:12:57Z from the released f4c4db2, after a verified backup
+#: (var/gridiron.db.pre-behaviour-migration-2026-09-26.bak: 60 tables,
+#: 1,191,063 rows, every count, column checksum and schema object equal):
+#: all eight tables rebuilt and verified in one transaction, every column's
+#: exact checksum equal before and after, sequences carried, foreign_key_check
+#: 0 rows, the write lock held 3.52 s. From this commit on, any difference in
+#: behaviour between the record and the release fails the gate by name -- the
+#: brief's "from then on". The eight entries are kept below as history, not
+#: as a register.
+#:
 #: THE NINTH IS GONE (2026-09-25). The record's `spread_sign_source`, which
 #: the release's `schema.sql` did not declare, was registered for the
 #: release comparison until schema ruling 3 was released; 3603300 carried
@@ -7856,7 +7867,12 @@ _CLEARED_BY_RULING_2 = "cleared by the dated migration of ruling 2"
 _SPORTS_CHECK = "column sport: check (sport in ('nfl', 'mlb', 'nba', 'cfb', 'ufc'))"
 _BOTH = ("release", "tree")
 
-SCHEMA_DIFFERENCES_REGISTERED: tuple[RegisteredDifference, ...] = (
+SCHEMA_DIFFERENCES_REGISTERED: tuple[RegisteredDifference, ...] = ()
+
+#: What the register held until the migration cleared it, kept so a reader of
+#: the enforcement can see what the gate once tolerated and why. Nothing reads
+#: it as a register.
+SCHEMA_DIFFERENCES_CLEARED_2026_09_26: tuple[RegisteredDifference, ...] = (
     RegisteredDifference(
         "table factors", _SPORTS_CHECK, "reference",
         "9c0bc64 (its five sports from b09e1c2); the record's column came by "

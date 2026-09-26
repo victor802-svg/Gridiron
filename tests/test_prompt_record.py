@@ -608,13 +608,17 @@ def test_the_page_carries_the_prompt_by_the_records_own_kind(trained, db_path):
     assert views.prompt_detail(trained, stat_id) is None
 
 
-def test_the_register_holds_only_the_eight_behavioural_differences():
+def test_the_register_is_empty_after_the_migration():
     """The ninth entry, `spread_sign_source`, was cleared by 5a's release and
-    removed by the next commit, as the register's own rule requires."""
-    register = audit.SCHEMA_DIFFERENCES_REGISTERED
-    assert len(register) == 8
-    assert not [e for e in register if "spread_sign_source" in e.property]
-    assert all(e.comparisons == ("release", "tree") for e in register)
+    removed by the next commit (item 4); the eight behavioural ones were
+    cleared by the migration of 2026-09-26 and removed by the commit after it
+    (5b), as the register's own rule requires. From then on any difference
+    fails the gate."""
+    assert audit.SCHEMA_DIFFERENCES_REGISTERED == ()
+    cleared = audit.SCHEMA_DIFFERENCES_CLEARED_2026_09_26
+    assert len(cleared) == 8
+    assert not [e for e in cleared if "spread_sign_source" in e.property]
+    assert all(e.comparisons == ("release", "tree") for e in cleared)
 
 
 def test_the_prompt_record_has_one_door():

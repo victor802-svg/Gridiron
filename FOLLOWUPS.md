@@ -1941,6 +1941,22 @@ checkout; not run by `db.init`, the gate or this session):
 4. The next commit empties `audit.SCHEMA_DIFFERENCES_REGISTERED`; its gate
    fails until it does ("CLEARED, STILL REGISTERED").
 
+**DONE 2026-09-26 (after 5a' released as f4c4db2).** Run by the session, from
+the worktree at master's commit (the tool checked its definitions equal to
+master before the backup), with no pass running and nothing due until
+Predict-MLB at 05:00Z:
+- step 2 at 02:11:20Z: a fresh verified copy, 8 tables committed, no column
+  checksum differing, sequences carried, lock 3.31 s;
+- step 3 at 02:12:17Z: `--live --backup var/gridiron.db.pre-behaviour-migration-2026-09-26.bak`
+  -- the backup verified (60 tables, 1,191,063 rows, every count, column
+  checksum and schema object equal), then the transaction took the lock at
+  02:12:57Z and COMMITTED all eight, every column's exact checksum equal
+  before and after, sequences 94, 2558 and 5116 carried, foreign_key_check 0
+  rows, lock held 3.52 s;
+- step 4: 5b empties the register (the eight kept as history in
+  `audit.SCHEMA_DIFFERENCES_CLEARED_2026_09_26`).
+The report is in the session scratchpad, `migration_live/`.
+
 It is idempotent: a table already at its definition is skipped, and a record
 already migrated is not even copied. The plan is asked read-only first.
 
