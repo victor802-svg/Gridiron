@@ -21,6 +21,10 @@ treat the money as entertainment money.** Nothing in this record yet shows the
 model beating a price, and the one market with enough settled questions to
 check shows the opposite.
 
+**Finding of 2026-09-26 (operator ruling, below): the model shows no edge.**
+In MLB moneyline the market is better beyond noise for both forecasters, and
+nowhere does the model beat the market.
+
 ## Run log
 
 Each run appends a row. Nothing is overwritten.
@@ -422,3 +426,54 @@ forecaster on graded rows it is 54.
 
 **The standing answer is unchanged: a forecast to read, not a recommendation
 to follow.**
+
+## 2026-09-26 — the edge read: no edge, and the market ahead where it can be seen
+
+**A DATED FINDING, recorded by operator ruling of 2026-09-26**
+(`docs/briefs/2026-09-26-edge-read.md`): **the model shows no edge. In MLB
+moneyline the market is better beyond noise, for both forecasters. Nowhere
+does the model beat the market.**
+
+Measured read-only on 2026-09-26 at about 07:00Z through
+`db.read_the_live_record`. For every sport, market and forecaster separately
+(LAW 6; never pooled): the graded rows `calibration.resolved` returns -- one
+standing row per question, voided forecasts left out -- that carry a market
+price for the model's own side (the first snapshot of the forecast; moneyline
+prices with the margin removed by `lines.devig_pair`). On those rows, the
+Brier score of the model's probability for its side and of the market's
+implied probability for the same side, and their paired difference with a
+bootstrap 95% interval (4,000 resamples of the rows). Lower Brier is better;
+a positive difference is the market ahead.
+
+| sport · market · forecaster | rows with a price | model | market | model − market (95% interval) |
+|---|---|---|---|---|
+| MLB moneyline · statistical | 170 | 0.2527 | 0.2409 | +0.0118 (+0.0006, +0.0227) -- **market ahead, beyond noise** |
+| MLB moneyline · reasoning | 90 | 0.2585 | 0.2368 | +0.0217 (+0.0038, +0.0392) -- **market ahead, beyond noise** |
+| NCAAF spread · statistical | 131 | 0.1919 | 0.1731 | +0.0188 (−0.0093, +0.0470) -- market ahead, within noise |
+| NCAAF moneyline · statistical | 62 | 0.0991 | 0.0850 | +0.0141 (−0.0111, +0.0359) -- market ahead, within noise |
+| NCAAF total · statistical | 89 | 0.1310 | 0.1312 | −0.0003 (−0.0192, +0.0179) -- even |
+| NFL spread · statistical | 30 | 0.2411 | 0.2393 | +0.0018 (−0.0363, +0.0357) -- too few to say |
+
+Categories with fewer than 30 priced rows are not listed as findings: NCAAF
+total for the reasoning pass (12 rows; market ahead), NCAAF spread and
+moneyline for the reasoning pass (5 and 4), NFL spread for the reasoning pass
+(1) and MLB batter hits (2). **No category has the model ahead.**
+
+**Where there is no price there is no measurement, not a hidden edge.** MLB run
+line (175 graded) and MLB total (182 graded, 110 for the reasoning pass), UFC
+(37 per market), the NFL total and props, and every MLB prop but batter hits
+have graded forecasts and no market price beside them in this comparison.
+
+**The closing line** (`calibration.clv_report`, which needs 50 per market):
+MLB spread 9 measured closes, mean −0.17¢, the close beaten 3 times in 9;
+NCAAF spread 4 closes, +0.62¢. Nothing else is measured. The instrument was
+repaired on 2026-09-24, and by the operator's ruling of 2026-09-23 the first
+clean read is 21 days after that.
+
+**MLB's regular season ends on 27 September**, so the strongest sample above
+barely grows this year.
+
+**What follows from it, queued by the same ruling for after the repair's
+close-out and not before:** (1) the Record page states "market ahead" per
+sport and market with its interval; (2) the market blend (model plan M3)
+moves to the front of the model plan.
