@@ -14,6 +14,7 @@ from gridiron import blind, config, db, run
 from gridiron.factors import compute, context, store
 from gridiron.market import lines
 from gridiron.model import activation, baseline, llm, logistic, predict, questions
+from tests.conftest import asks_only
 
 
 # --- the logistic model ----------------------------------------------------
@@ -128,10 +129,15 @@ def test_the_window_closes_even_when_the_body_raises():
 # --- the loop --------------------------------------------------------------
 
 @pytest.fixture
-def trained(league):
+def trained(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
     activation.activate_in_a_scratch_world(league)
+    # A SPREAD WORLD, SAID OUT LOUD (GRIDIRON_REPAIR item 2, 2026-09-26): the
+    # rerun test below is the one 0768ce4 was written for, and it now holds
+    # because the world asks only what it trained, not because the run leaves
+    # the untrained markets out in silence.
+    asks_only(monkeypatch, "nfl", "spread")
     return league
 
 
@@ -187,9 +193,15 @@ def test_the_stored_prediction_carries_its_factors_and_explanation(trained):
     assert row["factor_set_version"] == config.factor_set_version("nfl", "spread")
 
 
-def test_predicting_without_a_fitted_model_skips_loudly(league):
+def test_predicting_without_a_fitted_model_fails_by_name(league):
+    """SKIPPING LOUDLY WAS NOT LOUD ENOUGH (GRIDIRON_REPAIR item 2, the
+    operator's ruling of 2026-09-23): a line in `skipped` is what nobody read
+    for seventeen days. The run now fails, naming every market it asks."""
     store.sync_registry(league)
-    result = run.run_week(league, 2025, 7, include_props=False, use_llm=False)
+    with pytest.raises(run.MarketNotTrained,
+                       match="point spread, moneyline and total") as caught:
+        run.run_week(league, 2025, 7, include_props=False, use_llm=False)
+    result = caught.value.result
     assert result["written"] == 0
     # "NO ACTIVATED MODEL" from 2026-09-24: with no fit at all there is
     # nothing activated either, and the skip says the one thing that is true
@@ -197,14 +209,19 @@ def test_predicting_without_a_fitted_model_skips_loudly(league):
     assert any("no activated model" in s for s in result["skipped"])
 
 
-def test_a_fitted_model_nobody_activated_skips_loudly_too(league):
+def test_a_fitted_model_nobody_activated_fails_by_name_too(league, monkeypatch):
     """THE ACTIVATION GATE (ruling 2, 2026-09-24): a fit is written inactive.
-    Training alone writes nothing forecastable, and the run says why."""
+    Training alone writes nothing forecastable, and the run fails saying
+    which market (item 2, 2026-09-26)."""
     store.sync_registry(league)
+    asks_only(monkeypatch, "nfl", "spread")
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
-    result = run.run_week(league, 2025, 7, include_props=False, use_llm=False)
-    assert result["written"] == 0
-    assert any("no activated model for nfl:spread" in s for s in result["skipped"])
+    with pytest.raises(run.MarketNotTrained, match="point spread") as caught:
+        run.run_week(league, 2025, 7, include_props=False, use_llm=False)
+    assert caught.value.result["written"] == 0
+    assert [m["why"] for m in caught.value.markets] == ["none_active"]
+    assert any("no activated model for nfl:spread" in s
+               for s in caught.value.result["skipped"])
 
 
 # --- the market half -------------------------------------------------------

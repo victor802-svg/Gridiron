@@ -4501,10 +4501,49 @@ def freshness(conn: sqlite3.Connection) -> dict:
             "words": language.held_line_words(
                 sport, markets, config.HELD_MARKETS[(sport, markets[0])]["reason"]),
         })
+    # A MARKET THE RUN ASKS AND CANNOT ANSWER IS SAID ON THE FIRST SCREEN
+    # (GRIDIRON_REPAIR item 2; the operator's ruling of 2026-09-23, built
+    # 2026-09-26: "the day strip shows it"). The daily-run age above is one
+    # age for every sport, so a baseball success kept it fresh while NFL and
+    # college spread and moneyline went unforecast for seventeen days. Read
+    # from the fits themselves, per sport, through the door the run fails on
+    # (`baseline.untrained_markets`), so the strip says it before any run has
+    # failed and whatever the other sports did. Listed for a sport the record
+    # has forecast, like a hold: never having written is not having stopped.
+    # AND FOR A SPORT WHOSE RUN HAS FAILED FOR WANT OF A MODEL, forecast or
+    # not (the prover of item 2, 2026-09-26): a first run that meets no model
+    # writes nothing, and that run has stopped. Waiting for a forecast left it
+    # on the Health panel alone.
+    from . import tasks as _tasks
+    from .model import baseline
+
+    untrained: list[dict] = []
+    for sport in config.SPORTS:
+        if not (conn.execute("SELECT 1 FROM predictions WHERE sport = ? LIMIT 1",
+                             (sport,)).fetchone()
+                or _tasks.failed_for_want_of_a_model(conn, sport)):
+            continue
+        missing = [{"sport": m["sport"], "market": m["market"], "why": m["why"]}
+                   for m in baseline.untrained_markets(conn, sport)]
+        if not missing:
+            continue
+        untrained.extend(missing)
+        entries.append({
+            "job": "untrained",
+            "label": f"{config.SPORT_LABELS.get(sport, sport)} markets not forecast",
+            "sport": sport,
+            "markets": [m["market"] for m in missing],
+            "last_utc": None,
+            "age_hours": None,
+            "limit_hours": None,
+            "stale": True,
+            "words": language.untrained_line_words(sport, missing),
+        })
     return {
         "declared": config.FRESHNESS_DECLARED,
         "entries": entries,
         "held": held,
+        "untrained": untrained,
         "any_stale": any(e["stale"] for e in entries),
     }
 

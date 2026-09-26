@@ -10,6 +10,7 @@ from __future__ import annotations
 from gridiron import audit, config, language, run, views
 from gridiron.factors import store
 from gridiron.model import activation, baseline
+from tests.conftest import asks_only
 
 
 def _hold(monkeypatch, *markets):
@@ -22,6 +23,7 @@ def test_a_held_market_is_not_forecast(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
     activation.activate_in_a_scratch_world(league)
+    asks_only(monkeypatch, "nfl", "spread")     # a spread world (item 2)
     _hold(monkeypatch, "spread")
     result = run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     assert result["written"] == 0
@@ -34,8 +36,11 @@ def test_a_held_market_is_not_forecast(league, monkeypatch):
 
 def test_the_strip_names_a_held_market(league, monkeypatch):
     store.sync_registry(league)
-    baseline.train(league, "spread", (2025,), l2=1.0, note="test")
+    for market in ("spread", "moneyline"):
+        baseline.train(league, market, (2025,), l2=1.0, note="test")
     activation.activate_in_a_scratch_world(league)
+    # the two markets it holds, and nothing else (item 2, 2026-09-26)
+    asks_only(monkeypatch, "nfl", "spread", "moneyline")
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     _hold(monkeypatch, "spread", "moneyline")
     block = views.freshness(league)
@@ -61,6 +66,7 @@ def test_a_forecast_written_before_the_hold_is_not_shown(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
     activation.activate_in_a_scratch_world(league)
+    asks_only(monkeypatch, "nfl", "spread")     # a spread world (item 2)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     shown = views.week(league, "nfl", 2025, 7)
     assert shown["n"] == 4

@@ -4302,6 +4302,54 @@ def held_line_words(sport: str, markets: list[str], reason: str) -> str:
             f"forecast and not shown: {reason}")
 
 
+#: WHY A MARKET THE RUN ASKS WAS NOT FORECAST, in words (GRIDIRON_REPAIR item
+#: 2, 2026-09-26), one per `baseline.UNTRAINED_WHY`, for one market and for
+#: several. No factor set is named by its tag: "fs5" is a word nobody says.
+UNTRAINED_WHY_WORDS = {
+    "none_active": ("no model is in use for it",
+                    "no model is in use for them"),
+    "another_set": ("its model in use was fitted to another set of factors",
+                    "their models in use were fitted to another set of factors"),
+    "factor_not_computed": (
+        "its model in use reads a factor that is no longer computed",
+        "their models in use read a factor that is no longer computed"),
+}
+
+
+def _joined(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else (
+        ", ".join(names[:-1]) + " and " + names[-1])
+
+
+def untrained_line_words(sport: str, markets: list[dict]) -> str:
+    """The day strip's line for markets a run asks and cannot answer.
+
+    "NFL moneyline and total not forecast: no model is in use for them".
+    One clause per reason, in the order the reasons are declared, so every
+    market is named with the reason that stops it.
+    """
+    clauses = []
+    for why in UNTRAINED_WHY_WORDS:
+        names = [market_words(sport, m["market"]) for m in markets
+                 if m.get("why") == why]
+        if names:
+            one, many = UNTRAINED_WHY_WORDS[why]
+            clauses.append(f"{_joined(names)} not forecast: "
+                           f"{one if len(names) == 1 else many}")
+    return f"{SPORT_LABELS.get(sport, sport.upper())} " + "; ".join(clauses)
+
+
+def untrained_run_words(sport: str, markets: list[dict], written: int) -> str:
+    """Why a predict run failed, as the Health panel shows it."""
+    one = len(markets) == 1
+    return (f"{untrained_line_words(sport, markets)}. This run wrote "
+            f"{counted(written, 'forecast')} for the markets that have a model "
+            f"and is recorded as failed so the gap is seen. Every run fails "
+            f"the same way until {'it has' if one else 'they have'} a model "
+            f"that can answer {'it' if one else 'them'}, or "
+            f"{'is' if one else 'are'} retired.")
+
+
 def freshness_words(label: str, age_hours: float | None, limit: float) -> str:
     """"daily run 7h ago", or "venue read 31h ago, past 30h", marked stale.
 

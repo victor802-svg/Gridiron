@@ -107,6 +107,15 @@ def seeded_database(path: Path, *, activate: bool = True) -> sqlite3.Connection:
                             (week, team, gid, opp, pf, pa, rng.randint(55, 72)),
                         )
     store.sync_registry(conn)
+    # EVERY GAME MARKET A RUN OF THIS WORLD ASKS (GRIDIRON_REPAIR item 2,
+    # 2026-09-26), not the spread alone: a market the run asks with no model
+    # now fails the run by name, which is the point, and a world training one
+    # of three would fail every planting that runs a slate for a reason that
+    # has nothing to do with what it plants. THE SPREAD IS TRAINED LAST, so
+    # it stays the newest fit, which the activation plantings read as theirs.
+    for market in ("moneyline", "total"):
+        baseline.train(conn, market, (2025,), sport="nfl", l2=1.0,
+                       note="guard harness")
     baseline.train(conn, "spread", (2025,), sport="nfl", l2=1.0, note="guard harness")
     # A FIT IS WRITTEN INACTIVE (ruling 2, 2026-09-24). The harness world has
     # no incumbent to beat, so it activates its own fit the one lawful way a
@@ -6498,52 +6507,93 @@ def plant_a_drawn_game_graded_as_a_loss() -> Result:
                   f"was scored as one of them")
 
 
-def plant_an_unfitted_market_that_blocks_a_rerun_refusal() -> Result:
-    """Declare a market with no fitted model and rerun the slate.
+#: RETIRED 2026-09-26 WITH THE RULE IT ASSERTED (GRIDIRON_REPAIR item 2; the
+#: operator's ruling of 2026-09-23, "run.py:99 may never skip an untrained
+#: market silently"): `plant_an_unfitted_market_that_blocks_a_rerun_refusal`
+#: read the live record and passed while no market the run expected was
+#: untrained -- the rule of 0768ce4 that left such a market out of what a run
+#: expected, so that a spread-only fixture refused its own rerun. The ruling
+#: retired that rule; the planting below plants what it hid, and the
+#: duplicate it feared is `predict.already_written`'s to refuse.
+def plant_a_rerun_refused_over_a_market_it_never_asked() -> Result:
+    """Rerun a slate one of whose markets has no model -- 7 to 23 September.
 
-    A SLATE IS ANSWERED ONCE, and `already_answered` decides that by comparing
-    what a run WOULD ask against what has rows. A market that is declared but
-    has no fitted model is skipped by `predict` every time -- so if it counts
-    as a gap, the slate is never "already answered", the refusal never fires,
-    and a rerun writes a second set of forecasts of the same questions.
+    THE REFUSAL THAT HID IT. With a market that had no model left out of what
+    a run expected, a slate was "already answered" without it: from 7 to 23
+    September 27 NFL and college predict runs (20 college, 7 NFL; read from
+    `task_runs` on 2026-09-26) were refused as having forecasts "in every
+    market it asks (total)" or "(prop, total)", and not one of them said the
+    spread and the moneyline had never been asked at all.
 
-    THE GUARANTEE STOPS HOLDING SILENTLY, in the direction that duplicates the
-    record. It happened on 2026-09-04, the moment the NFL moneyline was
-    declared: a fixture training only the spread stopped refusing its own
-    rerun, and the only sign was one test going red.
+    Planted on the harness league: the NFL moneyline declared on a version
+    nobody trained, the slate run, then run again. Caught iff the rerun fails
+    by name for the moneyline instead of being refused as answered, and no
+    question is written twice -- the rerun of an open slate writes only
+    questions that have no row.
     """
-    from gridiron import run as _run
-    from gridiron.model import baseline as _baseline
+    import tempfile
 
-    conn = db.read_the_live_record(
-        "the record's unfitted markets, to plant one blocking a rerun refusal")
-    try:
-        # Every declared market a run would ask must either have a fit or be
-        # excluded from the gap calculation. Asserted on the real record.
-        for sport in config.SPORTS:
-            answered = _run.already_answered(
-                conn, sport, 2026, 1, include_props=False)
-            for market in answered["missing"]:
-                if market == "prop":
-                    continue
+    refused = _market_not_trained()
+    key = ("nfl", "moneyline")
+    had = key in config.FACTOR_SET_VERSIONS
+    before = config.FACTOR_SET_VERSIONS.get(key)
+    guard = "run.already_answered + run.run_slate"
+    violation = "a rerun refused as answered over a market it never asked"
+    first, second, answered, rows, doubled = None, None, None, (0, 0), 0
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "rerun_untrained.db")
+        db.set_meta(conn, "kind", "backtest")
+        try:
+            # THE PLANTED DECLARATION: a new version for one market, never
+            # trained -- the act of 6 September.
+            config.FACTOR_SET_VERSIONS[key] = "fs-planted-never-trained"
+            for attempt in range(2):
                 try:
-                    _baseline.load_fit(
-                        conn, _baseline.market_key(sport, market))
-                except _baseline.NotTrained:
-                    return Result(
-                        LAW_DRAW, "an unfitted market blocking a refusal",
-                        "run.already_answered ignores unfitted markets", False,
-                        f"NOT CAUGHT - {sport}:{market} is counted as a gap in "
-                        f"the slate and has no fitted model, so this slate can "
-                        f"never be 'already answered' and a rerun is never "
-                        f"refused")
-    finally:
-        conn.close()
-    return Result(LAW_DRAW, "an unfitted market blocking a refusal",
-                  "run.already_answered ignores unfitted markets", True,
-                  "no declared-but-unfitted market is counted as a gap, so the "
-                  "answered-once refusal cannot be silently disabled by "
-                  "declaring a market nobody has trained yet")
+                    run.run_slate(conn, "nfl", 2025, 8, include_props=False,
+                                  use_llm=False, snapshot=False)
+                    said = "returned as complete"
+                except refused as exc:
+                    said = str(exc)
+                except run.SlateAlreadyAnswered as exc:
+                    answered = str(exc).split(". ")[0]
+                    said = None
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM predictions p JOIN games g"
+                    "    ON g.id = p.game_id WHERE g.week = 8").fetchone()[0]
+                rows = (rows[0] if attempt else count, count)
+                if attempt:
+                    second = said
+                else:
+                    first = said
+            doubled = conn.execute(
+                "SELECT COUNT(*) FROM (SELECT 1 FROM predictions"
+                " GROUP BY game_id, market_type, subject, predictor,"
+                " factor_set_version, pass_kind HAVING COUNT(*) > 1)").fetchone()[0]
+        finally:
+            if had:
+                config.FACTOR_SET_VERSIONS[key] = before
+            else:
+                config.FACTOR_SET_VERSIONS.pop(key, None)
+            conn.close()
+
+    named = [s for s in (first, second) if s and "moneyline" in s
+             and "not forecast" in s]
+    if len(named) == 2 and answered is None and rows[0] == rows[1] > 0 \
+            and doubled == 0:
+        return Result(LAW_NO_SILENT_SKIP, violation, guard, True,
+                      f"the rerun failed by name again -- {second.split('. ')[0]} "
+                      f"-- and wrote nothing twice ({rows[1]} rows, as after the "
+                      f"first run)")
+    return Result(
+        LAW_NO_SILENT_SKIP, violation, guard, False,
+        "NOT CAUGHT - "
+        + (f"the rerun was refused as answered: {answered!r}, and the "
+           f"moneyline, never asked, is not in the sentence"
+           if answered else
+           f"the first run said {first!r} and the rerun {second!r}")
+        + f"; rows {rows[0]} then {rows[1]}, {doubled} questions written twice"
+          " -- 27 refusals from 7 to 23 September hid the NFL and college"
+          " spread and moneyline exactly this way")
 
 
 #: Declared here because the two hero plantings this constant sat between were
@@ -7429,6 +7479,211 @@ def plant_a_held_market_the_strip_leaves_off() -> Result:
                   "audit.check_the_strip_shows_a_dead_job", False,
                   "NOT CAUGHT - the NFL moneyline is held and the first screen "
                   "shows three fresh ages and nothing else")
+
+
+#: GRIDIRON_REPAIR item 2, the operator's ruling of 2026-09-23 (built
+#: 2026-09-26): "run.py:99 may never skip an untrained market silently -- a
+#: predict run with a skipped market fails by name, and the day strip shows
+#: it. Planting: an untrained market in the active set fails the run."
+LAW_NO_SILENT_SKIP = "A MARKET THE RUN ASKS AND CANNOT ANSWER FAILS THE RUN BY NAME"
+
+
+def _market_not_trained():
+    """The run's named failure, or a class nothing raises on a tree that
+    predates it -- so these plantings can be run against the released code
+    and report the escape rather than crash (the `_weather_refusal` shape)."""
+    return getattr(run, "MarketNotTrained", None) or type(
+        "NothingRaisesThis", (Exception,), {})
+
+
+def plant_an_untrained_market_in_the_active_set() -> Result:
+    """Declare a new version for one market and never train it -- 6 September.
+
+    fs5 was declared for NFL and college spread and moneyline on 2026-09-06
+    and never trained on the live record. Every predict run for seventeen days
+    wrote the props and totals, recorded success or a refusal, and left the
+    two markets out without a word anyone read; the daily-run age on the
+    strip stayed fresh, because baseball kept succeeding.
+
+    Planted on the harness league, whose spread and total have models: the
+    NFL moneyline declared on a version nobody trained. Caught iff the run
+    fails by name for the moneyline, the markets with a model are still
+    written and the moneyline is not, and the first screen carries a stale
+    line naming it that passes the strip's own check.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit, views as _views
+
+    refused = _market_not_trained()
+    key = ("nfl", "moneyline")
+    had = key in config.FACTOR_SET_VERSIONS
+    before = config.FACTOR_SET_VERSIONS.get(key)
+    guard = "run.run_slate + baseline.untrained_markets + views.freshness"
+    violation = "an active market declared on a version nobody trained"
+    said, written, strip_words, strip_fault = None, {}, None, None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "untrained.db")
+        db.set_meta(conn, "kind", "backtest")
+        try:
+            run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                          use_llm=False, snapshot=False)
+            # THE PLANTED DECLARATION: a new version for one market, never
+            # trained.
+            config.FACTOR_SET_VERSIONS[key] = "fs-planted-never-trained"
+            try:
+                run.run_slate(conn, "nfl", 2025, 7, include_props=False,
+                              use_llm=False, snapshot=False)
+            except refused as exc:
+                said = str(exc)
+            written = {r[0]: r[1] for r in conn.execute(
+                "SELECT p.market_type, COUNT(*) FROM predictions p"
+                "  JOIN games g ON g.id = p.game_id WHERE g.week = 7"
+                " GROUP BY p.market_type")}
+            block = _views.freshness(conn)
+            strip_words = next(
+                (e["words"] for e in block["entries"]
+                 if e.get("job") == "untrained" and e.get("stale")
+                 and "moneyline" in (e.get("words") or "")), None)
+            try:
+                _audit.check_the_strip_shows_a_dead_job({"freshness": block})
+            except _audit.LawViolation as exc:
+                strip_fault = str(exc)
+        finally:
+            if had:
+                config.FACTOR_SET_VERSIONS[key] = before
+            else:
+                config.FACTOR_SET_VERSIONS.pop(key, None)
+            conn.close()
+
+    if (said and "moneyline" in said and "not forecast" in said
+            and not written.get("moneyline") and written.get("spread")
+            and written.get("total") and strip_words and not strip_fault):
+        return Result(LAW_NO_SILENT_SKIP, violation, guard, True,
+                      f"{said.split('. ')[0]} -- the run failed by name after "
+                      f"writing {written['spread']} spread and "
+                      f"{written['total']} total forecasts, and the strip "
+                      f"says '{strip_words}'")
+    return Result(
+        LAW_NO_SILENT_SKIP, violation, guard, False,
+        "NOT CAUGHT - the run "
+        + (f"failed with {said!r}" if said else "returned as complete")
+        + f", writing {written}; the first screen "
+        + (f"said {strip_words!r}" if strip_words else "said nothing")
+        + (f" ({strip_fault})" if strip_fault else "")
+        + " -- NFL and college spread and moneyline went unforecast from 6 "
+          "to 23 September exactly this way")
+
+
+def plant_an_untrained_market_the_strip_leaves_off() -> Result:
+    """Three fresh ages, and a market no run can answer, not on the strip."""
+    from gridiron import audit as _audit
+
+    planted = {"freshness": {
+        "entries": [
+            {"job": "daily_run", "age_hours": 2.0, "limit_hours": 36.0,
+             "stale": False, "words": "daily run 2h ago"},
+            {"job": "venue_read", "age_hours": 1.0, "limit_hours": 30.0,
+             "stale": False, "words": "venue read 1h ago"},
+            {"job": "reasoning", "age_hours": 3.0, "limit_hours": 36.0,
+             "stale": False, "words": "reasoning pass 3h ago"},
+        ],
+        # THE GAP NOBODY SAW: the fits say it, the strip does not.
+        "untrained": [{"sport": "nfl", "market": "spread",
+                       "why": "another_set"}],
+    }}
+    try:
+        _audit.check_the_strip_shows_a_dead_job(planted)
+    except _audit.LawViolation as exc:
+        return Result(LAW_NO_SILENT_SKIP,
+                      "a market no run can answer, left off the first screen",
+                      "audit.check_the_strip_shows_a_dead_job", True, str(exc))
+    return Result(LAW_NO_SILENT_SKIP,
+                  "a market no run can answer, left off the first screen",
+                  "audit.check_the_strip_shows_a_dead_job", False,
+                  "NOT CAUGHT - the strip shows three fresh ages while the NFL "
+                  "spread has no model it can forecast from, which is how "
+                  "seventeen days went unseen")
+
+
+def plant_a_first_run_failed_by_name_off_the_strip() -> Result:
+    """A sport never forecast, whose first run fails by name: off the strip.
+
+    FOUND BY THE PROVER OF GRIDIRON_REPAIR item 2 (2026-09-26). The strip
+    listed a sport's untrained markets once the record held a forecast of
+    it, as it lists a hold. A sport whose first run meets no model writes
+    nothing and so never holds one: the run failed by name on the Health
+    panel while the first screen showed three ages, the daily run fresh from
+    another sport's success -- "fails by name, and the day strip shows it",
+    kept by half.
+
+    Planted on the harness league with no fit activated: the scheduled NFL
+    run, through the task runner (pointed at the league's week 7 and season,
+    the failure notice kept off the desktop), and baseball's run ok just now.
+    Caught iff the run is recorded failed naming the point spread, nothing is
+    written, and the strip carries a stale NFL line naming it that passes the
+    strip's own check.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit, sports as _sports, tasks as _tasks
+    from gridiron import views as _views
+
+    guard = "run_task + tasks.failed_for_want_of_a_model + views.freshness"
+    violation = "a sport whose first run failed for want of a model, off the strip"
+    adapter = _sports.get("nfl")
+    real_next, real_notify = adapter.next_slate, _tasks.notify_failures
+    seasons = config.SPORT_CURRENT_SEASON
+    ran, written, strip_words, strip_fault = {}, None, None, None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "first_run.db", activate=False)
+        db.set_meta(conn, "kind", "backtest")
+        try:
+            # THE PLANTED STATE: the sport's first scheduled run, every
+            # market it asks with no activated model.
+            config.SPORT_CURRENT_SEASON = {**seasons, "nfl": 2025}
+            adapter.next_slate = lambda _conn, _season: 7
+            _tasks.notify_failures = lambda _conn: {"sent": False}
+            ran = _tasks.run_task(conn, "predict:nfl", use_llm=False)
+            stamp = db.utcnow()
+            conn.execute(
+                "INSERT INTO task_runs (task, started_utc, finished_utc, result,"
+                " detail, payload_json) VALUES ('predict:mlb', ?, ?, 'ok',"
+                " 'wrote 10 predictions', '{}')", (stamp, stamp))
+            conn.commit()
+            written = conn.execute(
+                "SELECT COUNT(*) FROM predictions WHERE sport = 'nfl'").fetchone()[0]
+            block = _views.freshness(conn)
+            strip_words = next(
+                (e["words"] for e in block["entries"]
+                 if e.get("job") == "untrained" and e.get("stale")
+                 and e.get("sport") == "nfl"
+                 and "point spread" in (e.get("words") or "")), None)
+            try:
+                _audit.check_the_strip_shows_a_dead_job({"freshness": block})
+            except _audit.LawViolation as exc:
+                strip_fault = str(exc)
+        finally:
+            adapter.next_slate = real_next
+            _tasks.notify_failures = real_notify
+            config.SPORT_CURRENT_SEASON = seasons
+            conn.close()
+
+    said = ran.get("detail") or ""
+    if (ran.get("result") == "failed" and "point spread" in said
+            and "not forecast" in said and written == 0 and strip_words
+            and not strip_fault):
+        return Result(LAW_NO_SILENT_SKIP, violation, guard, True,
+                      f"the first run failed by name and wrote nothing, and "
+                      f"the strip says '{strip_words}'")
+    return Result(
+        LAW_NO_SILENT_SKIP, violation, guard, False,
+        f"NOT CAUGHT - the first run was recorded {ran.get('result')!r} "
+        f"({said[:120]!r}), writing {written}; the first screen "
+        + (f"said {strip_words!r}" if strip_words else "said nothing of it")
+        + (f" ({strip_fault})" if strip_fault else "")
+        + " -- a sport whose first run meets no model is never forecast, so a"
+          " strip that waits for a forecast never says so")
 
 
 def plant_a_dead_job_the_strip_calls_fresh() -> Result:
@@ -10418,8 +10673,13 @@ def plant_a_fresh_fit_used_without_activation() -> Result:
         # A backtest world, so the only reason to write nothing is the gate:
         # a live world skips a started 2025 slate before it asks for a model.
         db.set_meta(bare, "kind", "backtest")
-        ran = _run.run_slate(bare, "nfl", 2025, 6, include_props=False,
-                             use_llm=False, snapshot=False)
+        try:
+            ran = _run.run_slate(bare, "nfl", 2025, 6, include_props=False,
+                                 use_llm=False, snapshot=False)
+        except _market_not_trained() as exc:
+            # AND THE RUN FAILS BY NAME (GRIDIRON_REPAIR item 2, 2026-09-26):
+            # what it wrote and skipped travels on the failure.
+            ran = exc.result
         bare_written = bare.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
         said = [s for s in ran["skipped"] if "no activated model" in s]
         bare.close()
@@ -10948,28 +11208,39 @@ def plant_a_fit_reading_a_retired_factor() -> Result:
     rating = "srs_diff"
     saved = registry.REGISTRY[rating]
     guarded, unguarded, said, trained_on, silent = None, None, [], False, 0
+    failed = None
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         try:
             registry.REGISTRY[rating] = _dc.replace(saved, active=True)
             conn = seeded_database(Path(tmp) / "retired.db")
             trained_on = rating in baseline.load_fit(conn, "nfl:spread").names
             registry.REGISTRY[rating] = _dc.replace(saved, active=False)
-            ran = run.run_slate(conn, "nfl", 2025, 6, include_props=False,
-                                use_llm=False, snapshot=False)
-            guarded = ran["written"]
+            # THE RUN FAILS BY NAME AS WELL (GRIDIRON_REPAIR item 2,
+            # 2026-09-26): the markets whose fit reads the rating are named,
+            # after the total -- which never read it -- is written.
+            try:
+                ran = run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                                    use_llm=False, snapshot=False)
+            except _market_not_trained() as exc:
+                ran, failed = exc.result, str(exc)
+            spread_rows = ("SELECT COUNT(*) FROM predictions p JOIN games g"
+                           "    ON g.id = p.game_id WHERE g.week = ?"
+                           "   AND p.market_type = 'spread'")
+            guarded = conn.execute(spread_rows, (6,)).fetchone()[0]
             said = [s for s in ran["skipped"] if "NEVER COMPUTED" in s]
             real = baseline.assert_the_vector_carries_the_fit
             baseline.assert_the_vector_carries_the_fit = lambda fit, fv: None
             try:
-                unguarded = run.run_slate(conn, "nfl", 2025, 5,
-                                          include_props=False, use_llm=False,
-                                          snapshot=False)["written"]
+                run.run_slate(conn, "nfl", 2025, 5, include_props=False,
+                              use_llm=False, snapshot=False)
             finally:
                 baseline.assert_the_vector_carries_the_fit = real
+            unguarded = conn.execute(spread_rows, (5,)).fetchone()[0]
             import json as _json
             for (payload,) in conn.execute(
                     "SELECT p.factors_json FROM predictions p JOIN games g"
-                    "    ON g.id = p.game_id WHERE g.week = 5"):
+                    "    ON g.id = p.game_id WHERE g.week = 5"
+                    "   AND p.market_type = 'spread'"):
                 blob = _json.loads(payload)
                 if rating not in blob["values"] and rating not in blob["absent"]:
                     silent += 1
@@ -10977,15 +11248,21 @@ def plant_a_fit_reading_a_retired_factor() -> Result:
         finally:
             registry.REGISTRY[rating] = saved
 
-    if trained_on and guarded == 0 and said and unguarded and silent == unguarded:
+    named = bool(failed and "point spread" in failed
+                 and "no longer computed" in failed)
+    if (trained_on and guarded == 0 and said and named and unguarded
+            and silent == unguarded):
         return Result(LAW_REVERT, violation, guard, True,
                       said[0].split(": ", 1)[1].split(". ")[0]
-                      + f" -- unguarded, {unguarded} rows were written and "
+                      + f" -- and the run failed by name ({failed.split('. ')[0]})"
+                      f"; unguarded, {unguarded} spread rows were written and "
                       f"none of them says the rating was missing")
     return Result(
         LAW_REVERT, violation, guard, False,
         f"NOT CAUGHT - the fit {'was' if trained_on else 'was not'} trained on "
-        f"{rating}; guarded, {guarded} rows were written ({said!r}); "
+        f"{rating}; guarded, {guarded} spread rows were written, "
+        f"{len(said)} questions were skipped in a list, and the run "
+        f"{'said ' + repr(failed) if failed else 'did not fail'}; "
         f"unguarded {unguarded}, of which {silent} say nothing. A retired "
         f"factor's term would vanish from every forecast without a word")
 
@@ -11069,16 +11346,27 @@ def _weather_refusal():
         "NothingRaisesThis", (Exception,), {})
 
 
-def _weather_on_rows(conn, week: int) -> int:
+#: THE MARKETS OF THE HARNESS WORLD THAT READ THE WEATHER. The moneyline
+#: declares none (roster 18, 2026-09-04), and the harness asks it from
+#: 2026-09-26 (GRIDIRON_REPAIR item 2: a market the run asks with no model
+#: fails the run), so a row of it carrying no weather says nothing either way.
+_WEATHER_MARKETS = ("spread", "total")
+
+
+def _weather_on_rows(conn, week: int) -> tuple[int, int]:
+    """(rows, rows carrying the weather) for `week`'s weather markets."""
     import json as _json
 
-    carried = 0
+    rows = carried = 0
     for (payload,) in conn.execute(
             "SELECT p.factors_json FROM predictions p JOIN games g"
-            "    ON g.id = p.game_id WHERE g.week = ?", (week,)):
+            "    ON g.id = p.game_id WHERE g.week = ?"
+            f"   AND p.market_type IN ({','.join('?' for _ in _WEATHER_MARKETS)})",
+            (week, *_WEATHER_MARKETS)):
         values = _json.loads(payload).get("values") or {}
+        rows += 1
         carried += any(n in values for n in _FILLED)
-    return carried
+    return rows, carried
 
 
 def plant_an_indoor_forecast_carrying_the_weather() -> Result:
@@ -11111,7 +11399,7 @@ def plant_an_indoor_forecast_carrying_the_weather() -> Result:
             except refused as exc:
                 said = str(exc)
             if said is None:
-                carried = _weather_on_rows(conn, week)
+                _rows, carried = _weather_on_rows(conn, week)
                 conn.close()
                 return Result(
                     LAW_INDOOR_WEATHER, violation, guard, False,
@@ -11119,9 +11407,12 @@ def plant_an_indoor_forecast_carrying_the_weather() -> Result:
                     f"of domes and {carried} of them carry the weather as if "
                     f"it had been read")
             with _WithoutTheWeatherGuard():
-                written = run.run_slate(conn, "nfl", 2025, week, include_props=False,
-                                        use_llm=False, snapshot=False)["written"]
-            carried = _weather_on_rows(conn, week)
+                run.run_slate(conn, "nfl", 2025, week, include_props=False,
+                              use_llm=False, snapshot=False)
+            # COUNTED ON THE RECORD, not from the run's return: the refused
+            # run above may already have written a question or two before
+            # the one it refused (2026-09-26).
+            written, carried = _weather_on_rows(conn, week)
         conn.close()
     if "INDOOR" in said and written and carried == written:
         return Result(LAW_INDOOR_WEATHER, violation, guard, True,
@@ -11973,7 +12264,11 @@ def main() -> int:
     results.append(plant_a_self_chosen_total_left_unflagged())
     results.append(plant_a_flagged_market_with_no_words())
     results.append(plant_a_drawn_game_graded_as_a_loss())
-    results.append(plant_an_unfitted_market_that_blocks_a_rerun_refusal())
+    # RETIRED 2026-09-26 with the rule it asserted (GRIDIRON_REPAIR item 2):
+    # `plant_an_unfitted_market_that_blocks_a_rerun_refusal`. What it hid is
+    # planted in its place, and with the other two of that item beside the
+    # hold's own below.
+    results.append(plant_a_rerun_refused_over_a_market_it_never_asked())
     results.append(plant_a_comment_naming_the_forbidden_thing())
     results.append(plant_a_horizon_that_counts_days_for_a_weekly_sport())
     results.append(plant_a_superseded_row_counted_as_settled())
@@ -12042,6 +12337,14 @@ def main() -> int:
     results.append(plant_a_claim_priced_off_the_opening_read())
     results.append(plant_a_held_market_that_is_forecast_anyway())
     results.append(plant_a_held_market_the_strip_leaves_off())
+    # GRIDIRON_REPAIR item 2 (the operator's ruling of 2026-09-23, built
+    # 2026-09-26): an untrained market in the active set fails the run by
+    # name, and the first screen says so.
+    results.append(plant_an_untrained_market_in_the_active_set())
+    results.append(plant_an_untrained_market_the_strip_leaves_off())
+    # ...and a sport whose first run failed so is on it, forecast or not
+    # (found by the prover of item 2, 2026-09-26).
+    results.append(plant_a_first_run_failed_by_name_off_the_strip())
     results.append(plant_a_close_read_from_the_first_of_two_reads())
     results.append(plant_a_close_that_cites_its_own_pricing_read())
     results.append(plant_a_withdrawn_recommendation_in_the_closing_line())

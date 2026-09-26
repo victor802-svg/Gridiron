@@ -22,7 +22,7 @@ import pytest
 from gridiron import audit, config, db, language, run, views
 from gridiron.factors import compute, store
 from gridiron.model import activation, baseline, llm, predict, prompt_record
-from tests.conftest import seed_a_sent_prompt
+from tests.conftest import asks_only, seed_a_sent_prompt
 from tests.test_predict import StubClient
 
 REPO = Path(__file__).resolve().parents[1]
@@ -47,10 +47,11 @@ ANSWER = '{"probability": 0.66, "reasoning": "The home rating is better."}'
 
 
 @pytest.fixture
-def trained(league):
+def trained(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="test")
     activation.activate_in_a_scratch_world(league)
+    asks_only(monkeypatch, "nfl", "spread")     # a spread world (item 2)
     return league
 
 
@@ -188,11 +189,14 @@ def test_the_door_refuses_a_request_that_is_not_one_canonical_request(conn, monk
 
 
 def _a_question(conn):
-    """A question of the written slate, as the sport's own door forms it."""
+    """A question of the written slate, as the sport's own door forms it --
+    and as the run asks it, less any market the world does not ask (the
+    spread world of item 2, 2026-09-26)."""
     from gridiron import sports
+    from gridiron.model import questions
 
-    return next(iter(sports.get("nfl").slate_questions(
-        conn, 2025, 7, include_props=False)))
+    return next(iter(questions.without_retired(sports.get("nfl").slate_questions(
+        conn, 2025, 7, include_props=False))))
 
 
 # ---------------------------------------------------------------------------

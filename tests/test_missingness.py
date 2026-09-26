@@ -17,6 +17,7 @@ import pytest
 from gridiron import calibration, config, db, run
 from gridiron.factors import compute, context, registry, store
 from gridiron.model import activation, baseline, logistic
+from tests.conftest import asks_only
 
 
 # --- the honest limit of the change ----------------------------------------
@@ -154,10 +155,11 @@ def test_the_absent_reader_understands_both_factor_sets():
     assert compute.absent_factors({}) == []
 
 
-def test_a_prediction_records_present_and_absent(league):
+def test_a_prediction_records_present_and_absent(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="d2")
     activation.activate_in_a_scratch_world(league)
+    asks_only(monkeypatch, "nfl", "spread")     # a spread world (item 2)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     row = league.execute("SELECT factors_json, reasoning FROM predictions LIMIT 1").fetchone()
     payload = json.loads(row["factors_json"])
@@ -166,10 +168,11 @@ def test_a_prediction_records_present_and_absent(league):
     assert set(payload["present"]) & set(payload["absent"]) == set()
 
 
-def test_the_narrative_names_what_was_unmeasurable(league):
+def test_the_narrative_names_what_was_unmeasurable(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="d2")
     activation.activate_in_a_scratch_world(league)
+    asks_only(monkeypatch, "nfl", "spread")     # a spread world (item 2)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
     rows = league.execute("SELECT reasoning, factors_json FROM predictions").fetchall()
     with_absent = [
@@ -298,10 +301,11 @@ def test_versions_are_never_summed(league):
     calibration.assert_every_figure_has_n(payload)
 
 
-def test_every_scoring_surface_can_filter_by_version(league):
+def test_every_scoring_surface_can_filter_by_version(league, monkeypatch):
     store.sync_registry(league)
     baseline.train(league, "spread", (2025,), l2=1.0, note="d2")
     activation.activate_in_a_scratch_world(league)
+    asks_only(monkeypatch, "nfl", "spread")     # a spread world (item 2)
     run.run_week(league, 2025, 7, include_props=False, use_llm=False)
 
     current = calibration.curve(league, sport="nfl", factor_set_version="fs2")

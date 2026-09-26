@@ -61,6 +61,9 @@ def seed_league(conn) -> sqlite3.Connection:
     import random
 
     rng = random.Random(20260828)
+    # THE RUNNING BACK'S OWN STREAM (2026-09-26), so adding him moved no score,
+    # quarterback or receiver line the fixture has always drawn.
+    back_rng = random.Random(20260926)
     strength = {t: s for t, s in zip(TEAMS, [7, 5, 4, 2, 0, -2, -4, -6])}
     # Anchored to the clock rather than to a fixed date, so that the fixture is
     # INTERNALLY CONSISTENT: the sixteen played weeks are behind us and the two
@@ -183,6 +186,38 @@ def seed_league(conn) -> sqlite3.Connection:
                                 0,
                             ),
                         )
+                        # A RUNNING BACK (GRIDIRON_REPAIR item 2, 2026-09-26).
+                        # Rushing yards is asked of a back alone, and a league
+                        # with none could never train it; a market the run
+                        # asks with no model now fails the run by name, so
+                        # the league carries every position its markets ask.
+                        conn.execute(
+                            "INSERT INTO player_week_stats (season, week, player_id, player_name,"
+                            " position, team, opponent, attempts, completions, passing_yards,"
+                            " passing_tds, carries, rushing_yards, rushing_tds, targets,"
+                            " receptions, receiving_yards, receiving_tds)"
+                            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (
+                                2025,
+                                week,
+                                f"RB-{team}",
+                                f"{team} Running Back",
+                                "RB",
+                                team,
+                                opp,
+                                0,
+                                0,
+                                0,
+                                0,
+                                back_rng.randint(12, 22),
+                                70 + back_rng.gauss(0, 28),
+                                0,
+                                3,
+                                back_rng.randint(1, 4),
+                                18 + back_rng.gauss(0, 9),
+                                0,
+                            ),
+                        )
 
     # This fixture is a BACKTEST database and says so, because that is what it
     # is: every test needing a resolvable prediction forecasts a week already
@@ -205,6 +240,27 @@ def seed_league(conn) -> sqlite3.Connection:
 def league(conn) -> sqlite3.Connection:
     """The synthetic league, built per test."""
     return seed_league(conn)
+
+
+def asks_only(monkeypatch, sport: str, *markets: str) -> None:
+    """THIS TEST WORLD ASKS ONLY THESE MARKETS OF THE SPORT, and says so.
+
+    GRIDIRON_REPAIR item 2 (the operator's ruling of 2026-09-23, built
+    2026-09-26): a market a run asks with no model fails the run by name. A
+    world that trains only the spread, because the test is about the spread,
+    used to lean on the run leaving the other markets out in silence -- the
+    very skip the ruling retired. It now retires the others for the length of
+    the test, the one way the record itself stops asking a market (R1), so
+    what the world asks is declared rather than assumed.
+    """
+    from gridiron import config as _config
+
+    for market in _config.SPORT_MARKETS[sport]:
+        if market in markets or _config.retired_market(sport, market):
+            continue
+        monkeypatch.setitem(_config.RETIRED_MARKETS, (sport, market), {
+            "retired": "2026-09-26", "from": "2026-09-01T00:00:00Z",
+            "reason": f"this test world asks only {', '.join(markets)}"})
 
 
 @pytest.fixture

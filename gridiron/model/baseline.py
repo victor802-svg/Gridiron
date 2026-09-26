@@ -605,6 +605,81 @@ def assert_the_vector_carries_the_fit(fit, fv: compute.FeatureVector) -> None:
             f"Nothing is forecast from it until the fit and the registry agree.")
 
 
+#: WHY A MARKET THE RUN ASKS HAS NO MODEL IT CAN FORECAST FROM (GRIDIRON_REPAIR
+#: item 2, 2026-09-26), one word per door that refuses it: `load_fit` finds no
+#: activated fit, or an active fit of another factor set, or the active fit
+#: reads a factor the registry no longer computes for the market. The words a
+#: reader sees are `language.UNTRAINED_WHY_WORDS`.
+UNTRAINED_WHY = ("none_active", "another_set", "factor_not_computed")
+
+
+def untrained_entry(sport: str, market: str, why: str, detail: str) -> dict:
+    """One market a run asks and cannot answer, as the run and the strip
+    both carry it. `detail` is the refusal's own text, for the record and
+    never for a page: it names the market by its key."""
+    if why not in UNTRAINED_WHY:
+        raise ValueError(f"{why!r} is not a declared reason ({UNTRAINED_WHY})")
+    return {"sport": sport, "market": market, "key": market_key(sport, market),
+            "why": why, "detail": detail}
+
+
+def untrained_markets(conn: sqlite3.Connection, sport: str, *,
+                      include_props: bool = True) -> list[dict]:
+    """Every market a run of this sport asks that has no model it can
+    forecast from. Empty when every one can be answered.
+
+    THE ONE DOOR (GRIDIRON_REPAIR item 2, operator ruling of 2026-09-23:
+    "run.py:99 may never skip an untrained market silently -- a predict run
+    with a skipped market fails by name, and the day strip shows it"). The
+    run fails on what this returns and the day strip prints it, so the two
+    cannot disagree about what is missing. Until this date
+    `run.already_answered` dropped such a market from what the run expected,
+    `predict` skipped it with a line in a list nobody reads, and NFL and
+    college spread and moneyline went unforecast from 6 to 23 September while
+    each run reported success on props and totals or was refused as having
+    answered them.
+
+    ASKED means active (`config.active_markets`: a retired market is over,
+    not missing) and not held (`config.held_market`, keyed the way `predict`
+    reads it: a prop by its class): a held market is not asked, and the strip
+    already carries its own line saying why. A prop is asked only when the
+    run asks props.
+
+    NO MODEL means each refusal the forecast would meet, through the door
+    that makes it: `load_fit` (no activated fit, or an active fit of another
+    set), then `assert_the_vector_carries_the_fit` against every factor the
+    registry computes for the market -- measured or absent, which is what
+    every question's vector holds -- so a fit reading a retired factor is
+    named here rather than skipped one question at a time.
+    """
+    config.require_sport(sport, "baseline.untrained_markets")
+    out: list[dict] = []
+    for market in config.active_markets(sport):
+        is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
+        if is_prop and not include_props:
+            continue
+        if config.held_market(sport, "prop" if is_prop else market):
+            continue
+        key = market_key(sport, market)
+        try:
+            fit = load_fit(conn, key)
+        except ActiveFitIsAnotherSet as exc:
+            out.append(untrained_entry(sport, market, "another_set", str(exc)))
+            continue
+        except NotTrained as exc:
+            out.append(untrained_entry(sport, market, "none_active", str(exc)))
+            continue
+        kind = "prop" if is_prop else market
+        computed = [f.name for f in registry.active_factors(sport, kind, market)]
+        try:
+            assert_the_vector_carries_the_fit(fit, compute.FeatureVector(
+                sport=sport, market_type=kind, absent=computed))
+        except FactorNotComputed as exc:
+            out.append(untrained_entry(sport, market, "factor_not_computed",
+                                       str(exc)))
+    return out
+
+
 #: How close a fit's probability must come to a stored one to have written
 #: it. The row stores its factor values and its probability rounded to six
 #: places, so a fit that wrote the row reproduces it far inside this, and a

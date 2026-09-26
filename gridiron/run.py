@@ -34,6 +34,24 @@ class SlateAlreadyAnswered(RuntimeError):
     """A slate this factor set has already forecast, and why that is refused."""
 
 
+class MarketNotTrained(RuntimeError):
+    """A market the run asks had no model it could forecast from, so the run
+    fails and says which (GRIDIRON_REPAIR item 2, 2026-09-26).
+
+    Raised AFTER the markets that have a model are written, snapshotted and
+    ranked, so one missing model costs its own forecasts and nobody else's --
+    the way a held market or a fit of another set already did -- and BEFORE
+    the run returns, so the task is recorded as failed and its line on the
+    Health panel names the market. `markets` is the run's own account
+    (`baseline.untrained_entry`); `result` is what the run wrote.
+    """
+
+    def __init__(self, message: str, *, markets: list[dict], result: dict):
+        super().__init__(message)
+        self.markets = markets
+        self.result = result
+
+
 def already_answered(conn, sport: str, season: int, week: int,
                      *, include_props: bool = True) -> dict:
     """Has this factor set already answered this slate?
@@ -75,28 +93,31 @@ def already_answered(conn, sport: str, season: int, week: int,
     # `include_props=False` asks no props, so an unanswered prop market is not
     # a gap it could fill -- counting it as one would mean such a run could
     # never be refused, however many times it repeated itself.
-    # AND NOT WHAT IT COULD NOT ANSWER. A market that is declared but has no
-    # fitted model is skipped by `predict` every time, so counting it as a gap
-    # means the slate can never be "already answered" and a rerun is never
-    # refused -- the guarantee quietly stops holding, in the direction that
-    # writes duplicate forecasts.
     #
-    # Found on 2026-09-04, when the NFL moneyline was declared: a test fixture
-    # that trains only the spread stopped refusing its own rerun, and nothing
-    # said so. This is the same reasoning as the `include_props` line above --
-    # what this run WOULD ask, not what the sport declares.
-    from .model import baseline
-
+    # AND A MARKET IT CANNOT ANSWER IS STILL A GAP. RETIRED 2026-09-26 by the
+    # operator's ruling of 2026-09-23 (GRIDIRON_REPAIR item 2: "run.py:99 may
+    # never skip an untrained market silently"): from 2026-09-04 (0768ce4)
+    # this loop left out any market with no fitted model, so the slate could
+    # be "already answered" without it. The reason was real -- a fixture that
+    # trained only the spread stopped refusing its own rerun, and nothing said
+    # so -- and the remedy hid the opposite failure for seventeen days: the
+    # NFL and college spread and moneyline were declared on a new factor set
+    # on 6 September and not trained on the record until the 24th, and every
+    # rerun of their slates was refused as having answered "every market it
+    # asks (prop, total)", with the two it could not ask left out of the
+    # sentence -- 27 of them, 7 to 23 September.
+    #
+    # Now such a market keeps the slate open, and the run that finds it fails
+    # by name (`MarketNotTrained`, after writing what it can). A rerun is
+    # still refused once every market it asks is answered. No row is ever
+    # written twice: `predict.already_written` is the door for that, and a
+    # rerun of an open slate writes only questions that have no row.
     expected = set()
     for market in sports.get(sport).markets():
         if config.retired_market(sport, market):
             continue        # a retired market is over, not missing (R1)
         is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
         if is_prop and not include_props:
-            continue
-        try:
-            baseline.load_fit(conn, baseline.market_key(sport, market))
-        except baseline.NotTrained:
             continue
         expected.add("prop" if is_prop else market)
     missing = sorted(expected - set(answered))
@@ -249,6 +270,20 @@ def run_slate(
 
         result["recommended"] = recommend.record_for(conn, run.prediction_ids)
 
+    # A MARKET THE RUN ASKS AND COULD NOT ANSWER FAILS THE RUN, BY NAME
+    # (GRIDIRON_REPAIR item 2; the operator's ruling of 2026-09-23, built
+    # 2026-09-26: "a predict run with a skipped market fails by name, and the
+    # day strip shows it"). Here, after every step above, so the markets that
+    # have a model keep their forecasts, snapshots and ranking; and before the
+    # return, so `tasks.run_task` records the run as failed with these words
+    # as its detail. The final pass fails the same way: it asks the same
+    # markets. The strip reads the same door (`views.freshness`).
+    if run.untrained:
+        from . import language
+
+        raise MarketNotTrained(
+            language.untrained_run_words(sport, run.untrained, result["written"]),
+            markets=list(run.untrained), result=result)
     return result
 
 

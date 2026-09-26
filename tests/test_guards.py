@@ -543,6 +543,15 @@ def test_every_new_guard_is_in_the_planted_harness():
         # ...and one sent prompt is cited by one forecast, as its number
         # (the prover of item 4, 2026-09-25).
         "plant_a_second_forecast_citing_a_sent_prompt_as_text",
+        # GRIDIRON_REPAIR item 2 (the operator's ruling of 2026-09-23, built
+        # 2026-09-26): a market the run asks and cannot answer fails the run
+        # by name, is never refused as answered, and is on the first screen.
+        "plant_an_untrained_market_in_the_active_set",
+        "plant_a_rerun_refused_over_a_market_it_never_asked",
+        "plant_an_untrained_market_the_strip_leaves_off",
+        # ...even a sport never forecast, once its run has failed so (the
+        # prover of item 2, 2026-09-26).
+        "plant_a_first_run_failed_by_name_off_the_strip",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

@@ -6076,7 +6076,10 @@ def freshness_faults(payload) -> list[str]:
             faults.append(f"freshness: {entry.get('job')} is {age}h old against "
                           f"a {limit}h threshold and is not marked stale")
         words = entry.get("words") or ""
-        if entry.get("stale") and not any(w in words for w in ("past", "never", "held")):
+        # "not forecast" from 2026-09-26 (GRIDIRON_REPAIR item 2): a market
+        # with no model says what that costs in those words.
+        if entry.get("stale") and not any(
+                w in words for w in ("past", "never", "held", "not forecast")):
             faults.append(f"freshness: {entry.get('job')} is stale and its words "
                           f"do not say so")
     # A HELD MARKET IS ON THE STRIP, BY NAME (ruling 2026-09-24).
@@ -6090,6 +6093,18 @@ def freshness_faults(payload) -> list[str]:
                    and name in (e.get("words") or "") for e in shown):
             faults.append(f"freshness: {hold.get('sport')} {name} is held and "
                           f"the strip does not say so")
+    # SO IS A MARKET THE RUN ASKS AND CANNOT ANSWER (GRIDIRON_REPAIR item 2;
+    # the operator's ruling of 2026-09-23, built 2026-09-26: "the day strip
+    # shows it"), by its name and in a stale line of its own sport.
+    shown = [e for e in block.get("entries") or []
+             if e.get("job") == "untrained" and e.get("stale")]
+    for gap in block.get("untrained") or []:
+        name = _language.market_words(gap.get("sport", ""), gap.get("market", ""))
+        if not any(e.get("sport") == gap.get("sport")
+                   and name in (e.get("words") or "") for e in shown):
+            faults.append(f"freshness: {gap.get('sport')} {name} is not "
+                          f"forecast, for want of a model, and the strip does "
+                          f"not say so")
     return faults
 
 

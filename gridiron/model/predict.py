@@ -75,10 +75,21 @@ class BlindRun:
     #: slate's coverage for the at-the-line record is a fact, not an inference.
     distributions_written: int = 0
     distributions_absent: dict[str, int] = field(default_factory=dict)
+    #: EVERY MARKET THIS RUN ASKS AND COULD NOT ANSWER, one entry each, as
+    #: `baseline.untrained_entry` shapes it (GRIDIRON_REPAIR item 2,
+    #: 2026-09-26). `run.run_slate` fails the run on it by name. A line in
+    #: `skipped` was the whole of the old account, and nobody read it for
+    #: seventeen days.
+    untrained: list[dict] = field(default_factory=list)
 
     @property
     def prediction_ids(self) -> list[int]:
         return [w.prediction_id for w in self.written]
+
+    def note_untrained(self, entry: dict) -> None:
+        """Add a market this run could not answer, once."""
+        if all(e["key"] != entry["key"] for e in self.untrained):
+            self.untrained.append(entry)
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +345,13 @@ def predict_slate(
             fits[key] = baseline.load_fit(conn, key)
         except baseline.NotTrained as exc:
             run.skipped.append(str(exc))
+    # WHAT THIS RUN ASKS AND CANNOT ANSWER, THROUGH THE ONE DOOR
+    # (GRIDIRON_REPAIR item 2, 2026-09-26): the same list the day strip
+    # prints. A held market is not in it -- it is not asked -- and nor is a
+    # retired one.
+    for entry in baseline.untrained_markets(conn, sport,
+                                            include_props=include_props):
+        run.note_untrained(entry)
 
     llm_off: str | None = None
 
@@ -366,6 +384,9 @@ def predict_slate(
             # fit that exists and was never activated is skipped here too,
             # and the words should not send a reader off to train one.
             run.skipped.append(f"{q.game_id} {q.market_key}: no activated model")
+            run.note_untrained(baseline.untrained_entry(
+                q.sport, q.market, "none_active",
+                f"no activated model for {q.market_key}"))
             continue
         try:
             fv, ctx = adapter.build_features(conn, q, cache)
@@ -399,6 +420,12 @@ def predict_slate(
             stat = baseline.predict(fits[q.market_key], fv, rung=q.line_asked)
         except baseline.FactorNotComputed as exc:
             run.skipped.append(f"{q.game_id} {q.market_key}: {exc}")
+            # NOT SILENT EITHER (item 2, 2026-09-26): the door above names a
+            # fit reading a retired factor before the loop, and a question
+            # that meets one it did not foresee is added here, so the run
+            # fails on it all the same.
+            run.note_untrained(baseline.untrained_entry(
+                q.sport, q.market, "factor_not_computed", str(exc)))
             continue
 
         # THE PROPS CONFIDENCE FLOOR (config.PROPS_MIN_CLAIM, declared

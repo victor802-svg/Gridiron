@@ -273,6 +273,31 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
     return {"task": task, "result": result, "detail": detail, **payload}
 
 
+def failed_for_want_of_a_model(conn: sqlite3.Connection, sport: str) -> bool:
+    """Has a predict or final run of this sport been recorded failed because
+    a market it asks has no model (`run.MarketNotTrained`)?
+
+    Read from the words `run_task` above records a failure in -- the
+    exception's class name, then its message -- so the writing and the
+    reading sit in one module.
+
+    WHY THE STRIP ASKS (GRIDIRON_REPAIR item 2, found by its prover on
+    2026-09-26). The day strip listed a sport's untrained markets only once
+    the record held a forecast of it, as it lists a hold. A sport whose
+    first run meets no model writes nothing, so it never has one: the run
+    failed by name on the Health panel while the first screen showed three
+    ages, the daily run kept fresh by another sport -- the ruling's "fails by
+    name, and the day strip shows it" kept by half.
+    """
+    from . import run
+
+    return conn.execute(
+        "SELECT 1 FROM task_runs WHERE task IN (?, ?) AND result = 'failed'"
+        "   AND detail LIKE ? LIMIT 1",
+        (f"predict:{sport}", f"final:{sport}",
+         f"{run.MarketNotTrained.__name__}: %")).fetchone() is not None
+
+
 def _run_refresh(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     """Re-read the CURRENT season from each sport's source, so a game that has
     finished in the world is marked finished in the record.

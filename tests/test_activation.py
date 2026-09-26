@@ -20,6 +20,7 @@ import pytest
 from gridiron import audit, config, db, run
 from gridiron.factors import store
 from gridiron.model import activation, baseline, logistic
+from tests.conftest import asks_only
 
 BEFORE = "2026-09-05T11:16:52Z"            # fitted before the rule's birthday
 
@@ -59,8 +60,12 @@ def _measure(conn, candidate, incumbent, interval, **overrides):
 
 
 @pytest.fixture
-def world(league):
+def world(league, monkeypatch):
     store.sync_registry(league)
+    # A SPREAD WORLD, SAID OUT LOUD (GRIDIRON_REPAIR item 2, 2026-09-26):
+    # these tests train the spread alone, and a market a run asks with no
+    # model now fails the run by name.
+    asks_only(monkeypatch, "nfl", "spread")
     return league
 
 
@@ -302,7 +307,10 @@ def test_an_active_fit_of_another_factor_set_is_refused_by_name(world, monkeypat
     assert len(faults) == 1 and faults[0].startswith("NFL spread")
     with pytest.raises(audit.LawViolation, match="ANOTHER FACTOR SET"):
         audit.check_every_active_fit_is_the_declared_set(world)
-    result = run.run_week(world, 2025, 7, include_props=False, use_llm=False)
+    # ...and the run fails by name (item 2, 2026-09-26), writing nothing.
+    with pytest.raises(run.MarketNotTrained, match="another set of factors") as caught:
+        run.run_week(world, 2025, 7, include_props=False, use_llm=False)
+    result = caught.value.result
     assert result["written"] == 0
     assert any("ANOTHER FACTOR SET" in s for s in result["skipped"])
 
@@ -462,7 +470,10 @@ def test_a_fit_is_never_read_without_a_factor_it_was_trained_on(world, monkeypat
     name = next(n for n in fit.names if n in registry.REGISTRY)
     monkeypatch.setitem(registry.REGISTRY, name,
                         dataclasses.replace(registry.REGISTRY[name], active=False))
-    result = run.run_week(world, 2025, 7, include_props=False, use_llm=False)
+    # ...and the run fails by name (item 2, 2026-09-26), writing nothing.
+    with pytest.raises(run.MarketNotTrained, match="no longer computed") as caught:
+        run.run_week(world, 2025, 7, include_props=False, use_llm=False)
+    result = caught.value.result
     assert result["written"] == 0
     assert any("NEVER COMPUTED" in s and name in s for s in result["skipped"])
 

@@ -1118,6 +1118,12 @@ incumbents on the 2025 holdout, and the four markets went back to fits 88,
 The second half stands open: a declared market with no activated model is
 still skipped in the run's `skipped` list rather than failing visibly.
 
+**2026-09-26, the second half: CLOSED.** A market the run asks with no model
+it can forecast from now fails the run by name and is on the day strip
+(`baseline.untrained_markets`, `run.MarketNotTrained`), and three plantings
+prove it -- "An untrained market fails the run by name", at the end of this
+file.
+
 ### The at-the-line scorecard merges forecasters *(measured 2026-09-23)*
 
 `at_the_line.standing_claims` keeps one claim per PREDICTION, not per
@@ -2738,3 +2744,165 @@ named as having no record at all.
 - **The Results "Forecaster" column prints the raw value** `llm` when both
   forecasters are shown, and the Record headline's sub-line glues the raw
   predictor in the renderer; neither word is on a scan's list.
+
+## An untrained market fails the run by name -- built 2026-09-26 *(GRIDIRON_REPAIR item 2, its remainder; the operator's ruling of 2026-09-23)*
+
+"run.py:99 may never skip an untrained market silently -- a predict run with a
+skipped market fails by name, and the day strip shows it. Planting: an
+untrained market in the active set fails the run." The fs5 half of the ruling
+was settled on 24 September (the activation gate, ff7e5ab; the revert,
+4c3bda4). This is the rest.
+
+### BUILT *(2026-09-26)*
+
+- **One door**: `baseline.untrained_markets(conn, sport, include_props=)`.
+  Every market in `config.active_markets` that is not held (a prop only when
+  the run asks props) and cannot be forecast from: `load_fit` finds no
+  activated fit (`none_active`) or an active fit of another factor set
+  (`another_set`), or the active fit reads a factor the registry no longer
+  computes for the market (`factor_not_computed`, through
+  `assert_the_vector_carries_the_fit` against every factor the market's
+  vector would hold).
+- **The run**: `predict_slate` carries that list on `BlindRun.untrained`, and
+  adds any question skipped for either reason that the door did not foresee.
+  `run.run_slate` raises `MarketNotTrained` -- every market named, with its
+  reason, in words ("NFL moneyline not forecast: no model is in use for it.
+  This run wrote 8 forecasts for the markets that have a model and is
+  recorded as failed ...") -- AFTER the markets that have a model are written,
+  snapshotted, ranked and recommended, and before it returns, so `run_task`
+  records the task `failed` with those words (the Health panel strips the
+  class name). The final pass fails the same way.
+- **The refusal**: `run.already_answered` no longer leaves a market with no
+  model out of what a run expects (0768ce4's rule of 2026-09-04, retired by
+  the ruling), so a slate one of whose markets was never asked is never
+  refused as answered: every rerun fails by name instead. No question is
+  written twice -- `predict.already_written` is that door, and the unique
+  index behind it.
+- **The strip**: `views.freshness` adds one stale line per sport the record
+  has forecast, or whose run has been recorded failed for want of a model
+  (the prover, below), through the same door ("NFL moneyline not forecast: no model
+  is in use for it"), and `audit.freshness_faults` refuses a strip that
+  leaves a market off; "not forecast" joins the words a stale line may say it
+  in. Rendered at 1100 and 390 px on a synthetic world, one market and seven:
+  no horizontal overflow, the seven-market line wraps to four lines at 390.
+- **Plantings** (all three ESCAPE on HEAD f2c40ff with this plant.py, and are
+  CAUGHT on this tree; 301/301, and 302/302 with the prover's fourth, below):
+  `plant_an_untrained_market_in_the_active_set`
+  (the act of 6 September -- a version declared for the NFL moneyline and
+  never trained: the run must fail naming it, the spread and total still
+  written, and the strip say so), `plant_a_rerun_refused_over_a_market_it_never_asked`
+  (the 27 NFL and college refusals of 7-23 September, 20 college and 7 NFL,
+  read from `task_runs`: the rerun must fail by name, not be
+  refused as answered, and write nothing twice), and
+  `plant_an_untrained_market_the_strip_leaves_off`. `plant_a_fit_reading_a_retired_factor`
+  now also requires the run to fail naming the point spread.
+  `plant_an_unfitted_market_that_blocks_a_rerun_refusal` is RETIRED with the
+  rule it asserted.
+- **The worlds**: the harness league trains the moneyline and the total as
+  well as the spread (the spread last, so it stays the newest fit the
+  activation plantings read). The tests' league has a running back (its own
+  random stream; no existing number moved), because rushing yards is asked
+  of a back alone and a league without one could never train it. A test world
+  that trains only some markets says so with `tests.conftest.asks_only`,
+  which retires the others for the test -- the one way the record itself
+  stops asking a market -- where it used to lean on the silent skip.
+
+### MEASURED ON THE LIVE RECORD, read-only *(2026-09-26 about 03:00Z, `db.read_the_live_record`)*
+
+Every active market of all five sports has an activated fit of its declared
+set, and no active fit reads a factor the registry no longer computes (the
+four fs5 markets on fits 88, 71, 44 and 35; MLB home runs is retired and not
+asked). `baseline.untrained_markets` is empty for every sport with and
+without props, the strip adds no line, and `check_the_strip_shows_a_dead_job`
+passes. So the release turns no scheduled pass red. Gate step 3 trained all
+eight NFL markets on the gate's copy in the last gate (5b), so it is not
+turned red either. **No live-record write is needed.**
+
+### READINGS TAKEN, for the operator to overrule *(2026-09-26)*
+
+- **Write what can be answered, then fail** -- not refuse the whole slate
+  before writing. The ruling's words are "a predict run with a skipped market
+  fails by name": a run that skipped a market, and failed. The precedent is
+  the hold and the activation gate's own refusals, each of which leaves its
+  one market unforecast and says why while the rest are written. Failing
+  first would have cost every other market of the sport for as long as the
+  one market had no model -- on 6 to 23 September, the NFL and college totals
+  and props too. The one-line reversal: raise before `forget_market_module`
+  instead of after the recommendations.
+- **"Untrained" is every reason a market has no model it can forecast from**:
+  no activated fit, an active fit of another set, and a fit reading a retired
+  factor -- the three skips `predict` made. A held market is not untrained
+  (not asked; the strip has its own line), nor a retired one (over, not
+  missing), nor a prop in a run that asks no props.
+- **The strip lists a sport only once the record has forecast it**, as the
+  hold does: an empty record is not a stopped one. **Narrowed by the prover
+  the same day**: or once a run of it has been recorded failed for want of a
+  model (below).
+
+### FOUND BY THE PROVER *(2026-09-26)*
+
+- **A sport whose first run failed by name was off the strip.** A sport
+  whose first run meets no model writes nothing, so the record never holds a
+  forecast of it, and the strip that waited for one said nothing while the
+  run failed by name on the Health panel -- with the daily-run age kept fresh
+  by another sport, the shape of 6-23 September. Reached on the harness
+  league through the task runner: recorded `failed`, 0 written, three ages on
+  the strip. None of the five sports is in that state today (every one has
+  forecasts on the record), so it waited for a new sport. FIXED:
+  `tasks.failed_for_want_of_a_model` (read from the words `run_task` records
+  a failure in, beside it) and `views.freshness` lists such a sport too; the
+  door still decides what is listed, so the line goes once the market has a
+  model. `plant_a_first_run_failed_by_name_off_the_strip` ESCAPES on HEAD
+  f2c40ff (recorded `noop`, "every question on this slate was already
+  answered" -- the silent skip itself) and on the implementer's tree
+  (recorded `failed`, the strip silent), and is CAUGHT on this tree (302/302);
+  `test_untrained.py::test_a_sport_whose_first_run_failed_by_name_is_listed`.
+
+### OPEN, found by this item *(2026-09-26)*
+
+- **A long failure pinches the Health panel's name column** (the prover's
+  renders, 2026-09-26). `.set` is `grid-template-columns: 1fr auto`, so a
+  long `last_detail` in the value column squeezes the task's name and its
+  description to one word a line, at 1100 px and at 390 (no overflow; the
+  words are right). Not new -- any long failure does it, a
+  `SlateAlreadyAnswered` among them -- but this item's words are long and
+  every untrained run now writes them. A CSS or placement change for its own
+  render review.
+- **A run that fails for another reason after writing says only that
+  reason.** The untrained check is raised after the snapshot, the ranking,
+  the second forecaster and the recommendations, so one of those raising
+  first fails the run naming itself, not the market with no model; the strip
+  still names the market (a sport with a forecast). Written-then-fail is the
+  reading taken above; the fail-first reversal would close this too.
+- **Every rerun of an open slate re-measures its rungs.** A slate kept open
+  by a market with no model is no longer refused on rerun, so each scheduled,
+  catch-up and final pass re-logs the prop rung claims
+  (`rungs.record`, append-only, one row per rung per second) while the
+  market has no model. Measurement rows, not forecasts; none today.
+- **A failing task pops a desktop notice in a test or a planting.**
+  `run_task` calls `notify_failures` on any failure, which shows a Windows
+  toast and posts to the push topic if one is configured; the scheduler test
+  of a failing task does it already, and `test_untrained.py`'s run-task test
+  does too. The prover's own test and planting keep it quiet
+  (`GRIDIRON_NOTIFY_FAILURES=0`; a stub).
+
+- **Item 7 must not reclassify this failure.** Item 7 turns
+  `SlateAlreadyAnswered` into a noop; `MarketNotTrained` must stay `failed`,
+  or the gap is silent again.
+- **Training still skips in a list.** `baseline.train_all` catches
+  `NotTrained` and `ValueError` per market and reports it only to `progress`.
+  It is caught downstream now -- the next run fails by name -- but
+  `tools/backtest.py` (not in the gate) will now fail a season in which a
+  market cannot be fitted, where it used to skip it.
+- **A held market still counts as a gap in `already_answered`**, as it did
+  before when trained: a rerun while a market is held is not refused and
+  writes only questions with no row. Unchanged here; `HELD_MARKETS` is empty.
+- **The strip reads the door, not the run.** A question skipped for want of
+  a model that the door did not foresee fails the run by name (the run adds
+  it to its own account) but is not on the strip. None is known: the door
+  checks each fit against the factors the registry computes for its market,
+  which is what every adapter's vector holds today (only baseball narrows a
+  prop's factors by market, and its adapter passes the market).
+- **"total" on the strip, "Total points" on the tab.** `language.market_words`
+  has no entry for the total, so the held line and this one say "total";
+  plain, but not the tab's word.
