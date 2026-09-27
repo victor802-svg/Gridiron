@@ -586,6 +586,12 @@ def test_every_new_guard_is_in_the_planted_harness():
         # repaired and is not read before its first clean read.
         "plant_a_closing_line_verdict_before_its_first_clean_read",
         "plant_a_close_from_before_the_window_counted",
+        # OPERATOR QUESTION 12 (ruled 2026-09-27, built the same day): every
+        # measurement counts a same-side pair once, and both sides of one
+        # game and market not at all.
+        "plant_a_same_side_pair_counted_twice",
+        "plant_both_sides_of_one_total_counted",
+        "plant_a_measurement_that_goes_round_the_counted_once_door",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

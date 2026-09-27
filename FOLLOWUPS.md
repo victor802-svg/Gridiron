@@ -4696,3 +4696,215 @@ the gate's release comparison is run after it, as with every rule since 5b.
   took 108 (both rolled back). The gate's step-2 record rows, dry-run on
   their own copy: both schema comparisons 0 registered, nothing new, every
   record check passing, the record's schema as found.
+
+## A pair counted once, and both sides not at all -- built 2026-09-27 *(operator question 12; the ruling of 2026-09-27)*
+
+"Q12: the record shows rows as written. Every measurement counts a same-side
+pair once (the earlier row). Recs 45/46, opposite sides of one total, count
+zero in every measurement and are labelled 'both sides, no position'."
+(`docs/briefs/2026-09-27-close-out-rulings.md`; placed after the Q9 labels
+and before the flaky tests by the second set.) **A MEASUREMENT RULE, NOT AN
+EDIT**: no recommendation is changed, deleted, hidden or labelled in the
+record; no table, column or schema object is added; nothing is written.
+
+### MEASURED FIRST, read-only *(2026-09-27, `db.read_the_live_record`; newest recommendation 110, written 05:48:52Z)*
+
+- **The pairs, by rule** (every game and market holding more than one
+  standing recommendation, the withdrawn ones left out first): eighteen,
+  each of exactly two rows -- 1/9, 3/10, 4/12, 5/13, 6/14, 20/25, 21/26,
+  23/28, 32/34, 41/44, 42/48, 43/49, **45/46** (the over and the under, one
+  second, the only pair on both sides), 60/79, 61/80, 84/93, 86/94, 87/95:
+  **the eighteen measured on 2026-09-26, exactly**, every one MLB (spread
+  fourteen, total four). Counting withdrawn rows too there are 22: the four
+  more are NFL 62/73, 63/75, 64/76, 66/78, each a withdrawn row and the
+  standing one written after it -- no pair, since a withdrawn row never
+  counts.
+- **The rule's selection** (`recommend.not_counted_once`, read-only on the
+  record after the build): repeats 9, 10, 12, 13, 14, 25, 26, 28, 34, 44,
+  48, 49, 79, 80, 93, 94, 95 -- the later row of each of the seventeen
+  same-side pairs -- and both sides 45 and 46; 106 standing, 87 counted
+  once; every earlier row counted; 73, 75, 76 and 78 counted.
+- **Where each set-aside row was counted before**: MLB spread measured in
+  the window 93, 94, 95 (each +0.00c); restated with a later read 9, 10, 13,
+  25, 26, 48; restated with none 14, 34, 44 and unmeasured 79, 80 (both
+  "not counted" in the words); MLB total restated with a later read 28, 49,
+  restated with none 12, 45, 46. Re-graded: 10 and 26.
+
+### EVERY FIGURE THAT MOVED, before and after *(read-only on the live record, the same instant each side, `now` 2026-09-27T12:00Z)*
+
+| figure (MLB; no other sport moves) | before | after |
+|---|---|---|
+| closing line, point spread: measured closes counted since 24 Sep (its N; the gate distance "N of 50") | 15 | **12** (93, 94, 95 out) |
+| closing line, point spread: closed with no later read, beside the count | 28 | 23 |
+| closing line, point spread: older closes worked out again, beside | 23 | 17 |
+| closing line, point spread: repeats named beside, counted once | -- | 14 |
+| closing line, total: counted since 24 Sep | 1 | 1 |
+| closing line, total: no later read / worked out again, beside | 7 / 8 | 4 / 6 |
+| closing line, total: repeats named beside | -- | 3 |
+| closing line, "Since the repair" window line | 16 | **13** |
+| awaiting a close | 3 | 3 |
+| "Both sides, no position" (new row, with its N) | -- | **2** (45, 46) |
+| "Would not have cleared" (its N; the returns named) | 4 (3.34%, 3.68%, 4.69%, 4.97%) | **2** (3.34%, 4.97%: recs 3 and 56) |
+| the kill criterion (`priced.coverage.stopped`), today and on 15 October | stops nothing | stops nothing |
+| READINESS criterion 2, recommendations since 7 Sep, point spread / total | 69 / 16 | **55 / 11** |
+| the same since 24 Sep, point spread / total | 28 / 2 | 23 / 2 |
+| `tools/empty_bar.py`, days nothing cleared | unchanged in every sport and span | |
+
+Every other sport's closing line, re-grade line and count is unchanged (no
+pair outside MLB). The two sides add up: MLB point spread 15 + 28 + 23 = 66
+closed before, 12 + 23 + 17 counted + 14 repeats = 66 after; total 16 =
+1 + 4 + 6 + 3 repeats + 2 both sides. The 2026-09-26 edge read's "9 measured
+closes" for MLB spread (READINESS) was read before the window; the 12 of
+2026-09-27 00:15Z was the count in the window then, and three of those
+twelve were 93, 94 and 95.
+
+### BUILT *(2026-09-27)*
+
+- **One door**: `recommend.counted_once(conn, alias="r")`, a clause beside
+  `not_withdrawn` that is `not_withdrawn` and the rule -- no other standing
+  row on the same game and market written earlier (stamp, then number) or
+  on the other side. `recommend._another_standing_row` is the rule itself;
+  `recommend.not_counted_once(conn, *, sport)` lists what the door leaves
+  out, each with why (`REPEAT` or `BOTH_SIDES`), made of the same rule, so
+  the count and the label cannot disagree. `BOTH_SIDES_LABEL = "Both sides,
+  no position"`, the ruling's words.
+- **The measurements through it**: `calibration.clv_report` (the counted
+  rows, the awaiting count; new keys `repeats` per market and in total,
+  `both_sides`, `both_sides_line` {label, n, words}, `set_aside` {n,
+  measured, closed, awaiting_close}); so `priced.coverage.stopped`, which
+  reads the report; `recommend.regraded`, the "Would not have cleared"
+  line; `tools/empty_bar.py`. The words: `language.clv_line(repeats=)` ("...
+  3 more repeat an earlier recommendation on the same game and side and are
+  counted once, as the earlier one") and
+  `language.both_sides_recommendations_line` ("2 recommendations took both
+  sides of one game's total on Monday 21 September, so between them they
+  hold no position: neither is counted in any figure here, and each stays
+  on the record as written"). No club is named, so no subject is read.
+- **The record's readers, named**: `audit.RECORD_READERS`, with a reason
+  each -- the rule and its other side, item 5's `standing_recommendations`,
+  `let_through_by_the_yes_price` (question 9's four labels are on rows as
+  written), the closer, the restatement, the near-start reader,
+  `views.taken_today`. They read through `not_withdrawn` alone.
+- **Guards**: `audit.measurement_door_faults` /
+  `check_every_measurement_counts_each_pair_once` (the source: a reader of
+  the table that is neither through `counted_once` nor a record reader is
+  named by file, function and line; the withdrawn scan now shares its walk,
+  `_reads_round`, and accepts `counted_once` as the door it is);
+  `audit.pair_counted_faults` / `check_each_pair_counted_once` (the
+  arithmetic: the rule worked out again in Python from rows read without
+  either door, `_closing_line_rows`, now shared with the withdrawn recount;
+  refuses a count, a set-aside tally, a repeat or both-sides count, or the
+  re-grade count that differs, naming the rows). Both in the gate's step 2
+  (the recount on the record's copy, every sport); the recount also inside
+  `views.scorecard`. **The withdrawn recount adds the set-aside tallies
+  back**, so every standing row is still accounted for once and a withdrawn
+  one still shows. A pair counted twice leaves the withdrawn recount silent
+  and is named by the pair recount; a withdrawn row counted is named by the
+  withdrawn recount, and the pair recount, which also counts only standing
+  rows, sees its count differ too (naming no pair row).
+- **The page**: `renderPriced` places `both_sides_line` beside "Withdrawn"
+  and before "Would not have cleared", through `requireN`, composing nothing.
+- **Plantings** (each ESCAPES on e890de9 -- `git archive HEAD` into the
+  scratchpad, this `plant.py` copied over it -- and is CAUGHT here):
+  `plant_a_same_side_pair_counted_twice` (a morning and a final pass on one
+  side beside a single, all measured, read on 15 October: on the head the
+  spread counted 3 at +5.0c and nothing checked; here 2 at +3.0c, the final
+  named beside, and with the rule removed the recount names the final row);
+  `plant_both_sides_of_one_total_counted` (45/46's shape beside a single: on
+  the head the closing line counted 3, the total 2, no label; here 1, the
+  label "Both sides, no position" with its N of 2 in plain words, and with
+  the rule removed the recount names both rows);
+  `plant_a_measurement_that_goes_round_the_counted_once_door` (a count
+  through `not_withdrawn` alone in a copy of the package: on the head
+  nothing asks; here named by file and function, the withdrawn scan
+  silent).
+- **Tests**: `test_counted_once.py` (the rule on every shape -- a pair, both
+  sides in one second, three on one side, a withdrawn row and the one after
+  it, another market of the same game; first by stamp then number; the
+  record and the schema unchanged by every read; the closing line, its
+  words and label, an open repeat, the kill criterion at 49 counted of 50
+  closed, the re-grade line of recs 3/10, 21/26 and 56, the empty-bar day
+  that holds only a repeat; both recounts on a pair let through, on a report
+  counting a repeat and naming it, and on a report hiding what it set aside;
+  the source scan and the register; the renderer).
+
+### RENDERED *(2026-09-27; this tree and e890de9 served against one scratch copy of the record made through `db.back_up_the_live_record`, signed in with a dummy token)*
+
+"Priced, and against the close", MLB, at 1100px and 390px, read as
+pictures: no horizontal scroll, no console error, the new row in the same
+type and colour as its neighbours and wrapping inside the column at 390px.
+On e890de9 the closing line read "Since the repair ... 16", point spread
+"15 of 50 ... 28 more ... 23 older ...", total "1 of 50 ... 7 ... 8 ...",
+and "Would not have cleared: 4 recommendations ... 3.34%, 3.68%, 4.69% and
+4.97%"; here "13", point spread "12 of 50 ... 23 more ... 17 older ... 14
+more repeat an earlier recommendation on the same game and side and are
+counted once, as the earlier one", total "1 of 50 ... 4 ... 6 ... 3 more
+repeat ...", then **"Both sides, no position -- 2 recommendations took both
+sides of one game's total on Monday 21 September, so between them they hold
+no position: neither is counted in any figure here, and each stays on the
+record as written"**, then "Would not have cleared: 2 recommendations ...
+3.34% and 4.97%".
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **Paired after the withdrawals**: a withdrawn row never counts (ruling 1),
+  so it is never a pair's member -- NFL 73, 75, 76, 78 count alone, and
+  withdrawing a pair's first row makes its second count. (Reversal: the
+  rule's inner read drops `not_withdrawn`.)
+- **"A pair" read as a group**: every standing row of one game and market
+  beyond the first on one side is a repeat, and any group on both sides
+  counts zero, the ruling's "count zero" and item 5's "never both sides".
+  The record holds only pairs; item 5 stops any new one.
+- **"Earlier" is the stamp, then the number**, as `standing_recommendations`
+  orders a pair; no pair on the record ties except 45/46, which counts zero
+  either way.
+- **"Market" is the table's own `market`**, item 5's key, whatever the rung.
+- **The re-grade line is a measurement**: it counts recommendations, so
+  question 9's four labels stay on the record as written and the line counts
+  the labelled rows the rule counts -- rec 3 and rec 56. Rec 10 is its
+  pair's later row; rec 26's pair counts as rec 21, which cleared. The
+  re-grade tool's selection is not a measurement and still selects all
+  four from the rows as written, so it and the written labels agree.
+- **Named beside, as every exclusion from the closing line is**: each
+  market's repeats in its words (question 12's option B as posed: "names
+  the later rows beside the count"), and 45/46 under the ruling's label as
+  a row of their own beside "Withdrawn", with their N. The label is derived
+  on every read, never stored -- the page could say it without a stored
+  label, so no question for the operator.
+- **Not measurements, left reading every standing row**: the closer and the
+  near-start reader (the record closes every row), item 5's write rule, the
+  re-grade selection, the restatement (ran once), the taken rail's edge (a
+  lookup, today's cards only, so 45/46 never appear there).
+- **The hypothetical ledger counts no recommendation** (it counts
+  at-the-line claims, item 6's door), and **no code computes READINESS
+  criterion 2**: it was measured by hand; the figures above are for the
+  re-read, and READINESS carries a dated note.
+
+### THE LIVE RECORD AFTER THE RELEASE *(none)*
+
+The ruling writes nothing to the record: no schema change, no row, no tool.
+The rule is a clause in the readers and the label is derived on every read,
+so the record's own rows -- all 36 of the pairs among them -- stay as
+written (LAW 3). From the release the Record page counts each pair once and
+names 45/46 "Both sides, no position", and the gate recounts it on the
+record's copy.
+
+### OPEN
+
+- **For the re-read**: every closing-line count, the "Would not have
+  cleared" count and criterion 2 are restated on the rule above; the re-read
+  should apply it, and say so, where it counts recommendations by hand.
+- **The page does not follow the record** (question 11, default stands): a
+  Picks card may still show a pick the record refused. Not re-decided here.
+
+### PROVED *(2026-09-27)*
+
+The three plantings ESCAPE on e890de9 and are CAUGHT here (above). Full
+suite with a dummy access token: 1761 passed, 8 skipped, exit 0, the
+planting harness inside it included. A first run failed one test,
+`test_the_schema_matches.py::test_the_normaliser_is_the_one_door`, because
+`audit.py` was edited while that run was going (`inspect.getsource` read
+the edited file at the old line number); it passes alone, and the second
+run, with nothing edited, is the one above. The gate's two new checks and
+the withdrawn recount pass for every sport on a copy of the record made
+through `db.back_up_the_live_record` and opened under this tree.

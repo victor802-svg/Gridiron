@@ -3610,6 +3610,10 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     # 2026-09-24), recounted here without the door the report used, so a
     # counted withdrawal cannot reach the API.
     audit.check_no_withdrawn_recommendation_counted(conn, payload["closing_line"])
+    # AND EACH GAME AND MARKET IS COUNTED ONCE (operator question 12, ruled
+    # 2026-09-27): a same-side pair as its earlier row, both sides of one
+    # game and market not at all -- recounted by the rule, without the door.
+    audit.check_each_pair_counted_once(conn, payload["closing_line"])
     calibration.assert_single_sport(payload, sport)
     return payload
 

@@ -12704,6 +12704,375 @@ def plant_a_close_from_before_the_window_counted() -> Result:
                   "back past it would mix them into the first clean read")
 
 
+#: Operator question 12, ruled 2026-09-27. A ruling, not one of the six
+#: LAWS, so it claims no LAW number.
+LAW_COUNTED_ONCE = ("EVERY MEASUREMENT COUNTS A SAME-SIDE PAIR ONCE, AND BOTH "
+                    "SIDES OF ONE GAME AND MARKET NOT AT ALL")
+
+
+def _counted_once_world(conn, *, opposite: bool) -> tuple[int, int, int]:
+    """A record holding one pair written before item 5's rule, beside one
+    single recommendation -- every one priced from a near-start read of its
+    own contract, closed on a later one before the start and measured, all
+    written the day after the closing line's window opened:
+
+      * the single: MLB point spread, yes at 46c, closed at 49c: +3.0c;
+      * `opposite` False -- the seventeen's shape (84/93, say): a morning and
+        a final pass on one MLB point spread, both on the yes side, the
+        morning's at 46c and the final's at 40c, both closed at 49c: +3.0c
+        and +9.0c. Counted twice, the spread reads 3 closes at +5.0c;
+        counted once, 2 at +3.0c;
+      * `opposite` True -- recs 45 and 46's shape: the over and the under of
+        one MLB total, from the two forecasters in one pass, at one 48.5c
+        quote and in one second, closed at 50c: +1.5c and -1.5c.
+
+    The pair is written with item 5's rule set aside, as the record's were
+    written before it existed, and `db.init` then puts the rule back: a
+    record under the schema holding a pair written before it. Returns the
+    ids: the single, the pair's first row, its second.
+    """
+    start, _ = _closing_line_window_days()
+    day = datetime.fromisoformat(start + "T00:00:00+00:00") + timedelta(days=1)
+
+    def stamp(minutes: float) -> str:
+        return (day + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def last(table: str) -> int:
+        return conn.execute(f"SELECT MAX(id) FROM {table}").fetchone()[0]
+
+    def game(gid: str) -> None:
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1, 'R',"
+            " 'MIA', 'NYM', ?, 'scheduled', ?)", (gid, stamp(240), stamp(0)[:10]))
+
+    def forecast(gid: str, market: str, line: float, side_word: str,
+                 predictor: str, pass_kind: str, at: float) -> int:
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning) VALUES"
+            " (?, 'mlb', ?, ?, 'NYM at MIA', ?, 0.6, ?, ?, ?, 'fs2', '{}',"
+            " 'planted')",
+            (stamp(at), gid, market, line, side_word, predictor, pass_kind))
+        return last("predictions")
+
+    def quote(gid: str, market: str, mid: float, at: float) -> int:
+        quantity, line, yes = (("home_margin", -1.5, "home") if market == "spread"
+                               else ("total", 7.5, "over"))
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " volume, fetched_utc, read_kind) VALUES ('kalshi', ?, 'E', 'mlb',"
+            " ?, ?, ?, ?, ?, ?, ?, 900, ?, 'near_start')",
+            (f"T-{gid}", gid, market, quantity, line, yes,
+             round(mid - 0.005, 4), round(mid + 0.005, 4), stamp(at)))
+        return last("venue_quotes")
+
+    def recommended(pid: int, gid: str, market: str, side: str, price: float,
+                    priced_by: int, closed_by: int, close: float,
+                    at: float) -> int:
+        quantity, line, yes = (("home_margin", -1.5, "home") if market == "spread"
+                               else ("total", 7.5, "over"))
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+            " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+            " created_utc) VALUES (?, ?, 'kalshi', 'mlb', ?, ?, ?, ?, ?,"
+            " 'rung_matched', NULL, NULL, 0.6, ?, ?, 'mid', ?)",
+            (pid, priced_by, gid, market, quantity, line, yes, price, price,
+             stamp(at - 1)))
+        clv = round(((close - price) if side == "yes" else (price - close))
+                    * 100, 2)
+        conn.execute(
+            "INSERT INTO recommendations (prediction_id, sport, game_id,"
+            " market, side, fair_value, price, edge_cents, size_kind,"
+            " size_units, gate_n, created_utc, close_price, clv_cents,"
+            " closed_utc) VALUES (?, 'mlb', ?, ?, ?, 0.6, ?, 5.0, 'flat', 1.0,"
+            " 0, ?, ?, ?, ?)",
+            (pid, gid, market, side, price, stamp(at), close, clv, stamp(250)))
+        rec = last("recommendations")
+        conn.execute(
+            "INSERT INTO recommendation_closes (recommendation_id, written_utc,"
+            " pricing_quote_id, close_quote_id, close_price, clv_cents,"
+            " minutes_before_start, restated, reason) VALUES (?, ?, ?, ?, ?, ?,"
+            " 120.0, 0, 'the last near-start read of its own contract before"
+            " the start')",
+            (rec, stamp(250), priced_by, closed_by, close, clv))
+        return rec
+
+    game("q12-single")
+    pid = forecast("q12-single", "spread", -1.5, "cover", "statistical",
+                   "final", 0)
+    single = recommended(pid, "q12-single", "spread", "yes", 0.46,
+                         quote("q12-single", "spread", 0.46, 30),
+                         quote("q12-single", "spread", 0.49, 120), 0.49, 32)
+    # BEFORE ITEM 5'S RULE, as every pair on the record was written.
+    conn.execute("DROP TRIGGER IF EXISTS recommendation_one_per_game_and_market")
+    game("q12-pair")
+    if opposite:
+        over = forecast("q12-pair", "total", 7.5, "over", "statistical",
+                        "final", 0)
+        under = forecast("q12-pair", "total", 7.5, "under", "llm", "final", 0.1)
+        priced_by = quote("q12-pair", "total", 0.485, 30)
+        closed_by = quote("q12-pair", "total", 0.50, 120)
+        first = recommended(over, "q12-pair", "total", "yes", 0.485,
+                            priced_by, closed_by, 0.50, 32)
+        second = recommended(under, "q12-pair", "total", "no", 0.485,
+                             priced_by, closed_by, 0.50, 32)
+    else:
+        morning = forecast("q12-pair", "spread", -1.5, "cover", "statistical",
+                           "early", 0)
+        final = forecast("q12-pair", "spread", -1.5, "cover", "statistical",
+                         "final", 60)
+        first_priced = quote("q12-pair", "spread", 0.46, 30)
+        second_priced = quote("q12-pair", "spread", 0.40, 90)
+        closed_by = quote("q12-pair", "spread", 0.49, 120)
+        first = recommended(morning, "q12-pair", "spread", "yes", 0.46,
+                            first_priced, closed_by, 0.49, 32)
+        second = recommended(final, "q12-pair", "spread", "yes", 0.40,
+                             second_priced, closed_by, 0.49, 92)
+    conn.commit()
+    # AND THE RULE PUT BACK, as the record gained it: over the pair, which
+    # it never reads.
+    db.init(conn)
+    conn.commit()
+    return single, first, second
+
+
+def _without_the_rule(conn, now: str):
+    """The closing line and the kill read as every measurement read them
+    until 2026-09-27: the counted-once door and its other side answer what
+    `not_withdrawn` alone answers. On a tree without the door, it is the
+    code as it stands."""
+    from gridiron.market import recommend as _rec
+
+    saved = {name: getattr(_rec, name) for name in
+             ("counted_once", "not_counted_once") if hasattr(_rec, name)}
+    door = _rec.not_withdrawn
+    _rec.counted_once = lambda conn, alias="r": door(conn, alias)
+    _rec.not_counted_once = lambda conn, *, sport: []
+    try:
+        return _closing_line_read(conn, now, [])
+    finally:
+        for name in ("counted_once", "not_counted_once"):
+            if name in saved:
+                setattr(_rec, name, saved[name])
+            else:
+                delattr(_rec, name)
+
+
+def _pair_check(conn, report) -> tuple[str | None, list[str]]:
+    """What the pair recount says of `report`: the LawViolation's text, or
+    None, and why it could not say, on a tree with no such recount."""
+    from gridiron import audit as _audit
+
+    check = getattr(_audit, "check_each_pair_counted_once", None)
+    if check is None:
+        return None, ["no recount knows the rule: nothing checks that a pair "
+                      "is counted once"]
+    try:
+        check(conn, report)
+    except _audit.LawViolation as exc:
+        return str(exc), []
+    return None, []
+
+
+def plant_a_same_side_pair_counted_twice() -> Result:
+    """Count a same-side pair's later row beside its earlier one.
+
+    OPERATOR QUESTION 12, ruled 2026-09-27: "Every measurement counts a
+    same-side pair once (the earlier row)." Seventeen game-markets on the
+    record hold a morning and a final recommendation on one side, written
+    before item 5's rule; until this date every measurement read them
+    through `not_withdrawn` alone and counted both -- MLB point spread's
+    closing line held 93, 94 and 95, each the second row of its pair.
+
+    THE WORLD is that shape (`_counted_once_world`), read on the first
+    clean read's own date, when a mean may be given. THE VIOLATION: the
+    rule removed, as it was. CAUGHT means all of it: through the door the
+    spread counts 2 closes at +3.0c -- the pair once, as its morning row --
+    names the final row beside the count in words, and both recounts are
+    silent; with the rule removed the spread counts 3 at +5.0c, and the pair
+    recount refuses that report, naming the later row by id.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit, db as _db
+
+    law, what = LAW_COUNTED_ONCE, ("a same-side pair's later row counted "
+                                   "beside its earlier one in the closing line")
+    guard = ("market.recommend.counted_once, audit.pair_counted_faults "
+             "(check_each_pair_counted_once)")
+    _, first_read = _closing_line_window_days()
+    on_the_day = first_read + "T00:00:00Z"
+    faults: list[str] = []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _, first, second = _counted_once_world(conn, opposite=False)
+        lawful, _ = _closing_line_read(conn, on_the_day, faults)
+        mirror, _ = _pair_check(conn, lawful)
+        withdrawn_mirror = _audit.withdrawn_counted_faults(conn, lawful)
+        counted, _ = _without_the_rule(conn, on_the_day)
+        detail, missing = _pair_check(conn, counted)
+        conn.close()
+
+    faults += missing
+    spread = next((e for e in lawful["markets"] if e["market"] == "spread"), {})
+    if spread.get("n") != 2 or spread.get("mean_cents") != 3.0:
+        faults.append(f"through the door the spread counts {spread.get('n')} "
+                      f"closes at {spread.get('mean_cents')}c, where the pair "
+                      f"counted once and the single are 2 at +3.0c")
+    if spread.get("repeats") != 1 or lawful.get("repeats") != 1:
+        faults.append(f"the final row is not named beside the count (entry "
+                      f"{spread.get('repeats')}, report {lawful.get('repeats')})")
+    if "1 more repeats an earlier recommendation" not in spread.get("words", ""):
+        faults.append(f"the words do not say so: {spread.get('words')!r}")
+    if mirror or withdrawn_mirror:
+        faults.append(f"a recount refuses the lawful report: "
+                      f"{mirror or withdrawn_mirror}")
+    planted = next((e for e in counted["markets"] if e["market"] == "spread"), {})
+    if planted.get("n") != 3:
+        faults.append(f"the rule removed, the spread counted {planted.get('n')} "
+                      f"(the planting did not count the pair twice)")
+    count_fault = next((line for line in (detail or "").splitlines()
+                        if "measured closes in its count" in line), "")
+    if not count_fault.rstrip().endswith(f"make the difference: {second}."):
+        faults.append(f"the recount did not name rec {second}, the later row: "
+                      f"{detail!r}")
+    if not faults:
+        return Result(law, what, guard, True, count_fault.strip())
+    return Result(law, what, guard, False,
+                  "NOT CAUGHT - " + "; ".join(faults) + ". Seventeen pairs on "
+                  "the record are a morning and a final pass on one side, and "
+                  "every one would count twice")
+
+
+def plant_both_sides_of_one_total_counted() -> Result:
+    """Count recs 45 and 46's shape at all: the over and the under of one
+    total, from two forecasters in one pass.
+
+    OPERATOR QUESTION 12, ruled 2026-09-27: "Recs 45/46, opposite sides of
+    one total, count zero in every measurement and are labelled 'both sides,
+    no position'." Until this date the closing line counted both, and the
+    page said nothing of them.
+
+    THE WORLD is that shape beside one single (`_counted_once_world`), read
+    on the first clean read's own date. THE VIOLATION: the rule removed, as
+    it was. CAUGHT means all of it: through the door the total is in no
+    figure, the closing line counts the single alone, and the pair is named
+    beside it under the ruling's label -- "Both sides, no position" -- with
+    its N of 2, in plain words, and both recounts are silent; with the rule
+    removed the total counts 2, and the pair recount refuses that report,
+    naming both rows by id.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit, db as _db
+
+    law, what = LAW_COUNTED_ONCE, ("both sides of one total counted in the "
+                                   "closing line (recs 45 and 46's shape)")
+    guard = ("market.recommend.counted_once, audit.pair_counted_faults "
+             "(check_each_pair_counted_once)")
+    _, first_read = _closing_line_window_days()
+    on_the_day = first_read + "T00:00:00Z"
+    faults: list[str] = []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _, first, second = _counted_once_world(conn, opposite=True)
+        lawful, _ = _closing_line_read(conn, on_the_day, faults)
+        mirror, _ = _pair_check(conn, lawful)
+        withdrawn_mirror = _audit.withdrawn_counted_faults(conn, lawful)
+        counted, _ = _without_the_rule(conn, on_the_day)
+        detail, missing = _pair_check(conn, counted)
+        conn.close()
+
+    faults += missing
+    total = next((e for e in lawful["markets"] if e["market"] == "total"), None)
+    if total is not None and total.get("n"):
+        faults.append(f"through the door the total counts {total['n']}")
+    if lawful.get("n") != 1:
+        faults.append(f"the closing line counts {lawful.get('n')}, where the "
+                      f"single alone stands")
+    line = lawful.get("both_sides_line") or {}
+    if (line.get("label") or "").lower() != "both sides, no position" \
+            or line.get("n") != 2 or lawful.get("both_sides") != 2:
+        faults.append(f"the pair is not labelled \"both sides, no position\" "
+                      f"with its N of 2: {line!r}")
+    words = line.get("words") or ""
+    if words and (_audit.plain_words_violations(words)
+                  or _audit.advice_word_faults(words)):
+        faults.append(f"the label's words are not plain: {words!r}")
+    if mirror or withdrawn_mirror:
+        faults.append(f"a recount refuses the lawful report: "
+                      f"{mirror or withdrawn_mirror}")
+    planted = next((e for e in counted["markets"] if e["market"] == "total"), {})
+    if planted.get("n") != 2:
+        faults.append(f"the rule removed, the total counted {planted.get('n')} "
+                      f"(the planting did not count both sides)")
+    count_fault = next((row for row in (detail or "").splitlines()
+                        if "measured closes in its count" in row), "")
+    if not count_fault.rstrip().endswith(
+            f"make the difference: {first}, {second}."):
+        faults.append(f"the recount did not name recs {first} and {second}: "
+                      f"{detail!r}")
+    if not faults:
+        return Result(law, what, guard, True, count_fault.strip())
+    return Result(law, what, guard, False,
+                  "NOT CAUGHT - " + "; ".join(faults) + ". Recs 45 and 46 are "
+                  "a certain loss of two fees, and a closing line that counts "
+                  "them measures a position nobody held")
+
+
+def plant_a_measurement_that_goes_round_the_counted_once_door() -> Result:
+    """Count recommendations through `not_withdrawn` alone, in a copy of the
+    package: the source half of "every measurement" (question 12).
+
+    The withdrawn scan passes such a reader -- it does call the door it
+    asks for -- and that is how every count read the pairs until 2026-09-27.
+    CAUGHT means the measurement scan names it by file and function, and
+    names nothing else in the copy; and a reader that keeps the record,
+    named in `audit.RECORD_READERS` with its reason, is not a fault.
+    """
+    from gridiron import audit as _audit, config as _config
+
+    law, what = LAW_COUNTED_ONCE, ("a count of recommendations through "
+                                   "not_withdrawn alone, in calibration.py")
+    guard = "audit.measurement_door_faults"
+    scan = getattr(_audit, "measurement_door_faults", None)
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(_config.PACKAGE_ROOT, root)
+        victim = root / "calibration.py"
+        victim.write_text(
+            victim.read_text(encoding="utf-8")
+            + "\n\n# PLANTED VIOLATION\n"
+              "def planted_recommendations_counted_as_written(conn):\n"
+              "    from .market import recommend\n"
+              "    return conn.execute(\n"
+              "        \"SELECT COUNT(*) FROM recommendations r\"\n"
+              "        \" WHERE r.sport = ?\" + recommend.not_withdrawn(conn),\n"
+              "        ('mlb',)).fetchone()[0]\n",
+            encoding="utf-8")
+        faults = scan(root) if scan else None
+        door = _audit.recommendation_door_faults(root)
+
+    wanted = "planted_recommendations_counted_as_written"
+    if faults is None:
+        return Result(law, what, guard, False,
+                      f"NOT CAUGHT - no scan asks whether a count reads the "
+                      f"counted-once door; the withdrawn scan said {door!r}. "
+                      f"A count through not_withdrawn alone counts each of "
+                      f"the seventeen pairs twice and 45/46 at all")
+    hit = [f for f in faults if wanted in f]
+    if hit and len(faults) == len(hit) and not door:
+        return Result(law, what, guard, True, hit[0])
+    return Result(law, what, guard, False,
+                  f"NOT CAUGHT - the scan said {faults!r} and the withdrawn "
+                  f"scan {door!r}. A count through not_withdrawn alone counts "
+                  f"each of the seventeen pairs twice and 45/46 at all")
+
+
 LAW_ACTIVATION = "A FIT IS WRITTEN INACTIVE, AND TIES GO TO THE INCUMBENT"
 
 
@@ -14521,6 +14890,12 @@ def main() -> int:
     # for the first time 21 days after it, not before.
     results.append(plant_a_closing_line_verdict_before_its_first_clean_read())
     results.append(plant_a_close_from_before_the_window_counted())
+    # OPERATOR QUESTION 12 (ruled 2026-09-27, built the same day): every
+    # measurement counts a same-side pair once, as its earlier row, and both
+    # sides of one game and market -- recs 45 and 46 -- not at all.
+    results.append(plant_a_same_side_pair_counted_twice())
+    results.append(plant_both_sides_of_one_total_counted())
+    results.append(plant_a_measurement_that_goes_round_the_counted_once_door())
     # THE ACTIVATION GATE (operator rulings, 2026-09-24): a fit is written
     # inactive, activated only with its holdout, and ties go to the incumbent.
     results.append(plant_a_fresh_fit_used_without_activation())

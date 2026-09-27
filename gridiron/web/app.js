@@ -757,6 +757,17 @@ const Gridiron = (function () {
         row.appendChild(el('div', 'gate-why', gone.words));
         clv.appendChild(row);
       }
+      // BOTH SIDES, NO POSITION: NAMED AND NEVER COUNTED (operator question
+      // 12, 2026-09-27). The server's label, the ruling's own words, and its
+      // sentence, placed; derived from the record on every read.
+      const both = line.both_sides_line;
+      if (both) {
+        requireN(both, 'the recommendations on both sides of one game');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', both.label));
+        row.appendChild(el('div', 'gate-why', both.words));
+        clv.appendChild(row);
+      }
       // WOULD NOT HAVE CLEARED, NAMED AND STILL COUNTED (GRIDIRON_REPAIR
       // item 4, 2026-09-26): a re-grade is a label beside the closing line,
       // not a withdrawal, and the words say so.

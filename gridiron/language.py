@@ -3412,7 +3412,7 @@ def _units_words(units: float, flat: bool, size_why: str | None = None) -> str:
 
 def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
              minimum: int, *, unmeasured: int = 0, restated: int = 0,
-             unaccounted: int = 0, before_window: int = 0,
+             unaccounted: int = 0, before_window: int = 0, repeats: int = 0,
              since: str | None = None, first_read: str | None = None) -> str:
     """The closing-line verdict, or how far it is from arriving.
 
@@ -3428,6 +3428,11 @@ def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
     2026-09-27). `since` is the day the count started again; `first_read`,
     given only while it is still to come, is the first clean read, and until
     then the line says the date and claims nothing, whatever the count.
+
+    AND WHAT IT COUNTED ONCE (operator question 12, 2026-09-27): `repeats`
+    is the later rows of this market's same-side pairs, each in no figure
+    of the line because its game and side are counted once, as the earlier
+    row. Said last, beside the counts they are left out of.
     """
     counted_from = (f" since {date_words_from_iso(since) or since}"
                     if since else "")
@@ -3472,6 +3477,12 @@ def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
     elif unaccounted:
         line += (f" · {unaccounted} more closed before 23 September on their "
                  f"own price and have not been worked out again")
+    if repeats == 1:
+        line += (" · 1 more repeats an earlier recommendation on the same "
+                 "game and side and is counted once, as the earlier one")
+    elif repeats:
+        line += (f" · {repeats} more repeat an earlier recommendation on the "
+                 f"same game and side and are counted once, as the earlier one")
     return line
 
 
@@ -3522,6 +3533,32 @@ def withdrawn_recommendations_line(n: int, reasons: list[str | None]) -> str:
     head = ("1 recommendation withdrawn and never counted" if n == 1 else
             f"{n} recommendations withdrawn and never counted")
     return head + (": " + "; and ".join(said) if said else "")
+
+
+def both_sides_recommendations_line(groups: list[dict]) -> str:
+    """The recommendations that took both sides of one game and market, and
+    why no figure counts them -- each group as {market, day, n}: the market
+    in words, the day its first row was written, and how many rows it holds.
+
+    OPERATOR QUESTION 12, ruled 2026-09-27: "Recs 45/46, opposite sides of
+    one total, count zero in every measurement and are labelled 'both sides,
+    no position'." The label is the ruling's own words; this sentence stands
+    beside it, as the withdrawn line does, so the rows are named rather than
+    missing. No club is named -- the sentence is about the pair, not a side
+    -- so nothing here reads a subject.
+    """
+    n = sum(group["n"] for group in groups)
+    where = _joined([
+        f"one game's {group['market']} on "
+        f"{date_words_from_iso(group['day']) or group['day']}"
+        for group in groups])
+    head = (f"{counted(n, 'recommendation')} took both sides of {where}"
+            if len(groups) == 1 else
+            f"{n} recommendations took both sides of {len(groups)} games and "
+            f"markets ({where})")
+    return (f"{head}, so between them they hold no position: "
+            f"{'neither' if n == 2 else 'none'} is counted in any figure here, "
+            f"and each stays on the record as written")
 
 
 def regraded_recommendations_line(graded: list[tuple[float, float]]) -> str:

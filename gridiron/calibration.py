@@ -2318,6 +2318,19 @@ def closing_line_window(now: str | None = None) -> dict:
     }
 
 
+def _both_sides_groups(sport: str, rows: list[dict]) -> list[dict]:
+    """One entry per game and market recommended on both sides: its market in
+    words, the day its first row was written, and how many rows it holds --
+    what `language.both_sides_recommendations_line` says (question 12)."""
+    groups: dict[tuple[str, str], dict] = {}
+    for row in rows:                       # first first, as the door lists them
+        group = groups.setdefault((row["game_id"], row["market"]), {
+            "market": language.market_words(sport, row["market"]),
+            "day": row["created_utc"][:10], "n": 0})
+        group["n"] += 1
+    return list(groups.values())
+
+
 def clv_report(conn: sqlite3.Connection, *, sport: str,
                now: str | None = None) -> dict:
     """What the closing line says about this sport's recommendations.
@@ -2338,7 +2351,8 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
         on a voided forecast. Not in N, not in any bucket above, not awaiting
         a close: named once beside the closing line, in that word, and never
         counted anywhere. Every read below goes through
-        `recommend.not_withdrawn`, the one door.
+        `recommend.not_withdrawn`, the one door (from 2026-09-27 inside
+        `recommend.counted_once`, which is that door and question 12's rule).
       * WOULD NOT HAVE CLEARED (GRIDIRON_REPAIR item 4, 2026-09-26) -- a
         recommendation the bar let through by dividing a no-side edge by the
         yes price, re-graded after the fact. A LABEL, NOT A WITHDRAWAL: it
@@ -2352,6 +2366,18 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
         repaired. Counted beside, never in N: the count started again that
         day. (None exists on the record: every close before the repair was
         the old closer's, and is restated or unaccounted above.)
+      * A PAIR, COUNTED ONCE; BOTH SIDES, NOT AT ALL (operator question 12,
+        ruled 2026-09-27) -- every read above goes through
+        `recommend.counted_once`: of a game and market's standing rows all on
+        one side only the first is in any figure above, and each later one
+        is a REPEAT, named beside its market ("counted once, as the earlier
+        one");
+        a game and market recommended on both sides is in no figure above,
+        and its rows are named once beside the closing line under the
+        ruling's label, "both sides, no position", with their N. The rows
+        stay as written; the tallies of what was set aside (`set_aside`)
+        are in the payload so the withdrawn recount can still add up every
+        standing row.
 
     AND NO FIGURE BEFORE THE FIRST CLEAN READ (the same ruling: "the first
     clean CLV read is 21 days after that, not before"). Until
@@ -2365,6 +2391,9 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
 
     require_sport(sport, "calibration.clv_report")
     window = closing_line_window(now)
+    # COUNTED ONCE (operator question 12, 2026-09-27): a same-side pair is
+    # its earlier row here, and both sides of one game and market are
+    # neither. `counted_once` is `not_withdrawn` and that rule, in one door.
     rows = conn.execute(
         "SELECT r.market, r.side, r.price, c.clv_cents, c.restated,"
         "       c.recommendation_id IS NOT NULL AS accounted,"
@@ -2372,15 +2401,23 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
         "  FROM recommendations r"
         "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
         " WHERE r.sport = ? AND r.closed_utc IS NOT NULL"
-        + recommend.not_withdrawn(conn),
+        + recommend.counted_once(conn),
         (window["from_utc"], sport)).fetchall()
     by_market: dict[str, list] = {}
     for row in rows:
         by_market.setdefault(row["market"], []).append(row)
+    # WHAT THE DOOR LEFT OUT, NAMED RATHER THAN VANISHED: the repeats beside
+    # their market's count, both sides beside the closing line.
+    aside = recommend.not_counted_once(conn, sport=sport)
+    repeats: dict[str, int] = {}
+    for row in aside:
+        if row["why"] == recommend.REPEAT:
+            repeats[row["market"]] = repeats.get(row["market"], 0) + 1
+    both = [row for row in aside if row["why"] == recommend.BOTH_SIDES]
 
     entries = []
-    for market in sorted(by_market):
-        closed = by_market[market]
+    for market in sorted(set(by_market) | set(repeats)):
+        closed = by_market.get(market, [])
         measured = [r for r in closed if r["accounted"] and not r["restated"]
                     and r["clv_cents"] is not None]
         # THE COUNT STARTED AGAIN ON THE DAY OF THE REPAIR (ruling 8): a
@@ -2415,6 +2452,9 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
             "restated": restated,
             "unaccounted": unaccounted,
             "before_window": before_window,
+            # QUESTION 12: the later rows of this market's same-side pairs,
+            # in no figure here, named beside it.
+            "repeats": repeats.get(market, 0),
             "minimum_for_a_claim": floor,
             # THE DATE AND THE SAMPLE, both: a verdict needs fifty closes
             # counted from the repair AND the first clean read to have come.
@@ -2424,7 +2464,8 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
             "words": language.clv_line(
                 n, mean, beat, floor, unmeasured=unmeasured,
                 restated=restated, unaccounted=unaccounted,
-                before_window=before_window, since=window["from"],
+                before_window=before_window, repeats=repeats.get(market, 0),
+                since=window["from"],
                 first_read=(None if window["open"]
                             else window["first_clean_read"])),
         }
@@ -2434,8 +2475,17 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
 
     open_rows = conn.execute(
         "SELECT COUNT(*) FROM recommendations r"
-        " WHERE r.sport = ? AND r.closed_utc IS NULL" + recommend.not_withdrawn(conn),
+        " WHERE r.sport = ? AND r.closed_utc IS NULL" + recommend.counted_once(conn),
         (sport,)).fetchone()[0]
+    # WHAT WAS SET ASIDE, TALLIED AS THE COUNTS ABOVE ARE (question 12), so
+    # `audit.withdrawn_counted_faults` can still add every standing row up:
+    # a measured close is one with its account written at the time.
+    aside_ids = [row["id"] for row in aside]
+    aside_measured = (conn.execute(
+        "SELECT COUNT(*) FROM recommendation_closes c"
+        f" WHERE c.recommendation_id IN ({','.join('?' * len(aside_ids))})"
+        "   AND c.restated = 0 AND c.clv_cents IS NOT NULL",
+        aside_ids).fetchone()[0] if aside_ids else 0)
     # SHOWN, NEVER COUNTED. A withdrawn recommendation that simply vanished
     # from this report would be a deletion by omission; it is named here, with
     # its reason, and in no figure above.
@@ -2481,6 +2531,25 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
             "words": language.regraded_recommendations_line(
                 [(g["return_on_cost"], g["minimum_return"]) for g in regraded]),
         } if regraded else None),
+        # OPERATOR QUESTION 12 (ruled 2026-09-27). The later rows of
+        # same-side pairs, each counted once as its earlier row (named per
+        # market above), and the rows of a game and market recommended on
+        # both sides, counted nowhere and named here under the ruling's own
+        # label with their N -- derived on every read, never stored.
+        "repeats": sum(repeats.values()),
+        "both_sides": len(both),
+        "both_sides_line": ({
+            "label": recommend.BOTH_SIDES_LABEL,
+            "n": len(both),
+            "words": language.both_sides_recommendations_line(
+                _both_sides_groups(sport, both)),
+        } if both else None),
+        "set_aside": {
+            "n": len(aside),
+            "measured": aside_measured,
+            "closed": sum(1 for row in aside if row["closed"]),
+            "awaiting_close": sum(1 for row in aside if not row["closed"]),
+        },
         "markets": entries,
         "note": (
             "The price the app recommended against the market's own final "

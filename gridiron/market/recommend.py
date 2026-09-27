@@ -602,10 +602,12 @@ def measured_edge(conn: sqlite3.Connection, *, sport: str, market_type: str,
 # as NFL spreads 73, 75, 76 and 78 were after 62, 63, 64 and 66.
 #
 # NOTHING ALREADY WRITTEN IS TOUCHED (LAW 3). The pairs written before the
-# fix stand as written and are counted as written: the ruling names none of
-# them, and whether they should be counted once is the operator's question
-# (docs/REPAIR_STATE.md, question 12). Whether the page follows the record
-# is question 11; until it is ruled, the rule binds what is written.
+# fix stand as written: the ruling names none of them. Whether the page
+# follows the record is question 11 (ruled 2026-09-27: the default stands,
+# the rule binds the record). HOW THEY ARE COUNTED is question 12, ruled
+# 2026-09-27 and built below (`counted_once`): every measurement counts a
+# same-side pair once, as its earlier row, and 45/46 not at all -- the rows
+# themselves stay as written, and this door still reads them as they stand.
 
 #: THE RULING'S WORDS, which the schema's refusal carries too: `record_for`
 #: knows that refusal by them, never by "UNIQUE", which would file it under
@@ -905,6 +907,127 @@ def withdrawn(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# A PAIR COUNTED ONCE, AND BOTH SIDES NOT AT ALL (operator question 12, ruled
+# 2026-09-27, built the same day)
+# ---------------------------------------------------------------------------
+#
+# "Q12: the record shows rows as written. Every measurement counts a
+# same-side pair once (the earlier row). Recs 45/46, opposite sides of one
+# total, count zero in every measurement and are labelled 'both sides, no
+# position'." (docs/briefs/2026-09-27-close-out-rulings.md)
+#
+# THE PAIRS. Until item 5's rule (2026-09-26) a morning and a final pass
+# could each write a recommendation on one game and market, and two
+# forecasters in one pass could write both sides of it. Measured read-only
+# on 2026-09-26 and again on 2026-09-27: eighteen game-markets hold two
+# standing recommendations each, 36 rows -- seventeen pairs on one side, and
+# 45/46, the over and the under of one total. Item 5's rule stops any new
+# one, so this is about the rows written before it, and they are found here
+# BY RULE, never by a list of ids.
+#
+# A MEASUREMENT RULE, NOT AN EDIT (LAW 3; the ruling's first sentence). No
+# row is changed, deleted, hidden from the record or labelled in it; the
+# closer still closes every standing row, the write rule above still reads
+# the pairs as they stand, and the re-grade tool still selects from the rows
+# as written. What changes is what a COUNT holds: `counted_once` is the one
+# clause every measurement of recommendations reads through -- the closing
+# line and all it feeds (its N, mean and share, the counts beside it, the
+# window line, the kill criterion), the re-grade line beside it, and the
+# empty-bar count -- and `not_counted_once` lists what it leaves out, so the
+# page names it rather than letting it vanish. The label is derived here on
+# every read, never stored: the record shows rows as written.
+#
+# PAIRED AFTER THE WITHDRAWALS. A withdrawn row never counts (ruling 1), so
+# it is never a member of a pair: NFL spreads 73, 75, 76 and 78, each written
+# after a withdrawn one on its game and market, are counted, alone.
+#
+# THE RULE, over the standing rows of one game and market ("market" as item 5
+# reads it, the table's own `market`): if they take BOTH SIDES none of them
+# is counted -- the ruling's "count zero", which is item 5's "never both
+# sides" -- and each is labelled "both sides, no position"; otherwise the
+# first (its stamp, then its number, as `standing_recommendations` orders
+# them: 45 and 46 share a second) is counted, and each later one is a REPEAT
+# of it, counted once, as it. Every standing row is exactly one of the three.
+
+#: The ruling's label for a game and market recommended on both sides.
+BOTH_SIDES_LABEL = "Both sides, no position"
+
+#: Why `not_counted_once` leaves a standing row out of every measurement.
+REPEAT = "repeat"
+BOTH_SIDES = "both_sides"
+
+#: The alias the rule reads the other rows of a game and market under.
+_OTHER = "q12_other"
+
+
+def _another_standing_row(conn: sqlite3.Connection, alias: str,
+                          which: str) -> str:
+    """`EXISTS (...)`: another standing recommendation on the game and market
+    of `alias` that is `which` -- "earlier" (its stamp, then its number) or on
+    the "other_side". The rule itself; `counted_once` and `not_counted_once`
+    are both made of it, so the count and the label cannot disagree."""
+    if not alias.isidentifier() or alias == _OTHER:
+        raise ValueError(f"{alias!r} is not a table alias")
+    how = {
+        "earlier": (f"({_OTHER}.created_utc < {alias}.created_utc"
+                    f" OR ({_OTHER}.created_utc = {alias}.created_utc"
+                    f"     AND {_OTHER}.id < {alias}.id))"),
+        "other_side": f"{_OTHER}.side <> {alias}.side",
+    }[which]
+    return (f"EXISTS (SELECT 1 FROM recommendations {_OTHER}"
+            f"         WHERE {_OTHER}.game_id = {alias}.game_id"
+            f"           AND {_OTHER}.market = {alias}.market"
+            f"           AND {_OTHER}.id <> {alias}.id AND {how}"
+            + not_withdrawn(conn, _OTHER) + ")")
+
+
+def counted_once(conn: sqlite3.Connection, alias: str = "r") -> str:
+    """` AND ...`: the recommendation `alias` stands AND is the one a
+    measurement counts for its game and market.
+
+    THE DOOR FOR EVERY MEASUREMENT (operator question 12, 2026-09-27). It is
+    `not_withdrawn` and the rule: no other standing recommendation on the
+    same game and market was written before it, and none takes the other
+    side. So a same-side pair counts once, as its earlier row, and a game and
+    market recommended on both sides counts zero. A reader that keeps the
+    record rather than measuring it -- the closer, the write rule, the
+    re-grade tool's selection -- asks `not_withdrawn` alone, and is named in
+    `audit.RECORD_READERS` with its reason.
+    """
+    return (not_withdrawn(conn, alias)
+            + " AND NOT " + _another_standing_row(conn, alias, "earlier")
+            + " AND NOT " + _another_standing_row(conn, alias, "other_side"))
+
+
+def not_counted_once(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
+    """The standing recommendations `counted_once` leaves out, each with why.
+
+    THE OTHER SIDE OF THE DOOR, as `withdrawn` is of `not_withdrawn`: listed
+    so the page can say what the counts leave out, in words. `why` is
+    `REPEAT` -- a later row of a game and market whose standing rows are all
+    on one side, counted once as the first -- or `BOTH_SIDES`, a row of a
+    game and market whose standing rows take both sides, none of which is
+    counted. First first, by stamp then number. Never a withdrawn row.
+    """
+    config.require_sport(sport, "recommend.not_counted_once")
+    other_side = _another_standing_row(conn, "r", "other_side")
+    rows = conn.execute(
+        "SELECT r.id, r.game_id, r.market, r.side, r.created_utc,"
+        "       r.closed_utc IS NOT NULL AS closed,"
+        f"      {other_side} AS both_sides"
+        "  FROM recommendations r"
+        " WHERE r.sport = ?" + not_withdrawn(conn) +
+        "   AND (" + _another_standing_row(conn, "r", "earlier")
+        + " OR " + other_side + ")"
+        " ORDER BY r.created_utc, r.id", (sport,)).fetchall()
+    return [{"id": r["id"], "game_id": r["game_id"], "market": r["market"],
+             "side": r["side"], "created_utc": r["created_utc"],
+             "closed": bool(r["closed"]),
+             "why": BOTH_SIDES if r["both_sides"] else REPEAT}
+            for r in rows]
+
+
+# ---------------------------------------------------------------------------
 # A RECOMMENDATION THE BAR SHOULD HAVE REFUSED (GRIDIRON_REPAIR item 4, the
 # operator's ruling of 2026-09-23, built 2026-09-26)
 # ---------------------------------------------------------------------------
@@ -961,6 +1084,12 @@ def let_through_by_the_yes_price(conn: sqlite3.Connection) -> list[dict]:
     was asked. Withdrawn rows go through the door like every other reader:
     a withdrawn recommendation is already never counted, and is shown as
     withdrawn rather than labelled twice.
+
+    NOT A MEASUREMENT (operator question 12, 2026-09-27): it selects which
+    rows as written carry a label, and the label on each row of a pair is
+    true of that row, so it reads every standing row -- recs 10 and 26 are
+    labelled (question 9's four) though each is the later row of its pair.
+    `regraded`, the count beside the closing line, counts them once.
     """
     has = _has_regrades(conn)
     labelled = ("EXISTS (SELECT 1 FROM recommendation_regrades g"
@@ -1049,6 +1178,13 @@ def regraded(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
     the side's own cost, and counted where they always were -- a label, not
     a withdrawal. Through the door: a withdrawn recommendation is shown as
     withdrawn, once.
+
+    A COUNT, SO COUNTED ONCE (operator question 12, 2026-09-27): through
+    `counted_once`, the door of every measurement. Recs 10 and 26 carry a
+    label and are each the later row of a same-side pair (3/10, 21/26); the
+    pair is counted as its earlier row, so the line counts rec 3 and not rec
+    10, and neither rec 21 (which cleared) nor rec 26. Their labels stay on
+    the record as written.
     """
     config.require_sport(sport, "recommend.regraded")
     if not _has_regrades(conn):
@@ -1058,7 +1194,7 @@ def regraded(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
         "       g.return_on_yes_price, g.minimum_return, g.reason"
         "  FROM recommendation_regrades g"
         "  JOIN recommendations r ON r.id = g.recommendation_id"
-        " WHERE r.sport = ?" + not_withdrawn(conn) +
+        " WHERE r.sport = ?" + counted_once(conn) +
         " ORDER BY r.id", (sport,)).fetchall()
     return [{"id": r["id"], "market": r["market"], "side_cost": r["side_cost"],
              "return_on_cost": r["return_on_cost"],

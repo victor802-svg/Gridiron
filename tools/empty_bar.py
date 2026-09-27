@@ -49,10 +49,13 @@ def spans(conn, sport: str) -> dict:
     # THROUGH THE DOOR (ruling 1, 2026-09-24). A day whose only
     # recommendations were withdrawn is a day nothing that stands cleared the
     # bar; counting it as cleared would count a withdrawn recommendation.
+    # COUNTED ONCE (operator question 12, 2026-09-27): a measurement, so a
+    # same-side pair clears the day its earlier row was written and no other,
+    # and a game and market recommended on both sides clears no day.
     rec_days = {
         r[0] for r in conn.execute(
             "SELECT DISTINCT substr(r.created_utc, 1, 10) FROM recommendations r"
-            " WHERE r.sport = ?" + recommend.not_withdrawn(conn), (sport,))
+            " WHERE r.sport = ?" + recommend.counted_once(conn), (sport,))
     }
     out = {"sport": sport, "split_on": split, "spans": []}
     for name, days in (("before " + split, {d for d in claim_days if d < split}),

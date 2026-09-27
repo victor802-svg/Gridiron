@@ -7003,6 +7003,8 @@ LIVE_POLL_FIXTURE_POSITIVE = """
 #     FROM or JOINs `recommendations` sits in a statement that also calls the
 #     door, `market.recommend.not_withdrawn`. A new reader that goes round it
 #     is named by file, function and line before it can count anything.
+#     (From 2026-09-27 a call to `counted_once` answers too: it is this door
+#     and question 12's rule, and every measurement reads through it.)
 #   * THE ARITHMETIC. The closing line -- the one figure on the page made of
 #     recommendations, and the one the kill criterion reads -- is recounted
 #     WITHOUT the door and compared. A door that stopped excluding, or a
@@ -7012,6 +7014,12 @@ LIVE_POLL_FIXTURE_POSITIVE = """
 #: The door, by name. A call to it in the same statement is what makes a read
 #: of the table lawful.
 RECOMMENDATION_DOOR = "not_withdrawn"
+
+#: THE MEASUREMENT DOOR (operator question 12, ruled 2026-09-27):
+#: `market.recommend.counted_once` is `not_withdrawn` and the rule that
+#: counts a same-side pair once and both sides not at all, so a call to it
+#: answers this scan too.
+MEASUREMENT_DOOR = "counted_once"
 
 #: What a read of the table looks like in SQL: FROM or JOIN it, or name it
 #: after a comma in a FROM list. Case-insensitive, because SQLite is.
@@ -7024,13 +7032,52 @@ RECOMMENDATION_DOOR_EXEMPT = {
     "gridiron/market/recommend.py:withdrawn":
         "the other side of the door: it lists what the door leaves out, so "
         "the page can show a withdrawn recommendation as withdrawn",
-    "gridiron/audit.py:withdrawn_counted_faults":
+    # MOVED 2026-09-27 (question 12) from `withdrawn_counted_faults`, whose
+    # read it was: both recounts now read the table through this one helper.
+    "gridiron/audit.py:_closing_line_rows":
         "the recount: it must not share the door it is checking, or a broken "
         "door would agree with itself",
     "tools/void_fs5.py:select_tainted":
         "the tool that writes the withdrawals reads every recommendation on "
         "the tainted forecasts, withdrawn or not, to prove the set is exactly "
         "the four the ruling names",
+}
+
+#: THE READERS THAT KEEP THE RECORD RATHER THAN MEASURE IT (operator
+#: question 12, 2026-09-27: "the record shows rows as written. Every
+#: measurement counts a same-side pair once"). Each reads every standing
+#: recommendation through `not_withdrawn` alone, with its reason; every
+#: other reader of the table is a measurement and reads through
+#: `counted_once`. Keyed as RECOMMENDATION_DOOR_EXEMPT is, whose readers
+#: are exempt from both scans.
+RECORD_READERS = {
+    "gridiron/market/recommend.py:_another_standing_row":
+        "the rule itself: `counted_once` and `not_counted_once` are both "
+        "made of it, so it reads the other standing rows of a game and "
+        "market as they stand",
+    "gridiron/market/recommend.py:not_counted_once":
+        "the other side of the measurement door: it lists the repeats and "
+        "the both-sides rows the door leaves out, so the page names them",
+    "gridiron/market/recommend.py:standing_recommendations":
+        "the write rule (GRIDIRON_REPAIR item 5): a game and market holding "
+        "any standing recommendation, a pair's later row included, gets no "
+        "other, so it reads what stands as written",
+    "gridiron/market/recommend.py:let_through_by_the_yes_price":
+        "the re-grade tool's selection: a label is written on a row as "
+        "written, and question 9 ruled all four -- 3, 10, 26 and 56 -- "
+        "though 10 and 26 are each the later row of a pair",
+    "gridiron/market/recommend.py:record_closing_prices":
+        "the closer: every standing recommendation is closed as written, "
+        "and a repeat's close is kept, counted once as its earlier row's",
+    "gridiron/market/recommend.py:restate_old_closes":
+        "the restatement writes an account beside every old close as "
+        "written; it ran once, on 2026-09-24",
+    "gridiron/tasks.py:_near_start_snapshots":
+        "the near-start reader: every open standing recommendation's "
+        "contract is read until its start, so the closer can close it",
+    "gridiron/views.py:taken_today":
+        "the edge on record when a pick was marked, looked up as written; "
+        "it counts nothing",
 }
 
 
@@ -7051,11 +7098,12 @@ def _door_scan_files(root: Path) -> list[tuple[str, Path]]:
     return files
 
 
-def recommendation_door_faults(root: Path | None = None) -> list[str]:
-    """Every read of `recommendations` in a statement that does not call the
-    door, named by file, function and line."""
-    root = config.PACKAGE_ROOT if root is None else Path(root)
-    faults: list[str] = []
+def _reads_round(root: Path, doors: tuple[str, ...],
+                 exempt: set[str]) -> list[tuple[str, int, str | None]]:
+    """(file, line, function) of every read of `recommendations` in a
+    statement that calls none of `doors`, outside `exempt` ("file:function").
+    The one walk both door scans share."""
+    found: list[tuple[str, int, str | None]] = []
     for where, path in _door_scan_files(root):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         prose = _docstring_nodes(tree)
@@ -7077,24 +7125,70 @@ def recommendation_door_faults(root: Path | None = None) -> list[str]:
                     function = outer.name
                     break
                 outer = parents.get(id(outer))
-            if f"{where}:{function}" in RECOMMENDATION_DOOR_EXEMPT:
+            if f"{where}:{function}" in exempt:
                 continue
             if statement is not None and any(
                     isinstance(n, ast.Call) and (
-                        (isinstance(n.func, ast.Name)
-                         and n.func.id == RECOMMENDATION_DOOR)
+                        (isinstance(n.func, ast.Name) and n.func.id in doors)
                         or (isinstance(n.func, ast.Attribute)
-                            and n.func.attr == RECOMMENDATION_DOOR))
+                            and n.func.attr in doors))
                     for n in ast.walk(statement)):
                 continue
-            faults.append(
-                f"{where}:{node.lineno} ({function or 'module level'}) reads "
-                f"`recommendations` without the door. A withdrawn "
-                f"recommendation is counted there. Add "
-                f"`recommend.{RECOMMENDATION_DOOR}(conn)` to the same "
-                f"statement, or a dated reason to "
-                f"audit.RECOMMENDATION_DOOR_EXEMPT.")
-    return faults
+            found.append((where, node.lineno, function))
+    return found
+
+
+def recommendation_door_faults(root: Path | None = None) -> list[str]:
+    """Every read of `recommendations` in a statement that does not call the
+    door, named by file, function and line. `counted_once` answers too: it
+    is the door and a rule more (question 12, 2026-09-27)."""
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    return [
+        f"{where}:{line} ({function or 'module level'}) reads "
+        f"`recommendations` without the door. A withdrawn "
+        f"recommendation is counted there. Add "
+        f"`recommend.{RECOMMENDATION_DOOR}(conn)` to the same "
+        f"statement, or a dated reason to "
+        f"audit.RECOMMENDATION_DOOR_EXEMPT."
+        for where, line, function in _reads_round(
+            root, (RECOMMENDATION_DOOR, MEASUREMENT_DOOR),
+            set(RECOMMENDATION_DOOR_EXEMPT))]
+
+
+def measurement_door_faults(root: Path | None = None) -> list[str]:
+    """Every read of `recommendations` that is neither through
+    `counted_once` nor a reader that keeps the record, named by file,
+    function and line (operator question 12, 2026-09-27).
+
+    THE SOURCE HALF OF "EVERY MEASUREMENT". A new count of recommendations
+    through `not_withdrawn` alone would count each of the seventeen
+    same-side pairs twice and 45/46 at all, and no figure would say so;
+    this names it before it counts anything. A reader that keeps the record
+    as written -- the closer, the write rule -- is in `RECORD_READERS` with
+    its reason.
+    """
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    return [
+        f"{where}:{line} ({function or 'module level'}) reads "
+        f"`recommendations` without counting each game and market once. A "
+        f"pair's later row, or both sides of one game and market, is "
+        f"counted there. Add `recommend.{MEASUREMENT_DOOR}(conn)` to the "
+        f"same statement, or -- if it keeps the record rather than measuring "
+        f"it -- a dated reason to audit.RECORD_READERS."
+        for where, line, function in _reads_round(
+            root, (MEASUREMENT_DOOR,),
+            set(RECOMMENDATION_DOOR_EXEMPT) | set(RECORD_READERS))]
+
+
+def check_every_measurement_counts_each_pair_once(root: Path | None = None) -> None:
+    faults = measurement_door_faults(root)
+    if faults:
+        raise LawViolation(
+            "A MEASUREMENT READS RECOMMENDATIONS PAST THE COUNTED-ONCE DOOR "
+            "(operator question 12, 2026-09-27): every measurement counts a "
+            "same-side pair once and both sides of one game and market not at "
+            "all, and `market.recommend.counted_once` is the one place that "
+            "says which rows those are:" + _NL2 + _NL2.join(faults))
 
 
 def check_every_recommendation_reader_uses_the_door(root: Path | None = None) -> None:
@@ -7105,6 +7199,44 @@ def check_every_recommendation_reader_uses_the_door(root: Path | None = None) ->
             "2026-09-24): a withdrawn recommendation is never counted, and "
             "`market.recommend.not_withdrawn` is the one place that says which "
             "those are:" + _NL2 + _NL2.join(faults))
+
+
+def _closing_line_rows(conn, sport: str) -> list:
+    """Every recommendation of `sport`, read straight off the table with what
+    both recounts ask of it: its game, market, side and stamp, whether it is
+    closed, whether its close was measured at the time, whether it is
+    withdrawn, and whether it carries a re-grade.
+
+    WITHOUT EITHER DOOR, on purpose: a recount that went through
+    `not_withdrawn` or `counted_once` would agree with a broken one. (The
+    read `withdrawn_counted_faults` made itself until 2026-09-27, shared
+    from then with the pair recount of question 12.)
+    """
+    def has(table: str) -> bool:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table,)).fetchone() is not None
+
+    withdrawn_sql = (
+        "(EXISTS (SELECT 1 FROM prediction_voids v"
+        "          WHERE v.prediction_id = r.prediction_id)"
+        + (" OR EXISTS (SELECT 1 FROM recommendation_voids w"
+           "             WHERE w.recommendation_id = r.id)"
+           if has("recommendation_voids") else "")
+        + ")")
+    regraded_sql = ("EXISTS (SELECT 1 FROM recommendation_regrades g"
+                    "         WHERE g.recommendation_id = r.id)"
+                    if has("recommendation_regrades") else "0")
+    return conn.execute(
+        "SELECT r.id, r.game_id, r.market, r.side, r.created_utc,"
+        "       r.closed_utc IS NOT NULL AS closed,"
+        "       c.recommendation_id IS NOT NULL AND c.restated = 0"
+        "         AND c.clv_cents IS NOT NULL AS measured,"
+        f"      {withdrawn_sql} AS withdrawn,"
+        f"      {regraded_sql} AS regraded"
+        "  FROM recommendations r"
+        "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
+        " WHERE r.sport = ? ORDER BY r.id", (sport,)).fetchall()
 
 
 def withdrawn_counted_faults(conn, report: dict) -> list[str]:
@@ -7124,25 +7256,15 @@ def withdrawn_counted_faults(conn, report: dict) -> list[str]:
     measured close, in the count or before the window, so a close the window
     moves from one to the other is neither lost nor found, and a withdrawn one
     in either is caught.
+
+    NOR IS A PAIR (operator question 12, 2026-09-27). The report sets aside a
+    same-side pair's later rows and both sides of one game and market, and
+    tallies them (`set_aside`); they are added back here, so every standing
+    row is still accounted for once and a withdrawn one still shows. Whether
+    the right rows were set aside is `pair_counted_faults`'s question.
     """
     sport = report["sport"]
-    own = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
-        "   AND name = 'recommendation_voids'").fetchone() is not None
-    withdrawn_sql = (
-        "(EXISTS (SELECT 1 FROM prediction_voids v"
-        "          WHERE v.prediction_id = r.prediction_id)"
-        + (" OR EXISTS (SELECT 1 FROM recommendation_voids w"
-           "             WHERE w.recommendation_id = r.id)" if own else "")
-        + ")")
-    rows = conn.execute(
-        "SELECT r.id, r.closed_utc IS NOT NULL AS closed,"
-        "       c.recommendation_id IS NOT NULL AND c.restated = 0"
-        "         AND c.clv_cents IS NOT NULL AS measured,"
-        f"      {withdrawn_sql} AS withdrawn"
-        "  FROM recommendations r"
-        "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
-        " WHERE r.sport = ? ORDER BY r.id", (sport,)).fetchall()
+    rows = _closing_line_rows(conn, sport)
     standing = [r for r in rows if not r["withdrawn"]]
     gone = [r for r in rows if r["withdrawn"]]
     expected = {
@@ -7151,12 +7273,15 @@ def withdrawn_counted_faults(conn, report: dict) -> list[str]:
         "awaiting_close": sum(1 for r in standing if not r["closed"]),
         "withdrawn": len(gone),
     }
+    aside = report.get("set_aside") or {}
     got = {
-        "n": report.get("n", 0) + (report.get("before_window") or 0),
+        "n": (report.get("n", 0) + (report.get("before_window") or 0)
+              + (aside.get("measured") or 0)),
         "closed": sum((report.get(k) or 0) for k in
                       ("n", "unmeasured", "restated", "unaccounted",
-                       "before_window")),
-        "awaiting_close": report.get("awaiting_close", 0),
+                       "before_window")) + (aside.get("closed") or 0),
+        "awaiting_close": (report.get("awaiting_close", 0)
+                           + (aside.get("awaiting_close") or 0)),
         "withdrawn": report.get("withdrawn", 0),
     }
     culprits = {
@@ -7166,9 +7291,10 @@ def withdrawn_counted_faults(conn, report: dict) -> list[str]:
         "withdrawn": [r["id"] for r in gone],
     }
     what = {
-        "n": "measured closes in its count or before its window",
-        "closed": "closed recommendations in its buckets",
-        "awaiting_close": "recommendations awaiting a close",
+        "n": ("measured closes in its count, before its window or set aside "
+              "as a pair"),
+        "closed": "closed recommendations in its buckets or set aside",
+        "awaiting_close": "recommendations awaiting a close or set aside",
         "withdrawn": "withdrawn recommendations named beside it",
     }
     faults = []
@@ -7200,6 +7326,133 @@ def check_no_withdrawn_recommendation_counted(conn, report: dict | None = None,
             "A WITHDRAWN RECOMMENDATION IS COUNTED (ruling 1, 2026-09-24): "
             "voided rows never count in the closing line or anything it "
             "feeds:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# A PAIR COUNTED ONCE, AND BOTH SIDES NOT AT ALL (operator question 12, ruled
+# 2026-09-27)
+# ---------------------------------------------------------------------------
+#
+# "Every measurement counts a same-side pair once (the earlier row). Recs
+# 45/46, opposite sides of one total, count zero in every measurement and are
+# labelled 'both sides, no position'." Two guards, as for a withdrawal: the
+# source scan above (`measurement_door_faults`) and this recount, which works
+# the rule out again here -- in Python, from rows read without either door
+# -- and refuses a closing line whose counts, set-aside tallies, repeats,
+# both-sides rows or re-grade count differ from it, naming the rows that
+# would make each difference. Runs inside `views.scorecard` and in the gate
+# on the record's copy for every sport, where the eighteen pairs are.
+
+
+def _counted_once_roles(rows: list) -> dict[int, str]:
+    """The ruling, worked out on its own: for every standing row, "counted",
+    "repeat" or "both_sides". Of one game and market's standing rows, all on
+    one side: the first (stamp, then number) counted, the rest repeats; on
+    both sides: none counted."""
+    groups: dict[tuple, list] = {}
+    for row in sorted((r for r in rows if not r["withdrawn"]),
+                      key=lambda r: (r["created_utc"], r["id"])):
+        groups.setdefault((row["game_id"], row["market"]), []).append(row)
+    roles: dict[int, str] = {}
+    for group in groups.values():
+        if len({row["side"] for row in group}) > 1:
+            roles.update({row["id"]: "both_sides" for row in group})
+            continue
+        roles[group[0]["id"]] = "counted"
+        roles.update({row["id"]: "repeat" for row in group[1:]})
+    return roles
+
+
+def pair_counted_faults(conn, report: dict) -> list[str]:
+    """The closing line, recounted by question 12's rule, against `report`."""
+    sport = report["sport"]
+    rows = _closing_line_rows(conn, sport)
+    roles = _counted_once_roles(rows)
+    counted = [r for r in rows if roles.get(r["id"]) == "counted"]
+    aside = [r for r in rows if roles.get(r["id"]) in ("repeat", "both_sides")]
+    expected = {
+        "n": sum(1 for r in counted if r["closed"] and r["measured"]),
+        "closed": sum(1 for r in counted if r["closed"]),
+        "awaiting_close": sum(1 for r in counted if not r["closed"]),
+        "repeats": sum(1 for r in aside if roles[r["id"]] == "repeat"),
+        "both_sides": sum(1 for r in aside if roles[r["id"]] == "both_sides"),
+        "set_aside_measured": sum(1 for r in aside if r["closed"] and r["measured"]),
+        "set_aside_closed": sum(1 for r in aside if r["closed"]),
+        "set_aside_awaiting": sum(1 for r in aside if not r["closed"]),
+    }
+    held = report.get("set_aside") or {}
+    got = {
+        "n": report.get("n", 0) + (report.get("before_window") or 0),
+        "closed": sum((report.get(k) or 0) for k in
+                      ("n", "unmeasured", "restated", "unaccounted",
+                       "before_window")),
+        "awaiting_close": report.get("awaiting_close", 0),
+        "repeats": report.get("repeats") or 0,
+        "both_sides": report.get("both_sides") or 0,
+        "set_aside_measured": held.get("measured") or 0,
+        "set_aside_closed": held.get("closed") or 0,
+        "set_aside_awaiting": held.get("awaiting_close") or 0,
+    }
+    culprits = {
+        "n": [r["id"] for r in aside if r["closed"] and r["measured"]],
+        "closed": [r["id"] for r in aside if r["closed"]],
+        "awaiting_close": [r["id"] for r in aside if not r["closed"]],
+        "repeats": [r["id"] for r in aside if roles[r["id"]] == "repeat"],
+        "both_sides": [r["id"] for r in aside
+                       if roles[r["id"]] == "both_sides"],
+    }
+    culprits["set_aside_measured"] = culprits["n"]
+    culprits["set_aside_closed"] = culprits["closed"]
+    culprits["set_aside_awaiting"] = culprits["awaiting_close"]
+    what = {
+        "n": "measured closes in its count or before its window",
+        "closed": "closed recommendations in its buckets",
+        "awaiting_close": "recommendations awaiting a close",
+        "repeats": "repeats of an earlier recommendation named beside it",
+        "both_sides": "recommendations on both sides of one game and market",
+        "set_aside_measured": "measured closes set aside",
+        "set_aside_closed": "closed recommendations set aside",
+        "set_aside_awaiting": "open recommendations set aside",
+    }
+    # AND THE RE-GRADE LINE BESIDE IT, a count too: the labelled rows the
+    # rule counts. Asked only of a report that carries the line.
+    if "regraded" in report:
+        expected["regraded"] = sum(1 for r in counted if r["regraded"])
+        got["regraded"] = report.get("regraded") or 0
+        culprits["regraded"] = [r["id"] for r in aside if r["regraded"]]
+        what["regraded"] = "recommendations that would not have cleared"
+    faults = []
+    for key in expected:
+        if got[key] == expected[key]:
+            continue
+        named = ", ".join(str(i) for i in culprits[key][:12]) or "none"
+        faults.append(
+            f"{sport}: the closing line reports {got[key]} {what[key]} where "
+            f"each game and market counted once holds {expected[key]}. A "
+            f"pair's later row, or a row of a game and market recommended on "
+            f"both sides, that would make the difference: {named}.")
+    return faults
+
+
+def check_each_pair_counted_once(conn, report: dict | None = None,
+                                 *, sport: str | None = None) -> None:
+    """Refuse a closing line that counts a same-side pair twice, or both
+    sides of one game and market at all.
+
+    Runs inside `views.scorecard` on the payload the API is about to serve,
+    and in the gate against the record's copy for every sport.
+    """
+    if report is None:
+        from . import calibration
+
+        report = calibration.clv_report(conn, sport=sport)
+    faults = pair_counted_faults(conn, report)
+    if faults:
+        raise LawViolation(
+            "A PAIR IS COUNTED TWICE, OR BOTH SIDES AT ALL (operator question "
+            "12, ruled 2026-09-27): every measurement counts a same-side pair "
+            "once, as its earlier row, and a game and market recommended on "
+            "both sides not at all:" + _NL2 + _NL2.join(faults))
 
 
 # ---------------------------------------------------------------------------

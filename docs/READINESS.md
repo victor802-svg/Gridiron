@@ -597,3 +597,32 @@ section records two findings and a ruling and re-reads no criterion, so no
 run row is appended: the next row is the re-read's, which the repair brief
 orders once the repair is done ("Then the read again, on the repaired
 record").
+
+## 2026-09-27 — a pair counts once, and both sides not at all (question 12, RULED)
+
+**RULED 2026-09-27 (operator; `docs/briefs/2026-09-27-close-out-rulings.md`):**
+"Q12: the record shows rows as written. Every measurement counts a same-side
+pair once (the earlier row). Recs 45/46, opposite sides of one total, count
+zero in every measurement and are labelled 'both sides, no position'."
+
+Nothing above is edited, and no criterion is re-read: this records how the
+counts the re-read restates are now made. The eighteen game-markets that
+hold two standing recommendations (all MLB; the 2026-09-27 section above
+names the window's five) stay on the record as written; every count of
+recommendations -- the closing line and its kill criterion, the "would not
+have cleared" line, and criterion 2 when it is counted -- takes a same-side
+pair once, as its earlier row, and 45/46 not at all. Measured read-only on
+2026-09-27 (`FOLLOWUPS.md`, "A pair counted once" has every figure):
+
+| measure | as written | counted once |
+|---|---|---|
+| criterion 2: MLB point spread recommendations since 2026-09-07 | 69 | **55** |
+| criterion 2: MLB total recommendations since 2026-09-07 | 16 | **11** |
+| criterion 2: the same since 2026-09-24, point spread / total | 28 / 2 | 23 / 2 |
+| criterion 3: MLB point spread closes counted since 2026-09-24 | 15 | **12** (93, 94 and 95 were second rows) |
+| criterion 3: MLB total closes counted since 2026-09-24 | 1 | 1 |
+
+No other sport or market holds a pair, so none moves. Neither verdict
+changes: criterion 2 is not re-read here (whether its count runs from 7 or
+24 September is the re-read's to say, as the section above records), and
+criterion 3 reads nothing before 15 October.
