@@ -4366,3 +4366,333 @@ Seen and left as they are:
   old count would start again until 15 October without a ruling; none ever
   was (every old close read 0.00c, and no market has fifty measured closes),
   so nothing is re-entered.
+
+## No stored recommendation is replaced -- built 2026-09-27 *(operator question 13; the ruling of 2026-09-27)*
+
+"Q13: fix first, its own commit, planting proved on the unfixed code. No
+stored recommendation may be replaced by any statement." The question as
+asked is `docs/REPAIR_STATE.md` question 13; the hole was found by item 5's
+prover (above, "Found in passing, not this item's: a recommendation can be
+REPLACED"). No map of 2026-09-23 covers it; the precedents are the snapshot
+table's two replace rules of 2026-09-25 (`market_snapshots_never_replaced`,
+`..._by_update`), the prompt record's and the re-grade table's.
+
+### MEASURED FIRST *(2026-09-27; scratch databases built by 1448c1e -- the released f02e913 plus documents -- and by this tree; the record only through a copy made by `db.back_up_the_live_record`)*
+
+- **Every form that took a stored recommendation's place on 1448c1e**, each
+  on a fresh scratch world: `INSERT OR REPLACE` and `REPLACE` naming a
+  stored number -- as `id`, as `rowid`, as the text `'1'`, as `1.0` -- wrote
+  another recommendation under it (another game, the other side, 90c);
+  `INSERT OR REPLACE` on a stored forecast and stamp removed the row and
+  wrote the newcomer under a new number, the forecast id given as text too;
+  `INSERT OR REPLACE ... SELECT` colliding with one row's number and
+  another's forecast and stamp removed both; `INSERT OR REPLACE` onto a
+  WITHDRAWN recommendation's number on its own game and market passed the
+  one-per-game rule (a withdrawn one does not stand), and its row in
+  `recommendation_voids` then stood beside a recommendation nobody withdrew
+  -- with foreign keys on, since the new row has the old number; and
+  `UPDATE OR REPLACE` moving one row onto another's number by `id`, `rowid`,
+  `oid` or `_rowid_` removed the other.
+- **Already refused on 1448c1e, and why**: an update of what was
+  recommended, or of the forecast and stamp (`recommendations_no_update`),
+  of the correction (`recommendation_correction_is_frozen`), of a close once
+  written (`recommendation_closes_once`); each also refuses the update half
+  of an upsert. An upsert moving a row onto another's number failed on the
+  key. What an upsert could still do there -- write an open
+  recommendation's close, or give a row a free number -- replaces nothing.
+- **The table's keys, on the copy of the record**: 107 recommendations, ids
+  1-107 (sequence 107); two unique keys only, the number and `UNIQUE
+  (prediction_id, created_utc)` (`sqlite_autoindex_recommendations_1`);
+  `recommendations_sport` is not unique. Three tables point at it --
+  `recommendation_closes`, `recommendation_voids`, `recommendation_regrades`
+  -- all NO ACTION, so no cascade reaches it; `recursive_triggers` off; the
+  newest rule on the table `recommendation_one_per_game_and_market`.
+- **SQLite 3.49.1, measured on scratch tables**: a table's BEFORE rules run
+  NEWEST FIRST (the last made fires first, on a fresh connection and after
+  a reopen); a rule of the form `BEFORE UPDATE OF id` is NOT run by an
+  update naming `rowid`, `oid` or `_rowid_`, though they are the same
+  column; a BEFORE INSERT rule sees `NEW.id` as -1 when the number is left
+  to SQLite, and as the integer when it is given as `'7'` or `8.0`.
+
+### BUILT *(2026-09-27)*
+
+- **`recommendations_never_replaced`** (BEFORE INSERT): refuses an insert
+  naming a stored number, or a forecast and stamp already stored. A rule
+  cannot see a statement's conflict clause, so it refuses them whatever it
+  says: a plain duplicate (until now the key's refusal, "UNIQUE constraint
+  failed") and an upsert naming a stored row are refused too, by name.
+- **`recommendations_never_replaced_by_update`** (BEFORE UPDATE, no column
+  list): refuses an update that would take the place of another stored
+  recommendation -- its number or its forecast and stamp -- and nothing
+  else. It runs on every update of the table (the closer's included) and
+  asks two indexed lookups; it names no columns because the list form
+  misses `rowid`, `oid` and `_rowid_` (tried: with the rule rewritten as
+  `BEFORE UPDATE OF id, prediction_id, created_utc`, the planting's three
+  updates by those names escape).
+- **Declared after `recommendation_one_per_game_and_market`** in
+  `schema.sql`, so a fresh build makes them in the order the record will:
+  the record gains them on its first open after the release, after that
+  rule, and the newest runs first. Both refuse in words carrying
+  `recommend.NEVER_REPLACED` ("a recommendation is never replaced"), never
+  "UNIQUE" and never the one-per-game words; a test holds the schema to it.
+- **`record_for` counts as it did.** It names no number, so the insert rule
+  refuses its row only for a forecast and stamp already stored -- the
+  forecast written twice, which it counted `already` off the key's "UNIQUE".
+  It now counts the replace rule's words the same way. The one case that
+  reaches it: a withdrawn recommendation's own forecast asked again (the
+  door lets it through, since a withdrawn one does not stand), `already`
+  before and after (`test_a_forecast_written_twice_is_still_counted_as_
+  already`, which passes on 1448c1e too).
+- **Every writer read**: `recommend.record_for` (a plain INSERT naming no
+  number) and `record_closing_prices` (a plain UPDATE of the close); no
+  other package or tool module writes the table (`tools/dbcopy.FACT_TABLES`
+  does not copy it; `gridiron.rebuild` copies into a new table before its
+  rules exist and has never rebuilt this one; `db._finish_widening_table`'s
+  OR IGNORE copy is only for tables with a sport CHECK, which this has not);
+  the plantings and the tests insert plainly, the explicit numbers in
+  `test_recommend.py` (`_recorded`) and `test_voids.py` (62-66, 70) all
+  fresh. None uses OR REPLACE, REPLACE, OR IGNORE or ON CONFLICT on it, so
+  no lawful write changes.
+- **Planting** `plant.py::plant_a_replaced_recommendation`: recs 1 and 2
+  standing, rec 3 withdrawn; the ten forms above that replace and two no
+  release lets replace (an update onto another's forecast and stamp, an
+  upsert rewriting what was recommended), each run and rolled back; CAUGHT
+  means each refused under LAW 3 -- the ten by the replace rules' words --
+  with every recommendation and every withdrawal as stored, a new
+  recommendation on a game of its own and the close of an open one still
+  written, and, with both rules dropped, each of the ten changing the table.
+- **Tests** in `test_recommend.py`: fifteen forms (the planting's twelve,
+  the number as `1.0`, the forecast id as text, an upsert moving a row onto
+  another's number), each refused in the rules' words with the table and
+  its withdrawals unchanged; the ten replacing without the rules (and the
+  withdrawal left beside the newcomer); the lawful writes (`record_for`, a
+  plain insert, the closer, a withdrawn one never closed); the forecast
+  written twice; the words and the order on a fresh build; and an older
+  record gaining exactly the two rules through `db.init`, with a fresh
+  build's text, after the one-per-game rule, no row moved, a second open
+  adding nothing.
+
+### THE REHEARSAL *(2026-09-27 about 03:25Z; a copy of the record made through `db.back_up_the_live_record` at 03:01Z, and a verified copy of that, never the record)*
+
+The copy of the copy verified (`rebuild.verified_backup`: 61 tables,
+integrity ok, every sqlite_master row and every table's count and column
+checksums equal). Before: 235 objects, 1,228,727 rows, 107 recommendations,
+and `schema_diff.compare` against a fresh build of this tree found exactly
+the two rules missing and nothing else. `db.init` under this tree then made
+exactly `recommendations_never_replaced` and `..._by_update` -- no object
+gone, none changed, no table's count or column checksums moved -- with a
+fresh build's text byte for byte, after
+`recommendation_one_per_game_and_market`. After: the comparison found 0
+differences in behaviour (237 objects each; 9 differ only in what the ruling
+normalises, the two rules not among them). On the copy's own rows, OR
+REPLACE naming rec 107, OR REPLACE on rec 1's forecast and stamp, and UPDATE
+OR REPLACE moving rec 2 onto rec 1 by `rowid` were each refused by the
+replace rules, and an update of an open recommendation's close column still
+landed (rolled back); the recommendations' checksums unchanged throughout.
+
+### PROVED *(2026-09-27)*
+
+- **The planting ESCAPES on 1448c1e** (`git archive HEAD` into the
+  scratchpad, this `plant.py` copied over it): all ten replacing forms
+  taken, each named with the rows before and after. It is CAUGHT here.
+- **Each rule alone is proved by it**: with `recommendations_never_replaced`
+  dropped after `db.init`, the six inserts escape; with `..._by_update`
+  dropped, the four updates; with the update rule rewritten to list `id,
+  prediction_id, created_utc`, the updates by `rowid`, `oid` and `_rowid_`.
+- **The new tests fail on 1448c1e** (this `test_recommend.py` run over the
+  archive): the fifteen forms, the forms-without-the-rules test, the words
+  and order, and the older record gaining the rules; the lawful-writes test
+  and the forecast-written-twice test pass there too, as they must: they
+  hold the writers to what they did.
+- **The full suite passes here** with a dummy access token: 1730 passed, 8
+  skipped, the harness among them; run alone, the harness is 315/315.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **"Replaced" is a stored recommendation removed by another's taking its
+  place** -- the conflict resolution of OR REPLACE, whether an insert or an
+  update triggers it. So the insert rule refuses any insert naming a stored
+  number or forecast and stamp (a rule cannot tell OR REPLACE from a plain
+  insert, and the precedent refuses both); the update rule refuses only an
+  update that takes another's place, as the snapshot rule does. (Reversal
+  of the second: the update rule refuses any change of number.)
+- **An upsert naming a stored recommendation is refused whatever it would
+  set**, even one that would only write an open recommendation's close: the
+  insert half names a stored number, and the close has its own writer, an
+  update, which is untouched. No writer uses an upsert here.
+- **The companion tables are not fixed here** (the ruling names
+  recommendations): OPEN, below.
+- **The words of a plain duplicate moved.** A second row of one forecast at
+  one stamp beside a STANDING row used to be refused in the one-per-game
+  words (that rule ran before the key), and is now refused in the replace
+  rule's (it runs first); `record_for` would count it `already` where it
+  counted it `second_on_game_market`. It cannot reach `record_for` from the
+  package: `run.run_slate` records only the forecasts its own run wrote,
+  once, and a rerun is refused as answered. The two-writers test, whose
+  forecasts differ, is unchanged.
+
+### THE LIVE RECORD AFTER THE RELEASE *(no tool)*
+
+No row is written and no tool runs. The scheduler's first open of the record
+under the released code (`db.init`, as every schema rule has arrived since
+5b) makes the three rules (the third from the prover, below), and nothing
+else; every recommendation stays as written. Afterwards, read through
+`db.read_the_live_record`: sqlite_master holds
+`recommendations_never_replaced`, `recommendations_never_replaced_by_update`
+and `recommendations_never_replaced_by_the_number_written`, in that order,
+after `recommendation_one_per_game_and_market`, with `schema.sql`'s text.
+Until that first open the record lacks them while the release has them, so
+the gate's release comparison is run after it, as with every rule since 5b.
+
+### OPEN, found by this item *(2026-09-27; measured on scratch databases built by this tree)*
+
+- **`recommendation_closes` and `recommendation_voids` still take a
+  replacing insert.** Their no-update and no-delete rules hold, and an
+  upsert on either is refused by the no-update rule, but `INSERT OR REPLACE`
+  naming a stored `recommendation_id` was taken on both: an account of a
+  close rewritten as a restated, unmeasured one written later, and a
+  withdrawal's time and reason rewritten. (A measured close is harder:
+  the new row must still cite its own pricing read and a later read of its
+  contract.) `recommendation_regrades` refuses it (item 4's
+  `recommendation_regrades_never_replaced`). The fix has the prompt record's
+  shape, one rule of a new name per table; not built, because the ruling
+  names recommendations.
+- **The snapshot table's update rule has the gap this item's update rule
+  was built round.** `market_snapshots_never_replaced_by_update` is `BEFORE
+  UPDATE OF id, prediction_id, kind`, and `UPDATE OR REPLACE
+  market_snapshots SET rowid = 1 WHERE id = 2` (or `oid`, `_rowid_`) was
+  taken on this tree: two snapshots became one, a hole in the ids like
+  174-181. Schema ruling 4's rule is released and serving; restating it is
+  not this item's.
+- **A prediction can be replaced.** On this tree, `INSERT OR REPLACE`
+  naming a stored prediction's number rewrote its probability (0.61 to
+  0.99 under the same number), and `UPDATE OR REPLACE ... SET rowid` onto
+  another removed that one; `predictions_no_delete` never runs. LAW 3's own
+  table has no replace rule: nothing refuses it, and the gate's
+  `audit.check_record_fingerprint` is what would name a rewritten row
+  afterwards, as drifted from its fingerprint (not tried here). The same
+  census on a fresh build: of
+  the twenty tables with a delete rule, only `recommendations`,
+  `market_snapshots`, `reasoning_prompts` and `recommendation_regrades`
+  carry a replace rule; the other sixteen -- `predictions`,
+  `at_the_line_claims`, `calibration_corrections`, `factors`,
+  `fit_activations`, `picks_retracted`, `picks_taken`,
+  `prediction_fingerprints`, `prediction_ranks`, `prediction_voids`,
+  `priced_forecasts`, `recommendation_closes`, `recommendation_voids`,
+  `settings`, `task_runs`, `venue_packages` -- carry none, which is the
+  2026-09-23 finding above ("`INSERT OR REPLACE` walks past every
+  append-only trigger"), still open. Replacing was tried here only on
+  `predictions` and the two companions; another rule on insert may refuse
+  it on some of the rest.
+- **A recommendation's number can still be changed.** `recommendations_no_
+  update` lists no `id`, so `UPDATE recommendations SET id = 99 WHERE id =
+  1` (or by `rowid`) lands when no other row holds 99 -- with foreign keys
+  on, a recommendation with a close, a withdrawal or a re-grade is held by
+  the key, and one without moves. A later plain insert naming the old number
+  would then put another recommendation under it: two statements, neither a
+  replacement. Freezing the number goes past the ruling's words (the
+  precedent's own question 6 for snapshots); not built. *(From the prover of
+  2026-09-27 the second statement is refused: the old number is at or below
+  one already given out, so `recommendations_never_replaced_by_the_number_
+  written` refuses an insert under it. The change of number itself still
+  lands.)*
+- **A number below 1.** An insert leaving the number to SQLite shows the
+  insert rule -1; a recommendation stored under -1 -- none is, the record's
+  lowest is 1, and only an insert naming it could make one -- would make
+  every such insert refused, and `record_for` would count each `already`.
+  *(Closed by the prover, 2026-09-27, below: an UPDATE could make one --
+  the update rule lets a row take a free number -- and on the tree as built
+  it then did exactly this; the insert rule no longer looks -1 up.)*
+
+### THE PROVER *(2026-09-27; scratch worlds built by 1448c1e, by the tree as built, and by this tree; the record only through copies made by `db.back_up_the_live_record`)*
+
+- **FOUND: A NUMBER READ ONE WAY BY THE RULES AND ANOTHER BY THE KEY.** For
+  an insert of one row of values SQLite works the row's number out twice:
+  once into the row the BEFORE rules see, and again when the row is
+  written (measured on 3.49.1: a function the connection defines is called
+  twice, and the rule sees the first answer). Every other value of the row
+  is worked out once; an insert from a query, or of several rows, goes
+  through a holding store and is worked out once; an update works its new
+  values out once, before its rules run (all measured, the last with the
+  same function: called once). So on the tree as built, `INSERT OR REPLACE`
+  and `REPLACE` whose number answered NULL (the rule sees -1) or a free
+  number to the rule, and a stored one to the key, wrote another game's
+  recommendation over rec 1, rec 2 and the withdrawn rec 3 of the planted
+  world, the withdrawal left beside the newcomer; with `random()` in the
+  number, about one try in four did it (300 tries each form). On 1448c1e
+  the same statements replace too.
+- **BUILT: `recommendations_never_replaced_by_the_number_written`** (AFTER
+  INSERT, declared after the two rules as built): refuses the row's number,
+  read after it lands, at or below `sqlite_sequence` for the table -- which
+  SQLite writes back only when the statement ends, so the rule reads the
+  highest number given out before the statement (measured: both BEFORE and
+  AFTER rules of every row of a three-row insert read the value from before
+  it) -- or below any stored recommendation. Every stored recommendation is
+  at or below that mark, and `RAISE(ABORT)` takes the statement back, the
+  removed row with it. `record_for` is never refused by it: SQLite gives its
+  insert the next number up.
+- **THE CONSERVATIVE DEFAULT IT TAKES** (recorded, reversible only by a
+  witness below): after the insert a rule cannot tell a number that was
+  stored from one that is free, so a new recommendation written under a
+  free number at or below one already given out is refused too -- one
+  vacated by an update, 0, -1. No writer names a number, and the record's
+  numbers run 1 to 107 with no gap. One test world did (`test_recommend.py`
+  `_let_through_world` wrote rec 2 after recs 3 to 33); it now writes rec 2
+  first, as its stamp says it was written, and every assertion stands.
+- **FIXED: THE -1 THE INSERT RULE IS SHOWN.** The update rule lets a row
+  take a free number, -1 included; on the tree as built a recommendation
+  moved to -1 then had the insert rule refuse every later insert that left
+  the number to SQLite (it saw -1, and found -1 stored), and `record_for`
+  counted each `already`: the next pick was not written and nothing said so
+  (measured: `recommended` 0, `already` 1). The insert rule no longer looks
+  -1 up; a number given as -1 is checked after it lands, by the rule above.
+- **NOT SEEN, AND NOT FIXED: SQLite's sequence set back first.** SQLite
+  lets an ordinary statement rewrite its own sequence for a table (`UPDATE
+  sqlite_sequence SET seq = ...`, or a delete of its row) and refuses any
+  rule on that store ("cannot create trigger on system table", measured).
+  After such a statement sets the sequence below the newest recommendation,
+  an insert whose number reads free to the rules and the newest's to the
+  key writes over the newest one: the table and the sequence are then
+  exactly what a lawful newcomer leaves, so no rule can tell (measured: rec
+  3 of the planted world, with the sequence set to 2 or its row deleted).
+  Every other recommendation stays protected by "below any stored one".
+  Closing it needs a witness kept outside SQLite's sequence -- a table of
+  every number given out, append-only, filled for the record's 107 by a
+  tool after the release -- which is more than a rule, and a write to the
+  record; not built, for the orchestrator and the operator.
+- **TRIED AND NOT A REPLACEMENT** (on this tree): the forecast or the stamp
+  read twice (worked out once: nothing written over); an insert from a
+  query, or of several rows, whose number is read twice (worked out once);
+  an update whose new number is read twice (called once: the row moves to
+  the free number, finding 4 above); a temporary table, or a WITH, named
+  `recommendations` or `sqlite_sequence` (the rules read the main
+  database's own); a temporary rule turning the number between its
+  readings (refused or a new row). AND AN UPSERT WHOSE NUMBER READS TWICE
+  reaches its DO UPDATE on a stored row past the insert rule: it wrote an
+  open recommendation's close, or gave the row a free number -- updates the
+  table's own rules govern (`recommendation_closes_once`, the update rule),
+  neither a replacement. The reading above that an upsert naming a stored
+  recommendation is refused holds for a number read once.
+- **PROVED.** The planting, with the three read-twice forms added and a
+  check that dropping only the new rule lets them write over a stored one,
+  ESCAPES on 1448c1e (all thirteen replacing forms taken) and on the tree
+  as built (exactly the three read-twice forms taken), and is CAUGHT here.
+  The new tests (`test_a_number_read_one_way_by_the_rules_and_another_by_
+  the_key_is_refused` for three forms by `INSERT OR REPLACE` and `REPLACE`,
+  `..._worked_out_at_random_...`, `..._below_one_already_given_out_...`,
+  `..._given_a_number_below_one_does_not_stop_the_next`) fail on the tree
+  as built and on 1448c1e, and pass here. Full suite with a dummy access
+  token: 1739 passed, 8 skipped; the harness alone 315/315.
+- **REHEARSED** on a fresh copy of the record made through the backup door
+  (a verified copy of it; 61 tables, 1,232,541 rows, recommendations 1-107,
+  sequence 107): `db.init` under this tree made exactly the three rules,
+  with a fresh build's text, after the one-per-game rule; no object gone or
+  changed, no table's count or column checksums moved; 0 differences from a
+  fresh build (238 objects each); a second `db.init` changed nothing. On
+  the copy's own rows: OR REPLACE naming rec 107, on rec 1's forecast and
+  stamp, UPDATE OR REPLACE by `rowid`, both read-twice forms (onto rec 1,
+  and onto rec 107, the newest) and a free 0 were refused in the replace
+  rules' words; a lawful update of an open one landed and a plain insert
+  took 108 (both rolled back). The gate's step-2 record rows, dry-run on
+  their own copy: both schema comparisons 0 registered, nothing new, every
+  record check passing, the record's schema as found.

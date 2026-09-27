@@ -592,6 +592,13 @@ def _let_through_world(tmp_path, *, with_56=False):
         " VALUES ('2026-09-06T00:00:00Z', 'mlb', 'g0', 'spread', 'AAA', -1.5,"
         " 0.62, 'cover', 'statistical', 'final', 'fs2', ?, 'test')", (WHOLE,))
     early = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    # WRITTEN BEFORE THE BAR WAS DECLARED: nothing let it through, because
+    # nothing was asked. Written first, as its stamp says it was: from
+    # 2026-09-27 (question 13's prover) no recommendation is written under a
+    # number below one already given out, the rule that keeps a number read
+    # one way by the rules and another by the key from writing over one.
+    _recorded(conn, 2, side="no", price=0.375, edge=2.09,
+              created="2026-09-06T23:59:59Z", pid=early)
     rows = [(3, "no", 0.375, 2.09, "2026-09-07T20:52:31Z"),
             (10, "no", 0.375, 2.30, "2026-09-08T21:33:31Z"),
             (26, "no", 0.395, 2.84, "2026-09-09T21:32:20Z"),
@@ -608,10 +615,6 @@ def _let_through_world(tmp_path, *, with_56=False):
     for rid, side, price, edge, created in rows:
         _recorded(conn, rid, side=side, price=price, edge=edge,
                   created=created, pid=pid)
-    # WRITTEN BEFORE THE BAR WAS DECLARED: nothing let it through, because
-    # nothing was asked.
-    _recorded(conn, 2, side="no", price=0.375, edge=2.09,
-              created="2026-09-06T23:59:59Z", pid=early)
     conn.execute("INSERT INTO recommendation_voids (recommendation_id,"
                  " voided_utc, reason) VALUES (33, '2026-09-11T00:00:00Z',"
                  " 'withdrawn in this test world')")
@@ -1353,3 +1356,393 @@ def test_a_run_failed_for_want_of_a_model_keeps_what_it_recommended(
         " ORDER BY id DESC LIMIT 1").fetchone()[0])
     assert "Traceback" in stored["traceback"]
     assert stored["recommended"] == json.loads(json.dumps(recorded))
+
+
+# --- no stored recommendation is replaced (operator question 13) -------------
+#
+# Ruled 2026-09-27: "No stored recommendation may be replaced by any
+# statement." Found by item 5's prover (2026-09-26): SQLite runs no delete
+# rule for a replacement unless recursive triggers are on, so OR REPLACE
+# went round `recommendations_no_delete` -- the hole `market_snapshots` had
+# until its two replace rules of 2026-09-25.
+
+_Q13_COLS = ("prediction_id, sport, game_id, market, side, fair_value, price,"
+             " edge_cents, size_kind, size_units, gate_n, created_utc")
+_Q13_STAMP = "2026-09-07T02:00:00Z"
+_Q13_LATER = "2026-09-08T00:00:00Z"
+_Q13_RULES = ("recommendations_never_replaced",
+              "recommendations_never_replaced_by_update",
+              # the prover, 2026-09-27: the number a one-row insert writes
+              # is read again after it lands (the rule reads it first)
+              "recommendations_never_replaced_by_the_number_written")
+
+
+def _replace_world(tmp_path):
+    """Recs 1 and 2 standing on games of their own, rec 3 withdrawn, and a
+    forecast on each of two more games with nothing recommended."""
+    conn = _world(tmp_path)
+    ids = {}
+    for n in range(1, 6):
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1, 'R',"
+            " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')",
+            (f"q{n}",))
+        ids[f"p{n}"] = _away_pick(conn, game=f"q{n}")
+    for n in (1, 2, 3):
+        ids[f"rec{n}"] = _insert(conn, ids[f"p{n}"], "yes", _Q13_STAMP,
+                                 game=f"q{n}")
+    conn.execute("INSERT INTO recommendation_voids (recommendation_id,"
+                 " voided_utc, reason) VALUES (?, '2026-09-07T03:00:00Z',"
+                 " 'withdrawn in this test world')", (ids["rec3"],))
+    conn.commit()
+    return conn, ids
+
+
+def _stored(conn):
+    return ([tuple(r) for r in conn.execute(
+                "SELECT * FROM recommendations ORDER BY id")],
+            [tuple(r) for r in conn.execute(
+                "SELECT * FROM recommendation_voids ORDER BY recommendation_id")])
+
+
+def _newcomer(number, pid, game, created, *, verb="INSERT OR REPLACE",
+              column="id"):
+    head = "" if number is None else f"{column}, "
+    lead = "" if number is None else f"{number}, "
+    return (f"{verb} INTO recommendations ({head}{_Q13_COLS}) VALUES ({lead}"
+            f"{pid}, 'mlb', '{game}', 'moneyline', 'no', 0.4, 0.9, 1.0, 'flat',"
+            f" 1.0, 0, '{created}')")
+
+
+#: Every statement found that takes a stored recommendation's place, and
+#: two no release lets through, held so a later rule cannot open them.
+_Q13_FORMS = {
+    "insert or replace naming a stored number":
+        _newcomer("{rec1}", "{p4}", "q4", _Q13_LATER),
+    "replace naming a stored number as rowid":
+        _newcomer("{rec1}", "{p4}", "q4", _Q13_LATER, verb="REPLACE",
+                  column="rowid"),
+    "insert or replace naming a stored number as text":
+        _newcomer("'{rec1}'", "{p4}", "q4", _Q13_LATER),
+    "insert or replace naming a stored number as a real":
+        _newcomer("{rec1}.0", "{p4}", "q4", _Q13_LATER),
+    "insert or replace on a stored forecast and stamp":
+        _newcomer(None, "{p1}", "q4", _Q13_STAMP),
+    "insert or replace on a stored forecast given as text":
+        _newcomer(None, "'{p1}'", "q4", _Q13_STAMP),
+    "insert or replace colliding with two rows at once":
+        f"INSERT OR REPLACE INTO recommendations (id, {_Q13_COLS}) SELECT"
+        f" {{rec2}}, {{p1}}, 'mlb', 'q4', 'moneyline', 'no', 0.4, 0.9, 1.0,"
+        f" 'flat', 1.0, 0, '{_Q13_STAMP}'",
+    "insert or replace onto a withdrawn one on its own game":
+        _newcomer("{rec3}", "{p3}", "q3", _Q13_LATER),
+    "update or replace onto another's number by id":
+        "UPDATE OR REPLACE recommendations SET id = {rec1} WHERE id = {rec2}",
+    "update or replace onto another's number by rowid":
+        "UPDATE OR REPLACE recommendations SET rowid = {rec1} WHERE id = {rec2}",
+    "update or replace onto another's number by oid":
+        "UPDATE OR REPLACE recommendations SET oid = {rec1} WHERE id = {rec2}",
+    "update or replace onto another's number by _rowid_":
+        "UPDATE OR REPLACE recommendations SET _rowid_ = {rec1} WHERE id = {rec2}",
+    "update or replace onto another's forecast and stamp":
+        "UPDATE OR REPLACE recommendations SET prediction_id = {p1},"
+        " created_utc = '" + _Q13_STAMP + "' WHERE id = {rec2}",
+    "an upsert rewriting what a stored one recommended":
+        _newcomer("{rec1}", "{p4}", "q4", _Q13_LATER, verb="INSERT")
+        + " ON CONFLICT(id) DO UPDATE SET side = excluded.side,"
+          " price = excluded.price",
+    "an upsert moving a stored one onto another's number":
+        _newcomer("{rec2}", "{p4}", "q4", _Q13_LATER, verb="INSERT")
+        + " ON CONFLICT(id) DO UPDATE SET id = {rec1}",
+}
+
+
+@pytest.mark.parametrize("form", sorted(_Q13_FORMS))
+def test_no_stored_recommendation_is_replaced_by_any_statement(tmp_path, form):
+    """EACH FORM REFUSED UNDER LAW 3, in the replace rules' words -- they
+    run first, so even the two an older rule already refused (an update
+    onto a forecast and stamp, an upsert rewriting what was recommended)
+    are refused by them -- and the table and its withdrawals exactly as
+    stored afterwards: none may take a stored recommendation's place,
+    whatever it names and however it spells it."""
+    conn, ids = _replace_world(tmp_path)
+    before = _stored(conn)
+    with pytest.raises(sqlite3.IntegrityError) as refused:
+        conn.execute(_Q13_FORMS[form].format(**ids))
+    conn.rollback()
+    assert "LAW 3" in str(refused.value)
+    assert recommend.NEVER_REPLACED in str(refused.value)
+    assert _stored(conn) == before
+
+
+def test_the_forms_replace_without_the_rules(tmp_path):
+    """THE REPLACEMENT IS REAL: with the replace rules dropped, the forms that
+    replace do -- the stored row is gone or overwritten, and the withdrawn
+    one's withdrawal is left beside a recommendation nobody withdrew."""
+    conn, ids = _replace_world(tmp_path)
+    for name in _Q13_RULES:
+        conn.execute(f"DROP TRIGGER {name}")
+    before = _stored(conn)
+    for form, statement in _Q13_FORMS.items():
+        if "upsert" in form or form.endswith("forecast and stamp") \
+                and form.startswith("update"):
+            continue
+        conn.execute(statement.format(**ids))
+        assert _stored(conn) != before, form
+        conn.rollback()
+    conn.execute(_Q13_FORMS["insert or replace onto a withdrawn one on its "
+                            "own game"].format(**ids))
+    row = conn.execute("SELECT r.side, r.price FROM recommendations r"
+                       " JOIN recommendation_voids w ON w.recommendation_id"
+                       " = r.id").fetchone()
+    assert tuple(row) == ("no", 0.9)
+    conn.rollback()
+
+
+def test_the_lawful_writes_are_untouched(tmp_path):
+    """THE WRITERS DO NOT CHANGE: `record_for` still writes a pick on a game
+    of its own, a plain insert on another still lands, and the closer still
+    writes the close of an open recommendation -- the update rule runs on
+    every update and refuses only one that takes another's place."""
+    conn, ids = _replace_world(tmp_path)
+    assert recommend.record_for(conn, [ids["p5"]])["recommended"] == 1
+    _insert(conn, ids["p4"], "no", _Q13_LATER, game="q4")
+    conn.commit()
+    got = recommend.record_closing_prices(conn)
+    assert got["unmeasured"] == 4 and got["closed"] == 0
+    closed = {r[0] for r in conn.execute(
+        "SELECT id FROM recommendations WHERE closed_utc IS NOT NULL")}
+    assert ids["rec1"] in closed and ids["rec2"] in closed
+    assert ids["rec3"] not in closed        # withdrawn: never followed
+
+
+def test_a_forecast_written_twice_is_still_counted_as_already(tmp_path):
+    """RECORD_FOR COUNTS AS IT DID. A withdrawn recommendation does not
+    stand, so its own forecast asked again passes the door, and its insert
+    collides with the stored row's forecast and stamp: refused until
+    2026-09-27 by the key ("UNIQUE"), now first by the replace rule, and
+    counted `already` either way -- never raised, never written."""
+    conn = _world(tmp_path)
+    pid = _away_pick(conn)
+    assert recommend.record_for(conn, [pid])["recommended"] == 1
+    rid = conn.execute("SELECT id FROM recommendations").fetchone()[0]
+    conn.execute("INSERT INTO recommendation_voids (recommendation_id,"
+                 " voided_utc, reason) VALUES (?, '2026-09-07T03:00:00Z',"
+                 " 'withdrawn in this test world')", (rid,))
+    conn.commit()
+    before = _stored(conn)
+    counts = recommend.record_for(conn, [pid])
+    assert counts["recommended"] == 0 and counts["already"] == 1
+    assert counts["refused"] == []
+    assert _stored(conn) == before
+
+
+def test_the_replace_rules_carry_the_words_and_run_first(tmp_path):
+    """ONE SET OF WORDS: every replace rule says `recommend.NEVER_REPLACED`, never
+    "UNIQUE" and never the one-per-game words. DECLARED AFTER the one-per-
+    game rule, as a record gains them, so a fresh build runs them in the
+    record's order (SQLite runs a table's rules newest first) and a plain
+    duplicate of a standing row is refused in these words on both."""
+    conn = db.open_db(tmp_path / "fresh.db")
+    rules = dict(conn.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'trigger'"
+        " AND tbl_name = 'recommendations'").fetchall())
+    for name in _Q13_RULES:
+        assert recommend.NEVER_REPLACED in rules[name]
+        assert "UNIQUE" not in rules[name]
+        assert recommend.ONE_PER_GAME_AND_MARKET not in rules[name]
+    order = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+        " AND tbl_name = 'recommendations' ORDER BY rowid")]
+    assert order[-len(_Q13_RULES):] == list(_Q13_RULES)
+    assert order[-len(_Q13_RULES) - 1] == "recommendation_one_per_game_and_market"
+    conn.close()
+
+
+def test_an_older_record_gains_the_rules_through_init_and_no_row_moves(tmp_path):
+    """THE RELEASE REACHES THE RECORD THROUGH `db.init` ALONE: a record
+    without the replace rules -- every release until this one -- gains exactly
+    them, with a fresh build's text, after the one-per-game rule; every
+    stored recommendation and withdrawal stays as it was; a second open
+    adds nothing; and a replacement is refused from the first open."""
+    conn, ids = _replace_world(tmp_path)
+    for name in _Q13_RULES:
+        conn.execute(f"DROP TRIGGER {name}")
+    conn.commit()
+
+    def objects(c):
+        return {(r[0], r[1]): r[2] for r in c.execute(
+            "SELECT type, name, sql FROM sqlite_master")}
+
+    before, rows = objects(conn), _stored(conn)
+    db.init(conn)
+    after = objects(conn)
+    assert set(after) - set(before) == {("trigger", n) for n in _Q13_RULES}
+    assert set(before) <= set(after)
+    assert all(after[k] == before[k] for k in before)
+    fresh = db.open_db(tmp_path / "fresh.db")
+    try:
+        for name in _Q13_RULES:
+            assert after[("trigger", name)] == objects(fresh)[("trigger", name)]
+    finally:
+        fresh.close()
+    assert _stored(conn) == rows
+    order = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+        " AND tbl_name = 'recommendations' ORDER BY rowid")]
+    assert order.index("recommendation_one_per_game_and_market") < min(
+        order.index(n) for n in _Q13_RULES)
+    db.init(conn)
+    assert objects(conn) == after and _stored(conn) == rows
+    with pytest.raises(sqlite3.IntegrityError, match=recommend.NEVER_REPLACED):
+        conn.execute(_Q13_FORMS["insert or replace naming a stored number"]
+                     .format(**ids))
+    conn.rollback()
+    assert _stored(conn) == rows
+
+
+# --- the number the rule is shown is not the number written (the prover of
+# question 13, 2026-09-27) ----------------------------------------------------
+#
+# For an insert of one row of values SQLite works the number out twice: once
+# for the rules that run before the row, once for the row itself (measured on
+# 3.49.1). A number that answers differently the second time -- random(), or
+# a function the connection defines -- showed `recommendations_never_replaced`
+# -1 or a free number and then wrote over a stored recommendation under OR
+# REPLACE. `recommendations_never_replaced_by_the_number_written` reads the
+# number after it lands.
+
+
+class _Handed:
+    """An application function answering the first reading with `first` and
+    every later one with `then`: the rule reads first, the key after."""
+
+    def __init__(self, first, then):
+        self.first, self.then, self.calls = first, then, 0
+
+    def __call__(self):
+        self.calls += 1
+        return self.first if self.calls == 1 else self.then
+
+
+#: (the number the rules are shown, the stored recommendation the key gets)
+_Q13_HANDED = {
+    "nothing to the rules, rec 1 to the key": (None, "rec1"),
+    "a free number to the rules, rec 2 to the key": (99, "rec2"),
+    "a free number to the rules, the withdrawn newest to the key": (99, "rec3"),
+}
+
+
+@pytest.mark.parametrize("form", sorted(_Q13_HANDED))
+@pytest.mark.parametrize("verb", ["INSERT OR REPLACE", "REPLACE"])
+def test_a_number_read_one_way_by_the_rules_and_another_by_the_key_is_refused(
+        tmp_path, form, verb):
+    """REFUSED, in the replace rules' words, the table and its withdrawals
+    exactly as stored; and with ONLY the rule reading the written number
+    dropped -- the two rules before it in place, as built first -- the same
+    statement writes over the stored recommendation: that rule is what stops
+    it."""
+    conn, ids = _replace_world(tmp_path)
+    first, key = _Q13_HANDED[form]
+    before = _stored(conn)
+    statement = _newcomer("handed()", "{p4}", "q4", _Q13_LATER,
+                          verb=verb).format(**ids)
+    handed = _Handed(first, ids[key])
+    conn.create_function("handed", 0, handed)
+    with pytest.raises(sqlite3.IntegrityError) as refused:
+        conn.execute(statement)
+    conn.rollback()
+    assert handed.calls == 2                # read twice, as measured
+    assert "LAW 3" in str(refused.value)
+    assert recommend.NEVER_REPLACED in str(refused.value)
+    assert _stored(conn) == before
+    conn.execute(f"DROP TRIGGER {_Q13_RULES[-1]}")
+    conn.create_function("handed", 0, _Handed(first, ids[key]))
+    conn.execute(statement)
+    after = {r[0]: r for r in _stored(conn)[0]}
+    assert after[ids[key]] != {r[0]: r for r in before[0]}[ids[key]]
+    assert after[ids[key]][3] == "q4"       # another game's, under its number
+    conn.rollback()
+
+
+def test_a_number_worked_out_at_random_never_writes_over_a_stored_one(tmp_path):
+    """RANDOM(), THE PLAIN FORM: sixty-four tries each of a number drawn from
+    one to six (three stored) and of one that is NULL or rec 1's by a coin.
+    Each is refused or writes a new recommendation under a new number; no
+    stored recommendation or withdrawal ever changes."""
+    conn, ids = _replace_world(tmp_path)
+    before = _stored(conn)
+    stored = {r[0]: r for r in before[0]}
+    for number in ("abs(random()) % 6 + 1",
+                   "CASE WHEN random() % 2 = 0 THEN NULL ELSE {rec1} END"):
+        for _ in range(64):
+            try:
+                conn.execute(_newcomer(number, "{p4}", "q4", _Q13_LATER)
+                             .format(**ids))
+            except sqlite3.IntegrityError as exc:
+                assert recommend.NEVER_REPLACED in str(exc)
+            rows, voids = _stored(conn)
+            assert {r[0]: r for r in rows if r[0] in stored} == stored
+            assert voids == before[1]
+            conn.rollback()
+
+
+def test_a_number_below_one_already_given_out_is_refused_and_one_above_lands(
+        tmp_path):
+    """THE CONSERVATIVE DEFAULT, recorded: after the insert a rule cannot
+    tell a number that was stored from one that is free, so a free number
+    at or below one already given out -- here 4, vacated by an update, and 0
+    and -1, never used -- is refused too (no writer names a number, and the
+    record's run 1 to 107); a number above every one lands."""
+    conn, ids = _replace_world(tmp_path)
+    _insert(conn, ids["p4"], "no", _Q13_LATER, game="q4")    # number 4
+    conn.execute("UPDATE recommendations SET id = 10 WHERE id = 4")
+    conn.commit()
+    before = _stored(conn)
+    for unused in (4, 0, -1):
+        with pytest.raises(sqlite3.IntegrityError,
+                           match=recommend.NEVER_REPLACED):
+            conn.execute(_newcomer(str(unused), "{p5}", "q5", _Q13_LATER,
+                                   verb="INSERT").format(**ids))
+        conn.rollback()
+    assert _stored(conn) == before
+    conn.execute(_newcomer("11", "{p5}", "q5", _Q13_LATER,
+                           verb="INSERT").format(**ids))
+    assert conn.execute("SELECT game_id FROM recommendations WHERE id = 11"
+                        ).fetchone()[0] == "q5"
+    conn.rollback()
+
+
+def test_a_recommendation_given_a_number_below_one_does_not_stop_the_next(
+        tmp_path):
+    """THE -1 THE INSERT RULE IS SHOWN. An insert leaving the number to
+    SQLite shows the rule -1, and an update may give a row -1 (it replaces
+    nothing). Were the rule to look -1 up, every later pick would be refused
+    in its words and `record_for` would count each `already`: nothing new
+    recorded, and nothing said. It does not, so the next pick is written;
+    and an insert naming -1 is still refused once it lands."""
+    conn = _world(tmp_path)
+    first = _away_pick(conn)
+    assert recommend.record_for(conn, [first])["recommended"] == 1
+    rid = conn.execute("SELECT id FROM recommendations").fetchone()[0]
+    conn.execute("UPDATE recommendations SET id = -1 WHERE id = ?", (rid,))
+    conn.commit()
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1, 'R',"
+        " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')")
+    second = _away_pick(conn, game="g1")
+    got = recommend.record_for(conn, [second])
+    assert got["recommended"] == 1 and got["already"] == 0
+    assert conn.execute("SELECT COUNT(*) FROM recommendations").fetchone()[0] == 2
+    before = _stored(conn)
+    with pytest.raises(sqlite3.IntegrityError, match=recommend.NEVER_REPLACED):
+        conn.execute(
+            "INSERT OR REPLACE INTO recommendations (id, prediction_id, sport,"
+            " game_id, market, side, fair_value, price, edge_cents, size_kind,"
+            " size_units, gate_n, created_utc) VALUES (-1, ?, 'mlb', 'g1',"
+            " 'total', 'yes', 0.5, 0.5, 1.0, 'flat', 1.0, 0, ?)",
+            (second, _Q13_LATER))
+    conn.rollback()
+    assert _stored(conn) == before

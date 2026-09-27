@@ -2537,6 +2537,136 @@ BEGIN
 END;
 
 -- ---------------------------------------------------------------------------
+-- NOR REPLACED (operator question 13, ruled 2026-09-27: "No stored
+-- recommendation may be replaced by any statement." Built 2026-09-27.)
+--
+-- THE HOLE. recommendations_no_delete refuses a delete, and SQLite does not
+-- count a replacement as one: an insert or an update under OR REPLACE that
+-- collides with a stored row removes that row and runs no delete rule
+-- unless recursive triggers are on, a setting of the connection that
+-- nothing in this project turns on.
+-- Measured 2026-09-27 on scratch databases built by the released tree:
+-- INSERT OR REPLACE and REPLACE naming a stored number (as id, as rowid, as
+-- the text '1' or as 1.0) put another recommendation in its place under
+-- that number; OR REPLACE on the forecast and stamp a stored row holds (the
+-- table's one unique key besides its number) removed it and wrote the
+-- newcomer under a new number; OR REPLACE onto a withdrawn one kept its
+-- withdrawal, which then pointed at the newcomer; and UPDATE OR REPLACE
+-- moving one row onto another's number -- by id, rowid, oid or _rowid_ --
+-- removed the other. The hole market_snapshots had until its two replace
+-- rules of 2026-09-25, which are the precedent here.
+--
+-- ALREADY REFUSED, so not stated again: an update of what was recommended
+-- or of the forecast and stamp (recommendations_no_update), of the
+-- correction (recommendation_correction_is_frozen), of a close once written
+-- (recommendation_closes_once) -- each also refuses the update half of an
+-- upsert -- and an upsert moving a row onto another's number, which fails
+-- on the key. Nothing points at this table with a cascade.
+--
+-- THE INSERT RULE refuses an insert naming a stored number, or a forecast
+-- and stamp already stored, whatever it says about conflicts, since a rule
+-- cannot see that: a plain duplicate, refused by the key until now, is
+-- refused here by name, and market.recommend.record_for counts it as the
+-- forecast written twice exactly as it counted the key's refusal. An insert
+-- that leaves the number to SQLite shows the rule -1 for it (measured), so
+-- the rule does not look the number -1 up (the prover, 2026-09-27): a
+-- recommendation given -1 by an update -- which replaces nothing, and the
+-- update rule lets it -- would otherwise have every insert that leaves the
+-- number to SQLite refused, and record_for would count each one as already
+-- written, so nothing new would be recorded and nothing would say so. A
+-- number given as -1 is checked after it lands, by the rule after these two.
+--
+-- THE UPDATE RULE refuses an update that would take the place of another
+-- stored recommendation, and nothing else. It names no columns on purpose:
+-- a rule that lists id is not run by an update naming rowid, oid or
+-- _rowid_ (measured the same day on the snapshot rule, FOLLOWUPS). A new
+-- number that takes no other row's place replaces nothing and is not
+-- refused here (FOLLOWUPS).
+--
+-- DECLARED AFTER recommendation_one_per_game_and_market, deliberately.
+-- SQLite runs a table's rules newest first, and the record gains these on
+-- its first open after the release, after that rule; declared here, a fresh
+-- build runs them in the same order, so both refuse a duplicate in the
+-- same words.
+-- ---------------------------------------------------------------------------
+CREATE TRIGGER IF NOT EXISTS recommendations_never_replaced
+BEFORE INSERT ON recommendations
+FOR EACH ROW
+WHEN (NEW.id <> -1
+      AND EXISTS (SELECT 1 FROM recommendations r WHERE r.id = NEW.id))
+  OR EXISTS (SELECT 1 FROM recommendations r
+              WHERE r.prediction_id = NEW.prediction_id
+                AND r.created_utc = NEW.created_utc)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a recommendation is never replaced. An insert may '
+        || 'not name the number, or the forecast and stamp, of one already '
+        || 'stored: what the app said at the time is written once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS recommendations_never_replaced_by_update
+BEFORE UPDATE ON recommendations
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM recommendations r
+              WHERE r.id = NEW.id AND r.id IS NOT OLD.id)
+  OR EXISTS (SELECT 1 FROM recommendations r
+              WHERE r.prediction_id = NEW.prediction_id
+                AND r.created_utc = NEW.created_utc
+                AND r.id IS NOT OLD.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a recommendation is never replaced. An update may '
+        || 'not move one onto the number, or the forecast and stamp, of '
+        || 'another already stored');
+END;
+
+-- THE NUMBER WRITTEN, READ AFTER IT LANDS (the prover of question 13,
+-- 2026-09-27). The insert rule reads the number SQLite shows it, and for an
+-- insert of one row of values SQLite works the number out twice: once for
+-- the rules that run before the row is written, and again for the row
+-- itself (measured on 3.49.1). A number that comes out differently the
+-- second time -- random(), or a function the connection defines -- showed
+-- the insert rule -1 or a free number and then wrote over a stored
+-- recommendation under OR REPLACE: measured 2026-09-27 against the two
+-- rules above, rec 1, rec 2 and the withdrawn rec 3 of a scratch world each
+-- became another game's recommendation under its own number, the
+-- withdrawal left beside the newcomer. Every other value of the row is
+-- worked out once, an insert from a query is worked out once into a
+-- holding store, and an update works out its new values once before its
+-- rules run (all measured), so only the number of a one-row insert needs
+-- this rule.
+--
+-- It reads the number the row was written under, after it is written, and
+-- refuses it at or below the highest number SQLite had given out when the
+-- statement began -- sqlite_sequence, which SQLite writes back only when
+-- the statement ends (measured) -- or below any recommendation stored.
+-- Every stored recommendation is at or below that mark, so none can be
+-- written over, and RAISE(ABORT) takes the whole statement back, the
+-- removed row with it. After the fact a rule cannot tell a number that was
+-- stored from one that is free, so a new recommendation written under a
+-- free number at or below one already given out -- never used, or left by
+-- an update -- is refused as well: no writer names a number (record_for
+-- leaves it to SQLite, which gives the next one up), and the record's
+-- numbers run 1 to 107 with no gap.
+--
+-- NOT SEEN (FOLLOWUPS): SQLite lets an ordinary statement set its own
+-- sequence for recommendations back below the newest one, and
+-- refuses any rule on that store; after such a statement an insert that
+-- writes over the newest one leaves nothing stored that tells it from a
+-- newcomer.
+CREATE TRIGGER IF NOT EXISTS recommendations_never_replaced_by_the_number_written
+AFTER INSERT ON recommendations
+FOR EACH ROW
+WHEN NEW.id <= (SELECT seq FROM sqlite_sequence WHERE name = 'recommendations')
+  OR EXISTS (SELECT 1 FROM recommendations r WHERE r.id > NEW.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a recommendation is never replaced. A new one is '
+        || 'written under a number above every one already given out, never '
+        || 'at or below one: what the app said at the time is written once');
+END;
+
+-- ---------------------------------------------------------------------------
 -- A RECOMMENDATION THE BAR SHOULD HAVE REFUSED (GRIDIRON_REPAIR item 4, the
 -- operator's ruling of 2026-09-23, built 2026-09-26: "Return-on-stake
 -- denominator: a no-side edge divides by the no-side cost. Re-grade the three

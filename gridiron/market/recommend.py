@@ -612,6 +612,16 @@ def measured_edge(conn: sqlite3.Connection, *, sport: str, market_type: str,
 #: a forecast written twice.
 ONE_PER_GAME_AND_MARKET = "one recommendation per game and market"
 
+#: THE WORDS OF LAW 3'S REPLACE RULES (operator question 13, ruled
+#: 2026-09-27: "No stored recommendation may be replaced by any statement").
+#: `recommendations_never_replaced` refuses an insert naming a stored
+#: forecast and stamp whatever its conflict clause -- a rule cannot see one
+#: -- so a plain duplicate, refused until that date by the key in words
+#: carrying "UNIQUE", is refused by these words first (SQLite runs the
+#: newest rule first). `record_for` files both under `already`, a forecast
+#: written twice, as it always did; a test holds the schema to these words.
+NEVER_REPLACED = "a recommendation is never replaced"
+
 #: Why a pick that cleared the bar was not written, in words. Kept with the
 #: run (`record_for`'s `refused`, in the predict and final tasks' payload).
 STANDS_WHY = ("not written: " + ONE_PER_GAME_AND_MARKET + ", and this one "
@@ -804,7 +814,15 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
                 counts["second_on_game_market"] += 1
                 refused.append(_refusal(entry, REFUSED_BY_THE_RECORD_WHY))
                 continue
-            if "UNIQUE" not in str(exc):
+            # THE FORECAST WRITTEN TWICE, in the key's words or, from
+            # 2026-09-27, the replace rule's, which runs first: this insert
+            # names no number (the rule sees -1, and from the prover of
+            # 2026-09-27 does not look -1 up, so a row moved to -1 cannot
+            # stop the next pick), so that rule refuses it only for a
+            # forecast and stamp already stored (question 13's ruling). The
+            # rule that reads the number after it lands never fires here:
+            # SQLite gives this insert the next number up.
+            if "UNIQUE" not in str(exc) and NEVER_REPLACED not in str(exc):
                 raise
             counts["already"] += 1
     conn.commit()

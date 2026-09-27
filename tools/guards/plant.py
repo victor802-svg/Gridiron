@@ -11161,6 +11161,250 @@ def plant_both_sides_of_one_total_recommended() -> Result:
                   f"as written and a second over are refused by the schema")
 
 
+def plant_a_replaced_recommendation() -> Result:
+    """Replace a stored recommendation, by every statement that can.
+
+    Operator question 13, ruled 2026-09-27: "No stored recommendation may be
+    replaced by any statement." Found by item 5's prover on 2026-09-26:
+    `recommendations_no_delete` refuses a delete, and SQLite runs no delete
+    rule for a replacement unless recursive triggers are on -- the hole
+    `market_snapshots` had until its two replace rules of 2026-09-25, whose
+    plantings this one follows.
+
+    THE WORLD: recs 1 and 2 standing on games of their own, rec 3 withdrawn
+    (a row in `recommendation_voids`). THE FORMS, each run on that world and
+    rolled back: OR REPLACE and REPLACE naming a stored number -- as id, as
+    rowid, as the text '1' -- and naming a stored forecast and stamp (the
+    table's one unique key besides its number); OR REPLACE ... SELECT
+    colliding with two rows at once; OR REPLACE onto the withdrawn one's
+    number on its own game and market, where its withdrawal would then point
+    at the newcomer; UPDATE OR REPLACE moving rec 2 onto rec 1's number by
+    id, rowid, oid and _rowid_ (a rule listing id is not run for the last
+    three); and two that no release lets replace, held here so a later rule
+    cannot open them -- an update onto rec 1's forecast and stamp, and an
+    upsert naming rec 1 that would rewrite what it recommended.
+
+    AND THE NUMBER READ TWICE (the prover, 2026-09-27): for an insert of one
+    row of values SQLite works the number out once for the rules that run
+    before the row and again for the row, so a number that answers
+    differently the second time -- here a function the connection defines,
+    as random() does by chance -- showed the insert rule nothing stored and
+    wrote over rec 1, rec 2 and the withdrawn newest, rec 3. Three forms.
+
+    CAUGHT means: every form refused under LAW 3 -- the thirteen that replace
+    by the words of the replace rules -- with every recommendation and every
+    withdrawal exactly as stored; a new recommendation on a game of its own
+    and the close of an open one still written; with only the rule reading
+    the written number dropped, the three read-twice forms writing over a
+    stored one -- that rule is what stops them; and, with every replace rule
+    dropped, each of the thirteen changing the table -- proof that the
+    replacement is real and that those rules are what stopped it.
+    """
+    from gridiron import db as _db
+
+    law = "LAW 3"
+    what = "a stored recommendation replaced by an insert or an update"
+    guard = ("SQL triggers recommendations_never_replaced, "
+             "recommendations_never_replaced_by_update and "
+             "recommendations_never_replaced_by_the_number_written")
+    rules = ("recommendations_never_replaced",
+             "recommendations_never_replaced_by_update",
+             "recommendations_never_replaced_by_the_number_written")
+    cols = ("prediction_id, sport, game_id, market, side, fair_value, price,"
+            " edge_cents, size_kind, size_units, gate_n, created_utc")
+    stamp = "2026-09-07T20:52:31Z"
+
+    later = "2026-09-08T00:00:00Z"
+    READ_TWICE = "INSERT OR REPLACE whose number reads as "
+
+    class Handed:
+        """A function the connection defines, answering its first call --
+        the rules' reading of the number -- with `first` and every later
+        one -- the row's -- with `then` (read twice: measured 2026-09-27)."""
+
+        def __init__(self, first, then):
+            self.first, self.then, self.calls = first, then, 0
+
+        def __call__(self):
+            self.calls += 1
+            return self.first if self.calls == 1 else self.then
+
+    def newcomer(number: str | None, pid: str, game: str, created: str,
+                 verb: str = "INSERT OR REPLACE", column: str = "id") -> str:
+        """An insert of a no-side row at 90c, naming `number` in `column`
+        if given; placeholders filled from the world's ids."""
+        head = "" if number is None else f"{column}, "
+        lead = "" if number is None else f"{number}, "
+        return (f"{verb} INTO recommendations ({head}{cols}) VALUES ({lead}"
+                f"{pid}, 'mlb', '{game}', 'moneyline', 'no', 0.4, 0.9, 1.0,"
+                f" 'flat', 1.0, 53, '{created}')")
+
+    # (label, statement, replaces on the tree before the rule)
+    forms = (
+        ("INSERT OR REPLACE naming rec 1's number, on another game",
+         newcomer("{rec1}", "{p4}", "g4", later), True),
+        ("REPLACE naming rec 1's number as rowid, on another game",
+         newcomer("{rec1}", "{p4}", "g4", later, verb="REPLACE",
+                  column="rowid"), True),
+        ("INSERT OR REPLACE naming rec 1's number as the text '1'",
+         newcomer("'{rec1}'", "{p4}", "g4", later), True),
+        ("INSERT OR REPLACE on rec 1's forecast and stamp, on another game",
+         newcomer(None, "{p1}", "g4", stamp), True),
+        ("INSERT OR REPLACE ... SELECT on rec 2's number and rec 1's forecast "
+         "and stamp at once",
+         f"INSERT OR REPLACE INTO recommendations (id, {cols}) SELECT {{rec2}},"
+         f" {{p1}}, 'mlb', 'g4', 'moneyline', 'no', 0.4, 0.9, 1.0, 'flat', 1.0,"
+         f" 53, '{stamp}'", True),
+        ("INSERT OR REPLACE onto withdrawn rec 3's number, on its own game and "
+         "market, the other side",
+         newcomer("{rec3}", "{p3}", "g3", later), True),
+        ("UPDATE OR REPLACE moving rec 2 onto rec 1's number by id",
+         "UPDATE OR REPLACE recommendations SET id = {rec1} WHERE id = {rec2}", True),
+        ("UPDATE OR REPLACE moving rec 2 onto rec 1's number by rowid",
+         "UPDATE OR REPLACE recommendations SET rowid = {rec1} WHERE id = {rec2}", True),
+        ("UPDATE OR REPLACE moving rec 2 onto rec 1's number by oid",
+         "UPDATE OR REPLACE recommendations SET oid = {rec1} WHERE id = {rec2}", True),
+        ("UPDATE OR REPLACE moving rec 2 onto rec 1's number by _rowid_",
+         "UPDATE OR REPLACE recommendations SET _rowid_ = {rec1} WHERE id = {rec2}", True),
+        # THE NUMBER READ TWICE (the prover, 2026-09-27): each function below
+        # answers the rules' reading with one value and the row's with another
+        (READ_TWICE + "nothing to the rules and rec 1's to the row",
+         newcomer("handed_nothing_then_rec1()", "{p4}", "g4", later), True),
+        (READ_TWICE + "a free number to the rules and rec 2's to the row",
+         newcomer("handed_free_then_rec2()", "{p4}", "g4", later), True),
+        (READ_TWICE + "a free number to the rules and withdrawn rec 3's, the "
+         "newest, to the row, by REPLACE",
+         newcomer("handed_free_then_rec3()", "{p4}", "g4", later,
+                  verb="REPLACE"), True),
+        ("UPDATE OR REPLACE moving rec 2 onto rec 1's forecast and stamp",
+         "UPDATE OR REPLACE recommendations SET prediction_id = {p1},"
+         " created_utc = '" + stamp + "' WHERE id = {rec2}", False),
+        ("an upsert naming rec 1's number that would rewrite what it "
+         "recommended",
+         newcomer("{rec1}", "{p4}", "g4", later, verb="INSERT")
+         + " ON CONFLICT(id) DO UPDATE SET side = excluded.side,"
+           " price = excluded.price", False),
+    )
+    lawful = (
+        ("a new recommendation on a game of its own",
+         newcomer(None, "{p5}", "g5", later, verb="INSERT")),
+        ("the close of an open recommendation",
+         "UPDATE recommendations SET close_price = 0.52, clv_cents = 2.0,"
+         " closed_utc = '2026-09-09T22:00:00Z' WHERE id = {rec2}"),
+    )
+
+    conn = _db.connect(":memory:")
+    try:
+        _db.init(conn)
+        ids: dict[str, int] = {}
+        for n in range(1, 6):
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home,"
+                " away, kickoff_utc, status, league_date) VALUES (?, 'mlb',"
+                " 2026, 1, 'R', 'AAA', 'BBB', '2026-09-09T22:45:00Z',"
+                " 'scheduled', '2026-09-09')", (f"g{n}",))
+            ids[f"p{n}"] = conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning) VALUES ('2026-09-06T20:50:15Z', 'mlb', ?,"
+                " 'moneyline', 'BBB', NULL, 0.6659, 'win', 'statistical',"
+                " 'final', 'fs2', '{}', 'planted')", (f"g{n}",)).lastrowid
+        for n in (1, 2, 3):
+            ids[f"rec{n}"] = conn.execute(
+                f"INSERT INTO recommendations ({cols}) VALUES (?, 'mlb', ?,"
+                f" 'moneyline', 'yes', 0.6, 0.5, 10.0, 'flat', 1.0, 53, ?)",
+                (ids[f"p{n}"], f"g{n}", stamp)).lastrowid
+        conn.execute(
+            "INSERT INTO recommendation_voids (recommendation_id, voided_utc,"
+            " reason) VALUES (?, '2026-09-08T00:00:00Z', 'withdrawn in this"
+            " planted world')", (ids["rec3"],))
+        conn.commit()
+    except sqlite3.Error as exc:
+        conn.close()
+        return Result(law, what, guard, False,
+                      f"NOT CAUGHT - the planted world could not be built: {exc}")
+    handed = {"handed_nothing_then_rec1": Handed(None, ids["rec1"]),
+              "handed_free_then_rec2": Handed(99, ids["rec2"]),
+              "handed_free_then_rec3": Handed(99, ids["rec3"])}
+    for name, function in handed.items():
+        conn.create_function(name, 0, function)
+
+    def state():
+        return ([tuple(r) for r in conn.execute(
+                    "SELECT * FROM recommendations ORDER BY id")],
+                [tuple(r) for r in conn.execute(
+                    "SELECT * FROM recommendation_voids ORDER BY recommendation_id")])
+
+    def attempt(statement: str) -> tuple[str | None, tuple]:
+        """The refusal's words, or None; and the state it left. Rolled back."""
+        for function in handed.values():
+            function.calls = 0
+        try:
+            conn.execute(statement.format(**ids))
+            words = None
+        except sqlite3.Error as exc:
+            words = f"{type(exc).__name__}: {exc}"
+        after = state()
+        conn.rollback()
+        return words, after
+
+    def brief(rows) -> list[tuple]:
+        """(number, forecast, game, side, price) of each row, for the words."""
+        return [(r[0], r[1], r[3], r[5], r[7]) for r in rows]
+
+    faults: list[str] = []
+    first: str | None = None
+    try:
+        stored = state()
+        for label, statement, replaces in forms:
+            words, after = attempt(statement)
+            if words is None:
+                faults.append(
+                    f"{label} was taken"
+                    + (f": {brief(stored[0])} became {brief(after[0])}"
+                       if after[0] != stored[0] else "")
+                    + (f"; the withdrawals went from {stored[1]} to {after[1]}"
+                       if after[1] != stored[1] else ""))
+            elif "LAW 3" not in words or (replaces and "never replaced" not in words):
+                faults.append(f"{label} was refused, but not by the replace "
+                              f"rules: {words}")
+            elif first is None:
+                first = f"{label}: {words}"
+            if state() != stored:
+                faults.append(f"after {label} the world was not as stored")
+        for label, statement in lawful:
+            words, after = attempt(statement)
+            if words is not None or after == stored:
+                faults.append(f"{label} was not written ({words}): a rule "
+                              f"refusing every write is not this one")
+        # THE RULE READING THE WRITTEN NUMBER IS WHAT STOPS THE READ-TWICE
+        # FORMS: with it alone dropped, the two before it still in place,
+        # each writes over a stored recommendation.
+        conn.execute(f"DROP TRIGGER IF EXISTS {rules[-1]}")
+        unproved = [label for label, statement, replaces in forms
+                    if label.startswith(READ_TWICE)
+                    and attempt(statement)[1][0] == stored[0]]
+        for name in rules[:-1]:
+            conn.execute(f"DROP TRIGGER IF EXISTS {name}")
+        unproved += [label for label, statement, replaces in forms
+                     if replaces and attempt(statement)[1] == stored]
+    finally:
+        conn.close()
+    if faults:
+        return Result(law, what, guard, False,
+                      "NOT CAUGHT - " + "; ".join(faults) + ". A replacement "
+                      "removes the stored recommendation without running the "
+                      "delete rule, and what the app said at the time is gone")
+    if unproved:
+        return Result(law, what, guard, False,
+                      f"the planting did not test the rules: with the rule "
+                      f"reading the written number dropped (the read-twice "
+                      f"forms), or with every replace rule dropped, these "
+                      f"still changed no stored recommendation: {unproved}")
+    return Result(law, what, guard, True, first or "refused")
+
+
 LAW_CLAIM_SHAPE = "A CLAIM CARRIES THE INPUTS ITS SHAPE USES, AND NO OTHERS"
 
 
@@ -14146,6 +14390,9 @@ def main() -> int:
     # 2026-09-26): one recommendation per game and market, never both
     # sides -- recs 45 and 46, replayed.
     results.append(plant_both_sides_of_one_total_recommended())
+    # OPERATOR QUESTION 13 (ruled 2026-09-27): no stored recommendation may
+    # be replaced by any statement -- OR REPLACE went round the delete rule.
+    results.append(plant_a_replaced_recommendation())
     # AT_THE_PRICE (2026-09-07): four claim shapes, and the four mistakes
     # the first live run made.
     results.append(plant_a_winner_question_read_from_the_wrong_side())
