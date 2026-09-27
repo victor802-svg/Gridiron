@@ -2,6 +2,21 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **THE ORDER NOW (third set, 2026-09-27 ~15:50Z;
+  docs/briefs/2026-09-27-rulings-third-set.md; wins over every order
+  below):** Q15 (predictions never replaced, own commit + planting; then
+  one gate scan refusing INSERT OR REPLACE / REPLACE / ON CONFLICT DO
+  UPDATE against every append-only table, legitimate upserts in a register
+  that only shrinks; a read-only measurement of whether any live
+  prediction was replaced) -> Q20 (A: the Today panel arrives by fade
+  alone; per-frame whole-pixel check + planting; test_motion's
+  `transform` line changes) -> Q17 (one distinct-bet function: forecaster +
+  the venue's question (game, market, line); every released number that
+  moves, listed) -> Q16 (B, on Q17's key, planting each) -> the board merge
+  (checklist with the third set's additions; Q18 and Q19 are fixed in the
+  board) -> Q5 -> Q10 -> the re-read (not before 2026-09-28T15:00Z).
+  **Serving 68b215e** (Q14). Gate reruns: one as-is; a second failure of
+  the same test is diagnosed before any third run.
 - **Serving: f02e913** (`/api/health` = f02e9134d984). Repair items 1-8 and
   the schema rulings are released; close-out:
   `docs/closeouts/2026-09-27-overnight.md` (verdicts, awake time, spend).
@@ -565,6 +580,12 @@ depend on the answer.
     table (a replace rule with no column list, and an after-insert rule
     where the number can read twice), each with a planting. Default until
     ruled: not built.
+    **RULED 2026-09-27 (third set): first in the order.** Predictions fixed
+    as Q13 was, own commit and planting; then one gate scan refusing
+    replacing writes against every append-only table, legitimate upserts
+    named in a register that only shrinks; a read-only measurement of
+    whether any live prediction was replaced. The other holes listed above
+    are not named and stay in FOLLOWUPS.
 16. **The correction gates on the Record page pool the same way, outside
     Q14's three: rebuild them too? (Found by Q14's drift step, 2026-09-27.)**
     `views.corrections_report` ("A correction for ..." under "What else is
@@ -576,6 +597,8 @@ depend on the answer.
     fifty, against 49, under it. Q14's first sentence says "every count on
     the Record page that states a gate distance"; its three commits named
     three others. Default until ruled: not built.
+    **RULED 2026-09-27 (third set): (B), after Q17, on its key;** each
+    correction gate's count per forecaster and distinct bet, planting each.
 17. **One key for "a distinct bet"? (Found by Q14, 2026-09-27.)** Q14's
     priced step keys a distinct bet as the blind question (game, market,
     subject, rung); its drift step keys it as game and market (plus the
@@ -583,6 +606,11 @@ depend on the answer.
     priced record today and differ on the drift record: NCAAF point spread
     has 78 standing questions on 66 games (twelve games asked at two
     rungs). Which key? Default until ruled: each as built.
+    **RULED 2026-09-27 (third set):** one function defines a distinct bet:
+    forecaster + the venue's question (game, market, line). A question's
+    passes count once (each record's standing rule picks which); alt lines
+    are separate questions. Q12's, Q14's and Q16's counts all use it; every
+    released number that moves is listed.
 18. **A card's Why panel snaps shut when a redraw lands. (Found by the
     diagnosis of 2026-09-27; not a test defect.)** `renderToday` rebuilds
     every card with its Why body hidden. On the live record `/api/week`
@@ -590,12 +618,16 @@ depend on the answer.
     tier filter, the sort toggle or the took button -- before the redraw
     they started lands -- sees it close. A defect to fix (keep the open
     card open across a redraw), or as designed? Default until ruled: as is.
+    **RULED 2026-09-27 (third set): fixed in the board, not the old UI;** an
+    open card stays open across any redraw, and a test proves it.
 19. **The priced panel's heading paints an internal identifier.** (Found by
     Q14's priced render.) The "Priced, and against the close" heading
     shows the blend version "b1" raw on every sport's Record page, since
     the priced record opened. PLAIN WORDS forbids an internal identifier in
     the interface. A class (a) fix of one line and a planting, or wait?
     Default until ruled: not changed.
+    **RULED 2026-09-27 (third set): fixed in the board;** headings in plain
+    words, internal version names only in a tooltip.
 20. **The tap-target flake is not in the elements. It is the Today panel's
     arrival. (The flaky tests, ruled 2026-09-27; asked 2026-09-27.)** The
     ruling: "fix the elements so they render at 44px or more in whole
@@ -648,6 +680,24 @@ depend on the answer.
     measures `#view-week a` with every card closed. Is that link in this
     item's scope, or its own item? Default until ruled: nothing built, and
     the test flakes as before.
+    **RULED 2026-09-27 (third set): (A)**, second in the order, after Q15:
+    the Today panel arrives by fade alone, a per-frame whole-pixel check that
+    fails today, a planting, and the one `test_motion` assertion changes.
+    The side question: not in scope; the old Why panel leaves with the
+    board, and the board merge checks every tap target, links included.
+
+## Rulings taken in your absence (2026-09-27, third set)
+
+- **Q15's scan: what "against every append-only table" reaches.** Read by
+  the stricter default (docs/briefs/2026-09-27-rulings-third-set.md, "How
+  this brief is read"): the scan sees every replacing write in the shipped
+  code and `schema.sql`, `UPDATE OR REPLACE` and a table-level `ON CONFLICT
+  REPLACE` included; an append-only table is one the schema gives a
+  no-delete or no-update rule; any other upsert must be in the register; an
+  unreadable target counts as append-only. Tests and plantings are outside
+  it.
+- **Q15's release:** two commits (the predictions rules, the scan), one gate,
+  released together -- Q14's precedent.
 
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 
