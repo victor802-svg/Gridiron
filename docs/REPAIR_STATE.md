@@ -1,5 +1,26 @@
 # GRIDIRON_REPAIR — state for the next session
 
+## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
+
+- **Serving: f02e913** (`/api/health` = f02e9134d984). Repair items 1-8 and
+  the schema rulings are released; close-out:
+  `docs/closeouts/2026-09-27-overnight.md` (verdicts, awake time, spend).
+- **Open work, in this order unless the operator says otherwise:**
+  1. Answers to the questions below, first **Q9** (item 4's re-grade labels:
+     three or four -- then set the constant, gate, release, run
+     `tools/regrade_return_on_stake.py --write --live`), **Q5**, **Q13**,
+     **Q14**.
+  2. The operator's queue for after close-out (the section below): the
+     Record page's "market ahead", then model plan M3 (market blend).
+  3. The read again on the repaired record (the repair brief), which the
+     cloud split sends to the cloud; how it runs is the operator's call.
+  4. The two browser flakes that can fail a gate (tap target at 43.9995px;
+     the weekly strip's canvas read before paint).
+- **Dates:** first clean closing-line read 2026-10-15 (window from
+  2026-09-24); MLB's regular season ends 2026-09-27.
+
+## The overnight run, as it went (older; the block above wins)
+
 ## READ THIS BLOCK FIRST (updated 2026-09-25 ~03:50Z, overnight run)
 
 - **Revert confirmed on the day strip.** The 15:00Z passes on 24 September
@@ -48,7 +69,12 @@
   says so; no scheduled pass turns red (measured read-only first).
 - **Order now:** ~~5a~~ -> ~~item 4~~ -> ~~5a'~~ -> ~~migration~~ -> ~~5b~~
   -> ~~item 2's remainder~~ -> ~~item 3~~ -> ~~item 4~~ -> ~~item 5~~ ->
-  ~~item 6~~ -> ~~item 7~~ -> **item 8** (in progress) -> close-out.
+  ~~item 6~~ -> ~~item 7~~ -> ~~item 8~~ -> ~~close-out~~.
+- **Item 8 RELEASED: f02e913** (`/api/health` = f02e9134d984, 02:36Z on 27
+  September; gate 4/4, 314/314; the first run failed only on the tap-target
+  flake, 43.9995px, and the rerun was green): two BROKEN findings recorded
+  in READINESS, the closing line counts from 2026-09-24, no verdict before
+  2026-10-15.
 - **Item 7 RELEASED: 0c6da10** (`/api/health` = 0c6da10ce66e, 00:06Z on 27
   September; gate 4/4, 312/312), after a verified backup
   (`var/gridiron.db.pre-task-runs-widening-2026-09-26.bak`, integrity ok,
