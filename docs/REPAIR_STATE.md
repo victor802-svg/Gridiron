@@ -12,6 +12,16 @@
   Q14 in three commits (priced_scorecard, drift.report,
   horizon.market_outlook; each with a planting that escapes on the unfixed
   code) -> the flaky tests -> the board merge
+  **Done 27 Sep:** Q13 released as 8d0ed63 (06:07Z; the gate re-run after
+  the operator's power-off); Q9 released as 99bff26 (07:05Z) and the four
+  labels written to the live record (3, 10, 26, 56; one transaction; the
+  rule's selection verified against the arithmetic). A third race failed a
+  gate once and passed alone 3/3:
+  `test_motion.py::test_a_tab_switch_arrives_through_the_motion_block`
+  (a computed style read before it applied) -- Q5's business, with the
+  weekly strip's canvas race.
+  **Next: Q12.**
+  (The order continues:
   (docs/briefs/2026-09-27-board-merge.md) -> Q5 (A: a render-finished
   signal, every fixed wait rebuilt; ELAPSED_TIME_HELD may only shrink until
   then, and the merge adds no fixed wait) -> Q10 -> the re-read (not before
