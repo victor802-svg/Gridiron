@@ -596,6 +596,58 @@ depend on the answer.
     the priced record opened. PLAIN WORDS forbids an internal identifier in
     the interface. A class (a) fix of one line and a planting, or wait?
     Default until ruled: not changed.
+20. **The tap-target flake is not in the elements. It is the Today panel's
+    arrival. (The flaky tests, ruled 2026-09-27; asked 2026-09-27.)** The
+    ruling: "fix the elements so they render at 44px or more in whole
+    pixels. Never widen a tolerance." Measured on this tree with a
+    synthetic world (scratchpad `flaky/diag/`): every tap target the tests
+    measure is already laid out at a whole number of pixels, 44 or more.
+    `.expand` has `min-height: 44px` (style.css:2325), its `offsetHeight`
+    is 44, and its box reads exactly 44.0 at rest on every view and width
+    the tap-target tests use. That covers the week with every card closed
+    and every card open, Record, Results and Settings, at 390 (3x) and
+    375 (2x). The failing 43.99951171875 is 44 less 1/2048, which is one
+    step of single precision at 4,096-8,192px down the page. It appears
+    only while the Today panel arrives. Every render calls `arrive(panel)`
+    (app.js:1473), which starts the panel one per cent below its place
+    (`#today.arriving { transform: translateY(1%) }`, style.css:1765) and
+    eases it up over 200ms (R4, 2026-09-05). While it moves, the panel
+    sits a fraction of a pixel off whole (for example 34.0407px). The
+    browser maps each button's box through that offset and rounds the
+    box's top and bottom separately, so 44 reads 43.9995 or 44.0005 and
+    the 54px "took" button reads 53.9995. The test sets the hash to the
+    week, which redraws the page, and it measures inside those 200ms. We
+    made twelve market switches and sampled every frame. As shipped, 9 of
+    192 frames read a tap target off whole pixels, and 3 of those readings
+    were under 44. With the panel's movement removed and the fade kept,
+    193 of 193 frames were whole. No CSS on the target fixes this. With
+    every target at 45px, 15 readings were still off whole (none under
+    44), and the extra pixel would be a tolerance by another name. Run
+    alone, the test passed 10 of 10 on this tree. It flakes only when the
+    redraw lands inside the measurement.
+    - **(A) The panel arrives by its fade alone.** `#today.arriving` loses
+      its `translateY(1%)`, and `#today`'s transition names opacity only
+      (200ms and ease-out, as now). Every tap target then renders at its
+      own whole-pixel size on every frame. It would come with a check that
+      samples every frame of an arrival at 390 (3x) and fails by name on
+      a tap target under 44 or off whole pixels; that check fails on this
+      tree. It would also come with a planting that puts the movement
+      back. The cost: the "one per cent below" arrival goes. L3's
+      vocabulary allows a translate within 2% but does not require one.
+      Also, `test_motion.py::test_a_tab_switch_arrives_through_the_motion_block`
+      checks that the panel's transition names `transform`, so that one
+      line changes, in a test Q5 is about to rebuild.
+    - **(B) The elements stay as they are, and the test measures the slate
+      once it has arrived**, waiting on Q5's render-finished signal. No
+      fixed wait is added and nothing is widened, and the movement stays.
+      But the ruling said to fix the elements, not the test, and this
+      step would then wait for Q5, which comes after the board merge.
+    Also measured, and checked by no test: the "How the model works" link
+    inside an open card's Why panel (`a.face-more`) is 17.4px tall at 390
+    and 375. The smoke test measures only `nav a`, and `test_cards.py`
+    measures `#view-week a` with every card closed. Is that link in this
+    item's scope, or its own item? Default until ruled: nothing built, and
+    the test flakes as before.
 
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 
