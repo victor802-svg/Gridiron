@@ -422,28 +422,38 @@ def _the_morning(path):
     total, reasoning rows beside them, and rows the criteria must not take."""
     conn = db.open_db(path)
     at = "2026-09-24T05:3{}:00Z"
+    # WRITTEN IN THE ORDER OF THEIR NUMBERS (2026-09-27, operator question
+    # 15): the record's numbers are the ones SQLite gave out, each above
+    # every one before it, and from that date the schema refuses a forecast
+    # written under a number at or below one already given out
+    # (`predictions_never_replaced_by_the_number_written`). The rows, their
+    # numbers and their stamps are as they were; only the order the world
+    # writes them in changed.
+    rows = []
     for n, pid in enumerate(NFL_MONEYLINE + NFL_SPREAD):
         gid = f"nfl-{pid}"
         _game(conn, gid, kickoff="2026-09-27T17:00:00Z")
         market = "moneyline" if pid in NFL_MONEYLINE else "spread"
-        _forecast(conn, gid, pid=pid, created=at.format(n % 7), market=market,
-                  line=None if market == "moneyline" else 7.5)
-        _forecast(conn, gid, pid=pid + 1, created=at.format(n % 7),
-                  market=market, predictor="llm",
-                  line=None if market == "moneyline" else 7.5)
+        rows.append((pid, gid, dict(created=at.format(n % 7), market=market,
+                                    line=None if market == "moneyline" else 7.5)))
+        rows.append((pid + 1, gid, dict(created=at.format(n % 7),
+                                        market=market, predictor="llm",
+                                        line=None if market == "moneyline" else 7.5)))
     for pid, market in ((2299, "spread"), (2301, "moneyline")):
         _game(conn, f"cfb-{pid}", sport="cfb", kickoff="2026-09-24T23:30:00Z")
         for row, predictor in ((pid, "statistical"), (pid + 1, "llm")):
-            _forecast(conn, f"cfb-{pid}", pid=row, sport="cfb", market=market,
-                      created="2026-09-24T05:36:52Z", predictor=predictor,
-                      line=None if market == "moneyline" else -0.5)
+            rows.append((row, f"cfb-{pid}", dict(
+                sport="cfb", market=market, created="2026-09-24T05:36:52Z",
+                predictor=predictor, line=None if market == "moneyline" else -0.5)))
     # rec 65's forecast: the reasoning forecaster, a total, fs2
-    _forecast(conn, "nfl-2297", pid=2296, market="total", predictor="llm",
-              fs="fs2", created="2026-09-24T05:36:00Z", line=44.5)
+    rows.append((2296, "nfl-2297", dict(market="total", predictor="llm", fs="fs2",
+                                        created="2026-09-24T05:36:00Z", line=44.5)))
     # what the criteria must leave alone: before 05:16, and another set
     _game(conn, "nfl-early", kickoff="2026-09-27T17:00:00Z")
-    _forecast(conn, "nfl-early", pid=2200, created="2026-09-24T05:10:00Z")
-    _forecast(conn, "nfl-early", pid=2201, fs="fs3", created="2026-09-24T06:00:00Z")
+    rows.append((2200, "nfl-early", dict(created="2026-09-24T05:10:00Z")))
+    rows.append((2201, "nfl-early", dict(fs="fs3", created="2026-09-24T06:00:00Z")))
+    for pid, gid, kwargs in sorted(rows, key=lambda r: r[0]):
+        _forecast(conn, gid, pid=pid, **kwargs)
     for rid, pid in ((62, 2264), (63, 2279), (64, 2287), (65, 2296), (66, 2297)):
         conn.execute(
             "INSERT INTO recommendations (id, prediction_id, sport, game_id,"

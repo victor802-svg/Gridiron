@@ -616,6 +616,16 @@ PREDICTION_TRIGGERS = (
     # rebuild copies back pass it: a row before the release instant is not
     # bound, and a row after it cites the sent record it was written with.
     "reasoning_row_carries_its_prompt",
+    # NOR REPLACED (operator question 15, ruled 2026-09-27). Named here for
+    # the same reason: measured 2026-09-27 on a scratch record made narrow,
+    # a widening that did not drop them first carried all three away with
+    # the renamed table, the schema script found their names taken and made
+    # none, and the widened table took an INSERT OR REPLACE over forecast 1.
+    # The rows a widening copies back pass them: each is a new number in
+    # order, into a table holding none, and no two share a key.
+    "predictions_never_replaced",
+    "predictions_never_replaced_by_update",
+    "predictions_never_replaced_by_the_number_written",
 )
 
 

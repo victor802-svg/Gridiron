@@ -96,6 +96,18 @@ class BlindRun:
 # step 4 — the write
 # ---------------------------------------------------------------------------
 
+#: THE WORDS OF LAW 3'S REPLACE RULES ON `predictions` (operator question 15,
+#: ruled 2026-09-27: "Fix predictions the same way as Q13"). The schema's
+#: `predictions_never_replaced`, `..._by_update` and `..._by_the_number_
+#: written` refuse in words carrying these, never "UNIQUE"; a test holds the
+#: schema to them. Nothing here counts that refusal, and nothing needs to:
+#: `write_prediction` asks `already_written` first, which mirrors the key, so
+#: the insert rule refuses its row only when another writer answered the same
+#: question between the ask and the insert -- which raised on the key before
+#: 2026-09-27 and raises on the rule now, the same `IntegrityError`.
+NEVER_REPLACED = "a prediction is never replaced"
+
+
 def already_written(conn: sqlite3.Connection, q: Question, predictor: str,
                     *, final: bool = False) -> bool:
     """Has this exact question already been answered by this predictor?

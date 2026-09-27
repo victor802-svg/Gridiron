@@ -568,6 +568,9 @@ def test_every_new_guard_is_in_the_planted_harness():
         # OPERATOR QUESTION 13 (ruled 2026-09-27, built the same day): no
         # stored recommendation may be replaced by any statement.
         "plant_a_replaced_recommendation",
+        # OPERATOR QUESTION 15 (ruled 2026-09-27, third set): predictions
+        # fixed the same way as question 13 -- no stored forecast replaced.
+        "plant_a_replaced_prediction",
         # GRIDIRON_REPAIR item 6 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): at the venue's line, one bet per game per forecaster --
         # never two forecasters in one count, never a game counted twice.

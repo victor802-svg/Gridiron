@@ -4583,7 +4583,10 @@ the gate's release comparison is run after it, as with every rule since 5b.
   2026-09-23 finding above ("`INSERT OR REPLACE` walks past every
   append-only trigger"), still open. Replacing was tried here only on
   `predictions` and the two companions; another rule on insert may refuse
-  it on some of the rest.
+  it on some of the rest. *(Closed for `predictions` by question 15's first
+  step, ruled 2026-09-27, third set: "No stored prediction is replaced",
+  below. The other fifteen still carry no replace rule; the same ruling's
+  gate scan is about replacing statements in the shipped code, not rules.)*
 - **A recommendation's number can still be changed.** `recommendations_no_
   update` lists no `id`, so `UPDATE recommendations SET id = 99 WHERE id =
   1` (or by `rowid`) lands when no other row holds 99 -- with foreign keys
@@ -5584,3 +5587,426 @@ the gate's check a no-op, the world planting escapes on its gate probe. The
 it included; the harness alone 324/324; `audit.prose_reaching_the_raw_side()`
 is `[]`. The gate's new check passes on the live record, read-only (newest
 prediction 3108), and `audit.horizon_unit_faults()` is `[]`.
+
+## No stored prediction is replaced -- built 2026-09-27 *(operator question 15, its first step; the third set of rulings of 2026-09-27)*
+
+"Q15: first in the order. Fix predictions the same way as Q13, own commit,
+planting that gets through on the unfixed code." The question as asked is
+`docs/REPAIR_STATE.md` question 15; the hole was found by question 13's build
+(above, "A prediction can be replaced"). The precedent is question 13
+(9db5582 and its prover): its three rules, its words constant, its order,
+its older record and its number read twice. How the brief is read is in
+`docs/briefs/2026-09-27-rulings-third-set.md`. The ruling's gate scan and its
+read-only measurement of the live record are its next steps, not this one.
+
+### MEASURED FIRST *(2026-09-27; scratch worlds built by 98091d2 -- the released 68b215e plus documents -- and by this tree; the record only through copies made by `db.back_up_the_live_record`)*
+
+- **Every form that took a stored forecast's place on 98091d2**, each on a
+  fresh scratch world (two statistical forecasts on games of their own; a
+  reasoning forecast citing sent prompt 7, dated before the prompt record
+  binds; the final pass of the first forecast's question; a voided
+  forecast, the newest; foreign keys on unless said):
+  - `INSERT OR REPLACE` and `REPLACE` naming a stored number -- as `id`,
+    `rowid`, the text `'1'`, `1.0` -- wrote another game's forecast of 0.99
+    under the number of the stored 0.61.
+  - `INSERT OR REPLACE` on a stored question and pass
+    (`pred_one_answer_per_question_per_pass`) removed the stored forecast and
+    wrote the newcomer under a new number -- and so did one giving the pass
+    as NULL: `pass_kind` is the key's one column with a default, and under
+    OR REPLACE SQLite writes a NULL there as 'early' AFTER the rules have
+    seen NULL. `INSERT OR REPLACE ... SELECT` colliding with the second's
+    number and the first's question removed both.
+  - `INSERT OR REPLACE` citing the sent prompt the stored reasoning forecast
+    cites (`pred_cites_one_sent_prompt`, the table's third key) removed it.
+  - `INSERT OR REPLACE` onto the voided forecast's number on its own
+    question: the void then withdrew the newcomer.
+  - `UPDATE OR REPLACE` moving the second onto the first's number by `id`,
+    `rowid`, `oid` or `_rowid_` removed the first; `UPDATE OR REPLACE ...
+    SET pass_kind = 'early'` (or NULL) on the final pass removed the early
+    pass of its question -- `pass_kind` is not a column
+    `predictions_no_update` lists.
+  - THE NUMBER READ TWICE: a function the connection defines, called twice
+    for a one-row insert's number (the rules see the first answer), wrote
+    over the first, the second and the voided newest forecast, by `INSERT OR
+    REPLACE` and by `REPLACE`; `random()` drawing one to six over five stored
+    wrote over one in 58 tries of 64, and NULL-or-the-first by a coin in 32.
+  - UPSERTS naming a stored forecast: `DO UPDATE SET pass_kind` (by its
+    number, or on its question's key) rewrote its pass, and `DO UPDATE SET
+    resolved_utc, outcome` wrote a resolution round the resolver.
+  - FOREIGN KEYS: a by-key replacement of a forecast something points at (a
+    void here; on the record every forecast has a fingerprint) is held by the
+    key with them on -- the newcomer takes a new number and the old one's
+    children would point at nothing -- and taken with them off; a
+    replacement under the same number is taken either way.
+- **Already refused on 98091d2, and why**: an update of what was forecast or
+  of the question but its pass (`predictions_no_update`, which also refused
+  an upsert rewriting a probability); a second resolution
+  (`predictions_resolve_once`); an upsert moving a row onto another's number
+  (the key); `UPDATE OR REPLACE ... SET id = NULL` ("datatype mismatch").
+- **The table's keys**: its number (`INTEGER PRIMARY KEY AUTOINCREMENT`, no
+  automatic index), `pred_one_answer_per_question_per_pass` (six columns)
+  and `pred_cites_one_sent_prompt` (an expression, partial on `predictor =
+  'llm'`). Its rules on the record's copy, oldest first:
+  `voided_prediction_stays_void`, `predictions_no_delete`,
+  `predictions_no_update`, `predictions_resolve_once`,
+  `reasoning_row_carries_its_prompt`. `predictions_no_update` lists thirteen
+  columns, and not `id`, `sport`, `prop_type`, `pass_kind` or `degraded`.
+- **Every writer read**: `model.predict.write_prediction` (a plain INSERT
+  naming no number, after `already_written`, which mirrors the key, inside
+  one savepoint with the prompt record and the fingerprint);
+  `resolve.resolve_all` (an UPDATE of `resolved_utc` and `outcome` `WHERE
+  resolved_utc IS NULL`); `resolve.void_prediction` and `tools/void_fs5.py`
+  write `prediction_voids` only; `db._finish_widening` copies the rows back
+  into a rebuilt table by `INSERT ... SELECT`, in number order, into a table
+  holding none; `gridiron.rebuild` copies before a table's rules exist and
+  never rebuilds this one; `tools/dbcopy.FACT_TABLES` does not carry it;
+  backtests write through the pipeline. No package or tool module uses `OR
+  REPLACE`, `REPLACE`, `OR IGNORE` or `ON CONFLICT` on `predictions`, and
+  none counts an insert's refusal by "UNIQUE" there (the four that count
+  "UNIQUE" -- `recommend.record_for`, `at_the_line`, `priced.forecast`,
+  `views` -- count it on other tables). So there was no counting to keep.
+
+### BUILT *(2026-09-27)*
+
+- **`predictions_never_replaced`** (BEFORE INSERT): refuses an insert naming
+  a stored number, a stored question and pass, or a sent prompt a stored
+  reasoning forecast cites -- all three keys -- whatever its conflict clause,
+  since a rule cannot see one: a plain second answer to a question (the
+  key's "UNIQUE" until now) and an upsert naming a stored forecast are
+  refused too, by name. It does not look up the -1 SQLite shows it when the
+  number is left to SQLite (question 13's prover).
+- **`predictions_never_replaced_by_update`** (BEFORE UPDATE, no column list):
+  refuses an update that would take the place of another stored forecast
+  by any of the three keys, and nothing else; the resolver's update is
+  untouched.
+- **`predictions_never_replaced_by_the_number_written`** (AFTER INSERT):
+  refuses the number a row landed under at or below `sqlite_sequence`'s mark
+  for the table, or below any stored forecast; the abort takes the statement
+  back, the removed row with it.
+- **A PASS GIVEN AS NULL IS EITHER PASS** in both rules before the row: a
+  NULL pass collides with a stored forecast of the question in either pass.
+  No writer gives NULL, and a plain insert of one is refused as NOT NULL
+  whatever these rules say.
+- **Declared after `reasoning_row_carries_its_prompt`**, the table's newest
+  rule on the record, so a fresh build runs them in the order the record
+  will (SQLite runs a table's rules newest first). All three refuse under
+  LAW 3 in words carrying `predict.NEVER_REPLACED` ("a prediction is never
+  replaced"), never "UNIQUE"; a test holds the schema to it.
+- **`db.PREDICTION_TRIGGERS` names them.** Measured on a scratch record made
+  narrow (its sport CHECK without 'ufc', so `db.init` widens the table):
+  without their names in that list the rename carried all three away with
+  the old table, the schema script found the names taken and made none, the
+  drop took them, and the widened table took an `INSERT OR REPLACE` over
+  forecast 1. With them, the rules end on the widened table, every row and
+  the sequence as they were, and the copy passes them (each row a new
+  number in order, into an empty table).
+- **No writer changes.** `write_prediction` refuses nothing new: it names no
+  number and asks `already_written` first; if another writer answers the
+  question between the ask and the insert, the insert is refused -- by the
+  key before, by the rule now -- and raises the same `IntegrityError`, the
+  savepoint taking the row and its prompt record back.
+- **Two test worlds changed, not writers.** `test_voids._the_morning` wrote
+  the record's own numbers out of order (2228 after 2294, and 2200 last); it
+  now writes the same rows, numbers and stamps in the order of their
+  numbers, as SQLite gave them out, and every assertion stands (question
+  13's precedent: its `_let_through_world`). And in `test_prompt_record`
+  a sent-prompt cite spelled as a real (and as true when the record is
+  number 1) IS the first forecast's cite under the one-forecast key, so the
+  replace rule, which runs first, refuses it in its words; the text spelling
+  is refused by the prompt record's rule as before.
+- **Planting** `plant.py::plant_a_replaced_prediction`: 24 forms on the world
+  above, each run and rolled back -- the 21 that change the table on
+  98091d2 and three held (an update onto another's question by its game, an
+  upsert rewriting a probability, a plain second answer); CAUGHT means each
+  refused under LAW 3, the 21 in the rules' words, every forecast and void
+  as stored; a new forecast, a final pass beside a stored early one, a
+  resolution and a void still written; with only the number-written rule
+  dropped, the three read-twice forms writing over a stored forecast; with
+  all three dropped, each of the 21 changing the table. *(26 forms and 23
+  changing from the prover, below.)*
+- **Tests** in `tests/test_predictions_never_replaced.py` (40; 44 from the
+  prover, below): the 23 forms
+  (the planting's without the read-twice three, plus a question and pass
+  stamped as stored and an upsert moving a row onto another's number); the
+  forms replacing without the rules; a NULL pass removing the early pass
+  past rules that compare it as given; every key of the table read by the
+  rules (a new unique index fails it); the lawful writes through the
+  pipeline (statistical and reasoning early passes with their sent prompts,
+  the final pass, the resolver, a void; numbers 1 to 16 in order); a writer
+  racing another still raising; the words and the order on a fresh build;
+  an older record gaining exactly the three through `db.init`; a widened
+  table keeping them; and the number read twice (three forms by each verb),
+  `random()`, a free number below one given out, and a forecast moved to -1
+  not stopping the next.
+
+### THE REHEARSAL *(2026-09-27 16:18Z; a copy of the record made through `db.back_up_the_live_record`, and a verified copy of that, never the record)*
+
+The copy of the copy verified (`rebuild.verified_backup`: 61 tables,
+1,248,349 rows, integrity ok, every sqlite_master row and every table's
+count and column checksums equal). Before: 238 objects; 3,120 forecasts,
+numbers 1 to 3,120, sequence 3,120; `schema_diff.compare` against a fresh
+build of this tree found exactly the three rules missing and nothing else.
+`db.init` under this tree then made exactly the three -- no object gone or
+changed, no table's count or column checksums moved -- with a fresh build's
+text byte for byte, after `reasoning_row_carries_its_prompt`. After: 0
+differences in behaviour (241 objects each; 9 differ only in what the
+ruling normalises, the same nine as question 13's, the three not among
+them); a second `db.init` changed nothing. On the copy's own rows: OR
+REPLACE naming forecast 3,120's number, OR REPLACE on forecast 1's question
+and pass, UPDATE OR REPLACE moving 2 onto 1 by `rowid`, both read-twice
+forms (onto 1, and onto 3,120, the newest), a plain insert naming a free 0,
+UPDATE OR REPLACE moving final pass 597 onto early pass 65 by its pass, and
+OR REPLACE citing the sent prompt forecast 3,120 cites were each refused in
+the rules' words; the resolution of open forecast 1,508 landed, and a plain
+insert took 3,121 (both rolled back); the forecasts' column checksums
+unchanged throughout.
+
+### PROVED *(2026-09-27)*
+
+- **The planting ESCAPES on 98091d2** (`git archive HEAD` into the
+  scratchpad, this `plant.py` copied over it): all 21 changing forms taken,
+  each named with the rows before and after, and the plain second answer
+  refused by the key's "UNIQUE", not the rules. It is CAUGHT here.
+- **Each rule, and each clause, is proved by it** (the rule dropped or
+  weakened after `db.init`, the planting run): the insert rule dropped, the
+  three inserts on a key (the question and pass, the NULL pass, the cite)
+  and the three upserts escape -- the forms naming a stored number fall to
+  the number-written rule instead; the update rule dropped,
+  its six updates; the number-written rule dropped, the three read-twice
+  forms; the update rule listing its columns, the updates by `rowid`, `oid`
+  and `_rowid_`; either rule comparing the pass as given, its NULL form;
+  the insert rule without the cite, the cite form.
+- **The new tests fail on 98091d2** (this file run over the archive): 39 of
+  40; the lawful-writes test passes there, as it must.
+- **The full suite here** with a dummy access token: 1826 passed, 8
+  skipped, exit 0, the planting harness inside it included; the harness
+  alone 325/325. An earlier run without the harness had one failure,
+  `test_smoke.py::test_nothing_moves_under_reduced_motion`, which passed
+  run alone: the known race (question 5's business), not this change.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **"The same way as Q13" is Q13's three rules on `predictions`, under names
+  of their own** (the brief's reading), and "replaced" is Q13's: a stored
+  forecast removed by another's taking its place, by an insert or an
+  update. So the insert rule refuses any insert naming a stored key (a rule
+  cannot tell OR REPLACE from a plain insert), and the update rule only an
+  update that takes another's place.
+- **Every key the table has, the prompt cite included.** The brief names "a
+  stored prediction's number or any other stored unique key of the table";
+  `pred_cites_one_sent_prompt` is one, and OR REPLACE on it removed a stored
+  reasoning forecast (measured). A test fails if the table gains a key the
+  rules do not read. (Reversal: drop the cite clause from both rules.)
+- **A NULL pass is either pass**, the stricter reading of a collision SQLite
+  resolves after the rules have looked; it refuses nothing a writer does.
+- **An upsert naming a stored forecast is refused whatever it would set**
+  (Q13's reading), a resolution included: the resolution has its own
+  writer, an update, which is untouched.
+- **`db.PREDICTION_TRIGGERS` is not a writer.** It lists the schema's rules
+  on the table so a widening recreates them; without the three names the
+  first widening would drop them (measured).
+- **Two test worlds were changed, and no writer.** Q13's precedent; each is
+  said above.
+- **The words of a plain second answer moved** from the key's "UNIQUE
+  constraint failed" to the rules'; nothing counts either.
+
+### THE LIVE RECORD AFTER THE RELEASE *(no tool)*
+
+No row is written and no tool runs. The scheduler's first open of the record
+under the released code (`db.init`, as every schema rule has arrived since
+5b) makes the three rules and nothing else; every forecast stays as written.
+Afterwards, read through `db.read_the_live_record`: sqlite_master holds
+`predictions_never_replaced`, `predictions_never_replaced_by_update` and
+`predictions_never_replaced_by_the_number_written`, in that order, after
+`reasoning_row_carries_its_prompt`, with `schema.sql`'s text. Until that
+first open the record lacks them while the release has them, so the gate's
+release comparison runs after it, as with every rule since 5b.
+
+### OPEN, found by this step *(2026-09-27; not built)*
+
+- **A forecast's number can still be changed by a plain UPDATE.**
+  `predictions_no_update` lists no `id`, so `UPDATE predictions SET id = <a
+  free number>` (or by `rowid`) lands on 98091d2 and here on a forecast
+  nothing points at. On the record's copy the newest forecast, fingerprinted
+  like every one, is held by the fingerprint's key with foreign keys on, and
+  moves with them off. From this step a later insert under the old number is
+  refused (`..._by_the_number_written`: it is at or below one given out), so
+  no forecast can be written in its place; the move itself is not a
+  replacement and is not refused. Question 13 left the recommendation's
+  equivalent open ("freezing the number goes past the ruling's words"), and
+  "the same way as Q13" leaves this one open too: for the operator. *(From
+  the prover, below: a move ABOVE every number given out is refused, because
+  it took the forecast out of the number-written rule's reach and a number
+  read twice then wrote over it. A move within the numbers given out still
+  lands, and stays in reach.)*
+- **A forecast's pass, sport, prop and degraded tag can be changed by a
+  plain UPDATE** (measured on 98091d2 and here), where no other row takes
+  its place: `predictions_no_update` does not list them. The fingerprint
+  hashes the sport, the prop and the pass (`fingerprint.PROTECTED`), so the
+  gate's fingerprint check would name such a row afterwards; the degraded
+  tag is in neither. Which pass a row is decides which forecast stands. Not
+  a replacement, so not this ruling's: for the operator.
+- **SQLite's own sequence set back first**, as question 13's NOT SEEN: an
+  ordinary statement may rewrite `sqlite_sequence`, SQLite refuses a rule on
+  it, and after the mark is set below the newest forecast an insert whose
+  number reads free to the rules and the newest's to the key writes over it,
+  leaving nothing that tells it from a newcomer. Every other forecast stays
+  protected by "below any stored one". *(The prover, below: the set-back
+  can also be done inside the replacing statement, by a temporary rule the
+  connection makes; and "below any stored one" is proved by a planting form
+  and a test of its own.)*
+
+### THE PROVER *(2026-09-27; alone in the worktree, the change uncommitted; scratch worlds, and the record only through `db.back_up_the_live_record`)*
+
+- **TRIED, AND REFUSED BY THE RULES** (each on its own copy of the
+  planting's world, foreign keys on and again off; the same forms on a `git
+  archive` of 98091d2 each changed the table unless said): the table named
+  `main.predictions`, `"predictions"`, `[predictions]`, `` `predictions` ``,
+  `MAIN."PREDICTIONS"`, `PREDICTIONS`, `"main"."predictions"`, and through
+  an attached copy (`aux.predictions`); the number as `oid`, `_rowid_`,
+  `"ROWID"`, `Id`, both `id` and `rowid` listed (either order: SQLite writes
+  the last named), and spelled `' 1'`, `'+1'`, `1e0`, `0x1`, `'1.0'`,
+  `'  1  '`, `CAST('1' AS INTEGER)`, `(SELECT 1)`, `2-1`; the question and
+  pass with the pass left to its default, given `(SELECT 'g1')` for the
+  game, the final pass, and a pass `CAST(NULL AS TEXT)`; the sent-prompt
+  cite spelled `7.0`, `7e0`, `70e-1`, `0.7e1`, with spaces, with a key
+  written `reasoning_prompt_id`, duplicated with 7 first, and as a
+  blob; an upsert on the cite's own expression index;
+  `executescript`; a temporary view whose INSTEAD OF rule writes OR REPLACE;
+  temporary rules on `games` writing a plain insert under an outer `INSERT
+  OR REPLACE` or `UPDATE OR REPLACE` (the outer clause is inherited); a rule
+  on `games` in the schema itself writing OR REPLACE; temporary rules on
+  `predictions` that move the stored forecast away first (by its number:
+  refused after it lands), or that write OR REPLACE or UPDATE OR REPLACE
+  from after an insert; `UPDATE OR REPLACE` onto another's number spelled
+  `'1'`, `1.0`, `id - 1`, `(SELECT 1)`, through `... FROM`, through
+  `main.predictions`, and moving the final pass onto the early one's
+  question and a new number at once; a stored forecast at -1 written over
+  by a number named -1, or moved onto by an update; a second row of a
+  multi-row VALUES naming a stored number. Refused here too, and NOT
+  replacements on 98091d2: `UPDATE OR REPLACE` on every row at once (`6 -
+  id`, `id + 1`; held there by the void's foreign key), an upsert with two
+  ON CONFLICT clauses and `INSERT OR ABORT`, `OR FAIL`, `OR ROLLBACK` naming
+  a stored number (refused there by the key), `INSERT OR IGNORE` and `ON
+  CONFLICT DO NOTHING` naming one and `INSERT OR REPLACE ... SELECT *` of a
+  forecast onto itself (nothing visible changed there), and
+  `recursive_triggers` on (the delete rule refuses there) -- a rule cannot
+  see the clause, and no writer uses any of them on this table. A temporary
+  rule changing a stored forecast's pass before an insert of its question
+  is the pass edit OPEN above, not a replacement: the forecast stays, under
+  its other pass.
+- **READ ONCE, SO NOT A PATH**: a function in the game, the pass or the
+  factors of a one-row insert is called once (measured: only the number is
+  read twice); an update works its new values out once. A JSON blob (JSONB)
+  or a cite duplicated with another number first is no key to either the
+  index or the rules. Incremental blob writes (`Connection.blobopen`) are
+  refused on every column of this table by SQLite itself, because it has an
+  expression index ("cannot open indexed column for writing").
+- **FOUND AND FIXED -- A FORECAST MOVED OUT OF REACH.** The number-written
+  rule holds only what is at or below `sqlite_sequence`'s mark, and an
+  UPDATE of a number does not move the mark (measured: 2 moved to 10 over a
+  mark of 3 left the mark 3). So on the rules as first built a plain `UPDATE
+  predictions SET id = 10 WHERE id = 2` landed (it replaces nothing), and a
+  one-row `INSERT OR REPLACE` or `REPLACE` whose number read as a free 99 to
+  the rules and as 10 to the row wrote another game's forecast over it: the
+  rule after the insert saw 10 above the mark and nothing above 10. Also on
+  98091d2. `predictions_never_replaced_by_update` now also refuses a move of
+  a forecast's number above every number given out, in the rules' words;
+  nothing else it refuses is new. It is not a freeze of the number: a move
+  within the numbers given out still lands (OPEN above, the operator's) and
+  stays in reach -- a number read twice onto it is refused. No writer moves
+  a number. The reading: "the same way as Q13" does not mean with its
+  holes, and the precedent's own conservative default (refusing a free
+  number below one given out, which replaces nothing) refuses what no
+  writer does to keep what the ruling protects in reach. (Reversal: take the
+  clause out of the update rule.) One test world changed, no writer:
+  `test_a_number_below_one_already_given_out_is_refused_and_one_above_lands`
+  vacated number 2 by moving the forecast up to 10, and now moves it down,
+  to -5; it asks about the same numbers.
+- **THE SAME HOLE ON RECOMMENDATIONS, NOT BUILT.** Measured on this tree:
+  `UPDATE recommendations SET id = 10 WHERE id = 2` over a mark of 3 lands,
+  and a one-row `INSERT OR REPLACE` whose number reads 99 to question 13's
+  rules and 10 to the row writes rec 4's forecast over it. Question 13 is
+  released and this ruling names predictions: for the operator.
+- **NOT SEEN BY ANY RULE, measured** (settings of a connection, never a
+  statement a rule is shown; each is taken on this tree):
+  - `Connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, False)`
+    switches every rule in the schema off for that connection, after which
+    `INSERT OR REPLACE` naming a stored number, or on a stored question and
+    pass, writes over the forecast -- and the delete rule is silent too.
+  - `create_function("json_valid", 1, ...)` (or `json_extract`), answering
+    the insert rule's reading of a newcomer's factors as not JSON and the
+    one-forecast index's as JSON, lets `INSERT OR REPLACE` citing a stored
+    reasoning forecast's sent prompt remove that forecast: the rule and the
+    index each read the cite once, through the connection's function. A
+    truthful redefinition is refused. On the record every forecast has a
+    fingerprint, so with foreign keys on the removal fails on that key;
+    with them off it is taken, and `PRAGMA foreign_key_check` names the
+    orphaned fingerprint afterwards.
+  - The sequence set back INSIDE the replacing statement, by a temporary
+    rule on `predictions` that rewrites `sqlite_sequence` before the rule
+    after the insert reads it: the newest forecast written over, as with a
+    statement first.
+  - Redefining the `BINARY` collation was tried both ways (every text equal,
+    no text equal): the unique indexes compare their keys byte for byte and
+    the rules' key lookups go through them, so no forecast was replaced;
+    each attempt was refused by another rule or a CHECK the redefinition
+    broke.
+  - **For the ruling's next step, the gate scan**: shipped code that calls
+    `setconfig` with `SQLITE_DBCONFIG_ENABLE_TRIGGER`, or `create_function`
+    / `create_collation` naming a built-in the schema uses, is a replacing
+    statement's precondition the scan can see and a rule cannot.
+- **EACH PART NEEDED** (the planting run against a copy of `schema.sql` with
+  one part taken out): the insert rule (the three inserts on a key, the
+  three upserts; the plain second answer falls to "UNIQUE"), the update
+  rule (its six updates and the move above the mark), the number-written
+  rule (the three read-twice forms and the sequence form), the update rule
+  listing `OF id, pass_kind` (rowid, oid, _rowid_), either rule comparing
+  the pass as given (its NULL form), the insert rule without the cite (the
+  cite form), the update rule without the move above the mark (that form),
+  the number-written rule without "below any stored one" (the sequence
+  form) -- each ESCAPED. Two parts the planting does not need, each held by
+  a test instead: the insert rule not looking -1 up
+  (`test_a_prediction_given_a_number_below_one_does_not_stop_the_next`
+  fails when it does), and the update rule's cite clause, which
+  `predictions_no_update` shadows today -- it freezes the factors and the
+  forecaster, the two things the cite is read from -- and which
+  `test_every_key_of_the_table_is_one_the_rules_read` holds so the update
+  rule reads every key the insert rule does.
+- **PROVED.** The planting (26 forms: two added, the move above the mark
+  and the sequence set back, each in two statements) ESCAPES on a `git
+  archive` of 98091d2 with this `plant.py` copied in -- all 23 changing
+  forms taken, the two new ones among them, and the plain second answer
+  refused by "UNIQUE" -- and is CAUGHT here. The test file (44: the move
+  above the mark and the sequence set back, by both verbs) fails 43 of 44
+  on that archive, the lawful writes passing there as they must, and
+  passes here. Each neutralised part above fails its test here. The
+  harness: 325/325, exit 0. Gate step 2's rows run on their own (not
+  `verify.py` whole; the harness row left to the run above) with
+  `GRIDIRON_VERIFYING` set: 90 PASS, 0 FAIL -- both schema comparisons 0
+  registered differences outstanding (9 objects differing only in what the
+  ruling normalises), the record's schema as found (238 objects).
+  `audit.prose_reaching_the_raw_side()` is `[]`. The full suite with a
+  dummy access token: 1830 passed, 8 skipped, exit 0. (A first run with the
+  temporary directory set deep inside the scratchpad failed ten tests that
+  copy the package or run git there, on `[WinError 3]` and git's exit 128:
+  the copied paths passed Windows' 260 characters. All ten passed with the
+  default temporary directory, and so did the whole suite; the eleventh,
+  `test_smoke.py::test_nothing_moves_under_reduced_motion`, passed alone --
+  the known race, question 5's business.)
+- **RE-REHEARSED** at 17:10Z on a fresh copy through
+  `db.back_up_the_live_record` and a verified copy of it (61 tables,
+  1,248,982 rows, integrity ok): before, 238 objects, 3,120 forecasts
+  numbered to 3,120, sequence 3,120, exactly the three rules missing
+  against a fresh build; `db.init` added exactly the three with a fresh
+  build's text after `reasoning_row_carries_its_prompt`, nothing gone or
+  changed, no table's checksums moved; after, 0 differences (241 objects
+  each, 9 cosmetic); a second `db.init` changed nothing. On the copy's own
+  rows every form above was refused in the rules' words, and the move of
+  forecast 2 or of the newest above the mark (3,125) with foreign keys on
+  and off, the move to 0 followed by a number read twice onto it, and the
+  sequence set back followed by a number read twice onto forecast 1 were
+  refused too; the sequence set back and a number read twice onto the
+  newest was TAKEN (NOT SEEN, as recorded). The resolution of open
+  forecast 1,508 landed and a plain insert took 3,121 (both rolled back);
+  the forecasts' checksums and the sequence never moved.

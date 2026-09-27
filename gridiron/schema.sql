@@ -1401,6 +1401,201 @@ BEGIN
         || 'than the forecast, that no other forecast cites');
 END;
 
+-- ---------------------------------------------------------------------------
+-- NOR REPLACED (operator question 15, ruled 2026-09-27, third set: "Fix
+-- predictions the same way as Q13, own commit, planting that gets through
+-- on the unfixed code." Built 2026-09-27; question 13's three rules on
+-- recommendations are the precedent, and the snapshot table's before them.)
+--
+-- THE HOLE. predictions_no_delete refuses a delete, and SQLite does not
+-- count a replacement as one: an insert or an update under OR REPLACE that
+-- collides with a stored row removes that row and runs no delete rule
+-- unless recursive triggers are on, a setting of the connection nothing in
+-- this project turns on. Measured 2026-09-27 on scratch databases built by
+-- 98091d2 (the released 68b215e plus documents), SQLite 3.49.1:
+-- INSERT OR REPLACE and REPLACE naming a stored number (as id, as rowid, as
+-- the text '1' or as 1.0) put another forecast under it -- another game,
+-- 0.99 where 0.61 was; OR REPLACE on a stored question and pass (the key
+-- pred_one_answer_per_question_per_pass) removed the stored forecast and
+-- wrote the newcomer under a new number, and so did one giving the pass as
+-- NULL (below); OR REPLACE citing the prompt a stored reasoning forecast
+-- cites (the key pred_cites_one_sent_prompt) removed that forecast; OR
+-- REPLACE onto a voided forecast's number kept its void, which then
+-- withdrew the newcomer; and UPDATE OR REPLACE moving one forecast onto
+-- another's number -- by id, rowid, oid or _rowid_ -- or onto another's
+-- question by its pass, a column predictions_no_update does not list,
+-- removed the other. With foreign keys on, a forecast something points at
+-- (measured with a void; on the record every forecast has a fingerprint)
+-- is held by that key against a replacement that gives the newcomer a new
+-- number, and by nothing against one that keeps its number; with them
+-- off, by nothing at all.
+--
+-- ALREADY REFUSED, so not stated again: an update of what was forecast or
+-- of the question but its pass (predictions_no_update) and a second
+-- resolution (predictions_resolve_once) -- each also refuses the update
+-- half of an upsert -- and an upsert moving a row onto another's number,
+-- which fails on the key. Nothing points at this table with a cascade.
+--
+-- THE INSERT RULE refuses an insert naming a stored number, a stored
+-- question and pass, or a sent prompt a stored reasoning forecast cites --
+-- every key of the table -- whatever it says about conflicts, since a rule
+-- cannot see that: a plain second answer to a question, refused by the key
+-- until now in words carrying "UNIQUE", is refused here by name. No writer
+-- counts that refusal: model.predict.write_prediction asks already_written
+-- first, which mirrors the key, and inserts only a question not yet
+-- answered. An insert that leaves the number to SQLite shows the rule -1
+-- for it, so the rule does not look -1 up (question 13's prover): a
+-- forecast moved to -1 by an update would otherwise have every later
+-- forecast refused. A number given as -1 is checked after it lands.
+--
+-- A PASS GIVEN AS NULL IS ANY PASS. pass_kind is the one column of the key
+-- with a default, and under OR REPLACE SQLite writes a NULL there as the
+-- default only after the rules have seen NULL (measured: the stored early
+-- pass was removed past a rule comparing the pass as given). So a NULL
+-- pass collides, for these rules, with a stored forecast of the question in
+-- either pass. No writer gives NULL, and a plain insert of one is refused
+-- either way: by these rules, or as NOT NULL.
+--
+-- THE UPDATE RULE refuses an update that would take the place of another
+-- stored forecast, by any of the three keys: the resolution write is
+-- untouched. It names no columns on purpose: a rule that lists id is not
+-- run by an update naming rowid, oid or _rowid_ (question 13, measured
+-- 2026-09-27). A new number that takes no other row's place replaces
+-- nothing and is not refused here (FOLLOWUPS) -- with one exception, below.
+--
+-- NOR ABOVE EVERY NUMBER GIVEN OUT (the prover, 2026-09-27). The rule on
+-- the number written, after these two, holds only for a forecast at or
+-- below sqlite_sequence's mark, and an update of a number does not move
+-- that mark (measured). So a plain UPDATE moving forecast 2 to 10 over a
+-- mark of 3 left it above every number given out, and a one-row OR REPLACE
+-- whose number read as a free 99 to the rules and as 10 to the row then
+-- wrote another game's forecast over it: the rule after the insert saw 10
+-- above the mark and nothing stored above 10. Measured on 98091d2 and on
+-- the three rules as first built, by INSERT OR REPLACE and by REPLACE. So
+-- this rule also refuses a move of a forecast's number above the mark. It
+-- is not a freeze of the number (question 13 left that to the operator,
+-- and so does this): a move to a free number at or below the mark still
+-- lands, and stays in reach of the rule after the insert. No writer moves
+-- a number.
+--
+-- DECLARED AFTER reasoning_row_carries_its_prompt, the table's newest rule
+-- on the record, deliberately. SQLite runs a table's rules newest first,
+-- and the record gains these on its first open after the release, after
+-- that rule; declared here, a fresh build runs them in the same order.
+-- (db.PREDICTION_TRIGGERS names them too, so a widening of the table
+-- carries them.)
+-- ---------------------------------------------------------------------------
+CREATE TRIGGER IF NOT EXISTS predictions_never_replaced
+BEFORE INSERT ON predictions
+FOR EACH ROW
+WHEN (NEW.id <> -1
+      AND EXISTS (SELECT 1 FROM predictions p WHERE p.id = NEW.id))
+  OR EXISTS (SELECT 1 FROM predictions p
+              WHERE p.game_id = NEW.game_id
+                AND p.market_type = NEW.market_type
+                AND p.subject = NEW.subject
+                AND p.predictor = NEW.predictor
+                AND p.factor_set_version = NEW.factor_set_version
+                AND (NEW.pass_kind IS NULL OR p.pass_kind = NEW.pass_kind))
+  OR (NEW.predictor = 'llm'
+      AND EXISTS (
+          SELECT 1 FROM predictions p
+           WHERE p.predictor = 'llm'
+             AND (CASE WHEN json_valid(p.factors_json)
+                       THEN json_extract(p.factors_json, '$.reasoning_prompt_id') END)
+               = (CASE WHEN json_valid(NEW.factors_json)
+                       THEN json_extract(NEW.factors_json, '$.reasoning_prompt_id') END)))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a prediction is never replaced. An insert may not '
+        || 'name the number, the question and pass, or the sent prompt, of '
+        || 'one already stored: what the forecaster said at the time is '
+        || 'written once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS predictions_never_replaced_by_update
+BEFORE UPDATE ON predictions
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM predictions p
+              WHERE p.id = NEW.id AND p.id IS NOT OLD.id)
+  OR EXISTS (SELECT 1 FROM predictions p
+              WHERE p.game_id = NEW.game_id
+                AND p.market_type = NEW.market_type
+                AND p.subject = NEW.subject
+                AND p.predictor = NEW.predictor
+                AND p.factor_set_version = NEW.factor_set_version
+                AND (NEW.pass_kind IS NULL OR p.pass_kind = NEW.pass_kind)
+                AND p.id IS NOT OLD.id)
+  OR (NEW.predictor = 'llm'
+      AND EXISTS (
+          SELECT 1 FROM predictions p
+           WHERE p.predictor = 'llm'
+             AND (CASE WHEN json_valid(p.factors_json)
+                       THEN json_extract(p.factors_json, '$.reasoning_prompt_id') END)
+               = (CASE WHEN json_valid(NEW.factors_json)
+                       THEN json_extract(NEW.factors_json, '$.reasoning_prompt_id') END)
+             AND p.id IS NOT OLD.id))
+  OR (NEW.id IS NOT OLD.id
+      AND NEW.id > (SELECT seq FROM sqlite_sequence WHERE name = 'predictions'))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a prediction is never replaced. An update may not '
+        || 'move one onto the number, the question and pass, or the sent '
+        || 'prompt, of another already stored, nor above every number '
+        || 'already given out, where a new one could be written over it');
+END;
+
+-- THE NUMBER WRITTEN, READ AFTER IT LANDS (question 13's prover, applied
+-- here by the ruling's "the same way"). For an insert of one row of values
+-- SQLite works the number out twice: once for the rules that run before
+-- the row is written, and again for the row itself. A number that comes
+-- out differently the second time -- random(), or a function the
+-- connection defines -- showed the insert rule -1 or a free number and then
+-- wrote over a stored forecast under OR REPLACE: measured 2026-09-27 on
+-- 98091d2, the first, the second and the voided newest forecast of a
+-- scratch world each became another game's forecast under its own number,
+-- and random() did it in 58 tries of 64 drawing one to six over five
+-- stored. Every other value of the row is worked out once, so only the
+-- number of a one-row insert needs this rule.
+--
+-- It reads the number the row was written under, after it is written, and
+-- refuses it at or below the highest number SQLite had given out when the
+-- statement began -- sqlite_sequence, which SQLite writes back only when
+-- the statement ends -- or below any forecast stored. Every stored
+-- forecast is at or below that mark -- an insert above it moves the mark
+-- when its statement ends, and the update rule refuses a move above it
+-- (the prover, 2026-09-27) -- so none can be written over, and
+-- RAISE(ABORT) takes the whole statement back, the removed row with it.
+-- After the fact a rule cannot tell a number that was stored from one that
+-- is free, so a forecast written under a free number at or below one
+-- already given out is refused as well: no writer names a number
+-- (write_prediction leaves it to SQLite, which gives the next one up).
+--
+-- NOT SEEN (FOLLOWUPS): SQLite lets an ordinary statement set its own
+-- sequence for predictions back below the newest one, and refuses any
+-- rule on that store; after such a statement -- or a temporary rule of the
+-- connection's own doing it inside the same statement (the prover,
+-- 2026-09-27) -- an insert that writes over the newest one leaves nothing
+-- stored that tells it from a newcomer. Nor, by any rule here (the prover,
+-- 2026-09-27, measured): a connection that switches its rules off
+-- (SQLITE_DBCONFIG_ENABLE_TRIGGER), after which every rule in this file is
+-- silent; or one that redefines json_valid or json_extract to answer the
+-- insert rule one way and the sent-prompt key another, after which OR
+-- REPLACE removes the reasoning forecast citing that prompt. Both are
+-- settings of a connection, never a statement a rule is shown.
+CREATE TRIGGER IF NOT EXISTS predictions_never_replaced_by_the_number_written
+AFTER INSERT ON predictions
+FOR EACH ROW
+WHEN NEW.id <= (SELECT seq FROM sqlite_sequence WHERE name = 'predictions')
+  OR EXISTS (SELECT 1 FROM predictions p WHERE p.id > NEW.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a prediction is never replaced. A new one is '
+        || 'written under a number above every one already given out, never '
+        || 'at or below one: what the forecaster said at the time is written '
+        || 'once');
+END;
+
 -- THE RELEASE INSTANT, written once and never moved or removed. A second
 -- value, an edit, a delete and a value that is not a time are all refused.
 CREATE TRIGGER IF NOT EXISTS prompt_record_instant_is_written_once

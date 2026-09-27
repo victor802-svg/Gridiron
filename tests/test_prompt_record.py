@@ -494,7 +494,15 @@ def test_a_cite_that_is_not_the_records_own_number_is_refused(trained):
     trained.commit()
     assert prompt_record.record_for(trained, first)["id"] == record
     for spelled in (str(record), float(record), True):
-        with pytest.raises(Exception, match="GRIDIRON PROMPT RECORD"):
+        # A SPELLING SQLITE READS AS THE STORED CITE -- the number as a real,
+        # and true when the record is number 1 -- is the first forecast's own
+        # cite under the one-forecast key, and from 2026-09-27 (operator
+        # question 15) the replace rule, which runs first, refuses it in its
+        # words; the text spelling is no stored cite, and the prompt record's
+        # rule refuses it. Either way it is refused.
+        words = (predict.NEVER_REPLACED if spelled == record
+                 else "GRIDIRON PROMPT RECORD")
+        with pytest.raises(Exception, match=words):
             reasoning_row(db.utcnow(), spelled, "final")
         trained.rollback()
     # A forecast of its own with its own record, cited as text, is refused

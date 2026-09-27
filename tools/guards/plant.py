@@ -12357,6 +12357,326 @@ def plant_a_replaced_recommendation() -> Result:
     return Result(law, what, guard, True, first or "refused")
 
 
+def plant_a_replaced_prediction() -> Result:
+    """Replace a stored prediction, by every statement that can.
+
+    Operator question 15, ruled 2026-09-27 (third set): "Fix predictions the
+    same way as Q13, own commit, planting that gets through on the unfixed
+    code." `predictions_no_delete` refuses a delete, and SQLite runs no
+    delete rule for a replacement unless recursive triggers are on, so LAW
+    3's own table could be rewritten by OR REPLACE -- found by question 13's
+    build, whose planting (`plant_a_replaced_recommendation`) this follows.
+
+    THE WORLD: two forecasts on games of their own, a reasoning forecast
+    citing a sent prompt (dated before the prompt record binds, so its own
+    rule does not), the final pass of the first forecast's question, and a
+    voided forecast, the newest. Nothing points at the first four, so a
+    replacement that gives the newcomer a new number is not held by a
+    foreign key either -- as on a connection with them off. THE FORMS, each
+    run on that world and rolled back: OR REPLACE and REPLACE naming a
+    stored number -- as id, as rowid, as the text '1', as 1.0 -- on a stored
+    question and pass, on one with its pass given as NULL (SQLite writes the
+    default after the rules have seen NULL), on a stored sent prompt's
+    cite, onto the voided one's number on its own question, and ... SELECT
+    colliding with two rows at once; UPDATE OR REPLACE moving one forecast
+    onto another's number by id, rowid, oid and _rowid_ (a rule listing id
+    is not run for the last three), and the final pass onto the early one's
+    question by its pass, given or NULL; the number read twice (below);
+    three upserts naming a stored forecast that would rewrite its pass or
+    write its resolution; and three no release lets through, held so a
+    later rule cannot open them -- an update onto another's question by its
+    game, an upsert that would rewrite a probability, and a plain second
+    answer to a question.
+
+    THE NUMBER READ TWICE (question 13's prover): for an insert of one row
+    of values SQLite works the number out once for the rules that run before
+    the row and again for the row, so a function the connection defines
+    that answers differently the second time shows the insert rule nothing
+    stored and writes over the first forecast, the second, or the voided
+    newest. Three forms. AND A FOURTH, in two statements (this step's
+    prover, 2026-09-27): a plain UPDATE moving the second forecast above
+    every number given out -- an update of a number does not move
+    `sqlite_sequence`'s mark -- and then the number read twice onto it; the
+    rule after the insert, which holds only what is at or below the mark,
+    let the three rules as first built write over it. And a fifth: the
+    sequence set back below every forecast (NOT SEEN for the newest, which
+    nothing stored then tells from a newcomer), and the number read twice
+    onto the first -- held by the number-written rule's "below any stored
+    one", which no other form needs.
+
+    CAUGHT means: every form refused under LAW 3 -- the ones that change the
+    table on the unfixed tree by the words of the replace rules -- with
+    every forecast and every void exactly as stored; a new forecast on a
+    question of its own, the final pass of a stored early one, a resolution
+    and a void still written; with only the rule reading the written number
+    dropped, the three read-twice forms writing over a stored forecast; and,
+    with every replace rule dropped, each form that changes the table on
+    the unfixed tree changing it here -- proof that the replacement is real
+    and that those rules are what stopped it.
+    """
+    from gridiron import db as _db
+
+    law = "LAW 3"
+    what = "a stored prediction replaced by an insert or an update"
+    guard = ("SQL triggers predictions_never_replaced, "
+             "predictions_never_replaced_by_update and "
+             "predictions_never_replaced_by_the_number_written")
+    rules = ("predictions_never_replaced",
+             "predictions_never_replaced_by_update",
+             "predictions_never_replaced_by_the_number_written")
+    cols = ("created_utc, sport, game_id, market_type, subject, line_asked,"
+            " model_prob, model_side, predictor, pass_kind, factor_set_version,"
+            " factors_json, reasoning")
+    stamp = "2026-09-06T20:50:15Z"
+    later = "2026-09-08T00:00:00Z"
+    cite = '{{"reasoning_prompt_id": 7}}'
+    READ_TWICE = "INSERT OR REPLACE whose number reads as "
+
+    class Handed:
+        """A function the connection defines, answering its first call --
+        the rules' reading of the number -- with `first` and every later
+        one -- the row's -- with `then`."""
+
+        def __init__(self, first, then):
+            self.first, self.then, self.calls = first, then, 0
+
+        def __call__(self):
+            self.calls += 1
+            return self.first if self.calls == 1 else self.then
+
+    def newcomer(number: str | None, game: str = "g5", *,
+                 verb: str = "INSERT OR REPLACE", column: str = "id",
+                 predictor: str = "statistical", pass_sql: str = "'early'",
+                 factors: str = "{{}}", created: str = later) -> str:
+        """An insert of a forecast of 0.99 on `game`, naming `number` in
+        `column` if given; placeholders filled from the world's ids."""
+        head = "" if number is None else f"{column}, "
+        lead = "" if number is None else f"{number}, "
+        return (f"{verb} INTO predictions ({head}{cols}) VALUES ({lead}"
+                f"'{created}', 'mlb', '{game}', 'moneyline', 'BBB', NULL, 0.99,"
+                f" 'win', '{predictor}', {pass_sql}, 'fs2', '{factors}',"
+                f" 'planted newcomer')")
+
+    # (label, statement, changes the table on the tree before the rules)
+    forms = (
+        ("INSERT OR REPLACE naming the first forecast's number, on another game",
+         newcomer("{p1}"), True),
+        ("REPLACE naming the first forecast's number as rowid",
+         newcomer("{p1}", verb="REPLACE", column="rowid"), True),
+        ("INSERT OR REPLACE naming the first forecast's number as the text '1'",
+         newcomer("'{p1}'"), True),
+        ("INSERT OR REPLACE naming the first forecast's number as 1.0",
+         newcomer("{p1}.0"), True),
+        ("INSERT OR REPLACE on the first forecast's question and pass",
+         newcomer(None, "g1"), True),
+        ("INSERT OR REPLACE on the first forecast's question, its pass given "
+         "as NULL", newcomer(None, "g1", pass_sql="NULL"), True),
+        ("INSERT OR REPLACE ... SELECT on the second's number and the first's "
+         "question at once",
+         f"INSERT OR REPLACE INTO predictions (id, {cols}) SELECT {{p2}},"
+         f" '{later}', 'mlb', 'g1', 'moneyline', 'BBB', NULL, 0.99, 'win',"
+         f" 'statistical', 'early', 'fs2', '{{{{}}}}', 'planted newcomer'", True),
+        ("INSERT OR REPLACE onto the voided forecast's number, on its own "
+         "question", newcomer("{void}", "g3"), True),
+        ("INSERT OR REPLACE citing the sent prompt the reasoning forecast cites",
+         newcomer(None, predictor="llm", factors=cite), True),
+        ("UPDATE OR REPLACE moving the second onto the first's number by id",
+         "UPDATE OR REPLACE predictions SET id = {p1} WHERE id = {p2}", True),
+        ("UPDATE OR REPLACE moving the second onto the first's number by rowid",
+         "UPDATE OR REPLACE predictions SET rowid = {p1} WHERE id = {p2}", True),
+        ("UPDATE OR REPLACE moving the second onto the first's number by oid",
+         "UPDATE OR REPLACE predictions SET oid = {p1} WHERE id = {p2}", True),
+        ("UPDATE OR REPLACE moving the second onto the first's number by _rowid_",
+         "UPDATE OR REPLACE predictions SET _rowid_ = {p1} WHERE id = {p2}", True),
+        ("UPDATE OR REPLACE moving the final pass onto the first's question by "
+         "its pass",
+         "UPDATE OR REPLACE predictions SET pass_kind = 'early' WHERE id = {final}",
+         True),
+        ("UPDATE OR REPLACE moving the final pass onto the first's question, "
+         "its pass set to NULL",
+         "UPDATE OR REPLACE predictions SET pass_kind = NULL WHERE id = {final}",
+         True),
+        (READ_TWICE + "nothing to the rules and the first forecast's to the row",
+         newcomer("handed_nothing_then_p1()"), True),
+        (READ_TWICE + "a free number to the rules and the second's to the row",
+         newcomer("handed_free_then_p2()"), True),
+        (READ_TWICE + "a free number to the rules and the voided newest's to "
+         "the row, by REPLACE",
+         newcomer("handed_free_then_void()", verb="REPLACE"), True),
+        # TWO STATEMENTS (the prover, 2026-09-27): the move is not itself a
+        # replacement, but it took the forecast out of the number-written
+        # rule's reach, and the read-twice insert then wrote over it.
+        ("a plain UPDATE moving the second forecast above every number given "
+         "out, then INSERT OR REPLACE whose number reads as a free one to the "
+         "rules and the moved one's to the row",
+         ("UPDATE predictions SET id = {above} WHERE id = {p2}",
+          newcomer("handed_free_then_above()")), True),
+        # AND WITH THE SEQUENCE SET BACK (NOT SEEN for the newest forecast,
+        # FOLLOWUPS): every forecast below the newest is still held, by the
+        # number-written rule's "below any stored one".
+        ("SQLite's sequence set back below every forecast, then INSERT OR "
+         "REPLACE whose number reads as a free one to the rules and the first "
+         "forecast's to the row",
+         ("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'predictions'",
+          newcomer("handed_free_then_p1()")), True),
+        ("an upsert naming the second forecast's number that would rewrite its "
+         "pass",
+         newcomer("{p2}", verb="INSERT")
+         + " ON CONFLICT(id) DO UPDATE SET pass_kind = 'final'", True),
+        ("an upsert naming the second forecast's number that would write its "
+         "resolution",
+         newcomer("{p2}", verb="INSERT")
+         + " ON CONFLICT(id) DO UPDATE SET resolved_utc = '2026-09-10T00:00:00Z',"
+           " outcome = 1", True),
+        ("an upsert on the second forecast's question that would rewrite its "
+         "pass",
+         newcomer(None, "g2", verb="INSERT")
+         + " ON CONFLICT(game_id, market_type, subject, predictor,"
+           " factor_set_version, pass_kind) DO UPDATE SET pass_kind = 'final'",
+         True),
+        ("UPDATE OR REPLACE moving the second onto the first's question by its "
+         "game",
+         "UPDATE OR REPLACE predictions SET game_id = 'g1' WHERE id = {p2}", False),
+        ("an upsert naming the first forecast's number that would rewrite its "
+         "probability",
+         newcomer("{p1}", verb="INSERT")
+         + " ON CONFLICT(id) DO UPDATE SET model_prob = excluded.model_prob",
+         False),
+        ("a plain INSERT of a second answer to the first forecast's question",
+         newcomer(None, "g1", verb="INSERT"), False),
+    )
+    lawful = (
+        ("a new forecast on a question of its own",
+         newcomer(None, "g6", verb="INSERT")),
+        ("the final pass of the second forecast's question",
+         newcomer(None, "g2", verb="INSERT", pass_sql="'final'")),
+        ("the resolution of an open forecast",
+         "UPDATE predictions SET resolved_utc = '2026-09-10T00:00:00Z',"
+         " outcome = 1 WHERE id = {p2} AND resolved_utc IS NULL"),
+        ("a void of a stored forecast",
+         "INSERT INTO prediction_voids (prediction_id, voided_utc, reason)"
+         " VALUES ({p1}, '2026-09-10T00:00:00Z', 'voided in this planted world')"),
+    )
+
+    conn = _db.connect(":memory:")
+    try:
+        _db.init(conn)
+        ids: dict[str, int] = {}
+        for n in range(1, 7):
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home,"
+                " away, kickoff_utc, status, league_date) VALUES (?, 'mlb',"
+                " 2026, 1, 'R', 'AAA', 'BBB', '2026-09-09T22:45:00Z',"
+                " 'scheduled', '2026-09-09')", (f"g{n}",))
+        for key, game, predictor, pass_kind, factors in (
+                ("p1", "g1", "statistical", "early", "{}"),
+                ("p2", "g2", "statistical", "early", "{}"),
+                ("llm", "g4", "llm", "early", '{"reasoning_prompt_id": 7}'),
+                ("final", "g1", "statistical", "final", "{}"),
+                ("void", "g3", "statistical", "early", "{}")):
+            ids[key] = conn.execute(
+                f"INSERT INTO predictions ({cols}) VALUES (?, 'mlb', ?,"
+                " 'moneyline', 'BBB', NULL, 0.61, 'win', ?, ?, 'fs2', ?,"
+                " 'planted')", (stamp, game, predictor, pass_kind,
+                                factors)).lastrowid
+        conn.execute(
+            "INSERT INTO prediction_voids (prediction_id, voided_utc, reason)"
+            " VALUES (?, '2026-09-08T00:00:00Z', 'voided in this planted"
+            " world')", (ids["void"],))
+        conn.commit()
+    except sqlite3.Error as exc:
+        conn.close()
+        return Result(law, what, guard, False,
+                      f"NOT CAUGHT - the planted world could not be built: {exc}")
+    # A number above every one given out: the world's mark and five more.
+    ids["above"] = conn.execute("SELECT seq FROM sqlite_sequence WHERE"
+                                " name = 'predictions'").fetchone()[0] + 5
+    handed = {"handed_nothing_then_p1": Handed(None, ids["p1"]),
+              "handed_free_then_p2": Handed(99, ids["p2"]),
+              "handed_free_then_void": Handed(99, ids["void"]),
+              "handed_free_then_above": Handed(99, ids["above"]),
+              "handed_free_then_p1": Handed(99, ids["p1"])}
+    for name, function in handed.items():
+        conn.create_function(name, 0, function)
+
+    def state():
+        return ([tuple(r) for r in conn.execute(
+                    "SELECT * FROM predictions ORDER BY id")],
+                [tuple(r) for r in conn.execute(
+                    "SELECT * FROM prediction_voids ORDER BY prediction_id")])
+
+    def attempt(statement: str | tuple) -> tuple[str | None, tuple]:
+        """The refusal's words, or None; and the state it left. Rolled back.
+        A tuple is run statement by statement, stopping at a refusal."""
+        for function in handed.values():
+            function.calls = 0
+        try:
+            for one in (statement if isinstance(statement, tuple) else (statement,)):
+                conn.execute(one.format(**ids))
+            words = None
+        except sqlite3.Error as exc:
+            words = f"{type(exc).__name__}: {exc}"
+        after = state()
+        conn.rollback()
+        return words, after
+
+    def brief(rows) -> list[tuple]:
+        """(number, game, probability, forecaster, pass, outcome) of each
+        row, for the words."""
+        return [(r[0], r[3], r[8], r[10], r[11], r[19]) for r in rows]
+
+    faults: list[str] = []
+    first: str | None = None
+    try:
+        stored = state()
+        for label, statement, replaces in forms:
+            words, after = attempt(statement)
+            if words is None:
+                faults.append(
+                    f"{label} was taken"
+                    + (f": {brief(stored[0])} became {brief(after[0])}"
+                       if after[0] != stored[0] else "")
+                    + (f"; the voids went from {stored[1]} to {after[1]}"
+                       if after[1] != stored[1] else ""))
+            elif "LAW 3" not in words or (replaces and "never replaced" not in words):
+                faults.append(f"{label} was refused, but not by the replace "
+                              f"rules: {words}")
+            elif first is None:
+                first = f"{label}: {words}"
+            if state() != stored:
+                faults.append(f"after {label} the world was not as stored")
+        for label, statement in lawful:
+            words, after = attempt(statement)
+            if words is not None or after == stored:
+                faults.append(f"{label} was not written ({words}): a rule "
+                              f"refusing every write is not this one")
+        # THE RULE READING THE WRITTEN NUMBER IS WHAT STOPS THE READ-TWICE
+        # FORMS: with it alone dropped, the two before it still in place,
+        # each writes over a stored forecast.
+        conn.execute(f"DROP TRIGGER IF EXISTS {rules[-1]}")
+        unproved = [label for label, statement, replaces in forms
+                    if label.startswith(READ_TWICE)
+                    and attempt(statement)[1][0] == stored[0]]
+        for name in rules[:-1]:
+            conn.execute(f"DROP TRIGGER IF EXISTS {name}")
+        unproved += [label for label, statement, replaces in forms
+                     if replaces and attempt(statement)[1] == stored]
+    finally:
+        conn.close()
+    if faults:
+        return Result(law, what, guard, False,
+                      "NOT CAUGHT - " + "; ".join(faults) + ". A replacement "
+                      "removes the stored forecast without running the delete "
+                      "rule, and what the forecaster said at the time is gone")
+    if unproved:
+        return Result(law, what, guard, False,
+                      f"the planting did not test the rules: with the rule "
+                      f"reading the written number dropped (the read-twice "
+                      f"forms), or with every replace rule dropped, these "
+                      f"still changed no stored forecast: {unproved}")
+    return Result(law, what, guard, True, first or "refused")
+
+
 LAW_CLAIM_SHAPE = "A CLAIM CARRIES THE INPUTS ITS SHAPE USES, AND NO OTHERS"
 
 
@@ -15714,6 +16034,9 @@ def main() -> int:
     # OPERATOR QUESTION 13 (ruled 2026-09-27): no stored recommendation may
     # be replaced by any statement -- OR REPLACE went round the delete rule.
     results.append(plant_a_replaced_recommendation())
+    # OPERATOR QUESTION 15 (ruled 2026-09-27, third set): predictions fixed
+    # the same way -- LAW 3's own table took OR REPLACE the same way.
+    results.append(plant_a_replaced_prediction())
     # AT_THE_PRICE (2026-09-07): four claim shapes, and the four mistakes
     # the first live run made.
     results.append(plant_a_winner_question_read_from_the_wrong_side())
