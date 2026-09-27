@@ -5,17 +5,31 @@
 - **Serving: f02e913** (`/api/health` = f02e9134d984). Repair items 1-8 and
   the schema rulings are released; close-out:
   `docs/closeouts/2026-09-27-overnight.md` (verdicts, awake time, spend).
-- **Open work, in this order unless the operator says otherwise:**
-  1. Answers to the questions below, first **Q9** (item 4's re-grade labels:
-     three or four -- then set the constant, gate, release, run
-     `tools/regrade_return_on_stake.py --write --live`), **Q5**, **Q13**,
-     **Q14**.
-  2. The operator's queue for after close-out (the section below): the
-     Record page's "market ahead", then model plan M3 (market blend).
-  3. The read again on the repaired record (the repair brief), which the
-     cloud split sends to the cloud; how it runs is the operator's call.
-  4. The two browser flakes that can fail a gate (tap target at 43.9995px;
-     the weekly strip's canvas read before paint).
+- **RULED 2026-09-27 (docs/briefs/2026-09-27-close-out-rulings.md). The
+  order:**
+  1. **Q13** (in progress): no stored recommendation may be replaced by any
+     statement; its own commit, planting proved on the unfixed code.
+  2. **Q9 labels**: (B) all four -- 3, 10, 26, 56 -- written after Q13's
+     release (set RULED, gate, release, `--write --live`).
+  3. **Q12** (ruled, not placed in the order; default until placed: here):
+     measurements count a same-side pair once (the earlier row); recs 45/46
+     count zero everywhere and are labelled "both sides, no position"; the
+     record shows rows as written.
+  4. **The flaky tests**: the elements render at 44px or more in whole
+     pixels; never widen a tolerance; its own commit.
+  5. **The board merge**: checklist in docs/briefs (none there on 27 Sep) or
+     pasted by the operator; `board` untouched until then.
+  6. **Q10**: the size uses the taken side's cost; its own commit and
+     planting.
+  7. **The re-read**: local, read-only, against a verified copy, not before
+     2026-09-28T15:00Z; three measurers; confirm repair items 1-8 took
+     effect on the record and restate every gate distance per forecaster
+     and distinct bet; the edge question is not re-measured.
+  8. After it: the Record page's "market ahead" per sport and market with
+     its interval; then the operator's decision on the pick'em entry check
+     against M3 (the model plan: docs/briefs/2026-09-27-model-plan.md).
+  - Q11: the default stands (record only). Q5 and Q14 were sent to the
+    operator in full, as asked.
 - **Dates:** first clean closing-line read 2026-10-15 (window from
   2026-09-24); MLB's regular season ends 2026-09-27.
 
