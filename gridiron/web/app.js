@@ -728,6 +728,17 @@ const Gridiron = (function () {
 
     if (line) {
       requireN(line, 'the closing line');
+      // FROM WHEN IT COUNTS, AND WHEN IT MAY FIRST BE READ (the operator's
+      // ruling 8 of 2026-09-23, 2026-09-27). First, and on every sport's
+      // page: the server's sentence, placed.
+      const since = line.window_line;
+      if (since) {
+        requireN(since, 'the closing line since its repair');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', since.label));
+        row.appendChild(el('div', 'gate-why', since.words));
+        clv.appendChild(row);
+      }
       (line.markets || []).forEach(entry => {
         requireN(entry, 'the closing line for "' + entry.market + '"');
         const row = el('div', 'gate-row');

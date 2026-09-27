@@ -181,6 +181,42 @@ MLB_SCORE_DISTRIBUTION = {
     "one_run_games": 0.280,
 }
 
+#: THE CLOSING LINE COUNTS AGAIN FROM THE DAY IT WAS REPAIRED (operator ruling
+#: 8 of 2026-09-23, GRIDIRON_REPAIR item 8, built 2026-09-27): "READINESS: two
+#: BROKEN findings recorded; the observation window restarts on the date item
+#: 1 ships; the first clean CLV read is 21 days after that, not before."
+#:
+#: WHY THE WINDOW STARTS AGAIN. Until item 1 every close was the price the
+#: recommendation was bought at, read back (55 of 55), so the closing line had
+#: measured nothing in the sixteen days since 2026-09-07 -- the first window's
+#: start, `calibration.CLV_DECLARED`, which stays in the payload. Item 1 (commit
+#: 23cf89b) reached the released main checkout at 2026-09-24T06:49:12Z, the
+#: fast-forward to 4941fa1 in that checkout's reflog, and was served from about
+#: 06:57Z: "ships" is the moment the released checkout holds it, and the date,
+#: in UTC as every date here is, is 24 September at either instant.
+#:
+#: WHAT IT DOES. `calibration.closing_line_window` is the one door. A close
+#: counts toward the closing line's N only if its recommendation was written on
+#: or after the start -- a recommendation written before it was chosen, priced
+#: and closed under the old rules, and every close since the repair is by
+#: construction measured after the start too. Before the first clean read no
+#: closing-line figure is given at all: not the mean, not the share that beat
+#: the close, not a finding, and not the kill criterion, which reads the same
+#: figure (`priced.coverage.stopped`). The words say when the first read is,
+#: in the closing line's own place on the Record page. It is not one of the
+#: READ_WINDOWS below: those count a wait down on the list of gates and
+#: withhold nothing, where this withholds a figure, in every sport at once.
+#:
+#: NO THRESHOLD MOVES. Fifty closes in one market
+#: (`calibration.MIN_RECOMMENDATIONS_FOR_CLV`) and fifty for the kill
+#: (`priced.coverage.KILL_AFTER`), both declared 2026-09-07, are unchanged.
+#: This adds a date before which nothing is read, and loosens nothing.
+#: Literals, so a reader can find both dates by searching for them; a test ties
+#: them to the ruling and to each other.
+CLOSING_LINE_WINDOW_START = "2026-09-24"
+CLOSING_LINE_FIRST_READ_AFTER_DAYS = 21
+CLOSING_LINE_FIRST_CLEAN_READ = "2026-10-15"
+
 #: MEASUREMENTS THAT MUST NOT BE READ EARLY, with the date they open.
 #:
 #: `docs/MLB_PROPS.md` records one day of rung claims and draws no conclusion

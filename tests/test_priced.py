@@ -14,14 +14,15 @@ from gridiron.priced import coverage, forecast
 WHOLE = json.dumps({"coverage": 1.0})
 
 
-def _world(tmp_path, games=1):
+def _world(tmp_path, games=1, kickoff="2026-09-09T00:00:00Z",
+           league_date="2026-09-08"):
     conn = db.open_db(tmp_path / "priced.db")
     for i in range(games):
         conn.execute(
             "INSERT INTO games (id, sport, season, week, game_type, home, away,"
             " kickoff_utc, status, league_date) VALUES (?, 'nfl', 2026, 1, 'REG',"
-            " 'SEA', 'NE', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')",
-            (f"g{i}",))
+            " 'SEA', 'NE', ?, 'scheduled', ?)",
+            (f"g{i}", kickoff, league_date))
     conn.commit()
     return conn
 
@@ -168,12 +169,19 @@ def test_a_wide_quote_is_never_covered_however_thin():
     assert "survive crossing it" in wide[0]["why"]
 
 
-def test_the_kill_criterion_stops_a_market_on_its_closing_line(tmp_path):
+def _fifty_bought_rich(tmp_path):
+    """Fifty closes at -4.0c on NFL totals, every one written after the
+    closing line was repaired (2026-09-24), so every one is counted."""
     # FIFTY GAMES, ONE RECOMMENDATION EACH (GRIDIRON_REPAIR item 5,
     # 2026-09-26). This was fifty rows on one game and market, which the
     # ruling -- one recommendation per game and market -- now refuses at the
     # second; fifty recommendations are fifty games.
-    conn = _world(tmp_path, games=coverage.KILL_AFTER)
+    #
+    # INSIDE THE CLOSING LINE'S WINDOW (the operator's ruling 8 of
+    # 2026-09-23, 2026-09-27): dated 7 to 9 September, as this was until
+    # then, the fifty would be named beside the count and none counted.
+    conn = _world(tmp_path, games=coverage.KILL_AFTER,
+                  kickoff="2026-09-27T00:00:00Z", league_date="2026-09-26")
     for i in range(coverage.KILL_AFTER):
         game = f"g{i}"
         pid = _blind(conn, game=game)
@@ -181,8 +189,8 @@ def test_the_kill_criterion_stops_a_market_on_its_closing_line(tmp_path):
         # a close measured that way is counted, so the fixture reads the venue
         # twice.
         reads = []
-        for stamp, bid in (("2026-09-07T01:00:00Z", 0.49),
-                           ("2026-09-08T23:00:00Z", 0.45)):
+        for stamp, bid in (("2026-09-25T01:00:00Z", 0.49),
+                           ("2026-09-26T23:00:00Z", 0.45)):
             conn.execute(
                 "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
                 " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
@@ -198,32 +206,61 @@ def test_the_kill_criterion_stops_a_market_on_its_closing_line(tmp_path):
             " model_prob, venue_price, venue_implied, price_basis, created_utc)"
             " VALUES (?, ?, 'kalshi', 'nfl', ?, 'total', 'total', 44.5, 'over',"
             " 'rung_matched', NULL, NULL, 0.6, 0.5, 0.5, 'mid',"
-            " '2026-09-07T01:30:00Z')", (pid, reads[0], game))
+            " '2026-09-25T01:30:00Z')", (pid, reads[0], game))
         # a recommendation that bought richer than the close
         conn.execute(
             "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
             " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
             " created_utc, close_price, clv_cents, closed_utc)"
             " VALUES (?, 'nfl', ?, 'total', 'yes', 0.6, 0.5, 3.0, 'flat', 1.0,"
-            " 0, '2026-09-07T02:00:00Z', 0.46, -4.0, '2026-09-09T00:00:00Z')",
+            " 0, '2026-09-25T02:00:00Z', 0.46, -4.0, '2026-09-27T00:00:00Z')",
             (pid, game))
         rec = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
         conn.execute(
             "INSERT INTO recommendation_closes (recommendation_id, written_utc,"
             " pricing_quote_id, close_quote_id, close_price, clv_cents,"
             " minutes_before_start, restated, reason) VALUES (?,"
-            " '2026-09-09T00:00:00Z', ?, ?, 0.46, -4.0, 60.0, 0,"
+            " '2026-09-27T00:00:00Z', ?, ?, 0.46, -4.0, 60.0, 0,"
             " 'the last near-start read of its own contract')",
             (rec, reads[0], reads[1]))
     conn.commit()
-    stopped = coverage.stopped(conn, "nfl")
+    return conn
+
+
+def test_the_kill_criterion_stops_a_market_on_its_closing_line(tmp_path):
+    conn = _fifty_bought_rich(tmp_path)
+    # ON THE FIRST CLEAN READ (the operator's ruling 8 of 2026-09-23): the
+    # closing line may be read, so the kill may fire on it.
+    read = config.CLOSING_LINE_FIRST_CLEAN_READ + "T00:00:00Z"
+    stopped = coverage.stopped(conn, "nfl", now=read)
     assert "total" in stopped
     assert stopped["total"]["n"] == coverage.KILL_AFTER
     assert "buying rich" in stopped["total"]["why"]
     assert "dated ruling" in stopped["total"]["why"]
     # and the engine refuses to price it, whatever the coverage measurement says
-    verdict = coverage.priceable(conn, "nfl", "total")
+    verdict = coverage.priceable(conn, "nfl", "total", now=read)
     assert verdict["priceable"] is False and "stopped after" in verdict["why"]
+
+
+def test_the_kill_criterion_waits_for_the_first_clean_read(tmp_path):
+    """"The first clean CLV read is 21 days after that, not before" (the
+    operator's ruling 8 of 2026-09-23). The kill reads the closing line's
+    mean and prints it, so it waits for the same date: the last second before
+    it stops nothing, on the same fifty closes that stop the market after."""
+    conn = _fifty_bought_rich(tmp_path)
+    eve = "2026-10-14T23:59:59Z"
+    assert eve[:10] < config.CLOSING_LINE_FIRST_CLEAN_READ
+    assert coverage.stopped(conn, "nfl", now=eve) == {}
+    assert coverage.priceable(conn, "nfl", "total", now=eve)["why"] != ""
+    assert "stopped after" not in coverage.priceable(
+        conn, "nfl", "total", now=eve)["why"]
+    report = calibration.clv_report(conn, sport="nfl", now=eve)
+    entry = report["markets"][0]
+    # THE COUNT, WITH ITS N, AND NO FIGURE
+    assert entry["n"] == coverage.KILL_AFTER and report["n"] == coverage.KILL_AFTER
+    assert entry["mean_cents"] is None and entry["beat_the_close"] is None
+    assert "finding" not in entry and entry["renderable"] is False
+    assert "Thursday 15 October" in entry["words"]
 
 
 def test_the_blind_path_still_refuses_the_price_after_the_exemption():

@@ -11805,13 +11805,13 @@ def plant_a_close_read_from_the_first_of_two_reads() -> Result:
         conn.execute(
             "INSERT INTO games (id, sport, season, week, game_type, home, away,"
             " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1, 'R',"
-            " 'MIA', 'NYM', '2026-09-07T02:00:00Z', 'scheduled', '2026-09-06')",
+            " 'MIA', 'NYM', '2026-09-25T02:00:00Z', 'scheduled', '2026-09-24')",
             (gid,))
         conn.execute(
             "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
             " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
             " factor_set_version, factors_json, reasoning) VALUES"
-            " ('2026-09-07T00:00:00Z', 'mlb', ?, 'total', 'NYM at MIA', 8.5,"
+            " ('2026-09-25T00:00:00Z', 'mlb', ?, 'total', 'NYM at MIA', 8.5,"
             " 0.6, 'over', 'statistical', 'final', 'fs2', '{}', 'x')", (gid,))
         pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
         quotes = {}
@@ -11833,32 +11833,36 @@ def plant_a_close_read_from_the_first_of_two_reads() -> Result:
                 " 'total',8.5,'over','rung_matched',NULL,NULL,0.6,?,?,'mid',?)",
                 (pid, quote, _atl.VENUE, gid, implied, implied, stamp))
 
-        claim(quotes["pricing"], "2026-09-07T00:31:00Z", 0.46)
+        claim(quotes["pricing"], "2026-09-25T00:31:00Z", 0.46)
         conn.execute(
             "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
             " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
             " created_utc) VALUES (?, 'mlb', ?, 'total', 'yes', 0.6, 0.46, 10.0,"
-            " 'flat', 1.0, 0, '2026-09-07T00:32:00Z')", (pid, gid))
+            " 'flat', 1.0, 0, '2026-09-25T00:32:00Z')", (pid, gid))
         rec = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
         return quotes, claim, rec
 
+    # IN THE CLOSING LINE'S WINDOW (2026-09-27): the count runs from the day
+    # the closing line was repaired (the operator's ruling 8 of 2026-09-23),
+    # so this world is dated after it; on 7 September, where it stood
+    # until then, its one measured close would be named beside the count.
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
         _atl.ensure_read_kind(conn)
         quotes, claim, rec = world(conn, "g1", reads=[
-            ("pricing", "T8", "near_start", "2026-09-07T00:30:00Z", 0.45, 0.47),
+            ("pricing", "T8", "near_start", "2026-09-25T00:30:00Z", 0.45, 0.47),
             # TWO reads after the price, so a closer that took the FIRST later
             # read would be caught too -- the review proved one could slip by.
-            ("middle", "T8", "near_start", "2026-09-07T01:10:00Z", 0.47, 0.49),
-            ("later", "T8", "near_start", "2026-09-07T01:40:00Z", 0.51, 0.53),
-            ("open", "T8", "open", "2026-09-07T01:45:00Z", 0.59, 0.61),
-            ("other", "T9", "near_start", "2026-09-07T01:50:00Z", 0.29, 0.31),
-            ("after", "T8", "near_start", "2026-09-07T02:05:00Z", 0.89, 0.91),
+            ("middle", "T8", "near_start", "2026-09-25T01:10:00Z", 0.47, 0.49),
+            ("later", "T8", "near_start", "2026-09-25T01:40:00Z", 0.51, 0.53),
+            ("open", "T8", "open", "2026-09-25T01:45:00Z", 0.59, 0.61),
+            ("other", "T9", "near_start", "2026-09-25T01:50:00Z", 0.29, 0.31),
+            ("after", "T8", "near_start", "2026-09-25T02:05:00Z", 0.89, 0.91),
         ])
         # THE OLD CLOSER'S ANSWER: a claim on another strike, written last.
-        claim(quotes["other"], "2026-09-07T01:51:00Z", 0.30)
+        claim(quotes["other"], "2026-09-25T01:51:00Z", 0.30)
         _, _, lone = world(conn, "g2", reads=[
-            ("pricing", "T7", "near_start", "2026-09-07T00:30:00Z", 0.45, 0.47),
+            ("pricing", "T7", "near_start", "2026-09-25T00:30:00Z", 0.45, 0.47),
         ])
         conn.commit()
         _rec.record_closing_prices(conn)
@@ -12020,13 +12024,13 @@ def plant_a_withdrawn_recommendation_in_the_closing_line() -> Result:
         conn.execute(
             "INSERT INTO games (id, sport, season, week, game_type, home, away,"
             " kickoff_utc, status, league_date) VALUES (?, 'nfl', 2026, 3,"
-            " 'REG', 'WAS', 'SEA', '2026-09-07T02:00:00Z', 'scheduled',"
-            " '2026-09-06')", (gid,))
+            " 'REG', 'WAS', 'SEA', '2026-09-25T02:00:00Z', 'scheduled',"
+            " '2026-09-24')", (gid,))
         conn.execute(
             "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
             " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
             " factor_set_version, factors_json, reasoning) VALUES"
-            " ('2026-09-07T00:00:00Z', 'nfl', ?, 'spread', 'WAS', 7.5, 0.6,"
+            " ('2026-09-25T00:00:00Z', 'nfl', ?, 'spread', 'WAS', 7.5, 0.6,"
             " 'cover', 'statistical', 'final', 'fs5', '{}', 'x')", (gid,))
         pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
         quotes = []
@@ -12038,7 +12042,7 @@ def plant_a_withdrawn_recommendation_in_the_closing_line() -> Result:
                 " 'spread', 'home_margin', 7.5, 'home', ?, ?, 900, ?,"
                 " 'near_start')",
                 (_atl.VENUE, f"T-{gid}", gid, bid, bid + 0.02,
-                 f"2026-09-07T{stamp}:00Z"))
+                 f"2026-09-25T{stamp}:00Z"))
             quotes.append(conn.execute(
                 "SELECT MAX(id) FROM venue_quotes").fetchone()[0])
         conn.execute(
@@ -12047,15 +12051,20 @@ def plant_a_withdrawn_recommendation_in_the_closing_line() -> Result:
             " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
             " created_utc) VALUES (?, ?, ?, 'nfl', ?, 'spread', 'home_margin',"
             " 7.5, 'home', 'rung_matched', NULL, NULL, 0.6, 0.46, 0.46, 'mid',"
-            " '2026-09-07T00:31:00Z')", (pid, quotes[0], _atl.VENUE, gid))
+            " '2026-09-25T00:31:00Z')", (pid, quotes[0], _atl.VENUE, gid))
         conn.execute(
             "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
             " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
             " created_utc) VALUES (?, 'nfl', ?, 'spread', 'yes', 0.6, 0.46, 10.0,"
-            " 'flat', 1.0, 0, '2026-09-07T00:32:00Z')", (pid, gid))
+            " 'flat', 1.0, 0, '2026-09-25T00:32:00Z')", (pid, gid))
         return pid, conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
 
     guard = "audit.withdrawn_counted_faults"
+    # IN THE CLOSING LINE'S WINDOW (2026-09-27): the count runs from the day
+    # the closing line was repaired (the operator's ruling 8 of 2026-09-23),
+    # so this world is dated after it; on 7 September, where it stood until
+    # then, its two measured closes would be named beside the count and the
+    # count the door is tested on would be empty.
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
         _atl.ensure_read_kind(conn)
@@ -12068,12 +12077,12 @@ def plant_a_withdrawn_recommendation_in_the_closing_line() -> Result:
         ).fetchone()[0]
         conn.execute(
             "INSERT INTO recommendation_voids (recommendation_id, voided_utc,"
-            " reason) VALUES (?, '2026-09-24T08:00:00Z', 'published from an"
+            " reason) VALUES (?, '2026-09-26T08:00:00Z', 'published from an"
             " unvalidated fit before the hold; fit subsequently failed holdout')",
             (own,))
         conn.execute(
             "INSERT INTO prediction_voids (prediction_id, voided_utc, reason)"
-            " VALUES (?, '2026-09-24T08:00:00Z', 'published from an unvalidated"
+            " VALUES (?, '2026-09-26T08:00:00Z', 'published from an unvalidated"
             " fit before the hold; fit subsequently failed holdout')", (pid,))
         conn.commit()
 
@@ -12161,6 +12170,294 @@ def plant_a_recommendation_reader_that_goes_round_the_door() -> Result:
                   f"NOT CAUGHT - the scan said {faults!r}. A reader that goes "
                   f"round the door counts a withdrawn recommendation and "
                   f"nothing names it")
+
+
+LAW_FIRST_CLEAN_READ = ("THE CLOSING LINE COUNTS FROM ITS REPAIR, AND IS NOT READ "
+                        "BEFORE ITS FIRST CLEAN READ")
+
+
+def _closing_line_window_days() -> tuple[str, str]:
+    """The ruling's two dates, as the config declares them.
+
+    The literals are the fallback for a tree that predates the constants, so
+    that a planting run against the code before the fix says NOT CAUGHT
+    rather than crashing on an attribute the old config never had.
+    """
+    return (getattr(config, "CLOSING_LINE_WINDOW_START", "2026-09-24"),
+            getattr(config, "CLOSING_LINE_FIRST_CLEAN_READ", "2026-10-15"))
+
+
+def _closing_line_window_world(conn) -> None:
+    """A closing-line record that would give a verdict of each sign, and a
+    batch from before the window that would flatter one of them.
+
+    One game per recommendation (one recommendation per game and market,
+    GRIDIRON_REPAIR item 5), each priced from a near-start read of its own
+    contract and closed on a later one before the start, with its account in
+    `recommendation_closes` -- measured, exactly as the closer writes it:
+
+      * 60 MLB spread recommendations written from the window's first
+        second, 00:00:00Z on the day it opened, two minutes apart, each
+        bought at 46c and closed at 49c: +3.0c, 100% beat;
+      * 60 MLB total recommendations written the same way, bought at 50c and
+        closed at 46c: -4.0c, the kill's number and the "buying rich"
+        finding;
+      * 30 MLB spread recommendations written in the last ninety minutes
+        before the window opened (22:32Z to 23:30Z the day before), bought
+        at 40c and closed at 49c: +9.0c, each measured by a read taken, and
+        closed, after the window opened. Counted, they make the spread 90
+        closes at +5.0c.
+
+    AT THE BOUNDARY, ON PURPOSE (the prover, 2026-09-27). Written a day
+    either side of the start, as they were, the two batches passed a window
+    counted by when the CLOSE was written rather than the recommendation, one
+    opened at item 1's instant (06:49:12Z) rather than the date, one opened
+    at the ship date read on the operator's clock (07:00Z the day before),
+    and one that left out the first second -- every planting and test passed
+    each of the four. Here each of them moves a count: the first and third
+    count the thirty, the second and fourth drop some of the sixty.
+    """
+    start, _ = _closing_line_window_days()
+    day = datetime.fromisoformat(start + "T00:00:00+00:00")
+
+    def stamp(base: datetime, minutes: float) -> str:
+        return (base + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # A recommendation is written 32 minutes after its batch's t0 (below),
+    # so the first "in" row is stamped 00:00:00Z on the day itself and the
+    # last "before" row 23:30:00Z the evening before; the "before" rows' close
+    # reads (t0 + 120) and closes (t0 + 250) fall after midnight.
+    batches = (("in", "spread", 60, day - timedelta(minutes=32), 0.46, 0.49),
+               ("in", "total", 60, day - timedelta(minutes=32), 0.50, 0.46),
+               ("before", "spread", 30, day - timedelta(hours=2), 0.40, 0.49))
+    for label, market, count, base, price, close in batches:
+        quantity, line, yes = (("home_margin", -1.5, "home") if market == "spread"
+                               else ("total", 8.5, "over"))
+        for i in range(count):
+            gid = f"w-{label}-{market}-{i}"
+            t0 = base + timedelta(minutes=2 * i)
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home,"
+                " away, kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026,"
+                " 1, 'R', 'MIA', 'NYM', ?, 'scheduled', ?)",
+                (gid, stamp(t0, 240), stamp(t0, 0)[:10]))
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning) VALUES (?, 'mlb', ?, ?, 'NYM at MIA', ?, 0.6, ?,"
+                " 'statistical', 'final', 'fs2', '{}', 'x')",
+                (stamp(t0, 0), gid, market, line,
+                 "cover" if market == "spread" else "over"))
+            pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+            quotes = []
+            for minutes, mid in ((30, price), (120, close)):
+                conn.execute(
+                    "INSERT INTO venue_quotes (venue, ticker, event_ticker,"
+                    " sport, game_id, market, quantity, line, yes_side, yes_bid,"
+                    " yes_ask, volume, fetched_utc, read_kind) VALUES ('kalshi',"
+                    " ?, 'E', 'mlb', ?, ?, ?, ?, ?, ?, ?, 900, ?, 'near_start')",
+                    (f"T-{gid}", gid, market, quantity, line, yes,
+                     round(mid - 0.01, 4), round(mid + 0.01, 4),
+                     stamp(t0, minutes)))
+                quotes.append(conn.execute(
+                    "SELECT MAX(id) FROM venue_quotes").fetchone()[0])
+            conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+                " sport, game_id, market, quantity, line, side, shape,"
+                " dist_mean, dist_sd, model_prob, venue_price, venue_implied,"
+                " price_basis, created_utc) VALUES (?, ?, 'kalshi', 'mlb', ?, ?,"
+                " ?, ?, ?, 'rung_matched', NULL, NULL, 0.6, ?, ?, 'mid', ?)",
+                (pid, quotes[0], gid, market, quantity, line, yes, price, price,
+                 stamp(t0, 31)))
+            clv = round((close - price) * 100, 2)
+            conn.execute(
+                "INSERT INTO recommendations (prediction_id, sport, game_id,"
+                " market, side, fair_value, price, edge_cents, size_kind,"
+                " size_units, gate_n, created_utc, close_price, clv_cents,"
+                " closed_utc) VALUES (?, 'mlb', ?, ?, 'yes', 0.6, ?, 5.0,"
+                " 'flat', 1.0, 0, ?, ?, ?, ?)",
+                (pid, gid, market, price, stamp(t0, 32), close, clv,
+                 stamp(t0, 250)))
+            rec = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+            conn.execute(
+                "INSERT INTO recommendation_closes (recommendation_id,"
+                " written_utc, pricing_quote_id, close_quote_id, close_price,"
+                " clv_cents, minutes_before_start, restated, reason) VALUES"
+                " (?, ?, ?, ?, ?, ?, 120.0, 0, 'the last near-start read of its"
+                " own contract before the start')",
+                (rec, stamp(t0, 250), quotes[0], quotes[1], close, clv))
+    conn.commit()
+
+
+def _closing_line_read(conn, now: str | None, faults: list[str]):
+    """The closing line and the kill criterion, read at `now` -- or, on a
+    tree whose closing line takes no clock, read as it stands, so the escape
+    says what it would have shown rather than stopping at a TypeError."""
+    from gridiron import calibration as _cal
+    from gridiron.priced import coverage as _coverage
+
+    try:
+        report = _cal.clv_report(conn, sport="mlb", now=now)
+    except TypeError as exc:
+        faults.append(f"the closing line takes no clock, so no date can hold "
+                      f"it back ({exc})")
+        report = _cal.clv_report(conn, sport="mlb")
+    try:
+        halted = _coverage.stopped(conn, "mlb", now=now)
+    except TypeError:
+        halted = _coverage.stopped(conn, "mlb")
+    return report, halted
+
+
+def plant_a_closing_line_verdict_before_its_first_clean_read() -> Result:
+    """Read the closing line the day before its first clean read.
+
+    THE OPERATOR'S RULING 8 OF 2026-09-23 (GRIDIRON_REPAIR item 8, built
+    2026-09-27): "the observation window restarts on the date item 1 ships;
+    the first clean CLV read is 21 days after that, not before." Planted with
+    a record that would give a verdict of each sign -- sixty closes at +3.0c
+    in one market, sixty at -4.0c in another -- read at noon on the day
+    before the first clean read.
+
+    CAUGHT means all of it: no entry is renderable; no mean and no share that
+    beat the close is given, as a figure or in the words; no finding is
+    written; the kill criterion stops nothing; each count is still shown with
+    its N and the words say the date. AND THE MIRROR, so a closing line that
+    refused every verdict for ever would be caught as well: read on the first
+    clean read's own date, the +3.0c market renders, the -4.0c market carries
+    the finding, and the kill criterion stops it.
+    """
+    import tempfile
+
+    from gridiron import calibration as _cal, db as _db, language as _lang
+
+    law, what = LAW_FIRST_CLEAN_READ, ("a closing-line verdict read the day "
+                                       "before its first clean read")
+    guard = "calibration.clv_report (closing_line_window), priced.coverage.stopped"
+    _, first = _closing_line_window_days()
+    eve = (datetime.fromisoformat(first + "T12:00:00+00:00")
+           - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    on_the_day = first + "T00:00:00Z"
+    when = _lang.date_words_from_iso(first)
+    faults: list[str] = []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _closing_line_window_world(conn)
+        early, halted_early = _closing_line_read(conn, eve, faults)
+        later, halted_later = _closing_line_read(conn, on_the_day, [])
+        conn.close()
+
+    entries = {e["market"]: e for e in early["markets"]}
+    for market in ("spread", "total"):
+        entry = entries.get(market)
+        if entry is None:
+            faults.append(f"no {market} entry at all: the count was not shown")
+            continue
+        if entry.get("renderable"):
+            faults.append(f"{market} is renderable on {eve[:10]}")
+        if entry.get("mean_cents") is not None \
+                or entry.get("beat_the_close") is not None:
+            faults.append(
+                f"{market} gives {entry.get('mean_cents')}c a contract and "
+                f"{entry.get('beat_the_close')} beating the close before the "
+                f"first clean read")
+        if "finding" in entry:
+            faults.append(f"{market} carries the finding: {entry['finding']!r}")
+        if "¢" in entry.get("words", "") or "%" in entry.get("words", ""):
+            faults.append(f"{market}'s words give a figure: {entry['words']!r}")
+        if when not in entry.get("words", ""):
+            faults.append(f"{market}'s words do not say when the first clean "
+                          f"read is ({when}): {entry.get('words')!r}")
+        if entry.get("n") != 60:
+            faults.append(f"{market} counts {entry.get('n')}, not the 60 "
+                          f"written since the repair")
+    if halted_early:
+        faults.append(f"the kill criterion stopped {sorted(halted_early)} on "
+                      f"{eve[:10]}, reading the closing line early")
+    try:
+        _cal.assert_every_figure_has_n(early)
+    except Exception as exc:  # noqa: BLE001 -- named in the detail
+        faults.append(f"a figure without its N: {exc}")
+    # THE MIRROR: on the day, the verdict and the kill both arrive.
+    now_entries = {e["market"]: e for e in later["markets"]}
+    if not now_entries.get("spread", {}).get("renderable"):
+        faults.append(f"on {first} itself the +3.0c market is still withheld: "
+                      f"the closing line would never be read")
+    if "finding" not in now_entries.get("total", {}):
+        faults.append(f"on {first} itself the -4.0c market carries no finding")
+    if "total" not in halted_later:
+        faults.append(f"on {first} itself the kill criterion stops nothing")
+
+    if not faults:
+        return Result(law, what, guard, True,
+                      f"on {eve[:10]} both markets gave their count and no "
+                      f"figure ({entries['spread']['words']!r}); on {first} the "
+                      f"spread rendered at {now_entries['spread']['mean_cents']}c "
+                      f"and the kill stopped the total")
+    return Result(law, what, guard, False,
+                  "NOT CAUGHT - " + "; ".join(faults) + ". Every close before "
+                  "the repair of 2026-09-24 was the price paid, so a verdict "
+                  "before the first clean read reads a record that has barely "
+                  "begun")
+
+
+def plant_a_close_from_before_the_window_counted() -> Result:
+    """Count a close on a recommendation written before the window opened.
+
+    THE SAME RULING: the observation window restarts on the date item 1
+    shipped, so a recommendation written before it is outside the count --
+    chosen, priced and closed under the rules the repair replaced. Planted
+    with thirty measured closes at +9.0c on recommendations written in the
+    ninety minutes before the window opened and closed after it, beside sixty
+    at +3.0c written from its first second (the boundary, the prover,
+    2026-09-27: see `_closing_line_window_world`), read on the first clean
+    read's own date, when a verdict may be given.
+
+    CAUGHT means the spread counts 60 at +3.0c -- not 90 at +5.0c -- names the
+    30 beside the count, in words, as written before the window; the report
+    and its entry both carry them; and the withdrawn recount, which counts
+    every measured close in or before the window, agrees with it.
+    """
+    import tempfile
+
+    from gridiron import audit as _audit, db as _db, language as _lang
+
+    law, what = LAW_FIRST_CLEAN_READ, ("thirty closes from before the window "
+                                       "counted in the closing line")
+    guard = "calibration.clv_report (closing_line_window)"
+    start, first = _closing_line_window_days()
+    faults: list[str] = []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _closing_line_window_world(conn)
+        report, _ = _closing_line_read(conn, first + "T00:00:00Z", faults)
+        recount = _audit.withdrawn_counted_faults(conn, report)
+        conn.close()
+
+    spread = next((e for e in report["markets"] if e["market"] == "spread"), {})
+    if spread.get("n") != 60 or spread.get("mean_cents") != 3.0:
+        faults.append(f"the spread counts {spread.get('n')} closes at "
+                      f"{spread.get('mean_cents')}c, where the 60 written since "
+                      f"the repair are +3.0c")
+    if spread.get("before_window") != 30 or report.get("before_window") != 30:
+        faults.append(f"the 30 written before {start} are not named beside the "
+                      f"count (entry {spread.get('before_window')}, report "
+                      f"{report.get('before_window')})")
+    day = _lang.date_words_from_iso(start)
+    if f"30 more were written before {day}" not in spread.get("words", ""):
+        faults.append(f"the words do not say so: {spread.get('words')!r}")
+    if recount:
+        faults.append(f"the recount disagrees: {recount}")
+
+    if not faults:
+        return Result(law, what, guard, True,
+                      f"counted 60 at +3.0c and named 30 beside: "
+                      f"{spread['words']!r}")
+    return Result(law, what, guard, False,
+                  "NOT CAUGHT - " + "; ".join(faults) + ". The 55 closes before "
+                  "the repair were each the price paid; a count that reached "
+                  "back past it would mix them into the first clean read")
 
 
 LAW_ACTIVATION = "A FIT IS WRITTEN INACTIVE, AND TIES GO TO THE INCUMBENT"
@@ -13972,6 +14269,11 @@ def main() -> int:
     results.append(plant_a_close_that_cites_its_own_pricing_read())
     results.append(plant_a_withdrawn_recommendation_in_the_closing_line())
     results.append(plant_a_recommendation_reader_that_goes_round_the_door())
+    # THE CLOSING LINE'S WINDOW (the operator's ruling 8 of 2026-09-23,
+    # built 2026-09-27): counted from the day it was repaired, and read
+    # for the first time 21 days after it, not before.
+    results.append(plant_a_closing_line_verdict_before_its_first_clean_read())
+    results.append(plant_a_close_from_before_the_window_counted())
     # THE ACTIVATION GATE (operator rulings, 2026-09-24): a fit is written
     # inactive, activated only with its holdout, and ties go to the incumbent.
     results.append(plant_a_fresh_fit_used_without_activation())

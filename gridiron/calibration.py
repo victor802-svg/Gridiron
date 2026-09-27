@@ -1465,7 +1465,15 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     # THE CLOSING LINE (R3, 2026-09-07): the first verdict available on whether
     # the app is buying cheap. Its own section, its own minimum, and capable of
     # returning bad news in words written before it was needed.
-    payload["closing_line"] = clv_report(conn, sport=sport)
+    #
+    # ONE INSTANT FOR BOTH READS OF IT (2026-09-27): the closing line and the
+    # kill criterion below ask the same window, and two readings of the clock
+    # either side of midnight UTC on 15 October could have given the page a
+    # verdict in one panel and none in the other.
+    from .db import utcnow
+
+    read_at = utcnow()
+    payload["closing_line"] = clv_report(conn, sport=sport, now=read_at)
     # AND WHETHER PACKAGES ARE WORTH TAKING AT ALL (GRIDIRON_COMBOS C4,
     # 2026-09-08). The kill criterion was declared before the first package
     # existed and is printed from the first day, so its wording cannot be
@@ -1480,7 +1488,7 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     covered["words"] = language.priced_coverage_line(
         config.SPORT_LABELS.get(sport, sport.upper()), covered["covered"],
         len(covered["entries"]))
-    covered["stopped"] = list(_coverage.stopped(conn, sport).values())
+    covered["stopped"] = list(_coverage.stopped(conn, sport, now=read_at).values())
     payload["coverage"] = covered
     payload["priced"] = priced_scorecard(conn, sport=sport)
 
@@ -2254,6 +2262,10 @@ def ranker_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
 #: against an outcome, so most of the variance an edge estimate fights through
 #: is not in it. The number is a judgement and is dated as one.
 MIN_RECOMMENDATIONS_FOR_CLV = 50
+#: WHERE THE FIRST WINDOW STARTED, kept in the payload beside the second
+#: (2026-09-27). The count started again on `config.CLOSING_LINE_WINDOW_START`
+#: by the operator's ruling 8 of 2026-09-23, because nothing counted from this
+#: date had been measured: every close before the repair was the price paid.
 CLV_DECLARED = "2026-09-07T00:00:00Z"
 
 #: AND A HUNDRED FOR A PACKAGE (GRIDIRON_COMBOS C4, 2026-09-08). A package's
@@ -2277,7 +2289,37 @@ def clv_minimum(market: str) -> int:
     return MIN_RECOMMENDATIONS_FOR_CLV
 
 
-def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
+def closing_line_window(now: str | None = None) -> dict:
+    """When the closing line counts from, and whether it may be read yet.
+
+    THE ONE DOOR FOR THE OPERATOR'S RULING 8 OF 2026-09-23 (GRIDIRON_REPAIR
+    item 8, built 2026-09-27): "the observation window restarts on the date
+    item 1 ships; the first clean CLV read is 21 days after that, not before."
+    The dates are `config.CLOSING_LINE_WINDOW_START` and
+    `config.CLOSING_LINE_FIRST_CLEAN_READ`; whether today is on or after the
+    second is asked here and nowhere else, counted in days by the same
+    `language.date_gate` every dated window on the Record page uses.
+
+    `now` is an instant (the record's format); only its UTC date is read. It
+    defaults to the clock, and a test or a planting passes it so that what it
+    proves does not change on 15 October.
+    """
+    from .db import utcnow
+
+    today = (now or utcnow())[:10]
+    days = language.date_gate(config.CLOSING_LINE_WINDOW_START,
+                              config.CLOSING_LINE_FIRST_CLEAN_READ, today=today)
+    return {
+        "from": config.CLOSING_LINE_WINDOW_START,
+        "from_utc": config.CLOSING_LINE_WINDOW_START + "T00:00:00Z",
+        "first_clean_read": config.CLOSING_LINE_FIRST_CLEAN_READ,
+        "open": bool(days["cleared"]),
+        "days": days,
+    }
+
+
+def clv_report(conn: sqlite3.Connection, *, sport: str,
+               now: str | None = None) -> dict:
     """What the closing line says about this sport's recommendations.
 
     COUNTED FROM `recommendation_closes`, NOT FROM THE COLUMNS (2026-09-23).
@@ -2304,17 +2346,34 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
         where it says void when it means out of the counts -- and it is
         named once beside the closing line, with its N and its return on
         what its side cost.
+      * BEFORE THE WINDOW (the operator's ruling 8 of 2026-09-23, built
+        2026-09-27) -- a measured close on a recommendation written before
+        `config.CLOSING_LINE_WINDOW_START`, the day the closing line was
+        repaired. Counted beside, never in N: the count started again that
+        day. (None exists on the record: every close before the repair was
+        the old closer's, and is restated or unaccounted above.)
+
+    AND NO FIGURE BEFORE THE FIRST CLEAN READ (the same ruling: "the first
+    clean CLV read is 21 days after that, not before"). Until
+    `config.CLOSING_LINE_FIRST_CLEAN_READ`, asked through
+    `closing_line_window`, no entry is renderable, its mean and the share
+    that beat the close are None rather than figures nobody may read, no
+    finding is written, and the words say the date. The count, with its N, is
+    shown throughout: how many there are is not a verdict on them.
     """
     from .market import recommend
 
     require_sport(sport, "calibration.clv_report")
+    window = closing_line_window(now)
     rows = conn.execute(
         "SELECT r.market, r.side, r.price, c.clv_cents, c.restated,"
-        "       c.recommendation_id IS NOT NULL AS accounted"
+        "       c.recommendation_id IS NOT NULL AS accounted,"
+        "       r.created_utc >= ? AS in_window"
         "  FROM recommendations r"
         "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
         " WHERE r.sport = ? AND r.closed_utc IS NOT NULL"
-        + recommend.not_withdrawn(conn), (sport,)).fetchall()
+        + recommend.not_withdrawn(conn),
+        (window["from_utc"], sport)).fetchall()
     by_market: dict[str, list] = {}
     for row in rows:
         by_market.setdefault(row["market"], []).append(row)
@@ -2322,17 +2381,27 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
     entries = []
     for market in sorted(by_market):
         closed = by_market[market]
-        got = [r for r in closed if r["accounted"] and not r["restated"]
-               and r["clv_cents"] is not None]
+        measured = [r for r in closed if r["accounted"] and not r["restated"]
+                    and r["clv_cents"] is not None]
+        # THE COUNT STARTED AGAIN ON THE DAY OF THE REPAIR (ruling 8): a
+        # measured close on a recommendation written before it is named
+        # beside, never counted.
+        got = [r for r in measured if r["in_window"]]
+        before_window = len(measured) - len(got)
         restated = sum(1 for r in closed if r["accounted"] and r["restated"]
                        and r["clv_cents"] is not None)
         # CLOSED BY THE OLD CLOSER AND NOT YET RESTATED: its recorded close is
         # its own price, and nothing is known either way until it is.
         unaccounted = sum(1 for r in closed if not r["accounted"])
-        unmeasured = len(closed) - len(got) - restated - unaccounted
+        unmeasured = len(closed) - len(measured) - restated - unaccounted
         n = len(got)
-        mean = round(sum(r["clv_cents"] for r in got) / n, 2) if n else None
-        beat = round(sum(1 for r in got if r["clv_cents"] > 0) / n, 4) if n else None
+        # NO FIGURE BEFORE THE FIRST CLEAN READ (ruling 8). Not computed,
+        # rather than computed and held back, so nothing downstream -- the
+        # kill criterion, a payload read by hand -- can read one early.
+        figures = bool(n) and window["open"]
+        mean = round(sum(r["clv_cents"] for r in got) / n, 2) if figures else None
+        beat = (round(sum(1 for r in got if r["clv_cents"] > 0) / n, 4)
+                if figures else None)
         # ITS OWN N AND ITS OWN GATE. `combo_2` and `combo_3` are markets
         # here exactly like `moneyline` is, which is what keeps a package out
         # of a leg's count: this loop groups by the market a row was written
@@ -2345,14 +2414,19 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
             "unmeasured": unmeasured,
             "restated": restated,
             "unaccounted": unaccounted,
+            "before_window": before_window,
             "minimum_for_a_claim": floor,
-            "renderable": n >= floor,
+            # THE DATE AND THE SAMPLE, both: a verdict needs fifty closes
+            # counted from the repair AND the first clean read to have come.
+            "renderable": window["open"] and n >= floor,
             "mean_cents": mean,
             "beat_the_close": beat,
-            "words": language.clv_line(n, mean, beat, floor,
-                                       unmeasured=unmeasured,
-                                       restated=restated,
-                                       unaccounted=unaccounted),
+            "words": language.clv_line(
+                n, mean, beat, floor, unmeasured=unmeasured,
+                restated=restated, unaccounted=unaccounted,
+                before_window=before_window, since=window["from"],
+                first_read=(None if window["open"]
+                            else window["first_clean_read"])),
         }
         if entry["renderable"] and mean is not None and mean < 0:
             entry["finding"] = language.clv_finding_line(mean, n)
@@ -2370,14 +2444,28 @@ def clv_report(conn: sqlite3.Connection, *, sport: str) -> dict:
     # the recommendations the corrected bar would have refused, beside the
     # closing line and never taken out of it.
     regraded = recommend.regraded(conn, sport=sport)
+    counted = sum(e["n"] for e in entries)
     return {
         "sport": sport,
         "record": "closing_line",
         "declared": CLV_DECLARED,
-        "n": sum(e["n"] for e in entries),
+        # THE SECOND WINDOW (ruling 8, 2026-09-27): from when the count runs,
+        # the first clean read, whether it has come, and the days between.
+        "window": {"from": window["from"],
+                   "first_clean_read": window["first_clean_read"],
+                   "open": window["open"], "days": window["days"]},
+        "window_line": {
+            "label": "Since the repair",
+            "n": counted,
+            "words": language.closing_line_window_line(
+                window["from"], window["first_clean_read"], counted,
+                verdict_open=window["open"]),
+        },
+        "n": counted,
         "unmeasured": sum(e["unmeasured"] for e in entries),
         "restated": sum(e["restated"] for e in entries),
         "unaccounted": sum(e["unaccounted"] for e in entries),
+        "before_window": sum(e["before_window"] for e in entries),
         "awaiting_close": open_rows,
         "withdrawn": len(withdrawn),
         "withdrawn_line": ({

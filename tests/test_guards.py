@@ -578,6 +578,11 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_closing_write_that_escapes_the_try",
         "plant_a_hung_run_left_running",
         "plant_a_task_definition_without_wake_to_run",
+        # GRIDIRON_REPAIR item 8 (the operator's ruling 8 of 2026-09-23,
+        # built 2026-09-27): the closing line counts from the day it was
+        # repaired and is not read before its first clean read.
+        "plant_a_closing_line_verdict_before_its_first_clean_read",
+        "plant_a_close_from_before_the_window_counted",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

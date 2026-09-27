@@ -477,3 +477,123 @@ barely grows this year.
 close-out and not before:** (1) the Record page states "market ahead" per
 sport and market with its interval; (2) the market blend (model plan M3)
 moves to the front of the model plan.
+
+## 2026-09-27 — two BROKEN findings recorded, and the closing line counts again from its repair
+
+**RULED 2026-09-23 (operator; ruling 8 of `docs/briefs/2026-09-23-repair.md`,
+built as GRIDIRON_REPAIR item 8):** "READINESS: two BROKEN findings recorded;
+the observation window restarts on the date item 1 ships; the first clean CLV
+read is 21 days after that, not before."
+
+Nothing above is edited. **This is the first dated operator ruling recorded
+against a criterion** (the rule at the top of this file said there were none
+yet). It adds a date before which criterion 3 is not read, and it moves no
+threshold: fifty closes in one coverage entry and a positive mean, as declared
+on 2026-09-07, and fifty for the kill criterion.
+
+### The window
+
+| | date (UTC) | from |
+|---|---|---|
+| **the observation window restarts** | **2026-09-24** | item 1, the closing line (commit `23cf89b`), reached the released main checkout at 2026-09-24T06:49:12Z -- that checkout's reflog, the fast-forward to `4941fa1` -- and was served from about 06:57Z. "Ships" is read as reaching the released checkout; the date is the 24th at either instant |
+| **the first clean read of the closing line** | **2026-10-15** | 21 days after it, "not before" |
+| the first window's start, kept | 2026-09-07 | `calibration.CLV_DECLARED`. Nothing counted from it was a measurement (BROKEN 1 below) |
+
+**What the app does from item 8's release** (`config.CLOSING_LINE_WINDOW_START`,
+`config.CLOSING_LINE_FIRST_CLEAN_READ`, one door,
+`calibration.closing_line_window`): a close counts toward the closing line's
+N only if its recommendation was written on or after 24 September, and a
+measured close on an older one is named beside the count. Until 15 October no
+market gives a mean, a share that beat the close or a finding, the kill
+criterion stops nothing, and the Record page says in words when the first
+clean read is, with every count and its N. Planted twice
+(`plant_a_closing_line_verdict_before_its_first_clean_read`,
+`plant_a_close_from_before_the_window_counted`), each seen to escape on the
+code before it and caught on it.
+
+### 3. Closing line — **FAIL**; the observation window restarts (RULED)
+
+Measured read-only through `db.read_the_live_record` on 2026-09-27 at about
+00:15Z, the window's fourth day:
+
+| measure | value | threshold |
+|---|---|---|
+| closes counted since 2026-09-24 | MLB spread 12, NCAAF spread 8, MLB total 1, NFL spread 0 (1 closed unmeasured), NBA 0, UFC 0 | ≥ 50 in one coverage entry |
+| mean closing line | not read before 2026-10-15 | positive |
+| first clean read | 2026-10-15 | not before |
+| written before 2026-09-24, not counted | 55 (MLB spread 41, MLB total 14): every one closed by the old closer on its own price, restated beside the count on 2026-09-24 (31 with a later read of their own contract, 24 with none) | -- |
+| measured closes on recommendations written before 2026-09-24 | 0 | -- |
+
+**Because no close was ever measured on a recommendation written before the
+24th, counting by when a recommendation was written, rather than by when its
+close was taken, changes no figure today.** It is the reading taken (the
+repair's own close-out: the restart "puts every pre-repair recommendation
+outside it"), and it is the stricter one: every close since the repair is
+measured after the start as well.
+
+**What the window holds, said now so it is not found at the first read.**
+The ruling dates the window from item 1, and the rules items 3, 4 and 5
+changed reached the released checkout on 26 September (06:34Z, 08:23Z and
+10:48Z, its reflog). Of the 48 standing recommendations written since the
+24th, 42 were written before those releases, under the rules they replaced:
+the bar dividing a no-side edge by the yes price, more than one allowed per
+game and market, and no way for a correction to reach a pick (none has been
+activated on the record, so none would have reached one yet). Five of
+the window's MLB spread game-markets hold two standing recommendations each
+(60/79, 61/80, 84/93, 86/94, 87/95; counted as written until
+`docs/REPAIR_STATE.md` question 12 is answered). Eleven were written on the
+24th before item 1 reached the checkout: MLB spread 56-61, each closed
+afterwards by the repaired closer as unmeasured and so outside the count;
+NFL 62, 63, 64 and 66, withdrawn by ruling 1; and 65, an NFL total that
+stands, still open, whose close will count if it is measured.
+
+**The edge read's closing-line figures (2026-09-26, above)** -- a mean at 9
+closes and at 4 -- were read from the report before this was built. They are
+diagnostics far below the gate, recorded as they were read, and not a read of
+criterion 3; from item 8's release the report gives no mean before 15
+October.
+
+**What would change 3 now:** fifty recommendations written on or after
+2026-09-24 reach a measured close in one coverage entry, **and** the date is
+2026-10-15 or later. Neither alone. Baseball's regular season ends on 27
+September, so the fifty must come mostly from football, and only while the
+machine is on. If no market has fifty on the 15th, the line reads "N of 50 ...
+nothing is claimed from a sample this size": a FAIL, not a pass waiting to
+happen.
+
+### 5. Open BROKEN findings — the two THE READ recorded, dated
+
+Both were found on 2026-09-23, both are recorded in `FOLLOWUPS.md` under "THE
+READ, 2026-09-23", and both have since been repaired. **A finding is not
+erased because it was fixed**; these are the record of each.
+
+**BROKEN 1 -- THE CLOSING LINE COMPARED A PRICE WITH ITSELF.**
+
+| | |
+|---|---|
+| what broke | `recommend.record_closing_prices` took the last claim written before kickoff, and for a recommended forecast that was the claim it had been priced from; the near-start pass never looked at a recommended contract again. Every close was the price paid, read back |
+| from | the first close, 2026-09-08T20:35:08Z (the recommendations it closed were written from 2026-09-07T20:52:31Z) |
+| to | the last close the old closer wrote, 2026-09-24T02:05:01Z; the repair reached the released checkout at 06:49:12Z the same day |
+| repaired by | `23cf89b` (the close is the last near-start read of the recommendation's own contract before kickoff, or unmeasured, never its own price; `recommendation_closes` and its triggers refuse the old shapes), released with `d782380` and `4941fa1`; `tools/restate_closes.py` restated the old closes on the record at 06:49:48Z |
+| what it cost the record | **55 of 55 closes at exactly the price paid, 0.00c** (THE READ counted 49; recommendations 50-55 closed that night). They stand as recorded, under LAW 3. Worked out again afterwards and shown beside the closing line, never in it: 31 had a later read of their own contract -- MLB spread 23 at +0.30c on average, MLB total 8 at -0.94c -- and 24 had none. **Criterion 3 measured nothing from 2026-09-07 to 2026-09-24, sixteen days,** and its window starts again (above) |
+| since the repair | 33 closes by the repaired closer to 2026-09-26T23:35Z: 21 on a later read of the recommendation's own contract, which the schema checks, and 12 unmeasured, none of them at zero |
+| status | **REPAIRED 2026-09-24** |
+
+**BROKEN 2 -- NFL AND NCAAF SPREAD AND MONEYLINE WERE NOT FORECAST FROM 5
+SEPTEMBER.**
+
+| | |
+|---|---|
+| what broke | `config.FACTOR_SET_VERSIONS` declared factor set fs5 for the four markets from 2026-09-06; fs5 had never been trained on the live record, so `baseline.load_fit` found no model, and `run.py:99` dropped a market with no model in silence. Every predict run since reported success on props and totals alone |
+| from | the last forecast: NFL spread and moneyline 2026-09-04T18:40:24Z, NCAAF 2026-09-05T15:00:57Z |
+| to | the first standing forecast after: all four markets at 2026-09-24T15:00Z (the 15:00Z passes), from the incumbents the revert restored. fs5 was trained on the record at 05:16Z that morning (fits 91-94), and 31 forecasts and recommendations 62, 63, 64 and 66 were published from it before the hold |
+| repaired by | `d93c466` (ruling 1: the 31 forecasts and 4 recommendations withdrawn, never counted; released 09:58Z on the 24th); `ff7e5ab` (the activation gate: a fit is inactive until activated with its holdout; 11:28Z); `4c3bda4` (the fs5 revert: fits 88, 71, 44 and 35 back as incumbents, the hold lifted; 12:59Z); `d7b4dfa` (item 2's remainder: a run fails by name for a market it cannot forecast, and the day strip says so; 2026-09-26T04:48Z) |
+| what it cost the record | **16 NFL games and 165 NCAAF games kicked off with no forecast in either market** (measured: games from the last forecast to 2026-09-24T15:00Z with no standing statistical forecast in the market). 15 and 160 of them kicked off during the nine days the machine was switched off (11-21 September), so this finding is not the only reason they were missed, but no forecast could have been written for any of them. And 31 forecasts and 4 recommendations published from fits that had not beaten their incumbents, withdrawn |
+| status | **REPAIRED 2026-09-24** (forecast again) **and 2026-09-26** (never skipped in silence again) |
+
+**Criterion 5's verdict is not re-read here.** Neither finding THE READ
+recorded is open, and whether any other is is what a run measures. This
+section records two findings and a ruling and re-reads no criterion, so no
+run row is appended: the next row is the re-read's, which the repair brief
+orders once the repair is done ("Then the read again, on the repaired
+record").

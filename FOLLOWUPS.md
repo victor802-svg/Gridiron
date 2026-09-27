@@ -4137,3 +4137,232 @@ Seen and left as they are:
 - **The widening, three processes at once**: on a copy through the backup
   door, three children opening it together all opened (0.5 to 1.7 s), and
   every row and column checksum survived, and no table was left aside.
+
+## The closing line's window -- built 2026-09-27 *(GRIDIRON_REPAIR item 8; the operator's ruling of 2026-09-23)*
+
+"READINESS: two BROKEN findings recorded; the observation window restarts on
+the date item 1 ships; the first clean CLV read is 21 days after that, not
+before." **THE OBSERVATION WINDOW RESTARTS 2026-09-24; THE FIRST CLEAN READ IS
+2026-10-15.** The window it restarts is the two-week observation period of
+2026-09-07 (`docs/FOLLOWUPS.md`, "2026-09-07 — readiness, and a two-week
+observation period"), read on 2026-09-21; that entry is not edited. The map
+of 2026-09-23 was re-verified against 549aab7 first: since it was drawn, item
+1 had moved the measured close into `recommendation_closes` (restated closes
+shown beside the count, never in it), so the window is one more clause in a
+reader, not a marking of rows.
+
+### MEASURED FIRST, read-only *(2026-09-27 about 00:15Z, `db.read_the_live_record`)*
+
+- **When item 1 shipped**: `23cf89b` committed 2026-09-24T06:48:39Z; the main
+  checkout's reflog (read with `git reflog`, nothing changed) fast-forwarded
+  to `4941fa1`, which carries it, at 2026-09-23T23:49:12-07:00 =
+  **2026-09-24T06:49:12Z**; served from about 06:57Z; the restatement wrote
+  its 55 rows at 06:49:48Z. The UTC date is the 24th at every one of them.
+- **The closing line today**: 107 recommendations; 88 accounts in
+  `recommendation_closes` -- 55 restated (the old closer's, all written
+  before the 24th: 31 with a later read, 24 without) and 33 by the repaired
+  closer (21 measured, the first at 2026-09-25T20:05:01Z; 12 unmeasured, the
+  first at 2026-09-24T16:35:02Z). Measured closes counted: MLB spread 12,
+  NCAAF spread 8, MLB total 1; NFL 0 (1 unmeasured); NBA and UFC 0. **No
+  measured close is on a recommendation written before the 24th**, and no
+  close written in the window came from the old closer.
+- **What the window holds**: 48 standing recommendations written since the
+  24th (MLB spread 25 on 20 games, NFL spread 12, NCAAF spread 8, MLB total
+  2, NFL total 1), 42 of them before items 3, 4 and 5 reached the checkout
+  on the 26th; five MLB spread game-markets hold two each (60/79, 61/80,
+  84/93, 86/94, 87/95); eleven written on the 24th before 06:49Z (56-61
+  unmeasured, 62-64 and 66 withdrawn, 65 open). Since 2026-09-07, MLB spread
+  holds 66 standing (52 games).
+- **The cost of the two findings**, for READINESS: 55 of 55 old closes at
+  the price paid, from 2026-09-08T20:35:08Z to 2026-09-24T02:05:01Z; NFL and
+  NCAAF spread and moneyline last forecast 2026-09-04T18:40:24Z and
+  2026-09-05T15:00:57Z and next at 2026-09-24T15:00Z, 16 NFL and 165 NCAAF
+  games kicking off in between with no forecast in either market (15 and 160
+  while the machine was off, 11-21 September).
+
+### BUILT *(2026-09-27)*
+
+- **Dated constants** in `config`: `CLOSING_LINE_WINDOW_START = "2026-09-24"`,
+  `CLOSING_LINE_FIRST_READ_AFTER_DAYS = 21`, `CLOSING_LINE_FIRST_CLEAN_READ =
+  "2026-10-15"`, literals under a comment quoting the ruling and saying why
+  the date is the 24th. `test_closing_line_window.py::test_the_dates_are_
+  the_ruling_s` ties them to the ruling and each other, and pins the
+  thresholds (50, 50) and `CLV_DECLARED` where they were.
+- **One door**: `calibration.closing_line_window(now=None)` -- the UTC date
+  of `now` (the clock by default), the days counted by `language.date_gate`,
+  `open` from the first clean read on.
+- **`calibration.clv_report(conn, *, sport, now=None)`**: a measured close is
+  in N only if its recommendation was written on or after the start; a
+  measured close on an older one is `before_window`, per market and in
+  total, named in words ("... more were written before Thursday 24
+  September, when the count started again, and are not counted"). Before the
+  first clean read: `renderable` False, `mean_cents` and `beat_the_close`
+  None (not computed), no `finding`; the words give the count with its N,
+  "since Thursday 24 September", and "the first clean read is Thursday 15
+  October, and nothing is claimed before it". New keys: `window` (dates,
+  open, the day count) and `window_line` ({label "Since the repair", n,
+  words}), said on every sport's page, a sport with nothing closed
+  included. After the date the report is what it was, counted from the
+  24th.
+- **The kill criterion waits**: `priced.coverage.stopped(conn, sport, *,
+  now=None)` returns nothing while the report's window is shut;
+  `priceable(..., now=None)` passes the clock through. `calibration.
+  scorecard` reads the clock once for the closing line and the kill.
+- **The withdrawn recount** (`audit.withdrawn_counted_faults`) counts every
+  measured close in the count or before the window (its "n" and its
+  buckets), so the window moves no withdrawn close past it; its fault label
+  says so.
+- **The Record page**: `renderPriced` places `window_line` first in the
+  closing line's list, through `requireN`, composing nothing.
+- **Plantings** (each ESCAPES on 549aab7 -- `git archive HEAD` into the
+  scratchpad, this `plant.py` copied over it -- and each is CAUGHT here):
+  `plant_a_closing_line_verdict_before_its_first_clean_read` (sixty closes
+  at +3.0c and sixty at -4.0c written from the start's first second -- the
+  day after it until the prover, below -- read at noon on 14 October: on the
+  head the spread rendered at +5.0c over 90, the total carried "THE MODEL IS
+  BUYING RICH" and the kill stopped it; here each gives its count, no figure
+  and the date, and on 15 October itself the verdict, the finding and the
+  kill arrive), and `plant_a_close_from_before_the_window_counted` (thirty
+  at +9.0c written in the ninety minutes before the start and closed after
+  it -- the day before it until the prover: on the head the spread counted
+  90 at +5.0c; here 60 at +3.0c with the thirty named beside, and the
+  recount agrees).
+  Two existing plantings had worlds dated 7 September, before the window,
+  and are dated after it now, each re-run caught on the head and here:
+  `plant_a_close_read_from_the_first_of_two_reads`,
+  `plant_a_withdrawn_recommendation_in_the_closing_line`.
+- **Tests**: `test_closing_line_window.py` (the dates, the door at 23:59:59
+  and 00:00, the wait and the day itself, a close from before the window,
+  the Record page's sentence, an empty sport, the words through the plain-
+  words and advice scans); `test_priced.py::test_the_kill_criterion_waits_
+  for_the_first_clean_read`; the kill test and `test_voids.py`'s closed world
+  dated inside the window, and read with `now` where they read a mean.
+
+### RENDERED *(2026-09-27 about 00:50Z; this tree and 549aab7 served against one scratch copy of the record made through `db.back_up_the_live_record`, signed in with the browser suite's test token)*
+
+"Priced, and against the close" at 1100px and 390px, MLB and UFC, read as
+pictures: no horizontal scroll, no console error. On 549aab7 MLB's closing
+line read "12 of 50 priced against a close · nothing is claimed from a sample
+this size · ..." and UFC's said nothing about the closing line at all. Here
+a "Since the repair" row comes first -- "The closing line was repaired on
+Thursday 24 September, and its count started again that day: 13
+recommendations priced against a close since. The first clean read is
+Thursday 15 October, 21 days after the repair, and nothing is claimed from it
+before then." -- and it also separates the coverage rows above it from the
+closing line's own below; MLB point spread "12 of 50 priced against a close
+since Thursday 24 September · the first clean read is Thursday 15 October,
+and nothing is claimed before it · ..." and total "1 of 50 ..." (12 + 1 = 13,
+as the row above says); UFC shows the one row, with 0. The row is in the
+same text colour as its neighbours.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **"Ships" is when the released main checkout holds it**: 06:49:12Z on 24
+  September (the reflog), not the commit (06:48:39Z) or the serve restart
+  (about 06:57Z). All three are the 24th, so the date does not depend on it.
+- **"The date" is the UTC date, 00:00Z**: the ruling names a date, and every
+  date here is UTC. Recommendations 56-66, written on the 24th before
+  06:49Z, are in the window; none is measured, four are withdrawn, 65 is
+  open. (Reversal: `from_utc` in `closing_line_window` becomes the instant.)
+- **"Counted from the window" is by when the recommendation was written**
+  (`created_utc`), which also means its close was measured on or after the
+  start -- the stricter of the two, and item 1's close-out's own words (the
+  restart "puts every pre-repair recommendation outside it"). No figure moves
+  either way today: no measured close is on an older recommendation.
+  (Reversal: the clause reads the account's `written_utc`.)
+- **The kill criterion is a read of the closing line**, so it waits for the
+  date: it reads the mean and prints it ("... a contract against the close,
+  which is buying rich"). The exposure is small and stated: no market has
+  more than 12 counted closes today, baseball ends on the 27th, and a market
+  buying rich meanwhile is a flat unit beside "no measured edge".
+- **Before the first clean read the mean is not computed at all**, rather
+  than computed and hidden: "not before" is read as nothing to read. After
+  it, a mean below fifty is carried as it always was (a LAW 4 question
+  outside this ruling).
+- **The closing line's window is not a `READ_WINDOWS` entry**: those count a
+  wait down on the Record page's list of gates and withhold nothing; this
+  withholds a figure in every sport and says its date where the figure
+  would be. No second countdown was added to the page.
+- **No READINESS run row**: the section records two findings and a ruling
+  and re-reads no criterion. The next row is the re-read's.
+
+### THE LIVE RECORD AFTER THE RELEASE *(none)*
+
+The ruling writes nothing to the record: no schema change, no row, no tool.
+The window is a clause in a reader, and the 55 restated closes, the 12
+unmeasured and every recommendation stay as written (LAW 3). From the
+release the Record page shows each sport's count since 24 September with the
+first clean read's date, and no closing-line mean until 15 October.
+
+### OPEN
+
+- **For the re-read: criterion 2's count.** READINESS criterion 2 is "≥ 50
+  recommendations in one coverage entry". Counted since 2026-09-07 MLB spread
+  holds 66 standing (52 games); counted since 2026-09-24, 25 (20 games).
+  Whether the restarted window covers criterion 2 as well as the closing
+  line is not settled here -- nothing in item 8 reads it -- and the re-read
+  must say which count it applied.
+- **The old period's other terms.** The 2026-09-07 period also said "no new
+  features ... softening a threshold, adding surface area, or re-tuning
+  anything on a sample this size". Softening a threshold is refused under
+  any reading; the feature queue after the repair's close-out is the
+  operator's ruling of 2026-09-26 and is not re-decided here.
+- **LAW 4 and the fifty.** At the first clean read a market with fifty
+  measured closes may render "buying cheaper than the market's own final
+  estimate" on fifty, where LAW 4 asks a hundred of an edge claim. The fifty
+  was declared on 2026-09-07 as a comparison of two prices, not an edge
+  estimate; no closing-line verdict has ever rendered, so the question
+  arrives for the first time on 15 October.
+- **Nine of the 21 measured closes are at the price paid**, each on a later
+  read of its own contract that the schema checks (the price had not
+  moved). Not the old defect; worth watching when the first read comes.
+- **`views.scorecard` counts the dated read windows in the machine's local
+  date** (`language.date_gate` with no `today`). Only the rung window of
+  2026-09-14, long open, uses it; the closing line's door passes the UTC
+  date. Out of scope.
+- **`settings.py`'s comment on the payout floor** still says the closing line
+  is measured "separately, over the ones this let through", which no report
+  does; the visible words no longer say it. Out of scope.
+
+### THE PROVER *(2026-09-27)*
+
+Both new plantings ESCAPE on 549aab7 (`git archive HEAD`, this `plant.py`
+copied over it) and are CAUGHT here; the two re-dated ones are caught on
+both. Each guard, neutralised in a scratch copy of this tree, lets its
+planting escape: no window on the count (both), the gate always open, the
+gate a day early, and the mean computed before the gate (the first). Full
+harness 314/314. Step 2's record and schema rows, dry-run on a gate copy:
+both schema comparisons pass with 0 registered differences, every record
+check passes, the live schema as found. Read-only on the record: every
+`created_utc` and `closed_utc` is the one format, so the window's string
+comparison is a time comparison; no measured close is on a recommendation
+written before the 24th; the first close by the repaired closer was written
+2026-09-24T16:35:02Z. The ten test modules that read the closing line pass
+with every clock read of the window moved to 20 October, so none of them
+waits on the window being shut.
+
+- **THE BOUNDARY WAS NOT PROVED** (closed). Both plantings' worlds and the
+  tests' sat a day either side of the start, so four wrong windows passed
+  every planting and every test, each tried in a scratch copy: counted by
+  when the CLOSE was written (the reading not taken, which counts a
+  recommendation written before the repair and closed after it -- the most
+  likely shape of a close from before the window, since the repaired closer
+  closes whatever is open); opened at item 1's instant, 06:49:12Z; opened on
+  the operator's clock, 07:00Z on the 23rd; and opened a second late (`>`
+  for `>=`). The planted world now writes its first counted recommendation
+  at 00:00:00Z on the 24th and the thirty before the window in the ninety
+  minutes before it, each read and closed after it; both plantings escape
+  on all four, and `test_closing_line_window.py::test_the_window_opens_at_
+  midnight_utc_and_counts_when_each_was_written` fails on all four. Both
+  still escape on 549aab7 and are caught here.
+
+Seen and left as they are:
+
+- **The ship date is the 24th in UTC and the 23rd on the operator's
+  clock** (23:49:12 -07:00). The UTC date is the house rule ("All times are
+  UTC") and the later of the two, so the first clean read, 15 October, is
+  "not before" under either; READINESS and `config` say "in UTC".
+- **The kill criterion re-counts from the window.** A market stopped on the
+  old count would start again until 15 October without a ruling; none ever
+  was (every old close read 0.00c, and no market has fifty measured closes),
+  so nothing is re-entered.

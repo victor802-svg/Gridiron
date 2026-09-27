@@ -3412,7 +3412,8 @@ def _units_words(units: float, flat: bool, size_why: str | None = None) -> str:
 
 def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
              minimum: int, *, unmeasured: int = 0, restated: int = 0,
-             unaccounted: int = 0) -> str:
+             unaccounted: int = 0, before_window: int = 0,
+             since: str | None = None, first_read: str | None = None) -> str:
     """The closing-line verdict, or how far it is from arriving.
 
     THE FASTEST HONEST READ. A win rate needs several hundred settled questions;
@@ -3422,18 +3423,37 @@ def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
     AND WHAT IT DID NOT COUNT, said beside it (2026-09-23). A close with no
     later read of its own price is not a close at 0.00c, and an old close
     worked out again afterwards is not a close made at the time.
+
+    AND FROM WHEN, AND NOT BEFORE WHEN (the operator's ruling 8 of 2026-09-23,
+    2026-09-27). `since` is the day the count started again; `first_read`,
+    given only while it is still to come, is the first clean read, and until
+    then the line says the date and claims nothing, whatever the count.
     """
-    if n < minimum:
-        line = (f"{n} of {minimum} priced against a close · nothing is claimed "
-                f"from a sample this size")
+    counted_from = (f" since {date_words_from_iso(since) or since}"
+                    if since else "")
+    if first_read is not None:
+        when = date_words_from_iso(first_read) or first_read
+        head = (f"{n} of {minimum}" if n < minimum else f"{n}")
+        line = (f"{head} priced against a close{counted_from} · the first "
+                f"clean read is {when}, and nothing is claimed before it")
+    elif n < minimum:
+        line = (f"{n} of {minimum} priced against a close{counted_from} · "
+                f"nothing is claimed from a sample this size")
     elif mean_cents is None:
-        line = f"{n} priced against a close, and none of them has a closing price"
+        line = (f"{n} priced against a close{counted_from}, and none of them "
+                f"has a closing price")
     else:
         direction = "cheaper" if mean_cents > 0 else "richer"
-        line = (f"{n} priced against a close · {mean_cents:+.1f}¢ a contract on "
-                f"average, which is buying {direction} than the market's own "
-                f"final estimate · {round((beat_share or 0) * 100)}% beat the "
-                f"close")
+        line = (f"{n} priced against a close{counted_from} · {mean_cents:+.1f}¢ "
+                f"a contract on average, which is buying {direction} than the "
+                f"market's own final estimate · "
+                f"{round((beat_share or 0) * 100)}% beat the close")
+    if before_window:
+        day = date_words_from_iso(since) or since or "the repair"
+        line += (f" · 1 more was written before {day}, when the count started "
+                 f"again, and is not counted" if before_window == 1 else
+                 f" · {before_window} more were written before {day}, when the "
+                 f"count started again, and are not counted")
     if unmeasured == 1:
         line += (" · 1 more closed with no later read of its own price and is "
                  "not counted")
@@ -3453,6 +3473,36 @@ def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
         line += (f" · {unaccounted} more closed before 23 September on their "
                  f"own price and have not been worked out again")
     return line
+
+
+def closing_line_window_line(since: str, first_read: str, n: int, *,
+                             verdict_open: bool) -> str:
+    """The closing line's own first sentence: from when it counts, how many,
+    and when it may first be read.
+
+    THE OPERATOR'S RULING 8 OF 2026-09-23 (GRIDIRON_REPAIR item 8, built
+    2026-09-27): "the observation window restarts on the date item 1 ships;
+    the first clean CLV read is 21 days after that, not before." Said on
+    every sport's Record page, including one with nothing closed yet -- the
+    date is the same everywhere, and a panel that said nothing until a close
+    arrived would leave the reader to guess why the older ones went.
+    """
+    from datetime import date
+
+    start = date_words_from_iso(since) or since
+    when = date_words_from_iso(first_read) or first_read
+    # THE GAP FROM THE DATES THEMSELVES, so the sentence cannot say 21 while
+    # the dates say otherwise.
+    gap = (date.fromisoformat(first_read[:10])
+           - date.fromisoformat(since[:10])).days
+    head = (f"The closing line was repaired on {start}, and its count started "
+            f"again that day: {counted(n, 'recommendation')} priced against a "
+            f"close since.")
+    if verdict_open:
+        return (f"{head} Its first clean read came on {when}, {gap} days after "
+                f"the repair.")
+    return (f"{head} The first clean read is {when}, {gap} days after the "
+            f"repair, and nothing is claimed from it before then.")
 
 
 def withdrawn_recommendations_line(n: int, reasons: list[str | None]) -> str:

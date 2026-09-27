@@ -155,7 +155,8 @@ def is_covered(conn: sqlite3.Connection, sport: str, market: str) -> bool:
 KILL_AFTER = 50
 
 
-def stopped(conn: sqlite3.Connection, sport: str) -> dict[str, dict]:
+def stopped(conn: sqlite3.Connection, sport: str, *,
+            now: str | None = None) -> dict[str, dict]:
     """Coverage entries the closing line has stopped, and on what number.
 
     WRITTEN BEFORE IT WAS NEEDED, which is the whole point: nobody has ever
@@ -168,11 +169,21 @@ def stopped(conn: sqlite3.Connection, sport: str) -> dict[str, dict]:
     takes a dated operator ruling, because a rule that switches itself off and
     on again with the next fifty rows is a rule that chases noise in both
     directions.
+
+    NOT BEFORE THE FIRST CLEAN READ (the operator's ruling 8 of 2026-09-23,
+    GRIDIRON_REPAIR item 8, built 2026-09-27): "the first clean CLV read is 21
+    days after that, not before." The kill reads the closing line's mean and
+    prints it -- "a contract against the close, which is buying rich" -- so it
+    is a read of the closing line, and it waits for the same date, on the
+    same count: fifty closes measured on recommendations written since the
+    repair. `now` is the report's clock, passed through.
     """
     from .. import calibration
 
     out: dict[str, dict] = {}
-    report = calibration.clv_report(conn, sport=sport)
+    report = calibration.clv_report(conn, sport=sport, now=now)
+    if not report["window"]["open"]:
+        return out
     for entry in report["markets"]:
         if entry["n"] < KILL_AFTER:
             continue
@@ -189,17 +200,19 @@ def stopped(conn: sqlite3.Connection, sport: str) -> dict[str, dict]:
     return out
 
 
-def priceable(conn: sqlite3.Connection, sport: str, market: str) -> dict:
+def priceable(conn: sqlite3.Connection, sport: str, market: str, *,
+              now: str | None = None) -> dict:
     """May this market be priced right now, and if not, why not.
 
     Two gates in one door: the measured coverage list, and the kill criterion.
-    A market can fail either and the caller is told which.
+    A market can fail either and the caller is told which. `now` is the kill
+    criterion's clock (2026-09-27), passed through.
     """
     # THE KILL CRITERION IS ASKED FIRST. A market its own closing line has
     # stopped is stopped whatever the coverage measurement now says about it,
     # and that is the more useful sentence to hand a reader: "this was priced
     # fifty times and bought rich" says more than "this is not on the list".
-    halted = stopped(conn, sport).get(market)
+    halted = stopped(conn, sport, now=now).get(market)
     if halted:
         return {"priceable": False, "market": market, "why": halted["why"]}
     if not is_covered(conn, sport, market):

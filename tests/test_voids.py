@@ -53,9 +53,10 @@ def _forecast(conn, gid, *, created="2026-09-07T00:00:00Z", fs="fs5",
         if pid is None else pid
 
 
-def _priced(conn, gid, pid, *, closes=True):
+def _priced(conn, gid, pid, *, closes=True, day="2026-09-07"):
     """A recommendation at 46c on its own contract, and -- when `closes` -- a
-    later near-start read of that contract at 52c before the start."""
+    later near-start read of that contract at 52c before the start, all on
+    `day` (the game's kickoff must come after 01:40 that day)."""
     at_the_line.ensure_read_kind(conn)
     reads = [("00:30", 0.45)] + ([("01:40", 0.51)] if closes else [])
     quotes = []
@@ -66,20 +67,20 @@ def _priced(conn, gid, pid, *, closes=True):
             " volume, fetched_utc, read_kind) VALUES (?, ?, 'E', 'nfl', ?,"
             " 'spread', 'home_margin', 7.5, 'home', ?, ?, 900, ?, 'near_start')",
             (at_the_line.VENUE, f"T-{pid}", gid, bid, bid + 0.02,
-             f"2026-09-07T{stamp}:00Z"))
+             f"{day}T{stamp}:00Z"))
         quotes.append(conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0])
     conn.execute(
         "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
         " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
         " model_prob, venue_price, venue_implied, price_basis, created_utc)"
         " VALUES (?, ?, ?, 'nfl', ?, 'spread', 'home_margin', 7.5, 'home',"
-        " 'rung_matched', NULL, NULL, 0.6, 0.46, 0.46, 'mid',"
-        " '2026-09-07T00:31:00Z')", (pid, quotes[0], at_the_line.VENUE, gid))
+        " 'rung_matched', NULL, NULL, 0.6, 0.46, 0.46, 'mid', ?)",
+        (pid, quotes[0], at_the_line.VENUE, gid, f"{day}T00:31:00Z"))
     conn.execute(
         "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
         " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
         " created_utc) VALUES (?, 'nfl', ?, 'spread', 'yes', 0.6, 0.46, 10.0,"
-        " 'flat', 1.0, 0, '2026-09-07T00:32:00Z')", (pid, gid))
+        " 'flat', 1.0, 0, ?)", (pid, gid, f"{day}T00:32:00Z"))
     conn.commit()
     return conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
 
@@ -98,12 +99,17 @@ def _void(conn, pid, reason=REASON):
 
 def _three_closed(conn):
     """Three recommendations with measured closes (+6.0c each): one withdrawn
-    by its own row, one made on a forecast that was voided, one standing."""
+    by its own row, one made on a forecast that was voided, one standing.
+
+    WRITTEN INSIDE THE CLOSING LINE'S WINDOW (2026-09-27): the count runs
+    from the day the closing line was repaired (the operator's ruling 8 of
+    2026-09-23), so on 7 September, where these stood until then, the one
+    that stands would be named beside the count rather than in it."""
     ids = {}
     for name in ("own", "forecast", "stands"):
-        _game(conn, f"g-{name}")
-        pid = _forecast(conn, f"g-{name}")
-        ids[name] = (pid, _priced(conn, f"g-{name}", pid))
+        _game(conn, f"g-{name}", kickoff="2026-09-25T02:00:00Z")
+        pid = _forecast(conn, f"g-{name}", created="2026-09-25T00:00:00Z")
+        ids[name] = (pid, _priced(conn, f"g-{name}", pid, day="2026-09-25"))
     closed = recommend.record_closing_prices(conn)
     assert closed["closed"] == 3
     _withdraw(conn, ids["own"][1])
@@ -157,7 +163,10 @@ def test_the_schema_comments_do_not_open_a_declaration():
 
 def test_the_closing_line_never_counts_a_withdrawn_recommendation(conn):
     _three_closed(conn)
-    report = calibration.clv_report(conn, sport="nfl")
+    # READ ON THE FIRST CLEAN READ, when a mean may be given at all (the
+    # operator's ruling 8 of 2026-09-23); before it the mean is withheld.
+    report = calibration.clv_report(
+        conn, sport="nfl", now=config.CLOSING_LINE_FIRST_CLEAN_READ + "T00:00:00Z")
     assert report["n"] == 1, "only the standing recommendation's close counts"
     entry = report["markets"][0]
     assert entry["n"] == 1 and entry["mean_cents"] == pytest.approx(6.0)

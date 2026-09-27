@@ -7116,6 +7116,14 @@ def withdrawn_counted_faults(conn, report: dict) -> list[str]:
     time with a closing value; every closed recommendation is in one of its
     four buckets; an open one is awaiting its close -- applied to the
     recommendations that still stand.
+
+    THE WINDOW IS NOT THIS RECOUNT'S QUESTION (2026-09-27). From the
+    operator's ruling 8 of 2026-09-23 a measured close on a recommendation
+    written before `config.CLOSING_LINE_WINDOW_START` is named beside the
+    count (`before_window`) rather than in it. What is recounted here is every
+    measured close, in the count or before the window, so a close the window
+    moves from one to the other is neither lost nor found, and a withdrawn one
+    in either is caught.
     """
     sport = report["sport"]
     own = conn.execute(
@@ -7144,9 +7152,10 @@ def withdrawn_counted_faults(conn, report: dict) -> list[str]:
         "withdrawn": len(gone),
     }
     got = {
-        "n": report.get("n", 0),
+        "n": report.get("n", 0) + (report.get("before_window") or 0),
         "closed": sum((report.get(k) or 0) for k in
-                      ("n", "unmeasured", "restated", "unaccounted")),
+                      ("n", "unmeasured", "restated", "unaccounted",
+                       "before_window")),
         "awaiting_close": report.get("awaiting_close", 0),
         "withdrawn": report.get("withdrawn", 0),
     }
@@ -7157,7 +7166,7 @@ def withdrawn_counted_faults(conn, report: dict) -> list[str]:
         "withdrawn": [r["id"] for r in gone],
     }
     what = {
-        "n": "measured closes in its count",
+        "n": "measured closes in its count or before its window",
         "closed": "closed recommendations in its buckets",
         "awaiting_close": "recommendations awaiting a close",
         "withdrawn": "withdrawn recommendations named beside it",
