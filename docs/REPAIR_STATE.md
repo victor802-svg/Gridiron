@@ -17,6 +17,26 @@
   board) -> Q5 -> Q10 -> the re-read (not before 2026-09-28T15:00Z).
   **Serving 68b215e** (Q14). Gate reruns: one as-is; a second failure of
   the same test is diagnosed before any third run.
+  **Done 27 Sep (third set):** Q15 released as 70ad888 (22:00Z; commits
+  22e182d, the predictions rules, and 70ad888, the scan; gate 4/4, 337/337,
+  on its one as-is rerun -- the first run failed only
+  `test_nothing_moves_under_reduced_motion`, Q5's race). The live record
+  gained the three rules on its first open (241 objects; predictions 3140,
+  numbered 1-3140, sequence 3140). THE MEASUREMENT (read-only, a verified
+  copy at ~20:40Z and the door at 20:54Z): **no live prediction shows
+  evidence of having been replaced** -- no hole in the numbers, the sequence
+  at the max, stamps rising with the numbers, every row equal to its
+  fingerprint and to the 765-row baseline, every row unchanged across 12
+  earlier copies back to 8 September, no child citing a missing forecast or
+  stamped before one. What a replacement could have left no trace of: rows
+  1-765 rewritten under their own number before the fingerprint backfill (5
+  Sep 11:04Z), a rewrite to identical content, or a forecast and its
+  fingerprint replaced together (`prediction_fingerprints` has no replace
+  rule). Found alongside, none standing in a count: five at-the-line claims
+  (7, 8, 13, 14, 26) store the complement of their forecast (the claim
+  writer's first minute, 7 Sep, 25d83b8); run 4821 (predict:mlb, 27 Sep
+  05:44Z) has no ending recorded, for item 7's sweep. New questions 21-27
+  below. **Next: Q20.**
 - **Serving: f02e913** (`/api/health` = f02e9134d984). Repair items 1-8 and
   the schema rulings are released; close-out:
   `docs/closeouts/2026-09-27-overnight.md` (verdicts, awake time, spend).
@@ -685,6 +705,96 @@ depend on the answer.
     fails today, a planting, and the one `test_motion` assertion changes.
     The side question: not in scope; the old Why panel leaves with the
     board, and the board merge checks every tap target, links included.
+
+21. **Q17: which "line" is in the key? (Asked 2026-09-27, before Q17's
+    build; a read-only map of every count's key, scratchpad.)** The ruling:
+    "forecaster + the venue's question (game, market, line) ... alt lines
+    are separate questions". Six keys exist today: `priced.bet_of` and
+    `horizon.bet_of` (game, market, subject, the RUNG we asked:
+    `predictions.line_asked`), `drift.bet_of` (game, market, the player for
+    a prop; no line), `at_the_line.standing_claims` (game, market, side; no
+    line), the coverage line (game only), and Q12's rule (game, market,
+    across forecasters). The blind record has no venue line at all, and
+    `calibration.assert_no_pooled_outlooks` holds each outlook's count to
+    its curve's n, so the key's line decides whether the blind curves move.
+    - **(i) The rung asked** (`line_asked`; NULL for a moneyline or UFC
+      distance). Every forecast has it; the priced record, the outlook and
+      the blind curves do not move; drift and the at-the-line record split
+      each game asked at two rungs (twelve NCAAF spread games) into two bets.
+      A prop's player is in the question (the subject), as it is in the
+      blind record's own key.
+    - **(ii) The venue's strike.** Only a forecast the venue quoted has one,
+      so a blind curve's forecasts would mostly have no line; the outlook
+      would then disagree with its curve, or the curves would be rebuilt on
+      a key most of their rows lack.
+    Recommended: (i). Default until ruled: Q17 not built.
+22. **Q17: the recommendation counts, and recs 45/46.** Q12's counts (the
+    closing line, the kill criterion, "Would not have cleared",
+    tools/empty_bar.py) are the app's recommendations, both forecasters
+    pooled per market (`clv_report` groups by market). Recs 45 (statistical,
+    over 7.5) and 46 (reasoning pass, under 7.5), Toronto at Baltimore on 21
+    September, are two forecasters: with the forecaster in the key they are
+    two distinct bets, and Q12's "count zero ... both sides, no position"
+    cannot come out of one function that includes the forecaster.
+    - **(A) Those counts split per forecaster** on Q17's key. 45 and 46
+      each count once, in their own forecaster's closing line; the "Both
+      sides, no position" row goes (Q12's words for 45/46 are superseded);
+      the kill criterion reads each forecaster's line.
+    - **(B) Those counts stay the app's position, pooled.** Pairs are found
+      on Q17's key; "both sides" is a second rule on the venue's question
+      without the forecaster, so 45/46 still count zero -- two functions,
+      against "one function".
+    Recommended: (A), as Q17's words read; it reverses Q12 for 45/46, so it
+    is yours. Default until ruled: Q17 not built.
+23. **Q16: the page's count, or the fit's gate too?** A correction's category
+    is sport, market type and forecaster (`correction.py:107-120`: every
+    prop type under "prop", UFC's cards together), and the fit is gated on
+    every settled row of it (`correction.training_rows`, `refit_all`). The
+    page's "A correction for ..." line counts the same rows. Rebuilt on
+    Q17's key alone, the page would state a count the fit is not gated on.
+    - **(A) The page and the fit's gate both count distinct bets** on Q17's
+      key: the page states what actually gates the fit. When a correction
+      can be fitted changes -- a model change.
+    - **(B) Only the page's count changes**, and it states a number the fit
+      does not use.
+    Recommended: (A). Default until ruled: Q16 not built.
+24. **Q13's released rules have the hole Q15's prover closed on predictions.
+    (Found by Q15's prover, 2026-09-27.)** A plain `UPDATE recommendations
+    SET id = 10 WHERE id = 2` (over a mark of 3) is not refused -- it is not
+    a replacement -- and afterwards a one-row `INSERT OR REPLACE` whose
+    number reads as a free 99 to the rules and as 10 to the row writes
+    another forecast's recommendation over it: the after-insert rule
+    assumed every stored number is at or below SQLite's mark. Q15 fixed
+    this for predictions (commit 22e182d); Q13 is released as it was. Fix
+    it on recommendations the same way (own commit, planting)? Default
+    until ruled: not built; no code does either statement.
+25. **Connection settings that switch the rules off. (Found by Q15's
+    prover.)** `Connection.setconfig(SQLITE_DBCONFIG_ENABLE_TRIGGER,
+    False)` turns every rule in the schema off for that connection, the
+    delete rules included, and `create_function` redefining a built-in the
+    rules call (`json_valid`, `json_extract`) answers a rule one way and a
+    key another. None is in shipped code. The scan the ruling asked for
+    names three statements; add these two calls to it? Default until ruled:
+    not built.
+26. **Tables append-only in words, with no rule. (Found by Q15's scan.)**
+    `factor_scores` and `llm_calls` (CLAUDE.md, "Append-only history"),
+    `injury_reports`, `lineup_captures` and the observed-weather table
+    ("append-only and stamped" in schema.sql) have no delete or update rule,
+    so the scan treats them as ordinary (none takes a replacing write
+    today). And `mlb_people`'s schema comment says a row is "written once",
+    while `mlb_loader.load_people` upserts it on every load (registered as
+    a cache). Give the five their rules, and which is meant for
+    `mlb_people`? Default until ruled: not built.
+27. **Sixteen NFL week-3 reasoning totals stand on their early pass, written
+    after their final pass. (Found by Q15's measurement.)** `final:nfl` run
+    2052 wrote the finals on 23 September at 19:30Z; `predict:nfl` run 2336
+    wrote the early rows on 24 September at 05:32-05:36Z, the first run
+    after the spread and moneyline were trained. Both are lawful (the key
+    includes the pass), and `calibration.standing_row_clause` takes the
+    latest row before the start without reading the pass, so for these 16
+    the later EARLY row stands over the final. Q17 says which pass counts
+    "stays each record's standing rule": as designed, or should a final
+    pass always stand over an early one? Default until ruled: as is.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
