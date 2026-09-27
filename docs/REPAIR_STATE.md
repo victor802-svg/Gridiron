@@ -23,7 +23,17 @@
   Q12 released as 5a93bb3 (09:08Z; gate 4/4, 318/318): every measurement
   counts a same-side pair once and 45/46 not at all ("Both sides, no
   position"); the rule leaves out exactly the 18 pairs' later rows and
-  45/46 on the record. **Next: Q14's three commits.**
+  45/46 on the record. Q14 released as 68b215e (14:06Z; three commits
+  29811e0 priced record, cdaf03c drift, 68b215e outlook; gate 4/4,
+  324/324): MLB moneyline's priced "281" is 103 (statistical, genuinely
+  past its 100) and 91 (reasoning); drift "over 79 games" is 50; the
+  outlook's "350 of 100" is 246; NFL passing yards, rushing yards, passing
+  touchdowns and UFC Contender Series now read "cannot clear". Its gate
+  failed twice first on `test_nothing_moves_under_reduced_motion`: a
+  diagnosis (scratchpad diag/) showed the test racing the redraw its own
+  hash change starts -- reproduced on the code before Q14 with a planted
+  25-30 ms delay; Q5's business -- and the third run was green.
+  **Next: the flaky tests.**
   (The order continues:
   (docs/briefs/2026-09-27-board-merge.md) -> Q5 (A: a render-finished
   signal, every fixed wait rebuilt; ELAPSED_TIME_HELD may only shrink until
@@ -555,6 +565,37 @@ depend on the answer.
     table (a replace rule with no column list, and an after-insert rule
     where the number can read twice), each with a planting. Default until
     ruled: not built.
+16. **The correction gates on the Record page pool the same way, outside
+    Q14's three: rebuild them too? (Found by Q14's drift step, 2026-09-27.)**
+    `views.corrections_report` ("A correction for ..." under "What else is
+    still counting") counts every settled row -- each pass of a question,
+    every prop type under "prop", UFC's cards together. Measured read-only
+    against the standing questions the correction's own learning-panel
+    count uses: MLB moneyline 350 against 246; NFL point spread "49 of 50"
+    against 30; UFC distance, moneyline and rounds "85 settled", past the
+    fifty, against 49, under it. Q14's first sentence says "every count on
+    the Record page that states a gate distance"; its three commits named
+    three others. Default until ruled: not built.
+17. **One key for "a distinct bet"? (Found by Q14, 2026-09-27.)** Q14's
+    priced step keys a distinct bet as the blind question (game, market,
+    subject, rung); its drift step keys it as game and market (plus the
+    player for a prop), which is item 6's key. They count the same on the
+    priced record today and differ on the drift record: NCAAF point spread
+    has 78 standing questions on 66 games (twelve games asked at two
+    rungs). Which key? Default until ruled: each as built.
+18. **A card's Why panel snaps shut when a redraw lands. (Found by the
+    diagnosis of 2026-09-27; not a test defect.)** `renderToday` rebuilds
+    every card with its Why body hidden. On the live record `/api/week`
+    takes about 7.6 s, so a person who opens Why after a market tab, the
+    tier filter, the sort toggle or the took button -- before the redraw
+    they started lands -- sees it close. A defect to fix (keep the open
+    card open across a redraw), or as designed? Default until ruled: as is.
+19. **The priced panel's heading paints an internal identifier.** (Found by
+    Q14's priced render.) The "Priced, and against the close" heading
+    shows the blend version "b1" raw on every sport's Record page, since
+    the priced record opened. PLAIN WORDS forbids an internal identifier in
+    the interface. A class (a) fix of one line and a planting, or wait?
+    Default until ruled: not changed.
 
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 
