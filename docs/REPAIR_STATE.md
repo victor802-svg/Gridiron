@@ -20,7 +20,10 @@
   `test_motion.py::test_a_tab_switch_arrives_through_the_motion_block`
   (a computed style read before it applied) -- Q5's business, with the
   weekly strip's canvas race.
-  **Next: Q12.**
+  Q12 released as 5a93bb3 (09:08Z; gate 4/4, 318/318): every measurement
+  counts a same-side pair once and 45/46 not at all ("Both sides, no
+  position"); the rule leaves out exactly the 18 pairs' later rows and
+  45/46 on the record. **Next: Q14's three commits.**
   (The order continues:
   (docs/briefs/2026-09-27-board-merge.md) -> Q5 (A: a render-finished
   signal, every fixed wait rebuilt; ELAPSED_TIME_HELD may only shrink until
