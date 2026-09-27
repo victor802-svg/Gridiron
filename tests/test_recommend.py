@@ -812,30 +812,52 @@ def _regrade_tool():
 
 
 def test_the_tool_writes_the_ruled_set_once_and_reads_only_until_told(tmp_path, capsys):
+    """QUESTION 9, RULED 2026-09-27: "label all four: 3, 10, 26, 56". The
+    world holds all four as the live record does."""
     tool = _regrade_tool()
-    assert tool.RULED == (3, 10, 26) and tool.LEFT_BY_RULING == ()
+    assert tool.RULED == (3, 10, 26, 56) and tool.LEFT_BY_RULING == ()
     path = tmp_path / "rec.db"
-    _let_through_world(tmp_path).close()
+    _let_through_world(tmp_path, with_56=True).close()
     assert tool.main(["--database", str(path)]) == 0
     out = capsys.readouterr().out
-    assert "3 recommendation(s) cleared 5% of the yes price" in out
+    assert "4 recommendation(s) cleared 5% of the yes price" in out
     assert "nothing written" in out
     check = db.connect(path)
     assert check.execute("SELECT COUNT(*) FROM recommendation_regrades").fetchone()[0] == 0
     check.close()
     assert tool.main(["--database", str(path), "--write"]) == 0
     assert tool.main(["--database", str(path), "--write"]) == 0     # idempotent
-    assert "3 already re-graded" in capsys.readouterr().out
+    assert "4 already re-graded" in capsys.readouterr().out
     check = db.connect(path)
     assert [r[0] for r in check.execute(
-        "SELECT recommendation_id FROM recommendation_regrades ORDER BY 1")] == [3, 10, 26]
+        "SELECT recommendation_id FROM recommendation_regrades ORDER BY 1")] == [3, 10, 26, 56]
+
+
+def test_the_tool_refuses_a_ruled_recommendation_the_rule_does_not_select(tmp_path, capsys):
+    """THE OTHER DIRECTION: rec 56 is ruled, and a record where the rule does
+    not select it (here, a world without it) is refused by name, nothing
+    written -- a re-grade is permanent, and the ruling is checked against the
+    arithmetic, never taken on trust."""
+    tool = _regrade_tool()
+    path = tmp_path / "rec.db"
+    _let_through_world(tmp_path).close()
+    with pytest.raises(SystemExit) as exc:
+        tool.main(["--database", str(path), "--write"])
+    assert exc.value.code == 2
+    out = capsys.readouterr().out
+    assert "REFUSED, NOTHING WRITTEN" in out and "[56]" in out
+    check = db.connect(path)
+    assert check.execute("SELECT COUNT(*) FROM recommendation_regrades").fetchone()[0] == 0
 
 
 def test_the_tool_refuses_a_selection_the_ruling_did_not_name(tmp_path, capsys):
     """REC 56, AS THE LIVE RECORD HOLDS IT ON 2026-09-26: let through by the
-    yes price after the ruling was measured. The ruling says "the three";
-    the tool names the fourth and writes nothing."""
+    yes price after the ruling was measured. Under the reading the operator
+    did NOT take ("the three", set here in the test), the tool names the
+    fourth and writes nothing -- the refusal the live record met until
+    question 9 was ruled."""
     tool = _regrade_tool()
+    tool.RULED = (3, 10, 26)
     path = tmp_path / "rec.db"
     _let_through_world(tmp_path, with_56=True).close()
     with pytest.raises(SystemExit) as exc:

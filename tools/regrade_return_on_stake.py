@@ -28,11 +28,12 @@ operator, not for this script -- the precedent of `tools/void_fs5.py`.
 MEASURED 2026-09-26, read-only on the live record: the rule selects FOUR --
 recs 3, 10 and 26, the three THE READ of 2026-09-23 counted, and rec 56,
 written at 05:21:25Z on 24 September by the logon catch-up, after the ruling
-and before the fix. The ruling says "the three". So until the operator rules
-(docs/REPAIR_STATE.md, "Questions for the operator") this tool REFUSES on the
-live record and names rec 56 and its arithmetic. His answer is one line
-below: rec 56 joins `RULED`, or it goes in `LEFT_BY_RULING` -- selected by
-the rule and left unlabelled by his words.
+and before the fix. The ruling said "the three", so until the operator ruled
+this tool REFUSED on the live record and named rec 56 and its arithmetic.
+
+RULED 2026-09-27 (question 9; docs/briefs/2026-09-27-close-out-rulings.md):
+"(B) label all four: 3, 10, 26, 56. The ruling named the defect, not the
+count." Rec 56 joined `RULED`; nothing is left out.
 
 REFUSED ON THE LIVE RECORD without `--live`, and `--live` refused on anything
 else; the record is known by the file's identity (`db.is_the_live_record_file`),
@@ -63,13 +64,15 @@ for stream in (sys.stdout, sys.stderr):
 from gridiron import db  # noqa: E402
 from gridiron.market import recommend  # noqa: E402
 
-#: THE THREE THE RULING NAMES -- "the three recommendations it let through",
-#: as THE READ of 2026-09-23 counted them.
-RULED = (3, 10, 26)
+#: THE FOUR THE OPERATOR RULED ON 2026-09-27 (question 9): "label all four:
+#: 3, 10, 26, 56. The ruling named the defect, not the count." Recs 3, 10 and
+#: 26 are the three THE READ of 2026-09-23 counted; 56 was written at
+#: 05:21:25Z on 24 September by the logon catch-up, after the ruling and
+#: before the fix.
+RULED = (3, 10, 26, 56)
 
-#: SELECTED BY THE RULE AND LEFT UNLABELLED BY THE OPERATOR'S WORDS. Empty
-#: until he rules on rec 56 (docs/REPAIR_STATE.md): nothing is left out on
-#: the session's own reading.
+#: SELECTED BY THE RULE AND LEFT UNLABELLED BY THE OPERATOR'S WORDS. Empty:
+#: the ruling of 2026-09-27 labels every one the rule selects.
 LEFT_BY_RULING: tuple[int, ...] = ()
 
 
@@ -112,8 +115,8 @@ def check(selected: list[dict]) -> list[int]:
             f"{len(ruled)} ({', '.join(str(i) for i in sorted(ruled))}). "
             f"Selected and not ruled on:\n"
             + "\n".join(_line(by_id[i]) for i in unruled)
-            + "\nA re-grade is permanent and the ruling says \"the three\"; "
-            f"which to label is the operator's (docs/REPAIR_STATE.md).")
+            + "\nA re-grade is permanent; which to label is the operator's "
+            f"(docs/REPAIR_STATE.md).")
     return sorted(ruled)
 
 
