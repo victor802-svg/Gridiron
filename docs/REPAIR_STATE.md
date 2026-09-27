@@ -5,6 +5,17 @@
 - **Serving: f02e913** (`/api/health` = f02e9134d984). Repair items 1-8 and
   the schema rulings are released; close-out:
   `docs/closeouts/2026-09-27-overnight.md` (verdicts, awake time, spend).
+- **THE ORDER, as ruled 2026-09-27 (second set,
+  docs/briefs/2026-09-27-rulings-second-set.md; supersedes the list just
+  below where they differ):** Q13 (committed 9db5582; its gate was cut off
+  by a power-off at 04:58Z on 27 Sep and runs again) -> Q9 labels -> Q12 ->
+  Q14 in three commits (priced_scorecard, drift.report,
+  horizon.market_outlook; each with a planting that escapes on the unfixed
+  code) -> the flaky tests -> the board merge
+  (docs/briefs/2026-09-27-board-merge.md) -> Q5 (A: a render-finished
+  signal, every fixed wait rebuilt; ELAPSED_TIME_HELD may only shrink until
+  then, and the merge adds no fixed wait) -> Q10 -> the re-read (not before
+  2026-09-28T15:00Z).
 - **RULED 2026-09-27 (docs/briefs/2026-09-27-close-out-rulings.md). The
   order:**
   1. **Q13** (in progress): no stored recommendation may be replaced by any
@@ -502,6 +513,35 @@ depend on the answer.
       pools.** Each is rebuilt through its record's standing rule, per
       forecaster (and per tier for UFC), with a planting, under item 6.
     Default until ruled: (A); nothing built for (B).
+    **RULED 2026-09-27: (B)**, three commits before the re-read.
+15. **The replacement hole beyond recommendations: fix it on the other
+    tables, and where in the order? (Found by Q13's build and prover,
+    2026-09-27; FOLLOWUPS, "No stored recommendation is replaced", OPEN.)**
+    Q13 closed it for `recommendations` only, as ruled. Measured on scratch
+    databases:
+    - **Predictions (LAW 3's own table).** `INSERT OR REPLACE` naming a
+      stored prediction's id rewrote its probability from 0.61 to 0.99
+      under the same id, and `UPDATE OR REPLACE ... SET rowid` onto another
+      prediction removed that one; `predictions_no_delete` never runs.
+      Nothing refuses it, and only the record's fingerprint audit would
+      catch it afterwards. 16 of the 20 tables with a delete rule have no
+      replace rule.
+    - **`market_snapshots_never_replaced_by_update`** (5a') is written
+      `BEFORE UPDATE OF id, prediction_id, kind`, which SQLite does not run
+      for `SET rowid` / `oid` / `_rowid_`: two snapshots became one.
+    - **`recommendation_closes` and `recommendation_voids`** accept a
+      replacing insert naming a stored recommendation: a close or a
+      withdrawal can be rewritten.
+    - **A recommendation's id** can still be changed by a plain `UPDATE ...
+      SET id` (not a replacement, but a later insert could reuse the old
+      number).
+    - **SQLite's own sequence** can be rewritten by any statement, and no
+      trigger can be put on it.
+
+    No code does any of these today. The fix is the Q13 pattern, table by
+    table (a replace rule with no column list, and an after-insert rule
+    where the number can read twice), each with a planting. Default until
+    ruled: not built.
 
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 
