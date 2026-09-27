@@ -584,6 +584,12 @@ def test_every_new_guard_is_in_the_planted_harness():
         # game, two forecasters or every prop type in one count.
         "plant_a_drift_count_pooling_passes_and_forecasters",
         "plant_a_drift_game_counted_twice",
+        # OPERATOR QUESTION 14 (ruled 2026-09-27, 3 of 3): the line beside
+        # each blind curve counts that curve's standing questions -- one
+        # forecaster's, one card's for UFC, each once -- never a question's
+        # two passes, two forecasters or three cards in one outlook.
+        "plant_a_blind_outlook_counting_superseded_passes",
+        "plant_a_blind_outlook_game_counted_twice",
         # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): a refused rerun is a noop, the closing write is
         # caught, a hung run is marked abandoned past its task's silence,

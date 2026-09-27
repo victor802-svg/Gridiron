@@ -883,6 +883,14 @@ def step_2_guards() -> bool:
         ("where the line went counts one bet per forecaster",
          lambda: audit.check_the_drift_record_is_never_pooled(
              _record_conn())),
+        # OPERATOR QUESTION 14 (ruled 2026-09-27, 3 of 3): the outlook beside
+        # each blind curve counts that curve's standing questions -- one
+        # forecaster's, one card's for UFC, each once -- built for every sport
+        # on the record's copy through its builder's guard. Until then this
+        # gate built NFL's alone.
+        ("the blind record's outlook counts its curve's standing questions",
+         lambda: audit.check_the_blind_outlook_is_never_pooled(
+             _record_conn())),
         # THE ACTIVATION GATE (operator rulings, 2026-09-24). A market
         # forecasts from its activated fit, and that fit is the factor set
         # the config declares. Read on the migrated copy, which holds the

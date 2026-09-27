@@ -1353,6 +1353,33 @@ def retired_outlook_line(n: int, gate: int, day: str) -> str:
             f"so {n} settled is the final count")
 
 
+def market_outlook_line(n: int, gate: int, expected: int | None,
+                        ends: str | None, *, written_before: bool = False) -> str:
+    """The line beside a blind curve: its count, what the pace projects, and
+    whether the gate can clear this season (ruling R3, 2026-09-05).
+
+    COMPOSED HERE FROM 2026-09-27 (operator question 14, 3 of 3), where it
+    was written inside `horizon.market_outlook`: the guard reads the line
+    again from the outlook's own numbers, so there is one composition. `n` is
+    the curve's own count -- one forecaster's standing questions, one card's
+    for UFC -- and the words are the ones the page has always printed.
+
+    NOTHING THIS SEASON IS NOT NOTHING EVER: `n` counts every season's
+    questions and the pace only this season's, so with a count from an
+    earlier season and no rate the line says "this season", not "yet" (item
+    6's prover found the at-the-line line denying the claims it counted).
+    """
+    if expected is None:
+        when = "this season" if written_before else "yet"
+        return (f"{n} of {gate} · nothing written in this market {when}, so "
+                f"there is no rate to project from")
+    ends_short = ends[5:] if ends else "the season's end"
+    line = f"{n} of {gate} · ~{expected} expected · season ends {ends_short}"
+    if expected >= gate:
+        return line
+    return f"{line} · THIS GATE CANNOT CLEAR THIS SEASON"
+
+
 def category_label(market: str, tier: str | None, predictor: str,
                    retired: dict | None = None) -> str:
     """"moneyline, Fight Night, statistical" -- never `fight_night`.

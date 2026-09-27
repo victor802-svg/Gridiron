@@ -524,12 +524,15 @@ const Gridiron = (function () {
     // categoryLabel returns a STRING, not a node.
     cell.appendChild(el('div', '', categoryLabel(c)));
     const o = c.outlook;
-    // ONLY WHERE THERE IS A RATE TO PROJECT FROM. The outlook counts THIS
-    // season; the category's N counts the whole record. On a backtest, and on
-    // any sport whose settled picks predate the current season, that put
-    // "nothing written in this market yet" directly beside "N = 8" -- two true
-    // statements that read as a contradiction. Silence beats a sentence the
+    // ONLY WHERE THERE IS A RATE TO PROJECT FROM. The outlook's pace counts
+    // THIS season. Its count has been the curve's own N since 2026-09-27
+    // (operator question 14: one forecaster's standing questions, one card's
+    // for UFC), and a line with no rate this season still says so in words
+    // the server checks -- but on a backtest, and on any sport whose settled
+    // picks predate the current season, it is a sentence about nothing this
+    // season beside a count from another. Silence beats a sentence the
     // reader has to reconcile.
+    if (o) requireN(o, 'the outlook beside ' + c.category);
     if (o && o.message && o.reachable !== null && o.reachable !== undefined) {
       const cls = o.reachable === false ? 'footnote gate-unreachable' : 'footnote';
       cell.appendChild(el('div', cls, o.message));

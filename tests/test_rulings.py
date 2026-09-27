@@ -185,7 +185,8 @@ def test_an_unreachable_gate_says_so_with_its_arithmetic(tmp_path):
     )
     conn.commit()
 
-    out = horizon.market_outlook(conn, "mlb", "batter_hits", season=2026)
+    out = horizon.market_outlook(conn, "mlb", "batter_hits", predictor="statistical",
+                                 season=2026)
     assert out["reachable"] is False
     assert out["gate"] == 100
     assert "CANNOT CLEAR" in out["message"]
@@ -200,7 +201,8 @@ def test_a_market_with_no_rate_yet_does_not_claim_it_cannot_clear(tmp_path):
     from gridiron import db
 
     conn = db.open_db(tmp_path / "r4b.db")
-    out = horizon.market_outlook(conn, "mlb", "pitcher_strikeouts", season=2026)
+    out = horizon.market_outlook(conn, "mlb", "pitcher_strikeouts",
+                                 predictor="statistical", season=2026)
     assert out["reachable"] is None
     assert "no rate to project from" in out["message"]
     assert "CANNOT" not in out["message"]
@@ -212,7 +214,8 @@ def test_the_outlook_is_marked_as_an_extrapolation():
     from gridiron import db
 
     conn = db.open_db(":memory:")
-    out = horizon.market_outlook(conn, "mlb", "batter_hits", season=2026)
+    out = horizon.market_outlook(conn, "mlb", "batter_hits", predictor="statistical",
+                                 season=2026)
     assert out["expected_is_an_extrapolation"] is True
     conn.close()
 

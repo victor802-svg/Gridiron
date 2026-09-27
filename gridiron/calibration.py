@@ -1375,11 +1375,18 @@ def version_comparison(conn: sqlite3.Connection, *, sport: str) -> dict:
     }
 
 
-def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
-    """Every curve for ONE sport, kept separate. Never a merged headline."""
-    require_sport(sport, "calibration.scorecard")
-    markets = config.SPORT_MARKETS.get(sport, ())
+def blind_categories(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
+    """Every blind curve for ONE sport -- one per market, card and forecaster
+    -- each with the outlook beside it, checked before anything is served.
 
+    THE PAYLOAD BUILDER OF THE RECORD PAGE'S "RECORD BY CATEGORY" TABLE, taken
+    out of `scorecard` on 2026-09-27 (operator question 14, 3 of 3) so the
+    gate can build every sport's without the rest of the page, and the guard
+    runs here, inside it: the API answers 500 rather than serve an outlook
+    counting another record than the curve it sits under.
+    """
+    require_sport(sport, "calibration.blind_categories")
+    markets = config.SPORT_MARKETS.get(sport, ())
     categories = []
     # ONE CATEGORY PER TIER for a sport that splits below the market (R2),
     # and `(None,)` for the four that do not, so nothing changes for them.
@@ -1397,19 +1404,141 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
                     market, tier, predictor, config.retired_market(sport, market))
                 c["retired"] = config.retired_market(sport, market)
                 c["market"] = market
+                # WHICH RECORD THIS ROW BELONGS TO (E4). Checked, not assumed:
+                # an at-the-line curve filed here would be averaging a forecast
+                # against a price with a forecast against its own rung.
+                c["record"] = "rung"
                 # RULING R3: a gate that will not be reached is not a gate that
                 # has not been reached YET, and rendering them alike reads as
-                # progress. Attached per category, statistical only -- the LLM
-                # predictor answers the same questions, so one projection
-                # covers both and two would invite a reader to add them.
+                # progress.
+                #
+                # THE CURVE'S OWN FORECASTER AND CARD (operator question 14,
+                # 2026-09-27). The outlook is the statistical model's, beside
+                # its own curve on each card, counted through the door the
+                # curve's rows come from (`horizon.standing_questions`). Until
+                # this date one outlook per market, of every row on every card,
+                # sat beside each card's curve -- on the reasoning that the two
+                # forecasters answer the same questions, which the counts do
+                # not bear out (MLB moneyline 246 and 134 standing on 27
+                # September). The reasoning pass's curve in a market it is
+                # still asked carries its N and no projection, as it always
+                # has: the ruling rebuilds the counts the page states and adds
+                # none (FOLLOWUPS).
                 if predictor == "statistical":
-                    c["outlook"] = horizon.market_outlook(conn, sport, market)
+                    c["outlook"] = horizon.market_outlook(
+                        conn, sport, market, predictor=predictor, event_tier=tier)
                 elif not config.llm_routed(sport, market):
                     # THE CURVE STOPS GROWING WITHOUT IMPLYING AN ERROR (ruling
                     # E1, 2026-09-06): the reasoning pass no longer asks this
                     # market, and the line says the count is final.
-                    c["outlook"] = horizon.llm_routed_off_outlook(conn, sport, market)
+                    c["outlook"] = horizon.llm_routed_off_outlook(
+                        conn, sport, market, event_tier=tier)
                 categories.append(c)
+    assert_no_pooled_outlooks({"sport": sport, "record": "rung",
+                               "categories": categories})
+    return categories
+
+
+def assert_no_pooled_outlooks(payload: dict) -> None:
+    """Every outlook beside a blind curve counts THAT CURVE'S standing
+    questions: one forecaster's, one card's for UFC, each question once.
+
+    The operator's ruling on question 14 (2026-09-27, 3 of 3): "Every count
+    on the Record page that states a gate distance is rebuilt per forecaster
+    (per tier for UFC) and per distinct bet, through its record's standing
+    rule." Checked on the payload, as `assert_no_pooled_claims` checks the
+    at-the-line record's -- and it runs `assert_no_merged_categories` first,
+    so the sport, the market, the forecaster and the tier are one rule for
+    every record.
+
+    Then, for each category's outlook, by name: one filed from another
+    record; one naming another forecaster than the curve's, or none, or
+    counting another's rows (`forecasters_counted`); one naming another card
+    than the curve's, or counting another card's bouts (`tiers_counted`, read
+    off each row's own bout); a settled count or a pace counting more rows
+    than distinct questions (a question's morning and final pass); a settled
+    count that is not the curve's n -- two counts of one record (MLB
+    moneyline said "330 of 100" beside a curve of 233 on 26 September); an
+    expectation that is not its own counts' arithmetic; and a line stating
+    another count than its own. Raised inside `blind_categories`, so the API
+    answers 500 rather than serving the pool.
+    """
+    law = "LAW 4 / LAW 6 IN THE BLIND RECORD'S OUTLOOK"
+    assert_no_merged_categories(payload)
+    sport = payload.get("sport")
+    tiers = config.event_tiers(sport)
+    for category in payload.get("categories") or []:
+        outlook = category.get("outlook")
+        if outlook is None:
+            continue
+        what = f"the outlook beside {category.get('category')!r}"
+        if outlook.get("record") != "rung":
+            raise MergedCurve(
+                f"{law}: {what} belongs to the {outlook.get('record')!r} "
+                f"record and is filed beside a blind curve.")
+        named = (category.get("filters") or {}).get("predictor")
+        if (outlook.get("predictor") != named
+                or named not in horizon.FORECASTERS):
+            raise MergedCurve(
+                f"{law}: {what} names forecaster {outlook.get('predictor')!r} "
+                f"beside the {named!r} forecaster's curve. The statistical "
+                f"model's questions and the reasoning pass's are counted apart "
+                f"and never pooled.")
+        counted = outlook.get("forecasters_counted")
+        if counted not in ([], [named]):
+            raise MergedCurve(
+                f"{law}: {what} is the {named!r} forecaster's and counts the "
+                f"forecasts of {counted!r}: two forecasters pooled into one "
+                f"count.")
+        tier, cards = category.get("event_tier"), outlook.get("tiers_counted")
+        if outlook.get("event_tier") != tier:
+            raise MergedCurve(
+                f"{law}: {what} names event tier {outlook.get('event_tier')!r} "
+                f"beside the {tier!r} curve; {sport}'s cards are reported side "
+                f"by side, never summed.")
+        if tiers:
+            if tier not in tiers or cards not in ([], [tier]):
+                raise MergedCurve(
+                    f"{law}: {what} names event tier {tier!r} and counts bouts "
+                    f"on {cards!r}; {sport}'s tiers {list(tiers)} are reported "
+                    f"side by side, never summed.")
+        elif tier is not None or cards not in ([], None):
+            raise MergedCurve(
+                f"{law}: {what} names event tier {tier!r} in {sport}, which "
+                f"declares none.")
+        n, bets = outlook.get("resolved"), outlook.get("distinct_bets")
+        if bets is None or n != bets or outlook.get("n") != n:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled forecasts for {bets} "
+                f"distinct question{'' if bets == 1 else 's'}. A question is "
+                f"counted once, on its standing forecast, however many passes "
+                f"answered it.")
+        written, asked = outlook.get("written"), outlook.get("distinct_bets_written")
+        if asked is None or written != asked:
+            raise MergedCurve(
+                f"{law}: {what} paces {written} forecasts written this season "
+                f"for {asked} distinct question{'' if asked == 1 else 's'}: a "
+                f"rate from every pass projects questions nobody asked.")
+        if n != category.get("n"):
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled beside a curve of "
+                f"{category.get('n')!r}: two counts of one record.")
+        if outlook.get("expected") != horizon.expected_from(outlook):
+            raise MergedCurve(
+                f"{law}: {what} expects {outlook.get('expected')!r} where its "
+                f"own counts project {horizon.expected_from(outlook)!r}.")
+        said = horizon.outlook_words(outlook)
+        if outlook.get("message") != said:
+            raise MergedCurve(
+                f"{law}: {what} says {outlook.get('message')!r}, which is not "
+                f"its own count of {n}: {said!r}.")
+
+
+def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
+    """Every curve for ONE sport, kept separate. Never a merged headline."""
+    require_sport(sport, "calibration.scorecard")
+    markets = config.SPORT_MARKETS.get(sport, ())
+    categories = blind_categories(conn, sport=sport)
 
     headline_market = markets[0] if markets else "spread"
     headline = curve(conn, sport=sport,
@@ -1417,12 +1546,6 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
                      prop_type=prop_type_of(sport, headline_market),
                      predictor="statistical")
     headline["market"] = headline_market
-
-    for c in categories:
-        # WHICH RECORD THIS ROW BELONGS TO (E4). Checked, not assumed: an
-        # at-the-line curve filed here would be averaging a forecast against a
-        # price with a forecast against its own rung.
-        c["record"] = "rung"
 
     payload = {
         "sport": sport,

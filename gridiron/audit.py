@@ -4652,12 +4652,20 @@ def horizon_unit_faults(source: str | None = None) -> list[str]:
     """Do the outlook's rate and its multiplier count the same thing?
 
     `market_outlook` multiplies a rate per slate by the slates remaining. The
-    rate comes from `_written_so_far`, which groups by `g.week`; the multiplier
-    comes from `slates_remaining`. If the second counts anything else -- and
-    until 2026-09-05 it counted UTC calendar days -- the projection is off by
-    the ratio of the two units, silently, on every gate line of the Record
-    page. Read from the syntax tree, so a comment naming a column is not a
-    query naming it.
+    rate comes from `_written_so_far`, which counts the distinct `week` of the
+    door's rows (`standing_questions` reads `g.week`); the multiplier comes
+    from `slates_remaining`. If the second counts anything else -- and until
+    2026-09-05 it counted UTC calendar days -- the projection is off by the
+    ratio of the two units, silently, on every gate line of the Record page.
+    Read from the syntax tree, so a comment naming a column is not a query
+    naming it.
+
+    THE RATE IS READ OFF THE DOOR'S ROWS FROM 2026-09-27 (operator question
+    14, 3 of 3): `_written_so_far` was a query grouping by `g.week`, and is
+    now a count over the standing questions `standing_questions` hands the
+    outlook -- the curve's own rows -- so the unit is checked in both: the
+    door must read `g.week`, and the count must key its slates on `week` and
+    on no calendar column.
     """
     if source is None:
         source = (config.PACKAGE_ROOT / "horizon.py").read_text(encoding="utf-8")
@@ -4665,21 +4673,23 @@ def horizon_unit_faults(source: str | None = None) -> list[str]:
         tree = ast.parse(source)
     except SyntaxError as exc:
         return [f"horizon.py does not parse: {exc}"]
-    sql = {}
+    sql: dict[str, str] = {}
+    keys: dict[str, set] = {}
+    names = ("slates_remaining", "_written_so_far", "standing_questions")
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name in (
-                "slates_remaining", "_written_so_far"):
-            sql[node.name] = " ".join(
-                c.value for c in ast.walk(node)
-                if isinstance(c, ast.Constant) and isinstance(c.value, str))
+        if isinstance(node, ast.FunctionDef) and node.name in names:
+            found = [c.value for c in ast.walk(node)
+                     if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+            sql[node.name] = " ".join(found)
+            keys[node.name] = set(found)
     faults = []
-    for name in ("slates_remaining", "_written_so_far"):
+    for name in names:
         if name not in sql:
             faults.append(f"`horizon.{name}` is gone, so this scan cannot see "
                           "what it was built to see.")
     if faults:
         return faults
-    remaining, written = sql["slates_remaining"], sql["_written_so_far"]
+    remaining = sql["slates_remaining"]
     if "DISTINCT week" not in remaining:
         faults.append("`slates_remaining` does not count `DISTINCT week`, the "
                       "slate key the rate is measured by.")
@@ -4690,9 +4700,19 @@ def horizon_unit_faults(source: str | None = None) -> list[str]:
                 f"a slate for a weekly sport, and the rate it multiplies is "
                 f"per slate. The outlook would overstate a football gate by "
                 f"the days in a week.")
-    if "DISTINCT g.week" not in written:
-        faults.append("`_written_so_far` no longer counts `DISTINCT g.week`, "
-                      "so the rate is in a unit the multiplier does not share.")
+    if "g.week" not in sql["standing_questions"]:
+        faults.append("`standing_questions` no longer reads `g.week`, so the "
+                      "rate's slates are in a unit the multiplier does not "
+                      "share.")
+    if "week" not in keys["_written_so_far"]:
+        faults.append("`_written_so_far` no longer counts its slates by "
+                      "`week`, so the rate is in a unit the multiplier does "
+                      "not share.")
+    for column in ("league_date", "kickoff_utc"):
+        if column in sql["_written_so_far"] or column in sql["standing_questions"]:
+            faults.append(
+                f"the outlook's rate reads `{column}`: a calendar day is not "
+                f"the slate `slates_remaining` counts.")
     return faults
 
 
@@ -7525,6 +7545,41 @@ def check_the_drift_record_is_never_pooled(conn) -> None:
             "every count on the Record page that states a gate distance is "
             "one forecaster's (one card's, for UFC), one per bet:"
             + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE BLIND RECORD'S OUTLOOK COUNTS ITS CURVE'S STANDING QUESTIONS (operator
+# question 14, ruled 2026-09-27, 3 of 3)
+# ---------------------------------------------------------------------------
+#
+# The guard is `calibration.assert_no_pooled_outlooks`, inside
+# `calibration.blind_categories`, the builder of the Record page's "Record by
+# category" table. The gate built that table for NFL alone, inside the whole
+# Record page of the first sport, so MLB's outlooks -- "350 of 100" beside a
+# curve of 246 on 27 September -- and UFC's, one count across three cards,
+# were never built by it. This builds every sport's on the record's copy and
+# turns the guard's refusal into a failure by name.
+
+
+def check_the_blind_outlook_is_never_pooled(conn) -> None:
+    """Refuse an outlook, in any sport on the record, that counts another
+    forecaster's rows, another card's, a question's superseded passes, or
+    anything but the curve it sits beside."""
+    from . import calibration, horizon
+
+    faults = []
+    for sport in config.SPORTS:
+        try:
+            calibration.blind_categories(conn, sport=sport)
+        except (calibration.MergedCurve, calibration.MergedRecord,
+                config.CrossSportAggregation, horizon.PooledCount) as exc:
+            faults.append(f"{sport}: {exc}")
+    if faults:
+        raise LawViolation(
+            "A BLIND OUTLOOK IS POOLED (operator question 14, ruled "
+            "2026-09-27): the line beside each curve counts that curve's "
+            "standing questions -- one forecaster's, one card's for UFC, each "
+            "once:" + _NL2 + _NL2.join(faults))
 
 
 # ---------------------------------------------------------------------------

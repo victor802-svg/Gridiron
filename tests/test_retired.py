@@ -75,7 +75,8 @@ def test_picks_has_no_tab_for_it_and_record_keeps_a_greyed_row(conn):
 def test_the_market_words_say_retired_and_the_outlook_projects_nothing(conn):
     assert language.market_words("mlb", "batter_home_runs") == "home runs · retired"
     assert language.market_words("mlb", "batter_hits") == "hits"
-    out = horizon.market_outlook(conn, "mlb", "batter_home_runs", season=2026)
+    out = horizon.market_outlook(conn, "mlb", "batter_home_runs",
+                                 predictor="statistical", season=2026)
     assert out["retired"] and out["expected_is_an_extrapolation"] is False
     assert "retired" in out["message"] and "final count" in out["message"]
     assert audit.plain_words_violations(out["message"]) == []

@@ -25,7 +25,8 @@ import sqlite3
 from . import config
 
 
-def slates_remaining(conn: sqlite3.Connection, sport: str, season: int) -> int:
+def slates_remaining(conn: sqlite3.Connection, sport: str, season: int,
+                     event_tier: str | None = None) -> int:
     """Distinct future slates still on the calendar for this sport's season.
 
     A SLATE IS WHAT THE SPORT WRITES BY: `games.week`, which is a week for
@@ -38,12 +39,26 @@ def slates_remaining(conn: sqlite3.Connection, sport: str, season: int) -> int:
     slates remaining against a rate measured per week, and the Record page
     projected ~3,504 resolutions from 48 written in week one. Eighteen weeks
     of 48 is 864.
+
+    ONE CARD'S SLATES FOR ONE CARD'S RATE (operator question 14, 2026-09-27).
+    A UFC outlook is one card's from this date, paced by that card's
+    forecasts per card it wrote on, so it is multiplied by that card's cards
+    still to come: a Contender Series rate times every card left on the
+    calendar -- 3 of the 14 on 27 September -- would be the unit mismatch
+    this function's history is about, one level down. `event_tier` is None
+    for a sport that does not split below the market, and for the
+    at-the-line outlook, which does not pass one (FOLLOWUPS).
     """
-    row = conn.execute(
-        "SELECT COUNT(DISTINCT week)"
-        " FROM games WHERE sport = ? AND season = ? AND status = 'scheduled'",
-        (sport, season),
-    ).fetchone()
+    sql = ("SELECT COUNT(DISTINCT week)"
+           " FROM games WHERE sport = ? AND season = ? AND status = 'scheduled'")
+    params: list = [sport, season]
+    if event_tier is not None:
+        # THE CARD, reached through the bout as every UFC count reaches it.
+        sql += (" AND EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
+                "               ON e.id = b.event_id"
+                "              WHERE b.id = games.id AND e.event_tier = ?)")
+        params.append(event_tier)
+    row = conn.execute(sql, params).fetchone()
     return int(row[0] or 0)
 
 
@@ -56,104 +71,275 @@ def season_ends(conn: sqlite3.Connection, sport: str, season: int) -> str | None
     return row[0] if row and row[0] else None
 
 
-def market_outlook(
-    conn: sqlite3.Connection, sport: str, market: str, season: int | None = None
-) -> dict:
-    """Whether this market's 100-resolution gate can clear before the season ends.
+# ---------------------------------------------------------------------------
+# ONE FORECASTER'S STANDING QUESTIONS, THE CURVE'S OWN (operator question 14,
+# ruled 2026-09-27, 3 of 3: "Every count on the Record page that states a
+# gate distance is rebuilt per forecaster (per tier for UFC) and per distinct
+# bet, through its record's standing rule.")
+# ---------------------------------------------------------------------------
+
+#: THE TWO BLIND FORECASTERS -- `predictions.predictor`'s own CHECK, and the
+#: two blind curves the Record page draws for every market.
+FORECASTERS = tuple(config.FORECASTER_LABELS)
+
+
+class PooledCount(ValueError):
+    """An outlook's count asked for without saying whose, in no one declared
+    market, or across tiers."""
+
+
+def refuse_a_pooled_count(sport: str, market, predictor, event_tier) -> None:
+    """The questions every count of a blind outlook must answer first.
+
+    ONE FORECASTER, ONE MARKET AS THE RECORD NAMES IT, AND FOR A SPORT THAT
+    SPLITS BELOW THE MARKET ONE TIER (LAW 4, LAW 6; operator question 14,
+    2026-09-27). Asked in the door, so a pooled count cannot be made by
+    leaving an argument out: until this date the forecaster was a default
+    argument and UFC's three cards were one count.
+    """
+    config.require_sport(sport, "horizon.standing_questions")
+    if predictor not in FORECASTERS:
+        raise PooledCount(
+            f"LAW 4 / LAW 6: a count of {sport} blind forecasts for an outlook "
+            f"was asked for forecaster {predictor!r}. The statistical model's "
+            f"questions and the reasoning pass's are counted apart and never "
+            f"pooled: name one of {list(FORECASTERS)}.")
+    declared = config.SPORT_MARKETS.get(sport, ())
+    if market not in declared:
+        raise PooledCount(
+            f"LAW 4: a count of {sport} blind forecasts for an outlook was "
+            f"asked for market {market!r}, which is not one of {sport}'s "
+            f"declared markets {list(declared)}. A prop is counted by its own "
+            f"type: 'prop' is every prop type in one count.")
+    tiers = config.event_tiers(sport)
+    if tiers and event_tier not in tiers:
+        raise PooledCount(
+            f"LAW 6: a count of {sport} blind forecasts for an outlook names "
+            f"event tier {event_tier!r}, not one of {sport}'s declared tiers "
+            f"{list(tiers)}; tiers are reported side by side, never summed.")
+    if not tiers and event_tier is not None:
+        raise PooledCount(
+            f"LAW 6: {sport} declares no event tiers, so a count naming tier "
+            f"{event_tier!r} counts nothing that exists.")
+
+
+def standing_questions(conn: sqlite3.Connection, *, sport: str, market: str,
+                       predictor: str,
+                       event_tier: str | None = None) -> list[dict]:
+    """THE ONE DOOR every count of a blind outlook goes through: ONE
+    forecaster's STANDING forecasts in one market (and, for UFC, on one card),
+    settled or not, with the season and slate each was written in.
+
+    THE CURVE'S OWN ROWS. The curve beside the outlook counts
+    `calibration.resolved`: one standing row per question
+    (`calibration.standing_row_clause`, the latest written before the start,
+    a withdrawn one never), for one forecaster, market and card. This door
+    asks the same filters and the same clause without the settled condition,
+    so its settled rows are that curve's rows and the outlook's count is the
+    curve's n -- which `calibration.assert_no_pooled_outlooks` checks rather
+    than trusts.
+
+    THE OPERATOR'S RULING of 2026-09-27 (question 14, 3 of 3). Until this
+    date the outlook counted every row of the market this season -- a
+    question's morning and final pass each, and for UFC every card -- by a
+    query of its own, and its forecaster was a default argument: on 26
+    September MLB moneyline said "330 of 100" beside a curve of 233, spread
+    and total "272 of 100" beside 175 and 182, and UFC "62 of 100" beside a
+    Numbered-card curve of 0.
+
+    Each row carries its market as the record names it, its forecaster, its
+    question's keys and its card read off its own bout, so a payload counts
+    beside the door how many distinct questions it holds and whose.
+    """
+    from .calibration import market_type_of, prop_type_of, standing_row_clause
+
+    refuse_a_pooled_count(sport, market, predictor, event_tier)
+    prop = prop_type_of(sport, market)
+    tiers = config.event_tiers(sport)
+    # THE CARD, READ OFF THE ROW'S OWN BOUT, so a door that stopped filtering
+    # by card is seen in the payload rather than trusted.
+    tier_column = (
+        "(SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+        "   ON e.id = b.event_id WHERE b.id = p.game_id)"
+        if tiers else "NULL")
+    where = ["p.sport = ?", "p.market_type = ?", "p.predictor = ?"]
+    params: list = [sport, market_type_of(sport, market), predictor]
+    if prop:
+        where.append("p.prop_type = ?")
+        params.append(prop)
+    if event_tier is not None:
+        # LAW 6 ONE LEVEL DOWN (R2, 2026-09-03), reached through the bout to
+        # the card, exactly as `calibration.resolved` reaches it.
+        where.append(
+            "EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
+            "          ON e.id = b.event_id"
+            "         WHERE b.id = p.game_id AND e.event_tier = ?)")
+        params.append(event_tier)
+    rows = conn.execute(
+        "SELECT p.id, p.game_id, p.market_type, p.prop_type, p.subject,"
+        "       p.line_asked, p.predictor, p.resolved_utc, g.season, g.week,"
+        f"      {tier_column} AS event_tier"
+        "  FROM predictions p JOIN games g ON g.id = p.game_id"
+        f" WHERE {' AND '.join(where)}{standing_row_clause(False)}"
+        " ORDER BY p.id", params).fetchall()
+    return [dict(r, market=market, settled=r["resolved_utc"] is not None)
+            for r in rows]
+
+
+def bet_of(row) -> tuple:
+    """Which bet a standing forecast is on: its blind QUESTION -- game,
+    market, subject and rung -- without the forecaster who asked it.
+
+    THE BLIND RECORD'S OWN UNIT, the key the standing rule keeps one row per
+    (per forecaster), and the one the priced record counts by (1 of 3):
+    two rungs of one game are two questions on the blind curve, so the
+    outlook beside it counts them as the curve does. Within one forecaster's
+    count the key is unique; a question's two passes, or two forecasters'
+    rows, in one count put two rows on one key, which is what
+    `calibration.assert_no_pooled_outlooks` compares with the count.
+    """
+    return (row["game_id"], row["market_type"], row["subject"],
+            row["line_asked"])
+
+
+def count_of_bets(rows) -> int:
+    """How many distinct questions a list of standing forecasts is on."""
+    return len({bet_of(r) for r in rows})
+
+
+def settled(rows) -> list:
+    """The standing forecasts that carry an outcome: ONE predicate for every
+    settled count of an outlook."""
+    return [r for r in rows if r["settled"]]
+
+
+def _written_so_far(rows: list, season: int) -> tuple[int, int, int]:
+    """(written this season, slates that wrote any, settled) for one
+    forecaster's standing questions in one market -- and one card.
+
+    READ OFF THE DOOR'S ROWS, never a query of its own (2026-09-27): the
+    settled count is every settled standing question, whatever its season,
+    because that is what the curve and the gate count; the pace is this
+    season's, the questions written in it over the slates they were written
+    on -- `week`, the unit `slates_remaining` counts.
+    """
+    this_season = [r for r in rows if r["season"] == season]
+    slates = {r["week"] for r in this_season}
+    return len(this_season), len(slates), len(settled(rows))
+
+
+def _counted(sport: str, market: str, predictor: str, event_tier,
+             rows: list, season: int, ends: str | None) -> dict:
+    """The part of an outlook every kind shares: its counts, whose they are,
+    and how many distinct questions they hold -- counted beside the door."""
+    written, slates_used, resolved = _written_so_far(rows, season)
+    return {
+        "sport": sport,
+        "record": "rung",
+        "market": market,
+        "predictor": predictor,
+        "event_tier": event_tier,
+        "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+        "resolved": resolved,
+        "n": resolved,
+        "written": written,
+        "slates_used": slates_used,
+        "season_ends": ends,
+        # NOTHING THIS SEASON IS NOT NOTHING EVER (item 6's prover,
+        # 2026-09-26): `resolved` counts every season's questions, so a line
+        # with no rate this season must not deny the ones it has counted.
+        "written_before": any(r["season"] != season for r in rows),
+        "distinct_bets": count_of_bets(settled(rows)),
+        "distinct_bets_written": count_of_bets(
+            [r for r in rows if r["season"] == season]),
+        "forecasters_counted": sorted({r["predictor"] for r in rows}),
+        "tiers_counted": sorted({r["event_tier"] for r in rows
+                                 if r["event_tier"] is not None}),
+    }
+
+
+def outlook_words(out: dict) -> str:
+    """The sentence an outlook states, from its own numbers and nothing else:
+    the one composition the builder writes and the guard reads again."""
+    from . import language
+
+    if out.get("retired"):
+        return language.retired_outlook_line(
+            out["resolved"], out["gate"], out["retired"]["retired"])
+    if out.get("routed_off"):
+        return language.llm_routed_off_line(
+            out["resolved"], out["gate"], out["routed_off"]["since"])
+    return language.market_outlook_line(
+        out["resolved"], out["gate"], out.get("expected"), out.get("season_ends"),
+        written_before=bool(out.get("written_before")))
+
+
+def market_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
+                   predictor: str, event_tier: str | None = None,
+                   season: int | None = None) -> dict:
+    """Whether ONE forecaster's 100-resolution gate in this market -- on one
+    card, for UFC -- can clear before the season ends.
 
     Every figure carries the sample it came from (LAW 4). `expected` is an
     extrapolation and is labelled one; `reachable` is the judgement the
     interface renders, and it is only ever False when the arithmetic says so
     with the rate measured over at least one slate.
+
+    THE CURVE'S OWN COUNT (operator question 14, ruled 2026-09-27, 3 of 3).
+    The forecaster is required and the rows are the door's
+    (`standing_questions`): `resolved` is the curve's n, the pace is this
+    season's standing questions over the slates they were written on, and
+    the multiplier is the card's own slates still to come.
     """
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
         if season is None else season
-    is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
-    market_type = "prop" if is_prop else market
-    prop_type = market if is_prop else None
-
-    written, slates_used, resolved = _written_so_far(
-        conn, sport, market_type, prop_type, season
-    )
-    remaining = slates_remaining(conn, sport, season)
-    ends = season_ends(conn, sport, season)
-    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    rows = standing_questions(conn, sport=sport, market=market,
+                              predictor=predictor, event_tier=event_tier)
+    out = _counted(sport, market, predictor, event_tier, rows, season,
+                   season_ends(conn, sport, season))
+    resolved, gate = out["resolved"], out["gate"]
 
     # A RETIRED MARKET PROJECTS NOTHING (R1, 2026-09-05): its settled count is
     # the final count, and a line reading "~446 expected" would be false.
     retired = config.retired_market(sport, market)
     if retired:
-        from . import language
-        return {
-            "sport": sport, "market": market, "gate": gate, "resolved": resolved,
-            "written": written, "n": resolved, "slates_used": slates_used,
-            "slates_remaining": 0, "season_ends": ends, "per_slate": None,
-            "expected": resolved, "expected_is_an_extrapolation": False,
-            "retired": retired, "reachable": resolved >= gate,
-            "message": language.retired_outlook_line(resolved, gate, retired["retired"]),
-        }
+        out.update({
+            "slates_remaining": 0, "per_slate": None, "expected": resolved,
+            "expected_is_an_extrapolation": False, "retired": retired,
+            "reachable": resolved >= gate,
+        })
+        out["message"] = outlook_words(out)
+        return out
 
-    per_slate = (written / slates_used) if slates_used else None
+    remaining = slates_remaining(conn, sport, season, event_tier)
+    per_slate = (out["written"] / out["slates_used"]) if out["slates_used"] else None
     expected = None
     if per_slate is not None:
         expected = int(round(resolved + per_slate * remaining))
-
-    out = {
-        "sport": sport,
-        "market": market,
-        "gate": gate,
-        "resolved": resolved,
-        "written": written,
-        "n": resolved,
-        "slates_used": slates_used,
+    out.update({
         "slates_remaining": remaining,
-        "season_ends": ends,
         "per_slate": round(per_slate, 2) if per_slate is not None else None,
         "expected": expected,
         "expected_is_an_extrapolation": True,
-    }
-
-    if per_slate is None:
-        out["reachable"] = None
-        out["message"] = (
-            f"{resolved} of {gate} · nothing written in this market yet, so "
-            "there is no rate to project from"
-        )
-        return out
-
-    out["reachable"] = expected >= gate
-    ends_short = ends[5:] if ends else "the season's end"
-    if out["reachable"]:
-        out["message"] = (
-            f"{resolved} of {gate} · ~{expected} expected · season ends {ends_short}"
-        )
-    else:
-        out["message"] = (
-            f"{resolved} of {gate} · ~{expected} expected · season ends "
-            f"{ends_short} · THIS GATE CANNOT CLEAR THIS SEASON"
-        )
+        # NO RATE IS NOT "CANNOT CLEAR" (R3, 2026-09-05): absent, degraded
+        # and declined are three states, and nothing written this season is
+        # the first.
+        "reachable": None if per_slate is None else expected >= gate,
+    })
+    out["message"] = outlook_words(out)
     return out
 
 
-def _written_so_far(conn, sport, market_type, prop_type, season,
-                    predictor: str = "statistical"):
-    """(written, slates that wrote any, resolved) for one market this season."""
-    sql = (
-        "SELECT COUNT(*) AS written,"
-        " COUNT(DISTINCT g.week) AS slates,"
-        " SUM(CASE WHEN p.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved"
-        " FROM predictions p JOIN games g ON g.id = p.game_id"
-        " WHERE p.sport = ? AND g.season = ? AND p.market_type = ?"
-        " AND p.predictor = ?"
-        " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
-        "                 WHERE v.prediction_id = p.id)"
-    )
-    params = [sport, season, market_type, predictor]
-    if prop_type is not None:
-        sql += " AND p.prop_type = ?"
-        params.append(prop_type)
-    row = conn.execute(sql, params).fetchone()
-    return int(row["written"] or 0), int(row["slates"] or 0), int(row["resolved"] or 0)
+def expected_from(out: dict) -> int | None:
+    """What an outlook's own counts project, worked out again from them --
+    the arithmetic `market_outlook` states, for the guard to compare."""
+    if out.get("retired") or out.get("routed_off"):
+        return out.get("resolved")
+    written, slates = out.get("written"), out.get("slates_used")
+    if not slates:
+        return None
+    return int(round(out["resolved"]
+                     + written / slates * (out.get("slates_remaining") or 0)))
 
 
 def zero_write_line(market: str, asked: int, floor: float) -> str:
@@ -175,28 +361,33 @@ def zero_write_line(market: str, asked: int, floor: float) -> str:
 
 
 def llm_routed_off_outlook(conn: sqlite3.Connection, sport: str, market: str,
+                           *, event_tier: str | None = None,
                            season: int | None = None) -> dict:
     """The outlook for an LLM category whose market the reasoning pass no
     longer asks (ruling E1, 2026-09-06): the same shape as a retired market's,
-    so the Record draws it with the same component."""
-    from . import language
+    so the Record draws it with the same component.
+
+    THE REASONING PASS'S OWN CURVE'S COUNT, one card's for UFC (operator
+    question 14, 2026-09-27): read through the same door as every blind
+    outlook, so "N settled is the final count" is the n of the curve it sits
+    under. Until this date it counted every row of the market on every card,
+    and UFC's Contender Series and Numbered-card rows said "14 of 100 ...
+    the final count" beside curves of 0.
+    """
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
         if season is None else season
-    is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
-    written, slates_used, resolved = _written_so_far(
-        conn, sport, "prop" if is_prop else market, market if is_prop else None,
-        season, predictor="llm")
-    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
-    return {
-        "sport": sport, "market": market, "gate": gate, "resolved": resolved,
-        "written": written, "n": resolved, "slates_used": slates_used,
-        "slates_remaining": 0, "season_ends": season_ends(conn, sport, season),
-        "per_slate": None, "expected": resolved,
+    rows = standing_questions(conn, sport=sport, market=market,
+                              predictor="llm", event_tier=event_tier)
+    out = _counted(sport, market, "llm", event_tier, rows, season,
+                   season_ends(conn, sport, season))
+    out.update({
+        "slates_remaining": 0, "per_slate": None, "expected": out["resolved"],
         "expected_is_an_extrapolation": False,
         "routed_off": {"since": config.LLM_ROUTING_DECLARED},
-        "reachable": resolved >= gate,
-        "message": language.llm_routed_off_line(resolved, gate, config.LLM_ROUTING_DECLARED),
-    }
+        "reachable": out["resolved"] >= out["gate"],
+    })
+    out["message"] = outlook_words(out)
+    return out
 
 
 def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str, *,

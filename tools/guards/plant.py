@@ -10975,6 +10975,384 @@ def plant_a_drift_game_counted_twice() -> Result:
                   "swapped back in -- " + " | ".join(caught))
 
 
+LAW_OUTLOOK_COUNTS = ("THE BLIND RECORD'S OUTLOOK, ITS CURVE'S STANDING "
+                      "QUESTIONS (LAW 4, LAW 6)")
+
+
+def _outlook_category(sport: str, market: str, predictor, n: int, *,
+                      tier=None, resolved: int | None = None, bets="same",
+                      written: int = 0, asked: int | None = None,
+                      slates: int = 0, remaining: int = 0, counted=None,
+                      cards=None, whose="same", card="same",
+                      record: str = "rung", routed_off: bool = False,
+                      expected: int | None = None,
+                      message: str | None = None) -> dict:
+    """One blind category with the outlook beside it, shaped as
+    `calibration.blind_categories` builds it from 2026-09-27: the curve's n,
+    and the outlook's counts, whose they are, its arithmetic and its line."""
+    from gridiron import horizon as _horizon
+
+    resolved = n if resolved is None else resolved
+    outlook = {
+        "sport": sport, "record": record, "market": market,
+        "predictor": predictor if whose == "same" else whose,
+        "event_tier": tier if card == "same" else card,
+        "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+        "resolved": resolved, "n": resolved, "written": written,
+        "slates_used": slates, "season_ends": "2026-09-27",
+        "written_before": False,
+        "distinct_bets_written": written if asked is None else asked,
+        "forecasters_counted": (counted if counted is not None
+                                else ([predictor] if resolved or written else [])),
+        "tiers_counted": (cards if cards is not None
+                          else ([tier] if tier and (resolved or written) else [])),
+    }
+    if bets == "same":
+        outlook["distinct_bets"] = resolved
+    elif bets is not None:
+        outlook["distinct_bets"] = bets
+    if routed_off:
+        outlook.update(slates_remaining=0, per_slate=None,
+                       expected_is_an_extrapolation=False,
+                       routed_off={"since": config.LLM_ROUTING_DECLARED})
+    else:
+        outlook.update(slates_remaining=remaining,
+                       per_slate=round(written / slates, 2) if slates else None,
+                       expected_is_an_extrapolation=True)
+    outlook["expected"] = (_horizon.expected_from(outlook) if expected is None
+                           else expected)
+    outlook["reachable"] = (None if outlook["expected"] is None
+                            else outlook["expected"] >= outlook["gate"])
+    outlook["message"] = (_horizon.outlook_words(outlook) if message is None
+                          else message)
+    prop = calibration.prop_type_of(sport, market)
+    return {
+        "sport": sport, "record": "rung", "market": market,
+        "category": " / ".join([market] + ([tier] if tier else []) + [predictor]),
+        "filters": {"sport": sport,
+                    "market_type": calibration.market_type_of(sport, market),
+                    "prop_type": prop or "all", "predictor": predictor,
+                    "factor_set_version": "all", "event_tier": tier or "all"},
+        "event_tier": tier, "n": n, "outlook": outlook,
+    }
+
+
+def _curve_alone(sport: str, market: str, predictor: str, n: int,
+                 tier=None) -> dict:
+    """A blind category with no outlook beside it -- the reasoning pass's
+    curve in a market it is still asked."""
+    entry = _outlook_category(sport, market, predictor, n, tier=tier)
+    entry.pop("outlook")
+    return entry
+
+
+def plant_a_blind_outlook_counting_superseded_passes() -> Result:
+    """Put the Record page's MLB moneyline outlook of 27 September back
+    beside its curve.
+
+    THE SHIPPED LINE (operator question 14, ruled 2026-09-27): "350 of 100 ·
+    ~367 expected" beside a statistical curve of 246 -- every row of the
+    market this season, a question's morning and final pass each, by a query
+    of its own whose forecaster was a default argument; and UFC's one count
+    across three cards, "85 of 100 · ~302 expected", beside each card's
+    curve, a Numbered-card curve of 0 among them. No guard read an outlook.
+    Each shape must be refused by name; an honest per-forecaster, per-card
+    payload must pass.
+    """
+    guard = "calibration.assert_no_pooled_outlooks"
+    violation = "a question's passes, two forecasters or three cards in one outlook"
+    check = getattr(calibration, "assert_no_pooled_outlooks", None)
+    if check is None:
+        return Result(LAW_OUTLOOK_COUNTS, violation, guard, False,
+                      "NOT CAUGHT - nothing checks a blind outlook: MLB "
+                      "moneyline's line reads \"350 of 100 · ~367 expected\" "
+                      "beside a curve of 246, and each UFC card's \"85 of 100\" "
+                      "beside curves of 39, 10 and 0")
+    mlb = [_outlook_category("mlb", "moneyline", "statistical", 246, written=261,
+                             slates=21, remaining=1),
+           _curve_alone("mlb", "moneyline", "llm", 134),
+           _outlook_category("mlb", "batter_hits", "llm", 2, written=2,
+                             slates=1, routed_off=True)]
+    ufc = [_outlook_category("ufc", "moneyline", "statistical", 0,
+                             tier="numbered", remaining=5),
+           _outlook_category("ufc", "moneyline", "statistical", 39,
+                             tier="fight_night", written=41, slates=3,
+                             remaining=6),
+           _outlook_category("ufc", "moneyline", "statistical", 10,
+                             tier="contender", written=15, slates=3,
+                             remaining=3)]
+    honest = {"sport": "mlb", "record": "rung", "categories": mlb}
+    ufc_honest = {"sport": "ufc", "record": "rung", "categories": ufc}
+    try:
+        check(honest)
+        check(ufc_honest)
+    except (calibration.MergedCurve, calibration.MergedRecord) as wrong:
+        return Result(LAW_OUTLOOK_COUNTS, violation, guard, False,
+                      f"the guard refuses honest per-forecaster outlooks: {wrong}")
+    as_shipped = ("350 of 100 · ~367 expected · season ends 09-27")
+    # (the honest payload, which row the planted category replaces, the row)
+    probes = {
+        "a question's morning and final pass in the settled count": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, resolved=350, bets=246,
+                written=261, slates=21, remaining=1)),
+        "an outlook that says nothing of how many questions it holds": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, resolved=350, bets=None,
+                written=365, asked=365, slates=21, remaining=1)),
+        "two counts of one record: 350 beside a curve of 246": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, resolved=350,
+                written=365, slates=21, remaining=1)),
+        "a pace from every pass written": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, written=365, asked=261,
+                slates=21, remaining=1)),
+        "an expectation that is not its own counts' arithmetic": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, written=261, slates=21,
+                remaining=1, expected=367)),
+        "a line past the counts it sits on": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, written=261, slates=21,
+                remaining=1, message=as_shipped)),
+        "an outlook naming no forecaster": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, written=261, slates=21,
+                remaining=1, whose=None)),
+        "both forecasters' rows under one forecaster's name": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, written=261, slates=21,
+                remaining=1, counted=["llm", "statistical"])),
+        "the statistical model's outlook beside the reasoning pass's curve": (
+            honest, 1, _outlook_category(
+                "mlb", "moneyline", "llm", 134, resolved=246, written=261,
+                slates=21, remaining=1, whose="statistical",
+                counted=["statistical"])),
+        "an at-the-line outlook filed beside a blind curve": (
+            honest, 0, _outlook_category(
+                "mlb", "moneyline", "statistical", 246, written=261, slates=21,
+                remaining=1, record="at_the_line")),
+        "UFC's three cards in one outlook beside a Numbered-card curve of 0": (
+            ufc_honest, 0, _outlook_category(
+                "ufc", "moneyline", "statistical", 0, tier="numbered",
+                resolved=85, written=93, slates=6, remaining=14, card=None,
+                cards=["contender", "fight_night"])),
+        "a card counting another card's bouts": (
+            ufc_honest, 1, _outlook_category(
+                "ufc", "moneyline", "statistical", 39, tier="fight_night",
+                written=41, slates=3, remaining=6,
+                cards=["contender", "fight_night"])),
+    }
+    caught, missed = [], []
+    for name, (base, at, planted) in probes.items():
+        rows = list(base["categories"])
+        rows[at] = planted
+        try:
+            check(dict(base, categories=rows))
+        except (calibration.MergedCurve, calibration.MergedRecord) as exc:
+            caught.append(f"{name}: {exc}")
+        else:
+            missed.append(name)
+    if missed:
+        return Result(LAW_OUTLOOK_COUNTS, violation, guard, False,
+                      "NOT CAUGHT - the Record page states the blind outlook "
+                      "as pooled as it did on 27 September: " + "; ".join(missed))
+    return Result(LAW_OUTLOOK_COUNTS, violation, guard, True,
+                  f"{caught[0]} (and {len(caught) - 1} more shapes, each "
+                  f"refused by name)")
+
+
+def plant_a_blind_outlook_game_counted_twice() -> Result:
+    """Count one MLB game's forecasts once per pass, and UFC's bouts across
+    their cards, in the line beside each blind curve.
+
+    THE SHIPPED COUNT UNTIL 2026-09-27: `horizon.market_outlook` counted
+    every row of the market this season -- a game forecast by the statistical
+    model's morning and final pass was two settled forecasts beside a curve
+    of one -- and one UFC count across its three cards stood beside each
+    card's curve. This world plants both on a scratch database (every row
+    through the schema's own rules), proves each outlook states its curve's
+    count, then swaps the count as it stood back in as the door -- asking the
+    forecaster, asking nobody in particular, and every card's standing rows
+    under one card's name -- and demands the Record page's builder, and the
+    gate's check of every sport, refuse each by name.
+    """
+    import tempfile
+
+    from gridiron import db as _db, horizon as _horizon
+
+    guard = ("horizon.standing_questions, calibration.assert_no_pooled_outlooks, "
+             "audit.check_the_blind_outlook_is_never_pooled")
+    violation = "one game's passes, or three cards, counted in the line beside a curve"
+    mlb_season = config.SPORT_CURRENT_SEASON["mlb"]
+    ufc_season = config.SPORT_CURRENT_SEASON["ufc"]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+
+        def game(gid, sport, season, week, kickoff, played):
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home,"
+                " away, kickoff_utc, status, league_date, home_score,"
+                " away_score) VALUES (?, ?, ?, ?, 'R', 'SEA', 'HOU', ?, ?, ?,"
+                " ?, ?)", (gid, sport, season, week, kickoff,
+                           "final" if played else "scheduled", kickoff[:10],
+                           5 if played else None, 3 if played else None))
+
+        def forecast(gid, sport, who, pass_kind, written):
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning, resolved_utc, outcome) VALUES (?, ?, ?,"
+                " 'moneyline', 'SEA', NULL, 0.6, 'win', ?, ?, 'fs2', '{}',"
+                " 'planted', '2026-09-08T03:00:00Z', 1)",
+                (written, sport, gid, who, pass_kind))
+
+        game("mlb_outlook_1", "mlb", mlb_season, 1, "2026-09-07T23:05:00Z", True)
+        game("mlb_outlook_2", "mlb", mlb_season, 2, "2026-09-08T23:05:00Z", False)
+        for who, pass_kind, written in (
+                ("statistical", "early", "2026-09-07T03:05:00Z"),
+                ("statistical", "final", "2026-09-07T21:05:00Z"),
+                ("llm", "final", "2026-09-07T21:05:01Z")):
+            forecast("mlb_outlook_1", "mlb", who, pass_kind, written)
+        for event, tier, bout, week, kickoff, played in (
+                ("ufc_outlook_fn", "fight_night", "ufc_outlook_1", 1,
+                 "2026-09-05T23:00:00Z", True),
+                ("ufc_outlook_cs", "contender", "ufc_outlook_2", 2,
+                 "2026-09-06T23:00:00Z", True),
+                ("ufc_outlook_nc", "numbered", "ufc_outlook_3", 3,
+                 "2026-10-03T23:00:00Z", False)):
+            conn.execute(
+                "INSERT INTO ufc_events (id, name, event_utc, season,"
+                " fetched_utc, event_tier) VALUES (?, ?, ?, ?, ?, ?)",
+                (event, f"UFC {event}", kickoff, ufc_season, _db.utcnow(), tier))
+            conn.execute(
+                "INSERT INTO ufc_bouts (id, event_id, bout_utc,"
+                " scheduled_rounds, fighter_a, fighter_b, status, fetched_utc)"
+                " VALUES (?, ?, ?, 3, 'A', 'B', ?, ?)",
+                (bout, event, kickoff, "final" if played else "scheduled",
+                 _db.utcnow()))
+            game(bout, "ufc", ufc_season, week, kickoff, played)
+        forecast("ufc_outlook_1", "ufc", "statistical", "early", "2026-09-05T03:00:00Z")
+        forecast("ufc_outlook_1", "ufc", "statistical", "final", "2026-09-05T21:00:00Z")
+        forecast("ufc_outlook_2", "ufc", "statistical", "final", "2026-09-06T21:00:00Z")
+        conn.commit()
+
+        def counts() -> dict:
+            # WHAT THE RECORD PAGE STATES: each statistical moneyline curve's
+            # n, and the count its outlook line says beside it.
+            said = {}
+            for sport in ("mlb", "ufc"):
+                for c in calibration.scorecard(conn, sport=sport)["categories"]:
+                    if (c["market"] == "moneyline" and c.get("outlook")
+                            and c["filters"]["predictor"] == "statistical"):
+                        said[(sport, c.get("event_tier"))] = (
+                            c["n"], c["outlook"]["resolved"])
+            return said
+
+        try:
+            shipped = counts()
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_OUTLOOK_COUNTS, violation, guard, False,
+                          f"the shipped builder refuses an honest world: {exc}")
+        want = {("mlb", None): (1, 1), ("ufc", "numbered"): (0, 0),
+                ("ufc", "fight_night"): (1, 1), ("ufc", "contender"): (1, 1)}
+        if shipped != want:
+            conn.close()
+            return Result(LAW_OUTLOOK_COUNTS, violation, guard, False,
+                          f"NOT CAUGHT - the Record page states (curve, outlook) "
+                          f"{shipped} for one MLB game forecast by two passes "
+                          f"and one UFC bout on each of two cards; wanted each "
+                          f"outlook to state its own curve's count")
+
+        shipped_door = _horizon.standing_questions
+        gate_check = getattr(audit, "check_the_blind_outlook_is_never_pooled", None)
+
+        def as_it_stood(conn, *, sport, market, predictor, event_tier=None,
+                        ask_the_forecaster=True):
+            # THIS IS THE SHIPPED COUNT UNTIL 2026-09-27: every row of the
+            # market this season that is not withdrawn, on every card --
+            # with the fields the new outlook reads added, and nothing else.
+            prop = calibration.prop_type_of(sport, market)
+            rows = conn.execute(
+                "SELECT p.id, p.game_id, p.market_type, p.prop_type, p.subject,"
+                " p.line_asked, p.predictor, p.resolved_utc, g.season, g.week,"
+                " (SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+                "    ON e.id = b.event_id WHERE b.id = p.game_id) AS event_tier"
+                " FROM predictions p JOIN games g ON g.id = p.game_id"
+                " WHERE p.sport = ? AND g.season = ? AND p.market_type = ?"
+                + (" AND p.predictor = ?" if ask_the_forecaster else "")
+                + (" AND p.prop_type = ?" if prop else "")
+                + " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+                  "                 WHERE v.prediction_id = p.id)",
+                (sport, config.SPORT_CURRENT_SEASON[sport],
+                 calibration.market_type_of(sport, market))
+                + ((predictor,) if ask_the_forecaster else ())
+                + ((prop,) if prop else ())).fetchall()
+            return [dict(r, market=market, settled=r["resolved_utc"] is not None)
+                    for r in rows]
+
+        def every_card(conn, *, sport, market, predictor, event_tier=None):
+            # THE STANDING RULE WITHOUT THE CARD: each card's standing rows,
+            # all of them handed back under one card's name.
+            return [r for t in (config.event_tiers(sport) or (None,))
+                    for r in shipped_door(conn, sport=sport, market=market,
+                                          predictor=predictor, event_tier=t)]
+
+        def the_page(sport):
+            return lambda: calibration.scorecard(conn, sport=sport)
+
+        def the_gate(sport):
+            def run():
+                if gate_check is None:
+                    return
+                try:
+                    gate_check(conn)
+                except audit.LawViolation as exc:
+                    named = [line.strip() for line in str(exc).splitlines()
+                             if line.strip().startswith(f"{sport}:")]
+                    if not named:
+                        raise
+                    raise calibration.MergedCurve(
+                        f"the gate names {named[0]}") from exc
+            return run
+
+        caught, missed = [], []
+        for name, door, build in (
+                ("the count as it stood, MLB's Record page", as_it_stood,
+                 the_page("mlb")),
+                ("the count as it stood, the gate", as_it_stood, the_gate("mlb")),
+                ("asking nobody in particular, MLB's Record page",
+                 lambda conn, **kw: as_it_stood(conn, ask_the_forecaster=False,
+                                                **kw),
+                 the_page("mlb")),
+                ("the count as it stood, UFC's Record page", as_it_stood,
+                 the_page("ufc")),
+                ("the standing rule without the card, UFC's Record page",
+                 every_card, the_page("ufc"))):
+            _horizon.standing_questions = door
+            try:
+                build()
+            except calibration.MergedCurve as exc:
+                caught.append(f"{name}: {str(exc).splitlines()[0][:220]}")
+            else:
+                missed.append(name)
+            finally:
+                _horizon.standing_questions = shipped_door
+        conn.close()
+    if missed:
+        return Result(LAW_OUTLOOK_COUNTS, violation, guard, False,
+                      "NOT CAUGHT - the Record page states one game's two "
+                      "passes, or three cards, beside a curve of one: "
+                      + "; ".join(missed))
+    return Result(LAW_OUTLOOK_COUNTS, violation, guard, True,
+                  "each outlook states its own curve's count on the shipped "
+                  "door; with the count as it stood swapped back in -- "
+                  + " | ".join(caught))
+
+
 LAW_NO_PRESSURE = "THE GRAMMAR OF A SPORTSBOOK, NEVER ITS PRESSURE"
 
 
@@ -15581,6 +15959,10 @@ def main() -> int:
     # ruled 2026-09-27, 2 of 3).
     results.append(plant_a_drift_count_pooling_passes_and_forecasters())
     results.append(plant_a_drift_game_counted_twice())
+    # THE LINE BESIDE EACH BLIND CURVE COUNTS THAT CURVE'S STANDING
+    # QUESTIONS (operator question 14, ruled 2026-09-27, 3 of 3).
+    results.append(plant_a_blind_outlook_counting_superseded_passes())
+    results.append(plant_a_blind_outlook_game_counted_twice())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

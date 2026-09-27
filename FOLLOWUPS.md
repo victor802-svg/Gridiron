@@ -5325,3 +5325,262 @@ passed, 8 skipped, exit 0, the planting harness inside it included; the
 harness alone 322/322; `audit.prose_reaching_the_raw_side()` is `[]`. The
 gate's new check passes on the live record, read-only (newest prediction
 3108, the instant measured).
+
+## The line beside each blind curve, its curve's own count -- built 2026-09-27 *(operator question 14, 3 of 3; the second set of rulings of 2026-09-27)*
+
+"Q14: (B). Every count on the Record page that states a gate distance is
+rebuilt per forecaster (per tier for UFC) and per distinct bet, through its
+record's standing rule. Three commits, each with a planting that passes on
+the unfixed code: priced_scorecard, drift.report, horizon.market_outlook.
+They land before the re-read." This is the third: `horizon.market_outlook`,
+the line under each statistical curve in the Record page's "Record by
+category" table ("350 of 100 · ~367 expected · season ends 09-27"), and with
+it `horizon.llm_routed_off_outlook`, the reasoning pass's "final count" line
+in a market it no longer asks -- both counted by `_written_so_far`. **A
+MEASUREMENT RULE, NOT AN EDIT**: no row, table, column or schema object
+changes; nothing is written.
+
+### MEASURED FIRST, read-only *(2026-09-27, `db.read_the_live_record`; newest prediction 3108 at 05:49:14Z)*
+
+- **As the page stated it**: one query per market (`_written_so_far`) of
+  every forecast of the market this season that was not withdrawn -- a
+  question's morning and final pass each -- for the statistical model by a
+  default argument, and for UFC every card: one count beside each card's
+  curve. MLB moneyline "350 of 100 · ~367 expected" beside a curve of 246
+  (on 26 September, the question as asked: 330 beside 233); point spread
+  and total "292 of 100" beside 188 and 199; NCAAF moneyline 194 beside 139,
+  total 195 beside 141, point spread 189 beside 182; NFL point spread 49
+  beside 30; each UFC card's moneyline, rounds and distance curve "85 of 100
+  · ~302 expected" beside curves of 0 (Numbered card), 39 (Fight Night) and
+  10 (Contender Series) -- and the reasoning pass's rounds and distance
+  "14 of 100 · ... the final count" beside curves of 0 on the Numbered and
+  Contender cards.
+- **Per forecaster, per card, per standing question** (the blind record's
+  rule, `calibration.standing_row_clause`, with the curve's own filters):
+  every settled count equals its curve's n -- by construction, since the
+  curve counts the same rows. This season's standing questions written, the
+  pace's numerator: MLB moneyline 261 of 365 rows, spread 203 of 307, total
+  214 of 307; NCAAF spread 185 of 192, moneyline 142 of 197, total 144 of
+  198; NFL point spread 42 of 61, total 18 of 34, the props 10 to 13 of 15
+  to 21. UFC by card: Fight Night 41 standing over 3 cards written on,
+  Contender Series 15 over 3, Numbered card none; of the 14 cards still to
+  come, 6 are Fight Nights, 3 Contender Series and 5 numbered.
+- **The reasoning pass** (the page paints no projection beside its curve in
+  a market it is still asked, and did not before): MLB moneyline 134 (~146
+  expected), total 127 (~140); NCAAF spread 55, moneyline 57, total 64; NFL
+  1, 1 and 2; UFC moneyline Fight Night 39, Contender Series 10.
+- **The two readings of a distinct bet** (read off the new door): the blind
+  question -- game, market, subject and rung -- and item 6's game and market
+  count the same everywhere but where one game was asked at two rungs: NFL
+  point spread 30 questions on 17 games, NCAAF point spread 182 on 137, MLB
+  total 199 on 188 (reasoning pass 127 on 119). See READINGS TAKEN.
+
+### EVERY FIGURE THAT MOVED, before and after *(read-only on the live record at the same instant each side -- newest prediction 3108; cdaf03c and this tree; the line under each statistical curve unless named)*
+
+| sport | category (its curve's N) | before | after |
+|---|---|---|---|
+| MLB | moneyline (246) | **350 of 100 · ~367 expected** | **246 of 100 · ~258 expected** |
+| MLB | point spread (188) | **292 of 100 · ~310 expected** | **188 of 100 · ~200 expected** |
+| MLB | total (199) | **292 of 100 · ~310 expected** | **199 of 100 · ~212 expected** |
+| MLB | hits (31) | 40 of 100 · ~43, cannot clear | 31 of 100 · ~33, cannot clear |
+| MLB | home runs, retired (31) | 36 of 100, the final count | 31 of 100, the final count |
+| MLB | batter strikeouts (9) | 12 of 100 · ~14, cannot clear | 9 of 100 · ~11, cannot clear |
+| MLB | strikeouts (7) | 9 of 100 · ~11, cannot clear | 7 of 100 · ~9, cannot clear |
+| NCAAF | point spread (182) | 189 of 100 · ~1597 | 182 of 100 · ~1539 |
+| NCAAF | moneyline (139) | **194 of 100 · ~1639** | **139 of 100 · ~1180** |
+| NCAAF | total (141) | **195 of 100 · ~1066** | **141 of 100 · ~775** |
+| NFL | point spread (30) | **49 of 100 · ~537** | **30 of 100 · ~366** |
+| NFL | total (2) | 4 of 100 · ~276 | 2 of 100 · ~146 |
+| NFL | passing yards (7) | **10 of 100 · ~154** | **7 of 100 · ~95, CANNOT CLEAR** |
+| NFL | rushing yards (8) | **11 of 100 · ~131** | **8 of 100 · ~88, CANNOT CLEAR** |
+| NFL | passing touchdowns (7) | **10 of 100 · ~130** | **7 of 100 · ~87, CANNOT CLEAR** |
+| NFL | receiving yards (8) | 9 of 100 · ~153 | 8 of 100 · ~112 |
+| NFL | receptions (8) | 13 of 100 · ~181 | 8 of 100 · ~104 |
+| UFC | moneyline, rounds, distance: Numbered card (0) | **85 of 100 · ~302** | 0 of 100, no rate this season: no line painted |
+| UFC | the same, Fight Night (39) | **85 of 100 · ~302** | **39 of 100 · ~121** |
+| UFC | the same, Contender Series (10) | **85 of 100 · ~302** | **10 of 100 · ~25, CANNOT CLEAR** |
+| UFC | rounds and distance, reasoning pass: Numbered card and Contender Series (0) | 14 of 100, the final count | 0 of 100, the final count |
+
+Unchanged: NFL moneyline (17 of 100 · ~273, its standing questions were
+every row), the UFC reasoning pass's Fight Night rounds and distance (14,
+final), MLB's reasoning pass hits (2) and home runs (6), and every market
+with nothing written (NBA, MLB total bases, NFL passing touchdowns' reasoning
+pass). **Four gates the page called reachable cannot clear on their own
+counts**: NFL passing yards, rushing yards and passing touchdowns, and the
+UFC Contender Series card in each market. Every count that stays past the
+100 -- MLB moneyline, spread and total, NCAAF spread, moneyline and total --
+is now the N printed beside it in the same row.
+
+### BUILT *(2026-09-27)*
+
+- **The door**: `horizon.standing_questions(conn, *, sport, market,
+  predictor, event_tier=None)`. The forecaster is required and refused by
+  name (`horizon.PooledCount`, "never pooled") unless it is one of the two
+  (`horizon.FORECASTERS`, from `config.FORECASTER_LABELS`); the market is one
+  the sport declares, as the record names it ('prop' refused, "every prop
+  type in one count"); UFC must name one declared card and a sport that
+  splits nowhere may name none. The rows are that forecaster's STANDING
+  forecasts, settled or not (`calibration.standing_row_clause(False)`, the
+  filters `calibration.resolved` asks for the curve), each with its
+  season, slate (`g.week`), question keys and its card read off its own
+  bout.
+- **The counts**: `_written_so_far(rows, season)` counts the door's rows --
+  settled, every season, the curve's n; written, this season's standing
+  questions; slates, the distinct `week`s they were written on -- in place
+  of its own query. `horizon.bet_of` (the blind question: game, market,
+  subject, rung), `count_of_bets` and `settled` are the shared helpers;
+  each outlook carries `record`, `predictor`, `event_tier`,
+  `distinct_bets`, `distinct_bets_written`, `forecasters_counted`,
+  `tiers_counted` and `written_before`, counted beside the door.
+- **The builders**: `market_outlook(conn, sport, market, *, predictor,
+  event_tier=None, season=None)` -- no default forecaster -- and
+  `llm_routed_off_outlook(..., *, event_tier=None)` ask the door once; the
+  retired branch reads the same rows. `slates_remaining` takes the card, so
+  a UFC card's pace is multiplied by that card's slates to come (every card's
+  14, for a Contender Series rate, would have been the unit mismatch the
+  ONE UNIT row is about, one level down). `expected_from` works the
+  expectation out again from an outlook's own counts.
+- **Words**: `language.market_outlook_line` (composed inside `horizon.py`
+  until this date, in the same words), with "nothing written in this market
+  this season" for a count from an earlier season and no rate, never "yet"
+  (item 6's prover found the at-the-line line denying the claims it
+  counted); `horizon.outlook_words` is the one composition the builder
+  writes and the guard reads again (the retired and routed-off lines keep
+  their own functions).
+- **The table's builder**: `calibration.blind_categories(conn, *, sport)`,
+  taken out of `scorecard`, builds every blind curve with the outlook beside
+  it -- the statistical model's on each card, the reasoning pass's final
+  count where it is routed off -- and marks each `record: rung`.
+- **The guard**: `calibration.assert_no_pooled_outlooks`, inside
+  `blind_categories` -- so `/api/scorecard` answers 500 rather than serve a
+  pool (a test asserts it through TestClient). It runs
+  `assert_no_merged_categories` first, then refuses by name, for each
+  outlook: one filed from another record; one naming another forecaster or
+  card than its curve's, or none; one counting another forecaster's rows or
+  another card's bouts; a settled count, or a pace, on more rows than
+  distinct questions; a settled count that is not the curve's n ("two counts
+  of one record"); an expectation that is not its own counts' arithmetic;
+  and a line stating another count than its own.
+- **The gate**: `audit.check_the_blind_outlook_is_never_pooled` builds every
+  sport's table on the record's copy (gate step 2: "the blind record's
+  outlook counts its curve's standing questions"). The gate built NFL's
+  alone, inside the first sport's Record page. Passes on the live record,
+  read-only. `audit.horizon_unit_faults` now reads the rate's unit off the
+  door (`g.week`) and the count (`week`), as well as `slates_remaining`,
+  since `_written_so_far` is no longer a query (the planting of 2026-09-05
+  and its test still fire; a test proves the new halves do).
+- **The renderer** requires each outlook's N (`requireN`) and its comment
+  no longer says the outlook counts only this season.
+- **Plantings** (`tools/guards/plant.py`, in the harness and in
+  `test_guards.py`'s list): `plant_a_blind_outlook_counting_superseded_passes`
+  (the MLB moneyline line of 27 September and eleven more shapes: a
+  question's two passes in the settled count, an outlook saying nothing of
+  how many questions it holds, 350 beside a curve of 246, a pace from every
+  pass, an expectation not its own arithmetic, a line past its counts, no
+  forecaster, both forecasters under one name, the statistical line beside
+  the reasoning pass's curve, an at-the-line outlook, UFC's three cards
+  beside a Numbered-card curve of 0, a card counting another's bouts -- each
+  refused by its own reason, the honest payloads passing) and
+  `plant_a_blind_outlook_game_counted_twice` (a scratch world, every row
+  through the schema's own rules: one MLB game forecast by the statistical
+  model's morning and final pass and by the reasoning pass, one UFC bout on
+  a Fight Night card forecast twice, one on a Contender Series card, a
+  Numbered card still to come; each outlook states its curve's count; the
+  count as it stood swapped back in as the door -- asking the forecaster,
+  asking nobody in particular, and each card's standing rows under one
+  card's name -- is refused by the Record page's builder for MLB and UFC and
+  by the gate's check naming MLB).
+- **Tests** (`test_outlook.py`, new): nine, all failing on cdaf03c. The
+  existing calls in `test_rulings.py` and `test_retired.py` name the
+  forecaster.
+
+### RENDERED *(2026-09-27; the browser suite's own world -- `seed_league` and `_build_world` -- on a scratch file, served by this tree and by cdaf03c with the suite's test token and `GRIDIRON_SEASON=2025` so the world's NFL season has a pace; given a final pass on six settled point spread questions, and three UFC cards with settled statistical moneyline forecasts, one bout forecast twice, and a Fight Night, a Contender Series and a Numbered card still to come; never the live app)*
+
+Read as pictures at 1100px and 390px
+(`scratchpad/q14/outlook/outlook-{before,after}-{nfl,ufc}-{1100,390}.png`,
+with crops of the phone width). On cdaf03c NFL "point spread, statistical"
+read "14 of 100 · ~26 expected" beside N 8, and every UFC moneyline card
+"4 of 100 · ~10 expected · ... THIS GATE CANNOT CLEAR THIS SEASON" beside N
+0, 2 and 1; here point spread reads "8 of 100 · ~16 expected" beside 8, the
+Fight Night row "2 of 100 · ~4 expected", the Contender Series row "1 of 100
+· ~2 expected", and the Numbered card row no line (nothing written on it
+this season). Every other row reads as before. At 390px the line wraps
+inside the category column as it did; no horizontal page scroll and no
+console error at either width, on either tree.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **A distinct bet is the blind question** -- game, market, subject and rung
+  (`horizon.bet_of`, the priced record's key) -- not item 6's game and
+  market (step 2's key). The outlook's count must be the curve's n, and the
+  blind curve counts questions: the standing rule's own words are that one
+  subject asked at two rungs is two questions. Counting games would put "17
+  of 100" under an NFL point spread curve of 30, and "137" under NCAAF's 182
+  -- the two counts of one record the ruling removes -- unless the curve
+  changed too, which is not among the three commits. Reversed in
+  `horizon.bet_of`; the guard would then refuse every such row until the
+  curve counted games as well.
+- **The pace counts this season's standing questions and the settled count
+  every season's**, as item 6's at-the-line outlook does: the settled count
+  is what the gate counts and what the curve beside it says; the pace is a
+  rate for this season's remaining slates. The page hides a line with no rate
+  this season (as it always did), and the words say "this season" if one
+  were shown.
+- **A UFC card's pace is multiplied by that card's slates to come**, not
+  every card's. Reversed by passing no card to `slates_remaining` in
+  `market_outlook` (Fight Night ~121 would be ~230, Contender Series ~25
+  ~80, and the Contender card's "cannot clear" would read reachable).
+- **The reasoning pass's curve carries no projection in a market it is
+  still asked**, as before: the ruling rebuilds the counts the page states
+  and adds none. The old reason in the code ("one projection covers both")
+  is gone -- the two forecasters' counts differ (MLB moneyline 246 and 134)
+  -- and the comment says why instead. Adding it is one `elif` in
+  `blind_categories`; the door and the guard already count it (MLB
+  moneyline 134 of 100 · ~146, UFC Contender Series 10, cannot clear).
+- **The words are the page's own**, moved into `language.py` unchanged but
+  for "this season"; "season ends 09-27" keeps its month-day form.
+
+### THE LIVE RECORD AFTER THE RELEASE *(none)*
+
+Nothing is written. The counts are computed on every read, so from the
+release the Record page states the lines above, and the gate builds every
+sport's table on the record's copy.
+
+### OPEN, found by this step *(2026-09-27)*
+
+- **The at-the-line UFC outlook multiplies one card's pace by every card's
+  slates.** `horizon.at_the_line_outlook` (item 6) paces one card's bets,
+  as its curve counts them, and asks `slates_remaining` for the sport's
+  every card -- 14 on 27 September, where a Contender Series pace has 3 to
+  come. It projects nothing today -- no UFC claim has been written at the
+  venue's line, so every card's line says there is no rate (read-only, 27
+  September) -- but it is the same unit mismatch one level down the first
+  time one is. Passing the card is one argument;
+  it is item 6's record and was not named by this ruling, so it is not
+  changed here: for the operator.
+- **Two keys for "a distinct bet" across question 14's three commits** (the
+  blind question for the priced record and this outlook, the game and
+  market for the line's drift): they differ on the record where a game was
+  asked at two rungs (NFL point spread 30 questions on 17 games, NCAAF 182
+  on 137, MLB total 199 on 188). Here the key is forced by the curve; the
+  operator may prefer one key for all three.
+- **The correction gates** (step 2's OPEN entry) still count every settled
+  row; untouched here.
+
+### PROVED *(2026-09-27)*
+
+Both plantings ESCAPE on cdaf03c (`git archive HEAD` into the scratchpad;
+this tree's `plant.py` loaded against it): "nothing checks a blind outlook",
+and the planted world stated (curve, outlook) MLB (1, 2) and each UFC card
+(0, 3), (1, 3), (1, 3). Both are CAUGHT here, each of the payload planting's
+twelve shapes by its own reason (read one by one, none by a neighbour's).
+**Each part is needed**, shown on three copies of this tree with one part
+neutralised: the guard a no-op, both plantings escape; the door without the
+standing rule (every row not withdrawn, still one forecaster's and one
+card's), the world planting escapes (the builder refuses its honest world);
+the gate's check a no-op, the world planting escapes on its gate probe. The
+2026-09-05 unit planting still fires. Full suite with a dummy access token:
+1794 collected, 1786 passed, 8 skipped, exit 0, the planting harness inside
+it included; the harness alone 324/324; `audit.prose_reaching_the_raw_side()`
+is `[]`. The gate's new check passes on the live record, read-only (newest
+prediction 3108), and `audit.horizon_unit_faults()` is `[]`.
