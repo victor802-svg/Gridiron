@@ -782,11 +782,14 @@ const Gridiron = (function () {
     }
 
     if (priced) {
-      requireN(priced, 'the priced forecaster');
+      // ONE ROW PER FORECASTER, AND NO TOTAL TO REQUIRE (operator question
+      // 14, ruled 2026-09-27). The payload's `n` summed both forecasters'
+      // rows and every pass of a question; it is gone, and each row carries
+      // its own N and the server's label naming whose forecasts it counts.
       (priced.categories || []).forEach(entry => {
-        requireN(entry, 'the priced curve for "' + entry.market + '"');
+        requireN(entry, 'the priced curve for "' + entry.category + '"');
         const row = el('div', 'gate-row');
-        row.appendChild(el('div', 'gate-name', marketLabel(entry.market)));
+        row.appendChild(el('div', 'gate-name', entry.category_label));
         row.appendChild(el('div', 'gate-why', entry.gate_line));
         scores.appendChild(row);
       });

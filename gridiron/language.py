@@ -3617,6 +3617,24 @@ def priced_line(blind_prob: float, priced_prob: float, price: float,
             f"{round(price * 100)}¢ at the venue.{moved}")
 
 
+def priced_category_label(sport: str, market: str, predictor: str,
+                          tier: str | None = None) -> str:
+    """"moneyline blended with the price, reasoning pass" -- whose forecasts
+    the priced rows blended, and on which card.
+
+    ONE ROW PER FORECASTER (operator question 14, ruled 2026-09-27). The row
+    named the market alone because its count pooled both forecasters' rows;
+    each row now says whose forecasts it counts, in the Record page's own
+    filter words, and a UFC row names its card, as the at-the-line rows do.
+    The market in the words every other row of the page uses for it.
+    """
+    parts = [f"{market_words(sport, market)} blended with the price"]
+    if tier:
+        parts.append(tier_label(tier) or "")
+    parts.append(FORECASTER_FILTER_WORDS.get(predictor, predictor))
+    return ", ".join(p for p in parts if p)
+
+
 def nothing_priced_line(considered: int, uncovered: int, no_edge: int) -> str:
     """Why the list is empty, which is not the same question every day.
 

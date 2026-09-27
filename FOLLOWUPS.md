@@ -4908,3 +4908,187 @@ the edited file at the old line number); it passes alone, and the second
 run, with nothing edited, is the one above. The gate's two new checks and
 the withdrawn recount pass for every sport on a copy of the record made
 through `db.back_up_the_live_record` and opened under this tree.
+
+## The priced record, one standing question per forecaster -- built 2026-09-27 *(operator question 14, 1 of 3; the second set of rulings of 2026-09-27)*
+
+"Q14: (B). Every count on the Record page that states a gate distance is
+rebuilt per forecaster (per tier for UFC) and per distinct bet, through its
+record's standing rule. Three commits, each with a planting that passes on
+the unfixed code: priced_scorecard, drift.report, horizon.market_outlook.
+They land before the re-read." (`docs/briefs/2026-09-27-rulings-second-set.md`;
+"passes on the unfixed code" read, as the brief reads it, as: the planted
+violation gets through there and is caught on the fix.) This is the first
+of the three: `calibration.priced_scorecard`. **A MEASUREMENT RULE, NOT AN
+EDIT**: no row, table, column or schema object changes; nothing is written.
+
+### MEASURED FIRST, read-only *(2026-09-27, `db.read_the_live_record`; newest priced row 700, written 05:48:51Z)*
+
+- **As the page stated it** (one category per market, every settled priced
+  row of this blend version, `b1`): NFL point spread 2; MLB moneyline 281,
+  "past the 100"; NCAAF moneyline 102, point spread 110 and total 130, each
+  "past the 100"; NBA and UFC none. The payload also carried a total `n`
+  (NFL 2, MLB 281, NCAAF 342) and `awaiting_outcome` (NFL 49, MLB 6, NCAAF
+  20): every unsettled priced row, both forecasters, both passes. Neither
+  was painted.
+- **Per blind forecaster, per distinct question**: MLB moneyline's 281 are
+  149 rows on the statistical model's forecasts (103 distinct questions)
+  and 132 on the reasoning pass's (91) -- on 26 September, 139 (96) and 122
+  (84). NCAAF moneyline 51 and 51, point spread 55 and 55, total 66 rows on
+  64 questions and 64. NFL point spread 1 and 1. No priced row sits on a
+  withdrawn forecast.
+- **Through the blind record's standing rule** (`standing_row_clause`, the
+  latest forecast before the start, a withdrawn one never): the standing
+  forecasts' priced rows are exactly the distinct questions above in every
+  cell -- no question on the record has a priced superseded pass and an
+  unpriced standing one -- and in every cell the distinct questions are
+  distinct games (so item 6's game-and-market key would count the same).
+
+### EVERY FIGURE THAT MOVED, before and after *(read-only on the live record, the same instant each side: newest priced row 700; e0ca747 and this tree)*
+
+| sport | figure | before (pooled) | after (per forecaster, per standing question) |
+|---|---|---|---|
+| MLB | moneyline | **281 settled comparisons, past the 100** | statistical **103, past the 100**; reasoning pass **91 of 100, 9 more** |
+| NCAAF | moneyline | **102, past the 100** | statistical 51 of 100, 49 more; reasoning pass 51 of 100, 49 more |
+| NCAAF | point spread | **110, past the 100** | 55 of 100, 45 more; 55 of 100, 45 more |
+| NCAAF | total | **130, past the 100** | 64 of 100, 36 more; 64 of 100, 36 more |
+| NFL | point spread | 2 of 100 | 1 of 100; 1 of 100 |
+| NBA, UFC | -- | no row (no priced row) | no row |
+| all | payload total `n` (not painted) | NFL 2, MLB 281, NCAAF 342 | gone |
+| all | `awaiting_outcome` (not painted) | NFL 49, MLB 6, NCAAF 20 | gone; the standing questions awaiting, per forecaster: NFL 12 and 12, MLB 2 and 3, NCAAF 9 and 9 |
+
+Four "past the 100" lines were pooled; three of them -- every NCAAF one --
+are under the gate for each forecaster, and MLB moneyline stays past it for
+the statistical model alone, on 103 standing questions (on 26 September it
+was 96, under it: the season's last slates moved it). **One priced count on
+the Record page is past its hundred: MLB moneyline, statistical, 103.** No
+figure is shown beside the gate line on the page -- the row states the count
+and the gate, nothing more -- so no number the page prints is withdrawn.
+
+### BUILT *(2026-09-27)*
+
+- **The door**: `priced.forecast.standing_forecasts(conn, *, sport,
+  predictor, event_tier=None)` -- this version's priced row on each standing
+  question of one blind forecaster, settled or not, through
+  `calibration.standing_row_clause(False)` (the blind record's own rule,
+  unfiltered by factor set, as `calibration.resolved` asks it). The
+  forecaster is required and refused by name (`priced.forecast.PooledCount`,
+  "never pooled") unless it is one of `BLIND_FORECASTERS`; UFC must name one
+  declared card and a sport that splits nowhere may name none. Each row
+  carries its market as the record names it (the prop type, or the market),
+  its forecaster, its question's keys and its card, read off its own bout.
+  `bet_of` (the question without its forecaster), `count_of_bets` and
+  `settled` are the one key and the one predicate the counts share.
+- **The builder**: `calibration.priced_scorecard` asks the door once per
+  card and forecaster and builds one category per market, card and
+  forecaster where something has settled (as before, a market with nothing
+  settled has no row), statistical first; each carries `predictor`,
+  `event_tier`, `filters`, `category`, `category_label`, `distinct_bets`,
+  `forecasters_counted`, `tiers_counted`, the three scores on its own rows
+  and the gate line on its own count. No total `n`, no `awaiting_outcome`.
+- **The guard**: `calibration.assert_no_pooled_priced_counts`, inside the
+  builder (so `/api/scorecard` answers 500 rather than serve a pool; a test
+  asserts it). It runs `assert_no_merged_categories` on the priced payload
+  first -- nothing did until today -- then refuses by name: more rows than
+  distinct bets; rows of another forecaster, or another card, than the one
+  named; no blind forecaster named; a score on other questions than the
+  count; a gate line stating another count; a category of another record;
+  and a total or a pooled awaiting count.
+- **The gate**: `audit.check_the_priced_record_is_never_pooled` builds every
+  sport's priced record on the record's copy and turns the guard's refusal
+  into a failure by name (gate step 2: "the priced record counts one
+  standing question per forecaster"). Until today the gate built the Record
+  page for NFL alone (`check_forecasters_are_never_merged`), so the MLB and
+  NCAAF counts were never built by it. Passes on the live record,
+  read-only.
+- **Words**: `language.priced_category_label` -- "moneyline blended with the
+  price, statistical" / "..., reasoning pass", a UFC row naming its card --
+  the market in `market_words`, the words the rest of the page uses. The
+  renderer (`renderPriced`) places the label and requires each row's N; the
+  `requireN` on the whole payload went with the total it read.
+- **Plantings** (`tools/guards/plant.py`, in the harness and in
+  `test_guards.py`'s list): `plant_a_priced_count_pooling_two_forecasters`
+  (26 September's MLB moneyline payload: both forecasters in one count
+  naming none, both under one forecaster's name, one forecaster's two
+  passes, a gate line "past the 100" beside a count under it, scores on
+  other questions, a total `n` and a pooled awaiting count -- seven shapes,
+  each refused by name, the honest pair passing) and
+  `plant_a_priced_question_counted_three_times` (a scratch world, every row
+  through the triggers and the priced forecaster's own writer: one MLB game
+  forecast by the statistical model's morning and final pass and by the
+  reasoning pass, all priced and settled; the builder counts 1 and 1, each
+  row naming its forecaster; the count as it stood swapped back in as the
+  door -- every forecaster, and asking the forecaster but one row per pass --
+  is refused by the builder, and the first by the gate's check naming MLB).
+- **Tests** (`test_priced.py`): one standing question per forecaster (the
+  final pass's row is the one scored), a withdrawn final pass leaving the
+  morning pass standing, the door's refusals, every pooled shape refused by
+  name, the count as it stood refused by the builder, the gate and the API
+  (500), and UFC counted per card -- a door that stopped filtering by card
+  refused off the rows' own cards. All six fail on e0ca747.
+
+### RENDERED *(2026-09-27; the browser suite's own world -- `seed_league` and `_build_world` -- on a scratch file, given a reasoning-pass forecast, priced and settled, beside each of its eight settled priced statistical forecasts; served by this tree and by e0ca747 with the suite's test token; never the live app)*
+
+"Priced, and against the close", NFL, at 1100px and 390px, read as
+pictures (`scratchpad/q14/priced/priced-{after,before}-{1100,390}.png`): on
+e0ca747 one row, "point spread -- 16 of 100 settled comparisons · 84 more";
+here two, "point spread blended with the price, statistical -- 8 of 100
+settled comparisons · 92 more" and "point spread blended with the price,
+reasoning pass -- 8 of 100 ...", in the same type as their neighbours,
+wrapping inside the column at 390px. No horizontal page scroll and no
+console error at either width, on either tree.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **"Per forecaster" is the blind forecaster whose forecast the priced row
+  blended.** The priced forecaster is one forecaster by name, but each of
+  its rows is the blend of one blind forecast, and the operator's question
+  counted them that way ("139 on the statistical model's ..., 122 on the
+  reasoning pass's"). Each row keeps `forecaster: "priced"` and gains
+  `predictor`.
+- **"Its record's standing rule" is the blind record's**
+  (`standing_row_clause`): a priced row belongs to one blind forecast, and
+  the orchestrator's brief names that rule. So a question whose standing
+  forecast carried no price is not counted even if a superseded pass of it
+  was (none on the record). The other reading -- the latest priced row
+  among a question's forecasts -- would count such a question; it counts
+  the same today.
+- **A distinct bet is the blind question** (game, market, subject, rung),
+  without its forecaster: two standing rungs of one game are two questions
+  in the blind curve beside this one, each priced at its own line. Item 6's
+  key, game and market, would refuse that shape; it counts the same on the
+  record today (every cell's questions are distinct games).
+- **A category appears where something has settled**, as it did: a market
+  whose priced rows are all awaiting has no row, and neither has a
+  forecaster with nothing settled in a market the other has.
+- **The unpainted pooled counts were removed, not split**: the total `n`
+  and `awaiting_outcome` had no reader; the guard refuses both by name.
+
+### THE LIVE RECORD AFTER THE RELEASE *(none)*
+
+Nothing is written. The counts are computed on every read, so from the
+release the Record page states the per-forecaster counts above, and the
+gate builds every sport's priced record on the record's copy.
+
+### OPEN
+
+- **"b1" in the panel's heading** is the blend version's identifier,
+  painted raw (`priced-version`), on every sport's Record page since
+  2026-09-07 -- a PLAIN WORDS matter, found by the render; not this
+  question's, not changed.
+- **Steps 2 and 3 of question 14** (`drift.report`, `horizon.market_outlook`)
+  follow in their own commits.
+
+### PROVED *(2026-09-27)*
+
+Both plantings ESCAPE on e0ca747 (`git archive HEAD` into the scratchpad;
+this tree's `plant.py` loaded against it): "nothing checks the priced
+record's counts", and the planted world counted as one moneyline row of 3,
+"3 of 100 settled comparisons". Both are CAUGHT here. **Each part is
+needed**, shown on three copies of this tree with one part neutralised: the
+guard a no-op, both plantings escape; the door without the standing rule
+and the forecaster, the world planting escapes (the builder refuses its
+honest world); the gate's check a no-op, the world planting escapes on its
+gate probe. Full suite with a dummy access token: 1775 collected, 1767
+passed, 8 skipped, exit 0, the planting harness inside it included; the
+harness alone 320/320; `audit.prose_reaching_the_raw_side()` is `[]`. The
+gate's new check passes on the live record, read-only.

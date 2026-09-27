@@ -7456,6 +7456,40 @@ def check_each_pair_counted_once(conn, report: dict | None = None,
 
 
 # ---------------------------------------------------------------------------
+# THE PRICED RECORD COUNTS ONE STANDING QUESTION PER FORECASTER (operator
+# question 14, ruled 2026-09-27, 1 of 3)
+# ---------------------------------------------------------------------------
+#
+# The guard is `calibration.assert_no_pooled_priced_counts`, inside the
+# builder. The gate's step 2 built the Record page for one sport only (the
+# forecaster check reads NFL's), so the MLB and college football priced
+# counts -- the pooled ones -- were never built by it. This builds every
+# sport's on the record's copy and turns the guard's refusal into a failure
+# by name, rather than an exception that ends the gate.
+
+
+def check_the_priced_record_is_never_pooled(conn) -> None:
+    """Refuse a priced count, in any sport on the record, that pools two
+    forecasters, two cards or two passes of one question."""
+    from . import calibration
+    from .priced import forecast as priced
+
+    faults = []
+    for sport in config.SPORTS:
+        try:
+            calibration.priced_scorecard(conn, sport=sport)
+        except (calibration.MergedCurve, calibration.MergedRecord,
+                config.CrossSportAggregation, priced.PooledCount) as exc:
+            faults.append(f"{sport}: {exc}")
+    if faults:
+        raise LawViolation(
+            "A PRICED COUNT IS POOLED (operator question 14, ruled "
+            "2026-09-27): every count on the Record page that states a gate "
+            "distance is one forecaster's (one card's, for UFC), one per "
+            "standing question:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
 # THE ACTIVATION GATE (operator rulings, 2026-09-24)
 # ---------------------------------------------------------------------------
 #

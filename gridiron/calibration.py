@@ -2582,34 +2582,71 @@ def priced_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     Both scores are reported for the same questions -- the priced rows carry
     the id of the blind row they came from -- so the comparison is like for
     like rather than across two different question sets.
+
+    ONE CATEGORY PER MARKET, TIER AND BLIND FORECASTER, ONE ROW PER STANDING
+    QUESTION (operator question 14, ruled 2026-09-27, 1 of 3: "Every count on
+    the Record page that states a gate distance is rebuilt per forecaster
+    (per tier for UFC) and per distinct bet, through its record's standing
+    rule."). A priced row blends one blind forecast, so it is counted as that
+    forecast's forecaster's, through the one door
+    (`priced.forecast.standing_forecasts`, the blind record's standing rule).
+    Until this date every settled priced row of a market was one count --
+    both forecasters, a question's morning and final pass -- and MLB
+    moneyline's gate line said "261 settled comparisons, past the 100 this
+    record needs" for 96 and 84 standing questions.
     """
     from .priced import forecast as priced
 
     require_sport(sport, "calibration.priced_scorecard")
-    rows = conn.execute(
-        "SELECT f.market_type, f.prop_type, f.priced_prob, f.blind_prob,"
-        " f.price_at_write, f.price_move_cents, f.outcome"
-        " FROM priced_forecasts f"
-        " WHERE f.sport = ? AND f.blend_version = ? AND f.outcome IS NOT NULL",
-        (sport, config.PRICED_VERSION)).fetchall()
-
-    by_market: dict[str, list] = {}
-    for row in rows:
-        by_market.setdefault(row["prop_type"] or row["market_type"], []).append(row)
+    tiers = config.event_tiers(sport) or (None,)
+    cells: dict[tuple, list] = {}
+    for tier in tiers:
+        for predictor in priced.BLIND_FORECASTERS:
+            rows = priced.standing_forecasts(conn, sport=sport,
+                                             predictor=predictor, event_tier=tier)
+            for row in priced.settled(rows):
+                cells.setdefault((row["market"], tier, predictor), []).append(row)
 
     categories = []
-    for market in sorted(by_market):
-        got = by_market[market]
+    # A CATEGORY WHERE SOMETHING HAS SETTLED, as before this date (a market
+    # with none showed no row); the markets in name order, then the tiers in
+    # their declared order, then the statistical model before the reasoning
+    # pass, as every other list on the Record page.
+    for market, tier, predictor in sorted(
+            cells, key=lambda k: (k[0], tiers.index(k[1]),
+                                  priced.BLIND_FORECASTERS.index(k[2]))):
+        got = cells[(market, tier, predictor)]
         priced_items = [_PricedResolved(r["priced_prob"], r["outcome"]) for r in got]
         blind_items = [_PricedResolved(r["blind_prob"], r["outcome"]) for r in got]
         market_items = [_PricedResolved(r["price_at_write"], r["outcome"]) for r in got]
+        filters = {"sport": sport, "market": market, "predictor": predictor,
+                   "record": "priced"}
+        if prop_type_of(sport, market):
+            filters["prop_type"] = market
+        if tier is not None:
+            filters["event_tier"] = tier
         categories.append({
             "sport": sport,
             "record": "priced",
             "forecaster": "priced",
+            # WHOSE FORECASTS WERE PRICED, and on which card (2026-09-27).
+            "predictor": predictor,
+            "event_tier": tier,
             "market": market,
+            "category": " / ".join([market] + ([tier] if tier else [])
+                                   + [predictor, "priced"]),
+            "category_label": language.priced_category_label(
+                sport, market, predictor, tier),
+            "filters": filters,
             "blend_version": config.PRICED_VERSION,
             "n": len(got),
+            # COUNTED BESIDE THE DOOR, NOT BY IT: read off the rows' own
+            # questions, forecasters and cards, so a door that let a bet in
+            # twice, or two forecasters or two cards in, is seen.
+            "distinct_bets": priced.count_of_bets(got),
+            "forecasters_counted": sorted({r["predictor"] for r in got}),
+            "tiers_counted": sorted({r["event_tier"] for r in got
+                                     if r["event_tier"] is not None}),
             "priced": score(priced_items),
             "blind_on_the_same_questions": score(blind_items),
             "market_on_the_same_questions": score(market_items),
@@ -2619,17 +2656,17 @@ def priced_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
                 len(got), config.MIN_SAMPLE_FOR_EDGE_CLAIM),
         })
 
-    open_rows = conn.execute(
-        "SELECT COUNT(*) FROM priced_forecasts WHERE sport = ? AND blend_version = ?"
-        "  AND outcome IS NULL", (sport, config.PRICED_VERSION)).fetchone()[0]
-    return {
+    payload = {
         "sport": sport,
         "record": "priced",
         "blend_version": config.PRICED_VERSION,
         "model_weight": config.PRICED_MODEL_WEIGHT,
         "declared": config.PRICED_WEIGHT_DECLARED,
-        "n": sum(c["n"] for c in categories),
-        "awaiting_outcome": open_rows,
+        # NO TOTAL, AND NO POOLED "AWAITING" COUNT (2026-09-27). The `n` that
+        # stood here summed every category -- both forecasters -- and
+        # `awaiting_outcome` counted every unsettled priced row of the sport,
+        # both passes of a question included. Neither was painted; both
+        # described nobody's record, as item 6's at-the-line total did.
         "categories": categories,
         "note": (
             "A second forecaster that reads the price the blind one is forbidden "
@@ -2640,6 +2677,103 @@ def priced_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
             "rather than the curve."
         ),
     }
+    # INSIDE THE BUILDER (question 14, 2026-09-27), so the API answers 500
+    # rather than serve a pooled count, and the gate's build of every sport
+    # on the record's copy runs it (`audit.check_the_priced_record_is_never_pooled`).
+    assert_no_pooled_priced_counts(payload)
+    assert_every_figure_has_n(payload)
+    assert_single_sport(payload, sport)
+    return payload
+
+
+#: The three scores a priced category reports on ONE set of questions.
+PRICED_SCORES = ("priced", "blind_on_the_same_questions",
+                 "market_on_the_same_questions")
+
+
+def assert_no_pooled_priced_counts(payload: dict) -> None:
+    """Every count in the priced record is ONE blind forecaster's STANDING
+    QUESTIONS, once each -- and for UFC one card's.
+
+    The operator's ruling on question 14 (2026-09-27): "Every count on the
+    Record page that states a gate distance is rebuilt per forecaster (per
+    tier for UFC) and per distinct bet, through its record's standing rule."
+    Checked on the payload, as `assert_no_pooled_claims` checks the
+    at-the-line record's -- and it runs `assert_no_merged_categories` first,
+    so the sport, the market, the forecaster and the tier are one rule for
+    every record.
+
+    Then, by name: a category that counts more rows than it has distinct
+    bets (a question's morning and final pass, or two forecasters' rows on
+    one question); one whose rows are another forecaster's, or another
+    card's, than the one it names; one naming no blind forecaster; a score
+    on other questions than the count; a gate line stating another count
+    than its own (the page said "261 settled comparisons, past the 100" for
+    96 and 84 standing questions on 26 September); and a total or a pooled
+    "awaiting" count across categories. Raised inside `priced_scorecard`, so
+    the API answers 500 rather than serving a pool.
+    """
+    from .priced import forecast as priced
+
+    law = "LAW 4 / LAW 6 IN THE PRICED RECORD"
+    assert_no_merged_categories(payload)
+    sport = payload.get("sport")
+    tiers = config.event_tiers(sport)
+    for key in ("n", "awaiting_outcome"):
+        if key in payload:
+            raise MergedCurve(
+                f"{law}: the priced payload carries a total {key!r} of "
+                f"{payload[key]!r}, a sum across its categories and so across "
+                f"both forecasters and every pass of a question, which is "
+                f"nobody's record.")
+    for category in payload.get("categories") or []:
+        what = f"priced category {category.get('category')!r}"
+        if category.get("record") != "priced":
+            raise MergedRecord(
+                f"{what} belongs to the {category.get('record')!r} record and "
+                f"is filed under the priced one.")
+        named = category.get("predictor")
+        filtered = (category.get("filters") or {}).get("predictor")
+        if named not in priced.BLIND_FORECASTERS or filtered != named:
+            raise MergedCurve(
+                f"{law}: {what} names forecaster {named!r} (filtered by "
+                f"{filtered!r}). A priced row blends one blind forecast, and "
+                f"the statistical model's and the reasoning pass's are counted "
+                f"apart and never pooled.")
+        counted = category.get("forecasters_counted")
+        if counted not in ([], [named]):
+            raise MergedCurve(
+                f"{law}: {what} is the {named!r} forecaster's and counts rows "
+                f"on the forecasts of {counted!r}: two forecasters pooled into "
+                f"one count.")
+        tier, cards = category.get("event_tier"), category.get("tiers_counted")
+        if tiers:
+            if tier not in tiers or cards not in ([], [tier]):
+                raise MergedCurve(
+                    f"{law}: {what} names event tier {tier!r} and counts bouts "
+                    f"on {cards!r}; {sport}'s tiers {list(tiers)} are reported "
+                    f"side by side, never summed.")
+        elif tier is not None or cards not in ([], None):
+            raise MergedCurve(
+                f"{law}: {what} names event tier {tier!r} in {sport}, which "
+                f"declares none.")
+        n, bets = category.get("n"), category.get("distinct_bets")
+        if bets is None or n != bets:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled priced rows for {bets} "
+                f"distinct bet{'' if bets == 1 else 's'}. A question is counted "
+                f"once, on its standing forecast, however many passes priced it.")
+        for key in PRICED_SCORES:
+            scored = (category.get(key) or {}).get("n")
+            if scored != n:
+                raise MergedCurve(
+                    f"{law}: {what} counts {n} and scores {key!r} on {scored!r}: "
+                    f"two counts of one record.")
+        said = language.at_the_line_gate_line(n, category.get("gate"))
+        if category.get("gate_line") != said:
+            raise MergedCurve(
+                f"{law}: {what}'s gate line says {category.get('gate_line')!r}, "
+                f"which is not its own count of {n}.")
 
 
 @dataclass(frozen=True)

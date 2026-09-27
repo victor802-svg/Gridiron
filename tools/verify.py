@@ -869,6 +869,13 @@ def step_2_guards() -> bool:
         ("each pair is counted once, and both sides not at all",
          lambda: [audit.check_each_pair_counted_once(
              _record_conn(), sport=sport) for sport in _config().SPORTS]),
+        # OPERATOR QUESTION 14 (ruled 2026-09-27, 1 of 3): the priced
+        # record counts one standing question per forecaster, per card for
+        # UFC -- built for every sport on the record's copy, through its
+        # builder's guard. Until then this gate built NFL's alone.
+        ("the priced record counts one standing question per forecaster",
+         lambda: audit.check_the_priced_record_is_never_pooled(
+             _record_conn())),
         # THE ACTIVATION GATE (operator rulings, 2026-09-24). A market
         # forecasts from its activated fit, and that fit is the factor set
         # the config declares. Read on the migrated copy, which holds the

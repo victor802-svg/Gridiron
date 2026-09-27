@@ -127,6 +127,141 @@ def forecasts_for(conn: sqlite3.Connection,
     }
 
 
+# ---------------------------------------------------------------------------
+# ONE PRICED ROW PER STANDING QUESTION, PER FORECASTER (operator question 14,
+# ruled 2026-09-27: "Every count on the Record page that states a gate
+# distance is rebuilt per forecaster (per tier for UFC) and per distinct bet,
+# through its record's standing rule.")
+# ---------------------------------------------------------------------------
+
+#: THE TWO BLIND FORECASTERS A PRICED ROW CAN BLEND -- `predictions.predictor`'s
+#: own CHECK. A priced row names no forecaster of its own (its forecaster is
+#: always `priced`); it is the blend of ONE blind forecast and is counted as
+#: that forecast's forecaster's (2026-09-27), as an at-the-line claim is.
+BLIND_FORECASTERS = ("statistical", "llm")
+
+
+class PooledCount(ValueError):
+    """A count of priced forecasts asked for without saying whose, or across
+    tiers."""
+
+
+def refuse_a_pooled_count(sport: str, predictor, event_tier) -> None:
+    """The questions every count of priced forecasts must answer first.
+
+    ONE FORECASTER, AND FOR A SPORT THAT SPLITS BELOW THE MARKET, ONE TIER
+    (LAW 4, LAW 6; operator question 14, 2026-09-27). Asked in the door, so a
+    pooled count cannot be made by leaving an argument out.
+    """
+    config.require_sport(sport, "priced.forecast.standing_forecasts")
+    if predictor not in BLIND_FORECASTERS:
+        raise PooledCount(
+            f"LAW 4 / LAW 6: a count of {sport} priced forecasts was asked for "
+            f"forecaster {predictor!r}. A priced row blends one blind forecast, "
+            f"and the statistical model's and the reasoning pass's are counted "
+            f"apart and never pooled: name one of {list(BLIND_FORECASTERS)}.")
+    tiers = config.event_tiers(sport)
+    if tiers and event_tier not in tiers:
+        raise PooledCount(
+            f"LAW 6: a count of {sport} priced forecasts names event tier "
+            f"{event_tier!r}, not one of {sport}'s declared tiers "
+            f"{list(tiers)}; tiers are reported side by side, never summed.")
+    if not tiers and event_tier is not None:
+        raise PooledCount(
+            f"LAW 6: {sport} declares no event tiers, so a count naming tier "
+            f"{event_tier!r} counts nothing that exists.")
+
+
+def standing_forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
+                       event_tier: str | None = None) -> list[sqlite3.Row]:
+    """THE ONE DOOR every count of the priced record goes through: this
+    version's priced row on each STANDING question of ONE blind forecaster
+    (and, for a sport that splits below the market, one tier), settled or not.
+
+    A PRICED ROW BELONGS TO ONE BLIND FORECAST, and is written for every
+    forecast that had a price -- a question's morning pass and its final pass
+    each get one, and so does each forecaster's. So the record counts them
+    through the BLIND RECORD'S OWN STANDING RULE, `calibration.
+    standing_row_clause`: the row counted is the one on the question's
+    standing forecast (the latest written before the start, a withdrawn one
+    never), and a question is counted once per forecaster. A question whose
+    standing forecast carried no price has no priced row and is not counted,
+    even if a superseded pass of it was priced (none on the record on
+    2026-09-27): a superseded forecast is not the record's, blind or priced.
+
+    THE OPERATOR'S RULING of 2026-09-27 (question 14, 1 of 3). Until this
+    date `calibration.priced_scorecard` counted every settled priced row of
+    the sport in one category per market -- both forecasters, both passes --
+    and worded its gate on that: MLB moneyline said "261 settled comparisons,
+    past the 100 this record needs" on 26 September, which were 139 rows on
+    the statistical model's forecasts (96 standing questions) and 122 on the
+    reasoning pass's (84).
+
+    Every row carries its market as the record names it (`market`: the prop
+    type, or the market), its blind forecaster, the question's own keys and
+    its card's tier, so a payload can say how many distinct bets it counts
+    (`count_of_bets`) and whose -- counted beside the door, not by it.
+    """
+    from ..calibration import standing_row_clause
+
+    refuse_a_pooled_count(sport, predictor, event_tier)
+    tiers = config.event_tiers(sport)
+    # THE CARD, READ OFF THE ROW'S OWN GAME, so a door that stopped filtering
+    # by tier is seen in the payload rather than trusted (item 6's open
+    # finding, 2026-09-26: its tier was checked by label only).
+    tier_column = (
+        "(SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+        "   ON e.id = b.event_id WHERE b.id = p.game_id)"
+        if tiers else "NULL")
+    tier_clause, params = "", [sport, config.PRICED_VERSION, predictor]
+    if event_tier is not None:
+        # LAW 6 ONE LEVEL DOWN (R2, 2026-09-03), reached through the bout to
+        # the card, exactly as `calibration.resolved` reaches it.
+        tier_clause = (
+            " AND EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
+            "               ON e.id = b.event_id"
+            "              WHERE b.id = p.game_id AND e.event_tier = ?)")
+        params.append(event_tier)
+    return conn.execute(
+        "SELECT f.id, f.prediction_id, f.sport, f.game_id, f.market_type,"
+        "       f.prop_type,"
+        "       COALESCE(NULLIF(f.prop_type, ''), f.market_type) AS market,"
+        "       f.priced_prob, f.blind_prob, f.price_at_write, f.outcome,"
+        "       f.resolved_utc, p.predictor, p.market_type AS question_market,"
+        "       p.subject, p.line_asked,"
+        f"      {tier_column} AS event_tier"
+        "  FROM priced_forecasts f"
+        "  JOIN predictions p ON p.id = f.prediction_id"
+        "  JOIN games g ON g.id = p.game_id"
+        " WHERE f.sport = ? AND f.blend_version = ? AND p.predictor = ?"
+        f"{tier_clause}{standing_row_clause(False)}"
+        " ORDER BY f.id", params).fetchall()
+
+
+def bet_of(row) -> tuple:
+    """Which bet a priced row is on: the blind QUESTION it priced -- its game,
+    market, subject and rung -- without the forecaster who asked it.
+
+    The standing rule keeps one row per question PER FORECASTER, so within
+    one forecaster's count this key is unique; two forecasters, or two passes
+    of one question, in one count put two rows on one key, which is what
+    `calibration.assert_no_pooled_priced_counts` compares with the count.
+    """
+    return (row["game_id"], row["question_market"], row["subject"],
+            row["line_asked"])
+
+
+def count_of_bets(rows) -> int:
+    """How many distinct bets a list of priced rows is on."""
+    return len({bet_of(r) for r in rows})
+
+
+def settled(rows) -> list:
+    """The priced rows that carry their blind row's outcome: ONE predicate for
+    every settled count of the priced record."""
+    return [r for r in rows if r["outcome"] is not None]
+
+
 def resolve_forecasts(conn: sqlite3.Connection) -> dict:
     """Copy the blind row's outcome onto the priced row it came from.
 

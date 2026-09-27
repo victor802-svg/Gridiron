@@ -10401,6 +10401,252 @@ def plant_an_at_the_line_game_counted_twice() -> Result:
                   + " | ".join(caught))
 
 
+LAW_PRICED_COUNTS = ("THE PRICED RECORD, ONE STANDING QUESTION PER FORECASTER "
+                     "(LAW 4, LAW 6)")
+
+
+def _priced_category(predictor, n: int, bets: int, *, market: str = "moneyline",
+                     counted=None, scored: int | None = None,
+                     gate_line: str | None = None) -> dict:
+    """One MLB priced category shaped as `calibration.priced_scorecard`
+    builds it from 2026-09-27: its forecaster, its counts and its gate line."""
+    from gridiron import language as _language
+
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    scored = n if scored is None else scored
+    return {
+        "sport": "mlb", "record": "priced", "forecaster": "priced",
+        "predictor": predictor, "event_tier": None, "market": market,
+        "category": f"{market} / {predictor} / priced",
+        "filters": {"sport": "mlb", "market": market, "predictor": predictor,
+                    "record": "priced"},
+        "n": n, "distinct_bets": bets,
+        "forecasters_counted": (counted if counted is not None
+                                else ([predictor] if n else [])),
+        "tiers_counted": [],
+        "priced": {"n": scored}, "blind_on_the_same_questions": {"n": scored},
+        "market_on_the_same_questions": {"n": scored},
+        "gate": gate,
+        "gate_line": (gate_line if gate_line is not None
+                      else _language.at_the_line_gate_line(n, gate)),
+    }
+
+
+def plant_a_priced_count_pooling_two_forecasters() -> Result:
+    """Put the priced record's MLB moneyline row of 26 September back on the
+    Record page.
+
+    THE SHIPPED PAYLOAD (operator question 14, ruled 2026-09-27): "261
+    settled comparisons, past the 100 this record needs" -- one priced row per
+    blind forecast, so 139 rows on the statistical model's forecasts (96
+    standing questions) and 122 on the reasoning pass's (84), in one count
+    naming no forecaster, beside a total of every category. No guard read the
+    priced payload's counts. Each shape must be refused by name; two honest
+    per-forecaster categories must pass.
+    """
+    guard = "calibration.assert_no_pooled_priced_counts"
+    violation = "two forecasters and repeated passes in one priced count"
+    check = getattr(calibration, "assert_no_pooled_priced_counts", None)
+    if check is None:
+        return Result(LAW_PRICED_COUNTS, violation, guard, False,
+                      "NOT CAUGHT - nothing checks the priced record's counts: "
+                      "MLB moneyline's 261 rows on 96 and 84 standing questions "
+                      "read \"261 settled comparisons, past the 100 this record "
+                      "needs\"")
+    honest = {"sport": "mlb", "record": "priced", "categories": [
+        _priced_category("statistical", 96, 96), _priced_category("llm", 84, 84)]}
+    try:
+        check(honest)
+    except calibration.MergedCurve as wrong:
+        return Result(LAW_PRICED_COUNTS, violation, guard, False,
+                      f"the guard refuses honest per-forecaster categories: {wrong}")
+    probes = {
+        "both forecasters in one count naming none": _priced_category(
+            None, 261, 96, counted=["llm", "statistical"]),
+        "both forecasters under one forecaster's name": _priced_category(
+            "statistical", 180, 96, counted=["llm", "statistical"]),
+        "one forecaster's morning and final pass counted twice":
+            _priced_category("statistical", 139, 96),
+        "a gate line past the 100 beside a count under it": _priced_category(
+            "statistical", 96, 96,
+            gate_line="261 settled comparisons, past the 100 this record needs"),
+        "scores on other questions than the count": _priced_category(
+            "statistical", 96, 96, scored=139),
+    }
+    caught, missed = [], []
+    for name, planted in probes.items():
+        payload = {"sport": "mlb", "record": "priced",
+                   "categories": honest["categories"] + [planted]}
+        try:
+            check(payload)
+        except calibration.MergedCurve as exc:
+            caught.append(f"{name}: {exc}")
+        else:
+            missed.append(name)
+    for key, value in (("n", 180), ("awaiting_outcome", 6)):
+        try:
+            check(dict(honest, **{key: value}))
+        except calibration.MergedCurve as exc:
+            caught.append(f"a total {key!r} across both forecasters: {exc}")
+        else:
+            missed.append(f"a total {key!r} across both forecasters")
+    if missed:
+        return Result(LAW_PRICED_COUNTS, violation, guard, False,
+                      "NOT CAUGHT - the Record page counts the priced record as "
+                      "pooled as it did on 26 September: " + "; ".join(missed))
+    return Result(LAW_PRICED_COUNTS, violation, guard, True,
+                  f"{caught[0]} (and {len(caught) - 1} more shapes, each "
+                  f"refused by name)")
+
+
+def plant_a_priced_question_counted_three_times() -> Result:
+    """Count one MLB game's priced rows once per forecast instead of once per
+    standing question per forecaster.
+
+    THE SHIPPED COUNT OF 2026-09-07 TO 2026-09-27: `priced_scorecard` counted
+    every settled priced row of a market, and a priced row is written for
+    every blind forecast that had a price -- so a game forecast by the
+    statistical model's morning and final pass and by the reasoning pass was
+    three rows in one moneyline count. This world plants exactly that on a
+    scratch database (every row through the schema's own triggers and the
+    priced forecaster's own writer, the one permitted settling write), proves
+    the Record page's builder counts one per forecaster there, naming each,
+    and then swaps the count as it stood back in as the door -- every
+    forecaster, and asking the forecaster but one row per pass -- and demands
+    the builder, and the gate's check of every sport, refuse both by name.
+    """
+    import tempfile
+
+    from gridiron import db as _db, language as _language
+    from gridiron.priced import forecast as _priced
+
+    guard = ("priced.forecast.standing_forecasts, "
+             "calibration.assert_no_pooled_priced_counts, "
+             "audit.check_the_priced_record_is_never_pooled")
+    violation = "one MLB game's priced rows counted once per forecast, not per question"
+    season = config.SPORT_CURRENT_SEASON["mlb"]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES ('mlb_plant_1', 'mlb', ?, 1, 'R', 'SEA', 'HOU',"
+            " '2026-09-07T23:05:00Z', 'final', '2026-09-07', 5, 3)", (season,))
+        ids = []
+        for who, pass_kind, written, prob in (
+                ("statistical", "early", "2026-09-07T03:05:00Z", 0.55),
+                ("statistical", "final", "2026-09-07T21:05:00Z", 0.60),
+                ("llm", "final", "2026-09-07T21:05:01Z", 0.58)):
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning) VALUES (?, 'mlb', 'mlb_plant_1', 'moneyline',"
+                " 'SEA', NULL, ?, 'win', ?, ?, 'fs2', '{}', 'planted')",
+                (written, prob, who, pass_kind))
+            pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+            conn.execute(
+                "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+                " line, implied_prob, kind) VALUES (?, ?, 'planted', NULL, 0.52,"
+                " 'open_at_predict')", (pid, _db.just_after(written)))
+            ids.append(pid)
+        conn.commit()
+        wrote = _priced.write_for(conn, ids)
+        conn.execute("UPDATE predictions SET resolved_utc = '2026-09-08T03:00:00Z',"
+                     " outcome = 1 WHERE resolved_utc IS NULL")
+        conn.commit()
+        _priced.resolve_forecasts(conn)
+
+        def counts() -> dict:
+            card = calibration.priced_scorecard(conn, sport="mlb")
+            return {(c["market"], c.get("predictor")):
+                    (c["n"], c.get("category_label"), c["gate_line"])
+                    for c in card["categories"]}
+
+        try:
+            shipped = counts()
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_PRICED_COUNTS, violation, guard, False,
+                          f"the shipped builder refuses an honest world: {exc}")
+        gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+        want = {("moneyline", "statistical"): (
+                    1, "moneyline blended with the price, statistical",
+                    _language.at_the_line_gate_line(1, gate)),
+                ("moneyline", "llm"): (
+                    1, "moneyline blended with the price, reasoning pass",
+                    _language.at_the_line_gate_line(1, gate))}
+        if wrote.get("written") != 3 or shipped != want:
+            conn.close()
+            return Result(LAW_PRICED_COUNTS, violation, guard, False,
+                          f"NOT CAUGHT - the Record page counts {shipped} for one "
+                          f"game forecast by two passes and two forecasters "
+                          f"({wrote.get('written')} priced rows written); wanted "
+                          f"one standing question each, each naming its forecaster")
+
+        shipped_door = _priced.standing_forecasts
+        gate_check = getattr(audit, "check_the_priced_record_is_never_pooled", None)
+
+        def as_it_stood(conn, *, sport, predictor, event_tier=None,
+                        ask_the_forecaster=False):
+            # THIS IS THE SHIPPED COUNT OF 2026-09-07: every settled priced
+            # row of the sport -- with the columns the new builder reads
+            # added, and nothing else.
+            return conn.execute(
+                "SELECT f.*, COALESCE(NULLIF(f.prop_type, ''), f.market_type)"
+                "       AS market, p.predictor, p.market_type AS question_market,"
+                "       p.subject, p.line_asked, NULL AS event_tier"
+                "  FROM priced_forecasts f"
+                "  JOIN predictions p ON p.id = f.prediction_id"
+                " WHERE f.sport = ? AND f.blend_version = ?"
+                + (" AND p.predictor = ?" if ask_the_forecaster else ""),
+                (sport, config.PRICED_VERSION)
+                + ((predictor,) if ask_the_forecaster else ())).fetchall()
+
+        def the_page():
+            calibration.priced_scorecard(conn, sport="mlb")
+
+        def the_gate():
+            if gate_check is None:
+                return
+            try:
+                gate_check(conn)
+            except audit.LawViolation as exc:
+                named = [line.strip() for line in str(exc).splitlines()
+                         if line.strip().startswith("mlb:")]
+                if not named:
+                    raise
+                raise calibration.MergedCurve(f"the gate names {named[0]}") from exc
+
+        caught, missed = [], []
+        for name, door, build in (
+                ("the count as it stood (every forecaster), the page",
+                 as_it_stood, the_page),
+                ("the count as it stood, the gate", as_it_stood, the_gate),
+                ("asking the forecaster, one row per pass, the page",
+                 lambda conn, **kw: as_it_stood(conn, ask_the_forecaster=True, **kw),
+                 the_page)):
+            _priced.standing_forecasts = door
+            try:
+                build()
+            except calibration.MergedCurve as exc:
+                caught.append(f"{name}: {str(exc).splitlines()[0][:220]}")
+            else:
+                missed.append(name)
+            finally:
+                _priced.standing_forecasts = shipped_door
+        conn.close()
+    if missed:
+        return Result(LAW_PRICED_COUNTS, violation, guard, False,
+                      "NOT CAUGHT - the Record page counts one game's morning "
+                      "pass, final pass and second forecaster as three priced "
+                      "comparisons: " + "; ".join(missed))
+    return Result(LAW_PRICED_COUNTS, violation, guard, True,
+                  "one game counts one standing question per forecaster on the "
+                  "shipped door, each naming its forecaster; with the count as "
+                  "it stood swapped back in -- " + " | ".join(caught))
+
+
 LAW_NO_PRESSURE = "THE GRAMMAR OF A SPORTSBOOK, NEVER ITS PRESSURE"
 
 
@@ -14999,6 +15245,10 @@ def main() -> int:
     # item 6, the operator's ruling of 2026-09-23).
     results.append(plant_an_at_the_line_curve_pooling_two_forecasters())
     results.append(plant_an_at_the_line_game_counted_twice())
+    # ONE STANDING QUESTION PER FORECASTER IN THE PRICED RECORD (operator
+    # question 14, ruled 2026-09-27, 1 of 3).
+    results.append(plant_a_priced_count_pooling_two_forecasters())
+    results.append(plant_a_priced_question_counted_three_times())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

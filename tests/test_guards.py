@@ -573,6 +573,11 @@ def test_every_new_guard_is_in_the_planted_harness():
         # never two forecasters in one count, never a game counted twice.
         "plant_an_at_the_line_curve_pooling_two_forecasters",
         "plant_an_at_the_line_game_counted_twice",
+        # OPERATOR QUESTION 14 (ruled 2026-09-27, 1 of 3): the priced record
+        # counts one standing question per forecaster, per card for UFC --
+        # never two forecasters in one count, never a question's two passes.
+        "plant_a_priced_count_pooling_two_forecasters",
+        "plant_a_priced_question_counted_three_times",
         # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): a refused rerun is a noop, the closing write is
         # caught, a hung run is marked abandoned past its task's silence,
