@@ -48,7 +48,19 @@
   says so; no scheduled pass turns red (measured read-only first).
 - **Order now:** ~~5a~~ -> ~~item 4~~ -> ~~5a'~~ -> ~~migration~~ -> ~~5b~~
   -> ~~item 2's remainder~~ -> ~~item 3~~ -> ~~item 4~~ -> ~~item 5~~ ->
-  ~~item 6~~ -> **item 7** (in progress) -> item 8 -> close-out.
+  ~~item 6~~ -> ~~item 7~~ -> **item 8** (in progress) -> close-out.
+- **Item 7 RELEASED: 0c6da10** (`/api/health` = 0c6da10ce66e, 00:06Z on 27
+  September; gate 4/4, 312/312), after a verified backup
+  (`var/gridiron.db.pre-task-runs-widening-2026-09-26.bak`, integrity ok,
+  every table equal) because db.init rebuilds `task_runs` to admit
+  'abandoned'. On the record: the 7 rows past their task's silence are
+  'abandoned' (969, 1742, 1847, 2057 final:cfb; 1983, 1986, 1989 refresh);
+  6 stay 'running' until theirs passes. **WakeToRun set on all 18 registered
+  Gridiron-* tasks** (Set-ScheduledTask, settings only; nothing else
+  changed); wake timers are enabled on AC and DC. WakeToRun wakes a
+  SLEEPING machine; it does nothing for a machine switched off, which is
+  what both overnight gaps were. `tools/awake.py` reports the awake
+  fraction for the close-out.
 - **Item 6 RELEASED: 6cb20eb** (`/api/health` = 6cb20eb21ec7, 21:35Z on 26
   September; gate 4/4, 308/308): every at-the-line count is one bet per
   forecaster (UFC per card). MLB moneyline's "283, past the 100" is 92 of
