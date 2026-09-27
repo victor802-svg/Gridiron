@@ -656,7 +656,14 @@ def prompt(prediction_id: int) -> dict:
 @app.get("/api/learning")
 def learning(sport: str | None = None) -> dict:
     """What the record has taught the model (T3, 2026-09-07)."""
-    return views.learning(get_conn(), _sport(sport))
+    try:
+        return views.learning(get_conn(), _sport(sport))
+    except (calibration.MergedCurve, calibration.MergedRecord,
+            calibration.CrossSportAggregation) as exc:
+        # A POOLED DRIFT COUNT, REFUSED BY NAME at the boundary (operator
+        # question 14, 2026-09-27), as the scorecard refuses a merged curve:
+        # a loud 500 with the reason rather than a count of nobody's bets.
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/taken/{prediction_id}")

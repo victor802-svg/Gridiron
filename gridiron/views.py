@@ -3596,9 +3596,12 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
         [{"name": language.gate_name("correction", c["label"]),
           "progress": c["progress"], "n": c["progress"]["n"]}
          for c in payload["corrections"]["categories"] if c.get("progress")]
-        + [{"name": language.gate_name("drift", language.humanise(m["market_type"])),
+        # ONE ROW PER MARKET, CARD AND FORECASTER, named in words (operator
+        # question 14, 2026-09-27): the row named a market type alone --
+        # "prop" for every prop type -- and nobody's forecasts.
+        + [{"name": language.gate_name("drift", m["category_label"]),
             "progress": m["progress"], "n": m["progress"]["n"]}
-           for m in payload["drift"]["markets"] if m.get("progress")]
+           for m in payload["drift"]["categories"] if m.get("progress")]
         + [{"name": language.gate_name("read_window", w["label"]),
             "progress": w["progress"], "why": w["why"], "n": w["progress"]["n"]}
            for w in payload["read_windows"] if w.get("progress")]
@@ -3634,8 +3637,27 @@ def drift_report(conn: sqlite3.Connection, sport: str) -> dict:
             "SELECT DISTINCT market_type FROM predictions WHERE sport = ?",
             (sport,))
     })
-    per_market = [
-        drift.report(conn, sport=sport, market_type=m) for m in markets
+    # ONE CATEGORY PER MARKET, CARD AND FORECASTER, ONE PAIR PER BET (operator
+    # question 14, ruled 2026-09-27, 2 of 3: "Every count on the Record page
+    # that states a gate distance is rebuilt per forecaster (per tier for UFC)
+    # and per distinct bet, through its record's standing rule.") Until this
+    # date each market type was one count of every forecast with both looks --
+    # a question's morning and final pass, two rungs of one game, every prop
+    # type as "prop", UFC's three cards as one -- and MLB moneyline said "over
+    # 75 games", past the fifty, for 48 standing rows on 26 September.
+    #
+    # THE DECLARED MARKETS THE RECORD HAS FORECAST, in the sport's own order
+    # (the learning panel's beside it), each a prop by its own type. A name
+    # the sport does not declare is no market of it and has no count.
+    forecast = {
+        r[0] for r in conn.execute(
+            "SELECT DISTINCT COALESCE(NULLIF(prop_type, ''), market_type)"
+            "  FROM predictions WHERE sport = ?", (sport,))}
+    tiers = config.event_tiers(sport) or (None,)
+    categories = [
+        drift.report(conn, sport=sport, market=m, predictor=p, event_tier=t)
+        for m in config.SPORT_MARKETS.get(sport, ()) if m in forecast
+        for t in tiers for p in drift.PAGE_FORECASTERS
     ]
     # THE VENUE'S OWN PAIR (GRIDIRON_OPENING_READ, 2026-09-09), reported
     # BESIDE the media pairs and never inside them. They answer the same
@@ -3651,18 +3673,19 @@ def drift_report(conn: sqlite3.Connection, sport: str) -> dict:
     # (`venue_n`) added both forecasters and is gone.
     from .market import at_the_line
 
-    tiers = config.event_tiers(sport) or (None,)
     venue_markets = [
         drift.venue_report(conn, sport=sport, market_type=m, predictor=p,
                            event_tier=t)
         for m in markets if m in at_the_line.BET_MARKETS
         for t in tiers for p in at_the_line.FORECASTERS
     ]
-    return {
+    payload = {
         "sport": sport,
-        "n": sum(m["n"] for m in per_market),
+        # NO TOTAL (2026-09-27). The `n` that stood here summed every market's
+        # count, pooled as each was; it was never painted, and it described
+        # nobody's record, as the priced and at-the-line totals did.
         "min_pairs": drift.MIN_PAIRS,
-        "markets": per_market,
+        "categories": categories,
         "venue_markets": venue_markets,
         "venue_question": (
             "And between the venue's own opening read and its price at the "
@@ -3675,6 +3698,12 @@ def drift_report(conn: sqlite3.Connection, sport: str) -> dict:
             "that; one cannot."
         ),
     }
+    # INSIDE THE BUILDER (question 14, 2026-09-27), so /api/scorecard answers
+    # 500 rather than serve a pooled count, and the gate's build of every
+    # sport on the record's copy runs it
+    # (`audit.check_the_drift_record_is_never_pooled`).
+    drift.assert_no_pooled_drift_counts(payload)
+    return payload
 
 
 def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
@@ -4830,6 +4859,7 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
     last_refit = conn.execute(
         "SELECT MAX(fitted_utc) FROM calibration_corrections").fetchone()[0]
 
+    tiers = config.event_tiers(sport) or (None,)
     rows = []
     for market in config.SPORT_MARKETS.get(sport, ()):
         market_type = calibration.market_type_of(sport, market)
@@ -4846,7 +4876,16 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
         shown, version = correction.shown_claim(
             conn, sport=sport, market_type=market_type,
             forecaster="statistical", claim=0.70)
-        moved = drift.report(conn, sport=sport, market_type=market_type)
+        # WHERE THE LINE WENT, ONE PAIR PER BET, and one line per card for
+        # UFC (operator question 14, ruled 2026-09-27, 2 of 3). This asked the
+        # market TYPE -- so every prop row showed the drift of every prop type
+        # at once -- and counted every forecast with both looks: MLB
+        # moneyline's "over 75 games", past the fifty, were 48 standing rows
+        # on 26 September. The statistical model's, as the correction is.
+        moved = [
+            drift.report(conn, sport=sport, market=market, predictor=p,
+                         event_tier=t)
+            for t in tiers for p in drift.PAGE_FORECASTERS]
         rows.append({
             "market": market,
             "market_label": language.humanise(market),
@@ -4864,9 +4903,15 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
                 last_refit=last_refit,
                 n_train=(latest["n_train"] if latest else 0) or 0),
             "meaning_words": language.correction_meaning_line(0.70, shown),
-            "drift_words": moved.get("line"),
-            "drift_n": moved.get("n", 0),
+            # EACH LINE CARRIES ITS OWN N; the renderer requires it.
+            "drift": moved,
         })
+    # INSIDE THE BUILDER (question 14, 2026-09-27), so /api/learning answers
+    # 500 rather than serve a pooled count: every row's drift counts, checked
+    # together, so one category counted on two rows is seen too.
+    drift.assert_no_pooled_drift_counts(
+        {"sport": sport,
+         "categories": [d for row in rows for d in row["drift"]]})
     return {
         "sport": sport,
         "n": sum(r["n"] for r in rows),

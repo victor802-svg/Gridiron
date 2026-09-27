@@ -676,7 +676,13 @@ const Gridiron = (function () {
       row.appendChild(el('div', 'gate-name', entry.market_label));
       row.appendChild(el('div', 'gate-why', entry.status_words));
       row.appendChild(el('div', 'gate-why', entry.meaning_words));
-      if (entry.drift_words) row.appendChild(el('div', 'gate-why', entry.drift_words));
+      // WHERE THE LINE WENT, A LINE PER CARD, EACH WITH ITS OWN N (operator
+      // question 14, ruled 2026-09-27): one forecaster's bets, one per game,
+      // and for UFC one card's. The sentences are the server's.
+      (entry.drift || []).forEach(d => {
+        requireN(d, 'where the line went for "' + d.category + '"');
+        row.appendChild(el('div', 'gate-why', d.line));
+      });
       host.appendChild(row);
     });
     panel.hidden = (data.categories || []).length === 0;

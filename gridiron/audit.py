@@ -7490,6 +7490,44 @@ def check_the_priced_record_is_never_pooled(conn) -> None:
 
 
 # ---------------------------------------------------------------------------
+# WHERE THE LINE WENT COUNTS ONE BET PER FORECASTER (operator question 14,
+# ruled 2026-09-27, 2 of 3)
+# ---------------------------------------------------------------------------
+#
+# The guard is `drift.assert_no_pooled_drift_counts`, inside both builders
+# that state the count: the Record page's gate list (`views.drift_report`)
+# and the learning panel (`views.learning`). The gate built the gate list for
+# NFL alone, inside the whole Record page of the first sport, and the
+# learning panel for no sport, so the MLB and college football drift counts
+# -- the ones past the fifty -- were never built by it. This builds both for
+# every sport on the record's copy and turns the guard's refusal into a
+# failure by name.
+
+
+def check_the_drift_record_is_never_pooled(conn) -> None:
+    """Refuse a drift count, in any sport on the record, that pools two
+    forecasters, two cards, two prop types, two passes of one question or
+    two rungs of one game."""
+    from . import calibration, drift, views
+
+    faults = []
+    for sport in config.SPORTS:
+        for panel, build in (("the gate list", views.drift_report),
+                             ("the learning panel", views.learning)):
+            try:
+                build(conn, sport)
+            except (calibration.MergedCurve, calibration.MergedRecord,
+                    config.CrossSportAggregation, drift.PooledCount) as exc:
+                faults.append(f"{sport}, {panel}: {exc}")
+    if faults:
+        raise LawViolation(
+            "A DRIFT COUNT IS POOLED (operator question 14, ruled 2026-09-27): "
+            "every count on the Record page that states a gate distance is "
+            "one forecaster's (one card's, for UFC), one per bet:"
+            + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
 # THE ACTIVATION GATE (operator rulings, 2026-09-24)
 # ---------------------------------------------------------------------------
 #

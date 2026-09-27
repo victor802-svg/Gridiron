@@ -5092,3 +5092,236 @@ gate probe. Full suite with a dummy access token: 1775 collected, 1767
 passed, 8 skipped, exit 0, the planting harness inside it included; the
 harness alone 320/320; `audit.prose_reaching_the_raw_side()` is `[]`. The
 gate's new check passes on the live record, read-only.
+
+## Where the line went, one bet per forecaster -- built 2026-09-27 *(operator question 14, 2 of 3; the second set of rulings of 2026-09-27)*
+
+"Q14: (B). Every count on the Record page that states a gate distance is
+rebuilt per forecaster (per tier for UFC) and per distinct bet, through its
+record's standing rule. Three commits, each with a planting that passes on
+the unfixed code: priced_scorecard, drift.report, horizon.market_outlook.
+They land before the re-read." This is the second: `drift.report`, the media
+line's drift and its gate of fifty, which the Record page states twice -- the
+learning panel's line under each market ("When the model disagreed by 5% or
+more, the market moved toward it 33% of the time over 79 games") and the
+"What else is still counting" rows ("Where the line went after point spread
+· 12 of 50 pairs"). **A MEASUREMENT RULE, NOT AN EDIT**: no row, table,
+column or schema object changes; nothing is written.
+
+### MEASURED FIRST, read-only *(2026-09-27, `db.read_the_live_record`; newest prediction 3108 at 05:49:14Z, newest snapshot 3317)*
+
+- **As the page stated it**: one count per market TYPE of every forecast
+  with both looks at the line that disagreed with the first by five points,
+  the statistical model's by a default argument. MLB moneyline 79, past the
+  fifty ("33% ... over 79 games"); NCAAF point spread 79 (28%), moneyline 57
+  (28%), total 62 (19%), each past it; NFL point spread 4 of 50; every
+  other market 0. Each prop row of the learning panel showed the count of
+  every prop type at once (`market_type` 'prop'), and the gate list one row,
+  "Where the line went after prop". UFC's cards were one count per market.
+  The payload also carried a total `n` across the markets (NFL 4, MLB 79,
+  NCAAF 198), never painted.
+- **Per forecaster, per question, through the standing rule**: MLB
+  moneyline's 79 pairs are on 61 questions, and 50 of them are the
+  question's standing forecast (on 26 September: 75, 58 and 48 -- the
+  question as asked). NCAAF point spread 79 pairs on 78 standing questions,
+  and those are **66 games**: twelve games were asked at two rungs, the
+  morning pass's (1 September) and a later pass's (5 September), both
+  standing questions, and five of the twelve games' two pairs point opposite
+  ways. NCAAF moneyline 57 pairs on 50 questions, 49 standing; total 62 on
+  54, 54 standing; NFL point spread 4 pairs on 3 standing questions and 2
+  games (one of the eight forecasts with both looks is withdrawn). MLB's one
+  prop forecast with both looks (hits) is withdrawn.
+- **The reasoning pass** (never painted; counted by the door when named),
+  one per bet: MLB moneyline 41 (12 toward), NCAAF point spread 44,
+  moneyline 41, total 48, NFL point spread 1 -- under the fifty everywhere.
+  Counted as the old code counted, MLB moneyline would have been 64.
+- **UFC** has first looks and no second: 0 on every card.
+
+### EVERY FIGURE THAT MOVED, before and after *(read-only on the live record, the same instant each side; 29811e0 and this tree; statistical, as the page paints)*
+
+| sport | market | before (every forecast with both looks) | after (one bet per forecaster, standing) |
+|---|---|---|---|
+| MLB | moneyline | **79 pairs, past the fifty: "moved toward it 33% of the time over 79 games"** | **50 pairs, at the fifty: "24% of the time over 50 games"** |
+| NCAAF | point spread | **79: "28% ... over 79 games"** | **65: "22% ... over 65 games"** |
+| NCAAF | moneyline | **57: "28% ... over 57 games"** | **49 of 50 pairs, 1 more; no direction** |
+| NCAAF | total | **62: "19% ... over 62 games"** | **54: "15% ... over 54 games"** |
+| NFL | point spread | 4 of 50 | 2 of 50 |
+| NFL, MLB | props | one row, "prop", 0 of 50, and that pooled count on every prop row of the learning panel | one row per prop type the record forecast, 0 each |
+| UFC | moneyline, rounds, distance | 0 of 50, one line per market | 0 of 50 on each card, three lines per market, each naming its card |
+| all | payload total `n` (not painted) | NFL 4, MLB 79, NCAAF 198 | gone |
+
+**One direction on the Record page is withdrawn: NCAAF moneyline**, 49 of
+50 once each game is counted once. Three stay past the fifty on smaller
+counts and every stated share moves: MLB moneyline 33% to 24%, NCAAF point
+spread 28% to 22%, NCAAF total 19% to 15%. **MLB moneyline sits exactly at
+the fifty** (the page reports a direction from fifty); one withdrawn or
+superseded standing forecast would take it back under.
+
+### BUILT *(2026-09-27)*
+
+- **The door**: `drift.standing_pairs(conn, *, sport, market, predictor,
+  event_tier=None)`. The forecaster is required and refused by name
+  (`drift.PooledCount`, "never pooled") unless it is one of the two
+  (`drift.FORECASTERS`, read from `config.FORECASTER_LABELS`); the market is
+  one the sport declares, as the record names it -- a prop by its own type,
+  'prop' refused ("every prop type in one count"); UFC must name one
+  declared card and a sport that splits nowhere may name none. The
+  candidates are the forecaster's STANDING forecasts
+  (`calibration.standing_row_clause(False)`, the blind record's own rule),
+  with their looks joined beside them; ONE PER BET (`drift.bet_of`: the game
+  and market, and the player for a prop), the bet's last standing forecast
+  written before the start, the id breaking a tie; the bet is counted if
+  that forecast has both looks and disagreed by five points. Each pair
+  carries its forecaster, market, bet keys and its card read off its own
+  bout. `drift.pairs`, the count as it stood, is gone.
+- **The builder**: `drift.report(conn, *, sport, market, predictor,
+  event_tier=None)` -- no default forecaster -- asks the door once and
+  builds one category: `record`, `market`, `predictor`, `event_tier`,
+  `filters`, `category`, `category_label`, `n`, `distinct_bets`,
+  `forecasters_counted`, `tiers_counted` (counted off the pairs beside the
+  door), the progress line and the sentence, and the direction only past
+  the fifty. `views.drift_report` builds one per declared market the record
+  has forecast (in the sport's own order), card and painted forecaster
+  (`drift.PAGE_FORECASTERS`, the statistical model's) under `categories`,
+  and no total; `views.learning` puts a list of them on each market's row
+  (`drift`, one per card), replacing `drift_words` and `drift_n`.
+- **The guard**: `drift.assert_no_pooled_drift_counts`, inside both
+  builders -- so `/api/scorecard` and `/api/learning` answer 500 rather than
+  serve a pool (tests assert both through TestClient; `/api/learning` gained
+  the named 500 `/api/scorecard` already had). It runs
+  `calibration.assert_no_merged_categories` on the drift categories first
+  (nothing did), then refuses by name: a category of another record; one
+  naming no forecaster, or counting another's pairs; one counting another
+  card's pairs, or naming a card in a sport that has none; one category
+  twice in a payload; more pairs than distinct bets; a direction below the
+  gate; a progress line or a sentence stating another count than its own;
+  and a total.
+- **The gate**: `audit.check_the_drift_record_is_never_pooled` builds the
+  gate list and the learning panel for every sport on the record's copy
+  (gate step 2: "where the line went counts one bet per forecaster"). The
+  gate built NFL's gate list alone, inside the first sport's Record page,
+  and no learning panel. Passes on the live record, read-only.
+- **Words**: `language.drift_category_label` ("moneyline, Fight Night,
+  statistical", the market in `market_words`), so a gate row reads "Where
+  the line went after point spread, statistical", beside "A correction for
+  point spread, statistical"; `language.drift_line` carries the sentences
+  that were composed in `drift.py`, a UFC line leading with its card, and
+  past the fifty "over N games" (true now: one per game) or "player lines"
+  for a prop. The renderer places each line of a market's row and requires
+  each its N.
+- **Plantings** (`tools/guards/plant.py`, in the harness and in
+  `test_guards.py`'s list): `plant_a_drift_count_pooling_passes_and_forecasters`
+  (the learning panel's MLB moneyline of 26 September and nine more shapes:
+  a question's two passes, both forecasters naming none, both under one
+  name, a sentence past the fifty beside a count under it, a direction on
+  48 pairs, every prop type in one count, one market on two rows, UFC's
+  cards in one count, a card counting another's bouts, a total -- each
+  refused by name, the honest payloads passing) and
+  `plant_a_drift_game_counted_twice` (a scratch world, every row through the
+  snapshot triggers: one MLB game forecast by the statistical model's
+  morning and final pass and by the reasoning pass, and one NCAAF game
+  asked at two rungs by two passes; the gate list and the learning panel
+  count one bet each, naming the forecaster; the count as it stood swapped
+  back in as the door -- asking the forecaster, asking nobody in
+  particular, and the standing rule without the bet -- is refused by both
+  builders and by the gate's check naming MLB).
+- **Tests** (`test_drift.py`): ten new, and the six that were there moved
+  to the new door and to one game per pair (they built five "pairs" on one
+  game). All ten new ones fail on 29811e0.
+
+### RENDERED *(2026-09-27; the browser suite's own world -- `seed_league` and `_build_world` -- on a scratch file, given a second look near the start for each of its twelve statistical NFL forecasts with a first look, and a final pass with both looks on four early point spread questions; served by this tree and by 29811e0 with the suite's test token; never the live app)*
+
+Read as pictures at 1100px and 390px
+(`scratchpad/q14/drift/drift-{before,after}-{nfl,ufc}-{other-gates,learning}-{1100,390}.png`).
+On 29811e0 the gate list read "Where the line went after point spread · 12
+of 50 pairs" and "... after prop · 0 of 50 pairs", and the learning panel's
+point spread line "12 of 50 disagreements"; here "Where the line went after
+point spread, statistical · 8 of 50 pairs", one row per prop type the world
+forecast, each naming its forecaster in the type of the correction rows
+above them, and the learning panel 8. UFC's learning panel has three lines
+under each market, "Numbered card: 0 of 50 ...", "Fight Night: ...",
+"Contender Series: ...", wrapping inside the column at 390px. No horizontal
+page scroll and no console error at either width, on either tree. (UFC's
+gate list is hidden in this world: it forecasts no UFC bout.)
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **A distinct bet is a game and market -- and the player, for a prop** --
+  item 6's key, not the blind question (step 1's, `priced.forecast.bet_of`).
+  Here they differ on the record: NCAAF point spread's 78 standing
+  questions are 66 games, and a drift pair measures the one published line
+  of a game moving, so two rungs are that movement counted twice (and "over
+  78 games" would be false). Item 6's own test world is exactly this shape
+  and counts it as one bet. Reversed by adding the rung to `drift.bet_of`
+  (NCAAF point spread 78, NFL point spread 3).
+- **The bet's pair is its last standing forecast's**, and an earlier rung is
+  not its fallback: if the last word on the game has no second look, or
+  agreed with the line, the bet has no disagreement to count. The other
+  reading -- the last standing forecast that has a pair -- counts NCAAF
+  point spread 66 (15 toward) and every other cell the same. Reversed in
+  one line in `standing_pairs` (keep only paired rows before choosing).
+- **A question whose standing forecast has no second look is not counted**,
+  even if a superseded pass had one: the ruling's "through its record's
+  standing rule", and the question's own contrast of 58 questions with 48
+  standing rows. Eleven MLB moneyline questions of the statistical model
+  (nine of the reasoning pass's) and one NCAAF moneyline question lose
+  their pair this way: each has one only on a superseded pass.
+- **The page paints the statistical model's drift, as it always did**
+  (`drift.PAGE_FORECASTERS`); the ruling rebuilds the counts the page
+  states and asks for none to be added. Adding "llm" paints the reasoning
+  pass's rows beside them, each naming its forecaster.
+- **The gate list lists the declared markets the record has forecast**, in
+  the sport's order (it was every `market_type` in name order). A name the
+  sport does not declare has no row: 32 NFL prop forecasts of 29 August
+  (fs1) carry no prop type; they have a first look and no second, so no
+  pair is lost today, and the door cannot count them.
+- **The unpainted total `n` was removed, not split**; the guard refuses one.
+
+### THE LIVE RECORD AFTER THE RELEASE *(none)*
+
+Nothing is written. The counts are computed on every read, so from the
+release the Record page states the counts above, and the gate builds both
+panels for every sport on the record's copy.
+
+### OPEN, found by this step *(2026-09-27)*
+
+- **The correction gates on the same page count every settled row.**
+  `views.corrections_report` ("A correction for moneyline, statistical · 350
+  settled", in "What else is still counting") counts every settled forecast
+  of a market type and forecaster -- a question's passes each, every prop
+  type as "prop", UFC's cards as one -- while the correction's own count on
+  the learning panel (`calibration.resolved`, standing) says 246 for the
+  same category. Measured read-only: MLB moneyline 350 against 246 standing
+  (reasoning pass 188 against 134), point spread 292 against 188, total 292
+  against 199 (173 against 127), props 97 against 78; NCAAF moneyline 194
+  against 139, point spread 189 against 182, total 195 against 141; NFL
+  point spread "49 of 50" against 30, props 80 against 57, total 4 against
+  2 for each forecaster; **UFC distance, moneyline and rounds "85 settled",
+  past the fifty, against 49 standing -- under it** (reasoning-pass
+  moneyline 63 against 49), and the learning panel's UFC correction line
+  pools the cards too. A count on the Record page stating a gate distance,
+  outside the three commits the ruling names: for the operator, whether it
+  falls under question 14's first sentence or needs its own ruling. Not
+  built here.
+- **Two keys for "a distinct bet" in one ruling's work**: the priced record
+  (1 of 3) counts the blind question, this step the game and market. They
+  count the same on the priced record today; the operator may prefer one.
+- **Step 3 of question 14** (`horizon.market_outlook`) follows in its own
+  commit.
+
+### PROVED *(2026-09-27)*
+
+Both plantings ESCAPE on 29811e0 (`git archive HEAD` into the scratchpad;
+this tree's `plant.py` loaded against it): "nothing checks a drift count",
+and the planted world counted as the page stated it, MLB moneyline 2 and
+NCAAF point spread 2 on the gate list and the learning panel, for one game
+each. Both are CAUGHT here, each of the payload planting's ten shapes by
+its own reason (read one by one, none by a neighbour's). **Each part is
+needed**, shown on three copies of this tree with one part neutralised: the
+guard a no-op, both plantings escape; the door without the standing rule and
+the bet (one pair per forecast), the world planting escapes (the builder
+refuses its honest world); the gate's check a no-op, the world planting
+escapes on its gate probe. Full suite with a dummy access token: 1777
+passed, 8 skipped, exit 0, the planting harness inside it included; the
+harness alone 322/322; `audit.prose_reaching_the_raw_side()` is `[]`. The
+gate's new check passes on the live record, read-only (newest prediction
+3108, the instant measured).

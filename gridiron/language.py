@@ -3635,6 +3635,48 @@ def priced_category_label(sport: str, market: str, predictor: str,
     return ", ".join(p for p in parts if p)
 
 
+def drift_category_label(sport: str, market: str, predictor: str,
+                         tier: str | None = None) -> str:
+    """"moneyline, statistical" -- whose disagreements a drift count holds, in
+    which market and, for UFC, on which card.
+
+    ONE FORECASTER'S BETS (operator question 14, ruled 2026-09-27, 2 of 3).
+    The gate list named the market type alone -- "prop" for every prop type
+    at once -- and nobody's forecasts; each row now names its market in the
+    words the rest of the page uses, its card, and its forecaster, as the
+    correction gates beside it do.
+    """
+    parts = [market_words(sport, market)]
+    if tier:
+        parts.append(tier_label(tier) or "")
+    parts.append(FORECASTER_FILTER_WORDS.get(predictor, predictor))
+    return ", ".join(p for p in parts if p)
+
+
+def drift_line(sport: str, market: str, n: int, moved_toward: int | None,
+               gate: int, disagreement: float, tier: str | None = None) -> str:
+    """Where the published line went after one forecaster's disagreements in
+    one market: the count below the gate, the direction past it.
+
+    ONE PER BET (operator question 14, ruled 2026-09-27, 2 of 3). "Over 79
+    games" counted a question's morning and final pass, and two rungs of one
+    game, as more games; the count is now one per game (one player's line in
+    one game, for a prop), so the noun is true. A UFC line names its card,
+    because a market's row on the learning panel carries one line per card
+    and three alike would not say which is which.
+    """
+    lead = f"{tier_label(tier)}: " if tier and tier_label(tier) else ""
+    if n < gate or moved_toward is None:
+        return (f"{lead}{n} of {gate} disagreements have a second look at the "
+                f"line. Nothing is reported about direction until there are "
+                f"enough.")
+    noun = ("player lines" if market in _config.SPORT_PROP_MARKETS.get(sport, ())
+            else "games")
+    return (f"{lead}When the model disagreed by {disagreement:.0%} or more, "
+            f"the market moved toward it {moved_toward / n:.0%} of the time "
+            f"over {n} {noun}.")
+
+
 def nothing_priced_line(considered: int, uncovered: int, no_edge: int) -> str:
     """Why the list is empty, which is not the same question every day.
 
