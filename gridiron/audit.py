@@ -8929,3 +8929,1009 @@ def check_the_prompt_says_what_it_is(conn, payloads) -> None:
             "A PROMPT DISCLOSURE THAT DOES NOT SAY WHAT ITS PROMPT IS (the "
             "ruling of 2026-09-25): " + f"{len(faults)} fault(s); the first "
             f"is {faults[0]}" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# NO WRITE REPLACES A ROW OF AN APPEND-ONLY TABLE (operator question 15,
+# ruled 2026-09-27, third set; built the same day, after the predictions
+# rules): "one gate scan that refuses INSERT OR REPLACE, REPLACE and ON
+# CONFLICT DO UPDATE against every append-only table; any legitimate upsert
+# (cache, derived table) is named in a register that may only shrink."
+# ---------------------------------------------------------------------------
+#
+# WHY A SCAN AS WELL AS THE RULES. A table's no-delete rule does not run for
+# a row SQLite removes to make room for a replacing write (unless recursive
+# triggers are on), so every append-only table without a replace rule of its
+# own could lose a stored row to one statement -- sixteen of the twenty with
+# a delete rule when question 15 was asked. The rules on `predictions`,
+# `recommendations` and `market_snapshots` refuse it when it runs; this
+# refuses the statement where it is written, for every table the schema
+# protects, before it can run at all.
+#
+# WHAT IT READS, from the syntax tree: every string the package, `tools/`
+# and `desktop/` can hand SQLite -- constants, implicit concatenations, `+`
+# joins, f-strings, `%` and `.format` templates, whether passed to execute,
+# executemany or executescript or kept in a variable -- with every part
+# worked out at run time read as unknown; and every `.sql` file in the
+# package, `schema.sql` among them. Tests and `tools/guards/` are outside
+# it: they write scratch worlds, and they are how the rules are proved.
+# Docstrings are prose and are not read (the precedent of every source scan
+# here). The SQL is read as SQL: case, whitespace and comments are not
+# words, a quoted name is the name, and a string literal is data.
+#
+# WHAT IT FINDS: an insert under OR REPLACE, a REPLACE statement, an update
+# under OR REPLACE (the stricter default: the hole question 13 closed), an
+# upsert whose conflict clause updates the stored row, and a table or column
+# key declared to replace on conflict, which makes every plain insert on it
+# a replacing one. And where a part worked out at run time sits in the place
+# a conflict clause goes -- after INSERT or INSERT OR, after UPDATE OR or
+# UPDATE before the table, after a conflict target, or as a statement's
+# whole verb -- the write is counted as one that replaces, since the scan
+# cannot say it is not.
+#
+# WHICH TABLES ARE APPEND-ONLY is read from the schema, never from a list:
+# every table a rule refuses a delete or an update on (a DELETE or UPDATE
+# rule, whatever its timing). A replacing write aimed at one fails by name,
+# registered or not; so does one whose table the scan cannot read, which is
+# counted as aimed at one (the brief's reading). A write under an OR clause
+# is also aimed at every table a rule on its table writes, because the rule's
+# own writes inherit the clause (measured by question 15's prover). Any
+# other replacing write fails unless `UPSERTS_REGISTERED` names it; a
+# registered entry no longer found, registered twice over, naming an
+# append-only table, or carrying no dated reason fails too, so the register
+# only shrinks.
+#
+# AND FROM ITS PROVER (2026-09-27), each measured getting round the scan as
+# first built: a TEMPLATE is read as one wherever it is filled in -- `{...}`,
+# `%s`, `%(name)s`, `$name` are parts worked out at run time in every string
+# (kept in a variable and formatted later, handed to `str.format`, a
+# `string.Template`, an f-string's `{{}}`), and a `.replace` of a constant is
+# read as done; a part worked out at run time after the table is a statement
+# going on (`INSERT {clause} INTO predictions {cols} VALUES ...`); OR REPLACE
+# anywhere a statement could begin it -- a string of its own, after a part
+# worked out at run time (`INSERT {hint} OR REPLACE`, `{verb} OR REPLACE`) --
+# is a replacing clause; so is INSERT OR or UPDATE OR where the string ends,
+# `UPDATE {clause} {table} SET`, a verb worked out at run time after another
+# such part, an insert that ends at its ON CONFLICT, and a DO UPDATE with no
+# ON CONFLICT before it in its string (the upsert's other half). And a
+# FOREIGN KEY'S ACTION is a write too: SQLite's CASCADE, SET NULL or SET
+# DEFAULT rewrites the child when a replacing write removes or changes its
+# parent row (measured: SET NULL rewrote an append-only child's key, its
+# update rule naming another column), so a replacing write is also aimed at
+# every table a key action on its table writes. And the register "may only
+# shrink" in the ruling's words: an entry not among those frozen on
+# 2026-09-27 fails, so a later upsert cannot be registered.
+#
+# NOT SEEN: a statement built where the scan reads no string of it -- a
+# name read from a file, the environment or the record, pieces of a list
+# joined at run time, a constant holding the bare verb (indistinguishable
+# from Python's own `errors="replace"`), a docstring handed to SQLite
+# through `__doc__`, a `.replace` whose old text is worked out at run time
+# -- and a table part worked out at run time in a plain update (`UPDATE
+# {table} SET`), which could carry a conflict clause the scan cannot read;
+# and a connection's own settings, which no statement shows (FOLLOWUPS).
+
+#: THE REGISTER OF LAWFUL UPSERTS (question 15, 2026-09-27). Each is a cache
+#: of an upstream source or a table derived from one, refreshed in place,
+#: which the schema gives no no-delete or no-update rule. Keyed (file from the
+#: repository root, the qualified function the statement is written in, the
+#: table), each with a dated reason in words. One entry per statement; it
+#: only shrinks.
+UPSERTS_REGISTERED: dict[tuple[str, str, str], str] = {
+    ("gridiron/data/cfb_loader.py", "load_season", "games"):
+        "2026-09-27: the college schedule and scores as ESPN publishes them, "
+        "refreshed as games are played; a mirror of the source, not a record "
+        "of anything this project said",
+    ("gridiron/data/cfb_loader.py", "load_teams", "teams"):
+        "2026-09-27: club names read from the feed, dated and sourced, "
+        "refreshed when the feed changes them",
+    ("gridiron/data/loader.py", "load_games", "games"):
+        "2026-09-27: the NFL schedule and scores as nflverse publishes them, "
+        "refreshed as games are played",
+    ("gridiron/data/loader.py", "load_games", "game_conditions"):
+        "2026-09-27: rest, venue and observed weather from the same schedule "
+        "file, refreshed with it",
+    ("gridiron/data/loader.py", "load_games", "market_lines_raw"):
+        "2026-09-27: the latest published line per game from the same file; "
+        "a cache of the source -- what a forecast was compared with is "
+        "written once in `market_snapshots`",
+    ("gridiron/data/loader.py", "load_player_stats", "player_week_stats"):
+        "2026-09-27: players' weekly stat lines as nflverse publishes them, "
+        "corrected in place when the source corrects them",
+    ("gridiron/data/loader.py", "load_injuries", "injuries"):
+        "2026-09-27: the current injury report, current state by the "
+        "schema's own words; its history is `injury_reports`, stamped and "
+        "written once",
+    ("gridiron/data/loader.py", "rebuild_team_week_stats", "team_week_stats"):
+        "2026-09-27: derived from `games`, rebuilt from it",
+    ("gridiron/data/loader.py", "load_snap_counts", "snap_counts"):
+        "2026-09-27: snap shares as the source publishes them, refreshed "
+        "from it",
+    ("gridiron/data/mlb_loader.py", "_write_game", "games"):
+        "2026-09-27: the MLB schedule and scores as the league's API "
+        "publishes them, refreshed as games are played",
+    ("gridiron/data/mlb_loader.py", "_write_game", "game_conditions"):
+        "2026-09-27: the ballpark from the same schedule, refreshed with it",
+    ("gridiron/data/mlb_loader.py", "_write_game", "mlb_probables"):
+        "2026-09-27: the announced starters, current state from the "
+        "schedule, which changes them until first pitch",
+    ("gridiron/data/mlb_loader.py", "_write_game", "mlb_team_games"):
+        "2026-09-27: each club's result, derived from the same game, "
+        "refreshed with it",
+    ("gridiron/data/mlb_loader.py", "load_pitcher_logs", "mlb_pitcher_starts"):
+        "2026-09-27: pitchers' game logs as the league's API publishes them, "
+        "refreshed from it",
+    ("gridiron/data/mlb_loader.py", "load_lineups", "mlb_lineups"):
+        "2026-09-27: the posted batting order, the latest by the schema's own "
+        "words; every capture is kept, stamped, in `lineup_captures`",
+    ("gridiron/data/mlb_loader.py", "load_batter_logs", "mlb_batter_games"):
+        "2026-09-27: batters' game logs as the league's API publishes them, "
+        "refreshed from it",
+    ("gridiron/data/mlb_loader.py", "load_people", "mlb_people"):
+        "2026-09-27: names and handedness as the league's API publishes "
+        "them, a cache of the source",
+    ("gridiron/data/nba_loader.py", "load_schedule", "games"):
+        "2026-09-27: the NBA schedule and scores as ESPN publishes them, "
+        "refreshed as games are played",
+    ("gridiron/data/nba_loader.py", "load_schedule", "game_conditions"):
+        "2026-09-27: the arena from the same schedule, refreshed with it",
+    ("gridiron/data/nba_loader.py", "load_team_games", "nba_team_games"):
+        "2026-09-27: the league's team game log, refreshed from it",
+    ("gridiron/data/nba_loader.py", "load_player_games", "nba_player_games"):
+        "2026-09-27: the league's player game log, refreshed from it",
+    ("gridiron/data/nba_loader.py", "load_injuries", "nba_injuries"):
+        "2026-09-27: the current injury report, which the schema calls a "
+        "snapshot replaced on each fetch rather than a history",
+    ("gridiron/data/sources.py", "fetch", "http_cache"):
+        "2026-09-27: the cache of every upstream fetch, by address",
+    ("gridiron/data/teams.py", "load_teams", "teams"):
+        "2026-09-27: club names read from the feed, dated and sourced, "
+        "refreshed when the feed changes them",
+    ("gridiron/data/ufc_loader.py", "load_season", "ufc_events"):
+        "2026-09-27: the cards as ESPN publishes them, refreshed from it",
+    ("gridiron/data/ufc_loader.py", "_load_bout", "ufc_bouts"):
+        "2026-09-27: the bouts and their results as ESPN publishes them, "
+        "refreshed as they are fought",
+    ("gridiron/data/ufc_loader.py", "_load_fighter", "ufc_fighters"):
+        "2026-09-27: fighters' measured attributes as ESPN publishes them, "
+        "refreshed from it",
+    ("gridiron/data/weather.py", "fetch_week", "weather_forecasts"):
+        "2026-09-27: the latest forecast for a game, current state by the "
+        "schema's own words; what was forecast into a prediction is frozen "
+        "in its factors",
+    ("gridiron/market/crosswalk.py", "_write", "player_crosswalk"):
+        "2026-09-27: the measured bridge between two sources' player ids, "
+        "measured again from the sources and dated each time",
+    ("gridiron/market/espn.py", "fetch_day", "market_lines_raw"):
+        "2026-09-27: the latest published line per game; a cache of the "
+        "source -- what a forecast was compared with is written once in "
+        "`market_snapshots`",
+    ("gridiron/market/props.py", "fetch_day", "market_prop_lines_raw"):
+        "2026-09-27: the latest published prop lines; a cache of the source "
+        "-- what a forecast was compared with is written once in "
+        "`market_snapshots`",
+    ("gridiron/market/ufc.py", "fetch_for_bouts", "market_lines_raw"):
+        "2026-09-27: the latest published line per bout; a cache of the "
+        "source -- what a forecast was compared with is written once in "
+        "`market_snapshots`",
+    ("gridiron/model/ufc_rating.py", "walk_forward", "ufc_ratings"):
+        "2026-09-27: derived from the bouts, walked forward again from them",
+    ("gridiron/sports/ufc.py", "mirror_bouts", "games"):
+        "2026-09-27: the bouts mirrored into the schedule, derived from "
+        "`ufc_bouts` and refreshed from it",
+    ("gridiron/views.py", "mark_seen", "session_seen"):
+        "2026-09-27: when a browser session last read a sport's digest, a "
+        "marker for what is new since, not a record",
+}
+
+#: THE REGISTER AS IT WAS FROZEN (question 15's prover, 2026-09-27). "A
+#: register that may only shrink": an entry of `UPSERTS_REGISTERED` not
+#: among these fails by name, so an upsert written after this date cannot
+#: be registered -- it is written plainly, or the operator rules. Until then
+#: a new upsert with an entry dated 2026-09-27 passed every check. Never
+#: added to; an entry left here after its upsert goes holds nothing.
+UPSERTS_REGISTERED_ON_2026_09_27: frozenset[tuple[str, str, str]] = frozenset({
+    ("gridiron/data/cfb_loader.py", "load_season", "games"),
+    ("gridiron/data/cfb_loader.py", "load_teams", "teams"),
+    ("gridiron/data/loader.py", "load_games", "games"),
+    ("gridiron/data/loader.py", "load_games", "game_conditions"),
+    ("gridiron/data/loader.py", "load_games", "market_lines_raw"),
+    ("gridiron/data/loader.py", "load_player_stats", "player_week_stats"),
+    ("gridiron/data/loader.py", "load_injuries", "injuries"),
+    ("gridiron/data/loader.py", "rebuild_team_week_stats", "team_week_stats"),
+    ("gridiron/data/loader.py", "load_snap_counts", "snap_counts"),
+    ("gridiron/data/mlb_loader.py", "_write_game", "games"),
+    ("gridiron/data/mlb_loader.py", "_write_game", "game_conditions"),
+    ("gridiron/data/mlb_loader.py", "_write_game", "mlb_probables"),
+    ("gridiron/data/mlb_loader.py", "_write_game", "mlb_team_games"),
+    ("gridiron/data/mlb_loader.py", "load_pitcher_logs", "mlb_pitcher_starts"),
+    ("gridiron/data/mlb_loader.py", "load_lineups", "mlb_lineups"),
+    ("gridiron/data/mlb_loader.py", "load_batter_logs", "mlb_batter_games"),
+    ("gridiron/data/mlb_loader.py", "load_people", "mlb_people"),
+    ("gridiron/data/nba_loader.py", "load_schedule", "games"),
+    ("gridiron/data/nba_loader.py", "load_schedule", "game_conditions"),
+    ("gridiron/data/nba_loader.py", "load_team_games", "nba_team_games"),
+    ("gridiron/data/nba_loader.py", "load_player_games", "nba_player_games"),
+    ("gridiron/data/nba_loader.py", "load_injuries", "nba_injuries"),
+    ("gridiron/data/sources.py", "fetch", "http_cache"),
+    ("gridiron/data/teams.py", "load_teams", "teams"),
+    ("gridiron/data/ufc_loader.py", "load_season", "ufc_events"),
+    ("gridiron/data/ufc_loader.py", "_load_bout", "ufc_bouts"),
+    ("gridiron/data/ufc_loader.py", "_load_fighter", "ufc_fighters"),
+    ("gridiron/data/weather.py", "fetch_week", "weather_forecasts"),
+    ("gridiron/market/crosswalk.py", "_write", "player_crosswalk"),
+    ("gridiron/market/espn.py", "fetch_day", "market_lines_raw"),
+    ("gridiron/market/props.py", "fetch_day", "market_prop_lines_raw"),
+    ("gridiron/market/ufc.py", "fetch_for_bouts", "market_lines_raw"),
+    ("gridiron/model/ufc_rating.py", "walk_forward", "ufc_ratings"),
+    ("gridiron/sports/ufc.py", "mirror_bouts", "games"),
+    ("gridiron/views.py", "mark_seen", "session_seen"),
+})
+
+#: A part of a statement worked out when it runs: a formatted value, a name
+#: joined on, a `%` or `.format` placeholder. It reads as no SQL at all.
+_UNKNOWN_PART = "\x00"
+
+_SQL_LEXEME = re.compile(
+    r"(?P<space>\s+)"
+    r"|(?P<comment>--[^\n]*|/\*.*?(?:\*/|\Z))"
+    r"|(?P<literal>'(?:[^']|'')*(?:'|\Z))"
+    r"|(?P<name>\"(?:[^\"]|\"\")*(?:\"|\Z)|`(?:[^`]|``)*(?:`|\Z)|\[[^\]]*(?:\]|\Z))"
+    r"|(?P<word>[A-Za-z_][A-Za-z0-9_$]*)"
+    r"|(?P<number>[0-9]+(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?)"
+    r"|(?P<unknown>\x00+)"
+    r"|(?P<other>.)",
+    re.S)
+
+#: A `%` placeholder in a template the code fills in with `%`.
+_PERCENT_PLACEHOLDER = re.compile(r"%(?:\([^)]*\))?[-#0 +]*[0-9*]*(?:\.[0-9*]+)?[a-zA-Z]")
+
+#: A `{...}` placeholder in a template the code fills in with `.format`.
+_BRACE_PLACEHOLDER = re.compile(r"\{[^{}]*\}")
+
+#: A placeholder wherever the template is filled in (the prover,
+#: 2026-09-27: a template kept in a variable and formatted later was read as
+#: punctuation): `{...}` for `.format`, `%s` or `%(name)s` for `%`, `$name`
+#: or `${name}` for `string.Template`, holding whatever Python lets them hold
+#: (`{: >10}`, a key with a space). The doubled characters that stand for
+#: one character (`{{`, `%%`, `$$`) are kept. A placeholder that swallows a
+#: statement's words -- `{` in one literal, `}` in another -- loses nothing:
+#: the text is read again as written (`_replacing_writes_in`).
+_TEMPLATE_PLACEHOLDER = re.compile(
+    r"\{\{|\}\}|\{[^{}]*\}"
+    r"|%%|%(?:\([^()]*\))?[-#0 +]*[0-9*]*(?:\.[0-9*]+)?[a-zA-Z]"
+    r"|\$\$|(?<![A-Za-z0-9_$])\$(?:\{[^{}]*\}|[A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _placeholders_unknown(text: str) -> str:
+    """The text with every template placeholder read as a part worked out at
+    run time, of the same length, so a place in it is the same place in the
+    text as written."""
+    return _TEMPLATE_PLACEHOLDER.sub(
+        lambda m: m.group() if m.group() in ("{{", "}}", "%%", "$$")
+        else _UNKNOWN_PART * len(m.group()), text)
+
+
+#: The conflict algorithms that do not replace.
+_NOT_REPLACING = frozenset({"ROLLBACK", "ABORT", "FAIL", "IGNORE"})
+
+#: The forms, in words. Never the statements themselves: this module is
+#: read by its own scan.
+_FORM_INSERT = "an insert under OR REPLACE"
+_FORM_REPLACE = "a REPLACE statement"
+_FORM_UPDATE = "an update under OR REPLACE"
+_FORM_UPSERT = "an upsert whose conflict clause updates the stored row"
+_FORM_KEY = "a key declared to replace the stored row whenever an insert meets it"
+_FORM_UNREAD = ("a write whose conflict clause is worked out when it runs, "
+                "counted as one that replaces")
+_FORM_CLAUSE = ("a conflict clause that replaces, its statement's verb apart "
+                "from it or worked out when it runs")
+
+
+@dataclass(frozen=True)
+class _SqlToken:
+    kind: str       # word, name, literal, number, unknown, other
+    word: str       # a word upper-cased; "" for any other kind
+    value: str      # a name as SQLite reads it, lower-cased; the text otherwise
+    start: int
+    end: int
+
+
+def _sql_tokens(text: str) -> list[_SqlToken]:
+    """SQL as SQLite reads it: comments and whitespace dropped, a quoted name
+    unquoted, a string literal one token, a part worked out at run time one
+    unknown token."""
+    tokens: list[_SqlToken] = []
+    for m in _SQL_LEXEME.finditer(text):
+        kind = m.lastgroup
+        raw = m.group()
+        if kind in ("space", "comment"):
+            continue
+        if kind == "word":
+            tokens.append(_SqlToken("word", raw.upper(), raw.lower(), m.start(), m.end()))
+        elif kind == "name":
+            inner = raw[1:-1] if len(raw) > 1 and raw[-1] in "\"`]" else raw[1:]
+            if raw[0] in "\"`":
+                inner = inner.replace(raw[0] * 2, raw[0])
+            tokens.append(_SqlToken("name", "", inner.lower(), m.start(), m.end()))
+        else:
+            tokens.append(_SqlToken(kind, "", raw, m.start(), m.end()))
+    return tokens
+
+
+def _read_sql_name(tokens: list[_SqlToken], i: int) -> tuple[str | None, int]:
+    """The object named at `tokens[i]` -- `t`, `"t"`, `[t]`, `main.t` --
+    lower-cased, and the index after it. None where no whole name is there
+    to read: a part worked out at run time, in the name or touching it."""
+    n = len(tokens)
+    while True:
+        if i >= n or tokens[i].kind not in ("word", "name"):
+            return None, i
+        tok = tokens[i]
+        touching = ((i > 0 and tokens[i - 1].kind == "unknown"
+                     and tokens[i - 1].end == tok.start)
+                    or (i + 1 < n and tokens[i + 1].kind == "unknown"
+                        and tokens[i + 1].start == tok.end))
+        if touching or _UNKNOWN_PART in tok.value:
+            return None, i
+        if i + 1 < n and tokens[i + 1].kind == "other" and tokens[i + 1].value == ".":
+            i += 2
+            continue
+        return tok.value, i + 1
+
+
+def _sql_objects(tokens: list[_SqlToken]) -> list[tuple[int, str, str | None, int]]:
+    """(index of CREATE, kind, name, index after the name) for every object
+    the text creates: a table, a view, an index or a rule."""
+    found = []
+    n = len(tokens)
+    for i, tok in enumerate(tokens):
+        if tok.word != "CREATE":
+            continue
+        j = i + 1
+        while j < n and tokens[j].word in ("TEMP", "TEMPORARY", "UNIQUE", "VIRTUAL"):
+            j += 1
+        if j >= n or tokens[j].word not in ("TABLE", "VIEW", "INDEX", "TRIGGER"):
+            continue
+        kind = tokens[j].word.lower()
+        j += 1
+        if [t.word for t in tokens[j:j + 3]] == ["IF", "NOT", "EXISTS"]:
+            j += 3
+        name, after = _read_sql_name(tokens, j)
+        found.append((i, kind, name, after))
+    return found
+
+
+def _sql_rules(tokens: list[_SqlToken]) -> list[tuple[str | None, str, str | None, set]]:
+    """(rule, event, table, tables its body writes) for every rule the text
+    creates -- the event DELETE, INSERT or UPDATE, whatever its timing."""
+    rules = []
+    n = len(tokens)
+    for _at, kind, name, k in _sql_objects(tokens):
+        if kind != "trigger":
+            continue
+        if k < n and tokens[k].word in ("BEFORE", "AFTER"):
+            k += 1
+        elif k + 1 < n and tokens[k].word == "INSTEAD" and tokens[k + 1].word == "OF":
+            k += 2
+        if k >= n or tokens[k].word not in ("DELETE", "INSERT", "UPDATE"):
+            continue
+        event = tokens[k].word
+        k += 1
+        while k < n and tokens[k].word != "ON":
+            k += 1                           # UPDATE OF a, b, c
+        table, k = _read_sql_name(tokens, k + 1)
+        while k < n and tokens[k].word != "BEGIN":
+            k += 1
+        depth, body, k = 1, set(), k + 1
+        while k < n and depth:
+            word = tokens[k].word
+            if word == "CASE":
+                depth += 1
+            elif word == "END":
+                depth -= 1
+            elif word == "INTO":
+                body.add(_read_sql_name(tokens, k + 1)[0])
+            elif word == "UPDATE" and k + 1 < n and tokens[k + 1].word != "SET":
+                step = 3 if tokens[k + 1].word == "OR" else 1
+                body.add(_read_sql_name(tokens, k + step)[0])
+            k += 1
+        rules.append((name, event, table, body))
+    return rules
+
+
+def _sql_key_actions(tokens: list[_SqlToken]) -> list[tuple[str | None, str | None]]:
+    """(parent, child) for every foreign key the text declares with an action
+    that writes the child when its parent row is removed or changed -- ON
+    DELETE or ON UPDATE, then CASCADE, SET NULL, SET DEFAULT, or one worked
+    out at run time (question 15's prover, 2026-09-27). The child is the
+    table being created or altered; None where either name cannot be read."""
+    found = []
+    n = len(tokens)
+    for r, tok in enumerate(tokens):
+        if tok.word != "REFERENCES":
+            continue
+        parent, k = _read_sql_name(tokens, r + 1)
+        depth, writes = 0, False
+        while k < n:
+            t = tokens[k]
+            if t.kind == "other" and t.value == "(":
+                depth += 1
+            elif t.kind == "other" and t.value == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif depth == 0 and (t.word == "REFERENCES"
+                                 or (t.kind == "other" and t.value in (",", ";"))):
+                break
+            elif (depth == 0 and t.word == "ON" and k + 2 < n
+                  and tokens[k + 1].word in ("DELETE", "UPDATE")
+                  and (tokens[k + 2].word in ("CASCADE", "SET")
+                       or tokens[k + 2].kind == "unknown")):
+                writes = True
+            k += 1
+        if not writes:
+            continue
+        child = None
+        k = r
+        while k > 0 and not (tokens[k - 1].kind == "other" and tokens[k - 1].value == ";"):
+            k -= 1
+            if tokens[k].word == "CREATE":
+                for at, kind, name, _after in _sql_objects(tokens[k:]):
+                    child = name if at == 0 and kind == "table" else None
+                    break
+                break
+            if tokens[k].word == "ALTER" and k + 1 < n and tokens[k + 1].word == "TABLE":
+                child = _read_sql_name(tokens, k + 2)[0]
+                break
+        found.append((parent, child))
+    return found
+
+
+def _replacing_statements(tokens: list[_SqlToken]) -> list[tuple[int, str, str | None, bool]]:
+    """(token index, form, table written or None if unreadable, whether a
+    rule's own writes inherit its conflict clause) for every replacing write
+    in one text."""
+    n = len(tokens)
+
+    def word(k: int) -> str | None:
+        return tokens[k].word if 0 <= k < n else None
+
+    def unknown(k: int) -> bool:
+        return 0 <= k < n and tokens[k].kind == "unknown"
+
+    def punct(k: int, text: str) -> bool:
+        return 0 <= k < n and tokens[k].kind == "other" and tokens[k].value == text
+
+    def after_a_name(k: int) -> int:
+        """The index after the name at `k`, a part of it or all of it worked
+        out at run time: touching words, quoted names and unknown parts,
+        joined by dots."""
+        def atom(k: int) -> int:
+            if k >= n or tokens[k].kind not in ("word", "name", "unknown"):
+                return k
+            k += 1
+            while (k < n and tokens[k].kind in ("word", "name", "unknown")
+                   and tokens[k].start == tokens[k - 1].end):
+                k += 1
+            return k
+        k = atom(k)
+        while punct(k, "."):
+            k = atom(k + 1)
+        return k
+
+    def a_statement_goes_on(k: int) -> bool:
+        """Does what follows the table at `k` read as an insert's body? A
+        part worked out at run time there, or the string ending there with
+        the rest added when it runs, counts (question 15's prover,
+        2026-09-27: `{cols}` after the table hid a formatted clause)."""
+        return (k >= n or unknown(k) or punct(k, "(")
+                or word(k) in ("VALUES", "SELECT", "DEFAULT", "WITH", "AS"))
+
+    def a_statement_begins(k: int) -> bool:
+        """Could a statement begin at `k`, as far as the text shows: at its
+        start, after a `;`, a `)` or BEGIN, or after a part worked out at
+        run time (the prover: `{cte} {verb} INTO ...`)?"""
+        return (k == 0 or punct(k - 1, ";") or punct(k - 1, ")")
+                or word(k - 1) == "BEGIN" or unknown(k - 1))
+
+    def into_ahead(k: int) -> int | None:
+        """The index of the first INTO from `k` before the statement ends."""
+        while k < n and not punct(k, ";"):
+            if word(k) == "INTO":
+                return k
+            k += 1
+        return None
+
+    def into_behind(k: int) -> bool:
+        """Is there an INTO before `k` in its statement?"""
+        while k > 0:
+            k -= 1
+            if punct(k, ";"):
+                return False
+            if word(k) == "INTO":
+                return True
+        return False
+
+    def aimed_after(k: int) -> str | None:
+        """The table a conflict clause ending before `k` is aimed at: the
+        name after the next INTO in its statement, or else a name at `k`
+        followed by what an update's table is; None where neither reads."""
+        into = into_ahead(k)
+        if into is not None:
+            return _read_sql_name(tokens, into + 1)[0]
+        name, after = _read_sql_name(tokens, k)
+        return name if word(after) in ("SET", "AS", "INDEXED", "NOT") else None
+
+    def inserted_into(k: int) -> str | None:
+        """The table of the insert an upsert clause at `k` belongs to."""
+        while k > 0:
+            k -= 1
+            if punct(k, ";"):
+                return None
+            if word(k) == "INTO":
+                return _read_sql_name(tokens, k + 1)[0]
+        return None
+
+    def created_table(k: int) -> str | None:
+        """The table whose definition holds the clause at `k`."""
+        while k > 0:
+            k -= 1
+            if punct(k, ";"):
+                return None
+            if word(k) == "CREATE":
+                for at, kind, name, _after in _sql_objects(tokens[k:]):
+                    return name if at == 0 and kind == "table" else None
+                return None
+        return None
+
+    found: list[tuple[int, str, str | None, bool]] = []
+    claimed: set[int] = set()        # each DO read with the ON CONFLICT before it
+    for i, tok in enumerate(tokens):
+        if tok.word == "INSERT":
+            # INSERT OR where the string ends is a clause added when it runs
+            # (the prover, 2026-09-27).
+            if word(i + 1) == "OR" and (word(i + 2) == "REPLACE" or unknown(i + 2)
+                                        or i + 2 >= n):
+                form = _FORM_INSERT if word(i + 2) == "REPLACE" else _FORM_UNREAD
+                table = _read_sql_name(tokens, i + 4)[0] if word(i + 3) == "INTO" else None
+                found.append((i, form, table, True))
+            elif (unknown(i + 1) and word(i + 2) == "INTO"
+                  and a_statement_goes_on(after_a_name(i + 3))):
+                found.append((i, _FORM_UNREAD, _read_sql_name(tokens, i + 3)[0], True))
+        elif tok.word == "REPLACE" and not punct(i + 1, "("):
+            if word(i - 1) == "OR":
+                # OR REPLACE with no INSERT or UPDATE just before it: a clause
+                # kept in a string of its own, or after a part worked out at
+                # run time -- `INSERT {hint} OR REPLACE`, `{verb} OR REPLACE`
+                # (the prover, 2026-09-27) -- and followed by SQL: an INTO
+                # ahead, an update's table, a part worked out, or the string's
+                # end. Not "Keep {what} or replace it" (prose).
+                if (word(i - 2) not in ("INSERT", "UPDATE")
+                        and (i - 1 == 0 or unknown(i - 2))
+                        and (i + 1 >= n or unknown(i + 1)
+                             or into_ahead(i + 1) is not None
+                             or aimed_after(i + 1) is not None)):
+                    found.append((i - 1, _FORM_CLAUSE, aimed_after(i + 1), True))
+            elif word(i + 1) == "INTO":
+                found.append((i, _FORM_REPLACE, _read_sql_name(tokens, i + 2)[0], True))
+            elif (unknown(i + 1) and a_statement_begins(i)
+                  and (i + 2 >= n or into_ahead(i + 2) is not None)):
+                # `REPLACE {hint} INTO t`, or REPLACE and the rest added when
+                # it runs (the prover). Not the bare word: Python's own
+                # `errors="replace"` spells it too.
+                found.append((i, _FORM_REPLACE, aimed_after(i + 1), True))
+        elif tok.word == "UPDATE":
+            if word(i + 1) == "OR" and (word(i + 2) == "REPLACE" or unknown(i + 2)
+                                        or i + 2 >= n):
+                form = _FORM_UPDATE if word(i + 2) == "REPLACE" else _FORM_UNREAD
+                found.append((i, form, _read_sql_name(tokens, i + 3)[0], True))
+            elif (unknown(i + 1) and i + 2 < n
+                  and tokens[i + 2].kind in ("word", "name", "unknown")
+                  and word(i + 2) not in ("SET", "AS", "INDEXED", "NOT")
+                  and tokens[i + 2].start > tokens[i + 1].end
+                  and word(after_a_name(i + 2)) in ("SET", "AS", "INDEXED", "NOT")):
+                # `UPDATE {clause} t SET`: the part before the table is where
+                # OR REPLACE goes -- and in `UPDATE {clause} {table} SET` too,
+                # the table then unread (the prover). (`UPDATE {table} SET`
+                # is the table's own name worked out at run time, and is not
+                # read here.)
+                found.append((i, _FORM_UNREAD, _read_sql_name(tokens, i + 2)[0], True))
+        elif tok.word == "ON" and word(i + 1) == "CONFLICT":
+            k = i + 2
+            if word(k) == "REPLACE":
+                found.append((i, _FORM_KEY, created_table(i), False))
+                continue
+            if word(k) in _NOT_REPLACING:
+                continue
+            depth, action = 0, None
+            while k < n:
+                if punct(k, "("):
+                    depth += 1
+                elif punct(k, ")"):
+                    depth -= 1
+                elif depth <= 0 and punct(k, ";"):
+                    break
+                elif depth <= 0 and unknown(k):
+                    action = "unknown"
+                    break
+                elif depth <= 0 and word(k) == "DO":
+                    claimed.add(k)
+                    action = ("update" if word(k + 1) == "UPDATE"
+                              else "unknown" if unknown(k + 1) else None)
+                    break
+                k += 1
+            else:
+                # The string ends before the clause says what it does, so the
+                # rest is added when it runs: in an insert, or in a piece
+                # that begins with the clause (the prover, 2026-09-27).
+                if into_behind(i) or i == 0 or unknown(i - 1):
+                    action = "unknown"
+            if action == "update":
+                found.append((i, _FORM_UPSERT, inserted_into(i), False))
+            elif action == "unknown":
+                table = inserted_into(i) or created_table(i)
+                found.append((i, _FORM_UNREAD, table, True))
+        elif (tok.word == "DO" and word(i + 1) == "UPDATE" and i not in claimed
+              and (word(i + 2) == "SET" or unknown(i + 2) or i + 2 >= n)):
+            # An upsert's other half, its ON CONFLICT in another string (the
+            # prover, 2026-09-27): DO UPDATE SET is SQL for nothing else, and
+            # "we do update the page" is not it.
+            found.append((i, _FORM_UPSERT, inserted_into(i), False))
+        elif tok.kind == "unknown" and word(i + 1) == "INTO" and a_statement_begins(i):
+            if a_statement_goes_on(after_a_name(i + 2)):
+                found.append((i, _FORM_UNREAD, _read_sql_name(tokens, i + 2)[0], True))
+    return found
+
+
+def _replacing_writes_in(tokens: list[_SqlToken], text: str, template: bool
+                         ) -> list[tuple[int, str, str | None, bool]]:
+    """(offset in the text, form, table, inherited) for every replacing
+    write in one text. A string of Python is read twice (question 15's
+    prover, 2026-09-27): with each template placeholder a part worked out at
+    run time -- a template kept in a variable and filled in later is still a
+    template -- and as written, for anything the first reading finds nothing
+    at the same place; a placeholder keeps its length, so a place is the
+    same in both."""
+    as_written = [(tokens[i].start, form, table, inherited)
+                  for i, form, table, inherited in _replacing_statements(tokens)]
+    if not template:
+        return as_written
+    filled = _sql_tokens(_placeholders_unknown(text))
+    found = [(filled[i].start, form, table, inherited)
+             for i, form, table, inherited in _replacing_statements(filled)]
+    places = {start for start, _form, _table, _inherited in found}
+    return found + [w for w in as_written if w[0] not in places]
+
+
+def _rendered_sql(node: ast.AST, used: set) -> str | None:
+    """The text a string expression hands SQLite, each part worked out at
+    run time one unknown mark; None if it holds no string at all. The id of
+    every node whose text it reads goes into `used`; a part it reads as
+    unknown -- a `.format` argument, the values after `%`, a formatted
+    expression -- is not, and is read as a string of its own."""
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bytes):
+            # A bytes literal decoded before it is run is a statement too
+            # (question 15's prover, 2026-09-27: `b"...".decode()`).
+            used.add(id(node))
+            return node.value.decode("utf-8", "replace")
+        if not isinstance(node.value, str):
+            return None
+        used.add(id(node))
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            elif (isinstance(value, ast.FormattedValue)
+                  and isinstance(value.value, ast.Constant)
+                  and isinstance(value.value.value, str)
+                  and value.format_spec is None and value.conversion == -1):
+                parts.append(value.value.value)
+                used.add(id(value.value))
+            else:
+                parts.append(_UNKNOWN_PART)
+                continue
+            used.add(id(value))
+        used.add(id(node))
+        return "".join(parts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = _rendered_sql(node.left, used), _rendered_sql(node.right, used)
+        if left is None and right is None:
+            return None
+        used.add(id(node))
+        return (_UNKNOWN_PART if left is None else left) + (
+            _UNKNOWN_PART if right is None else right)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+        template = _rendered_sql(node.left, used)
+        if template is None:
+            return None
+        used.add(id(node))
+        return _PERCENT_PLACEHOLDER.sub(_UNKNOWN_PART, template).replace("%%", "%")
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if node.func.attr == "format":
+            template = _rendered_sql(node.func.value, used)
+            if template is None:
+                return None
+            used.update((id(node), id(node.func)))
+            template = template.replace("{{", "\x01").replace("}}", "\x02")
+            return (_BRACE_PLACEHOLDER.sub(_UNKNOWN_PART, template)
+                    .replace("\x01", "{").replace("\x02", "}"))
+        if (node.func.attr == "join" and len(node.args) == 1
+                and isinstance(node.args[0], (ast.List, ast.Tuple))):
+            separator = _rendered_sql(node.func.value, used)
+            if separator is None:
+                return None
+            pieces = [_rendered_sql(e, used) for e in node.args[0].elts]
+            used.update((id(node), id(node.func), id(node.args[0])))
+            return separator.join(_UNKNOWN_PART if p is None else p for p in pieces)
+        if (node.func.attr == "replace" and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str) and node.args[0].value):
+            # A statement rewritten by `.replace` is read as rewritten, the
+            # new text unknown where it is worked out at run time (question
+            # 15's prover, 2026-09-27: `.replace("IGNORE", "REPLACE")`).
+            text = _rendered_sql(node.func.value, used)
+            if text is None:
+                return None
+            new = _rendered_sql(node.args[1], used)
+            used.update((id(node), id(node.func), id(node.args[0])))
+            return text.replace(node.args[0].value, _UNKNOWN_PART if new is None else new)
+    return None
+
+
+#: The words every replacing form holds one of, and a foreign key's. A
+#: string with none is not tokenised: a quick way past the prose, never a
+#: way past a statement.
+_REPLACE_SCAN_WORDS = re.compile(
+    r"insert|replace|update|conflict|into|trigger|references", re.I)
+
+
+def _sql_strings_in(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+    """Every whole string expression in a module outside its docstrings, as
+    SQLite would read it -- a part of a larger one is read inside it."""
+    prose = _docstring_nodes(tree)
+    inner: set[int] = set()
+    found = []
+    for node in ast.walk(tree):
+        if id(node) in prose or id(node) in inner:
+            continue
+        used: set[int] = set()
+        text = _rendered_sql(node, used)
+        if text is None:
+            continue
+        inner |= used
+        found.append((node, text))
+    return found
+
+
+def _replace_scan_sources(root: Path) -> list[tuple[str, str, list]]:
+    """(path from the repository root, "python" or "sql", [(line, function,
+    tokens, text)]) for the package, `tools/` less `tools/guards/`,
+    `desktop/`, and every `.sql` file in the package. A schema file's
+    function is None: each finding in it is named by the object that holds
+    it."""
+    base = root.parent
+    files = [p for p in sorted(root.rglob("*.py")) if "__pycache__" not in p.parts]
+    for extra in ("tools", "desktop"):
+        folder = base / extra
+        if folder.is_dir():
+            files += [p for p in sorted(folder.rglob("*.py"))
+                      if "__pycache__" not in p.parts
+                      and not (extra == "tools"
+                               and p.relative_to(folder).parts[0] == "guards")]
+    sources = []
+    for path in files:
+        where = path.relative_to(base).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        functions = _qualified_functions(tree)
+        texts = []
+        for node, text in _sql_strings_in(tree):
+            if _REPLACE_SCAN_WORDS.search(text):
+                texts.append((node.lineno, functions.get(id(node)) or "module level",
+                              _sql_tokens(text), text))
+        sources.append((where, "python", texts))
+    for path in sorted(root.rglob("*.sql")):
+        where = path.relative_to(base).as_posix()
+        text = path.read_text(encoding="utf-8")
+        sources.append((where, "sql", [(1, None, _sql_tokens(text), text)]))
+    return sources
+
+
+def _the_schemas_rules(sources: list) -> tuple[dict[str, set], dict[str, set]]:
+    """({append-only table: the rules that make it so}, {table: the tables
+    its rules write}), read from every SQL text the scan reads. An
+    append-only table is one a rule refuses a delete or an update on --
+    read from the schema, never a list, so a table given such a rule is
+    append-only from that commit on. A table a rule writes whose name cannot
+    be read is None, never dropped (question 15's prover, 2026-09-27)."""
+    protected: dict[str, set] = {}
+    writes: dict[str, set] = {}
+    for _where, _kind, texts in sources:
+        for entry in texts:
+            for rule, event, table, body in _sql_rules(entry[2]):
+                if table and event in ("DELETE", "UPDATE"):
+                    protected.setdefault(table, set()).add(rule or "a rule")
+                if table:
+                    writes.setdefault(table, set()).update(body)
+    return protected, writes
+
+
+def _the_schemas_key_actions(sources: list) -> dict[str | None, set]:
+    """{parent: the tables a foreign key's action writes when a row of the
+    parent is removed or changed}, read from every SQL text the scan reads
+    (question 15's prover, 2026-09-27). A name that cannot be read is None;
+    a parent None is reached from every table."""
+    reached: dict[str | None, set] = {}
+    for _where, _kind, texts in sources:
+        for entry in texts:
+            for parent, child in _sql_key_actions(entry[2]):
+                reached.setdefault(parent, set()).add(child)
+    return reached
+
+
+def replacing_write_faults(root: Path | None = None,
+                           register: dict | None = None,
+                           frozen: frozenset | None = None) -> list[str]:
+    """Every replacing write the shipped code or the schema can issue that
+    aims at an append-only table -- its own, or one its table's rules or a
+    foreign key's action writes -- whose table cannot be read, or that the
+    register does not name; and every register entry that is stale, doubled,
+    undated, names an append-only table, or is not among the entries `frozen`
+    holds (operator question 15, ruled 2026-09-27; its prover the same day).
+    Each named by file, line, function and table. With the module's own
+    register, `frozen` is `UPSERTS_REGISTERED_ON_2026_09_27`."""
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    if register is None:
+        register = UPSERTS_REGISTERED
+        frozen = UPSERTS_REGISTERED_ON_2026_09_27 if frozen is None else frozen
+    sources = _replace_scan_sources(root)
+    protected, writes = _the_schemas_rules(sources)
+    key_writes = _the_schemas_key_actions(sources)
+
+    def aimed_at(table: str, inherited: bool, keys: bool = True) -> set:
+        """The table and every table a write on it reaches: through its
+        rules' own writes when the conflict clause is inherited, and through
+        a foreign key's action whatever the clause. None is a table the scan
+        cannot read."""
+        seen, queue = {table}, [table]
+        while queue:
+            current = queue.pop()
+            if current is None:
+                continue
+            reached = set(writes.get(current, ())) if inherited else set()
+            if keys:
+                reached |= key_writes.get(current, set()) | key_writes.get(None, set())
+            for written in reached:
+                if written not in seen:
+                    seen.add(written)
+                    queue.append(written)
+        return seen
+
+    def rules_of(table: str) -> str:
+        return ", ".join(f"`{r}`" for r in sorted(protected[table]))
+
+    faults: list[str] = []
+    found: dict[tuple[str, str, str], list[str]] = {}
+    refused: set[tuple[str, str, str]] = set()   # refused above: reaches one
+    for where, kind, texts in sources:
+        for line, function, tokens, text in texts:
+            objects = _sql_objects(tokens) if kind == "sql" else []
+            for start, form, table, inherited in _replacing_writes_in(
+                    tokens, text, kind == "python"):
+                at = line + text.count("\n", 0, start)
+                if kind == "sql":
+                    holder = [o for o in objects if tokens[o[0]].start <= start]
+                    function = (f"{holder[-1][1]} {holder[-1][2]}" if holder
+                                else "module level")
+                place = f"{where}:{at} ({function})"
+                if table is None:
+                    faults.append(
+                        f"{place} {form}, and the scan cannot read the table "
+                        f"it writes -- a part of its name, or all of it, is "
+                        f"worked out when it runs -- so it is counted as "
+                        f"aimed at an append-only table, which no register "
+                        f"entry can hold. Name the table in the statement.")
+                    continue
+                reached = aimed_at(table, inherited)
+                guarded = sorted(t for t in reached if t in protected)
+                unread = None in reached
+                if guarded or unread:
+                    others = [f"`{t}`" for t in guarded if t != table]
+                    if unread:
+                        others.append("a table the scan cannot read")
+                    through = ""
+                    if others:
+                        by_rules = aimed_at(table, inherited, keys=False)
+                        by_keys = reached != by_rules
+                        why = ([] if by_rules == {table} else [
+                            "a rule's own writes carry the conflict clause of "
+                            "the statement that ran it"]) + ([] if not by_keys else [
+                                "a foreign key's action writes its child when "
+                                "a parent row is removed or changed"])
+                        who = ("rules and keys" if len(why) == 2
+                               else "keys" if by_keys else "rules")
+                        through = (f" (its {who} write {', '.join(others)}, "
+                                   f"and {', and '.join(why)})")
+                    counted = [f"`{t}` is append-only: the schema gives it "
+                               f"{rules_of(t)}" for t in guarded]
+                    if unread:
+                        counted.append("a table it reaches that the scan cannot "
+                                       "read is counted as append-only")
+                    faults.append(
+                        f"{place} {form} on `{table}`{through}, and "
+                        + "; ".join(counted)
+                        + ". SQLite runs no delete rule for a row it removes "
+                        f"to make room for a replacing write, so the stored "
+                        f"row can go without one. Registered or not, this is "
+                        f"refused: write it plainly -- update the stored row, "
+                        f"or insert when no row changed.")
+                    refused.add((where, function, table))
+                    continue
+                key = (where, function, table)
+                found.setdefault(key, []).append(place)
+                if key not in register:
+                    faults.append(
+                        f"{place} {form} on `{table}`, which "
+                        f"audit.UPSERTS_REGISTERED does not name. A table the "
+                        f"schema protects with no rule may take a replacing "
+                        f"write only as a cache of a source or a table derived "
+                        f"from one, registered by file, function and table "
+                        f"with a dated reason -- or write it plainly.")
+                elif len(found[key]) > 1:
+                    faults.append(
+                        f"{place} a second replacing write on `{table}` under "
+                        f"one register entry (the first is {found[key][0]}). "
+                        f"An entry names one statement; the register only "
+                        f"shrinks.")
+    for key, reason in sorted(register.items()):
+        where, function, table = key
+        name = f"{where} ({function}) on `{table}`"
+        if table in protected:
+            faults.append(
+                f"{name}: registered in audit.UPSERTS_REGISTERED, and "
+                f"`{table}` is append-only -- the schema gives it "
+                f"{rules_of(table)}. No entry can hold a replacing write on "
+                f"it: remove the entry and write the table plainly.")
+        if key in refused and key not in found and table not in protected:
+            # Its statement is there and refused above, because a rule or a
+            # key carries it onto an append-only table: not "no longer
+            # found", which it was called until the prover (2026-09-27).
+            faults.append(
+                f"{name}: registered in audit.UPSERTS_REGISTERED, and its "
+                f"statement is refused above -- a rule or a key of `{table}` "
+                f"carries it onto an append-only table. No entry can hold it: "
+                f"remove the entry and write the table plainly.")
+        elif key not in found and table not in protected:
+            faults.append(
+                f"{name}: registered in audit.UPSERTS_REGISTERED and no "
+                f"longer found. The register only shrinks: remove the entry.")
+        if not re.match(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}: \S", str(reason)):
+            faults.append(
+                f"{name}: registered without a dated reason in words "
+                f"(\"2026-09-27: a cache of ...\"). A register nobody can "
+                f"date is a list of exceptions nobody re-reads.")
+        if frozen is not None and key not in frozen:
+            # "A register that may only shrink" (the ruling's words; its
+            # prover, 2026-09-27): an entry the register did not hold when it
+            # was frozen is growth, however it is dated.
+            faults.append(
+                f"{name}: registered in audit.UPSERTS_REGISTERED and not among "
+                f"the entries frozen on 2026-09-27 "
+                f"(audit.UPSERTS_REGISTERED_ON_2026_09_27). The register may "
+                f"only shrink: write the table plainly -- update the stored "
+                f"row, or insert when no row changed -- or ask the operator.")
+    return faults
+
+
+def check_no_replacing_write_on_an_append_only_table(root: Path | None = None) -> None:
+    faults = replacing_write_faults(root)
+    if faults:
+        raise LawViolation(
+            "A WRITE CAN REPLACE A ROW OF AN APPEND-ONLY TABLE (operator "
+            "question 15, ruled 2026-09-27: one gate scan refuses a replacing "
+            "write against every append-only table, and names every other "
+            "upsert in a register that only shrinks):" + _NL2
+            + _NL2.join(faults))

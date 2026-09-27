@@ -1095,11 +1095,30 @@ def get_meta(conn: sqlite3.Connection, key: str, default: str | None = None) -> 
 
 
 def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
-    conn.execute(
-        "INSERT INTO meta (key, value) VALUES (?,?)"
-        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        (key, value),
-    )
+    # TWO PLAIN STATEMENTS, NOT AN UPSERT (operator question 15, ruled
+    # 2026-09-27, third set). `meta` carries a no-delete and a no-update rule
+    # (the prompt record's release instant), so the gate's scan
+    # (`audit.check_no_replacing_write_on_an_append_only_table`) counts it
+    # append-only and refuses a replacing write on it, registered or not.
+    # The same effect: the key's value is updated where it is stored and
+    # inserted where it is not, and one commit ends both, as before. Inside
+    # a savepoint, so the two are one step on any connection -- the update
+    # takes the write lock before the insert, so no other writer can store
+    # the key between them -- and a refusal takes back neither more nor less
+    # than the upsert's did. The release instant is still refused by name:
+    # an update of it by `prompt_record_instant_never_moves`, where the
+    # upsert was refused by `prompt_record_instant_is_written_once`.
+    conn.execute("SAVEPOINT set_meta")
+    try:
+        changed = conn.execute(
+            "UPDATE meta SET value = ? WHERE key = ?", (value, key)).rowcount
+        if not changed:
+            conn.execute("INSERT INTO meta (key, value) VALUES (?,?)", (key, value))
+    except BaseException:
+        conn.execute("ROLLBACK TO set_meta")
+        conn.execute("RELEASE set_meta")
+        raise
+    conn.execute("RELEASE set_meta")
     conn.commit()
 
 

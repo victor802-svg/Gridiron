@@ -6010,3 +6010,390 @@ release comparison runs after it, as with every rule since 5b.
   newest was TAKEN (NOT SEEN, as recorded). The resolution of open
   forecast 1,508 landed and a plain insert took 3,121 (both rolled back);
   the forecasts' checksums and the sequence never moved.
+
+## No write replaces a row of an append-only table -- built 2026-09-27 *(operator question 15, its second step: the gate scan; the third set of rulings of 2026-09-27)*
+
+"Then one gate scan that refuses INSERT OR REPLACE, REPLACE and ON CONFLICT
+DO UPDATE against every append-only table; any legitimate upsert (cache,
+derived table) is named in a register that may only shrink." How the brief
+is read is in `docs/briefs/2026-09-27-rulings-third-set.md` ("Q15, the
+scan"). Its own commit after the predictions rules (22e182d); one gate
+covers both and they release together (Q14's precedent). The ruling's third
+part, the read-only measurement of the live predictions, is not this step.
+
+### MEASURED FIRST *(2026-09-27; this tree at 22e182d -- the released 68b215e, documents and the predictions rules; source only, the record not opened)*
+
+- **Every replacing write the shipped code can issue** (the package,
+  `tools/` less `tools/guards/`, `desktop/`, `schema.sql`): 36 statements.
+  One on an append-only table: `db.set_meta`, an upsert on `meta` ("ON
+  CONFLICT(key) DO UPDATE"). The other 35, on 26 tables none of which the
+  schema gives a rule: 32 upserts and 3 inserts under OR REPLACE
+  (`nba_loader`: `nba_team_games`, `nba_player_games`, `nba_injuries`).
+  `games` takes five (the NFL, MLB, NBA and college loaders and the UFC
+  mirror), `market_lines_raw` three, `game_conditions` three, `teams` two.
+  No REPLACE statement, no update under OR REPLACE, no key declared to
+  replace on conflict (every mention in `schema.sql` is a comment), and no
+  rule whose body writes a table. `cfb_loader._team_code`'s `ON CONFLICT DO
+  NOTHING` on `teams` replaces nothing.
+- **The append-only tables, read from the schema**: 22 -- every table a rule
+  refuses a delete or an update on, all of them BEFORE rules:
+  `at_the_line_claims`, `calibration_corrections`, `factors`,
+  `fit_activations`, `market_snapshots`, `meta`, `picks_retracted`,
+  `picks_taken`, `prediction_fingerprints`, `prediction_ranks`,
+  `prediction_voids`, `predictions`, `priced_forecasts`, `prop_rung_claims`
+  (an update rule only), `reasoning_prompts`, `recommendation_closes`,
+  `recommendation_regrades`, `recommendation_voids`, `recommendations`,
+  `settings`, `task_runs`, `venue_packages`. The same set, rule for rule, as
+  a fresh build's own `sqlite_master` gives.
+- **Each upserted table read against the schema**: none has a rule. The
+  schema's own words call `injuries`, `mlb_lineups` and `weather_forecasts`
+  current state, with their history in stamped tables of their own
+  (`injury_reports`, `lineup_captures`, the observed weather); `nba_injuries`
+  "a SNAPSHOT, not a history ... replaced on each fetch"; the raw line
+  tables hold the latest published line, and what a forecast was compared
+  with is written once in `market_snapshots`; `team_week_stats` and
+  `ufc_ratings` are derived and rebuilt; `session_seen` is a per-browser
+  marker; the rest mirror their source. Each is registered with its reason.
+- **Connection settings no statement shows** (the predictions prover's
+  list): `setconfig`, `create_function`, `create_collation`,
+  `create_aggregate` and `recursive_triggers` appear nowhere in the shipped
+  code (`git grep`, 2026-09-27).
+
+### BUILT *(2026-09-27)*
+
+- **`audit.check_no_replacing_write_on_an_append_only_table`**
+  (`audit.replacing_write_faults`), gate step 2, beside the raw-connect scan.
+  It reads, from the syntax tree, every string the package, `tools/` (not
+  `tools/guards/`) and `desktop/` can hand SQLite -- a constant, an implicit
+  concatenation, a `+` of pieces, an f-string, a `%` or `.format` template, a
+  `join` of literal pieces, in an execute, executemany, executescript or a
+  variable -- each part worked out at run time read as unknown, and a
+  `.format` argument, the values after `%` or a formatted expression read
+  as strings of their own; docstrings are not read. And every `.sql` file in
+  the package. It reads them as SQLite does: comments and whitespace are not
+  words, case is not a difference, a quoted, bracketed or qualified name is
+  the name, a string literal is data.
+- **What it finds**: an insert under OR REPLACE, a REPLACE statement, an
+  update under OR REPLACE, an upsert whose conflict clause updates the stored
+  row (its table the insert's), and a table or column key declared to
+  replace on conflict (its table the one defined). A part worked out at run
+  time where a conflict clause goes (after INSERT or INSERT OR, after UPDATE
+  OR, between UPDATE and a named table, after a conflict target) or as the
+  statement's whole verb (`{verb} INTO t (...)`) is counted as one that
+  replaces.
+- **What it refuses**: a replacing write aimed at an append-only table, by
+  file, line, function and table, naming the rules that make it append-only
+  -- registered or not; one whose table cannot be read (a part of its name,
+  or all of it, worked out at run time), counted as aimed at an append-only
+  table; a write under OR REPLACE whose table's rules write an append-only
+  table (a rule's own writes carry the statement's clause -- none today);
+  any other replacing write not in `audit.UPSERTS_REGISTERED`; and a register
+  entry no longer found, holding a second statement, naming an append-only
+  table, or with no dated reason in words.
+- **`audit.UPSERTS_REGISTERED`**: 35 entries, (file, qualified function,
+  table), each with a reason dated 2026-09-27 saying why the table is a cache
+  or a derived table. It only shrinks.
+- **`db.set_meta` written plainly**: an UPDATE of the key, and a plain INSERT
+  when no row changed, inside one savepoint, then the one commit it always
+  made. Measured side by side with the upsert on two scratch worlds: the
+  same rows under the same row numbers, the same writes refused; the update
+  takes the write lock before the insert whether the connection is in
+  Python's default mode or autocommit (another writer is refused "database
+  is locked" between them), so no writer stores the key in between; a
+  caller's pending write is committed with it, and a refused call leaves it
+  pending, as the upsert did. The release instant is still refused -- by
+  `prompt_record_instant_never_moves` now, where the upsert met
+  `prompt_record_instant_is_written_once` (nothing reads those words).
+- **Plantings** (`plant.py`, each on a copy of the package, each CAUGHT only
+  when every planted place is named as the planting says and nothing else
+  is): `plant_a_replacing_write_on_an_append_only_table` (OR REPLACE on
+  `predictions`, REPLACE on `recommendations`, UPDATE OR REPLACE on
+  `market_snapshots`, and a table named at run time);
+  `plant_a_replacing_write_hidden_from_a_plain_reading` (one write on
+  `predictions` hidden by case, whitespace, comments, an implicit
+  concatenation, `+`, and a quoted qualified name through `executescript`);
+  `plant_an_upsert_on_an_append_only_table` (`set_meta`'s upsert as it
+  shipped, and one rewriting a withdrawal's reason in `prediction_voids`);
+  `plant_an_unregistered_upsert` (`sessions`, and OR REPLACE on
+  `auth_failures`); `plant_a_registered_upsert_moved_onto_an_append_only_table`
+  (`views.mark_seen`'s upsert moved onto `picks_taken`, and left alone while
+  `session_seen` is given a no-delete rule); `plant_a_stale_upsert_in_the_register`
+  (`mark_seen` written plainly, its entry left); and
+  `plant_a_table_that_replaces_on_conflict` (the table-level key of
+  `recommendations` and `task_runs`' number declared ON CONFLICT REPLACE in
+  `schema.sql`).
+- **Tests**: `tests/test_no_replacing_write.py` (76): the shipped code
+  passes; the gate runs the scan in step 2; the append-only set is a fresh
+  build's own; every registered table is declared, carries no rule and has
+  a dated reason; 61 readings of a statement (every form and spelling above,
+  every run-time part, and what is not a replacing write -- DO NOTHING, OR
+  IGNORE, a literal, a comment, a docstring, a plain insert or update, the
+  `replace()` function, prose); each fault by name in a world of its own;
+  the register only shrinking; the clause carried through a rule; a key in
+  the schema; `tools/` and `desktop/` read, `tests/` and `tools/guards/` not;
+  and four of `set_meta` beside the upsert as it shipped.
+
+### PROVED *(2026-09-27)*
+
+- **The plantings ESCAPE on 22e182d** (`git archive` into the scratchpad,
+  this `plant.py` copied in): 0 of 7 caught -- there is no scan there, and
+  `db.set_meta`'s upsert on `meta` is the shipped code. CAUGHT here, 7 of 7,
+  each by name.
+- **Each part of the scan is needed** (taken out of a copy of this tree, the
+  seven run against it): comments read as words, and the upsert not seen,
+  each failed all seven (the schema's comments, and the 35 registered
+  upserts no longer found, were named besides); case kept, `+` not
+  followed, and quoted names unread, the hidden planting; the schema not
+  read, five; stale entries not named, the moved and the stale plantings;
+  a registered append-only entry allowed, the moved planting; an unreadable
+  table skipped, the first; the register not asked, the unregistered one.
+- **The new tests fail on 22e182d** (this file run over the archive): 72 of
+  76; the four `set_meta` tests, which hold it to the upsert's behaviour,
+  pass on both, as they must.
+- **The harness**: 332/332, exit 0. Gate step 2's rows that read no record,
+  run on their own with `GRIDIRON_VERIFYING` set (not `verify.py`, and no
+  copy of the record): 60 PASS, 0 FAIL, this scan among them;
+  `audit.prose_reaching_the_raw_side()` is `[]`. The scan takes about three
+  seconds. The full suite with a dummy access token: 1904 passed, 8
+  skipped, 2 failed -- `test_smoke.py::test_every_tap_target_on_the_slate_is_big_enough`
+  (43.99951171875px, question 20's arrival) and
+  `test_smoke.py::test_nothing_moves_under_reduced_motion` (question 5's
+  race), each of which then passed alone three runs of three: the known
+  flakes, in page code this step does not touch.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **`desktop/` is read too** -- shipped code, and the raw-connect scan's
+  precedent; it issues no SQL today. (Reversal: drop it from the scan's
+  folders.)
+- **Docstrings are prose and are not read**, the precedent of every source
+  scan here.
+- **An append-only table is one a DELETE or UPDATE rule is on, whatever its
+  timing**, and a rule written in a Python string counts too. The brief says
+  "a no-delete or no-update rule"; every such rule today is BEFORE and in
+  `schema.sql`, so the set is the one the brief was read against.
+- **The stricter defaults the brief names**: UPDATE OR REPLACE is refused as
+  the others; an unreadable table counts as append-only.
+- **A run-time part where a conflict clause or the verb goes counts as a
+  replacing write** -- the stricter reading of "a formatted part is
+  unknown". A run-time table name in a plain update (`UPDATE {table} SET`)
+  is not: it is the table's name, and reading it as a clause would refuse
+  every such update (none today; NOT SEEN below).
+- **A write under OR REPLACE is aimed at what its table's rules write**,
+  because a rule's writes carry the outer clause (measured by the
+  predictions step's prover). An upsert's clause is not carried.
+- **Every key declared to replace on conflict counts**, a NOT NULL one
+  included: it changes what is written without a word in any statement.
+- **"Only shrinks" read strictly**: an entry names one statement, and a
+  second under it fails; an entry must carry a dated reason; an entry whose
+  table becomes append-only fails as such.
+- **`meta` is append-only** (its rules guard one key, the release instant),
+  so `set_meta`'s upsert went, rewritten to the same effect; no ruling was
+  needed, because nothing it did changes.
+
+### THE LIVE RECORD AFTER THE RELEASE *(none)*
+
+No schema change and no row. `set_meta` is never run on the record: its
+callers are gate step 3's one-week scratch world, `tools/backtest.py` on a
+backtest database, the activation door's scratch worlds, and tests.
+
+### OPEN, found by this step *(2026-09-27; not built)*
+
+- **NOT SEEN by the scan**: a statement assembled where no one string shows
+  its form (bare words added with `+=` one statement at a time, a list
+  joined at run time, a name read from a file, the environment or the
+  record); a table name worked out at run time in a plain update, which
+  could carry OR REPLACE; and SQL in `tests/` and `tools/guards/`, outside
+  it by the brief.
+- **Connection settings no statement shows** -- `setconfig` switching rules
+  off, `create_function` or `create_collation` redefining a built-in the
+  rules read -- let a replacing statement past the schema's rules (the
+  predictions step's prover measured each). None is in the shipped code.
+  The prover suggested this scan look for them; the ruling's words name
+  three statements, so it does not: for the operator.
+- **Tables called append-only in words with no rule**: CLAUDE.md's
+  convention names `factor_scores` and `llm_calls` ("never updated"), and
+  the schema calls `injury_reports`, `lineup_captures` and the observed
+  weather "append-only and stamped". None has a rule, so the scan counts
+  them ordinary: a replacing write on one fails unless it is registered.
+  None takes one today (plain inserts and OR IGNORE). Giving them rules is
+  not this ruling's.
+- **`mlb_people`'s comment and its loader disagree**: the schema says
+  "Handedness does not change, so a row is written once"; `load_people`
+  upserts the row from the source on every load. Registered as a cache of
+  the source; which is meant is the operator's.
+
+### THE PROVER *(2026-09-27, the same day, before the commit)*
+
+Set to get round the scan by any path the ruling's words cover. Each path
+below got a replacing write on an append-only table past the scan as first
+built -- measured by probe on its readings, and then by planting: on that
+version the scan said `[]` to every one of the five plantings below.
+
+- **FOUND, a template kept in a variable and filled in later**: a
+  placeholder was read as punctuation wherever the template was not filled
+  in on the spot -- `T = "INSERT OR {} INTO predictions ..."` then
+  `T.format(how)`, `T % how` with `%s` or `%(name)s`, `str.format(T, how)`,
+  `.format_map`, a `string.Template` (`$how`, `${how}`), and an f-string's
+  `{{}}` kept for a later `.format`.
+- **FOUND, a statement in pieces**: the clause kept apart with the columns
+  formatted after the table (`f"INSERT {clause} INTO predictions {cols}
+  VALUES {marks}"` -- the check for SQL after the table wanted a literal
+  `(` or VALUES); the clause in a string of its own (`" OR REPLACE "`); a
+  hint between INSERT and OR REPLACE, or a verb worked out before it; a
+  verb worked out after another part worked out (`f"{cte} {verb} INTO
+  ..."`); `UPDATE {clause} {table} SET`; `INSERT OR ` or `UPDATE OR ` with
+  the rest added by `+=`; `REPLACE {hint} INTO`; OR IGNORE rewritten by
+  `.replace("IGNORE", "REPLACE")`; a bytes literal decoded before it runs;
+  and an upsert in two strings -- an insert ending at its `ON
+  CONFLICT(key)`, and ` DO UPDATE SET ...` on its own.
+- **FOUND, a foreign key's action**: SQLite runs a key's CASCADE, SET NULL or
+  SET DEFAULT when a replacing write removes or changes the parent row, and
+  no rule of the child's that does not name the column. Measured on SQLite
+  3.49.1: with `ledger.k REFERENCES cache (k) ON DELETE SET NULL` and
+  foreign keys on (as `db.connect` sets them), `INSERT OR REPLACE INTO cache`
+  rewrote the append-only ledger row's key to NULL, its update rule naming
+  another column; ON UPDATE CASCADE did the same through an upsert changing
+  the key. The scan followed a rule's writes and not a key's. No key in the
+  schema or the code declares an action today.
+- **FOUND, a rule's target the scan cannot read was dropped**: a rule whose
+  body writes a table named at run time did not count at all (and a test
+  asserting no rule writes a table used `any`, which a set holding only
+  None passes).
+- **FOUND, the register could grow**: an upsert written later, with an entry
+  added to `UPSERTS_REGISTERED` dated 2026-09-27, passed every check -- the
+  statement registered, the entry found and dated. "A register that may
+  only shrink" is the ruling's words.
+- **FOUND, a misleading entry fault**: a registered statement refused
+  because a rule carries it onto an append-only table had its entry called
+  "no longer found", though the statement is there.
+- **Not a path, measured**: a quoted keyword (`INSERT OR "REPLACE"`, `[REPLACE]`,
+  `` `REPLACE` ``, `'REPLACE'`, a quoted OR, UPDATE or CONFLICT) -- SQLite
+  refuses each as a syntax error, as the scan's reading of a quoted word as
+  a name says; an upsert's DO UPDATE does not carry into a rule's writes (a
+  plain insert in the rule met UNIQUE), as the scan as built assumed; a view
+  written through an INSTEAD OF rule was already followed.
+
+### BUILT BY THE PROVER *(2026-09-27)*
+
+- **Two readings of a Python string** (`audit._replacing_writes_in`): with
+  every template placeholder a part worked out at run time
+  (`_placeholders_unknown`, the same length, so a place is the same place),
+  and as written, for anything the first finds nothing at the same place --
+  so a placeholder that swallows a statement's words (a `{` in one literal,
+  a `}` in another) loses nothing. `.sql` files are read as written only.
+- **The pieces**: a part worked out at run time after the table, or the
+  string ending there, is a statement going on; OR REPLACE where a statement
+  could begin (the string's start, after `;`, `)`, BEGIN or a part worked
+  out) is a replacing clause, its table the one after the next INTO or an
+  update's; a verb worked out may follow another part worked out; INSERT OR
+  and UPDATE OR where the string ends; `UPDATE {clause} {table} SET`;
+  REPLACE followed by a part worked out, with an INTO ahead or the string
+  ending; an insert whose string ends at its ON CONFLICT, or a string that
+  begins with one; DO UPDATE SET with no ON CONFLICT before it in its
+  string (DO UPDATE SET is SQL for nothing else); a `.replace` of a
+  constant read as done, its new text unknown where worked out at run time;
+  and a bytes literal read as text.
+- **A key's action is a write**: `audit._sql_key_actions` reads every
+  REFERENCES with ON DELETE or ON UPDATE and CASCADE, SET NULL, SET DEFAULT
+  or an action worked out at run time, in the schema or a string of the
+  code, its child the table being created or altered; a replacing write is
+  aimed at every table a key's action on its table writes, whatever its
+  conflict clause (an upsert's too), and on from there. A name the scan
+  cannot read -- a rule's target, a key's child or parent -- counts as an
+  append-only table, the brief's reading. REFERENCES is one of the words
+  that makes a string worth reading.
+- **The register frozen**: `audit.UPSERTS_REGISTERED_ON_2026_09_27` holds
+  the 35 entries of this date, and an entry of `UPSERTS_REGISTERED` not
+  among them fails by name however it is dated. A later upsert is written
+  plainly, or the operator rules.
+- **An entry's true reason**: a registered statement refused because a rule
+  or key carries it onto an append-only table has its entry named "its
+  statement is refused above", not "no longer found".
+- **Plantings** (each ESCAPES on 22e182d and on the scan as first built,
+  CAUGHT here): `plant_a_replacing_write_in_a_template_filled_later` (six
+  shapes: `.format`, `%`, a key holding a space, `string.Template`, an
+  f-string's `{{}}`, and a statement a wide placeholder would swallow --
+  named on the first version too, a guard of the second reading);
+  `plant_a_replacing_write_in_pieces_the_first_scan_missed` (twelve);
+  `plant_a_replacing_write_reaching_an_append_only_table_by_a_key` (the key
+  in `schema.sql`, and again declared in code); 
+  `plant_a_replacing_write_reaching_a_table_the_scan_cannot_read` (a rule
+  and a key whose target is named at run time); and
+  `plant_an_upsert_registered_after_the_register_was_frozen`.
+- **Tests**: `tests/test_no_replacing_write.py` 76 to 146 -- 55 readings of
+  a template, a piece or a spelling (38 caught, among them `temp.`, a quoted
+  schema, and a single-quoted table name -- SQLite takes one as a name,
+  measured, and the scan counts it unread; 17 prose and lawful SQL left alone:
+  "Replace {old} with {new}", "keep or replace", "Keep {what} or replace
+  it", "(it is safe) or replace it", "Or replace the cache", "insert or
+  update", "we do update the page", a percentage, `errors="replace"`, the
+  `replace()` function after OR, a JSON literal, `strftime`, plain
+  formatted writes, a JOIN ON a formatted condition, DO NOTHING in a
+  template -- a bare OR REPLACE counts only at a string's start or after a
+  part worked out, and only with SQL after it); a statement
+  read both ways counted once under its entry; a key's action measured on
+  SQLite and then refused by the scan; six actions read and three that
+  write nothing not; a view written through an INSTEAD OF rule; a rule or a
+  key onto an unread table; the frozen register, in a world of its own and
+  through the gate's own call. One
+  assertion of the first build's reworded, not weakened: the refused
+  entry's fault is its true reason, and the count of faults is the same.
+  The rule-writes assertion strengthened (`all(not ...)`), with no key
+  action in the schema today.
+
+### PROVED BY THE PROVER *(2026-09-27)*
+
+- The five plantings: 5/5 CAUGHT here; 0/5 on 22e182d (no scan); 0/5 on the
+  scan as first built, which said `[]` to each (the swallowed-statement
+  shape, a guard of the new second reading, is named there, the others
+  not).
+- **Each part needed** (neutralised in a copy of this tree, the five
+  plantings and the test file run against it): all nineteen let at least one
+  planting through and fail at least one test -- the template reading, a
+  part after the table, OR REPLACE apart from its verb, a verb after a part
+  worked out, `UPDATE {clause} {table}`, INSERT OR and UPDATE OR where the
+  string ends, REPLACE and a part worked out, `.replace`, an insert ending at
+  ON CONFLICT, DO UPDATE SET on its own, a bytes literal, a placeholder
+  holding a space, the text read again as written, a key's action, the key
+  words scanned, a rule's unread target kept, the frozen register, and the
+  refused entry's reason.
+- The shipped code: 0 faults under the stricter reading, in about two
+  seconds. The register names exactly the replacing writes that exist -- 35
+  statements under 35 entries (32 upserts, 3 inserts under OR REPLACE), none
+  on a table with a rule, none unread; no rule writes a table and no key
+  declares an action.
+- The harness: 337/337, exit 0 (332 and the five). Gate step 2's rows, run
+  as `verify.step_2_guards` runs them but not `verify.py` whole
+  (`GRIDIRON_VERIFYING` set, TMP and TEMP in the scratchpad, its plant.py
+  subprocess stubbed because the harness ran on its own, and the LAW 5
+  credential row handed an empty stand-in for the operator's settings file,
+  which this step may not read): 91 PASS, 0 FAIL -- the live record against
+  the release (master at 68b215e) and the migrated copy against this tree
+  each with 0 differences outstanding, the record checks on a copy made
+  through the backup door, and the record's schema as found (238 objects).
+  `audit.prose_reaching_the_raw_side()` is `[]`. The full suite with a
+  dummy access token: 1975 passed, 8 skipped, 1 failed --
+  `test_smoke.py::test_every_tap_target_on_the_slate_is_big_enough`
+  (`BUTTON.expand` at 43.99951171875px, question 20's arrival), which then
+  passed alone three runs of three: the known flake, in page code this step
+  does not touch.
+
+### NOT SEEN, after the prover *(2026-09-27)*
+
+- A statement assembled where no one string shows its form: pieces of a
+  list or generator joined at run time, a constant holding the bare verb
+  (`"REPLACE"` -- Python's own decoding argument, `.decode("utf-8",
+  "replace")` or `errors="replace"`, spells it in a dozen places of the
+  shipped code), bare words added one at a time with `+=` (except
+  INSERT OR or UPDATE OR ending a string, now read), a keyword split by a
+  placeholder, a name read from a file, the environment or the record.
+- A `.replace` whose old text is worked out at run time, or applied to a
+  statement kept in a variable; a docstring handed to SQLite through
+  `__doc__` (docstrings are prose, the precedent); a tail worked out at run
+  time after an insert's values (`{tail}`, `ON {x}`) -- though its literal
+  pieces, `ON CONFLICT(...)`, `CONFLICT(...) DO UPDATE` or `DO UPDATE
+  SET`, are each refused wherever they are written.
+- A table part worked out at run time touching a plain update's name
+  (`UPDATE {prefix}predictions SET`), which could carry OR REPLACE but reads
+  as a schema's prefix; and a connection's own settings (above).

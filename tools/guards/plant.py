@@ -12677,6 +12677,627 @@ def plant_a_replaced_prediction() -> Result:
     return Result(law, what, guard, True, first or "refused")
 
 
+# ---------------------------------------------------------------------------
+# THE GATE SCAN: NO WRITE REPLACES A ROW OF AN APPEND-ONLY TABLE (operator
+# question 15, ruled 2026-09-27, third set: "one gate scan that refuses
+# INSERT OR REPLACE, REPLACE and ON CONFLICT DO UPDATE against every
+# append-only table; any legitimate upsert (cache, derived table) is named in
+# a register that may only shrink"). Seven plantings, one per thing the
+# ruling and its brief name. Each breaks a copy of the package and must be
+# named by the scan, by function (or by the schema object that holds it),
+# with nothing else named beside it. On the code before the scan there is
+# nothing to name them: `db.set_meta` shipped an upsert on `meta`, and every
+# form below passed every other gate check.
+# ---------------------------------------------------------------------------
+
+LAW_NO_REPLACING_WRITE = ("LAW 3: NO WRITE REPLACES A ROW OF AN APPEND-ONLY "
+                          "TABLE, AND EVERY OTHER UPSERT IS REGISTERED")
+_REPLACE_SCAN_GUARD = "audit.replacing_write_faults (question 15's gate scan)"
+
+
+def _replacing_write_scan(plant, register=None):
+    """Copy the package to a scratch directory, let `plant(root)` break the
+    copy, and return the replacing-write scan's faults on it; None on a tree
+    with no such scan, the code before question 15's ruling."""
+    scan = getattr(audit, "replacing_write_faults", None)
+    if scan is None:
+        return None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        plant(root)
+        return scan(root) if register is None else scan(root, register)
+
+
+def _append_to(root: Path, module: str, text: str) -> None:
+    victim = root / module
+    victim.write_text(victim.read_text(encoding="utf-8") + text, encoding="utf-8")
+
+
+def _named_by_the_scan(violation: str, faults, wanted: dict[str, str]) -> Result:
+    """CAUGHT when every planted place is named in a fault saying what
+    `wanted` says of it, and no fault names anything else."""
+    if faults is None:
+        return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD, False,
+                      "NOT CAUGHT - there is no scan for a write that replaces "
+                      "a row, so nothing names these (on the code before "
+                      "question 15, `db.set_meta`'s upsert on `meta` shipped "
+                      "and every gate passed it), and an append-only table "
+                      "loses a stored row round its no-delete rule the first "
+                      "time one runs")
+    hit = {marker: [f for f in faults if marker in f and words in f]
+           for marker, words in wanted.items()}
+    missing = [m for m, found in hit.items() if not found]
+    stray = [f for f in faults if not any(m in f for m in wanted)]
+    if missing or stray:
+        return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD, False,
+                      f"NOT CAUGHT - not named as the planting says: {missing}; "
+                      f"named besides: {stray}; the scan said {faults!r}")
+    return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD, True,
+                  " / ".join(found[0].split(". ")[0] for found in hit.values()))
+
+
+#: Each in a function of its own, so each must be named.
+_PLANTED_REPLACING_WRITES = r'''
+
+# PLANTED VIOLATIONS (question 15's gate scan)
+def planted_insert_or_replace(conn, row):
+    conn.execute("INSERT OR REPLACE INTO predictions (id, created_utc, sport,"
+                 " game_id, market_type, model_prob) VALUES (?,?,?,?,?,?)", row)
+
+
+def planted_replace_statement(conn, row):
+    conn.execute("REPLACE INTO recommendations (id, prediction_id) VALUES (?,?)", row)
+
+
+def planted_update_or_replace(conn, old, new):
+    conn.execute("UPDATE OR REPLACE market_snapshots SET id = ? WHERE id = ?",
+                 (new, old))
+
+
+def planted_table_worked_out_when_it_runs(conn, table, row):
+    conn.execute(f"INSERT OR REPLACE INTO {table} VALUES (?, ?)", row)
+'''
+
+
+def plant_a_replacing_write_on_an_append_only_table() -> Result:
+    """A module that replaces rows of three append-only tables -- an insert
+    under OR REPLACE on `predictions`, a REPLACE statement on
+    `recommendations`, an update under OR REPLACE on `market_snapshots` --
+    and one whose table is worked out when it runs, which the scan must
+    count as aimed at an append-only table (the brief's reading)."""
+    faults = _replacing_write_scan(
+        lambda root: _append_to(root, "views.py", _PLANTED_REPLACING_WRITES))
+    return _named_by_the_scan(
+        "replacing writes on predictions, recommendations and market "
+        "snapshots, and one on a table named at run time", faults, {
+            "(planted_insert_or_replace)": "`predictions` is append-only",
+            "(planted_replace_statement)": "`recommendations` is append-only",
+            "(planted_update_or_replace)": "`market_snapshots` is append-only",
+            "(planted_table_worked_out_when_it_runs)": "cannot read the table",
+        })
+
+
+#: The same write, hidden six ways from a reader looking for the words.
+_PLANTED_HIDDEN_WRITES = r'''
+
+# PLANTED VIOLATIONS (question 15's gate scan): one statement, hidden
+def planted_hidden_by_case(conn, row):
+    conn.execute("insert Or rePlace into Predictions (id) values (?)", row)
+
+
+def planted_hidden_by_whitespace(conn, row):
+    conn.execute("INSERT\n\t  OR\n    REPLACE\n\nINTO\tpredictions (id) VALUES (?)", row)
+
+
+def planted_hidden_by_a_comment(conn, row):
+    conn.execute("INSERT/* the id */OR/**/REPLACE -- keep it\n INTO predictions"
+                 " (id) VALUES (?)", row)
+
+
+def planted_hidden_by_implicit_concatenation(conn, row):
+    conn.execute("INSERT OR "
+                 "REPLACE INTO "
+                 "predictions (id) VALUES (?)", row)
+
+
+def planted_hidden_by_a_plus(conn, row):
+    statement = "INSERT OR " + "REPLACE" + " INTO " + "predictions (id) VALUES (?)"
+    conn.execute(statement, row)
+
+
+def planted_hidden_in_a_quoted_name(conn):
+    conn.executescript('INSERT OR REPLACE INTO main."Predictions" (id) VALUES (1);')
+'''
+
+
+def plant_a_replacing_write_hidden_from_a_plain_reading() -> Result:
+    """One replacing write on `predictions`, hidden from a reader looking for
+    its words: by case, by whitespace, by comments between the words, by an
+    implicit concatenation, by pieces joined with `+`, and by a quoted,
+    qualified name handed to `executescript`. SQLite reads each as the same
+    statement, so the scan must too."""
+    faults = _replacing_write_scan(
+        lambda root: _append_to(root, "views.py", _PLANTED_HIDDEN_WRITES))
+    return _named_by_the_scan(
+        "a replacing write on predictions hidden by case, whitespace, a "
+        "comment, a concatenation, a join and a quoted name", faults, {
+            f"({name})": "`predictions` is append-only"
+            for name in ("planted_hidden_by_case", "planted_hidden_by_whitespace",
+                         "planted_hidden_by_a_comment",
+                         "planted_hidden_by_implicit_concatenation",
+                         "planted_hidden_by_a_plus",
+                         "planted_hidden_in_a_quoted_name")})
+
+
+#: The upsert `db.set_meta` shipped until question 15, and one that would
+#: rewrite a withdrawn forecast's reason.
+_PLANTED_UPSERTS = r'''
+
+# PLANTED VIOLATIONS (question 15's gate scan)
+def planted_meta_upsert(conn, key, value):
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?,?)"
+        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+
+
+def planted_void_upsert(conn, prediction_id, reason):
+    conn.execute(
+        "INSERT INTO prediction_voids (prediction_id, voided_utc, reason)"
+        " VALUES (?, ?, ?) ON CONFLICT(prediction_id)"
+        " DO UPDATE SET reason = excluded.reason",
+        (prediction_id, "2026-09-27T00:00:00Z", reason))
+'''
+
+
+def plant_an_upsert_on_an_append_only_table() -> Result:
+    """An upsert whose conflict clause updates the stored row, on two
+    append-only tables: `meta`, exactly as `db.set_meta` wrote it until
+    question 15 (the table carries the release instant's no-delete and
+    no-update rules), and `prediction_voids`, rewriting a withdrawal's
+    reason. Registered or not, both are refused."""
+    faults = _replacing_write_scan(
+        lambda root: _append_to(root, "db.py", _PLANTED_UPSERTS))
+    return _named_by_the_scan(
+        "upserts on meta (set_meta as it shipped) and on prediction_voids",
+        faults, {
+            "(planted_meta_upsert)": "`meta` is append-only",
+            "(planted_void_upsert)": "`prediction_voids` is append-only",
+        })
+
+
+_PLANTED_UNREGISTERED = r'''
+
+# PLANTED VIOLATIONS (question 15's gate scan): ordinary tables, unregistered
+def planted_session_upsert(conn, session_id, expires):
+    conn.execute(
+        "INSERT INTO sessions (id, created_utc, expires_utc) VALUES (?,?,?)"
+        " ON CONFLICT(id) DO UPDATE SET expires_utc = excluded.expires_utc",
+        (session_id, expires, expires))
+
+
+def planted_failure_replaced(conn, row):
+    conn.execute("INSERT OR REPLACE INTO auth_failures (id, at_utc, ip, reason)"
+                 " VALUES (?,?,?,?)", row)
+'''
+
+
+def plant_an_unregistered_upsert() -> Result:
+    """Two replacing writes on tables the schema gives no no-delete or
+    no-update rule -- an upsert on `sessions` and an insert under OR REPLACE
+    on `auth_failures`, which would erase a failed sign-in -- neither in the
+    register. The register names each lawful one; these are not."""
+    faults = _replacing_write_scan(
+        lambda root: _append_to(root, "auth.py", _PLANTED_UNREGISTERED))
+    return _named_by_the_scan(
+        "an unregistered upsert on sessions and an unregistered replacing "
+        "insert on auth_failures", faults, {
+            "(planted_session_upsert)": "does not name",
+            "(planted_failure_replaced)": "does not name",
+        })
+
+
+#: `views.mark_seen`'s registered upsert, as written.
+_MARK_SEEN_INSERT = '"INSERT INTO session_seen (session_id, sport, last_seen_utc)"'
+_MARK_SEEN_CONFLICT = ('" VALUES (?,?,?) ON CONFLICT(session_id, sport)"\n'
+                       '        " DO UPDATE SET last_seen_utc = excluded.last_seen_utc",')
+
+
+def plant_a_registered_upsert_moved_onto_an_append_only_table() -> Result:
+    """The register names `views.mark_seen`'s upsert on `session_seen`.
+    Twice: the statement moved onto `picks_taken`, append-only; and the
+    statement left alone while the schema gives `session_seen` a no-delete
+    rule. A register entry holds a cache or a derived table, never an
+    append-only one, so each is refused by name -- the moved statement, and
+    the entry it left behind."""
+    source = (config.PACKAGE_ROOT / "views.py").read_text(encoding="utf-8")
+    violation = ("a registered upsert moved onto an append-only table, and a "
+                 "registered table given a no-delete rule")
+    if _MARK_SEEN_INSERT not in source:
+        return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD,
+                      False, "the planting's anchor moved; nothing was tested")
+
+    def moved(root: Path) -> None:
+        victim = root / "views.py"
+        victim.write_text(victim.read_text(encoding="utf-8").replace(
+            _MARK_SEEN_INSERT, _MARK_SEEN_INSERT.replace("session_seen", "picks_taken")),
+            encoding="utf-8")
+
+    def ruled(root: Path) -> None:
+        _append_to(root, "schema.sql",
+                   "\nCREATE TRIGGER IF NOT EXISTS session_seen_no_delete\n"
+                   "BEFORE DELETE ON session_seen\nBEGIN\n"
+                   "    SELECT RAISE(ABORT, 'planted');\nEND;\n")
+
+    first = _named_by_the_scan(violation, _replacing_write_scan(moved), {
+        "(mark_seen) an upsert": "`picks_taken` is append-only",
+        "(mark_seen) on `session_seen`": "no longer found",
+    })
+    if not first.caught:
+        return first
+    second = _named_by_the_scan(violation, _replacing_write_scan(ruled), {
+        "(mark_seen) an upsert": "`session_seen` is append-only",
+        "(mark_seen) on `session_seen`": "registered in audit.UPSERTS_REGISTERED, and",
+    })
+    if not second.caught:
+        return second
+    return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD, True,
+                  first.failure + " // " + second.failure)
+
+
+def plant_a_stale_upsert_in_the_register() -> Result:
+    """`views.mark_seen` written plainly -- its upsert gone, as `set_meta`'s
+    went -- and its register entry left in place. An entry whose statement
+    is gone must be named, or the register grows by never shrinking."""
+    source = (config.PACKAGE_ROOT / "views.py").read_text(encoding="utf-8")
+    violation = "a register entry left in place after its upsert went"
+    if _MARK_SEEN_CONFLICT not in source:
+        return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD,
+                      False, "the planting's anchor moved; nothing was tested")
+
+    def plain(root: Path) -> None:
+        victim = root / "views.py"
+        victim.write_text(victim.read_text(encoding="utf-8").replace(
+            _MARK_SEEN_CONFLICT, '" VALUES (?,?,?)",'), encoding="utf-8")
+
+    return _named_by_the_scan(violation, _replacing_write_scan(plain), {
+        "gridiron/views.py (mark_seen) on `session_seen`": "no longer found",
+    })
+
+
+#: Two keys of append-only tables in the schema, each declared to replace:
+#: a table-level UNIQUE on `recommendations` and `task_runs`' own number.
+_RECOMMENDATION_KEY = "    UNIQUE (prediction_id, created_utc)\n"
+_TASK_RUN_NUMBER = ("CREATE TABLE IF NOT EXISTS task_runs (\n"
+                    "    id            INTEGER PRIMARY KEY,\n")
+
+
+def plant_a_table_that_replaces_on_conflict() -> Result:
+    """A key of an append-only table declared in `schema.sql` to replace on
+    conflict -- the table-level UNIQUE on `recommendations`, and the number
+    of `task_runs` -- which makes every plain insert meeting it a replacing
+    one, with no statement anywhere saying so."""
+    violation = ("a table-level key on recommendations and task_runs' number "
+                 "declared to replace on conflict in the schema")
+    source = (config.PACKAGE_ROOT / "schema.sql").read_text(encoding="utf-8")
+    if source.count(_RECOMMENDATION_KEY) != 1 or source.count(_TASK_RUN_NUMBER) != 1:
+        return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD,
+                      False, "the planting's anchors moved; nothing was tested")
+
+    def declared(root: Path) -> None:
+        victim = root / "schema.sql"
+        victim.write_text(
+            victim.read_text(encoding="utf-8")
+            .replace(_RECOMMENDATION_KEY,
+                     "    UNIQUE (prediction_id, created_utc) ON CONFLICT REPLACE\n")
+            .replace(_TASK_RUN_NUMBER, _TASK_RUN_NUMBER.replace(
+                "PRIMARY KEY,", "PRIMARY KEY ON CONFLICT REPLACE,")),
+            encoding="utf-8")
+
+    return _named_by_the_scan(violation, _replacing_write_scan(declared), {
+        "(table recommendations)": "`recommendations` is append-only",
+        "(table task_runs)": "`task_runs` is append-only",
+    })
+
+
+# ---------------------------------------------------------------------------
+# AND WHAT ITS PROVER FOUND (2026-09-27): four more ways round the scan as
+# first built, each measured getting through it -- a template kept in a
+# variable and filled in later, a statement in pieces, a foreign key's
+# action, and an entry added to a register that may only shrink.
+# ---------------------------------------------------------------------------
+
+#: Templates kept in variables and filled in later: the scan as first built
+#: read a placeholder there as punctuation.
+_PLANTED_TEMPLATES = r'''
+
+# PLANTED VIOLATIONS (question 15's prover): templates filled in later
+def planted_template_formatted_later(conn, how, row):
+    template = "INSERT OR {} INTO predictions (id, created_utc) VALUES (?, ?)"
+    conn.execute(template.format(how), row)
+
+
+def planted_template_filled_by_percent(conn, how, row):
+    template = "INSERT %s INTO recommendations (id, prediction_id) VALUES (?, ?)"
+    conn.execute(template % how, row)
+
+
+def planted_string_template(conn, how, row):
+    template = Template("UPDATE OR $how market_snapshots SET id = ? WHERE id = ?")
+    conn.execute(template.substitute(how=how), row)
+
+
+def planted_template_in_an_f_string(conn, table, how, row):
+    template = f"INSERT OR {{}} INTO {table} (id) VALUES (?)"
+    conn.execute(template.format(how), row)
+
+
+def planted_template_keyed_with_a_space(conn, how, row):
+    template = "INSERT %(the clause)s INTO prediction_voids (prediction_id) VALUES (?)"
+    conn.execute(template % {"the clause": how}, row)
+
+
+def planted_statement_a_placeholder_would_swallow(conn):
+    conn.executescript("SELECT '{'; INSERT OR REPLACE INTO predictions (id) VALUES (1);"
+                       " SELECT '}';")
+'''
+
+
+def plant_a_replacing_write_in_a_template_filled_later() -> Result:
+    """A replacing write on four append-only tables whose conflict clause is
+    a template placeholder filled in after the template was kept -- by
+    `.format`, by `%` (once under a key holding a space), by
+    `string.Template` -- and one whose f-string doubles its braces for a
+    later `.format`. The scan as first built read each placeholder as
+    punctuation and named none. And a statement between a `{` in one
+    literal and a `}` in another, which reading the braces as a placeholder
+    would swallow: the scan reads the text again as written, and must still
+    name it."""
+    faults = _replacing_write_scan(
+        lambda root: _append_to(root, "views.py", _PLANTED_TEMPLATES))
+    return _named_by_the_scan(
+        "replacing writes whose conflict clause is a template placeholder "
+        "filled in later", faults, {
+            "(planted_template_formatted_later)": "`predictions` is append-only",
+            "(planted_template_filled_by_percent)": "`recommendations` is append-only",
+            "(planted_string_template)": "`market_snapshots` is append-only",
+            "(planted_template_in_an_f_string)": "cannot read the table",
+            "(planted_template_keyed_with_a_space)": "`prediction_voids` is append-only",
+            "(planted_statement_a_placeholder_would_swallow)": "`predictions` is append-only",
+        })
+
+
+#: A statement the code keeps in pieces, or rewrites: each piece read alone
+#: named nothing in the scan as first built.
+_PLANTED_PIECES = r'''
+
+# PLANTED VIOLATIONS (question 15's prover): statements in pieces
+def planted_clause_apart_columns_formatted(conn, clause, cols, marks, row):
+    conn.execute(f"INSERT {clause} INTO predictions {cols} VALUES {marks}", row)
+
+
+def planted_clause_in_a_string_of_its_own():
+    return " OR REPLACE "
+
+
+def planted_hint_before_the_clause(conn, hint, row):
+    conn.execute(f"INSERT {hint} OR REPLACE INTO market_snapshots (id) VALUES (?)", row)
+
+
+def planted_verb_after_a_with(conn, with_clause, verb, row):
+    conn.execute(f"{with_clause} {verb} INTO predictions (id) VALUES (?)", row)
+
+
+def planted_update_clause_and_table(conn, clause, table, row):
+    conn.execute(f"UPDATE {clause} {table} SET id = ? WHERE id = ?", row)
+
+
+def planted_clause_added_when_it_runs(conn, how, rest, row):
+    statement = "INSERT OR "
+    statement += how + rest
+    conn.execute(statement, row)
+
+
+def planted_update_clause_added_when_it_runs(conn, how, rest, row):
+    statement = "UPDATE OR "
+    statement += how + rest
+    conn.execute(statement, row)
+
+
+def planted_hint_in_a_replace(conn, hint, row):
+    conn.execute(f"REPLACE {hint} INTO predictions (id) VALUES (?)", row)
+
+
+def planted_statement_in_bytes(conn, row):
+    conn.execute(b"REPLACE INTO recommendations (id) VALUES (?)".decode(), row)
+
+
+def planted_rewritten_by_replace(conn, row):
+    conn.execute("INSERT OR IGNORE INTO prediction_voids (prediction_id, voided_utc,"
+                 " reason) VALUES (?, ?, ?)".replace("IGNORE", "REPLACE"), row)
+
+
+def planted_upsert_first_half():
+    return "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key)"
+
+
+def planted_upsert_second_half():
+    return " DO UPDATE SET value = excluded.value"
+'''
+
+
+def plant_a_replacing_write_in_pieces_the_first_scan_missed() -> Result:
+    """Replacing writes kept in pieces or rewritten: a clause worked out at
+    run time with the columns formatted after the table, the clause in a
+    string of its own, a hint between INSERT and OR REPLACE, a verb worked
+    out after a WITH worked out, an update's clause and table worked out, an
+    INSERT OR and an UPDATE OR the rest of which is added when it runs, a
+    hint inside a REPLACE, a statement in a bytes literal decoded before it
+    runs, OR IGNORE rewritten by `.replace`, and an upsert on `meta` in two
+    strings. The scan as first built named none of them."""
+    faults = _replacing_write_scan(
+        lambda root: _append_to(root, "views.py", _PLANTED_PIECES))
+    return _named_by_the_scan(
+        "replacing writes in pieces, rewritten, or split across two strings",
+        faults, {
+            "(planted_clause_apart_columns_formatted)": "`predictions` is append-only",
+            "(planted_clause_in_a_string_of_its_own)": "cannot read the table",
+            "(planted_hint_before_the_clause)": "`market_snapshots` is append-only",
+            "(planted_verb_after_a_with)": "`predictions` is append-only",
+            "(planted_update_clause_and_table)": "cannot read the table",
+            "(planted_clause_added_when_it_runs)": "cannot read the table",
+            "(planted_update_clause_added_when_it_runs)": "cannot read the table",
+            "(planted_hint_in_a_replace)": "`predictions` is append-only",
+            "(planted_statement_in_bytes)": "`recommendations` is append-only",
+            "(planted_rewritten_by_replace)": "`prediction_voids` is append-only",
+            "(planted_upsert_first_half)": "`meta` is append-only",
+            "(planted_upsert_second_half)": "cannot read the table",
+        })
+
+
+#: An append-only table keeping a key on `nba_injuries`, whose registered
+#: loader replaces its rows: SET NULL rewrites the child when a replacing
+#: write removes the parent row (measured by the prover, 2026-09-27).
+_PLANTED_KEYED_CHILD = """
+CREATE TABLE IF NOT EXISTS planted_injury_notes (
+    id        INTEGER PRIMARY KEY,
+    player_id INTEGER REFERENCES nba_injuries (player_id) ON DELETE SET NULL,
+    note      TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS planted_injury_notes_no_delete
+BEFORE DELETE ON planted_injury_notes
+BEGIN
+    SELECT RAISE(ABORT, 'planted');
+END;
+"""
+
+
+#: The same child declared by the code rather than the schema, as a widening
+#: declares a table: its key's words are the only SQL words in its string.
+_PLANTED_KEYED_CHILD_IN_CODE = r'''
+
+# PLANTED VIOLATION (question 15's prover): a key's action declared in code
+def planted_injury_notes(conn):
+    conn.execute("CREATE TABLE IF NOT EXISTS planted_injury_notes (id INTEGER PRIMARY KEY,"
+                 " player_id INTEGER REFERENCES nba_injuries (player_id) ON DELETE SET NULL,"
+                 " note TEXT NOT NULL)")
+    conn.execute("CREATE TRIGGER IF NOT EXISTS planted_injury_notes_no_delete"
+                 " BEFORE DELETE ON planted_injury_notes"
+                 " BEGIN SELECT RAISE(ABORT, 'planted'); END")
+'''
+
+
+def plant_a_replacing_write_reaching_an_append_only_table_by_a_key() -> Result:
+    """`nba_loader.load_injuries` replaces rows of `nba_injuries`, a
+    registered snapshot. An append-only table gains a key on it, ON DELETE
+    SET NULL -- in the schema, and again declared by the code as a widening
+    declares a table: every replacement of a player's row now rewrites the
+    notes that name him, and no rule of theirs runs. The scan as first built
+    followed a rule's writes and not a key's action."""
+    violation = ("a registered replacing write whose table's key action "
+                 "writes an append-only table")
+    source = (config.PACKAGE_ROOT / "data" / "nba_loader.py").read_text(encoding="utf-8")
+    if "INSERT OR REPLACE INTO nba_injuries" not in source:
+        return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD,
+                      False, "the planting's anchor moved; nothing was tested")
+    wanted = {
+        "(load_injuries) an insert under OR REPLACE on `nba_injuries` (its keys "
+        "write `planted_injury_notes`": "`planted_injury_notes` is append-only",
+        "gridiron/data/nba_loader.py (load_injuries) on `nba_injuries`":
+            "its statement is refused above",
+    }
+    first = _named_by_the_scan(violation, _replacing_write_scan(
+        lambda root: _append_to(root, "schema.sql", _PLANTED_KEYED_CHILD)), wanted)
+    if not first.caught:
+        return first
+    second = _named_by_the_scan(violation, _replacing_write_scan(
+        lambda root: _append_to(root, "db.py", _PLANTED_KEYED_CHILD_IN_CODE)), wanted)
+    if not second.caught:
+        return second
+    return Result(LAW_NO_REPLACING_WRITE, violation, _REPLACE_SCAN_GUARD, True,
+                  first.failure + " // " + second.failure)
+
+
+#: A rule and a key whose target is named at run time, on two registered
+#: tables: the scan cannot read what they write, so it counts it
+#: append-only (the brief's reading), where the scan as first built dropped
+#: a rule's unread target and read no key at all.
+_PLANTED_UNREAD_REACH = r'''
+
+# PLANTED VIOLATIONS (question 15's prover): a reach the scan cannot read
+def planted_rule_copying_injuries(conn, table):
+    conn.execute(f"CREATE TRIGGER IF NOT EXISTS planted_copy AFTER INSERT ON nba_injuries"
+                 f" BEGIN INSERT INTO {table} (id) VALUES (NEW.player_id); END")
+
+
+def planted_key_on_the_cache(conn, table):
+    conn.execute(f"CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY,"
+                 f" url TEXT REFERENCES http_cache (url) ON UPDATE CASCADE)")
+'''
+
+
+def plant_a_replacing_write_reaching_a_table_the_scan_cannot_read() -> Result:
+    """A rule on `nba_injuries` copying each row into a table named at run
+    time, and a table named at run time keeping a key on `http_cache`, ON
+    UPDATE CASCADE. `load_injuries`' replacing insert and `fetch`'s upsert,
+    both registered, now reach a table nobody can name from the code, which
+    the brief counts append-only."""
+    violation = "registered replacing writes reaching tables named at run time"
+    faults = _replacing_write_scan(
+        lambda root: _append_to(root, "db.py", _PLANTED_UNREAD_REACH))
+    return _named_by_the_scan(violation, faults, {
+        "(load_injuries) an insert under OR REPLACE on `nba_injuries` (its rules "
+        "write a table the scan cannot read": "counted as append-only",
+        "gridiron/data/nba_loader.py (load_injuries) on `nba_injuries`":
+            "its statement is refused above",
+        "(fetch) an upsert whose conflict clause updates the stored row on "
+        "`http_cache` (its keys write a table the scan cannot read":
+            "counted as append-only",
+        "gridiron/data/sources.py (fetch) on `http_cache`":
+            "its statement is refused above",
+    })
+
+
+#: An upsert a later session might write on an ordinary table, and the entry
+#: it might add for it, dated as if it had always been there.
+_PLANTED_LATER_UPSERT = r'''
+
+# PLANTED VIOLATION (question 15's prover): an upsert registered later
+def planted_later_upsert(conn, nonce, expires):
+    conn.execute(
+        "INSERT INTO handoff_nonces (nonce, created_utc, expires_utc) VALUES (?,?,?)"
+        " ON CONFLICT(nonce) DO UPDATE SET expires_utc = excluded.expires_utc",
+        (nonce, expires, expires))
+'''
+
+
+def plant_an_upsert_registered_after_the_register_was_frozen() -> Result:
+    """"A register that may only shrink": a new upsert on `handoff_nonces`,
+    a table with no rule, and its entry added to `audit.UPSERTS_REGISTERED`
+    with a reason dated 2026-09-27. The scan as first built passed both --
+    the statement registered, the entry found and dated -- so the register
+    grew."""
+    violation = "an upsert written later, its register entry added and backdated"
+    key = ("gridiron/auth.py", "planted_later_upsert", "handoff_nonces")
+    register = getattr(audit, "UPSERTS_REGISTERED", None)
+    if register is None:
+        return _named_by_the_scan(violation, None, {})
+    register[key] = "2026-09-27: a cache of the nonces, dated as if it always was"
+    try:
+        faults = _replacing_write_scan(
+            lambda root: _append_to(root, "auth.py", _PLANTED_LATER_UPSERT))
+    finally:
+        del register[key]
+    return _named_by_the_scan(violation, faults, {
+        "gridiron/auth.py (planted_later_upsert) on `handoff_nonces`":
+            "not among the entries frozen on 2026-09-27",
+    })
+
+
 LAW_CLAIM_SHAPE = "A CLAIM CARRIES THE INPUTS ITS SHAPE USES, AND NO OTHERS"
 
 
@@ -16037,6 +16658,24 @@ def main() -> int:
     # OPERATOR QUESTION 15 (ruled 2026-09-27, third set): predictions fixed
     # the same way -- LAW 3's own table took OR REPLACE the same way.
     results.append(plant_a_replaced_prediction())
+    # ...and one gate scan refuses a replacing write on every append-only
+    # table, the tables read from the schema, every other upsert in a
+    # register that only shrinks (the ruling's second step, 2026-09-27).
+    results.append(plant_a_replacing_write_on_an_append_only_table())
+    results.append(plant_a_replacing_write_hidden_from_a_plain_reading())
+    results.append(plant_an_upsert_on_an_append_only_table())
+    results.append(plant_an_unregistered_upsert())
+    results.append(plant_a_registered_upsert_moved_onto_an_append_only_table())
+    results.append(plant_a_stale_upsert_in_the_register())
+    results.append(plant_a_table_that_replaces_on_conflict())
+    # ...and what its prover found getting round it (2026-09-27): a
+    # template filled in later, a statement in pieces, a key's action, and
+    # an entry added to a register that may only shrink.
+    results.append(plant_a_replacing_write_in_a_template_filled_later())
+    results.append(plant_a_replacing_write_in_pieces_the_first_scan_missed())
+    results.append(plant_a_replacing_write_reaching_an_append_only_table_by_a_key())
+    results.append(plant_a_replacing_write_reaching_a_table_the_scan_cannot_read())
+    results.append(plant_an_upsert_registered_after_the_register_was_frozen())
     # AT_THE_PRICE (2026-09-07): four claim shapes, and the four mistakes
     # the first live run made.
     results.append(plant_a_winner_question_read_from_the_wrong_side())

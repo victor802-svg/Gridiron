@@ -916,6 +916,13 @@ def step_2_guards() -> bool:
         # only the clock a test can move.
         ("no raw open goes round the approved handles (ruling 6)",
          audit.check_no_raw_connect_to_the_live_record),
+        # OPERATOR QUESTION 15 (ruled 2026-09-27, third set): no statement
+        # the package, its tools or the schema can issue replaces a row of a
+        # table the schema gives a no-delete or no-update rule -- SQLite runs
+        # no delete rule for a row it replaces -- and every other upsert is
+        # a cache or a derived table named in a register that only shrinks.
+        ("no write replaces a row of an append-only table (question 15)",
+         audit.check_no_replacing_write_on_an_append_only_table),
         ("no gated test waits on the real clock (ruling 5)",
          audit.check_no_test_waits_on_the_clock),
         ("auth reads one clock, and a test can move it (ruling 5)",

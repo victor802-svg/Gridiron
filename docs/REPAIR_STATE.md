@@ -698,6 +698,36 @@ depend on the answer.
   it.
 - **Q15's release:** two commits (the predictions rules, the scan), one gate,
   released together -- Q14's precedent.
+- **Q15's scan, as built (2026-09-27; FOLLOWUPS "No write replaces a row of
+  an append-only table", READINGS TAKEN):** `desktop/` is read as well as
+  the package and `tools/` (shipped code; it issues no SQL); docstrings are
+  not read; an append-only table is one a DELETE or UPDATE rule is on,
+  whatever its timing (22 tables, all BEFORE rules, the same set as a fresh
+  build's); a part worked out at run time where a conflict clause or the
+  verb goes counts as a replacing write, a run-time table name in a plain
+  update does not; a write under OR REPLACE is also aimed at what its
+  table's rules write; every key declared to replace on conflict counts; a
+  register entry names one statement and carries a dated reason. `meta` is
+  append-only by the brief's reading, so `db.set_meta`'s upsert is now an
+  UPDATE and a plain INSERT, the same effect -- no ruling needed. Not built,
+  for the operator: a scan for connection settings that switch rules off
+  (the predictions prover's suggestion; the ruling names three statements).
+- **Q15's scan, its prover (2026-09-27; FOLLOWUPS "THE PROVER"):** each
+  reversible in one line. "May only shrink" is read literally: the register
+  is frozen at its 35 entries of this date
+  (`audit.UPSERTS_REGISTERED_ON_2026_09_27`), and an entry not among them
+  fails however it is dated -- until then a later upsert with an entry dated
+  2026-09-27 passed. So a later upsert (the board merge's included, if it
+  adds one) is written plainly, as `set_meta` was, or the operator rules.
+  (Reversal: drop the frozen check, and the register grows by review
+  alone, as `ELAPSED_TIME_HELD`'s does.) A foreign key's action counts as
+  a write, the reading the first build gave a rule's writes: SQLite's
+  CASCADE, SET NULL or SET DEFAULT rewrites an append-only child when a
+  replacing write removes or changes its parent (measured), so the write is
+  aimed at the child whatever its conflict clause; no key declares an
+  action today. A template is read as one wherever it is filled in, and a
+  statement in pieces by each piece: the stricter reading of "a formatted
+  part is unknown". Nothing refused on the shipped code by any of it.
 
 ## Rulings taken in your absence (2026-09-25, schema rulings 5a)
 

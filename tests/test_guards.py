@@ -571,6 +571,22 @@ def test_every_new_guard_is_in_the_planted_harness():
         # OPERATOR QUESTION 15 (ruled 2026-09-27, third set): predictions
         # fixed the same way as question 13 -- no stored forecast replaced.
         "plant_a_replaced_prediction",
+        # ...and its gate scan (2026-09-27): no write in the shipped code or
+        # the schema replaces a row of an append-only table, and every other
+        # upsert is in a register that only shrinks.
+        "plant_a_replacing_write_on_an_append_only_table",
+        "plant_a_replacing_write_hidden_from_a_plain_reading",
+        "plant_an_upsert_on_an_append_only_table",
+        "plant_an_unregistered_upsert",
+        "plant_a_registered_upsert_moved_onto_an_append_only_table",
+        "plant_a_stale_upsert_in_the_register",
+        "plant_a_table_that_replaces_on_conflict",
+        # ...and what its prover found getting round it (2026-09-27).
+        "plant_a_replacing_write_in_a_template_filled_later",
+        "plant_a_replacing_write_in_pieces_the_first_scan_missed",
+        "plant_a_replacing_write_reaching_an_append_only_table_by_a_key",
+        "plant_a_replacing_write_reaching_a_table_the_scan_cannot_read",
+        "plant_an_upsert_registered_after_the_register_was_frozen",
         # GRIDIRON_REPAIR item 6 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): at the venue's line, one bet per game per forecaster --
         # never two forecasters in one count, never a game counted twice.
