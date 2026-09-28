@@ -32,7 +32,27 @@
   shape); the race copy lost 0/60 with it and 33/60 without;
   ELAPSED_TIME_HELD unchanged (28 functions / 44 waits). The helper's one
   precondition (a redraw asked for before arming) is Q5's to close.
-  **Next: Q24.**
+  **Q24 released as f0a4418 (20:42Z; gate 4/4, 339/339, first run; its
+  prover was cut off by the weekly usage limit at ~11:10Z and resumed at
+  19:18Z):** `recommendations_never_moved_above_the_mark` refuses an update
+  moving a recommendation above every number given out (by id, rowid, oid,
+  _rowid_, every conflict clause); the live record gained it on its first
+  open (242 objects; recommendations 1-111 unchanged). Question 29 below
+  (ways round the number rules that need a statement no writer makes).
+  **Q27, THE MEASUREMENT (read-only, 20:43Z; ruled: report before changing
+  anything else):** all 16 are NFL week-3 reasoning-pass totals (fs2). For
+  every one the EARLY pass stands (written 24 Sep 05:32-05:36Z by
+  predict:nfl run 2336) over the FINAL pass (written 23 Sep 19:30-19:31Z by
+  final:nfl run 2052), both at the same rung; **no pass of any of the 16 was
+  written after its game's start** (kickoffs 25 Sep 00:15Z to 29 Sep
+  00:15Z), so the void rule writes nothing. Early (standing) / final ids:
+  2227/1999 ATL-GB, 2232/2009 CAR-CLE, 2237/2015 CIN-PIT, 2242/2021 HOU-IND,
+  2247/2027 KC-MIA, 2250/2033 LAC-BUF, 2253/2039 NE-JAX, 2258/2045 NYJ-DET,
+  2263/2051 SEA-WAS, 2268/2057 TEN-NYG, 2273/2063 ARI-SF, 2278/2068 MIN-TB,
+  2283/2070 BAL-DAL, 2286/2072 LV-NO, 2291/2074 LA-DEN, 2296/2076 PHI-CHI
+  (the last unsettled). Nothing changed; whether a final pass should stand
+  over a later early one stays the operator's (question 27). Output:
+  scratchpad `q27_measure.txt`. **Next: Q17.**
 
 - **THE ORDER NOW (third set, 2026-09-27 ~15:50Z;
   docs/briefs/2026-09-27-rulings-third-set.md; wins over every order
@@ -911,6 +931,30 @@ depend on the answer.
     stays uncommitted in the worktree on `repair`, at f66fefa.
     **RULED 2026-09-28: (A),** in Q20's commit: one shared helper, no
     clock, no fixed wait; Q5's signal replaces it later.
+
+29. **The number rules still have ways round them, each needing a statement
+    no writer makes. (Found by Q24's prover, 2026-09-28; FOLLOWUPS, "No
+    recommendation moved above every number given out", OPEN and NOT
+    SEEN.)** On predictions (Q15) and recommendations (Q13, Q24), measured
+    on scratch worlds and a verified copy (rolled back):
+    - **A stopped multi-row insert.** `INSERT OR FAIL` of several rows whose
+      later row fails a CHECK or NOT NULL keeps the rows before it, above
+      SQLite's mark (a stopped statement never writes the mark back); a
+      one-row insert whose number reads twice then writes over them. No
+      writer uses OR FAIL or RAISE(FAIL). The hole closes at the next insert
+      that finishes.
+    - **The mark rewritten first** (four ways: its row deleted; set forward,
+      a row moved beneath, set back; the same inside temporary rules; set
+      back and the newer rows moved down beneath it). SQLite refuses a rule
+      on its sequence store, so no rule can see it. `rebuild._rebuild_one`
+      is the one shipped writer of the store: it carries the mark exactly.
+    Both need a replacing insert whose number is worked out twice, which the
+    scan (Q15) refuses in shipped code, and Q25 will refuse the connection
+    settings and function names that make one. Close them in the schema (a
+    rule refusing OR FAIL's partial rows; a scan naming any write to the
+    sequence store other than the rebuild's), or leave them in FOLLOWUPS?
+    Default until ruled: FOLLOWUPS. (Before Q16, so the new queue rule does
+    not yet apply; by it, this touches LAW 3.)
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
