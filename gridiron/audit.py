@@ -7336,8 +7336,9 @@ RECOMMENDATION_DOOR = "not_withdrawn"
 
 #: THE MEASUREMENT DOOR (operator question 12, ruled 2026-09-27):
 #: `market.recommend.counted_once` is `not_withdrawn` and the rule that
-#: counts a same-side pair once and both sides not at all, so a call to it
-#: answers this scan too.
+#: counts a same-side pair once -- from 2026-09-28 (question 22) one
+#: forecaster's, within one distinct bet -- so a call to it answers this
+#: scan too.
 MEASUREMENT_DOOR = "counted_once"
 
 #: What a read of the table looks like in SQL: FROM or JOIN it, or name it
@@ -7370,13 +7371,15 @@ RECOMMENDATION_DOOR_EXEMPT = {
 #: `counted_once`. Keyed as RECOMMENDATION_DOOR_EXEMPT is, whose readers
 #: are exempt from both scans.
 RECORD_READERS = {
-    "gridiron/market/recommend.py:_another_standing_row":
+    # RENAMED 2026-09-28 (question 22) from `_another_standing_row`: the
+    # rule pairs a row only with another of the same distinct bet and side.
+    "gridiron/market/recommend.py:_an_earlier_row_of_the_same_bet":
         "the rule itself: `counted_once` and `not_counted_once` are both "
-        "made of it, so it reads the other standing rows of a game and "
-        "market as they stand",
+        "made of it, so it reads the other standing rows of one distinct "
+        "bet as they stand",
     "gridiron/market/recommend.py:not_counted_once":
-        "the other side of the measurement door: it lists the repeats and "
-        "the both-sides rows the door leaves out, so the page names them",
+        "the other side of the measurement door: it lists one forecaster's "
+        "repeats the door leaves out, so the page names them",
     "gridiron/market/recommend.py:standing_recommendations":
         "the write rule (GRIDIRON_REPAIR item 5): a game and market holding "
         "any standing recommendation, a pair's later row included, gets no "
@@ -7481,19 +7484,22 @@ def measurement_door_faults(root: Path | None = None) -> list[str]:
 
     THE SOURCE HALF OF "EVERY MEASUREMENT". A new count of recommendations
     through `not_withdrawn` alone would count each of the seventeen
-    same-side pairs twice and 45/46 at all, and no figure would say so;
-    this names it before it counts anything. A reader that keeps the record
-    as written -- the closer, the write rule -- is in `RECORD_READERS` with
-    its reason.
+    same-side pairs twice -- and, from question 22 (2026-09-28), both
+    forecasters' recommendations in one count -- and no figure would say
+    so; this names it before it counts anything. (The scan itself is as it
+    was: `counted_once` now takes the forecaster, so a statement calling it
+    is one forecaster's.) A reader that keeps the record as written -- the
+    closer, the write rule -- is in `RECORD_READERS` with its reason.
     """
     root = config.PACKAGE_ROOT if root is None else Path(root)
     return [
         f"{where}:{line} ({function or 'module level'}) reads "
-        f"`recommendations` without counting each game and market once. A "
-        f"pair's later row, or both sides of one game and market, is "
-        f"counted there. Add `recommend.{MEASUREMENT_DOOR}(conn)` to the "
-        f"same statement, or -- if it keeps the record rather than measuring "
-        f"it -- a dated reason to audit.RECORD_READERS."
+        f"`recommendations` without counting each forecaster's distinct bet "
+        f"once. A pair's later row, or both forecasters' rows in one count, "
+        f"is counted there. Add `recommend.{MEASUREMENT_DOOR}(conn, "
+        f"predictor=...)` to the same statement, or -- if it keeps the "
+        f"record rather than measuring it -- a dated reason to "
+        f"audit.RECORD_READERS."
         for where, line, function in _reads_round(
             root, (MEASUREMENT_DOOR,),
             set(RECOMMENDATION_DOOR_EXEMPT) | set(RECORD_READERS))]
@@ -7504,10 +7510,11 @@ def check_every_measurement_counts_each_pair_once(root: Path | None = None) -> N
     if faults:
         raise LawViolation(
             "A MEASUREMENT READS RECOMMENDATIONS PAST THE COUNTED-ONCE DOOR "
-            "(operator question 12, 2026-09-27): every measurement counts a "
-            "same-side pair once and both sides of one game and market not at "
-            "all, and `market.recommend.counted_once` is the one place that "
-            "says which rows those are:" + _NL2 + _NL2.join(faults))
+            "(operator questions 12 and 22, 2026-09-27 and 2026-09-28): every "
+            "measurement is one forecaster's and counts a same-side pair of "
+            "one distinct bet once, and `market.recommend.counted_once` is "
+            "the one place that says which rows those are:"
+            + _NL2 + _NL2.join(faults))
 
 
 def check_every_recommendation_reader_uses_the_door(root: Path | None = None) -> None:
@@ -7522,15 +7529,22 @@ def check_every_recommendation_reader_uses_the_door(root: Path | None = None) ->
 
 def _closing_line_rows(conn, sport: str) -> list:
     """Every recommendation of `sport`, read straight off the table with what
-    both recounts ask of it: its game, market, side and stamp, whether it is
+    both recounts ask of it: its market, side and stamp, whether it is
     closed, whether its close was measured at the time, whether it is
-    withdrawn, and whether it carries a re-grade.
+    withdrawn, whether it carries a re-grade -- and, through the forecast it
+    was made from, whose it is and which distinct bet (`bet.columns`: the
+    forecaster, the game, the market and prop type, the subject and the rung
+    asked; operator questions 17 and 22, 2026-09-28).
 
     WITHOUT EITHER DOOR, on purpose: a recount that went through
     `not_withdrawn` or `counted_once` would agree with a broken one. (The
     read `withdrawn_counted_faults` made itself until 2026-09-27, shared
-    from then with the pair recount of question 12.)
+    from then with the pair recount of question 12.) The forecast is joined
+    LEFT, so a recommendation whose forecast could not be read is kept, with
+    no forecaster, and refused by name rather than dropped.
     """
+    from . import bet
+
     def has(table: str) -> bool:
         return conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -7546,20 +7560,37 @@ def _closing_line_rows(conn, sport: str) -> list:
     regraded_sql = ("EXISTS (SELECT 1 FROM recommendation_regrades g"
                     "         WHERE g.recommendation_id = r.id)"
                     if has("recommendation_regrades") else "0")
+    # AND EACH CLOSE'S ACCOUNT AND VALUE (the prover of question 22,
+    # 2026-09-28): a door that counted a pair's LATER row keeps every count
+    # and moves the mean, so the recount works out each line's buckets, mean
+    # and share too, not its counts alone.
     return conn.execute(
-        "SELECT r.id, r.game_id, r.market, r.side, r.created_utc,"
+        "SELECT r.id, r.market, r.side, r.created_utc,"
         "       r.closed_utc IS NOT NULL AS closed,"
         "       c.recommendation_id IS NOT NULL AND c.restated = 0"
         "         AND c.clv_cents IS NOT NULL AS measured,"
+        "       c.recommendation_id IS NOT NULL AS accounted,"
+        "       c.restated AS restated, c.clv_cents AS clv_cents,"
         f"      {withdrawn_sql} AS withdrawn,"
-        f"      {regraded_sql} AS regraded"
+        f"      {regraded_sql} AS regraded,"
+        f"      {bet.columns('p')}"
         "  FROM recommendations r"
+        "  LEFT JOIN predictions p ON p.id = r.prediction_id"
         "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
         " WHERE r.sport = ? ORDER BY r.id", (sport,)).fetchall()
 
 
+def _forecaster_block(report: dict, predictor: str) -> dict:
+    """One forecaster's block of a closing line, or {} if it has none."""
+    for block in report.get("forecasters") or []:
+        if block.get("predictor") == predictor:
+            return block
+    return {}
+
+
 def withdrawn_counted_faults(conn, report: dict) -> list[str]:
-    """The closing line, recounted without the door, against `report`.
+    """The closing line, recounted without the door, against `report` --
+    each forecaster's line on its own (operator question 22, 2026-09-28).
 
     Written against the table directly, on purpose: a recount that went
     through `not_withdrawn` would agree with a broken `not_withdrawn`. The
@@ -7577,54 +7608,66 @@ def withdrawn_counted_faults(conn, report: dict) -> list[str]:
     in either is caught.
 
     NOR IS A PAIR (operator question 12, 2026-09-27). The report sets aside a
-    same-side pair's later rows and both sides of one game and market, and
-    tallies them (`set_aside`); they are added back here, so every standing
-    row is still accounted for once and a withdrawn one still shows. Whether
-    the right rows were set aside is `pair_counted_faults`'s question.
+    same-side pair's later rows, and tallies them (`set_aside`); they are
+    added back here, so every standing row is still accounted for once and a
+    withdrawn one still shows. Whether the right rows were set aside is
+    `pair_counted_faults`'s question.
+
+    PER FORECASTER (question 22): a recommendation is its forecast's
+    forecaster's, and each forecaster's block is recounted from that
+    forecaster's rows; a block naming a forecaster that is not one of the two
+    counts rows nobody wrote, and is `pair_counted_faults`'s to name.
     """
+    from .market import recommend
+
     sport = report["sport"]
     rows = _closing_line_rows(conn, sport)
-    standing = [r for r in rows if not r["withdrawn"]]
-    gone = [r for r in rows if r["withdrawn"]]
-    expected = {
-        "n": sum(1 for r in standing if r["closed"] and r["measured"]),
-        "closed": sum(1 for r in standing if r["closed"]),
-        "awaiting_close": sum(1 for r in standing if not r["closed"]),
-        "withdrawn": len(gone),
-    }
-    aside = report.get("set_aside") or {}
-    got = {
-        "n": (report.get("n", 0) + (report.get("before_window") or 0)
-              + (aside.get("measured") or 0)),
-        "closed": sum((report.get(k) or 0) for k in
-                      ("n", "unmeasured", "restated", "unaccounted",
-                       "before_window")) + (aside.get("closed") or 0),
-        "awaiting_close": (report.get("awaiting_close", 0)
-                           + (aside.get("awaiting_close") or 0)),
-        "withdrawn": report.get("withdrawn", 0),
-    }
-    culprits = {
-        "n": [r["id"] for r in gone if r["closed"] and r["measured"]],
-        "closed": [r["id"] for r in gone if r["closed"]],
-        "awaiting_close": [r["id"] for r in gone if not r["closed"]],
-        "withdrawn": [r["id"] for r in gone],
-    }
-    what = {
-        "n": ("measured closes in its count, before its window or set aside "
-              "as a pair"),
-        "closed": "closed recommendations in its buckets or set aside",
-        "awaiting_close": "recommendations awaiting a close or set aside",
-        "withdrawn": "withdrawn recommendations named beside it",
-    }
     faults = []
-    for key in ("n", "closed", "awaiting_close", "withdrawn"):
-        if got[key] == expected[key]:
-            continue
-        named = ", ".join(str(i) for i in culprits[key][:12]) or "none"
-        faults.append(
-            f"{sport}: the closing line reports {got[key]} {what[key]} where "
-            f"the recommendations that stand hold {expected[key]}. Withdrawn "
-            f"recommendation(s) that would make the difference: {named}.")
+    for predictor in recommend.FORECASTERS:
+        mine = [r for r in rows if r["predictor"] == predictor]
+        standing = [r for r in mine if not r["withdrawn"]]
+        gone = [r for r in mine if r["withdrawn"]]
+        block = _forecaster_block(report, predictor)
+        expected = {
+            "n": sum(1 for r in standing if r["closed"] and r["measured"]),
+            "closed": sum(1 for r in standing if r["closed"]),
+            "awaiting_close": sum(1 for r in standing if not r["closed"]),
+            "withdrawn": len(gone),
+        }
+        aside = block.get("set_aside") or {}
+        got = {
+            "n": (block.get("n", 0) + (block.get("before_window") or 0)
+                  + (aside.get("measured") or 0)),
+            "closed": sum((block.get(k) or 0) for k in
+                          ("n", "unmeasured", "restated", "unaccounted",
+                           "before_window")) + (aside.get("closed") or 0),
+            "awaiting_close": (block.get("awaiting_close", 0)
+                               + (aside.get("awaiting_close") or 0)),
+            "withdrawn": block.get("withdrawn", 0),
+        }
+        culprits = {
+            "n": [r["id"] for r in gone if r["closed"] and r["measured"]],
+            "closed": [r["id"] for r in gone if r["closed"]],
+            "awaiting_close": [r["id"] for r in gone if not r["closed"]],
+            "withdrawn": [r["id"] for r in gone],
+        }
+        what = {
+            "n": ("measured closes in its count, before its window or set "
+                  "aside as a pair"),
+            "closed": "closed recommendations in its buckets or set aside",
+            "awaiting_close": "recommendations awaiting a close or set aside",
+            "withdrawn": "withdrawn recommendations named beside it",
+        }
+        whose = config.FORECASTER_LABELS.get(predictor, predictor)
+        for key in ("n", "closed", "awaiting_close", "withdrawn"):
+            if got[key] == expected[key]:
+                continue
+            named = ", ".join(str(i) for i in culprits[key][:12]) or "none"
+            faults.append(
+                f"{sport}: the {whose} closing line reports {got[key]} "
+                f"{what[key]} where that forecaster's recommendations that "
+                f"stand hold {expected[key]}. Withdrawn recommendation(s) that "
+                f"would make the difference: {named}.")
     return faults
 
 
@@ -7632,14 +7675,20 @@ def check_no_withdrawn_recommendation_counted(conn, report: dict | None = None,
                                               *, sport: str | None = None) -> None:
     """Refuse a closing line that counts a withdrawn recommendation.
 
-    Runs inside `views.scorecard` on the payload the API is about to serve,
-    and in the gate against the live record for every sport.
+    Runs inside `calibration.scorecard` (from 2026-09-28; `views.scorecard`
+    until then) on the payload the API is about to serve, in one instant with
+    the line, and in the gate against the record's copy for every sport.
     """
     if report is None:
-        from . import calibration
+        # BUILT AND RECOUNTED IN ONE INSTANT (2026-09-28), as the Record
+        # page's are: a close written between the two is no fault.
+        from . import calibration, db
 
-        report = calibration.clv_report(conn, sport=sport)
-    faults = withdrawn_counted_faults(conn, report)
+        with db.one_instant(conn):
+            report = calibration.clv_report(conn, sport=sport)
+            faults = withdrawn_counted_faults(conn, report)
+    else:
+        faults = withdrawn_counted_faults(conn, report)
     if faults:
         raise LawViolation(
             "A WITHDRAWN RECOMMENDATION IS COUNTED (ruling 1, 2026-09-24): "
@@ -7648,130 +7697,435 @@ def check_no_withdrawn_recommendation_counted(conn, report: dict | None = None,
 
 
 # ---------------------------------------------------------------------------
-# A PAIR COUNTED ONCE, AND BOTH SIDES NOT AT ALL (operator question 12, ruled
-# 2026-09-27)
+# A PAIR COUNTED ONCE, WITHIN ONE FORECASTER'S DISTINCT BET (operator
+# question 12, ruled 2026-09-27; question 22, ruled 2026-09-28)
 # ---------------------------------------------------------------------------
 #
-# "Every measurement counts a same-side pair once (the earlier row). Recs
-# 45/46, opposite sides of one total, count zero in every measurement and are
-# labelled 'both sides, no position'." Two guards, as for a withdrawal: the
-# source scan above (`measurement_door_faults`) and this recount, which works
-# the rule out again here -- in Python, from rows read without either door
-# -- and refuses a closing line whose counts, set-aside tallies, repeats,
-# both-sides rows or re-grade count differ from it, naming the rows that
-# would make each difference. Runs inside `views.scorecard` and in the gate
-# on the record's copy for every sport, where the eighteen pairs are.
+# Question 12: "Every measurement counts a same-side pair once (the earlier
+# row)." Question 22: "(A). Recommendation counts split per forecaster, like
+# every other count. This reverses Q12 for 45/46: each counts once in its own
+# forecaster's line, and the 'Both sides, no position' row goes. Same-side
+# pairs count once only within one forecaster." -- on question 17's one
+# function (`gridiron.bet`). Two guards, as for a withdrawal: the source scan
+# above (`measurement_door_faults`, unchanged) and this recount, which works
+# the rule out again here -- in Python, by `bet.of`, from rows read without
+# either door -- and refuses a closing line that carries a figure for both
+# forecasters at once, a line naming no forecaster or one of neither, or any
+# forecaster's or market's count, bucket, mean, share, set-aside tally,
+# repeat count or re-grade count that differs from it, or words and labels
+# that state another -- naming the rows that would make each difference.
+# And a record holding two sides of one distinct bet, which item 5's rule
+# cannot write and no ruling says how to count. Runs inside
+# `calibration.scorecard`, in one instant with the line (`views.scorecard`
+# until 2026-09-28), and in the gate on the record's copy for every sport.
+
+#: WHAT A CLOSING LINE CARRIES AT ITS TOP LEVEL, and nothing else (question
+#: 22): every count is inside a forecaster's block or a market's line, so any
+#: other key there -- `n`, `window_line`, `awaiting_close`, `repeats`,
+#: `both_sides` and the rest the payload carried until 2026-09-28, or a
+#: total under any new name -- is a figure over both forecasters, and is
+#: refused. An allow-list, not a list of the old names (the prover,
+#: 2026-09-28): a total over both called something new would pass a list of
+#: what totals used to be called.
+CLOSING_LINE_KEYS = ("sport", "record", "declared", "window", "forecasters",
+                     "markets", "note")
 
 
 def _counted_once_roles(rows: list) -> dict[int, str]:
-    """The ruling, worked out on its own: for every standing row, "counted",
-    "repeat" or "both_sides". Of one game and market's standing rows, all on
-    one side: the first (stamp, then number) counted, the rest repeats; on
-    both sides: none counted."""
+    """The rulings, worked out on their own: for every standing row,
+    "counted" or "repeat". Of the standing rows of one distinct bet
+    (`bet.of`: one forecaster's question at one rung) on one side, the first
+    (stamp, then number) is counted and the rest are repeats. Two
+    forecasters, or two rungs, are never one group."""
+    from . import bet
+
     groups: dict[tuple, list] = {}
     for row in sorted((r for r in rows if not r["withdrawn"]),
                       key=lambda r: (r["created_utc"], r["id"])):
-        groups.setdefault((row["game_id"], row["market"]), []).append(row)
+        groups.setdefault((bet.of(row), row["side"]), []).append(row)
     roles: dict[int, str] = {}
     for group in groups.values():
-        if len({row["side"] for row in group}) > 1:
-            roles.update({row["id"]: "both_sides" for row in group})
-            continue
         roles[group[0]["id"]] = "counted"
         roles.update({row["id"]: "repeat" for row in group[1:]})
     return roles
 
 
-def pair_counted_faults(conn, report: dict) -> list[str]:
-    """The closing line, recounted by question 12's rule, against `report`."""
-    sport = report["sport"]
-    rows = _closing_line_rows(conn, sport)
-    roles = _counted_once_roles(rows)
-    counted = [r for r in rows if roles.get(r["id"]) == "counted"]
-    aside = [r for r in rows if roles.get(r["id"]) in ("repeat", "both_sides")]
-    expected = {
-        "n": sum(1 for r in counted if r["closed"] and r["measured"]),
-        "closed": sum(1 for r in counted if r["closed"]),
-        "awaiting_close": sum(1 for r in counted if not r["closed"]),
-        "repeats": sum(1 for r in aside if roles[r["id"]] == "repeat"),
-        "both_sides": sum(1 for r in aside if roles[r["id"]] == "both_sides"),
-        "set_aside_measured": sum(1 for r in aside if r["closed"] and r["measured"]),
-        "set_aside_closed": sum(1 for r in aside if r["closed"]),
-        "set_aside_awaiting": sum(1 for r in aside if not r["closed"]),
-    }
-    held = report.get("set_aside") or {}
-    got = {
-        "n": report.get("n", 0) + (report.get("before_window") or 0),
-        "closed": sum((report.get(k) or 0) for k in
-                      ("n", "unmeasured", "restated", "unaccounted",
-                       "before_window")),
-        "awaiting_close": report.get("awaiting_close", 0),
-        "repeats": report.get("repeats") or 0,
-        "both_sides": report.get("both_sides") or 0,
-        "set_aside_measured": held.get("measured") or 0,
-        "set_aside_closed": held.get("closed") or 0,
-        "set_aside_awaiting": held.get("awaiting_close") or 0,
-    }
-    culprits = {
-        "n": [r["id"] for r in aside if r["closed"] and r["measured"]],
-        "closed": [r["id"] for r in aside if r["closed"]],
-        "awaiting_close": [r["id"] for r in aside if not r["closed"]],
-        "repeats": [r["id"] for r in aside if roles[r["id"]] == "repeat"],
-        "both_sides": [r["id"] for r in aside
-                       if roles[r["id"]] == "both_sides"],
-    }
-    culprits["set_aside_measured"] = culprits["n"]
-    culprits["set_aside_closed"] = culprits["closed"]
-    culprits["set_aside_awaiting"] = culprits["awaiting_close"]
-    what = {
-        "n": "measured closes in its count or before its window",
-        "closed": "closed recommendations in its buckets",
-        "awaiting_close": "recommendations awaiting a close",
-        "repeats": "repeats of an earlier recommendation named beside it",
-        "both_sides": "recommendations on both sides of one game and market",
-        "set_aside_measured": "measured closes set aside",
-        "set_aside_closed": "closed recommendations set aside",
-        "set_aside_awaiting": "open recommendations set aside",
-    }
-    # AND THE RE-GRADE LINE BESIDE IT, a count too: the labelled rows the
-    # rule counts. Asked only of a report that carries the line.
-    if "regraded" in report:
-        expected["regraded"] = sum(1 for r in counted if r["regraded"])
-        got["regraded"] = report.get("regraded") or 0
-        culprits["regraded"] = [r["id"] for r in aside if r["regraded"]]
-        what["regraded"] = "recommendations that would not have cleared"
-    faults = []
-    for key in expected:
-        if got[key] == expected[key]:
+def _two_sided_bets(rows: list) -> list[list[int]]:
+    """The standing rows of each distinct bet recommended on both sides.
+    Item 5's rule (one per game and market, across forecasters) cannot
+    write one, and none is on the record (2026-09-28)."""
+    from . import bet
+
+    sides: dict[tuple, dict] = {}
+    for row in rows:
+        if row["withdrawn"]:
             continue
-        named = ", ".join(str(i) for i in culprits[key][:12]) or "none"
+        sides.setdefault(bet.of(row), {}).setdefault(row["side"], []).append(row["id"])
+    return [sorted(i for ids in by_side.values() for i in ids)
+            for by_side in sides.values() if len(by_side) > 1]
+
+
+#: Which rows each figure a recount compares is made of: its kind of close
+#: (measured, closed, open) or its label. A figure of what was SET ASIDE
+#: counts the other way round: more of it means counted rows set aside.
+_FIGURE_ROWS = {
+    "n": lambda r: r["closed"] and r["measured"],
+    "window_line": lambda r: r["closed"] and r["measured"],
+    "closed": lambda r: r["closed"],
+    "awaiting_close": lambda r: not r["closed"],
+    "regraded": lambda r: r["regraded"],
+    "repeats": lambda r: True,
+    "set_aside_measured": lambda r: r["closed"] and r["measured"],
+    "set_aside_closed": lambda r: r["closed"],
+    "set_aside_awaiting": lambda r: not r["closed"],
+}
+_ASIDE_FIGURES = ("repeats", "set_aside_measured", "set_aside_closed",
+                  "set_aside_awaiting")
+
+
+def _likely(rows: list, predictor: str, key: str, got: int,
+            expected: int) -> list[int]:
+    """The rows that would make the difference between a figure the report
+    gives for `predictor` and the one the rule gives, among the rows that
+    figure is made of (`_FIGURE_ROWS`).
+
+    Two candidate sets each way. A count too HIGH holds rows the rule leaves
+    out: this forecaster's repeats (the rule removed), or the other
+    forecaster's counted rows (a count pooling both). A count too LOW has
+    lost rows the rule counts: this forecaster's counted rows that share a
+    game and market with another standing row (a rule keyed wider than the
+    one function, setting them aside), or any of its counted rows. The set
+    whose size is the difference is named; where neither or both are, both.
+    """
+    keep = _FIGURE_ROWS.get(key, lambda r: True)
+    scoped = [r for r in rows if r["role"] and keep(r)]
+    too_many = (got > expected) != (key in _ASIDE_FIGURES)
+    difference = abs(got - expected)
+    mine = [r for r in scoped if r["predictor"] == predictor]
+    if too_many:
+        first = [r["id"] for r in mine if r["role"] == "repeat"]
+        second = [r["id"] for r in scoped if r["predictor"] != predictor
+                  and r["role"] == "counted"]
+    else:
+        counted = [r for r in mine if r["role"] == "counted"]
+        first = [r["id"] for r in counted if any(
+            o["id"] != r["id"] and o["role"] in ("counted", "repeat")
+            and o["game_id"] == r["game_id"] and o["market"] == r["market"]
+            for o in rows)]
+        second = [r["id"] for r in counted]
+    for candidates in (first, second):
+        if len(candidates) == difference:
+            return candidates
+    return sorted(set(first) | set(second))
+
+
+def _buckets(closed: list, window_from: str) -> dict:
+    """The closing line's own sorting of closed rows, worked out again: a
+    close measured at the time on a recommendation written since the window
+    opened is in N; one written before it is `before_window`; an old close
+    worked out again is `restated`; one with no account `unaccounted`; the
+    rest `unmeasured`. And the mean and the share that beat the close, over
+    N, as the builder rounds them."""
+    measured = [r for r in closed if r["accounted"] and not r["restated"]
+                and r["clv_cents"] is not None]
+    got = [r for r in measured if r["created_utc"] >= window_from]
+    restated = sum(1 for r in closed if r["accounted"] and r["restated"]
+                   and r["clv_cents"] is not None)
+    unaccounted = sum(1 for r in closed if not r["accounted"])
+    n = len(got)
+    return {
+        "n": n,
+        "before_window": len(measured) - n,
+        "restated": restated,
+        "unaccounted": unaccounted,
+        "unmeasured": len(closed) - len(measured) - restated - unaccounted,
+        "mean": round(sum(r["clv_cents"] for r in got) / n, 2) if n else None,
+        "beat": (round(sum(1 for r in got if r["clv_cents"] > 0) / n, 4)
+                 if n else None),
+    }
+
+
+def pair_counted_faults(conn, report: dict) -> list[str]:
+    """The closing line, recounted by questions 12 and 22's rule on the one
+    distinct-bet key, per forecaster and per market, against `report` -- its
+    counts, its buckets, its mean and share once they may be read, and the
+    words and labels that state them (the prover of question 22,
+    2026-09-28: a door counting a pair's later row keeps every count, and a
+    sentence stating another count than its figure passes a check of the
+    figure)."""
+    from . import calibration, language
+    from .market import recommend
+
+    sport = report["sport"]
+    window = report.get("window") or {}
+    window_open = bool(window.get("open"))
+    window_from = calibration.closing_line_window()["from_utc"]
+    raw = _closing_line_rows(conn, sport)
+    roles = _counted_once_roles(raw)
+    rows = [dict(r, role=roles.get(r["id"])) for r in raw]
+    faults: list[str] = []
+    # NO FIGURE FOR BOTH AT ONCE (question 22), under any name.
+    pooled = [key for key in report if key not in CLOSING_LINE_KEYS]
+    if pooled:
         faults.append(
-            f"{sport}: the closing line reports {got[key]} {what[key]} where "
-            f"each game and market counted once holds {expected[key]}. A "
-            f"pair's later row, or a row of a game and market recommended on "
-            f"both sides, that would make the difference: {named}.")
+            f"{sport}: the closing line carries {pooled} for both forecasters "
+            f"at once; every count of recommendations is one forecaster's, "
+            f"and a total over both is refused.")
+    # A ROW IN NO FORECASTER'S LINE, AND TWO SIDES OF ONE BET.
+    lost = [r["id"] for r in rows if r["role"]
+            and r["predictor"] not in recommend.FORECASTERS]
+    if lost:
+        faults.append(
+            f"{sport}: recommendation(s) {lost} stand on no forecaster's "
+            f"forecast that can be read, so no forecaster's line counts them.")
+    for ids in _two_sided_bets(raw):
+        faults.append(
+            f"{sport}: recommendations {ids} take both sides of one distinct "
+            f"bet (one forecaster's question at one rung). Item 5's rule "
+            f"cannot write this, and no ruling says how it is counted: it "
+            f"needs the operator's.")
+    for block in report.get("forecasters") or []:
+        if block.get("predictor") not in recommend.FORECASTERS:
+            faults.append(
+                f"{sport}: the closing line has a line for "
+                f"{block.get('predictor')!r}, which is not one forecaster.")
+    for entry in report.get("markets") or []:
+        if entry.get("predictor") not in recommend.FORECASTERS:
+            faults.append(
+                f"{sport}: the closing line for {entry.get('market')!r} names "
+                f"forecaster {entry.get('predictor')!r}, not one of "
+                f"{list(recommend.FORECASTERS)}: it counts both, or nobody's.")
+    for predictor in recommend.FORECASTERS:
+        whose = config.FORECASTER_LABELS.get(predictor, predictor)
+        mine = [r for r in rows if r["predictor"] == predictor]
+        counted = [r for r in mine if r["role"] == "counted"]
+        aside = [r for r in mine if r["role"] == "repeat"]
+        block = _forecaster_block(report, predictor)
+        if not block:
+            faults.append(f"{sport}: the closing line has no line for {whose}.")
+        held = block.get("set_aside") or {}
+        window_line = block.get("window_line") or {}
+        sorted_ = _buckets([r for r in counted if r["closed"]], window_from)
+        expected = {
+            "n": sum(1 for r in counted if r["closed"] and r["measured"]),
+            "closed": sum(1 for r in counted if r["closed"]),
+            "before_window": sorted_["before_window"],
+            "restated": sorted_["restated"],
+            "unaccounted": sorted_["unaccounted"],
+            "awaiting_close": sum(1 for r in counted if not r["closed"]),
+            "repeats": len(aside),
+            "set_aside_measured": sum(1 for r in aside
+                                      if r["closed"] and r["measured"]),
+            "set_aside_closed": sum(1 for r in aside if r["closed"]),
+            "set_aside_awaiting": sum(1 for r in aside if not r["closed"]),
+            "window_line": sorted_["n"],
+        }
+        got = {
+            "n": block.get("n", 0) + (block.get("before_window") or 0),
+            "closed": sum((block.get(k) or 0) for k in
+                          ("n", "unmeasured", "restated", "unaccounted",
+                           "before_window")),
+            "before_window": block.get("before_window") or 0,
+            "restated": block.get("restated") or 0,
+            "unaccounted": block.get("unaccounted") or 0,
+            "awaiting_close": block.get("awaiting_close", 0),
+            "repeats": block.get("repeats") or 0,
+            "set_aside_measured": held.get("measured") or 0,
+            "set_aside_closed": held.get("closed") or 0,
+            "set_aside_awaiting": held.get("awaiting_close") or 0,
+            "window_line": window_line.get("n", 0),
+        }
+        what = {
+            "n": "measured closes in its count or before its window",
+            "closed": "closed recommendations in its buckets",
+            "before_window": "measured closes from before its window",
+            "restated": "older closes worked out again",
+            "unaccounted": "closes with no account",
+            "awaiting_close": "recommendations awaiting a close",
+            "repeats": "repeats of an earlier recommendation named beside it",
+            "set_aside_measured": "measured closes set aside",
+            "set_aside_closed": "closed recommendations set aside",
+            "set_aside_awaiting": "open recommendations set aside",
+            "window_line": "recommendations in its window line (its own N)",
+        }
+        # ITS WORDS AND ITS LABELS, WHOSE AND HOW MANY, as the builder writes
+        # them and nothing else: a window line stating another count than
+        # the recount's, or a row naming no forecaster or the other one.
+        if block:
+            said = {
+                "its label": (block.get("label"),
+                              language.FORECASTER_FILTER_WORDS.get(predictor)),
+                "its window line's label": (
+                    window_line.get("label"),
+                    language.closing_line_label("Since the repair", predictor)),
+                "its window line": (
+                    window_line.get("words"),
+                    language.closing_line_window_line(
+                        window.get("from") or "", window.get("first_clean_read") or "",
+                        sorted_["n"], verdict_open=window_open,
+                        predictor=predictor) if window.get("from") else None),
+            }
+            for name, title in (("withdrawn_line", "Withdrawn"),
+                                ("regraded_line", "Would not have cleared")):
+                if block.get(name):
+                    said[f"its {title!r} label"] = (
+                        block[name].get("label"),
+                        language.closing_line_label(title, predictor))
+            for name, (have, want) in said.items():
+                if have != want:
+                    faults.append(
+                        f"{sport}: the {whose} closing line's {name[4:]} reads "
+                        f"{have!r} where the recount writes {want!r}.")
+        # AND THE RE-GRADE LINE BESIDE IT, a count too: the labelled rows
+        # the rule counts. Asked only of a block that carries the line.
+        if "regraded" in block:
+            expected["regraded"] = sum(1 for r in counted if r["regraded"])
+            got["regraded"] = block.get("regraded") or 0
+            what["regraded"] = "recommendations that would not have cleared"
+        for key in expected:
+            if got[key] == expected[key]:
+                continue
+            named = ", ".join(str(i) for i in _likely(
+                rows, predictor, key, got[key], expected[key])[:12]) or "none"
+            faults.append(
+                f"{sport}: the {whose} closing line reports {got[key]} "
+                f"{what[key]} where each of that forecaster's distinct bets "
+                f"counted once holds {expected[key]}. A repeat, or a row of "
+                f"another forecaster or distinct bet, that would make the "
+                f"difference: {named}.")
+    # EACH MARKET'S LINE, ONE FORECASTER'S: a market pooled, lost or
+    # miscounted inside a forecaster whose totals still add up is seen here.
+    entries: dict[tuple, dict] = {}
+    for entry in report.get("markets") or []:
+        key = (entry.get("market"), entry.get("predictor"))
+        if key in entries:
+            faults.append(f"{sport}: the closing line has two lines for "
+                          f"{key[0]!r}, {key[1]!r}.")
+        entries[key] = entry
+    held_keys = ({(r["market"], r["predictor"]) for r in rows
+                  if r["role"] == "counted" and r["closed"]}
+                 | {(r["market"], r["predictor"]) for r in rows
+                    if r["role"] == "repeat"})
+    for market, predictor in sorted(
+            held_keys | {k for k in entries if k[1] in recommend.FORECASTERS},
+            key=lambda k: (str(k[0]), str(k[1]))):
+        if predictor not in recommend.FORECASTERS:
+            continue
+        whose = config.FORECASTER_LABELS.get(predictor, predictor)
+        here = [r for r in rows if r["market"] == market]
+        counted = [r for r in here if r["predictor"] == predictor
+                   and r["role"] == "counted" and r["closed"]]
+        entry = entries.get((market, predictor))
+        if entry is None:
+            named = ", ".join(str(r["id"]) for r in counted[:12]) or "none"
+            faults.append(
+                f"{sport}: the closing line has no {market} line for {whose}, "
+                f"where the recount holds {len(counted)} closed recommendation(s) "
+                f"of that forecaster counted once: {named}.")
+            continue
+        sorted_ = _buckets(counted, window_from)
+        repeats = sum(1 for r in here if r["predictor"] == predictor
+                      and r["role"] == "repeat")
+        expected = {
+            "n": sum(1 for r in counted if r["measured"]),
+            "closed": len(counted),
+            "before_window": sorted_["before_window"],
+            "restated": sorted_["restated"],
+            "unaccounted": sorted_["unaccounted"],
+            "repeats": repeats,
+        }
+        got = {
+            "n": entry.get("n", 0) + (entry.get("before_window") or 0),
+            "closed": sum((entry.get(k) or 0) for k in
+                          ("n", "unmeasured", "restated", "unaccounted",
+                           "before_window")),
+            "before_window": entry.get("before_window") or 0,
+            "restated": entry.get("restated") or 0,
+            "unaccounted": entry.get("unaccounted") or 0,
+            "repeats": entry.get("repeats") or 0,
+        }
+        what = {"n": "measured closes in its count or before its window",
+                "closed": "closed recommendations in its buckets",
+                "before_window": "measured closes from before its window",
+                "restated": "older closes worked out again",
+                "unaccounted": "closes with no account",
+                "repeats": "repeats named beside it"}
+        # ITS FIGURES AND ITS WORDS, as the builder writes them from the
+        # rows the rule counts: the mean and the share only once the window
+        # is open (`calibration.closing_line_window`, whose own door says
+        # when), the finding only for a negative mean past the gate, the
+        # sentence and the label naming whose line it is.
+        floor = calibration.clv_minimum(market)
+        figures = bool(sorted_["n"]) and window_open
+        mean = sorted_["mean"] if figures else None
+        beat = sorted_["beat"] if figures else None
+        renderable = window_open and sorted_["n"] >= floor
+        said = {
+            "mean": (entry.get("mean_cents"), mean),
+            "share that beat the close": (entry.get("beat_the_close"), beat),
+            "renderable": (bool(entry.get("renderable")), renderable),
+            "finding": (entry.get("finding"),
+                        language.clv_finding_line(mean, sorted_["n"])
+                        if renderable and mean is not None and mean < 0
+                        else None),
+            "label": (entry.get("category_label"), language.closing_line_label(
+                language.market_words(sport, market), predictor)),
+            "words": (entry.get("words"), language.clv_line(
+                sorted_["n"], mean, beat, floor,
+                unmeasured=sorted_["unmeasured"], restated=sorted_["restated"],
+                unaccounted=sorted_["unaccounted"],
+                before_window=sorted_["before_window"], repeats=repeats,
+                since=window.get("from"),
+                first_read=(None if window_open
+                            else window.get("first_clean_read")))),
+        }
+        for name, (have, want) in said.items():
+            if have != want:
+                named = ", ".join(str(r["id"]) for r in counted[:12]) or "none"
+                faults.append(
+                    f"{sport}: the {market} line for {whose} gives its {name} "
+                    f"as {have!r} where the rows the rule counts give "
+                    f"{want!r} (counted: {named}).")
+        for key in expected:
+            if got[key] == expected[key]:
+                continue
+            named = ", ".join(str(i) for i in _likely(
+                here, predictor, key, got[key], expected[key])[:12]) or "none"
+            faults.append(
+                f"{sport}: the {market} line for {whose} reports {got[key]} "
+                f"{what[key]} where that forecaster's distinct bets counted "
+                f"once hold {expected[key]}. A row that would make the "
+                f"difference: {named}.")
     return faults
 
 
 def check_each_pair_counted_once(conn, report: dict | None = None,
                                  *, sport: str | None = None) -> None:
-    """Refuse a closing line that counts a same-side pair twice, or both
-    sides of one game and market at all.
+    """Refuse a closing line that counts a same-side pair of one distinct bet
+    twice, that pools two forecasters, or that sets aside another
+    forecaster's or another question's row as a repeat.
 
-    Runs inside `views.scorecard` on the payload the API is about to serve,
-    and in the gate against the record's copy for every sport.
+    Runs inside `calibration.scorecard` (from 2026-09-28; `views.scorecard`
+    until then) on the payload the API is about to serve, in one instant with
+    the line, and in the gate against the record's copy for every sport.
     """
     if report is None:
-        from . import calibration
+        # BUILT AND RECOUNTED IN ONE INSTANT (2026-09-28), as the Record
+        # page's are: a close written between the two is no fault.
+        from . import calibration, db
 
-        report = calibration.clv_report(conn, sport=sport)
-    faults = pair_counted_faults(conn, report)
+        with db.one_instant(conn):
+            report = calibration.clv_report(conn, sport=sport)
+            faults = pair_counted_faults(conn, report)
+    else:
+        faults = pair_counted_faults(conn, report)
     if faults:
         raise LawViolation(
-            "A PAIR IS COUNTED TWICE, OR BOTH SIDES AT ALL (operator question "
-            "12, ruled 2026-09-27): every measurement counts a same-side pair "
-            "once, as its earlier row, and a game and market recommended on "
-            "both sides not at all:" + _NL2 + _NL2.join(faults))
+            "A RECOMMENDATION COUNT IS POOLED, OR A PAIR COUNTED TWICE "
+            "(operator questions 12 and 22, ruled 2026-09-27 and 2026-09-28): "
+            "every count of recommendations is one forecaster's, and a "
+            "same-side pair of one distinct bet is counted once, as its "
+            "earlier row:" + _NL2 + _NL2.join(faults))
 
 
 # ---------------------------------------------------------------------------
@@ -8050,7 +8404,61 @@ def distinct_bet_key_faults(root: Path | None = None) -> list[str]:
                 faults.append(
                     f"calibration.standing_row_clause({same_set}): the question "
                     f"{a} is matched to {b} by is not `bet.same({a!r}, {b!r})`")
+    # AND THE PAIR A RECOMMENDATION COUNT SETS ASIDE (operator questions 12
+    # and 22, 2026-09-28): two recommendations are one pair only when their
+    # forecasts are one distinct bet. The recount beside the closing line
+    # (`pair_counted_faults`) can see a rule keyed wider than the one
+    # function only where the record holds a pair it would take -- two
+    # forecasters, or two rungs, on one side of one game -- and on
+    # 2026-09-28 it holds none of either; so the rule's own text is read.
+    from .market import recommend
+
+    other, own = recommend._OTHER_FORECAST, recommend._OWN_FORECAST
+    rule = recommend.pairs_with("r")
+    # THE KEY AS ITS FIRST TERM, AND NO "OR" BESIDE IT (the prover,
+    # 2026-09-28): `bet.same(...) OR <game and market>` carries the key's
+    # text and pairs across forecasters and rungs all the same.
+    if not rule.startswith(bet.same(other, own) + " AND ") \
+            or _or_outside_brackets(rule):
+        faults.append(
+            f"market.recommend.pairs_with: two recommendations are paired by "
+            f"something other than `bet.same({other!r}, {own!r})` and further "
+            f"conditions on it, the one distinct-bet key: {rule!r}")
+    # AND THE EARLIER ROW COUNTS (question 12: "the earlier row"; the prover,
+    # 2026-09-28): a rule keeping a pair's LATER row keeps every count, so
+    # before the first clean read no figure the recount can compare moves
+    # with it. Pinned here in its own words, as `RULED_DISTINCT_BET` pins the
+    # key: the pair's other row is written before the counted one, by its
+    # stamp and then its number.
+    o = recommend._OTHER
+    earlier = (f"AND ({o}.created_utc < r.created_utc OR ({o}.created_utc = "
+               f"r.created_utc AND {o}.id < r.id))")
+    if not " ".join(rule.split()).endswith(earlier):
+        faults.append(
+            f"market.recommend.pairs_with: the row a pair counts is not its "
+            f"earlier one (stamp, then number): {rule!r}")
     return faults
+
+
+def _or_outside_brackets(sql: str) -> bool:
+    """Does `sql` join two conditions by OR at its top level, outside every
+    bracket? Quoted text is not read."""
+    depth, quoted = 0, None
+    words = re.split(r"(\s+|\(|\)|'|\")", sql)
+    for word in words:
+        if quoted:
+            if word == quoted:
+                quoted = None
+            continue
+        if word in ("'", '"'):
+            quoted = word
+        elif word == "(":
+            depth += 1
+        elif word == ")":
+            depth -= 1
+        elif depth == 0 and word.upper() == "OR":
+            return True
+    return False
 
 
 def _inside_a_joined_string(tree: ast.AST, target) -> bool:

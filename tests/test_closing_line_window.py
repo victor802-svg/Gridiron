@@ -88,6 +88,20 @@ def _closes(conn, *, market: str, count: int, day: str, price: float,
     conn.commit()
 
 
+def _block(report: dict, who: str = "statistical") -> dict:
+    """One forecaster's block of the closing line (operator question 22,
+    2026-09-28: every count of recommendations is one forecaster's). Every
+    recommendation in these worlds is the statistical model's."""
+    return next(b for b in report["forecasters"] if b["predictor"] == who)
+
+
+def _with_block(report: dict, who: str = "statistical", **changes) -> dict:
+    """A copy of `report` with one forecaster's block changed."""
+    return dict(report, forecasters=[
+        dict(b, **changes) if b["predictor"] == who else b
+        for b in report["forecasters"]])
+
+
 @pytest.fixture
 def world(tmp_path):
     """Fifty closes at +3.0c on the spread and fifty at -4.0c on the total,
@@ -137,6 +151,9 @@ def test_the_closing_line_waits_for_its_first_clean_read(world):
     report = calibration.clv_report(world, sport="mlb", now=EVE)
     assert report["window"]["open"] is False
     assert report["window"]["first_clean_read"] == "2026-10-15"
+    # ONE FORECASTER'S LINES (operator question 22, 2026-09-28): the world is
+    # the statistical model's, and every line names it
+    assert {e["predictor"] for e in report["markets"]} == {"statistical"}
     by = {e["market"]: e for e in report["markets"]}
     for market in ("spread", "total"):
         entry = by[market]
@@ -158,7 +175,11 @@ def test_the_closing_line_waits_for_its_first_clean_read(world):
     assert by["spread"]["beat_the_close"] == 1.0
     assert "+3.0¢" in by["spread"]["words"]
     assert "BUYING RICH" in by["total"]["finding"]
-    assert "total" in coverage.stopped(world, "mlb", now=ON_THE_DAY)
+    # THE KILL READS EACH FORECASTER'S LINE (question 22): the statistical
+    # model's total is stopped, and the reasoning pass, with no line, is not
+    stopped = coverage.stopped(world, "mlb", now=ON_THE_DAY)
+    assert set(stopped) == {("total", "statistical")}
+    assert stopped[("total", "statistical")]["category_label"] == "total, statistical"
 
 
 def test_a_close_from_before_the_window_is_named_beside_and_never_counted(world):
@@ -166,7 +187,8 @@ def test_a_close_from_before_the_window_is_named_beside_and_never_counted(world)
         report = calibration.clv_report(world, sport="mlb", now=now)
         spread = next(e for e in report["markets"] if e["market"] == "spread")
         assert spread["n"] == 50 and spread["before_window"] == 10
-        assert report["n"] == 100 and report["before_window"] == 10
+        mine = _block(report)
+        assert mine["n"] == 100 and mine["before_window"] == 10
         assert ("10 more were written before Thursday 24 September, when the "
                 "count started again, and are not counted") in spread["words"]
     # on the day, the mean is the fifty's +3.0c, never the sixty's +3.9c
@@ -175,7 +197,7 @@ def test_a_close_from_before_the_window_is_named_beside_and_never_counted(world)
     # before the window, and agrees
     assert audit.withdrawn_counted_faults(world, report) == []
     # a report that dropped the ten altogether would be caught by it
-    dropped = dict(report, before_window=0)
+    dropped = _with_block(report, before_window=0)
     assert audit.withdrawn_counted_faults(world, dropped)
 
 
@@ -225,23 +247,35 @@ def test_the_window_opens_at_midnight_utc_and_counts_when_each_was_written(
 def test_the_record_page_says_when_the_closing_line_may_be_read(world):
     payload = calibration.scorecard(world, sport="mlb")
     line = payload["closing_line"]
-    since = line["window_line"]
-    assert since["label"] == "Since the repair" and since["n"] == line["n"]
-    assert "Thursday 24 September" in since["words"]
-    # read today (before 15 October) or after it, the sentence names the day
-    assert "Thursday 15 October" in since["words"]
-    # the kill criterion beside it read the same clock
-    stopped = {s["market"] for s in payload["coverage"]["stopped"]}
-    assert (("total" in stopped) == line["window"]["open"])
+    # EACH FORECASTER'S WINDOW LINE, WITH ITS OWN N (operator question 22,
+    # 2026-09-28), and no total over both
+    assert "n" not in line and "window_line" not in line
+    for block in line["forecasters"]:
+        since = block["window_line"]
+        assert since["n"] == block["n"]
+        assert "Thursday 24 September" in since["words"]
+        # read today (before 15 October) or after it, the sentence names the day
+        assert "Thursday 15 October" in since["words"]
+    mine, theirs = _block(line), _block(line, "llm")
+    assert mine["window_line"]["label"] == "Since the repair, statistical"
+    assert theirs["window_line"]["label"] == "Since the repair, reasoning pass"
+    assert "from the model priced" in mine["window_line"]["words"]
+    assert theirs["n"] == 0 and ("0 recommendations from the reasoning pass "
+                                 "priced") in theirs["window_line"]["words"]
+    # the kill criterion beside it read the same clock, and names whose
+    stopped = {(s["market"], s["predictor"]) for s in payload["coverage"]["stopped"]}
+    assert ((("total", "statistical") in stopped) == line["window"]["open"])
     audit.check_no_withdrawn_recommendation_counted(world, line)
 
 
 def test_a_sport_with_nothing_closed_still_says_the_date(tmp_path):
     conn = db.open_db(tmp_path / "empty.db")
     report = calibration.clv_report(conn, sport="ufc", now=EVE)
-    assert report["markets"] == [] and report["n"] == 0
-    assert report["window_line"]["n"] == 0
-    assert "Thursday 15 October" in report["window_line"]["words"]
+    assert report["markets"] == []
+    for block in report["forecasters"]:
+        assert block["n"] == 0 and block["window_line"]["n"] == 0
+        assert "Thursday 15 October" in block["window_line"]["words"]
+    assert [b["predictor"] for b in report["forecasters"]] == ["statistical", "llm"]
     conn.close()
 
 
@@ -255,13 +289,20 @@ def test_the_words_are_plain_and_tip_nothing():
             language.clv_line(54, 1.2, 0.6, 50, since="2026-09-24",
                               before_window=3),
             language.closing_line_window_line("2026-09-24", "2026-10-15", 13,
-                                              verdict_open=False),
+                                              verdict_open=False,
+                                              predictor="statistical"),
             language.closing_line_window_line("2026-09-24", "2026-10-15", 1,
-                                              verdict_open=True)):
+                                              verdict_open=True,
+                                              predictor="llm"),
+            language.closing_line_label("Since the repair", "llm")):
         assert audit.plain_words_violations(words) == [], words
         assert audit.advice_word_faults(words) == [], words
     # the gap in the sentence is the dates' own, never a second number
     assert "21 days after the repair" in language.closing_line_window_line(
-        "2026-09-24", "2026-10-15", 0, verdict_open=False)
-    assert "1 recommendation priced" in language.closing_line_window_line(
-        "2026-09-24", "2026-10-15", 1, verdict_open=True)
+        "2026-09-24", "2026-10-15", 0, verdict_open=False,
+        predictor="statistical")
+    # and the count is one forecaster's, said whose (question 22)
+    assert "1 recommendation from the reasoning pass priced" in (
+        language.closing_line_window_line("2026-09-24", "2026-10-15", 1,
+                                          verdict_open=True, predictor="llm"))
+    assert language.closing_line_label("total", "llm") == "total, reasoning pass"

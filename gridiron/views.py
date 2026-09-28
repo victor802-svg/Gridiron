@@ -3609,14 +3609,12 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     calibration.assert_every_figure_has_n(payload)
     # EVERY GATE ON THIS PAGE COUNTS, and none of them renders a share (P1).
     audit.check_progress_is_counted(payload)
-    # AND NO WITHDRAWN RECOMMENDATION IS IN THE CLOSING LINE (ruling 1,
-    # 2026-09-24), recounted here without the door the report used, so a
-    # counted withdrawal cannot reach the API.
-    audit.check_no_withdrawn_recommendation_counted(conn, payload["closing_line"])
-    # AND EACH GAME AND MARKET IS COUNTED ONCE (operator question 12, ruled
-    # 2026-09-27): a same-side pair as its earlier row, both sides of one
-    # game and market not at all -- recounted by the rule, without the door.
-    audit.check_each_pair_counted_once(conn, payload["closing_line"])
+    # THE CLOSING LINE'S TWO RECOUNTS -- no withdrawn recommendation counted
+    # (ruling 1, 2026-09-24), each forecaster's distinct bet once (operator
+    # questions 12 and 22) -- ran here until 2026-09-28, after the whole page
+    # had been read; they run inside `calibration.scorecard` now, in one
+    # instant of the database with the line and the kill read of it, so a
+    # close written meanwhile cannot make an honest page refuse itself.
     calibration.assert_single_sport(payload, sport)
     return payload
 

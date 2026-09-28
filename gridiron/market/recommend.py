@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .. import config, correction
+from .. import bet, config, correction
 from ..db import just_after, transaction, utcnow
 from ..priced import coverage
 from . import paper
@@ -436,9 +436,12 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         # COVERAGE FIRST (THE_PRICED P2/P5, 2026-09-07). A market the engine is
         # not allowed to price gets a forecast and no opinion, and the reason
         # travels with it: not measured, too busy, too wide, or stopped by its
-        # own closing line.
+        # own closing line -- THIS FORECASTER'S closing line (operator
+        # question 22, 2026-09-28: the kill criterion reads each forecaster's
+        # line), so one forecaster's rich buying stops its own picks alone.
         allowed = coverage.priceable(conn, row["sport"],
-                                     row["prop_type"] or row["market_type"])
+                                     row["prop_type"] or row["market_type"],
+                                     predictor=row["predictor"])
         chosen = (side_for(model_prob, price) if allowed["priceable"]
                   else {"side": None, "edge_cents": None, "why": allowed["why"]})
         # THE SECOND CONDITION (F2b, 2026-09-07). Applied AFTER the side is
@@ -605,9 +608,13 @@ def measured_edge(conn: sqlite3.Connection, *, sport: str, market_type: str,
 # fix stand as written: the ruling names none of them. Whether the page
 # follows the record is question 11 (ruled 2026-09-27: the default stands,
 # the rule binds the record). HOW THEY ARE COUNTED is question 12, ruled
-# 2026-09-27 and built below (`counted_once`): every measurement counts a
-# same-side pair once, as its earlier row, and 45/46 not at all -- the rows
-# themselves stay as written, and this door still reads them as they stand.
+# 2026-09-27, and question 22, ruled 2026-09-28 (built below,
+# `counted_once`): every measurement is one forecaster's and counts a
+# same-side pair of one distinct bet once, as its earlier row; 45/46 are two
+# forecasters' and each counts once in its own line (question 22 reversed
+# question 12's "count zero" for them). The rows themselves stay as written,
+# and this door still reads them as they stand -- a WRITE rule, keyed by game
+# and market across forecasters, which question 22 did not touch.
 
 #: THE RULING'S WORDS, which the schema's refusal carries too: `record_for`
 #: knows that refusal by them, never by "UNIQUE", which would file it under
@@ -881,15 +888,26 @@ def _has_withdrawals(conn: sqlite3.Connection) -> bool:
         "   AND name = 'recommendation_voids'").fetchone() is not None
 
 
-def withdrawn(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
-    """The recommendations the door leaves out, each with its reason.
+def withdrawn(conn: sqlite3.Connection, *, sport: str,
+              predictor: str) -> list[dict]:
+    """One forecaster's recommendations the door leaves out, each with its
+    reason.
 
     THE OTHER SIDE OF THE DOOR, and the only reader allowed round it: it lists
     what `not_withdrawn` excludes so the page can say so, in words, rather
     than letting a withdrawn recommendation vanish. Never deleted, never
     counted, always shown as withdrawn.
+
+    ONE FORECASTER'S (operator question 22, ruled 2026-09-28: "Recommendation
+    counts split per forecaster, like every other count"). The line beside
+    the closing line says how many were withdrawn, which is a count of
+    recommendations; it is said in each forecaster's line, and the
+    forecaster is required and refused by name unless it is one of the two
+    (`refuse_a_pooled_count`). A recommendation is its forecast's
+    forecaster's, read through the forecast it was made from.
     """
     config.require_sport(sport, "recommend.withdrawn")
+    refuse_a_pooled_count(predictor, "recommend.withdrawn")
     own = (" LEFT JOIN recommendation_voids wr ON wr.recommendation_id = r.id"
            if _has_withdrawals(conn) else "")
     reason = "wr.reason" if own else "NULL"
@@ -897,133 +915,202 @@ def withdrawn(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
         f"SELECT r.id, r.market, r.prediction_id,"
         f"       COALESCE({reason}, wp.reason) AS reason"
         f"  FROM recommendations r{own}"
+        f"  JOIN predictions wf ON wf.id = r.prediction_id"
         f"  LEFT JOIN prediction_voids wp ON wp.prediction_id = r.prediction_id"
-        f" WHERE r.sport = ?"
+        f" WHERE r.sport = ? AND wf.predictor = ?"
         f"   AND ({reason} IS NOT NULL OR wp.prediction_id IS NOT NULL)"
-        f" ORDER BY r.id", (sport,)).fetchall()
-    return [{"id": r["id"], "market": r["market"],
+        f" ORDER BY r.id", (sport, predictor)).fetchall()
+    return [{"id": r["id"], "market": r["market"], "predictor": predictor,
              "prediction_id": r["prediction_id"], "reason": r["reason"]}
             for r in rows]
 
 
 # ---------------------------------------------------------------------------
-# A PAIR COUNTED ONCE, AND BOTH SIDES NOT AT ALL (operator question 12, ruled
-# 2026-09-27, built the same day)
+# A PAIR COUNTED ONCE, WITHIN ONE FORECASTER'S DISTINCT BET (operator
+# question 12, ruled 2026-09-27; question 22, ruled 2026-09-28, on question
+# 17's key; built 2026-09-28)
 # ---------------------------------------------------------------------------
 #
-# "Q12: the record shows rows as written. Every measurement counts a
-# same-side pair once (the earlier row). Recs 45/46, opposite sides of one
-# total, count zero in every measurement and are labelled 'both sides, no
-# position'." (docs/briefs/2026-09-27-close-out-rulings.md)
+# QUESTION 12, 2026-09-27: "the record shows rows as written. Every
+# measurement counts a same-side pair once (the earlier row). Recs 45/46,
+# opposite sides of one total, count zero in every measurement and are
+# labelled 'both sides, no position'." (docs/briefs/2026-09-27-close-out-
+# rulings.md)
 #
-# THE PAIRS. Until item 5's rule (2026-09-26) a morning and a final pass
-# could each write a recommendation on one game and market, and two
-# forecasters in one pass could write both sides of it. Measured read-only
-# on 2026-09-26 and again on 2026-09-27: eighteen game-markets hold two
-# standing recommendations each, 36 rows -- seventeen pairs on one side, and
-# 45/46, the over and the under of one total. Item 5's rule stops any new
-# one, so this is about the rows written before it, and they are found here
-# BY RULE, never by a list of ids.
+# QUESTION 22, 2026-09-28, which REVERSES IT FOR 45/46: "(A). Recommendation
+# counts split per forecaster, like every other count. This reverses Q12 for
+# 45/46: each counts once in its own forecaster's line, and the 'Both sides,
+# no position' row goes. Same-side pairs count once only within one
+# forecaster." With question 17's one function (`gridiron.bet`: the
+# forecaster, the game, the market and prop type, the subject and the rung
+# asked) defining what "a pair" is.
 #
-# A MEASUREMENT RULE, NOT AN EDIT (LAW 3; the ruling's first sentence). No
-# row is changed, deleted, hidden from the record or labelled in it; the
-# closer still closes every standing row, the write rule above still reads
-# the pairs as they stand, and the re-grade tool still selects from the rows
-# as written. What changes is what a COUNT holds: `counted_once` is the one
-# clause every measurement of recommendations reads through -- the closing
-# line and all it feeds (its N, mean and share, the counts beside it, the
-# window line, the kill criterion), the re-grade line beside it, and the
-# empty-bar count -- and `not_counted_once` lists what it leaves out, so the
-# page names it rather than letting it vanish. The label is derived here on
-# every read, never stored: the record shows rows as written.
+# THE PAIRS, as they stand. Until item 5's rule (2026-09-26) a morning and a
+# final pass could each write a recommendation on one game and market, and
+# two forecasters in one pass could write both sides of it. Eighteen game-
+# markets hold two standing recommendations each, 36 rows. Measured on a copy
+# of the record on 2026-09-28: each of the seventeen same-side pairs is ONE
+# forecaster's morning and final pass on ONE question at ONE rung -- one
+# distinct bet, so still a pair, counted once as its morning row -- and
+# 45/46 are TWO forecasters' (the statistical model's over, the reasoning
+# pass's under), so two distinct bets, each counted once in its own
+# forecaster's line. No distinct bet on the record holds two sides.
 #
-# PAIRED AFTER THE WITHDRAWALS. A withdrawn row never counts (ruling 1), so
-# it is never a member of a pair: NFL spreads 73, 75, 76 and 78, each written
-# after a withdrawn one on its game and market, are counted, alone.
+# THE RULE (`counted_once`), over the standing rows: a recommendation is
+# paired with another only when their forecasts are ONE DISTINCT BET
+# (`bet.same`) and they are on ONE SIDE; of such a group the first (its
+# stamp, then its number, as `standing_recommendations` orders them) counts
+# and each later one is a REPEAT of it. Two forecasters on one question are
+# two bets and never a pair; two rungs of one game are two questions and
+# never a pair ("alt lines are separate questions").
 #
-# THE RULE, over the standing rows of one game and market ("market" as item 5
-# reads it, the table's own `market`): if they take BOTH SIDES none of them
-# is counted -- the ruling's "count zero", which is item 5's "never both
-# sides" -- and each is labelled "both sides, no position"; otherwise the
-# first (its stamp, then its number, as `standing_recommendations` orders
-# them: 45 and 46 share a second) is counted, and each later one is a REPEAT
-# of it, counted once, as it. Every standing row is exactly one of the three.
+# TWO SIDES OF ONE DISTINCT BET cannot be written: item 5's rule refuses a
+# second standing recommendation on the game and market, across forecasters,
+# which is the wider key. None is on the record. The rule pairs a side only
+# with itself, so such rows would each count, and `audit.pair_counted_faults`
+# refuses the closing line by name if the record ever holds one -- how it is
+# counted would be the operator's to rule, and there is no "both sides" role
+# any more.
+#
+# EVERY MEASUREMENT IS ONE FORECASTER'S (question 22). `counted_once` takes
+# the forecaster as a required argument, refused by name unless it is one of
+# the two (`refuse_a_pooled_count`), so a count of recommendations cannot be
+# made across both by leaving an argument out: the closing line and all it
+# feeds (its N, mean and share, the counts beside it, the window line, the
+# kill criterion), the re-grade line and the empty-bar count are each one
+# forecaster's. A recommendation is its forecast's forecaster's.
+#
+# A MEASUREMENT RULE, NOT AN EDIT (LAW 3). No row is changed, deleted, hidden
+# from the record or labelled in it; the closer still closes every standing
+# row, the write rule above still reads the pairs as they stand, and the
+# re-grade tool still selects from the rows as written. `not_counted_once`
+# lists what the door leaves out, so the page names it rather than letting it
+# vanish. PAIRED AFTER THE WITHDRAWALS: a withdrawn row never counts (ruling
+# 1), so it is never a member of a pair -- NFL spreads 73, 75, 76 and 78,
+# each written after a withdrawn one, are counted, alone.
 
-#: The ruling's label for a game and market recommended on both sides.
-BOTH_SIDES_LABEL = "Both sides, no position"
+#: THE TWO FORECASTERS a recommendation can belong to -- `predictions`'
+#: own CHECK, through the forecast it was made from.
+FORECASTERS = tuple(config.FORECASTER_LABELS)
 
-#: Why `not_counted_once` leaves a standing row out of every measurement.
+#: Why `not_counted_once` leaves a standing row out of every measurement:
+#: the one reason there is (question 22 took "both sides" away).
 REPEAT = "repeat"
-BOTH_SIDES = "both_sides"
 
-#: The alias the rule reads the other rows of a game and market under.
+#: The aliases the rule reads the other recommendation, its forecast and the
+#: counted row's forecast under -- and the one the door reads whose it is.
 _OTHER = "q12_other"
+_OTHER_FORECAST = "q12_other_forecast"
+_OWN_FORECAST = "q12_own_forecast"
+_WHOSE = "q22_whose"
+_RESERVED = (_OTHER, _OTHER_FORECAST, _OWN_FORECAST, _WHOSE)
 
 
-def _another_standing_row(conn: sqlite3.Connection, alias: str,
-                          which: str) -> str:
-    """`EXISTS (...)`: another standing recommendation on the game and market
-    of `alias` that is `which` -- "earlier" (its stamp, then its number) or on
-    the "other_side". The rule itself; `counted_once` and `not_counted_once`
-    are both made of it, so the count and the label cannot disagree."""
-    if not alias.isidentifier() or alias == _OTHER:
+class PooledCount(ValueError):
+    """A count of recommendations asked for without saying whose."""
+
+
+def refuse_a_pooled_count(predictor, where: str) -> None:
+    """ONE FORECASTER (operator question 22, 2026-09-28; LAW 4). Asked in the
+    door, so a count across both cannot be written by leaving an argument
+    out: the argument is required, and an answer that is not one forecaster
+    is refused by name."""
+    if predictor not in FORECASTERS:
+        raise PooledCount(
+            f"LAW 4: a count of recommendations ({where}) was asked "
+            f"for forecaster {predictor!r}. The statistical model and the "
+            f"reasoning pass are two forecasters, and every count of "
+            f"recommendations is one of theirs (operator question 22, "
+            f"2026-09-28): name one of {list(FORECASTERS)}.")
+
+
+def _alias(alias: str) -> str:
+    if not alias.isidentifier() or alias in _RESERVED:
         raise ValueError(f"{alias!r} is not a table alias")
-    how = {
-        "earlier": (f"({_OTHER}.created_utc < {alias}.created_utc"
-                    f" OR ({_OTHER}.created_utc = {alias}.created_utc"
-                    f"     AND {_OTHER}.id < {alias}.id))"),
-        "other_side": f"{_OTHER}.side <> {alias}.side",
-    }[which]
+    return alias
+
+
+def pairs_with(alias: str) -> str:
+    """The rule's own condition: `_OTHER` is on the same distinct bet as
+    `alias` (their forecasts, `bet.same`), on the same side, written before
+    it (its stamp, then its number). Pure SQL over the aliases, so the
+    source scan (`audit.distinct_bet_key_faults`) can read that the pair is
+    keyed by the one function."""
+    alias = _alias(alias)
+    return (f"{bet.same(_OTHER_FORECAST, _OWN_FORECAST)}"
+            f" AND {_OTHER}.side = {alias}.side"
+            f" AND {_OTHER}.id <> {alias}.id"
+            f" AND ({_OTHER}.created_utc < {alias}.created_utc"
+            f"      OR ({_OTHER}.created_utc = {alias}.created_utc"
+            f"          AND {_OTHER}.id < {alias}.id))")
+
+
+def _an_earlier_row_of_the_same_bet(conn: sqlite3.Connection,
+                                    alias: str) -> str:
+    """`EXISTS (...)`: another standing recommendation, on the same distinct
+    bet and side as `alias`, written before it. The rule itself;
+    `counted_once` and `not_counted_once` are both made of it, so the count
+    and the list of what it leaves out cannot disagree."""
+    alias = _alias(alias)
     return (f"EXISTS (SELECT 1 FROM recommendations {_OTHER}"
-            f"         WHERE {_OTHER}.game_id = {alias}.game_id"
-            f"           AND {_OTHER}.market = {alias}.market"
-            f"           AND {_OTHER}.id <> {alias}.id AND {how}"
+            f"          JOIN predictions {_OTHER_FORECAST}"
+            f"            ON {_OTHER_FORECAST}.id = {_OTHER}.prediction_id"
+            f"          JOIN predictions {_OWN_FORECAST}"
+            f"            ON {_OWN_FORECAST}.id = {alias}.prediction_id"
+            f"         WHERE {pairs_with(alias)}"
             + not_withdrawn(conn, _OTHER) + ")")
 
 
-def counted_once(conn: sqlite3.Connection, alias: str = "r") -> str:
-    """` AND ...`: the recommendation `alias` stands AND is the one a
-    measurement counts for its game and market.
+def counted_once(conn: sqlite3.Connection, alias: str = "r", *,
+                 predictor: str) -> str:
+    """` AND ...`: the recommendation `alias` is `predictor`'s, stands, and
+    is the one a measurement counts for its distinct bet and side.
 
-    THE DOOR FOR EVERY MEASUREMENT (operator question 12, 2026-09-27). It is
-    `not_withdrawn` and the rule: no other standing recommendation on the
-    same game and market was written before it, and none takes the other
-    side. So a same-side pair counts once, as its earlier row, and a game and
-    market recommended on both sides counts zero. A reader that keeps the
+    THE DOOR FOR EVERY MEASUREMENT (operator question 12, 2026-09-27; 22,
+    2026-09-28). It is `not_withdrawn`, the forecaster -- required, one of
+    the two, read through the forecast the recommendation was made from --
+    and the rule: no other standing recommendation on the same distinct bet
+    and side was written before it. So a same-side pair of one forecaster's
+    question counts once, as its earlier row, and two forecasters' rows are
+    two bets, each in its own forecaster's count. A reader that keeps the
     record rather than measuring it -- the closer, the write rule, the
     re-grade tool's selection -- asks `not_withdrawn` alone, and is named in
     `audit.RECORD_READERS` with its reason.
     """
+    alias = _alias(alias)
+    refuse_a_pooled_count(predictor, "recommend.counted_once")
+    # THE FORECASTER, CHECKED AGAINST THE TWO BEFORE IT IS WRITTEN INTO THE
+    # SQL, so the literal can only ever be one of them.
     return (not_withdrawn(conn, alias)
-            + " AND NOT " + _another_standing_row(conn, alias, "earlier")
-            + " AND NOT " + _another_standing_row(conn, alias, "other_side"))
+            + f" AND EXISTS (SELECT 1 FROM predictions {_WHOSE}"
+              f"              WHERE {_WHOSE}.id = {alias}.prediction_id"
+              f"                AND {_WHOSE}.predictor = '{predictor}')"
+            + " AND NOT " + _an_earlier_row_of_the_same_bet(conn, alias))
 
 
-def not_counted_once(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
-    """The standing recommendations `counted_once` leaves out, each with why.
+def not_counted_once(conn: sqlite3.Connection, *, sport: str,
+                     predictor: str) -> list[dict]:
+    """One forecaster's standing recommendations `counted_once` leaves out.
 
     THE OTHER SIDE OF THE DOOR, as `withdrawn` is of `not_withdrawn`: listed
-    so the page can say what the counts leave out, in words. `why` is
-    `REPEAT` -- a later row of a game and market whose standing rows are all
-    on one side, counted once as the first -- or `BOTH_SIDES`, a row of a
-    game and market whose standing rows take both sides, none of which is
-    counted. First first, by stamp then number. Never a withdrawn row.
+    so the page can say what the counts leave out, in words. Each is a
+    REPEAT -- a later row of one distinct bet and side, counted once as the
+    first. First first, by stamp then number. Never a withdrawn row.
     """
     config.require_sport(sport, "recommend.not_counted_once")
-    other_side = _another_standing_row(conn, "r", "other_side")
+    refuse_a_pooled_count(predictor, "recommend.not_counted_once")
     rows = conn.execute(
         "SELECT r.id, r.game_id, r.market, r.side, r.created_utc,"
-        "       r.closed_utc IS NOT NULL AS closed,"
-        f"      {other_side} AS both_sides"
+        "       r.closed_utc IS NOT NULL AS closed"
         "  FROM recommendations r"
-        " WHERE r.sport = ?" + not_withdrawn(conn) +
-        "   AND (" + _another_standing_row(conn, "r", "earlier")
-        + " OR " + other_side + ")"
-        " ORDER BY r.created_utc, r.id", (sport,)).fetchall()
+        f" JOIN predictions {_WHOSE} ON {_WHOSE}.id = r.prediction_id"
+        f" WHERE r.sport = ? AND {_WHOSE}.predictor = ?" + not_withdrawn(conn)
+        + " AND " + _an_earlier_row_of_the_same_bet(conn, "r")
+        + " ORDER BY r.created_utc, r.id", (sport, predictor)).fetchall()
     return [{"id": r["id"], "game_id": r["game_id"], "market": r["market"],
              "side": r["side"], "created_utc": r["created_utc"],
-             "closed": bool(r["closed"]),
-             "why": BOTH_SIDES if r["both_sides"] else REPEAT}
+             "closed": bool(r["closed"]), "predictor": predictor,
+             "why": REPEAT}
             for r in rows]
 
 
@@ -1171,8 +1258,10 @@ def write_regrades(conn: sqlite3.Connection, ids: list[int], *,
     return counts
 
 
-def regraded(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
-    """This sport's standing recommendations that carry a re-grade.
+def regraded(conn: sqlite3.Connection, *, sport: str,
+             predictor: str) -> list[dict]:
+    """One forecaster's standing recommendations in this sport that carry a
+    re-grade.
 
     WHAT THE PAGE SAYS BESIDE THE CLOSING LINE: named, with the return on
     the side's own cost, and counted where they always were -- a label, not
@@ -1181,12 +1270,17 @@ def regraded(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
 
     A COUNT, SO COUNTED ONCE (operator question 12, 2026-09-27): through
     `counted_once`, the door of every measurement. Recs 10 and 26 carry a
-    label and are each the later row of a same-side pair (3/10, 21/26); the
-    pair is counted as its earlier row, so the line counts rec 3 and not rec
-    10, and neither rec 21 (which cleared) nor rec 26. Their labels stay on
-    the record as written.
+    label and are each the later row of a same-side pair (3/10, 21/26), each
+    pair one forecaster's question at one rung; the pair is counted as its
+    earlier row, so the line counts rec 3 and not rec 10, and neither rec 21
+    (which cleared) nor rec 26. Their labels stay on the record as written.
+
+    AND ONE FORECASTER'S (operator question 22, 2026-09-28): the door takes
+    the forecaster, so "Would not have cleared" is said in each forecaster's
+    line. All four labelled rows are the statistical model's.
     """
     config.require_sport(sport, "recommend.regraded")
+    refuse_a_pooled_count(predictor, "recommend.regraded")
     if not _has_regrades(conn):
         return []
     rows = conn.execute(
@@ -1194,9 +1288,10 @@ def regraded(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
         "       g.return_on_yes_price, g.minimum_return, g.reason"
         "  FROM recommendation_regrades g"
         "  JOIN recommendations r ON r.id = g.recommendation_id"
-        " WHERE r.sport = ?" + counted_once(conn) +
+        " WHERE r.sport = ?" + counted_once(conn, predictor=predictor) +
         " ORDER BY r.id", (sport,)).fetchall()
-    return [{"id": r["id"], "market": r["market"], "side_cost": r["side_cost"],
+    return [{"id": r["id"], "market": r["market"], "predictor": predictor,
+             "side_cost": r["side_cost"],
              "return_on_cost": r["return_on_cost"],
              "return_on_yes_price": r["return_on_yes_price"],
              "minimum_return": r["minimum_return"], "reason": r["reason"]}

@@ -39,34 +39,54 @@ from gridiron.market import recommend  # noqa: E402
 
 
 def spans(conn, sport: str) -> dict:
-    """Countable days and empty days, split at `config.PRICEABLE_FIRST_FROM`."""
+    """Countable days and empty days, split at `config.PRICEABLE_FIRST_FROM`,
+    for each forecaster on its own.
+
+    ONE FORECASTER'S DAYS (operator question 22, ruled 2026-09-28:
+    "Recommendation counts split per forecaster, like every other count").
+    Until this date a day counted when either forecaster's claim was written
+    and cleared when either forecaster's recommendation was: the reasoning
+    pass's pick could clear a day the statistical model's bar was tested on
+    and cleared nothing. Now a day counts for a forecaster when one of ITS
+    forecasts had a claim written that day (a claim is its forecast's
+    forecaster's), and clears when one of ITS recommendations counted once
+    was written that day. `forecasters` holds one block per forecaster; there
+    is no total.
+    """
     split = config.PRICEABLE_FIRST_FROM
-    claim_days = {
-        r[0] for r in conn.execute(
-            "SELECT DISTINCT substr(created_utc, 1, 10) FROM at_the_line_claims"
-            " WHERE sport = ?", (sport,))
-    }
-    # THROUGH THE DOOR (ruling 1, 2026-09-24). A day whose only
-    # recommendations were withdrawn is a day nothing that stands cleared the
-    # bar; counting it as cleared would count a withdrawn recommendation.
-    # COUNTED ONCE (operator question 12, 2026-09-27): a measurement, so a
-    # same-side pair clears the day its earlier row was written and no other,
-    # and a game and market recommended on both sides clears no day.
-    rec_days = {
-        r[0] for r in conn.execute(
-            "SELECT DISTINCT substr(r.created_utc, 1, 10) FROM recommendations r"
-            " WHERE r.sport = ?" + recommend.counted_once(conn), (sport,))
-    }
-    out = {"sport": sport, "split_on": split, "spans": []}
-    for name, days in (("before " + split, {d for d in claim_days if d < split}),
-                       ("from " + split, {d for d in claim_days if d >= split})):
-        empty = sorted(d for d in days if d not in rec_days)
-        out["spans"].append({
-            "span": name,
-            "days_the_bar_could_be_tested": len(days),
-            "days_nothing_cleared": len(empty),
-            "empty_days": empty,
-        })
+    out = {"sport": sport, "split_on": split, "forecasters": []}
+    for predictor in recommend.FORECASTERS:
+        claim_days = {
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT substr(c.created_utc, 1, 10)"
+                "  FROM at_the_line_claims c"
+                "  JOIN predictions p ON p.id = c.prediction_id"
+                " WHERE c.sport = ? AND p.predictor = ?", (sport, predictor))
+        }
+        # THROUGH THE DOOR (ruling 1, 2026-09-24). A day whose only
+        # recommendations were withdrawn is a day nothing that stands cleared
+        # the bar; counting it as cleared would count a withdrawn
+        # recommendation. COUNTED ONCE (operator questions 12 and 22): a
+        # measurement, so a same-side pair of one distinct bet clears the day
+        # its earlier row was written and no other, and only this
+        # forecaster's recommendations clear its days.
+        rec_days = {
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT substr(r.created_utc, 1, 10)"
+                "  FROM recommendations r WHERE r.sport = ?"
+                + recommend.counted_once(conn, predictor=predictor), (sport,))
+        }
+        block = {"predictor": predictor, "spans": []}
+        for name, days in (("before " + split, {d for d in claim_days if d < split}),
+                           ("from " + split, {d for d in claim_days if d >= split})):
+            empty = sorted(d for d in days if d not in rec_days)
+            block["spans"].append({
+                "span": name,
+                "days_the_bar_could_be_tested": len(days),
+                "days_nothing_cleared": len(empty),
+                "empty_days": empty,
+            })
+        out["forecasters"].append(block)
     return out
 
 
@@ -79,19 +99,26 @@ def main() -> int:
     print()
     for sport in config.SPORTS:
         report = spans(conn, sport)
-        rows = [s for s in report["spans"] if s["days_the_bar_could_be_tested"]]
+        rows = [s for block in report["forecasters"] for s in block["spans"]
+                if s["days_the_bar_could_be_tested"]]
         if not rows:
             print(f"{sport:6} no day yet on which the bar could be tested")
             continue
         print(f"{sport}:")
-        for s in report["spans"]:
-            n = s["days_the_bar_could_be_tested"]
-            if not n:
-                print(f"  {s['span']:22} no day the bar could be tested")
-                continue
-            print(f"  {s['span']:22} {s['days_nothing_cleared']} of {n} days "
-                  f"cleared nothing"
-                  + (f"  ({', '.join(s['empty_days'])})" if s["empty_days"] else ""))
+        # ONE FORECASTER AT A TIME (operator question 22, 2026-09-28).
+        for block in report["forecasters"]:
+            who = config.FORECASTER_LABELS.get(block["predictor"],
+                                               block["predictor"])
+            print(f"  {who}:")
+            for s in block["spans"]:
+                n = s["days_the_bar_could_be_tested"]
+                if not n:
+                    print(f"    {s['span']:22} no day the bar could be tested")
+                    continue
+                print(f"    {s['span']:22} {s['days_nothing_cleared']} of {n} "
+                      f"days cleared nothing"
+                      + (f"  ({', '.join(s['empty_days'])})"
+                         if s["empty_days"] else ""))
         print()
     conn.close()
     return 0

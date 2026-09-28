@@ -7604,3 +7604,212 @@ world, since its forecasts are written today). Read at 1100px and 390px:
   defect -- and the at-the-line record's own rule (`standing_claims` and
   `recount.standing_claims_of`) is read by the ruling's "the at-the-line
   claims through it" too.
+
+## The recommendation counts, per forecaster, on the one key -- built 2026-09-28 *(operator question 17, step 2 of 2; with question 22; docs/briefs/2026-09-27-rulings-third-set.md and 2026-09-28-rulings.md)*
+
+"Q22: (A). Recommendation counts split per forecaster, like every other
+count. This reverses Q12 for 45/46: each counts once in its own
+forecaster's line, and the 'Both sides, no position' row goes. Same-side
+pairs count once only within one forecaster. List every released number
+that moves." On question 17's one function (`gridiron.bet`, step 1). **A
+MEASUREMENT RULE, NOT AN EDIT**: no row, table, column or schema object
+changes; nothing is written. Item 5's write rule (one recommendation per
+game and market, across forecasters) is untouched.
+
+### MEASURED FIRST *(2026-09-28, 22:34Z; one copy of the record made through `db.back_up_the_live_record` into `scratchpad/q17/step2/`, read through `db.read_only`; deleted at the end of the step)*
+
+- **111 recommendations, 107 standing** (62, 63, 64 and 66 withdrawn), by
+  forecaster: MLB spread 69 and total 2 the statistical model's, total 14
+  the reasoning pass's; NFL spread 16 the model's, total 1 the reasoning
+  pass's (65); NCAAF spread 9 the model's. Every row's `market` is its
+  forecast's prop type or market type.
+- **The eighteen game-markets holding two standing rows**: each of the
+  seventeen same-side pairs is ONE forecaster's morning and final pass on
+  ONE question at ONE rung (14 the model's, 3 the reasoning pass's: 4/12,
+  23/28, 43/49) -- one distinct bet, still a pair. 45/46 are two
+  forecasters' (45 the model's over 7.5, 46 the reasoning pass's under):
+  two distinct bets. **No distinct bet on the record holds two sides**, so
+  nothing stops for a ruling.
+
+### BUILT
+
+- **The door takes the forecaster.** `recommend.counted_once(conn, alias,
+  *, predictor)` -- required, refused by name unless one of the two
+  (`recommend.PooledCount`, `refuse_a_pooled_count`), read through the
+  forecast the recommendation was made from -- so a count across both
+  cannot be written by leaving an argument out. Its rule
+  (`_an_earlier_row_of_the_same_bet`, `pairs_with`) pairs a standing row
+  with another only on one distinct bet (`bet.same` over the two
+  forecasts) and one side; the earlier (stamp, then number) counts.
+  `not_counted_once`, `regraded` and `withdrawn` take the forecaster too.
+  `BOTH_SIDES`, `BOTH_SIDES_LABEL`, the "other_side" rule,
+  `calibration._both_sides_groups` and `language.both_sides_recommendations_line`
+  are gone.
+- **The closing line** (`calibration.clv_report`, `_closing_line_of`): one
+  block per forecaster (`forecasters`: its window line, N, buckets,
+  awaiting, withdrawn and re-grade lines, repeats, set-aside tallies) and
+  one line per market and forecaster (`markets`, labelled
+  `language.closing_line_label`: "total, reasoning pass"); no total over
+  both. The window line says whose ("12 recommendations from the model");
+  a repeat says "this forecaster's earlier recommendation on the same
+  question and side". The renderer draws each forecaster's window line,
+  market lines, withdrawn and re-grade lines, requires each block's N, and
+  no both-sides row.
+- **The kill criterion** (`priced.coverage.stopped`) is keyed by market and
+  forecaster, each stop labelled; `priceable(..., predictor=...)` is
+  required, and `recommend.for_predictions` passes the pick's own.
+- **`tools/empty_bar.py`**: one forecaster's days (a day counts when one of
+  its forecasts had a claim written that day, and clears when one of its
+  recommendations counted once was).
+
+### EVERY RELEASED NUMBER THAT MOVES *(the released code -- f0a4418, and c57354c, the same for these counts -- against this tree, on the one copy; `before.json` / `after.json`; 281 and 465 figures)*
+
+| Sport | Figure | Released | This tree |
+|---|---|---|---|
+| MLB | window line | "16 recommendations priced against a close since" | statistical "15 recommendations from the model"; reasoning pass "1 recommendation from the reasoning pass" |
+| MLB | point spread line | 15 of 50 · 23 with no later read · 17 restated · 14 repeats | "point spread, statistical": the same numbers (every spread is the model's); the repeat words now "this forecaster's earlier recommendations on the same question and side" |
+| MLB | total line | 1 of 50 · 4 with no later read · 6 restated · 3 repeats | "total, statistical": 0 of 50 · 2 with no later read (45 and 81); "total, reasoning pass": 1 of 50 · 4 with no later read (46 among them) · 6 restated · 3 repeats |
+| MLB | beside the lines | 27 unmeasured, 23 restated, 17 repeats; set aside 19 (3 measured) | statistical 25, 17, 14; set aside 14 (3 measured) -- reasoning pass 4, 6, 3; set aside 3 (0 measured) |
+| MLB | "Both sides, no position" | 2 (45 and 46), counted nowhere | gone; 45 in the model's total, 46 in the reasoning pass's |
+| MLB | "Would not have cleared" | 2 (recs 3 and 56) | "Would not have cleared, statistical" 2; the reasoning pass none |
+| MLB | counted once | 66 rows | 68: the model's 57, the reasoning pass's 11 (45 and 46 added) |
+| MLB | read on 15 October (not painted before it) | spread -0.27c, 47% beat, n 15; total 0.0c, 0%, n 1 | the model's spread the same; the model's total n 0, no figure; the reasoning pass's total 0.0c, 0%, n 1 |
+| MLB | empty bar (days nothing cleared) | before 9 Sep 0 of 2; from 9 Sep 1 of 10 (22 Sep) | the model's the same; the reasoning pass's 1 of 2 (8 Sep) and 6 of 10 (10, 22, 23, 24, 25, 27 Sep) |
+| NFL | window line | 10 | the model's 10; the reasoning pass's 0 |
+| NFL | awaiting a close | 2 | the model's 1 (78); the reasoning pass's 1 (65) |
+| NFL | withdrawn | 4 (62, 63, 64, 66) | "Withdrawn, statistical" 4 |
+| NFL | point spread line | 10 of 50 · 1 with no later read; +0.3c, 40% on 15 October | "point spread, statistical", the same |
+| NFL | empty bar | from 9 Sep 5 of 6 (9, 23, 25, 27, 28 Sep) | the model's 4 of 5 (9, 23, 27, 28 Sep); the reasoning pass's 2 of 3 (23, 25 Sep) |
+| NCAAF | window line; awaiting | 8; 1 | the model's 8 and 1; the reasoning pass's 0 and 0 |
+| NCAAF | point spread line | 8 of 50; +0.12c, 25% on 15 October | "point spread, statistical", the same |
+| NCAAF | empty bar | from 9 Sep 1 of 4 (28 Sep) | the model's 1 of 4 (28 Sep); the reasoning pass's 4 of 4 (25-28 Sep) |
+| NBA, UFC | window line | 0 | two lines, 0 each |
+| every sport | kill criterion | stops nothing (before 15 October, and read then) | the same, per forecaster |
+
+Nothing else the closing line, the kill criterion, "Would not have
+cleared" or the empty-bar tool states moved. No count of any other record
+reads recommendations.
+
+### PROVED *(each new planting run by this tree's `plant.py` against a `git archive` of c57354c in `scratchpad/q17/step2/head/`, and against this tree; `prove/`)*
+
+- **`plant_a_recommendation_count_pooling_two_forecasters`** (thirty of each
+  forecaster's MLB totals, every close -1.0c, read on 15 October): ESCAPES
+  on c57354c -- one total line of 60, a window line of 60, the payload's
+  totals, and the kill stopping the market for both. Here each line counts
+  its own 30, nothing is stopped; a door that forgets whose (each line
+  counting both forecasters' sixty, the kill stopping both) is refused
+  naming the reasoning pass's rows in the model's line, and a total over
+  both is refused.
+- **`plant_a_same_side_pair_across_two_forecasters_counted_once`** (the two
+  forecasters a minute apart on one side of one MLB spread question): ESCAPES
+  on c57354c -- the reasoning pass's pick a repeat in one pooled line. Here
+  two bets, each in its own line; question 12's rule put back is refused,
+  naming the reasoning pass's row.
+- **`plant_recs_45_and_46_counted_zero`**: question 22's reversal of
+  `plant_both_sides_of_one_total_counted` (renamed for what it now plants;
+  its world kept). ESCAPES on c57354c, which counts the total zero under the
+  both-sides label. Here each counts once in its own total; question 12's
+  rule put back is refused, naming 45's shape in the model's line and 46's
+  in the reasoning pass's.
+- **Changed with the ruling, each said in its text**: `plant_a_same_side_pair_counted_twice`
+  (reads the model's line; the rule removed with the forecaster kept);
+  `plant_a_withdrawn_recommendation_in_the_closing_line`,
+  `plant_a_closing_line_verdict_before_its_first_clean_read` and
+  `plant_a_close_from_before_the_window_counted` read a forecaster's block
+  and a stop keyed by market and forecaster; three stand-ins for
+  `coverage.priceable` take the forecaster. `tests/test_counted_once.py`
+  rewritten: its two-forecaster same-side pair (`test_first_is_by_stamp_then_number...`)
+  counted once is two bets now; 45/46's shape counts once each; the
+  fixture's pairs are one question (same subject and rung, a pass each).
+  Test doubles given forecasts of their own game (`test_recommend._recorded`,
+  whose rows shared one forecast on another game), and the closing-line
+  tests in `test_closing_line_window.py`, `test_priced.py`,
+  `test_recommend.py` and `test_voids.py` read a forecaster's block.
+- **The harness**: 344 of 344 caught.
+
+### THE PROVER *(`prove/`; each got past the guards as first built, and is closed)*
+
+- **A door counting a pair's LATER row** keeps every count -- one row of
+  each pair counted, one set aside -- and moves only the mean ("3.75 where
+  the rows the rule counts give 3.0"): the recount compared counts alone.
+  It now works out every bucket, the mean, the share, the renderable flag
+  and the finding from the rule's own rows (`audit._buckets`), and the
+  source scan pins the earlier row in `pairs_with`'s text -- before 15
+  October no figure moves with it, and the pin is all that sees it.
+- **A sentence stating another count than its figure**, a window line
+  saying both forecasters' sum, a line labelled for nobody: the recount
+  checked figures, not words. The words and labels are now written again
+  from the recount's figures (`language.clv_line`,
+  `closing_line_window_line`, `closing_line_label`) and compared.
+- **A total over both under a new name** (`recommendations_so_far`) passed a
+  list of what totals used to be called: the top level is now an
+  allow-list (`audit.CLOSING_LINE_KEYS`).
+- **`bet.same(...) OR <game and market>`** carried the key's text and paired
+  across forecasters and rungs: the scan now wants the key as the rule's
+  first term and no OR beside it.
+- **A close written between the line and its recount made an honest page
+  refuse itself** ("reports 1 ... holds 2", a 500) -- as it could since
+  ruling 1's recount (2026-09-24) and question 12's (2026-09-27): the two
+  recounts ran in `views.scorecard`, after the whole page was read. They
+  run in `calibration.scorecard` now, in one instant with the line and the
+  kill read of it (`db.one_instant`), and a check building its own report
+  builds and recounts in one instant too;
+  `test_a_close_written_between_the_line_and_its_recount_is_no_fault`
+  failed before and passes after.
+- Tried and refused as built: the rule removed (every repeat counted), the
+  door without the forecaster (each line both), question 12's key restored
+  (a cross-forecaster pick set aside), a key without the rung (a two-rung
+  pick set aside), a report with a pooled `n`, a market line naming nobody,
+  two sides of one question (named as needing a ruling), a forecaster that
+  is not one of the two (`PooledCount` in every door and in `priceable`).
+
+### RENDERED *(the browser suite's own world -- `seed_league` and `_build_world` -- on a scratch file with NFL recommendations added, served by c57354c and by this tree with the suite's test token; never the live app; `scratchpad/q17/step2/render.py`, `render/`)*
+
+Read at 1100px and 390px, today and with the render process's clock set to
+15 October. Released: "Since the repair ... 57 recommendations", one
+"point spread" line (54, 1 repeat), one "total" line (3), "Withdrawn",
+"Both sides, no position" (2) and "Would not have cleared". This tree:
+"Since the repair, statistical" (55 from the model) and "..., reasoning
+pass" (4), "point spread, statistical" (54, 1 repeat of "this forecaster's
+earlier recommendation on the same question"), "total, statistical" (1),
+"total, reasoning pass" (4), "Withdrawn, statistical", "Would not have
+cleared, statistical", and no both-sides row; on 15 October the stop reads
+"point spread, statistical: stopped after 54 recommendations ..." and the
+finding sits under the model's spread line. The counts agree with each
+other (54 + 1 = 55); every label names whose line it is; no horizontal page
+scroll and no console error at either width, on either tree. (The screenshot
+lets the sticky header scroll away; the panel's heading still carries the
+priced blend's version, "b1" -- question 19, fixed in the board.)
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **The withdrawn line is split too**: it counts recommendations, and
+  question 22 splits "recommendation counts". Reversal: `withdrawn()`
+  without the forecaster and one pooled line beside the closing line.
+- **Both forecasters' window lines are drawn on every sport's page**, a
+  forecaster with none saying 0 (ruling 8's "said on every sport's Record
+  page"). Reversal: draw a block's window line only when it has
+  recommendations.
+- **The kill criterion stops one forecaster's picks** in a market, as
+  "reads each forecaster's line" reads.
+- **The closing line is split per market and forecaster, not per UFC
+  card** (question 22 says forecaster; no UFC recommendation exists).
+- **Two sides of one distinct bet** would each count (the rule pairs a
+  side with itself) and the recount refuses the page, naming them, as
+  needing the operator's ruling; none exists and item 5 cannot write one.
+- **The recounts moved into `calibration.scorecard`** so the line, the kill
+  and both recounts share one instant; `views.scorecard` no longer calls
+  them. Reversal: call them in `views.scorecard` again (and take the race
+  back).
+
+### OPEN *(found by this step)*
+
+- **A UFC closing line would pool cards.** Every other count splits per
+  card for UFC (question 14); the closing line splits per forecaster only.
+  No UFC recommendation has been written. For the re-read.
+- **The kill criterion's stop sentence names no forecaster** ("stopped
+  after 54 recommendations ..."); its label does ("point spread,
+  statistical"). A sentence, not a count.
+- **A door choosing another pass of a question** keeps every count; the
+  earlier-row pin in the source is what holds it before 15 October, and the
+  recount's mean after.

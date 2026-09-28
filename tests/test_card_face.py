@@ -95,9 +95,11 @@ def covered(monkeypatch):
     """
     from gridiron.priced import coverage as _coverage
 
+    # THE FORECASTER IS PASSED (operator question 22, 2026-09-28: the kill
+    # criterion reads each forecaster's line), and the stand-in takes it.
     monkeypatch.setattr(
         _coverage, "priceable",
-        lambda conn, sport, market: {
+        lambda conn, sport, market, **_: {
             "priceable": True, "market": market,
             "why": "covered, for this test"})
 

@@ -42,20 +42,23 @@ def _covered(monkeypatch):
     """
     from gridiron.priced import coverage
 
+    # THE FORECASTER IS PASSED (operator question 22, 2026-09-28: the kill
+    # criterion reads each forecaster's line), and a stand-in takes it.
     monkeypatch.setattr(coverage, "priceable",
-                        lambda conn, sport, market: {
+                        lambda conn, sport, market, **_: {
                             "priceable": True, "market": market,
                             "why": "covered, in this test"})
 
 
-def _pick(conn, *, prob=0.62, implied=0.46, subject="AAA", market="moneyline"):
+def _pick(conn, *, prob=0.62, implied=0.46, subject="AAA", market="moneyline",
+          predictor="statistical"):
     conn.execute(
         "INSERT INTO predictions (created_utc, sport, game_id, market_type, subject,"
         " line_asked, model_prob, model_side, predictor, pass_kind,"
         " factor_set_version, factors_json, reasoning)"
         " VALUES ('2026-09-07T00:00:00Z', 'mlb', 'g0', ?, ?, NULL, ?, 'win',"
-        " 'statistical', 'final', 'fs2', ?, 'test')",
-        (market, subject, prob, WHOLE))
+        " ?, 'final', 'fs2', ?, 'test')",
+        (market, subject, prob, predictor, WHOLE))
     pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
     if implied is not None:
         # THE VENUE'S OWN PRICE, through the at-the-line claim the engine reads.
@@ -567,13 +570,32 @@ def _recorded(conn, rid, *, side, price, edge, created, fair=0.40, pid=None):
     EACH ON A GAME OF ITS OWN (GRIDIRON_REPAIR item 5, 2026-09-26): one game
     and market hold one recommendation, so a row here is a game here -- as
     recs 3, 10 and 26 were on the record. What these tests read is the
-    row's own side, price and edge."""
+    row's own side, price and edge.
+
+    AND ON A FORECAST OF ITS OWN GAME (operator question 22, 2026-09-28): a
+    count of recommendations reads whose each is and which distinct bet
+    through the forecast it was made from, and every recommendation on the
+    record is made from a forecast of its own game. So `pid`'s forecast is
+    written again on this row's game -- the fields the counts read, and
+    nothing else, as the record's own rows carry them -- and the row cites
+    that copy: sharing one forecast, these rows were one question on both
+    sides, which no record holds."""
     game = f"r{rid}"
     conn.execute(
         "INSERT INTO games (id, sport, season, week, game_type, home, away,"
         " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1, 'R',"
         " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')",
         (game,))
+    if pid is not None:
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " prop_type, subject, line_asked, model_prob, model_side,"
+            " predictor, pass_kind, factor_set_version, factors_json,"
+            " reasoning) SELECT created_utc, sport, ?, market_type, prop_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning"
+            "  FROM predictions WHERE id = ?", (game, pid))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
     conn.execute(
         "INSERT INTO recommendations (id, prediction_id, sport, game_id, market,"
         " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
@@ -758,16 +780,26 @@ def test_the_closing_line_names_a_regrade_and_counts_it_where_it_was(tmp_path):
     same before and after; beside it, "would not have cleared", with its N
     and the return on what each side cost."""
     conn = _let_through_world(tmp_path)
+
+    def mine(report):
+        # ONE FORECASTER'S LINE (operator question 22, 2026-09-28): the
+        # world's recommendations are the statistical model's
+        return next(b for b in report["forecasters"]
+                    if b["predictor"] == "statistical")
+
     before = calibration.clv_report(conn, sport="mlb")
-    assert before["regraded"] == 0 and before["regraded_line"] is None
+    assert mine(before)["regraded"] == 0 and mine(before)["regraded_line"] is None
     recommend.write_regrades(conn, [3, 10, 26])
     after = calibration.clv_report(conn, sport="mlb")
     for key in ("n", "unmeasured", "restated", "unaccounted", "awaiting_close",
                 "withdrawn"):
-        assert after[key] == before[key], key
-    assert after["regraded"] == 3
-    line = after["regraded_line"]
-    assert line["label"] == "Would not have cleared" and line["n"] == 3
+        assert mine(after)[key] == mine(before)[key], key
+    assert mine(after)["regraded"] == 3
+    # the reasoning pass's line holds none of them
+    theirs = next(b for b in after["forecasters"] if b["predictor"] == "llm")
+    assert theirs["regraded"] == 0 and theirs["regraded_line"] is None
+    line = mine(after)["regraded_line"]
+    assert line["label"] == "Would not have cleared, statistical" and line["n"] == 3
     assert line["words"].startswith("3 recommendations would not have cleared")
     assert "3.34%, 3.68% and 4.69%" in line["words"] and "5%" in line["words"]
     assert "counted where they were" in line["words"]
@@ -786,7 +818,7 @@ def test_a_record_without_the_table_has_regraded_nothing(tmp_path):
     schema; a reader must not stop at a table the record does not hold yet."""
     conn = _let_through_world(tmp_path)
     conn.execute("DROP TABLE recommendation_regrades")
-    assert recommend.regraded(conn, sport="mlb") == []
+    assert recommend.regraded(conn, sport="mlb", predictor="statistical") == []
     assert [g["id"] for g in recommend.let_through_by_the_yes_price(conn)] == [3, 10, 26]
     with pytest.raises(RuntimeError, match="db.init"):
         recommend.write_regrades(conn, [3])
@@ -797,8 +829,9 @@ def test_the_renderer_draws_the_regrade_beside_the_closing_line():
 
     js = (Path(recommend.__file__).resolve().parents[1] / "web" / "app.js").read_text(
         encoding="utf-8")
-    assert "line.regraded_line" in js
-    at = js.index("line.regraded_line")
+    # EACH FORECASTER'S LINE (operator question 22, 2026-09-28)
+    assert "block.regraded_line" in js
+    at = js.index("block.regraded_line")
     assert "requireN(regraded" in js[at:at + 400]
 
 
@@ -2075,3 +2108,31 @@ def test_an_older_record_gains_the_move_rule_through_init_and_no_row_moves(
                      (ids["rec2"],))
     conn.rollback()
     assert _stored(conn) == rows
+
+
+# --- the kill criterion is asked for the pick's own forecaster ---------------
+
+def test_the_kill_criterion_is_asked_for_each_picks_own_forecaster(tmp_path,
+                                                                    monkeypatch):
+    """OPERATOR QUESTION 22 (2026-09-28): the kill criterion reads each
+    forecaster's closing line, so the engine asks it for the forecaster whose
+    pick it prices -- a reasoning-pass pick is never stopped by the
+    statistical model's closes, nor waved through by them."""
+    from gridiron.priced import coverage
+
+    conn = _world(tmp_path)
+    mine = _pick(conn)
+    theirs = _pick(conn, predictor="llm")
+    asked = []
+
+    def recorded(conn, sport, market, *, predictor, now=None):
+        asked.append((market, predictor))
+        return {"priceable": predictor == "llm", "market": market,
+                "why": "stopped for the statistical model, in this test"}
+
+    monkeypatch.setattr(coverage, "priceable", recorded)
+    entries = {e["prediction_id"]: e for e in recommend.for_predictions(
+        conn, [mine, theirs])}
+    assert sorted(asked) == [("moneyline", "llm"), ("moneyline", "statistical")]
+    assert entries[mine]["side"] is None
+    assert entries[theirs]["side"] is not None

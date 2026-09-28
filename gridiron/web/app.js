@@ -726,68 +726,74 @@ const Gridiron = (function () {
         row.appendChild(el('div', 'gate-why', entry.why));
         coverage.appendChild(row);
       });
+      // A STOP IS ONE FORECASTER'S (operator question 22, 2026-09-28): the
+      // kill criterion reads each forecaster's closing line, and the row
+      // carries the server's label naming the market and whose line it is.
       (cov.stopped || []).forEach(stop => {
         requireN(stop, 'a stopped market');
         const row = el('div', 'gate-row');
-        row.appendChild(el('div', 'gate-name', marketLabel(stop.market)));
+        row.appendChild(el('div', 'gate-name', stop.category_label));
         row.appendChild(el('div', 'gate-why', stop.why));
         coverage.appendChild(row);
       });
     }
 
     if (line) {
-      requireN(line, 'the closing line');
+      // ONE LINE PER FORECASTER, AND NO TOTAL TO REQUIRE (operator question
+      // 22, ruled 2026-09-28). The payload's `n` summed both forecasters'
+      // recommendations; it is gone, and each forecaster's block carries
+      // its own N, each row the server's label naming whose it counts.
+      const blocks = line.forecasters || [];
+      blocks.forEach(block => {
+        requireN(block, 'the closing line of "' + block.label + '"');
+      });
       // FROM WHEN IT COUNTS, AND WHEN IT MAY FIRST BE READ (the operator's
       // ruling 8 of 2026-09-23, 2026-09-27). First, and on every sport's
-      // page: the server's sentence, placed.
-      const since = line.window_line;
-      if (since) {
-        requireN(since, 'the closing line since its repair');
+      // page: each forecaster's sentence, placed.
+      blocks.forEach(block => {
+        const since = block.window_line;
+        if (!since) return;
+        requireN(since, 'the closing line since its repair, "' + since.label + '"');
         const row = el('div', 'gate-row');
         row.appendChild(el('div', 'gate-name', since.label));
         row.appendChild(el('div', 'gate-why', since.words));
         clv.appendChild(row);
-      }
+      });
       (line.markets || []).forEach(entry => {
-        requireN(entry, 'the closing line for "' + entry.market + '"');
+        requireN(entry, 'the closing line for "' + entry.category_label + '"');
         const row = el('div', 'gate-row');
-        row.appendChild(el('div', 'gate-name', marketLabel(entry.market)));
+        row.appendChild(el('div', 'gate-name', entry.category_label));
         row.appendChild(el('div', 'gate-why', entry.words));
         if (entry.finding) row.appendChild(el('div', 'gate-why', entry.finding));
         clv.appendChild(row);
       });
       // WITHDRAWN RECOMMENDATIONS, NAMED AND NEVER COUNTED (ruling 1,
-      // 2026-09-24). Beside the closing line, never inside it.
-      const gone = line.withdrawn_line;
-      if (gone) {
-        requireN(gone, 'the withdrawn recommendations');
+      // 2026-09-24). Beside the closing line, never inside it; each
+      // forecaster's own.
+      blocks.forEach(block => {
+        const gone = block.withdrawn_line;
+        if (!gone) return;
+        requireN(gone, 'the withdrawn recommendations, "' + gone.label + '"');
         const row = el('div', 'gate-row');
         row.appendChild(el('div', 'gate-name', gone.label));
         row.appendChild(el('div', 'gate-why', gone.words));
         clv.appendChild(row);
-      }
-      // BOTH SIDES, NO POSITION: NAMED AND NEVER COUNTED (operator question
-      // 12, 2026-09-27). The server's label, the ruling's own words, and its
-      // sentence, placed; derived from the record on every read.
-      const both = line.both_sides_line;
-      if (both) {
-        requireN(both, 'the recommendations on both sides of one game');
-        const row = el('div', 'gate-row');
-        row.appendChild(el('div', 'gate-name', both.label));
-        row.appendChild(el('div', 'gate-why', both.words));
-        clv.appendChild(row);
-      }
+      });
       // WOULD NOT HAVE CLEARED, NAMED AND STILL COUNTED (GRIDIRON_REPAIR
       // item 4, 2026-09-26): a re-grade is a label beside the closing line,
-      // not a withdrawal, and the words say so.
-      const regraded = line.regraded_line;
-      if (regraded) {
-        requireN(regraded, 'the recommendations that would not have cleared');
+      // not a withdrawal, and the words say so; each forecaster's own.
+      // (Question 12's "Both sides, no position" row stood before this one
+      // from 2026-09-27; question 22 took it away on 2026-09-28.)
+      blocks.forEach(block => {
+        const regraded = block.regraded_line;
+        if (!regraded) return;
+        requireN(regraded, 'the recommendations that would not have cleared, "'
+          + regraded.label + '"');
         const row = el('div', 'gate-row');
         row.appendChild(el('div', 'gate-name', regraded.label));
         row.appendChild(el('div', 'gate-why', regraded.words));
         clv.appendChild(row);
-      }
+      });
     }
 
     if (priced) {

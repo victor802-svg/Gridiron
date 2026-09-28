@@ -3463,8 +3463,15 @@ def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
 
     AND WHAT IT COUNTED ONCE (operator question 12, 2026-09-27): `repeats`
     is the later rows of this market's same-side pairs, each in no figure
-    of the line because its game and side are counted once, as the earlier
-    row. Said last, beside the counts they are left out of.
+    of the line because its question and side are counted once, as the
+    earlier row. Said last, beside the counts they are left out of.
+
+    ONE FORECASTER'S LINE (operator question 22, 2026-09-28): each line is
+    one forecaster's, named by its label, and a repeat is that forecaster's
+    own -- one distinct bet (the question, at one rung) and one side; so it
+    says "this forecaster's earlier recommendation on the same question",
+    where it said "an earlier recommendation on the same game", which two
+    forecasters, or two rungs of one game, would also have been.
     """
     counted_from = (f" since {date_words_from_iso(since) or since}"
                     if since else "")
@@ -3510,18 +3517,35 @@ def clv_line(n: int, mean_cents: float | None, beat_share: float | None,
         line += (f" · {unaccounted} more closed before 23 September on their "
                  f"own price and have not been worked out again")
     if repeats == 1:
-        line += (" · 1 more repeats an earlier recommendation on the same "
-                 "game and side and is counted once, as the earlier one")
+        line += (" · 1 more repeats this forecaster's earlier recommendation "
+                 "on the same question and side and is counted once, as the "
+                 "earlier one")
     elif repeats:
-        line += (f" · {repeats} more repeat an earlier recommendation on the "
-                 f"same game and side and are counted once, as the earlier one")
+        line += (f" · {repeats} more repeat this forecaster's earlier "
+                 f"recommendations on the same question and side and are "
+                 f"counted once, as the earlier one")
     return line
 
 
+def closing_line_label(what: str, predictor: str) -> str:
+    """"total, reasoning pass", "Since the repair, statistical" -- one row of
+    the closing line's panel and whose it is.
+
+    ONE LINE PER FORECASTER (operator question 22, ruled 2026-09-28:
+    "Recommendation counts split per forecaster, like every other count").
+    Every row of the panel -- the window line, each market's line, the
+    withdrawn and re-grade lines -- named its market or its kind alone,
+    because each count held both forecasters' recommendations; each now
+    says whose it counts, in the Record page's own filter words, as the
+    priced and drift rows beside it do.
+    """
+    return f"{what}, {FORECASTER_FILTER_WORDS.get(predictor, predictor)}"
+
+
 def closing_line_window_line(since: str, first_read: str, n: int, *,
-                             verdict_open: bool) -> str:
-    """The closing line's own first sentence: from when it counts, how many,
-    and when it may first be read.
+                             verdict_open: bool, predictor: str) -> str:
+    """The closing line's own first sentence, for one forecaster: from when
+    it counts, how many of this forecaster's, and when it may first be read.
 
     THE OPERATOR'S RULING 8 OF 2026-09-23 (GRIDIRON_REPAIR item 8, built
     2026-09-27): "the observation window restarts on the date item 1 ships;
@@ -3529,6 +3553,10 @@ def closing_line_window_line(since: str, first_read: str, n: int, *,
     every sport's Record page, including one with nothing closed yet -- the
     date is the same everywhere, and a panel that said nothing until a close
     arrived would leave the reader to guess why the older ones went.
+
+    ONE PER FORECASTER (operator question 22, 2026-09-28): the count is one
+    forecaster's, and the sentence says whose ("12 recommendations from the
+    model"), where it summed both.
     """
     from datetime import date
 
@@ -3538,9 +3566,10 @@ def closing_line_window_line(since: str, first_read: str, n: int, *,
     # the dates say otherwise.
     gap = (date.fromisoformat(first_read[:10])
            - date.fromisoformat(since[:10])).days
+    who = FORECASTER_WORDS.get(predictor, predictor)
     head = (f"The closing line was repaired on {start}, and its count started "
-            f"again that day: {counted(n, 'recommendation')} priced against a "
-            f"close since.")
+            f"again that day: {counted(n, 'recommendation')} from {who} "
+            f"priced against a close since.")
     if verdict_open:
         return (f"{head} Its first clean read came on {when}, {gap} days after "
                 f"the repair.")
@@ -3567,30 +3596,12 @@ def withdrawn_recommendations_line(n: int, reasons: list[str | None]) -> str:
     return head + (": " + "; and ".join(said) if said else "")
 
 
-def both_sides_recommendations_line(groups: list[dict]) -> str:
-    """The recommendations that took both sides of one game and market, and
-    why no figure counts them -- each group as {market, day, n}: the market
-    in words, the day its first row was written, and how many rows it holds.
-
-    OPERATOR QUESTION 12, ruled 2026-09-27: "Recs 45/46, opposite sides of
-    one total, count zero in every measurement and are labelled 'both sides,
-    no position'." The label is the ruling's own words; this sentence stands
-    beside it, as the withdrawn line does, so the rows are named rather than
-    missing. No club is named -- the sentence is about the pair, not a side
-    -- so nothing here reads a subject.
-    """
-    n = sum(group["n"] for group in groups)
-    where = _joined([
-        f"one game's {group['market']} on "
-        f"{date_words_from_iso(group['day']) or group['day']}"
-        for group in groups])
-    head = (f"{counted(n, 'recommendation')} took both sides of {where}"
-            if len(groups) == 1 else
-            f"{n} recommendations took both sides of {len(groups)} games and "
-            f"markets ({where})")
-    return (f"{head}, so between them they hold no position: "
-            f"{'neither' if n == 2 else 'none'} is counted in any figure here, "
-            f"and each stays on the record as written")
+# "BOTH SIDES, NO POSITION" IS GONE (operator question 22, ruled 2026-09-28:
+# "This reverses Q12 for 45/46: each counts once in its own forecaster's
+# line, and the 'Both sides, no position' row goes"). Its sentence,
+# `both_sides_recommendations_line`, stood here from 2026-09-27; recs 45 and
+# 46 are two forecasters' two distinct bets, each counted in its own line,
+# and nothing paints a row for them.
 
 
 def regraded_recommendations_line(graded: list[tuple[float, float]]) -> str:

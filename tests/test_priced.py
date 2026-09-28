@@ -234,13 +234,27 @@ def test_the_kill_criterion_stops_a_market_on_its_closing_line(tmp_path):
     # closing line may be read, so the kill may fire on it.
     read = config.CLOSING_LINE_FIRST_CLEAN_READ + "T00:00:00Z"
     stopped = coverage.stopped(conn, "nfl", now=read)
-    assert "total" in stopped
-    assert stopped["total"]["n"] == coverage.KILL_AFTER
-    assert "buying rich" in stopped["total"]["why"]
-    assert "dated ruling" in stopped["total"]["why"]
-    # and the engine refuses to price it, whatever the coverage measurement says
-    verdict = coverage.priceable(conn, "nfl", "total", now=read)
+    # EACH FORECASTER'S LINE (operator question 22, 2026-09-28): the fifty
+    # are the statistical model's, and it is their line that stops
+    assert set(stopped) == {("total", "statistical")}
+    halted = stopped[("total", "statistical")]
+    assert halted["n"] == coverage.KILL_AFTER
+    assert halted["category_label"] == "total, statistical"
+    assert "buying rich" in halted["why"]
+    assert "dated ruling" in halted["why"]
+    # and the engine refuses to price its picks, whatever the coverage
+    # measurement says -- and only its picks: the reasoning pass's own line
+    # holds nothing, and is not stopped by the other forecaster's closes
+    verdict = coverage.priceable(conn, "nfl", "total", predictor="statistical",
+                                 now=read)
     assert verdict["priceable"] is False and "stopped after" in verdict["why"]
+    assert "stopped after" not in coverage.priceable(
+        conn, "nfl", "total", predictor="llm", now=read)["why"]
+    # a forecaster that is not one of the two has no line, and is refused
+    from gridiron.market import recommend
+
+    with pytest.raises(recommend.PooledCount):
+        coverage.priceable(conn, "nfl", "total", predictor="both", now=read)
 
 
 def test_the_kill_criterion_waits_for_the_first_clean_read(tmp_path):
@@ -252,13 +266,17 @@ def test_the_kill_criterion_waits_for_the_first_clean_read(tmp_path):
     eve = "2026-10-14T23:59:59Z"
     assert eve[:10] < config.CLOSING_LINE_FIRST_CLEAN_READ
     assert coverage.stopped(conn, "nfl", now=eve) == {}
-    assert coverage.priceable(conn, "nfl", "total", now=eve)["why"] != ""
+    assert coverage.priceable(conn, "nfl", "total", predictor="statistical",
+                              now=eve)["why"] != ""
     assert "stopped after" not in coverage.priceable(
-        conn, "nfl", "total", now=eve)["why"]
+        conn, "nfl", "total", predictor="statistical", now=eve)["why"]
     report = calibration.clv_report(conn, sport="nfl", now=eve)
     entry = report["markets"][0]
-    # THE COUNT, WITH ITS N, AND NO FIGURE
-    assert entry["n"] == coverage.KILL_AFTER and report["n"] == coverage.KILL_AFTER
+    mine = next(b for b in report["forecasters"]
+                if b["predictor"] == "statistical")
+    # THE COUNT, WITH ITS N, AND NO FIGURE -- one forecaster's (question 22)
+    assert entry["predictor"] == "statistical"
+    assert entry["n"] == coverage.KILL_AFTER and mine["n"] == coverage.KILL_AFTER
     assert entry["mean_cents"] is None and entry["beat_the_close"] is None
     assert "finding" not in entry and entry["renderable"] is False
     assert "Thursday 15 October" in entry["words"]

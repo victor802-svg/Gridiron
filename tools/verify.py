@@ -873,13 +873,15 @@ def step_2_guards() -> bool:
         ("no withdrawn recommendation is counted",
          lambda: [audit.check_no_withdrawn_recommendation_counted(
              _record_conn(), sport=sport) for sport in _config().SPORTS]),
-        # OPERATOR QUESTION 12 (ruled 2026-09-27): every measurement counts a
-        # same-side pair once and both sides of one game and market not at
-        # all -- in the source, and on the record's copy, where the eighteen
-        # pairs written before item 5 are, recounted by the rule per sport.
+        # OPERATOR QUESTION 12 (ruled 2026-09-27), ON QUESTION 17'S KEY BY
+        # QUESTION 22 (ruled 2026-09-28): every measurement is one
+        # forecaster's and counts a same-side pair of one distinct bet once
+        # -- in the source, and on the record's copy, where the seventeen
+        # pairs written before item 5 are and 45/46 now count once each in
+        # their own forecasters' lines, recounted by the rule per sport.
         ("every measurement of recommendations reads the counted-once door",
          audit.check_every_measurement_counts_each_pair_once),
-        ("each pair is counted once, and both sides not at all",
+        ("each forecaster's recommendations are counted once per distinct bet",
          lambda: [audit.check_each_pair_counted_once(
              _record_conn(), sport=sport) for sport in _config().SPORTS]),
         # OPERATOR QUESTION 14 (ruled 2026-09-27, 1 of 3): the priced

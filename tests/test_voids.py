@@ -161,35 +161,47 @@ def test_the_schema_comments_do_not_open_a_declaration():
 
 # --- the closing line ------------------------------------------------------
 
+def _statistical(report: dict) -> dict:
+    """The statistical model's block of a closing line (operator question
+    22, 2026-09-28: every count of recommendations is one forecaster's)."""
+    return next(b for b in report["forecasters"]
+                if b["predictor"] == "statistical")
+
+
 def test_the_closing_line_never_counts_a_withdrawn_recommendation(conn):
     _three_closed(conn)
     # READ ON THE FIRST CLEAN READ, when a mean may be given at all (the
     # operator's ruling 8 of 2026-09-23); before it the mean is withheld.
     report = calibration.clv_report(
         conn, sport="nfl", now=config.CLOSING_LINE_FIRST_CLEAN_READ + "T00:00:00Z")
-    assert report["n"] == 1, "only the standing recommendation's close counts"
+    # ONE FORECASTER'S LINE (operator question 22, 2026-09-28): the world's
+    # recommendations are the statistical model's
+    mine = _statistical(report)
+    assert mine["n"] == 1, "only the standing recommendation's close counts"
     entry = report["markets"][0]
     assert entry["n"] == 1 and entry["mean_cents"] == pytest.approx(6.0)
     assert entry["unmeasured"] == entry["restated"] == entry["unaccounted"] == 0
-    # SHOWN, NEVER COUNTED: named beside the closing line, in the word.
-    assert report["withdrawn"] == 2
-    words = report["withdrawn_line"]["words"]
+    # SHOWN, NEVER COUNTED: named beside the closing line, in the word, in
+    # the line of the forecaster whose recommendations they were.
+    assert mine["withdrawn"] == 2
+    words = mine["withdrawn_line"]["words"]
     assert words.startswith("2 recommendations withdrawn and never counted")
     assert REASON in words
-    assert report["withdrawn_line"]["n"] == 2
+    assert mine["withdrawn_line"]["n"] == 2
+    assert mine["withdrawn_line"]["label"] == "Withdrawn, statistical"
     assert audit.plain_words_violations(words) == []
     assert audit.advice_word_faults(words) == []
     calibration.assert_every_figure_has_n(report)
     audit.check_no_withdrawn_recommendation_counted(conn, report)   # silent
     # and the payload the API serves carries the same guard
-    assert views.scorecard(conn, "nfl")["closing_line"]["withdrawn"] == 2
+    assert _statistical(views.scorecard(conn, "nfl")["closing_line"])["withdrawn"] == 2
 
 
 def test_a_withdrawn_recommendation_is_not_awaiting_a_close_or_followed_to_one(conn):
     _game(conn, "g1")
     rec = _priced(conn, "g1", _forecast(conn, "g1"))
     _withdraw(conn, rec)
-    assert calibration.clv_report(conn, sport="nfl")["awaiting_close"] == 0
+    assert _statistical(calibration.clv_report(conn, sport="nfl"))["awaiting_close"] == 0
     # The game has started; a standing recommendation would close here.
     assert recommend.record_closing_prices(conn) == {
         "closed": 0, "unmeasured": 0, "still_open": 0}
@@ -206,7 +218,8 @@ def test_the_door_answers_on_a_record_the_schema_has_not_reached(conn):
     assert "recommendation_voids" not in recommend.not_withdrawn(conn)
     assert "prediction_voids" in recommend.not_withdrawn(conn)
     report = calibration.clv_report(conn, sport="nfl")
-    assert report["withdrawn"] == 0 and report["withdrawn_line"] is None
+    for block in report["forecasters"]:
+        assert block["withdrawn"] == 0 and block["withdrawn_line"] is None
     audit.check_no_withdrawn_recommendation_counted(conn, report)
     with pytest.raises(ValueError):
         recommend.not_withdrawn(conn, alias="r; DROP TABLE x")
@@ -223,7 +236,7 @@ def test_the_recount_names_a_withdrawn_recommendation_the_door_let_through(
     current = importlib.import_module(recommend.__name__)
     monkeypatch.setattr(current, "not_withdrawn", lambda conn, alias="r": "")
     counted = calibration.clv_report(conn, sport="nfl")
-    assert counted["n"] == 3, "the planted report did not count them"
+    assert _statistical(counted)["n"] == 3, "the planted report did not count them"
     with pytest.raises(audit.LawViolation,
                        match="A WITHDRAWN RECOMMENDATION IS COUNTED") as exc:
         audit.check_no_withdrawn_recommendation_counted(conn, counted)
@@ -337,7 +350,7 @@ def test_a_claim_on_a_voided_forecast_leaves_the_at_the_line_record(conn):
 def test_a_voided_forecast_is_never_priced_as_a_pick(conn, monkeypatch):
     from gridiron.priced import coverage
 
-    monkeypatch.setattr(coverage, "priceable", lambda conn, sport, market: {
+    monkeypatch.setattr(coverage, "priceable", lambda conn, sport, market, **_: {
         "priceable": True, "market": market, "why": "covered, in this test"})
     _game(conn, "g1", kickoff="2026-09-09T00:00:00Z")
     pid = _forecast(conn, "g1")
@@ -394,7 +407,8 @@ def test_a_stored_reason_reaches_the_page_in_plain_words(stored, shown):
 def test_the_renderer_shows_the_reason_rather_than_hiding_it_in_a_hover():
     js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
     assert "item.withdrawn_words" in js and "'withdrawn-why'" in js
-    assert "line.withdrawn_line" in js
+    # EACH FORECASTER'S LINE (operator question 22, 2026-09-28)
+    assert "block.withdrawn_line" in js
     assert "'VOID'" not in js, "the renderer still branches on the old word"
     html = (config.PACKAGE_ROOT / "web" / "index.html").read_text(encoding="utf-8")
     assert '<option value="withdrawn">withdrawn</option>' in html
@@ -492,9 +506,14 @@ def test_the_tool_writes_the_ruling_once_and_leaves_65_and_the_reasoning_rows(tm
                         " ORDER BY recommendation_id").fetchall()
     assert [g["recommendation_id"] for g in gone] == [62, 63, 64, 66]
     assert {g["reason"] for g in gone} == {REASON}
-    # 65 STANDS, and so does every reasoning-forecaster row
+    # 65 STANDS, and so does every reasoning-forecaster row -- each in its
+    # own forecaster's line (operator question 22, 2026-09-28): the four
+    # withdrawn are the statistical model's, 65 is the reasoning pass's
     report = calibration.clv_report(conn, sport="nfl")
-    assert report["awaiting_close"] == 1 and report["withdrawn"] == 4
+    lines = {b["predictor"]: b for b in report["forecasters"]}
+    assert lines["llm"]["awaiting_close"] == 1 and lines["llm"]["withdrawn"] == 0
+    assert lines["statistical"]["awaiting_close"] == 0
+    assert lines["statistical"]["withdrawn"] == 4
     assert conn.execute(
         "SELECT COUNT(*) FROM prediction_voids v JOIN predictions p"
         " ON p.id = v.prediction_id WHERE p.predictor = 'llm'").fetchone()[0] == 0

@@ -156,8 +156,9 @@ KILL_AFTER = 50
 
 
 def stopped(conn: sqlite3.Connection, sport: str, *,
-            now: str | None = None) -> dict[str, dict]:
-    """Coverage entries the closing line has stopped, and on what number.
+            now: str | None = None) -> dict[tuple[str, str], dict]:
+    """Coverage entries the closing line has stopped, and on what number --
+    keyed by market AND forecaster.
 
     WRITTEN BEFORE IT WAS NEEDED, which is the whole point: nobody has ever
     wanted to compose this rule on the morning it fired. When a covered
@@ -177,10 +178,20 @@ def stopped(conn: sqlite3.Connection, sport: str, *,
     is a read of the closing line, and it waits for the same date, on the
     same count: fifty closes measured on recommendations written since the
     repair. `now` is the report's clock, passed through.
+
+    EACH FORECASTER'S LINE (operator question 22, ruled 2026-09-28: "(A)
+    Recommendation counts split per forecaster, like every other count";
+    the option ruled reads "the kill criterion reads each forecaster's
+    line"). The closing line is one line per market and forecaster, and the
+    kill reads each: fifty of the statistical model's closes buying rich
+    stop the statistical model's picks in that market, not the reasoning
+    pass's, and the reasoning pass's closes never make up the statistical
+    model's fifty. Keyed by (market, forecaster); each entry carries the
+    row's label in words, naming both (`category_label`).
     """
     from .. import calibration
 
-    out: dict[str, dict] = {}
+    out: dict[tuple[str, str], dict] = {}
     report = calibration.clv_report(conn, sport=sport, now=now)
     if not report["window"]["open"]:
         return out
@@ -188,8 +199,10 @@ def stopped(conn: sqlite3.Connection, sport: str, *,
         if entry["n"] < KILL_AFTER:
             continue
         if entry["mean_cents"] is not None and entry["mean_cents"] < 0:
-            out[entry["market"]] = {
+            out[(entry["market"], entry["predictor"])] = {
                 "market": entry["market"],
+                "predictor": entry["predictor"],
+                "category_label": entry["category_label"],
                 "n": entry["n"],
                 "mean_cents": entry["mean_cents"],
                 "why": (f"stopped after {entry['n']} recommendations: "
@@ -201,18 +214,27 @@ def stopped(conn: sqlite3.Connection, sport: str, *,
 
 
 def priceable(conn: sqlite3.Connection, sport: str, market: str, *,
-              now: str | None = None) -> dict:
-    """May this market be priced right now, and if not, why not.
+              predictor: str, now: str | None = None) -> dict:
+    """May this forecaster's picks in this market be priced right now, and if
+    not, why not.
 
     Two gates in one door: the measured coverage list, and the kill criterion.
     A market can fail either and the caller is told which. `now` is the kill
-    criterion's clock (2026-09-27), passed through.
+    criterion's clock (2026-09-27), passed through. The forecaster is
+    required (operator question 22, 2026-09-28): the kill criterion reads
+    its own closing line, and coverage -- a measurement of the venue's
+    ladders, no count of anybody's -- is the same for both.
     """
     # THE KILL CRITERION IS ASKED FIRST. A market its own closing line has
     # stopped is stopped whatever the coverage measurement now says about it,
     # and that is the more useful sentence to hand a reader: "this was priced
     # fifty times and bought rich" says more than "this is not on the list".
-    halted = stopped(conn, sport, now=now).get(market)
+    # A FORECASTER THAT IS NOT ONE OF THE TWO has no line to be stopped by,
+    # and is refused by name rather than priced as never stopped.
+    from ..market import recommend
+
+    recommend.refuse_a_pooled_count(predictor, "priced.coverage.priceable")
+    halted = stopped(conn, sport, now=now).get((market, predictor))
     if halted:
         return {"priceable": False, "market": market, "why": halted["why"]}
     if not is_covered(conn, sport, market):

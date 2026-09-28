@@ -1614,10 +1614,28 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     # kill criterion below ask the same window, and two readings of the clock
     # either side of midnight UTC on 15 October could have given the page a
     # verdict in one panel and none in the other.
+    from . import audit, db
     from .db import utcnow
+    from .priced import coverage as _coverage
 
     read_at = utcnow()
-    payload["closing_line"] = clv_report(conn, sport=sport, now=read_at)
+    # AND ONE INSTANT OF THE DATABASE FOR THE CLOSING LINE, THE KILL READ OF
+    # IT AND BOTH RECOUNTS OF IT (the prover of operator question 22,
+    # 2026-09-28; question 17's `db.one_instant`). Read one after another on
+    # the live record, a close the closer wrote between the line and its
+    # recount made an honest page refuse itself ("reports 1 ... holds 2", a
+    # 500); the recounts ran in `views.scorecard` until this date, after
+    # everything else on the page had been read.
+    with db.one_instant(conn):
+        payload["closing_line"] = clv_report(conn, sport=sport, now=read_at)
+        stopped = list(_coverage.stopped(conn, sport, now=read_at).values())
+        # NO WITHDRAWN RECOMMENDATION IS COUNTED (ruling 1, 2026-09-24), and
+        # EACH FORECASTER'S DISTINCT BET ONCE (questions 12 and 22): both
+        # recounted without the doors the report used, so neither reaches
+        # the API.
+        audit.check_no_withdrawn_recommendation_counted(
+            conn, payload["closing_line"])
+        audit.check_each_pair_counted_once(conn, payload["closing_line"])
     # AND WHETHER PACKAGES ARE WORTH TAKING AT ALL (GRIDIRON_COMBOS C4,
     # 2026-09-08). The kill criterion was declared before the first package
     # existed and is printed from the first day, so its wording cannot be
@@ -1625,14 +1643,13 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     # The packages he marked, on their own line and never inside a leg's.
     payload["taken_packages"] = taken_packages(conn, sport=sport)
     # WHAT THE ENGINE IS ALLOWED TO PRICE AT ALL (P2, 2026-09-07), with the
-    # measurement behind every entry and the reason for every exclusion.
-    from .priced import coverage as _coverage
-
+    # measurement behind every entry and the reason for every exclusion; the
+    # kill criterion's stops read above, in the closing line's instant.
     covered = _coverage.coverage(conn, sport)
     covered["words"] = language.priced_coverage_line(
         config.SPORT_LABELS.get(sport, sport.upper()), covered["covered"],
         len(covered["entries"]))
-    covered["stopped"] = list(_coverage.stopped(conn, sport, now=read_at).values())
+    covered["stopped"] = stopped
     payload["coverage"] = covered
     payload["priced"] = priced_scorecard(conn, sport=sport)
 
@@ -2511,22 +2528,10 @@ def closing_line_window(now: str | None = None) -> dict:
     }
 
 
-def _both_sides_groups(sport: str, rows: list[dict]) -> list[dict]:
-    """One entry per game and market recommended on both sides: its market in
-    words, the day its first row was written, and how many rows it holds --
-    what `language.both_sides_recommendations_line` says (question 12)."""
-    groups: dict[tuple[str, str], dict] = {}
-    for row in rows:                       # first first, as the door lists them
-        group = groups.setdefault((row["game_id"], row["market"]), {
-            "market": language.market_words(sport, row["market"]),
-            "day": row["created_utc"][:10], "n": 0})
-        group["n"] += 1
-    return list(groups.values())
-
-
 def clv_report(conn: sqlite3.Connection, *, sport: str,
                now: str | None = None) -> dict:
-    """What the closing line says about this sport's recommendations.
+    """What the closing line says about this sport's recommendations, one
+    line per market and forecaster.
 
     COUNTED FROM `recommendation_closes`, NOT FROM THE COLUMNS (2026-09-23).
     Until then every close was the recommendation's own price and this read
@@ -2559,20 +2564,35 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
         repaired. Counted beside, never in N: the count started again that
         day. (None exists on the record: every close before the repair was
         the old closer's, and is restated or unaccounted above.)
-      * A PAIR, COUNTED ONCE; BOTH SIDES, NOT AT ALL (operator question 12,
-        ruled 2026-09-27) -- every read above goes through
-        `recommend.counted_once`: of a game and market's standing rows all on
-        one side only the first is in any figure above, and each later one
-        is a REPEAT, named beside its market ("counted once, as the earlier
-        one");
-        a game and market recommended on both sides is in no figure above,
-        and its rows are named once beside the closing line under the
-        ruling's label, "both sides, no position", with their N. The rows
-        stay as written; the tallies of what was set aside (`set_aside`)
-        are in the payload so the withdrawn recount can still add up every
-        standing row.
+      * A PAIR, COUNTED ONCE (operator question 12, ruled 2026-09-27; on
+        question 17's key by question 22, 2026-09-28) -- every read above
+        goes through `recommend.counted_once`: of one forecaster's standing
+        rows on one distinct bet and side only the first is in any figure
+        above, and each later one is a REPEAT, named beside its market
+        ("counted once, as the earlier one"). The rows stay as written; the
+        tallies of what was set aside (`set_aside`) are in the payload so
+        the withdrawn recount can still add up every standing row.
 
-    AND NO FIGURE BEFORE THE FIRST CLEAN READ (the same ruling: "the first
+    ONE LINE PER MARKET AND FORECASTER, AND NO TOTAL (operator question 22,
+    ruled 2026-09-28: "(A). Recommendation counts split per forecaster, like
+    every other count. This reverses Q12 for 45/46: each counts once in its
+    own forecaster's line, and the 'Both sides, no position' row goes").
+    Until this date each market's line held both forecasters'
+    recommendations, the window line, the withdrawn and re-grade lines and
+    every count beside them were one sum, and recs 45 and 46 -- the
+    statistical model's over and the reasoning pass's under of one total --
+    were in no figure, under a row of their own. Now `forecasters` holds one
+    block per forecaster -- its window line, its N and every count beside
+    it, its awaiting count, its withdrawn and re-grade lines, its set-aside
+    tallies -- and `markets` one entry per market and forecaster, each
+    named in words (`language.closing_line_label`: "total, reasoning
+    pass"); 45 and 46 each count once in their own forecaster's total. The
+    payload carries no pooled figure: `audit.pair_counted_faults` refuses
+    one by name. A recommendation is its forecast's forecaster's, read
+    through the forecast it was made from; every count is one forecaster's
+    through the door itself (`counted_once` takes the forecaster).
+
+    AND NO FIGURE BEFORE THE FIRST CLEAN READ (the same ruling 8: "the first
     clean CLV read is 21 days after that, not before"). Until
     `config.CLOSING_LINE_FIRST_CLEAN_READ`, asked through
     `closing_line_window`, no entry is renderable, its mean and the share
@@ -2584,9 +2604,50 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
 
     require_sport(sport, "calibration.clv_report")
     window = closing_line_window(now)
-    # COUNTED ONCE (operator question 12, 2026-09-27): a same-side pair is
-    # its earlier row here, and both sides of one game and market are
-    # neither. `counted_once` is `not_withdrawn` and that rule, in one door.
+    blocks, entries = [], []
+    for predictor in recommend.FORECASTERS:
+        block, markets = _closing_line_of(conn, sport=sport,
+                                          predictor=predictor, window=window)
+        blocks.append(block)
+        entries.extend(markets)
+    # MARKET BY MARKET, each forecaster's line under it, in the order the
+    # page names the forecasters everywhere else.
+    order = {who: i for i, who in enumerate(recommend.FORECASTERS)}
+    entries.sort(key=lambda e: (e["market"], order[e["predictor"]]))
+    return {
+        "sport": sport,
+        "record": "closing_line",
+        "declared": CLV_DECLARED,
+        # THE SECOND WINDOW (ruling 8, 2026-09-27): from when the count runs,
+        # the first clean read, whether it has come, and the days between.
+        "window": {"from": window["from"],
+                   "first_clean_read": window["first_clean_read"],
+                   "open": window["open"], "days": window["days"]},
+        "forecasters": blocks,
+        "markets": entries,
+        "note": (
+            "The price the app recommended against the market's own final "
+            "estimate of the same question. It needs about fifty observations "
+            "to say anything, where a win rate needs several hundred, which is "
+            "why it is the first verdict this project can reach. A positive "
+            "number means it is buying cheaper than the close."
+        ),
+    }
+
+
+def _closing_line_of(conn: sqlite3.Connection, *, sport: str, predictor: str,
+                     window: dict) -> tuple[dict, list[dict]]:
+    """ONE FORECASTER'S closing line in one sport: its block (the window
+    line, the counts beside the market lines, the withdrawn and re-grade
+    lines) and its market entries. Every read names the forecaster in the
+    door (`recommend.counted_once`, `not_counted_once`, `withdrawn`,
+    `regraded`), so nothing here can count the other forecaster's rows."""
+    from .market import recommend
+
+    whose = language.FORECASTER_FILTER_WORDS.get(predictor, predictor)
+    # COUNTED ONCE (operator questions 12 and 22): a same-side pair of one
+    # distinct bet is its earlier row here, and only this forecaster's rows
+    # are read at all.
     rows = conn.execute(
         "SELECT r.market, r.side, r.price, c.clv_cents, c.restated,"
         "       c.recommendation_id IS NOT NULL AS accounted,"
@@ -2594,19 +2655,17 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
         "  FROM recommendations r"
         "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
         " WHERE r.sport = ? AND r.closed_utc IS NOT NULL"
-        + recommend.counted_once(conn),
+        + recommend.counted_once(conn, predictor=predictor),
         (window["from_utc"], sport)).fetchall()
     by_market: dict[str, list] = {}
     for row in rows:
         by_market.setdefault(row["market"], []).append(row)
     # WHAT THE DOOR LEFT OUT, NAMED RATHER THAN VANISHED: the repeats beside
-    # their market's count, both sides beside the closing line.
-    aside = recommend.not_counted_once(conn, sport=sport)
+    # their market's count.
+    aside = recommend.not_counted_once(conn, sport=sport, predictor=predictor)
     repeats: dict[str, int] = {}
     for row in aside:
-        if row["why"] == recommend.REPEAT:
-            repeats[row["market"]] = repeats.get(row["market"], 0) + 1
-    both = [row for row in aside if row["why"] == recommend.BOTH_SIDES]
+        repeats[row["market"]] = repeats.get(row["market"], 0) + 1
 
     entries = []
     for market in sorted(set(by_market) | set(repeats)):
@@ -2640,13 +2699,18 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
         entry = {
             "sport": sport,
             "market": market,
+            # WHOSE LINE, in the Record page's own words for the forecaster
+            # (operator question 22): "point spread, statistical".
+            "predictor": predictor,
+            "category_label": language.closing_line_label(
+                language.market_words(sport, market), predictor),
             "n": n,
             "unmeasured": unmeasured,
             "restated": restated,
             "unaccounted": unaccounted,
             "before_window": before_window,
-            # QUESTION 12: the later rows of this market's same-side pairs,
-            # in no figure here, named beside it.
+            # QUESTION 12: the later rows of this forecaster's same-side
+            # pairs in this market, in no figure here, named beside it.
             "repeats": repeats.get(market, 0),
             "minimum_for_a_claim": floor,
             # THE DATE AND THE SAMPLE, both: a verdict needs fifty closes
@@ -2668,7 +2732,8 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
 
     open_rows = conn.execute(
         "SELECT COUNT(*) FROM recommendations r"
-        " WHERE r.sport = ? AND r.closed_utc IS NULL" + recommend.counted_once(conn),
+        " WHERE r.sport = ? AND r.closed_utc IS NULL"
+        + recommend.counted_once(conn, predictor=predictor),
         (sport,)).fetchone()[0]
     # WHAT WAS SET ASIDE, TALLIED AS THE COUNTS ABOVE ARE (question 12), so
     # `audit.withdrawn_counted_faults` can still add every standing row up:
@@ -2682,27 +2747,23 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
     # SHOWN, NEVER COUNTED. A withdrawn recommendation that simply vanished
     # from this report would be a deletion by omission; it is named here, with
     # its reason, and in no figure above.
-    withdrawn = recommend.withdrawn(conn, sport=sport)
+    withdrawn = recommend.withdrawn(conn, sport=sport, predictor=predictor)
     # NAMED, AND COUNTED WHERE THEY WERE (GRIDIRON_REPAIR item 4, 2026-09-26):
     # the recommendations the corrected bar would have refused, beside the
     # closing line and never taken out of it.
-    regraded = recommend.regraded(conn, sport=sport)
+    regraded = recommend.regraded(conn, sport=sport, predictor=predictor)
     counted = sum(e["n"] for e in entries)
-    return {
-        "sport": sport,
-        "record": "closing_line",
-        "declared": CLV_DECLARED,
-        # THE SECOND WINDOW (ruling 8, 2026-09-27): from when the count runs,
-        # the first clean read, whether it has come, and the days between.
-        "window": {"from": window["from"],
-                   "first_clean_read": window["first_clean_read"],
-                   "open": window["open"], "days": window["days"]},
+    block = {
+        "predictor": predictor,
+        "label": whose,
+        # FROM WHEN IT COUNTS, AND THIS FORECASTER'S N SINCE (ruling 8;
+        # question 22): the dates are the same for both, the count is not.
         "window_line": {
-            "label": "Since the repair",
+            "label": language.closing_line_label("Since the repair", predictor),
             "n": counted,
             "words": language.closing_line_window_line(
                 window["from"], window["first_clean_read"], counted,
-                verdict_open=window["open"]),
+                verdict_open=window["open"], predictor=predictor),
         },
         "n": counted,
         "unmeasured": sum(e["unmeasured"] for e in entries),
@@ -2712,46 +2773,30 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
         "awaiting_close": open_rows,
         "withdrawn": len(withdrawn),
         "withdrawn_line": ({
-            "label": "Withdrawn",
+            "label": language.closing_line_label("Withdrawn", predictor),
             "n": len(withdrawn),
             "words": language.withdrawn_recommendations_line(
                 len(withdrawn), [w["reason"] for w in withdrawn]),
         } if withdrawn else None),
         "regraded": len(regraded),
         "regraded_line": ({
-            "label": "Would not have cleared",
+            "label": language.closing_line_label("Would not have cleared",
+                                                 predictor),
             "n": len(regraded),
             "words": language.regraded_recommendations_line(
                 [(g["return_on_cost"], g["minimum_return"]) for g in regraded]),
         } if regraded else None),
-        # OPERATOR QUESTION 12 (ruled 2026-09-27). The later rows of
-        # same-side pairs, each counted once as its earlier row (named per
-        # market above), and the rows of a game and market recommended on
-        # both sides, counted nowhere and named here under the ruling's own
-        # label with their N -- derived on every read, never stored.
+        # QUESTION 12: this forecaster's later rows of same-side pairs, each
+        # counted once as its earlier row (named per market above).
         "repeats": sum(repeats.values()),
-        "both_sides": len(both),
-        "both_sides_line": ({
-            "label": recommend.BOTH_SIDES_LABEL,
-            "n": len(both),
-            "words": language.both_sides_recommendations_line(
-                _both_sides_groups(sport, both)),
-        } if both else None),
         "set_aside": {
             "n": len(aside),
             "measured": aside_measured,
             "closed": sum(1 for row in aside if row["closed"]),
             "awaiting_close": sum(1 for row in aside if not row["closed"]),
         },
-        "markets": entries,
-        "note": (
-            "The price the app recommended against the market's own final "
-            "estimate of the same question. It needs about fifty observations "
-            "to say anything, where a win rate needs several hundred, which is "
-            "why it is the first verdict this project can reach. A positive "
-            "number means it is buying cheaper than the close."
-        ),
     }
+    return block, entries
 
 
 # ---------------------------------------------------------------------------

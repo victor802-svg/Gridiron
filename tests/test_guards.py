@@ -634,11 +634,16 @@ def test_every_new_guard_is_in_the_planted_harness():
         # repaired and is not read before its first clean read.
         "plant_a_closing_line_verdict_before_its_first_clean_read",
         "plant_a_close_from_before_the_window_counted",
-        # OPERATOR QUESTION 12 (ruled 2026-09-27, built the same day): every
-        # measurement counts a same-side pair once, and both sides of one
-        # game and market not at all.
+        # OPERATOR QUESTION 12 (ruled 2026-09-27, built the same day), ON
+        # QUESTION 17'S KEY BY QUESTION 22 (ruled 2026-09-28): every count of
+        # recommendations is one forecaster's, a same-side pair of one
+        # distinct bet counts once, and 45/46 each count once in their own
+        # forecaster's line -- the reversal of
+        # `plant_both_sides_of_one_total_counted`, renamed for what it plants.
         "plant_a_same_side_pair_counted_twice",
-        "plant_both_sides_of_one_total_counted",
+        "plant_a_recommendation_count_pooling_two_forecasters",
+        "plant_a_same_side_pair_across_two_forecasters_counted_once",
+        "plant_recs_45_and_46_counted_zero",
         "plant_a_measurement_that_goes_round_the_counted_once_door",
         # OPERATOR QUESTION 20 (ruled (A) 2026-09-27): a panel that holds
         # tap targets arrives by its fade alone, never a movement.
