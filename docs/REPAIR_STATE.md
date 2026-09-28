@@ -19,6 +19,20 @@
   2026-09-28T15:00Z). **Queue rule after Q16:** a new finding joins the
   queue only if it breaks LAW 1 or LAW 3 or makes a gate count false;
   everything else goes to FOLLOWUPS for the re-read.
+  **Done 28 Sep:** the scratchpad's rehearsal and measurement copies of the
+  record deleted (~00:40Z): 58 copies and 74 files SQLite kept beside them,
+  132 files, 61.05 GB freed (C: 131.9 -> 193.0 GB free); the list is
+  `deleted_2026-09-28.tsv` in the session's scratchpad; nothing in var\ and
+  not the live record touched. **Q20 with Q28 released as 724a72d (04:51Z;
+  gate 4/4, 338/338, first run):** the Today panel arrives by its fade
+  alone; the per-frame check failed 10/10 on f66fefa and passes; one shared
+  helper, `tests/conftest.py::wait_for_the_redraw_it_starts`, armed around
+  each affected test's own redraw (nine tests in test_smoke.py,
+  test_prompt_disclosure's Why test, and test_cards' card test, found by
+  shape); the race copy lost 0/60 with it and 33/60 without;
+  ELAPSED_TIME_HELD unchanged (28 functions / 44 waits). The helper's one
+  precondition (a redraw asked for before arming) is Q5's to close.
+  **Next: Q24.**
 
 - **THE ORDER NOW (third set, 2026-09-27 ~15:50Z;
   docs/briefs/2026-09-27-rulings-third-set.md; wins over every order
