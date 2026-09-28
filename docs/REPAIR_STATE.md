@@ -2,6 +2,24 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **THE ORDER NOW (28 Sep, second set, ~21:10Z;
+  docs/briefs/2026-09-28-rulings-second-set.md; wins over every order
+  below):** Q17 (building) -> Q16 -> Q27 (the standing pass chosen by pass:
+  a final pass before the start stands, else the latest early pass -- a read
+  rule, no row changes, the 16 NFL totals re-scored and every moved number
+  listed; and no early pass for a question whose final pass exists, a
+  `SlateAlreadyAnswered` noop; own commit, planting) -> the board merge ->
+  the re-read -> Q25 + Q26 + Q29 (Q29 folded into Q25's scan: code writing
+  `sqlite_sequence`, and a multi-row insert under OR FAIL / OR IGNORE / OR
+  ROLLBACK on an append-only table) -> Q5 -> Q10. Q20 with Q28 confirmed
+  released (724a72d, 04:51Z; master f0a4418 contains it).
+  **IF THE WEEKLY LIMIT STOPS WORK:** record here where it stopped, resume
+  from there at the reset, and never restart a finished step (a workflow
+  resumes from its run id; a finished agent replays from cache).
+  **Observed 21:11:54Z:** `/api/health` did not answer; the Serve task's
+  repeat trigger started it again at 21:12:01Z (f0a4418). Cause not found
+  (no step of this session stopped it); watch for a repeat.
+
 - **THE ORDER NOW (rulings of 28 Sep, docs/briefs/2026-09-28-rulings.md;
   wins over every order below):** Q20 with Q28 (A: one shared test helper
   waiting in the page for the test's own redraw) -> Q24 (recommendations'
