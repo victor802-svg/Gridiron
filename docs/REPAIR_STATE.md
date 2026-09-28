@@ -2,6 +2,24 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **THE ORDER NOW (rulings of 28 Sep, docs/briefs/2026-09-28-rulings.md;
+  wins over every order below):** Q20 with Q28 (A: one shared test helper
+  waiting in the page for the test's own redraw) -> Q24 (recommendations'
+  above-the-mark hole, Q15's basis, own commit + planting) -> Q27
+  measurement (read-only; report first; a pass written after its start is
+  voided under the existing rule) -> Q17 (key: forecaster + game, market,
+  subject, the rung asked; Q22 A: recommendation counts per forecaster, the
+  "Both sides" row goes; every released number that moves, listed) -> Q16
+  (Q23 A: page count and the fit's own gate on the key for fits from the
+  release; existing fits short of the gate labelled "fitted below its
+  gate", never activated) -> Q25 (the scan refuses rules switched off by a
+  connection setting and a function under a built-in's name) + Q26 (the
+  five tables: rules or true words; mlb_people's words and the register;
+  one commit) -> the board merge -> Q5 -> Q10 -> the re-read (not before
+  2026-09-28T15:00Z). **Queue rule after Q16:** a new finding joins the
+  queue only if it breaks LAW 1 or LAW 3 or makes a gate count false;
+  everything else goes to FOLLOWUPS for the re-read.
+
 - **THE ORDER NOW (third set, 2026-09-27 ~15:50Z;
   docs/briefs/2026-09-27-rulings-third-set.md; wins over every order
   below):** Q15 (predictions never replaced, own commit + planting; then
@@ -736,6 +754,8 @@ depend on the answer.
       would then disagree with its curve, or the curves would be rebuilt on
       a key most of their rows lack.
     Recommended: (i). Default until ruled: Q17 not built.
+    **RULED 2026-09-28: (i), the rung the forecaster was asked;** two
+    rungs on one game are two questions.
 22. **Q17: the recommendation counts, and recs 45/46.** Q12's counts (the
     closing line, the kill criterion, "Would not have cleared",
     tools/empty_bar.py) are the app's recommendations, both forecasters
@@ -754,6 +774,11 @@ depend on the answer.
       against "one function".
     Recommended: (A), as Q17's words read; it reverses Q12 for 45/46, so it
     is yours. Default until ruled: Q17 not built.
+    **RULED 2026-09-28: (A);** recommendation counts split per
+    forecaster; 45 and 46 each count once in their own forecaster's line
+    and the "Both sides, no position" row goes; same-side pairs count
+    once only within one forecaster; every released number that moves,
+    listed.
 23. **Q16: the page's count, or the fit's gate too?** A correction's category
     is sport, market type and forecaster (`correction.py:107-120`: every
     prop type under "prop", UFC's cards together), and the fit is gated on
@@ -766,6 +791,11 @@ depend on the answer.
     - **(B) Only the page's count changes**, and it states a number the fit
       does not use.
     Recommended: (A). Default until ruled: Q16 not built.
+    **RULED 2026-09-28: (A);** the page's count and the fit's own gate
+    both move to the key for fits from the release forward; the 63
+    existing fits stay as written, and any short of its gate on the
+    corrected count is labelled "fitted below its gate" and can never be
+    activated.
 24. **Q13's released rules have the hole Q15's prover closed on predictions.
     (Found by Q15's prover, 2026-09-27.)** A plain `UPDATE recommendations
     SET id = 10 WHERE id = 2` (over a mark of 3) is not refused -- it is not
@@ -776,6 +806,8 @@ depend on the answer.
     this for predictions (commit 22e182d); Q13 is released as it was. Fix
     it on recommendations the same way (own commit, planting)? Default
     until ruled: not built; no code does either statement.
+    **RULED 2026-09-28: fix it after Q20,** on Q15's basis, own commit
+    and planting.
 25. **Connection settings that switch the rules off. (Found by Q15's
     prover.)** `Connection.setconfig(SQLITE_DBCONFIG_ENABLE_TRIGGER,
     False)` turns every rule in the schema off for that connection, the
@@ -784,6 +816,9 @@ depend on the answer.
     key another. None is in shipped code. The scan the ruling asked for
     names three statements; add these two calls to it? Default until ruled:
     not built.
+    **RULED 2026-09-28: yes;** the scan also refuses code that turns the
+    rules off by a connection setting or registers a function under a
+    built-in's name.
 26. **Tables append-only in words, with no rule. (Found by Q15's scan.)**
     `factor_scores` and `llm_calls` (CLAUDE.md, "Append-only history"),
     `injury_reports`, `lineup_captures` and the observed-weather table
@@ -793,6 +828,9 @@ depend on the answer.
     while `mlb_loader.load_people` upserts it on every load (registered as
     a cache). Give the five their rules, and which is meant for
     `mlb_people`? Default until ruled: not built.
+    **RULED 2026-09-28:** each of the five gets the rules or words
+    saying what the code does; mlb_people's words change and it joins
+    the upsert register; one commit.
 27. **Sixteen NFL week-3 reasoning totals stand on their early pass, written
     after their final pass. (Found by Q15's measurement.)** `final:nfl` run
     2052 wrote the finals on 23 September at 19:30Z; `predict:nfl` run 2336
@@ -803,6 +841,10 @@ depend on the answer.
     the later EARLY row stands over the final. Q17 says which pass counts
     "stays each record's standing rule": as designed, or should a final
     pass always stand over an early one? Default until ruled: as is.
+    **RULED 2026-09-28: measure read-only first** (which pass stands for
+    each of the 16; when each pass was written against the start); a
+    pass written after the start is voided as an append-only row under
+    the existing void rule; report before changing anything else.
 28. **Q20's fix uncovers a race the movement was hiding. Tests that open a
     card right after setting the hash now lose the card to the redraw that
     same hash change starts. (Found by Q20's prover, 2026-09-27. Q20 is
@@ -853,6 +895,8 @@ depend on the answer.
       fail on one of them in most runs: 4 of 6 runs of the test file did.
     Recommended: (A). Default until ruled: Q20 is not committed. The change
     stays uncommitted in the worktree on `repair`, at f66fefa.
+    **RULED 2026-09-28: (A),** in Q20's commit: one shared helper, no
+    clock, no fixed wait; Q5's signal replaces it later.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
