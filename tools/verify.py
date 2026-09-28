@@ -775,6 +775,10 @@ def step_2_guards() -> bool:
          audit.check_selection_leaves_the_frame_alone),
         ("every side has words", audit.check_every_side_has_words),
         ("one motion vocabulary", audit.check_motion_vocabulary),
+        # OPERATOR QUESTION 20 (ruled (A) 2026-09-27): the Today panel, and
+        # every panel that arrives, arrives by its fade alone.
+        ("a panel holding tap targets arrives by its fade alone",
+         audit.check_a_panel_holding_tap_targets_arrives_by_its_fade_alone),
         ("the live mark states no opinion",
          audit.check_the_live_mark_is_not_an_opinion),
         ("a score arriving does not move the slate",

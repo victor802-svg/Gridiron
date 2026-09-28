@@ -628,6 +628,9 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_same_side_pair_counted_twice",
         "plant_both_sides_of_one_total_counted",
         "plant_a_measurement_that_goes_round_the_counted_once_door",
+        # OPERATOR QUESTION 20 (ruled (A) 2026-09-27): a panel that holds
+        # tap targets arrives by its fade alone, never a movement.
+        "plant_a_panel_holding_tap_targets_moving_as_it_arrives",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

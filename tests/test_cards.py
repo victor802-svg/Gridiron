@@ -21,6 +21,7 @@ import re
 import pytest
 
 from gridiron import audit
+from tests.conftest import wait_for_the_redraw_it_starts
 
 #: THE THREE WIDTHS THE BRIEF NAMES. They are no longer three LAYOUTS -- they
 #: are three widths of one layout, which is the whole point of the change, so
@@ -186,7 +187,14 @@ def test_a_collapsed_card_shows_one_number(page):
 
 def test_a_card_expands_in_place_and_shows_the_why(page):
     """R2's other half: the reasons are one tap away, and they arrive."""
-    _open_week(page, WIDE)
+    # THE REDRAW `_open_week`'S HASH CHANGE STARTS, WAITED FOR (operator
+    # question 28, 2026-09-28). Its waits come after the week's response but
+    # are met by the render before it until the new one lands, and the Why
+    # below is clicked inside the page, where nothing waits for stillness: a
+    # probe of these steps saw the click land before that redraw 2 times in
+    # 90 on 2026-09-28, and the redraw closes the card. See conftest.
+    with wait_for_the_redraw_it_starts(page):
+        _open_week(page, WIDE)
     if not _cards(page):
         pytest.skip("no cards on this slate")
     # RE-POINTED 2026-09-08 at the CARD_FACE card: a Why control that reveals

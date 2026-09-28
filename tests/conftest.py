@@ -7,6 +7,7 @@ nflverse data are marked `slow` and say so.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
@@ -861,6 +862,121 @@ def page(served, _browser):
     # discards this test's cookies, storage and signed-in session; the
     # browser process is the expensive part and is reused.
     context.close()
+
+# ---------------------------------------------------------------------------
+# THE REDRAW A TEST STARTS ITSELF
+# ---------------------------------------------------------------------------
+#
+# Operator question 28, ruled (A) on 2026-09-28 (docs/briefs/2026-09-28-
+# rulings.md): "In Q20's commit, the affected tests wait inside the page for
+# their own redraw's arrival to start and end. One shared helper, no clock, no
+# fixed wait; Q5's signal replaces it later." THIS IS THAT HELPER, AND Q5'S
+# RENDER-FINISHED SIGNAL REPLACES IT: when the page says its render is done
+# (operator question 5, ordered after the board merge), the tests wait on
+# that and this goes.
+#
+# THE RACE IT CLOSES. Setting the hash to the slate starts a redraw: the page
+# fetches the week and rebuilds the Today panel, and a card opened before the
+# rebuild is closed by it (question 18, fixed in the board). Waiting for
+# `#today .face` does not wait for the redraw -- the render before the hash
+# change already drew a card -- so a tap on its Why could land first and be
+# undone. Before question 20 the panel rose into place as it arrived, and
+# Playwright, which waits for a target to stop moving before it taps, always
+# tapped after the redraw. With question 20 the panel arrives by its fade
+# alone, nothing moves, and the tap no longer waits: Q20's prover measured the
+# redraw landing after the tap 11 times in 30, each time with the card closed.
+#
+# FROM INSIDE THE PAGE, NOT BY THE CLOCK. Every render of the slate calls
+# `arrive(panel)`, which puts the `arriving` class on the Today panel and takes
+# it off a frame later; the fade runs from there. The observer is installed
+# BEFORE the action, so a redraw that lands at once is not missed. The start
+# is the class going on (or set again while on); the class coming off is the
+# end of an arrival already under way, never a start. The end is the class
+# gone and no transition left running on the panel -- the per-frame check's
+# own reading (`WATCH_ONE_ARRIVAL` in test_smoke.py). Under reduced motion no
+# transition runs at all, so the end is the frame the class comes off: seen
+# to start and seen to end, never taken as ended before it began. No clock is
+# read, nothing waits a fixed time, and the one limit is an upper one.
+#
+# ARMED WITH NO OTHER REDRAW PENDING (its prover, 2026-09-28). The observer
+# cannot tell one render from another, so a redraw asked for BEFORE arming
+# that lands after it -- and before the action's own render begins -- is taken
+# as the start: built with the week's response held, the helper returned
+# before the action's redraw had landed. Once the action's render has begun
+# the page drops any earlier one (`weekSeq` in `renderWeek`), so the window
+# is only between arming and the action. No caller can open it: each arms
+# after `ready`, which boot sets once its own render has landed, and nothing
+# redraws the slate unasked (the live tick patches scores in place, and
+# `audit.live_update_faults` refuses a re-render on a tick). Q5's signal
+# should say WHICH render finished, which is what this cannot see.
+
+#: Installed before the action. `window.__theRedraw.done` once the arrival
+#: the action started has ended.
+_ARM_THE_REDRAW = """() => {
+    const panel = document.getElementById('today');
+    if (!panel) throw new Error('there is no Today panel on this page to redraw');
+    const redraw = { started: false, done: false, frames: 0 };
+    window.__theRedraw = redraw;
+    const arriving = value => (' ' + (value || '') + ' ').includes(' arriving ');
+    const watch = new MutationObserver(records => {
+        // A record carries the class as it WAS; as it became is the next
+        // record's old value, or the attribute now for the last one.
+        const started = records.some((m, i) => arriving(
+            i + 1 < records.length ? records[i + 1].oldValue
+                                   : panel.getAttribute('class')));
+        if (!started) return;
+        watch.disconnect();
+        redraw.started = true;
+        const tick = () => {
+            redraw.frames += 1;
+            if (panel.classList.contains('arriving') || panel.getAnimations().length) {
+                requestAnimationFrame(tick);
+            } else {
+                redraw.done = true;
+            }
+        };
+        requestAnimationFrame(tick);
+    });
+    watch.observe(panel, { attributes: true, attributeFilter: ['class'],
+                           attributeOldValue: true });
+}"""
+
+#: The upper limit on a redraw arriving, in milliseconds: the one the slate's
+#: own waits use. A redraw that arrives in 50ms returns in 50ms.
+REDRAW_LIMIT_MS = 15000
+
+
+@contextlib.contextmanager
+def wait_for_the_redraw_it_starts(page):
+    """Arm on entering, do the action that redraws the slate inside the
+    block, and on leaving it wait INSIDE THE PAGE until that redraw's arrival
+    has started and ended (operator question 28, 2026-09-28; Q5's
+    render-finished signal replaces this).
+
+        with wait_for_the_redraw_it_starts(page):
+            page.evaluate("location.hash = '#/week'")
+
+    An action that starts no redraw of the Today panel fails by name at the
+    upper limit, rather than passing on the render before it. Arm it with no
+    other redraw of the slate pending, as every caller does (after `ready`):
+    the first arrival after arming is taken as the action's."""
+    page.evaluate(_ARM_THE_REDRAW)
+    yield
+    try:
+        page.wait_for_function(
+            "() => !!window.__theRedraw && window.__theRedraw.done",
+            timeout=REDRAW_LIMIT_MS)
+    except playwright_api.TimeoutError:
+        seen = page.evaluate("window.__theRedraw || null") or {}
+        raise AssertionError(
+            "THE REDRAW THIS TEST STARTED "
+            + ("NEVER ENDED" if seen.get("started") else "NEVER STARTED")
+            + f" within the {REDRAW_LIMIT_MS}ms upper limit: the Today panel's "
+            f"arrival was {'seen to start' if seen.get('started') else 'not seen'}"
+            f" ({seen.get('frames', 0)} frames read after it). The action inside "
+            f"`wait_for_the_redraw_it_starts` must redraw the slate -- setting "
+            f"the hash to what it already is fires no hashchange and redraws "
+            f"nothing.") from None
 
 # ---------------------------------------------------------------------------
 # THE NETWORK IS SHUT UNLESS A TEST SAYS OTHERWISE

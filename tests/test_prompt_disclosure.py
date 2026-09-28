@@ -217,7 +217,11 @@ def test_a_reasoning_card_shows_its_prompt_inside_why(
         prompt_world, _browser, width, height):
     context, page = _signed_in(_browser, prompt_world["base"], width, height)
     try:
-        page.evaluate("location.hash = '#/week'")
+        # THE REDRAW THIS HASH STARTS, WAITED FOR (operator question 28,
+        # 2026-09-28): the render before it already drew the cards, and a
+        # Why opened before the redraw lands is closed by it. See conftest.
+        with conftest.wait_for_the_redraw_it_starts(page):
+            page.evaluate("location.hash = '#/week'")
         for pid, kind in ((prompt_world["rebuilt"], "reconstructed"),
                           (prompt_world["sent"], "sent")):
             card = page.locator(f"article.face[data-id='{pid}']")

@@ -267,7 +267,13 @@
 
      `ease-out` because motion that decelerates into place reads as something
      arriving. The previous token was `cubic-bezier(0.2, 0, 0.2, 1)`, which is
-     the same shape drawn by hand; one named curve is easier to hold to. */
+     the same shape drawn by hand; one named curve is easier to hold to.
+
+     A PANEL THAT HOLDS TAP TARGETS ARRIVES BY ITS FADE ALONE (operator
+     question 20, 2026-09-27). A movement of any size puts every control
+     inside the panel a fraction of a pixel off whole on the frames it moves,
+     and a 44px control then reads 43.9995px. The Today panel is the one that
+     arrives today; `audit.arrival_movement_faults` holds every other to it. */
   --motion-state: 150ms;
   --motion-panel: 200ms;
   --motion-ease: ease-out;
@@ -1741,28 +1747,38 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .tile-verdict { opacity: 1; }
 
 /* A TAB SWITCH (R4, 2026-09-05). The hero and the grid swap their whole
-   contents, so they get the panel duration, and they arrive from one per
-   cent below rather than cutting in. One per cent is the smallest movement
-   that reads as arrival; the bound is two, and `audit.motion_faults` refuses
-   a translateY or a scale outside it, in any unit but per cent. The view
-   menu's button joins the state-change line above. */
+   contents, so they get the panel duration, and they arrive rather than cut
+   in. R4 had them arrive from one per cent below as well, the smallest
+   movement that reads as arrival; the bound on a movement is two per cent,
+   and `audit.motion_faults` refuses a translateY or a scale outside it, in
+   any unit but per cent. The view menu's button joins the state-change line
+   above. */
 /* `#week-hero` and `#week-cards` carried this until 2026-09-08; the hero and
    the grid are both gone and the Today panel is what swaps its whole contents
-   when a market chip changes the slate. Same duration, same easing, same one
-   per cent. */
+   when a market chip changes the slate. Same duration, same easing. */
+/* THE TODAY PANEL ARRIVES BY ITS FADE ALONE (operator question 20, ruled (A)
+   on 2026-09-27). Until then it rose from one per cent below its place, and
+   while it moved it sat a fraction of a pixel off whole: the browser mapped
+   each button's box through that offset and rounded its top and bottom
+   apart, so a 44px control read 43.9995px -- under the floor, on a frame a
+   thumb can land on -- and the slate's tap-target test flaked whenever a
+   redraw landed inside its measurement. The panel holds tap targets (the
+   fold, and each card's Why control and took button), so its transition
+   names opacity alone and its start state carries no transform;
+   `audit.arrival_movement_faults` refuses a movement in the arrival of any
+   panel that holds them. Same 200ms, same ease-out. */
 #today {
-  transition: opacity var(--motion-panel) var(--motion-ease),
-              transform var(--motion-panel) var(--motion-ease);
+  transition: opacity var(--motion-panel) var(--motion-ease);
 }
 /* The start state snaps -- `transition: none` -- so that adding the class
    does not itself animate towards zero; only the removal a frame later runs
-   the transition above, from one per cent below to place. */
+   the transition above, from transparent to opaque, in place. */
 /* `#week-hero` and `#week-cards` were the hero and the grid; both are gone.
    THE TODAY PANEL IS WHERE CONTENT ARRIVES NOW (2026-09-08) -- a market chip
    switching the slate refills its groups, and without this rule the swap was
    instantaneous, which is the one thing the motion vocabulary exists to
-   prevent. The transition itself is unchanged. */
-#today.arriving { opacity: 0; transform: translateY(1%); transition: none; }
+   prevent. The `translateY(1%)` it carried went on 2026-09-27 (above). */
+#today.arriving { opacity: 0; transition: none; }
 /* THE ONE KEYFRAME. A game being played is the only thing on this page that
    repeats, because it is the only thing that is still happening. It pulses
    between full and half opacity -- no scale, no colour change, no glow. */

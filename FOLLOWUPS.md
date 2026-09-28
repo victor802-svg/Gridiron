@@ -6397,3 +6397,446 @@ version the scan said `[]` to every one of the five plantings below.
 - A table part worked out at run time touching a plain update's name
   (`UPDATE {prefix}predictions SET`), which could carry OR REPLACE but reads
   as a schema's prefix; and a connection's own settings (above).
+
+## A panel that holds tap targets arrives by its fade alone -- built 2026-09-27 *(operator question 20, ruled (A); the third set of rulings of 2026-09-27)*
+
+"Q20: (A). The Today panel arrives by fade alone; per-frame whole-pixel check
+that fails today, plus a planting; the one test_motion assertion changes.
+Side question: not in scope; the old Why panel leaves with the board. The
+board merge checks every tap target, links included." It serves the ruling on
+the flaky tests (`docs/briefs/2026-09-27-close-out-rulings.md`): "fix the
+elements so they render at 44px or more in whole pixels. Never widen a
+tolerance. Its own commit, before the board merge." The question as asked,
+with the diagnosis, is `docs/REPAIR_STATE.md` question 20; the board merge's
+step 2 now carries "arrival motion on any panel holding tap targets is opacity
+only" (`docs/briefs/2026-09-27-board-merge.md`), and the scan below is built
+so the merge can be held to it.
+
+### MEASURED FIRST *(2026-09-27; this tree at f66fefa -- the released 70ad888 and documents; the repo's own browser test world, never the live app)*
+
+- **The failing reading**: `test_smoke.py::test_every_tap_target_on_the_slate_
+  is_big_enough` at 43.99951171875px (44 less 1/2048). The diagnosis
+  (scratchpad `flaky/diag/`, reused here): every tap target is laid out at a
+  whole number of pixels, 44 or more, at rest, on every view and at both
+  widths the tap-target tests use; during an arrival the Today panel sat a
+  fraction of a pixel off whole and the browser rounded each control's top
+  and bottom apart. Twelve market switches, every frame: 9 of 192 frames off
+  whole, 3 readings under 44; the fade alone, 193 of 193 whole; every target
+  at 45px, 15 readings still off whole (none under 44) -- a tolerance by
+  another name, so not built.
+- **Every arrival on the page** (the stylesheet and app.js searched for
+  `arrive`/`arriving`, and the motion block read whole):
+  - `#today.arriving` (style.css:1765): opacity 0 and `translateY(1%)` -- the
+    one transform declared anywhere in the stylesheet.
+  - `#today`'s transition (1753-1756): opacity and transform, 200ms,
+    ease-out.
+  - `arrive(node)` (app.js:2101) adds `arriving`, forces a layout and takes
+    the class off on the next frame; its one caller is `renderToday`
+    (app.js:1473), on `#today`. No other panel arrives.
+  - The panel line, `#rail-body, #rail-match, #rail-pick`: opacity alone, and
+    no element with any of those ids exists in index.html or app.js (the
+    rail's; left, not this item's).
+  - The state-change line (`.tile`, `.seg button`, `.tile-verdict`,
+    `.krow`) and the rest (`.card`, `.card-head`, `.market-tab`,
+    `.show-all`, `.card-hint`): a colour, a border or an opacity; the live
+    pulse is opacity. Nothing else moves.
+  So the Today panel was the one panel that moved and the one that arrives;
+  nothing else needed the ruling.
+- **375 at 2**: none of the existing tap-target tests uses it (all measure at
+  390, three device pixels to one), so the per-frame check runs at 390 at 3.
+
+### BUILT *(2026-09-27)*
+
+- **The panel** (`style.css`): `#today.arriving { opacity: 0; transition:
+  none; }` and `#today { transition: opacity var(--motion-panel)
+  var(--motion-ease); }` -- 200ms and ease-out, as before, and no transform.
+- **The words**: the L3 vocabulary's own comment (`:root`) says a panel that
+  holds tap targets arrives by its fade alone and why, dated; the motion
+  block's R4 comment keeps R4's history and says the Today panel's movement
+  went, why, and which scan holds it; `audit`'s L3 bound
+  (`MOTION_MAX_TRANSLATE_PCT`) is unchanged -- two per cent still binds any
+  movement the page makes elsewhere.
+- **The pixels**: `test_smoke.py::test_no_tap_target_leaves_whole_pixels_on_
+  any_frame_of_the_slates_arrival`, beside the slate's tap-target test, on its
+  `phone` fixture (390x844, 3x, mobile, touch). It redraws the slate 19 times
+  in this world -- the hash set to the slate as the flaky test sets it, then
+  every market chip, twice round -- and for each installs a sampler before the
+  redraw: it starts on the mutation that puts the arrival class on the panel
+  (the redraw's start, before a frame of it is drawn), reads the height of
+  every tap target the tap-target tests measure (`SLATE_TAP_TARGETS`: the
+  slate test's set, `test_cards.py`'s `#view-week a`, the colophon's links)
+  on every animation frame, and ends on the arrival's own end (the class gone
+  and no transition left running on the panel). No clock is read and nothing
+  waits a fixed time; `wait_for_function` carries an upper limit only. It
+  fails by name -- the element, its place down the page, the frame, the
+  arrival, the reading -- on a height under 44 or not a whole number, and it
+  asserts it looked at something (every arrival sampled, the whole slate's
+  card controls measured inside the panel, frames read mid-fade). Cards stay
+  closed (the side question). `ELAPSED_TIME_HELD` is unchanged.
+- **`test_motion.py::test_a_tab_switch_arrives_through_the_motion_block`**:
+  its one assertion that the transition names `transform` now asserts it
+  names `opacity` and nothing else, with a two-line dated comment. Nothing
+  else in the file changed.
+- **The gate**: `audit.arrival_movement_faults` (step 2,
+  `audit.check_a_panel_holding_tap_targets_arrives_by_its_fade_alone`, beside
+  the motion vocabulary) reads style.css with its comments blanked, and
+  app.js and index.html. A START STATE -- a rule whose selector carries
+  `ARRIVAL_CLASS` or any other class the page's `arrive` adds -- may carry no
+  `transform`, `translate`, `scale` or `rotate` but `none`. The TRANSITION
+  of the panel such a state names (the selector without the class, its tag
+  and classes read from index.html when it names an id, so a rule on
+  `.today` or `section` counts), in the state or out of it, and every
+  transition at the panel duration, names opacity alone: not a movement, not
+  `all`, not a shorthand naming no property (CSS reads that as `all`). It
+  names the file, line, rule and declaration. Proved at import on the
+  arrival as it shipped and as it ships, a comment naming the old movement
+  among the second.
+- **The planting**: `plant.py::plant_a_panel_holding_tap_targets_moving_as_
+  it_arrives` puts the movement back ten ways -- as it shipped until
+  2026-09-27; its start state alone; its transition alone; the `translate`
+  property; a transition naming `all`; one naming no property; the movement
+  on the panel's class; inside a phone-width media block; the start state
+  under a class the script's `arrive` adds in place of `arriving`; and a new
+  panel arriving at the panel duration with a movement (the board's case) --
+  each must be named as planted; a comment naming the old movement must not
+  trip it; and the gate's own call must refuse the first form read from a
+  copy of the package. In the harness and `test_guards.py`'s list.
+- **CLAUDE.md**: the enforcement table's row, "L3: A PANEL THAT HOLDS TAP
+  TARGETS ARRIVES BY ITS FADE ALONE".
+
+### READINGS TAKEN *(conservative defaults, each reversible in a line)*
+
+- **"Holds tap targets" is every panel that arrives.** What arrives in a
+  panel is built by the script, which a scan of the stylesheet cannot read,
+  so each is taken to hold them -- the stricter default. The Today panel does
+  (its markup's fold, and each card's Why control and took button). A panel
+  that arrives with none is not something the page has; it would be an
+  operator question, not an exemption. (Reversal: a dated register of panels
+  holding none.)
+- **"Opacity only" is read literally**: a panel's arrival transition naming
+  a colour or a border is refused too, not only a movement -- the ruling's
+  words and the board merge's.
+- **The panel duration marks a panel**: the vocabulary gives 200ms only to
+  "a panel swapping its whole contents", so a transition at it is held to
+  the rule even where no start state names it -- the way a board panel with
+  an arrival of its own is seen. (Reversal: drop `timed`.)
+- **The per-frame set** is the union of what the tap-target tests measure on
+  the slate, with every card closed; the open Why panel's link is the side
+  question, ruled out of scope.
+
+### PROVED *(2026-09-27)*
+
+- **The per-frame test fails on the code before the fix**: 10 runs of 10 on
+  `git archive` of f66fefa with this test file copied in (9 to 28 readings a
+  run, in about 257 frames of 19 arrivals: `button.took "I took this"` from
+  53.99951171875 to 54.00048828125px and `button.expand "Why"` from
+  43.99951171875 to 44.00048828125px, about two thousand and four thousand
+  pixels down the page, on the whole slate's, the spread's and the
+  moneyline's arrivals), and 10 of 10 on this tree before
+  style.css changed (its draft, 4 or 5 of 19 arrivals off whole each run).
+  **It passes on the fix**: 22 runs of 22 -- 21 alone and once in the full
+  suite, about 257 frames a run, not one reading off whole or under 44.
+- **Renders** (the repo's browser test world, scratchpad `flaky/q20/render`,
+  390 at 3x and 1100): at rest the slate is byte for byte the same image on
+  the fix and on f66fefa at both widths; one arrival held half-way (the
+  panel's own transitions paused at 100ms of 200ms) shows the fix's panel in
+  place at opacity 0.68 with every tap target whole, and f66fefa's 21px
+  (390) and 18px (1100) below its place, where at 1100 two `took` and two
+  `expand` read 53.9998779296875, 53.99951171875, 43.9998779296875 and
+  43.99951171875px.
+- **The planting**: NOT CAUGHT on f66fefa (`git archive`, this plant.py
+  copied over it: "nothing reads a panel's arrival" -- that tree's
+  `motion_faults` and `check_motion_vocabulary` pass its own moving
+  stylesheet); CAUGHT here, all ten forms named as planted, the comment not,
+  and the gate's own call refusing `#today.arriving`. The harness: 338/338.
+- **The tap-target tests keep their floor**: the slate's, the cards', the
+  sport tabs' and the settings' tests are unchanged, 44 and no rounding
+  added, and pass. The full suite with a dummy access token: 1976 passed, 8
+  skipped, 1 failed -- `test_smoke.py::test_nothing_moves_under_reduced_motion`
+  (the `Why` it clicked did not open within 10 s: Q5's race with the redraw
+  its own hash change starts, the known flake; under reduced motion nothing
+  moved before this change either), which then passed alone three runs of
+  three.
+
+### NOT SEEN *(FOLLOWUPS)*
+
+- A movement the script sets itself (an inline style, `animate()`); an
+  arrival through a class `arrive` does not add or a function other than
+  `arrive`; a transition declared under a selector naming none of the panel's
+  id, tag or index.html classes (a class the script adds) below the panel
+  duration; and a movement on a tap target itself (a pressed control that
+  scales), which is not an arrival. The per-frame test reads the slate at 390;
+  no other view arrives today.
+- **For the board merge**: its panels may arrive by a class or a function of
+  their own. The merge should plant a movement on each board panel that
+  arrives and see this scan name it, or say which it cannot see.
+- Two test comments still describe the old arrival ("one per cent below"):
+  `test_cards.py::_open_week`'s and `test_motion.py`'s reduced-motion test's.
+  Their waits still hold (the fix's transform is `none`); the ruling changed
+  one test_motion assertion and nothing else, so neither was touched.
+
+### THE SIDE QUESTION
+
+Not in scope (ruled): the "How the model works" link inside an open card's
+Why panel (`a.face-more`) is 17.4px tall at 390 and 375, and no test measures
+it. It leaves with the board, and the board merge's step 3 checks every tap
+target, links included, at 390 at rest.
+
+### THE PROVER *(2026-09-27; scratchpad `q20/`; the repo's own browser test world, never the live app)*
+
+- **The per-frame test on the code before the fix**: `git archive` of f66fefa
+  with this `test_smoke.py` copied in, 10 runs of 10 FAILED (10 to 26
+  readings a run in 256 to 261 frames of 19 arrivals: `button.took` at
+  53.99951171875 and 54.00048828125px, `button.expand` at 43.99951171875 and
+  43.9998779296875px). **On the fix**: 10 runs of 10 PASSED (reported
+  PASSED, not skipped), and once more in the full suite.
+- **Every other redraw the page does, every frame** (a sampler of its own,
+  started before each act and ended when the page had been quiet for twenty
+  frames with no transition running; a wider set than the test's -- every
+  `a`, `button`, `select`, `summary`, `input` and `.expand` with a box):
+  the hash to the week; Record, Results, Settings and back; each of the nine
+  market chips; each option of the market select; each of the three slates
+  in the week picker; "This week" opened and shut; Upcoming and Live; three
+  cards opened and closed by a real tap (the page scrolled to them); a card
+  open when a market chip redraws the slate; "I took this"; each of the five
+  sports and back; the Record page's forecaster picker and market select;
+  Results' market and outcome filters. 64 redraws at 390 at three device
+  pixels to one and 64 at 375 at two, about 2,490 frames and 102,000
+  readings each, 30 arrivals of the Today panel each. **On the fix, not one
+  reading off whole or under 44** but `a.face-more`, which reads 17.390625px
+  on every frame it is open, the same as at rest -- the side question, ruled
+  out of scope, not a movement. On f66fefa the same sampler read 45 (390)
+  and 21 (375) off whole, 11 and 6 of them under 44, every one inside the
+  Today panel on a frame it was moved.
+- **Not there to redraw**: the tier filter and the sort toggle went with the
+  controls line on 2026-09-08 (THREE_STATES S1): no `#week-sort-seg` and no
+  tier button is in index.html, `setTier` has no caller and `wireSortToggle`
+  returns at once. This world has no pick below the floor, so the fold was
+  not shown. A fractional scroll lands on a whole pixel in this browser;
+  scrolled to five places down the slate at rest, nothing read off whole.
+- **Seen, not changed (not this item)**: with a card open, a market chip's
+  redraw closed it and the page jumped from 855px down to 145px (question 18,
+  ruled: fixed in the board).
+- **Renders at rest** (`q20/render/`): at 390 (3x) the top of the week and
+  the Today panel are byte for byte f66fefa's; at 1100 the Today panel is
+  too, and the top differs in 7 pixels by one colour step (x 24-26, y
+  513-519, the anti-aliased left edge of the Upcoming button), the same on a
+  second render of each tree -- a rasterisation difference, nothing a reader
+  sees. At 1100 a `summary` (18.8px) and two colophon links (17px) are under
+  44 on both trees; desktop width is outside the 390 rule.
+- **The planting ESCAPES on f66fefa** (NOT CAUGHT, "nothing reads a panel's
+  arrival"; that tree's `motion_faults` is `[]` on its own moving stylesheet
+  and `check_motion_vocabulary` passes it) **and is CAUGHT on the fix.**
+  **Neutralised in a copy of the fix, one part at a time**: the scan made
+  blind -- its import check refuses the module ("A SCANNER IS BLIND"); blind
+  with that check removed, the start-state check dropped, `translate` taken
+  out of the movements, `all` let through, a shorthand naming no property
+  not read as `all`, index.html's names not read, the classes `arrive` adds
+  not read, the panel-duration branch dropped, the gate's own call made a
+  no-op, and (below) the gate's row taken out or left as a comment -- each
+  NOT CAUGHT, naming the forms it let through.
+- **FOUND AND FIXED: THE GATE ROW.** With the row taken out of `verify.py`'s
+  step 2, or left there only as a comment, the planting as first built still
+  said CAUGHT and no guard said anything: `check_no_orphan_functions` counts
+  the planting's own `getattr` of the name as a caller. The planting now
+  reads step 2's syntax tree for `audit.check_a_panel_holding_tap_targets_
+  arrives_by_its_fade_alone` as an attribute of `audit` (a comment cannot
+  stand in for it), as question 15's scan is pinned by
+  `test_no_replacing_write.py::test_the_gate_runs_the_scan_in_step_two`.
+- **The gate's step 2, dry-run** (the new row and twelve source-only
+  neighbours, `GRIDIRON_VERIFYING` set, no record check): 13 of 13 pass.
+  `check_no_test_waits_on_the_clock` passes and `ELAPSED_TIME_HELD` is 28
+  functions and 44 waits, as on f66fefa. `prose_reaching_the_raw_side()` is
+  `[]`.
+- **The harness**: `tools/guards/plant.py` whole, 338/338 planted
+  violations caught, exit 0. **The suite** (a dummy access token, TMP at its
+  default): 1975 passed, 8 skipped, 2 failed --
+  `test_nothing_moves_under_reduced_motion` (Q5's known race) and
+  `test_the_dumbbell_and_contribution_bars_fit`, which is not a known
+  flake. Each passes alone 5 of 5.
+- **FOUND, AND HELD FOR A RULING (`docs/REPAIR_STATE.md` question 28): THE
+  MOVEMENT WAS HIDING A RACE IN THE TESTS.** Several tests set the hash,
+  wait for a card the previous render already drew, and tap its Why. The
+  hash change's redraw then rebuilds the panel and closes the card. On
+  f66fefa the Why moved while the panel arrived, and Playwright waits for a
+  target to stop moving before it taps, so the redraw always came first. A
+  scratch copy of the steps, 30 fresh sessions per tree
+  (`q20/race/`): on f66fefa the redraw came first 30 of 30 times; on the fix
+  it came after the tap 11 of 30 times, and each time the card was closed.
+  The whole `test_smoke.py` file failed 2 of 3 runs on f66fefa, only on the
+  reduced-motion race, and 4 of 6 runs on the fix, on the dumbbell test
+  twice, the bucket-line test once and the phone card-expands test once.
+  Q20 is not committed until the operator rules. **RULED (A) on 2026-09-28;
+  built in Q20's commit, below.**
+
+### THE TESTS THAT TAPPED BEFORE THEIR OWN REDRAW -- built 2026-09-28 *(operator question 28, ruled (A); docs/briefs/2026-09-28-rulings.md; in Q20's commit; the repo's own browser test world, never the live app; scratchpad `q28/`)*
+
+The ruling: "(A). In Q20's commit, the affected tests wait inside the page for
+their own redraw's arrival to start and end. One shared helper, no clock, no
+fixed wait; Q5's signal replaces it later."
+
+- **THE HELPER**: `tests/conftest.py::wait_for_the_redraw_it_starts(page)`,
+  beside the browser fixtures -- conftest is where this tree keeps what more
+  than one test file shares (`asks_only`, `seed_a_sent_prompt`, `_serve`). A
+  context manager, so the arming cannot come after the action: entering it
+  installs a MutationObserver on the Today panel's class (`_ARM_THE_REDRAW`);
+  the action that redraws the slate runs inside the block; leaving it,
+  `page.wait_for_function` waits for the page's own flag, with an upper limit
+  of 15 s (`REDRAW_LIMIT_MS`, the slate's own waits' limit) and nothing else.
+  THE START is the `arriving` class going on, or set again while on, after
+  arming -- read from each mutation record's old value and the next one's, so
+  a class that went on and off between two callbacks is still seen, and the
+  class coming OFF (an arrival already under way when armed, such as the boot
+  render's) is never a start. THE END is the class gone and
+  `#today.getAnimations()` empty, read on each animation frame after the
+  start -- the per-frame check's own reading (`WATCH_ONE_ARRIVAL`). Under
+  reduced motion no transition runs, and the end is the frame the class comes
+  off. An action that starts no redraw fails at the limit by name ("THE REDRAW
+  THIS TEST STARTED NEVER STARTED ..."), never on the render before it. No
+  clock read, no sleep and no fixed wait, in Python or in the page:
+  `check_no_test_waits_on_the_clock` passes and `ELAPSED_TIME_HELD` is
+  unchanged, 28 functions and 44 waits (no test changed here held a wait, so
+  none lost one). Its comment is dated and says Q5's render-finished signal
+  replaces it.
+- **THE TESTS POINTED AT IT, found by the shape** -- a redraw the test starts,
+  a wait the render before it already satisfies, then a tap inside `#today` --
+  read in every browser test file. Each changed only where it sets the hash;
+  no assertion, tolerance or wait of its own changed. `test_smoke.py`:
+  `_open_first_card` (so `test_the_pick_states_model_market_and_gap_in_words`,
+  `test_no_graph_is_drawn_anywhere_on_picks`,
+  `test_the_bucket_line_never_shows_an_accuracy_without_its_n` and the skipped
+  `test_a_card_with_no_market_line_says_so_in_words`),
+  `test_a_card_expands_and_shows_its_detail`,
+  `test_nothing_moves_under_reduced_motion` (Q5's known race: nothing moves
+  under reduced motion, so it raced before Q20 too),
+  `test_the_phone_layout_does_not_overflow`,
+  `test_a_card_still_expands_on_a_phone` and
+  `test_the_dumbbell_and_contribution_bars_fit`;
+  `test_prompt_disclosure.py::test_a_reasoning_card_shows_its_prompt_inside_why`
+  (both widths); and ONE NOT ON THE PROVER'S LIST,
+  `test_cards.py::test_a_card_expands_in_place_and_shows_the_why`. Its
+  `_open_week` waits for the week's response, then for a face and the panel
+  at opacity 1, both met by the render before it until the new one lands, and
+  it clicks the Why inside the page, where nothing waits for stillness. A
+  probe of its steps (`q28/race/test_cards_probe.py`) saw the click land
+  before that redraw 2 times in 90 fresh sessions on the fix and 0 in 90 on
+  f66fefa: a narrower window than the others', and not shown to be Q20's.
+  Unchanged, the real test passed alone 20 of 20. The call in that one test is
+  wrapped; `_open_week` and its other callers, none of which taps inside
+  `#today`, are not.
+- **SEEN WITH A LIKE SHAPE, NOT CHANGED**:
+  `test_smoke.py::test_a_pending_row_shows_five_things_and_hides_the_rest`
+  (skipped since 2026-09-08, RE-POINT NEEDED: it reaches the old grid card's
+  `.card-head`, and its re-point is its own act);
+  `test_smoke.py::test_every_tap_target_on_the_slate_is_big_enough` and
+  `::test_every_moving_thing_is_inside_the_motion_vocabulary` (they set the
+  hash and measure, with no tap; with the fade alone every frame measures the
+  same); `test_motion.py::test_a_tab_switch_arrives_through_the_motion_block`
+  (it presses a market chip, which is outside `#today`). **For Q5, not this
+  item:** `test_prompt_disclosure.py::test_results_shows_each_reasoning_row_the_prompt_it_carries`
+  picks the reasoning pass on Results, waits for a prompt box the unfiltered
+  table may already hold, and opens it. That is the Results table's redraw,
+  not the Today panel's: it has no arrival class to wait on, and Q20 touched
+  nothing there. The phone test beside it already waits for the filtered
+  table (its Forecaster column gone).
+
+### PROVED *(2026-09-28; scratchpad `q28/`)*
+
+- **Each changed test alone, 5 runs of 5**: the nine in `test_smoke.py` (the
+  skipped one skipped each time), the Why test in `test_prompt_disclosure.py`
+  (both widths each run) and the card test in `test_cards.py`.
+- **The whole of `test_smoke.py`, 6 runs of 6**: 73 passed and 4 skipped each
+  (the fix without the helper failed 4 of 6, the prover's count).
+  `test_cards.py` whole, 3 of 3 (27 passed, 4 skipped);
+  `test_prompt_disclosure.py` whole, 3 of 3 (7 passed).
+- **THE RACE COPY** (`q28/race/test_race.py`: the prover's `q20/race` steps,
+  30 fresh sessions at 390 (3x), with the helper armed before the hash is
+  set and waited on after it): with the helper, 0 of 30 cards lost and 0
+  redraws after the tap, both at normal motion and under reduced motion.
+  Without the helper, on the same tree, 17 of 30 cards were lost (the prover
+  counted 11), and 24 of 30 under reduced motion. Every lost card was one
+  whose redraw landed after the tap.
+- **THE HELPER'S EDGES** (`q28/race/test_helper_edges.py`): under reduced
+  motion it saw the start and the end one frame apart, and returned with the
+  class off, no transition and opacity 1 (5 of 5). At normal motion the same
+  took 14 or 15 frames (5 of 5). The hash set to what it already was failed
+  at the 15 s limit with "NEVER STARTED". The class taken off after arming
+  was not counted as a start.
+- **The clock**: `plant.py::plant_a_test_that_waits_on_the_clock`, run
+  alone on this tree: CAUGHT, and it named only its own four planted tests,
+  none of the changed ones.
+- **The full suite** (a dummy access token, TMP at its default), once: 1977
+  passed, 8 skipped, 0 failed, in 18 minutes. The prover's run on the fix
+  without the helper had 1975 passed and 2 failed.
+
+### THE PROVER OF Q20 + Q28 *(2026-09-28; scratchpad `q20/p28/`; the repo's own browser test world, never the live app)*
+
+- **THE RACE COPY, REBUILT** (`p28/race/test_race.py`): the Q20 prover's
+  steps, 30 fresh signed-in sessions at 390 (3x) -- the hash set to the week
+  inside the tree's own `wait_for_the_redraw_it_starts`, a face waited for,
+  the first Why clicked -- then let settle in the page (an arrival seen and
+  the panel at rest) and 1.5 s more (scratch only, for any later redraw). On
+  this tree: 0 of 30 cards lost at normal motion and 0 of 30 under reduced
+  motion; in every run the helper returned with the hash change's arrival
+  seen and over (class off, no transition) and the tap came after it. On a
+  copy of this tree with the helper made a no-op (`p28/nohelp`; the same test
+  code): 10 of 30 lost at normal motion and 23 of 30 under reduced motion,
+  each exactly a run whose redraw landed after the tap.
+- **THE HELPER IS WHAT DOES IT**: `test_smoke.py` whole on that copy FAILED
+  6 runs of 6 -- 15 failures across eight of the nine tests changed here
+  (the phone card-expands test 4, the model-market-gap test 3, the no-graph
+  and bucket-line tests 2 each, the card-expands, reduced-motion,
+  phone-layout and dumbbell tests once each), every one a Why panel that
+  never became visible. On this tree: 6 runs of 6 passed.
+- **ITS EDGES, BUILT TO PASS EARLY OR HANG** (`p28/race/test_edges.py`; the
+  week's response HELD by a route until released, never delayed by a
+  clock). Armed while an earlier render's class was still on (armed inside
+  the page, on that class going on), 5 of 5, and while its fade still ran
+  (the real context manager), 5 of 5: the helper had not started when that
+  arrival was over and the action's response was still held, and ended only
+  after the release and the action's own arrival (13 to 15 frames). An
+  action that redraws nothing, and a payload with no Today block (the panel
+  hidden, no arrival): each fails by name at the 15 s limit, "NEVER
+  STARTED". Reduced motion: started and ended one frame apart, 5 of 5. A
+  redraw with no cards (every list emptied): started and ended, 13 frames.
+- **ONE CASE PASSES EARLY, AND NO CALLER CAN REACH IT**: a redraw asked for
+  BEFORE arming, still in flight, landing after arming and before the
+  action's own render begins. The observer cannot tell one render from
+  another, and the helper returned with the action's response still held.
+  Once the action's render has begun the page drops any earlier one
+  (`weekSeq`; built: the earlier response released after the action's
+  request, no arrival from it, the helper ended on the action's), so the
+  window is only between arming and the action. Every caller arms after
+  `ready`, which boot sets once its own render has landed, and nothing
+  redraws the slate unasked (the live tick patches in place), so nothing is
+  pending at any caller. Not changed in code -- telling renders apart takes
+  the page's own word -- and written into the helper's comment and
+  docstring as its precondition, and into CLAUDE.md's row. **For Q5**: the
+  render-finished signal should say WHICH render finished, which is the one
+  thing this helper cannot see.
+- **Whole files on this tree**: `test_smoke.py` 6 of 6,
+  `test_prompt_disclosure.py` 3 of 3, `test_cards.py` 3 of 3, exit 0 each.
+- **The per-frame check**: on `git archive` of f66fefa with this tree's
+  tests and `plant.py` (`p28/head`), FAILED 3 of 3 (22, 14 and 18 readings
+  in 262 or 263 frames); on this tree PASSED 3 of 3, and in the suite.
+  **The planting**: NOT CAUGHT on f66fefa ("nothing reads a panel's
+  arrival"), CAUGHT here. `plant_a_test_that_waits_on_the_clock`: CAUGHT,
+  naming only its own four planted tests.
+- **The clock**: `check_no_test_waits_on_the_clock` passes, `ELAPSED_TIME_
+  HELD` 28 functions and 44 waits before (e016e93) and after, its source
+  identical. `prose_reaching_the_raw_side()` is `[]`.
+- **The harness, WITHOUT OPENING THE LIVE RECORD** (this step's hard
+  constraint; `p28/plant_whole_isolated.py`: the state in a scratch
+  directory, `db.read_the_live_record` and `back_up_the_live_record`
+  refused, the network shut in-process, `plant.main()` unchanged): 327/338.
+  The eleven not proved are the ten plantings that read the live record's
+  rows (reported NOT RUN) and `plant_a_test_that_opens_the_live_record`,
+  whose scratch stand-in sits under the temp directory, which the guard
+  exempts by design. None of the eleven reads a file this commit changes;
+  on the Q20 tree with the record's read-only door the harness caught
+  338/338 (the Q20 prover, 2026-09-27). SEEN, NOT CHANGED:
+  `plant_double_resolution`'s `run.run_week` reached for the network 48
+  times with an empty state (refused in-process; still CAUGHT). With the
+  operator's state a cache may answer it; not measured.
+- **The full suite** (a dummy access token, TMP at its default): 1977
+  passed, 8 skipped, 0 failed, 1092 s.
