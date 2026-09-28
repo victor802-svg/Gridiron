@@ -12824,6 +12824,314 @@ def plant_a_replaced_prediction() -> Result:
     return Result(law, what, guard, True, first or "refused")
 
 
+def plant_a_recommendation_moved_above_every_number_given_out() -> Result:
+    """Move a stored recommendation above every number given out, and write
+    another over it.
+
+    Operator question 24, ruled 2026-09-28: "fix after Q20, same basis as
+    Q15, own commit and planting." Found by question 15's prover on
+    2026-09-27, and fixed there for predictions: question 13's rule on the
+    number written (`recommendations_never_replaced_by_the_number_written`)
+    holds a recommendation only at or below `sqlite_sequence`'s mark, and an
+    update of a number does not move that mark. So a plain UPDATE moving rec
+    2 to 10 over a mark of 3 -- which takes no other row's place, so the
+    update rule lets it -- left it out of that rule's reach, and a one-row
+    INSERT OR REPLACE or REPLACE whose number read as a free 99 to the rules
+    and as 10 to the row wrote another game's recommendation over it.
+
+    THE WORLD: `plant_a_replaced_recommendation`'s -- recs 1 and 2 standing
+    on games of their own, rec 3 withdrawn, the newest; the mark is 3.
+    THE FORMS, each two statements or more, run on that world and rolled
+    back: the move of rec 2 above the mark by id, rowid, oid and _rowid_,
+    under OR REPLACE, spelled as text, to one above the mark, of rec 1 (the
+    oldest), of withdrawn rec 3 with foreign keys off (with them on its
+    withdrawal's key holds it), by an upsert whose number reads twice and
+    whose DO UPDATE moves the row it lands on, and by a temporary rule of
+    the connection's own inside an update of a close -- each followed by
+    the number read twice onto the moved row (measured on 8b569dc: every
+    one wrote over it). And one held form (question 15's second): SQLite's
+    sequence set back below every recommendation, then the number read
+    twice onto rec 1 -- refused before this rule by the rule on the number
+    written's "below any stored one", held here so a later change cannot
+    open it.
+
+    CAUGHT means: every form refused under LAW 3 in the words of the
+    replace rules -- each move in question 24's rule's own, "above every
+    number already given out" -- with every recommendation, every withdrawal
+    and the mark exactly as stored; a new recommendation on a game of its
+    own and the close of an open one still written, and a move WITHIN the
+    numbers given out still landing (this is no freeze of the number) and
+    still in reach, a number read twice onto it refused; and the proof --
+    with the new rule dropped, each move lands and the number read twice
+    writes over the moved recommendation, and with the rule on the number
+    written stripped of "below any stored one", the sequence form writes
+    over rec 1.
+    """
+    import re as _re
+
+    from gridiron import db as _db
+
+    law = "LAW 3"
+    what = ("a stored recommendation moved above every number given out and "
+            "written over")
+    guard = "SQL trigger recommendations_never_moved_above_the_mark"
+    rule = "recommendations_never_moved_above_the_mark"
+    written_rule = "recommendations_never_replaced_by_the_number_written"
+    words = "above every number already given out"
+    below_any_stored = _re.compile(
+        r"\s+OR EXISTS \(SELECT 1 FROM recommendations r WHERE r\.id > NEW\.id\)")
+    cols = ("prediction_id, sport, game_id, market, side, fair_value, price,"
+            " edge_cents, size_kind, size_units, gate_n, created_utc")
+    stamp = "2026-09-07T20:52:31Z"
+    later = "2026-09-08T00:00:00Z"
+
+    class Handed:
+        """A function the connection defines, answering its first call --
+        the rules' reading of the number -- with `first` and every later
+        one -- the row's -- with `then` (read twice: measured 2026-09-27)."""
+
+        def __init__(self, first, then):
+            self.first, self.then, self.calls = first, then, 0
+
+        def __call__(self):
+            self.calls += 1
+            return self.first if self.calls == 1 else self.then
+
+    def newcomer(number: str | None, pid: str = "{p4}", game: str = "g4",
+                 verb: str = "INSERT OR REPLACE") -> str:
+        """An insert of a no-side row at 90c on `game`, naming `number`."""
+        head = "" if number is None else "id, "
+        lead = "" if number is None else f"{number}, "
+        return (f"{verb} INTO recommendations ({head}{cols}) VALUES ({lead}"
+                f"{pid}, 'mlb', '{game}', 'moneyline', 'no', 0.4, 0.9, 1.0,"
+                f" 'flat', 1.0, 53, '{later}')")
+
+    onto_above = newcomer("handed_free_then_above()")
+    # (label, statements, the stored recommendation moved and written over)
+    moves = (
+        ("a plain UPDATE moving rec 2 above every number given out by id, "
+         "then INSERT OR REPLACE whose number reads as a free one to the "
+         "rules and the moved one's to the row",
+         ("UPDATE recommendations SET id = {above} WHERE id = {rec2}",
+          onto_above), "rec2"),
+        ("the same move by rowid, then REPLACE read the same way",
+         ("UPDATE recommendations SET rowid = {above} WHERE id = {rec2}",
+          newcomer("handed_free_then_above()", verb="REPLACE")), "rec2"),
+        ("the same move by oid, then INSERT OR REPLACE read twice",
+         ("UPDATE recommendations SET oid = {above} WHERE id = {rec2}",
+          onto_above), "rec2"),
+        ("the same move by _rowid_, then INSERT OR REPLACE read twice",
+         ("UPDATE recommendations SET _rowid_ = {above} WHERE id = {rec2}",
+          onto_above), "rec2"),
+        ("the same move by UPDATE OR REPLACE, then INSERT OR REPLACE read "
+         "twice",
+         ("UPDATE OR REPLACE recommendations SET id = {above} WHERE id = {rec2}",
+          onto_above), "rec2"),
+        ("the same move, the number spelled as the text '10', then INSERT OR "
+         "REPLACE read twice",
+         ("UPDATE recommendations SET id = '{above}' WHERE id = {rec2}",
+          onto_above), "rec2"),
+        ("rec 2 moved to one above the mark, then INSERT OR REPLACE read "
+         "twice onto it",
+         ("UPDATE recommendations SET id = {next} WHERE id = {rec2}",
+          newcomer("handed_free_then_next()")), "rec2"),
+        ("rec 1, the oldest, moved above every number given out, then INSERT "
+         "OR REPLACE read twice",
+         ("UPDATE recommendations SET id = {above} WHERE id = {rec1}",
+          onto_above), "rec1"),
+        ("with foreign keys off, withdrawn rec 3, the newest, moved above "
+         "every number given out, then INSERT OR REPLACE read twice on "
+         "another game",
+         ("PRAGMA foreign_keys = OFF",
+          "UPDATE recommendations SET id = {above} WHERE id = {rec3}",
+          onto_above), "rec3"),
+        ("an upsert whose number reads as a free one to the rules and rec 2's "
+         "to the key, its DO UPDATE moving rec 2 above every number given "
+         "out, then INSERT OR REPLACE read twice",
+         (newcomer("handed_free_then_rec2()", verb="INSERT")
+          + " ON CONFLICT(id) DO UPDATE SET id = {above}",
+          onto_above), "rec2"),
+        ("a temporary rule of the connection's own moving rec 2 above every "
+         "number given out inside an update of rec 1's close, then INSERT OR "
+         "REPLACE read twice",
+         ("CREATE TEMP TRIGGER planted_move AFTER UPDATE OF close_price ON"
+          " recommendations WHEN NEW.id = {rec1} BEGIN UPDATE recommendations"
+          " SET id = {above} WHERE id = {rec2}; END",
+          "UPDATE recommendations SET close_price = 0.52, clv_cents = 2.0,"
+          " closed_utc = '2026-09-09T22:00:00Z' WHERE id = {rec1}",
+          onto_above), "rec2"),
+    )
+    sequence_form = (
+        "SQLite's sequence set back below every recommendation, then INSERT "
+        "OR REPLACE whose number reads as a free one to the rules and rec 1's "
+        "to the row",
+        ("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'recommendations'",
+         newcomer("handed_free_then_rec1()")), "rec1")
+    lawful = (
+        ("a new recommendation on a game of its own",
+         (newcomer(None, "{p5}", "g5", verb="INSERT"),)),
+        ("the close of an open recommendation",
+         ("UPDATE recommendations SET close_price = 0.52, clv_cents = 2.0,"
+          " closed_utc = '2026-09-09T22:00:00Z' WHERE id = {rec2}",)),
+        ("a move of rec 2 to a free number within the numbers given out",
+         ("UPDATE recommendations SET id = 0 WHERE id = {rec2}",)),
+    )
+    in_reach = ("rec 2 moved within the numbers given out, then INSERT OR "
+                "REPLACE whose number reads as a free one to the rules and "
+                "the moved one's to the row",
+                ("UPDATE recommendations SET id = 0 WHERE id = {rec2}",
+                 newcomer("handed_free_then_zero()")))
+
+    conn = _db.connect(":memory:")
+    try:
+        _db.init(conn)
+        ids: dict[str, int] = {}
+        for n in range(1, 6):
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home,"
+                " away, kickoff_utc, status, league_date) VALUES (?, 'mlb',"
+                " 2026, 1, 'R', 'AAA', 'BBB', '2026-09-09T22:45:00Z',"
+                " 'scheduled', '2026-09-09')", (f"g{n}",))
+            ids[f"p{n}"] = conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning) VALUES ('2026-09-06T20:50:15Z', 'mlb', ?,"
+                " 'moneyline', 'BBB', NULL, 0.6659, 'win', 'statistical',"
+                " 'final', 'fs2', '{}', 'planted')", (f"g{n}",)).lastrowid
+        for n in (1, 2, 3):
+            ids[f"rec{n}"] = conn.execute(
+                f"INSERT INTO recommendations ({cols}) VALUES (?, 'mlb', ?,"
+                f" 'moneyline', 'yes', 0.6, 0.5, 10.0, 'flat', 1.0, 53, ?)",
+                (ids[f"p{n}"], f"g{n}", stamp)).lastrowid
+        conn.execute(
+            "INSERT INTO recommendation_voids (recommendation_id, voided_utc,"
+            " reason) VALUES (?, '2026-09-08T00:00:00Z', 'withdrawn in this"
+            " planted world')", (ids["rec3"],))
+        conn.commit()
+    except sqlite3.Error as exc:
+        conn.close()
+        return Result(law, what, guard, False,
+                      f"NOT CAUGHT - the planted world could not be built: {exc}")
+    mark = conn.execute("SELECT seq FROM sqlite_sequence WHERE"
+                        " name = 'recommendations'").fetchone()[0]
+    ids["above"], ids["next"] = mark + 7, mark + 1
+    handed = {"handed_free_then_above": Handed(99, ids["above"]),
+              "handed_free_then_next": Handed(99, ids["next"]),
+              "handed_free_then_rec2": Handed(99, ids["rec2"]),
+              "handed_free_then_rec1": Handed(99, ids["rec1"]),
+              "handed_free_then_zero": Handed(99, 0)}
+    for name, function in handed.items():
+        conn.create_function(name, 0, function)
+
+    def state():
+        return ([tuple(r) for r in conn.execute(
+                    "SELECT * FROM recommendations ORDER BY id")],
+                [tuple(r) for r in conn.execute(
+                    "SELECT * FROM recommendation_voids ORDER BY recommendation_id")],
+                conn.execute("SELECT seq FROM sqlite_sequence WHERE"
+                             " name = 'recommendations'").fetchone()[0])
+
+    def attempt(statements: tuple) -> tuple[str | None, tuple]:
+        """Run the statements in turn, stopping at a refusal; the refusal's
+        words, or None, and the state left. Rolled back, foreign keys on
+        again, and any temporary rule of the form's dropped."""
+        for function in handed.values():
+            function.calls = 0
+        try:
+            for one in statements:
+                conn.execute(one.format(**ids))
+            words = None
+        except sqlite3.Error as exc:
+            words = f"{type(exc).__name__}: {exc}"
+        after = state()
+        conn.rollback()
+        conn.execute("PRAGMA foreign_keys = ON")
+        for (name,) in conn.execute("SELECT name FROM sqlite_temp_master"
+                                    " WHERE type = 'trigger'").fetchall():
+            conn.execute(f"DROP TRIGGER temp.{name}")
+        return words, after
+
+    def still_stored(key: str, rows) -> bool:
+        """Whether what recommendation `key` said when the world was built
+        is still stored, under whatever number."""
+        said = next(r[1:] for r in stored[0] if r[0] == ids[key])
+        return any(r[1:] == said for r in rows)
+
+    def brief(rows) -> list[tuple]:
+        """(number, forecast, game, side, price) of each row, for the words."""
+        return [(r[0], r[1], r[3], r[5], r[7]) for r in rows]
+
+    faults: list[str] = []
+    first: str | None = None
+    try:
+        stored = state()
+        for label, statements, moved in moves + (sequence_form,):
+            said, after = attempt(statements)
+            if said is None:
+                faults.append(
+                    f"{label} was taken"
+                    + (f": {brief(stored[0])} became {brief(after[0])}"
+                       if after[0] != stored[0] else "")
+                    + (f"; the withdrawals went from {stored[1]} to {after[1]}"
+                       if after[1] != stored[1] else ""))
+            elif "LAW 3" not in said or "never replaced" not in said:
+                faults.append(f"{label} was refused, but not by the replace "
+                              f"rules: {said}")
+            elif label != sequence_form[0] and words not in said:
+                faults.append(f"{label} was refused, but not as a move above "
+                              f"every number given out: {said}")
+            elif first is None:
+                first = f"{label}: {said}"
+            if state() != stored:
+                faults.append(f"after {label} the world was not as stored")
+        for label, statements in lawful:
+            said, after = attempt(statements)
+            if said is not None or after == stored:
+                faults.append(f"{label} was not written ({said}): a rule "
+                              f"refusing every write is not this one")
+        said, after = attempt(in_reach[1])
+        if said is None or "never replaced" not in said:
+            faults.append(f"{in_reach[0]} was not refused by the replace "
+                          f"rules ({said}): a move within the numbers given "
+                          f"out must stay in reach")
+        # THE PROOF: with the new rule dropped, each move lands and the
+        # number read twice writes over the very recommendation moved; and
+        # with the rule on the number written stripped of "below any stored
+        # one", the sequence set back lets it write over rec 1.
+        conn.execute(f"DROP TRIGGER IF EXISTS {rule}")
+        unproved = [label for label, statements, moved in moves
+                    if still_stored(moved, attempt(statements)[1][0])]
+        sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = ?",
+                           (written_rule,)).fetchone()
+        weakened, found = below_any_stored.subn("", sql[0] if sql else "")
+        if found != 1:
+            unproved.append(f"{sequence_form[0]} (the rule on the number "
+                            f"written no longer carries 'below any stored one')")
+        else:
+            conn.execute(f"DROP TRIGGER {written_rule}")
+            conn.execute(weakened)
+            if still_stored(sequence_form[2], attempt(sequence_form[1])[1][0]):
+                unproved.append(sequence_form[0])
+    finally:
+        conn.close()
+    if faults:
+        return Result(law, what, guard, False,
+                      "NOT CAUGHT - " + "; ".join(faults) + ". A recommendation "
+                      "moved above every number given out is out of reach of "
+                      "the rule on the number written, and a number read twice "
+                      "writes another over it: what the app said at the time "
+                      "is gone")
+    if unproved:
+        return Result(law, what, guard, False,
+                      f"the planting did not test the rule: with it dropped "
+                      f"(the moves), or with the rule on the number written "
+                      f"stripped of 'below any stored one' (the sequence "
+                      f"form), these still wrote over no stored "
+                      f"recommendation: {unproved}")
+    return Result(law, what, guard, True, first or "refused")
+
+
 # ---------------------------------------------------------------------------
 # THE GATE SCAN: NO WRITE REPLACES A ROW OF AN APPEND-ONLY TABLE (operator
 # question 15, ruled 2026-09-27, third set: "one gate scan that refuses
@@ -16823,6 +17131,11 @@ def main() -> int:
     results.append(plant_a_replacing_write_reaching_an_append_only_table_by_a_key())
     results.append(plant_a_replacing_write_reaching_a_table_the_scan_cannot_read())
     results.append(plant_an_upsert_registered_after_the_register_was_frozen())
+    # OPERATOR QUESTION 24 (ruled 2026-09-28): question 13's rules had the
+    # hole question 15's prover closed on predictions -- a recommendation
+    # moved above every number given out, out of reach of the rule on the
+    # number written, and written over.
+    results.append(plant_a_recommendation_moved_above_every_number_given_out())
     # AT_THE_PRICE (2026-09-07): four claim shapes, and the four mistakes
     # the first live run made.
     results.append(plant_a_winner_question_read_from_the_wrong_side())

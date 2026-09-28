@@ -4598,7 +4598,9 @@ the gate's release comparison is run after it, as with every rule since 5b.
   2026-09-27 the second statement is refused: the old number is at or below
   one already given out, so `recommendations_never_replaced_by_the_number_
   written` refuses an insert under it. The change of number itself still
-  lands.)*
+  lands.)* *(And from 2026-09-28, question 24: a change ABOVE every number
+  given out is refused -- it took the row out of that rule's reach; a
+  change within them still lands, and stays in reach.)*
 - **A number below 1.** An insert leaving the number to SQLite shows the
   insert rule -1; a recommendation stored under -1 -- none is, the record's
   lowest is 1, and only an insert naming it could make one -- would make
@@ -4659,6 +4661,12 @@ the gate's release comparison is run after it, as with every rule since 5b.
   exactly what a lawful newcomer leaves, so no rule can tell (measured: rec
   3 of the planted world, with the sequence set to 2 or its row deleted).
   Every other recommendation stays protected by "below any stored one".
+  *(2026-09-28, question 24, measured: only while the mark is set back in
+  one step and nothing newer is moved. With its row deleted first, or set
+  forward, a row moved beneath it, and set back -- or, its prover found,
+  set back in one step and every newer recommendation moved down beneath
+  it -- any recommendation can be made the newest and then written over;
+  not seen by any rule, below.)*
   Closing it needs a witness kept outside SQLite's sequence -- a table of
   every number given out, append-only, filled for the record's 107 by a
   tool after the release -- which is more than a rule, and a write to the
@@ -5851,10 +5859,16 @@ release comparison runs after it, as with every rule since 5b.
   it, and after the mark is set below the newest forecast an insert whose
   number reads free to the rules and the newest's to the key writes over it,
   leaving nothing that tells it from a newcomer. Every other forecast stays
-  protected by "below any stored one". *(The prover, below: the set-back
-  can also be done inside the replacing statement, by a temporary rule the
-  connection makes; and "below any stored one" is proved by a planting form
-  and a test of its own.)*
+  protected by "below any stored one" *(2026-09-28, question 24, measured
+  on this tree's rules: only while the mark is set back in one step and
+  nothing newer is moved; with its row deleted first, or set forward, a
+  forecast moved beneath it, and set back -- or set back in one step and
+  every newer forecast moved down beneath it (question 24's prover) -- any
+  forecast can be made the newest and written over -- "No recommendation
+  moved above every number given out", below)*. *(The
+  prover, below: the set-back can also be done inside the replacing
+  statement, by a temporary rule the connection makes; and "below any
+  stored one" is proved by a planting form and a test of its own.)*
 
 ### THE PROVER *(2026-09-27; alone in the worktree, the change uncommitted; scratch worlds, and the record only through `db.back_up_the_live_record`)*
 
@@ -5927,7 +5941,9 @@ release comparison runs after it, as with every rule since 5b.
   `UPDATE recommendations SET id = 10 WHERE id = 2` over a mark of 3 lands,
   and a one-row `INSERT OR REPLACE` whose number reads 99 to question 13's
   rules and 10 to the row writes rec 4's forecast over it. Question 13 is
-  released and this ruling names predictions: for the operator.
+  released and this ruling names predictions: for the operator. *(Ruled
+  2026-09-28, question 24, and built the same day: "No recommendation
+  moved above every number given out", below.)*
 - **NOT SEEN BY ANY RULE, measured** (settings of a connection, never a
   statement a rule is shown; each is taken on this tree):
   - `Connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, False)`
@@ -6840,3 +6856,475 @@ fixed wait; Q5's signal replaces it later."
   operator's state a cache may answer it; not measured.
 - **The full suite** (a dummy access token, TMP at its default): 1977
   passed, 8 skipped, 0 failed, 1092 s.
+
+## No recommendation moved above every number given out -- built 2026-09-28 *(operator question 24; docs/briefs/2026-09-28-rulings.md)*
+
+"Q24: fix after Q20, same basis as Q15, own commit and planting." The
+question as asked is `docs/REPAIR_STATE.md` question 24; the hole was found
+by question 15's prover ("THE SAME HOLE ON RECOMMENDATIONS, NOT BUILT",
+above). The basis is question 15's: its update rule's clause refusing a move
+above every number given out, and its two forms -- the move above the mark,
+and the sequence set back, which proves the rule on the number written's
+"below any stored one". Question 13's rules are the ones released on this
+table and are not touched.
+
+### MEASURED FIRST *(2026-09-28; scratch worlds in memory built by 8b569dc -- the released 724a72d plus documents -- and by this tree; `scratchpad/q24/measure.py`; foreign keys on and off; SQLite 3.49.1)*
+
+The planting's world: recs 1 and 2 standing on games of their own, rec 3
+withdrawn and the newest, two forecasts with nothing recommended; the mark
+(`sqlite_sequence` for the table) is 3.
+
+- **THE HOLE, on 8b569dc.** A plain `UPDATE recommendations SET id = 10
+  WHERE id = 2` lands (it takes no other row's place, so question 13's
+  update rule lets it), and the mark stays 3. A one-row `INSERT OR REPLACE`
+  whose number a function of the connection's answers 99 to the rules and
+  10 to the row then writes another game's recommendation over rec 2: the
+  rule on the number written sees 10 above the mark and nothing stored
+  above 10. Taken the same way, foreign keys on and off: the move by `id`,
+  `rowid`, `oid` and `_rowid_`, under `UPDATE`, `OR REPLACE`, `OR IGNORE`,
+  `OR FAIL`, `OR ABORT` and `OR ROLLBACK`; followed by `REPLACE` instead;
+  the number read as nothing to the rules; the number spelled `'10'`,
+  `10.0`, `1e1`, `' 10'`, `(SELECT 10)`, `id + 8`, `CAST('10' AS
+  INTEGER)`; a move to one above the mark (4); a move of rec 1, the oldest;
+  an upsert whose number reads as a free one to the rules and rec 2's to
+  the key, its `DO UPDATE SET id = 10` moving rec 2; and a temporary rule
+  of the connection's own moving rec 2 inside an update of rec 1's close.
+- **Held by a foreign key, with them on**: withdrawn rec 3 (its withdrawal
+  points at it), and every row moved at once (`id + 10`). With them off,
+  rec 3 moved and was written over from another game; on its own game the
+  one-per-game rule refused the newcomer (the moved row stood, its
+  withdrawal pointing at nothing). On the record's copy (below), only 65, 78
+  and 111 of 111 have nothing pointing at them.
+- **The hole closes itself at the next recommendation**: a plain insert
+  after the move took 11, the mark followed, and a number read twice onto
+  the moved row was refused. A move within the numbers given out (to 0)
+  landed, and a number read twice onto it was refused -- the rule on the
+  number written holds it.
+- **The mark rewritten by statements** (the NOT SEEN family of questions 13
+  and 15): with the table's row in `sqlite_sequence` deleted, a move of rec
+  1 above every stored number landed and a number read twice wrote over it;
+  and with the mark set forward to 100, rec 1 moved to 10, and the mark set
+  back to 3, the same. Both are taken on predictions too, under question
+  15's rules (the forecast moved and written over): one clears the mark
+  (its rule reads NULL), the other moves the forecast while the mark is
+  high. Either way the moved row is then the newest. The one-step set-back
+  question 15 tested is still held for every row but the newest -- while
+  no newer row is moved down beneath it (the prover, below, found that
+  third way).
+- **Lawful, unchanged**: a plain insert leaving the number to SQLite took 4
+  (the mark 4); the close of an open recommendation landed.
+
+**THE OTHER RULE SETS OF QUESTION 13'S SHAPE** (the brief asked; measured on
+the same trees, NOT BUILT -- the ruling names recommendations):
+
+- **`market_snapshots_never_replaced` / `..._by_update`**: no rule reads
+  the number after an insert, so a number read twice writes over ANY stored
+  snapshot with no move at all -- a free 99 or nothing to the rules and
+  snapshot 1's number to the row (`INSERT OR REPLACE`), and `REPLACE` onto
+  the newest -- foreign keys on and off. The move above the mark lands too
+  (the update rule lists `id, prediction_id, kind` and replaces nothing).
+  So there is no above-the-mark hole as such: the table has question 13's
+  read-twice hole whole, never closed there. (Its update rule's
+  `rowid`/`oid`/`_rowid_` gap is question 13's OPEN, above.)
+- **`reasoning_prompts_never_replaced`**: the same -- a number read twice
+  writes a new sent record over stored record 1 (free and nothing forms),
+  foreign keys on and off. No move is possible: `reasoning_prompts_no_
+  update` refuses every update.
+- **`recommendation_regrades_never_replaced`**: the table's number is
+  `recommendation_id`, a rowid alias with no AUTOINCREMENT, so no mark. No
+  rule reads it after the insert: `INSERT OR REPLACE` and `REPLACE` whose
+  recommendation reads as an eligible unlabelled no-side pick (X) to the
+  rules -- its arithmetic, stamp and bar checked against X -- and as a
+  labelled one (Y) to the row wrote X's figures over Y's label, foreign keys
+  on and off. No move: `recommendation_regrades_no_update` refuses every
+  update.
+- **`predictions_never_replaced*`** (question 15): the move above the mark
+  is refused; the mark-rewritten family above is taken.
+
+### BUILT *(2026-09-28)*
+
+- **`recommendations_never_moved_above_the_mark`** (BEFORE UPDATE, no
+  column list): refuses an update whose new number is not its old one and
+  is above `sqlite_sequence`'s mark for the table -- question 15's clause,
+  word for word but the table's name -- in `recommend.NEVER_REPLACED`'s
+  words under LAW 3: "An update may not move one above every number already
+  given out, where a new one could be written over it". Nothing else is
+  refused: a move within the numbers given out lands and stays in reach.
+- **A RULE OF ITS OWN**, not a clause added to question 13's update rule:
+  the record holds that rule, and a rule's text is never replaced on a
+  record that holds it (`CREATE TRIGGER IF NOT EXISTS` would leave the old
+  text; dropping it to restate it would leave the table unguarded
+  meanwhile).
+- **Declared last of the table's rules**, after `recommendations_never_
+  replaced_by_the_number_written`: the record gains it on its first open
+  after the release, after that rule, and SQLite runs a table's rules
+  newest first, so a fresh build runs them in the order the record will.
+  It runs first on every update, the closer's included, and asks one
+  lookup of `sqlite_sequence`.
+- **Dated notes, outside any rule's text**, in `schema.sql`'s comments on
+  question 13's update rule and rule on the number written ("every stored
+  recommendation is at or below that mark" was not so until this rule).
+- **No writer changes.** `record_for` inserts naming no number; the closer
+  updates the close, the number unchanged. No package, tool or planting
+  moves a recommendation's number.
+- **One test world changed, and one test's order.**
+  `test_a_number_below_one_already_given_out_is_refused_and_one_above_lands`
+  vacated number 4 by moving it up to 10, now refused; it moves it down, to
+  -5, and asks about the same numbers (question 15's precedent). And
+  `test_the_replace_rules_carry_the_words_and_run_first` now finds question
+  13's three rules together before this one, where they were last.
+- **Planting** `plant.py::plant_a_recommendation_moved_above_every_number_
+  given_out`, its own: eleven moves above the mark (by id, rowid, oid,
+  _rowid_, under OR REPLACE, spelled as text, one above the mark, the
+  oldest, the withdrawn newest with foreign keys off, by an upsert read
+  twice, by a temporary rule inside a close), each followed by the number
+  read twice onto the moved row, and the sequence set back (held). CAUGHT
+  means each refused under LAW 3 -- each move in this rule's words -- the
+  recommendations, the withdrawals and the mark as stored; a new
+  recommendation, a close and a move within the numbers given out still
+  written, and a number read twice onto that one refused; and the proof:
+  with this rule dropped, each move lands and the moved recommendation is
+  written over; with the rule on the number written stripped of "below any
+  stored one", the sequence form writes over rec 1.
+- **Tests** in `test_recommend.py` (44 new): 37 moves refused in the words
+  with the table, withdrawals and mark as stored (six conflict clauses by
+  four names of the number, seven spellings, one above the mark, the
+  oldest, the withdrawn newest and every row at once with foreign keys off,
+  the upsert read twice, the temporary rule); the hole and what closes it
+  by each verb (the move refused, a move within the mark landing in reach,
+  and with the rule dropped the two statements writing over rec 2); the
+  boundary (onto the mark lands, in reach; one past it refused); the
+  sequence set back by each verb (every recommendation below the newest
+  held, a move refused, the closer's update landing, and without "below
+  any stored one" rec 1 written over); the words, no column list, and the
+  order on a fresh build; and an older record gaining exactly the rule
+  through `db.init`.
+
+### THE REHEARSAL *(2026-09-28, 10:44-10:46Z; a copy of the record made through `db.back_up_the_live_record`, and a verified copy of that, never the record; `scratchpad/q24/rehearse.py`)*
+
+The backup (1,078,771,712 bytes) verified into a second copy
+(`rebuild.verified_backup`: 61 tables, 1,267,325 rows, integrity ok, every
+sqlite_master row and every table's count and column checksums equal).
+Before: 241 objects; 111 recommendations numbered 1 to 111, sequence 111;
+`schema_diff.compare` against a fresh build of this tree found exactly this
+rule missing (the reference holding it) and nothing else, 9 objects cosmetic.
+`db.init` under this tree then made exactly the rule -- nothing gone or
+changed -- with a fresh build's text byte for byte, last of the table's
+rules after the rule on the number written; no table's count or column
+checksums moved (60 tables, 1,267,312 rows), the sequence unchanged. After:
+0 differences (242 objects each; the same 9 cosmetic: at_the_line_claims,
+market_lines_raw, mlb_pitcher_starts, notifications, prediction_voids,
+recommendations, sessions, teams, venue_quotes); a second `db.init` changed
+nothing. On the copy's own rows, foreign keys on and off: the newest (111),
+rec 2 and the newest with nothing pointing at it moved to 118 by `id`,
+`rowid`, `oid` and `_rowid_`, and rec 1 to 112 (one above the mark) by
+`UPDATE OR REPLACE`, were each refused in this rule's words; rec 111 moved
+to 0 landed and a number read twice onto 0 was refused by the rule on the
+number written; the close of open rec 111 landed and a plain insert took 112
+(all rolled back); the recommendations' checksums and the sequence never
+moved. **Deleted afterwards** (the operator's ruling of 2026-09-28): the
+backup `record_backup.db` (1,078,771,712 bytes) and the `-shm` (32,768) and
+`-wal` (0) SQLite kept beside it, the verified copy `record_verified.db`
+(1,078,771,712), and the fresh build `fresh.db` (749,568; not a copy of the
+record) -- about 2.16 GB. No other copy of the record was made.
+
+### PROVED *(2026-09-28)*
+
+- **The planting ESCAPES on 8b569dc** (`git archive HEAD` into
+  `scratchpad/q24/head/`, this `plant.py` copied over it): all eleven moves
+  taken, each named with the rows before and after (rec 2, or rec 1, or rec
+  3, gone and the newcomer under the moved number); the sequence form was
+  refused there, by question 13's rule on the number written, as it must be.
+  It is CAUGHT here.
+- **Each part is needed** (the planting and the file run against a copy of
+  this tree with one part changed in `schema.sql`): this rule listing its
+  column (`BEFORE UPDATE OF id`) -- the planting ESCAPES on the moves by
+  `rowid`, `oid` and `_rowid_`, and 18 of the 37 forms and the words test
+  fail; the rule without "its number is not its old one" -- the planting
+  still catches (no move is refused that way), and both sequence tests fail,
+  the closer's update refused once the mark is set back below it: held by
+  the test, as question 15 holds its two parts the planting does not need;
+  and the rule on the number written without "below any stored one" -- the
+  planting ESCAPES on the sequence form, and both sequence tests fail.
+- **The new tests fail on 8b569dc** (this `test_recommend.py` run over the
+  archive): all 44, and the changed order test; the changed test world
+  passes there, as it must.
+- **The harness**: 339/339 caught, exit 0 (this planting the 339th).
+  **The full suite** with a dummy access token and the temporary
+  directory at its default: 2021 passed, 8 skipped, 0 failed, exit 0,
+  10:48-11:07Z, no rerun needed (1977 before, and the 44 new). After two
+  comment-only edits (`schema.sql`, the planting's docstring) the files
+  they touch were run again -- `test_recommend.py`, `test_schema.py`,
+  `test_the_schema_matches.py`, `test_no_replacing_write.py`,
+  `test_schema_diff.py`, `test_predictions_never_replaced.py` and the
+  harness list: 381 passed, exit 0 -- and the harness alone again,
+  339/339.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **"Same basis as Q15" is question 15's clause, as a rule of its own.**
+  The same text but the table's name, NULL mark included: with the table's
+  row in `sqlite_sequence` removed the rule reads nothing and lets the move
+  through, exactly as question 15's does. Treating a missing mark as 0
+  would close that one variant and not the others (the mark set forward and
+  back around the move; the mark set back and the newer rows moved down
+  beneath it, the prover's), and would make the two tables' rules differ;
+  all are NOT SEEN, below. (Reversal: `coalesce((SELECT seq ...), 0)`.)
+- **Its own planting**, as the ruling says, not forms added to question
+  13's (`plant_a_replaced_recommendation` is unchanged and still CAUGHT).
+- **Question 15's second form is applied here as well** (the sequence set
+  back, proving "below any stored one" on this table's rule on the number
+  written): the brief names both forms; it is refused on 8b569dc too, and
+  is held so a later change cannot open it.
+- **The other rule sets were measured, not built**: the ruling names
+  recommendations. Each is reported above and below for the operator.
+
+### THE PROVER *(2026-09-28, 19:15-20:15Z -- a second run: the first, 11:15-12:00Z, ended before its commit, and every figure below is this run's own; alone in the worktree, the change uncommitted; scratch worlds in memory built by a fresh `git archive HEAD` of 8b569dc into `scratchpad/q24/prove/head/` and by this tree; the record only through `db.back_up_the_live_record`; `scratchpad/q24/prove/`)*
+
+- **173 forms, adversarially** (`probe_r2.py`: the first run's 136 and 37
+  of this run's own; `probe2.py` to `probe5.py` and `probe_pred.py`;
+  foreign keys on unless named), most a move of a stored
+  recommendation followed by the number read twice onto it by `INSERT OR
+  REPLACE` or `REPLACE`: the move by `id`, `rowid`, `oid`, `_rowid_`, `ID`, `"id"` and
+  `[rowid]` under each of the six conflict clauses; the number spelled 24
+  ways (`'10'`, `10.0`, `1e1`, `' 10'`, `'10 '`, `'+10'`, `'10.0'`,
+  `'1e1'`, `'0010'`, `0xA`, `+10`, `- -10`, `10 * 1.0`, `abs(-10)`,
+  `CAST`, `COLLATE`, `coalesce`, `iif`, `CASE`, `likely`, `unlikely`,
+  `(SELECT 10)`, a query of the table itself, `id + 8`); one above the
+  mark; the oldest; the withdrawn newest, and every row at once both ways
+  round (keys off); `UPDATE ... FROM`; `RETURNING`; a temporary view's
+  INSTEAD OF rule; temporary rules on the table, after and before an update
+  of a close, and on a temporary table; upserts moving the row they land on
+  (a number read twice, `excluded.id + 8`, the forecast-and-stamp key);
+  `executescript`; an attached database; a number worked out by a
+  connection's function INSIDE the update, six pairs of answers --
+  measured: an update works out its new number once, and the rule sees the
+  number the row gets --; `random()`, 300 tries; a move within the numbers
+  given out (0, -1, -5, onto a vacated mark) then read twice onto it; and
+  the sequence set back first. This run's own: a sequence row for the
+  table in the connection's temporary store, and a temporary AUTOINCREMENT
+  table or a temporary view named `recommendations` (the move made on the
+  main table, the write read twice after); the number as a blob, `'0x0A'`,
+  `'  10  '`, a real a hair off 10, a compound query, `(VALUES (10))`,
+  NULL, or a connection's function; `RETURNING` left unread on an insert
+  of two rows; temporary rules on another table, and a temporary view's
+  INSTEAD OF rule, moving rec 2 above the mark and writing over it inside
+  one statement; the move in a savepoint, released; the move and the write
+  in one `executescript`; the world's own file attached under a second
+  name, the move and the write made there; an insert from a query and a
+  `REPLACE` of several rows whose number reads twice; `UPDATE OR FAIL`
+  moving rec 1 within the numbers given out and rec 2 above them; and
+  `random()` moving and writing, 300 tries. On 8b569dc 108 of the 169 in
+  `probe_r2.py` wrote over a stored recommendation, and 2 of its 4
+  temporary-rule forms (`random()`: 24 times in 300; `probe2.py`'s own
+  `random()` loop 45 in 300). On this tree every move above the mark is
+  refused in this rule's words, or fails before it (a datatype mismatch: a
+  number given as NULL, a blob, or text that is no number); every move
+  within lands, and a number read twice onto it is refused by the rule on
+  the number written; `random()` wrote over nothing in 300 tries (and in
+  `probe2.py`'s 300). An update works out its new number once, and the
+  rule sees the number the row gets (a connection's function inside the
+  update, six pairs of answers: one call each). A sequence row for the
+  table in the connection's own temporary store does not reach this rule
+  -- a rule of the main schema reads the main schema's sequence
+  (measured) -- and a temporary table or view named `recommendations`
+  shadows the connection's statements, never the rules. `UPDATE OR FAIL`
+  keeps nothing when this rule refuses a row: its abort takes the whole
+  statement back, the move within with it. `RETURNING` left unread still
+  writes the mark back (5 after two rows).
+- **Taken on this tree, 11 of `probe_r2.py`'s 169, none a move the ruling
+  covers:** the mark rewritten three ways -- its row deleted, set forward
+  and back around a move, set forward and back by temporary rules inside
+  the moving update -- the NOT SEEN below; the sequence set back and the
+  newest written over, question 13's NOT SEEN; five forms of THE OR FAIL
+  FINDING below; and, FOUND BY THIS RUN, two of a fourth way round the
+  mark: **the sequence set back in one step and every newer recommendation
+  moved down beneath it** -- moves within the numbers the mark then shows,
+  which this rule lets -- after which an older one is the newest and a
+  number read twice writes over it (rec 2, after the newest was moved to 0
+  under a mark set back to 1; rec 1, after recs 3 and 2 were moved below 0
+  under a mark of 0; foreign keys off, since the withdrawn rec 3 is
+  otherwise held by its withdrawal's key). The same on predictions under
+  question 15's rules (`probe_pred.py`, both trees: forecast 2 and forecast
+  1 written over the same way; with the sequence intact the same move and
+  write are refused). So question 15's "every other is still held" is true
+  only while nothing newer is moved: corrected, dated, where the change
+  said "only while the mark is set back in one step" (CLAUDE.md's rows for
+  questions 15 and 24, `schema.sql`'s comments on question 13's rule on the
+  number written and on this rule, and this file's notes above). It needs
+  the mark rewritten first, so it is the NOT SEEN family, not the move this
+  ruling names; nothing is built for it.
+- **FOUND: A STATEMENT STOPPED UNDER OR FAIL LEAVES ITS ROWS ABOVE THE
+  MARK** (not a move; open, for the operator). SQLite writes the sequence
+  back only when an insert statement ends, and a statement stopped under
+  `OR FAIL` keeps the rows it wrote before it stopped and never writes it
+  back. `INSERT OR FAIL INTO recommendations (...) SELECT <a lawful row>
+  UNION ALL SELECT <a row whose side is 'maybe'>` -- or the same as
+  `VALUES (...), (...)`, or a second row with no forecast (NOT NULL) --
+  stops at the second row with the first stored as rec 4 over a mark of 3;
+  committed, a one-row `INSERT OR REPLACE` whose number reads 99 to the
+  rules and 4 to the row then writes another game's recommendation over
+  rec 4. A temporary rule raising FAIL after a one-row insert does the
+  same, and so does a first row naming its number, 10, above the mark (kept
+  at 10). Taken on 8b569dc and on this tree alike, and on predictions under
+  question 15's rules (a forecast kept by `INSERT OR FAIL ... SELECT` whose
+  second row failed NOT NULL, then written over). On the record's copy (the
+  rehearsal, below; `orfail_copy.py`, after `db.init` under this tree) the
+  same two statements on two forecasts of different games kept rec 112 over
+  a mark of 111, and a number read twice wrote over it (rolled back). Held:
+  a second row failing a foreign key, a datatype mismatch or a function
+  that raises (SQLite takes the whole statement back), `OR IGNORE` (the
+  statement ends, and writes the mark), `OR ROLLBACK`, a plain insert, and
+  an interrupt from a progress handler at eight points (the statement is
+  taken back). No writer writes under `OR FAIL` or raises FAIL (searched
+  again: the package, `tools/`, `desktop/`), and the hole closes at the
+  next insert that ends (`probe5.py`: a plain insert took 5, the mark
+  followed, and a number read twice onto 4 was refused). It is not a
+  move, so question 15's clause cannot
+  close it, and what could is not question 15's basis: a rule refusing an
+  insert while a stored row stands above the mark would also refuse the
+  second row of every insert of several rows (the mark is written back only
+  at the statement's end); a scan refusing `OR FAIL` against an
+  append-only table is question 25's kind. Recorded in `schema.sql`'s
+  comments and in CLAUDE.md's row.
+- **Not a stored recommendation**: one statement inserting a row and, by a
+  temporary rule after it, writing a second over the first under a number
+  read twice -- the first never stood at the end of a statement, and
+  nothing stored before the statement changes (measured, both trees).
+- **The other rule sets, measured again on this tree** (`measure.py` whole,
+  and `probe4.py`): the snapshot table -- a number read twice as a free 99
+  or as nothing to the rules and snapshot 1's to the row wrote over
+  snapshot 1, `REPLACE` over the newest, and a move above the mark then the
+  same; the prompt record -- record 1 written over both ways, every move
+  refused by its no-update rule; the re-grades -- X's figures written over
+  Y's label by both verbs; foreign keys on and off -- as reported above.
+- **A shipped writer of the sequence** (found by this run; the change said
+  none): `rebuild._rebuild_one` deletes a rebuilt table's row in
+  `sqlite_sequence` and writes it again with the value it read before the
+  rebuild. It carries the mark exactly, so it opens nothing on a record
+  whose rows are all at or below it -- the record's copy: recommendations
+  1-111 under 111, predictions up to 3152 under 3152 -- but a scan for the
+  NOT SEEN's precondition would name it (corrected in NOT SEEN, below).
+- **The planting ESCAPES on 8b569dc** (this `plant.py` copied into the
+  fresh archive as `tools/guards/plant_q24.py`, the archive's own left as
+  it was; `run_planting.py`): 11 of 11 moves taken, each named with its
+  rows before and after; the sequence form refused there. CAUGHT on this
+  tree and on a copy of it, its first refusal the move by id in this
+  rule's words.
+- **Each clause neutralised in a copy of this tree** (`neutralise.py`, on
+  fresh copies of the working tree; the planting, and `test_recommend.py`
+  whole): the rule never firing -- the planting ESCAPES (11 moves), 43
+  tests fail; `BEFORE UPDATE OF id` -- ESCAPES on `rowid`, `oid`,
+  `_rowid_` (3 moves), 19 fail (18 forms, the words); without "its number
+  is not its old one" -- CAUGHT, 2 fail (the sequence set back: the
+  closer's update refused); without "above the mark", a freeze -- the
+  planting fails on the move within the numbers given out, 6 fail; `>=`
+  for `>` -- CAUGHT, 1 fails (the move onto the mark); the mark looked up
+  under another table's name -- ESCAPES (11 moves), 43 fail; question
+  13's rule on the number written without "below any stored one" --
+  ESCAPES on the sequence form, 2 fail. Each part is held by the planting
+  or a test.
+- **The new tests on 8b569dc** (this `test_recommend.py` over the archive
+  as `tests/test_recommend_q24.py`, 131 tests): 45 fail -- the 44 new and
+  the changed order test -- and every other passes, the changed test world
+  among them. Here the file passes, 131 of 131 (19:29-19:34Z).
+- **The harness** alone (19:34-19:40Z): 339/339 caught, exit 0; this
+  planting the 339th, CAUGHT.
+- **Gate step 2's rows, run alone** (`step2_dry.py`, the question 15
+  prover's driver: `verify.step_2_guards` with its harness row stubbed and
+  `GRIDIRON_VERIFYING` set; the temporary directory pointed at
+  `scratchpad/q24/prove/gate_tmp/`, so the gate's copy went through the
+  backup door there, and the gate dropped it itself; 19:41-19:44Z): 92
+  PASS, 0 FAIL; the live record against master (724a72d) and the migrated
+  copy against this tree each 0 registered differences outstanding (9
+  objects cosmetic); the live record's schema as found, 241 objects.
+- **The rehearsal again** (19:44-19:47Z; `rehearse_r2.py`: a new backup
+  through the door, 1,081,335,808 bytes, and a verified copy of it: 61
+  tables, 1,280,217 rows, integrity ok, nothing mismatched): one sequence
+  row each for recommendations (111; rows 1-111) and predictions (3152;
+  highest 3152), nothing stored above either mark; before, exactly this
+  rule missing against a fresh build; `db.init` added exactly it, nothing
+  gone or changed, a fresh build's text byte for byte, last of the table's
+  rules; no table's count or column checksums moved (60 tables, 1,280,204
+  rows), the sequence unchanged; after, 0 differences (242 objects each, 9
+  cosmetic); a second `db.init` changed nothing; every move of the copy's
+  own rows above the mark (111, 2 and the newest with nothing pointing at
+  it, to 118 by `id`, `rowid`, `oid`, `_rowid_`; rec 1 to 112 by `UPDATE
+  OR REPLACE`) refused in this rule's words, keys on and off; rec 111
+  moved to 0 landed and a number read twice onto 0 was refused; the close
+  of open rec 111 landed; a plain insert took 112; and the OR FAIL finding
+  as above (rec 112 kept over 111 and written over); all rolled back, the
+  recommendations' checksums and the sequence never moved. Only 65, 78 and
+  111 have nothing pointing at them. **Deleted afterwards**:
+  `record_backup.db` (1,081,335,808 bytes), its `-shm` (32,768) and `-wal`
+  (0), `record_verified.db` (1,081,335,808), and `fresh.db` (749,568; a
+  fresh build, not a copy); no file of a database is left under
+  `scratchpad/q24/`.
+- **`audit.prose_reaching_the_raw_side()`** is `[]`.
+- **The full suite** on the change with this run's comment and document
+  corrections (a dummy access token, the temporary directory at its
+  default; 19:49-20:08Z): 2021 passed, 8 skipped, 0 failed, exit 0. No
+  known-racy browser test failed, so none was rerun; the one test listed as
+  reaching the network is `test_the_network_is_shut.py::test_a_marked_test_
+  is_allowed_out_and_is_named`, which is written to.
+
+### THE LIVE RECORD AFTER THE RELEASE *(no tool)*
+
+No row is written and no tool runs. The scheduler's first open of the
+record under the released code (`db.init`, as every schema rule has arrived
+since 5b) makes the one rule and nothing else; every recommendation stays as
+written. Afterwards, read through `db.read_the_live_record`: sqlite_master
+holds `recommendations_never_moved_above_the_mark` after
+`recommendations_never_replaced_by_the_number_written`, with `schema.sql`'s
+text. Until that first open the record lacks it while the release has it,
+so the gate's release comparison is run after it, as with every rule since
+5b.
+
+### NOT SEEN, AND OPEN *(2026-09-28; not built)*
+
+- **The mark rewritten by ordinary statements, on this table and on
+  predictions.** SQLite lets a statement rewrite or delete its own sequence
+  row and refuses any rule on that store. With the row deleted, this rule
+  (and question 15's) reads the mark as nothing and lets a move above every
+  stored number through; with the mark set forward, a move beneath it
+  lands, and set back afterwards the moved row is above it; and set back in
+  one step, with every newer row moved down beneath it -- moves within the
+  numbers the mark then shows, which this rule and question 15's let --
+  an older row is left on top (the prover, measured on both tables with
+  foreign keys off: rec 2 and forecast 2 written over after the newest was
+  moved to 0 under a mark set back to 1, and rec 1 and forecast 1 after the
+  two above them were moved below 0). Each way that recommendation or
+  forecast is then the newest, and a number read twice writes over it
+  (measured, both tables, above) -- question 13's and 15's NOT SEEN,
+  reaching any row rather than only the newest. No rule can
+  see it. What a scan could see is its precondition: a statement writing
+  `sqlite_sequence` in the shipped code, as question 25's ruled scan will
+  see a connection switching the rules off (tests and plantings write it on
+  purpose; and one shipped writer, the prover found: `rebuild._rebuild_one`
+  deletes a rebuilt table's sequence row and writes it again with the value
+  read before the rebuild, so a scan would name it and need it registered).
+- **OPEN, NOT A MOVE: a statement stopped under OR FAIL** (this rule's
+  prover, above; measured on both tables, on 8b569dc and on this tree, and
+  on the record's copy). The rows an insert wrote before it stopped under
+  `OR FAIL` -- or before a temporary rule raised FAIL -- are kept, and
+  SQLite never writes the mark back for it, so they stand above the mark
+  until the next insert that ends, and a number read twice writes over
+  them. A LAW 3 finding, for the operator's queue: question 15's clause
+  cannot close it, and no writer writes that way.
+- **The read-twice hole on the other rule sets of question 13's shape**
+  (above): `market_snapshots`, `reasoning_prompts` and
+  `recommendation_regrades` have no rule reading the number after an
+  insert, so a number a connection's function reads one way to the rules
+  and another to the key writes over any stored row. Each would need its
+  own rule on the number written (the snapshot and prompt tables have a
+  mark; the re-grades' number is a recommendation's, with none). For the
+  operator: they break LAW 3 only through a function the connection defines
+  (question 25's scan refuses one under a built-in's name, not every one)
+  or `random()`.
+- **Found in passing: the record's older rules on this table run in another
+  order than a fresh build's.** On the copy, `recommendation_correction_is_
+  frozen` (2026-09-26) comes after `recommendations_no_delete`, and on a
+  fresh build before `recommendation_closes_once`: an update touching both
+  the correction and a written close is refused in the one rule's words on
+  the record and the other's on a fresh build. Both refuse it; nothing
+  counts either's words. Not this ruling's.

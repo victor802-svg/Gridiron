@@ -2776,7 +2776,9 @@ END;
 -- a rule that lists id is not run by an update naming rowid, oid or
 -- _rowid_ (measured the same day on the snapshot rule, FOLLOWUPS). A new
 -- number that takes no other row's place replaces nothing and is not
--- refused here (FOLLOWUPS).
+-- refused here (FOLLOWUPS) -- with one exception from 2026-09-28, refused
+-- by a rule of its own after the three: a move above every number given
+-- out (question 24, below).
 --
 -- DECLARED AFTER recommendation_one_per_game_and_market, deliberately.
 -- SQLite runs a table's rules newest first, and the record gains these on
@@ -2837,18 +2839,28 @@ END;
 -- the statement ends (measured) -- or below any recommendation stored.
 -- Every stored recommendation is at or below that mark, so none can be
 -- written over, and RAISE(ABORT) takes the whole statement back, the
--- removed row with it. After the fact a rule cannot tell a number that was
--- stored from one that is free, so a new recommendation written under a
--- free number at or below one already given out -- never used, or left by
--- an update -- is refused as well: no writer names a number (record_for
--- leaves it to SQLite, which gives the next one up), and the record's
--- numbers run 1 to 107 with no gap.
+-- removed row with it. (2026-09-28, question 24: that was not so until the
+-- rule after this one. An update of a number does not move the mark, and a
+-- plain update could put a recommendation above it, out of this rule's
+-- reach; from that date a move above it is refused. Nor is it so, measured
+-- by question 24's prover the same day and left open, after a statement
+-- stopped under OR FAIL: the rows it wrote before it stopped are kept, and
+-- SQLite never writes the mark back, so they stand above it -- FOLLOWUPS.)
+-- After the fact a rule cannot tell a number that was stored from one that
+-- is free, so a new recommendation written under a free number at or below
+-- one already given out -- never used, or left by an update -- is refused
+-- as well: no writer names a number (record_for leaves it to SQLite, which
+-- gives the next one up), and the record's numbers run 1 to 107 with no gap.
 --
 -- NOT SEEN (FOLLOWUPS): SQLite lets an ordinary statement set its own
 -- sequence for recommendations back below the newest one, and
 -- refuses any rule on that store; after such a statement an insert that
 -- writes over the newest one leaves nothing stored that tells it from a
--- newcomer.
+-- newcomer. (2026-09-28, question 24, measured: and with the sequence's
+-- row removed first, or set forward and back around a move, or set back
+-- and every newer recommendation moved down beneath it, any
+-- recommendation can be made the newest; the rule after this one's NOT
+-- SEEN.)
 CREATE TRIGGER IF NOT EXISTS recommendations_never_replaced_by_the_number_written
 AFTER INSERT ON recommendations
 FOR EACH ROW
@@ -2859,6 +2871,85 @@ BEGIN
         'GRIDIRON LAW 3: a recommendation is never replaced. A new one is '
         || 'written under a number above every one already given out, never '
         || 'at or below one: what the app said at the time is written once');
+END;
+
+-- ---------------------------------------------------------------------------
+-- NOR MOVED ABOVE EVERY NUMBER GIVEN OUT (operator question 24, ruled
+-- 2026-09-28: "fix after Q20, same basis as Q15, own commit and planting."
+-- Built 2026-09-28. The basis is question 15's update rule on predictions,
+-- whose prover found this hole there and measured it here, 2026-09-27.)
+--
+-- THE HOLE. The rule on the number written, just above, holds only a
+-- recommendation at or below sqlite_sequence's mark, and an update of a
+-- number does not move that mark (measured again 2026-09-28: rec 2 moved
+-- to 10 over a mark of 3 left the mark at 3). So a plain UPDATE moving rec
+-- 2 to 10 -- which takes no other row's place, so the update rule above
+-- lets it -- left it above every number given out, and a one-row INSERT OR
+-- REPLACE or REPLACE whose number read as a free 99 to the rules and as 10
+-- to the row then wrote another game's recommendation over it: the rule
+-- after the insert saw 10 above the mark and nothing stored above 10.
+-- Measured on scratch worlds built by 8b569dc (the released 724a72d plus
+-- documents), foreign keys on and off: the move by id, rowid, oid and
+-- _rowid_, under every conflict clause, the number spelled '10', 10.0,
+-- 1e1, ' 10', (SELECT 10) or id + 8, a move to one above the mark, of the
+-- oldest, and by an upsert whose number reads twice and whose DO UPDATE
+-- moves the stored row it lands on -- each followed by the number read
+-- twice onto the moved row, by either verb, and each wrote over it; and a
+-- temporary rule of the connection's own moving one inside the closer's
+-- kind of update. With foreign keys on, a recommendation something points
+-- at is held by that key against the move (measured with a withdrawal; a
+-- close's account and a re-grade point at it by keys of the same kind);
+-- one with none moves, and with them off every one does.
+--
+-- THIS RULE refuses an update that moves a recommendation's number above
+-- every number already given out, and nothing else. It names no columns: a
+-- rule that lists id is not run for rowid, oid or _rowid_ (question 13,
+-- measured). It is not a freeze of the number, which question 13 left to
+-- the operator and question 15 left the same: a move to a free number at
+-- or below the mark still lands, and stays in reach of the rule after the
+-- insert. No writer moves a number (record_for inserts, naming none, and
+-- the closer updates the close), so no writer is refused by it.
+--
+-- A RULE OF ITS OWN, not a clause of the update rule above as question 15
+-- wrote it into its own new update rule: the record holds the update rule
+-- above, and a rule's text is never replaced on a record that holds it.
+-- DECLARED LAST of the table's rules, deliberately: the record gains it on
+-- its first open after the release, after the rule on the number written,
+-- and SQLite runs a table's rules newest first, so a fresh build runs them
+-- in the order the record will.
+--
+-- NOT SEEN (FOLLOWUPS), measured 2026-09-28 on this rule and on question
+-- 15's: the mark itself rewritten by ordinary statements, which no rule is
+-- shown. With the table's row in sqlite_sequence removed the mark reads as
+-- nothing, and this rule, like question 15's, lets a move above every
+-- stored number through; with the mark set forward, a move below it lands,
+-- and set back afterwards the moved one is above it; and set back in one
+-- step, with every newer recommendation moved down beneath it -- moves
+-- within the numbers the mark then shows, which this rule lets -- an older
+-- one is left the newest (this rule's prover, 2026-09-28, measured on this
+-- table and on predictions). Each way that recommendation is then the
+-- newest, which nothing stored tells from a newcomer: question 13's NOT
+-- SEEN, reaching any recommendation rather than only the newest.
+--
+-- AND OPEN, NOT A MOVE (this rule's prover, 2026-09-28, measured; for the
+-- operator, since this ruling names the move): an insert of several rows
+-- under OR FAIL whose later row fails a CHECK or NOT NULL keeps the rows
+-- written before it, and SQLite never writes the mark back for a statement
+-- that stopped, so those rows stand above the mark, where a number read
+-- twice writes over them; so does a row kept by a temporary rule raising
+-- FAIL. Taken on 8b569dc and on this tree alike, and on predictions under
+-- question 15's rules. No writer writes under OR FAIL.
+-- ---------------------------------------------------------------------------
+CREATE TRIGGER IF NOT EXISTS recommendations_never_moved_above_the_mark
+BEFORE UPDATE ON recommendations
+FOR EACH ROW
+WHEN NEW.id IS NOT OLD.id
+ AND NEW.id > (SELECT seq FROM sqlite_sequence WHERE name = 'recommendations')
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a recommendation is never replaced. An update may '
+        || 'not move one above every number already given out, where a new '
+        || 'one could be written over it');
 END;
 
 -- ---------------------------------------------------------------------------

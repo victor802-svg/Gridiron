@@ -587,6 +587,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_replacing_write_reaching_an_append_only_table_by_a_key",
         "plant_a_replacing_write_reaching_a_table_the_scan_cannot_read",
         "plant_an_upsert_registered_after_the_register_was_frozen",
+        # OPERATOR QUESTION 24 (ruled 2026-09-28): no recommendation moved
+        # above every number given out, where a new one could be written
+        # over it -- question 15's basis, applied to question 13's table.
+        "plant_a_recommendation_moved_above_every_number_given_out",
         # GRIDIRON_REPAIR item 6 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): at the venue's line, one bet per game per forecaster --
         # never two forecasters in one count, never a game counted twice.

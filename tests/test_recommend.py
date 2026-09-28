@@ -4,6 +4,7 @@ that is refused, nothing sized in-game, and the closing line recorded once."""
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 
 import pytest
@@ -1577,8 +1578,11 @@ def test_the_replace_rules_carry_the_words_and_run_first(tmp_path):
     order = [r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'trigger'"
         " AND tbl_name = 'recommendations' ORDER BY rowid")]
-    assert order[-len(_Q13_RULES):] == list(_Q13_RULES)
-    assert order[-len(_Q13_RULES) - 1] == "recommendation_one_per_game_and_market"
+    # Question 24's rule (2026-09-28) is declared after these three, as the
+    # record gains it after them; they stay together, after one-per-game.
+    assert order[-1] == _Q24_RULE
+    assert order[-len(_Q13_RULES) - 1:-1] == list(_Q13_RULES)
+    assert order[-len(_Q13_RULES) - 2] == "recommendation_one_per_game_and_market"
     conn.close()
 
 
@@ -1716,10 +1720,17 @@ def test_a_number_below_one_already_given_out_is_refused_and_one_above_lands(
     tell a number that was stored from one that is free, so a free number
     at or below one already given out -- here 4, vacated by an update, and 0
     and -1, never used -- is refused too (no writer names a number, and the
-    record's run 1 to 107); a number above every one lands."""
+    record's run 1 to 107); a number above every one lands.
+
+    The update vacating 4 moves the recommendation DOWN, to -5 (2026-09-28,
+    question 24): a move above every number given out is refused from that
+    date (`test_a_recommendation_is_never_moved_out_of_reach_of_the_number_
+    written`), and this world moved it up, to 10. Question 15's precedent
+    (its own test world moved the same way); the numbers asked about are
+    the same."""
     conn, ids = _replace_world(tmp_path)
     _insert(conn, ids["p4"], "no", _Q13_LATER, game="q4")    # number 4
-    conn.execute("UPDATE recommendations SET id = 10 WHERE id = 4")
+    conn.execute("UPDATE recommendations SET id = -5 WHERE id = 4")
     conn.commit()
     before = _stored(conn)
     for unused in (4, 0, -1):
@@ -1768,3 +1779,299 @@ def test_a_recommendation_given_a_number_below_one_does_not_stop_the_next(
             (second, _Q13_LATER))
     conn.rollback()
     assert _stored(conn) == before
+
+
+# --- no recommendation moved above every number given out (operator
+# question 24) ------------------------------------------------------------------
+#
+# Ruled 2026-09-28: "Q24: fix after Q20, same basis as Q15, own commit and
+# planting." Found by question 15's prover (2026-09-27): the rule on the
+# number written holds a recommendation only at or below `sqlite_sequence`'s
+# mark, and an update of a number does not move that mark, so a plain UPDATE
+# moving rec 2 to 10 over a mark of 3 -- which takes no other row's place --
+# left it out of that rule's reach, and a one-row insert whose number read
+# as a free 99 to the rules and as 10 to the row wrote another game's
+# recommendation over it. `recommendations_never_moved_above_the_mark`, a
+# rule of its own (question 13's update rule is on the record and its text
+# is never replaced), refuses the move. Question 15's
+# `test_a_forecast_is_never_moved_out_of_reach_of_the_number_written` and
+# `test_with_the_sequence_set_back_every_forecast_but_the_newest_is_held`
+# are the precedent.
+
+_Q24_RULE = "recommendations_never_moved_above_the_mark"
+#: What the rule adds to `recommend.NEVER_REPLACED` in its refusal.
+_Q24_WORDS = "above every number already given out"
+#: The world's mark is 3; the question's own example moves rec 2 to 10.
+_Q24_ABOVE = 10
+
+
+def _mark(conn):
+    return conn.execute("SELECT seq FROM sqlite_sequence"
+                        " WHERE name = 'recommendations'").fetchone()[0]
+
+
+def _moved_over(conn, ids, key):
+    """Whether what recommendation `key` said is gone from the table."""
+    return (ids[f"_said_{key}"] not in
+            {tuple(r)[1:] for r in conn.execute("SELECT * FROM recommendations")})
+
+
+def _q24_world(tmp_path):
+    """Question 13's world, and what each of its recommendations said."""
+    conn, ids = _replace_world(tmp_path)
+    for key in ("rec1", "rec2", "rec3"):
+        ids[f"_said_{key}"] = tuple(conn.execute(
+            "SELECT * FROM recommendations WHERE id = ?", (ids[key],)).fetchone())[1:]
+    return conn, ids
+
+
+def _onto(function, verb="INSERT OR REPLACE"):
+    """The newcomer on game q4 whose number the connection's `function`
+    works out: once for the rules, once for the row."""
+    return _newcomer(f"{function}()", "{p4}", "q4", _Q13_LATER, verb=verb)
+
+
+#: Every update found that moves a stored recommendation above every number
+#: given out -- each taken on 8b569dc (measured 2026-09-28), with foreign
+#: keys off where a withdrawal's key holds the row -- as (statements, the
+#: functions they call, as (the rules' reading, the row's)). Each is refused
+#: here before the number can be read twice onto the moved row.
+_Q24_MOVES = {
+    **{f"{verb.lower()} by {column}":
+       ((f"{verb} recommendations SET {column} = {_Q24_ABOVE}"
+         " WHERE id = {rec2}",), {})
+       for verb in ("UPDATE", "UPDATE OR REPLACE", "UPDATE OR IGNORE",
+                    "UPDATE OR FAIL", "UPDATE OR ABORT", "UPDATE OR ROLLBACK")
+       for column in ("id", "rowid", "oid", "_rowid_")},
+    **{f"the number spelled {spelled}":
+       ((f"UPDATE recommendations SET id = {spelled} WHERE id = {{rec2}}",), {})
+       for spelled in ("'10'", "10.0", "1e1", "' 10'", "(SELECT 10)", "id + 8",
+                       "CAST('10' AS INTEGER)")},
+    "to one above the mark":
+        (("UPDATE recommendations SET id = 4 WHERE id = {rec2}",), {}),
+    "the oldest":
+        (("UPDATE recommendations SET id = 10 WHERE id = {rec1}",), {}),
+    "the withdrawn newest, foreign keys off":
+        (("PRAGMA foreign_keys = OFF",
+          "UPDATE recommendations SET id = 10 WHERE id = {rec3}"), {}),
+    "every row at once, foreign keys off":
+        (("PRAGMA foreign_keys = OFF",
+          "UPDATE recommendations SET id = id + 10"), {}),
+    "an upsert whose number reads twice, moving the row it lands on":
+        ((_onto("handed", verb="INSERT")
+          + " ON CONFLICT(id) DO UPDATE SET id = 10",),
+         {"handed": (99, "rec2")}),
+    "a temporary rule moving one inside an update of a close":
+        (("CREATE TEMP TRIGGER q24_move AFTER UPDATE OF close_price ON"
+          " recommendations WHEN NEW.id = {rec1} BEGIN UPDATE recommendations"
+          " SET id = 10 WHERE id = {rec2}; END",
+          "UPDATE recommendations SET close_price = 0.52, clv_cents = 2.0,"
+          " closed_utc = '2026-09-09T22:00:00Z' WHERE id = {rec1}"), {}),
+}
+
+
+def _functions(conn, ids, spec):
+    for name, (first, then) in spec.items():
+        conn.create_function(name, 0, _Handed(
+            ids.get(first, first) if isinstance(first, str) else first,
+            ids.get(then, then) if isinstance(then, str) else then))
+
+
+@pytest.mark.parametrize("form", sorted(_Q24_MOVES))
+def test_no_recommendation_is_moved_above_every_number_given_out(tmp_path, form):
+    """EACH MOVE REFUSED UNDER LAW 3, in the replace rules' words and this
+    rule's own, before a number read twice could be written onto the moved
+    row: every recommendation and withdrawal as stored, and the mark where it
+    was. However the number is spelled, whatever the conflict clause, by
+    whichever of the table's names for its number, and from inside another
+    statement."""
+    conn, ids = _q24_world(tmp_path)
+    statements, functions = _Q24_MOVES[form]
+    _functions(conn, ids, functions)
+    before, mark = _stored(conn), _mark(conn)
+    with pytest.raises(sqlite3.IntegrityError) as refused:
+        for statement in statements:
+            conn.execute(statement.format(**ids))
+    conn.rollback()
+    conn.execute("PRAGMA foreign_keys = ON")
+    assert "LAW 3" in str(refused.value)
+    assert recommend.NEVER_REPLACED in str(refused.value)
+    assert _Q24_WORDS in str(refused.value)
+    assert "UNIQUE" not in str(refused.value)
+    assert _stored(conn) == before and _mark(conn) == mark
+
+
+@pytest.mark.parametrize("verb", ["INSERT OR REPLACE", "REPLACE"])
+def test_a_recommendation_is_never_moved_out_of_reach_of_the_number_written(
+        tmp_path, verb):
+    """THE HOLE, AND WHAT CLOSES IT. The move above the mark is refused; a
+    move to a free number within the numbers given out still lands (this is
+    no freeze of the number, which stays the operator's) and nothing can be
+    written over the moved row there -- the rule on the number written holds
+    it; and with this rule dropped, the two statements of question 24 write
+    another game's recommendation over rec 2: it is what stops them."""
+    conn, ids = _q24_world(tmp_path)
+    assert _mark(conn) == 3
+    before = _stored(conn)
+    with pytest.raises(sqlite3.IntegrityError, match=_Q24_WORDS):
+        conn.execute("UPDATE recommendations SET id = 10 WHERE id = ?",
+                     (ids["rec2"],))
+    conn.rollback()
+    assert _stored(conn) == before
+    # within the numbers given out: lands, and stays in reach
+    conn.execute("UPDATE recommendations SET id = 0 WHERE id = ?", (ids["rec2"],))
+    conn.create_function("handed", 0, _Handed(99, 0))
+    with pytest.raises(sqlite3.IntegrityError, match=recommend.NEVER_REPLACED):
+        conn.execute(_onto("handed", verb=verb).format(**ids))
+    assert not _moved_over(conn, ids, "rec2")
+    assert conn.execute("SELECT game_id FROM recommendations WHERE id = 0"
+                        ).fetchone()[0] == "q2"
+    conn.rollback()
+    assert _stored(conn) == before
+    # the rule dropped: question 24's two statements, as measured on 8b569dc
+    conn.execute(f"DROP TRIGGER {_Q24_RULE}")
+    conn.execute("UPDATE recommendations SET id = 10 WHERE id = ?", (ids["rec2"],))
+    assert _mark(conn) == 3                  # an update does not move the mark
+    conn.create_function("handed", 0, _Handed(99, 10))
+    conn.execute(_onto("handed", verb=verb).format(**ids))
+    assert _moved_over(conn, ids, "rec2")
+    assert tuple(conn.execute("SELECT game_id, side, price FROM recommendations"
+                              " WHERE id = 10").fetchone()) == ("q4", "no", 0.9)
+    conn.rollback()
+
+
+def test_a_move_onto_the_mark_lands_in_reach_and_one_past_it_is_refused(tmp_path):
+    """THE BOUNDARY IS THE MARK ITSELF. With the number at the mark vacated
+    (rec 4 moved down), rec 2 moved onto the mark lands and a number read
+    twice onto it is refused by the rule on the number written; moved one
+    past the mark, it is refused by this rule."""
+    conn, ids = _q24_world(tmp_path)
+    _insert(conn, ids["p4"], "no", _Q13_LATER, game="q4")    # number 4
+    conn.execute("UPDATE recommendations SET id = -5 WHERE id = 4")
+    conn.commit()
+    assert _mark(conn) == 4
+    before = _stored(conn)
+    with pytest.raises(sqlite3.IntegrityError, match=_Q24_WORDS):
+        conn.execute("UPDATE recommendations SET id = 5 WHERE id = ?", (ids["rec2"],))
+    conn.rollback()
+    assert _stored(conn) == before
+    conn.execute("UPDATE recommendations SET id = 4 WHERE id = ?", (ids["rec2"],))
+    conn.create_function("handed", 0, _Handed(99, 4))
+    with pytest.raises(sqlite3.IntegrityError, match=recommend.NEVER_REPLACED):
+        conn.execute(_newcomer("handed()", "{p5}", "q5", _Q13_LATER).format(**ids))
+    assert conn.execute("SELECT game_id FROM recommendations WHERE id = 4"
+                        ).fetchone()[0] == "q2"
+    conn.rollback()
+
+
+#: The rule on the number written's clause refusing a number below any
+#: stored one, as the schema writes it, whitespace aside.
+_BELOW_ANY_STORED = re.compile(
+    r"\s+OR EXISTS \(SELECT 1 FROM recommendations r WHERE r\.id > NEW\.id\)")
+
+
+@pytest.mark.parametrize("verb", ["INSERT OR REPLACE", "REPLACE"])
+def test_with_the_sequence_set_back_every_recommendation_but_the_newest_is_held(
+        tmp_path, verb):
+    """QUESTION 15'S SECOND FORM, applied here. SQLite's own sequence is NOT
+    SEEN by any rule (FOLLOWUPS), and set back below every recommendation it
+    leaves the newest where nothing stored tells it from a newcomer. Every
+    recommendation below the newest is still held, by the rule on the number
+    written's "below any stored one" -- while nothing newer is moved down
+    beneath the mark set back, which would leave an older one the newest
+    (this rule's prover, 2026-09-28: NOT SEEN, FOLLOWUPS); with that clause
+    taken out, the same insert writes over rec 1. And with the sequence set
+    back, a move of any number above it is refused by this rule, and an
+    update that moves no number -- the closer's -- still lands."""
+    conn, ids = _q24_world(tmp_path)
+    before = _stored(conn)
+    for key in ("rec1", "rec2"):
+        conn.execute("UPDATE sqlite_sequence SET seq = 0"
+                     " WHERE name = 'recommendations'")
+        conn.create_function("handed", 0, _Handed(99, ids[key]))
+        with pytest.raises(sqlite3.IntegrityError, match=recommend.NEVER_REPLACED):
+            conn.execute(_onto("handed", verb=verb).format(**ids))
+        conn.rollback()
+        assert _stored(conn) == before, key
+    conn.execute("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'recommendations'")
+    with pytest.raises(sqlite3.IntegrityError, match=_Q24_WORDS):
+        conn.execute("UPDATE recommendations SET id = 7 WHERE id = ?",
+                     (ids["rec2"],))
+    conn.execute("UPDATE recommendations SET close_price = 0.52, clv_cents = 2.0,"
+                 " closed_utc = '2026-09-09T22:00:00Z' WHERE id = ?", (ids["rec2"],))
+    conn.rollback()
+    assert _stored(conn) == before
+    name = _Q13_RULES[-1]
+    sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = ?",
+                       (name,)).fetchone()[0]
+    weakened, found = _BELOW_ANY_STORED.subn("", sql)
+    assert found == 1, "the rule on the number written no longer carries the clause"
+    conn.execute(f"DROP TRIGGER {name}")
+    conn.execute(weakened)
+    conn.execute("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'recommendations'")
+    conn.create_function("handed", 0, _Handed(99, ids["rec1"]))
+    conn.execute(_onto("handed", verb=verb).format(**ids))
+    assert _moved_over(conn, ids, "rec1")
+    conn.rollback()
+
+
+def test_the_move_rule_carries_the_words_and_runs_first(tmp_path):
+    """ONE SET OF WORDS: `recommend.NEVER_REPLACED` under LAW 3, never
+    "UNIQUE" and never the one-per-game words. NO COLUMN LIST (a rule
+    listing id is not run for rowid, oid or _rowid_). DECLARED LAST of the
+    table's rules, after the rule on the number written, as the record gains
+    it -- so a fresh build runs the table's rules in the record's order
+    (SQLite runs a table's rules newest first)."""
+    conn = db.open_db(tmp_path / "fresh.db")
+    sql = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'trigger'"
+                       " AND name = ?", (_Q24_RULE,)).fetchone()[0]
+    assert recommend.NEVER_REPLACED in sql and "LAW 3" in sql
+    assert _Q24_WORDS in sql
+    assert "UNIQUE" not in sql
+    assert recommend.ONE_PER_GAME_AND_MARKET not in sql
+    assert re.search(r"BEFORE\s+UPDATE\s+ON\s+recommendations\b", sql)
+    order = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+        " AND tbl_name = 'recommendations' ORDER BY rowid")]
+    assert order[-2:] == [_Q13_RULES[-1], _Q24_RULE]
+    conn.close()
+
+
+def test_an_older_record_gains_the_move_rule_through_init_and_no_row_moves(
+        tmp_path):
+    """THE RELEASE REACHES THE RECORD THROUGH `db.init` ALONE: a record as
+    released until this one -- question 13's three rules, not this one --
+    gains exactly this rule, with a fresh build's text, after the rule on
+    the number written; every recommendation and withdrawal, and the mark,
+    stay as they were; a second open adds nothing; and the move is refused
+    from the first open."""
+    conn, ids = _q24_world(tmp_path)
+    conn.execute(f"DROP TRIGGER {_Q24_RULE}")
+    conn.commit()
+
+    def objects(c):
+        return {(r[0], r[1]): r[2] for r in c.execute(
+            "SELECT type, name, sql FROM sqlite_master")}
+
+    before, rows, mark = objects(conn), _stored(conn), _mark(conn)
+    db.init(conn)
+    after = objects(conn)
+    assert set(after) - set(before) == {("trigger", _Q24_RULE)}
+    assert all(after[k] == before[k] for k in before)
+    fresh = db.open_db(tmp_path / "fresh.db")
+    try:
+        assert after[("trigger", _Q24_RULE)] == objects(fresh)[("trigger", _Q24_RULE)]
+    finally:
+        fresh.close()
+    assert _stored(conn) == rows and _mark(conn) == mark
+    order = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+        " AND tbl_name = 'recommendations' ORDER BY rowid")]
+    assert order[-2:] == [_Q13_RULES[-1], _Q24_RULE]
+    db.init(conn)
+    assert objects(conn) == after and _stored(conn) == rows
+    with pytest.raises(sqlite3.IntegrityError, match=_Q24_WORDS):
+        conn.execute("UPDATE recommendations SET id = 10 WHERE id = ?",
+                     (ids["rec2"],))
+    conn.rollback()
+    assert _stored(conn) == rows
