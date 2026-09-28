@@ -36,7 +36,15 @@
   (7, 8, 13, 14, 26) store the complement of their forecast (the claim
   writer's first minute, 7 Sep, 25d83b8); run 4821 (predict:mlb, 27 Sep
   05:44Z) has no ending recorded, for item 7's sweep. New questions 21-27
-  below. **Next: Q20.**
+  below.
+  **THE QUEUE IS BLOCKED (2026-09-28 ~00:25Z).** Q20 is built and proved
+  but not committed: question 28 (its fix uncovers the click-after-hash
+  race in ~10 browser tests). The change is left uncommitted in this
+  worktree AND kept on branch `q20-held` (e4b9792, pushed; not gated, not
+  for master) -- if the worktree is ever reset, `git checkout q20-held --
+  <its 9 files>` brings it back. Q17 waits for questions 21 and 22, Q16 for
+  23 and Q17; the board merge, Q5, Q10 and the re-read are ordered after
+  them. **Next: whichever of Q28, then Q21-Q23, the operator rules.**
 - **Serving: f02e913** (`/api/health` = f02e9134d984). Repair items 1-8 and
   the schema rulings are released; close-out:
   `docs/closeouts/2026-09-27-overnight.md` (verdicts, awake time, spend).
@@ -795,6 +803,56 @@ depend on the answer.
     the later EARLY row stands over the final. Q17 says which pass counts
     "stays each record's standing rule": as designed, or should a final
     pass always stand over an early one? Default until ruled: as is.
+28. **Q20's fix uncovers a race the movement was hiding. Tests that open a
+    card right after setting the hash now lose the card to the redraw that
+    same hash change starts. (Found by Q20's prover, 2026-09-27. Q20 is
+    built and proved, but NOT COMMITTED. The change is in the worktree.)**
+    Q20 itself holds. The per-frame check fails 10 runs of 10 on f66fefa and
+    passes 10 of 10 on the fix. The planting escapes on f66fefa and is
+    caught on the fix. The harness catches 338 of 338. A wider sampler
+    covered every other redraw at 390 (3x) and at 375 (2x), 64 redraws
+    each, and read nothing off whole or under 44.
+
+    The race is in the tests. They set the hash, wait for a card that the
+    previous render already drew, and tap its Why. The hash change's redraw
+    rebuilds the panel, and an open card closes when that happens (Q18,
+    fixed in the board). On f66fefa, the Why sat inside a moving panel.
+    Playwright waits until a target stops moving before it taps, so every
+    tap came after the redraw. We checked this in a scratch copy of the
+    steps, 30 fresh sessions per tree: on f66fefa the redraw came first 30
+    times and the card stayed open 30 times. With the fade alone the Why
+    is still, so the tap lands first. On the fix the redraw came after the
+    tap 11 times in 30, and each of those 11 times the card was closed.
+
+    The test file whole (`test_smoke.py`), by tree:
+    - f66fefa, 3 runs: 2 failed, both only on
+      `test_nothing_moves_under_reduced_motion`. That test already raced
+      this way, because nothing moves under reduced motion (Q5's
+      diagnosis).
+    - The fix, 6 runs: 4 failed on another test.
+      `test_the_dumbbell_and_contribution_bars_fit` failed twice.
+      `test_the_bucket_line_never_shows_an_accuracy_without_its_n` and
+      `test_a_card_still_expands_on_a_phone` failed once each.
+    - The full suite on the fix failed the dumbbell test and the
+      reduced-motion test.
+
+    Each of those tests passes alone (5 of 5). The tests with this shape
+    are `_open_first_card`, which 4 tests use, and 5 other places in
+    `test_smoke.py`, plus `test_prompt_disclosure.py::test_a_reasoning_card_shows_its_prompt_inside_why`.
+    - **(A) Fix those tests in Q20's commit.** Before tapping, each would
+      wait for the redraw its own hash change started to finish. The test
+      would see that from inside the page, when the arrival class goes on
+      and comes off, as the per-frame check already does. There would be no
+      clock and no fixed wait, and `ELAPSED_TIME_HELD` would not change.
+      This would be one test helper. The app would not change. It does part
+      of Q5's work early, for these tests only. Q5's render-finished signal
+      would later replace the helper.
+    - **(B) Commit Q20 as built.** These tests would keep racing until Q18
+      (an open card stays open across a redraw, in the board) or Q5 (after
+      the board merge). With the one-rerun rule, the gate's step 1 would
+      fail on one of them in most runs: 4 of 6 runs of the test file did.
+    Recommended: (A). Default until ruled: Q20 is not committed. The change
+    stays uncommitted in the worktree on `repair`, at f66fefa.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
