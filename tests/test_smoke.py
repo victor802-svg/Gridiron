@@ -774,6 +774,134 @@ def test_every_tap_target_on_the_slate_is_big_enough(phone):
     assert not narrow, f"tap targets under their width floor: {narrow}"
 
 
+#: EVERY TAP TARGET THE TAP-TARGET TESTS MEASURE ON THE SLATE (2026-09-27):
+#: this file's slate test, `test_cards.py`'s `#view-week a` and the colophon's
+#: source links the settings test measures, which are on the slate as well.
+#: A card stays closed, so the Why panel's link is not among them: operator
+#: question 20's side question, ruled not in scope (it leaves with the board).
+SLATE_TAP_TARGETS = ("nav a, #sport-tabs a, #sport-tabs button, select, button, "
+                     ".expand, summary, #view-week a, .colophon a")
+
+#: How many times each market chip redraws the slate. Two rounds of this
+#: world's chips, and the hash set first, as the flaky test sets it.
+ARRIVAL_ROUNDS = 2
+
+#: THE SAMPLER, installed before the redraw it watches (2026-09-27, operator
+#: question 20). It starts on the mutation that puts the arrival class on the
+#: Today panel -- the redraw's start, before any frame of it is drawn -- reads
+#: every tap target's height on every animation frame after it, and ends on
+#: the arrival's own end: the class gone and no transition left running on the
+#: panel. No clock is read and nothing waits a fixed time; the caller's only
+#: limit is an upper one.
+WATCH_ONE_ARRIVAL = """([SEL, after]) => {
+    const panel = document.getElementById('today');
+    const out = { after, frames: 0, fading: 0, measured: 0, controls: 0,
+                  readings: [], done: false };
+    window.__arrival = out;
+    const describe = el => {
+        const id = el.id ? '#' + el.id : '';
+        const cls = (typeof el.className === 'string' && el.className.trim())
+            ? '.' + el.className.trim().split(/\\s+/).join('.') : '';
+        const words = (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 40);
+        return el.tagName.toLowerCase() + id + cls + (words ? ' "' + words + '"' : '');
+    };
+    const sample = frame => {
+        const opacity = parseFloat(getComputedStyle(panel).opacity);
+        if (opacity > 0 && opacity < 1) out.fading += 1;
+        document.querySelectorAll(SEL).forEach(el => {
+            if (el.offsetParent === null) return;
+            const r = el.getBoundingClientRect();
+            if (!(r.height > 0)) return;
+            out.measured += 1;
+            if (panel.contains(el)) out.controls += 1;
+            if (r.height < 44 || r.height !== Math.round(r.height)) {
+                out.readings.push({ what: describe(el), frame, h: r.height,
+                                    y: Math.round(r.top + scrollY) });
+            }
+        });
+    };
+    const watch = new MutationObserver(() => {
+        if (!panel.classList.contains('arriving')) return;
+        watch.disconnect();
+        const tick = () => {
+            out.frames += 1;
+            sample(out.frames);
+            if (panel.classList.contains('arriving') || panel.getAnimations().length) {
+                requestAnimationFrame(tick);
+            } else {
+                out.done = true;
+            }
+        };
+        requestAnimationFrame(tick);
+    });
+    watch.observe(panel, { attributes: true, attributeFilter: ['class'] });
+}"""
+
+
+def _watch_one_arrival(page, redraw, after: str) -> dict:
+    """Install the sampler, start one redraw, and wait for its arrival to end
+    (fifteen seconds is the upper limit, never a wait)."""
+    page.evaluate(WATCH_ONE_ARRIVAL, [SLATE_TAP_TARGETS, after])
+    redraw()
+    page.wait_for_function("window.__arrival && window.__arrival.done", timeout=15000)
+    return page.evaluate("window.__arrival")
+
+
+def test_no_tap_target_leaves_whole_pixels_on_any_frame_of_the_slates_arrival(phone):
+    """Operator question 20, ruled (A) on 2026-09-27: the Today panel arrives
+    by its fade alone.
+
+    WHY EVERY FRAME. The slate test above flaked at 43.99951171875px: 44 less
+    1/2048. Every tap target is laid out at a whole number of pixels, 44 or
+    more, at rest -- and while the panel rose from one per cent below its
+    place it sat a fraction of a pixel off whole, the browser mapped each
+    button's box through that offset and rounded its top and bottom apart, so
+    44 read 43.9995 or 44.0005. Measured on 2026-09-27 over twelve market
+    switches: 9 of 192 frames read a tap target off whole pixels, 3 of those
+    under 44; with the movement removed, 193 of 193 were whole. A test that
+    measures once passes or fails by where its measurement lands; this one
+    reads every frame of every arrival, from the mutation that starts it to
+    the transition's own end, and names the element, the frame and the
+    reading. Nothing is rounded and nothing is widened: 44 is the floor and a
+    fraction of a pixel is a failure.
+    """
+    page = phone
+    arrivals = [_watch_one_arrival(
+        page, lambda: page.evaluate("location.hash = '#/week'"),
+        "the hash was set to the slate, as the slate test sets it")]
+    page.wait_for_selector("#today .face", timeout=10000)
+    markets = page.evaluate(
+        "[...document.querySelectorAll('.market-tab')].map(b => b.dataset.market)")
+    assert markets, "the slate drew no market chips to switch between"
+    for _ in range(ARRIVAL_ROUNDS):
+        for market in markets:
+            arrivals.append(_watch_one_arrival(
+                page,
+                lambda m=market: page.click(f".market-tab[data-market='{m}']"),
+                f"the market chip {market or 'all'!r} was pressed"))
+
+    # IT LOOKED AT SOMETHING MOVING: every arrival was sampled, the whole
+    # slate's card controls were among what it measured (a market with no
+    # card this week has none to measure), and frames were read mid-fade.
+    assert all(a["frames"] > 0 for a in arrivals), arrivals
+    assert arrivals[0]["controls"] > 0, (
+        "the whole slate arrived with no tap target inside the Today panel, "
+        "so no card's controls were measured")
+    assert sum(a["fading"] for a in arrivals) > 0, (
+        "no frame was read while the panel faded in, so no arrival was watched")
+
+    off = [f"{r['what']}, {r['y']}px down the page, read {r['h']!r}px on "
+           f"frame {r['frame']} of the arrival after {a['after']}"
+           for a in arrivals for r in a["readings"]]
+    frames = sum(a["frames"] for a in arrivals)
+    assert not off, (
+        f"A TAP TARGET LEFT WHOLE PIXELS OR FELL UNDER 44 WHILE THE SLATE "
+        f"ARRIVED ({len(off)} readings in {frames} frames of {len(arrivals)} "
+        f"arrivals at 390px, three device pixels to one). The panel must "
+        f"arrive by its fade alone (operator question 20, 2026-09-27):\n"
+        + "\n".join(off[:12]))
+
+
 def test_a_card_still_expands_on_a_phone(phone):
     """RE-POINTED 2026-09-08 at the CARD_FACE card. The old grid card expanded
     by clicking its whole head and revealing `.card-body`; this one has a Why

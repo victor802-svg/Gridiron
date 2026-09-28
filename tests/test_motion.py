@@ -60,7 +60,9 @@ def test_a_tab_switch_arrives_through_the_motion_block(page):
                 timing: cs.transitionTimingFunction};
     }""")
     assert props["duration"].startswith("0.2s"), props
-    assert "opacity" in props["property"] and "transform" in props["property"]
+    # OPACITY ALONE from 2026-09-27 (operator question 20, (A)): the panel
+    # holds tap targets, and a movement put them off whole pixels.
+    assert props["property"] == "opacity", props
     assert "ease-out" in props["timing"]
     # The class the transition runs from is applied on the switch, and comes
     # off a frame later; a MutationObserver installed before the click sees it.

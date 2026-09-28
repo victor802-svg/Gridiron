@@ -2480,6 +2480,153 @@ def plant_a_transition_longer_than_the_ceiling() -> Result:
     return _desk_plant(faults, "fade a panel for 400ms", "audit.motion_faults")
 
 
+LAW_ARRIVAL = ("ONE MOTION VOCABULARY: A PANEL THAT HOLDS TAP TARGETS ARRIVES "
+               "BY ITS FADE ALONE")
+
+
+def plant_a_panel_holding_tap_targets_moving_as_it_arrives() -> Result:
+    """Put the Today panel's movement back: one per cent below, eased up.
+
+    OPERATOR QUESTION 20, ruled (A) on 2026-09-27. The slate's tap-target
+    test flaked on 43.99951171875px because the panel rose from one per cent
+    below its place, and on the frames it moved every control inside it sat
+    a fraction of a pixel off whole. One per cent is inside L3's two, so
+    `audit.motion_faults` passed it and every gate did. Planted nine ways in
+    the shipped stylesheet (and the script, for the ninth), each of which
+    `audit.arrival_movement_faults` must name: the arrival exactly as it
+    shipped until 2026-09-27; its start state alone; its transition alone;
+    the `translate` property in place of `transform`; a transition naming
+    `all`; one naming no property, which CSS reads as `all`; the movement on
+    the panel's class rather than its id (index.html gives it the class);
+    inside a phone-width media block; and the start state under a class the
+    script's `arrive` puts on the panel in place of `arriving`. And a tenth,
+    the board merge's case: a new panel arriving at the panel duration with a
+    movement. The shipped stylesheet must pass, a comment naming the old
+    movement must not trip it (a comment is not code), the gate's own
+    call must refuse the first form read from a copy of the package, and the
+    gate's step 2 must make that call (read from its syntax tree).
+    """
+    guard = "audit.arrival_movement_faults"
+    violation = "the Today panel's movement put back as it arrives"
+    scan = getattr(audit, "arrival_movement_faults", None)
+    if scan is None:
+        return Result(LAW_ARRIVAL, violation, guard, False,
+                      "NOT CAUGHT - nothing reads a panel's arrival: "
+                      "`audit.motion_faults` passes a translateY of one per "
+                      "cent (the bound is two), so on the code before "
+                      "question 20 the Today panel shipped moving, every gate "
+                      "passed it, and the slate's tap-target test read a 44px "
+                      "control at 43.99951171875px whenever a redraw landed "
+                      "inside it")
+    web = config.PACKAGE_ROOT / "web"
+    css = (web / "style.css").read_text(encoding="utf-8")
+    markup = (web / "index.html").read_text(encoding="utf-8")
+    script = (web / "app.js").read_text(encoding="utf-8")
+    shipped = scan(css, markup, script)
+    if shipped:
+        return Result(LAW_ARRIVAL, violation, guard, False,
+                      "the shipped stylesheet already fails; fix that before "
+                      "trusting this planting: " + shipped[0])
+    state = "#today.arriving { opacity: 0; transition: none; }"
+    fade = "  transition: opacity var(--motion-panel) var(--motion-ease);" + chr(10) + "}"
+    arrive_add = "node.classList.add('arriving');"
+    if css.count(state) != 1 or css.count("#today {" + chr(10) + fade) != 1 \
+            or script.count(arrive_add) != 1:
+        return Result(LAW_ARRIVAL, violation, guard, False,
+                      "the Today panel's arrival is no longer written the way "
+                      "this planting expects; re-point it")
+    moved_state = "#today.arriving { opacity: 0; transform: translateY(1%); transition: none; }"
+    moved_fade = ("  transition: opacity var(--motion-panel) var(--motion-ease)," + chr(10)
+                  + "              transform var(--motion-panel) var(--motion-ease);"
+                  + chr(10) + "}")
+
+    def with_fade(replacement: str) -> str:
+        return css.replace("#today {" + chr(10) + fade, "#today {" + chr(10) + replacement)
+
+    forms = {
+        "as it shipped until 2026-09-27":
+            (with_fade(moved_fade).replace(state, moved_state), script,
+             ["carries `transform: translateY(1%)`", "transitions `transform`"]),
+        "its start state alone":
+            (css.replace(state, moved_state), script,
+             ["carries `transform: translateY(1%)`"]),
+        "its transition alone":
+            (with_fade(moved_fade), script, ["transitions `transform`"]),
+        "the translate property":
+            (css.replace(state, "#today.arriving { opacity: 0; translate: 0 1%; transition: none; }"),
+             script, ["carries `translate: 0 1%`"]),
+        "a transition naming every property":
+            (with_fade("  transition: all var(--motion-panel) var(--motion-ease);" + chr(10) + "}"),
+             script, ["transitions `all`"]),
+        "a transition naming no property":
+            (with_fade("  transition: var(--motion-panel) var(--motion-ease);" + chr(10) + "}"),
+             script, ["transitions `all`"]),
+        "on the panel's class":
+            (css + chr(10) + ".today { transition: opacity var(--motion-state) var(--motion-ease),"
+             " transform var(--motion-state) var(--motion-ease); }" + chr(10),
+             script, ["`.today` transitions `transform` on the panel `#today`"]),
+        "at phone width":
+            (css + chr(10) + "@media (max-width: 640px) {" + chr(10)
+             + "  #today.arriving { transform: translateY(1%); }" + chr(10) + "}" + chr(10),
+             script, ["carries `transform: translateY(1%)`"]),
+        "under another class the script arrives it by":
+            (css.replace(state, "#today.entering { opacity: 0; transform: translateY(1%); transition: none; }"),
+             script.replace(arrive_add, "node.classList.add('entering');"),
+             ["`#today.entering`, the state a panel arrives from, carries"]),
+        "a new panel arriving at the panel duration":
+            (css + chr(10) + ".games-panel { transition: opacity var(--motion-panel) var(--motion-ease),"
+             " transform var(--motion-panel) var(--motion-ease); }" + chr(10),
+             script, ["`.games-panel` transitions `transform` on a panel"]),
+    }
+    missed, first = [], None
+    for name, (planted_css, planted_script, wanted) in forms.items():
+        faults = scan(planted_css, markup, planted_script)
+        absent = [w for w in wanted if not any(w in f for f in faults)]
+        if absent:
+            missed.append(f"{name}: {absent} not named in {faults!r}")
+        first = first or (faults[0] if faults else None)
+    commented = css.replace(state, state + " /* was: #today.arriving { transform: "
+                            "translateY(1%); } */")
+    stray = scan(commented, markup, script)
+    if stray:
+        missed.append(f"a comment naming the old movement tripped it: {stray[0]}")
+    # THE GATE'S OWN CALL, on a copy of the package carrying the first form.
+    check = getattr(audit, "check_a_panel_holding_tap_targets_arrives_by_its_fade_alone")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(web, root / "web", ignore=shutil.ignore_patterns("fonts"))
+        (root / "web" / "style.css").write_text(forms["as it shipped until 2026-09-27"][0],
+                                                encoding="utf-8")
+        try:
+            check(root)
+            missed.append("the gate's own call passed the arrival as it shipped")
+        except audit.LawViolation as refused:
+            if "#today.arriving" not in str(refused):
+                missed.append(f"the gate's own call refused it without naming "
+                              f"the start state: {refused}")
+    # AND THE GATE MAKES THAT CALL (the prover, 2026-09-27). With its row taken
+    # out of `verify.py`'s step 2 nothing said so: the orphan scan counts this
+    # planting's own mention of the name as a caller. Read from the syntax
+    # tree of the gate beside the package, so a comment naming the check
+    # cannot stand in for the call (question 15's scan is pinned the same way,
+    # `test_no_replacing_write.py::test_the_gate_runs_the_scan_in_step_two`).
+    import ast as _ast
+    gate = Path(audit.__file__).resolve().parents[1] / "tools" / "verify.py"
+    step = next((node for node in _ast.parse(gate.read_text(encoding="utf-8")).body
+                 if isinstance(node, _ast.FunctionDef) and node.name == "step_2_guards"),
+                None)
+    if step is None or not any(
+            isinstance(node, _ast.Attribute) and node.attr == check.__name__
+            and isinstance(node.value, _ast.Name) and node.value.id == "audit"
+            for node in _ast.walk(step)):
+        missed.append(f"the gate's step 2 does not call `audit.{check.__name__}`, "
+                      f"so the gate never reads a panel's arrival")
+    if missed:
+        return Result(LAW_ARRIVAL, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_ARRIVAL, violation, guard, True, first or "")
+
+
 def plant_a_strobing_live_mark() -> Result:
     """The same guard's other direction: the one allowed loop, run too fast.
 
@@ -16768,6 +16915,10 @@ def main() -> int:
     results.append(plant_a_bouncing_chip())
     results.append(plant_a_transform_outside_two_percent())
     results.append(plant_a_transition_longer_than_the_ceiling())
+    # OPERATOR QUESTION 20 (ruled (A) 2026-09-27): a panel that holds tap
+    # targets arrives by its fade alone -- the Today panel's one per cent
+    # put a 44px control at 43.9995px on the frames it moved.
+    results.append(plant_a_panel_holding_tap_targets_moving_as_it_arrives())
     results.append(plant_a_hidden_element_painted_by_its_class())
     results.append(plant_a_late_answer_that_still_paints())
     results.append(plant_a_raw_exception_on_the_health_panel())

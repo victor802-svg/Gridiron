@@ -2452,6 +2452,305 @@ COLOUR_LAW_FIXTURE_NEGATIVE = """
 """
 
 
+# ---------------------------------------------------------------------------
+# A PANEL THAT HOLDS TAP TARGETS ARRIVES BY ITS FADE ALONE (operator question
+# 20, ruled (A) on 2026-09-27; the board merge's step 2 holds every panel to
+# it: "arrival motion on any panel holding tap targets is opacity only")
+# ---------------------------------------------------------------------------
+#
+# THE FLAKE THAT ASKED FOR THIS. The slate's tap-target test failed now and
+# then on 43.99951171875px -- 44 less 1/2048. Every control it measures is
+# laid out at a whole number of pixels, 44 or more; the Today panel arrived
+# from one per cent below its place (R4, 2026-09-05), and on the frames it
+# moved it sat a fraction of a pixel off whole, so the browser mapped each
+# button's box through that offset and rounded its top and bottom apart:
+# 44 read 43.9995 or 44.0005. Measured on 2026-09-27 over twelve market
+# switches, 9 of 192 frames read a tap target off whole pixels (3 under 44);
+# with the movement removed and the fade kept, 193 of 193 were whole. No CSS
+# on the control fixes it -- at 45px, 15 readings were still off whole -- so
+# the panel stopped moving. The pixels are proved in the browser, every frame
+# (`test_smoke.py::test_no_tap_target_leaves_whole_pixels_on_any_frame_of_
+# the_slates_arrival`); this scan holds the stylesheet to the rule in the gate,
+# where no browser runs, and a planting proves it.
+#
+# WHAT AN ARRIVAL IS, read from the stylesheet with its comments blanked:
+#   1. ITS START STATE: every rule whose selector carries a class the script
+#      puts on a panel to arrive it -- `ARRIVAL_CLASS`, and any other class
+#      the page's `arrive` adds, read from app.js. It may carry no movement:
+#      no `transform`, `translate`, `scale` or `rotate` other than `none`, and
+#      a transition in it names opacity alone.
+#   2. ITS TRANSITION: every rule setting a transition that applies to an
+#      element such a state names (the selector without the class; its tag
+#      and classes read from index.html when it names an id), and every
+#      transition that runs at the panel duration, which the vocabulary gives
+#      only to a panel swapping its whole contents. It names opacity and
+#      nothing else -- not a movement, not `all`, and not a shorthand naming
+#      no property, which CSS reads as `all`.
+#
+# WHICH PANELS HOLD TAP TARGETS, decided: EVERY PANEL THAT ARRIVES. What
+# arrives in a panel is built by the script, which no scan of the stylesheet
+# reads, so the stricter default takes each to hold them. The one that
+# arrives today holds them in its own markup (the fold) and in every card the
+# script builds into it (the Why control and the took button). A panel that
+# arrives holding none is not something this page has; one would be the
+# operator's to rule on, not an exemption written here.
+#
+# NOT SEEN (FOLLOWUPS): a movement the script sets itself (an inline style,
+# `animate()`), an arrival through a class the page's `arrive` does not add, a
+# transition declared under a selector naming none of the panel's id, tag or
+# classes at less than the panel duration, and a movement on a tap target
+# itself rather than on a panel arriving. The browser test reads the slate's
+# pixels whatever moves them.
+
+#: The class the page's script puts on a panel for the frame it arrives from
+#: (`arrive` in app.js). Any other class `arrive` adds is read from the script.
+ARRIVAL_CLASS = "arriving"
+
+#: The properties that move a box on screen: an arrival carrying one slides
+#: every control inside the panel off whole pixels on the frames it runs.
+MOVEMENT_PROPERTIES = frozenset({"transform", "translate", "scale", "rotate"})
+
+_CSS_TIMING_WORD = re.compile(
+    r"^(?:ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end|"
+    r"normal|allow-discrete|!important)$")
+_CSS_COMPOUND_NAME = re.compile(r"([#.]?)(-?[A-Za-z_][\w-]*)")
+_JS_ARRIVE = re.compile(r"function\s+arrive\s*\(")
+_JS_CLASS_ADDED = re.compile(r"classList\.(?:add|toggle)\(([^)]*)\)")
+_JS_CLASS_NAME = re.compile(r"""(['"`])([A-Za-z_][\w-]*)\1""")
+
+
+def _split_outside_brackets(text: str, sep: str = ",") -> list[str]:
+    """`text` split on `sep` wherever it stands outside () and []."""
+    parts, depth, start = [], 0, 0
+    for i, ch in enumerate(text):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth = max(0, depth - 1)
+        elif ch == sep and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return parts
+
+
+def _last_compound(selector: str) -> str:
+    """The compound a selector matches: the part after its last combinator."""
+    depth, last = 0, 0
+    for i, ch in enumerate(selector):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth = max(0, depth - 1)
+        elif depth == 0 and ch in " >+~":
+            last = i + 1
+    return selector[last:].strip()
+
+
+def _compound_names(compound: str) -> frozenset:
+    """The tag, `#id` and `.class` names of one compound selector. An
+    attribute or a pseudo-class may apply either way, so neither narrows it."""
+    bare = re.sub(r"\[[^\]]*\]|:[\w-]+(?:\([^)]*\))?", " ", compound)
+    return frozenset(prefix + name for prefix, name in _CSS_COMPOUND_NAME.findall(bare))
+
+
+def _arrival_classes(script: str) -> frozenset:
+    """`ARRIVAL_CLASS` and every class the page's `arrive` adds."""
+    found = {ARRIVAL_CLASS}
+    script = _without_comments(script or "", "js")
+    at = _JS_ARRIVE.search(script)
+    if at:
+        opened = script.find("{", at.end())
+        depth, end = 0, len(script)
+        for i in range(opened, len(script)):
+            if script[i] == "{":
+                depth += 1
+            elif script[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        for call in _JS_CLASS_ADDED.finditer(script[opened:end]):
+            found.update(name for _, name in _JS_CLASS_NAME.findall(call.group(1)))
+    return frozenset(found)
+
+
+def _element_names(markup: str, element_id: str) -> frozenset:
+    """The tag and classes index.html gives the element with this id."""
+    tag = re.search(r"<([A-Za-z][\w-]*)\b[^>]*\bid\s*=\s*['\"]"
+                    + re.escape(element_id) + r"['\"][^>]*>", markup or "")
+    if not tag:
+        return frozenset()
+    names = {tag.group(1).lower()}
+    classes = re.search(r"\bclass\s*=\s*['\"]([^'\"]*)['\"]", tag.group(0))
+    if classes:
+        names.update("." + c for c in classes.group(1).split())
+    return frozenset(names)
+
+
+def _transition_properties(prop: str, value: str) -> list[str]:
+    """The properties a `transition` or `transition-property` declaration
+    names, `all` for a shorthand part naming none; [] for any other."""
+    value = value.replace("!important", " ")
+    if prop == "transition-property":
+        return [p.strip().lower() for p in _split_outside_brackets(value) if p.strip()]
+    if prop != "transition":
+        return []
+    named = []
+    for part in _split_outside_brackets(value):
+        words = [w for w in _CSS_CURVE.sub(" ", part).split()
+                 if not _CSS_MS.fullmatch(w) and not _CSS_TIMING_WORD.match(w)
+                 and not w.startswith("var(")]
+        if part.strip():
+            named.append(words[0].lower() if words else "all")
+    return named
+
+
+def _runs_at(value: str, ms: float) -> bool:
+    return any(float(amount) * (1000 if unit == "s" else 1) == ms
+               for amount, unit in _CSS_MS.findall(value))
+
+
+def arrival_movement_faults(css: str, markup: str = "", script: str = "",
+                            where: str = "style.css") -> list[str]:
+    """Every movement in the arrival of a panel that holds tap targets --
+    every panel that arrives (see the block above) -- named by line and rule."""
+    css = _without_comments(css, "css")
+    markup = _without_comments(markup or "", "html")
+    tokens = _resolve_tokens(css)
+    panel_ms = next((float(a) * (1000 if u == "s" else 1)
+                     for a, u in _CSS_MS.findall(tokens.get("motion-panel", ""))),
+                    float(MOTION_MAX_MS))
+    arriving = _arrival_classes(script)
+    carries = re.compile(r"\.(?:" + "|".join(sorted(map(re.escape, arriving)))
+                         + r")(?![\w-])")
+    rules = []
+    for match in _CSS_RULE.finditer(css):
+        head = match.group("selector").rsplit(";", 1)[-1]
+        text = " ".join(head.split())
+        if not text or text.startswith("@"):
+            continue
+        line = css.count(chr(10), 0, match.end("selector")) + 1
+        declarations = []
+        for part in match.group("body").split(";"):
+            if ":" in part:
+                prop, value = part.split(":", 1)
+                declarations.append((prop.strip().lower(),
+                                     _expand(value.strip(), tokens)))
+        selectors = [s.strip() for s in _split_outside_brackets(text) if s.strip()]
+        rules.append((line, selectors, declarations))
+
+    why = ("A panel that holds tap targets arrives by its fade alone (operator "
+           "question 20, 2026-09-27; every panel that arrives is taken to hold "
+           "them): a movement of any size puts every control inside it a "
+           "fraction of a pixel off whole on the frames it runs, and a 44px "
+           "control reads 43.9995px.")
+    faults: list[str] = []
+    panels: dict[str, frozenset] = {}
+    for line, selectors, declarations in rules:
+        for selector in selectors:
+            if not carries.search(selector):
+                continue
+            for prop, value in declarations:
+                if prop in MOVEMENT_PROPERTIES and value.lower() != "none":
+                    faults.append(
+                        f"{where}:{line} `{selector}`, the state a panel arrives "
+                        f"from, carries `{prop}: {value}`. {why}")
+            base = " ".join(carries.sub("", selector).split())
+            names = _compound_names(_last_compound(base)) if base else frozenset()
+            for name in [n for n in names if n.startswith("#")]:
+                names = names | _element_names(markup, name[1:])
+            panels[base or "every panel the script arrives"] = names
+
+    for line, selectors, declarations in rules:
+        named = [p for prop, value in declarations
+                 for p in _transition_properties(prop, value)]
+        moving = sorted({p for p in named if p not in ("opacity", "none")})
+        if not moving:
+            continue
+        timed = any(_runs_at(value, panel_ms) for prop, value in declarations
+                    if prop in ("transition", "transition-duration"))
+        for selector in selectors:
+            compound = _last_compound(selector)
+            if "::" in compound:
+                continue
+            if carries.search(selector):
+                # A transition in the start state itself.
+                whose = [" ".join(carries.sub("", selector).split())
+                         or "every panel the script arrives"]
+            else:
+                # A rule applying to a panel that arrives: every name it asks
+                # for is one the panel has (none, for `*`, applies to all).
+                own = _compound_names(compound)
+                whose = sorted(base for base, names in panels.items()
+                               if own <= names)
+            if not whose and not timed:
+                continue
+            what = (f"the panel {', '.join(f'`{w}`' for w in whose)}, which arrives"
+                    if whose else
+                    f"a panel: it runs at the panel duration, {panel_ms:g}ms, which "
+                    f"the vocabulary gives only to a panel swapping its whole "
+                    f"contents")
+            faults.append(
+                f"{where}:{line} `{selector}` transitions "
+                f"{', '.join(f'`{p}`' for p in moving)} on {what}; its "
+                f"transition names opacity alone. {why}")
+    return faults
+
+
+def check_a_panel_holding_tap_targets_arrives_by_its_fade_alone(
+        root: Path | None = None) -> None:
+    web = (config.PACKAGE_ROOT if root is None else Path(root)) / "web"
+    faults = arrival_movement_faults(
+        (web / "style.css").read_text(encoding="utf-8"),
+        (web / "index.html").read_text(encoding="utf-8"),
+        (web / "app.js").read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A PANEL THAT HOLDS TAP TARGETS MOVES AS IT ARRIVES. The Today "
+            "panel arrives by its fade alone (operator question 20, ruled (A) "
+            "on 2026-09-27), and every panel that arrives is held to it:"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+#: THE ARRIVAL AS IT SHIPPED UNTIL 2026-09-27, and as it ships now. Checked at
+#: import, like every scanner.
+ARRIVAL_FIXTURE_MOVING = """
+:root { --motion-panel: 200ms; --motion-ease: ease-out; }
+#today {
+  transition: opacity var(--motion-panel) var(--motion-ease),
+              transform var(--motion-panel) var(--motion-ease);
+}
+#today.arriving { opacity: 0; transform: translateY(1%); transition: none; }
+"""
+ARRIVAL_FIXTURE_FADING = """
+:root { --motion-panel: 200ms; --motion-ease: ease-out; }
+/* #today.arriving { transform: translateY(1%); } -- a comment is not a rule */
+#today { transition: opacity var(--motion-panel) var(--motion-ease); }
+#today.arriving { opacity: 0; transition: none; }
+.tile { transition: background-color 150ms ease-out, opacity 150ms ease-out; }
+"""
+
+
+def _check_the_arrival_scanner_can_see() -> None:
+    problems = []
+    moving = arrival_movement_faults(ARRIVAL_FIXTURE_MOVING)
+    if not any("carries `transform: translateY(1%)`" in f for f in moving):
+        problems.append("it misses the start state one per cent below")
+    if not any("transitions `transform`" in f for f in moving):
+        problems.append("it misses `transform` in the panel's transition")
+    stray = arrival_movement_faults(ARRIVAL_FIXTURE_FADING)
+    if stray:
+        problems.append(f"it refuses the fade alone: {stray}")
+    if problems:
+        raise LawViolation(
+            "A SCANNER IS BLIND: the arrival scan does not do what it says:"
+            + _NL2 + _NL2.join(problems))
+
+
+_check_the_arrival_scanner_can_see()
+
+
 _JS_CLASS_SELECTOR = re.compile(
     r"""querySelector(?:All)?\(\s*['"]([^'"]+)['"]""")
 _CLASS_IN_SELECTOR = re.compile(r"\.([A-Za-z][A-Za-z0-9_-]*)")
