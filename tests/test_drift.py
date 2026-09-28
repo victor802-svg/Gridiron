@@ -120,7 +120,10 @@ def test_the_sentence_appears_only_once_the_gate_is_cleared(league):
     assert report["toward_fraction"] == 1.0
     assert "moved toward it 100% of the time" in report["line"]
     assert str(report["n"]) in report["line"], "the sentence must carry its N"
-    assert f"over {report['n']} games" in report["line"]
+    # QUESTIONS, NOT GAMES (operator question 17, 2026-09-28): a bet is one
+    # forecaster's question, the rung included, so "games" would be false for
+    # a game asked at two rungs.
+    assert f"over {report['n']} questions" in report["line"]
 
 
 def test_a_prediction_with_one_look_is_not_a_pair(league):
@@ -223,11 +226,12 @@ def _as_it_stood(conn, *, sport, market, predictor, event_tier=None,
     """THE SHIPPED COUNT UNTIL 2026-09-27, as a door: every forecast of the
     market TYPE with both looks and a disagreement -- every pass, every rung,
     every prop type, every card -- with the fields the report reads, and
-    nothing else. `standing_only` keeps one per QUESTION (the standing rule
-    without the bet); `ask_the_forecaster=False` asks nobody in particular."""
+    nothing else. `standing_only` keeps one per QUESTION (the standing rule,
+    which from operator question 17 is one per distinct bet: the ruled
+    count); `ask_the_forecaster=False` asks nobody in particular."""
     rows = conn.execute(
-        "SELECT p.id, p.predictor, p.game_id, p.subject, p.line_asked,"
-        " p.model_prob, p.calibrated_prob,"
+        "SELECT p.id, p.predictor, p.game_id, p.market_type, p.prop_type,"
+        " p.subject, p.line_asked, p.model_prob, p.calibrated_prob,"
         " o.implied_prob AS opened, n.implied_prob AS near"
         " FROM predictions p JOIN games g ON g.id = p.game_id"
         " JOIN market_snapshots o"
@@ -249,7 +253,8 @@ def _as_it_stood(conn, *, sport, market, predictor, event_tier=None,
         movement = r["near"] - r["opened"]
         out.append({"prediction_id": r["id"], "predictor": r["predictor"],
                     "sport": sport, "market": market,
-                    "prop_type": calibration.prop_type_of(sport, market),
+                    "market_type": r["market_type"],
+                    "prop_type": r["prop_type"],
                     "game_id": r["game_id"], "subject": r["subject"],
                     "line_asked": r["line_asked"], "event_tier": None,
                     "toward": movement if claim > r["opened"] else -movement})
@@ -310,38 +315,45 @@ def test_a_withdrawn_final_pass_leaves_the_morning_pass_standing(tmp_path):
     assert pair["toward"] == pytest.approx(-0.04)
 
 
-def test_two_standing_rungs_of_one_game_are_one_bet(tmp_path):
+def test_two_standing_rungs_of_one_game_are_two_bets(tmp_path):
     """The live NCAAF point spread record holds twelve games asked at two
-    rungs, the morning pass's and a later pass's -- two standing questions,
-    one line moving once. One bet, on the last standing forecast; and if
-    that forecast agreed with the line, the bet has no disagreement to
-    count, whatever the earlier rung said."""
+    rungs, the morning pass's and a later pass's -- two standing questions.
+    FLIPPED BY OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, ruled
+    2026-09-28: "Two rungs on one game are two questions"): from 2026-09-27
+    to this date they were one bet, counted on the last standing forecast;
+    each rung is now its own bet, counted if its own standing forecast has
+    both looks and disagreed -- the second game's later rung agreed with the
+    line, so only its earlier one counts."""
     conn = _world(tmp_path, sport="cfb", games=("g0", "g1"))
-    _looked(conn, sport="cfb", market="spread", side="cover", line=-14.5,
-            pass_kind="early", written="2026-09-01T06:58:58Z", prob=0.95,
-            opened=0.41, near=0.50)
+    early = _looked(conn, sport="cfb", market="spread", side="cover",
+                    line=-14.5, pass_kind="early",
+                    written="2026-09-01T06:58:58Z", prob=0.95, opened=0.41,
+                    near=0.50)
     later = _looked(conn, sport="cfb", market="spread", side="cover",
                     line=-24.5, written="2026-09-08T15:00:56Z", prob=0.76,
                     opened=0.33, near=0.33)
-    # THE LAST WORD AGREED WITH THE LINE on the second game: nothing to count
-    _looked(conn, game="g1", sport="cfb", market="spread", side="cover",
-            line=-14.5, pass_kind="early", written="2026-09-01T06:58:58Z",
-            prob=0.95, opened=0.41, near=0.50)
+    # THE LATER RUNG AGREED WITH THE LINE on the second game: only the
+    # earlier rung, a question of its own, has a disagreement to count
+    other = _looked(conn, game="g1", sport="cfb", market="spread",
+                    side="cover", line=-14.5, pass_kind="early",
+                    written="2026-09-01T06:58:58Z", prob=0.95, opened=0.41,
+                    near=0.50)
     _looked(conn, game="g1", sport="cfb", market="spread", side="cover",
             line=-20.5, written="2026-09-08T16:00:00Z", prob=0.52,
             opened=0.50, near=0.60)
     pairs = drift.standing_pairs(conn, sport="cfb", market="spread",
                                  predictor="statistical")
-    assert [p["prediction_id"] for p in pairs] == [later]
+    assert [p["prediction_id"] for p in pairs] == [early, later, other]
     (spread,) = views.drift_report(conn, "cfb")["categories"]
-    assert spread["n"] == spread["distinct_bets"] == 1
+    assert spread["n"] == spread["distinct_bets"] == spread["recounted"] == 3
 
 
 def test_each_prop_type_is_its_own_count_and_a_player_is_the_bet(tmp_path):
     """A prop was counted by its market TYPE, 'prop' for every one, so each
     prop row of the learning panel showed the drift of all of them. Each
     type is now its own count, and within it a bet is one player's line in
-    one game, however many rungs asked it."""
+    one game at one rung: from operator question 17 (2026-09-28) Geno
+    Smith's 240.5 and 260.5 are two questions, where they were one bet."""
     conn = _world(tmp_path)
     for prop, player, rung, pass_kind in (
             ("passing_yards", "Geno Smith passing_yards", 240.5, "early"),
@@ -354,10 +366,10 @@ def test_each_prop_type_is_its_own_count_and_a_player_is_the_bet(tmp_path):
                          else "2026-09-08T12:00:00Z"))
     counts = {c["market"]: c["n"]
               for c in views.drift_report(conn, "nfl")["categories"]}
-    assert counts == {"passing_yards": 2, "rushing_yards": 1}
+    assert counts == {"passing_yards": 3, "rushing_yards": 1}
     learned = {r["market"]: r["drift"][0]["n"]
                for r in views.learning(conn, "nfl")["categories"]}
-    assert learned["passing_yards"] == 2 and learned["rushing_yards"] == 1
+    assert learned["passing_yards"] == 3 and learned["rushing_yards"] == 1
     assert learned["receptions"] == 0
 
 
@@ -471,21 +483,82 @@ def test_the_count_as_it_stood_is_refused_by_the_builders_the_api_and_the_gate(
         assert "IN THE LINE'S DRIFT" in response.json()["detail"], route
 
 
-def test_two_rungs_counted_as_two_questions_are_refused(tmp_path, monkeypatch):
-    """The standing rule alone keeps one pair per QUESTION, and two rungs of
-    one game are two questions: the builder counts bets."""
+def _one_per_game(conn, **kw):
+    """THE KEEP STEP OF 2026-09-27 TO 2026-09-28, as a door: the standing
+    pairs, one per game and market (the player for a prop) -- the later
+    standing forecast kept, the rung left out of the key."""
+    kept: dict = {}
+    for pair in _as_it_stood(conn, standing_only=True, **kw):
+        key = (pair["game_id"], pair["market"],
+               pair["subject"] if pair["prop_type"] else None)
+        if key not in kept or pair["prediction_id"] > kept[key]["prediction_id"]:
+            kept[key] = pair
+    return [kept[k] for k in sorted(kept, key=lambda k: kept[k]["prediction_id"])]
+
+
+def _across_forecasters(conn, *, sport, market, predictor, event_tier=None):
+    """A door keyed WITHOUT THE FORECASTER: the standing forecast of each
+    question chosen among both forecasters' rows, then filtered to the one
+    named -- so the other's later row stands in for its question."""
+    rows = conn.execute(
+        "SELECT p.id, p.predictor, p.game_id, p.market_type, p.prop_type,"
+        " p.subject, p.line_asked, p.model_prob, p.calibrated_prob,"
+        " o.implied_prob AS opened, n.implied_prob AS near"
+        " FROM predictions p"
+        " JOIN market_snapshots o"
+        "   ON o.prediction_id = p.id AND o.kind = 'open_at_predict'"
+        " JOIN market_snapshots n"
+        "   ON n.prediction_id = p.id AND n.kind = 'near_start'"
+        " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
+        "   AND p.id = (SELECT p2.id FROM predictions p2"
+        "                WHERE p2.game_id = p.game_id"
+        "                  AND p2.market_type = p.market_type"
+        "                  AND p2.subject = p.subject"
+        "                  AND p2.line_asked IS p.line_asked"
+        "                ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)",
+        (sport, calibration.market_type_of(sport, market), predictor)).fetchall()
+    return [{"prediction_id": r["id"], "predictor": r["predictor"],
+             "sport": sport, "market": market, "market_type": r["market_type"],
+             "prop_type": r["prop_type"], "game_id": r["game_id"],
+             "subject": r["subject"], "line_asked": r["line_asked"],
+             "event_tier": None, "toward": r["near"] - r["opened"]}
+            for r in rows]
+
+
+def test_a_door_keyed_without_the_rung_or_the_forecaster_is_refused(
+        tmp_path, monkeypatch):
+    """OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, 2026-09-28: "Two
+    rungs on one game are two questions"). FLIPPED: until this date the
+    standing rule's own count -- one pair per QUESTION, two for a game asked
+    at two rungs -- was refused as "2 pairs for 1 distinct bet". It is the
+    ruled count now, and stands. What is refused is a door keyed any other
+    way: without the rung (the keep step of 2026-09-27, one pair per game),
+    or across forecasters (the reasoning pass's later row of a question
+    standing in for the statistical model's) -- each agrees with its own
+    distinct bets, and the recount made without the door does not."""
     conn = _world(tmp_path, sport="cfb")
     for rung, written, pass_kind in ((-14.5, "2026-09-01T06:58:58Z", "early"),
                                      (-24.5, "2026-09-08T15:00:56Z", "final")):
         _looked(conn, sport="cfb", market="spread", side="cover", line=rung,
                 written=written, pass_kind=pass_kind, prob=0.8, opened=0.4,
                 near=0.45)
+    _looked(conn, sport="cfb", market="spread", side="cover", line=-24.5,
+            predictor="llm", written="2026-09-08T15:00:57Z", prob=0.8,
+            opened=0.4, near=0.45)
     monkeypatch.setattr(
         drift, "standing_pairs",
         lambda conn, **kw: _as_it_stood(conn, standing_only=True, **kw))
-    with pytest.raises(calibration.MergedCurve,
-                       match="counts 2 pairs for 1 distinct bet"):
-        views.drift_report(conn, "cfb")
+    (spread,) = views.drift_report(conn, "cfb")["categories"]
+    assert spread["n"] == spread["distinct_bets"] == spread["recounted"] == 2
+    for door in (_one_per_game, _across_forecasters):
+        monkeypatch.setattr(drift, "standing_pairs", door)
+        for build in (views.drift_report, views.learning):
+            with pytest.raises(calibration.MergedCurve,
+                               match="counts 1 pairs where the recount made "
+                                     "without its door finds 2"):
+                build(conn, "cfb")
+        with pytest.raises(audit.LawViolation, match="A DRIFT COUNT IS POOLED"):
+            audit.check_the_drift_record_is_never_pooled(conn)
 
 
 def _ufc_bout(conn, bout: str, event: str, tier: str) -> None:

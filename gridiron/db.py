@@ -1156,6 +1156,38 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
         conn.commit()
 
 
+@contextmanager
+def one_instant(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """Every read inside sees ONE instant of the database.
+
+    FOR A COUNT AND ITS RECOUNT (operator question 17, 2026-09-28). A builder
+    asks its door and then `gridiron.recount` the same question, and refuses
+    to serve a count the two disagree on. Read one after the other on the
+    live record, a claim settled or a forecast written between the two reads
+    would make an honest count look pooled and the page answer 500; inside
+    one read transaction both see the same rows. The record is in WAL, so
+    the read blocks no writer.
+
+    A connection already inside a transaction -- a test's world not yet
+    committed, a caller's own instant -- is left as it is: its reads are
+    already one instant. Nothing inside may write; the transaction is ended
+    as it began, by committing a read or rolling back on an error.
+    """
+    if conn.in_transaction:
+        yield conn
+        return
+    conn.execute("BEGIN")
+    try:
+        yield conn
+    except BaseException:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
+    else:
+        if conn.in_transaction:
+            conn.commit()
+
+
 def table_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return [r["name"] for r in conn.execute(f"PRAGMA table_info({table})")]
 

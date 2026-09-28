@@ -613,6 +613,14 @@ def test_every_new_guard_is_in_the_planted_harness():
         # two passes, two forecasters or three cards in one outlook.
         "plant_a_blind_outlook_counting_superseded_passes",
         "plant_a_blind_outlook_game_counted_twice",
+        # OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, ruled
+        # 2026-09-28): one function defines a distinct bet -- the forecaster
+        # and the venue's question, the rung asked included. A door keyed
+        # without the rung or without the forecaster is refused by each
+        # record's recount, and a key spelled by hand by the source scan.
+        "plant_a_door_keyed_without_the_rung",
+        "plant_a_door_keyed_without_the_forecaster",
+        "plant_a_distinct_bet_keyed_by_hand",
         # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): a refused rerun is a noop, the closing write is
         # caught, a hung run is marked abandoned past its task's silence,

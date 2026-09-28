@@ -350,18 +350,25 @@ def test_the_words_beside_a_pick_are_a_forecast_and_carry_their_sample(tmp_path)
 
 
 # ---------------------------------------------------------------------------
-# ONE BET PER GAME PER FORECASTER (GRIDIRON_REPAIR item 6, 2026-09-26)
+# ONE CLAIM PER DISTINCT BET (GRIDIRON_REPAIR item 6, 2026-09-26; operator
+# question 17, ruled 2026-09-27, and question 21, ruled 2026-09-28)
 # ---------------------------------------------------------------------------
 
-def _two_passes_world(tmp_path):
+def _two_passes_world(tmp_path, *, final_rung=-1.5):
     """One game forecast three ways at the spread, read at two looks.
 
     The statistical model's morning pass asked -3.5 and its final pass
     another rung, -1.5 -- two standing questions, as the live NCAAF record
     holds them -- and the reasoning pass asked -3.5. The venue is read twice
     before the start, so every forecast gets a claim at each look: six rows,
-    two bets (one each forecaster's). An opening read a week out gives the
-    venue's drift pair something to start from.
+    THREE bets from operator question 17 ("Two rungs on one game are two
+    questions"): the statistical model's two and the reasoning pass's one.
+    It was two bets, one per forecaster, from item 6 to that date. An
+    opening read a week out, at the venue's line then (-4.5) and at the
+    strike the claims are read at near the start (-6.5), gives the venue's
+    drift pair something to start from at the claim's own strike.
+    `final_rung=-3.5` makes the final pass ask the morning pass's rung: one
+    question answered twice, one bet.
     """
     conn = db.open_db(tmp_path / "bets.db")
     conn.execute(
@@ -373,7 +380,7 @@ def _two_passes_world(tmp_path):
     ids = {}
     for who, pass_kind, rung, written in (
             ("statistical", "early", -3.5, "2026-09-06T00:00:00Z"),
-            ("statistical", "final", -1.5, "2026-09-07T00:00:00Z"),
+            ("statistical", "final", final_rung, "2026-09-07T00:00:00Z"),
             ("llm", "final", -3.5, "2026-09-07T00:00:01Z")):
         conn.execute(
             "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
@@ -388,6 +395,8 @@ def _two_passes_world(tmp_path):
     at_the_line.ensure_read_kind(conn)
     _quote(conn, ticker="open", line=-4.5, yes_bid=0.29, yes_ask=0.31,
            fetched_utc="2026-09-07T12:00:00Z", read_kind="open")
+    _quote(conn, ticker="open-alt", line=-6.5, yes_bid=0.24, yes_ask=0.26,
+           fetched_utc="2026-09-07T12:00:00Z", read_kind="open")
     _quote(conn, ticker="look-1", line=-4.5, yes_bid=0.45, yes_ask=0.47,
            fetched_utc="2026-09-08T00:00:00Z")
     _quote(conn, ticker="look-2", line=-6.5, yes_bid=0.49, yes_ask=0.51,
@@ -398,61 +407,120 @@ def _two_passes_world(tmp_path):
     return conn, ids
 
 
-def test_the_at_the_line_record_counts_one_bet_per_forecaster_per_game(tmp_path):
-    from gridiron import calibration, drift, views
+def test_the_at_the_line_record_counts_one_claim_per_distinct_bet(tmp_path):
+    """FLIPPED BY OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, ruled
+    2026-09-28: "Two rungs on one game are two questions"). Item 6 counted
+    one claim per forecaster per GAME, so the statistical model's two rungs
+    were one bet; a bet is now `bet.of` -- the forecaster and the question
+    it was asked, the rung included -- so they are two, each on its own
+    last claim before the start, and the reasoning pass's one is its own."""
+    from gridiron import bet, calibration, drift, views
 
     conn, ids = _two_passes_world(tmp_path)
     settled = conn.execute("SELECT COUNT(*) FROM at_the_line_claims"
                            " WHERE resolved_utc IS NOT NULL").fetchone()[0]
     assert settled == 6, "the world is six settled claims on one game"
-    # THE DOOR: one claim per forecaster on the game, the last before the
-    # start -- the final pass's, at the second look's number.
+    # THE DOOR: one claim per distinct bet, the last before the start -- each
+    # question's claim at the second look's number.
     mine = at_the_line.standing_claims(conn, sport="nfl", market="spread",
                                        predictor="statistical")
     theirs = at_the_line.standing_claims(conn, sport="nfl", market="spread",
                                          predictor="llm")
-    assert len(mine) == 1 and len(theirs) == 1
-    assert mine[0]["prediction_id"] == ids[("statistical", "final")]
-    assert mine[0]["line"] == -6.5 and mine[0]["predictor"] == "statistical"
+    assert len(mine) == 2 and len(theirs) == 1
+    assert [c["prediction_id"] for c in mine] == [
+        ids[("statistical", "early")], ids[("statistical", "final")]]
+    assert {c["line_asked"] for c in mine} == {-3.5, -1.5}
+    assert all(c["line"] == -6.5 and c["predictor"] == "statistical" for c in mine)
     assert theirs[0]["prediction_id"] == ids[("llm", "final")]
-    # THE PAGE: two curves, one bet each, never a curve of three or of six.
+    assert bet.count(mine) == 2 and bet.count(list(mine) + list(theirs)) == 3
+    # THE PAGE: one curve per forecaster, its own bets each, never a curve of
+    # three or of six.
     card = calibration.at_the_line_scorecard(conn, sport="nfl")
     spread = {c["predictor"]: c for c in card["categories"] if c["market"] == "spread"}
     assert set(spread) == {"statistical", "llm"}
-    for who, curve in spread.items():
-        assert curve["n"] == 1 and curve["distinct_bets"] == 1, who
+    for who, count in (("statistical", 2), ("llm", 1)):
+        curve = spread[who]
+        assert curve["n"] == curve["distinct_bets"] == curve["recounted"] == count, who
         assert curve["forecasters_counted"] == [who]
         assert curve["filters"]["predictor"] == who
-        assert "1 of 100" in curve["gate_line"]
+        assert f"{count} of 100" in curve["gate_line"]
     assert "statistical" in spread["statistical"]["category_label"]
     assert "reasoning pass" in spread["llm"]["category_label"]
     assert "n" not in card, "a total across the forecasters is nobody's record"
     ledgers = {(p["market"], p["predictor"]): p for p in card["paper"]}
-    assert ledgers[("spread", "statistical")]["distinct_bets"] == ledgers[
-        ("spread", "statistical")]["n"] <= 1
-    assert card["edge"]["predictor"] == "statistical" and card["edge"]["n"] == 1
+    mine_ledger = ledgers[("spread", "statistical")]
+    assert mine_ledger["distinct_bets"] == mine_ledger["n"] == mine_ledger["recounted"] <= 2
+    assert card["edge"]["predictor"] == "statistical"
+    assert card["edge"]["n"] == card["edge"]["recounted"] == 2
     # THE CARD beside each pick counts its own forecaster's bets, and says
     # the same number as that forecaster's curve.
     beside = views._at_the_line(conn, "nfl", list(ids.values()), {})
-    assert beside[ids[("statistical", "final")]]["n"] == 1
-    assert beside[ids[("statistical", "early")]]["n"] == 1
+    assert beside[ids[("statistical", "final")]]["n"] == 2
+    assert beside[ids[("statistical", "early")]]["n"] == 2
     assert beside[ids[("llm", "final")]]["n"] == 1
-    # THE COVERAGE, ONE PER BET (the prover, 2026-09-26): the statistical
-    # model's two standing questions are two forecasts and ONE game, read
-    # once -- the same one bet its curve counts, never "2 of 2" beside a 1.
+    # THE COVERAGE, ONE PER DISTINCT BET: the statistical model's two
+    # standing questions are two bets, both read -- the same two its curve
+    # counts -- and the line says questions, not games.
     cover = {(c["market"], c["predictor"]): c for c in card["coverage"]}
     mine = cover[("spread", "statistical")]
     assert mine["forecasts"] == 2
-    assert mine["n"] == mine["distinct_bets"] == 1
-    assert mine["with_a_claim"] == 1 == spread["statistical"]["distinct_bets"]
+    assert mine["n"] == mine["distinct_bets"] == mine["recounted"] == 2
+    assert mine["with_a_claim"] == mine["read_recounted"] == 2
+    assert mine["with_a_claim"] == spread["statistical"]["distinct_bets"]
     assert cover[("spread", "llm")]["n"] == cover[("spread", "llm")]["with_a_claim"] == 1
     assert "statistical" in mine["words"]
-    assert "for 1 of 1 game it forecast" in mine["words"]
-    assert "forecasts could be read" not in mine["words"]
-    # THE VENUE'S DRIFT PAIR: one per bet per forecaster, not one per forecast.
-    for who in ("statistical", "llm"):
-        assert len(drift.venue_pairs(conn, sport="nfl", market_type="spread",
-                                     predictor=who)) == 1, who
+    assert "for 2 of 2 questions it answered" in mine["words"]
+    assert "game" not in mine["words"]
+    # THE VENUE'S DRIFT PAIR: one per distinct bet, each claim beside the
+    # opening read AT ITS OWN STRIKE (-6.5, priced 25% at the open), never
+    # the open's own line (-4.5), which is another question.
+    for who, count in (("statistical", 2), ("llm", 1)):
+        pairs = drift.venue_pairs(conn, sport="nfl", market_type="spread",
+                                  predictor=who)
+        assert len(pairs) == bet.count(pairs) == count, who
+        assert all(p["line"] == -6.5 and p["opened"] == pytest.approx(0.25)
+                   for p in pairs), who
+
+
+def test_the_venues_pair_is_one_question_at_one_strike(tmp_path):
+    """ALT LINES ARE SEPARATE QUESTIONS (operator question 17, 2026-09-28).
+    Until this date the pair set the opening ladder's own line beside the
+    claim's: "home covers -4.5" at the open beside "home covers -6.5" near
+    the start, two questions, their difference called movement. A claim
+    whose strike the opening read did not quote has no pair."""
+    from gridiron import drift, views
+
+    conn, ids = _two_passes_world(tmp_path)
+    # THE OPEN QUOTED THE CLAIMS' STRIKE: a pair per bet
+    assert len(drift.venue_pairs(conn, sport="nfl", market_type="spread",
+                                 predictor="statistical")) == 2
+    # A WORLD WHOSE OPENING READ QUOTED ONLY ANOTHER STRIKE HAS NONE: the
+    # claim is read at -6.5, the open quoted -4.5 alone.
+    conn2 = db.open_db(tmp_path / "alt.db")
+    conn2.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date)"
+        " VALUES ('2026_01_NE_SEA', 'nfl', 2026, 1, 'REG', 'SEA', 'NE',"
+        " ?, 'scheduled', '2026-09-09')", (_soon(),))
+    conn2.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning)"
+        " VALUES ('2026-09-06T00:00:00Z', 'nfl', '2026_01_NE_SEA', 'spread',"
+        " 'SEA', -3.5, 0.58, 'cover', 'statistical', 'final', 'fs5', ?, 'test')",
+        (json.dumps({"margin_distribution": DIST}),))
+    conn2.commit()
+    at_the_line.ensure_read_kind(conn2)
+    _quote(conn2, ticker="open", line=-4.5, yes_bid=0.29, yes_ask=0.31,
+           fetched_utc="2026-09-07T12:00:00Z", read_kind="open")
+    _quote(conn2, ticker="look", line=-6.5, yes_bid=0.49, yes_ask=0.51,
+           fetched_utc="2026-09-08T00:00:00Z")
+    assert at_the_line.evaluate(conn2)["claims"] == 1
+    assert drift.venue_pairs(conn2, sport="nfl", market_type="spread",
+                             predictor="statistical") == []
+    (venue,) = [v for v in views.drift_report(conn2, "nfl")["venue_markets"]
+                if v["market_type"] == "spread" and v["predictor"] == "statistical"]
+    assert venue["n"] == 0 and venue["claims_read"] == venue["recounted"] == 1
 
 
 def test_the_outlook_and_the_gate_line_count_the_same_bets(tmp_path):
@@ -469,10 +537,11 @@ def test_the_outlook_and_the_gate_line_count_the_same_bets(tmp_path):
         assert outlook["predictor"] == curve["predictor"]
     spread = next(c for c in card["categories"]
                   if c["market"] == "spread" and c["predictor"] == "statistical")
-    # written this season: one bet on one slate, however many rows held it
-    assert spread["outlook"]["written"] == 1
+    # written this season: two bets (two rungs, operator question 17) on one
+    # slate, however many rows held them
+    assert spread["outlook"]["written"] == 2
     assert spread["outlook"]["slates_used"] == 1
-    assert spread["outlook"]["message"].startswith("1 of 100")
+    assert spread["outlook"]["message"].startswith("2 of 100")
 
 
 def test_the_pace_line_never_denies_the_claims_it_counts(tmp_path, monkeypatch):
@@ -488,8 +557,8 @@ def test_the_pace_line_never_denies_the_claims_it_counts(tmp_path, monkeypatch):
     card = calibration.at_the_line_scorecard(conn, sport="nfl")
     curves = {(c["market"], c["predictor"]): c for c in card["categories"]}
     written = curves[("spread", "statistical")]
-    assert written["n"] == 1 and written["outlook"]["written"] == 0
-    assert written["outlook"]["message"].startswith("1 of 100")
+    assert written["n"] == 2 and written["outlook"]["written"] == 0
+    assert written["outlook"]["message"].startswith("2 of 100")
     assert "written in this market this season" in written["outlook"]["message"]
     assert "yet" not in written["outlook"]["message"]
     # a forecaster with no claim in any season still says "yet"
@@ -499,7 +568,11 @@ def test_the_pace_line_never_denies_the_claims_it_counts(tmp_path, monkeypatch):
 
 
 def test_a_withdrawn_forecast_takes_back_its_claim_not_the_bet(tmp_path):
-    conn, ids = _two_passes_world(tmp_path)
+    # ONE QUESTION ASKED BY BOTH PASSES (operator question 17, 2026-09-28):
+    # at two rungs they are two bets, and a withdrawal of one would take its
+    # own bet back -- the shape this test is about needs the final pass to
+    # have asked the morning pass's rung.
+    conn, ids = _two_passes_world(tmp_path, final_rung=-3.5)
 
     def statistical():
         return at_the_line.standing_claims(conn, sport="nfl", market="spread",
@@ -524,7 +597,7 @@ def test_a_withdrawn_forecast_takes_back_its_claim_not_the_bet(tmp_path):
 def test_a_pooled_at_the_line_category_is_refused_by_name(tmp_path):
     import copy
 
-    from gridiron import calibration
+    from gridiron import calibration, language
 
     conn, _ids = _two_passes_world(tmp_path)
     honest = calibration.at_the_line_scorecard(conn, sport="nfl")
@@ -543,13 +616,15 @@ def test_a_pooled_at_the_line_category_is_refused_by_name(tmp_path):
         first(p)["filters"]["predictor"] = None
 
     def twice(p):
-        first(p).update(n=2)
-        first(p)["outlook"]["resolved"] = 2
+        # the statistical spread holds two bets (two rungs, operator
+        # question 17); a third claim on them is one counted twice
+        first(p).update(n=3)
+        first(p)["outlook"]["resolved"] = 3
 
     refused(pooled, "merges the statistical and LLM forecasters")
     refused(lambda p: first(p).update(forecasters_counted=["llm", "statistical"]),
             "two forecasters pooled")
-    refused(twice, "counts 2 settled claims for 1 distinct bet")
+    refused(twice, "counts 3 settled claims for 2 distinct bets")
     refused(lambda p: first(p)["outlook"].update(resolved=6),
             "two counts of one record")
     refused(lambda p: first(p).update(gate_line="6 of 100 settled comparisons"),
@@ -557,11 +632,33 @@ def test_a_pooled_at_the_line_category_is_refused_by_name(tmp_path):
     refused(lambda p: p["paper"][0].update(predictor=None), "names forecaster None")
     refused(lambda p: p["edge"].update(distinct_bets=0), "distinct bets")
     refused(lambda p: p["coverage"][0].update(predictor="all"), "names forecaster 'all'")
-    # a coverage line counting a bet's two rungs as two, or reading it twice
-    # (the prover, 2026-09-26)
-    refused(lambda p: p["coverage"][0].update(n=2), "A game is one bet")
+    # a coverage line counting a question's passes as more, or reading one
+    # twice (the prover, 2026-09-26)
+    refused(lambda p: p["coverage"][0].update(n=p["coverage"][0]["n"] + 1),
+            "A question is one bet")
     refused(lambda p: p["coverage"][0].update(
-        with_a_claim=p["coverage"][0]["n"] + 1), "A game is one bet")
+        with_a_claim=p["coverage"][0]["n"] + 1), "A question is one bet")
+    # A COUNT THE RECOUNT DOES NOT MAKE (operator question 17, 2026-09-28):
+    # a curve, a ledger, the edge or a coverage line whose count is not the
+    # one made without its door, one per distinct bet by the one key -- or
+    # that carries no recount at all.
+    def one_rung(p):
+        # THE DOOR OF 2026-09-26: the two rungs as one claim, every figure
+        # the door's own count agreeing with it
+        first(p).update(n=1, distinct_bets=1, gate_line=language.at_the_line_gate_line(
+            1, first(p)["gate"]))
+        first(p)["outlook"]["resolved"] = 1
+
+    refused(one_rung, "counts 1 where the recount made without its door finds 2")
+    refused(lambda p: first(p).pop("recounted"), "finds None")
+    refused(lambda p: p["paper"][0].update(recounted=p["paper"][0]["n"] + 1),
+            "where the recount made without its door")
+    refused(lambda p: p["edge"].update(recounted=p["edge"]["n"] + 1),
+            "where the recount made without its door")
+    refused(lambda p: p["coverage"][0].update(recounted=p["coverage"][0]["n"] + 1),
+            "where the recount made without either door")
+    refused(lambda p: p["coverage"][0].update(read_recounted=None),
+            "where the recount made without either door")
     refused(lambda p: p.update(n=2), "a total n")
     # THE DOOR ITSELF will not count for nobody in particular, or across tiers
     for who in (None, "all", "priced"):

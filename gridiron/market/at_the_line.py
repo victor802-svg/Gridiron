@@ -33,7 +33,7 @@ import math
 import sqlite3
 from pathlib import Path
 
-from .. import config
+from .. import bet, config
 from ..db import utcnow
 
 #: The venue whose ladder is read. One venue today; the column carries the name
@@ -592,9 +592,9 @@ def evaluate(conn: sqlite3.Connection,
 #: through the forecast it cites (GRIDIRON_REPAIR item 6, 2026-09-26).
 FORECASTERS = ("statistical", "llm")
 
-#: The markets whose claims are counted as BETS: one proposition per game,
-#: with its side fixed by `CLAIM_SIDE`. A prop is not among them -- its bet
-#: would need the player as well, and no count of prop claims is made.
+#: The markets whose claims are counted as BETS, each claim on its forecast's
+#: distinct bet (`bet.of`, operator question 17, 2026-09-28), its side fixed
+#: by `CLAIM_SIDE`. A prop is not among them: no count of prop claims is made.
 BET_MARKETS = ("spread", "total", "moneyline")
 
 
@@ -638,16 +638,20 @@ def refuse_a_pooled_count(sport: str, market: str, predictor,
 def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
                     predictor: str,
                     event_tier: str | None = None) -> list[sqlite3.Row]:
-    """ONE CLAIM PER BET, PER FORECASTER: THE ONE DOOR every count of the
-    at-the-line record goes through (GRIDIRON_REPAIR item 6, 2026-09-26).
+    """ONE CLAIM PER DISTINCT BET: THE ONE DOOR every count of the
+    at-the-line record goes through (GRIDIRON_REPAIR item 6, 2026-09-26;
+    operator question 17, 2026-09-28).
 
-    A BET is one game and market at the venue's line: the proposition is
-    fixed by the market (`CLAIM_SIDE`: the home side, or the over), and the
-    line is the venue's number at the last look before the start. However
-    many passes forecast it, however many rungs asked it, and however many
-    looks read it, the forecaster holds ONE claim on it -- the last written
-    before the game started, the id breaking a tie -- and that claim is the
-    one the record grades.
+    A BET is `bet.of` -- the one function: the forecaster and the question it
+    was asked, the rung included (question 21: "Two rungs on one game are two
+    questions"). The proposition is fixed by the market (`CLAIM_SIDE`: the
+    home side, or the over), and the line is the venue's number at the last
+    look before the start. However many passes answered the question and
+    however many looks read it, the forecaster holds ONE claim on it -- the
+    last written before the game started, the id breaking a tie -- and that
+    claim is the one the record grades: the at-the-line record's own
+    standing rule, which the ruling keeps ("which pass counts stays each
+    record's standing rule").
 
     THE OPERATOR'S RULING of 2026-09-23 (item 6): "The at-the-line scorecard
     never pools forecasters or duplicates; per-forecaster, per-distinct-bet
@@ -669,7 +673,8 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
     the 31 forecasts ruling 1 voided would have been counted the night their
     games finished. The clause is folded into this door; nothing else counts.
 
-    Every row carries its forecast's `predictor` and its game's `season` and
+    Every row carries its forecast's key (`bet.columns`, read off the
+    forecast, so `game_id` is the forecast's) and its game's `season` and
     `week`, so the outlook can pace the same bets it counts. A voided
     forecast's claim is never a candidate (operator ruling 1, 2026-09-24): a
     forecast withdrawn is a claim withdrawn, and a withdrawal takes one
@@ -691,13 +696,17 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
     #
     # `id` is monotonic and is how the rest of this record breaks the same tie.
     #
-    # ONE PER GAME, MARKET AND SIDE, NOT PER LINE (2026-09-26). THE READ's
-    # "distinct bets" were game-market pairs, and item 5's ruling keys a
-    # recommendation by game and market whatever the rung; the side is fixed
-    # by the market. A later look at another rung is the same bet read again,
-    # which is how the rule already treated one forecast's looks. Measured on
-    # the live record that day: no forecaster's claims on one game carry two
-    # lines, so the two keys count the same today.
+    # ONE PER DISTINCT BET, NOT PER GAME (operator question 17, 2026-09-28).
+    # From 2026-09-26 this kept one claim per game, market and side -- THE
+    # READ's game-market pairs -- so a game asked at two rungs, the morning
+    # pass's and a later pass's, was one bet here and two on the blind
+    # record, the priced record and the outlook. The ruling makes the key one
+    # function: the window is partitioned by `bet.columns`, the forecast's
+    # own key, so two rungs are two bets and one question's passes and looks
+    # are one. The forecaster is in the key AND filtered: the window never
+    # spans two forecasters, so neither's later claim can stand in for the
+    # other's question. `gridiron.recount` works this rule out again, and
+    # `calibration.assert_no_pooled_claims` refuses a count that differs.
     refuse_a_pooled_count(sport, market, predictor, event_tier)
     tier_clause, params = "", [sport, market, predictor]
     if event_tier is not None:
@@ -710,8 +719,8 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
         params.append(event_tier)
     return conn.execute(
         "SELECT * FROM ("
-        " SELECT c.*, p.predictor, g.season, g.week,"
-        "        ROW_NUMBER() OVER (PARTITION BY c.game_id, c.market, c.side"
+        f" SELECT {bet.columns('p')}, c.*, g.season, g.week,"
+        f"        ROW_NUMBER() OVER (PARTITION BY {bet.columns('p')}"
         "                           ORDER BY c.created_utc DESC, c.id DESC)"
         "          AS latest_first"
         "   FROM at_the_line_claims c"
@@ -723,20 +732,6 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
         "    AND (g.kickoff_utc IS NULL OR c.created_utc < g.kickoff_utc)"
         f"{tier_clause})"
         " WHERE latest_first = 1 ORDER BY id", params).fetchall()
-
-
-def bet_of(claim) -> tuple:
-    """Which bet a claim is on: its game, market and side. The key the door
-    keeps one claim per, and the key a payload's `distinct_bets` counts --
-    read off a stored row or off a scored item alike, so there is one key."""
-    if hasattr(claim, "keys"):
-        return (claim["game_id"], claim["market"], claim["side"])
-    return (claim.game_id, claim.market, claim.side)
-
-
-def count_of_bets(claims) -> int:
-    """How many distinct bets a list of claims is on."""
-    return len({bet_of(c) for c in claims})
 
 
 def settled(claims) -> list:
@@ -805,9 +800,9 @@ def resolve_claims(conn: sqlite3.Connection) -> dict:
 
 def coverage(conn: sqlite3.Connection, *, sport: str, predictor: str,
              event_tier: str | None = None) -> list[dict]:
-    """Per market, for ONE forecaster: on how many of the games it forecast
-    the venue's line could be read, and the named reason for every one where
-    it could not.
+    """Per market, for ONE forecaster: of the questions it answered, for how
+    many the venue's line could be read, and the named reason for every one
+    where it could not.
 
     A share with no reasons beside it is a number that hides its own holes.
 
@@ -823,15 +818,24 @@ def coverage(conn: sqlite3.Connection, *, sport: str, predictor: str,
     rungs is two standing questions and one bet. The prover of 2026-09-26
     found it counting questions: NCAAF point spread, statistical, "4 of 133
     forecasts" where the forecaster held 88 bets (45 games asked at two
-    rungs), and one game asked at two rungs "2 of 2" beside a curve of 1. A
-    bet was read if its forecaster's claim on it stands in the at-the-line
-    record (`standing_claims`), so the share and the curve beside it count
-    the same bets; a bet not read is put down to a missing distribution only
-    when no standing forecast of it carried one. `distinct_bets` is counted
-    off the rows' own games, beside `n`, for the guard
-    (`calibration.assert_no_pooled_claims`) to compare.
+    rungs), and one game asked at two rungs "2 of 2" beside a curve of 1.
+
+    ONE PER DISTINCT BET, NOT PER GAME (operator question 17, 2026-09-28).
+    From 2026-09-26 the standing forecasts of one game were one bet here,
+    whatever rungs asked them, and the line said "games". The ruling's one
+    function makes each standing question its forecaster's bet (`bet.of`:
+    "Two rungs on one game are two questions"), as the curve beside it now
+    counts, so the line says "questions". A question was read if its
+    forecaster's claim on it stands in the at-the-line record
+    (`standing_claims`, on the same key), so the share and the curve count
+    the same bets; one not read is put down to a missing distribution when
+    its standing forecast carried none. `n` is the standing forecasts as the
+    blind record's rule returns them and `distinct_bets` their keys, for the
+    guard (`calibration.assert_no_pooled_claims`) to compare; `recounted` and
+    `read_recounted` are `gridiron.recount`'s, made without either door, in
+    the same read.
     """
-    from .. import calibration
+    from .. import calibration, db, recount
 
     # THE DOOR ASKS FIRST: the first market's count below refuses a pooled
     # forecaster or tier by name before anything is read.
@@ -843,51 +847,55 @@ def coverage(conn: sqlite3.Connection, *, sport: str, predictor: str,
             "              WHERE b.id = p.game_id AND e.event_tier = ?)")
         tier_params = [event_tier]
 
-    def carries(forecasts) -> bool:
-        """Did any of a bet's standing forecasts carry a frozen distribution?"""
-        return any('"margin_distribution"' in (r["factors_json"] or "")
-                   for r in forecasts)
+    def carries(forecast) -> bool:
+        """Did a question's standing forecast carry a frozen distribution?"""
+        return '"margin_distribution"' in (forecast["factors_json"] or "")
 
     out = []
-    for market in BET_MARKETS:
-        read = {c["game_id"] for c in standing_claims(
-            conn, sport=sport, market=market, predictor=predictor,
-            event_tier=event_tier)}
-        rows = conn.execute(
-            "SELECT p.id, p.game_id, p.factors_json,"
-            "  (SELECT COUNT(*) FROM venue_quotes q WHERE q.game_id = p.game_id"
-            "     AND q.market = p.market_type) AS quotes"
-            " FROM predictions p JOIN games g ON g.id = p.game_id"
-            " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
-            + tier_clause + calibration.standing_row_clause(False),
-            [sport, market, predictor] + tier_params).fetchall()
-        if not rows:
-            continue
-        # ONE PER BET (the prover, 2026-09-26): the standing forecasts of one
-        # game in this market are one bet, whatever rungs asked it.
-        bets: dict[str, list] = {}
-        for r in rows:
-            bets.setdefault(r["game_id"], []).append(r)
-        unread = [fs for game, fs in bets.items() if game not in read]
-        with_claim = len(bets) - len(unread)
-        no_dist = sum(1 for fs in unread if not carries(fs))
-        no_quotes = sum(1 for fs in unread if carries(fs)
-                        and not any(r["quotes"] for r in fs))
-        rest = len(bets) - with_claim - no_dist - no_quotes
-        out.append({
-            "market": market,
-            "predictor": predictor,
-            "event_tier": event_tier,
-            "n": len(bets),
-            "distinct_bets": len({r["game_id"] for r in rows}),
-            "forecasts": len(rows),
-            "with_a_claim": with_claim,
-            "share": round(with_claim / len(bets), 4) if bets else None,
-            "holes": [
-                {"reason": "the prediction carries no frozen distribution",
-                 "n": no_dist},
-                {"reason": "the venue quoted nothing for the game", "n": no_quotes},
-                {"reason": "the venue's ladder carried no usable price", "n": rest},
-            ],
-        })
+    with db.one_instant(conn):
+        for market in BET_MARKETS:
+            read = {bet.of(c) for c in standing_claims(
+                conn, sport=sport, market=market, predictor=predictor,
+                event_tier=event_tier)}
+            rows = conn.execute(
+                f"SELECT p.id, {bet.columns('p')}, p.factors_json,"
+                "  (SELECT COUNT(*) FROM venue_quotes q WHERE q.game_id = p.game_id"
+                "     AND q.market = p.market_type) AS quotes"
+                " FROM predictions p JOIN games g ON g.id = p.game_id"
+                " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
+                + tier_clause + calibration.standing_row_clause(False),
+                [sport, market, predictor] + tier_params).fetchall()
+            again = recount.at_the_line(conn, sport=sport, market=market,
+                                        predictor=predictor,
+                                        event_tier=event_tier)
+            # A MARKET THE RECOUNT HOLDS IS A ROW, even where the rule's rows
+            # are none, so a rule that lost every question is seen, not
+            # skipped.
+            if not rows and not again["questions"]:
+                continue
+            unread = [r for r in rows if bet.of(r) not in read]
+            with_claim = len(rows) - len(unread)
+            no_dist = sum(1 for r in unread if not carries(r))
+            no_quotes = sum(1 for r in unread if carries(r) and not r["quotes"])
+            rest = len(unread) - no_dist - no_quotes
+            out.append({
+                "market": market,
+                "predictor": predictor,
+                "event_tier": event_tier,
+                "n": len(rows),
+                "distinct_bets": bet.count(rows),
+                "forecasts": len(rows),
+                "with_a_claim": with_claim,
+                "recounted": again["questions"],
+                "read_recounted": again["read"],
+                "share": round(with_claim / len(rows), 4) if rows else None,
+                "holes": [
+                    {"reason": "the prediction carries no frozen distribution",
+                     "n": no_dist},
+                    {"reason": "the venue quoted nothing for the game",
+                     "n": no_quotes},
+                    {"reason": "the venue's ladder carried no usable price",
+                     "n": rest},
+                ],
+            })
     return out

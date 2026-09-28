@@ -3225,16 +3225,21 @@ def at_the_line_coverage_line(market: str, with_claim: int, n: int, *,
     names which, so two lines about one market never read as one count.
 
     COUNTED IN GAMES, NOT FORECASTS (the prover of item 6, 2026-09-26):
-    `at_the_line.coverage` counts one bet per game, so the line says games.
+    `at_the_line.coverage` counted one bet per game, so the line said games.
     It said "forecasts" over a count of questions, and a game asked at two
     rungs read "2 of 2 forecasts" beside a curve of one comparison.
+
+    COUNTED IN QUESTIONS (operator question 17, 2026-09-28): a bet is one
+    forecaster's question, the rung included -- "Two rungs on one game are
+    two questions" -- and the curve beside the line counts them so, so the
+    line says questions: "games" would be false for a game asked twice.
     """
     what = f"{humanise(market)}{_whose(predictor, event_tier)}"
     if not n:
         return f"{what}: nothing written yet"
     share = round(with_claim / n * 100)
     return (f"{what}: the venue's line could be read for {with_claim} of "
-            f"{counted(n, 'game')} it forecast ({share}%)")
+            f"{counted(n, 'question')} it answered ({share}%)")
 
 
 # ---------------------------------------------------------------------------
@@ -3687,10 +3692,15 @@ def drift_line(sport: str, market: str, n: int, moved_toward: int | None,
 
     ONE PER BET (operator question 14, ruled 2026-09-27, 2 of 3). "Over 79
     games" counted a question's morning and final pass, and two rungs of one
-    game, as more games; the count is now one per game (one player's line in
-    one game, for a prop), so the noun is true. A UFC line names its card,
-    because a market's row on the learning panel carries one line per card
-    and three alike would not say which is which.
+    game, as more games; the count was then one per game (one player's line
+    in one game, for a prop). A UFC line names its card, because a market's
+    row on the learning panel carries one line per card and three alike
+    would not say which is which.
+
+    QUESTIONS, NOT GAMES (operator question 17, 2026-09-28): a bet is one
+    forecaster's question, the rung included, so a game asked at two rungs
+    is two of the count and "games" would be false; a prop's question is a
+    player's line, as it was.
     """
     lead = f"{tier_label(tier)}: " if tier and tier_label(tier) else ""
     if n < gate or moved_toward is None:
@@ -3698,7 +3708,7 @@ def drift_line(sport: str, market: str, n: int, moved_toward: int | None,
                 f"line. Nothing is reported about direction until there are "
                 f"enough.")
     noun = ("player lines" if market in _config.SPORT_PROP_MARKETS.get(sport, ())
-            else "games")
+            else "questions")
     return (f"{lead}When the model disagreed by {disagreement:.0%} or more, "
             f"the market moved toward it {moved_toward / n:.0%} of the time "
             f"over {n} {noun}.")

@@ -22,7 +22,7 @@ import math
 import sqlite3
 from dataclasses import dataclass, field
 
-from . import config, horizon, language
+from . import bet, config, horizon, language
 from .factors import compute as factor_compute, registry
 from .model import logistic
 
@@ -221,6 +221,15 @@ def standing_row_clause(same_set: bool) -> str:
     settled under fs2 while its categories summed to 197, the other 36 being
     early rows a final pass had superseded. Two counts of one record cannot
     disagree if they share the clause.
+
+    ONE STANDING ROW PER DISTINCT BET (operator question 17, 2026-09-28).
+    "The question" is `bet.same` -- the one function's SQL form: the
+    forecaster, the game, the market and prop type, the subject and the rung
+    asked, NULL one value. It was written out here twice until this date,
+    without the prop type, which the subject carries (measured on a copy of
+    the record that day: naming it moves no count). `gridiron.recount`
+    works this rule out again in Python, and each builder that counts
+    through it refuses a count the two disagree on.
     """
     same = (" AND p2.factor_set_version = p.factor_set_version"
             if same_set else "")
@@ -261,11 +270,7 @@ def standing_row_clause(same_set: bool) -> str:
         f"{voided}"
         " AND p.id = (SELECT p2.id FROM predictions p2"
         "              JOIN games g2 ON g2.id = p2.game_id"
-        "              WHERE p2.game_id = p.game_id"
-        "                AND p2.market_type = p.market_type"
-        "                AND p2.subject = p.subject"
-        "                AND p2.predictor = p.predictor"
-        "                AND IFNULL(p2.line_asked, -1e9) = IFNULL(p.line_asked, -1e9)"
+        f"              WHERE {bet.same('p2', 'p')}"
         f"{same}"
         f"{skip_voided}"
         "                AND (g2.kickoff_utc IS NULL"
@@ -276,12 +281,7 @@ def standing_row_clause(same_set: bool) -> str:
         # would report an empty record rather than a retrospective one.
         "                     OR NOT EXISTS (SELECT 1 FROM predictions p3"
         "                                    JOIN games g3 ON g3.id = p3.game_id"
-        "                                    WHERE p3.game_id = p2.game_id"
-        "                                      AND p3.market_type = p2.market_type"
-        "                                      AND p3.subject = p2.subject"
-        "                                      AND p3.predictor = p2.predictor"
-        "                                      AND IFNULL(p3.line_asked, -1e9)"
-        "                                          = IFNULL(p2.line_asked, -1e9)"
+        f"                                    WHERE {bet.same('p3', 'p2')}"
         "                                      AND p3.created_utc <= g3.kickoff_utc))"
         "              ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)"
     )
@@ -1456,7 +1456,11 @@ def assert_no_pooled_outlooks(payload: dict) -> None:
     counting another's rows (`forecasters_counted`); one naming another card
     than the curve's, or counting another card's bouts (`tiers_counted`, read
     off each row's own bout); a settled count or a pace counting more rows
-    than distinct questions (a question's morning and final pass); a settled
+    than distinct questions (a question's morning and final pass); a
+    settled count or a pace other than the one `gridiron.recount` makes
+    without the door, one per distinct bet by the one key (operator
+    question 17, 2026-09-28: a door or a standing rule keyed without the
+    rung, or across forecasters); a settled
     count that is not the curve's n -- two counts of one record (MLB
     moneyline said "330 of 100" beside a curve of 233 on 26 September); an
     expectation that is not its own counts' arithmetic; and a line stating
@@ -1532,6 +1536,23 @@ def assert_no_pooled_outlooks(payload: dict) -> None:
             raise MergedCurve(
                 f"{law}: {what} says {outlook.get('message')!r}, which is not "
                 f"its own count of {n}: {said!r}.")
+        # AND THE RECOUNT MADE WITHOUT THE DOOR (operator question 17,
+        # 2026-09-28). The curve and the outlook both read the standing
+        # clause, so a clause keyed without the rung, or across forecasters,
+        # moves both alike and they still agree; only a count made without
+        # it sees that they count other bets than the record holds.
+        again, again_written = (outlook.get("recounted"),
+                                outlook.get("recounted_written"))
+        if again != n or again_written != written:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled and {written} written this "
+                f"season where the recount made without its door finds "
+                f"{again!r} and {again_written!r}, one per distinct bet by "
+                f"the one key (`bet.of`: the forecaster, the game, the market, "
+                f"the subject and the rung asked). A door or a standing rule "
+                f"keyed any other way -- without the rung, or across "
+                f"forecasters -- counts other bets than the record holds "
+                f"(operator question 17, 2026-09-28).")
 
 
 def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
@@ -1889,10 +1910,13 @@ AT_THE_LINE_NOTE = (
 class AtTheLineResolved:
     """One settled claim, in the shape the bucket and score functions read.
 
-    It carries its BET (the game; the market and its fixed side) and its
-    forecaster (GRIDIRON_REPAIR item 6, 2026-09-26), so a payload can say how
-    many distinct bets its count is, and a guard can refuse one that counts a
-    bet twice or two forecasters as one.
+    It carries its BET -- its forecast's key, `bet.KEY`: the forecaster, the
+    game, the market and prop type, the subject and the rung asked (operator
+    question 17, 2026-09-28; item 6 carried the game, market and side) -- so
+    a payload can say how many distinct bets its count is (`bet.count`), and
+    a guard can refuse one that counts a bet twice or two forecasters as one.
+    The venue's own number is `line`; the rung the forecaster was asked is
+    `line_asked`.
     """
     model_prob: float
     implied_prob: float
@@ -1902,6 +1926,10 @@ class AtTheLineResolved:
     game_id: str
     side: str
     predictor: str
+    market_type: str
+    prop_type: str | None
+    subject: str
+    line_asked: float | None
 
 
 def _at_the_line_items_of(claims) -> list[AtTheLineResolved]:
@@ -1912,22 +1940,11 @@ def _at_the_line_items_of(claims) -> list[AtTheLineResolved]:
         AtTheLineResolved(model_prob=c["model_prob"], implied_prob=c["venue_implied"],
                           outcome=c["outcome"], market=c["market"], line=c["line"],
                           game_id=c["game_id"], side=c["side"],
-                          predictor=c["predictor"])
+                          predictor=c["predictor"], market_type=c["market_type"],
+                          prop_type=c["prop_type"], subject=c["subject"],
+                          line_asked=c["line_asked"])
         for c in at_the_line.settled(claims)
     ]
-
-
-def distinct_bets(items) -> int:
-    """How many bets a set of claims is on, counted by their own keys.
-
-    COUNTED BESIDE THE DOOR, NOT BY IT (item 6, 2026-09-26): a door that let a
-    bet in twice -- two passes, or two forecasters, on one game -- returns two
-    items on one key, and this says one, which is what
-    `assert_no_pooled_claims` compares with the category's n.
-    """
-    from .market import at_the_line
-
-    return at_the_line.count_of_bets(items)
 
 
 def forecasters_counted(items) -> list[str]:
@@ -1941,9 +1958,11 @@ def at_the_line_items(conn: sqlite3.Connection, *, sport: str, market: str,
     """The settled standing claims for one sport, market and forecaster --
     and, for a sport that splits below the market, one tier.
 
-    ONE PER BET (the market module's door, `at_the_line.standing_claims`):
-    a game's morning and final pass, its two rungs and its every look are one
-    claim, and the two forecasters are never counted together (item 6).
+    ONE PER DISTINCT BET (the market module's door,
+    `at_the_line.standing_claims`, keyed by `bet`): a question's morning and
+    final pass and its every look are one claim, two rungs of one game are
+    two, and the two forecasters are never counted together (item 6;
+    operator question 17, 2026-09-28).
     """
     from .market import at_the_line
 
@@ -1963,12 +1982,25 @@ def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str,
     read off that list. Until this date the outlook asked a query of its own,
     and MLB spread said "80 of 100" beside "128 of 100" -- two counts of one
     record, the ONE CLAUSE failure again (FOLLOWUPS, 2026-09-23).
+
+    AND RECOUNTED WITHOUT THE DOOR (operator question 17, 2026-09-28): the
+    same read asks `gridiron.recount` for the cell's settled bets by the one
+    key, and the payload carries it as `recounted` for
+    `assert_no_pooled_claims` to hold the curve's n to.
     """
+    from . import db, recount
     from .market import at_the_line
 
     require_sport(sport, "calibration.at_the_line_curve")
-    bets = at_the_line.standing_claims(conn, sport=sport, market=market,
-                                       predictor=predictor, event_tier=event_tier)
+    with db.one_instant(conn):
+        bets = at_the_line.standing_claims(conn, sport=sport, market=market,
+                                           predictor=predictor,
+                                           event_tier=event_tier)
+        again = recount.at_the_line(conn, sport=sport, market=market,
+                                    predictor=predictor, event_tier=event_tier)
+        outlook = horizon.at_the_line_outlook(
+            conn, sport, market, predictor=predictor, bets=bets,
+            event_tier=event_tier)
     items = _at_the_line_items_of(bets)
     buckets = calibration_buckets(items)
     filters = {"sport": sport, "market": market, "predictor": predictor,
@@ -1989,7 +2021,8 @@ def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str,
             market, predictor, event_tier),
         "filters": filters,
         "n": len(items),
-        "distinct_bets": distinct_bets(items),
+        "distinct_bets": bet.count(items),
+        "recounted": again["settled"],
         "forecasters_counted": forecasters_counted(items),
         "buckets": buckets,
         "largest_gap": largest_gap_sentence(buckets),
@@ -1998,9 +2031,7 @@ def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str,
         "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
         "gate_line": language.at_the_line_gate_line(
             len(items), config.MIN_SAMPLE_FOR_EDGE_CLAIM),
-        "outlook": horizon.at_the_line_outlook(
-            conn, sport, market, predictor=predictor, bets=bets,
-            event_tier=event_tier),
+        "outlook": outlook,
         "note": AT_THE_LINE_NOTE,
     }
 
@@ -2024,11 +2055,17 @@ def at_the_line_edge(conn: sqlite3.Connection, *, sport: str, market: str,
 
     ONE FORECASTER'S (item 6, 2026-09-26), as the blind edge figure has
     always been: the scorecard asks for the statistical model's, and the
-    payload says whose it is.
+    payload says whose it is. Its settled claims are recounted without the
+    door in the same read (`recounted`, operator question 17, 2026-09-28).
     """
+    from . import db, recount
+
     threshold = config.EDGE_DISAGREEMENT_THRESHOLD if threshold is None else threshold
-    items = at_the_line_items(conn, sport=sport, market=market,
-                              predictor=predictor, event_tier=event_tier)
+    with db.one_instant(conn):
+        items = at_the_line_items(conn, sport=sport, market=market,
+                                  predictor=predictor, event_tier=event_tier)
+        again = recount.at_the_line(conn, sport=sport, market=market,
+                                    predictor=predictor, event_tier=event_tier)
     model_bolder = [r for r in items if r.model_prob - r.implied_prob > threshold]
     venue_bolder = [r for r in items if r.implied_prob - r.model_prob > threshold]
 
@@ -2056,7 +2093,8 @@ def at_the_line_edge(conn: sqlite3.Connection, *, sport: str, market: str,
         "event_tier": event_tier,
         "threshold": threshold,
         "n": len(items),
-        "distinct_bets": distinct_bets(items),
+        "distinct_bets": bet.count(items),
+        "recounted": again["settled"],
         "forecasters_counted": forecasters_counted(items),
         "n_disagreements": len(model_bolder),
         "minimum_for_a_claim": minimum,
@@ -2154,13 +2192,22 @@ def assert_no_pooled_claims(payload: dict) -> None:
     and the tier are one rule for both records.
 
     Then, by name: a curve, a ledger or the edge that counts more claims than
-    it has distinct bets (a morning and a final pass on one game, two rungs,
-    two looks, or two forecasters' claims on one game); one whose claims are
-    another forecaster's than the one it names; a gate line or an outlook
-    that states another count than the curve's own (the live record said "80
-    of 100" beside "128 of 100" for one MLB category, 2026-09-23); a
-    coverage line that names no forecaster, or counts one bet more than once
-    (the prover, 2026-09-26); and a total across categories.
+    it has distinct bets (a question's morning and final pass, two looks, or
+    two forecasters' claims on one question); one whose claims are another
+    forecaster's than the one it names; a gate line or an outlook that
+    states another count than the curve's own (the live record said "80 of
+    100" beside "128 of 100" for one MLB category, 2026-09-23); a coverage
+    line that names no forecaster, or counts one bet more than once (the
+    prover, 2026-09-26); and a total across categories.
+
+    AND A COUNT THE RECOUNT DOES NOT MAKE (operator question 17, ruled
+    2026-09-27, built 2026-09-28). A distinct bet is `bet.of`, and a door
+    keyed any other way -- without the rung, so two rungs of one game are
+    one claim, or across forecasters, so one's later claim stands in for the
+    other's question -- counts other bets than the record holds while its
+    own `distinct_bets` agrees with it. Each curve, ledger, edge and coverage
+    line carries `gridiron.recount`'s count, made without the door in the
+    same read, and one that differs is refused by name.
     Raised inside `at_the_line_scorecard`, so the API answers 500 rather
     than serving a pool, the same as LAW 4 everywhere else.
     """
@@ -2196,7 +2243,18 @@ def assert_no_pooled_claims(payload: dict) -> None:
             raise MergedCurve(
                 f"{law}: {what} counts {n} settled claims for {bets} distinct "
                 f"bet{'' if bets == 1 else 's'}. A distinct bet is counted once, "
-                f"however many passes, rungs, looks or forecasters repeated it.")
+                f"however many passes or looks repeated it.")
+
+    def recounted(entry: dict, what: str) -> None:
+        n, again = entry.get("n"), entry.get("recounted")
+        if again != n:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} where the recount made without its "
+                f"door finds {again!r}, one per distinct bet by the one "
+                f"key (`bet.of`: the forecaster, the game, the market, the "
+                f"subject and the rung asked). A door keyed any other way -- "
+                f"without the rung, or across forecasters -- counts other bets "
+                f"than the record holds (operator question 17, 2026-09-28).")
 
     if "n" in payload:
         raise MergedCurve(
@@ -2218,31 +2276,43 @@ def assert_no_pooled_claims(payload: dict) -> None:
             raise MergedCurve(
                 f"{law}: {what}'s gate line says {category.get('gate_line')!r}, "
                 f"which is not its own count of {n}.")
+        recounted(category, what)
     for entry in payload.get("paper") or []:
         what = (f"the hypothetical ledger for {entry.get('market')!r}, "
                 f"{entry.get('predictor')!r}")
         whose(entry, what)
         once(entry, what)
+        recounted(entry, what)
     edge = payload.get("edge")
     if edge:
         whose(edge, "the at-the-line edge figure")
         once(edge, "the at-the-line edge figure")
+        recounted(edge, "the at-the-line edge figure")
     for row in payload.get("coverage") or []:
         what = (f"the coverage line for {row.get('market')!r}, "
                 f"{row.get('predictor')!r}")
         whose(row, what)
         # AND ONCE PER BET (the prover of item 6, 2026-09-26): the coverage
-        # line counted a game asked at two rungs as two forecasts -- NCAAF
-        # point spread "4 of 133" for 88 bets -- and a game's two rungs, both
-        # read, as "2 of 2" beside a curve of 1.
+        # line counted a question's passes as more forecasts than it had
+        # bets, and read one bet twice. From operator question 17
+        # (2026-09-28) a bet is `bet.of`, so two rungs of one game are two
+        # questions here as on the curve beside it.
         n, bets, read = row.get("n"), row.get("distinct_bets"), row.get("with_a_claim")
         if (bets is None or n != bets or not isinstance(read, int)
                 or not 0 <= read <= n):
             raise MergedCurve(
-                f"{law}: {what} counts {n} forecast games, "
+                f"{law}: {what} counts {n} questions, "
                 f"{read!r} of them read, for {bets} distinct "
-                f"bet{'' if bets == 1 else 's'}. A game is one bet however many "
-                f"rungs or passes forecast it.")
+                f"bet{'' if bets == 1 else 's'}. A question is one bet however "
+                f"many passes answered it.")
+        if row.get("recounted") != n or row.get("read_recounted") != read:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} questions, {read} of them read, "
+                f"where the recount made without either door finds "
+                f"{row.get('recounted')!r} and {row.get('read_recounted')!r}, "
+                f"one per distinct bet by the one key (`bet.of`). A rule keyed "
+                f"any other way counts other bets than the record holds "
+                f"(operator question 17, 2026-09-28).")
 
 
 def assert_the_records_stay_apart(payload: dict) -> None:
@@ -2717,18 +2787,36 @@ def priced_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     both forecasters, a question's morning and final pass -- and MLB
     moneyline's gate line said "261 settled comparisons, past the 100 this
     record needs" for 96 and 84 standing questions.
+
+    ONE PER DISTINCT BET, RECOUNTED (operator question 17, 2026-09-28): the
+    door keys by `bet` through the standing clause, and the same read asks
+    `gridiron.recount` for each forecaster's settled priced bets per market
+    without it. A market the recount holds is a category even where the
+    door found none, so a door that lost a market is seen, not skipped; each
+    category carries `recounted` for `assert_no_pooled_priced_counts`.
     """
+    from . import db, recount
     from .priced import forecast as priced
 
     require_sport(sport, "calibration.priced_scorecard")
     tiers = config.event_tiers(sport) or (None,)
     cells: dict[tuple, list] = {}
-    for tier in tiers:
-        for predictor in priced.BLIND_FORECASTERS:
-            rows = priced.standing_forecasts(conn, sport=sport,
-                                             predictor=predictor, event_tier=tier)
-            for row in priced.settled(rows):
-                cells.setdefault((row["market"], tier, predictor), []).append(row)
+    recounted: dict[tuple, int] = {}
+    with db.one_instant(conn):
+        for tier in tiers:
+            for predictor in priced.BLIND_FORECASTERS:
+                rows = priced.standing_forecasts(conn, sport=sport,
+                                                 predictor=predictor,
+                                                 event_tier=tier)
+                for row in priced.settled(rows):
+                    cells.setdefault((row["market"], tier, predictor),
+                                     []).append(row)
+                again = recount.priced(conn, sport=sport, predictor=predictor,
+                                       event_tier=tier,
+                                       blend_version=config.PRICED_VERSION)
+                for market, n in again.items():
+                    recounted[(market, tier, predictor)] = n
+                    cells.setdefault((market, tier, predictor), [])
 
     categories = []
     # A CATEGORY WHERE SOMETHING HAS SETTLED, as before this date (a market
@@ -2766,7 +2854,8 @@ def priced_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
             # COUNTED BESIDE THE DOOR, NOT BY IT: read off the rows' own
             # questions, forecasters and cards, so a door that let a bet in
             # twice, or two forecasters or two cards in, is seen.
-            "distinct_bets": priced.count_of_bets(got),
+            "distinct_bets": bet.count(got),
+            "recounted": recounted.get((market, tier, predictor), 0),
             "forecasters_counted": sorted({r["predictor"] for r in got}),
             "tiers_counted": sorted({r["event_tier"] for r in got
                                      if r["event_tier"] is not None}),
@@ -2827,14 +2916,16 @@ def assert_no_pooled_priced_counts(payload: dict) -> None:
     every record.
 
     Then, by name: a category that counts more rows than it has distinct
-    bets (a question's morning and final pass, or two forecasters' rows on
-    one question); one whose rows are another forecaster's, or another
-    card's, than the one it names; one naming no blind forecaster; a score
-    on other questions than the count; a gate line stating another count
-    than its own (the page said "261 settled comparisons, past the 100" for
-    96 and 84 standing questions on 26 September); and a total or a pooled
-    "awaiting" count across categories. Raised inside `priced_scorecard`, so
-    the API answers 500 rather than serving a pool.
+    bets (a question's morning and final pass); one whose rows are another
+    forecaster's, or another card's, than the one it names; one naming no
+    blind forecaster; a count other than the one `gridiron.recount` makes
+    without the door, one per distinct bet by the one key (operator question
+    17, 2026-09-28: a door keyed without the rung, or across forecasters);
+    a score on other questions than the count; a gate line stating another
+    count than its own (the page said "261 settled comparisons, past the
+    100" for 96 and 84 standing questions on 26 September); and a total or a
+    pooled "awaiting" count across categories. Raised inside
+    `priced_scorecard`, so the API answers 500 rather than serving a pool.
     """
     from .priced import forecast as priced
 
@@ -2897,6 +2988,19 @@ def assert_no_pooled_priced_counts(payload: dict) -> None:
             raise MergedCurve(
                 f"{law}: {what}'s gate line says {category.get('gate_line')!r}, "
                 f"which is not its own count of {n}.")
+        # AND THE RECOUNT MADE WITHOUT THE DOOR (operator question 17,
+        # 2026-09-28): a door keyed without the rung, or across forecasters,
+        # counts other questions than the record holds while its own
+        # distinct bets, scores and gate line all agree with it.
+        if category.get("recounted") != n:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled priced rows where the "
+                f"recount made without its door finds "
+                f"{category.get('recounted')!r}, one per distinct bet by the "
+                f"one key (`bet.of`: the forecaster, the game, the market, the "
+                f"subject and the rung asked). A door keyed any other way -- "
+                f"without the rung, or across forecasters -- counts other bets "
+                f"than the record holds (operator question 17, 2026-09-28).")
 
 
 @dataclass(frozen=True)

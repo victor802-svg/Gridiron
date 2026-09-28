@@ -10276,6 +10276,9 @@ def _atl_category(predictor, n: int, bets: int, *, market: str = "moneyline",
         "filters": {"sport": "mlb", "market": market, "predictor": predictor,
                     "record": "at_the_line"},
         "n": n, "distinct_bets": bets,
+        # THE RECOUNT BESIDE THE DOOR (operator question 17, 2026-09-28): an
+        # honest builder's, agreeing with its count.
+        "recounted": n,
         "forecasters_counted": (counted if counted is not None
                                 else ([predictor] if n else [])),
         "gate": gate, "gate_line": _language.at_the_line_gate_line(n, gate),
@@ -10299,14 +10302,20 @@ def plant_an_at_the_line_curve_pooling_two_forecasters() -> Result:
     one per standing QUESTION after the builder's fix, so a game asked at two
     rungs was two: NCAAF point spread, statistical, "4 of 133 forecasts" on
     the record that day for 88 bets. Two more shapes: a coverage line
-    counting one bet's two rungs as two, and one reading a bet twice.
+    counting more questions than it has distinct bets, and one reading a bet
+    twice. (From operator question 17, 2026-09-28, two rungs of one game ARE
+    two bets, the curve's and the coverage line's alike; the shape refused is
+    a count above its own distinct bets.)
     """
     guard = "calibration.assert_no_pooled_claims"
     violation = "two forecasters and repeated claims in one at-the-line count"
 
     def coverage_row(predictor, n, bets, read):
         return {"market": "spread", "predictor": predictor, "event_tier": None,
-                "n": n, "distinct_bets": bets, "with_a_claim": read}
+                "n": n, "distinct_bets": bets, "with_a_claim": read,
+                # THE RECOUNT BESIDE THE DOORS (operator question 17,
+                # 2026-09-28): an honest builder's, agreeing with its counts.
+                "recounted": n, "read_recounted": read}
 
     honest = {"sport": "mlb", "record": "at_the_line", "categories": [
         _atl_category("statistical", 54, 54), _atl_category("llm", 54, 54)],
@@ -10326,7 +10335,7 @@ def plant_an_at_the_line_curve_pooling_two_forecasters() -> Result:
             _atl_category("statistical", 87, 54)]},
         "an outlook counting other claims than its curve": {"categories": [
             _atl_category("statistical", 80, 80, market="spread", resolved=128)]},
-        "a coverage line counting one bet's two rungs as two": {"coverage": [
+        "a coverage line counting more questions than distinct bets": {"coverage": [
             coverage_row("statistical", 133, 88, 4)]},
         "a coverage line reading one bet twice": {"coverage": [
             coverage_row("statistical", 1, 1, 2)]},
@@ -10366,14 +10375,22 @@ def plant_an_at_the_line_game_counted_twice() -> Result:
     THE SHIPPED DOOR OF 2026-09-23 TO 2026-09-26: `standing_claims` kept one
     claim per PREDICTION and asked no forecaster, so a game forecast by the
     morning and the final pass, and by both forecasters, was three claims in
-    one moneyline count -- and a spread asked at two rungs was two. This
-    world plants exactly that on a scratch database (every row through the
-    schema's own triggers, the one permitted settling write), proves the
-    shipped door counts one bet per forecaster -- the coverage lines too,
-    where the spread's two standing rungs are one game (the prover,
-    2026-09-26) -- and then swaps the old door
-    back in, as it stood and as it would stand filtered by forecaster, and
-    demands the Record page's own builder refuse both by name.
+    one moneyline count. This world plants exactly that on a scratch
+    database (every row through the schema's own triggers, the one permitted
+    settling write), proves the shipped door counts one claim per distinct
+    bet per forecaster, and then swaps the old door back in, as it stood and
+    as it would stand filtered by forecaster, and demands the Record page's
+    own builder refuse both by name.
+
+    FLIPPED BY OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, ruled
+    2026-09-28: "Two rungs on one game are two questions"). The world's
+    statistical spread, asked at -1.5 by the morning pass and at +1.5 by the
+    final pass, was ONE bet from item 6 to that date -- in the curve and in
+    the coverage line ("1 of 1 game", the prover of 2026-09-26) -- and is
+    TWO now, a curve of two and "2 of 2 questions". The old door counted
+    them as two claims as well, so it is refused on the moneyline, where it
+    puts a question's two passes and the other forecaster's claim in one
+    count. (Rung-less doors are `plant_a_door_keyed_without_the_rung`.)
     """
     import tempfile
 
@@ -10449,9 +10466,10 @@ def plant_an_at_the_line_game_counted_twice() -> Result:
 
         def counts() -> tuple[dict, dict]:
             card = calibration.at_the_line_scorecard(conn, sport="mlb")
-            # AND THE COVERAGE LINES (the prover, 2026-09-26): the statistical
-            # spread's two standing rungs are one bet there too, as "1 of 1
-            # game", never "2 of 2 forecasts" beside a curve of one.
+            # AND THE COVERAGE LINES (the prover, 2026-09-26): they count the
+            # curve's bets -- from operator question 17 (2026-09-28) the
+            # statistical spread's two standing rungs are two, "2 of 2
+            # questions" beside a curve of two.
             return ({(c["market"], c["predictor"]): (c["n"], c["outlook"]["resolved"])
                      for c in card["categories"]},
                     {(r["market"], r["predictor"]): (r["n"], r["with_a_claim"])
@@ -10466,12 +10484,14 @@ def plant_an_at_the_line_game_counted_twice() -> Result:
             conn.close()
             return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, False,
                           f"the shipped door refuses an honest world: {exc}")
+        # THE STATISTICAL SPREAD'S TWO RUNGS ARE TWO BETS (operator question
+        # 17, flipped 2026-09-28 from one).
         want = {("moneyline", "statistical"): (1, 1), ("moneyline", "llm"): (1, 1),
-                ("spread", "statistical"): (1, 1), ("spread", "llm"): (0, 0),
+                ("spread", "statistical"): (2, 2), ("spread", "llm"): (0, 0),
                 ("total", "statistical"): (0, 0), ("total", "llm"): (0, 0)}
         want_covered = {("moneyline", "statistical"): (1, 1),
                         ("moneyline", "llm"): (1, 1),
-                        ("spread", "statistical"): (1, 1)}
+                        ("spread", "statistical"): (2, 2)}
         if shipped != want or covered != want_covered or card_n != 1:
             conn.close()
             return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, False,
@@ -10486,9 +10506,11 @@ def plant_an_at_the_line_game_counted_twice() -> Result:
                          ask_the_forecaster=False):
             # THIS IS THE SHIPPED CODE OF 2026-09-23: one claim per
             # prediction, the last before the start, from any forecaster --
-            # with the columns the new builder reads added, and nothing else.
+            # with the columns the new builder reads added (the forecast's
+            # key, from operator question 17), and nothing else.
             return conn.execute(
-                "SELECT c.*, p.predictor, g.season, g.week"
+                "SELECT c.*, p.predictor, p.market_type, p.prop_type,"
+                "       p.subject, p.line_asked, g.season, g.week"
                 "  FROM at_the_line_claims c"
                 "  JOIN predictions p ON p.id = c.prediction_id"
                 "  JOIN games g ON g.id = c.game_id"
@@ -10511,8 +10533,8 @@ def plant_an_at_the_line_game_counted_twice() -> Result:
 
         def the_moneyline_curve():
             # THE MONEYLINE ALONE, where the old door put both forecasters
-            # and both passes in the statistical model's count -- the page
-            # above stops at the spread's two rungs, the first row it builds.
+            # and both passes in the statistical model's count -- checked
+            # alone, as the page above may stop at another row first.
             curve = calibration.at_the_line_curve(
                 conn, sport="mlb", market="moneyline", predictor="statistical")
             calibration.assert_no_pooled_claims(
@@ -10543,9 +10565,9 @@ def plant_an_at_the_line_game_counted_twice() -> Result:
                       "pass, final pass and second forecaster as three bets: "
                       + "; ".join(missed))
     return Result(LAW_AT_THE_LINE_COUNTS, violation, guard, True,
-                  "one game counts one bet per forecaster on the shipped door "
-                  "(the card too); with the old door swapped back in -- "
-                  + " | ".join(caught))
+                  "one game counts one claim per distinct bet per forecaster on "
+                  "the shipped door (the card too); with the old door swapped "
+                  "back in -- " + " | ".join(caught))
 
 
 LAW_PRICED_COUNTS = ("THE PRICED RECORD, ONE STANDING QUESTION PER FORECASTER "
@@ -10568,6 +10590,10 @@ def _priced_category(predictor, n: int, bets: int, *, market: str = "moneyline",
         "filters": {"sport": "mlb", "market": market, "predictor": predictor,
                     "record": "priced"},
         "n": n, "distinct_bets": bets,
+        # THE RECOUNT BESIDE THE DOOR (operator question 17, 2026-09-28): an
+        # honest builder's, agreeing with its count; the shapes this helper
+        # plants are refused by the checks before it.
+        "recounted": n,
         "forecasters_counted": (counted if counted is not None
                                 else ([predictor] if n else [])),
         "tiers_counted": [],
@@ -10820,6 +10846,9 @@ def _drift_category(sport: str, market: str, predictor, n: int, bets: int, *,
         "category": " / ".join([market] + ([tier] if tier else [])
                                + [str(predictor), "drift"]),
         "filters": filters, "n": n, "distinct_bets": bets,
+        # THE RECOUNT BESIDE THE DOOR (operator question 17, 2026-09-28): an
+        # honest builder's, agreeing with its count.
+        "recounted": n,
         "forecasters_counted": (counted if counted is not None
                                 else ([predictor] if n else [])),
         "tiers_counted": (cards if cards is not None
@@ -10933,21 +10962,28 @@ def plant_a_drift_count_pooling_passes_and_forecasters() -> Result:
 
 
 def plant_a_drift_game_counted_twice() -> Result:
-    """Count one MLB game's drift pairs once per forecast, and one NCAAF
-    game's once per rung, instead of once per bet per forecaster.
+    """Count one MLB game's drift pairs once per forecast instead of once
+    per distinct bet per forecaster.
 
     THE SHIPPED COUNT UNTIL 2026-09-27: `drift.report` paired every forecast
     with both looks at the line, so a game forecast by the statistical
-    model's morning and final pass was two pairs in one moneyline count, and
-    a college game asked at two rungs by two passes -- both standing
-    questions, as twelve NCAAF spread games are on the record -- two pairs of
-    one line moving once. This world plants both on a scratch database
-    (every row through the schema's own triggers), proves the gate list and
-    the learning panel count one bet each, naming the forecaster, then swaps
-    the count as it stood back in as the door -- asking the forecaster,
-    asking nobody in particular, and the standing rule without the bet --
-    and demands the builders, and the gate's check of every sport, refuse
-    each by name.
+    model's morning and final pass was two pairs in one moneyline count. This
+    world plants that on a scratch database (every row through the schema's
+    own triggers), proves the gate list and the learning panel count one bet
+    per question, naming the forecaster, then swaps the count as it stood
+    back in as the door -- asking the forecaster, and asking nobody in
+    particular -- and demands the builders, and the gate's check of every
+    sport, refuse each by name.
+
+    FLIPPED BY OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, ruled
+    2026-09-28: "Two rungs on one game are two questions"). The world's
+    college game asked at two rungs by two passes -- both standing
+    questions, as twelve NCAAF spread games are on the record -- was ONE bet
+    from 2026-09-27 to that date, and "the standing rule without the bet"
+    (one pair per question) was refused as counting it twice. It is TWO
+    bets now and that count is the ruled one; the door refused in its place
+    is one pair per GAME, the keep step as it stood -- a door keyed without
+    the rung, which only the recount by the one key sees.
     """
     import tempfile
 
@@ -10955,7 +10991,8 @@ def plant_a_drift_game_counted_twice() -> Result:
 
     guard = ("drift.standing_pairs, drift.assert_no_pooled_drift_counts, "
              "audit.check_the_drift_record_is_never_pooled")
-    violation = "one game's drift counted once per forecast or per rung, not per bet"
+    violation = ("one question's drift counted once per pass, or two rungs "
+                 "as one bet")
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
         for game, sport in (("mlb_drift_1", "mlb"), ("cfb_drift_1", "cfb")):
@@ -11017,17 +11054,19 @@ def plant_a_drift_game_counted_twice() -> Result:
             conn.close()
             return Result(LAW_DRIFT_COUNTS, violation, guard, False,
                           f"the shipped builders refuse an honest world: {exc}")
+        # THE NCAAF GAME'S TWO RUNGS ARE TWO BETS (operator question 17,
+        # flipped 2026-09-28 from one).
         want = {("mlb", "moneyline", "gate list"): (1, "moneyline, statistical"),
                 ("mlb", "moneyline", "learning panel"): (1,),
-                ("cfb", "spread", "gate list"): (1, "point spread, statistical"),
-                ("cfb", "spread", "learning panel"): (1,)}
+                ("cfb", "spread", "gate list"): (2, "point spread, statistical"),
+                ("cfb", "spread", "learning panel"): (2,)}
         if shipped != want:
             conn.close()
             return Result(LAW_DRIFT_COUNTS, violation, guard, False,
                           f"NOT CAUGHT - the Record page counts {shipped} for one "
                           f"MLB game forecast by two passes and one NCAAF game "
-                          f"asked at two rungs; wanted one bet each, each "
-                          f"naming its forecaster")
+                          f"asked at two rungs; wanted one bet per question, "
+                          f"each naming its forecaster")
 
         shipped_door = _drift.standing_pairs
         gate_check = getattr(audit, "check_the_drift_record_is_never_pooled", None)
@@ -11036,9 +11075,11 @@ def plant_a_drift_game_counted_twice() -> Result:
                         ask_the_forecaster=True, standing_only=False):
             # THIS IS THE SHIPPED COUNT UNTIL 2026-09-27: every forecast of
             # the market TYPE with both looks and a disagreement -- with the
-            # fields the new report reads added, and nothing else.
+            # fields the new report reads added (the forecast's key, from
+            # operator question 17), and nothing else.
             rows = conn.execute(
-                "SELECT p.id, p.predictor, p.game_id, p.subject, p.line_asked,"
+                "SELECT p.id, p.predictor, p.game_id, p.market_type,"
+                " p.prop_type, p.subject, p.line_asked,"
                 " p.model_prob, p.calibrated_prob,"
                 " o.implied_prob AS opened, n.implied_prob AS near"
                 " FROM predictions p JOIN games g ON g.id = p.game_id"
@@ -11062,12 +11103,26 @@ def plant_a_drift_game_counted_twice() -> Result:
                 movement = r["near"] - r["opened"]
                 out.append({"prediction_id": r["id"], "predictor": r["predictor"],
                             "sport": sport, "market": market,
-                            "prop_type": calibration.prop_type_of(sport, market),
+                            "market_type": r["market_type"],
+                            "prop_type": r["prop_type"],
                             "game_id": r["game_id"], "subject": r["subject"],
                             "line_asked": r["line_asked"], "event_tier": None,
                             "toward": (movement if claim > r["opened"]
                                        else -movement)})
             return out
+
+        def one_per_game(conn, **kw):
+            # THE KEEP STEP OF 2026-09-27 TO 2026-09-28: the standing pairs,
+            # one per game and market (the player for a prop), the later
+            # standing forecast kept -- a door keyed without the rung.
+            kept: dict = {}
+            for pair in as_it_stood(conn, standing_only=True, **kw):
+                key = (pair["game_id"], pair["market"],
+                       pair["subject"] if pair["prop_type"] else None)
+                if (key not in kept
+                        or pair["prediction_id"] > kept[key]["prediction_id"]):
+                    kept[key] = pair
+            return list(kept.values())
 
         def build(sport, which):
             def run():
@@ -11098,9 +11153,8 @@ def plant_a_drift_game_counted_twice() -> Result:
                  lambda conn, **kw: as_it_stood(conn, ask_the_forecaster=False,
                                                 **kw),
                  "mlb", "the learning panel"),
-                ("the standing rule without the bet, NCAAF's gate list",
-                 lambda conn, **kw: as_it_stood(conn, standing_only=True, **kw),
-                 "cfb", "the gate list")):
+                ("one pair per game, the rung left out, NCAAF's gate list",
+                 one_per_game, "cfb", "the gate list")):
             _drift.standing_pairs = door
             try:
                 build(sport, which)()
@@ -11113,13 +11167,13 @@ def plant_a_drift_game_counted_twice() -> Result:
         conn.close()
     if missed:
         return Result(LAW_DRIFT_COUNTS, violation, guard, False,
-                      "NOT CAUGHT - the Record page counts one game's two "
-                      "passes, or two rungs, as two drift pairs: "
+                      "NOT CAUGHT - the Record page counts one question's two "
+                      "passes as two drift pairs, or two rungs as one: "
                       + "; ".join(missed))
     return Result(LAW_DRIFT_COUNTS, violation, guard, True,
-                  "one game counts one bet per forecaster on the shipped door, "
-                  "each row naming its forecaster; with the count as it stood "
-                  "swapped back in -- " + " | ".join(caught))
+                  "one question counts one bet per forecaster on the shipped "
+                  "door, each row naming its forecaster; with the count as it "
+                  "stood swapped back in -- " + " | ".join(caught))
 
 
 LAW_OUTLOOK_COUNTS = ("THE BLIND RECORD'S OUTLOOK, ITS CURVE'S STANDING "
@@ -11149,6 +11203,9 @@ def _outlook_category(sport: str, market: str, predictor, n: int, *,
         "slates_used": slates, "season_ends": "2026-09-27",
         "written_before": False,
         "distinct_bets_written": written if asked is None else asked,
+        # THE RECOUNT BESIDE THE DOOR (operator question 17, 2026-09-28): an
+        # honest builder's, agreeing with its counts.
+        "recounted": resolved, "recounted_written": written,
         "forecasters_counted": (counted if counted is not None
                                 else ([predictor] if resolved or written else [])),
         "tiers_counted": (cards if cards is not None
@@ -11498,6 +11555,539 @@ def plant_a_blind_outlook_game_counted_twice() -> Result:
                   "each outlook states its own curve's count on the shipped "
                   "door; with the count as it stood swapped back in -- "
                   + " | ".join(caught))
+
+
+# ---------------------------------------------------------------------------
+# ONE FUNCTION DEFINES A DISTINCT BET (operator question 17, ruled
+# 2026-09-27; question 21, ruled 2026-09-28; built 2026-09-28)
+# ---------------------------------------------------------------------------
+
+LAW_ONE_BET = ("ONE FUNCTION DEFINES A DISTINCT BET: THE FORECASTER AND THE "
+               "VENUE'S QUESTION, THE RUNG ASKED INCLUDED (LAW 4, LAW 6)")
+
+#: A claim's stamp near the start, one second apart per forecast, so the
+#: world's later forecast holds the later claim (a door keyed across
+#: forecasters then keeps the other's).
+_Q17_CLAIMED = "2026-09-07T21:45:0{}Z"
+
+
+def _q17_world(conn, sport: str, forecasts) -> list[int]:
+    """One settled game forecast as `forecasts` say -- (market, rung,
+    forecaster, pass, written, probability) -- with every record's rows:
+    each forecast settled, both looks at the line (a disagreement), a priced
+    row, and a claim at the venue's line near the start. Every row goes
+    through the schema's own rules; settling is the one permitted write."""
+    from gridiron.market import at_the_line as _atl
+    from gridiron.priced import forecast as _priced
+
+    game = f"{sport}_q17_1"
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date, home_score, away_score)"
+        " VALUES (?, ?, ?, 1, 'R', 'SEA', 'HOU', '2026-09-07T23:05:00Z',"
+        " 'final', '2026-09-07', 30, 3)",
+        (game, sport, config.SPORT_CURRENT_SEASON[sport]))
+    _atl.ensure_read_kind(conn)
+    ids = []
+    for market, rung, who, pass_kind, written, prob in forecasts:
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning)"
+            " VALUES (?, ?, ?, ?, 'SEA', ?, ?, ?, ?, ?, 'fs2', '{}', 'planted')",
+            (written, sport, game, market, rung, prob,
+             "win" if market == "moneyline" else "cover", who, pass_kind))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        for kind, when, implied in (
+                ("open_at_predict", db.just_after(written), 0.50),
+                ("near_start", "2026-09-07T22:50:00Z", 0.55)):
+            conn.execute(
+                "INSERT INTO market_snapshots (prediction_id, fetched_utc,"
+                " source, line, implied_prob, kind) VALUES (?, ?, 'planted',"
+                " ?, ?, ?)", (pid, when, rung, implied, kind))
+        ids.append(pid)
+    conn.commit()
+    _priced.write_for(conn, ids)
+    quotes = {}
+    for market in sorted({f[0] for f in forecasts}):
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " last_price, fetched_utc, read_kind) VALUES (?, ?, 'E', ?, ?, ?,"
+            " ?, ?, 'home', 0.44, 0.46, 0.45, '2026-09-07T21:35:00Z',"
+            " 'near_start')",
+            (_atl.VENUE, f"T-{market}", sport, game, market,
+             "home_win" if market == "moneyline" else "home_margin",
+             None if market == "moneyline" else -20.5))
+        quotes[market] = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    for i, ((market, _rung, _who, _pass, _written, prob), pid) in enumerate(
+            zip(forecasts, ids)):
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+            " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+            " created_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'home', ?, NULL,"
+            " NULL, ?, 0.45, 0.45, 'mid', ?)",
+            (pid, quotes[market], _atl.VENUE, sport, game, market,
+             "home_win" if market == "moneyline" else "home_margin",
+             None if market == "moneyline" else -20.5,
+             "line_less" if market == "moneyline" else "rung_matched", prob,
+             _Q17_CLAIMED.format(i)))
+    conn.execute("UPDATE predictions SET resolved_utc = '2026-09-08T03:00:00Z',"
+                 " outcome = 1 WHERE resolved_utc IS NULL")
+    conn.execute("UPDATE at_the_line_claims SET resolved_utc ="
+                 " '2026-09-08T03:00:00Z', outcome = 1")
+    conn.commit()
+    _priced.resolve_forecasts(conn)
+    return ids
+
+
+def _q17_counts(conn, sport: str, market: str) -> dict:
+    """What the Record page states for one market, per forecaster: at the
+    venue's line, priced, where the line went, and beside the blind curve."""
+    from gridiron import views as _views
+
+    said = {}
+    for c in calibration.at_the_line_scorecard(conn, sport=sport)["categories"]:
+        if c["market"] == market:
+            said[("at the venue's line", c["predictor"])] = c["n"]
+    for c in calibration.priced_scorecard(conn, sport=sport)["categories"]:
+        if c["market"] == market:
+            said[("priced", c["predictor"])] = c["n"]
+    for c in _views.drift_report(conn, sport)["categories"]:
+        if c["market"] == market:
+            said[("where the line went", c["predictor"])] = c["n"]
+    # THE STATISTICAL MODEL'S CURVE, whose line beside it is always drawn
+    # (the reasoning pass's carries one only in a market it no longer asks).
+    for c in calibration.blind_categories(conn, sport=sport):
+        if (c["market"] == market and c.get("outlook")
+                and c["filters"]["predictor"] == "statistical"):
+            said[("beside the blind curve", "statistical")] = (
+                c["n"], c["outlook"]["resolved"])
+    return said
+
+
+def _q17_question(same: str) -> str:
+    """A standing rule keyed by `same` (SQL over p2 and p): the latest
+    forecast of the question before the start, a withdrawn one never."""
+    return (" AND NOT EXISTS (SELECT 1 FROM prediction_voids vq"
+            "                 WHERE vq.prediction_id = p.id)"
+            " AND p.id = (SELECT p2.id FROM predictions p2"
+            "               JOIN games g2 ON g2.id = p2.game_id"
+            f"             WHERE {same}"
+            "                AND NOT EXISTS (SELECT 1 FROM prediction_voids v2"
+            "                                 WHERE v2.prediction_id = p2.id)"
+            "                AND (g2.kickoff_utc IS NULL"
+            "                     OR p2.created_utc <= g2.kickoff_utc)"
+            "              ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)")
+
+
+#: The standing rule keyed WITHOUT THE RUNG (two rungs of one game one
+#: question) and WITHOUT THE FORECASTER (the question chosen among both
+#: forecasters' rows), each written out as a door of its own would write it.
+_Q17_NO_RUNG = _q17_question(
+    "p2.predictor = p.predictor AND p2.game_id = p.game_id"
+    " AND p2.market_type = p.market_type AND p2.subject = p.subject")
+_Q17_NO_FORECASTER = _q17_question(
+    "p2.game_id = p.game_id AND p2.market_type = p.market_type"
+    " AND p2.subject = p.subject AND p2.line_asked IS p.line_asked")
+
+
+def _q17_doors(standing: str, partition: str):
+    """The four doors keyed as `standing` (a standing rule's SQL) and
+    `partition` (an at-the-line window's key) say, each shaped as the
+    shipped door's rows so any tree's builder reads them: at the venue's
+    line, priced, where the line went, and the blind standing clause
+    itself (which the curve and the outlook both read)."""
+
+    def at_the_line(conn, *, sport, market, predictor, event_tier=None):
+        # THE WINDOW OVER BOTH FORECASTERS' CLAIMS, filtered to the one named
+        # after it is chosen: the forecaster is keyed only if `partition`
+        # names it.
+        return conn.execute(
+            "SELECT * FROM ("
+            " SELECT c.*, p.predictor, p.market_type, p.prop_type, p.subject,"
+            "        p.line_asked, g.season, g.week,"
+            f"       ROW_NUMBER() OVER (PARTITION BY {partition}"
+            "                          ORDER BY c.created_utc DESC, c.id DESC)"
+            "          AS latest_first"
+            "   FROM at_the_line_claims c"
+            "   JOIN predictions p ON p.id = c.prediction_id"
+            "   JOIN games g ON g.id = c.game_id"
+            "  WHERE c.sport = ? AND c.market = ?"
+            "    AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                     WHERE v.prediction_id = c.prediction_id)"
+            "    AND (g.kickoff_utc IS NULL OR c.created_utc < g.kickoff_utc))"
+            " WHERE latest_first = 1 AND predictor = ? ORDER BY id",
+            (sport, market, predictor)).fetchall()
+
+    def priced(conn, *, sport, predictor, event_tier=None):
+        return conn.execute(
+            "SELECT f.id, f.prediction_id, f.sport, p.game_id, p.market_type,"
+            "       p.prop_type,"
+            "       COALESCE(NULLIF(p.prop_type, ''), p.market_type) AS market,"
+            "       f.priced_prob, f.blind_prob, f.price_at_write, f.outcome,"
+            "       f.resolved_utc, p.predictor,"
+            "       p.market_type AS question_market, p.subject, p.line_asked,"
+            "       NULL AS event_tier"
+            "  FROM priced_forecasts f"
+            "  JOIN predictions p ON p.id = f.prediction_id"
+            "  JOIN games g ON g.id = p.game_id"
+            " WHERE f.sport = ? AND f.blend_version = ? AND p.predictor = ?"
+            + standing + " ORDER BY f.id",
+            (sport, config.PRICED_VERSION, predictor)).fetchall()
+
+    def drift(conn, *, sport, market, predictor, event_tier=None):
+        from gridiron import drift as _drift
+
+        rows = conn.execute(
+            "SELECT p.id, p.predictor, p.game_id, p.market_type, p.prop_type,"
+            "       p.subject, p.line_asked, p.model_prob, p.calibrated_prob,"
+            "       o.implied_prob AS opened, n.implied_prob AS near"
+            "  FROM predictions p JOIN games g ON g.id = p.game_id"
+            "  JOIN market_snapshots o"
+            "    ON o.prediction_id = p.id AND o.kind = 'open_at_predict'"
+            "  JOIN market_snapshots n"
+            "    ON n.prediction_id = p.id AND n.kind = 'near_start'"
+            " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
+            + standing + " ORDER BY p.id",
+            (sport, calibration.market_type_of(sport, market),
+             predictor)).fetchall()
+        out = []
+        for r in rows:
+            claim = (r["calibrated_prob"] if r["calibrated_prob"] is not None
+                     else r["model_prob"])
+            if abs(claim - r["opened"]) < _drift.MIN_DISAGREEMENT:
+                continue
+            movement = r["near"] - r["opened"]
+            out.append({"prediction_id": r["id"], "predictor": r["predictor"],
+                        "sport": sport, "market": market,
+                        "market_type": r["market_type"],
+                        "prop_type": r["prop_type"], "game_id": r["game_id"],
+                        "subject": r["subject"], "line_asked": r["line_asked"],
+                        "event_tier": None,
+                        "toward": movement if claim > r["opened"] else -movement})
+        return out
+
+    def clause(same_set):
+        return standing
+
+    return at_the_line, priced, drift, clause
+
+
+def _q17_refused(conn, sport: str, market: str, doors) -> tuple[list, list]:
+    """Swap each door in turn and demand the builder of each figure it feeds
+    refuse it by name -- each at-the-line figure on its own (the curve, the
+    hypothetical ledger, the edge, the coverage line, the venue's own pair;
+    the prover of 2026-09-28: the Record page stops at its first refusal,
+    so a figure built later could lose its recount unseen), and the
+    standing clause under every record that rides it: (caught, missed)."""
+    from gridiron import drift as _drift_module, views as _views
+    from gridiron.market import at_the_line as _atl, paper as _paper
+    from gridiron.priced import forecast as _priced
+
+    at_the_line, priced, drift, clause = doors
+    who = "statistical"
+    shipped = {"at": _atl.standing_claims, "priced": _priced.standing_forecasts,
+               "drift": _drift_module.standing_pairs,
+               "clause": calibration.standing_row_clause}
+
+    def claims_check(**payload):
+        calibration.assert_no_pooled_claims(
+            dict({"sport": sport, "record": "at_the_line"}, **payload))
+
+    def the_curve():
+        claims_check(categories=[calibration.at_the_line_curve(
+            conn, sport=sport, market=market, predictor=who)])
+
+    def the_ledger():
+        claims_check(paper=[_paper.ledger(conn, sport=sport, market=market,
+                                          predictor=who)])
+
+    def the_edge():
+        claims_check(edge=calibration.at_the_line_edge(
+            conn, sport=sport, market=market, predictor=who))
+
+    def the_coverage():
+        claims_check(coverage=[r for r in _atl.coverage(
+            conn, sport=sport, predictor=who) if r["market"] == market])
+
+    def the_venue_pair():
+        _drift_module.assert_no_pooled_drift_counts(
+            {"sport": sport, "categories": [], "venue_markets": [
+                _drift_module.venue_report(conn, sport=sport, market_type=market,
+                                           predictor=who)]})
+
+    probes = (
+        ("the at-the-line door, the Record page", "at", at_the_line,
+         lambda: calibration.at_the_line_scorecard(conn, sport=sport)),
+        ("the at-the-line door, the curve", "at", at_the_line, the_curve),
+        ("the at-the-line door, the hypothetical ledger", "at", at_the_line,
+         the_ledger),
+        ("the at-the-line door, the edge", "at", at_the_line, the_edge),
+        ("the at-the-line door, the coverage line", "at", at_the_line,
+         the_coverage),
+        ("the at-the-line door, the venue's own pair", "at", at_the_line,
+         the_venue_pair),
+        ("the priced door, the Record page", "priced", priced,
+         lambda: calibration.priced_scorecard(conn, sport=sport)),
+        ("the drift door, the gate list", "drift", drift,
+         lambda: _views.drift_report(conn, sport)),
+        ("the drift door, the learning panel", "drift", drift,
+         lambda: _views.learning(conn, sport)),
+        ("the standing clause, the blind curve and the line beside it",
+         "clause", clause,
+         lambda: calibration.blind_categories(conn, sport=sport)),
+        ("the standing clause, the coverage line at the venue's line",
+         "clause", clause, the_coverage),
+        ("the standing clause, the priced record", "clause", clause,
+         lambda: calibration.priced_scorecard(conn, sport=sport)),
+        ("the standing clause, where the line went", "clause", clause,
+         lambda: _views.drift_report(conn, sport)))
+    caught, missed = [], []
+    for name, which, door, build in probes:
+        if which == "at":
+            _atl.standing_claims = door
+        elif which == "priced":
+            _priced.standing_forecasts = door
+        elif which == "drift":
+            _drift_module.standing_pairs = door
+        else:
+            calibration.standing_row_clause = door
+        try:
+            build()
+        except calibration.MergedCurve as exc:
+            caught.append(f"{name}: {str(exc).splitlines()[0][:200]}")
+        else:
+            missed.append(name)
+        finally:
+            _atl.standing_claims = shipped["at"]
+            _priced.standing_forecasts = shipped["priced"]
+            _drift_module.standing_pairs = shipped["drift"]
+            calibration.standing_row_clause = shipped["clause"]
+    return caught, missed
+
+
+def plant_a_door_keyed_without_the_rung() -> Result:
+    """Count two rungs of one college game as ONE bet, in every record.
+
+    THE RULING (question 21, 2026-09-28): "the line the forecaster was asked
+    (the rung). Two rungs on one game are two questions." The live NCAAF
+    point spread record holds twelve games asked at two rungs, the morning
+    pass's and a later pass's -- and until this date the at-the-line door
+    (a window over game, market and side) and the drift door (one pair per
+    game) counted each as one bet, while the priced record and the outlook
+    counted two. This world is one such game, every record's rows through
+    the schema's own rules; it proves the Record page states two bets in
+    each record, then swaps in a door keyed without the rung -- the
+    at-the-line window as it stood, the priced and drift doors on a standing
+    rule without the rung, and that standing rule as the blind record's own
+    clause, so the curve and the line beside it move together -- and
+    demands each builder refuse it by name. Each such door agrees with its
+    own distinct bets; only the recount by the one key
+    (`gridiron.recount`) sees it.
+    """
+    import tempfile
+
+    from gridiron import db as _db
+
+    guard = ("gridiron.bet, gridiron.recount, calibration.assert_no_pooled_claims, "
+             "calibration.assert_no_pooled_priced_counts, "
+             "drift.assert_no_pooled_drift_counts, "
+             "calibration.assert_no_pooled_outlooks")
+    violation = "two rungs of one game counted as one bet"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _q17_world(conn, "cfb", (
+            ("spread", -14.5, "statistical", "early", "2026-09-01T06:58:58Z", 0.80),
+            ("spread", -24.5, "statistical", "final", "2026-09-07T15:00:56Z", 0.76)))
+        try:
+            shipped = _q17_counts(conn, "cfb", "spread")
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_ONE_BET, violation, guard, False,
+                          f"the shipped builders refuse an honest world: {exc}")
+        want = {("at the venue's line", "statistical"): 2,
+                ("at the venue's line", "llm"): 0,
+                ("priced", "statistical"): 2,
+                ("where the line went", "statistical"): 2,
+                ("beside the blind curve", "statistical"): (2, 2)}
+        if shipped != want:
+            conn.close()
+            return Result(LAW_ONE_BET, violation, guard, False,
+                          f"NOT CAUGHT - the Record page states {shipped} for "
+                          f"one game asked at two rungs; wanted two bets in "
+                          f"every record")
+        caught, missed = _q17_refused(conn, "cfb", "spread", _q17_doors(
+            _Q17_NO_RUNG, "c.game_id, c.market, c.side"))
+        conn.close()
+    if missed:
+        return Result(LAW_ONE_BET, violation, guard, False,
+                      "NOT CAUGHT - a door keyed without the rung counts two "
+                      "rungs of one game as one bet: " + "; ".join(missed))
+    return Result(LAW_ONE_BET, violation, guard, True,
+                  "two rungs are two bets in every record on the shipped "
+                  "doors; with a door keyed without the rung swapped in -- "
+                  + " | ".join(caught))
+
+
+def plant_a_door_keyed_without_the_forecaster() -> Result:
+    """Let the reasoning pass's later row stand in for the statistical
+    model's question, in every record.
+
+    THE RULING (question 17, 2026-09-27): "one function defines a distinct
+    bet: forecaster + the venue's question". A door that chooses a
+    question's standing row among BOTH forecasters' rows and only then keeps
+    the one named -- a window partitioned by the question alone, a standing
+    rule without the forecaster -- names one forecaster, counts only its
+    rows, and agrees with its own distinct bets, while the statistical
+    model's question has vanished from its count because the reasoning pass
+    answered it a second later. This world is that MLB moneyline game; it
+    proves each forecaster's count is one bet in every record, then swaps
+    each door, and the blind standing clause, keyed without the forecaster
+    and demands each builder refuse it by name.
+    """
+    import tempfile
+
+    from gridiron import db as _db
+
+    guard = ("gridiron.bet, gridiron.recount, calibration.assert_no_pooled_claims, "
+             "calibration.assert_no_pooled_priced_counts, "
+             "drift.assert_no_pooled_drift_counts, "
+             "calibration.assert_no_pooled_outlooks")
+    violation = "one forecaster's question counted by another's row"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _q17_world(conn, "mlb", (
+            ("moneyline", None, "statistical", "final", "2026-09-07T21:05:00Z", 0.62),
+            ("moneyline", None, "llm", "final", "2026-09-07T21:05:01Z", 0.66)))
+        try:
+            shipped = _q17_counts(conn, "mlb", "moneyline")
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_ONE_BET, violation, guard, False,
+                          f"the shipped builders refuse an honest world: {exc}")
+        mine = {k: v for k, v in shipped.items() if k[1] == "statistical"}
+        want = {("at the venue's line", "statistical"): 1,
+                ("priced", "statistical"): 1,
+                ("where the line went", "statistical"): 1,
+                ("beside the blind curve", "statistical"): (1, 1)}
+        if mine != want or shipped.get(("at the venue's line", "llm")) != 1:
+            conn.close()
+            return Result(LAW_ONE_BET, violation, guard, False,
+                          f"NOT CAUGHT - the Record page states {shipped} for "
+                          f"one game answered by both forecasters; wanted one "
+                          f"bet each")
+        caught, missed = _q17_refused(conn, "mlb", "moneyline", _q17_doors(
+            _Q17_NO_FORECASTER,
+            "p.game_id, p.market_type, p.prop_type, p.subject, p.line_asked"))
+        conn.close()
+    if missed:
+        return Result(LAW_ONE_BET, violation, guard, False,
+                      "NOT CAUGHT - a door keyed without the forecaster lets "
+                      "the reasoning pass's row stand in for the statistical "
+                      "model's question: " + "; ".join(missed))
+    return Result(LAW_ONE_BET, violation, guard, True,
+                  "one bet per forecaster in every record on the shipped "
+                  "doors; with a door keyed without the forecaster swapped in "
+                  "-- " + " | ".join(caught))
+
+
+def plant_a_distinct_bet_keyed_by_hand() -> Result:
+    """Spell a distinct bet afresh in the package, four ways the shipped
+    code did until 2026-09-28, and demand the source scan name each.
+
+    `audit.check_every_count_keys_one_bet` (operator question 17): a
+    function of its own named as a key (`bet_of`), a `distinct_bets` figure
+    counted by a set of its own, a window partitioned by hand -- in a plain
+    string and in an f-string -- and, in the running code, a standing clause
+    that matches the question by hand, and the one function's own key with
+    the rung dropped. The shipped package must pass first.
+    """
+    guard = "audit.check_every_count_keys_one_bet"
+    violation = "a distinct bet keyed by hand, not by gridiron.bet"
+    check = getattr(audit, "check_every_count_keys_one_bet", None)
+    if check is None:
+        return Result(LAW_ONE_BET, violation, guard, False,
+                      "NOT CAUGHT - no scan reads the package for a count keyed "
+                      "its own way (there is no one function to key by)")
+    try:
+        check()
+    except audit.LawViolation as exc:
+        return Result(LAW_ONE_BET, violation, guard, False,
+                      f"the scan refuses the shipped package: {exc}")
+    planted = textwrap.dedent('''
+        # PLANTED VIOLATION (operator question 17): a count keyed by hand.
+        def bet_of(row):
+            return (row["game_id"], row["market"], row["side"])
+
+
+        def a_curve(rows):
+            return {"n": len(rows),
+                    "distinct_bets": len({(r["game_id"], r["market"]) for r in rows})}
+
+
+        HAND_WINDOW = ("ROW_NUMBER() OVER (PARTITION BY c.game_id, c.market,"
+                       " c.side ORDER BY c.id DESC)")
+
+
+        def a_window(key):
+            return f"ROW_NUMBER() OVER (PARTITION BY {key} ORDER BY c.id DESC)"
+        ''')
+    caught, missed = [], []
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        (root / "market" / "planted_count.py").write_text(planted, encoding="utf-8")
+        try:
+            check(root)
+        except audit.LawViolation as exc:
+            text = str(exc)
+            for name, needle in (
+                    ("a key function of its own", "`bet_of` keys a distinct bet"),
+                    ("distinct bets counted by a set", "`distinct_bets` is counted"),
+                    ("a window keyed in a plain string", "written out in a plain string"),
+                    ("a window keyed in an f-string",
+                     "partitioned by something other than")):
+                (caught if needle in text else missed).append(name)
+        else:
+            missed.append("every planted shape")
+    original = calibration.standing_row_clause
+    calibration.standing_row_clause = lambda same_set: _Q17_NO_RUNG
+    try:
+        check()
+    except audit.LawViolation as exc:
+        caught.append(f"a standing clause matching the question by hand: "
+                      f"{str(exc).splitlines()[-1].strip()[:120]}")
+    else:
+        missed.append("a standing clause matching the question by hand")
+    finally:
+        calibration.standing_row_clause = original
+    # AND THE ONE FUNCTION'S OWN KEY WITH THE RUNG DROPPED (the prover,
+    # 2026-09-28): every door and every recount read `bet.KEY`, so they
+    # would move alike and agree; the scan holds it to the key as ruled.
+    from gridiron import bet as _bet
+
+    ruled = _bet.KEY
+    _bet.KEY = tuple(column for column in ruled if column != "line_asked")
+    try:
+        check()
+    except audit.LawViolation as exc:
+        caught.append("the one function's key with the rung dropped: "
+                      + next((line.strip() for line in str(exc).splitlines()
+                              if "bet.KEY" in line), "")[:120])
+    else:
+        missed.append("the one function's key with the rung dropped")
+    finally:
+        _bet.KEY = ruled
+    if missed:
+        return Result(LAW_ONE_BET, violation, guard, False,
+                      "NOT CAUGHT - the package keys a distinct bet its own way "
+                      "and the scan passes it: " + "; ".join(missed))
+    return Result(LAW_ONE_BET, violation, guard, True,
+                  "the shipped package passes; every planted key is named -- "
+                  + "; ".join(caught))
 
 
 LAW_NO_PRESSURE = "THE GRAMMAR OF A SPORTSBOOK, NEVER ITS PRESSURE"
@@ -17389,6 +17979,12 @@ def main() -> int:
     # QUESTIONS (operator question 14, ruled 2026-09-27, 3 of 3).
     results.append(plant_a_blind_outlook_counting_superseded_passes())
     results.append(plant_a_blind_outlook_game_counted_twice())
+    # ONE FUNCTION DEFINES A DISTINCT BET (operator question 17, ruled
+    # 2026-09-27; question 21, 2026-09-28): every record's door keyed by
+    # `gridiron.bet`, recounted without the door, and no key spelled by hand.
+    results.append(plant_a_door_keyed_without_the_rung())
+    results.append(plant_a_door_keyed_without_the_forecaster())
+    results.append(plant_a_distinct_bet_keyed_by_hand())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

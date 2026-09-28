@@ -108,13 +108,24 @@ def ledger(conn: sqlite3.Connection, *, sport: str, market: str,
     the reasoning pass 66 (on 23 September, 106 and "-4.34 units", for 30 and
     37). It reads the door (`at_the_line.standing_claims`) now, one
     forecaster and one bet at a time, and says whose it is.
+
+    ONE PER DISTINCT BET, RECOUNTED (operator question 17, 2026-09-28): the
+    door keys by `bet`, two rungs of one game two bets; the same read asks
+    `gridiron.recount` for the qualifying claims at this threshold without
+    the door, and the payload carries it as `recounted` for
+    `calibration.assert_no_pooled_claims` to hold `n` to.
     """
+    from .. import bet, db, recount
     from . import at_the_line
 
     config.require_sport(sport, "paper.ledger")
-    claims = at_the_line.settled(at_the_line.standing_claims(
-        conn, sport=sport, market=market, predictor=predictor,
-        event_tier=event_tier))
+    with db.one_instant(conn):
+        claims = at_the_line.settled(at_the_line.standing_claims(
+            conn, sport=sport, market=market, predictor=predictor,
+            event_tier=event_tier))
+        again = recount.at_the_line(conn, sport=sport, market=market,
+                                    predictor=predictor, event_tier=event_tier,
+                                    threshold=threshold)
 
     counted = 0
     units = 0.0
@@ -150,7 +161,8 @@ def ledger(conn: sqlite3.Connection, *, sport: str, market: str,
         "hypothetical": True,
         "threshold": threshold if threshold is not None else config.EDGE_DISAGREEMENT_THRESHOLD,
         "n": counted,
-        "distinct_bets": at_the_line.count_of_bets(carried),
+        "distinct_bets": bet.count(carried),
+        "recounted": again["qualifying"],
         "forecasters_counted": sorted({c["predictor"] for c in carried}),
         "minimum_for_a_claim": gate,
         "fee_source": FEE_SOURCE,

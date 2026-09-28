@@ -315,6 +315,13 @@ def test_a_pooled_outlook_is_refused_by_name(tmp_path):
     refused(lambda _, p: p["categories"][index + 1].update(
         outlook=copy.deepcopy(p["categories"][index]["outlook"])),
         "names forecaster 'statistical' beside the 'llm'")
+    # A COUNT THE RECOUNT DOES NOT MAKE (operator question 17, 2026-09-28):
+    # the curve and the outlook agree, and the recount made without their
+    # door, one per distinct bet, does not -- or is not there
+    refused(lambda o, _: o.update(recounted=2),
+            "where the recount made without its door finds 2 and 1")
+    refused(lambda o, _: o.update(recounted_written=None),
+            "where the recount made without its door finds 1 and None")
 
 
 def test_the_count_as_it_stood_is_refused_by_the_builder_the_api_and_the_gate(

@@ -610,11 +610,20 @@ def _at_the_line_payload():
     fixture proves only that the fixture is polite. Read from the gate's copy
     of it from 2026-09-24, which holds the same rows.
     """
-    from gridiron import calibration, config
+    from gridiron import audit, calibration, config
 
     conn = _record_conn()
-    return {"sports": [calibration.at_the_line_scorecard(conn, sport=sport)
-                       for sport in config.SPORTS]}
+    try:
+        return {"sports": [calibration.at_the_line_scorecard(conn, sport=sport)
+                           for sport in config.SPORTS]}
+    except (calibration.MergedCurve, calibration.MergedRecord) as exc:
+        # A POOLED COUNT FAILS THIS STEP BY NAME (operator question 17,
+        # 2026-09-28), rather than ending the gate in a traceback: the
+        # builder's guard now also refuses a count the recount by the one
+        # distinct-bet key does not make, and the row that names it
+        # (`check_the_at_the_line_record_is_never_pooled`) runs later.
+        raise audit.LawViolation(
+            f"the at-the-line payload could not be built to scan: {exc}") from exc
 
 
 def step_2_guards() -> bool:
@@ -894,6 +903,18 @@ def step_2_guards() -> bool:
         # gate built NFL's alone.
         ("the blind record's outlook counts its curve's standing questions",
          lambda: audit.check_the_blind_outlook_is_never_pooled(
+             _record_conn())),
+        # OPERATOR QUESTION 17 (ruled 2026-09-27; built 2026-09-28): one
+        # function defines a distinct bet -- the forecaster and the venue's
+        # question, the rung asked included -- and every count reads it. In
+        # the source, no count keys a bet its own way; and on the record's
+        # copy, the at-the-line record (built above only for the advice scan,
+        # which named no pooled count) counts what the recount by the one
+        # key counts, per sport.
+        ("every count keys a distinct bet by the one function (question 17)",
+         audit.check_every_count_keys_one_bet),
+        ("the at-the-line record counts one claim per distinct bet",
+         lambda: audit.check_the_at_the_line_record_is_never_pooled(
              _record_conn())),
         # THE ACTIVATION GATE (operator rulings, 2026-09-24). A market
         # forecasts from its activated fit, and that fit is the factor set

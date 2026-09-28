@@ -7328,3 +7328,279 @@ so the gate's release comparison is run after it, as with every rule since
   the correction and a written close is refused in the one rule's words on
   the record and the other's on a fresh build. Both refuse it; nothing
   counts either's words. Not this ruling's.
+
+## One function defines a distinct bet -- built 2026-09-28 *(operator question 17, step 1 of 2: the Record page's four gate records; with question 21; docs/briefs/2026-09-27-rulings-third-set.md and 2026-09-28-rulings.md)*
+
+"Q17: one function defines a distinct bet: forecaster + the venue's question
+(game, market, line). Morning and final pass of one question count once;
+which pass counts stays each record's standing rule; alt lines are separate
+questions. Q12's, Q14's and Q16's counts all use it. List every released
+number that moves." And "Q21: the line the forecaster was asked (the rung).
+Two rungs on one game are two questions." The brief of 2026-09-28 read the
+key as the forecaster, the game, the market (`market_type`, and the prop
+type for a prop), the subject and the rung asked (`line_asked`, NULL one
+value). This step puts the function in and moves the four records the
+Record page states gate counts for onto it -- at the venue's line, the
+priced record, where the line went, and the line beside each blind curve.
+Question 12's recommendation counts (question 22) are step 2. **A
+MEASUREMENT RULE, NOT AN EDIT**: no row, table, column or schema object
+changes; nothing is written.
+
+### MEASURED FIRST *(2026-09-28, ~21:00Z; one copy of the record made through `db.back_up_the_live_record` into `scratchpad/q17/step1/`, read through `db.read_only`; deleted at the end of the step)*
+
+- **Six keys counted a bet.** The standing clause, the priced door and the
+  outlook door: the question (game, market, subject, rung), per forecaster.
+  `drift.bet_of`: the game and market (the player for a prop) -- no rung.
+  The at-the-line door: a window over game, market and side -- no rung, no
+  subject. Its coverage line: the game alone. (Question 12's pairs: game
+  and market across forecasters -- step 2.)
+- **Games asked at two rungs, all passes, per forecaster**: NCAAF point
+  spread 45 (statistical), MLB total 11 (statistical) and 8 (reasoning
+  pass), NFL point spread 13, NFL total 1. Two players' lines of one game
+  are two subjects, as they always were.
+- **No forecaster's claims at the venue's line sit on two rungs of one game
+  yet**: every at-the-line cell holds as many ruled keys as game-market-side
+  keys (NCAAF spread 46, MLB moneyline 113 and 114, MLB spread 105, ...), and
+  no claim's game or market differs from its forecast's.
+- **The prop type.** Every stored prop's subject names its type, so the
+  standing clause's question (game, market, subject, forecaster, rung)
+  already carried it. 32 NFL week-one props of 29 August (fs1) have no
+  prop type at all; 10 of their questions were answered again under fs2
+  with one, and keyed by the prop type they are two keys. No count reads a
+  prop with no type (every count asks a prop by its type), and with the
+  prop type in the key, written `IS`, every blind curve of every sport
+  counts what it did (2110 settled standing rows either way) and SQLite
+  searches the question index as before (0.05 s against 0.06 s).
+
+### EVERY FIGURE THAT MOVED, before and after *(the same copy each side; 088e538 archived and this tree, each building every at-the-line curve, ledger, coverage line and edge, every priced category, the gate list and learning panel of where the line went, the venue's own pair, and every blind curve with its line, for every sport; 799 figures, 45 moved; `scratchpad/q17/step1/{before,after}.json`, `diff.py`)*
+
+| sport | where on the Record page | before | after | why |
+|---|---|---|---|---|
+| NCAAF | Where the line went, point spread, statistical (gate list and learning panel) | **65 pairs: "moved toward it 22% of the time over 65 games"** | **78 pairs: "28% ... over 78 questions"** | two rungs of one game are two questions (Q21); the step choosing between them is gone |
+| NFL | Where the line went, point spread, statistical | 9 of 50 pairs | 10 of 50 pairs | the same |
+| NCAAF | Where the line went, total, statistical | "15% ... over 54 games" | "15% ... over 54 questions" | the noun: a count of questions says questions |
+| MLB | Where the line went, moneyline, statistical | "27% ... over 52 games" | "27% ... over 52 questions" | the same |
+| NCAAF | At the venue's line, coverage, point spread, statistical | "46 of 142 games it forecast (32%)" | "46 of 187 questions it answered (25%)" | one per distinct bet, as the curve beside it |
+| NFL | coverage, point spread, statistical | "14 of 29 games (48%)" | "14 of 42 questions (33%)" | the same |
+| MLB | coverage, total, statistical / reasoning pass | "25 of 202 games (12%)" / "25 of 133 (19%)" | "25 of 213 questions (12%)" / "25 of 141 (18%)" | the same |
+| NFL | coverage, total, statistical | "1 of 17 games (6%)" | "1 of 18 questions (6%)" | the same |
+| every sport | every other coverage line (16 of the 21) | "... games it forecast" | "... questions it answered", the same numbers | the noun |
+| MLB | the venue's own pair, point spread, statistical (in the payload, not painted) | 55: "27% ... over 55 games" | 56: "29% ... over 56 questions" | the opening read at the claim's own strike (alt lines are separate questions) |
+| NFL | the venue's own pair, point spread, statistical (not painted) | 12 of 50 | 11 of 50 | the same |
+| MLB | the venue's own pair, moneyline, reasoning pass (not painted) | "... over 57 games" | "... over 57 questions" | the noun |
+
+**Unchanged, 754 figures**: every at-the-line curve, gate line, outlook,
+ledger and edge (no claim sits on a second rung of its game yet); every
+priced count (the priced door already kept the rung); every blind curve and
+the line beside it (the outlook door already kept the rung; the prop type in
+the key moves nothing). **No gate crossed a threshold either way**: NCAAF
+point spread's drift was past the fifty and stays past it, its share moving
+from 22% to 28%.
+
+### BUILT *(2026-09-28)*
+
+- **`gridiron.bet`, the one function.** `bet.KEY` is the key written once;
+  `bet.of(row)` and `bet.count(rows)` in Python, `bet.columns(alias)` (a
+  SELECT, so a door's rows carry the key off the forecast itself, and a
+  window's PARTITION BY) and `bet.same(a, b)` (the SQL match, `IS`) in SQL,
+  all from the tuple. A row without the key is refused by name
+  (`bet.NotABet`). Closure-clean -- it imports nothing of the package and
+  names no market data -- because question 16's correction, inside the
+  blind import closure, will read it.
+- **The doors.** `calibration.standing_row_clause` matches the question by
+  `bet.same` both times it asks. `at_the_line.standing_claims` partitions
+  its window by `bet.columns('p')` and selects the key off the forecast
+  (the at-the-line record's own standing rule unchanged: the last claim
+  before the start, the id breaking a tie). `priced.forecast.standing_forecasts`,
+  `drift.standing_pairs` and `horizon.standing_questions` select
+  `bet.columns`; drift's step keeping one pair per game is gone. The four
+  `bet_of`, four `count_of_bets` and `calibration.distinct_bets` are gone;
+  every `distinct_bets` is `bet.count`. The coverage line counts one per
+  standing question, read when its key holds a standing claim, and says
+  "questions it answered"; `language.drift_line` says "over N questions"
+  past the fifty ("player lines" for a prop, as before), as the venue
+  pair's line does.
+- **The venue's own pair at one strike.** `drift._pairs_of` reads the
+  opening ladder at the claim's own strike (`at_the_line.home_view_line`,
+  both sides in the claim's view; a moneyline has none on either), and a
+  claim whose strike the opening read did not quote has no pair: until
+  this date the open half was the opening ladder's own line, so when the
+  venue's line moved between the open and the start the pair compared two
+  questions. `drift.venue_report` now carries its pairs' `distinct_bets`
+  and `forecasters_counted`, how many standing claims the door handed it
+  (`claims_read`) and the recount's (`recounted`).
+- **THE RECOUNT** (`gridiron.recount`): each record's count worked out
+  again from rows read straight off their tables -- no door, no standing
+  clause, no window -- grouped by `bet.of`, by the record's standing rule
+  restated in Python (`standing_of`: the blind record's; `standing_claims_of`:
+  the at-the-line record's). Each builder asks it beside its door inside one
+  read (`db.one_instant`: one read transaction, so a claim or forecast
+  written between the two reads cannot make an honest count look pooled and
+  the page answer 500) and puts it on the payload: `recounted` on every
+  at-the-line curve, ledger and edge, priced category, drift category and
+  blind outlook; `read_recounted` on a coverage line; `recounted_written` on
+  an outlook; `claims_read`/`recounted` on the venue's pair. A priced market
+  the recount holds is a category even where the door found none, and so is
+  a coverage market, so a door that lost a whole market is seen.
+- **The guards recount on it.** `calibration.assert_no_pooled_claims`,
+  `assert_no_pooled_priced_counts`, `assert_no_pooled_outlooks` and
+  `drift.assert_no_pooled_drift_counts` refuse by name a count the recount
+  does not make, or a payload carrying none; the drift guard now also reads
+  the venue's own pair, which had no guard. A door keyed without the rung,
+  or across forecasters, agrees with its own `distinct_bets` -- only a
+  count made without it sees it.
+- **The source scan** (`audit.check_every_count_keys_one_bet`, gate step 2,
+  "every count keys a distinct bet by the one function (question 17)"):
+  refuses a function named as a key (`bet_of`, `count_of_bets`,
+  `distinct_bets`), a `distinct_bets` counted by anything but `bet.count`, a
+  window partitioned by anything but `bet.columns` (plain string or
+  f-string), a standing clause not matching by `bet.same`, and a `bet.KEY`
+  that is not the key as ruled (`audit.RULED_DISTINCT_BET`). On 088e538's
+  source it names 18 places.
+- **The gate names an at-the-line refusal.** `audit.check_the_at_the_line_record_is_never_pooled`
+  (a step-2 row of its own, as the other three records have); the advice
+  scan's build of the same payload (`tools/verify.py::_at_the_line_payload`)
+  now fails its step by name where a guard's refusal ended the gate in a
+  traceback; the three question-14 checks also name `bet.NotABet`.
+
+### PROVED *(2026-09-28; each planting run by this tree's `plant.py` against a `git archive` of 088e538 in `scratchpad/q17/step1/head/`, and against this tree; `prove/`)*
+
+- **`plant_a_door_keyed_without_the_rung`** (one NCAAF game asked at -14.5
+  and -24.5, every record's rows): on 088e538 it ESCAPES at the honest
+  world -- the Record page states 1 at the venue's line and 1 where the line
+  went, 2 priced and beside the curve -- and each of its 13 doors swapped in
+  past that (the at-the-line window as it stood, into the Record page, the
+  curve, the ledger, the edge, the coverage line and the venue's pair; the
+  priced and drift doors on a standing rule without the rung, the gate list
+  and the learning panel; that rule as the blind clause itself, under the
+  curve and its line, the coverage line, the priced record and the drift
+  record) escapes too. Here, two bets in every record, and all 13 refused
+  by name ("counts 1 where the recount made without its door finds 2").
+- **`plant_a_door_keyed_without_the_forecaster`** (one MLB moneyline game,
+  the reasoning pass a second after the statistical model): 088e538 states
+  one bet each and lets all 13 doors through (the statistical model's
+  question vanishing from its count); here all 13 are refused ("counts 0
+  where the recount ... finds 1").
+- **`plant_a_distinct_bet_keyed_by_hand`**: ESCAPES on 088e538 (no scan);
+  here the shipped package passes and six planted keys are named -- a
+  `bet_of`, a set-counted `distinct_bets`, a window keyed in a plain string
+  and in an f-string, a standing clause matching by hand, and `bet.KEY`
+  with the rung dropped.
+- **The harness**: 342 of 342 caught (339 on 088e538, plus these three).
+- **Flipped by the ruling, each said in its own text**: `plant_an_at_the_line_game_counted_twice`
+  (its statistical spread at -1.5 and +1.5: one bet to two, the curve and
+  the coverage line); `plant_a_drift_game_counted_twice` (its NCAAF game at
+  two rungs: one bet to two; the probe "the standing rule without the bet"
+  is the ruled count now and gives way to "one pair per game, the rung left
+  out", refused by the recount); `plant_an_at_the_line_curve_pooling_two_forecasters`
+  (a probe renamed: "a coverage line counting more questions than distinct
+  bets"); the payload helpers of the four question-14/item-6 plantings
+  carry an honest builder's recount. `tests/test_at_the_line.py` (the
+  two-rung world is three bets, not two: `..._counts_one_claim_per_distinct_bet`;
+  the withdrawal test asks one question twice; the refusals), `tests/test_drift.py`
+  (`test_two_standing_rungs_of_one_game_are_two_bets`; the prop test's two
+  rungs are two; "over N questions"; `test_two_rungs_counted_as_two_questions_are_refused`
+  becomes `test_a_door_keyed_without_the_rung_or_the_forecaster_is_refused`),
+  `tests/test_outlook.py` (two recount refusals added).
+- **THE PROVER** (`prove/prove1.txt`, `prove_race.txt`): five more ways
+  at a pooled count, each refused -- the at-the-line window keyed by the
+  venue's strike and labelled the rung (the recount), the priced rows with
+  the rung blanked (distinct bets), a drift door counting a question's two
+  passes (distinct bets), the outlook door handing the reasoning pass's
+  rows under the statistical model's name (the curve beside it), the
+  ledger reading a question's every look (distinct bets). What got
+  through, and was fixed before the commit: **a write between the door's
+  read and the recount's made an honest curve refused** ("counts 2 where
+  the recount ... finds 3": a 500 on the Record page while a scheduled task
+  writes) -- the two now read one instant (`db.one_instant`), and
+  `test_bet.py::test_a_write_between_the_door_and_the_recount_is_no_pooled_count`
+  fails with it taken away and passes with it; **`bet.KEY` itself** could
+  lose the rung and move door and recount alike -- the scan holds it to
+  `RULED_DISTINCT_BET`; **the drift recount asked a wider cell** than its
+  door for a market that is not a prop (no prop type, or any) -- it asks
+  the door's own; and **the Record page stops at its first refusal**, so
+  the plantings now swap each door under each figure it feeds (13 probes
+  apiece). Not a count and not closed: a door choosing another pass of the
+  same question keeps every count (the key's guards are about how many);
+  each record's own standing-rule tests hold which.
+
+### RENDERED *(2026-09-28; the browser suite's own world -- `seed_league` and `_build_world` -- on a scratch file, served by 088e538 and by this tree with the suite's test token; never the live app; `scratchpad/q17/step1/render.py`, `render/`)*
+
+The world was given a second look at the line for every statistical NFL
+forecast with a first look, seven final passes at seven other rungs for
+each early point spread question with a first look (each under a factor-set
+label of its own; so the drift count passes its fifty), and a claim before
+the start for every standing statistical point spread forecast of a
+settled game (the settled games' starts moved past today in the scratch
+world, since its forecasts are written today). Read at 1100px and 390px:
+
+- **At the venue's line**: 088e538 says "point spread, statistical: the
+  venue's line could be read for 8 of 12 games it forecast (67%)" beside a
+  curve of "8 of 100"; this tree "64 of 96 questions it answered (67%)"
+  beside a curve of "64 of 100" and a ledger of 56. The coverage lines wrap
+  inside the panel at 390px.
+- **What the record has taught it**: point spread's drift line on 088e538
+  "8 of 50 disagreements have a second look at the line ..."; here "When the
+  model disagreed by 5% or more, the market moved toward it 81% of the time
+  over 64 questions." -- the new noun in its sentence, readable at both
+  widths.
+- **What else is still counting**: "Where the line went after point spread,
+  statistical · 64 pairs · enough pairs to report a direction" (088e538: 8
+  of 50).
+- No horizontal page scroll and no console error at either width, on
+  either tree; no sentence contradicts another.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **The prop type is a column of the key**, as the brief reads the ruling,
+  `IS`-compared: a prop written with no type and one written '' are two
+  questions. Reversal: drop `"prop_type"` from `bet.KEY` and
+  `audit.RULED_DISTINCT_BET` (the subject carries it on every stored prop).
+- **The at-the-line record keeps its own standing rule**: a question's
+  claim is its last claim before the start, whichever pass wrote it -- not
+  the claim of the blind record's standing forecast ("which pass counts
+  stays each record's standing rule"). Reversal: filter the door's claims
+  to those whose forecast stands (`standing_row_clause`) before the window.
+- **"Alt lines are separate questions" reaches the venue's own pair**: the
+  opening read is taken at the claim's strike, and a claim whose strike
+  the open did not quote has no pair. Reversal: `rung_for(ladder)` for the
+  whole ladder in `drift._pairs_of`.
+- **The recount restates each standing rule in Python**, beside the one SQL
+  door: it is the guard, not a second door -- nothing counts through it --
+  and it reads the key from `gridiron.bet` like every door, so the two
+  differ only where a door keys or keeps otherwise. `RULED_DISTINCT_BET`
+  holds the key itself to the ruling, since a key changed in `bet` would
+  move door and recount alike. Reversal: drop the `recounted` checks.
+- **A count and its recount read one instant** (`db.one_instant`), on the
+  API's handle too; a connection already in a transaction is left as it is.
+- **Plain words**: the coverage line says "questions it answered" and a
+  drift line past the fifty "over N questions" ("games" was false for a
+  game asked at two rungs; "question" is the slate headings' word).
+- **The card beside a pick on the slate** counts through the at-the-line
+  door (so from the one function) and is not recounted on the slate itself:
+  the Record page's curve, which reads the same door, is.
+
+### OPEN *(found by this step; none of them a count it states)*
+
+- **`calibration.early_vs_final`** pairs a question's early and final pass
+  by a join written out by hand (game, market, subject, forecaster, factor
+  set, rung) -- a pairing, not a count of bets; it has no caller in the
+  package and states nothing on the Record page. For the re-read, or
+  question 16 if it is read there.
+- **The pick card's at-the-line sentence** (`views._at_the_line`) chooses a
+  forecast's claim by `created_utc = MAX(created_utc)`, so two claims of one
+  forecast in one second both match and the dictionary keeps whichever
+  comes last -- the 2026-09-10 tie the door fixed by id, on a sentence, not
+  a count.
+- **Step 2** moves question 12's recommendation counts onto `gridiron.bet`,
+  per forecaster (question 22); question 16 the correction gates.
+- **For question 27 (ruled in the second set of 28 September, ordered after
+  question 16): the blind standing rule lives in two texts now** -- the one
+  door, `calibration.standing_row_clause`, and the guard's restatement,
+  `recount.standing_of`. Choosing the standing pass by pass (a final pass
+  before the start stands, else the latest early one) changes both, in one
+  commit: changed in the clause alone, every count it moved would be
+  refused by its recount, by name -- the guard doing its work, not a
+  defect -- and the at-the-line record's own rule (`standing_claims` and
+  `recount.standing_claims_of`) is read by the ruling's "the at-the-line
+  claims through it" too.

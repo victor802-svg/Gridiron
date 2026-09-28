@@ -198,10 +198,12 @@ def standing_forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
     reasoning pass's (84).
 
     Every row carries its market as the record names it (`market`: the prop
-    type, or the market), its blind forecaster, the question's own keys and
-    its card's tier, so a payload can say how many distinct bets it counts
-    (`count_of_bets`) and whose -- counted beside the door, not by it.
+    type, or the market), its forecast's key (`bet.columns`, read off the
+    blind forecast: operator question 17, 2026-09-28) and its card's tier,
+    so a payload can say how many distinct bets it counts (`bet.count`) and
+    whose -- counted beside the door, not by it.
     """
+    from .. import bet
     from ..calibration import standing_row_clause
 
     refuse_a_pooled_count(sport, predictor, event_tier)
@@ -223,12 +225,10 @@ def standing_forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
             "              WHERE b.id = p.game_id AND e.event_tier = ?)")
         params.append(event_tier)
     return conn.execute(
-        "SELECT f.id, f.prediction_id, f.sport, f.game_id, f.market_type,"
-        "       f.prop_type,"
+        f"SELECT f.id, f.prediction_id, f.sport, {bet.columns('p')},"
         "       COALESCE(NULLIF(f.prop_type, ''), f.market_type) AS market,"
         "       f.priced_prob, f.blind_prob, f.price_at_write, f.outcome,"
-        "       f.resolved_utc, p.predictor, p.market_type AS question_market,"
-        "       p.subject, p.line_asked,"
+        "       f.resolved_utc,"
         f"      {tier_column} AS event_tier"
         "  FROM priced_forecasts f"
         "  JOIN predictions p ON p.id = f.prediction_id"
@@ -236,24 +236,6 @@ def standing_forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
         " WHERE f.sport = ? AND f.blend_version = ? AND p.predictor = ?"
         f"{tier_clause}{standing_row_clause(False)}"
         " ORDER BY f.id", params).fetchall()
-
-
-def bet_of(row) -> tuple:
-    """Which bet a priced row is on: the blind QUESTION it priced -- its game,
-    market, subject and rung -- without the forecaster who asked it.
-
-    The standing rule keeps one row per question PER FORECASTER, so within
-    one forecaster's count this key is unique; two forecasters, or two passes
-    of one question, in one count put two rows on one key, which is what
-    `calibration.assert_no_pooled_priced_counts` compares with the count.
-    """
-    return (row["game_id"], row["question_market"], row["subject"],
-            row["line_asked"])
-
-
-def count_of_bets(rows) -> int:
-    """How many distinct bets a list of priced rows is on."""
-    return len({bet_of(r) for r in rows})
 
 
 def settled(rows) -> list:

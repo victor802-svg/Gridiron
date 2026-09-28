@@ -147,10 +147,12 @@ def standing_questions(conn: sqlite3.Connection, *, sport: str, market: str,
     and total "272 of 100" beside 175 and 182, and UFC "62 of 100" beside a
     Numbered-card curve of 0.
 
-    Each row carries its market as the record names it, its forecaster, its
-    question's keys and its card read off its own bout, so a payload counts
-    beside the door how many distinct questions it holds and whose.
+    Each row carries its market as the record names it, its forecast's key
+    (`bet.columns`: the one function's, operator question 17, 2026-09-28) and
+    its card read off its own bout, so a payload counts beside the door how
+    many distinct bets it holds (`bet.count`) and whose.
     """
+    from . import bet
     from .calibration import market_type_of, prop_type_of, standing_row_clause
 
     refuse_a_pooled_count(sport, market, predictor, event_tier)
@@ -176,35 +178,14 @@ def standing_questions(conn: sqlite3.Connection, *, sport: str, market: str,
             "         WHERE b.id = p.game_id AND e.event_tier = ?)")
         params.append(event_tier)
     rows = conn.execute(
-        "SELECT p.id, p.game_id, p.market_type, p.prop_type, p.subject,"
-        "       p.line_asked, p.predictor, p.resolved_utc, g.season, g.week,"
+        f"SELECT p.id, {bet.columns('p')},"
+        "       p.resolved_utc, g.season, g.week,"
         f"      {tier_column} AS event_tier"
         "  FROM predictions p JOIN games g ON g.id = p.game_id"
         f" WHERE {' AND '.join(where)}{standing_row_clause(False)}"
         " ORDER BY p.id", params).fetchall()
     return [dict(r, market=market, settled=r["resolved_utc"] is not None)
             for r in rows]
-
-
-def bet_of(row) -> tuple:
-    """Which bet a standing forecast is on: its blind QUESTION -- game,
-    market, subject and rung -- without the forecaster who asked it.
-
-    THE BLIND RECORD'S OWN UNIT, the key the standing rule keeps one row per
-    (per forecaster), and the one the priced record counts by (1 of 3):
-    two rungs of one game are two questions on the blind curve, so the
-    outlook beside it counts them as the curve does. Within one forecaster's
-    count the key is unique; a question's two passes, or two forecasters'
-    rows, in one count put two rows on one key, which is what
-    `calibration.assert_no_pooled_outlooks` compares with the count.
-    """
-    return (row["game_id"], row["market_type"], row["subject"],
-            row["line_asked"])
-
-
-def count_of_bets(rows) -> int:
-    """How many distinct questions a list of standing forecasts is on."""
-    return len({bet_of(r) for r in rows})
 
 
 def settled(rows) -> list:
@@ -228,10 +209,34 @@ def _written_so_far(rows: list, season: int) -> tuple[int, int, int]:
     return len(this_season), len(slates), len(settled(rows))
 
 
+def _asked(conn: sqlite3.Connection, sport: str, market: str, predictor: str,
+           event_tier, season: int) -> tuple[list, dict]:
+    """One forecaster's standing questions through the door, and the same
+    cell recounted without it by the one key (`gridiron.recount`, operator
+    question 17, 2026-09-28) -- in one read, so the two see the same rows."""
+    from . import db, recount
+    from .calibration import market_type_of, prop_type_of
+
+    with db.one_instant(conn):
+        rows = standing_questions(conn, sport=sport, market=market,
+                                  predictor=predictor, event_tier=event_tier)
+        again = recount.outlook(conn, sport=sport,
+                                market_type=market_type_of(sport, market),
+                                prop_type=prop_type_of(sport, market),
+                                predictor=predictor, event_tier=event_tier,
+                                season=season)
+        ends = season_ends(conn, sport, season)
+    return rows, dict(again, season_ends=ends)
+
+
 def _counted(sport: str, market: str, predictor: str, event_tier,
-             rows: list, season: int, ends: str | None) -> dict:
+             rows: list, season: int, again: dict) -> dict:
     """The part of an outlook every kind shares: its counts, whose they are,
-    and how many distinct questions they hold -- counted beside the door."""
+    and how many distinct bets they hold -- counted beside the door
+    (`bet.count`) and again without it (`recounted`, `recounted_written`)."""
+    from . import bet
+
+    ends = again["season_ends"]
     written, slates_used, resolved = _written_so_far(rows, season)
     return {
         "sport": sport,
@@ -249,9 +254,11 @@ def _counted(sport: str, market: str, predictor: str, event_tier,
         # 2026-09-26): `resolved` counts every season's questions, so a line
         # with no rate this season must not deny the ones it has counted.
         "written_before": any(r["season"] != season for r in rows),
-        "distinct_bets": count_of_bets(settled(rows)),
-        "distinct_bets_written": count_of_bets(
+        "distinct_bets": bet.count(settled(rows)),
+        "distinct_bets_written": bet.count(
             [r for r in rows if r["season"] == season]),
+        "recounted": again["settled"],
+        "recounted_written": again["written"],
         "forecasters_counted": sorted({r["predictor"] for r in rows}),
         "tiers_counted": sorted({r["event_tier"] for r in rows
                                  if r["event_tier"] is not None}),
@@ -293,10 +300,8 @@ def market_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
     """
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
         if season is None else season
-    rows = standing_questions(conn, sport=sport, market=market,
-                              predictor=predictor, event_tier=event_tier)
-    out = _counted(sport, market, predictor, event_tier, rows, season,
-                   season_ends(conn, sport, season))
+    rows, again = _asked(conn, sport, market, predictor, event_tier, season)
+    out = _counted(sport, market, predictor, event_tier, rows, season, again)
     resolved, gate = out["resolved"], out["gate"]
 
     # A RETIRED MARKET PROJECTS NOTHING (R1, 2026-09-05): its settled count is
@@ -376,10 +381,8 @@ def llm_routed_off_outlook(conn: sqlite3.Connection, sport: str, market: str,
     """
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
         if season is None else season
-    rows = standing_questions(conn, sport=sport, market=market,
-                              predictor="llm", event_tier=event_tier)
-    out = _counted(sport, market, "llm", event_tier, rows, season,
-                   season_ends(conn, sport, season))
+    rows, again = _asked(conn, sport, market, "llm", event_tier, season)
+    out = _counted(sport, market, "llm", event_tier, rows, season, again)
     out.update({
         "slates_remaining": 0, "per_slate": None, "expected": out["resolved"],
         "expected_is_an_extrapolation": False,

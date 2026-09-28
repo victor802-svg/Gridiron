@@ -110,32 +110,6 @@ def refuse_a_pooled_count(sport: str, market, predictor, event_tier) -> None:
             f"{event_tier!r} counts nothing that exists.")
 
 
-def bet_of(pair) -> tuple:
-    """Which bet a pair is on: its game and market -- and the player, for a
-    prop -- without the forecaster, the pass or the rung.
-
-    THE AT-THE-LINE RECORD'S KEY (GRIDIRON_REPAIR item 6, 2026-09-26), for the
-    same reason: two standing questions of one game at two rungs read ONE
-    published line moving once. The key the door keeps one pair per, and the
-    key a payload's `distinct_bets` counts, so there is one key.
-    """
-    return (pair["game_id"], pair["market"],
-            pair["subject"] if pair["prop_type"] else None)
-
-
-def count_of_bets(pairs) -> int:
-    """How many distinct bets a list of pairs is on."""
-    return len({bet_of(p) for p in pairs})
-
-
-def _last_before_the_start(row) -> tuple:
-    """The order in which a bet's standing forecasts stand: one written before
-    the start beats one written after it (a backtest's), then the later, the
-    id breaking a tie -- item 6's rule for the claim a bet keeps."""
-    before = row["kickoff_utc"] is None or row["created_utc"] <= row["kickoff_utc"]
-    return (before, row["created_utc"], row["id"])
-
-
 def standing_pairs(conn: sqlite3.Connection, *, sport: str, market: str,
                    predictor: str,
                    event_tier: str | None = None) -> list[dict]:
@@ -162,21 +136,24 @@ def standing_pairs(conn: sqlite3.Connection, *, sport: str, market: str,
     and a question whose standing forecast has no second look is not counted
     either, even if a superseded pass of it had one.
 
-    ONE PER BET (`bet_of`). Two standing questions of one game at two rungs --
-    the live NCAAF point spread record holds twelve such games, the morning
-    pass's rung and a later pass's -- read one line moving once, and counting
-    both counted that movement twice ("over 79 games" were 78 questions on 66
-    games on 27 September). The bet's forecast is its LAST standing one
-    written before the start, the id breaking a tie, and the bet is counted
-    if that forecast has both looks and disagreed: the forecaster's last word
-    on the game is the one the market is measured against, and an earlier
-    rung is not its fallback.
+    ONE PER DISTINCT BET (operator question 17, ruled 2026-09-27; question
+    21, ruled 2026-09-28: "Two rungs on one game are two questions"). From
+    2026-09-27 this kept one pair per game and market (the player for a
+    prop), so of a game asked at two rungs -- the live NCAAF point spread
+    record holds twelve, the morning pass's rung and a later pass's -- only
+    the last standing forecast was counted. A bet is now `bet.of`, the key
+    the standing clause itself keeps one forecast per, so each standing
+    question is its forecaster's bet and there is nothing left to keep: the
+    step that chose between two rungs is gone. `gridiron.recount` works the
+    count out again without this door, and `assert_no_pooled_drift_counts`
+    refuses a count that differs.
 
     Each pair carries its forecaster, its market as the record names it (the
-    prop type, or the market), its bet's keys and its card read off its own
-    bout, so a payload counts beside the door how many bets it holds and
-    whose.
+    prop type, or the market), its forecast's key (`bet.columns`) and its card
+    read off its own bout, so a payload counts beside the door how many bets
+    it holds and whose.
     """
+    from . import bet
     from .calibration import market_type_of, prop_type_of, standing_row_clause
 
     refuse_a_pooled_count(sport, market, predictor, event_tier)
@@ -200,7 +177,7 @@ def standing_pairs(conn: sqlite3.Connection, *, sport: str, market: str,
             "              WHERE b.id = p.game_id AND e.event_tier = ?)")
         params.append(event_tier)
     rows = conn.execute(
-        "SELECT p.id, p.predictor, p.game_id, p.subject, p.line_asked,"
+        f"SELECT p.id, {bet.columns('p')},"
         "       p.created_utc, p.model_prob, p.calibrated_prob, g.kickoff_utc,"
         "       o.implied_prob AS opened, o.fetched_utc AS opened_utc,"
         "       n.implied_prob AS near, n.fetched_utc AS near_utc,"
@@ -216,17 +193,8 @@ def standing_pairs(conn: sqlite3.Connection, *, sport: str, market: str,
         f"{tier_clause}{standing_row_clause(False)}",
         params).fetchall()
 
-    kept: dict[tuple, dict] = {}
-    for row in rows:
-        pair = dict(row)
-        pair.update(sport=sport, market=market, prop_type=prop)
-        bet = bet_of(pair)
-        if bet not in kept or (_last_before_the_start(row)
-                               > _last_before_the_start(kept[bet])):
-            kept[bet] = pair
-
     out = []
-    for row in sorted(kept.values(), key=lambda r: r["id"]):
+    for row in sorted(rows, key=lambda r: r["id"]):
         if row["opened"] is None or row["near"] is None:
             continue
         claim = (row["calibrated_prob"] if row["calibrated_prob"] is not None
@@ -242,7 +210,8 @@ def standing_pairs(conn: sqlite3.Connection, *, sport: str, market: str,
             "predictor": row["predictor"],
             "sport": sport,
             "market": market,
-            "prop_type": prop,
+            "market_type": row["market_type"],
+            "prop_type": row["prop_type"],
             "game_id": row["game_id"],
             "subject": row["subject"],
             "line_asked": row["line_asked"],
@@ -280,11 +249,23 @@ def report(conn: sqlite3.Connection, *, sport: str, market: str,
     keys rather than trusted to the door, so a door that let a bet in twice,
     or another forecaster's pairs, or another card's, is seen by
     `assert_no_pooled_drift_counts` in the builders that serve this.
+
+    AND RECOUNTED WITHOUT THE DOOR (operator question 17, 2026-09-28): the
+    same read asks `gridiron.recount` for the cell's pairs, one per distinct
+    bet by the one key, and the category carries it as `recounted`.
     """
+    from . import bet, db, recount
     from .calibration import market_type_of, prop_type_of
 
-    found = standing_pairs(conn, sport=sport, market=market,
-                           predictor=predictor, event_tier=event_tier)
+    with db.one_instant(conn):
+        found = standing_pairs(conn, sport=sport, market=market,
+                               predictor=predictor, event_tier=event_tier)
+        # THE DOOR'S OWN CELL: a market that is not a prop asks rows with no
+        # prop type ('' -- the door's `IFNULL(p.prop_type, '') = ''`).
+        again = recount.drift(conn, sport=sport,
+                              market_type=market_type_of(sport, market),
+                              prop_type=prop_type_of(sport, market) or "",
+                              predictor=predictor, event_tier=event_tier)
     n = len(found)
     moved_toward = sum(1 for p in found if p["toward"] > 0)
     filters = {"sport": sport, "market": market, "predictor": predictor,
@@ -306,8 +287,10 @@ def report(conn: sqlite3.Connection, *, sport: str, market: str,
             sport, market, predictor, event_tier),
         "filters": filters,
         "n": n,
-        # COUNTED BESIDE THE DOOR, NOT BY IT (2026-09-27).
-        "distinct_bets": count_of_bets(found),
+        # COUNTED BESIDE THE DOOR, NOT BY IT (2026-09-27), and again without
+        # it (operator question 17, 2026-09-28).
+        "distinct_bets": bet.count(found),
+        "recounted": again,
         "forecasters_counted": sorted({p["predictor"] for p in found}),
         "tiers_counted": sorted({p["event_tier"] for p in found
                                  if p["event_tier"] is not None}),
@@ -351,12 +334,17 @@ def assert_no_pooled_drift_counts(payload: dict) -> None:
     Then, by name: a category of another record; one naming no forecaster,
     or counting another's pairs; one counting another card's pairs, or
     naming a card in a sport that has none; one category twice; more pairs
-    than distinct bets (a question's two passes, two rungs of one game); a
-    direction below the gate; a progress line or a sentence stating another
-    count than its own (the page said "over 75 games" for 48 standing rows
-    on 26 September); and a total across categories. Raised inside
-    `views.drift_report` and `views.learning`, so the API answers 500 rather
-    than serve a pooled count.
+    than distinct bets (a question's two passes); a count other than the
+    one `gridiron.recount` makes without the door, one per distinct bet by
+    the one key (operator question 17, 2026-09-28: a door keyed without the
+    rung, or across forecasters); a direction below the gate; a progress
+    line or a sentence stating another count than its own (the page said
+    "over 75 games" for 48 standing rows on 26 September); and a total
+    across categories. And the venue's own pair (`venue_markets`, from
+    2026-09-28): one forecaster's, one pair per distinct bet, read off every
+    standing claim the recount finds. Raised inside `views.drift_report` and
+    `views.learning`, so the API answers 500 rather than serve a pooled
+    count.
     """
     from . import calibration
 
@@ -409,9 +397,9 @@ def assert_no_pooled_drift_counts(payload: dict) -> None:
         if bets is None or n != bets:
             raise calibration.MergedCurve(
                 f"{law}: {what} counts {n} pairs for {bets} distinct "
-                f"bet{'' if bets == 1 else 's'}. A game is counted once per "
-                f"forecaster, on its last standing forecast, however many "
-                f"passes or rungs asked it.")
+                f"bet{'' if bets == 1 else 's'}. A question is counted once per "
+                f"forecaster, on its standing forecast, however many passes "
+                f"answered it.")
         if n < MIN_PAIRS and any(k in category for k in DIRECTION_KEYS):
             raise calibration.MergedCurve(
                 f"{law}: {what} reports a direction on {n} of the "
@@ -428,6 +416,56 @@ def assert_no_pooled_drift_counts(payload: dict) -> None:
             raise calibration.MergedCurve(
                 f"{law}: {what}'s sentence says {category.get('line')!r}, "
                 f"which is not its own count of {n}.")
+        # AND THE RECOUNT MADE WITHOUT THE DOOR (operator question 17,
+        # 2026-09-28): a door keyed without the rung, or across forecasters,
+        # counts other questions than the record holds while its own
+        # distinct bets, progress line and sentence all agree with it.
+        if category.get("recounted") != n:
+            raise calibration.MergedCurve(
+                f"{law}: {what} counts {n} pairs where the recount made "
+                f"without its door finds {category.get('recounted')!r}, one "
+                f"per distinct bet by the one key (`bet.of`: the forecaster, "
+                f"the game, the market, the subject and the rung asked). A "
+                f"door keyed any other way -- without the rung, or across "
+                f"forecasters -- counts other bets than the record holds "
+                f"(operator question 17, 2026-09-28).")
+    # THE VENUE'S OWN PAIR, which had no guard of its own until operator
+    # question 17 (2026-09-28): one forecaster's, one pair per distinct bet,
+    # and read off every claim the at-the-line record holds for the cell --
+    # the claims the door handed it, recounted without the door.
+    for entry in payload.get("venue_markets") or []:
+        what = (f"the venue's own pair for {entry.get('market_type')!r}, "
+                f"{entry.get('predictor')!r}")
+        named = entry.get("predictor")
+        if named not in FORECASTERS:
+            raise calibration.MergedCurve(
+                f"{law}: {what} names forecaster {named!r}. The statistical "
+                f"model's disagreements and the reasoning pass's are counted "
+                f"apart and never pooled.")
+        if entry.get("forecasters_counted") not in ([], [named]):
+            raise calibration.MergedCurve(
+                f"{law}: {what} is the {named!r} forecaster's and counts pairs "
+                f"on the claims of {entry.get('forecasters_counted')!r}: two "
+                f"forecasters pooled into one count.")
+        tier = entry.get("event_tier")
+        if (tier not in tiers) if tiers else tier is not None:
+            raise calibration.MergedCurve(
+                f"{law}: {what} names event tier {tier!r}; {sport}'s cards "
+                f"are reported side by side, never summed.")
+        n, bets = entry.get("n"), entry.get("distinct_bets")
+        if bets is None or n != bets:
+            raise calibration.MergedCurve(
+                f"{law}: {what} counts {n} pairs for {bets} distinct "
+                f"bet{'' if bets == 1 else 's'}. A question is one pair "
+                f"however many passes or looks read it.")
+        read, again = entry.get("claims_read"), entry.get("recounted")
+        if (not isinstance(read, int) or read != again
+                or not isinstance(n, int) or n > read):
+            raise calibration.MergedCurve(
+                f"{law}: {what} was handed {read!r} standing claims where the "
+                f"recount made without the door finds {again!r}, one per "
+                f"distinct bet by the one key (`bet.of`), for {n!r} pairs "
+                f"(operator question 17, 2026-09-28).")
 
 
 # ---------------------------------------------------------------------------
@@ -447,40 +485,54 @@ def assert_no_pooled_drift_counts(payload: dict) -> None:
 # opening.
 
 
-def venue_pairs(conn: sqlite3.Connection, *, sport: str, market_type: str,
-                predictor: str, event_tier: str | None = None) -> list[dict]:
-    """Every at-the-line claim that also has an opening read to compare with.
-
-    `toward` carries the same meaning as in `pairs()`: positive is movement in
-    the direction the model was pointing. The sign comes from the two stored
-    probabilities, both written for the same fixed proposition.
-
-    ONE FORECASTER'S BETS (GRIDIRON_REPAIR item 6, 2026-09-26): the claims
-    are the at-the-line record's own, through its door, one per game and
-    market -- a game is one pair however many passes forecast it.
-    """
+def _venue_claims(conn: sqlite3.Connection, *, sport: str, market_type: str,
+                  predictor: str, event_tier: str | None) -> list | None:
+    """The at-the-line record's standing claims the venue's pair is read
+    from, through its door -- or None on a record older than the opening
+    read, which has no pair to report."""
     from .market import at_the_line
 
-    config.require_sport(sport, "drift.venue_pairs")
     tables = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'")}
     if "at_the_line_claims" not in tables:
-        return []
+        return None
     columns = {r[1] for r in conn.execute("PRAGMA table_info(venue_quotes)")}
     if "read_kind" not in columns:
         # A RECORD OLDER THAN THE OPENING READ has no opening reads in it, so
         # there is no pair to report. Migrating here would make a reporting
         # function write to the database it is reading -- which is what the
         # gate's query-only handle refused, correctly, the first time this ran.
-        return []
+        return None
 
     # ONE PAIR PER BET, not per claim row (2026-09-23) nor per forecast
     # (2026-09-26): the venue is read on every firing, each look writes a
     # claim, and the morning and final pass each hold one. The door keeps the
-    # last claim before the start on each game, for one forecaster.
-    claims = at_the_line.standing_claims(
+    # last claim before the start on each distinct bet (`bet.of`, operator
+    # question 17, 2026-09-28), for one forecaster.
+    return at_the_line.standing_claims(
         conn, sport=sport, market=market_type, predictor=predictor,
         event_tier=event_tier)
+
+
+def _pairs_of(conn: sqlite3.Connection, claims) -> list[dict]:
+    """The venue pairs among standing claims: each claim beside the venue's
+    opening read AT THE CLAIM'S OWN STRIKE.
+
+    ALT LINES ARE SEPARATE QUESTIONS (operator question 17, ruled
+    2026-09-27, built 2026-09-28). Until this date the open half was the
+    opening ladder's own line -- its strike nearest an even chance -- and
+    the close half the claim, read at the venue's line near the start: when
+    the venue's line moved between the two (-3.5 at the open, -4.5 at the
+    start), the pair set "home covers -3.5" beside "home covers -4.5", two
+    questions, and called the difference movement. By the ruling a price at
+    another strike is another question. The opening read is taken at the
+    claim's strike (`at_the_line.home_view_line`, the claim's own view; a
+    moneyline has none on either side), and a claim whose strike the
+    opening ladder did not quote has no pair: the open said nothing about
+    its question. Each pair carries its claim's distinct bet (`bet.KEY`).
+    """
+    from . import bet
+    from .market import at_the_line
 
     out = []
     for claim in claims:
@@ -495,7 +547,8 @@ def venue_pairs(conn: sqlite3.Connection, *, sport: str, market_type: str,
             " WHERE game_id = ? AND market = ? AND read_kind = 'open'"
             "   AND fetched_utc = ?",
             (claim["game_id"], claim["market"], first)).fetchall()
-        opened = at_the_line.rung_for(list(ladder))
+        opened = at_the_line.rung_for(
+            [q for q in ladder if at_the_line.home_view_line(q) == claim["line"]])
         if opened is None:
             continue
         disagreement = claim["model_prob"] - opened["implied"]
@@ -503,9 +556,11 @@ def venue_pairs(conn: sqlite3.Connection, *, sport: str, market_type: str,
             continue
         movement = claim["venue_implied"] - opened["implied"]
         toward = movement if disagreement > 0 else -movement
-        out.append({
+        pair = {column: claim[column] for column in bet.KEY}
+        pair.update({
             "claim_id": claim["id"],
             "prediction_id": claim["prediction_id"],
+            "line": claim["line"],
             "claim": claim["model_prob"],
             "opened": opened["implied"],
             "opened_utc": first,
@@ -514,7 +569,29 @@ def venue_pairs(conn: sqlite3.Connection, *, sport: str, market_type: str,
             "movement": round(movement, 6),
             "toward": round(toward, 6),
         })
+        out.append(pair)
     return out
+
+
+def venue_pairs(conn: sqlite3.Connection, *, sport: str, market_type: str,
+                predictor: str, event_tier: str | None = None) -> list[dict]:
+    """Every at-the-line claim that also has an opening read at its own
+    strike to compare with (`_pairs_of`).
+
+    `toward` carries the same meaning as in `standing_pairs`: positive is
+    movement in the direction the model was pointing. The sign comes from
+    the two stored probabilities, both written for the same fixed
+    proposition at the same strike.
+
+    ONE FORECASTER'S BETS (GRIDIRON_REPAIR item 6, 2026-09-26): the claims
+    are the at-the-line record's own, through its door, one per distinct bet
+    -- a question is one pair however many passes answered it, and two
+    rungs of one game are two (operator question 17, 2026-09-28).
+    """
+    config.require_sport(sport, "drift.venue_pairs")
+    claims = _venue_claims(conn, sport=sport, market_type=market_type,
+                           predictor=predictor, event_tier=event_tier)
+    return _pairs_of(conn, claims or [])
 
 
 def venue_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
@@ -524,9 +601,23 @@ def venue_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
     Same gate as `report`, and it is the same rule rather than a copy of it:
     below fifty pairs a direction is a number a reader will remember and the
     sample is not. One forecaster's category (item 6, 2026-09-26).
+
+    ITS COUNTS BESIDE IT (operator question 17, 2026-09-28; it had none): the
+    pairs' distinct bets and forecasters, and how many standing claims the
+    door handed it (`claims_read`) beside the count `gridiron.recount` makes
+    of them without the door in the same read (`recounted`), for
+    `assert_no_pooled_drift_counts`.
     """
-    found = venue_pairs(conn, sport=sport, market_type=market_type,
-                        predictor=predictor, event_tier=event_tier)
+    from . import bet, db, recount
+
+    config.require_sport(sport, "drift.venue_report")
+    with db.one_instant(conn):
+        claims = _venue_claims(conn, sport=sport, market_type=market_type,
+                               predictor=predictor, event_tier=event_tier)
+        again = (0 if claims is None else recount.at_the_line(
+            conn, sport=sport, market=market_type, predictor=predictor,
+            event_tier=event_tier)["claims"])
+        found = _pairs_of(conn, claims or [])
     n = len(found)
     base = {
         "sport": sport,
@@ -535,6 +626,10 @@ def venue_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
         "event_tier": event_tier,
         "source": "venue",
         "n": n,
+        "distinct_bets": bet.count(found),
+        "forecasters_counted": sorted({p["predictor"] for p in found}),
+        "claims_read": len(claims or []),
+        "recounted": again,
         "min_pairs": MIN_PAIRS,
         "min_disagreement": MIN_DISAGREEMENT,
         "progress": language.progress(
@@ -556,6 +651,6 @@ def venue_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
             f"Between the venue's opening read and its price at the line, and "
             f"where the model disagreed by {MIN_DISAGREEMENT:.0%} or more, the "
             f"price moved toward the model {moved_toward / n:.0%} of the time "
-            f"over {n} games."),
+            f"over {n} questions."),
     })
     return base

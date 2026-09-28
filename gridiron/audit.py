@@ -7789,8 +7789,10 @@ def check_each_pair_counted_once(conn, report: dict | None = None,
 
 def check_the_priced_record_is_never_pooled(conn) -> None:
     """Refuse a priced count, in any sport on the record, that pools two
-    forecasters, two cards or two passes of one question."""
-    from . import calibration
+    forecasters, two cards or two passes of one question -- or that the
+    recount by the one distinct-bet key does not make (operator question 17,
+    2026-09-28)."""
+    from . import bet, calibration
     from .priced import forecast as priced
 
     faults = []
@@ -7798,7 +7800,8 @@ def check_the_priced_record_is_never_pooled(conn) -> None:
         try:
             calibration.priced_scorecard(conn, sport=sport)
         except (calibration.MergedCurve, calibration.MergedRecord,
-                config.CrossSportAggregation, priced.PooledCount) as exc:
+                config.CrossSportAggregation, priced.PooledCount,
+                bet.NotABet) as exc:
             faults.append(f"{sport}: {exc}")
     if faults:
         raise LawViolation(
@@ -7825,9 +7828,10 @@ def check_the_priced_record_is_never_pooled(conn) -> None:
 
 def check_the_drift_record_is_never_pooled(conn) -> None:
     """Refuse a drift count, in any sport on the record, that pools two
-    forecasters, two cards, two prop types, two passes of one question or
-    two rungs of one game."""
-    from . import calibration, drift, views
+    forecasters, two cards, two prop types or two passes of one question --
+    or that the recount by the one distinct-bet key does not make, two rungs
+    of one game being two bets (operator question 17, 2026-09-28)."""
+    from . import bet, calibration, drift, views
 
     faults = []
     for sport in config.SPORTS:
@@ -7836,7 +7840,8 @@ def check_the_drift_record_is_never_pooled(conn) -> None:
             try:
                 build(conn, sport)
             except (calibration.MergedCurve, calibration.MergedRecord,
-                    config.CrossSportAggregation, drift.PooledCount) as exc:
+                    config.CrossSportAggregation, drift.PooledCount,
+                    bet.NotABet) as exc:
                 faults.append(f"{sport}, {panel}: {exc}")
     if faults:
         raise LawViolation(
@@ -7863,15 +7868,17 @@ def check_the_drift_record_is_never_pooled(conn) -> None:
 def check_the_blind_outlook_is_never_pooled(conn) -> None:
     """Refuse an outlook, in any sport on the record, that counts another
     forecaster's rows, another card's, a question's superseded passes, or
-    anything but the curve it sits beside."""
-    from . import calibration, horizon
+    anything but the curve it sits beside -- or that the recount by the one
+    distinct-bet key does not make (operator question 17, 2026-09-28)."""
+    from . import bet, calibration, horizon
 
     faults = []
     for sport in config.SPORTS:
         try:
             calibration.blind_categories(conn, sport=sport)
         except (calibration.MergedCurve, calibration.MergedRecord,
-                config.CrossSportAggregation, horizon.PooledCount) as exc:
+                config.CrossSportAggregation, horizon.PooledCount,
+                bet.NotABet) as exc:
             faults.append(f"{sport}: {exc}")
     if faults:
         raise LawViolation(
@@ -7879,6 +7886,190 @@ def check_the_blind_outlook_is_never_pooled(conn) -> None:
             "2026-09-27): the line beside each curve counts that curve's "
             "standing questions -- one forecaster's, one card's for UFC, each "
             "once:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE AT-THE-LINE RECORD COUNTS ONE CLAIM PER DISTINCT BET (GRIDIRON_REPAIR
+# item 6, 2026-09-26; operator question 17, 2026-09-28)
+# ---------------------------------------------------------------------------
+#
+# The guard is `calibration.assert_no_pooled_claims`, inside
+# `calibration.at_the_line_scorecard`. The gate built that payload for every
+# sport only for the advice scan (`tools/verify.py::_at_the_line_payload`),
+# where until this date a guard's refusal was no failure the step knew, so a
+# pooled count ended the gate in a traceback rather than failing by name
+# (that step now names it too). This builds every sport's on the record's
+# copy and turns the refusal into a failure of its own, as the three records
+# beside it are checked.
+
+
+def check_the_at_the_line_record_is_never_pooled(conn) -> None:
+    """Refuse an at-the-line count, in any sport on the record, that pools
+    two forecasters or two cards, counts a question's passes or looks twice,
+    or that the recount by the one distinct-bet key does not make."""
+    from . import bet, calibration
+    from .market import at_the_line
+
+    faults = []
+    for sport in config.SPORTS:
+        try:
+            calibration.at_the_line_scorecard(conn, sport=sport)
+        except (calibration.MergedCurve, calibration.MergedRecord,
+                config.CrossSportAggregation, at_the_line.PooledCount,
+                bet.NotABet) as exc:
+            faults.append(f"{sport}: {exc}")
+    if faults:
+        raise LawViolation(
+            "AN AT-THE-LINE COUNT IS POOLED (GRIDIRON_REPAIR item 6; operator "
+            "question 17, ruled 2026-09-27): every count at the venue's line "
+            "is one forecaster's (one card's, for UFC), one claim per "
+            "distinct bet:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# EVERY COUNT KEYS A DISTINCT BET BY THE ONE FUNCTION (operator question 17,
+# ruled 2026-09-27; built 2026-09-28)
+# ---------------------------------------------------------------------------
+#
+# "One function defines a distinct bet." Until this date six keys counted
+# one: four `bet_of` functions of their own, a window partitioned by hand in
+# the at-the-line door, its coverage line's game, and the standing clause's
+# question written out twice. The recount (`gridiron.recount`) proves at run
+# time that each door counts what the one key counts; this scan proves in
+# the source that no count keys a bet any other way, so a key spelled afresh
+# is refused before it can count anything.
+
+#: Names a module may not define: each was a key of its own until 2026-09-28.
+BET_KEY_FUNCTIONS = ("bet_of", "count_of_bets", "distinct_bets")
+
+#: The payload figures that say how many distinct bets a count holds.
+BET_COUNT_FIGURES = ("distinct_bets", "distinct_bets_written")
+
+#: The SQL words that key a window, written ONCE so the scan below can read
+#: for them without its own text being a window keyed by hand.
+WINDOW_KEY_WORDS = "PARTITION BY"
+
+#: THE KEY AS RULED, held against the one function's (the prover,
+#: 2026-09-28). `gridiron.bet.KEY` is the one place the key is written; the
+#: door and the recount both read it, so a column dropped from it -- the rung,
+#: the forecaster -- would move every count and every recount alike and no
+#: runtime guard could see it. The operator ruled what a distinct bet is
+#: (question 17, 2026-09-27; question 21, 2026-09-28; the brief of 2026-09-28
+#: read it as these six columns): a change to the key is a change to the
+#: ruling, and the scan refuses one this constant does not also carry.
+RULED_DISTINCT_BET = ("predictor", "game_id", "market_type", "prop_type",
+                      "subject", "line_asked")
+
+
+def _calls_the_bet_module(node, attribute: str) -> bool:
+    """Is `node` a call of `bet.<attribute>(...)`?"""
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == attribute
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "bet")
+
+
+def distinct_bet_key_faults(root: Path | None = None) -> list[str]:
+    """Every place in the package that keys a distinct bet other than through
+    `gridiron.bet`, in words.
+
+    Three shapes, each one a key that was in the shipped code until
+    2026-09-28: a module-level or nested function named as a key
+    (`BET_KEY_FUNCTIONS`); a `distinct_bets` figure counted by anything but
+    `bet.count`; and a SQL window partitioned by anything but
+    `bet.columns` -- `WINDOW_KEY_WORDS` in a plain string, or in an f-string
+    where the part after them is not `bet.columns(...)`. And two reads of
+    the running code: the one function's key is the key as ruled
+    (`RULED_DISTINCT_BET`), and the question the standing clause keeps one
+    row per is `bet.same`, both times it asks. Docstrings are prose and are
+    not read, nor is the one constant naming the words.
+    """
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    words = WINDOW_KEY_WORDS
+    faults: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        rel = path.relative_to(root).as_posix()
+        if rel == "bet.py":
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        exempt = _docstring_nodes(tree)
+        exempt |= {id(node.value) for node in tree.body
+                   if isinstance(node, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == "WINDOW_KEY_WORDS"
+                           for t in node.targets)}
+        for node in ast.walk(tree):
+            if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node.name in BET_KEY_FUNCTIONS):
+                faults.append(
+                    f"{rel} line {node.lineno}: `{node.name}` keys a distinct "
+                    f"bet of its own; a count asks `bet.of` / `bet.count`")
+            if isinstance(node, ast.Dict):
+                for key, value in zip(node.keys, node.values):
+                    if (isinstance(key, ast.Constant)
+                            and key.value in BET_COUNT_FIGURES
+                            and not _calls_the_bet_module(value, "count")):
+                        faults.append(
+                            f"{rel} line {key.lineno}: `{key.value}` is counted "
+                            f"by something other than `bet.count`")
+            if isinstance(node, ast.JoinedStr):
+                parts = node.values
+                for i, part in enumerate(parts):
+                    if not (isinstance(part, ast.Constant)
+                            and isinstance(part.value, str)
+                            and words in part.value.upper()):
+                        continue
+                    nxt = parts[i + 1] if i + 1 < len(parts) else None
+                    if (part.value.upper().count(words) != 1
+                            or not part.value.rstrip().upper().endswith(words)
+                            or not isinstance(nxt, ast.FormattedValue)
+                            or not _calls_the_bet_module(nxt.value, "columns")):
+                        faults.append(
+                            f"{rel} line {part.lineno}: a window is partitioned "
+                            f"by something other than `bet.columns(...)`")
+            elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                  and id(node) not in exempt
+                  and words in node.value.upper()
+                  and not _inside_a_joined_string(tree, node)):
+                faults.append(
+                    f"{rel} line {node.lineno}: a window is partitioned by a "
+                    f"key written out in a plain string, not `bet.columns(...)`")
+    from . import bet, calibration
+
+    if tuple(bet.KEY) != RULED_DISTINCT_BET:
+        faults.append(
+            f"bet.KEY is {tuple(bet.KEY)!r}, not the key as ruled "
+            f"{RULED_DISTINCT_BET!r} (the forecaster and the venue's "
+            f"question, the rung asked included)")
+    for same_set in (False, True):
+        clause = calibration.standing_row_clause(same_set)
+        for a, b in (("p2", "p"), ("p3", "p2")):
+            if bet.same(a, b) not in clause:
+                faults.append(
+                    f"calibration.standing_row_clause({same_set}): the question "
+                    f"{a} is matched to {b} by is not `bet.same({a!r}, {b!r})`")
+    return faults
+
+
+def _inside_a_joined_string(tree: ast.AST, target) -> bool:
+    """Is a string constant one part of an f-string (read with it there)?"""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.JoinedStr) and any(v is target for v in node.values):
+            return True
+    return False
+
+
+def check_every_count_keys_one_bet(root: Path | None = None) -> None:
+    faults = distinct_bet_key_faults(root)
+    if faults:
+        raise LawViolation(
+            "A COUNT KEYS A DISTINCT BET ITS OWN WAY (operator question 17, "
+            "ruled 2026-09-27): one function defines a distinct bet -- the "
+            "forecaster and the venue's question, the rung asked included -- "
+            "and every count reads it (`gridiron.bet`):"
+            + _NL2 + _NL2.join(faults))
 
 
 # ---------------------------------------------------------------------------
