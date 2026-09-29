@@ -1660,6 +1660,12 @@ const Gridiron = (function () {
     });
     if (sortSel) sortSel.onchange = () => { prefSet('games.sort', sortSel.value); renderGames().catch(showError); };
     if (clearsBox) clearsBox.onchange = () => { prefSet('games.clears', clearsBox.checked ? '1' : '0'); renderGames().catch(showError); };
+    // THE BAR IS DRAWN NOW THAT IT CAN ACT (the board merge's step 3,
+    // 2026-09-29): its options and labels are in, so each control has words
+    // a screen reader reads and the sort select its width. Hidden in the
+    // page's own file until this first answer.
+    const controlsBar = document.getElementById('games-controls');
+    if (controlsBar) controlsBar.hidden = false;
     let games = (board.games || []).map(narrow).filter(g => (g.questions || []).length);
     if (clearsOnly) games = games.filter(g => g.pick && g.pick.signal === 'clears');
     if (sortBy === 'prob') {
@@ -1977,6 +1983,10 @@ const Gridiron = (function () {
       pays.oninput = paint;
     }
     paint();
+    // DRAWN NOW THAT IT CAN ACT (2026-09-29): its field has its label and
+    // its lines their words. Hidden in the page's own file until the first
+    // answer, when it was an empty card with an unlabelled number field.
+    rail.hidden = false;
   }
 
   async function renderProps() {
@@ -2035,6 +2045,9 @@ const Gridiron = (function () {
     const sortLabel = document.getElementById('props-sort-label');
     if (sortLabel) sortLabel.textContent = labels.sort || '';
     if (sortSel) sortSel.onchange = () => { prefSet('props.sort', sortSel.value); renderProps().catch(showError); };
+    // DRAWN NOW THAT IT CAN ACT (2026-09-29), as the Games bar.
+    const propsBar = document.getElementById('props-controls');
+    if (propsBar) propsBar.hidden = false;
     let tiles = props.tiles || [];
     if (active === 'alt') tiles = tiles.filter(t => t.alt);
     else if (active) tiles = tiles.filter(t => (t.family || '') === active);

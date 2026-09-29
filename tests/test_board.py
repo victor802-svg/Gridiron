@@ -315,6 +315,115 @@ def test_the_roster_file_fills_player_numbers_and_never_guesses(league, monkeypa
     assert config.ROSTER_NUMBERS_DECLARED.endswith("Z")
 
 
+def test_the_roster_numbers_are_named_only_where_declared_loaded_and_drawn():
+    """THE OPERATOR'S RULING OF 2026-09-29: "player_numbers: a loaded roster
+    table, refreshed each load, not append-only; say so in its description.
+    ... It is display only: nothing that forecasts, grades, fits or measures
+    may read it, and a scan refuses any such read." The package passes the
+    scan (gate step 2); the allow-list names the schema's declaration, the
+    loader's write and its tally, the jersey's read and the scan's own name,
+    and nothing that may never name the table; and the description says what
+    the table is, in the schema and in the loader."""
+    assert audit.roster_numbers_read_faults() == []
+    import ast
+    source = (config.REPO_ROOT / "tools" / "verify.py").read_text(encoding="utf-8")
+    step = next(node for node in ast.parse(source).body
+                if isinstance(node, ast.FunctionDef) and node.name == "step_2_guards")
+    assert ("audit.check_the_roster_numbers_are_display_only"
+            in ast.get_source_segment(source, step)), "gate step 2 does not run the scan"
+    assert set(audit.ROSTER_NUMBERS_ALLOWED) == {
+        ("gridiron/schema.sql", "table player_numbers"),
+        ("gridiron/data/loader.py", "load_rosters"),
+        ("gridiron/data/loader.py", "load_all"),
+        ("gridiron/board.py", "_player_number"),
+        ("gridiron/audit.py", "module level"),
+    }
+    never = audit._roster_numbers_never(config.PACKAGE_ROOT)
+    for where, _function in audit.ROSTER_NUMBERS_ALLOWED:
+        assert audit._roster_never_why(never, where) is None, where
+    # EVERY MODULE LAW 1 WALKS may never name it, and the measuring ones.
+    for where in ("gridiron/model/predict.py", "gridiron/db.py", "gridiron/calibration.py",
+                  "gridiron/priced/shape.py", "gridiron/market/recommend.py",
+                  "gridiron/shortlist.py", "gridiron/resolve.py"):
+        assert audit._roster_never_why(never, where), where
+    schema = (config.PACKAGE_ROOT / "schema.sql").read_text(encoding="utf-8")
+    comment = schema[:schema.index("CREATE TABLE IF NOT EXISTS player_numbers")]
+    comment = comment[comment.rindex("\n\n"):]
+    from gridiron.data import loader
+    for text in (comment, loader.load_rosters.__doc__):
+        flat = " ".join(text.replace("--", " ").split()).lower()
+        for words in ("a loaded roster", "refreshed at each load",
+                      "not append-only", "display only"):
+            assert words in flat, (words, flat)
+
+
+def test_the_roster_scan_sees_the_name_by_another_name(tmp_path):
+    """THE PROVER OF THE RULING OF 2026-09-29. Each of these read the
+    roster's numbers where nothing that forecasts, grades, fits or measures
+    may, and the scan as first built said nothing to any: the scan's own
+    constant, imported under an alias or read off the module, in an f-string;
+    `board._player_number`, the jersey's reader, imported or looked up by
+    `getattr`; the whole name written in constants a template is filled in
+    with (`.format`, `%`); and the constant in a function of the audit that
+    is not the scan. Each is refused by name now -- and a page may still
+    call the jersey's reader, and a template filled in with other words
+    names nothing."""
+    import shutil
+    root = tmp_path / "gridiron"
+    shutil.copytree(config.PACKAGE_ROOT, root,
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    plants = {
+        "calibration.py": (
+            "def by_an_alias(conn):\n"
+            "    from gridiron.audit import ROSTER_NUMBERS_TABLE as shirts\n"
+            "    return conn.execute(f'SELECT * FROM {shirts}')\n"),
+        "drift.py": (
+            "def read_off_the_audit(conn):\n"
+            "    from gridiron import audit as gate\n"
+            "    return conn.execute('SELECT * FROM ' + gate.ROSTER_NUMBERS_TABLE)\n"),
+        "shortlist.py": (
+            "def through_the_jersey(conn, player_id):\n"
+            "    from gridiron.board import _player_number as number\n"
+            "    return number(conn, player_id)\n"),
+        "horizon.py": (
+            "def through_getattr(conn, player_id):\n"
+            "    import gridiron.board as page\n"
+            "    return getattr(page, '_player_number')(conn, player_id)\n"),
+        "recount.py": (
+            "def formatted(conn):\n"
+            "    return conn.execute('SELECT * FROM {}_{}'.format('player', 'numbers'))\n"
+            "def formatted_with_other_words(conn):\n"
+            "    return conn.execute('SELECT * FROM {}_{}'.format('player', 'games'))\n"),
+        "correction.py": (
+            "def by_percent(conn):\n"
+            "    return conn.execute('SELECT * FROM %(a)s_%(b)s' % {'a': 'player', 'b': 'numbers'})\n"),
+        "audit.py": (
+            "def in_the_gate(conn):\n"
+            "    return conn.execute(f'SELECT * FROM {ROSTER_NUMBERS_TABLE}')\n"),
+        "views.py": (
+            "def a_page_drawing_the_jersey(conn, player_id):\n"
+            "    from gridiron.board import _player_number\n"
+            "    return _player_number(conn, player_id)\n"),
+    }
+    for module, text in plants.items():
+        path = root / module
+        path.write_text(path.read_text(encoding="utf-8") + "\n\n" + text,
+                        encoding="utf-8")
+    faults = audit.roster_numbers_read_faults(root)
+    wanted = {
+        "(by_an_alias)": "the calibration",
+        "(read_off_the_audit)": "the drift record",
+        "(through_the_jersey)": "names `_player_number`",
+        "(through_getattr)": "names `_player_number`",
+        "(formatted)": "the recounts",
+        "(by_percent)": "the correction",
+        "(in_the_gate)": "does not list",
+    }
+    for marker, words in wanted.items():
+        assert any(marker in f and words in f for f in faults), (marker, faults)
+    assert all(any(marker in f for marker in wanted) for f in faults), faults
+
+
 def test_a_priced_question_carries_its_price_in_words_and_as_a_number():
     """CAUGHT BY LOOKING, 2026-09-25: a priced row said "venue has not listed
     this yet" beside a payout, because the Today card carried the words and

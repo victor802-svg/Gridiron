@@ -150,11 +150,18 @@ CREATE TABLE IF NOT EXISTS player_week_stats (
 CREATE INDEX IF NOT EXISTS pws_player ON player_week_stats (player_id, season, week);
 CREATE INDEX IF NOT EXISTS pws_name   ON player_week_stats (player_name);
 
--- JERSEY NUMBERS (operator ruling a, 2026-09-25). One row per player per club
--- per season from nflverse's roster file, read at the same refresh as the
--- player stats. NOT A FACTOR: nothing in the model reads this table; the
--- board draws the number on a jersey and draws an empty slot where the row
--- is missing. Never guessed from a name or a position.
+-- JERSEY NUMBERS (operator ruling a, 2026-09-25). A loaded roster, refreshed
+-- at each load, not append-only, and display only (the operator's ruling of
+-- 2026-09-29). One row per player per club per season from nflverse's roster
+-- file, read at the same refresh as the player stats: each load updates the
+-- stored row's number and fetch time, and inserts the row where none was
+-- updated (`loader.load_rosters`), so a row holds the roster as last loaded
+-- and keeps no history. It is not a record of anything this project said,
+-- and no rule refuses its update. DISPLAY ONLY: the board draws the number on
+-- a jersey, and an empty slot where the row is missing; nothing that
+-- forecasts, grades, fits or measures may read the table, and
+-- `audit.check_the_roster_numbers_are_display_only` (gate step 2) refuses
+-- any such read. Not a factor, and never guessed from a name or a position.
 CREATE TABLE IF NOT EXISTS player_numbers (
     season        INTEGER NOT NULL,
     player_id     TEXT    NOT NULL,

@@ -1941,17 +1941,34 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    are verdict selectors under the colour law -- these squares are days on
    which more picks won or lost, which is exactly what green and red mean
    (GRIDIRON_16 R2). A square tinted for any other reason is caught by
-   `audit.calendar_faults` before it can be drawn. */
+   `audit.calendar_faults` before it can be drawn.
+
+   A DAY IS A TAP TARGET, SO ITS SQUARE STANDS ON WHOLE PIXELS (the board
+   merge's step 3, 2026-09-29: "every tap target, links included, is 44px or
+   more at 390px at rest", and the flaky-test ruling of 2026-09-27: "fix the
+   elements so they render at 44px or more in whole pixels"). Seven equal
+   shares of the panel put each day at 48.296875px on a 390px phone, because
+   the panel is 362px wide and 7 does not divide what the gaps leave of it.
+   The columns are whole pixels now: 50px (the 380px the grid had, less its
+   gaps, is 7 x 50.9), 44px on a phone, where seven of 50 with their gaps
+   would run past a 375px screen. Below 360px seven squares of 44 and their
+   gaps do not fit the panel; they did not before either, since every day
+   button's 44px floor (`button { min-height }`, carried across its square)
+   already held its column at 44 (FOLLOWUPS). */
 .cal {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, 50px);
   gap: 4px;
   max-width: 380px;
 }
 .cal-months {
   display: flex; justify-content: space-between;
-  max-width: 380px; margin-bottom: 6px;
+  max-width: 374px; margin-bottom: 6px;
   font-family: var(--mono); font-size: 10px; color: var(--faint);
+}
+@media (max-width: 430px) {
+  .cal { grid-template-columns: repeat(7, 44px); }
+  .cal-months { max-width: 332px; }
 }
 .day {
   aspect-ratio: 1;
@@ -2772,6 +2789,14 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .pick-line-none { line-height: 22px; }
 .pick-under { line-height: 18px; align-items: center; }
 .pick-size { line-height: 16px; }
+/* AND THE STATUS COLUMN (the board merge's step 3, 2026-09-29). A LIVE row's
+   status column is the tallest thing in its head's first line on a phone --
+   LIVE, the period and clock at 18px type and a line height of 1.1, and when
+   the score was read at 11px on the normal line height, each wrapping in its
+   78px column -- and it put the head at 277.140625px at 390. Every line in the
+   column has a whole-pixel line height now; the type is unchanged. */
+.when b, .when-time, .final-mark, .game-clock { line-height: 20px; }
+.when span, .when-day, .game-polled, .live-mark { line-height: 16px; }
 .meta {
   display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 8px;
   padding: 0 16px; border-left: 1px solid var(--line);

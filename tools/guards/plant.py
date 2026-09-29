@@ -20672,6 +20672,265 @@ def plant_a_learning_row_counting_one_prop_type() -> Result:
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of 2026-09-29,
+# docs/briefs/2026-09-29-player-numbers.md): "It is display only: nothing
+# that forecasts, grades, fits or measures may read it, and a scan refuses
+# any such read." Three plantings, each breaking a copy of the package and
+# each named by the scan, by function, with nothing else named beside it: a
+# read in modules that measure and fit, hidden four ways; a read in a module
+# the allow-list does not name, and one in the loader, which is listed to
+# write the table and nothing else; and a measuring module listed in the
+# allow-list, which no entry can let read it. On the package before the
+# ruling nothing refuses any of them: there is no scan, and LAW 1's closure
+# scan -- the one that reads the prediction path's names -- passes a read
+# of the roster's numbers in the model itself.
+# ---------------------------------------------------------------------------
+
+LAW_ROSTER_NUMBERS = ("THE ROSTER'S NUMBERS ARE DISPLAY ONLY: NOTHING THAT "
+                      "FORECASTS, GRADES, FITS OR MEASURES READS THEM")
+_ROSTER_SCAN_GUARD = ("audit.roster_numbers_read_faults (the operator's "
+                      "ruling of 2026-09-29, gate step 2)")
+
+
+def _roster_scan(plant, allowed=None):
+    """Copy the package to a scratch directory, let `plant(root)` break the
+    copy, and return (the roster scan's faults, None) -- or, on a package
+    with no such scan (before the ruling), (None, what LAW 1's closure scan
+    says of the same copy)."""
+    scan = getattr(audit, "roster_numbers_read_faults", None)
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        plant(root)
+        if scan is not None:
+            return (scan(root) if allowed is None else scan(root, allowed)), None
+        try:
+            audit.check_all_prediction_closures(root)
+            return None, "LAW 1's closure scan passes it"
+        except audit.LawViolation as exc:
+            return None, ("LAW 1's closure scan refuses it: "
+                          + str(exc).splitlines()[0][:120])
+
+
+def _roster_named(violation: str, got, wanted: dict[str, str]) -> Result:
+    """CAUGHT when every planted place is named in a fault saying what
+    `wanted` says of it, and no fault names anything else."""
+    faults, before = got
+    if faults is None:
+        return Result(LAW_ROSTER_NUMBERS, violation, _ROSTER_SCAN_GUARD, False,
+                      f"NOT CAUGHT - there is no scan for a read of the "
+                      f"roster's numbers, and {before}: the model, the "
+                      f"calibration and every other measuring module can read "
+                      f"a player's jersey number and nothing in the gate says so")
+    hit = {marker: [f for f in faults if marker in f and words in f]
+           for marker, words in wanted.items()}
+    missing = [m for m, found in hit.items() if not found]
+    stray = [f for f in faults if not any(m in f for m in wanted)]
+    if missing or stray:
+        return Result(LAW_ROSTER_NUMBERS, violation, _ROSTER_SCAN_GUARD, False,
+                      f"NOT CAUGHT - not named as the planting says: {missing}; "
+                      f"named besides: {stray}; the scan said {faults!r}")
+    return Result(LAW_ROSTER_NUMBERS, violation, _ROSTER_SCAN_GUARD, True,
+                  " / ".join(found[0].split(". ")[0] for found in hit.values()))
+
+
+#: Reads in a module that grades and measures, each in a function of its own:
+#: plainly, by case and a quoted, qualified name, and by a name worked out
+#: when it runs.
+_PLANTED_ROSTER_READS_IN_THE_CALIBRATION = r'''
+
+# PLANTED VIOLATIONS (the roster's numbers are display only)
+def planted_number_as_a_grade(conn, player_id):
+    return conn.execute(
+        "SELECT n.jersey_number FROM player_numbers n WHERE n.player_id = ?",
+        (player_id,)).fetchone()
+
+
+def planted_number_by_case_and_quotes(conn):
+    return conn.execute('select * from MAIN."Player_Numbers"').fetchall()
+
+
+def planted_number_worked_out_when_it_runs(conn, kind):
+    return conn.execute(f"SELECT * FROM player_{kind}").fetchall()
+'''
+
+#: And one in the model, which LAW 1 walks, in pieces joined with `+`.
+_PLANTED_ROSTER_READ_IN_THE_MODEL = r'''
+
+# PLANTED VIOLATION (the roster's numbers are display only)
+def planted_number_in_the_fit(conn):
+    table = "player" + "_numbers"
+    return conn.execute("SELECT season, jersey_number FROM " + table).fetchall()
+'''
+
+
+def plant_a_read_of_the_roster_numbers_in_a_measuring_module() -> Result:
+    """The roster's numbers read where the record is graded and where the
+    model is fitted: three reads in `calibration.py` -- plain, by case and a
+    quoted, qualified name, and by a name worked out when it runs -- and one
+    in `model/baseline.py`, which the prediction path imports, spelled in
+    two pieces. Each is refused by name, listed or not."""
+    def plant(root):
+        _append_to(root, "calibration.py", _PLANTED_ROSTER_READS_IN_THE_CALIBRATION)
+        _append_to(root, "model/baseline.py", _PLANTED_ROSTER_READ_IN_THE_MODEL)
+    return _roster_named(
+        "the roster's numbers read in the calibration, three ways, and in "
+        "the model's fit", _roster_scan(plant), {
+            "(planted_number_as_a_grade)": "the calibration",
+            "(planted_number_by_case_and_quotes)": "the calibration",
+            "(planted_number_worked_out_when_it_runs)": "the calibration",
+            "(planted_number_in_the_fit)": "the model",
+        })
+
+
+#: A read on a page the allow-list does not name.
+_PLANTED_ROSTER_READ_ON_A_PAGE = r'''
+
+# PLANTED VIOLATION (the roster's numbers are display only)
+def planted_number_on_a_page(conn, player_id):
+    return conn.execute(
+        "SELECT jersey_number FROM player_numbers WHERE player_id = ?",
+        (player_id,)).fetchone()
+'''
+
+#: In the loader's own write, which is listed to write the table and nothing
+#: else: a read after the insert.
+_LOADER_WRITE_ANCHOR = "(*key, number, now))\n"
+_PLANTED_READ_IN_THE_WRITE = (
+    '            conn.execute("SELECT COUNT(*) FROM player_numbers").fetchone()\n')
+
+
+def plant_a_read_of_the_roster_numbers_in_an_unlisted_module() -> Result:
+    """The roster's numbers read by `views.py`, which the allow-list does
+    not name, and read inside `loader.load_rosters`, whose entry allows it
+    to write the table and nothing else. Both are refused by name."""
+    def plant(root):
+        _append_to(root, "views.py", _PLANTED_ROSTER_READ_ON_A_PAGE)
+        victim = root / "data" / "loader.py"
+        text = victim.read_text(encoding="utf-8")
+        assert text.count(_LOADER_WRITE_ANCHOR) == 1, \
+            "the roster load's insert moved; the planting must follow it"
+        victim.write_text(text.replace(_LOADER_WRITE_ANCHOR,
+                                       _LOADER_WRITE_ANCHOR + _PLANTED_READ_IN_THE_WRITE),
+                          encoding="utf-8")
+    return _roster_named(
+        "the roster's numbers read on a page no entry lists, and read by the "
+        "loader listed only to write them", _roster_scan(plant), {
+            "(planted_number_on_a_page)": "does not list",
+            "(load_rosters) reads": "allows only 'writes'",
+        })
+
+
+_PLANTED_ROSTER_READ_LISTED = r'''
+
+# PLANTED VIOLATION (the roster's numbers are display only)
+def planted_listed_number(conn):
+    return conn.execute("SELECT * FROM player_numbers").fetchall()
+'''
+
+
+def plant_a_measuring_module_listed_to_read_the_roster_numbers() -> Result:
+    """`calibration.py` given an entry of the allow-list, dated and reasoned,
+    and a read to go with it. Never allowed, even if listed: the read is
+    refused, and so is the entry."""
+    listed = dict(getattr(audit, "ROSTER_NUMBERS_ALLOWED", {}))
+    listed[("gridiron/calibration.py", "planted_listed_number")] = (
+        "reads", "2026-09-29: planted -- a grade that reads a jersey number")
+    got = _roster_scan(
+        lambda root: _append_to(root, "calibration.py", _PLANTED_ROSTER_READ_LISTED),
+        listed)
+    return _roster_named(
+        "the calibration listed in the allow-list to read the roster's "
+        "numbers, and reading them", got, {
+            "(planted_listed_number) reads": "the calibration",
+            "(planted_listed_number): listed": "remove the entry",
+        })
+
+
+#: THE NAME BY ANOTHER NAME (the prover, 2026-09-29), each measured getting
+#: past the scan as first built, which said nothing to any: the scan's own
+#: constant imported under an alias and read off the module, the jersey's
+#: reader imported and looked up by name, and the whole name written out in
+#: constants a template is filled in with.
+_PLANTED_ROSTER_READS_BY_ANOTHER_NAME = {
+    "calibration.py": r'''
+
+# PLANTED VIOLATION (the roster's numbers, by the scan's own constant)
+def planted_number_by_the_scans_own_name(conn):
+    from gridiron.audit import ROSTER_NUMBERS_TABLE as shirts
+    return conn.execute(f"SELECT * FROM {shirts}").fetchall()
+''',
+    "drift.py": r'''
+
+# PLANTED VIOLATION (the roster's numbers, read off the audit)
+def planted_number_read_off_the_audit(conn):
+    from gridiron import audit as gate
+    return conn.execute("SELECT * FROM " + gate.ROSTER_NUMBERS_TABLE).fetchall()
+''',
+    "shortlist.py": r'''
+
+# PLANTED VIOLATION (the roster's numbers, through the jersey's reader)
+def planted_number_through_the_jersey(conn, player_id):
+    from gridiron.board import _player_number
+    return _player_number(conn, player_id)
+''',
+    "horizon.py": r'''
+
+# PLANTED VIOLATION (the roster's numbers, the jersey's reader by name)
+def planted_number_through_getattr(conn, player_id):
+    import gridiron.board as page
+    return getattr(page, "_player_number")(conn, player_id)
+''',
+    "recount.py": r'''
+
+# PLANTED VIOLATION (the roster's numbers, a template filled in)
+def planted_number_formatted(conn):
+    return conn.execute("SELECT * FROM {}_{}".format("player", "numbers")).fetchall()
+''',
+    "correction.py": r'''
+
+# PLANTED VIOLATION (the roster's numbers, a template filled in by %)
+def planted_number_by_percent(conn):
+    return conn.execute("SELECT * FROM %s_%s" % ("player", "numbers")).fetchall()
+''',
+    "audit.py": r'''
+
+# PLANTED VIOLATION (the roster's numbers, read by the gate's own constant)
+def planted_number_in_the_gate(conn):
+    return conn.execute(f"SELECT * FROM {ROSTER_NUMBERS_TABLE}").fetchall()
+''',
+}
+
+
+def plant_a_read_of_the_roster_numbers_by_another_name() -> Result:
+    """The roster's numbers read by another name (the prover, 2026-09-29):
+    the scan's own constant imported by the calibration under an alias and
+    read off the audit by the drift record; `board._player_number`, the
+    jersey's reader, imported by the shortlist and looked up by `getattr` in
+    the horizon record; the whole name written in constants a template is
+    filled in with, by `.format` in the recounts and `%` in the correction;
+    and the constant read by a function of the audit that is not the scan.
+    Each is refused by name. On 4df9153 there is no scan, and on the scan as
+    first built every one of them passed."""
+    def plant(root):
+        for module, text in _PLANTED_ROSTER_READS_BY_ANOTHER_NAME.items():
+            _append_to(root, module, text)
+    return _roster_named(
+        "the roster's numbers read by another name: the scan's own constant, "
+        "the jersey's reader, and a template filled in with constants",
+        _roster_scan(plant), {
+            "(planted_number_by_the_scans_own_name)": "the calibration",
+            "(planted_number_read_off_the_audit)": "the drift record",
+            "(planted_number_through_the_jersey)": "names `_player_number`",
+            "(planted_number_through_getattr)": "names `_player_number`",
+            "(planted_number_formatted)": "the recounts",
+            "(planted_number_by_percent)": "the correction",
+            "(planted_number_in_the_gate)": "does not list",
+        })
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -21120,6 +21379,16 @@ def main() -> int:
     # nothing else is a SlateAlreadyAnswered noop.
     results.append(plant_a_standing_rule_keeping_a_later_early_pass())
     results.append(plant_an_early_pass_written_over_its_final_pass())
+    # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
+    # 2026-09-29): read where the record is measured or fitted, read where no
+    # entry lists it or its entry does not allow a read, and read by a
+    # measuring module the allow-list names -- each refused by name.
+    results.append(plant_a_read_of_the_roster_numbers_in_a_measuring_module())
+    results.append(plant_a_read_of_the_roster_numbers_in_an_unlisted_module())
+    results.append(plant_a_measuring_module_listed_to_read_the_roster_numbers())
+    # And by another name (the prover, 2026-09-29): the scan's own constant,
+    # the jersey's reader, a template filled in with constants.
+    results.append(plant_a_read_of_the_roster_numbers_by_another_name())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

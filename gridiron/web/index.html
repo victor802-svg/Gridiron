@@ -324,8 +324,15 @@
 
     <!-- SORT AND FILTER (3c, 2026-09-25): the one control row declared above
          the rows, `audit.PICKS_CONTROL_ROWS`. Labels are the server's; the
-         choice persists per page in the browser. -->
-    <div class="controls-bar" id="games-controls">
+         choice persists per page in the browser.
+         NOT DRAWN UNTIL IT CAN ACT (the board merge's step 3, 2026-09-29):
+         before the first answer the sort select held no option -- 40px wide,
+         under the 44px floor -- and every control here stood with an empty
+         label, which a screen reader reads as nothing. The first-load ruling
+         of 2026-09-25 says the page says so in words until the first answer
+         replaces it, so the bar is hidden until `renderGames` has put the
+         server's options and labels in it, and shown then. -->
+    <div class="controls-bar" id="games-controls" hidden>
       <label><span id="games-sort-label"></span>
         <select id="games-sort"></select>
       </label>
@@ -404,7 +411,9 @@
     </div>
     <p class="footnote" id="props-note"></p>
     <nav id="props-chips" class="chips" aria-label="Stat family"></nav>
-    <div class="controls-bar" id="props-controls">
+    <!-- NOT DRAWN UNTIL IT CAN ACT (2026-09-29), as the Games bar above:
+         shown by `renderProps` once its options and label are in. -->
+    <div class="controls-bar" id="props-controls" hidden>
       <label><span id="props-sort-label"></span>
         <select id="props-sort"></select>
       </label>
@@ -416,7 +425,10 @@
         <div id="props-tiles" class="props-grid"></div>
         <div id="props-notes" class="slate-notes"></div>
       </div>
-      <aside class="entry-rail" id="entry-rail">
+      <!-- NOT DRAWN UNTIL IT CAN ACT (2026-09-29): before the first answer
+           the rail was an empty card holding a number field with no label
+           and no legs to price. `renderEntryRail` shows it with its words. -->
+      <aside class="entry-rail" id="entry-rail" hidden>
         <h4 id="entry-heading"></h4>
         <div id="entry-legs"></div>
         <p class="footnote" id="entry-empty" hidden></p>

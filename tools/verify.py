@@ -1008,6 +1008,14 @@ def step_2_guards() -> bool:
         # a cache or a derived table named in a register that only shrinks.
         ("no write replaces a row of an append-only table (question 15)",
          audit.check_no_replacing_write_on_an_append_only_table),
+        # THE OPERATOR'S RULING OF 2026-09-29 (docs/briefs/2026-09-29-player-
+        # numbers.md): the roster's numbers are display only. Nothing that
+        # forecasts, grades, fits or measures may read the table; it is named
+        # by its loader, the schema and the code that draws the jersey, each
+        # listed with a dated reason, and a name the scan cannot place is
+        # counted as a read.
+        ("the roster's numbers are display only (2026-09-29)",
+         audit.check_the_roster_numbers_are_display_only),
         ("no gated test waits on the real clock (ruling 5)",
          audit.check_no_test_waits_on_the_clock),
         ("auth reads one clock, and a test can move it (ruling 5)",

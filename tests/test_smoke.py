@@ -14,6 +14,7 @@ Skipped with a clear reason if playwright or its browser is not installed;
 
 from __future__ import annotations
 
+import os
 import pathlib
 import socket
 import threading
@@ -1053,6 +1054,233 @@ def test_every_tap_target_on_every_board_view_is_44px_at_rest(phone, view):
     wide (the board merge's checklist, step 3; question 20's side question)."""
     _open_a_view(phone, view)
     got = phone.evaluate(_MEASURE_THE_TARGETS, SLATE_TAP_TARGETS)
+    assert got["measured"] > 0, f"{view}: no tap target was measured"
+    assert not got["small"], (
+        f"{view}: {len(got['small'])} tap targets under 44px, or off whole "
+        f"pixels, at 390px at rest:\n" + "\n".join(got["small"][:20]))
+
+
+# --- the views the fixture world never drew (the merge's step 3, 2026-09-29) --
+#
+# The captures from the record found three tap-target defects at 390px that
+# the eight views above passed, because the fixture world never draws them
+# (scratchpad board_captures_digest.txt, DEFECTS; FOLLOWUPS, "The board merge,
+# step 3"): the FIRST-LOAD PLACEHOLDER, where the sort select stood with no
+# option at 40 x 44px beside controls with no label; RESULTS WITH ITS
+# CALENDAR, whose day buttons were 48.296875px square; and a LIVE ROW, whose
+# head was 277.140625px tall. The checklist's rule is "every tap target, links
+# included, is 44px or more at 390px at rest ... Each gets a test", and the
+# flaky-test ruling's "fix the elements so they render at 44px or more in
+# whole pixels. Never widen a tolerance." So each view gets one, measured the
+# way the views above are, at 390px, three device pixels to one. The
+# placeholder is held on the slate's own request, and read once the page has
+# asked for it -- an event, not a duration; the other two are drawn on a copy
+# of the browser world in play. Nothing is rounded and nothing is widened.
+
+#: The slate's own endpoint: `/api/week` and `/api/week?...`, never
+#: `/api/weeks`, the picker the boot awaits.
+_THE_SLATE = re.compile(r"/api/week(\?|$)")
+
+#: Still: nothing on the page running but the one loop. Before its first
+#: answer the page sets no ready flag, so this is `_AT_REST` less the flag.
+_STILL = """() => document.getAnimations().every(a => {
+    const t = a.effect && a.effect.getComputedTiming();
+    return t && t.iterations === Infinity;
+})"""
+
+#: What a control is in the accessibility tree, the tree a screen reader
+#: reads: a link, a button, a select, a field, a checkbox, a summary.
+_CONTROL_ROLES = frozenset({
+    "button", "link", "combobox", "listbox", "checkbox", "radio",
+    "spinbutton", "textbox", "searchbox", "slider", "switch", "menuitem",
+    "tab", "DisclosureTriangle"})
+
+
+def _phone_context(browser):
+    """A 390px phone, three device pixels to one: the `phone` fixture's own."""
+    return browser.new_context(viewport={"width": 390, "height": 844},
+                               device_scale_factor=3, is_mobile=True,
+                               has_touch=True)
+
+
+def _unnamed_controls(page) -> list[str]:
+    """Every control the page shows that a screen reader reads as nothing:
+    a node of a control's role in the browser's accessibility tree, not
+    ignored (a hidden one is), whose computed name is empty."""
+    cdp = page.context.new_cdp_session(page)
+    try:
+        unnamed = []
+        for node in cdp.send("Accessibility.getFullAXTree")["nodes"]:
+            role = (node.get("role") or {}).get("value")
+            if node.get("ignored") or role not in _CONTROL_ROLES:
+                continue
+            if str((node.get("name") or {}).get("value") or "").strip():
+                continue
+            element = cdp.send("DOM.describeNode", {
+                "backendNodeId": node["backendDOMNodeId"]})["node"]
+            attributes = element.get("attributes") or []
+            ident = dict(zip(attributes[::2], attributes[1::2])).get("id")
+            unnamed.append(f"a {role}, {element['localName']}"
+                           + (f"#{ident}" if ident else ""))
+        return unnamed
+    finally:
+        cdp.detach()
+
+
+@pytest.mark.parametrize("tab", ["games", "props"])
+def test_the_first_load_placeholder_draws_no_control_it_cannot_act_with(served, _browser, tab):
+    """THE FIRST-LOAD PLACEHOLDER at 390px (the merge's step 3, 2026-09-29).
+    Before the first slate answer the page says so in words (ruled
+    2026-09-25), and the captures found it drawing controls that could do
+    nothing yet: an empty sort select 40px wide, under the 44px floor, and a
+    sort, a market filter, a checkbox and -- on Props -- the entry rail's
+    number field, each with an empty label a screen reader reads as nothing.
+    The controls are not drawn until the answer puts their options and
+    words in. Every tap target the placeholder shows is 44px or more in whole
+    pixels and every control has a name; and once the answer lands, the
+    controls are there and named."""
+    context = _phone_context(_browser)
+    page = context.new_page()
+    held = []
+    try:
+        page.route(_THE_SLATE, lambda route: held.append(route))
+        page.goto(served + "/login", wait_until="networkidle")
+        page.fill("#token", SMOKE_TOKEN)
+        # THE SLATE HAS BEEN ASKED FOR AND IS HELD: the page has drawn all it
+        # will draw before its first answer once that request is out.
+        with page.expect_request(_THE_SLATE, timeout=20000):
+            page.click("#submit")
+        page.wait_for_selector("#view-games:not([hidden])", timeout=15000)
+        if tab == "props":
+            with page.expect_request(_THE_SLATE, timeout=20000):
+                page.evaluate("location.hash = '#/props'")
+            page.wait_for_selector("#view-props:not([hidden])", timeout=15000)
+        page.wait_for_function(_STILL, timeout=15000)
+        shown = page.evaluate(
+            "(id) => !document.getElementById(id).hidden", f"{tab}-loading")
+        assert shown and page.locator(f"#{tab}-rows .game, #{tab}-tiles .prop").count() == 0, \
+            f"the {tab} placeholder is not on screen: nothing was held"
+
+        got = page.evaluate(_MEASURE_THE_TARGETS, SLATE_TAP_TARGETS)
+        unnamed = _unnamed_controls(page)
+        assert got["measured"] > 0, f"{tab}: no tap target was measured"
+        assert not got["small"] and not unnamed, (
+            f"THE {tab.upper()} PLACEHOLDER at 390px: {len(got['small'])} tap "
+            f"targets under 44px, or off whole pixels:\n"
+            + "\n".join(got["small"][:20])
+            + f"\nand {len(unnamed)} controls a screen reader reads as nothing:\n"
+            + "\n".join(unnamed))
+
+        # AND THE ANSWER DRAWS THEM, each with its words.
+        page.unroute(_THE_SLATE)
+        for route in held:
+            route.continue_()
+        held.clear()
+        bar = "#games-controls" if tab == "games" else "#props-controls"
+        page.wait_for_selector(f"{bar} select", state="visible", timeout=15000)
+        if tab == "props":
+            page.wait_for_selector("#entry-pays", state="visible", timeout=15000)
+        page.wait_for_function(_AT_REST, timeout=15000)
+        assert not _unnamed_controls(page), _unnamed_controls(page)
+    finally:
+        for route in held:
+            route.continue_()
+        context.close()
+
+
+@pytest.fixture(scope="module")
+def _world_in_play(_shared_world, tmp_path_factory):
+    """The browser world, copied, and put in play: every game on its league
+    day, so Results draws its season calendar over the settled weeks, and
+    the unplayed slate's first game in progress. The shared world is left as
+    it was. No clock is read: the score's read time is the world's own
+    latest forecast's."""
+    from gridiron import db
+    from tests import conftest
+
+    target = tmp_path_factory.mktemp("in-play") / "world.db"
+    source = db.read_only(_shared_world["db"],
+                          "copying the browser world to draw what it never drew")
+    copy = db.connect(target)
+    source.backup(copy)
+    source.close()
+    copy.close()
+    conn = db.open_db(target)
+    conn.execute("UPDATE games SET league_date = substr(kickoff_utc, 1, 10)"
+                 " WHERE league_date IS NULL")
+    live = conn.execute(
+        "SELECT g.id FROM games g JOIN predictions p ON p.game_id = g.id"
+        " WHERE g.status = 'scheduled' ORDER BY g.kickoff_utc, g.id LIMIT 1").fetchone()[0]
+    conn.execute(
+        "UPDATE games SET status = 'in', home_score = 17, away_score = 14,"
+        " live_period = '3rd Quarter', live_clock = '8:41',"
+        " live_updated_utc = (SELECT MAX(created_utc) FROM predictions)"
+        " WHERE id = ?", (live,))
+    conn.commit()
+    base, server, thread = conftest._serve(target)
+    yield {"base": base, "db": target, "live": live}
+    server.should_exit = True
+    thread.join(timeout=10)
+    conn.close()
+    api.set_database(_shared_world["db"])
+
+
+@pytest.fixture
+def phone_in_play(_world_in_play, _shared_world, _browser):
+    """A 390px phone, three device pixels to one, signed in to the world in
+    play. The server's database pointer is a module global, so it is set to
+    this world for the test and back to the shared world after it."""
+    api.set_database(_world_in_play["db"])
+    os.environ[auth.TOKEN_VAR] = SMOKE_TOKEN
+    context = _phone_context(_browser)
+    page = context.new_page()
+    page.goto(_world_in_play["base"] + "/login", wait_until="networkidle")
+    page.fill("#token", SMOKE_TOKEN)
+    page.click("#submit")
+    page.wait_for_url(_world_in_play["base"] + "/", timeout=15000)
+    page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
+    yield page
+    context.close()
+    api.set_database(_shared_world["db"])
+
+
+#: The views the fixture world never drew, and what each is there to measure.
+BOARD_VIEWS_IN_PLAY = {
+    "results, its calendar drawn": "#calendar-grid button.day",
+    "games, a game in progress": "#games-rows .game[data-state='live'] .game-head",
+    "games, a game in progress, its row open":
+        "#games-rows .game[data-state='live'].open .game-more a[href]",
+}
+
+
+@pytest.mark.parametrize("view", list(BOARD_VIEWS_IN_PLAY))
+def test_every_tap_target_on_the_views_the_fixture_world_never_drew_is_44px_at_rest(phone_in_play, view):
+    """Results with its season calendar, and Games with a game in progress,
+    shut and open, at 390px at rest: every tap target 44px or more tall in
+    whole pixels and 44px or more wide (the merge's step 3, 2026-09-29). The
+    day buttons measured 48.296875px square and the live row's head
+    277.140625px tall before the fix."""
+    page = phone_in_play
+    if view.startswith("results"):
+        _open_route(page, "#/results")
+        page.wait_for_selector("#history-table tbody tr", timeout=15000)
+    else:
+        page.wait_for_selector(BOARD_VIEWS_IN_PLAY["games, a game in progress"],
+                               timeout=15000)
+    if view.endswith("its row open"):
+        page.locator("#games-rows .game[data-state='live'] .game-head").click()
+        page.wait_for_selector(
+            "#games-rows .game[data-state='live'].open .game-more:not([hidden])",
+            timeout=10000)
+    page.wait_for_selector(BOARD_VIEWS_IN_PLAY[view], timeout=15000)
+    page.wait_for_function(_AT_REST, timeout=15000)
+    # IT MEASURES WHAT THE VIEW IS HERE FOR: the calendar's days, the live
+    # row's head, the open live row's controls are on the screen.
+    drawn = page.evaluate(
+        "(sel) => [...document.querySelectorAll(sel)].filter(e =>"
+        " e.getBoundingClientRect().height > 0).length", BOARD_VIEWS_IN_PLAY[view])
+    assert drawn > 0, f"{view}: nothing matching {BOARD_VIEWS_IN_PLAY[view]} is drawn"
+    got = page.evaluate(_MEASURE_THE_TARGETS, SLATE_TAP_TARGETS)
     assert got["measured"] > 0, f"{view}: no tap target was measured"
     assert not got["small"], (
         f"{view}: {len(got['small'])} tap targets under 44px, or off whole "

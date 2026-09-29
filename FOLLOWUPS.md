@@ -9124,7 +9124,10 @@ found, and where it goes now:
   shrinks. Written plainly (an update, then a plain insert where no row
   changed, the one transaction); `test_load_rosters_writes_the_rows_the_
   upsert_wrote` runs the board's statement beside it.
-- **`player_numbers`** reaches the record through `db.init` alone. Rehearsed
+- **`player_numbers`** -- a loaded roster, refreshed at each load, not
+  append-only, and display only (the operator's ruling of 2026-09-29; "The
+  roster's numbers are display only", below) -- reaches the record through
+  `db.init` alone. Rehearsed
   2026-09-29 on ONE verified copy of the live record
   (`rebuild.verified_backup`, 1,086,259,200 bytes, integrity ok, 63 tables,
   1,296,172 rows, nothing mismatched): db.init added exactly the table and
@@ -9352,3 +9355,467 @@ NOT FIXED, FOUND ON THE WAY (not a gate count, no law):
   row's count and the Record page's sentences say "the model" and "the
   reasoning pass" (`language.FORECASTER_WORDS`, whose own note calls "LLM"
   an acronym a reader did not ask about).
+
+## The roster's numbers are display only -- built 2026-09-29 *(the operator's ruling of 29 September, given during the board merge; docs/briefs/2026-09-29-player-numbers.md)*
+
+"player_numbers: a loaded roster table, refreshed each load, not
+append-only; say so in its description. Plain UPDATE then INSERT is fine. It
+is display only: nothing that forecasts, grades, fits or measures may read
+it, and a scan refuses any such read." CLAUDE.md's THE ROSTER'S NUMBERS ARE
+DISPLAY ONLY row says what the guard is; this is how it was built.
+
+### MEASURED FIRST: WHAT NAMES THE TABLE
+
+Read with the scan's own readers over the package, `tools/` less
+`tools/guards/`, and `desktop/`, before anything was written (scratchpad
+`fixes/probe_names.py`): seven names in three files and nothing else --
+`gridiron/schema.sql` (its declaration), `gridiron/data/loader.py`
+(`load_rosters`: the update and the insert; `load_all`: the refresh's tally,
+keyed by the table's name, twice) and `gridiron/board.py` (`_player_number`:
+the helper asked whether the table exists, and the query). No name partly
+worked out at run time could be the table's (three written letters or
+more). `db.py` names none: `db.init` makes the table from `schema.sql`.
+Tests name it and are not read.
+
+### BUILT
+
+- **The description**, in `schema.sql`'s comment above the table (no word
+  there opens a declaration), in `loader.load_rosters`'s docstring, in
+  CLAUDE.md's board row and its own row, in the board-merge bullet above
+  and in `docs/FOLLOWUPS.md` (2026-09-25, ruling a): a loaded roster from
+  nflverse, refreshed at each load, not append-only (a row is the roster as
+  last loaded; no rule refuses its update), display only.
+- **The write** is the merge's, untouched: an update, then a plain insert
+  where no row was updated, one transaction.
+- **The scan**, `audit.check_the_roster_numbers_are_display_only` in gate
+  step 2 (`audit.roster_numbers_read_faults`): see the CLAUDE.md row. The
+  file list is question 15's, now one helper both scans read
+  (`audit._shipped_python_files`). An import-time check proves the
+  classifier sees what it should (`audit._check_the_roster_scan_can_see`).
+  2.8 seconds on this machine.
+- **The plantings**, each escaping on 4df9153 (there is no scan, and LAW 1's
+  closure scan passes a read of the table in the model) and caught here, by
+  function, with nothing else named: three reads in `calibration.py` and one
+  in `model/baseline.py`; a read in `views.py` and one inside
+  `load_rosters`; and `calibration.py` listed in the allow-list with a
+  dated reason, the read and the entry both refused.
+
+### READINGS TAKEN *(none breaks LAW 1 or LAW 3 or makes a gate count false)*
+
+- **"A name the scan cannot place counts as a read"** is read as: a bare
+  string holding the name (whatever the code then does with it -- a key, an
+  argument to a helper that builds the statement), a name in a string
+  literal of a statement, and a name partly worked out at run time whose
+  written letters could be the table's. A statement whose table is WHOLLY
+  worked out at run time names nothing and is not counted: 32 such places
+  in the shipped code (the copy and count helpers in `rebuild`, `db`'s
+  migration, `repo.counts`, `tools/dbcopy.py`, and prose the lexer reads as
+  SQL words), 17 of them in six modules that may never name the table
+  (`db`, `rebuild`, `data/repo`, `data/mlb_repo`, and a sentence each in
+  `model/baseline` and `priced/shape`), which the stricter reading would
+  have failed with no way to list them.
+- **`loader.load_all`'s tally** is listed as a read: its key is the table's
+  name, it issues no statement, and the scan cannot tell a key from a read.
+  Renaming the key would have changed the refresh's printed report.
+- **The db door's init or migration code** is not listed: it needs no name,
+  and `db` is in the prediction closure, which may never name the table.
+- **The scan's own constant** (`audit.ROSTER_NUMBERS_TABLE`, at module level)
+  is listed as a read, not exempted: every other string in `audit.py` is
+  built on it, so a read planted in any function of the audit is still
+  refused (the precedent, `BETTING_SCAN_EXEMPT`, exempts the whole module).
+- **"The ranker"** is `shortlist.py` (`calibration` imports it as `ranker`).
+
+### ITS PROVER (2026-09-29): THE NAME BY ANOTHER NAME
+
+Probed on copies of the package, `tools/` and `desktop/`, one planted read
+at a time (scratchpad `fixes/prover/probe_scan.py`). CAUGHT by the scan as
+first built: a plain read, a SQL join, a view made at run time, a view, an
+index and a rule in the schema, an f-string of constants, a `join` of a
+literal list, an upper-case constant lowered, a bytes literal, and a read in
+`cli.py`, a tool and `desktop/`. GOT PAST IT, the scan saying nothing:
+
+- **The scan's own constant.** `from gridiron.audit import
+  ROSTER_NUMBERS_TABLE as shirts` in the calibration, then
+  `f"SELECT * FROM {shirts}"`; and `audit.ROSTER_NUMBERS_TABLE` read off the
+  module. The string readers see a part worked out at run time, and the
+  constant, allow-listed where it is written, carried the name anywhere.
+- **The jersey's own reader.** `from gridiron.board import _player_number`
+  in the calibration, or `getattr(board, "_player_number")` in the
+  shortlist: the listed function reads the table for whoever calls it.
+  (Called by attribute from the resolver it was refused, but only because
+  the import put `board` in the prediction closure.)
+- **A template filled in with constants.** `"SELECT * FROM {}_{}".format(
+  "player", "numbers")` and its `%` twin: the string readers read each
+  argument as a part worked out at run time, and no piece carries three
+  letters of the name on both sides.
+- `loader.load_rosters` called from the calibration (a write, through the
+  listed writer).
+
+FIXED, each by name: a value of `audit` holding the name
+(`_ROSTER_NAME_HOLDERS`: the constant, the allow-list and the scan's two
+patterns; proved complete at import) named anywhere but the scan's own
+functions (`_ROSTER_SCAN_ITSELF`, whose entries must be found) -- by name,
+attribute, import under any alias or a string that is its name -- is a read
+by the function it is in, judged like any other (so a function of the audit
+that is not the scan is refused too); a function the allow-list lets name
+the table (`_player_number`, `load_rosters`, `load_all`), named in a module
+that may never name it, is refused there; and a template filled in with
+constants alone (`.format`, `%` with a constant, a tuple or a dict) is read
+again whole. A page may still call the jersey's reader. Held by
+`plant.py::plant_a_read_of_the_roster_numbers_by_another_name` (seven forms:
+the alias, the attribute, the import and the `getattr` of the reader, the
+two templates, and the constant in an audit function that is not the scan;
+ESCAPED on 4df9153 -- no scan -- and on the scan as first built, "the scan
+said []"; CAUGHT here) and
+`test_board.py::test_the_roster_scan_sees_the_name_by_another_name` (fails
+on both, passes here).
+
+### NOT SEEN, AND OPEN
+
+- A name read from the record (`sqlite_master`, a `LIKE 'player_n%'`
+  pattern), a file or the environment, or built where the scan renders no
+  string of it (a list joined at run time, a slice, a reversal, character
+  codes, a docstring handed over through `__doc__`, a `string.Template`
+  filled in by `substitute`). The copy, count and migration helpers take
+  every table's name that way. Measured by the prover: a list joined at run
+  time, a reversal, a docstring handed over and a `LIKE` pattern read from
+  the record each still get past.
+- A read through a function the allow-list does not name that calls one it
+  does -- a measuring module calling a page's function that draws the
+  jersey. An import is no sign (nine of the thirteen places that may never
+  name the table reach `board` and the loader by import -- the calibration
+  through `audit` and `views` -- measured by the prover,
+  `fixes/prover/probe_reach.py`), and the scan does not read the call
+  graph.
+- `tools/guards/` is not read, as the brief rules.
+- A query of the record's own catalogue for the table's columns
+  (`PRAGMA table_info` over every table) names no table and is not read.
+- The browser's files are not read: they issue no SQL, and the payload's
+  `number` is the display.
+
+## The board merge, step 3: every difference from the fixture captures (2026-09-29)
+
+The board-merge checklist's step 3 captured Games, Props, My day, one game
+expanded, Record, Results, Settings, the updating state, the first-load
+placeholder and the empty states from ONE verified copy of the live record
+(deleted after), and a test world with a game in progress, at 1300px and
+390px, and listed every difference from the fixture captures (scratchpad
+`board_captures_digest.txt`; the captures in `board/captures/shots/`). Each
+is below as the step tagged it -- **data**, **repair behaviour kept**, or
+**DEFECT**. The three tap-target defects are **FIXED** here, each with a
+test that fails on 4df9153 and passes on the fix. **Everything else is OPEN
+for the re-read, under the queue rule.**
+
+### FIRST: THE NCAAF WRONG SIDE -- OPEN, NOT FIXED HERE; IT WAITS FOR THE OPERATOR (reported to them now)
+
+In the step's own words: **WRONG SIDE on a live, sized, green-outlined
+recommendation (NCAAF, UNT at TLSA, Thursday 1 October): the board reads
+'North Texas -6.5 · 24% · 48¢ · 2.06x', but the record's numbers for that
+side are 76% and about 51.5¢.** The one clearing, sized row of the college
+slate, under the green outline with '$15 · one flat unit'; the record's own
+numbers for North Texas -6.5 are 76% (recommendation 111, side 'no', fair
+value 0.2398 for 'TLSA covers +6.5') and about 51.5¢ (1.94x). **Cause: 93
+NCAAF spread predictions store `model_side` 'fail to cover'** (every other
+sport stores 'not_cover'). `priced/shape.py::blind_probability`
+(home_margin) has no rule for that side, so `question_takes_the_proposition`
+is None; `views._today_card` and `board._question_block` turn only on
+`is False`, and `audit.board_price_side_faults` (also `is False`) passes the
+block. Recommendations 88, 90, 104 and 111 sit on such rows. The released
+Today card already has the same wrong-side price; the board adds a chance in
+% beside the wrong side. The step routed it to FOLLOWUPS by the queue rule
+(not LAW 1 or LAW 3) and flagged it before step 4 (release), since the
+operator wagers from this page.
+
+### EVERY DIFFERENCE, AS THE STEP TAGGED IT
+
+1. Every capture: no 'BACKTEST DATABASE' banner, because the copy's meta kind
+   is live. **data**
+2. Every capture: the sport tabs carry the record's season records (NFL
+   193-119, MLB 832-640, NBA 0 settled, NCAAF 577-195, UFC 184-162) where the
+   fixture had 25-7 and 0. At 390 the counts run into the next tab's label
+   ('193-119MLB', '577-195UFC'), measured 1-3px of overlap. **DEFECT exposed
+   by the data: the tab's content is wider than the tab.** OPEN.
+3. Every capture: the pulse reads 'daily run 22h ago · venue read 2-3h ago ·
+   reasoning pass 25h ago' in plain ink where the fixture had bold 'has
+   never run'. Nothing is past its threshold. **data**
+4. Every capture: My day reads 'Nothing taken on this slate yet.' in every
+   sport. **data** (the record's only taken row is a package from
+   2026-09-08, on no slate)
+5. Every capture: the footer reads '3,152 predictions on record · 22,255
+   completed games loaded (2016-2026) · market comparison for 156 of 427'.
+   **data**
+6. app-games: the slate is 'WEEK 3, 2026', 16 games all FINAL with scores and
+   won/lost fills; the fixture had Week 18, 2025, four upcoming games (NFL
+   week 4 is loaded with 16 games and 0 forecasts). The day line reads
+   'MONDAY 28 SEPTEMBER · NFL' where the fixture had 'NFL'; the counts read
+   'the model has 13 picks that clear the bar · 33 questions watched · 55
+   settled'; the fee line reads 'At today's median venue price of 50¢...'.
+   **data**
+7. app-games: club bands carry full names ('ATLANTA FALCONS') where the
+   fixture repeated the code ('GB GB') -- **data**. Washington and the Rams
+   have no name ('WAS WAS', 'LA LA'), and a combo reads 'WAS covers +7.5'
+   beside 'Philadelphia covers +15.5': **DEFECT, pre-existing:
+   `language.team_name` has no name for nflverse's WAS and LA.** OPEN.
+8. app-games: each row's count reads '4 questions from the model · 3 from the
+   reasoning pass' where the fixture had '4 questions on this game' --
+   **repair behaviour the merge kept** (Q22 per forecaster, the prover's
+   `board_count_faults`). Record badges are 32/100 and 18/100; a settled row
+   has no take box, only a small hollow circle, as in the fixture's
+   settled-games. **data**
+9. app-games, empty-clears-games, updating-games: the NFL combos panel
+   proposes three combos, each with '$7.50 · half a flat unit' and 'worth
+   taking only below 16¢/10¢/15¢', and every leg is on a FINAL game (LV-NO,
+   CIN-PIT, PHI-CHI, SEA-WAS, MIN-TB, ATL-GB); the fixture had 'no two NFL
+   picks clear the bar today'. **DEFECT, pre-existing server behaviour: the
+   Today block builds its combos from `clears`, which on a finished slate are
+   settled picks; the old Picks panel rendered the same `today.combos` and
+   the merge re-homed it.** OPEN. The card title also joins its legs with no
+   space: 'Las Vegas covers +15.5+Pittsburgh covers +7.5'. **DEFECT,
+   rendering.** OPEN.
+10. app-games: the footer strip reads 'Yesterday: 7 right, 3 wrong · NFL
+    193-119' where the fixture had 'Today: 25 right, 7 wrong'. **data**
+11. expanded-games: the detail shows 'LAST FIVE' in the form ink, 'INJURIES +
+    8', the weather sentence and a different factor list; 'Every bet on this
+    game' has 4 model tiles and 3 reasoning-pass tiles, all won/lost fills,
+    where the fixture had 4 upcoming model tiles. **data**
+12. expanded-games, expanded-mlb, settled-games: on a filled (won/lost) tile
+    the forecaster word ('STATISTICAL', 'LLM') and the reasoning tile's prompt
+    summary ('The prompt, reconstructed ▾' / 'The prompt it was sent ▾') are
+    drawn in a faint ink on the green or red fill and are barely legible.
+    **DEFECT, contrast**: the faint 'STATISTICAL' is also on the fixture's
+    settled-games; the summary on a fill is new, the fixture having no
+    reasoning tile. The summary is a tap target, and its size passes. OPEN.
+13. expanded-*: reasoning-pass tiles are labelled 'LLM'
+    (`config.FORECASTER_LABELS`) while the row and the Record page say
+    'reasoning pass'. **Pre-existing label**, first shown on a board tile
+    here; a plain-words inconsistency. OPEN (the merge's "Two vocabularies
+    on one row", above).
+14. expanded-*: the 'How the model works' link measures at least 44px at 390.
+    **repair behaviour** (the merge fixed Q20's side question).
+15. app-props: 9 settled tiles on real players (Baker Mayfield, Bijan
+    Robinson, ...) with names on the jersey backs and NO jersey numbers; the
+    fixture had 3 upcoming tiles numbered 80, 81 and 10. **data**:
+    `player_numbers` has 0 rows on the record (`db.init` just made it and no
+    roster load has run); display only per the 2026-09-29 brief. Settled tiles
+    have no take box. **data**
+16. app-props, props-mlb at 1300: the tile's name column breaks names
+    mid-word ('BAKE R MAYF IELD', 'CHRI S OLAV E', 'MICH AEL BUSC H').
+    **DEFECT**: present in the fixture as 'RECE IVER' and 'QUAR TERB ACK',
+    worse on real names; at 390 the names fit. OPEN.
+17. props-mlb: Zack Wheeler's jersey is drawn in the neutral grey -- **data**
+    (the prop's club colours are unknown for that tile). The entry rail says
+    'Tap a tile to mark it taken' on a finished slate with no tile to tap --
+    **minor wording**. OPEN.
+18. app-record: headings read 'Priced, and against the close' and 'Did the
+    ordering earn its place'; the fixture had '... b1' and '... r3'. **repair
+    behaviour: Q19**
+19. app-record: per-forecaster lines ('A correction for moneyline, reasoning
+    pass' where the fixture said '..., LLM'; 'player props, every prop type
+    together'); NFL point spread's 'fitted below its gate' line (Q31); 'not in
+    force ... by a dated row of its own' (Q32); the 'Since the repair,
+    statistical / reasoning pass' window lines, and closing-line chart panels
+    reading 'N of 50 · nothing is drawn before Thursday 15 October' (item 8,
+    Q22); 'Withdrawn, statistical'; 'Taken, passed over, every forecast'
+    headings that name the forecaster. **repair behaviour the merge kept, all
+    present**
+20. record-mlb: 'Would not have cleared, statistical: 2 recommendations ...
+    3.34% and 4.97%' is present (item 4/Q9); so are the per-forecaster MLB
+    total lines with repeats counted once, and there is no 'Both sides, no
+    position' row (Q22). **repair behaviour kept**
+21. app-record: 'What the record has taught it 2026-09-28' now carries a date,
+    because a fit exists -- **data**. Factor set versions has four sets, and
+    at 1300 each set's table clips its 'HIT RATE' column ('HIT RAT', '43.8'
+    cut off): **DEFECT, layout, exposed by the data** (the fixture's three
+    sets fit). OPEN. The code names under each factor card and 'At the
+    venue's line kalshi' are the same as the fixture. **pre-existing** OPEN.
+22. app-results: the page opens with 'Settled — 46 questions' and board
+    tiles, then 'The season so far 312 settled over 8 days' calendar, then the
+    table; the fixture had the table only, and its world drew no calendar --
+    **merge, plus data**. At 390 each calendar day button is 48.296875px:
+    **TAP-TARGET DEFECT -- FIXED** (below).
+23. app-settings: Health shows the real task runs, 'Predict MLB is recorded
+    as 11:00 here, but the scheduler holds 22:00' (the view read the
+    machine's scheduler, read-only) and a unit of 15 -- **data**. The access
+    token reads 'smok...uite (33 characters)', the test server's SMOKE_TOKEN
+    -- **expected**. 'Default forecaster: whose questions Picks shows' names
+    the Picks page that leaves in this release: **DEFECT in the words,
+    pre-existing in the fixture, stale after the release.** OPEN.
+24. empty-games and empty-props (NBA): 'The NBA season starts on 2026-10-20,
+    21 days from now. 1,200 games are loaded and waiting...' and 'Next NBA
+    games on 2026-10-20 at 19:00 UTC', where the fixture said the schedule was
+    not published -- **data** (the NBA schedule is loaded). There is an ISO
+    date and a UTC clock in the prose -- **pre-existing server words**. OPEN.
+    empty-props matches the fixture apart from the header and footer.
+25. empty-clears-games (no fixture counterpart): with 'clears the bar only'
+    on the finished NFL slate, 0 rows and an EMPTY dashed box with no words,
+    directly under 'the model has 13 picks that clear the bar'. **DEFECT,
+    board**: the filter keys on signal 'clears', which settled picks never
+    carry; `nothing_clears_words` is None on an unpriced finished slate and
+    the fallback words are None, so the box is blank. OPEN.
+26. empty-props-family (no fixture counterpart): 'No alt lines: a venue's
+    alternate lines are not read yet, so there is nothing here to rank.'
+    **works as built**
+27. updating-games and updating-props (no fixture counterpart): the old rows
+    and tiles stay at opacity 0.45 with pointer-events none, aria-busy true,
+    and an 'UPDATING' label above them; the market select already shows the
+    new choice; the props chips still show ALL pressed until the answer
+    arrives. **matches the 2026-09-25 ruling**
+28. loading-games and loading-props (no fixture counterpart): 'Loading
+    today's games/props' is static, with no animation and no spinner. But
+    before the first answer the controls bar draws an EMPTY sort select
+    (40x44px, under 44 wide), unlabelled sort and market controls and an
+    unlabelled checkbox; Props draws an empty entry-rail card with an
+    unlabelled number field; the pulse and My day are hidden. **DEFECT: a tap
+    target under 44 and unlabelled controls -- FIXED** (below).
+29. settled-games: the adjacent week is Week 2, 2026, with one game (NYG at
+    LA) and 4 predictions; the fixture had week 7, 2025 with four games --
+    **data**. The greeting reads 'Next NFL games on 2026-10-02 at 00:15 UTC'
+    -- **data; ISO date in the words**. OPEN.
+30. games-mlb (no fixture counterpart): a finished 14-game slate. Badges past
+    the gate read '202/100', '213/100', '260/100'. **data; the badge keeps
+    its n/100 form past 100.** OPEN.
+31. games-cfb and expanded-cfb (no fixture counterpart): the one clearing,
+    sized row, UNT at TLSA -- **the WRONG-SIDE DEFECT at the top of this
+    section, OPEN, waiting for the operator**. Moneyline tiles also show a
+    price and a payout beside 'no price to compare against yet': **a
+    contradiction in the words; data: a quote with no claim.** OPEN.
+32. games-ufc and expanded-ufc (no fixture counterpart): fighter names sit in
+    the narrow club-code cell and overflow into the name band ('Opponent TBA',
+    'Zaurbek Sabanov', 'Erick Visconde') at both widths: **DEFECT, layout,
+    exposed by the data** (the fixture had no UFC slate). OPEN. One bout
+    reads 'OPPONENT TBA / TBA'. **data**
+33. myday-testworld, games-testworld, props-testworld (TEST WORLD, the
+    fixture's live-* shape): two chips, 'KC TO WIN · UPCOMING · 7/100' and
+    'DAL RECEIVER OVER 40.5 RECEIVING YARDS · UPCOMING · 5/100', and '2
+    taken'; the fixture showed the taken prop twice and '3 taken' -- **repair
+    behaviour: the merge prover's one-chip-per-question fix**. At 390 the live
+    row's head is 277.140625px tall: **TAP-TARGET DEFECT -- FIXED** (below).
+
+### THE STEP'S DEFECT LIST, AND WHERE EACH STANDS
+
+- **TAP TARGET, Results at 390 -- FIXED.** The calendar's day buttons were
+  48.296875 x 48.296875px on the test's phone (45.859375 at one device
+  pixel), off whole pixels: `.cal` (`repeat(7, 1fr)`) with `.day` at
+  `aspect-ratio: 1`. The fixture world draws no calendar, which is why the
+  per-view test passed. The columns are whole pixels now -- 50px, and 44px
+  at 430px and under (seven of 50 with their gaps would run past a 375px
+  screen). Measured at 390 (3x): every day 44 x 44; at 1100: 50 x 50; no
+  sideways scroll at 431 with a scrollbar, 403, 375 or 360.
+  `test_smoke.py::test_every_tap_target_on_the_views_the_fixture_world_never_drew_is_44px_at_rest[results, its calendar drawn]`
+  -- on 4df9153: "2 tap targets ... button.day.has-result.up "12-3" is
+  48.296875 x 48.296875px"; passes on the fix.
+- **TAP TARGET, the first-load placeholder -- FIXED.** `select#games-sort`
+  and `select#props-sort` were 40 x 44px (no options until `fillSelect` ran
+  after the first answer), beside unlabelled sort and market controls, an
+  unlabelled checkbox and, on Props, an unlabelled number field. CHOSEN: the
+  controls are not drawn until they can act, rather than a 44px minimum on
+  an empty select -- the plain choice the first-load ruling's words support
+  ("before any slate answer exists the page says so in words ... the first
+  answer replaces it"): the Games and Props control bars and the entry rail
+  are `hidden` in the page's own file and shown by `renderGames`,
+  `renderProps` and `renderEntryRail` once the server's options and label
+  words are in them, so each control is drawn with a name a screen reader
+  reads (the label's words; checked in the browser's accessibility tree).
+  `test_smoke.py::test_the_first_load_placeholder_draws_no_control_it_cannot_act_with[games]`
+  and `[props]`, the slate's request held with `page.route` and read once it
+  is out (no fixed wait) -- on 4df9153: "select#games-sort is 40 x 44px ...
+  3 controls a screen reader reads as nothing: a combobox, select#games-sort
+  / a combobox, select#week-market / a checkbox, input#games-clears", and on
+  Props "select#props-sort is 40 x 44px ... a combobox, select#props-sort /
+  a spinbutton, input#entry-pays"; pass on the fix, and the controls are
+  there and named once the answer lands.
+- **TAP TARGET, a live row at 390 (test world) -- FIXED.** `.game-head` was
+  360 x 277.140625px: the status column (LIVE at 11px on the normal line
+  height, '3rd Quarter · 8:41' at 18px on a line height of 1.1, 'read just
+  now' at 11px) wraps in its 78px column and is the tallest thing in the
+  head's first line. Every line in the column has a whole-pixel line height
+  now (20px and 16px; the type unchanged); the head measures 360 x 278.
+  `test_smoke.py::test_every_tap_target_on_the_views_the_fixture_world_never_drew_is_44px_at_rest[games, a game in progress]`
+  and `[games, a game in progress, its row open]`, on a copy of the browser
+  world in play (every game on its league day, the unplayed slate's first
+  game in progress, the score's read time the world's own latest forecast's:
+  no clock read) -- on 4df9153: "div.game-head ... is 360 x 277.140625px";
+  pass on the fix.
+- **WRONG SIDE (NCAAF)** -- OPEN, at the top of this section; waits for the
+  operator.
+- **Combos proposed and sized on FINAL legs** (NFL week 3), and combo titles
+  joining their legs with no space ('+15.5+Pittsburgh') -- OPEN (item 9).
+- **'Clears the bar only' on a finished slate** draws 0 rows and an empty
+  dashed box under '13 picks that clear the bar' -- OPEN (item 25).
+- **Sport tabs at 390**: the record's counts overflow each tab into the next
+  label -- OPEN (item 2).
+- **UFC rows**: fighter names overflow the club-code cell at both widths --
+  OPEN (item 32).
+- **Faint forecaster words and prompt summaries on won/lost filled tiles**
+  (the summary is a tap target) -- OPEN (item 12).
+- **Factor set version tables clip HIT RATE at 1300** with four sets -- OPEN
+  (item 21).
+- **Prop tile names break mid-word at 1300** (pre-existing in the fixture) --
+  OPEN (item 16).
+- **Washington (WAS) and the Rams (LA) have no club name** -- OPEN (item 7).
+- **Settings still says 'whose questions Picks shows'** -- OPEN (item 23).
+
+The step's own record, kept: the repair behaviour the merge had to keep was
+all present in the captures (the re-grade line; the closing-line window --
+no mean or chart before 15 October; per-forecaster, per-distinct-bet counts
+with no 'Both sides' row; the 'fitted below its gate' label and Q32's
+in-force wording; plain headings, no b1 or r3; one chip per taken question;
+the prompt disclosure on reasoning tiles; the updating and first-load states
+as ruled on 2026-09-25). Its one copy of the record (1,086,259,200 bytes, the
+verified backup of 2026-09-29) and its two test worlds were deleted; no
+network, no real token, the live app on 8848 never contacted; the Settings
+view read the machine's Task Scheduler, read-only.
+
+### RE-MEASURED AFTER THE FIXES: EVERY BOARD VIEW AT 390 AT REST
+
+At 390px, three device pixels to one, links included, every tap target 44px
+or more tall in whole pixels and 44px or more wide: the eight views of
+`test_every_tap_target_on_every_board_view_is_44px_at_rest` (games; a row
+open; every row open; props; record; results; settings; the menu), the
+three in play (Results with its calendar; a game in progress, shut and
+open), and the two placeholders -- thirteen views, all whole and 44 or more
+(the tap-target tests, the per-frame arrival check and the five no-overflow
+routes: 20 passed, 2026-09-29).
+
+AND BY ITS PROVER (2026-09-29), EVERY VIEW THE CAPTURES SHOT, on ONE
+verified copy of the live record (`rebuild.verified_backup`, 1,086,455,808
+bytes, integrity ok, 63 tables, nothing mismatched; deleted after) and on
+the board's own test world with a game in progress (`tools/board_shots.py`,
+every game on its league day so Results draws its calendar; deleted after),
+at 390px, three device pixels to one, mobile and touch, with the suite's
+own selector and measure (scratchpad `fixes/prover/measure_all.py`): for
+every sport, Games, a row open, the live row open, every row open, every
+row open with every disclosure open (the reasoning tiles' prompts), the
+week picker open, Props and each of its family chips, Record and Record
+with every disclosure open, Results with its calendar and with every
+disclosure open; and 'clears the bar only', the adjacent settled week with
+a row open, Settings, the menu, both first-load placeholders (the slate's
+request held) and both updating states (held; not at rest, measured
+anyway). 137 views, 3,749 readings: every tap target on every board view
+44px or more tall in whole pixels and 44px or more wide, no page wider than
+the screen. The five new browser tests fail on 4df9153 as reported and
+pass here (22 passed with the tap, overflow and tab tests).
+
+### FOUND ON THE WAY *(not a gate count, no law: FOLLOWUPS by the queue rule)*
+
+- **Below 360px the calendar runs past the panel.** Seven squares of 44 and
+  their gaps are 332px; at 320 the panel is 292px and the page scrolls
+  sideways by 26-27px. So it did before the fix, in any season with a
+  settled day in every column: the global `button { min-height: 44px }`,
+  carried across each day's square by its aspect ratio, already held every
+  column that holds a button at 44 (measured with the old columns put back
+  at 320: the same 44px columns, the same overflow). A calendar that fits
+  under 360px needs smaller squares, which the 44px floor forbids, or a
+  calendar that scrolls inside itself.
+- **At 1100px the header's sport tabs are 48.1875px tall, the week picker's
+  summary 18.84375px and the colophon's links 15px**; the rule is 390px,
+  where all three pass. Not a defect under the
+  rule; recorded because a desk reader clicks them too.
+- **The sign-in page's token field is 340 x 43px at 390** (three device
+  pixels to one; measured by the prover, 2026-09-29): `.signin input` in
+  `login.html` is 11px of padding each side of 15px type with no
+  `min-height`, where its button has `min-height: 44px`. The sign-in page is
+  not a board view, the captures did not shoot it and the merge did not
+  touch it (last changed in "prog 6: entry"), so it is here under the queue
+  rule, not fixed: a `min-height: 44px` on the field is the likely fix, for
+  the re-read.

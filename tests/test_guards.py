@@ -704,6 +704,14 @@ def test_every_new_guard_is_in_the_planted_harness():
         # rows.
         "plant_a_board_count_counting_a_bet_twice",
         "plant_a_board_row_priced_off_the_other_side",
+        # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
+        # 2026-09-29): nothing that forecasts, grades, fits or measures reads
+        # them, and a scan refuses any such read.
+        "plant_a_read_of_the_roster_numbers_in_a_measuring_module",
+        "plant_a_read_of_the_roster_numbers_in_an_unlisted_module",
+        "plant_a_measuring_module_listed_to_read_the_roster_numbers",
+        # And by another name (the prover, 2026-09-29).
+        "plant_a_read_of_the_roster_numbers_by_another_name",
     ):
         assert f"def {name}" in source, name
         assert f"results.append({name}" in source, f"{name} is defined but never run"

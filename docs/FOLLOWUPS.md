@@ -72,7 +72,10 @@ Recorded by the overnight build of 2026-09-24/25 (`docs/closeouts/2026-09-25-boa
 **RULED 2026-09-25, all four** (`docs/briefs/2026-09-25-board-visual.md`,
 built in `docs/closeouts/2026-09-25-board-visual.md`): (a) numbers from
 nflverse's roster file into `player_numbers` at the NFL refresh, fixture
-rosters carry them, an absent number is an empty slot; (b) the pick'em read
+rosters carry them, an absent number is an empty slot (the table is a loaded
+roster, refreshed at each load, not append-only, and display only -- the
+operator's ruling of 2026-09-29, held by
+`audit.check_the_roster_numbers_are_display_only`); (b) the pick'em read
 stays suspended; (c) a prop tile wears no outline until a multiplier is read
 or typed, and `audit.board_signal_faults` refuses one against the declared
 multiple; (d) the form row keeps green and red as the letter's ink. The four

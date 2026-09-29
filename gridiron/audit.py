@@ -11455,12 +11455,10 @@ def _sql_strings_in(tree: ast.AST) -> list[tuple[ast.AST, str]]:
     return found
 
 
-def _replace_scan_sources(root: Path) -> list[tuple[str, str, list]]:
-    """(path from the repository root, "python" or "sql", [(line, function,
-    tokens, text)]) for the package, `tools/` less `tools/guards/`,
-    `desktop/`, and every `.sql` file in the package. A schema file's
-    function is None: each finding in it is named by the object that holds
-    it."""
+def _shipped_python_files(root: Path) -> list[Path]:
+    """Every Python file of the shipped code: the package, `tools/` less
+    `tools/guards/`, and `desktop/` (question 15's scope; shared with the
+    roster scan from 2026-09-29, so the two read one list)."""
     base = root.parent
     files = [p for p in sorted(root.rglob("*.py")) if "__pycache__" not in p.parts]
     for extra in ("tools", "desktop"):
@@ -11470,8 +11468,18 @@ def _replace_scan_sources(root: Path) -> list[tuple[str, str, list]]:
                       if "__pycache__" not in p.parts
                       and not (extra == "tools"
                                and p.relative_to(folder).parts[0] == "guards")]
+    return files
+
+
+def _replace_scan_sources(root: Path) -> list[tuple[str, str, list]]:
+    """(path from the repository root, "python" or "sql", [(line, function,
+    tokens, text)]) for the package, `tools/` less `tools/guards/`,
+    `desktop/`, and every `.sql` file in the package. A schema file's
+    function is None: each finding in it is named by the object that holds
+    it."""
+    base = root.parent
     sources = []
-    for path in files:
+    for path in _shipped_python_files(root):
         where = path.relative_to(base).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         functions = _qualified_functions(tree)
@@ -12304,3 +12312,551 @@ def _check_the_board_count_scanners_can_see() -> None:
 
 
 _check_the_board_count_scanners_can_see()
+
+
+# ---------------------------------------------------------------------------
+# THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
+# 2026-09-29, docs/briefs/2026-09-29-player-numbers.md)
+# ---------------------------------------------------------------------------
+#
+# "player_numbers: a loaded roster table, refreshed each load, not
+# append-only; say so in its description. Plain UPDATE then INSERT is fine.
+# It is display only: nothing that forecasts, grades, fits or measures may
+# read it, and a scan refuses any such read."
+#
+# WHY. The jersey numbers came in with the board (operator ruling a,
+# 2026-09-25) as a declared, dated data addition, not a factor. A number on
+# a shirt says nothing about a game, and LAW 2 declares every factor in
+# advance: a table no factor names is one a later query can join to without
+# anyone declaring anything, and the fit that learned from it would look
+# ordinary. So the table is named where it is declared, loaded and drawn,
+# and nowhere else.
+#
+# WHAT IT READS: every string the shipped code can hand SQLite or anything
+# else -- the package, `tools/` less `tools/guards/`, and `desktop/`, read
+# by question 15's readers (`_sql_strings_in` over `_rendered_sql`; each
+# Python string read as written and again with its template placeholders as
+# parts worked out at run time) -- and every `.sql` file in the package.
+# Docstrings and comments are prose and are not read. The name is the
+# table's whole name as SQL reads it -- case, quoting and a schema's prefix
+# apart -- anywhere: in a statement, in a string literal inside one, or in a
+# bare string (a key, or the argument of a helper that builds the statement
+# itself).
+#
+# HOW A NAME IS PLACED: as the table of a write (UPDATE, INSERT or REPLACE
+# INTO, DELETE FROM), of a schema's declaration of it, or as a read, which
+# is everything else. A NAME THE SCAN CANNOT PLACE COUNTS AS A READ (the
+# brief's words): a bare string, whatever the code then does with it, and a
+# name partly worked out at run time whose written letters could be the
+# table's (`player_{kind}`, `"{}_numbers"`; three written letters or more).
+#
+# THE ALLOW-LIST, the stricter default the brief reads: the table's loader
+# (the write), the schema (the declaration) and the display code that draws
+# the jersey. The database door's own init or migration code is not listed
+# because it needs no name (`db.init` runs `schema.sql`), and it could not
+# be: `db` is in the prediction closure. Each entry is keyed by file and
+# function, allowed one use, and dated; a name in a listed function used
+# another way fails, and so does an entry no longer found.
+#
+# NEVER ALLOWED, EVEN IF LISTED: what forecasts, grades, fits or measures --
+# every module of the prediction closure LAW 1 walks from every prediction
+# entrypoint, read from the code; the resolver, the calibration, the
+# correction, the recounts, the horizon and drift records, the priced
+# forecaster, the at-the-line record, the recommendation, the shortlist (the
+# ranker), the bet key, the paper record, and the whole of the model. A name
+# there fails by name, and so does an entry that lists one.
+#
+# AND BY ANOTHER NAME (the prover, 2026-09-29; each measured getting past the
+# scan as first built, which said nothing to any): the name held in one of
+# this module's own values and read by that value's name elsewhere -- the
+# calibration's `from gridiron.audit import ROSTER_NUMBERS_TABLE`, then
+# `f"SELECT * FROM {ROSTER_NUMBERS_TABLE}"`; the jersey's own reader,
+# `board._player_number`, imported by the shortlist or looked up by
+# `getattr`, which reads the table for whoever calls it; and a whole name
+# the code writes out in constants a template is filled in with
+# (`"{}_{}".format("player", "numbers")`, or `%`), which the string readers
+# read as parts worked out at run time. So a value of this module holding
+# the name (`_ROSTER_NAME_HOLDERS`), named anywhere but the scan's own
+# functions -- read off the module, imported under any alias, or looked up
+# by its name -- is a read by the function it is in; a function the
+# allow-list lets name the table, named in a module that may never name it,
+# is a read there; and a template filled in with constants alone is read
+# again whole.
+#
+# NOT SEEN: a name read from the record (`sqlite_master`), a file or the
+# environment, or built where the scan renders no string of it -- pieces of
+# a list joined at run time, a slice, a reversal, character codes, a
+# docstring handed over through `__doc__`, a `string.Template` filled in by
+# `substitute`. Nor a read through a function the allow-list does not name
+# that calls one it does (a measuring module calling a page that draws the
+# jersey): every module reaches `board` by import through `audit` and
+# `views`, so an import is no sign, and the call graph is not read. The
+# helpers that copy, count or migrate every table (`rebuild`,
+# `tools/dbcopy.py`, `db`'s migration, `repo.counts`) take every table's
+# name that way and name none; they forecast, grade, fit and measure nothing.
+
+#: The table the ruling names. Written once: every other string in this
+#: module builds on it, so nothing here names the table but this.
+ROSTER_NUMBERS_TABLE = "player_numbers"
+
+#: WHERE THE TABLE MAY BE NAMED, AND FOR WHAT (2026-09-29). Keyed (file from
+#: the repository root, the qualified function the name is written in -- or,
+#: in a schema file, the object that holds it), each with its one use --
+#: "declares", "writes" or "reads" -- and a dated reason in words.
+ROSTER_NUMBERS_ALLOWED: dict[tuple[str, str], tuple[str, str]] = {
+    ("gridiron/schema.sql", "table " + ROSTER_NUMBERS_TABLE): (
+        "declares",
+        "2026-09-29: the table's own declaration, under the comment that says "
+        "what it is -- a loaded roster, refreshed at each load, not "
+        "append-only, display only"),
+    ("gridiron/data/loader.py", "load_rosters"): (
+        "writes",
+        "2026-09-29: the write -- the NFL refresh's roster load, an update and "
+        "then a plain insert where no row changed (the ruling: 'Plain UPDATE "
+        "then INSERT is fine')"),
+    ("gridiron/data/loader.py", "load_all"): (
+        "reads",
+        "2026-09-29: the refresh's tally of the rows the roster load wrote, "
+        "keyed by the table's name for the report the command line prints; it "
+        "issues no statement, and a bare name the scan cannot place is counted "
+        "as a read"),
+    ("gridiron/board.py", "_player_number"): (
+        "reads",
+        "2026-09-29: the display code that draws the jersey -- the number on a "
+        "prop tile's jersey, or its empty slot where the record has none"),
+    ("gridiron/audit.py", "module level"): (
+        "reads",
+        "2026-09-29: this scan's own words -- the name it looks for"),
+}
+
+#: WHAT MAY NEVER NAME IT, EVEN IF LISTED (2026-09-29): what forecasts,
+#: grades, fits or measures, by file, or by package ending in "/", from the
+#: repository root. Every module of the prediction closure is added to it
+#: from the code (`_roster_numbers_never`).
+ROSTER_NUMBERS_NEVER: dict[str, str] = {
+    "gridiron/resolve.py": "the resolver, which grades",
+    "gridiron/calibration.py": "the calibration, which grades and measures",
+    "gridiron/correction.py": "the correction, which fits",
+    "gridiron/recount.py": "the recounts, which measure",
+    "gridiron/horizon.py": "the horizon record, which measures",
+    "gridiron/drift.py": "the drift record, which measures",
+    "gridiron/priced/": "the priced forecaster, which forecasts",
+    "gridiron/market/at_the_line.py": "the at-the-line record, which measures",
+    "gridiron/market/recommend.py": "the recommendation, which measures and sizes",
+    "gridiron/shortlist.py": "the shortlist, the ranker",
+    "gridiron/bet.py": "the bet key every count reads",
+    "gridiron/market/paper.py": "the paper record, which measures",
+    "gridiron/model/": "the model, which forecasts and fits",
+}
+
+#: The uses a name is placed as.
+_ROSTER_USES = ("declares", "writes", "reads")
+
+#: The fewest written letters a name partly worked out at run time must
+#: carry to count as one that could be the table's. Measured 2026-09-29 on
+#: the shipped code: at one letter twelve strings match ("s" after a number,
+#: "_" between two parts, "P" before one); at two or more, none does.
+_ROSTER_FRAGMENT_MIN = 3
+
+#: A string holding neither the name nor a part worked out at run time (or
+#: a template placeholder) names nothing and is not tokenised: a quick way
+#: past prose, never past a name.
+_ROSTER_QUICK = re.compile(re.escape(ROSTER_NUMBERS_TABLE) + r"|[\x00{}%$]", re.I)
+
+#: The name inside a string literal of the statement.
+_ROSTER_IN_A_LITERAL = re.compile(
+    r"(?<![A-Za-z0-9_$])" + re.escape(ROSTER_NUMBERS_TABLE) + r"(?![A-Za-z0-9_$])",
+    re.I)
+
+#: EVERY VALUE OF THIS MODULE HOLDING THE TABLE'S NAME, by its own name (the
+#: prover, 2026-09-29): named anywhere but the scan's own functions, each is
+#: the name, and a read by the function it is in. Proved complete at import:
+#: a new value holding the name must be listed here.
+_ROSTER_NAME_HOLDERS = ("ROSTER_NUMBERS_TABLE", "ROSTER_NUMBERS_ALLOWED",
+                        "_ROSTER_QUICK", "_ROSTER_IN_A_LITERAL")
+
+#: The functions of this module that ARE the scan, the only ones that may
+#: name a value holding the table's name (2026-09-29). One no longer found
+#: fails the scan, so the list only names what is there.
+_ROSTER_SCAN_ITSELF = frozenset({
+    "_roster_name_fits", "_roster_mentions", "roster_numbers_read_faults",
+    "check_the_roster_numbers_are_display_only", "_check_the_roster_scan_can_see"})
+
+#: What `_roster_constant` answers for an expression not written wholly in
+#: constants.
+_ROSTER_NOT_CONSTANT = object()
+
+
+def _roster_references(tree: ast.AST, names) -> list[tuple[ast.AST, str]]:
+    """(node, name) for every place a module names one of `names` as Python
+    names a value: a name, an attribute read off anything, an import (the
+    name imported, under any alias), or a string that is the name (a
+    `getattr`, a namespace looked up by it). A docstring is prose."""
+    prose = _docstring_nodes(tree)
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            name = node.id
+        elif isinstance(node, ast.Attribute):
+            name = node.attr
+        elif isinstance(node, ast.alias):
+            name = node.name.rsplit(".", 1)[-1]
+        elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
+              and id(node) not in prose):
+            name = node.value
+        else:
+            continue
+        if name in names:
+            found.append((node, name))
+    return found
+
+
+def _roster_constant(node: ast.AST):
+    """The value of an expression written wholly in constants -- a number, or
+    a string the string readers render with no part worked out at run time --
+    or `_ROSTER_NOT_CONSTANT`."""
+    if (isinstance(node, ast.Constant)
+            and not isinstance(node.value, (str, bytes))):
+        return node.value
+    text = _rendered_sql(node, set())
+    if text is None or _UNKNOWN_PART in text:
+        return _ROSTER_NOT_CONSTANT
+    return text
+
+
+def _roster_filled_in(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+    """(node, text) for every template a module fills in with constants
+    alone -- `.format` with constant arguments, `%` with a constant, a tuple
+    or a dict of them -- as it reads once filled in (the prover, 2026-09-29:
+    the string readers read each argument as a part worked out at run time,
+    so `"{}_{}".format("player", "numbers")` named nothing)."""
+    found = []
+    for node in ast.walk(tree):
+        try:
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "format"):
+                template = _roster_constant(node.func.value)
+                args = [_roster_constant(a) for a in node.args]
+                kwargs = {k.arg: _roster_constant(k.value) for k in node.keywords}
+                if (not isinstance(template, str) or None in kwargs
+                        or any(a is _ROSTER_NOT_CONSTANT
+                               for a in args + list(kwargs.values()))):
+                    continue
+                found.append((node, template.format(*args, **kwargs)))
+            elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+                template = _roster_constant(node.left)
+                if not isinstance(template, str):
+                    continue
+                if isinstance(node.right, ast.Tuple):
+                    values = tuple(_roster_constant(e) for e in node.right.elts)
+                    parts = list(values)
+                elif isinstance(node.right, ast.Dict):
+                    keys = [_ROSTER_NOT_CONSTANT if k is None else _roster_constant(k)
+                            for k in node.right.keys]
+                    held = [_roster_constant(v) for v in node.right.values]
+                    parts = keys + held
+                    values = dict(zip(keys, held))
+                else:
+                    values = _roster_constant(node.right)
+                    parts = [values]
+                if any(p is _ROSTER_NOT_CONSTANT for p in parts):
+                    continue
+                found.append((node, template % values))
+        except (IndexError, KeyError, ValueError, TypeError, AttributeError):
+            continue
+    return found
+
+
+def _roster_numbers_never(root: Path) -> dict[str, str]:
+    """{file from the repository root, or a package ending in "/": why it
+    may never name the table}: `ROSTER_NUMBERS_NEVER`, and every module of
+    every prediction closure under `root`, read from the code."""
+    never = dict(ROSTER_NUMBERS_NEVER)
+    for _what, entrypoint in sorted(prediction_entrypoints().items()):
+        closure = import_closure(entrypoint, root)
+        for module, path in sorted(closure.modules.items()):
+            never.setdefault(path.relative_to(root.parent).as_posix(),
+                             f"in the prediction closure ({entrypoint} "
+                             f"reaches {module})")
+    return never
+
+
+def _roster_never_why(never: dict[str, str], where: str) -> str | None:
+    """Why `where` may never name the table, or None."""
+    for place, why in never.items():
+        if where == place or (place.endswith("/") and where.startswith(place)):
+            return why
+    return None
+
+
+def _roster_name_fits(value: str, before: bool, after: bool) -> bool:
+    """Could a name be the table's? Whole, only the name itself; with parts
+    worked out at run time touching it (`before`, `after`) or inside it,
+    when its written letters -- at least `_ROSTER_FRAGMENT_MIN` of them --
+    fall where the table's name could put them."""
+    pieces = value.split(_UNKNOWN_PART)
+    if len(pieces) == 1 and not (before or after):
+        return value == ROSTER_NUMBERS_TABLE
+    if len("".join(pieces)) < _ROSTER_FRAGMENT_MIN:
+        return False
+    pattern = (("(?s:.*)" if before else "")
+               + "(?s:.*)".join(re.escape(p) for p in pieces)
+               + ("(?s:.*)" if after else ""))
+    return re.fullmatch(pattern, ROSTER_NUMBERS_TABLE) is not None
+
+
+def _roster_use(tokens: list[_SqlToken], i: int, schema: bool) -> str:
+    """How the whole name at `tokens[i]` is used: "writes" as the table of
+    an UPDATE, an INSERT or REPLACE INTO or a DELETE FROM; "declares" as
+    the table a schema file declares; "reads" otherwise."""
+    j = i
+    while (j >= 2 and tokens[j - 1].kind == "other" and tokens[j - 1].value == "."
+           and tokens[j - 2].kind in ("word", "name")):
+        j -= 2                                      # a schema's prefix
+    words = [t.word for t in tokens[max(0, j - 6):j]]
+    if schema:
+        head = words[:-3] if words[-3:] == ["IF", "NOT", "EXISTS"] else words
+        if head[-1:] == ["TABLE"]:
+            head = head[:-1]
+            while head[-1:] in (["TEMP"], ["TEMPORARY"]):
+                head = head[:-1]
+            if head[-1:] == ["CREATE"]:
+                return "declares"
+    if words[-1:] == ["UPDATE"] or words[-3:-1] == ["UPDATE", "OR"]:
+        return "writes"
+    if words[-1:] == ["INTO"] and (words[-2:-1] in (["INSERT"], ["REPLACE"])
+                                   or words[-4:-2] == ["INSERT", "OR"]):
+        return "writes"
+    if words[-2:] == ["DELETE", "FROM"]:
+        return "writes"
+    return "reads"
+
+
+def _roster_mentions(text: str, schema: bool) -> list[tuple[int, str]]:
+    """(offset in the text, use) for every name of the table in one text,
+    each once: read as written and, for a Python string, again with its
+    template placeholders as parts worked out at run time -- the precedent
+    of `_replacing_writes_in`, a placeholder keeping its length so a place
+    is the same in both readings."""
+    if not _ROSTER_QUICK.search(text):
+        return []
+    found: dict[int, str] = {}
+    for reading in ([text] if schema else [text, _placeholders_unknown(text)]):
+        tokens = _sql_tokens(reading)
+        n = len(tokens)
+        for i, tok in enumerate(tokens):
+            if tok.kind == "literal":
+                if _ROSTER_IN_A_LITERAL.search(tok.value):
+                    found.setdefault(tok.start, "reads")
+                continue
+            if tok.kind not in ("word", "name"):
+                continue
+            before = (i > 0 and tokens[i - 1].kind == "unknown"
+                      and tokens[i - 1].end == tok.start)
+            after = (i + 1 < n and tokens[i + 1].kind == "unknown"
+                     and tokens[i + 1].start == tok.end)
+            if not _roster_name_fits(tok.value, before, after):
+                continue
+            whole = tok.value == ROSTER_NUMBERS_TABLE and not (before or after)
+            found.setdefault(tok.start,
+                             _roster_use(tokens, i, schema) if whole else "reads")
+    return sorted(found.items())
+
+
+def roster_numbers_read_faults(root: Path | None = None,
+                               allowed: dict | None = None) -> list[str]:
+    """Every name of the roster's numbers table the operator's ruling of
+    2026-09-29 refuses, in the shipped code or the schema: one in a module
+    that forecasts, grades, fits or measures, listed or not; one no entry of
+    `ROSTER_NUMBERS_ALLOWED` lists; one used other than as its entry allows;
+    and every entry that lists a place that may never name the table, is no
+    longer found, has no known use, or carries no dated reason. Each named
+    by file, line and function."""
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    allowed = ROSTER_NUMBERS_ALLOWED if allowed is None else allowed
+    base = root.parent
+    table = ROSTER_NUMBERS_TABLE
+    never = _roster_numbers_never(root)
+    faults: list[str] = []
+    found: set[tuple[str, str]] = set()
+
+    def judge(where: str, line: int, function: str, use: str) -> None:
+        place = f"{where}:{line} ({function}) {use} `{table}`"
+        why = _roster_never_why(never, where)
+        if why is not None:
+            faults.append(
+                f"{place}, and {where} is {why}. Nothing that forecasts, "
+                f"grades, fits or measures may read the roster's numbers (the "
+                f"operator's ruling of 2026-09-29), listed or not: take the "
+                f"name out.")
+            return
+        entry = allowed.get((where, function))
+        if entry is None:
+            faults.append(
+                f"{place}, which audit.ROSTER_NUMBERS_ALLOWED does not list. "
+                f"The table is display only (the operator's ruling of "
+                f"2026-09-29): it is named by its loader, the schema and the "
+                f"code that draws the jersey, and nowhere else; a name the "
+                f"scan cannot place is counted as a read.")
+            return
+        found.add((where, function))
+        listed = entry[0] if isinstance(entry, tuple) and entry else None
+        if listed != use:
+            faults.append(
+                f"{place}, where its entry in audit.ROSTER_NUMBERS_ALLOWED "
+                f"allows only {listed!r}. An entry allows one use; a name the "
+                f"scan cannot place is counted as a read.")
+
+    # THE FUNCTIONS THE ALLOW-LIST LETS NAME THE TABLE, by their own names
+    # (the prover, 2026-09-29): named where the table may never be, each is a
+    # read there.
+    readers: dict[str, str] = {}
+    for (where, function) in allowed:
+        if where.endswith(".py") and function != "module level":
+            readers.setdefault(function.rsplit(".", 1)[-1], f"{where} ({function})")
+    scan_itself_found: set[str] = set()
+
+    for path in _shipped_python_files(root):
+        where = path.relative_to(base).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        functions = _qualified_functions(tree)
+        for node, text in _sql_strings_in(tree):
+            for start, use in _roster_mentions(text, schema=False):
+                judge(where, node.lineno + text.count("\n", 0, start),
+                      functions.get(id(node)) or "module level", use)
+        # A TEMPLATE FILLED IN WITH CONSTANTS ALONE, read again whole.
+        for node, text in _roster_filled_in(tree):
+            for start, use in _roster_mentions(text, schema=False):
+                judge(where, node.lineno, functions.get(id(node)) or "module level", use)
+        # THE NAME BY THE NAME OF A VALUE HOLDING IT: a read by the function
+        # it is in, but in the scan's own functions.
+        if where == "gridiron/audit.py":
+            scan_itself_found = {f for f in functions.values() if f} & _ROSTER_SCAN_ITSELF
+        for node, name in _roster_references(tree, _ROSTER_NAME_HOLDERS):
+            function = functions.get(id(node)) or "module level"
+            if where == "gridiron/audit.py" and function in _ROSTER_SCAN_ITSELF:
+                continue
+            judge(where, node.lineno, function, "reads")
+        # AND THE CODE THAT NAMES IT, named where the table may never be.
+        why = _roster_never_why(never, where)
+        if why is not None:
+            for node, name in _roster_references(tree, readers):
+                function = functions.get(id(node)) or "module level"
+                faults.append(
+                    f"{where}:{node.lineno} ({function}) names `{name}`, "
+                    f"{readers[name]}, which the allow-list lets name "
+                    f"`{table}`; and {where} is {why}. Nothing that forecasts, "
+                    f"grades, fits or measures may read the roster's numbers "
+                    f"(the operator's ruling of 2026-09-29), not through the "
+                    f"code that loads or draws them either: take the call out.")
+    for missing in sorted(_ROSTER_SCAN_ITSELF - scan_itself_found):
+        faults.append(
+            f"gridiron/audit.py ({missing}): listed in audit._ROSTER_SCAN_ITSELF, "
+            f"the scan's own functions, and no longer found: remove it.")
+    for path in sorted(root.rglob("*.sql")):
+        where = path.relative_to(base).as_posix()
+        text = path.read_text(encoding="utf-8")
+        tokens = _sql_tokens(text)
+        objects = _sql_objects(tokens)
+        for start, use in _roster_mentions(text, schema=True):
+            holder = [o for o in objects if tokens[o[0]].start <= start]
+            function = (f"{holder[-1][1]} {holder[-1][2]}" if holder
+                        else "module level")
+            judge(where, 1 + text.count("\n", 0, start), function, use)
+
+    for key, entry in sorted(allowed.items()):
+        where, function = key
+        name = f"{where} ({function})"
+        why = _roster_never_why(never, where)
+        if why is not None:
+            faults.append(
+                f"{name}: listed in audit.ROSTER_NUMBERS_ALLOWED, and {where} "
+                f"is {why}. No entry lets what forecasts, grades, fits or "
+                f"measures read the roster's numbers: remove the entry.")
+        if (not isinstance(entry, tuple) or len(entry) != 2
+                or entry[0] not in _ROSTER_USES):
+            faults.append(
+                f"{name}: listed in audit.ROSTER_NUMBERS_ALLOWED without one "
+                f"of the uses {_ROSTER_USES} and a reason.")
+            continue
+        if key not in found and why is None:
+            faults.append(
+                f"{name}: listed in audit.ROSTER_NUMBERS_ALLOWED and no longer "
+                f"names `{table}`: remove the entry.")
+        if not re.match(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}: \S", str(entry[1])):
+            faults.append(
+                f"{name}: listed without a dated reason in words "
+                f"(\"2026-09-29: the code that draws the jersey\").")
+    # One place read two ways (a template's constant argument and the
+    # template filled in) is one fault.
+    return list(dict.fromkeys(faults))
+
+
+def check_the_roster_numbers_are_display_only(root: Path | None = None) -> None:
+    """Raise unless the roster's numbers table is named only where the
+    allow-list says, and nowhere that forecasts, grades, fits or measures
+    (the operator's ruling of 2026-09-29; gate step 2)."""
+    faults = roster_numbers_read_faults(root)
+    if faults:
+        raise LawViolation(
+            f"THE ROSTER'S NUMBERS ARE READ WHERE THEY MAY NOT BE (the "
+            f"operator's ruling of 2026-09-29: `{ROSTER_NUMBERS_TABLE}` is "
+            f"display only, and nothing that forecasts, grades, fits or "
+            f"measures may read it):" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_roster_scan_can_see() -> None:
+    """The name read as SQL reads it, placed, and nothing else taken for it
+    -- every text built on the constant, so this module names the table
+    once."""
+    t = ROSTER_NUMBERS_TABLE
+    cases = (
+        ("SELECT n.jersey_number FROM " + t + " n", False, ["reads"]),
+        ("select * from MAIN.\"" + t.upper() + "\"", False, ["reads"]),
+        ("UPDATE " + t + " SET jersey_number = ?", False, ["writes"]),
+        ("INSERT OR IGNORE INTO main." + t + " VALUES (?)", False, ["writes"]),
+        ("DELETE FROM " + t, False, ["writes"]),
+        ("SELECT 1 FROM sqlite_master WHERE name = '" + t + "'", False, ["reads"]),
+        (t, False, ["reads"]),
+        ("SELECT * FROM " + t[:7] + "{kind}", False, ["reads"]),
+        ("SELECT * FROM " + _UNKNOWN_PART + t[6:], False, ["reads"]),
+        ("CREATE TABLE IF NOT EXISTS " + t + " (a)", True, ["declares"]),
+        ("CREATE TABLE IF NOT EXISTS " + t + " (a)", False, ["reads"]),
+        ("SELECT * FROM " + t + "_history", False, []),
+        ("SELECT * FROM players", False, []),
+        ("read " + _UNKNOWN_PART + "s ago", False, []),
+    )
+    problems = [f"{text!r} read as {got}, not {want}"
+                for text, schema, want in cases
+                if (got := [u for _at, u in _roster_mentions(text, schema)]) != want]
+    # AND BY ANOTHER NAME (the prover, 2026-09-29): a template filled in with
+    # constants alone is read whole, a value holding the name is seen by its
+    # own name however it is reached, and every value of this module holding
+    # the name is one of those.
+    filled = ast.parse(
+        repr("SELECT * FROM {}_{}") + ".format(" + repr(t[:6]) + ", " + repr(t[7:]) + ")\n"
+        + repr("SELECT * FROM %s_%s") + " % (" + repr(t[:6]) + ", " + repr(t[7:]) + ")\n"
+        + repr("SELECT * FROM %(a)s") + " % {'a': " + repr(t) + "}\n"
+        + repr("SELECT * FROM {}") + ".format(kind)\n")
+    got = [u for _n, text in _roster_filled_in(filled)
+           for _at, u in _roster_mentions(text, False)]
+    if got != ["reads"] * 3:
+        problems.append(f"three templates filled in with the name read as {got}")
+    named = ast.parse("from gridiron.audit import " + _ROSTER_NAME_HOLDERS[0] + " as x\n"
+                      "y = a." + _ROSTER_NAME_HOLDERS[1] + "\n"
+                      "z = getattr(a, " + repr(_ROSTER_NAME_HOLDERS[2]) + ")\n"
+                      "w = a.ROSTER_NUMBERS_NEVER\n")
+    seen = sorted(name for _n, name in _roster_references(named, _ROSTER_NAME_HOLDERS))
+    if seen != sorted(_ROSTER_NAME_HOLDERS[:3]):
+        problems.append(f"the name by another name read as {seen}")
+    holding = {name for name, value in globals().items()
+               if not callable(value) and type(value).__name__ != "module"
+               and t in repr(value)}
+    if holding != set(_ROSTER_NAME_HOLDERS):
+        problems.append(f"this module's values holding the name are {sorted(holding)}, "
+                        f"and audit._ROSTER_NAME_HOLDERS lists {list(_ROSTER_NAME_HOLDERS)}")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_roster_scan_can_see()

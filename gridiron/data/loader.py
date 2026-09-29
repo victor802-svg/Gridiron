@@ -355,6 +355,17 @@ def load_rosters(conn: sqlite3.Connection, season: int) -> int:
     `player_id`, so no name is matched. A row with no number is stored with
     NULL and the jersey shows an empty slot; nothing is guessed.
 
+    `player_numbers` IS A LOADED ROSTER, REFRESHED AT EACH LOAD, NOT
+    APPEND-ONLY, AND DISPLAY ONLY (the operator's ruling of 2026-09-29): a
+    loaded roster, refreshed at each load -- the stored row's number and
+    fetch time are updated, and a plain insert writes the row where none was
+    updated ("Plain UPDATE then INSERT is fine") -- not append-only, since a
+    row is the roster as last loaded and no record of anything this project
+    said, and display only: the board draws the number on a jersey, and
+    nothing that forecasts, grades, fits or measures may read the table
+    (`audit.check_the_roster_numbers_are_display_only`, gate step 2, names
+    this function as its one writer).
+
     Returns the row count; a missing file (the upcoming season) is zero, not
     an error, like every other per-season file here.
     """
