@@ -2,6 +2,21 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **THE ORDER NOW (29 Sep, second set, ~05:40Z;
+  docs/briefs/2026-09-29-rulings-second-set.md; wins over every order
+  below):** **Q32** (corrections activate through the model fits' gate:
+  written inactive; activation its own dated append-only row, only when the
+  holdout bootstrap interval of the Brier improvement, on distinct bets by
+  the key per forecaster, excludes zero; a tie to the uncorrected
+  probability; the recalibration never activates; fit 71 withdrawn by a
+  dated row, then the new gate run on it read-only and its interval
+  reported -- activated by a new row if it passes) -> Q27 (its partial
+  build kept on `q27-held`, 80108c1) -> board merge -> re-read -> Q25 + Q26
+  + Q29 -> Q5 -> Q10. Q32 released before 5 Oct 13:00Z. First step done
+  read-only: no forecast or recommendation carries fit 71 or any
+  correction; no MLB pass can apply it (regular season over, loader reads
+  `gameType=R` only, no unstarted MLB game on the record).
+
 - **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
   (ii)(B): label every fitted row written before Q16's release that is
   short on the key -- 33, 59, 61, 63, 81, 85, 86, 87, 89 -- and no
