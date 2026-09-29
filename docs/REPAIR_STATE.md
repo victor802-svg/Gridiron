@@ -95,7 +95,23 @@
   other sport stores 'not_cover', `priced.shape.blind_probability` has no
   rule for it, and the page and `audit.board_price_side_faults` turn only
   on `is False`. The released Today card had the same display. A fix waits
-  for "fix it". **Next: the re-read.**
+  for "fix it". **THE RE-READ, done 2026-09-29 (19:10Z copy; report
+  docs/closeouts/2026-09-29-the-re-read.md; three measurers and a compiler):**
+  item 1 PARTLY (the close rule holds on every close -- 106 of 106
+  accounted, 0 priced against their own read -- but 14 of 19 measured MLB
+  closes are the read 35 minutes out, the firing 5 minutes before the start
+  leaving the game out); item 2 TOOK EFFECT for the revert, its failure by
+  name CANNOT BE SEEN YET (no run has met an untrained market); item 3
+  CANNOT BE SEEN YET (no correction was ever in force at a recommendation's
+  stamp); items 4, 5, 6, 8 TOOK EFFECT; item 7 TOOK EFFECT for the noop, the
+  sweep (9 hung rows abandoned, 4821 among them) and WakeToRun (18 of 18),
+  awake 66.46 of 67.07 hours since its fix (99.1%). Every gate distance
+  restated: 354 figures, 19 records, five sports; 343 counts each equal a
+  recount made without any door. Three findings make a gate count false:
+  questions 33-35 (all UFC). The edge question was not re-measured.
+  **Next: Q25 + Q26 + Q29** (then Q5, Q10; the Record page's "market
+  ahead" and the pick'em decision, queued after the re-read on 27 Sep, are
+  not placed in the later orders and wait at the end).
 
 - **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
   (ii)(B): label every fitted row written before Q16's release that is
@@ -1252,6 +1268,38 @@ depend on the answer.
     the key (33, 59, 61, 63, 81, 85, 86, 87, 89), no placeholder. The default
     above (four) is superseded; the tool's ruled set becomes the nine before
     Q16's gate.
+
+33. **G1: UFC Fight Night's outlook says a gate is reachable that is not.
+    (Found by the re-read, 2026-09-29; docs/closeouts/2026-09-29-the-re-read.md
+    section 2A; makes a gate count false, so it joins the queue.)** Fight
+    Night moneyline, rounds and distance (statistical) each read "39 of 100
+    · ~121 expected". The 39 is true. `horizon.slates_remaining` counts 6
+    Fight Night cards to come, but 2 of them were fought (12 and 26
+    September), each still holding one bout marked 'scheduled' (bouts
+    401913546 and 401923433). On the 4 cards really ahead: 39 + 13.67 x 4 =
+    ~94, so the page should say THIS GATE CANNOT CLEAR THIS SEASON. Fix the
+    slate count (a card is to come only if its start is ahead, or every
+    bout on it unsettled), with a planting? Default until ruled: not built.
+34. **G2: UFC's tier table, ranker, taken record, blind edge figure and the
+    board badge count the three cards as one. (The re-read, section 2B-F;
+    under Q14's "per tier for UFC" a gate count is false.)** The tier bands
+    read 28/15/4/2; by card they are Fight Night 22/14/2/1, Contender Series
+    6/1/2/1, Numbered card 0. The ranker reads 49/0; by card 39/0, 10/0, 0/0.
+    The taken record's "every forecast" 49; the board badge
+    (`shortlist.settled_for_gate`) 49. Q14 rebuilt three counts per card;
+    these were not named. Split each per card, a planting each? Default
+    until ruled: not built.
+35. **G3: a UFC start stored to the minute is compared as text with a pass
+    written to the second. (The re-read, section 2E; a gate count moves
+    under one reading.)** 18 final passes (1014-1031) were written at
+    19:00:02-03Z for a 19:00Z start; `standing_pass_order` compares the
+    stored strings, so "19:00:02Z" <= "19:00Z" reads as before the start and
+    the final passes stand. Read to the second, they were written after the
+    start, the early passes stand, and the UFC ranker split in each of three
+    markets goes 49/0 -> 43/6. No other count moves. (A) As stored: a start
+    to the minute covers that minute. (B) Read to the second: a pass
+    written after hh:mm:00 is after the start (the stricter reading, LAW
+    1's spirit). Default until ruled: (A), unchanged.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
