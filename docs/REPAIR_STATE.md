@@ -2,6 +2,53 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
+  (ii)(B): label every fitted row written before Q16's release that is
+  short on the key -- 33, 59, 61, 63, 81, 85, 86, 87, 89 -- and no
+  placeholder. Q30 to FOLLOWUPS (queue rule). Q27's and Q29's readings
+  confirmed. If Serve stops again unexplained, read the Windows event log
+  around it before anything else. Order unchanged: Q16 -> Q27 -> board
+  merge -> re-read -> Q25 + Q26 + Q29 -> Q5 -> Q10.
+  **FIT 71: HOW IT CAME INTO FORCE (read-only report, 2026-09-29 ~02:30Z; the
+  ruling of 29 Sep; nothing about fit 71 changed).**
+  - **The process:** the weekly scheduled task `Gridiron-Recalibrate` (task run
+    6173, `recalibrate`, started and finished 2026-09-28T13:00:01Z, result ok,
+    "fitted 26 categories; 18 had at least 50 settled"; payload: 1 activated),
+    running the released main checkout (724a72d at that instant; master's
+    reflog: 724a72d from 04:51Z, f0a4418 from 20:42Z). `tasks._run_recalibrate`
+    calls `correction.refit_all`, which calls `correction.record_fit`, the one
+    writer of `calibration_corrections` (no other shipped caller; the
+    plantings call it on scratch worlds).
+  - **THE WEEKLY RECALIBRATION ACTIVATES A CORRECTION WITHOUT AN OPERATOR
+    RULING.** `refit_all` fits every category past `MIN_TRAIN` (50 settled) and,
+    when `holdout_check` passes, writes the row with `active_from` = the run's
+    own instant. Nothing else is asked: no ruling, no separate activation row,
+    no incumbent. `_run_recalibrate`'s own docstring says "Writes versions;
+    activates nothing" -- it is wrong. The model fits' activation gate (ruled
+    2026-09-24: `fit_activations`, a dated measured row, the bootstrap
+    interval of the log-loss difference excluding zero) does NOT bind
+    corrections; they are a separate table with their own rule.
+  - **ITS HOLDOUT HAS NO INTERVAL.** `holdout_check`: fit on the earliest 80%
+    of the category's settled rows (time-ordered), score on the latest 20%;
+    pass when there are at least 40 held-out rows (`HOLDOUT_MIN`) and the
+    corrected Brier beats the raw one by more than 0.005 (`HOLDOUT_MIN_GAIN`),
+    a point comparison. Fit 71: 364 settled (`n_train`), 73 held out, Brier
+    0.250413 raw to 0.245211 corrected, a gain of 0.005202 -- past the 0.005
+    bar by 0.0002. No interval was computed or stored. (The constant's own
+    comment measured 2 of 60 false activations at this margin on 200-row
+    synthetic categories.)
+  - **THE DATED ROW:** `calibration_corrections` id 71: MLB, moneyline,
+    statistical, version 8, fitted 2026-09-28T13:00:01Z, slope 1.00658,
+    intercept -0.23354, train Brier 0.250636 -> 0.247286, holdout 73 rows
+    0.250413 -> 0.245211, `active_from` 2026-09-28T13:00:01Z, status "active -
+    the correction scored better on the most recent rows, which it was not
+    fitted on (73 rows held out)". It is the only row ever active (71 of 89).
+    `active_from` is written once, at the insert; `calibration_corrections_no_
+    update` refuses any edit.
+  - **WHAT IT HAS TOUCHED:** nothing yet -- 0 forecasts and 0 recommendations
+    carry a correction version. From its instant, `recommend.for_predictions`
+    prices a new MLB moneyline statistical pick from the corrected probability
+    (repair item 3), and the card's model chip shows it.
 - **THE ORDER NOW (28 Sep, second set, ~21:10Z;
   docs/briefs/2026-09-28-rulings-second-set.md; wins over every order
   below):** Q17 (building) -> Q16 -> Q27 (the standing pass chosen by pass:
@@ -1011,6 +1058,8 @@ depend on the answer.
     leave them (none states a gate distance)? Default until ruled: as they
     are, in FOLLOWUPS; by the queue rule after Q16 they would wait for the
     re-read.
+    **RULED 2026-09-29: FOLLOWUPS, per the queue rule;** none states a
+    gate distance.
 
 31. **Q16/Q23: "the 63 existing fits" are 89 today, and one is in force.
     (Found by Q16's first step, 2026-09-28, read-only through
@@ -1084,6 +1133,10 @@ depend on the answer.
     labels are written by the same tool afterwards (labels only add).
     Fits 81, 85, 86, 87, 89 and the placeholders stay unlabelled until
     then.
+    **RULED 2026-09-29: (i)(B) and (ii)(B)** -- the nine fitted rows short on
+    the key (33, 59, 61, 63, 81, 85, 86, 87, 89), no placeholder. The default
+    above (four) is superseded; the tool's ruled set becomes the nine before
+    Q16's gate.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 

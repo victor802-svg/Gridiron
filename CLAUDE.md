@@ -414,6 +414,30 @@ the operator"). Test worlds, plantings and the gate's scratch pipeline train
 their own fits and activate them as `scratch`, which the schema refuses on a
 database whose meta kind is `live`.
 
+**CORRECTIONS ARE NOT UNDER THIS GATE -- AS THE CODE ACTUALLY BEHAVES (read
+2026-09-29, by operator ruling of that date; no code changed).** Everything
+above binds MODEL FITS (`model_fits`, `fit_activations`). A calibration
+CORRECTION (`calibration_corrections`, Platt scaling per sport, market type and
+forecaster) is a different table with its own rule, and **the weekly
+recalibration activates one by itself, without an operator ruling.**
+`tasks._run_recalibrate` (the scheduled `Gridiron-Recalibrate`, Mondays 13:00Z)
+calls `correction.refit_all`, which fits every category past `MIN_TRAIN` (50;
+from Q16's release, 50 distinct bets on the key) and, when `holdout_check`
+passes, writes the row with `active_from` set to the run's own instant --
+nothing else is asked: no ruling, no separate activation row, no incumbent.
+The check fits on the earliest 80% of the category's settled forecasts in time
+order and scores the latest 20%; it passes with at least 40 held-out rows
+(`HOLDOUT_MIN`) and a corrected Brier better than the raw one by more than
+0.005 (`HOLDOUT_MIN_GAIN`) -- a POINT comparison, with NO INTERVAL (the model
+fits' gate needs the bootstrap interval of the log-loss difference to exclude
+zero). `_run_recalibrate`'s docstring, "Writes versions; activates nothing", is
+wrong. The first correction in force came this way: fit 71, MLB moneyline,
+statistical, version 8, written and active from 2026-09-28T13:00:01Z by task
+run 6173 (364 settled forecasts; 73 held out, Brier 0.250413 raw to 0.245211,
+a gain of 0.005202). `active_from` is written once, at the insert
+(`calibration_corrections_no_update` refuses an edit), and from Q16 a fit
+labelled "fitted below its gate" is refused by the correction door.
+
 **The revert (the same day).** Measured by `tools/holdout.py`, none of fits
 91-94 beats its incumbent, so all four fs5 markets went back to fits 88, 71,
 44 and 35 as `incumbent` activations recording the tie, and their hold was
