@@ -184,7 +184,8 @@ def standing_forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
     through the BLIND RECORD'S OWN STANDING RULE, `calibration.
     standing_row_clause`: the row counted is the one on the question's
     standing forecast (the latest written before the start, a withdrawn one
-    never), and a question is counted once per forecaster. A question whose
+    never -- and from 2026-09-29 a final pass written before the start first,
+    operator question 27), and a question is counted once per forecaster. A question whose
     standing forecast carried no price has no priced row and is not counted,
     even if a superseded pass of it was priced (none on the record on
     2026-09-27): a superseded forecast is not the record's, blind or priced.

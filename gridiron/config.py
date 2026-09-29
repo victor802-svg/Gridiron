@@ -265,7 +265,9 @@ FORECASTER_LABELS = {"statistical": "statistical", "llm": "LLM"}
 #
 # SO EVERY SPORT GETS A SECOND, LATE PASS. It writes NEW rows (LAW 3 --
 # append-only, the early rows stand), and the LATEST ROW BEFORE START is the
-# standing forecast for grading, calibration, Picks and Results. The early row
+# standing forecast for grading, calibration, Picks and Results -- from
+# 2026-09-29 the final pass before the start whichever row was written last
+# (operator question 27, `calibration.standing_pass_order`). The early row
 # is kept and labelled, never graded. Whether the late pass is actually better
 # is not assumed here: `calibration.early_vs_final` measures it, and the
 # number decides on its date.

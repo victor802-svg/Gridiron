@@ -132,7 +132,9 @@ def standing_pairs(conn: sqlite3.Connection, *, sport: str, market: str,
     games", past the fifty, for 58 questions, 48 of them standing rows. The
     candidates are now the forecaster's STANDING forecasts
     (`calibration.standing_row_clause`: the latest written before the start,
-    a withdrawn one never), so a superseded pass's pair is never counted --
+    a withdrawn one never -- and from 2026-09-29 a final pass written before
+    the start first, operator question 27), so a superseded pass's pair is
+    never counted --
     and a question whose standing forecast has no second look is not counted
     either, even if a superseded pass of it had one.
 

@@ -648,10 +648,12 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
     home side, or the over), and the line is the venue's number at the last
     look before the start. However many passes answered the question and
     however many looks read it, the forecaster holds ONE claim on it -- the
-    last written before the game started, the id breaking a tie -- and that
-    claim is the one the record grades: the at-the-line record's own
-    standing rule, which the ruling keeps ("which pass counts stays each
-    record's standing rule").
+    last written before the game started, the id breaking a tie; from
+    2026-09-29 a claim on a final pass written before the start first
+    (operator question 27, `calibration.standing_pass_order`; the comment in
+    the body says why) -- and that claim is the one the record grades: the
+    at-the-line record's own standing rule, which the ruling keeps ("which
+    pass counts stays each record's standing rule").
 
     THE OPERATOR'S RULING of 2026-09-23 (item 6): "The at-the-line scorecard
     never pools forecasters or duplicates; per-forecaster, per-distinct-bet
@@ -707,6 +709,25 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
     # spans two forecasters, so neither's later claim can stand in for the
     # other's question. `gridiron.recount` works this rule out again, and
     # `calibration.assert_no_pooled_claims` refuses a count that differs.
+    #
+    # CHOSEN BY PASS, NOT BY WRITE TIME (operator question 27, ruled
+    # 2026-09-28; built 2026-09-29): "the final pass stands whenever one
+    # exists before the start; otherwise the latest early pass." This
+    # record's rows are claims, each on a forecast, so the window orders
+    # them by their forecast's pass first -- a claim on a final pass written
+    # before the start stands over any claim on an early pass, whenever each
+    # claim was written -- and then, as before, the last claim written, the
+    # id breaking a tie. The order is the blind clause's own
+    # (`calibration.standing_pass_order`), so the two records cannot choose a
+    # pass two ways. Until this date the claim written last stood, whatever
+    # its pass: the near-start reader writes a claim for every forecast of a
+    # question at each look, so an early pass's claim at a later look stood
+    # over its final pass's (on the record, MLB spreads and moneylines whose
+    # final pass stood in the blind record). A final pass with no claim
+    # before the start is no candidate here, as a withdrawn one is not: its
+    # question stands on its early pass's last claim, as it did.
+    from .. import calibration
+
     refuse_a_pooled_count(sport, market, predictor, event_tier)
     tier_clause, params = "", [sport, market, predictor]
     if event_tier is not None:
@@ -721,7 +742,8 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
         "SELECT * FROM ("
         f" SELECT {bet.columns('p')}, c.*, g.season, g.week,"
         f"        ROW_NUMBER() OVER (PARTITION BY {bet.columns('p')}"
-        "                           ORDER BY c.created_utc DESC, c.id DESC)"
+        "                           ORDER BY"
+        f" {calibration.standing_pass_order('p', 'g', 'c')})"
         "          AS latest_first"
         "   FROM at_the_line_claims c"
         "   JOIN predictions p ON p.id = c.prediction_id"

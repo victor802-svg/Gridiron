@@ -118,8 +118,9 @@ def settled_for_gate(conn: sqlite3.Connection, sport: str, market_type: str,
     """How many of this market's questions have actually resolved.
 
     THE SAME DOOR THE RECORD USES. `calibration.resolved` applies the standing
-    clause -- one row per question, the latest written before the start -- so
-    the count that opens the edge gate is the same count the Record page shows
+    clause -- one row per question, the latest written before the start, a
+    final pass before the start first from 2026-09-29 (operator question
+    27) -- so the count that opens the edge gate is the same count the Record page shows
     beside every other figure. A second implementation here would be a second
     definition of "settled", and this project has been bitten by exactly that.
     """

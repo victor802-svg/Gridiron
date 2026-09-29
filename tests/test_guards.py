@@ -646,6 +646,14 @@ def test_every_new_guard_is_in_the_planted_harness():
         # row dated back over claims already written
         "plant_a_correction_measured_by_another_bootstrap",
         "plant_a_correction_activation_dated_back",
+        # OPERATOR QUESTION 27 (ruled 2026-09-28; built 2026-09-29): the
+        # standing pass is chosen by pass -- the final pass before the start,
+        # otherwise the latest early pass -- in every door that chooses a
+        # question's row; and an early pass is never written for a question
+        # whose final pass is written (a run left with nothing else is a
+        # SlateAlreadyAnswered noop).
+        "plant_a_standing_rule_keeping_a_later_early_pass",
+        "plant_an_early_pass_written_over_its_final_pass",
         # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): a refused rerun is a noop, the closing write is
         # caught, a hung run is marked abandoned past its task's silence,

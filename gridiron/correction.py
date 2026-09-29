@@ -136,18 +136,23 @@ read that column: fit 71 came into force that way, by the weekly task, at
     reason; `activate_in_a_scratch_world` is a test world's lawful path. The
     schema's rules hold every part of it, the key's count among them.
 
-WHICH ROW OF A BET STANDS in the measurement, and why: its LATEST WRITTEN
-settled forecast, withdrawn by no void. The blind record's standing rule is
-the latest written BEFORE THE START (`calibration.standing_row_clause`,
-`recount.standing_of`), and this module may not read `games`, where the
-start is (`audit.check_correction_is_isolated`). The two are one choice
-whenever no forecast withdrawn by no void was written after its game began --
-a pass never writes one (the missed rule) and one found is voided (ruling 1,
-2026-09-24) -- and the tool that writes an activation on the record checks
-that they are, question by question, against `recount.correction_standing`,
-and refuses by name where they are not (`tools/correction_holdout.py`).
-Question 27, pending, will change the standing pass; that check is where the
-change will show.
+WHICH ROW OF A BET STANDS in the measurement, and why: its FINAL PASS if
+one settled, otherwise its LATEST WRITTEN settled forecast, withdrawn by no
+void either way (operator question 27, ruled 2026-09-28, built 2026-09-29:
+"the standing pass is chosen by pass, not by write time: the final pass
+stands whenever one exists before the start; otherwise the latest early
+pass"; until then the latest written, whatever its pass). The blind
+record's standing rule reads the start as well (`calibration.
+standing_row_clause`, `recount.standing_of`), and this module may not read
+`games`, where the start is (`audit.check_correction_is_isolated`, which
+allows `predictions` and `prediction_voids` and so allows the pass: it is a
+column of `predictions`). So the pass is read here BY PASS ALONE, and the
+two are one choice whenever no forecast withdrawn by no void was written
+after its game began -- a pass never writes one (the missed rule) and one
+found is voided (ruling 1, 2026-09-24) -- and the tool that writes an
+activation on the record checks that they are, question by question,
+against `recount.correction_standing`, and refuses by name where they are
+not (`tools/correction_holdout.py`).
 """
 
 from __future__ import annotations
@@ -366,10 +371,11 @@ def settled_rows(
     voided_by = at if as_it_stood else None
     # WHEN EACH WAS WRITTEN, beside the key (2026-09-29, question 32): the
     # measurement keeps one forecast per question, the latest written
-    # (`holdout_questions`). A column more, no clause changed.
+    # (`holdout_questions`). A column more, no clause changed. AND ITS PASS
+    # (operator question 27, 2026-09-29): a final pass is kept first.
     return conn.execute(
         f"SELECT p.id, {bet.columns('p')}, p.model_prob, p.calibrated_prob,"
-        "       p.outcome, p.resolved_utc, p.created_utc"
+        "       p.outcome, p.resolved_utc, p.created_utc, p.pass_kind"
         "  FROM predictions p"
         " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
         "   AND p.resolved_utc IS NOT NULL AND p.outcome IS NOT NULL"
@@ -733,9 +739,16 @@ def holdout_questions(conn: sqlite3.Connection, fit) -> list[sqlite3.Row]:
     fitted instant: the record the fit saw, so a measurement made a week
     later measures what was there to fit), so the questions measured are the
     questions the gate counts and the schema recounts. Each question stands on
-    its LATEST WRITTEN forecast (the module's text says why, and what checks
-    it); settled in time order, the forecast's number breaking a tie.
+    its FINAL PASS if one settled, otherwise its LATEST WRITTEN forecast
+    (operator question 27, from 2026-09-29; the module's text says why it is
+    read by pass alone, and what checks it); settled in time order, the
+    forecast's number breaking a tie.
     """
+    def order(row) -> tuple:
+        # `calibration.standing_pass_order` without the start, which this
+        # module may not read: the pass, then the write time, then the number.
+        return (row["pass_kind"] == "final", row["created_utc"], row["id"])
+
     standing: dict[tuple, sqlite3.Row] = {}
     for row in settled_rows(conn, sport=fit["sport"],
                             market_type=fit["market_type"],
@@ -743,8 +756,7 @@ def holdout_questions(conn: sqlite3.Connection, fit) -> list[sqlite3.Row]:
                             before_utc=fit["fitted_utc"]):
         key = bet.of(row)
         held = standing.get(key)
-        if held is None or (row["created_utc"], row["id"]) > (
-                held["created_utc"], held["id"]):
+        if held is None or order(row) > order(held):
             standing[key] = row
     return sorted(standing.values(), key=lambda r: (r["resolved_utc"], r["id"]))
 
@@ -826,7 +838,8 @@ def measure(conn: sqlite3.Connection, correction_id: int, *,
         holdout=(
             f"the latest {len(test)} of the category's {n} settled questions "
             f"before the fit ({fit['fitted_utc']}), one forecast each (its "
-            f"latest written) in the order they settled; a correction refit "
+            f"final pass if one settled, otherwise its latest written) in the "
+            f"order they settled; a correction refit "
             f"on the earliest {cut} and scored on them"),
         why=("the bootstrap interval of the Brier improvement lies wholly "
              "above zero" if passed else

@@ -8746,6 +8746,237 @@ def check_every_count_keys_one_bet(root: Path | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# THE STANDING PASS, CHOSEN BY PASS (operator question 27, ruled 2026-09-28;
+# built 2026-09-29)
+# ---------------------------------------------------------------------------
+#
+# "The standing pass is chosen by pass, not by write time: the final pass
+# stands whenever one exists before the start; otherwise the latest early
+# pass. A read rule -- no row changes." The order is one door,
+# `calibration.standing_pass_order` -- the standing clause's and the
+# at-the-line window's -- spelled again in Python by `gridiron.recount`, and
+# by pass alone by the correction's measurement, which may not read the
+# start. WHY A WORLD AND NOT A RECOUNT: the recount beside each count moves
+# with the pass only where one pass carried what the other did not (a price,
+# a second look, a claim), and on the sixteen NFL totals the ruling moved it
+# moves no count at all -- the curve's Brier and log loss move, and nothing
+# that counts sees them. So the gate asks every door that chooses a
+# question's row which one stands, on a world made to tell the pass from the
+# write time, as question 32's check asks the correction door on a world of
+# its own.
+
+#: THE WORLD'S QUESTIONS, each its own distinct bet on one settled NFL
+#: total: (subject, its rows as (pass, factor set, hours from the start,
+#: withdrawn), the place in that list of the row that must stand, and
+#: whether the correction's measurement is asked -- it reads no start, so a
+#: question with a row written after its start is the tool's check's
+#: (`tools/correction_holdout.py`), not this world's).
+STANDING_PASS_WORLD = (
+    # THE SIXTEEN'S SHAPE: the final pass written first, the early after it,
+    # both before the start (23 September 19:30Z, then 24 September 05:32Z).
+    ("SIXTEEN", (("final", "fsA", -23, False), ("early", "fsA", -13, False)),
+     0, True),
+    # the ordinary order, unchanged
+    ("ORDINARY", (("early", "fsA", -20, False), ("final", "fsA", -2, False)),
+     1, True),
+    # a withdrawn final pass leaves the LATEST early pass standing
+    ("WITHDRAWN", (("final", "fsA", -30, True), ("early", "fsA", -25, False),
+                   ("early", "fsB", -20, False)), 2, True),
+    # a final pass written after the start never stands
+    ("LATEFINAL", (("early", "fsA", -10, False), ("final", "fsA", 1, False)),
+     0, False),
+    # two early passes and no final: the latest early pass
+    ("TWOEARLY", (("early", "fsA", -20, False), ("early", "fsB", -10, False)),
+     1, True),
+    # nothing before the start (a backtest): the latest written, whatever its
+    # pass -- the fallback as it was
+    ("BACKTEST", (("final", "fsA", 1, False), ("early", "fsA", 2, False)),
+     1, False),
+)
+
+#: The start of the world's one game, and the instant its correction is
+#: measured at (after every question settled).
+_STANDING_PASS_START = "2025-12-01T18:00:00Z"
+_STANDING_PASS_FITTED = "2025-12-02T06:00:00Z"
+
+
+def _hours_from(stamp: str, hours: float) -> str:
+    from datetime import datetime, timedelta
+
+    moment = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+    return (moment + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _standing_pass_world(probe) -> dict[str, list[int]]:
+    """Write `STANDING_PASS_WORLD` into an empty database: one settled NFL
+    game, each question's rows, their withdrawals, two near-start looks at
+    the venue and the claims the near-start reader would have written on
+    them. Returns each subject's forecast ids in the world's order."""
+    start = _STANDING_PASS_START
+    probe.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date, home_score, away_score)"
+        " VALUES ('probe_q27', 'nfl', 2025, 13, 'REG', 'AAA', 'BBB', ?,"
+        " 'final', '2025-12-01', 27, 20)", (start,))
+    ids: dict[str, list[int]] = {}
+    for subject, rows, _stands, _corrected in STANDING_PASS_WORLD:
+        for pass_kind, factor_set, hours, _withdrawn in rows:
+            cur = probe.execute(
+                "INSERT INTO predictions (sport, created_utc, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning, resolved_utc, outcome)"
+                " VALUES ('nfl', ?, 'probe_q27', 'total', ?, 44.5, 0.6,"
+                " 'over', 'statistical', ?, ?, '{}', 'probe', ?, 1)",
+                (_hours_from(start, hours), subject, pass_kind, factor_set,
+                 _hours_from(start, 4)))
+            ids.setdefault(subject, []).append(cur.lastrowid)
+    for subject, rows, _stands, _corrected in STANDING_PASS_WORLD:
+        for i, (_p, _f, _h, withdrawn) in enumerate(rows):
+            if withdrawn:
+                probe.execute(
+                    "INSERT INTO prediction_voids (prediction_id, voided_utc,"
+                    " reason) VALUES (?, ?, 'withdrawn in the probe world')",
+                    (ids[subject][i], _hours_from(start, 5)))
+    # TWO LOOKS BEFORE THE START, and a claim per forecast at each, in the
+    # order of their numbers -- as the near-start reader writes them -- so
+    # the claim written last is on whichever pass has the higher number.
+    looks = []
+    for hours in (-3, -1):
+        cur = probe.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " fetched_utc, read_kind) VALUES ('kalshi', ?, 'PROBE', 'nfl',"
+            " 'probe_q27', 'total', 'total', 44.5, 'over', 0.5, 0.52, ?,"
+            " 'near_start')", (f"PROBE-{hours}", _hours_from(start, hours)))
+        looks.append((cur.lastrowid, _hours_from(start, hours + 0.1)))
+    for quote_id, claimed in looks:
+        for subject, rows, _stands, _corrected in STANDING_PASS_WORLD:
+            for i, (_p, _f, hours, _w) in enumerate(rows):
+                if _hours_from(start, hours) >= claimed:
+                    continue
+                probe.execute(
+                    "INSERT INTO at_the_line_claims (prediction_id, quote_id,"
+                    " venue, sport, game_id, market, quantity, line, side,"
+                    " shape, model_prob, venue_price, venue_implied,"
+                    " price_basis, created_utc, resolved_utc, outcome)"
+                    " VALUES (?, ?, 'kalshi', 'nfl', 'probe_q27', 'total',"
+                    " 'total', 44.5, 'over', 'rung_matched', 0.6, 0.52, 0.52,"
+                    " 'ask', ?, ?, 1)",
+                    (ids[subject][i], quote_id, claimed,
+                     _hours_from(start, 4)))
+    probe.commit()
+    return ids
+
+
+def standing_pass_faults() -> list[str]:
+    """Where a door that chooses a question's row keeps another than the
+    ruled pass, in words; [] when every door keeps the final pass written
+    before the start, otherwise the latest early pass (operator question 27,
+    ruled 2026-09-28; built 2026-09-29).
+
+    Asked on a world made to tell them apart (`STANDING_PASS_WORLD`): the
+    standing clause (through `calibration.resolved`, across factor sets and
+    within one), its recount (`recount.standing_of`), the outlook's door
+    (`horizon.standing_questions`, which reads the clause as the priced and
+    drift doors do), the at-the-line window and its recount (a claim stands
+    for its forecast's pass), the slate's card (`views.week`) and the
+    correction's measurement (`correction.holdout_questions`, by pass alone,
+    on the questions with no row after the start)."""
+    from . import calibration, correction, db as _db, horizon, recount, views
+    from .market import at_the_line
+
+    faults: list[str] = []
+    probe = _db.connect(":memory:")
+    try:
+        _db.init(probe)
+        ids = _standing_pass_world(probe)
+        want = {subject: ids[subject][stands]
+                for subject, _rows, stands, _c in STANDING_PASS_WORLD}
+        passes = {i: (subject, rows[n][0], rows[n][2])
+                  for subject, rows, _s, _c in STANDING_PASS_WORLD
+                  for n, i in enumerate(ids[subject])}
+
+        def said(door: str, kept: dict, only=None) -> None:
+            for subject in sorted(only if only is not None else want):
+                got = kept.get(subject)
+                if got == want[subject]:
+                    continue
+                if got is None:
+                    faults.append(f"{door}: question {subject} has no standing "
+                                  f"row, where forecast {want[subject]} stands")
+                    continue
+                _s, pass_kind, hours = passes[got]
+                _s, want_pass, want_hours = passes[want[subject]]
+                faults.append(
+                    f"{door}: question {subject} stands on its {pass_kind} "
+                    f"pass written {hours:+g}h from the start (forecast {got}), "
+                    f"where the ruled row is its {want_pass} pass written "
+                    f"{want_hours:+g}h (forecast {want[subject]})")
+
+        cell = dict(sport="nfl", predictor="statistical")
+        said("calibration.standing_row_clause",
+             {r.subject: r.id for r in calibration.resolved(
+                 probe, market_type="total", **cell)})
+        one_set = {s for s, rows, _st, _c in STANDING_PASS_WORLD
+                   if {f for _p, f, _h, _w in rows} == {"fsA"}}
+        said("calibration.standing_row_clause within one factor set",
+             {r.subject: r.id for r in calibration.resolved(
+                 probe, market_type="total", factor_set_version="fsA", **cell)},
+             only=one_set)
+        said("recount.standing_of",
+             {r["subject"]: r["id"] for r in recount.standing_of(
+                 recount.forecasts(probe, market_type="total", prop_type=None,
+                                   event_tier=None, **cell)).values()})
+        said("horizon.standing_questions",
+             {r["subject"]: r["id"] for r in horizon.standing_questions(
+                 probe, market="total", **cell)})
+        claimed = {s for s, rows, st, _c in STANDING_PASS_WORLD
+                   if rows[st][2] < -1}
+        said("market.at_the_line.standing_claims",
+             {c["subject"]: c["prediction_id"] for c in
+              at_the_line.standing_claims(probe, market="total", **cell)},
+             only=claimed)
+        said("recount.standing_claims_of",
+             {c["subject"]: c["prediction_id"] for c in
+              recount.standing_claims_of(recount.claims(
+                  probe, market="total", event_tier=None, **cell)).values()},
+             only=claimed)
+        if not config.held_market("nfl", "total"):
+            said("views.week (the slate's card)",
+                 {c["subject"]: c["prediction_id"] for c in views.week(
+                     probe, "nfl", 2025, 13, forecaster="statistical")["cards"]
+                  if c["market_type"] == "total"})
+        said("correction.holdout_questions",
+             {r["subject"]: r["id"] for r in correction.holdout_questions(
+                 probe, {"sport": "nfl", "market_type": "total",
+                         "forecaster": "statistical",
+                         "fitted_utc": _STANDING_PASS_FITTED})},
+             only={s for s, _r, _st, corrected in STANDING_PASS_WORLD
+                   if corrected})
+    except Exception as exc:  # noqa: BLE001 -- the fault is the finding
+        faults.append(f"the probe world could not be asked: "
+                      f"{type(exc).__name__}: {exc}")
+    finally:
+        probe.close()
+    return faults
+
+
+def check_the_final_pass_stands() -> None:
+    """Refuse a door that keeps a question's row by write time over its
+    final pass written before the start (operator question 27, ruled
+    2026-09-28); gate step 2."""
+    faults = standing_pass_faults()
+    if faults:
+        raise LawViolation(
+            "A QUESTION STANDS ON ANOTHER PASS THAN THE RULED ONE (operator "
+            "question 27, ruled 2026-09-28): the standing pass is chosen by "
+            "pass, not by write time -- the final pass stands whenever one "
+            "exists before the start; otherwise the latest early pass:"
+            + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
 # THE ACTIVATION GATE (operator rulings, 2026-09-24)
 # ---------------------------------------------------------------------------
 #

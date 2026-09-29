@@ -24,6 +24,15 @@ WHAT IS NOT RESTATED: the key. Every recount groups by `bet.of` -- the one
 function -- so the door and the recount can differ only where the door keys
 or keeps otherwise.
 
+WHICH PASS STANDS IS RESTATED (operator question 27, ruled 2026-09-28;
+built 2026-09-29): a final pass written before the start stands, otherwise
+the latest written (`_final_before_the_start`, `calibration.
+standing_pass_order` in Python), for the blind record's forecasts and the
+at-the-line record's claims alike. A count moves with the pass only where
+one pass carried what the other did not -- a price, a second look, a claim
+-- so a door choosing by write time is seen here only there; everywhere
+else `audit.standing_pass_faults` asks the doors themselves (gate step 2).
+
 NOT ON THE PREDICTION PATH: it reads the venue's claims and the line's
 snapshots, so nothing in the blind import closure may import it; the key it
 counts by (`gridiron.bet`) is closure-clean, for question 16's correction.
@@ -73,9 +82,11 @@ def forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
     # THE PROP TYPE BESIDE THE KEY, NOT IN IT (2026-09-29): `priced` names a
     # row's market by it, and `bet.columns` carried it until the key left it
     # out (a prop's question is named by its subject; `gridiron.bet`).
+    # AND THE PASS BESIDE IT (operator question 27, 2026-09-29): the standing
+    # rule chooses a question's row by it (`standing_of`).
     return [dict(r) for r in conn.execute(
         f"SELECT p.id, {bet.columns('p')}, p.prop_type, p.created_utc,"
-        "       p.resolved_utc,"
+        "       p.pass_kind, p.resolved_utc,"
         "       p.outcome, p.model_prob, p.calibrated_prob, g.kickoff_utc,"
         "       g.season, g.week,"
         "       EXISTS (SELECT 1 FROM prediction_voids v"
@@ -84,16 +95,32 @@ def forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
         f" WHERE {' AND '.join(where)}{card}", first + params)]
 
 
+def _final_before_the_start(pass_kind: str, written: str,
+                            kickoff: str | None) -> bool:
+    """`calibration.standing_pass_order`'s first term, in Python: a final
+    pass written before its game's start, or on a game with no start time
+    recorded (operator question 27, 2026-09-29). `written` is the forecast's
+    own write time -- for a claim as for a forecast."""
+    return pass_kind == "final" and (kickoff is None or written <= kickoff)
+
+
 def standing_of(rows: list[dict]) -> dict[tuple, dict]:
     """THE BLIND RECORD'S STANDING RULE, worked out again: one forecast per
-    distinct bet -- the latest written before the start (the id breaking a
-    tie), a withdrawn one never.
+    distinct bet -- a final pass written before the start if there is one,
+    otherwise the latest written before the start (the id breaking a tie), a
+    withdrawn one never.
 
     `calibration.standing_row_clause` in Python, clause by clause: a
     withdrawn row never stands and never displaces an earlier one; a game
     with no start time keeps every row eligible; a question with any row
     written before its start -- withdrawn or not -- stands on one of those;
     a question with none (a backtest's) stands on its latest row.
+
+    CHOSEN BY PASS (operator question 27, ruled 2026-09-28; built
+    2026-09-29): among the rows that may stand, the order is
+    `calibration.standing_pass_order`'s -- a final pass before the start
+    first, then the latest written, then the number. Until this date the
+    order here was the write time alone, as the clause's was.
     """
     groups: dict[tuple, list[dict]] = {}
     for row in rows:
@@ -105,7 +132,9 @@ def standing_of(rows: list[dict]) -> dict[tuple, dict]:
         if kickoff is not None and any(r["created_utc"] <= kickoff for r in group):
             live = [r for r in live if r["created_utc"] <= kickoff]
         if live:
-            out[key] = max(live, key=lambda r: (r["created_utc"], r["id"]))
+            out[key] = max(live, key=lambda r: (
+                _final_before_the_start(r["pass_kind"], r["created_utc"], kickoff),
+                r["created_utc"], r["id"]))
     return out
 
 
@@ -115,9 +144,12 @@ def claims(conn: sqlite3.Connection, *, sport: str, market: str,
     straight off the table, each with its forecast's key: every pass, every
     look, withdrawals marked rather than left out."""
     card, params = _on_the_card("c.game_id", event_tier)
+    # EACH CLAIM'S FORECAST'S PASS AND WRITE TIME (operator question 27,
+    # 2026-09-29): the claim that stands is chosen by its forecast's pass.
     return [dict(r) for r in conn.execute(
         f"SELECT c.id, c.prediction_id, c.market, c.line, c.model_prob,"
         f"       c.venue_implied, c.created_utc, c.resolved_utc, c.outcome,"
+        f"       p.pass_kind, p.created_utc AS forecast_utc,"
         f"       {bet.columns('p')}, g.kickoff_utc, g.season, g.week,"
         "       EXISTS (SELECT 1 FROM prediction_voids v"
         "                WHERE v.prediction_id = c.prediction_id) AS voided"
@@ -130,9 +162,21 @@ def claims(conn: sqlite3.Connection, *, sport: str, market: str,
 
 def standing_claims_of(rows: list[dict]) -> dict[tuple, dict]:
     """THE AT-THE-LINE RECORD'S STANDING RULE, worked out again: one claim
-    per distinct bet -- the last written before the start, the id breaking a
-    tie -- never one on a withdrawn forecast and never one written at or
-    after the start (`at_the_line.standing_claims`, in Python)."""
+    per distinct bet -- a claim on a final pass written before the start if
+    there is one, otherwise the last claim written before the start, the id
+    breaking a tie -- never one on a withdrawn forecast and never one
+    written at or after the start (`at_the_line.standing_claims`, in
+    Python).
+
+    CHOSEN BY PASS (operator question 27, ruled 2026-09-28; built
+    2026-09-29): the claim's forecast's pass first, as
+    `calibration.standing_pass_order` orders the door's window; the last
+    claim written before the start, whatever its pass, until then."""
+    def order(row: dict) -> tuple:
+        return (_final_before_the_start(row["pass_kind"], row["forecast_utc"],
+                                        row["kickoff_utc"]),
+                row["created_utc"], row["id"])
+
     out: dict[tuple, dict] = {}
     for row in rows:
         if row["voided"]:
@@ -141,7 +185,7 @@ def standing_claims_of(rows: list[dict]) -> dict[tuple, dict]:
             continue
         key = bet.of(row)
         held = out.get(key)
-        if held is None or (row["created_utc"], row["id"]) > (held["created_utc"], held["id"]):
+        if held is None or order(row) > order(held):
             out[key] = row
     return out
 
@@ -273,14 +317,17 @@ def correction_standing(conn: sqlite3.Connection, *, sport: str,
     """Which forecast stands for each settled question of one correction
     category, by THE BLIND RECORD'S STANDING RULE, read with the start
     (operator question 32, 2026-09-29): every forecast of the category read
-    straight off the table, `standing_of` -- the latest written before the
-    start, a withdrawn one never -- and the questions whose standing forecast
-    had settled before `before_utc`. Key -> forecast id.
+    straight off the table, `standing_of` -- a final pass written before the
+    start if there is one, otherwise the latest written before the start
+    (operator question 27, from 2026-09-29), a withdrawn one never -- and the
+    questions whose standing forecast had settled before `before_utc`. Key
+    -> forecast id.
 
     `correction.holdout_questions` cannot read the start (the correction may
-    not name `games`) and keeps each question's latest written forecast
-    instead; `tools/correction_holdout.py` holds the two to one answer on the
-    record it measures, question by question, and writes nothing where they
+    not name `games`) and keeps each question's final pass if one settled,
+    otherwise its latest written forecast, read by pass alone;
+    `tools/correction_holdout.py` holds the two to one answer on the record
+    it measures, question by question, and writes nothing where they
     differ."""
     standing = standing_of(forecasts(conn, sport=sport, predictor=predictor,
                                      market_type=market_type, prop_type=None,

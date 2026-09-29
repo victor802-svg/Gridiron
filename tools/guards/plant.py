@@ -7811,6 +7811,389 @@ def plant_a_superseded_row_counted_as_settled() -> Result:
                   f"clause is the door")
 
 
+# ---------------------------------------------------------------------------
+# OPERATOR QUESTION 27 (ruled 2026-09-28; built 2026-09-29): the standing
+# pass is chosen by pass, not by write time, and no early pass is written for
+# a question whose final pass is written.
+# ---------------------------------------------------------------------------
+
+def _q27_latest_written(rows):
+    """`recount.standing_of` as released before question 27: the latest
+    written before the start, whatever its pass."""
+    from gridiron import bet as _bet
+
+    groups: dict = {}
+    for row in rows:
+        groups.setdefault(_bet.of(row), []).append(row)
+    out = {}
+    for key, group in groups.items():
+        kickoff = group[0]["kickoff_utc"]
+        live = [r for r in group if not r["voided"]]
+        if kickoff is not None and any(r["created_utc"] <= kickoff for r in group):
+            live = [r for r in live if r["created_utc"] <= kickoff]
+        if live:
+            out[key] = max(live, key=lambda r: (r["created_utc"], r["id"]))
+    return out
+
+
+def _q27_last_claim(rows):
+    """`recount.standing_claims_of` as released before question 27: the last
+    claim written before the start, whatever its forecast's pass."""
+    from gridiron import bet as _bet
+
+    out: dict = {}
+    for row in rows:
+        if row["voided"]:
+            continue
+        if row["kickoff_utc"] is not None and not row["created_utc"] < row["kickoff_utc"]:
+            continue
+        held = out.get(_bet.of(row))
+        if held is None or (row["created_utc"], row["id"]) > (held["created_utc"], held["id"]):
+            out[_bet.of(row)] = row
+    return out
+
+
+def _q27_measured_by_write_time(conn, fit):
+    """`correction.holdout_questions` as released before question 27: each
+    question on its latest written settled forecast."""
+    from gridiron import bet as _bet, correction as _c
+
+    standing: dict = {}
+    for row in _c.settled_rows(conn, sport=fit["sport"],
+                               market_type=fit["market_type"],
+                               forecaster=fit["forecaster"],
+                               before_utc=fit["fitted_utc"]):
+        held = standing.get(_bet.of(row))
+        if held is None or (row["created_utc"], row["id"]) > (held["created_utc"], held["id"]):
+            standing[_bet.of(row)] = row
+    return sorted(standing.values(), key=lambda r: (r["resolved_utc"], r["id"]))
+
+
+def plant_a_standing_rule_keeping_a_later_early_pass() -> Result:
+    """Keep a question's row by write time over its final pass before the start.
+
+    THE SHAPE ON THE RECORD UNTIL 2026-09-29 (operator question 27, ruled
+    2026-09-28): sixteen NFL week-3 reasoning-pass totals, the final passes
+    written by `final:nfl` on 23 September at 19:30Z and the early passes by
+    the catch-up at 05:32-05:36Z the next morning, all before their starts,
+    stood on the EARLY pass: the standing clause ordered a question's rows by
+    the write time alone. Planted five ways, each a door put back to the
+    write time: the one order (which the clause, the outlook's door, the
+    at-the-line window and the slate's card read); the at-the-line window
+    alone; the recount's forecasts and its claims; and the correction's
+    measurement. CAUGHT means the gate's check
+    (`audit.check_the_final_pass_stands`, on its world) names each by its
+    door and passes the shipped code. No recount on the record sees any of
+    them: the sixteen carried no price, claim or second look, so no count
+    moves with the pass -- only the curve's Brier and log loss.
+    """
+    from gridiron import correction as _c, recount as _r
+
+    guard = "audit.check_the_final_pass_stands (audit.standing_pass_faults)"
+    violation = "a question kept on a later early pass over its final pass before the start"
+    if not hasattr(audit, "check_the_final_pass_stands"):
+        conn = _memory_record()
+        try:
+            ids = {}
+            for pass_kind, hours in (("final", -23), ("early", -13)):
+                cur = conn.execute(
+                    "INSERT INTO predictions (created_utc, sport, game_id,"
+                    " market_type, subject, line_asked, model_prob, model_side,"
+                    " predictor, pass_kind, factor_set_version, factors_json,"
+                    " reasoning, resolved_utc, outcome) VALUES (?, 'nfl', 'g1',"
+                    " 'total', 'SIXTEEN', 44.5, 0.6, 'over', 'statistical', ?,"
+                    " 'fs2', ?, 'planted', '2025-12-01T04:00:00Z', 1)",
+                    (_iso_shift("2025-12-01T00:00:00Z", hours * 3600), pass_kind,
+                     _PLANT_FACTORS))
+                ids[pass_kind] = cur.lastrowid
+            conn.commit()
+            stands = [r.id for r in calibration.resolved(conn, sport="nfl")]
+        finally:
+            conn.close()
+        return Result(LAW_ONE_CLAUSE, violation, guard, False,
+                      f"NOT CAUGHT - the standing clause keeps forecast "
+                      f"{stands} for a question whose final pass ({ids['final']}, "
+                      f"23h before the start) was written before its early pass "
+                      f"({ids['early']}, 13h before), and no check asks which "
+                      f"pass stands")
+
+    real_order = calibration.standing_pass_order
+
+    def by_write_time(forecast, game, row=None):
+        row = row or forecast
+        return f"{row}.created_utc DESC, {row}.id DESC"
+
+    def window_by_write_time(forecast, game, row=None):
+        if row == "c":
+            return by_write_time(forecast, game, row)
+        return real_order(forecast, game, row)
+
+    plantings = (
+        ("the one order put back to the write time", calibration,
+         "standing_pass_order", by_write_time,
+         ("calibration.standing_row_clause:", "horizon.standing_questions",
+          "market.at_the_line.standing_claims", "views.week")),
+        ("the at-the-line window alone by the write time", calibration,
+         "standing_pass_order", window_by_write_time,
+         ("market.at_the_line.standing_claims",)),
+        ("the recount's forecasts by the write time", _r, "standing_of",
+         _q27_latest_written, ("recount.standing_of",)),
+        ("the recount's claims by the write time", _r, "standing_claims_of",
+         _q27_last_claim, ("recount.standing_claims_of",)),
+        ("the correction's measurement by the write time", _c,
+         "holdout_questions", _q27_measured_by_write_time,
+         ("correction.holdout_questions",)),
+    )
+    caught, missed = [], []
+    for name, module, attr, door, doors in plantings:
+        real = getattr(module, attr)
+        setattr(module, attr, door)
+        try:
+            audit.check_the_final_pass_stands()
+        except audit.LawViolation as exc:
+            text = str(exc)
+            unnamed = [d for d in doors if d not in text]
+            if unnamed:
+                missed.append(f"{name}: refused without naming {unnamed}")
+            else:
+                caught.append(f"{name}: {', '.join(d.rstrip(':') for d in doors)}")
+        else:
+            missed.append(f"{name} passed the check")
+        finally:
+            setattr(module, attr, real)
+    try:
+        audit.check_the_final_pass_stands()
+    except audit.LawViolation as exc:
+        missed.append(f"the check refuses the shipped doors: {exc}")
+    if missed:
+        return Result(LAW_ONE_CLAUSE, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(missed))
+    return Result(LAW_ONE_CLAUSE, violation, guard, True,
+                  "each door named: " + "; ".join(caught))
+
+
+class _Q27Reasoner:
+    """Stands in for the reasoning pass's client in question 27's planting
+    (the prover, 2026-09-29): answers every request the same way and keeps
+    what it was asked, so nothing is spent and no model is asked --
+    `tests/test_predict.py`'s StubClient, cut down."""
+
+    def __init__(self):
+        import types
+
+        self.asked: list[str] = []
+        self.messages = types.SimpleNamespace(create=self._create)
+
+    def _create(self, *, model, max_tokens, system, messages):
+        import types
+
+        self.asked.append(messages[0]["content"])
+        return types.SimpleNamespace(
+            content=[types.SimpleNamespace(
+                text='{"probability": 0.63, "reasoning": "The home side rates '
+                     'better on the declared factors."}')],
+            usage=types.SimpleNamespace(input_tokens=1200, output_tokens=180))
+
+
+def plant_an_early_pass_written_over_its_final_pass() -> Result:
+    """Write an early pass for a question whose final pass is written.
+
+    THE SHAPE ON THE RECORD (operator question 27, ruled 2026-09-28: "a
+    catch-up may not run an early pass for a question whose final pass
+    exists; it is a SlateAlreadyAnswered noop"): on 24 September at
+    05:32-05:36Z the catch-up's `predict:nfl` (run 2336) wrote sixteen NFL
+    week-3 reasoning-pass totals whose final passes `final:nfl` (run 2052)
+    had written the evening before; the slate was open because the spread
+    and moneyline had just been trained and had no row. Planted on the
+    harness league: week 6's spread and moneyline forecast by the final
+    pass, the total held so it has no row and keeps the slate open, then the
+    early pass. CAUGHT only if that early pass writes nothing and is refused
+    as exactly `run.SlateAlreadyAnswered` naming each question; the
+    scheduled task records the refusal 'noop' in plain words, the slate named
+    in words, the questions in its payload and no week there; and, the total
+    let go, the next early pass writes the total's questions and names the
+    answered ones in its result. THE CONTROL: an early pass on a slate with
+    no final pass (week 7) writes as it always has.
+
+    AND THE REASONING PASS, THE RECORD'S OWN SHAPE (the prover, 2026-09-29:
+    every step above ran without it, so a reasoning early pass written over
+    its final pass -- the sixteen -- or one paid for and thrown away got
+    past this planting). Week 8, both forecasters, the reasoning pass answered
+    by a stub that spends nothing (`_Q27Reasoner`): the final pass answers
+    the total alone (the spread and moneyline held, as on 23 September they
+    had no model), then the early pass is asked everything. CAUGHT only if
+    it writes the spread and moneyline, asks the reasoning pass about those
+    alone -- one request for each reasoning forecast it writes -- writes no
+    total, and names every total question it left, the reasoning pass's
+    among them.
+    """
+    import json as _json
+    import tempfile
+
+    from gridiron import config as _config, language as _language
+    from gridiron import tasks as _tasks
+
+    guard = ("predict.final_pass_written (predict_slate, write_prediction); "
+             "run.run_slate's refusal; tasks._run_predict")
+    violation = "an early pass written for a question whose final pass is written"
+    saved = dict(_config.HELD_MARKETS)
+    held = {("nfl", "total"): {"held": "2026-09-24", "reason": _config.HELD_REASON}}
+    kept = _quiet_failures()
+    real_run_slate = run.run_slate
+    missed: list[str] = []
+    said: list[str] = []
+
+    def early_rows(conn, week, markets=("spread", "moneyline", "total")):
+        return conn.execute(
+            "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
+            " WHERE g.week = ? AND p.pass_kind = 'early' AND p.market_type IN"
+            f" ({','.join('?' for _ in markets)})", (week, *markets)).fetchone()[0]
+
+    try:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            conn = seeded_database(Path(tmp) / "q27_noop.db")
+            try:
+                _config.HELD_MARKETS = dict(held)
+                finals = run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                                       use_llm=False, snapshot=False, final=True)
+                refused = None
+                try:
+                    run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                                  use_llm=False, snapshot=False)
+                except run.SlateAlreadyAnswered as exc:
+                    refused = exc
+                over = early_rows(conn, 6)
+                if over:
+                    return Result(LAW_THE_JOBS, violation, guard, False,
+                                  f"NOT CAUGHT - the early pass wrote {over} "
+                                  f"forecasts over the {finals['written']} "
+                                  f"questions the final pass had answered")
+                named = list(getattr(refused, "final_pass_answered", []) or [])
+                if refused is None or type(refused) is not run.SlateAlreadyAnswered:
+                    missed.append(f"an early pass left with nothing to write was "
+                                  f"not refused as the one class ({refused!r})")
+                elif len(named) != finals["written"]:
+                    missed.append(f"the refusal names {len(named)} questions of "
+                                  f"the {finals['written']} it left to their "
+                                  f"final pass")
+                else:
+                    said.append(f"refused as already answered, naming "
+                                f"{len(named)} questions")
+                # THE CONTROL: a slate no final pass has answered is written.
+                control = run.run_slate(conn, "nfl", 2025, 7, include_props=False,
+                                        use_llm=False, snapshot=False)
+                if control["written"] != 8 or control["final_pass_answered"]:
+                    missed.append(f"an early pass on a slate with no final pass "
+                                  f"wrote {control['written']} and named "
+                                  f"{len(control['final_pass_answered'])}")
+                # THE TOTAL LET GO: written, and the answered ones named.
+                _config.HELD_MARKETS = dict(saved)
+                mixed = run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                                      use_llm=False, snapshot=False)
+                if (early_rows(conn, 6, ("total",)) != 4
+                        or early_rows(conn, 6, ("spread", "moneyline"))
+                        or len(mixed["final_pass_answered"]) != finals["written"]):
+                    missed.append(
+                        f"with the total let go the early pass wrote "
+                        f"{mixed['written']} and named "
+                        f"{len(mixed['final_pass_answered'])}")
+                else:
+                    said.append(f"the open market written ({mixed['written']}), "
+                                f"{len(mixed['final_pass_answered'])} named")
+                # THE REASONING PASS, THE RECORD'S OWN SHAPE (the prover,
+                # 2026-09-29): the final pass answers week 8's total alone,
+                # both forecasters; the early pass is then asked everything.
+                _config.HELD_MARKETS = {
+                    ("nfl", m): {"held": "2026-09-24", "reason": _config.HELD_REASON}
+                    for m in ("spread", "moneyline")}
+                late = run.run_slate(conn, "nfl", 2025, 8, include_props=False,
+                                     use_llm=True, llm_client=_Q27Reasoner(),
+                                     snapshot=False, final=True)
+                _config.HELD_MARKETS = dict(saved)
+                asked = _Q27Reasoner()
+                early = run.run_slate(conn, "nfl", 2025, 8, include_props=False,
+                                      use_llm=True, llm_client=asked,
+                                      snapshot=False)
+                late_llm = late["by_predictor"].get("llm", 0)
+                early_llm = early["by_predictor"].get("llm", 0)
+                named_llm = sum(n.endswith(", llm")
+                                for n in early["final_pass_answered"])
+                over_total = early_rows(conn, 8, ("total",))
+                if not late_llm or not early_llm:
+                    missed.append(f"the reasoning pass wrote {late_llm} final "
+                                  f"and {early_llm} early forecasts: the world "
+                                  f"asked it nothing to prove")
+                elif (over_total or len(asked.asked) != early_llm
+                      or named_llm != late_llm
+                      or len(early["final_pass_answered"]) != late["written"]):
+                    missed.append(
+                        f"with the reasoning pass, the early pass wrote "
+                        f"{over_total} totals over their final pass, asked the "
+                        f"reasoning pass {len(asked.asked)} times for "
+                        f"{early_llm} reasoning forecasts written, and named "
+                        f"{len(early['final_pass_answered'])} of the "
+                        f"{late['written']} questions left ({named_llm} of the "
+                        f"reasoning pass's {late_llm})")
+                else:
+                    said.append(f"the reasoning pass asked only what it wrote "
+                                f"({early_llm}), {named_llm} of its totals named")
+            finally:
+                _config.HELD_MARKETS = saved
+                conn.close()
+        if refused is not None and not missed:
+            # THE SCHEDULED TASK'S RECORD of that refusal, on a slate two days
+            # out (computed from now, so the fixture never expires).
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+                conn = db.open_db(Path(tmp) / "q27_task.db")
+                try:
+                    season = _config.SPORT_CURRENT_SEASON.get(
+                        "nfl", _config.CURRENT_SEASON)
+                    kickoff = datetime.now(timezone.utc) + timedelta(hours=48)
+                    conn.execute(
+                        "INSERT INTO games (id, sport, season, week, game_type,"
+                        " home, away, kickoff_utc, status, league_date) VALUES"
+                        " ('nfl_plant_q27', 'nfl', ?, 3, 'REG', 'KC', 'BUF', ?,"
+                        " 'scheduled', ?)",
+                        (season, _utc_stamp(kickoff), kickoff.strftime("%Y-%m-%d")))
+                    conn.commit()
+
+                    def refuses(*_args, **_kwargs):
+                        raise refused
+
+                    run.run_slate = refuses
+                    out = _tasks.run_task(conn, "predict:nfl", use_llm=False)
+                    row = conn.execute(
+                        "SELECT result, detail, payload_json FROM task_runs"
+                        " WHERE task = 'predict:nfl' ORDER BY id DESC LIMIT 1"
+                    ).fetchone()
+                finally:
+                    run.run_slate = real_run_slate
+                    conn.close()
+            payload = _json.loads(row["payload_json"] or "{}")
+            words = _language.task_detail_words(row["detail"]) or ""
+            if out.get("result") != "noop" or row["result"] != "noop":
+                missed.append(f"the scheduled task recorded the refusal "
+                              f"{row['result']!r}")
+            elif ("final forecast" not in row["detail"] or "Week 3" not in row["detail"]
+                  or audit.plain_words_violations(words)):
+                missed.append(f"the task's words do not say it plainly: "
+                              f"{row['detail']!r}")
+            elif (len(payload.get("final_pass_answered") or []) != len(named)
+                  or "week" in payload):
+                missed.append("the task's payload does not name the questions, "
+                              "or carries a week")
+            else:
+                said.append(f"recorded noop: {row['detail'][:90]}")
+    finally:
+        run.run_slate = real_run_slate
+        _config.HELD_MARKETS = saved
+        _restore_failures(kept)
+    if missed:
+        return Result(LAW_THE_JOBS, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(missed))
+    return Result(LAW_THE_JOBS, violation, guard, True, "; ".join(said))
+
+
 LAW_UNITS = "A RATE AND ITS MULTIPLIER COUNT THE SAME THING"
 
 
@@ -20084,6 +20467,12 @@ def main() -> int:
     # a row dated back over claims already written.
     results.append(plant_a_correction_measured_by_another_bootstrap())
     results.append(plant_a_correction_activation_dated_back())
+    # OPERATOR QUESTION 27 (ruled 2026-09-28; built 2026-09-29): the standing
+    # pass is chosen by pass, not by write time, and no early pass is
+    # written for a question whose final pass is written -- a run left with
+    # nothing else is a SlateAlreadyAnswered noop.
+    results.append(plant_a_standing_rule_keeping_a_later_early_pass())
+    results.append(plant_an_early_pass_written_over_its_final_pass())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

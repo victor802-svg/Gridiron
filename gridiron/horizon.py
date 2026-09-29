@@ -133,7 +133,9 @@ def standing_questions(conn: sqlite3.Connection, *, sport: str, market: str,
     THE CURVE'S OWN ROWS. The curve beside the outlook counts
     `calibration.resolved`: one standing row per question
     (`calibration.standing_row_clause`, the latest written before the start,
-    a withdrawn one never), for one forecaster, market and card. This door
+    a withdrawn one never -- and from 2026-09-29 a final pass written before
+    the start first, operator question 27), for one forecaster, market and
+    card. This door
     asks the same filters and the same clause without the settled condition,
     so its settled rows are that curve's rows and the outlook's count is the
     curve's n -- which `calibration.assert_no_pooled_outlooks` checks rather

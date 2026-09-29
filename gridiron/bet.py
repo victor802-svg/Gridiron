@@ -53,7 +53,10 @@ ONE TEXT, THREE FORMS. `KEY` is written once. `of` reads it off a row for
 Python; `columns` writes it as a SQL column list, for a SELECT (so a door's
 rows carry what `of` reads, off the forecast itself) and for a window's
 PARTITION BY; `same` writes it as the SQL condition that two rows are one
-bet. NULL IS ONE VALUE in all three: SQL's `IS` treats two NULLs as equal
+bet. (A fourth from 2026-09-29, `given`: the condition that a row is the bet
+whose key is handed in as parameters -- operator question 27's early pass
+asking whether its question's final pass is written, before it writes.)
+NULL IS ONE VALUE in all of them: SQL's `IS` treats two NULLs as equal
 (the standing clause read `IFNULL(line_asked, -1e9)` for the same reason), a
 window groups NULLs together, and Python's None equals None -- so a
 moneyline's absent rung is one rung.
@@ -125,3 +128,16 @@ def same(a: str, b: str) -> str:
     as it did with `=`.
     """
     return " AND ".join(f"{a}.{column} IS {b}.{column}" for column in KEY)
+
+
+def given(alias: str) -> str:
+    """The key as SQL against values handed in: a row of `alias` is the
+    distinct bet whose key is passed as the parameters, in `KEY`'s order --
+    `of(...)` of the question being asked (operator question 27, ruled
+    2026-09-28, built 2026-09-29: an early pass asks whether ITS question's
+    final pass is written, before it writes; `predict.final_pass_written`).
+
+    A FOURTH FORM, made from the same tuple. `IS`, never `=`: a moneyline's
+    absent rung is one rung here too.
+    """
+    return " AND ".join(f"{alias}.{column} IS ?" for column in KEY)

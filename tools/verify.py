@@ -918,6 +918,14 @@ def step_2_guards() -> bool:
         ("the at-the-line record counts one claim per distinct bet",
          lambda: audit.check_the_at_the_line_record_is_never_pooled(
              _record_conn())),
+        # OPERATOR QUESTION 27 (ruled 2026-09-28; built 2026-09-29): the
+        # standing pass is chosen by pass, not by write time -- a final pass
+        # written before the start stands, otherwise the latest early pass.
+        # Asked of every door that chooses a question's row, on a world made
+        # to tell the pass from the write time: no count the recounts compare
+        # moves with it on the record, so they cannot see it.
+        ("a question stands on its final pass before the start (question 27)",
+         audit.check_the_final_pass_stands),
         # OPERATOR QUESTION 16 (ruled (B) 2026-09-27, on question 17's key;
         # question 23 (A), 2026-09-28; built 2026-09-29): each correction
         # gate's count is one forecaster's category, each question once --

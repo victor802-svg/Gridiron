@@ -35,12 +35,14 @@ those questions and its paired bootstrap 95% interval, seeded as the model
 gate's is. It passes only when the lower bound is above zero.
 
 AND WHICH FORECAST STANDS FOR EACH QUESTION, CHECKED. The measurement keeps
-each question's latest written forecast, because the correction may not read
-a game's start; the blind record's standing rule is the latest written
-before the start (`recount.correction_standing`). This tool asks both, and
-measures nothing -- writes nothing -- where they differ, naming each question
-(question 27, pending, will change the standing pass; this is where it will
-show).
+each question's final pass if one settled, otherwise its latest written
+forecast, read by pass alone, because the correction may not read a game's
+start; the blind record's standing rule is a final pass written before the
+start, otherwise the latest written before the start
+(`recount.correction_standing`). This tool asks both, and measures nothing --
+writes nothing -- where they differ, naming each question. (Question 27,
+ruled 2026-09-28 and built 2026-09-29, changed the standing pass in both at
+once: until then each kept the latest written, before the start or not.)
 
 WHAT IT WRITES: nothing without --write. With it, ONE ROW in one transaction
 through the door: `correction.activate_measured`, which measures again on the

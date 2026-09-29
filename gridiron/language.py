@@ -4892,6 +4892,37 @@ def untrained_run_words(sport: str, markets: list[dict], written: int) -> str:
             f"{'is' if one else 'are'} retired.")
 
 
+def final_pass_answered_words(n: int) -> str:
+    """Why an early pass wrote nothing for some questions, as the Health
+    panel shows it (operator question 27, ruled 2026-09-28, built
+    2026-09-29: "a catch-up may not run an early pass for a question whose
+    final pass exists").
+
+    "FINAL FORECAST, the one made close to the start", never "final pass":
+    the panel names that task "Take one more look", and a reader is told
+    what the machine did, not what the code calls it.
+    """
+    one = n == 1
+    return (f"{counted(n, 'question')} already {'has' if one else 'have'} "
+            f"{'its' if one else 'their'} final forecast, the one made close "
+            f"to the start, so no early forecast was written for "
+            f"{'it' if one else 'them'}; an early forecast is never written "
+            f"over a final one")
+
+
+def final_pass_answered_refusal(sport: str, season: int, week: int,
+                                n: int) -> str:
+    """The refusal an early pass raises when nothing is left for it to write
+    but questions whose final pass is written (operator question 27,
+    2026-09-29) -- `run.SlateAlreadyAnswered`'s words for a hand run, beside
+    ruling R4's. The scheduled task writes its own line, naming the slate in
+    words (`tasks._run_predict`)."""
+    return (f"{sport} {season} slate {week}: nothing was left for this early "
+            f"pass to write. {final_pass_answered_words(n)}, because a final "
+            "forecast written before the start stands over an early one, "
+            "whichever is written last. No forecast was written.")
+
+
 def freshness_words(label: str, age_hours: float | None, limit: float) -> str:
     """"daily run 7h ago", or "venue read 31h ago, past 30h", marked stale.
 

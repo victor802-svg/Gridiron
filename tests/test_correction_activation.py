@@ -310,7 +310,13 @@ def test_the_measurement_scores_the_latest_fifth_as_they_settled_drawn_as_the_ga
     were written in is not the order they settled in: each question on its
     latest written forecast, the latest fifth AS THEY SETTLED held out, a
     correction refit on the rest, and `tools/holdout.py`'s own bootstrap of
-    the differences -- and measured twice, the same."""
+    the differences -- and measured twice, the same.
+
+    FROM OPERATOR QUESTION 27 (2026-09-29) each question on its FINAL PASS,
+    and every fifth question of the world has its early pass written after
+    its final (the sixteen NFL totals' shape, both before the start), so a
+    measurement keeping the latest written scores another set of forecasts
+    and is told apart below."""
     conn = _world(tmp_path)
     order = list(range(1, 301))
     random.Random(9).shuffle(order)          # the hour each question settles
@@ -324,7 +330,8 @@ def test_the_measurement_scores_the_latest_fifth_as_they_settled_drawn_as_the_ga
             " 'final', '2025-12-01', 24, 17)", (gid,))
         claim = 0.55 + (i % 40) * 0.01
         outcome = 1 if rng.random() < 0.5 + (claim - 0.5) * (0.2 if hour > 150 else 1.0) else 0
-        for pass_kind, p, written in (("early", claim - 0.04, "2025-12-01T06:00:00Z"),
+        early_written = "2025-12-01T17:00:00Z" if i % 5 == 0 else "2025-12-01T06:00:00Z"
+        for pass_kind, p, written in (("early", claim - 0.04, early_written),
                                       ("final", claim, "2025-12-01T16:00:00Z")):
             conn.execute(
                 "INSERT INTO predictions (sport, created_utc, game_id,"
@@ -358,6 +365,16 @@ def test_the_measurement_scores_the_latest_fifth_as_they_settled_drawn_as_the_ga
     by_number = sorted(finals, key=lambda r: r[3])[240:]
     assert correction.brier([r[0] for r in by_number],
                             [r[1] for r in by_number]) != got["brier_raw"]
+    # and so is each question's LATEST WRITTEN forecast (question 27): the
+    # early pass wherever it was written after the final
+    latest = {}
+    for r in conn.execute("SELECT game_id, model_prob, outcome, resolved_utc, id,"
+                          " created_utc FROM predictions").fetchall():
+        if r[0] not in latest or (r[5], r[4]) > (latest[r[0]][5], latest[r[0]][4]):
+            latest[r[0]] = r
+    by_write_time = sorted(latest.values(), key=lambda r: (r[3], r[4]))[240:]
+    assert correction.brier([r[1] for r in by_write_time],
+                            [r[2] for r in by_write_time]) != got["brier_raw"]
 
 
 def test_the_bootstrap_is_the_model_gates():
@@ -778,20 +795,33 @@ def test_the_tool_refuses_what_the_ruling_does_not_name(tmp_path, capsys):
 
 def test_the_tool_names_a_question_whose_standing_forecast_is_not_its_latest(tmp_path, capsys):
     """A forecast written after its game began and withdrawn by no void: the
-    measurement's latest-written pick and the standing rule's latest before
-    the start part, and the tool measures nothing."""
+    measurement, which reads no start, and the standing rule part, and the
+    tool measures nothing.
+
+    FROM OPERATOR QUESTION 27 (2026-09-29) both keep a final pass first --
+    the measurement by pass alone -- so an EARLY pass written after the
+    start over a final pass before it (this test's first world until that
+    date) no longer parts them: both keep the final, and the tool measures.
+    A FINAL pass written after the start does: the measurement keeps it, the
+    standing rule keeps the final pass written before the start."""
     tool = _tool()
     conn = _world(tmp_path)
     _questions(conn, 500, worth=0.0)
-    conn.execute(
-        "INSERT INTO predictions (sport, created_utc, game_id, market_type,"
-        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
-        " factor_set_version, factors_json, reasoning, resolved_utc, outcome)"
-        " VALUES ('nfl', '2025-12-01T19:00:00Z', 'gmoneyline7', 'moneyline',"
-        " 'AAA', NULL, 0.9, 'win', 'statistical', 'early', 'fs2', '{}', 'late',"
-        " ?, 1)", (_hour(7),))
+    late = ("INSERT INTO predictions (sport, created_utc, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning, resolved_utc, outcome)"
+            " VALUES ('nfl', '2025-12-01T19:00:00Z', 'gmoneyline7', 'moneyline',"
+            " 'AAA', NULL, 0.9, 'win', 'statistical', ?, ?, '{}', 'late', ?, 1)")
+    conn.execute(late, ("early", "fs2", _hour(7)))
     conn.commit()
     fid = _fit(conn)
+    conn.close()
+    assert tool.main(["--database", str(tmp_path / "q32.db"),
+                      "--correction", str(fid)]) == 0
+    assert "each of the 500 questions stands on the forecast" in capsys.readouterr().out
+    conn = db.open_db(tmp_path / "q32.db")
+    conn.execute(late, ("final", "fs3", _hour(7)))
+    conn.commit()
     conn.close()
     with pytest.raises(SystemExit) as exc:
         tool.main(["--database", str(tmp_path / "q32.db"), "--correction", str(fid)])
