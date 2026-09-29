@@ -91,7 +91,27 @@
   pass's; "Would not have cleared" 2 the model's; NFL 12 -> 11 and 1 at
   00:52Z; counted once MLB 66 -> 57 and 11); empty_bar per forecaster. The
   kill criterion stops nothing either way; no mean painted before 15
-  October. Question 30 below. **Next: Q16.**
+  October. Question 30 below.
+  **Q16 (with Q23 and Q31) released as 428e1cb (2026-09-29 04:59Z; gate
+  4/4, 350/350, first run; commits 108c431 Q16, 36d539e the 29 Sep brief,
+  fit 71's report and CLAUDE.md's words on how a correction comes into
+  force, 428e1cb the nine):** every correction gate counts distinct bets on
+  the key per forecaster -- the page's line, the learning panel, the
+  version report and the fit's own gate from the release (training rows
+  unchanged); the append-only `correction_gate_labels` and its rules; the
+  door passes over a labelled fit. THE LABELS, written 04:59:27Z by
+  `tools/label_corrections_below_the_gate.py --write --live` in one
+  transaction after a dry run through the read-only door selected exactly
+  the ruled nine: 33 (MLB total, reasoning pass, v1: 76 forecasts, 48 on the
+  key), 59, 61, 63 (UFC distance, moneyline, rounds, statistical, v3: 56,
+  32), 81 (NFL spread, statistical, v3: 60, 41), 85, 87, 89 (UFC,
+  statistical, v4: 85, 49), 86 (UFC moneyline, reasoning pass, v4: 63, 49);
+  no placeholder; fit 71 still the one in force. Page before/after in
+  FOLLOWUPS (e.g. NFL spread, statistical "60, cleared" -> 41 of 50; UFC
+  statistical "85, cleared" -> 49 of 50). The next weekly refit (5 Oct
+  13:00Z) gates on the key. **The queue rule now binds** (after Q16: a new
+  finding joins the queue only if it breaks LAW 1 or LAW 3 or makes a gate
+  count false). **Next: Q27.**
 
 - **THE ORDER NOW (rulings of 28 Sep, docs/briefs/2026-09-28-rulings.md;
   wins over every order below):** Q20 with Q28 (A: one shared test helper
