@@ -1012,6 +1012,67 @@ depend on the answer.
     are, in FOLLOWUPS; by the queue rule after Q16 they would wait for the
     re-read.
 
+31. **Q16/Q23: "the 63 existing fits" are 89 today, and one is in force.
+    (Found by Q16's first step, 2026-09-28, read-only through
+    `db.read_the_live_record`; nothing built, nothing committed, no copy of
+    the record made.)** Q23: "The 63 existing fits stay as written; any that
+    falls short of its gate on the corrected count is labelled 'fitted below
+    its gate' and can never be activated." 63 was the record's count when
+    that was ruled: fits 1-63, written 31 August to 21 September 22:11Z (the
+    ruling was saved at 01:50Z on 28 September). At 13:00:01Z on 28
+    September the weekly `recalibrate` (run 6173) wrote 26 more, 64-89, on
+    the pooled gate. The next weekly run is due Monday 5 October, 13:00Z.
+    THE MEASUREMENT (scratchpad `q16\measure.txt`, `q16\measure2.txt`).
+    Every fit's gate is `MIN_TRAIN` = 50 (unchanged since 31 August) over
+    every settled row of its category (sport, market type, forecaster)
+    resolved before its fitted instant, voids left out. Recounted, that is
+    exactly `n_train` for all 48 fitted rows (voids read as of now or as of
+    the fit: the same). The corrected count is the distinct bets on Q17's
+    key among those rows. It is the same for all 89 whether read as
+    distinct keys or through the blind record's standing rule. Fitted, and
+    short of 50 on the key:
+    - of the 63: 33, MLB total, reasoning pass, v1 (76 rows, 48 bets); 59,
+      61 and 63, UFC distance, moneyline and rounds, statistical, v3 (56
+      rows, 32 bets each).
+    - of 64-89: 81, NFL point spread, statistical, v3 (60, 41); 85, 87 and
+      89, UFC distance, moneyline and rounds, statistical, v4 (85, 49
+      each); 86, UFC moneyline, reasoning pass, v4 (63, 49).
+    None of those nine is in force. **Fit 71 is: MLB moneyline,
+    statistical, v8, in force from 13:00:01Z on 28 September**, the first
+    correction ever in force (364 rows, 260 bets, clear of 50 under either
+    reading; holdout 73 rows, Brier 0.2504 raw to 0.2452). No forecast or
+    recommendation carries it yet (no MLB moneyline forecast written since).
+    Nothing to rule on 71 unless you want otherwise.
+    THE PLACEHOLDERS. 41 of the 89 rows (33 of the 63) hold no fit. The
+    refit found fewer than 50 settled and wrote slope 1, intercept 0, no
+    holdout, `n_train` 0, with the count only in its words ("corrections
+    begin at 50 settled - 25 so far"; each equal to the recount). Each is
+    short of its gate on any count.
+    - **(i) Which fits?** (A) The 63 as ruled: 4 labelled (33, 59, 61, 63),
+      and 64-89 stand unlabelled, so 81, 85, 86, 87 and 89 stay on the page
+      as fits past a gate they are short of on the key. (B) Every fit
+      written before Q16's release, by the same rule: 9 labelled today (the
+      four, and 81, 85, 86, 87, 89), and more if the 5 October refit lands
+      first. Recommended: (B). The ruling divides the fits at the release
+      ("for fits from the release forward"), and 64-89 were gated on the
+      pooled count exactly as 1-63 were.
+    - **(ii) The placeholders?** (A) Labelled too, as "any that falls
+      short" reads: 33 more labels (41 under (i)(B)), each saying "fitted
+      below its gate" of a row whose own words say nothing was fitted. (B)
+      Only a row that was fitted (past its gate on the count it used) and
+      is short on the key. Recommended: (B). A placeholder was never
+      fitted, so the words would be false of it. And like every stored row
+      it can never be activated anyway: `active_from` is written once, at
+      the insert, and `calibration_corrections_no_update` refuses any edit
+      (the label's rule, once built, would refuse the one other way: a
+      replacing insert in its place).
+    - Not a question, for the build: the learning panel shows a correction
+      row per prop type, while the category is every prop type together
+      (and UFC every card together). Built, each such row would state the
+      category's count and say it is every prop type together. Splitting
+      the category would be a model change the ruling does not name.
+    Default until ruled: Q16 not built.
+
 ## Rulings taken in your absence (2026-09-27, third set)
 
 - **Q15's scan: what "against every append-only table" reaches.** Read by
