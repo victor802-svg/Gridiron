@@ -33,8 +33,31 @@
   -0.000149), paired bootstrap 95% interval [-0.015132, +0.016931] --
   **DOES NOT PASS: a tie, the uncorrected probability stands; no activation
   written, fit 71 stays withdrawn.** The door serves nothing in any
-  category. **Next: Q27** (restarted from the released code; `q27-held` is
-  read as a reference only).
+  category.
+  **Q27 released as 06145b1 (2026-09-29 11:55Z; gate 4/4, 362/362, first
+  run; commits 2eda91a and 06145b1, FOLLOWUPS' moved-number list made
+  complete):** `calibration.standing_pass_order` -- a final pass written
+  before the start stands, else the latest written -- is the one order the
+  standing clause, the at-the-line window, the card, the recounts and the
+  correction measurement read (`audit.check_the_final_pass_stands` probes
+  nine doors); no run writes an early pass for a question whose final pass
+  exists (`predict.final_pass_written`, checked before the write and before
+  a paid reasoning call; a run left with nothing is `SlateAlreadyAnswered`,
+  a noop, and each skip is named). THE SIXTEEN RE-SCORED (all NFL week-3
+  totals, reasoning pass, each stating the over, so no hit changed): the
+  final pass now stands for all 16; better on 3, worse on 4, the same on 9;
+  summed Brier 3.8652 -> 3.8840, log loss 10.8204 -> 10.8581; the NFL total
+  reasoning-pass curve (n 17) Brier 0.2409 -> 0.2420, log loss 0.6750 ->
+  0.6772. EVERY MOVED NUMBER (FOLLOWUPS, "The standing pass is chosen by
+  pass", corrected by the numbers step; `scratchpad\q27\numbers\moves.md`):
+  those, the week-3 over-time point, 8 standing claims at the venue's line
+  (NFL total PHI-CHI; six MLB spreads, one price moves; MLB moneyline ATL),
+  the at-the-line figures for NFL total reasoning pass (n 1) and MLB spread's
+  market Brier 0.2613 -> 0.2611, slate forecaster counts (NFL week 3
+  reasoning 72 -> 45, NFL week 1 statistical 128 -> 101, NCAAF 5 Sep 250 ->
+  243: a question under two factor sets counted once per set), NYG-LA's band
+  claimed 0.5118 -> 0.5106, the Today panel's "Settled"/"Watching" 38 -> 42.
+  No gate count moved. **Next: the board merge.**
 
 - **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
   (ii)(B): label every fitted row written before Q16's release that is
