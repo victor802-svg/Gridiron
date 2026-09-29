@@ -57,7 +57,45 @@
   reasoning 72 -> 45, NFL week 1 statistical 128 -> 101, NCAAF 5 Sep 250 ->
   243: a question under two factor sets counted once per set), NYG-LA's band
   claimed 0.5118 -> 0.5106, the Today panel's "Settled"/"Watching" 38 -> 42.
-  No gate count moved. **Next: the board merge.**
+  No gate count moved.
+  **THE BOARD MERGED AND RELEASED as cb8c7da (2026-09-29 19:09Z; gate
+  4/4, 384/384, first run; commits 3148f39 the merge, 4df9153 the
+  player_numbers brief, cb8c7da the fixes before it shipped).** By the
+  checklist (docs/briefs/2026-09-27-board-merge.md): STEP 1, the failing
+  order (whole smoke, then whole cards) on board a63463a: 3 of 3 green;
+  again on the merged tree 3 of 3, and after the fixes 3 of 3. STEP 2: 12
+  conflict hunks, each resolved to repair's behaviour (listed in the merge
+  commit's message and FOLLOWUPS) -- the closing line per forecaster from
+  the window with nothing drawn before 15 Oct, counts on Q17's key, the
+  prompt disclosure moved onto reasoning tiles, the board's panels
+  arriving by opacity only; Q18 (an open row stays open across any
+  redraw, tested both ways) and Q19 (plain headings, versions only in a
+  tooltip) built; 17 board defects found and fixed on the way (pooled
+  counts, a taken prop counted twice, a pre-window chart, moving arrivals,
+  a write-time standing rule, an upsert); ELAPSED_TIME_HELD 28/44 -> 19/27.
+  STEP 3: 63 captures at 1300 and 390 from a verified copy of the record
+  (served by the test server, never the live app); 33 differences from the
+  fixture captures, every one in FOLLOWUPS ("The board merge, step 3");
+  three tap targets under the rule fixed before release (the first-load
+  controls are not drawn until they can act; the calendar's days 44/50px
+  whole; a live row's head whole), each with a test. THE player_numbers
+  RULING (2026-09-29): described as a loaded roster, refreshed each load,
+  not append-only, display only; `audit.check_the_roster_numbers_are_
+  display_only` refuses its name anywhere but the loader, the schema and
+  the jersey drawing (never the prediction closure or any measuring
+  module), four plantings. STEP 4: master cb8c7da, pushed, restarted,
+  `/api/health` = cb8c7da0be16; the record gained `player_numbers` (268
+  objects); the old Picks, Live and Today routes are gone.
+  **OPEN FOR THE OPERATOR (reported 2026-09-29 16:10Z, not built, the queue
+  rule): the NCAAF wrong-side display** -- rec 111 (UNT at TLSA, kickoff
+  2026-10-02T01:00Z, a sized flat unit, stored correctly: side 'no' on
+  "TLSA covers +6.5") is shown as "North Texas -6.5 · 24% · 48¢", the
+  other side's numbers (about 76% and 51.5¢ for North Texas -6.5); 93
+  NCAAF spread forecasts store `model_side` 'fail to cover' where every
+  other sport stores 'not_cover', `priced.shape.blind_probability` has no
+  rule for it, and the page and `audit.board_price_side_faults` turn only
+  on `is False`. The released Today card had the same display. A fix waits
+  for "fix it". **Next: the re-read.**
 
 - **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
   (ii)(B): label every fitted row written before Q16's release that is
