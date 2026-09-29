@@ -1117,7 +1117,7 @@ END;
 -- out because a rule cannot call Python; audit.distinct_bet_key_faults holds
 -- this text to it. NEVER ON A FIT IN FORCE: the ruling says a labelled fit can
 -- never be activated, not that one in force is taken out of force, which is
--- the operator's to say (none of the four ruled is in force on 2026-09-29).
+-- the operator's to say (none of the nine ruled is in force on 2026-09-29).
 -- PERMANENT: one per fit, stamped after it, never edited, removed or replaced.
 -- (The two words that open a declaration may not appear in a comment in this
 -- file: at_the_line._schema_statements scans it.)

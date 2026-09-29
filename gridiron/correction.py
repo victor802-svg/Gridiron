@@ -90,6 +90,16 @@ the re-grade label's shape): `below_their_gates` selects by rule from each
 fit's own record, `write_labels` writes the ruled ones, and the schema's rules
 refuse a label the fit's record does not support. `active_correction`, the
 activation door (C2's gate), never returns a labelled fit.
+
+WHICH ARE RULED (operator question 31, ruled (B) and (B) 2026-09-29): "Label
+every fitted row written before Q16's release that falls short on the key:
+33, 59, 61, 63, 81, 85, 86, 87, 89", and "No labels on placeholders; they were
+never fitted." A fit written from the release on is gated on the key at its
+own instant, so the rule's selection over every fit on the record IS that
+population, read with no instant; `tools/label_corrections_below_the_gate.py`
+writes only when it is exactly the nine, and refuses any other selection by
+name. (From the build to that ruling, 2026-09-29 ~01:50Z, the default: the
+63 read by the instant question 23 was ruled, and the four among them.)
 """
 
 from __future__ import annotations
@@ -832,7 +842,14 @@ def below_their_gates(conn: sqlite3.Connection) -> list[dict]:
     `n_train`). ITS CORRECTED COUNT: the distinct bets among
     them (`bet.count`). Selected when that is below the gate. A fit written
     from question 16's release on was gated on that count and cannot be
-    selected; the fits written before it were gated on the forecasts.
+    selected; the fits written before it were gated on the forecasts. SO THE
+    SELECTION OVER EVERY FIT IS QUESTION 31'S POPULATION (ruled (B)
+    2026-09-29): "every fitted row written before Q16's release" that falls
+    short on the key, with no instant read -- on the record 33, 59, 61 and 63
+    of the 63 existing when question 23 was ruled, and 81, 85, 86, 87 and 89
+    of the weekly refit after it. A fit from the release on whose record was
+    made otherwise (a void stamped back before it, a row written by hand) is
+    selected all the same, and the tool refuses the selection by name.
 
     `active` says whether the fit carries an activation (the schema refuses a
     label on one: that is the operator's question), and `already` whether it

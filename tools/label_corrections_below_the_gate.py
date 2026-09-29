@@ -1,5 +1,6 @@
 """Label the corrections fitted below their gate (operator question 16, ruled
-(B) 2026-09-27; question 23, ruled (A) 2026-09-28; built 2026-09-29).
+(B) 2026-09-27; question 23, ruled (A) 2026-09-28; question 31, ruled (B) and
+(B) 2026-09-29; built 2026-09-29).
 
     # what it would write; reads only, through the read-only door
     python tools/label_corrections_below_the_gate.py --database PATH
@@ -10,39 +11,49 @@
     # the live record, AFTER the release that carries the table
     python tools/label_corrections_below_the_gate.py --database var/gridiron.db --write --live
 
-THE RULING, in the operator's words (question 23): "(A). The page's count and
+THE RULINGS, in the operator's words. Question 23: "(A). The page's count and
 the fit's own gate both move to the key, for fits from the release forward.
 The 63 existing fits stay as written; any that falls short of its gate on the
 corrected count is labelled 'fitted below its gate' and can never be
-activated."
+activated." Question 31 (docs/briefs/2026-09-29-rulings.md): "(i): (B). Label
+every fitted row written before Q16's release that falls short on the key:
+33, 59, 61, 63, 81, 85, 86, 87, 89." and "(ii): (B). No labels on
+placeholders; they were never fitted."
 
 WHAT IT SELECTS, by rule and nothing else (`correction.below_their_gates`),
 from each fit's own record: a row that was FITTED -- not a placeholder, whose
 `n_train` under the gate says nothing was fitted -- whose corrected count,
 the distinct bets on question 17's key among the settled forecasts its gate
 counted (its category's, settled before its own fitted instant), is below its
-gate of fifty. A fit written from question 16's release on was gated on that
-count and cannot be selected.
+gate of fifty.
 
-THEN IT CHECKS the selection against the ruling. The ruled POPULATION is the
-fits on the record when question 23 was ruled -- written before
-`RULED_AMONG_THE_FITS_WRITTEN_BEFORE`, which must be exactly the 63 the
-ruling names -- and the ruled SET is `RULED`: it writes ONLY when the rule's
-selection restricted to that population is exactly `RULED`, every one of them
-selected by the arithmetic, none carrying an activation, and each fit's own
-`n_train` given back by the record as the forecasts its gate counted.
-Anything else is refused, loudly and writing nothing: a label is permanent,
-and a selection that has drifted from the ruling is the operator's, not this
-script's (question 9's precedent, `tools/regrade_return_on_stake.py`).
+THE POPULATION IS EVERY FIT ON THE RECORD, AND THAT IS THE RULING'S (question
+31, 2026-09-29): "every fitted row written before Q16's release". A fit
+written from the release on was gated on the key at its own instant
+(`correction.refit_all`), so it cannot be short as of that instant and the
+rule never selects it: the rule's selection over every fit IS the fits
+written before the release that fall short on the key. No instant is read
+and no size is checked -- until 2026-09-29 the population was "the 63" read
+by the instant question 23 was ruled, and the five the weekly refit of 28
+September wrote after it waited for question 31; the ruling ended both.
 
-WHAT IT LEAVES, NAMED. The rule also selects fits written after the ruling
-and before the release -- 81, 85, 86, 87 and 89 on 2026-09-29, written by the
-weekly refit of 28 September on the gate as it then counted -- and whether
-they are "the 63 existing fits" is question 31 (docs/REPAIR_STATE.md). They
-are listed as waiting for it and none is written. The placeholders are never
-selected: "fitted below its gate" would be false of a row never fitted, and
-the schema refuses the label on one. A later ruling changes a constant here
-and the tool is run again (labels only add; the ones written stand).
+THEN IT CHECKS the selection against the ruling: it writes ONLY when the
+rule's selection is exactly `RULED`, every one of them selected by the
+arithmetic, none carrying an activation, and each fit's own `n_train` given
+back by the record as the forecasts its gate counted. Anything else is
+refused, loudly, naming the difference and writing nothing: a fit the weekly
+recalibration writes before the release that falls short on the key is
+selected by the same rule and refused until ruled, and so is a fit written
+from the release on that the rule selects all the same (a void stamped back
+before it, or a row written by hand; neither is on the record). A label is
+permanent, and a selection that has drifted from the ruling is the
+operator's, not this script's (question 9's precedent,
+`tools/regrade_return_on_stake.py`).
+
+THE PLACEHOLDERS are never selected: "fitted below its gate" would be false
+of a row never fitted, and the schema refuses the label on one. A later
+ruling changes a constant here and the tool is run again (labels only add;
+the ones written stand).
 
 REFUSED ON THE LIVE RECORD without `--live`, and `--live` refused on anything
 else; the record is known by the file's identity (`db.is_the_live_record_file`).
@@ -71,24 +82,27 @@ for stream in (sys.stdout, sys.stderr):
 
 from gridiron import correction, db  # noqa: E402
 
-#: THE POPULATION QUESTION 23 RULED ON: "The 63 existing fits" -- the fits on
-#: the record when the ruling was saved (docs/briefs/2026-09-28-rulings.md,
-#: 01:50:37Z on 28 September), fits 1-63, written 31 August to 21 September.
-#: Read by this instant from each fit's own `fitted_utc`, and checked to be
-#: sixty-three, so the population is the ruling's and never a list.
-RULED_AMONG_THE_FITS_WRITTEN_BEFORE = "2026-09-28T01:50:37Z"
-RULED_POPULATION_SIZE = 63
+#: THE POPULATION, in the ruling's words (question 31, 2026-09-29). Read as
+#: every fit on the record: a fit written from question 16's release on is
+#: gated on the key at its own instant and cannot be selected.
+POPULATION = "every fitted row written before question 16's release"
 
-#: THE FOUR EVERY READING OF QUESTION 31 COVERS (the default taken in the
-#: operator's absence, 2026-09-29 ~01:50Z, docs/REPAIR_STATE.md question 31):
-#: among the 63 existing when ruled, fitted, and short of the gate on the key
-#: -- fit 33, MLB total, reasoning pass, version 1 (76 forecasts, 48
-#: questions); fits 59, 61 and 63, UFC distance, moneyline and rounds,
-#: statistical, version 3 (56 forecasts, 32 questions each).
-RULED = (33, 59, 61, 63)
+#: THE NINE QUESTION 31 RULED (B) AND (B) ON 2026-09-29, replacing the four
+#: the default of 01:50Z labelled: every fitted row written before question
+#: 16's release that falls short of its gate on the key. Fit 33, MLB total,
+#: reasoning pass, version 1 (76 forecasts, 48 questions); fits 59, 61 and
+#: 63, UFC distance, moneyline and rounds, statistical, version 3 (56
+#: forecasts, 32 questions each) -- the four among the 63 on the record when
+#: question 23 was ruled; and, written by the weekly refit of 28 September
+#: 13:00:01Z, fit 81, NFL point spread, statistical, version 3 (60, 41), fits
+#: 85, 87 and 89, UFC distance, moneyline and rounds, statistical, version 4
+#: (85, 49 each), and fit 86, UFC moneyline, reasoning pass, version 4 (63,
+#: 49). None is in force.
+RULED = (33, 59, 61, 63, 81, 85, 86, 87, 89)
 
-#: SELECTED BY THE RULE AMONG THE 63 AND LEFT UNLABELLED BY THE OPERATOR'S
-#: WORDS. Empty: the ruling labels every one of them the rule selects.
+#: SELECTED BY THE RULE AND LEFT UNLABELLED BY THE OPERATOR'S WORDS. Empty:
+#: the ruling labels every one of them the rule selects, and no placeholder
+#: (question 31 (ii)), which the rule never selects.
 LEFT_BY_RULING: tuple[int, ...] = ()
 
 
@@ -110,42 +124,31 @@ def _line(got: dict) -> str:
             + ("  [already labelled]" if got["already"] else ""))
 
 
-def population(conn) -> set[int]:
-    """The fits question 23 ruled on, read by their own instant."""
-    return {r[0] for r in conn.execute(
-        "SELECT id FROM calibration_corrections WHERE fitted_utc < ?",
-        (RULED_AMONG_THE_FITS_WRITTEN_BEFORE,))}
-
-
-def check(selected: list[dict], ruled_on: set[int]) -> tuple[list[int], list[dict]]:
-    """(the ids to write, the selected fits waiting for question 31), or
-    `Refused` naming how the selection differs from the ruling."""
-    if len(ruled_on) != RULED_POPULATION_SIZE:
-        raise Refused(
-            f"the record holds {len(ruled_on)} fits written before "
-            f"{RULED_AMONG_THE_FITS_WRITTEN_BEFORE}, not the "
-            f"{RULED_POPULATION_SIZE} the ruling names: the population is not "
-            f"the ruling's, and this goes back to the operator.")
+def check(selected: list[dict]) -> list[int]:
+    """The ids to write -- the rule's selection over every fit on the
+    record, when it is exactly the ruling's -- or `Refused` naming how the
+    selection differs from the ruling."""
     by_id = {g["id"]: g for g in selected}
-    within = {i for i in by_id if i in ruled_on}
     ruled, left = set(RULED), set(LEFT_BY_RULING)
-    unsupported = sorted((ruled | left) - within)
+    unsupported = sorted((ruled | left) - set(by_id))
     if unsupported:
         raise Refused(
             f"fit(s) {unsupported} are named by the ruling, and the rule does "
-            f"not select them among the {RULED_POPULATION_SIZE}: on the record "
-            f"as it stands each is a placeholder, clear of its gate on the key, "
-            f"or not among the fits ruled on. A label is permanent; this goes "
-            f"back to the operator.")
-    unruled = sorted(within - ruled - left)
+            f"not select them: on the record as it stands each is a "
+            f"placeholder, clear of its gate on the key, or no fit at all. A "
+            f"label is permanent; this goes back to the operator.")
+    unruled = sorted(set(by_id) - ruled - left)
     if unruled:
         raise Refused(
-            f"among the {RULED_POPULATION_SIZE} the rule selects "
-            f"{len(within)} fits and the ruling names {len(ruled)} "
-            f"({', '.join(str(i) for i in sorted(ruled))}). Selected and not "
+            f"the rule selects {len(by_id)} fits and the ruling names "
+            f"{len(ruled)} ({', '.join(str(i) for i in sorted(ruled))}), "
+            f"{POPULATION} that falls short on the key. Selected and not "
             f"ruled on:\n" + "\n".join(_line(by_id[i]) for i in unruled)
-            + "\nA label is permanent; which to label is the operator's "
-            "(docs/REPAIR_STATE.md).")
+            + "\nA fit written before the release that falls short on the "
+            "key is selected by the same rule, and one written from it on was "
+            "gated on the key and is selected only if its record was made "
+            "otherwise. A label is permanent; which to label is the "
+            "operator's (docs/REPAIR_STATE.md).")
     in_force = sorted(i for i in ruled if by_id[i]["active"])
     if in_force:
         raise Refused(
@@ -159,15 +162,14 @@ def check(selected: list[dict], ruled_on: set[int]) -> tuple[list[int], list[dic
             f"n_train as the forecasts its gate counted, so 'the count the fit "
             f"used' cannot be read off its record. This goes back to the "
             f"operator.")
-    waiting = [by_id[i] for i in sorted(set(by_id) - ruled_on)]
-    return sorted(ruled), waiting
+    return sorted(ruled)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Operator question 23: label the correction fits whose "
-                    "count on the key is below their gate 'fitted below its "
-                    "gate'")
+        description="Operator questions 23 and 31: label the correction fits "
+                    "whose count on the key is below their gate 'fitted below "
+                    "its gate'")
     parser.add_argument("--database", required=True,
                         help="the database whose correction fits are labelled")
     parser.add_argument("--write", action="store_true",
@@ -190,8 +192,8 @@ def main(argv: list[str] | None = None) -> int:
             f"record, found by its identity). Its labels are written only "
             f"with --live, after the release that carries the table")
 
-    why = ("operator question 23: listing the correction fits whose count on "
-           "the key is below their gate, before labelling them")
+    why = ("operator questions 23 and 31: listing the correction fits whose "
+           "count on the key is below their gate, before labelling them")
     # DRY MEANS READ-ONLY, whatever the file: the read-only door, which SQLite
     # itself will not write through. The write goes through `db.connect`,
     # which refuses the record under any verification, and applies no schema.
@@ -209,17 +211,15 @@ def main(argv: list[str] | None = None) -> int:
               f"key:")
         for got in selected:
             print(_line(got))
-        ids, waiting = check(selected, population(conn))
-        print(f"the ruling's set among the {RULED_POPULATION_SIZE} fits written "
-              f"before {RULED_AMONG_THE_FITS_WRITTEN_BEFORE}, verified against "
-              f"each fit's record: {', '.join(str(i) for i in ids)}")
+        ids = check(selected)
+        print(f"the ruling's set (question 31), {POPULATION} that falls short "
+              f"on the key -- the rule's selection over every fit on the "
+              f"record, since a fit from the release on is gated on the key -- "
+              f"verified against each fit's record: "
+              f"{', '.join(str(i) for i in ids)}")
         if LEFT_BY_RULING:
             print(f"selected and left unlabelled by the ruling: "
                   f"{', '.join(str(i) for i in LEFT_BY_RULING)}")
-        if waiting:
-            print(f"selected by the rule, written after the ruling, and "
-                  f"WAITING FOR QUESTION 31 (none is written): "
-                  f"{', '.join(str(g['id']) for g in waiting)}")
         if not args.write:
             todo = [g for g in selected if g["id"] in ids and not g["already"]]
             print(f"nothing written. --write would label {len(todo)} "

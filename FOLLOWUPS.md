@@ -7922,7 +7922,7 @@ EDIT**: no row, table, column or schema object changes.
   `bet.KEY` and `audit.RULED_DISTINCT_BET` after `"market_type"` (and the
   planting's new form out) -- which splits the ten in two again.
 
-## Each correction gate's count, per forecaster and bet; the fits fitted below their gate -- built 2026-09-29 *(operator question 16, ruled (B) 2026-09-27, with question 23, ruled (A) 2026-09-28; question 31's default taken 2026-09-29 ~01:50Z; docs/briefs/2026-09-27-rulings-third-set.md and 2026-09-28-rulings.md)*
+## Each correction gate's count, per forecaster and bet; the fits fitted below their gate -- built 2026-09-29 *(operator question 16, ruled (B) 2026-09-27, with question 23, ruled (A) 2026-09-28; question 31's default taken 2026-09-29 ~01:50Z, and question 31 ruled (B) and (B) the same day -- the nine, no placeholder; docs/briefs/2026-09-27-rulings-third-set.md, 2026-09-28-rulings.md and 2026-09-29-rulings.md)*
 
 "Q16: (B), after Q17, on its key. Each correction gate's count per
 forecaster and distinct bet, planting each." -- "Q23: (A). The page's count
@@ -7968,7 +7968,7 @@ with `--live`, after the release.
   0, never fitted, the count only in their words; never labelled.
 - **No labelled fit is in force**: of the four ruled, none carries an
   activation; the only fit in force (71) is clear. Nothing stopped for a
-  ruling.
+  ruling. (Of the nine ruled on 2026-09-29, none carries one either.)
 - **The category is not split**: every prop type is one category under
   'prop' and UFC's cards are one, as each fit was fitted; the page says so
   in words ("every prop type together", "every card together"). Splitting
@@ -8074,7 +8074,9 @@ rows' counts: NFL 135, MLB 755, NCAAF 471, UFC 147) is its row count (8, 8,
   table's row count or column checksum moved**; **0 differences** from a
   fresh build of this tree with an EMPTY register; a second open changes
   nothing.
-- The tool: the dry run selects nine (33, 59, 61, 63, 81, 85, 86, 87, 89),
+- The tool, as the default built it (question 31's ruling moved it the same
+  day: QUESTION 31, RULED, below): the dry run selects nine (33, 59, 61, 63,
+  81, 85, 86, 87, 89),
   verifies the ruled four among the 63 written before 01:50:37Z on 28
   September, lists 81, 85, 86, 87 and 89 as waiting for question 31, and
   writes nothing; `--write` writes 4 in one transaction; again, 0 written
@@ -8132,10 +8134,15 @@ rows' counts: NFL 135, MLB 755, NCAAF 471, UFC 147) is its row count (8, 8,
   tool): the ruling says a labelled fit can never be activated, not that one
   in force is taken out of force. None is. Reversal: drop
   `correction_gate_label_never_on_a_fit_in_force`.
-- **The population is read by instant**: the fits written before 01:50:37Z
+- ~~**The population is read by instant**: the fits written before 01:50:37Z
   on 28 September, checked to be 63; the ruled set is the four every reading
   of question 31 covers. Reversal: a ruling on question 31 changes `RULED`
-  and the population constant, and the tool is run again.
+  and the population constant, and the tool is run again.~~ RULED
+  2026-09-29 (question 31 (i)(B) and (ii)(B)): the population is "every
+  fitted row written before Q16's release", read as every fit on the record
+  with no instant (a fit from the release on is gated on the key and never
+  selected); `RULED` is the nine, `LEFT_BY_RULING` empty; the instant, the
+  size check and `population()` are gone (QUESTION 31, RULED, below).
 - **The door passes over a labelled fit** (the newest activation not
   labelled is in force) rather than raising. Reversal: raise by name in
   `active_correction`.
@@ -8148,11 +8155,12 @@ rows' counts: NFL 135, MLB 755, NCAAF 471, UFC 147) is its row count (8, 8,
 
 ### OPEN *(found by this step; by the queue rule, for the re-read unless it breaks LAW 1 or LAW 3 or makes a gate count false)*
 
-- **Question 31** stays the operator's: 81, 85, 86, 87 and 89 are fitted
+- ~~**Question 31** stays the operator's: 81, 85, 86, 87 and 89 are fitted
   below their gate on the key and unlabelled; the page states their
   categories' counts on the key (NFL point spread, statistical, 41 of 50;
   UFC 49 of 50) beside versions fitted on the forecasts. The placeholders
-  are never labelled.
+  are never labelled.~~ RULED 2026-09-29, (i)(B) and (ii)(B): the five are
+  labelled with the four, and no placeholder (QUESTION 31, RULED, below).
 - ~~**The label table's own replacing insert whose number reads twice**~~
   CLOSED by the prover (2026-09-29, below): the table is WITHOUT ROWID, so
   the number is worked out once. `recommendation_regrades` keeps the hole
@@ -8281,3 +8289,72 @@ PROVED:
   `render_q16_rows.py` -> `prove/render/`), 1100 and 390 px, read: the
   labelled gate row and the learning rows word for word as the build's, no
   horizontal scroll, no console error.
+
+### QUESTION 31, RULED *(2026-09-29; docs/briefs/2026-09-29-rulings.md; `scratchpad/q31/`)*
+
+"Q31 (i): (B). Label every fitted row written before Q16's release that
+falls short on the key: 33, 59, 61, 63, 81, 85, 86, 87, 89." -- "Q31 (ii):
+(B). No labels on placeholders; they were never fitted." The brief's
+reading: the tool's ruled set is the nine, "written before Q16's release" is
+the population, a fit the weekly recalibration writes before the release that
+falls short on the key is selected by the same rule, and if the selection at
+the live run is not exactly the nine the tool refuses and reports the
+difference.
+
+- **The tool** (`tools/label_corrections_below_the_gate.py`): `RULED` = 33,
+  59, 61, 63, 81, 85, 86, 87, 89; `LEFT_BY_RULING` = (). The population is
+  every fit on the record, with no instant: a fit written from the release
+  on is gated on the key at its own instant (`refit_all`), so it cannot be
+  short as of it and the rule never selects it, and the rule's selection
+  over every fit IS the pre-release population. `RULED_AMONG_THE_FITS_WRITTEN_BEFORE`,
+  `RULED_POPULATION_SIZE`, `population()` and the "waiting for question 31"
+  line are gone; `POPULATION` holds the ruling's words for the output. It
+  writes only when the selection is exactly the nine, and otherwise refuses,
+  naming each fit selected and not ruled on, or ruled on and not selected
+  (a selection the weekly refit of 5 October would widen, if it landed
+  before the release, is refused until ruled). The placeholders: never
+  selected, and the schema refuses a label on one, as built. The words
+  moved with it in `correction.py` (module and `below_their_gates`
+  docstrings), CLAUDE.md's Q16 row and a schema comment ("none of the nine
+  ruled is in force"; a comment between statements, no object's text).
+- **Tests** (`tests/test_correction_gate.py`, 29): the tool's test asserts
+  the nine, `LEFT_BY_RULING` empty, the ruling's words, the instant, the
+  size and `population()` gone; its four refusals kept and three more
+  (86 unselected, 87 in force, 89's count not given back); and a tenth fit,
+  written 5 October and short on the key, refused naming it.
+  `test_the_nine_are_what_the_rule_selects_on_the_rehearsal_shape` builds
+  the record's 89 rows in its order, each written as its refits wrote it
+  (fitted on the forecasts at fifty settled, a placeholder below): the rule
+  selects exactly the nine, in their categories, versions and counts (76/48;
+  56/32 x3; 60/41; 85/49 x3; 63/49), four before question 23 was ruled; no
+  placeholder, one short on any count among them (15 questions); fit 71 in
+  force; the tool says it would write 9, writes 9, then 0 and 9 already; and
+  a refit from the release on, gated on the key, adds nothing the rule
+  selects. Both tool tests FAIL on HEAD's tool (RULED is the four;
+  `scratchpad/q31/old/`), and pass on this one.
+- **Run**: `pytest tests/test_correction_gate.py tests/test_guards.py`, a
+  dummy token, TMP at its default: 145 passed, rc 0. The schema, rebuild,
+  replacing-write, one-way-in, correction, at-the-line and audit-surface
+  modules (a schema comment moved): 300 passed. `plant.py` whole: 350/350
+  caught, rc 0.
+- **On one verified copy of the live record** (`rebuild.verified_backup`,
+  read 04:10:23Z-04:11:21Z: integrity ok, 61 tables proved equal, none
+  mismatched; opened under this tree's schema by `db.init` -- the label
+  table added; 89 correction rows, 48 fitted, 1 in force: 71): the dry run
+  lists the nine (33 mlb total, llm, v1, 76/48; 59, 61, 63 ufc distance,
+  moneyline, rounds, statistical, v3, 56/32; 81 nfl spread, statistical,
+  v3, 60/41; 85, 87, 89 ufc, statistical, v4, 85/49; 86 ufc moneyline, llm,
+  v4, 63/49), verifies them as the ruling's set and says "--write would
+  label 9"; `--write` wrote 9 (0 already); again, 0 written, 9 already; the
+  dry run after, "--write would label 0"; `--live` on the copy refused. Read
+  back: nine labels, gate 50, each with its fit's own counts; fit 71 still
+  served; each sport's correction lines built with their guard and name the
+  nine ("Version 4, fitted on Monday 28 September, was fitted below its
+  gate: its 85 settled forecasts are 49 questions, under the 50 it needs, so
+  it can never be in force."). The copy was deleted.
+- **After the release**, from the main checkout: the dry run
+  `python tools/label_corrections_below_the_gate.py --database var/gridiron.db`
+  (the read-only door; refused by name until a scheduled pass or the
+  server's start has opened the record under the schema), then
+  `python tools/label_corrections_below_the_gate.py --database var/gridiron.db --write --live`
+  -- nine written, or a refusal naming the difference.

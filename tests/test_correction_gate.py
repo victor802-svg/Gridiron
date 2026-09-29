@@ -20,6 +20,7 @@ is `correction_gate_labels`, its rules in the schema, written by
 from __future__ import annotations
 
 import importlib.util
+import itertools
 import sqlite3
 import textwrap
 
@@ -801,27 +802,242 @@ def _selected(fid, **kw):
 
 
 def test_the_tool_writes_only_the_ruled_set_and_names_the_rest(capsys):
+    """Question 31, ruled (B) and (B) 2026-09-29: "Label every fitted row
+    written before Q16's release that falls short on the key: 33, 59, 61, 63,
+    81, 85, 86, 87, 89." THE POPULATION IS EVERY FIT ON THE RECORD, read by
+    the rule: a fit from the release on is gated on the key and never
+    selected. Until that ruling the population was the 63 read by the instant
+    question 23 was ruled (checked to be 63), the ruled set the four among
+    them, and 81, 85, 86, 87 and 89 waited."""
     tool = _tool()
-    assert tool.RULED == (33, 59, 61, 63)
-    assert tool.RULED_AMONG_THE_FITS_WRITTEN_BEFORE == "2026-09-28T01:50:37Z"
-    population = set(range(1, 64))
+    assert tool.RULED == (33, 59, 61, 63, 81, 85, 86, 87, 89)
+    assert tool.LEFT_BY_RULING == ()
+    assert tool.POPULATION == "every fitted row written before question 16's release"
+    # NO INSTANT AND NO SIZE: the 63-by-instant check is gone, not left idle
+    for gone in ("RULED_AMONG_THE_FITS_WRITTEN_BEFORE", "RULED_POPULATION_SIZE",
+                 "population"):
+        assert not hasattr(tool, gone), gone
     selected = [_selected(i) for i in (33, 59, 61, 63, 81, 85, 86, 87, 89)]
-    ids, waiting = tool.check(selected, population)
-    assert ids == [33, 59, 61, 63]
-    assert [g["id"] for g in waiting] == [81, 85, 86, 87, 89]
+    assert tool.check(selected) == [33, 59, 61, 63, 81, 85, 86, 87, 89]
     for broken, words in (
             (selected + [_selected(40)], "Selected and not ruled on"),
             ([g for g in selected if g["id"] != 59], "does not select them"),
+            ([g for g in selected if g["id"] != 86], "does not select them"),
             ([dict(g, active=g["id"] == 61) for g in selected], "carry an activation"),
+            ([dict(g, active=g["id"] == 87) for g in selected], "carry an activation"),
             ([dict(g, counted=55) if g["id"] == 33 else g for g in selected],
+             "does not give back"),
+            ([dict(g, counted=84) if g["id"] == 89 else g for g in selected],
              "does not give back")):
         with pytest.raises(SystemExit) as exc:
-            tool.check(broken, population)
+            tool.check(broken)
         assert exc.value.code == 2
         assert words in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        tool.check(selected, set(range(1, 90)))
-    assert "not the 63 the ruling names" in capsys.readouterr().out
+    # A TENTH, written by the next weekly refit before the release and short
+    # on the key, is selected by the same rule and refused, named, until ruled
+    tenth = _selected(90, fitted_utc="2026-10-05T13:00:01Z", count_used=58,
+                      counted=58, corrected_count=45)
+    with pytest.raises(SystemExit) as exc:
+        tool.check(selected + [tenth])
+    assert exc.value.code == 2
+    out = capsys.readouterr().out
+    assert "the rule selects 10 fits and the ruling names 9" in out
+    assert "Selected and not ruled on:\n  fit 90 (ufc moneyline, statistical, " \
+           "version 3, fitted 2026-10-05T13:00:01Z): 58 settled forecasts past " \
+           "its gate of 50, 45 questions on the key\n" in out
+
+
+# --- the rehearsal's shape (question 31) --------------------------------------
+
+#: The instants the record's fits were written at (FOLLOWUPS, question 16's
+#: measurement): six early refits, fit 33's at 06:29:40Z and UFC's at
+#: 22:11:39Z on 21 September, and the weekly refit of 28 September 13:00:01Z,
+#: after question 23 was ruled at 01:50:37Z that day.
+_EARLY = ("2026-08-31T13:00:00Z", "2026-09-02T13:00:00Z", "2026-09-04T13:00:00Z",
+          "2026-09-07T13:00:00Z", "2026-09-10T13:00:00Z", "2026-09-14T13:00:00Z")
+_AT_33, _AT_UFC, _AT_WEEKLY = ("2026-09-21T06:29:40Z", "2026-09-21T22:11:39Z",
+                               "2026-09-28T13:00:01Z")
+_Q23_RULED = "2026-09-28T01:50:37Z"
+
+_UFC_DIST, _UFC_ML, _UFC_RDS = (("ufc", m, "statistical")
+                                for m in ("distance", "moneyline", "rounds"))
+_UFC_ML_LLM = ("ufc", "moneyline", "llm")
+_NFL_SPREAD = ("nfl", "spread", "statistical")
+_MLB_TOTAL_LLM = ("mlb", "total", "llm")
+_MLB_ML = ("mlb", "moneyline", "statistical")
+_MLB_SPREAD = ("mlb", "spread", "statistical")
+_UFC_DIST_LLM, _UFC_RDS_LLM = ("ufc", "distance", "llm"), ("ufc", "rounds", "llm")
+
+#: The 26 categories the weekly refit of 28 September wrote, in its own order
+#: (`categories_in_the_record`: sport, market type, forecaster) -- fits 64-89.
+_WEEKLY = sorted(
+    [("cfb", m, f) for m in ("moneyline", "spread", "total")
+     for f in ("llm", "statistical")]
+    + [("mlb", "moneyline", "llm"), _MLB_ML, ("mlb", "prop", "llm"),
+       ("mlb", "prop", "statistical"), _MLB_SPREAD, _MLB_TOTAL_LLM,
+       ("mlb", "total", "statistical"),
+       ("nfl", "moneyline", "llm"), ("nfl", "moneyline", "statistical"),
+       ("nfl", "prop", "statistical"), ("nfl", "spread", "llm"), _NFL_SPREAD,
+       ("nfl", "total", "llm"), ("nfl", "total", "statistical")]
+    + [("ufc", m, f) for m in ("distance", "moneyline", "rounds")
+       for f in ("llm", "statistical")])
+
+#: What each category settled and when: (resolved, questions answered by both
+#: passes, questions answered once), a game each. The nine's counts are the
+#: record's (76 forecasts on 48 questions at fit 33's instant; UFC's 56 on 32
+#: at 22:11:39Z and 85 on 49 at the weekly refit; NFL spread 60 on 41; UFC
+#: moneyline, reasoning pass, 63 on 49); MLB moneyline is clear, and in force.
+_SETTLED = {
+    **{c: (("2026-09-21T12:00:00Z", 24, 8), ("2026-09-27T05:00:00Z", 12, 5))
+       for c in (_UFC_DIST, _UFC_ML, _UFC_RDS)},
+    _UFC_ML_LLM: (("2026-09-27T05:00:00Z", 14, 35),),
+    _NFL_SPREAD: (("2026-09-27T05:00:00Z", 19, 22),),
+    _MLB_TOTAL_LLM: (("2026-09-20T05:00:00Z", 28, 20), ("2026-09-27T05:00:00Z", 0, 10)),
+    _MLB_ML: (("2026-09-20T05:00:00Z", 60, 0), ("2026-09-27T05:00:00Z", 10, 0)),
+    _MLB_SPREAD: (("2026-09-12T05:00:00Z", 0, 55), ("2026-09-27T05:00:00Z", 0, 10)),
+    # short on any count, so written as a placeholder: never labelled
+    _UFC_DIST_LLM: (("2026-09-27T05:00:00Z", 15, 0),),
+}
+
+
+def _rehearsal_world(tmp_path):
+    """The record's correction rows in the shape question 16's rehearsal read
+    (2026-09-29): 89, numbered 1-89 in the record's order, each written as
+    the record's refits wrote it -- FITTED on every settled forecast of its
+    category when fifty or more had settled by its instant, a placeholder
+    otherwise -- so the nine short on the key land at 33, 59, 61, 63, 81, 85,
+    86, 87 and 89 in their categories and versions, and 71 (MLB moneyline,
+    statistical, version 8) is in force, clear on the key."""
+    path = tmp_path / "q31.db"
+    conn = db.open_db(path)
+    for sport in ("nfl", "mlb", "ufc"):
+        for i in range(1, 81):
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home,"
+                " away, kickoff_utc, status, league_date, home_score, away_score)"
+                " VALUES (?, ?, 2026, 1, 'REG', 'AAA', 'BBB',"
+                " '2026-09-01T18:00:00Z', 'final', '2026-09-01', 3, 1)",
+                (f"{sport}{i}", sport))
+    rung = {"spread": -1.5, "total": 8.5, "rounds": 2.5}
+    for (sport, market, forecaster), batches in _SETTLED.items():
+        game = 0
+        for resolved, twice, once in batches:
+            for k in range(twice + once):
+                game += 1
+                for pass_kind in ("early", "final")[:2 if k < twice else 1]:
+                    conn.execute(
+                        "INSERT INTO predictions (sport, created_utc, game_id,"
+                        " market_type, subject, line_asked, model_prob,"
+                        " model_side, predictor, pass_kind, factor_set_version,"
+                        " factors_json, reasoning, resolved_utc, outcome)"
+                        " VALUES (?, ?, ?, ?, 'AAA', ?, 0.62, 'cover', ?, ?,"
+                        " 'fs3', '{}', 'test', ?, ?)",
+                        (sport, "2026-08-20T06:00:00Z" if pass_kind == "early"
+                         else "2026-08-20T16:00:00Z", f"{sport}{game}", market,
+                         rung.get(market), forecaster, pass_kind, resolved,
+                         game % 2))
+    conn.commit()
+
+    def settled_by(category, at):
+        return conn.execute(
+            "SELECT COUNT(*) FROM predictions WHERE sport = ? AND market_type = ?"
+            " AND predictor = ? AND resolved_utc < ?", (*category, at)).fetchone()[0]
+
+    special = {_UFC_DIST, _UFC_ML, _UFC_RDS, _UFC_ML_LLM, _NFL_SPREAD,
+               _MLB_TOTAL_LLM, _MLB_ML, _MLB_SPREAD}
+    fillers = itertools.cycle([c for c in _WEEKLY if c not in special])
+    rounds = (
+        (_EARLY[0], [_MLB_ML, _MLB_SPREAD, _NFL_SPREAD], 3),
+        (_EARLY[1], [_MLB_ML], 4),
+        (_EARLY[2], [_MLB_ML], 4),
+        (_EARLY[3], [_MLB_ML, _UFC_DIST, _UFC_ML, _UFC_RDS, _UFC_ML_LLM], 1),
+        (_EARLY[4], [_MLB_ML], 4),
+        (_EARLY[5], [_MLB_ML, _MLB_SPREAD], 3),
+        (_AT_33, [_MLB_TOTAL_LLM, _MLB_ML, _MLB_SPREAD, _NFL_SPREAD, _UFC_DIST,
+                  _UFC_ML, _UFC_RDS, _UFC_ML_LLM], 17),
+        (_AT_UFC, [_UFC_DIST_LLM, _UFC_DIST, _UFC_ML_LLM, _UFC_ML, _UFC_RDS_LLM,
+                   _UFC_RDS], 0),
+        (_AT_WEEKLY, _WEEKLY, 0))
+    for at, categories, n_fillers in rounds:
+        for category in list(categories) + [next(fillers) for _ in range(n_fillers)]:
+            n = settled_by(category, at)
+            sport, market, forecaster = category
+            correction.record_fit(
+                conn, sport=sport, market_type=market, forecaster=forecaster,
+                model=(correction.Platt(slope=0.8, intercept=0.1, n_train=n)
+                       if n >= correction.MIN_TRAIN else None),
+                status="written as the record's refits wrote it",
+                active_from=at if (category, at) == (_MLB_ML, _AT_WEEKLY) else None,
+                fitted_utc=at)
+    return conn, path
+
+
+def test_the_nine_are_what_the_rule_selects_on_the_rehearsal_shape(tmp_path, capsys):
+    """Question 31, ruled (B) and (B) 2026-09-29, on the record's shape: the
+    rule selects exactly the nine the ruling names -- four written before
+    question 23 was ruled, five by the weekly refit after it -- and no
+    placeholder, though a placeholder is short on any count; the tool says it
+    would write nine, writes nine, then none; the fit in force stays in force;
+    and a refit from the release on, gated on the key, adds nothing the rule
+    selects, so the selection over every fit stays the pre-release nine."""
+    tool = _tool()
+    conn, path = _rehearsal_world(tmp_path)
+    fits = conn.execute("SELECT * FROM calibration_corrections ORDER BY id").fetchall()
+    assert [f["id"] for f in fits] == list(range(1, 90))
+    assert [f["id"] for f in fits if f["active_from"]] == [71]
+    got = {g["id"]: g for g in correction.below_their_gates(conn)}
+    assert tuple(sorted(got)) == tool.RULED
+    assert {i: (g["sport"], g["market_type"], g["forecaster"], g["version"],
+                g["count_used"], g["corrected_count"]) for i, g in got.items()} == {
+        33: ("mlb", "total", "llm", 1, 76, 48),
+        59: ("ufc", "distance", "statistical", 3, 56, 32),
+        61: ("ufc", "moneyline", "statistical", 3, 56, 32),
+        63: ("ufc", "rounds", "statistical", 3, 56, 32),
+        81: ("nfl", "spread", "statistical", 3, 60, 41),
+        85: ("ufc", "distance", "statistical", 4, 85, 49),
+        86: ("ufc", "moneyline", "llm", 4, 63, 49),
+        87: ("ufc", "moneyline", "statistical", 4, 85, 49),
+        89: ("ufc", "rounds", "statistical", 4, 85, 49)}
+    assert all(g["counted"] == g["count_used"] and not g["active"]
+               and not g["already"] for g in got.values())
+    assert sorted(i for i, g in got.items() if g["fitted_utc"] < _Q23_RULED) == \
+        [33, 59, 61, 63]
+    # THE PLACEHOLDERS ARE NEVER SELECTED, one short on any count among them
+    placeholders = {f["id"] for f in fits if f["n_train"] < correction.MIN_TRAIN}
+    assert not placeholders & set(got)
+    assert 84 in placeholders and bet.count(correction.settled_rows(
+        conn, sport="ufc", market_type="distance", forecaster="llm",
+        before_utc=_AT_WEEKLY, as_it_stood=True)) == 15
+    with pytest.raises(correction.Refused):
+        correction.write_labels(conn, [84])
+    conn.close()
+
+    assert tool.main(["--database", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("9 fit(s) on the record were fitted")
+    assert "verified against each fit's record: 33, 59, 61, 63, 81, 85, 86, 87, 89" in out
+    assert "nothing written. --write would label 9 'fitted below its gate'." in out
+    assert tool.main(["--database", str(path), "--write"]) == 0
+    assert "wrote 9 label(s); 0 already labelled" in capsys.readouterr().out
+    assert tool.main(["--database", str(path), "--write"]) == 0
+    assert "wrote 0 label(s); 9 already labelled" in capsys.readouterr().out
+
+    conn = db.connect(path)
+    try:
+        assert tuple(r[0] for r in conn.execute(
+            "SELECT correction_id FROM correction_gate_labels ORDER BY correction_id")) \
+            == tool.RULED
+        assert correction.active_correction(conn, sport="mlb", market_type="moneyline",
+                                            forecaster="statistical")["id"] == 71
+        # FROM THE RELEASE ON a refit is gated on the key: nothing it writes is
+        # selected, so the rule's selection over every fit is still the nine
+        report = correction.refit_all(conn)
+        assert report["n"] == 9 and report["eligible"] == 3
+        assert {g["id"] for g in correction.below_their_gates(conn)} == set(tool.RULED)
+    finally:
+        conn.close()
+    assert tool.main(["--database", str(path)]) == 0
+    assert "--write would label 0 'fitted below its gate'." in capsys.readouterr().out
 
 
 def test_the_tool_refuses_live_on_a_copy_and_a_record_without_the_table(tmp_path, capsys):
