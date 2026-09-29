@@ -9,14 +9,36 @@ alt lines are separate questions. Q12's, Q14's and Q16's counts all use it."
 Question 21: "the line the forecaster was asked (the rung). Two rungs on one
 game are two questions."
 
-THE KEY, as the brief of 2026-09-28 reads it: the forecaster
-(`predictions.predictor`), the game, the market -- `market_type`, and the
-prop type for a prop -- the subject (the team, the pairing or the player: a
-prop's player is part of the venue's question), and the rung asked
+THE KEY: the forecaster (`predictions.predictor`), the game, the market
+(`market_type`), the subject (the team, the pairing or the player -- and for
+a prop the player AND the prop, 'Drake London receiving_yards': a prop's
+player and its stat are both the venue's question), and the rung asked
 (`predictions.line_asked`; NULL for a moneyline or a UFC distance, and NULL
 is one value). It is the blind record's own unit, the key
 `calibration.standing_row_clause` has kept one standing row per since
-2026-09-03, with the prop type named as well as carried in the subject.
+2026-09-03.
+
+THE PROP TYPE IS NOT A COLUMN OF THE KEY (2026-09-29). A prop's question is
+named by its subject, and `prop_type` is a column the earliest rows lack: 32
+NFL week-one props written on 29 August at 05:55Z (fs1) carry none, and ten
+of those questions -- the same player, prop and rung -- were asked again at
+07:34Z (fs2) with it set. Keyed by the prop type as well (`IS`: NULL is not
+'receiving_yards'), each of the ten was two questions, and the eight settled
+ones stood twice in every reader that counts a sport's markets together: 14
+NFL figures moved that no ruling names (the factor table's N and effects,
+"scored over 154" to 162, the pick card's worst-band footnote, a tier
+table's pace), against the ruling's "morning and final pass of one question
+count once". The brief of 2026-09-28 had named the prop type as well as the
+subject; this reverses that reading, back to the question
+`calibration.resolved` has kept the prop type out of since ruling R4
+(2026-09-02), for this same pair of runs ("keying on it split ten questions
+that are plainly the same one"). Read on the live record on 2026-09-29,
+read-only: all 252 typed prop rows' subjects end with their type, each of
+the 32 untyped ones names one, and no game holds one subject under two prop
+types -- so the subject tells every prop question apart, and leaving the
+type out joins exactly those ten, each with itself. A door that NAMES a
+prop's market selects `prop_type` beside the key, never in it; a count of
+one prop type filters by it (`WHERE p.prop_type = ?`), never keys by it.
 
 WHY ONE MODULE (2026-09-28). Until this date six keys counted a bet: the
 standing clause and the priced and outlook doors (the question, the rung
@@ -34,10 +56,7 @@ PARTITION BY; `same` writes it as the SQL condition that two rows are one
 bet. NULL IS ONE VALUE in all three: SQL's `IS` treats two NULLs as equal
 (the standing clause read `IFNULL(line_asked, -1e9)` for the same reason), a
 window groups NULLs together, and Python's None equals None -- so a
-moneyline's absent rung is one rung. A prop type written as NULL is not one
-written as '': 32 NFL week-one props of 29 August carry no prop type (their
-subject names it); measured on a copy of the record on 2026-09-28, naming
-the prop type moves no count, because no count reads a prop with no type.
+moneyline's absent rung is one rung.
 
 ON THE PREDICTION PATH'S SIDE OF LAW 1. Question 16's correction gates will
 read this function, and `gridiron.correction` is inside the blind import
@@ -52,8 +71,12 @@ from __future__ import annotations
 #: forecast that say whose answer it is and which question it answered. Every
 #: form below is made from this tuple and from nothing else, and
 #: `audit.check_every_count_keys_one_bet` refuses a count keyed any other way.
-KEY = ("predictor", "game_id", "market_type", "prop_type", "subject",
-       "line_asked")
+#:
+#: NO `prop_type` (2026-09-29): the question is named by its subject, and a
+#: column the early rows lack split one question in two -- a week-one prop
+#: asked at 05:55Z with no prop type and again at 07:34Z with one stood
+#: twice (the module's text above says what that moved).
+KEY = ("predictor", "game_id", "market_type", "subject", "line_asked")
 
 
 class NotABet(ValueError):

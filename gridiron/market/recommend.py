@@ -942,8 +942,9 @@ def withdrawn(conn: sqlite3.Connection, *, sport: str,
 # 45/46: each counts once in its own forecaster's line, and the 'Both sides,
 # no position' row goes. Same-side pairs count once only within one
 # forecaster." With question 17's one function (`gridiron.bet`: the
-# forecaster, the game, the market and prop type, the subject and the rung
-# asked) defining what "a pair" is.
+# forecaster, the game, the market, the subject -- which names a prop's type
+# -- and the rung asked; the prop type left out of it from 2026-09-29, a
+# column the early rows lack) defining what "a pair" is.
 #
 # THE PAIRS, as they stand. Until item 5's rule (2026-09-26) a morning and a
 # final pass could each write a recommendation on one game and market, and

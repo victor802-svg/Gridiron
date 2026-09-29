@@ -68,8 +68,12 @@ def forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
     elif prop_type is not None:
         where.append("p.prop_type = ?")
         first.append(prop_type)
+    # THE PROP TYPE BESIDE THE KEY, NOT IN IT (2026-09-29): `priced` names a
+    # row's market by it, and `bet.columns` carried it until the key left it
+    # out (a prop's question is named by its subject; `gridiron.bet`).
     return [dict(r) for r in conn.execute(
-        f"SELECT p.id, {bet.columns('p')}, p.created_utc, p.resolved_utc,"
+        f"SELECT p.id, {bet.columns('p')}, p.prop_type, p.created_utc,"
+        "       p.resolved_utc,"
         "       p.outcome, p.model_prob, p.calibrated_prob, g.kickoff_utc,"
         "       g.season, g.week,"
         "       EXISTS (SELECT 1 FROM prediction_voids v"

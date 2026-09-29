@@ -7371,6 +7371,11 @@ changes; nothing is written.
   prop type in the key, written `IS`, every blind curve of every sport
   counts what it did (2110 settled standing rows either way) and SQLite
   searches the question index as before (0.05 s against 0.06 s).
+  **Not so (found by the numbers step, fixed 2026-09-29, "A prop's
+  question is named by its subject" below):** three readers count a
+  sport's markets together -- the factor table, the pick card's worst
+  band, the tier table's pace -- and the eight settled pairs stood twice
+  in them.
 
 ### EVERY FIGURE THAT MOVED, before and after *(the same copy each side; 088e538 archived and this tree, each building every at-the-line curve, ledger, coverage line and edge, every priced category, the gate list and learning panel of where the line went, the venue's own pair, and every blind curve with its line, for every sport; 799 figures, 45 moved; `scratchpad/q17/step1/{before,after}.json`, `diff.py`)*
 
@@ -7556,6 +7561,9 @@ world, since its forecasts are written today). Read at 1100px and 390px:
   `IS`-compared: a prop written with no type and one written '' are two
   questions. Reversal: drop `"prop_type"` from `bet.KEY` and
   `audit.RULED_DISTINCT_BET` (the subject carries it on every stored prop).
+  **REVERSED 2026-09-29** ("A prop's question is named by its subject"
+  below): it split ten week-one questions in two, and counted the eight
+  settled ones twice.
 - **The at-the-line record keeps its own standing rule**: a question's
   claim is its last claim before the start, whichever pass wrote it -- not
   the claim of the blind record's standing forecast ("which pass counts
@@ -7813,3 +7821,103 @@ priced blend's version, "b1" -- question 19, fixed in the board.)
 - **A door choosing another pass of a question** keeps every count; the
   earlier-row pin in the source is what holds it before 15 October, and the
   recount's mean after.
+
+## A prop's question is named by its subject -- fixed 2026-09-29 *(operator question 17's key; the defect its numbers step found, scratchpad `q17/numbers/moves.md` section E)*
+
+"Morning and final pass of one question count once" (question 17). Step 1
+put the prop type in the key beside the subject, `IS`-compared (READINGS
+TAKEN of that step: "The prop type is a column of the key ... Reversal:
+drop `"prop_type"` from `bet.KEY` and `audit.RULED_DISTINCT_BET`"). The
+numbers step found it split ten NFL week-one questions in two:
+`predict:nfl` wrote them at 05:55Z on 29 August under fs1 with no prop type
+(the subject names it) and asked the same player, prop and rung again at
+07:34Z under fs2 with the type set. The released standing rule counted each
+once, the later row standing; the key made both stand, and 14 NFL figures
+moved that no ruling names. Eight of the ten are settled (9/68, 18/76,
+23/91, 24/92, 27/95, 29/102, 33/66, 41/104; 29's and 41's questions were
+asked a third time by the final pass, 613 and 614, which stand); the other
+two (20/78/602, 35/88) are withdrawn and count nowhere. This takes the
+reversal step 1 named; nothing else changes. **A MEASUREMENT RULE, NOT AN
+EDIT**: no row, table, column or schema object changes.
+
+### MEASURED FIRST *(2026-09-29 ~00:10Z, read-only through `db.read_the_live_record`; scratchpad `q17fix/subjects.py` and `ten.py`, their `.txt`)*
+
+- 3152 predictions, 284 of them props (NFL 124, 32 with no prop type; MLB
+  160); no row of another market carries a prop type, and none carries ''.
+- Every one of the 252 typed props' subjects ends with its prop type; each
+  of the 32 untyped ones names a prop type as its last word
+  (passing_yards 15, receiving_yards 11, rushing_yards 6).
+- No game holds one subject under two prop types (0 groups), so the
+  subject tells every prop question apart.
+- The key without the prop type joins exactly ten groups, each one question
+  with its untyped row: the eight pairs above and the two withdrawn. Distinct
+  bets over every row: NFL 229 to 219, every other sport unchanged.
+
+### THE FIX *(2026-09-29)*
+
+- `bet.KEY` and `audit.RULED_DISTINCT_BET` are the forecaster, the game,
+  `market_type`, the subject and the rung asked: the question is named by
+  its subject, as `calibration.resolved` has said since ruling R4
+  (2026-09-02, the same two runs: "keying on it split ten questions that
+  are plainly the same one").
+- Every door still keys through `bet`: the standing clause by `bet.same`,
+  the at-the-line window by `bet.columns`, the priced, drift, outlook and
+  coverage doors and the recounts by `bet.columns` and `bet.of`, the
+  closing line's pairs by `bet.same`. Two doors named a row's prop type
+  from the key's columns and now select it beside them: `drift.standing_pairs`
+  (each pair's `prop_type`) and `recount.forecasts` (`recount.priced` names
+  a row's market by it). `calibration.AtTheLineResolved` no longer carries a
+  prop type (nothing read it). Every count of one prop type filters by it
+  in its WHERE (`p.prop_type = ?`; drift's and the recount's
+  `IFNULL(p.prop_type, '') = ?` for a market that is not a prop), untouched.
+- The key's text: `gridiron.bet`, the standing clause's, `AtTheLineResolved`'s,
+  `audit._closing_line_rows`' and `market.recommend`'s descriptions of it,
+  and CLAUDE.md's ONE DISTINCT BET and COUNTED ONCE rows.
+
+### PROVED
+
+- `test_bet.py::test_a_prop_asked_without_its_type_and_again_with_it_is_one_question`:
+  a prop asked early with no prop type, again with one, and a second such
+  question with a final pass after -- one distinct bet each and one
+  standing row, the latest before the start, for the clause, the recount
+  and `calibration.resolved` over every market; a count of one prop type as
+  before; another stat of the same player another question. On 1949730
+  (`git archive`) it fails, and its behaviour alone fails too (the clause
+  keeps ids [1, 2, 3, 4, 6] against [2, 3, 6]). `test_the_sql_and_the_python_forms_are_one_key`
+  now holds a prop with no type and one with it as one bet;
+  `test_the_key_is_the_forecaster_and_the_question_with_its_rung` the five
+  columns.
+- `plant.py::plant_a_distinct_bet_keyed_by_hand`, a new form: the one
+  function's key split by the prop type (the key of 2026-09-28) must be
+  refused by the source scan, and the shipped key must keep the shape as
+  one standing row. On 1949730 it ESCAPES ("the shipped key keeps 2
+  standing rows of one prop question asked with no prop type and again
+  with one; the one function's key split by the prop type, a column the
+  early rows lack (2 standing rows of one question)"); here it is CAUGHT.
+- ONE VERIFIED COPY of the record (`rebuild.verified_backup`, read between
+  2026-09-29T00:17:46Z and 00:18:32Z; deleted), every figure the numbers
+  step built (its `measure.py`: the Record page whole, the learning panel,
+  factors, tier tables, over time, calendar, digest, slates, history, the
+  closing line and kill on 15 October, the recommendation doors, the empty
+  bar) by the released tree f0a4418, Q17's 1949730 and this fix, at one
+  held instant: **193 values move from 1949730 to the fix, all NFL, every
+  one back to its released value** -- the factor table's N, effects, Brier
+  figures, shares and words (76, "scored over 162" back to 154), the tier
+  tables' "settled in the last 14 days" (17: 192 back to 184) and the 100
+  pick cards' worst-band footnote ("right 69.7% ... across 33" back to
+  "67.7% ... across 31") -- and **nothing else moves**: the 1,891 values
+  questions 17, 21 and 22 moved against the released tree are as they were.
+  The standing rows: the fix keeps exactly the released tree's, every
+  sport, with and without the factor set (NFL 203; 1949730 kept 211, the
+  eight untyped rows).
+- The gate, dry: the step-2 rows this touches (the source scan, every
+  record's pooled-count guard, the closing line's recounts, the closures,
+  orphans, docstrings, one answer per question) pass on the copy with
+  `GRIDIRON_VERIFYING` set; `plant.py` whole 344/344 caught;
+  `audit.prose_reaching_the_raw_side() == []`; the full suite green (2045 passed, 8 skipped, the same eight as before).
+
+### READING TAKEN *(reversible in one line)*
+
+- The reversal step 1 named. Reversal of it: put `"prop_type"` back in
+  `bet.KEY` and `audit.RULED_DISTINCT_BET` after `"market_type"` (and the
+  planting's new form out) -- which splits the ten in two again.

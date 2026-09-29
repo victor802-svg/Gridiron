@@ -7533,8 +7533,9 @@ def _closing_line_rows(conn, sport: str) -> list:
     closed, whether its close was measured at the time, whether it is
     withdrawn, whether it carries a re-grade -- and, through the forecast it
     was made from, whose it is and which distinct bet (`bet.columns`: the
-    forecaster, the game, the market and prop type, the subject and the rung
-    asked; operator questions 17 and 22, 2026-09-28).
+    forecaster, the game, the market, the subject -- which names a prop's
+    type -- and the rung asked; operator questions 17 and 22, 2026-09-28;
+    the prop type out of the key from 2026-09-29, `gridiron.bet`).
 
     WITHOUT EITHER DOOR, on purpose: a recount that went through
     `not_withdrawn` or `counted_once` would agree with a broken one. (The
@@ -8308,11 +8309,19 @@ WINDOW_KEY_WORDS = "PARTITION BY"
 #: door and the recount both read it, so a column dropped from it -- the rung,
 #: the forecaster -- would move every count and every recount alike and no
 #: runtime guard could see it. The operator ruled what a distinct bet is
-#: (question 17, 2026-09-27; question 21, 2026-09-28; the brief of 2026-09-28
-#: read it as these six columns): a change to the key is a change to the
-#: ruling, and the scan refuses one this constant does not also carry.
-RULED_DISTINCT_BET = ("predictor", "game_id", "market_type", "prop_type",
-                      "subject", "line_asked")
+#: (question 17, 2026-09-27; question 21, 2026-09-28): a change to the key is
+#: a change to the ruling, and the scan refuses one this constant does not
+#: also carry.
+#:
+#: FIVE COLUMNS, NOT SIX (2026-09-29). The brief of 2026-09-28 read the key
+#: as six, the prop type beside the subject; but a prop's question is named
+#: by its subject, and the prop type is a column the early rows lack -- ten
+#: NFL week-one props asked at 05:55Z with none and again at 07:34Z with one
+#: were each two questions, so a morning and a later pass of one question
+#: counted twice (`gridiron.bet`'s text has the figures). A key that splits
+#: a question by such a column is refused here like one that drops the rung.
+RULED_DISTINCT_BET = ("predictor", "game_id", "market_type", "subject",
+                      "line_asked")
 
 
 def _calls_the_bet_module(node, attribute: str) -> bool:
@@ -8396,7 +8405,8 @@ def distinct_bet_key_faults(root: Path | None = None) -> list[str]:
         faults.append(
             f"bet.KEY is {tuple(bet.KEY)!r}, not the key as ruled "
             f"{RULED_DISTINCT_BET!r} (the forecaster and the venue's "
-            f"question, the rung asked included)")
+            f"question, the rung asked included, a prop's named by its "
+            f"subject and split by no column the early rows lack)")
     for same_set in (False, True):
         clause = calibration.standing_row_clause(same_set)
         for a, b in (("p2", "p"), ("p3", "p2")):

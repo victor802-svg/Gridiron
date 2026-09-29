@@ -11995,6 +11995,56 @@ def plant_a_door_keyed_without_the_forecaster() -> Result:
                   "-- " + " | ".join(caught))
 
 
+#: THE KEY OF 2026-09-28, which split one question by a column the early rows
+#: lack: the prop type, NULL on 32 NFL week-one props written at 05:55Z on 29
+#: August and set when ten of those questions were asked again at 07:34Z.
+_Q17_KEY_SPLIT_BY_THE_PROP_TYPE = ("predictor", "game_id", "market_type",
+                                   "prop_type", "subject", "line_asked")
+
+
+def _q17_standing_of_a_prop_asked_twice(key: tuple) -> int:
+    """How many standing rows the blind record's clause keeps, with the one
+    function's key set to `key`, of ONE question: a week-one prop asked at
+    05:55Z under fs1 with no prop type (its subject names it) and at 07:34Z
+    under fs2 with it set -- the eight pairs of 29 August, one of them, in
+    a world of its own. One, by the ruling ("morning and final pass of one
+    question count once"). Every row goes through the schema's own rules."""
+    import tempfile
+
+    from gridiron import bet as _bet
+    from gridiron import db as _db
+
+    held = _bet.KEY
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        try:
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home,"
+                " away, kickoff_utc, status, league_date) VALUES"
+                " ('nfl_q17_prop', 'nfl', 2026, 1, 'REG', 'PIT', 'ATL',"
+                " '2026-09-13T17:00:00Z', 'scheduled', '2026-09-13')")
+            for written, prop, fsv in (
+                    ("2026-08-29T05:55:46Z", None, "fs1"),
+                    ("2026-08-29T07:34:56Z", "receiving_yards", "fs2")):
+                conn.execute(
+                    "INSERT INTO predictions (created_utc, sport, game_id,"
+                    " market_type, prop_type, subject, line_asked, model_prob,"
+                    " model_side, predictor, pass_kind, factor_set_version,"
+                    " factors_json, reasoning) VALUES (?, 'nfl', 'nfl_q17_prop',"
+                    " 'prop', ?, 'Drake London receiving_yards', 100.5, 0.6,"
+                    " 'over', 'statistical', 'early', ?, '{}', 'planted')",
+                    (written, prop, fsv))
+            conn.commit()
+            _bet.KEY = key
+            return conn.execute(
+                "SELECT COUNT(*) FROM predictions p JOIN games g"
+                " ON g.id = p.game_id WHERE 1 = 1"
+                + calibration.standing_row_clause(False)).fetchone()[0]
+        finally:
+            _bet.KEY = held
+            conn.close()
+
+
 def plant_a_distinct_bet_keyed_by_hand() -> Result:
     """Spell a distinct bet afresh in the package, four ways the shipped
     code did until 2026-09-28, and demand the source scan name each.
@@ -12003,8 +12053,12 @@ def plant_a_distinct_bet_keyed_by_hand() -> Result:
     function of its own named as a key (`bet_of`), a `distinct_bets` figure
     counted by a set of its own, a window partitioned by hand -- in a plain
     string and in an f-string -- and, in the running code, a standing clause
-    that matches the question by hand, and the one function's own key with
-    the rung dropped. The shipped package must pass first.
+    that matches the question by hand, the one function's own key with the
+    rung dropped, and (2026-09-29) the one function's own key splitting one
+    question by a column the early rows lack -- the prop type, as it stood
+    from 2026-09-28 to 2026-09-29, when a week-one prop asked with no prop
+    type and again with one stood twice. The shipped package must pass
+    first, and on it that question must stand once.
     """
     guard = "audit.check_every_count_keys_one_bet"
     violation = "a distinct bet keyed by hand, not by gridiron.bet"
@@ -12081,6 +12135,34 @@ def plant_a_distinct_bet_keyed_by_hand() -> Result:
                               if "bet.KEY" in line), "")[:120])
     else:
         missed.append("the one function's key with the rung dropped")
+    finally:
+        _bet.KEY = ruled
+    # AND THE ONE FUNCTION'S OWN KEY SPLITTING ONE QUESTION BY A COLUMN THE
+    # EARLY ROWS LACK (2026-09-29). With the prop type in the key, every door
+    # and every recount split a week-one prop asked at 05:55Z with no prop
+    # type and at 07:34Z with one alike, so they agreed and no runtime guard
+    # could see it; 14 NFL figures moved. The shipped key must keep that
+    # question as one standing row, and the scan must refuse the split key.
+    shipped_rows = _q17_standing_of_a_prop_asked_twice(ruled)
+    split_rows = _q17_standing_of_a_prop_asked_twice(
+        _Q17_KEY_SPLIT_BY_THE_PROP_TYPE)
+    if shipped_rows != 1:
+        missed.append(
+            f"the shipped key keeps {shipped_rows} standing rows of one prop "
+            f"question asked with no prop type and again with one")
+    _bet.KEY = _Q17_KEY_SPLIT_BY_THE_PROP_TYPE
+    try:
+        check()
+    except audit.LawViolation as exc:
+        caught.append(
+            f"the one function's key split by the prop type ({split_rows} "
+            f"standing rows of one question, the shipped key {shipped_rows}): "
+            + next((line.strip() for line in str(exc).splitlines()
+                    if "bet.KEY" in line), "")[:120])
+    else:
+        missed.append(
+            f"the one function's key split by the prop type, a column the "
+            f"early rows lack ({split_rows} standing rows of one question)")
     finally:
         _bet.KEY = ruled
     if missed:

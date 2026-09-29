@@ -176,8 +176,11 @@ def standing_pairs(conn: sqlite3.Connection, *, sport: str, market: str,
             "               ON e.id = b.event_id"
             "              WHERE b.id = p.game_id AND e.event_tier = ?)")
         params.append(event_tier)
+    # THE PROP TYPE BESIDE THE KEY, NOT IN IT (2026-09-29): each pair names
+    # its prop type, and `bet.columns` carried it until the key left it out
+    # (a prop's question is named by its subject; `gridiron.bet`).
     rows = conn.execute(
-        f"SELECT p.id, {bet.columns('p')},"
+        f"SELECT p.id, {bet.columns('p')}, p.prop_type,"
         "       p.created_utc, p.model_prob, p.calibrated_prob, g.kickoff_utc,"
         "       o.implied_prob AS opened, o.fetched_utc AS opened_utc,"
         "       n.implied_prob AS near, n.fetched_utc AS near_utc,"

@@ -224,12 +224,19 @@ def standing_row_clause(same_set: bool) -> str:
 
     ONE STANDING ROW PER DISTINCT BET (operator question 17, 2026-09-28).
     "The question" is `bet.same` -- the one function's SQL form: the
-    forecaster, the game, the market and prop type, the subject and the rung
-    asked, NULL one value. It was written out here twice until this date,
-    without the prop type, which the subject carries (measured on a copy of
-    the record that day: naming it moves no count). `gridiron.recount`
-    works this rule out again in Python, and each builder that counts
-    through it refuses a count the two disagree on.
+    forecaster, the game, the market, the subject and the rung asked, NULL
+    one value. It was written out here twice until this date, without the
+    prop type, which the subject carries. `gridiron.recount` works this rule
+    out again in Python, and each builder that counts through it refuses a
+    count the two disagree on.
+
+    STILL WITHOUT THE PROP TYPE (2026-09-29). From 2026-09-28 `bet.same`
+    named it too, and measured on a copy of the record that day it moved 14
+    NFL figures: a week-one prop asked at 05:55Z with no prop type and again
+    at 07:34Z with one kept both rows here, one question counted twice in
+    every reader of a sport's markets together (the factor table, the pick
+    card's worst band, the tier table's pace). The question is named by its
+    subject (`gridiron.bet`), as `resolved` below has said since 2026-09-02.
     """
     same = (" AND p2.factor_set_version = p.factor_set_version"
             if same_set else "")
@@ -1928,12 +1935,14 @@ class AtTheLineResolved:
     """One settled claim, in the shape the bucket and score functions read.
 
     It carries its BET -- its forecast's key, `bet.KEY`: the forecaster, the
-    game, the market and prop type, the subject and the rung asked (operator
-    question 17, 2026-09-28; item 6 carried the game, market and side) -- so
-    a payload can say how many distinct bets its count is (`bet.count`), and
-    a guard can refuse one that counts a bet twice or two forecasters as one.
-    The venue's own number is `line`; the rung the forecaster was asked is
-    `line_asked`.
+    game, the market, the subject and the rung asked (operator question 17,
+    2026-09-28; item 6 carried the game, market and side) -- so a payload
+    can say how many distinct bets its count is (`bet.count`), and a guard
+    can refuse one that counts a bet twice or two forecasters as one. The
+    venue's own number is `line`; the rung the forecaster was asked is
+    `line_asked`. (It carried the prop type too until 2026-09-29, when the
+    key left it out: a prop's question is named by its subject, and nothing
+    here read the type for anything else.)
     """
     model_prob: float
     implied_prob: float
@@ -1944,7 +1953,6 @@ class AtTheLineResolved:
     side: str
     predictor: str
     market_type: str
-    prop_type: str | None
     subject: str
     line_asked: float | None
 
@@ -1958,8 +1966,7 @@ def _at_the_line_items_of(claims) -> list[AtTheLineResolved]:
                           outcome=c["outcome"], market=c["market"], line=c["line"],
                           game_id=c["game_id"], side=c["side"],
                           predictor=c["predictor"], market_type=c["market_type"],
-                          prop_type=c["prop_type"], subject=c["subject"],
-                          line_asked=c["line_asked"])
+                          subject=c["subject"], line_asked=c["line_asked"])
         for c in at_the_line.settled(claims)
     ]
 

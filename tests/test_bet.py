@@ -45,13 +45,14 @@ def _world(tmp_path):
 
 
 def test_the_key_is_the_forecaster_and_the_question_with_its_rung():
-    """The brief's reading of the ruling, in the order the tuple holds it."""
-    assert bet.KEY == ("predictor", "game_id", "market_type", "prop_type",
-                       "subject", "line_asked")
+    """The ruling's key, in the order the tuple holds it: no prop type from
+    2026-09-29 -- a prop's question is named by its subject."""
+    assert bet.KEY == ("predictor", "game_id", "market_type", "subject",
+                       "line_asked")
     row = {"predictor": "statistical", "game_id": "g1", "market_type": "spread",
            "prop_type": None, "subject": "SEA", "line_asked": -3.5,
            "model_prob": 0.6}
-    assert bet.of(row) == ("statistical", "g1", "spread", None, "SEA", -3.5)
+    assert bet.of(row) == ("statistical", "g1", "spread", "SEA", -3.5)
     # TWO RUNGS ON ONE GAME ARE TWO QUESTIONS (question 21)
     assert bet.count([row, dict(row, line_asked=-14.5)]) == 2
     # THE FORECASTER IS IN THE KEY: two forecasters, two bets
@@ -76,8 +77,9 @@ def test_a_row_without_the_key_is_refused_by_name():
 def test_the_sql_and_the_python_forms_are_one_key(tmp_path):
     """`columns` and `same` are made from the tuple `of` reads: a window
     partitioned by `columns`, a self-join on `same` and `of` in Python group
-    the same rows the same way -- NULL one value in each, a NULL prop type
-    not the same as ''."""
+    the same rows the same way -- NULL one value in each, and a prop written
+    with no prop type one question with the same subject and rung written
+    with one (2026-09-29; until then the two were two)."""
     conn = _world(tmp_path)
     _forecast(conn, rung=-3.5, pass_kind="early", written="2026-09-06T00:00:00Z")
     _forecast(conn, rung=-3.5)                                  # a second pass
@@ -89,8 +91,9 @@ def test_the_sql_and_the_python_forms_are_one_key(tmp_path):
               pass_kind="early", written="2026-09-06T00:00:00Z")
     _forecast(conn, market="prop", prop=None, subject="A passing_yards",
               rung=240.5)
-    _forecast(conn, market="prop", prop="", subject="A passing_yards",
-              rung=240.5, pass_kind="early", written="2026-09-06T00:00:00Z")
+    _forecast(conn, market="prop", prop="passing_yards",
+              subject="A passing_yards", rung=240.5, pass_kind="early",
+              written="2026-09-06T00:00:00Z")
     rows = [dict(r) for r in conn.execute(
         f"SELECT p.id, {bet.columns('p')} FROM predictions p ORDER BY p.id")]
     by_python: dict = {}
@@ -106,9 +109,9 @@ def test_the_sql_and_the_python_forms_are_one_key(tmp_path):
         " WHERE p.id = ?", (rid,))) for rid in (row["id"] for row in rows)}
     groups = {frozenset(ids) for ids in by_python.values()}
     assert groups == {frozenset(ids) for ids in by_window.values()} == by_join
-    # the two passes of the -3.5 spread and of the moneyline are one bet each;
-    # the prop with no type and the prop typed '' are two
-    assert sorted(len(g) for g in groups) == [1, 1, 1, 1, 2, 2]
+    # the two passes of the -3.5 spread, of the moneyline and of the prop
+    # (one written with no prop type) are one bet each
+    assert sorted(len(g) for g in groups) == [1, 1, 2, 2, 2]
     assert "IS" in bet.same("a", "b") and " = " not in bet.same("a", "b")
 
 
@@ -131,6 +134,76 @@ def test_the_standing_clause_is_the_one_function(tmp_path):
         " WHERE 1 = 1" + calibration.standing_row_clause(False) + " ORDER BY p.id")]
     assert standing == [final, other_rung, llm]
     assert early not in standing
+
+
+def test_a_prop_asked_without_its_type_and_again_with_it_is_one_question(
+        tmp_path):
+    """THE EIGHT PAIRS OF 29 AUGUST (2026-09-29). `predict:nfl` wrote week
+    one's props at 05:55Z under fs1 with no prop type (the subject names it)
+    and asked the same player, prop and rung again at 07:34Z under fs2 with
+    the prop type set; three of the questions were asked a third time by the
+    final pass. From 2026-09-28 the key named the prop type as well, `IS`
+    telling NULL from 'receiving_yards', so each such question stood twice
+    and "morning and final pass of one question count once" broke: 14 NFL
+    figures moved (the factor table's N, "scored over 154" read 162). A
+    prop's question is named by its subject: one distinct bet, one standing
+    row -- the latest before the start -- for the clause, the recount and a
+    reader of every market together; a count of one prop type, which
+    filters by it, is as it was; and another stat of the same player is
+    another question."""
+    conn = _world(tmp_path)
+    london = "Drake London receiving_yards"
+    untyped = _forecast(conn, market="prop", prop=None, subject=london,
+                        rung=100.5, pass_kind="early",
+                        written="2026-08-29T05:55:46Z", fsv="fs1")
+    typed = _forecast(conn, market="prop", prop="receiving_yards",
+                      subject=london, rung=100.5, pass_kind="early",
+                      written="2026-08-29T07:34:56Z", fsv="fs2")
+    other_stat = _forecast(conn, market="prop", prop="receptions",
+                           subject="Drake London receptions", rung=5.5,
+                           pass_kind="early", written="2026-08-29T07:34:56Z",
+                           fsv="fs2")
+    irving = "Bucky Irving rushing_yards"
+    untyped_2 = _forecast(conn, market="prop", prop=None, subject=irving,
+                          rung=60.5, pass_kind="early",
+                          written="2026-08-29T05:55:46Z", fsv="fs1")
+    typed_2 = _forecast(conn, market="prop", prop="rushing_yards",
+                        subject=irving, rung=60.5, pass_kind="early",
+                        written="2026-08-29T07:34:56Z", fsv="fs2")
+    final_2 = _forecast(conn, market="prop", prop="rushing_yards",
+                        subject=irving, rung=60.5, pass_kind="final",
+                        written="2026-09-04T18:40:24Z", fsv="fs2")
+    rows = {r["id"]: dict(r) for r in conn.execute(
+        f"SELECT p.id, {bet.columns('p')} FROM predictions p")}
+    # ONE DISTINCT BET: the pass without the prop type and the passes with it
+    assert bet.of(rows[untyped]) == bet.of(rows[typed])
+    assert bet.of(rows[untyped_2]) == bet.of(rows[typed_2]) == bet.of(rows[final_2])
+    assert bet.count(rows.values()) == 3
+    # ONE STANDING ROW, the latest before the start, by the clause and the
+    # recount alike
+    standing = [r[0] for r in conn.execute(
+        "SELECT p.id FROM predictions p JOIN games g ON g.id = p.game_id"
+        " WHERE 1 = 1" + calibration.standing_row_clause(False) + " ORDER BY p.id")]
+    assert standing == [typed, other_stat, final_2]
+    again = recount.standing_of(recount.forecasts(
+        conn, sport="nfl", predictor="statistical", market_type=None,
+        prop_type=None, event_tier=None))
+    assert sorted(r["id"] for r in again.values()) == standing
+    # A READER OF EVERY MARKET TOGETHER counts each question once
+    conn.execute("UPDATE predictions SET resolved_utc = '2026-09-08T03:00:00Z',"
+                 " outcome = 1 WHERE resolved_utc IS NULL")
+    conn.commit()
+    assert [r.id for r in calibration.resolved(
+        conn, sport="nfl", predictor="statistical")] == standing
+    # A COUNT OF ONE PROP TYPE filters by it, as it always did: the row
+    # without a type was never in it
+    assert [r.id for r in calibration.resolved(
+        conn, sport="nfl", market_type="prop", prop_type="receiving_yards")] == [typed]
+    assert [r.id for r in calibration.resolved(
+        conn, sport="nfl", market_type="prop", prop_type="rushing_yards")] == [final_2]
+    # AND THE SOURCE SCAN HOLDS THE KEY TO IT
+    assert "prop_type" not in bet.KEY
+    assert "prop_type" not in audit.RULED_DISTINCT_BET
 
 
 def test_the_recount_is_each_standing_rule_again_by_the_key(tmp_path):
