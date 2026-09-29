@@ -1562,6 +1562,164 @@ def assert_no_pooled_outlooks(payload: dict) -> None:
                 f"(operator question 17, 2026-09-28).")
 
 
+#: WHAT A CORRECTION GATE'S PAYLOAD MAY CARRY AT ITS TOP LEVEL (operator
+#: question 16, 2026-09-29): `n` is how many categories or rows, never a
+#: settled count; any other figure there is a total over forecasters, markets
+#: or prop types, which describes nobody's record.
+CORRECTION_PAYLOAD_KEYS = {
+    "correction": {"sport", "record", "n", "min_train", "categories",
+                   "any_active", "note"},
+    "learning": {"sport", "record", "n", "last_refit", "categories",
+                 "never_rewrites", "note"},
+}
+
+
+def assert_no_pooled_correction_counts(payload: dict) -> None:
+    """Every correction count the Record page states is the count the fit's
+    own gate reads: ONE forecaster's category -- every prop type together,
+    every card together -- EACH QUESTION ONCE (operator question 16, ruled
+    (B) 2026-09-27: "on its key. Each correction gate's count per forecaster
+    and distinct bet"; question 23, ruled (A) 2026-09-28; built 2026-09-29).
+
+    Two payloads, one rule: the gate list's categories (`record`
+    'correction', `views.corrections_report`) and the learning panel's rows
+    (`record` 'learning', `views.learning`, each row's `correction`). Refused
+    by name: a count naming no forecaster or one of neither, or counting
+    another's forecasts (`forecasters_counted`); one prop type's count, or
+    one filed under another market than its row's; a count of more
+    forecasts than distinct questions (a question's morning and final pass,
+    the page's count until this date); a count the recount made without the
+    door does not make (`recounted`: a door keyed without the rung, or
+    across forecasters, agrees with its own rows); one category stated twice
+    in the gate list, or stated two ways across the learning panel's rows; a
+    gate line or a row's `n` stating another count than its own; a label or
+    a row's words that do not say the category is every prop type (every
+    card) together; a version's forward count other than its questions or
+    its recount; and a total at the top level. Raised inside both builders,
+    so `/api/scorecard` and `/api/learning` answer 500 rather than serve it,
+    and in the gate for every sport on the record's copy
+    (`audit.check_the_correction_counts_are_never_pooled`).
+    """
+    law = "LAW 4 / LAW 6 IN THE CORRECTION GATES"
+    from . import correction
+
+    sport = payload.get("sport")
+    kind = payload.get("record")
+    if kind not in CORRECTION_PAYLOAD_KEYS:
+        raise MergedCurve(f"{law}: a correction payload filed as {kind!r}.")
+    extra = sorted(set(payload) - CORRECTION_PAYLOAD_KEYS[kind])
+    if extra:
+        raise MergedCurve(
+            f"{law}: the {kind} payload carries {extra} beside its categories: "
+            f"a figure over every category describes nobody's record.")
+    rows = payload.get("categories") or []
+    if payload.get("n") != len(rows):
+        raise MergedCurve(
+            f"{law}: the {kind} payload's n is {payload.get('n')!r} for "
+            f"{len(rows)} categories: a sum of their counts is a total.")
+    stated: dict[tuple, int] = {}
+    for row in rows:
+        count = row if kind == "correction" else (row.get("correction") or {})
+        market_type, forecaster = count.get("market_type"), count.get("forecaster")
+        what = (f"the correction for {row.get('label')!r}" if kind == "correction"
+                else f"the learning panel's {row.get('market')!r} row")
+        if count.get("sport") != sport:
+            raise CrossSportAggregation(
+                f"LAW 6: {what} counts sport {count.get('sport')!r} inside a "
+                f"{sport!r} payload.")
+        if forecaster not in correction.FORECASTERS:
+            raise MergedCurve(
+                f"{law}: {what} names forecaster {forecaster!r}. A correction "
+                f"is one forecaster's, and so is its count.")
+        counted = count.get("forecasters_counted")
+        if counted not in ([], [forecaster]):
+            raise MergedCurve(
+                f"{law}: {what} is the {forecaster!r} forecaster's and counts "
+                f"the forecasts of {counted!r}: two forecasters pooled into one "
+                f"count.")
+        if market_type in config.SPORT_PROP_MARKETS.get(sport, ()):
+            raise MergedCurve(
+                f"{law}: {what} counts one prop type ({market_type!r}); a "
+                f"correction is fitted, and gated, for every prop type "
+                f"together.")
+        n, bets = count.get("settled"), count.get("distinct_bets")
+        if bets is None or n != bets:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled for {bets} distinct "
+                f"question{'' if bets == 1 else 's'}. A question is counted "
+                f"once however many passes answered it -- the count the fit's "
+                f"own gate reads from question 16's release.")
+        if count.get("recounted") != n:
+            raise MergedCurve(
+                f"{law}: {what} counts {n} settled questions where the recount "
+                f"made without its door finds {count.get('recounted')!r}, one "
+                f"per distinct bet by the one key (`bet.of`: the forecaster, "
+                f"the game, the market, the subject and the rung asked). A "
+                f"door keyed any other way -- without the rung, or across "
+                f"forecasters -- counts other bets than the record holds.")
+        scope = language.correction_scope_words(sport, market_type)
+        if (count.get("every_prop_type") != (market_type == "prop")
+                or count.get("every_card") != bool(config.event_tiers(sport))):
+            raise MergedCurve(
+                f"{law}: {what} does not say what its category holds: "
+                f"{scope or 'one market'!r}.")
+        key = (market_type, forecaster)
+        if kind == "correction":
+            if key in stated:
+                raise MergedCurve(
+                    f"{law}: {what} is stated twice in the gate list, so one "
+                    f"category is counted on two rows.")
+            if row.get("label") != language.correction_category_label(
+                    sport, market_type, forecaster):
+                raise MergedCurve(
+                    f"{law}: {what} is not named for its category -- "
+                    f"{language.correction_category_label(sport, market_type, forecaster)!r} "
+                    f"-- so its count reads as another's.")
+            if row.get("progress") != language.correction_gate_progress(
+                    n, correction.MIN_TRAIN):
+                raise MergedCurve(
+                    f"{law}: {what} says {(row.get('progress') or {}).get('line')!r}, "
+                    f"which is not its own count of {n} settled questions.")
+            for version in row.get("versions") or []:
+                forward = version.get("forward") or {}
+                if (forward.get("n") != forward.get("distinct_bets")
+                        or forward.get("recounted") != forward.get("n")
+                        or forward.get("forecasters_counted") not in (
+                            [], [forecaster])):
+                    raise MergedCurve(
+                        f"{law}: {what}, version {version.get('version')}, "
+                        f"counts {forward.get('n')!r} forward for "
+                        f"{forward.get('distinct_bets')!r} distinct questions "
+                        f"of {forward.get('forecasters_counted')!r}, and the "
+                        f"recount finds {forward.get('recounted')!r}: the "
+                        f"forward count is each question once, one "
+                        f"forecaster's.")
+        else:
+            if market_type != market_type_of(sport, row.get("market")):
+                raise MergedCurve(
+                    f"{law}: {what} states the count of {market_type!r}, not "
+                    f"its own market's category.")
+            if key in stated and stated[key] != n:
+                raise MergedCurve(
+                    f"{law}: {what} states {n} for a category another row "
+                    f"states as {stated[key]}: one category, two counts.")
+            if row.get("n") != n:
+                raise MergedCurve(
+                    f"{law}: {what} has n {row.get('n')!r} beside its "
+                    f"category's count of {n}.")
+            words = row.get("status_words") or ""
+            said = (f"{n} {language.CORRECTION_GATE_NOUN}",
+                    f"{n} of {correction.MIN_TRAIN} "
+                    f"{language.CORRECTION_GATE_NOUN}")
+            if not any(s in words for s in said) or (
+                    scope and scope not in words):
+                raise MergedCurve(
+                    f"{law}: {what} says {words!r}, which does not state its "
+                    f"category's count of {n} settled questions"
+                    + (f" or say it is {scope}" if scope else "") + ".")
+        stated[key] = n
+
+
 def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     """Every curve for ONE sport, kept separate. Never a merged headline."""
     require_sport(sport, "calibration.scorecard")

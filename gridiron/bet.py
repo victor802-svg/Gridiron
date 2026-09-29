@@ -58,10 +58,12 @@ bet. NULL IS ONE VALUE in all three: SQL's `IS` treats two NULLs as equal
 window groups NULLs together, and Python's None equals None -- so a
 moneyline's absent rung is one rung.
 
-ON THE PREDICTION PATH'S SIDE OF LAW 1. Question 16's correction gates will
-read this function, and `gridiron.correction` is inside the blind import
-closure: so this module imports nothing of the package and names no market
-data, and `audit.check_all_prediction_closures` refuses it if it ever does.
+ON THE PREDICTION PATH'S SIDE OF LAW 1. Question 16's correction gates read
+this function (from 2026-09-29: `correction.settled_rows` selects
+`bet.columns`, and every count of it is `bet.count`), and `gridiron.correction`
+is inside the blind import closure: so this module imports nothing of the
+package and names no market data, and `audit.check_all_prediction_closures`
+refuses it if it ever does.
 The recount that proves each door keys by it reads the venue's claims and
 the line's snapshots, and lives outside the closure (`gridiron.recount`).
 """

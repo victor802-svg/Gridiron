@@ -621,6 +621,17 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_door_keyed_without_the_rung",
         "plant_a_door_keyed_without_the_forecaster",
         "plant_a_distinct_bet_keyed_by_hand",
+        # OPERATOR QUESTION 16 (ruled (B) 2026-09-27, "planting each") with
+        # QUESTION 23 (ruled (A) 2026-09-28): each correction gate's count --
+        # the page's line, the fit's own gate, a version's forward count, the
+        # learning panel's row -- is one forecaster's questions; a fit fitted
+        # below its gate is labelled by its own record and never put in force.
+        "plant_a_correction_count_pooling_passes_or_rungs",
+        "plant_a_correction_fitted_on_the_pooled_count",
+        "plant_a_forward_count_counting_passes",
+        "plant_a_learning_row_counting_one_prop_type",
+        "plant_a_labelled_correction_activated",
+        "plant_a_correction_label_the_fit_does_not_support",
         # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): a refused rerun is a noop, the closing write is
         # caught, a hung run is marked abandoned past its task's silence,

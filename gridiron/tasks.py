@@ -857,9 +857,13 @@ def _run_recalibrate(conn: sqlite3.Connection) -> tuple[str, str, dict]:
     report = correction.refit_all(conn)
     if not report["n"]:
         return "noop", "nothing has settled yet, so there is nothing to fit", report
+    # QUESTIONS, FROM QUESTION 16'S RELEASE (2026-09-29): a category is
+    # eligible at fifty settled questions, each counted once, where this
+    # counted settled forecasts.
     detail = (f"fitted {report['n']} categor"
               f"{'y' if report['n'] == 1 else 'ies'}; "
-              f"{report['eligible']} had at least {correction.MIN_TRAIN} settled")
+              f"{report['eligible']} had at least {correction.MIN_TRAIN} "
+              f"settled questions")
     return ("ok" if report["eligible"] else "noop"), detail, report
 
 

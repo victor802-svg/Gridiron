@@ -56,6 +56,40 @@ its row beside the corrected number, with the raw claim's number kept in
 `fair_value` as it always was. The recommendations written before that date
 carry neither, and that is true rather than missing: no correction had ever
 been active (0 of 63 fits on the live record that day).
+
+THE GATE COUNTS QUESTIONS, FROM QUESTION 16'S RELEASE (operator question 16,
+ruled (B) 2026-09-27: "on its key. Each correction gate's count per
+forecaster and distinct bet"; question 23, ruled (A) 2026-09-28: "The page's
+count and the fit's own gate both move to the key, for fits from the release
+forward. The 63 existing fits stay as written; any that falls short of its
+gate on the corrected count is labelled 'fitted below its gate' and can
+never be activated"; built 2026-09-29). `settled_rows` is the one door for
+what a category's gate counts, and every count of it is `bet.count` of its
+rows -- one per distinct bet, the forecaster in the category: the page's
+"A correction for ..." line, the fit's own gate in `refit_all`, the forward
+count in `version_report`, and the learning panel's correction row. Until
+this release the gate was `len(training_rows(...))`, every settled forecast
+of the category -- a question's morning and final pass each, two rungs of one
+game -- and on 28 September MLB moneyline's 364 were 260 questions and UFC's
+statistical 85 were 49. THE ROWS A FIT IS TRAINED ON ARE NOT MOVED: the
+ruling names the gate and the page's count; what a correction is fitted on
+(`training_rows`, every settled forecast, as always) would change every
+slope and intercept fitted after it, a model change no ruling names. So the
+gate and the training are two reads from this release, where they were one.
+
+THE CATEGORY IS NOT SPLIT. A category is (sport, market type, forecaster),
+so every prop type is one category under 'prop' and UFC's cards are one:
+that is what a fit is fitted for, not a count, and splitting it would be a
+model change the ruling does not name. `settled_rows` refuses a prop type's
+own name as a market, so no count of one prop type can pass for the
+category's; the page says "every prop type together" and "every card
+together" instead.
+
+A FIT FITTED BELOW ITS GATE is labelled, never edited (`correction_gate_labels`,
+the re-grade label's shape): `below_their_gates` selects by rule from each
+fit's own record, `write_labels` writes the ruled ones, and the schema's rules
+refuse a label the fit's record does not support. `active_correction`, the
+activation door (C2's gate), never returns a labelled fit.
 """
 
 from __future__ import annotations
@@ -64,8 +98,8 @@ import math
 import sqlite3
 from dataclasses import dataclass
 
-from . import config
-from .db import utcnow
+from . import bet, config
+from .db import table_columns, transaction, utcnow
 
 #: A claim is squeezed inside this before its log-odds is taken. A stored
 #: probability of exactly 0 or 1 has infinite log-odds and would take the fit
@@ -74,8 +108,29 @@ from .db import utcnow
 EPS = 1e-6
 
 #: Below this many settled predictions a category has no correction (C2's gate
-#: lives here so the engine and the interface read one number).
+#: lives here so the engine and the interface read one number). FROM QUESTION
+#: 16'S RELEASE (2026-09-29) it counts settled QUESTIONS -- distinct bets on
+#: `gridiron.bet`'s key -- where it counted settled forecasts; the number is
+#: unchanged, and the label's rule in the schema pins it (tested equal).
 MIN_TRAIN = 50
+
+#: The two forecasters a correction category may name (LAW 6's reasoning:
+#: one fitted across both lets the better flatter the worse).
+FORECASTERS = ("statistical", "llm")
+
+#: THE LABEL (operator question 23, ruled 2026-09-28): the table, and the
+#: verdict as stored; the page says it in words ("fitted below its gate").
+LABELS = "correction_gate_labels"
+FITTED_BELOW_ITS_GATE = "fitted_below_its_gate"
+
+
+class PooledCount(ValueError):
+    """A correction count asked for nobody in particular, for both
+    forecasters, or for one prop type's share of the category."""
+
+
+class Refused(ValueError):
+    """A label the rule does not select, or one on a fit in force."""
 
 
 @dataclass
@@ -155,6 +210,84 @@ def training_rows(
     ]
 
 
+def settled_rows(
+    conn: sqlite3.Connection,
+    *,
+    sport: str,
+    market_type: str,
+    forecaster: str,
+    before_utc: str | None = None,
+    version: int | None = None,
+    as_it_stood: bool = False,
+) -> list[sqlite3.Row]:
+    """THE ONE DOOR for what a correction category's gate counts: its settled
+    forecasts before an instant, each carrying the distinct-bet key, so every
+    count of it is `bet.count(rows)` -- one per question, the forecaster in
+    the category (operator questions 16 and 23, built 2026-09-29).
+
+    Read by the page's "A correction for ..." line, the fit's own gate in
+    `refit_all` (`before_utc` the fit's instant), the forward count in
+    `version_report` (`version`: only forecasts written under it), the
+    learning panel's correction row and the label's selection
+    (`below_their_gates`, at each fit's own instant, `as_it_stood`).
+
+    SETTLED BEFORE THE INSTANT, AND NEVER A WITHDRAWN FORECAST: a forecast
+    counts if it had an outcome before `before_utc` (now, when left out) and
+    no void -- every void on the record, whatever its stamp, as
+    `training_rows` reads them, for the page and the fit being made now. A
+    void never counts toward a gate (ruling 1, 2026-09-24). ONLY A FIT'S OWN
+    COUNT, READ AS ITS GATE READ IT (`as_it_stood`, the label's selection):
+    no void stamped at or before its instant, so a void written after the fit
+    does not take back a row it counted. THE PROVER (2026-09-29): this read
+    voids stamped at or before the instant everywhere, so a void stamped after
+    now -- by hand, or a clock -- left its forecast counted on the page, in
+    the recount beside it and in the fit's gate, while the fit's training left
+    it out; the guard saw nothing, because the recount read it the same way.
+
+    WHICH PASS COUNTS is the blind record's standing rule, and the count
+    does not turn on it: a question is counted once whichever of its passes
+    settled. The standing rule reads the game's start, and this module may
+    not name `games` (`audit.check_correction_is_isolated`); measured on the
+    live record on 2026-09-28, the distinct keys and the standing rule give
+    the same count for all 89 fits.
+
+    THE CATEGORY WHOLE: `market_type` is the category's ('prop' for every
+    prop type together), and a prop type's own name is refused by name -- a
+    count of one prop type is not the count that gates the fit. The
+    forecaster is required and one of the two.
+    """
+    config.require_sport(sport, "correction.settled_rows")
+    if forecaster not in FORECASTERS:
+        raise PooledCount(
+            f"a correction's count is one forecaster's, {FORECASTERS}; asked "
+            f"for {forecaster!r} (operator question 16, 2026-09-27: each "
+            f"correction gate's count per forecaster and distinct bet)")
+    if market_type in config.SPORT_PROP_MARKETS.get(sport, ()):
+        raise PooledCount(
+            f"{market_type!r} is one prop type; a correction is fitted for "
+            f"every prop type together ('prop'), and its count is the "
+            f"category's -- splitting the category is a model change no "
+            f"ruling names")
+    at = before_utc or utcnow()
+    # NULL: every void on the record; an instant: those stamped by it.
+    voided_by = at if as_it_stood else None
+    return conn.execute(
+        f"SELECT p.id, {bet.columns('p')}, p.model_prob, p.calibrated_prob,"
+        "       p.outcome, p.resolved_utc"
+        "  FROM predictions p"
+        " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
+        "   AND p.resolved_utc IS NOT NULL AND p.outcome IS NOT NULL"
+        "   AND p.resolved_utc < ?"
+        "   AND (? IS NULL OR p.correction_version = ?)"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                   WHERE v.prediction_id = p.id"
+        "                     AND (? IS NULL OR v.voided_utc <= ?))"
+        " ORDER BY p.id",
+        (sport, market_type, forecaster, at, version, version, voided_by,
+         voided_by),
+    ).fetchall()
+
+
 def fit_platt(rows: list[tuple[float, int, str]], *, l2: float = 1.0,
               max_iterations: int = 60, tol: float = 1e-9) -> Platt | None:
     """Newton–Raphson on two parameters. Returns None when there is nothing to fit.
@@ -232,15 +365,41 @@ def active_correction(
     `active_from` NULL means fitted but inert: a fit can be recorded and read
     without touching a single claim, which is what makes C2's gate a decision
     rather than a side effect of fitting.
+
+    NEVER A FIT FITTED BELOW ITS GATE (operator question 23, 2026-09-28: a
+    labelled fit "can never be activated"). The schema already keeps one out
+    of force -- a label is refused on a fit carrying an activation, no stored
+    fit can gain one, and nothing may be written in a labelled fit's place --
+    and this door refuses it too, on a record made otherwise by hand: a
+    labelled fit is passed over as though it had never been activated, and
+    the version in force is the newest activation that is not labelled. A
+    record the schema has not reached holds no label, exactly (the read-only
+    doors read the live record without applying the schema).
     """
     now = at_utc or utcnow()
+    if not _labels_held(conn):
+        return conn.execute(
+            "SELECT * FROM calibration_corrections"
+            " WHERE sport = ? AND market_type = ? AND forecaster = ?"
+            "   AND active_from IS NOT NULL AND active_from <= ?"
+            " ORDER BY version DESC LIMIT 1",
+            (sport, market_type, forecaster, now),
+        ).fetchone()
     return conn.execute(
-        "SELECT * FROM calibration_corrections"
-        " WHERE sport = ? AND market_type = ? AND forecaster = ?"
-        "   AND active_from IS NOT NULL AND active_from <= ?"
-        " ORDER BY version DESC LIMIT 1",
+        "SELECT c.* FROM calibration_corrections c"
+        " WHERE c.sport = ? AND c.market_type = ? AND c.forecaster = ?"
+        "   AND c.active_from IS NOT NULL AND c.active_from <= ?"
+        "   AND NOT EXISTS (SELECT 1 FROM correction_gate_labels l"
+        "                   WHERE l.correction_id = c.id)"
+        " ORDER BY c.version DESC LIMIT 1",
         (sport, market_type, forecaster, now),
     ).fetchone()
+
+
+def _labels_held(conn: sqlite3.Connection) -> bool:
+    """Does this record hold the label table? One that the schema of
+    question 16's release has not reached holds no label, exactly."""
+    return bool(table_columns(conn, LABELS))
 
 
 def shown_claim(conn: sqlite3.Connection, *, sport: str, market_type: str,
@@ -497,16 +656,29 @@ def refit_all(conn: sqlite3.Connection, *, now: str | None = None) -> dict:
 
     A category failing either stays RAW, and its status says which bar it
     missed, in words the interface shows unchanged.
+
+    THE FIRST BAR COUNTS QUESTIONS from question 16's release (operator
+    question 23, ruled (A) 2026-09-28: "the fit's own gate ... move[s] to the
+    key, for fits from the release forward"): `MIN_TRAIN` distinct bets
+    among the category's settled forecasts (`settled_rows`, at this instant),
+    where it counted the forecasts -- a question's morning and final pass
+    each. The fit is still made from every settled forecast
+    (`training_rows`, unchanged): the ruling moves the gate, not what a
+    correction is fitted on. `n_train` stays the rows it was fitted on, and
+    the report carries the gate's own count beside it (`questions`).
     """
     at = now or utcnow()
     written = []
     for sport, market_type, forecaster in categories_in_the_record(conn, before_utc=at):
         rows = training_rows(conn, sport=sport, market_type=market_type,
                              forecaster=forecaster, before_utc=at)
+        questions = bet.count(settled_rows(
+            conn, sport=sport, market_type=market_type, forecaster=forecaster,
+            before_utc=at))
         model, holdout, active_from = None, None, None
-        if len(rows) < MIN_TRAIN:
-            status = (f"corrections begin at {MIN_TRAIN} settled - "
-                      f"{len(rows)} so far")
+        if questions < MIN_TRAIN:
+            status = (f"corrections begin at {MIN_TRAIN} settled questions - "
+                      f"{questions} so far")
         else:
             model = fit_platt(rows)
             if model is None:
@@ -531,17 +703,17 @@ def refit_all(conn: sqlite3.Connection, *, now: str | None = None) -> dict:
         written.append({
             "sport": sport, "market_type": market_type,
             "forecaster": forecaster, "version": version,
-            "n_train": len(rows), "status": status,
+            "n_train": len(rows), "questions": questions, "status": status,
             "active": active_from is not None,
         })
     return {"fitted_utc": at, "categories": written,
             "n": len(written),
-            "eligible": sum(1 for w in written if w["n_train"] >= MIN_TRAIN),
+            "eligible": sum(1 for w in written if w["questions"] >= MIN_TRAIN),
             "activated": sum(1 for w in written if w["active"])}
 
 
 def version_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
-                   forecaster: str) -> list[dict]:
+                   forecaster: str, at_utc: str | None = None) -> list[dict]:
     """Every version of one category's correction, and how it has actually done.
 
     THE IN-SAMPLE FIGURE AND THE FORWARD FIGURE ARE DIFFERENT ANIMALS and are
@@ -553,30 +725,43 @@ def version_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
 
     A version that was fitted but never activated has no forward record at all,
     correctly: it never touched a claim.
+
+    THE FORWARD COUNT IS QUESTIONS (operator question 16, 2026-09-27; built
+    2026-09-29): `n` is the distinct bets among the settled forecasts written
+    under the version, through the one door (`settled_rows`), where it counted
+    the forecasts -- a question's morning and final pass each. The two Brier
+    figures are still averaged over those forecasts, and `forecasts` says how
+    many, beside `n`, so neither is read over the other's sample.
+
+    AND ITS LABEL (question 23, 2026-09-28): `below_its_gate` is the version's
+    "fitted below its gate" label as written, or None.
     """
+    at = at_utc or utcnow()
+    labelled = labels(conn, sport=sport, market_type=market_type,
+                      forecaster=forecaster)
     out = []
     for row in conn.execute(
         "SELECT * FROM calibration_corrections"
         " WHERE sport = ? AND market_type = ? AND forecaster = ?"
         " ORDER BY version",
         (sport, market_type, forecaster),
-    ):
-        forward = conn.execute(
-            "SELECT COUNT(*) AS n,"
-            " AVG((p.calibrated_prob - p.outcome) * (p.calibrated_prob - p.outcome))"
-            "   AS brier_shown,"
-            " AVG((p.model_prob - p.outcome) * (p.model_prob - p.outcome))"
-            "   AS brier_raw"
-            " FROM predictions p"
-            " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
-            "   AND p.correction_version = ?"
-            "   AND p.resolved_utc IS NOT NULL AND p.outcome IS NOT NULL"
-            "   AND p.resolved_utc < ?"
-            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
-            "                   WHERE v.prediction_id = p.id)",
-            (sport, market_type, forecaster, row["version"], utcnow()),
-        ).fetchone()
+    ).fetchall():
+        under = settled_rows(conn, sport=sport, market_type=market_type,
+                             forecaster=forecaster, before_utc=at,
+                             version=row["version"])
+        forward = {
+            "n": bet.count(under),
+            "forecasts": len(under),
+            "brier_shown": brier(
+                [r["calibrated_prob"] for r in under
+                 if r["calibrated_prob"] is not None],
+                [r["outcome"] for r in under
+                 if r["calibrated_prob"] is not None]),
+            "brier_raw": brier([r["model_prob"] for r in under],
+                               [r["outcome"] for r in under]),
+        }
         out.append({
+            "id": row["id"],
             "version": row["version"],
             "fitted_utc": row["fitted_utc"],
             "n_train": row["n_train"],
@@ -600,12 +785,149 @@ def version_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
                           "rows, not proof"),
             },
             "forward": {
-                "n": forward["n"] or 0,
-                "brier_shown": (round(forward["brier_shown"], 6)
-                                if forward["brier_shown"] is not None else None),
-                "brier_raw": (round(forward["brier_raw"], 6)
-                              if forward["brier_raw"] is not None else None),
-                "label": "measured on predictions written under this version",
+                "n": forward["n"],
+                "forecasts": forward["forecasts"],
+                "distinct_bets": bet.count(under),
+                "forecasters_counted": sorted({r["predictor"] for r in under}),
+                "brier_shown": forward["brier_shown"],
+                "brier_raw": forward["brier_raw"],
+                "label": ("measured on predictions written under this "
+                          "version: n counts each question once, and the "
+                          "two scores average its forecasts"),
             },
+            "below_its_gate": labelled.get(row["id"]),
         })
     return out
+
+
+def labels(conn: sqlite3.Connection, *, sport: str, market_type: str,
+           forecaster: str) -> dict[int, dict]:
+    """One category's "fitted below its gate" labels, by the fit's number,
+    each as written with the fit's version and instant beside it."""
+    if not _labels_held(conn):
+        return {}
+    return {r["correction_id"]: dict(r) for r in conn.execute(
+        "SELECT l.*, c.version, c.fitted_utc FROM correction_gate_labels l"
+        "  JOIN calibration_corrections c ON c.id = l.correction_id"
+        " WHERE c.sport = ? AND c.market_type = ? AND c.forecaster = ?"
+        " ORDER BY c.version",
+        (sport, market_type, forecaster))}
+
+
+def below_their_gates(conn: sqlite3.Connection) -> list[dict]:
+    """Every fit on the record whose corrected count is below its gate, BY
+    RULE FROM EACH FIT'S OWN RECORD (operator question 23, ruled (A)
+    2026-09-28: "any that falls short of its gate on the corrected count is
+    labelled 'fitted below its gate'"; the brief: "decided by rule from the
+    fit's own record, never by a list").
+
+    A FIT, NOT A PLACEHOLDER: a row whose `n_train` is under the gate
+    recorded that there was nothing to fit (slope 1, intercept 0, "corrections
+    begin at 50 ..."), so "fitted below its gate" would be false of it; it is
+    never selected, and the schema refuses a label on it. ITS GATE: the fifty
+    it passed on the count it used, its own `n_train`. THE ROWS ITS GATE
+    COUNTED: its category's settled forecasts before its own fitted instant,
+    withdrawn by no void stamped by then (`settled_rows` at that instant, as it
+    stood; `counted` is how many, which the record must give back as
+    `n_train`). ITS CORRECTED COUNT: the distinct bets among
+    them (`bet.count`). Selected when that is below the gate. A fit written
+    from question 16's release on was gated on that count and cannot be
+    selected; the fits written before it were gated on the forecasts.
+
+    `active` says whether the fit carries an activation (the schema refuses a
+    label on one: that is the operator's question), and `already` whether it
+    is labelled. Which of these the ruling labels is the tool's constants'
+    (`tools/label_corrections_below_the_gate.py`), never this rule's.
+    """
+    held = set()
+    if _labels_held(conn):
+        held = {r[0] for r in conn.execute(
+            "SELECT correction_id FROM correction_gate_labels")}
+    out = []
+    for fit in conn.execute(
+            "SELECT * FROM calibration_corrections ORDER BY id").fetchall():
+        if fit["n_train"] < MIN_TRAIN:
+            continue
+        counted = settled_rows(conn, sport=fit["sport"],
+                               market_type=fit["market_type"],
+                               forecaster=fit["forecaster"],
+                               before_utc=fit["fitted_utc"], as_it_stood=True)
+        questions = bet.count(counted)
+        if questions >= MIN_TRAIN:
+            continue
+        out.append({
+            "id": fit["id"], "sport": fit["sport"],
+            "market_type": fit["market_type"],
+            "forecaster": fit["forecaster"], "version": fit["version"],
+            "fitted_utc": fit["fitted_utc"], "gate": MIN_TRAIN,
+            "count_used": fit["n_train"], "counted": len(counted),
+            "corrected_count": questions,
+            "active": fit["active_from"] is not None,
+            "already": fit["id"] in held,
+            "reason": BELOW_ITS_GATE_WHY.format(
+                used=fit["n_train"], gate=MIN_TRAIN, questions=questions),
+        })
+    return out
+
+
+#: The reason a label carries, in words (question 23, 2026-09-28).
+BELOW_ITS_GATE_WHY = (
+    "fitted on {used} settled forecasts, past its gate of {gate} as that gate "
+    "counted them; counted once per question, as a correction's gate counts "
+    "from the release of operator question 16, they are {questions}, under "
+    "the {gate} (operator questions 16 and 23, ruled 27 and 28 September "
+    "2026)")
+
+
+def write_labels(conn: sqlite3.Connection, ids: list[int], *,
+                 now: str | None = None) -> dict:
+    """One "fitted below its gate" label for each of `ids`, in one
+    transaction, or none at all.
+
+    EVERY ID IS CHECKED AGAINST THE RULE FIRST (`below_their_gates`, read in
+    the same call): an id the rule does not select, or a fit carrying an
+    activation (the operator's question: the ruling says a labelled fit can
+    never be activated, not that one in force is taken out of force), is
+    refused by name and nothing is written. The schema checks each label
+    against the fit's record again as it is written. IDEMPOTENT: a fit
+    already labelled is counted and skipped -- the table would refuse a
+    second label anyway, and the first stands.
+    """
+    if not _labels_held(conn):
+        raise RuntimeError(
+            "the record has no correction_gate_labels table: it has not been "
+            "opened under the schema that carries it (db.init does that, on "
+            "any scheduled pass or the server's start after the release)")
+    chosen = {g["id"]: g for g in below_their_gates(conn)}
+    stray = sorted(set(ids) - set(chosen))
+    if stray:
+        raise Refused(
+            f"fit(s) {stray} are not fitted below their gate by their own "
+            f"record (a placeholder, a fit clear of its gate on the key, or "
+            f"no fit at all): nothing written")
+    in_force = sorted(i for i in set(ids) if chosen[i]["active"])
+    if in_force:
+        raise Refused(
+            f"fit(s) {in_force} carry an activation: whether a fit in force "
+            f"is labelled is the operator's question; nothing written")
+    stamp = now or utcnow()
+    counts = {"written": 0, "already": 0}
+    try:
+        with transaction(conn):
+            for fid in sorted(set(ids)):
+                got = chosen[fid]
+                if got["already"]:
+                    counts["already"] += 1
+                    continue
+                conn.execute(
+                    "INSERT INTO correction_gate_labels (correction_id,"
+                    " labelled_utc, verdict, gate, count_used, corrected_count,"
+                    " reason) VALUES (?,?,?,?,?,?,?)",
+                    (fid, stamp, FITTED_BELOW_ITS_GATE, got["gate"],
+                     got["count_used"], got["corrected_count"], got["reason"]))
+                counts["written"] += 1
+    except sqlite3.IntegrityError as exc:
+        # THE SCHEMA SAID NO, and the transaction took every label back.
+        raise Refused(f"the record refused a label, so none was written: "
+                      f"{exc}") from exc
+    return counts

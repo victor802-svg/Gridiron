@@ -918,6 +918,15 @@ def step_2_guards() -> bool:
         ("the at-the-line record counts one claim per distinct bet",
          lambda: audit.check_the_at_the_line_record_is_never_pooled(
              _record_conn())),
+        # OPERATOR QUESTION 16 (ruled (B) 2026-09-27, on question 17's key;
+        # question 23 (A), 2026-09-28; built 2026-09-29): each correction
+        # gate's count is one forecaster's category, each question once --
+        # the count the fit's own gate reads -- on the gate list and the
+        # learning panel, built for every sport on the record's copy through
+        # both builders' guard. Until then nothing read a correction count.
+        ("each correction gate counts one forecaster's questions (question 16)",
+         lambda: audit.check_the_correction_counts_are_never_pooled(
+             _record_conn())),
         # THE ACTIVATION GATE (operator rulings, 2026-09-24). A market
         # forecasts from its activated fit, and that fit is the factor set
         # the config declares. Read on the migrated copy, which holds the

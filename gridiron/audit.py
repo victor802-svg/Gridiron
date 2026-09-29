@@ -1300,9 +1300,24 @@ def check_js_composes_no_prose(path: Path | None = None) -> None:
 #      anything.
 
 #: Tables the correction engine may name. Everything else is a different model.
+#:
+#: AND ITS LABELS (operator question 23, ruled 2026-09-28; built 2026-09-29):
+#: `correction_gate_labels` holds "fitted below its gate" beside a fit, written
+#: from the fit's own record -- its category, its instant, its n_train and the
+#: record's own forecasts -- and carrying no outcome, line or score; the
+#: activation door reads it to refuse a labelled fit, as the ruling requires.
 CORRECTION_TABLES = frozenset({
     "predictions", "prediction_voids", "calibration_corrections",
+    "correction_gate_labels",
 })
+
+#: WHAT A PART OF AN F-STRING WORKED OUT AT RUN TIME IS READ AS (2026-09-29).
+#: The count door of question 16 selects `bet.columns('p')` in an f-string;
+#: until this date the scan read only plain strings, so an f-string's query --
+#: its tables and its bounds -- was never read at all. Read whole now, each
+#: `{...}` standing as this word: in a column list it names no table, and
+#: where a table goes it is a table the scan cannot read, refused by name.
+FSTRING_PART = "a_part_worked_out_at_run_time"
 
 #: A training query must carry all of these. Not style: each one is a way the
 #: fit could otherwise include a row it must not see.
@@ -1333,7 +1348,8 @@ _SQL_START = __import__("re").compile(
 
 
 def _correction_sql(path: Path) -> list[tuple[int, str]]:
-    """Every SQL statement in the module, with its line."""
+    """Every SQL statement in the module, with its line -- a plain string, and
+    from 2026-09-29 an f-string read whole (`FSTRING_PART`)."""
     import ast as _ast
 
     tree = _ast.parse(path.read_text(encoding="utf-8"))
@@ -1342,6 +1358,13 @@ def _correction_sql(path: Path) -> list[tuple[int, str]]:
         if isinstance(node, _ast.Constant) and isinstance(node.value, str):
             if _SQL_START.match(node.value):
                 out.append((getattr(node, "lineno", 0), node.value))
+        elif isinstance(node, _ast.JoinedStr):
+            whole = "".join(
+                part.value if isinstance(part, _ast.Constant)
+                and isinstance(part.value, str) else f" {FSTRING_PART} "
+                for part in node.values)
+            if _SQL_START.match(whole):
+                out.append((getattr(node, "lineno", 0), whole))
     return out
 
 
@@ -8220,6 +8243,36 @@ def check_the_drift_record_is_never_pooled(conn) -> None:
 # turns the guard's refusal into a failure by name.
 
 
+def check_the_correction_counts_are_never_pooled(conn) -> None:
+    """Refuse a correction count, in any sport on the record, that is not
+    the count the fit's own gate reads -- one forecaster's category, every
+    prop type together, each question once -- on the gate list or the
+    learning panel, or that the recount by the one key does not make
+    (operator question 16, ruled (B) 2026-09-27: "Each correction gate's
+    count per forecaster and distinct bet"; built 2026-09-29). The guard is
+    `calibration.assert_no_pooled_correction_counts`, inside both builders;
+    until this date no guard, gate check or planting read a correction
+    count."""
+    from . import bet, calibration, correction, views
+
+    faults = []
+    for sport in config.SPORTS:
+        for panel, build in (("the gate list", views.corrections_report),
+                             ("the learning panel", views.learning)):
+            try:
+                build(conn, sport)
+            except (calibration.MergedCurve, calibration.MergedRecord,
+                    config.CrossSportAggregation, correction.PooledCount,
+                    bet.NotABet) as exc:
+                faults.append(f"{sport}, {panel}: {exc}")
+    if faults:
+        raise LawViolation(
+            "A CORRECTION COUNT IS POOLED (operator question 16, ruled "
+            "2026-09-27): each correction gate's count is one forecaster's, "
+            "each question once, the count the fit's own gate reads:"
+            + _NL2 + _NL2.join(faults))
+
+
 def check_the_blind_outlook_is_never_pooled(conn) -> None:
     """Refuse an outlook, in any sport on the record, that counts another
     forecaster's rows, another card's, a question's superseded passes, or
@@ -8447,7 +8500,39 @@ def distinct_bet_key_faults(root: Path | None = None) -> list[str]:
         faults.append(
             f"market.recommend.pairs_with: the row a pair counts is not its "
             f"earlier one (stamp, then number): {rule!r}")
+    # AND THE LABEL'S RULE IN THE SCHEMA (operator question 23, 2026-09-28;
+    # built 2026-09-29): "fitted below its gate" is refused unless the fit's
+    # corrected count is the record's own, and a rule cannot call Python, so
+    # the key is written out there. Held to the one function: the rule's text
+    # (whitespace aside) carries `bet.same('q', 'p')`, the question a row is
+    # counted once per.
+    rule_text = _schema_rule_text(LABEL_KEY_RULE)
+    if rule_text is None or bet.same("q", "p") not in " ".join(rule_text.split()):
+        faults.append(
+            f"schema.sql: the rule `{LABEL_KEY_RULE}` counts a fit's questions "
+            f"by something other than `bet.same('q', 'p')`, the one "
+            f"distinct-bet key -- or is not declared")
     return faults
+
+
+#: The schema rule that counts a fit's questions by the key written out
+#: (question 23; 2026-09-29), read by `distinct_bet_key_faults`.
+LABEL_KEY_RULE = "correction_gate_label_is_its_fits_own_record"
+
+
+def _schema_rule_text(name: str, schema: str | None = None) -> str | None:
+    """One rule's text as `schema.sql` declares it, through its own `END;`,
+    comments blanked; None when the schema does not declare it."""
+    text = schema if schema is not None else (
+        config.PACKAGE_ROOT / "schema.sql").read_text(encoding="utf-8")
+    text = re.sub(r"--[^\n]*", "", text)
+    found = re.search(
+        r"CREATE\s+TRIGGER\s+IF\s+NOT\s+EXISTS\s+" + re.escape(name) + r"\b",
+        text)
+    if not found:
+        return None
+    end = text.find("END;", found.end())
+    return text[found.start(): len(text) if end < 0 else end + len("END;")]
 
 
 def _or_outside_brackets(sql: str) -> bool:

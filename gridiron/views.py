@@ -11,8 +11,8 @@ import json
 import sqlite3
 import statistics
 
-from . import (audit, buildinfo, calibration, config, db, language, laws,
-               sports, subjects)
+from . import (audit, bet, buildinfo, calibration, config, db, language, laws,
+               recount, sports, subjects)
 from .data import reference, repo, teams
 from .factors import compute as factor_compute, registry
 from .market import lines
@@ -3593,8 +3593,13 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     # refuses: a sentence assembled in the browser is outside the plain-words
     # scan, outside the side resolver and outside the tests.
     payload["gates"] = (
-        [{"name": language.gate_name("correction", c["label"]),
-          "progress": c["progress"], "n": c["progress"]["n"]}
+        # A FIT FITTED BELOW ITS GATE IS NAMED BESIDE IT, in words and with
+        # both its counts (operator question 23, ruled 2026-09-28; built
+        # 2026-09-29): the row's `why`, which the renderer places.
+        [dict({"name": language.gate_name("correction", c["label"]),
+               "progress": c["progress"], "n": c["progress"]["n"]},
+              **({"why": " ".join(c["below_its_gate"])}
+                 if c.get("below_its_gate") else {}))
          for c in payload["corrections"]["categories"] if c.get("progress")]
         # ONE ROW PER MARKET, CARD AND FORECASTER, named in words (operator
         # question 14, 2026-09-27): the row named a market type alone --
@@ -3721,53 +3726,82 @@ def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
     A category with no correction at all still appears, with the shortfall in
     words, because "no correction" and "not enough record yet" are different
     states and the panel must not show them alike.
+
+    EACH QUESTION ONCE, PER FORECASTER (operator question 16, ruled (B)
+    2026-09-27: "on its key. Each correction gate's count per forecaster and
+    distinct bet"; question 23, ruled (A) 2026-09-28: the page's count and
+    the fit's own gate both move to the key; built 2026-09-29). The line
+    counted every settled row of the category -- a question's morning and
+    final pass each, two rungs of one game -- so MLB moneyline's statistical
+    line said 364 where its questions were 260, and UFC's "85 settled", past
+    the fifty, were 49 questions, under it. It now states the count the fit's
+    own gate reads (`_correction_count`: `correction.settled_rows`, counted
+    by `bet.count`, recounted without the door in the same instant), and
+    `calibration.assert_no_pooled_correction_counts` refuses any other,
+    inside this builder: the API answers 500 rather than serve one. A fit
+    labelled "fitted below its gate" is named in words beside its gate
+    (`below_its_gate`).
     """
     from . import correction
 
     calibration.require_sport(sport, "views.corrections_report")
     out = []
-    for market_type, forecaster in sorted({
-        (r["market_type"], r["predictor"])
-        for r in conn.execute(
-            "SELECT DISTINCT market_type, predictor FROM predictions"
-            " WHERE sport = ?", (sport,))
-    }):
-        versions = correction.version_report(
-            conn, sport=sport, market_type=market_type, forecaster=forecaster)
-        latest = versions[-1] if versions else None
-        # HOW CLOSE THIS CATEGORY IS to its first correction (P1). The same
-        # component the tier rows use: counts, an N, and no percentage.
-        # A VOID NEVER COUNTS TOWARD A GATE (ruling 1, 2026-09-24), including
-        # one written after its game settled, which a hand-written void can be.
-        settled = conn.execute(
-            "SELECT COUNT(*) FROM predictions p WHERE p.sport = ?"
-            "   AND p.market_type = ? AND p.predictor = ?"
-            "   AND p.resolved_utc IS NOT NULL"
-            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
-            "                   WHERE v.prediction_id = p.id)",
-            (sport, market_type, forecaster)).fetchone()[0]
-        out.append({
-            "market_type": market_type,
-            "forecaster": forecaster,
-            # THE FORECASTER'S OWN LABEL, not the stored key. This read
-            # "moneyline, llm" on the page -- a lowercase identifier where a
-            # name belongs, and the Record tab two panels above it says "LLM".
-            "label": (f"{language.humanise(market_type)}, "
-                      f"{config.FORECASTER_LABELS.get(forecaster, forecaster)}"),
-            "active": bool(latest and latest["active_from"]),
-            "status": (latest["status"] if latest else
-                       f"corrections begin at {correction.MIN_TRAIN} settled "
-                       "- nothing settled yet"),
-            "versions": versions,
-            "n": len(versions),
-            "settled": settled,
-            "progress": language.progress(
-                settled, correction.MIN_TRAIN,
-                cleared_note="fitted - applied only where it beat the rows it "
-                             "was not fitted on"),
-        })
-    return {
+    with db.one_instant(conn):
+        now = db.utcnow()
+        for market_type, forecaster in sorted({
+            (r["market_type"], r["predictor"])
+            for r in conn.execute(
+                "SELECT DISTINCT market_type, predictor FROM predictions"
+                " WHERE sport = ?", (sport,))
+        }):
+            versions = correction.version_report(
+                conn, sport=sport, market_type=market_type,
+                forecaster=forecaster, at_utc=now)
+            # AND EACH VERSION'S FORWARD COUNT, recounted without the door.
+            for v in versions:
+                v["forward"]["recounted"] = recount.correction(
+                    conn, sport=sport, market_type=market_type,
+                    predictor=forecaster, before_utc=now,
+                    version=v["version"])
+            latest = versions[-1] if versions else None
+            count = _correction_count(conn, sport=sport,
+                                      market_type=market_type,
+                                      forecaster=forecaster, now=now)
+            # IN FORCE THROUGH THE DOOR (C2's gate, and from 2026-09-29 never a
+            # labelled fit), where this read the newest row's `active_from`.
+            active = correction.active_correction(
+                conn, sport=sport, market_type=market_type,
+                forecaster=forecaster, at_utc=now)
+            out.append({
+                **count,
+                # THE FORECASTER'S OWN LABEL, not the stored key, and the
+                # category whole (2026-09-29): "player props, every prop type
+                # together, statistical", where it read "prop, statistical".
+                "label": language.correction_category_label(
+                    sport, market_type, forecaster),
+                "active": active is not None,
+                "status": (latest["status"] if latest else
+                           f"corrections begin at {correction.MIN_TRAIN} "
+                           f"{language.CORRECTION_GATE_NOUN} - nothing "
+                           "settled yet"),
+                "versions": versions,
+                "n": len(versions),
+                # HOW CLOSE THIS CATEGORY IS to its first correction (P1): the
+                # same component the tier rows use, counts, an N, and no
+                # percentage -- the count the fit's own gate reads.
+                "progress": language.correction_gate_progress(
+                    count["settled"], correction.MIN_TRAIN),
+                "below_its_gate": [
+                    language.correction_below_its_gate_line(
+                        v["version"], v["fitted_utc"],
+                        v["below_its_gate"]["count_used"],
+                        v["below_its_gate"]["corrected_count"],
+                        v["below_its_gate"]["gate"])
+                    for v in versions if v["below_its_gate"]],
+            })
+    payload = {
         "sport": sport,
+        "record": "correction",
         "n": len(out),
         "min_train": correction.MIN_TRAIN,
         "categories": out,
@@ -3775,6 +3809,42 @@ def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
         # Said by the humaniser, in the same voice as every other gate line.
         "note": language.corrections_note(
             any(c["active"] for c in out), correction.MIN_TRAIN),
+    }
+    calibration.assert_no_pooled_correction_counts(payload)
+    return payload
+
+
+def _correction_count(conn: sqlite3.Connection, *, sport: str,
+                      market_type: str, forecaster: str, now: str) -> dict:
+    """ONE CORRECTION CATEGORY'S COUNT, as its gate reads it, with what the
+    guard needs to check it (operator question 16, built 2026-09-29).
+
+    `settled` is the count the page states: the distinct bets among the
+    category's settled forecasts (`correction.settled_rows`, counted by
+    `bet.count`). Beside it, counted off the same rows: `forecasts` (how
+    many rows), `distinct_bets`, and `forecasters_counted`; and `recounted`,
+    the same count made without the door (`recount.correction`), in the
+    caller's instant (`db.one_instant`), so a door keyed without the rung, or
+    across forecasters, is seen by the guard. The category's scope beside
+    it: `every_prop_type`, `every_card`.
+    """
+    from . import correction
+
+    rows = correction.settled_rows(conn, sport=sport, market_type=market_type,
+                                   forecaster=forecaster, before_utc=now)
+    return {
+        "sport": sport,
+        "market_type": market_type,
+        "forecaster": forecaster,
+        "settled": bet.count(rows),
+        "forecasts": len(rows),
+        "distinct_bets": bet.count(rows),
+        "forecasters_counted": sorted({r["predictor"] for r in rows}),
+        "recounted": recount.correction(
+            conn, sport=sport, market_type=market_type, predictor=forecaster,
+            before_utc=now),
+        "every_prop_type": market_type == "prop",
+        "every_card": bool(config.event_tiers(sport)),
     }
 
 
@@ -4850,6 +4920,18 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
     fifty pairs. Both have been running and neither has ever been on a page,
     which is why the operator concluded the app does not learn.
     """
+    # ONE INSTANT FOR EVERY ROW (the prover of question 16, 2026-09-29).
+    # Every prop row states the one prop category's count, and the guard
+    # refuses one category stated two ways; read in an instant of its own per
+    # row, a prop forecast settled between two rows made an honest panel
+    # state one count on a prop row and one more on the next, and answer
+    # 500. Nothing inside writes.
+    with db.one_instant(conn):
+        return _learning(conn, sport)
+
+
+def _learning(conn: sqlite3.Connection, sport: str) -> dict:
+    """`learning`'s body, inside its one instant."""
     from . import correction, drift
 
     # WHEN THE REFIT LAST RAN AT ALL, so a category that is eligible and
@@ -4857,6 +4939,7 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
     last_refit = conn.execute(
         "SELECT MAX(fitted_utc) FROM calibration_corrections").fetchone()[0]
 
+    now = db.utcnow()
     tiers = config.event_tiers(sport) or (None,)
     rows = []
     for market in config.SPORT_MARKETS.get(sport, ()):
@@ -4865,10 +4948,22 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
             "SELECT * FROM calibration_corrections"
             " WHERE sport = ? AND market_type = ? AND forecaster = 'statistical'"
             " ORDER BY version DESC LIMIT 1", (sport, market_type)).fetchone()
-        settled = len(calibration.resolved(
+        # THE COUNT THAT GATES THE FIT (operator questions 16 and 23, built
+        # 2026-09-29). This row stated `calibration.resolved` -- the
+        # statistical model's standing forecasts of THIS prop type -- while
+        # the correction is fitted, and gated, for every prop type together:
+        # MLB hits read its own count beside a fit counted over all five. It
+        # now states the category's count on the key, the one the gate and
+        # the page's line read, and says it is every prop type together
+        # (every card together, for UFC). The category is not split: a
+        # correction per prop type would be a model change no ruling names.
+        count = _correction_count(conn, sport=sport, market_type=market_type,
+                                  forecaster="statistical", now=now)
+        below = (correction.labels(
             conn, sport=sport, market_type=market_type,
-            prop_type=calibration.prop_type_of(sport, market),
-            predictor="statistical"))
+            forecaster="statistical").get(latest["id"])
+            if latest is not None else None)
+        settled = count["settled"]
         active = correction.active_correction(
             conn, sport=sport, market_type=market_type, forecaster="statistical")
         shown, version = correction.shown_claim(
@@ -4888,6 +4983,9 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
             "market": market,
             "market_label": language.humanise(market),
             "n": settled,
+            # THE CATEGORY THE COUNT IS OF, and how it was counted, for the
+            # guard (`calibration.assert_no_pooled_correction_counts`).
+            "correction": count,
             "minimum": correction.MIN_TRAIN,
             "fitted_utc": latest["fitted_utc"] if latest else None,
             "slope": latest["slope"] if latest else None,
@@ -4895,11 +4993,14 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
             "active": bool(active),
             "version": version,
             "n_train": latest["n_train"] if latest else 0,
+            "below_its_gate": below,
             "status_words": language.correction_status_line(
                 latest is not None, settled, correction.MIN_TRAIN,
                 latest["fitted_utc"] if latest else None, bool(active),
                 last_refit=last_refit,
-                n_train=(latest["n_train"] if latest else 0) or 0),
+                n_train=(latest["n_train"] if latest else 0) or 0,
+                below_its_gate=below,
+                scope=language.correction_scope_words(sport, market_type)),
             "meaning_words": language.correction_meaning_line(0.70, shown),
             # EACH LINE CARRIES ITS OWN N; the renderer requires it.
             "drift": moved,
@@ -4910,21 +5011,31 @@ def learning(conn: sqlite3.Connection, sport: str) -> dict:
     drift.assert_no_pooled_drift_counts(
         {"sport": sport,
          "categories": [d for row in rows for d in row["drift"]]})
-    return {
+    payload = {
         "sport": sport,
-        "n": sum(r["n"] for r in rows),
+        "record": "learning",
+        # HOW MANY ROWS, NOT A SUM OF THEIR COUNTS (2026-09-29): every prop
+        # row states the one prop category's count, so a sum counted it once
+        # per prop type -- a total that described nobody's record.
+        "n": len(rows),
         "last_refit": last_refit,
         "categories": rows,
         "never_rewrites": language.correction_never_rewrites_line(),
         "note": (
             "The correction is fitted from this record's own claims and "
-            "outcomes once a category has fifty settled rows, and applied to "
+            "outcomes once a category has fifty settled questions, each "
+            "counted once however many passes answered it, and applied to "
             "what gets written next. The drift figure is where the market's "
             "line went after a disagreement, gated at fifty pairs. Both have "
             "been running since they were built; this panel is the first time "
             "either has been visible."
         ),
     }
+    # INSIDE THE BUILDER (operator question 16, 2026-09-29), so /api/learning
+    # answers 500 rather than state a correction count the fit's gate does
+    # not read -- one prop type's, a question's passes, or two forecasters'.
+    calibration.assert_no_pooled_correction_counts(payload)
+    return payload
 
 
 def retract_tap(conn: sqlite3.Connection, taken_id: int, reason: str) -> dict:

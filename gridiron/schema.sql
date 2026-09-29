@@ -1086,6 +1086,201 @@ BEGIN
         || 'once active graded the predictions written under it');
 END;
 
+-- ---------------------------------------------------------------------------
+-- A FIT FITTED BELOW ITS GATE (operator question 16, ruled (B) 2026-09-27;
+-- question 23, ruled (A) 2026-09-28; built 2026-09-29). "The page's count
+-- and the fit's own gate both move to the key, for fits from the release
+-- forward. The 63 existing fits stay as written; any that falls short of its
+-- gate on the corrected count is labelled 'fitted below its gate' and can
+-- never be activated."
+--
+-- THE DEFECT. Until this release a correction's gate (fifty,
+-- correction.MIN_TRAIN) counted every settled forecast of its category -- a
+-- question's morning and final pass each, two rungs of one game, every prop
+-- type under 'prop', UFC's cards together -- so UFC's three statistical
+-- fits of 21 September cleared fifty on 56 forecasts that are 32 questions.
+-- From this release the gate counts distinct bets (gridiron.bet: the
+-- forecaster, the game, the market, the subject and the rung asked); the fits
+-- written before it stay exactly as written.
+--
+-- A LABEL, NEVER AN EDIT, beside a fit that stays as written (LAW 3): the
+-- shape recommendation_regrades has. TRUE BY THE FIT'S OWN RECORD: the rule
+-- below counts again, from the fit's category and fitted instant, the settled
+-- forecasts its gate counted -- settled before the instant, withdrawn by no
+-- void stamped at or before it -- and the distinct bets among them, and
+-- refuses a label those counts do not support: a row never fitted (a
+-- placeholder: n_train under the gate, slope 1, intercept 0), a fit clear of
+-- its gate on the key, a gate other than the fifty declared (pinned here as
+-- the re-grade pins its bar, and tested equal to correction.MIN_TRAIN), a
+-- count used other than the fit's own n_train, and a corrected count other
+-- than the one the record gives. The key below is bet.same('q', 'p'), written
+-- out because a rule cannot call Python; audit.distinct_bet_key_faults holds
+-- this text to it. NEVER ON A FIT IN FORCE: the ruling says a labelled fit can
+-- never be activated, not that one in force is taken out of force, which is
+-- the operator's to say (none of the four ruled is in force on 2026-09-29).
+-- PERMANENT: one per fit, stamped after it, never edited, removed or replaced.
+-- (The two words that open a declaration may not appear in a comment in this
+-- file: at_the_line._schema_statements scans it.)
+--
+-- WITHOUT ROWID, SO THE RULES READ THE FIT THE LABEL LANDS ON (the prover,
+-- 2026-09-29). With the fit's number as the table's INTEGER PRIMARY KEY --
+-- the rowid, as recommendation_regrades keys its label -- SQLite works that
+-- number out twice for one row of values, once for the rules that run before
+-- the row and once for the row (question 13's finding), so a number read as
+-- a fit short of its gate by every rule below landed on fit 71, the one in
+-- force, and the activation door passed over it: the only correction in
+-- force switched off by a false label, in one statement (a function the
+-- connection defines; random() does it one time in four). And under OR
+-- REPLACE the same number, read as an unlabelled fit with the same counts,
+-- wrote over a stored label. In a table without a rowid the key is an
+-- ordinary column, worked out once (measured on SQLite 3.49.1: the rules
+-- and the row see one value, a text or real number arrives as the integer
+-- it stores), and there is no rowid to name, so every rule below reads the
+-- row that lands.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS correction_gate_labels (
+    correction_id    INTEGER PRIMARY KEY REFERENCES calibration_corrections (id),
+    labelled_utc     TEXT NOT NULL,
+    verdict          TEXT NOT NULL CHECK (verdict IN ('fitted_below_its_gate')),
+    -- the gate the fit passed on the count it used, as declared
+    gate             INTEGER NOT NULL CHECK (gate > 0),
+    -- the settled forecasts its gate counted: the fit's own n_train
+    count_used       INTEGER NOT NULL CHECK (count_used >= 0),
+    -- the distinct bets among them, each question once
+    corrected_count  INTEGER NOT NULL CHECK (corrected_count >= 0),
+    reason           TEXT NOT NULL CHECK (length(trim(reason)) >= 10)
+) WITHOUT ROWID;
+
+CREATE TRIGGER IF NOT EXISTS correction_gate_label_is_its_fits_own_record
+BEFORE INSERT ON correction_gate_labels
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1 FROM calibration_corrections c
+     WHERE c.id = NEW.correction_id
+       AND NEW.gate = 50
+       AND c.n_train >= NEW.gate
+       AND NEW.count_used = c.n_train
+       AND NEW.corrected_count < NEW.gate
+       AND NEW.count_used = (
+           SELECT COUNT(*) FROM predictions p
+            WHERE p.sport = c.sport AND p.market_type = c.market_type
+              AND p.predictor = c.forecaster
+              AND p.resolved_utc IS NOT NULL AND p.outcome IS NOT NULL
+              AND p.resolved_utc < c.fitted_utc
+              AND NOT EXISTS (SELECT 1 FROM prediction_voids v
+                               WHERE v.prediction_id = p.id
+                                 AND v.voided_utc <= c.fitted_utc))
+       AND NEW.corrected_count = (
+           SELECT COUNT(*) FROM predictions p
+            WHERE p.sport = c.sport AND p.market_type = c.market_type
+              AND p.predictor = c.forecaster
+              AND p.resolved_utc IS NOT NULL AND p.outcome IS NOT NULL
+              AND p.resolved_utc < c.fitted_utc
+              AND NOT EXISTS (SELECT 1 FROM prediction_voids v
+                               WHERE v.prediction_id = p.id
+                                 AND v.voided_utc <= c.fitted_utc)
+              AND NOT EXISTS (
+                  SELECT 1 FROM predictions q
+                   WHERE q.id < p.id
+                     AND q.predictor IS p.predictor AND q.game_id IS p.game_id
+                     AND q.market_type IS p.market_type AND q.subject IS p.subject
+                     AND q.line_asked IS p.line_asked
+                     AND q.resolved_utc IS NOT NULL AND q.outcome IS NOT NULL
+                     AND q.resolved_utc < c.fitted_utc
+                     AND NOT EXISTS (SELECT 1 FROM prediction_voids w
+                                      WHERE w.prediction_id = q.id
+                                        AND w.voided_utc <= c.fitted_utc))))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a fit is labelled fitted below its gate only by its own '
+        || 'record: a fit, not a placeholder, that passed the 50 declared on '
+        || 'the settled forecasts it counted (its own n_train, recounted), and '
+        || 'whose distinct bets among them, each question once, are fewer '
+        || 'than 50 and are the corrected count the label states');
+END;
+
+-- AND NEVER STAMPED AFTER IT IS WRITTEN, IN THE ONE FORMAT (the prover,
+-- 2026-09-29): a label stamped 2099-01-01 was stored as written then, and
+-- one stamped '2026-09-29 by hand' sorted after the fit and was stored too.
+CREATE TRIGGER IF NOT EXISTS correction_gate_label_comes_after_its_fit
+BEFORE INSERT ON correction_gate_labels
+FOR EACH ROW
+WHEN NEW.labelled_utc <= (SELECT fitted_utc FROM calibration_corrections
+                           WHERE id = NEW.correction_id)
+  OR NEW.labelled_utc NOT GLOB
+     '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'
+  OR NEW.labelled_utc > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a label is written after the fit it is about, never '
+        || 'at or before it, and stamped when it is written, never later, as '
+        || 'YYYY-MM-DDTHH:MM:SSZ');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_gate_labels_never_replaced
+BEFORE INSERT ON correction_gate_labels
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM correction_gate_labels g
+              WHERE g.correction_id = NEW.correction_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a fit is labelled once and the label is never '
+        || 'replaced; the first stands');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_gate_label_never_on_a_fit_in_force
+BEFORE INSERT ON correction_gate_labels
+FOR EACH ROW
+WHEN (SELECT active_from FROM calibration_corrections
+       WHERE id = NEW.correction_id) IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a fit that carries an activation is not labelled fitted '
+        || 'below its gate: the ruling says a labelled fit can never be '
+        || 'activated, not that one in force is taken out of force, and that '
+        || 'is the operator''s to say');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_gate_labels_no_update
+BEFORE UPDATE ON correction_gate_labels
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a label on a fit is terminal and its reason cannot '
+        || 'be rewritten');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_gate_labels_no_delete
+BEFORE DELETE ON correction_gate_labels
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a label on a fit is never deleted. The fit was made '
+        || 'and the corrected count says it was fitted below its gate, and the '
+        || 'record keeps both');
+END;
+
+-- A LABELLED FIT CAN NEVER BE ACTIVATED (question 23). A stored fit is
+-- activated only when it is written (active_from is set in the insert, and
+-- calibration_corrections_no_update refuses any edit after), and a label is
+-- refused on a fit that carries an activation, so the one statement left
+-- that could put a labelled fit in force is one written in its place: a
+-- replacing insert naming its number or its category and version, which
+-- SQLite carries out without the no-delete rule. This refuses it AFTER the
+-- row lands, so it reads the number the row landed under however the
+-- statement spelled it (a number read twice lands where the rules before
+-- the row did not look), and a label whose fit is gone.
+CREATE TRIGGER IF NOT EXISTS calibration_corrections_labelled_never_replaced
+AFTER INSERT ON calibration_corrections
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM correction_gate_labels l
+              WHERE l.correction_id = NEW.id
+                 OR NOT EXISTS (SELECT 1 FROM calibration_corrections k
+                                 WHERE k.id = l.correction_id))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a fit labelled fitted below its gate can never be '
+        || 'activated, and nothing is written in its place');
+END;
+
 
 -- ---------------------------------------------------------------------------
 -- THE RUNG LOG — a measurement, and deliberately NOT a record of predictions.

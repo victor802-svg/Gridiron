@@ -7921,3 +7921,363 @@ EDIT**: no row, table, column or schema object changes.
 - The reversal step 1 named. Reversal of it: put `"prop_type"` back in
   `bet.KEY` and `audit.RULED_DISTINCT_BET` after `"market_type"` (and the
   planting's new form out) -- which splits the ten in two again.
+
+## Each correction gate's count, per forecaster and bet; the fits fitted below their gate -- built 2026-09-29 *(operator question 16, ruled (B) 2026-09-27, with question 23, ruled (A) 2026-09-28; question 31's default taken 2026-09-29 ~01:50Z; docs/briefs/2026-09-27-rulings-third-set.md and 2026-09-28-rulings.md)*
+
+"Q16: (B), after Q17, on its key. Each correction gate's count per
+forecaster and distinct bet, planting each." -- "Q23: (A). The page's count
+and the fit's own gate both move to the key, for fits from the release
+forward. The 63 existing fits stay as written; any that falls short of its
+gate on the corrected count is labelled 'fitted below its gate' and can
+never be activated." Built as one change, uncommitted, for the orchestrator
+to gate and release; the labels are written on the live record by the tool,
+with `--live`, after the release.
+
+### MEASURED FIRST *(2026-09-29 ~01:55Z, read-only through `db.read_the_live_record`: `scratchpad/q16/measure.py` -> `measure_0929.txt`, the same as 28 September's `measure.txt`; and `measure4.py` -> `measure4.txt`)*
+
+- **89 correction rows** (1-63 written 31 August to 21 September 22:11Z,
+  before Q23 was ruled at 01:50:37Z on 28 September; 64-89 by the weekly
+  refit at 13:00:01Z on 28 September). **Every fit's gate** is `MIN_TRAIN`
+  = 50 (unchanged since 31 August) over every settled forecast of its
+  category (sport, market type, forecaster) resolved before its fitted
+  instant, voids left out -- read off the fit's own record: its category,
+  its `fitted_utc`, its `n_train`. Recounted, that is exactly `n_train` for
+  all 48 fitted rows (voids read as of now or as of the fit: the same).
+- **The corrected count** -- the distinct bets on question 17's key among
+  those forecasts -- is the same for every fit read as distinct keys or
+  through the blind record's standing rule.
+- **Fitted, short of fifty on the key (9):**
+
+| Fit | Category | Version | Fitted | Gate | Count used (`n_train`) | Corrected | In force |
+|---|---|---|---|---|---|---|---|
+| 33 | MLB total, reasoning pass | 1 | 21 Sep 06:29:40Z | 50 | 76 | 48 | no |
+| 59 | UFC distance, statistical | 3 | 21 Sep 22:11:39Z | 50 | 56 | 32 | no |
+| 61 | UFC moneyline, statistical | 3 | 21 Sep 22:11:39Z | 50 | 56 | 32 | no |
+| 63 | UFC rounds, statistical | 3 | 21 Sep 22:11:39Z | 50 | 56 | 32 | no |
+| 81 | NFL point spread, statistical | 3 | 28 Sep 13:00:01Z | 50 | 60 | 41 | no |
+| 85 | UFC distance, statistical | 4 | 28 Sep 13:00:01Z | 50 | 85 | 49 | no |
+| 86 | UFC moneyline, reasoning pass | 4 | 28 Sep 13:00:01Z | 50 | 63 | 49 | no |
+| 87 | UFC moneyline, statistical | 4 | 28 Sep 13:00:01Z | 50 | 85 | 49 | no |
+| 89 | UFC rounds, statistical | 4 | 28 Sep 13:00:01Z | 50 | 85 | 49 | no |
+
+- **Fitted and clear on the key (39)**, e.g. 71 (MLB moneyline,
+  statistical, v8, **the one fit in force**, 364 forecasts, 260 questions),
+  67 (NCAAF spread, statistical, 192/185), 74 (MLB spread, 306/202), 76 (MLB
+  total, 306/213), 64 and 66 (NCAAF moneyline and spread, reasoning pass,
+  60/60 and 58/58). **Placeholders (41)**: `n_train` 0, slope 1, intercept
+  0, never fitted, the count only in their words; never labelled.
+- **No labelled fit is in force**: of the four ruled, none carries an
+  activation; the only fit in force (71) is clear. Nothing stopped for a
+  ruling.
+- **The category is not split**: every prop type is one category under
+  'prop' and UFC's cards are one, as each fit was fitted; the page says so
+  in words ("every prop type together", "every card together"). Splitting
+  it would be a model change no ruling names -- not built.
+
+### BUILT *(2026-09-29)*
+
+- **One count** (`correction.settled_rows`, read by `bet.count`): a
+  category's settled forecasts before an instant, withdrawn by no void on
+  the record (from the prover: whatever its stamp; only a fit's own count,
+  `as_it_stood`, leaves out just the voids stamped by its instant), each
+  carrying `bet.columns`. Read by the page's
+  line, the fit's own gate (`refit_all`, at the fit's instant: fifty settled
+  QUESTIONS), a version's forward count (`version_report`) and the learning
+  panel's row. The rows a fit is trained on are unchanged
+  (`training_rows`, every settled forecast; `n_train` is still that count):
+  until this release the gate WAS `len(training_rows(...))`, one query;
+  now the gate and the training are two reads, because the ruling moves the
+  gate and not what a correction is fitted on (LAW 2: no model change beyond
+  what is named).
+- **The guard** (`calibration.assert_no_pooled_correction_counts`) inside
+  `views.corrections_report` and `views.learning` -- both API routes answer
+  500 on a pooled or duplicated count -- and the gate row
+  `audit.check_the_correction_counts_are_never_pooled` building both for
+  every sport on the record's copy (`tools/verify.py` step 2). The recount
+  without the door is `recount.correction`, in the builder's
+  `db.one_instant`.
+- **The label** (`correction_gate_labels`, append-only, the re-grade's
+  shape) and its rules; `calibration_corrections_labelled_never_replaced`;
+  the activation door passing over a labelled fit; the selection by rule
+  (`correction.below_their_gates`), the writer (`correction.write_labels`)
+  and the tool (`tools/label_corrections_below_the_gate.py`). The page names
+  a labelled fit beside its gate, with both its counts.
+- **The isolation scan reads f-strings** (`audit.FSTRING_PART`), so the
+  count door's query -- `bet.columns('p')` in an f-string -- is read for its
+  tables and bounds; `CORRECTION_TABLES` gains `correction_gate_labels`.
+- `tests/test_no_replacing_write.py`: the schema's append-only tables are
+  23 (the labels), where the test pinned 22.
+
+### EVERY CORRECTION COUNT THE PAGE STATES, before and after *(one verified copy of the record, `rebuild.verified_backup`, read 2026-09-29T02:03:54Z-02:04:38Z; before: the released tree, HEAD 97febf7 = master's code, on the copy; after: this tree on the same copy after `db.init` and the tool's `--write`; `scratchpad/q16/page_counts.py`, `before.json`, `after.json`, `side_by_side.txt`)*
+
+"What else is still counting" -- the gate rows (`A correction for ...`):
+
+| Sport | Category (after's name) | Before | After |
+|---|---|---|---|
+| NFL | moneyline, reasoning pass (was "moneyline, LLM") | 29 of 50 settled | 15 of 50 settled questions |
+| NFL | moneyline, statistical | 31 of 50 settled | 31 of 50 settled questions |
+| NFL | player props, every prop type together, statistical (was "prop, statistical") | 95 settled, cleared | 65 settled questions, cleared |
+| NFL | point spread, reasoning pass | 23 of 50 settled | 12 of 50 settled questions |
+| NFL | point spread, statistical | **60 settled, cleared** | **41 of 50 settled questions**, 9 more |
+| NFL | total, reasoning pass | 32 of 50 settled | 16 of 50 settled questions |
+| NFL | total, statistical | 32 of 50 settled | 17 of 50 settled questions |
+| MLB | moneyline, reasoning pass | 202 settled | 148 settled questions |
+| MLB | moneyline, statistical | 364 settled | 260 settled questions |
+| MLB | player props, every prop type together, reasoning pass | 8 of 50 settled | 8 of 50 settled questions |
+| MLB | player props, every prop type together, statistical | 99 settled | 80 settled questions |
+| MLB | point spread, statistical | 306 settled | 202 settled questions |
+| MLB | total, reasoning pass | 187 settled | 141 settled questions, and "Version 1, fitted on Monday 21 September, was fitted below its gate: its 76 settled forecasts are 48 questions, under the 50 it needs, so it can never be in force." |
+| MLB | total, statistical | 306 settled | 213 settled questions |
+| NBA | point spread, statistical | 0 of 50 settled | 0 of 50 settled questions |
+| NCAAF | moneyline, reasoning pass | 60 settled | 60 settled questions |
+| NCAAF | moneyline, statistical | 197 settled | 142 settled questions |
+| NCAAF | point spread, reasoning pass | 58 settled | 58 settled questions |
+| NCAAF | point spread, statistical | 192 settled | 185 settled questions |
+| NCAAF | total, reasoning pass | 67 settled | 67 settled questions |
+| NCAAF | total, statistical | 198 settled | 144 settled questions |
+| UFC | distance, every card together, reasoning pass | 14 of 50 settled | 14 of 50 settled questions |
+| UFC | distance, every card together, statistical | **85 settled, cleared** | **49 of 50 settled questions**, 1 more; and version 3 named "fitted below its gate" (56 forecasts, 32 questions) |
+| UFC | moneyline, every card together, reasoning pass | **63 settled, cleared** | **49 of 50 settled questions**, 1 more |
+| UFC | moneyline, every card together, statistical | **85 settled, cleared** | **49 of 50 settled questions**, 1 more; version 3 named |
+| UFC | rounds, every card together, reasoning pass | 14 of 50 settled | 14 of 50 settled questions |
+| UFC | rounds, every card together, statistical | **85 settled, cleared** | **49 of 50 settled questions**, 1 more; version 3 named |
+
+"What the record has taught it" -- the learning panel's correction row
+(the statistical model's), its count and its words:
+
+| Sport | Row | Before | After |
+|---|---|---|---|
+| NFL | point spread | 41 -- "not yet fitted: 41 of 50 settled rows" | 41 -- "41 of 50 settled questions; fitted on Monday 28 September on 60 settled forecasts, and NOT in force" (fit 81 stands; it was "not yet fitted" beside a fit) |
+| NFL | moneyline, total | 31, 17 -- "not yet fitted ... settled rows" | 31, 17 -- the same in "settled questions" |
+| NFL | passing yards, receiving yards, rushing yards, receptions, passing touchdowns | 10, 10, 9, 9, 8 -- each its own type's standing forecasts, "not yet fitted" | 65 each -- "65 settled questions, every prop type together; fitted on Monday 28 September on 95 settled forecasts, and NOT in force" |
+| MLB | moneyline | 260 -- "in force since Monday 28 September, fitted on 260 settled rows" (fit 71 was fitted on 364) | 260 -- "260 settled questions; in force since Monday 28 September, fitted on 364 settled forecasts" |
+| MLB | point spread, total | 202, 213 -- "fitted on 202 [213] settled rows" | 202, 213 -- "... fitted on Monday 28 September on 306 settled forecasts, and NOT in force" |
+| MLB | hits, total bases, home runs, batter strikeouts, pitcher strikeouts | 31, 0, 31, 10, 8 -- "not yet fitted" | 80 each -- "80 settled questions, every prop type together; fitted on Monday 28 September on 99 settled forecasts, and NOT in force" |
+| NBA | seven rows | 0 each | 0 each; the four prop rows say "every prop type together" |
+| NCAAF | point spread, moneyline, total | 185, 142, 144 -- "fitted on 185 [142, 144] settled rows" | 185, 142, 144 -- "... fitted on Monday 28 September on 192 [197, 198] settled forecasts, and NOT in force" |
+| UFC | moneyline, rounds, distance | 49 each -- "not yet fitted: 49 of 50 settled rows" (fits 87, 89, 85 stand) | 49 each -- "49 of 50 settled questions, every card together; fitted on Monday 28 September on 85 settled forecasts, and NOT in force" |
+
+The tier table's corrections note (every sport, every category): "A
+correction is fitted at 50 settled predictions" -> "... at 50 settled
+questions"; MLB moneyline, statistical (fit 71 in force): "(version 8,
+fitted 2026-09-28, 364 settled)" -> "(version 8, fitted 2026-09-28 on 364
+settled forecasts)". The learning payload's unpainted `n` (a sum of its
+rows' counts: NFL 135, MLB 755, NCAAF 471, UFC 147) is its row count (8, 8,
+3, 3; NBA 7). No other figure the page states reads a correction count.
+
+### THE REHEARSAL *(a copy of the verified copy, through the backup door; never the record; `scratchpad/q16/rehearse_init.py` -> `rehearse_init.txt`, `rehearse_tool.txt`)*
+
+- `db.init` of this tree: exactly the eight new objects (the table
+  `correction_gate_labels`, its six rules, and
+  `calibration_corrections_labelled_never_replaced`), each with a fresh
+  build's text, in a fresh build's order; nothing gone or changed; **no
+  table's row count or column checksum moved**; **0 differences** from a
+  fresh build of this tree with an EMPTY register; a second open changes
+  nothing.
+- The tool: the dry run selects nine (33, 59, 61, 63, 81, 85, 86, 87, 89),
+  verifies the ruled four among the 63 written before 01:50:37Z on 28
+  September, lists 81, 85, 86, 87 and 89 as waiting for question 31, and
+  writes nothing; `--write` writes 4 in one transaction; again, 0 written
+  and 4 already labelled; `--live` on the copy refused; the live record
+  without `--live` refused before it is opened; a record without the table
+  (the verified copy, never migrated) refused by name.
+
+### PROVED
+
+- Each planting run by this tree's `plant.py` against a `git archive` of
+  HEAD 97febf7 (`scratchpad/q16/head/`) and against this tree
+  (`run_q16_plantings.py`): all six ESCAPE on HEAD -- the page's line "68
+  settled" for 38 questions; the statistical moneyline fitted on 60
+  forecasts that are 30 questions; a forward count of 30 for 20 questions;
+  prop rows stating 30 and 25 beside a category of 55; a fit short of its
+  gate written in force in its own place and served by the door; no label
+  at all -- and all six are CAUGHT on this tree.
+- `tests/test_correction_gate.py`: 24 tests; 23 fail on HEAD's package (the
+  24th reads only the tool's own `check`).
+- `plant.py` whole: 350/350 caught (344 and these six). The full suite, a
+  dummy token, TMP/TEMP at their defaults: 2069 passed, 8 skipped (the
+  same eight), none failed, first run. On the rehearsed copy, the whole
+  Record page payload and the learning panel built for every sport with
+  their guards inside, and the new gate row passed (`whole_page.py`).
+
+### RENDERED *(the browser suite's own world -- `seed_league` and `_build_world` -- on a scratch file, with 28 NFL moneyline questions answered twice and a fit of their 56 forecasts labelled through the tool's door; served by this tree with the suite's test token; never the live app; `scratchpad/q16/render_q16.py`, `render_q16_rows.py`, `render/`)*
+
+- 1100 and 390 px, both panels read: "A correction for moneyline,
+  statistical -- 35 of 50 settled questions · 15 more settled questions --
+  Version 1, fitted on Wednesday 1 January, was fitted below its gate: its
+  56 settled forecasts are 28 questions, under the 50 it needs, so it can
+  never be in force."; "A correction for player props, every prop type
+  together, statistical"; each prop row of the learning panel "11 of 50
+  settled questions, every prop type together". No horizontal scroll, no
+  console error, the muted line legible, nothing clipped.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **The count is the distinct keys among the rows the gate counts**, not
+  the standing rule: this module may not name `games`
+  (`audit.check_correction_is_isolated`), and the two give the same count
+  for all 89 fits. Reversal: none needed unless they part; the recount
+  would then be the standing rule's.
+- **A void counts from its stamp ONLY for a fit's own count, read as its
+  gate read it** (`as_it_stood`: the label's selection, and the label rule
+  in the schema); the page, a forward count and the fit being made leave
+  out every void on the record, whatever its stamp, as `training_rows`
+  does (the prover, 2026-09-29: a void stamped after now left its forecast
+  counted everywhere, the recount agreeing). Reversal: `as_it_stood`'s
+  clause out of `settled_rows` and `recount.correction`.
+- **The training rows are not moved** (`training_rows`, every settled
+  forecast). Reversal: fit on `settled_rows`' standing rows -- a model
+  change, the operator's.
+- **No label on a fit carrying an activation** (schema rule, writer and
+  tool): the ruling says a labelled fit can never be activated, not that one
+  in force is taken out of force. None is. Reversal: drop
+  `correction_gate_label_never_on_a_fit_in_force`.
+- **The population is read by instant**: the fits written before 01:50:37Z
+  on 28 September, checked to be 63; the ruled set is the four every reading
+  of question 31 covers. Reversal: a ruling on question 31 changes `RULED`
+  and the population constant, and the tool is run again.
+- **The door passes over a labelled fit** (the newest activation not
+  labelled is in force) rather than raising. Reversal: raise by name in
+  `active_correction`.
+- **"Reasoning pass"** names the second forecaster on the correction gate
+  rows, as on the drift rows beside them, where they said "LLM"; and
+  **UFC's rows say "every card together"**, as the prop rows say "every prop
+  type together". Reversal: `language.correction_category_label`.
+- **The learning payload's `n` is its row count**, not a sum. Reversal: one
+  line in `views.learning`.
+
+### OPEN *(found by this step; by the queue rule, for the re-read unless it breaks LAW 1 or LAW 3 or makes a gate count false)*
+
+- **Question 31** stays the operator's: 81, 85, 86, 87 and 89 are fitted
+  below their gate on the key and unlabelled; the page states their
+  categories' counts on the key (NFL point spread, statistical, 41 of 50;
+  UFC 49 of 50) beside versions fitted on the forecasts. The placeholders
+  are never labelled.
+- ~~**The label table's own replacing insert whose number reads twice**~~
+  CLOSED by the prover (2026-09-29, below): the table is WITHOUT ROWID, so
+  the number is worked out once. `recommendation_regrades` keeps the hole
+  (its label keyed by the rowid): a one-row insert whose number reads as
+  one recommendation to its rules and another to the row stores a re-grade
+  its rules never checked -- for the re-read (no code writes one; Q15's
+  scan).
+- **The learning panel's heading prints the refit's date as a key**
+  ("What the record has taught it 2026-09-28": `renderLearning` slices
+  `last_refit`) -- PLAIN WORDS, found in the render, not new.
+- **The forward Brier figures average forecasts** (a question's passes
+  each) while `n` counts questions; `forecasts` stands beside them. Not
+  painted; no forecast carries a correction version yet.
+
+### THE PROVER *(2026-09-29, 02:50-03:45Z; memory worlds, copies of this tree, and one fresh verified copy of the record deleted after use; `scratchpad/q16/prove/`)*
+
+WHAT GOT THROUGH THE CHANGE AS FIRST BUILT, each measured, each fixed here
+with a test that fails on the change as first built and a planting form
+(`attack1.py`; `neutralise.py` -> `neutralise.txt`, `neutralise_tests.txt`):
+
+- **A false label on the fit in force, in one statement.** The label table
+  was keyed by its rowid (`correction_id INTEGER PRIMARY KEY`, as
+  `recommendation_regrades` is), and SQLite works a rowid out twice for one
+  row of values -- once for the rules before the row, once for the row
+  (question 13's finding; measured on 3.49.1: a function of the
+  connection's own was asked twice, and an ordinary column once). A label
+  every rule read as a short fit's (56 forecasts, 28 questions) landed on
+  the fit in force, and `active_correction` then passed over it: the only
+  correction in force switched off, and on the record fit 71 was reachable
+  the same way (rules shown 81, the row given 71). And under OR REPLACE, a
+  number read as an unlabelled twin with the same counts wrote over a
+  stored label's stamp. FIXED: `correction_gate_labels` is WITHOUT ROWID --
+  the key is an ordinary column, worked out once, a text or real number
+  arrives as the integer it stores, and there is no rowid to name -- so
+  every rule reads the row that lands. On the verified copy: the number
+  asked once, the label landed on 81, the door still served 71 (rolled
+  back). `test_a_labels_number_is_read_once_so_the_rules_read_the_row_that_lands`;
+  the label planting's two new forms.
+- **A label stamped in 2099, or '2026-06-02 by hand'** (which sorts after
+  the fit), was stored. FIXED: `correction_gate_label_comes_after_its_fit`
+  also refuses a stamp after now or outside `YYYY-MM-DDTHH:MM:SSZ`.
+  `test_a_label_is_stamped_when_it_is_written_in_the_one_format`; two forms.
+- **A withdrawn forecast counted.** The door read only voids stamped at or
+  before its instant, so a question withdrawn by a void stamped after now
+  (by hand, or a clock) stayed on the page's line, in the recount beside it
+  -- which read it the same way, so the guard saw nothing -- in a forward
+  count and in the fit's own gate, while `training_rows` left it out:
+  forty-nine totals and a withdrawn fiftieth were fitted. FIXED: the door
+  and `recount.correction` leave out every void on the record; only a fit's
+  own count read as its gate read it (`as_it_stood`, the label's selection)
+  keeps to the voids stamped by its instant. The record holds no void
+  stamped after now or outside the format (the verified copy, 03:10Z), so
+  no count the page states moves.
+  `test_a_forecast_withdrawn_by_a_void_stamped_after_now_is_never_counted`,
+  `test_a_row_counts_if_settled_before_the_instant_and_never_if_withdrawn`;
+  a form in the page's planting and one in the fit's.
+- **An honest learning panel answering 500.** Each row read its count in an
+  instant of its own, and the guard refuses one category stated two ways,
+  so a prop settled between two prop rows made the panel say 10 on one
+  row and 11 on the next (the test's world).
+  FIXED: one `db.one_instant` for the whole panel (question 22's precedent).
+  `test_a_prop_settled_between_two_prop_rows_is_no_fault` (a test, not a
+  planting: nothing is let through, an honest page is refused).
+
+NOT SEEN, AND WHY NOT BUILT (each is outside what the ruling names; for the
+re-read):
+
+- **A raw insert of a NEW version, in force, carrying a labelled fit's
+  numbers** (or any numbers) is served by the door; so is a fit written by
+  `record_fit` with a model its category's questions never gated. The
+  labelled fit itself can never be put in force, and `refit_all` -- the one
+  writer -- gates on the key; the schema has held no gate for a correction
+  since 31 August. A rule refusing a fitted row whose category is short of
+  fifty questions at its instant would close both, and every test world
+  that writes a synthetic fit (test_correction, test_recommend, three
+  plantings) would be rebuilt: the operator's, not this step's.
+- **A label's reason is free words** (ten characters or more), as the
+  re-grade's is; the page composes its line from the label's numbers, never
+  its reason.
+- **A void stamped back before a fit that cleared on the key** makes the
+  rule select that fit; the schema refuses its label (the count used is no
+  longer the record's) and so does the tool, by name.
+
+PROVED:
+
+- **HEAD escapes** (`git archive` of 97febf7 with this tree's `plant.py`,
+  `escapes_on_head.txt`): all six ESCAPE. This tree: all six CAUGHT.
+- **Each guard part neutralised in a copy** (`neutralise.txt`): the
+  builders' guard off -- the page's, the forward count's and the learning
+  row's plantings escape; the gate row off -- the page's planting escapes
+  at the gate; the guard's recount comparison off -- the door keyed without
+  the rung escapes; `refit_all`'s gate on the forecasts -- the fit's
+  planting escapes; the forward `n` on the forecasts -- its planting
+  escapes; `calibration_corrections_labelled_never_replaced` off -- the
+  replacing insert by number escapes (by category and version the foreign
+  key still refuses it); the door's label filter off -- the door serves the
+  labelled fit; each of the label's six rules off, and WITHOUT ROWID out --
+  the label planting escapes on exactly that rule's forms; the voids as
+  first built -- the page's and the fit's plantings escape. BELT AND
+  BRACES, said as found: the guard's forecasters-counted check off lets
+  nothing through (the recount sees a door without the forecaster); the
+  learning row put back on one prop type is refused inside its builder
+  (the planting errors rather than escapes); `write_labels`' own check off
+  errors on the first stray fit, and the schema refuses the label anyway.
+- **The schema, again, on a fresh verified copy** (`rebuild.verified_backup`
+  03:10:11-03:10:56Z; `rehearse.py` -> `rehearse.txt`): 242 -> 250 objects,
+  exactly the eight, each a fresh build's text, in a fresh build's order;
+  nothing gone or changed; no table's count or checksum moved; 0
+  differences from a fresh build, EMPTY register; a second open changes
+  nothing. The tool: 9 selected, the four verified among the 63, 81, 85,
+  86, 87, 89 waiting; `--write` 4, again 0 and 4 already; the refusals.
+  Every sport's page, panel and scorecard built with their guards; the new
+  gate row passed. The next weekly refit, run on the copy: 26 categories,
+  13 past fifty questions, none selected by the rule (NFL point spread and
+  UFC's statistical categories, 41 and 49, recorded unfitted). The page's
+  counts on the copy equal the build's `after.json` (0 differences). The
+  copies were deleted.
+- **Step 2's touched rows** on a copy migrated by this tree
+  (`step2_rows.py` -> `step2_rows.txt`): 22 of 22 passed.
+  `prose_reaching_the_raw_side()` is `[]`.
+- **`plant.py` whole: 350/350 caught**, rc 0 (the six carry the prover's
+  new forms). **The full suite**, a dummy token, TMP/TEMP at their defaults:
+  2073 passed, 8 skipped (the same eight), none failed, first run;
+  `tests/test_correction_gate.py` has 28 tests.
+- **Rendered again** from the test world (`render_q16.py`,
+  `render_q16_rows.py` -> `prove/render/`), 1100 and 390 px, read: the
+  labelled gate row and the learning rows word for word as the build's, no
+  horizontal scroll, no console error.

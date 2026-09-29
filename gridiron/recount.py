@@ -3,7 +3,9 @@ records keyed by a distinct bet -- at the venue's line, the priced record,
 where the line went and the line beside each blind curve -- worked out again
 from rows read straight off their tables, one per distinct bet (`bet.of`),
 by each record's standing rule restated here in Python (operator question
-17, ruled 2026-09-27; built 2026-09-28).
+17, ruled 2026-09-27; built 2026-09-28). And from 2026-09-29 the correction
+gates' (`correction`: operator question 16), whose rule is settled before an
+instant and withdrawn by no void at it.
 
 WHY A SECOND SPELLING OF A STANDING RULE, where the house rule is one door.
 The door is the rule; this is how the guard knows the door kept it. A door
@@ -232,6 +234,37 @@ def drift(conn: sqlite3.Connection, *, sport: str, market_type: str,
         if abs(claim - opened) >= media.MIN_DISAGREEMENT:
             pairs += 1
     return pairs
+
+
+def correction(conn: sqlite3.Connection, *, sport: str, market_type: str,
+               predictor: str, before_utc: str,
+               version: int | None = None, as_it_stood: bool = False) -> int:
+    """One correction category's gate count, recounted (operator question 16,
+    ruled 2026-09-27; built 2026-09-29): every forecast of the category read
+    straight off the table -- every pass, every rung, both forecasters' rows
+    left to the filter below, no door -- and counted by `bet.of` where it had
+    an outcome before `before_utc` and no void -- none at all, or, read as it
+    stood at the instant, none stamped at or before it (the prover,
+    2026-09-29: a void stamped after now is a withdrawal on the record now) --
+    only those written under `version` when one is named.
+    `correction.settled_rows` in Python, clause by clause; the key is not
+    restated."""
+    rows = [dict(r) for r in conn.execute(
+        f"SELECT p.id, {bet.columns('p')}, p.resolved_utc, p.outcome,"
+        "       p.correction_version,"
+        "       (SELECT MIN(v.voided_utc) FROM prediction_voids v"
+        "         WHERE v.prediction_id = p.id) AS voided_utc"
+        "  FROM predictions p"
+        " WHERE p.sport = ? AND p.market_type = ?",
+        (sport, market_type))]
+    return bet.count(
+        r for r in rows
+        if r["predictor"] == predictor
+        and r["resolved_utc"] is not None and r["outcome"] is not None
+        and r["resolved_utc"] < before_utc
+        and (r["voided_utc"] is None
+             or (as_it_stood and r["voided_utc"] > before_utc))
+        and (version is None or r["correction_version"] == version))
 
 
 def outlook(conn: sqlite3.Connection, *, sport: str, market_type: str,

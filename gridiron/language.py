@@ -2188,11 +2188,16 @@ def corrections_note(active: bool, min_train: int, version: int | None = None,
         # settled. Saying "corrections begin at 50" was true of the fit and
         # false of the number on the card, and the measurement behind the
         # holdout floor is in `correction.HOLDOUT_MIN`.
+        # QUESTIONS, FROM QUESTION 16'S RELEASE (2026-09-29): the gate counts
+        # each settled question once, where this said "predictions".
         return (f"Claims are shown exactly as the model made them. A "
-                f"correction is fitted at {min_train} settled predictions and "
-                f"applied only once it beats the rows it was not fitted on.")
+                f"correction is fitted at {min_train} {CORRECTION_GATE_NOUN} "
+                f"and applied only once it beats the rows it was not fitted "
+                f"on.")
     when = f", fitted {fitted[:10]}" if fitted else ""
-    n = f", {settled:,} settled" if settled else ""
+    # WHAT IT WAS FITTED ON, as written: the forecasts, which this said
+    # "settled" beside a gate that now counts questions (2026-09-29).
+    n = f" on {settled:,} settled forecasts" if settled else ""
     return (f"Shown numbers are earned: claims are adjusted by the record "
             f"(version {version}{when}{n}).")
 
@@ -3861,10 +3866,86 @@ def taken_line(n: int) -> str:
 # learn. It does; it was simply silent about it, which is the same failure as
 # a number without its N -- a reader cannot check what they cannot see.
 
+#: WHAT A CORRECTION'S GATE COUNTS, IN WORDS (operator questions 16 and 23,
+#: built 2026-09-29): each question once -- a question's morning and final
+#: pass are one, two rungs of a game are two -- where it counted settled rows.
+CORRECTION_GATE_NOUN = "settled questions"
+
+#: A correction is fitted for its category whole: every prop type is one
+#: category under 'prop', and UFC's cards are one. Said wherever its count
+#: stands beside something narrower (a prop type's row, a card's line), so
+#: nobody reads the category's count as that row's (question 31's note,
+#: 2026-09-28: splitting the category would be a model change no ruling
+#: names).
+EVERY_PROP_TYPE = "every prop type together"
+EVERY_CARD = "every card together"
+
+#: The label's verdict as a reader says it (question 23, 2026-09-28).
+FITTED_BELOW_ITS_GATE_WORDS = "fitted below its gate"
+
+
+def correction_gate_progress(settled: int, minimum: int) -> dict:
+    """"41 of 50 settled questions" -- one correction category's gate line,
+    from its count on the key: one composition the builder writes and the
+    guard reads again (operator question 16, 2026-09-29). One question
+    short is "1 more settled question", never "questions" (the render of
+    2026-09-29: UFC's three statistical categories stand at 49)."""
+    out = progress(settled, minimum, noun=CORRECTION_GATE_NOUN,
+                   cleared_note="fitted - applied only where it beat the "
+                                "rows it was not fitted on")
+    if not out["cleared"] and out["remaining"] == 1:
+        out["note"] = "1 more settled question"
+    return out
+
+
+def correction_scope_words(sport: str, market_type: str) -> str | None:
+    """"every prop type together" for the prop category, "every card
+    together" for a sport whose cards are its tiers, or None."""
+    if market_type == "prop":
+        return EVERY_PROP_TYPE
+    if _config.event_tiers(sport):
+        return EVERY_CARD
+    return None
+
+
+def correction_category_label(sport: str, market_type: str,
+                              forecaster: str) -> str:
+    """"point spread, statistical", "player props, every prop type together,
+    reasoning pass", "moneyline, every card together, statistical" -- the
+    category one correction is fitted for, whose it is, and what it holds.
+
+    THE CATEGORY WHOLE, SAID (operator question 16, 2026-09-29): the gate
+    named "prop, statistical" for every prop type at once, and nothing said
+    UFC's cards were counted together. The forecaster is named as the
+    Record page's other gate rows name it.
+    """
+    what = "player props" if market_type == "prop" else market_words(
+        sport, market_type)
+    scope = correction_scope_words(sport, market_type)
+    return ", ".join(p for p in (
+        what, scope, FORECASTER_FILTER_WORDS.get(forecaster, "")) if p)
+
+
+def correction_below_its_gate_line(version: int, fitted_utc: str | None,
+                                   count_used: int, corrected: int,
+                                   gate: int) -> str:
+    """"Version 3, fitted on Monday 21 September, was fitted below its gate:
+    its 56 settled forecasts are 32 questions, under the 50 it needs, so it
+    can never be in force." -- a labelled fit, in words, with both its counts
+    (question 23, ruled 2026-09-28)."""
+    when = date_words_from_iso((fitted_utc or "")[:10])
+    on = f", fitted on {when}," if when else ""
+    return (f"Version {version}{on} was {FITTED_BELOW_ITS_GATE_WORDS}: its "
+            f"{count_used} settled forecasts are {corrected} questions, under "
+            f"the {gate} it needs, so it can never be in force.")
+
+
 def correction_status_line(fitted: bool, n: int, minimum: int,
                            fitted_utc: str | None, active: bool,
                            last_refit: str | None = None,
-                           n_train: int = 0) -> str:
+                           n_train: int = 0, *,
+                           below_its_gate: dict | None = None,
+                           scope: str | None = None) -> str:
     """Where one category's correction stands.
 
     FOUR STATES AND THEY ARE DIFFERENT FACTS. Below the threshold; past it but
@@ -3873,22 +3954,44 @@ def correction_status_line(fitted: bool, n: int, minimum: int,
     second into the first and printed "not yet fitted: 52 of 50 settled rows,
     0 more before a correction is calculated" -- which reads as a
     contradiction, because it is one.
+
+    ON QUESTION 17'S KEY (operator questions 16 and 23, built 2026-09-29):
+    `n` is the category's settled QUESTIONS, the count its gate reads, and a
+    fit is described by the settled forecasts it was fitted on (its own
+    `n_train`, as written). A fit exists whatever the count now says, so a
+    fitted one is never "not yet fitted" (it was, on 28 September, for UFC's
+    fits of 85 forecasts beside 49 questions). A FIFTH STATE: a fit labelled
+    "fitted below its gate" (`below_its_gate`, the label as written), which
+    can never be in force. `scope` names a category wider than its row
+    ("every prop type together").
     """
     when = date_words_from_iso((fitted_utc or "")[:10]) if fitted_utc else None
-    if n < minimum:
-        short = minimum - n
-        return (f"not yet fitted: {n} of {minimum} settled rows, {short} more "
-                f"before a correction is calculated at all")
+    wide = f", {scope}" if scope else ""
+    count = (f"{n} {CORRECTION_GATE_NOUN}{wide}" if n >= minimum else
+             f"{n} of {minimum} {CORRECTION_GATE_NOUN}{wide}")
+    if below_its_gate:
+        return (f"{count}; version {below_its_gate['version']}"
+                f"{' of ' + when if when else ''} was "
+                f"{FITTED_BELOW_ITS_GATE_WORDS}: its "
+                f"{below_its_gate['count_used']} settled forecasts are "
+                f"{below_its_gate['corrected_count']} questions, under the "
+                f"{below_its_gate['gate']} it needs, so it can never be in "
+                f"force")
     if not fitted or n_train < minimum:
+        if n < minimum:
+            short = minimum - n
+            return (f"not yet fitted: {count}, {short} more before a "
+                    f"correction is calculated at all")
         ran = date_words_from_iso((last_refit or "")[:10]) if last_refit else None
-        return (f"eligible and not yet fitted: {n} settled rows, past the "
-                f"{minimum} a fit needs"
-                + (f", and the refit last ran on {ran}" if ran else ""))
+        return (f"eligible and not yet fitted: {count}, past the {minimum} a "
+                f"fit needs" + (f", and the refit last ran on {ran}" if ran else ""))
     if not active:
-        return (f"fitted on {n} settled rows{' on ' + when if when else ''}, and "
-                f"NOT in force: a fit can be recorded without touching a single "
-                f"claim, and turning it on is a separate decision")
-    return (f"in force since {when}, fitted on {n} settled rows")
+        return (f"{count}; fitted{' on ' + when if when else ''} on {n_train} "
+                f"settled forecasts, and NOT in force: a fit can be recorded "
+                f"without touching a single claim, and turning it on is a "
+                f"separate decision")
+    return (f"{count}; in force since {when}, fitted on {n_train} settled "
+            f"forecasts")
 
 
 def correction_meaning_line(claim: float, corrected: float) -> str:

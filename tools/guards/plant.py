@@ -18091,6 +18091,695 @@ def plant_a_second_forecast_citing_a_sent_prompt_as_text() -> Result:
         + (f"; the page reads it as {shown}" if shown else ""))
 
 
+# ---------------------------------------------------------------------------
+# EACH CORRECTION GATE'S COUNT, PER FORECASTER AND DISTINCT BET (operator
+# question 16, ruled (B) 2026-09-27: "on its key. Each correction gate's count
+# per forecaster and distinct bet, planting each"; question 23, ruled (A)
+# 2026-09-28: "The page's count and the fit's own gate both move to the key,
+# for fits from the release forward. The 63 existing fits stay as written; any
+# that falls short of its gate on the corrected count is labelled 'fitted
+# below its gate' and can never be activated"; built 2026-09-29).
+#
+# Until this date a correction category's count -- the page's "A correction
+# for ..." line, the fit's own gate, a version's forward count, the learning
+# panel's row -- counted every settled forecast (a question's morning and
+# final pass each), and the learning row one prop type's standing forecasts
+# beside a fit gated on every prop type's; no guard, gate check or planting
+# read any of them. One planting for each count, and two for the label.
+# ---------------------------------------------------------------------------
+
+LAW_CORRECTION_GATE = "EACH CORRECTION GATE COUNTS ONE FORECASTER'S QUESTIONS"
+
+
+def _q16_world():
+    """A scratch world of eighty played NFL games for question 16's
+    plantings: in memory, through `db.init`, nothing else in it."""
+    from gridiron import db as _db
+
+    conn = _db.connect(":memory:")
+    _db.init(conn)
+    for i in range(1, 81):
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES (?, 'nfl', 2025, 1, 'REG', 'AAA', 'BBB',"
+            " '2025-12-01T18:00:00Z', 'final', '2025-12-01', 24, 17)",
+            (f"q16_{i}",))
+    conn.commit()
+    return conn
+
+
+def _q16_forecast(conn, game: int, *, market: str = "spread",
+                  subject: str = "AAA", line: float | None = -3.5,
+                  predictor: str = "statistical", pass_kind: str = "early",
+                  outcome: int = 1, prob: float = 0.62,
+                  resolved: str = "2026-01-05T00:00:00Z",
+                  version: int | None = None,
+                  prop_type: str | None = None) -> None:
+    """One settled forecast of game `q16_<game>`: the morning pass written at
+    06:00Z, the final pass at 16:00Z, both before the 18:00Z start."""
+    conn.execute(
+        "INSERT INTO predictions (sport, created_utc, game_id, market_type,"
+        " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+        " pass_kind, factor_set_version, factors_json, reasoning,"
+        " resolved_utc, outcome, correction_version, calibrated_prob)"
+        " VALUES ('nfl', ?, ?, ?, ?, ?, ?, ?, 'cover', ?, ?, 'fs3', '{}',"
+        " 'planted', ?, ?, ?, ?)",
+        ("2025-12-01T06:00:00Z" if pass_kind == "early" else
+         "2025-12-01T16:00:00Z", f"q16_{game}", market, prop_type, subject,
+         line, prob, predictor, pass_kind, resolved, outcome, version,
+         prob if version is not None else None))
+
+
+def _q16_both_passes(conn, games, **kwargs) -> None:
+    """Each game's question answered by its morning and its final pass, the
+    outcomes mixed so a fit has something to fit."""
+    for g in games:
+        for pass_kind in ("early", "final"):
+            _q16_forecast(conn, g, pass_kind=pass_kind, outcome=g % 2,
+                          **kwargs)
+
+
+def _q16_withdrawn_late(conn, game: int, **kwargs) -> None:
+    """One more question, both its passes settled and withdrawn by voids
+    stamped after now (by hand, or a clock): on the record, never counted
+    (ruling 1, 2026-09-24; the prover of question 16, 2026-09-29)."""
+    before = conn.execute("SELECT COALESCE(MAX(id), 0) FROM predictions").fetchone()[0]
+    _q16_both_passes(conn, [game], **kwargs)
+    conn.execute(
+        "INSERT INTO prediction_voids (prediction_id, voided_utc, reason)"
+        " SELECT id, '2099-01-01T00:00:00Z', 'planted: withdrawn, stamped late'"
+        "  FROM predictions WHERE id > ?", (before,))
+
+
+def _q16_doors(_c):
+    """The count as it stood, and two doors keyed otherwise, each swapped in
+    for `correction.settled_rows`: every settled forecast counted (the page's
+    count until 2026-09-29), the forecaster dropped, and the rung dropped."""
+    real = _c.settled_rows
+
+    def every_forecast(conn, **kw):
+        return [dict(dict(r), subject=f"{r['subject']} #{r['id']}")
+                for r in real(conn, **kw)]
+
+    def without_the_forecaster(conn, *, forecaster, **kw):
+        return [r for f in _c.FORECASTERS for r in real(conn, forecaster=f, **kw)]
+
+    def without_the_rung(conn, **kw):
+        return [dict(dict(r), line_asked=None) for r in real(conn, **kw)]
+
+    return {"every settled forecast counted, a question's two passes twice":
+            every_forecast,
+            "a door keyed without the forecaster": without_the_forecaster,
+            "a door keyed without the rung": without_the_rung}
+
+
+def plant_a_correction_count_pooling_passes_or_rungs() -> Result:
+    """Put the Record page's "A correction for ..." line back as it stood.
+
+    THE SHIPPED LINE (question 16, measured 2026-09-27): `views.
+    corrections_report` counted every settled forecast of the category --
+    MLB moneyline "364 settled" for 260 questions, NFL point spread "60
+    settled", past the fifty, for 41, UFC's "85 settled" for 49. This world
+    holds thirty point-spread questions each answered by two passes, four
+    games asked at two rungs (two questions each), and the reasoning pass on
+    twenty of the same games: the statistical line must state 38 questions,
+    the reasoning pass's 20. Then the count as it stood is swapped back in as
+    the door, and a door keyed without the forecaster or the rung, and a
+    builder stating the forecasts where its questions go -- and the page's
+    builder, the learning panel's and the gate's check of every sport must
+    each refuse every one by name.
+
+    AND A WITHDRAWN QUESTION (the prover, 2026-09-29): one more question,
+    both its passes withdrawn by voids stamped after now, is on the record
+    too. The door as first built read only voids stamped by its instant, so
+    the line said 39 -- and the recount, reading them the same way, agreed.
+    """
+    from gridiron import correction as _c, views as _views
+
+    guard = ("correction.settled_rows, calibration."
+             "assert_no_pooled_correction_counts, "
+             "audit.check_the_correction_counts_are_never_pooled")
+    violation = "a correction's gate line counting a question's passes, or two forecasters"
+    conn = _q16_world()
+    try:
+        _q16_both_passes(conn, range(1, 31))
+        for g in range(31, 35):
+            _q16_forecast(conn, g, line=-3.5, pass_kind="early", outcome=1)
+            _q16_forecast(conn, g, line=-6.5, pass_kind="final", outcome=0)
+        for g in range(1, 21):
+            _q16_forecast(conn, g, predictor="llm", outcome=g % 2)
+        _q16_withdrawn_late(conn, 35)
+        conn.commit()
+        report = _views.corrections_report(conn, "nfl")
+        got = {(c["market_type"], c["forecaster"]): c.get("settled")
+               for c in report["categories"]}
+        if got != {("spread", "statistical"): 38, ("spread", "llm"): 20}:
+            return Result(
+                LAW_CORRECTION_GATE, violation, guard, False,
+                f"NOT CAUGHT - the page's correction line states {got}: 68 "
+                f"settled point-spread forecasts where the statistical model's "
+                f"questions are 38 (thirty asked twice, four games at two "
+                f"rungs), and the reasoning pass's 20; a 39th is a question "
+                f"withdrawn by voids stamped after now")
+        check = getattr(audit, "check_the_correction_counts_are_never_pooled", None)
+        if check is None or not hasattr(_c, "settled_rows"):
+            return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                          "NOT CAUGHT - nothing checks a correction count")
+        caught, missed = [], []
+        real_door, real_count = _c.settled_rows, _views._correction_count
+
+        def stating_forecasts(conn, **kw):
+            got = real_count(conn, **kw)
+            got["settled"] = got["forecasts"]
+            return got
+
+        probes = dict(_q16_doors(_c))
+        probes["a builder stating the forecasts where the questions go"] = None
+        for name, door in probes.items():
+            for place, build in (
+                    ("the gate list", lambda: _views.corrections_report(conn, "nfl")),
+                    ("the learning panel", lambda: _views.learning(conn, "nfl")),
+                    ("the gate", lambda: check(conn))):
+                if door is None:
+                    _views._correction_count = stating_forecasts
+                else:
+                    _c.settled_rows = door
+                try:
+                    build()
+                except (calibration.MergedCurve, audit.LawViolation) as exc:
+                    caught.append(f"{name}, {place}: {str(exc).splitlines()[0][:90]}")
+                else:
+                    missed.append(f"{name}, {place}")
+                finally:
+                    _c.settled_rows, _views._correction_count = real_door, real_count
+        if missed:
+            return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_GATE, violation, guard, True,
+                      f"{caught[0]} (and {len(caught) - 1} more, each refused "
+                      f"by name)")
+    finally:
+        conn.close()
+
+
+def plant_a_correction_fitted_on_the_pooled_count() -> Result:
+    """Fit a correction on sixty forecasts that are thirty questions.
+
+    THE FIT'S OWN GATE UNTIL 2026-09-29: `refit_all` gated a category on
+    `len(training_rows(...))`, every settled forecast, so UFC's three
+    statistical fits of 21 September cleared fifty on 56 forecasts that are
+    32 questions. From question 16's release it counts questions (question
+    23: "the fit's own gate ... move[s] to the key, for fits from the release
+    forward"): the moneyline category here -- thirty questions, each
+    answered twice -- must be recorded unfitted, "30 so far", with the
+    reasoning pass's thirty on the same games its own category; and fifty
+    point-spread questions, twenty-five games each asked at two rungs, must
+    still be fitted -- two rungs are two questions, and the fit is made from
+    every settled forecast, as it always was. AND A WITHDRAWN QUESTION (the
+    prover, 2026-09-29): forty-nine totals and a fiftieth withdrawn by voids
+    stamped after now must be recorded unfitted, "49 so far" -- the gate as
+    first built read only voids stamped by its instant and fitted it.
+    """
+    from gridiron import correction as _c
+
+    guard = "correction.refit_all through correction.settled_rows"
+    violation = "a correction fitted on a question's passes counted as questions"
+    conn = _q16_world()
+    try:
+        _q16_both_passes(conn, range(1, 31), market="moneyline", line=None)
+        for g in range(1, 31):
+            _q16_forecast(conn, g, market="moneyline", line=None,
+                          predictor="llm", outcome=g % 2)
+        for g in range(41, 66):
+            _q16_forecast(conn, g, line=-3.5, pass_kind="early", outcome=g % 2)
+            _q16_forecast(conn, g, line=-6.5, pass_kind="final",
+                          outcome=(g + 1) % 2)
+        for g in range(1, 50):
+            _q16_forecast(conn, g, market="total", line=44.5, outcome=g % 2)
+        _q16_withdrawn_late(conn, 50, market="total", line=44.5)
+        conn.commit()
+        report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        stored = {(r["market_type"], r["forecaster"]): r["n_train"]
+                  for r in conn.execute(
+                      "SELECT market_type, forecaster, n_train"
+                      "  FROM calibration_corrections")}
+        words = {(c["market_type"], c["forecaster"]): c["status"]
+                 for c in report["categories"]}
+        wrong = []
+        if stored.get(("moneyline", "statistical")) != 0 \
+                or "30 so far" not in words.get(("moneyline", "statistical"), ""):
+            wrong.append(
+                f"the statistical moneyline was fitted on "
+                f"{stored.get(('moneyline', 'statistical'))} forecasts that are "
+                f"30 questions ({words.get(('moneyline', 'statistical'))!r})")
+        if stored.get(("moneyline", "llm")) != 0:
+            wrong.append("the reasoning pass's thirty were fitted")
+        if stored.get(("spread", "statistical")) != 50:
+            wrong.append(
+                f"fifty point-spread questions at two rungs a game were not "
+                f"fitted on their fifty forecasts "
+                f"({stored.get(('spread', 'statistical'))}, "
+                f"{words.get(('spread', 'statistical'))!r})")
+        if stored.get(("total", "statistical")) != 0 \
+                or "49 so far" not in words.get(("total", "statistical"), ""):
+            wrong.append(
+                f"forty-nine totals and one withdrawn by voids stamped after "
+                f"now were fitted on {stored.get(('total', 'statistical'))} "
+                f"forecasts ({words.get(('total', 'statistical'))!r})")
+        if wrong:
+            return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(wrong))
+        return Result(LAW_CORRECTION_GATE, violation, guard, True,
+                      f"{words[('moneyline', 'statistical')]} -- sixty "
+                      f"forecasts, thirty questions, not fitted; fifty "
+                      f"questions at two rungs a game fitted on their fifty")
+    finally:
+        conn.close()
+
+
+def _q16_short_fit(conn, *, games=range(1, 29), market="spread",
+                   predictor="statistical", active_from=None) -> int:
+    """A fit written as fits were until question 16's release: fifty-six
+    settled forecasts -- twenty-eight questions, each answered twice -- past
+    the gate as it counted them, so fitted, on 1 June 2026."""
+    from gridiron import correction as _c
+
+    _q16_both_passes(conn, games, market=market, predictor=predictor,
+                     line=None if market != "spread" else -3.5)
+    conn.commit()
+    version = _c.record_fit(
+        conn, sport="nfl", market_type=market, forecaster=predictor,
+        model=_c.Platt(slope=0.8, intercept=0.1, n_train=2 * len(games)),
+        status="fitted but not applied - planted", active_from=active_from,
+        fitted_utc="2026-06-01T00:00:00Z")
+    return _q16_fit_id(conn, market, predictor, version)
+
+
+def _q16_fit_id(conn, market: str, forecaster: str, version: int) -> int:
+    """A fit's number, by its category and version."""
+    return conn.execute(
+        "SELECT id FROM calibration_corrections WHERE sport = 'nfl'"
+        " AND market_type = ? AND forecaster = ? AND version = ?",
+        (market, forecaster, version)).fetchone()[0]
+
+
+def plant_a_labelled_correction_activated() -> Result:
+    """Put a fit fitted below its gate in force.
+
+    Question 23: a labelled fit "can never be activated". A stored fit is
+    activated only when it is written, and `calibration_corrections_no_update`
+    refuses any edit after, so the ways in are a replacing insert written in
+    its place -- by its number, or by its category and version -- and a
+    record changed by hand. This labels a fit of 56 forecasts on 28
+    questions, then tries each: both replacing inserts must be refused by
+    the schema, the edit too, and on a record whose rules were taken off to
+    put the labelled fit in force by hand, the activation door
+    (`correction.active_correction`, C2's gate) must still refuse it. Before
+    question 16's release nothing labelled a fit, and a fit short of its gate
+    written in force in its own place was applied by the door.
+    """
+    from gridiron import correction as _c
+
+    guard = ("schema calibration_corrections_labelled_never_replaced, "
+             "calibration_corrections_no_update, correction.active_correction")
+    violation = "a fit fitted below its gate put in force"
+    later = "2026-06-03T00:00:00Z"
+    conn = _q16_world()
+    try:
+        fid = _q16_short_fit(conn)
+        forms = {
+            "a replacing insert by its number": (
+                "INSERT OR REPLACE INTO calibration_corrections (id, sport,"
+                " market_type, forecaster, version, fitted_utc, n_train, slope,"
+                " intercept, active_from, status) VALUES (?, 'nfl', 'spread',"
+                " 'statistical', 1, '2026-06-01T00:00:00Z', 56, 0.8, 0.1, ?,"
+                " 'active - planted')", (fid, later)),
+            "a replacing insert by its category and version": (
+                "REPLACE INTO calibration_corrections (sport, market_type,"
+                " forecaster, version, fitted_utc, n_train, slope, intercept,"
+                " active_from, status) VALUES ('nfl', 'spread', 'statistical',"
+                " 1, '2026-06-01T00:00:00Z', 56, 0.8, 0.1, ?,"
+                " 'active - planted')", (later,)),
+            "an edit giving it an activation": (
+                "UPDATE calibration_corrections SET active_from = ?"
+                " WHERE id = ?", (later, fid)),
+        }
+        if not hasattr(_c, "write_labels"):
+            sql, params = forms["a replacing insert by its number"]
+            conn.execute(sql, params)
+            conn.commit()
+            served = _c.active_correction(conn, sport="nfl", market_type="spread",
+                                          forecaster="statistical",
+                                          at_utc="2026-06-04T00:00:00Z")
+            return Result(
+                LAW_CORRECTION_GATE, violation, guard, False,
+                f"NOT CAUGHT - nothing labels a fit fitted below its gate, so "
+                f"nothing refuses one in force: fit {fid} (56 forecasts, 28 "
+                f"questions) was written in force in its own place and the "
+                f"door serves version "
+                f"{served['version'] if served else None}")
+        _c.write_labels(conn, [fid], now="2026-06-02T00:00:00Z")
+        caught, missed = [], []
+        for name, (sql, params) in forms.items():
+            try:
+                conn.execute(sql, params)
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                caught.append(f"{name}: {exc}")
+            else:
+                conn.rollback()
+                missed.append(name)
+        # A RECORD CHANGED BY HAND: the rules off, the labelled fit put in
+        # force, the rules left off. The door alone must refuse it.
+        conn.execute("DROP TRIGGER calibration_corrections_no_update")
+        conn.execute("UPDATE calibration_corrections SET active_from = ?"
+                     " WHERE id = ?", (later, fid))
+        conn.commit()
+        served = _c.active_correction(conn, sport="nfl", market_type="spread",
+                                      forecaster="statistical",
+                                      at_utc="2026-06-04T00:00:00Z")
+        if served is not None:
+            missed.append(f"the door serves labelled fit {served['id']} once a "
+                          f"record was put that way by hand")
+        if missed:
+            return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_GATE, violation, guard, True,
+                      f"{caught[0]} (and {len(caught) - 1} more statements "
+                      f"refused; the door passes over it on a record put in "
+                      f"force by hand)")
+    finally:
+        conn.close()
+
+
+def plant_a_correction_label_the_fit_does_not_support() -> Result:
+    """Label fits "fitted below its gate" that their own records say were not.
+
+    The label is decided by rule from the fit's own record, never by a list
+    (question 23's brief). Planted: a label on a fit clear of its gate on
+    the key; on a placeholder, a row that recorded nothing to fit; on a fit
+    short of its gate but stating another corrected count, another count
+    used, another gate, or stamped before the fit; and on a fit carrying an
+    activation (the ruling does not say one in force is taken out of force:
+    the operator's question). Each must be refused by the schema, and the
+    tool's door (`correction.write_labels`) must refuse the three fits by
+    name before it writes anything. Then the true label is written, and a
+    second label, a replacing insert, an edit and a delete must be refused:
+    the label is permanent (LAW 3).
+
+    AND FROM THE PROVER (2026-09-29), each stored by the table as first
+    built: a label stamped in 2099, and one stamped outside the one format;
+    a label whose number -- the table's rowid -- a function of the
+    connection's own gives the rules as the short fit and the row as the fit
+    in force (SQLite works a rowid out twice for one row of values), after
+    which the door passed over the only correction in force; and a replacing
+    insert whose number reads as an unlabelled twin to the rules and lands on
+    the labelled fit, writing over its label.
+    """
+    from gridiron import correction as _c
+
+    guard = ("schema correction_gate_label_is_its_fits_own_record and its "
+             "neighbours; correction.write_labels")
+    violation = "a 'fitted below its gate' label its fit's record does not support"
+    conn = _q16_world()
+    try:
+        if not _c_has_the_label_table(conn):
+            return Result(
+                LAW_CORRECTION_GATE, violation, guard, False,
+                "NOT CAUGHT - the record keeps no label, so nothing holds a "
+                "label to its fit's record and nothing marks a fit fitted "
+                "below its gate")
+        short = _q16_short_fit(conn)
+        _q16_both_passes(conn, range(1, 61), market="moneyline", line=None,
+                         predictor="llm")
+        conn.commit()
+        # sixty questions answered twice: 120 forecasts, clear on the key
+        clear = _q16_fit_id(conn, "moneyline", "llm", _c.record_fit(
+            conn, sport="nfl", market_type="moneyline", forecaster="llm",
+            model=_c.Platt(slope=0.9, intercept=0.0, n_train=120),
+            status="fitted but not applied - planted",
+            fitted_utc="2026-06-01T00:00:00Z"))
+        for g in range(1, 21):
+            _q16_forecast(conn, g, market="total", line=44.5, outcome=g % 2)
+        conn.commit()
+        _c.record_fit(conn, sport="nfl", market_type="total",
+                      forecaster="statistical", model=None,
+                      status="corrections begin at 50 settled - 20 so far",
+                      fitted_utc="2026-06-01T00:00:00Z")
+        placeholder = conn.execute(
+            "SELECT id FROM calibration_corrections WHERE market_type = 'total'"
+        ).fetchone()[0]
+        in_force = _q16_short_fit(conn, games=range(41, 69), predictor="llm",
+                                  active_from="2026-06-01T00:00:00Z")
+        label = ("INSERT INTO correction_gate_labels (correction_id,"
+                 " labelled_utc, verdict, gate, count_used, corrected_count,"
+                 " reason) VALUES (?, ?, 'fitted_below_its_gate', ?, ?, ?,"
+                 " 'planted: fitted below its gate')")
+        stamp = "2026-06-02T00:00:00Z"
+        false = {
+            "a fit clear of its gate on the key": (clear, stamp, 50, 120, 60),
+            "the same fit, its corrected count understated": (clear, stamp, 50, 120, 40),
+            "a placeholder, never fitted": (placeholder, stamp, 50, 0, 20),
+            "another corrected count than the record's": (short, stamp, 50, 56, 27),
+            "another count used than the fit's own": (short, stamp, 50, 50, 28),
+            "another gate than the one declared": (short, stamp, 40, 56, 28),
+            "stamped before the fit": (short, "2026-05-31T00:00:00Z", 50, 56, 28),
+            "a fit carrying an activation": (in_force, stamp, 50, 56, 28),
+            "stamped in 2099": (short, "2099-01-01T00:00:00Z", 50, 56, 28),
+            "stamped outside the one format": (short, "2026-06-02 by hand",
+                                               50, 56, 28),
+        }
+        caught, missed = [], []
+        for name, params in false.items():
+            try:
+                conn.execute(label, params)
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                caught.append(f"{name}: {str(exc)[:70]}")
+            else:
+                conn.rollback()
+                missed.append(name)
+        # A NUMBER READ TWICE (the prover, 2026-09-29): the rules shown the
+        # short fit, the row given the fit in force.
+        read_twice = label.replace("VALUES (?,", "VALUES (q16_the_number(),", 1)
+        _q16_reads_as(conn, short, in_force)
+        try:
+            conn.execute(read_twice, (stamp, 50, 56, 28))
+        except sqlite3.IntegrityError as exc:
+            caught.append(f"a number read twice: {str(exc)[:70]}")
+        else:
+            landed = [r[0] for r in conn.execute(
+                "SELECT correction_id FROM correction_gate_labels")]
+            if in_force in landed:
+                missed.append(
+                    f"a label the rules read as fit {short} landed on fit "
+                    f"{in_force}, in force, and the door now serves "
+                    f"{(_c.active_correction(conn, sport='nfl', market_type='spread', forecaster='llm', at_utc='2026-06-04T00:00:00Z') or {'id': None})['id']}")
+            else:
+                caught.append(f"a number read twice landed where the rules "
+                              f"read it: fit {landed}")
+        conn.rollback()
+        for name, ids in (("the tool's door, a fit clear on the key", [clear]),
+                          ("the tool's door, a placeholder", [placeholder]),
+                          ("the tool's door, a fit in force", [in_force])):
+            try:
+                _c.write_labels(conn, ids, now=stamp)
+            except _c.Refused as exc:
+                caught.append(f"{name}: {str(exc)[:70]}")
+            else:
+                missed.append(name)
+        wrote = _c.write_labels(conn, [short], now=stamp)
+        if wrote != {"written": 1, "already": 0}:
+            missed.append(f"the true label was not written ({wrote})")
+        # AND A TWIN: another fit of fifty-six forecasts on twenty-eight
+        # questions, unlabelled. Read as the twin by the rules, landing on the
+        # labelled fit under OR REPLACE, it wrote over the stored label.
+        twin = _q16_short_fit(conn, market="moneyline")
+        stored = [tuple(r) for r in conn.execute(
+            "SELECT * FROM correction_gate_labels WHERE correction_id = ?",
+            (short,))]
+        _q16_reads_as(conn, twin, short)
+        try:
+            conn.execute(read_twice.replace("INSERT", "INSERT OR REPLACE", 1),
+                         ("2026-06-05T00:00:00Z", 50, 56, 28))
+        except sqlite3.IntegrityError as exc:
+            caught.append(f"a replacing number read twice: {str(exc)[:70]}")
+        else:
+            after = [tuple(r) for r in conn.execute(
+                "SELECT * FROM correction_gate_labels WHERE correction_id = ?",
+                (short,))]
+            if after != stored:
+                missed.append(f"a replacing insert the rules read as fit {twin} "
+                              f"wrote over fit {short}'s label: {after}")
+            else:
+                caught.append("a replacing number read twice left the stored "
+                              "label as written")
+        conn.rollback()
+        for name, (sql, params) in {
+            "a second label": (label, (short, "2026-06-05T00:00:00Z", 50, 56, 28)),
+            "a replacing insert": (label.replace("INSERT", "INSERT OR REPLACE", 1),
+                                   (short, "2026-06-05T00:00:00Z", 50, 56, 28)),
+            "an edit": ("UPDATE correction_gate_labels SET reason = 'rewritten "
+                        "afterwards' WHERE correction_id = ?", (short,)),
+            "a delete": ("DELETE FROM correction_gate_labels WHERE"
+                         " correction_id = ?", (short,)),
+        }.items():
+            try:
+                conn.execute(sql, params)
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                caught.append(f"{name}: {str(exc)[:70]}")
+            else:
+                conn.rollback()
+                missed.append(name)
+        if missed:
+            return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_GATE, violation, guard, True,
+                      f"{caught[0]} (and {len(caught) - 1} more refused)")
+    finally:
+        conn.close()
+
+
+def _q16_reads_as(conn, first: int, then: int) -> None:
+    """`q16_the_number()`, a function the connection defines: `first` the
+    first time it is asked, `then` after -- a number read one way by the
+    rules and another by the row, as SQLite reads a rowid for one row of
+    values (question 13's finding; the prover of question 16, 2026-09-29)."""
+    asked = {"n": 0}
+
+    def number() -> int:
+        asked["n"] += 1
+        return first if asked["n"] == 1 else then
+    conn.create_function("q16_the_number", 0, number)
+
+
+def _c_has_the_label_table(conn) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+        "   AND name = 'correction_gate_labels'").fetchone() is not None
+
+
+def plant_a_forward_count_counting_passes() -> Result:
+    """Count a version's forward record by forecasts where it counts questions.
+
+    `correction.version_report`'s forward figure -- "measured on predictions
+    written under this version" -- counted every settled forecast carrying
+    the version until 2026-09-29, a question's two passes twice. Here ten
+    questions answered twice and five games asked at two rungs, all under
+    version 1, must be a forward count of 20 (30 forecasts beside it); and a
+    door keyed without the rung swapped in must be refused by the page's
+    builder.
+    """
+    from gridiron import correction as _c, views as _views
+
+    guard = ("correction.version_report through correction.settled_rows; "
+             "calibration.assert_no_pooled_correction_counts")
+    violation = "a version's forward count counting a question's passes"
+    conn = _q16_world()
+    try:
+        _c.record_fit(conn, sport="nfl", market_type="spread",
+                      forecaster="statistical",
+                      model=_c.Platt(slope=0.8, intercept=0.1, n_train=120),
+                      status="active - planted",
+                      active_from="2025-11-01T00:00:00Z",
+                      fitted_utc="2025-11-01T00:00:00Z")
+        # ten questions answered twice at one rung, and five games asked at
+        # two rungs: twenty questions over thirty forecasts
+        _q16_both_passes(conn, range(1, 11), version=1)
+        for g in range(11, 16):
+            _q16_forecast(conn, g, line=-3.5, pass_kind="early", version=1,
+                          outcome=g % 2)
+            _q16_forecast(conn, g, line=-6.5, pass_kind="final", version=1,
+                          outcome=(g + 1) % 2)
+        conn.commit()
+        forward = _c.version_report(conn, sport="nfl", market_type="spread",
+                                    forecaster="statistical")[0]["forward"]
+        if forward.get("n") != 20:
+            return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                          f"NOT CAUGHT - version 1's forward count is "
+                          f"{forward.get('n')} for twenty questions -- ten "
+                          f"answered twice, five games at two rungs -- "
+                          f"written under it")
+        real = _c.settled_rows
+        _c.settled_rows = _q16_doors(_c)["a door keyed without the rung"]
+        try:
+            _views.corrections_report(conn, "nfl")
+        except calibration.MergedCurve as exc:
+            return Result(LAW_CORRECTION_GATE, violation, guard, True,
+                          f"20 questions over {forward.get('forecasts')} "
+                          f"forecasts; a door without the rung: "
+                          f"{str(exc).splitlines()[0][:100]}")
+        finally:
+            _c.settled_rows = real
+        return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                      "NOT CAUGHT - a door keyed without the rung passed the "
+                      "page's builder")
+    finally:
+        conn.close()
+
+
+def plant_a_learning_row_counting_one_prop_type() -> Result:
+    """Put the learning panel's correction row back on one prop type.
+
+    THE SHIPPED ROW: "What the record has taught it" stated, under each prop
+    type, `calibration.resolved` -- the statistical model's standing
+    forecasts of THAT type -- beside a correction fitted, and gated, for
+    every prop type together: MLB hits "31 of 50 settled rows" beside a
+    category of 80 questions. Question 31's note: each row states the
+    category's count and says it is every prop type together; no category
+    split. Here receiving yards (30 questions) and rushing yards (25), each
+    answered twice: every prop row must say 55 settled questions, every prop
+    type together, and one stating its own type's count must be refused.
+    """
+    from gridiron import views as _views
+
+    guard = "views.learning; calibration.assert_no_pooled_correction_counts"
+    violation = "a correction row stating one prop type's count beside a fit of every prop type"
+    conn = _q16_world()
+    try:
+        for g in range(1, 31):
+            for pass_kind in ("early", "final"):
+                _q16_forecast(conn, g, market="prop", prop_type="receiving_yards",
+                              subject=f"Player {g} receiving_yards", line=55.5,
+                              pass_kind=pass_kind, outcome=g % 2)
+        for g in range(31, 56):
+            for pass_kind in ("early", "final"):
+                _q16_forecast(conn, g, market="prop", prop_type="rushing_yards",
+                              subject=f"Player {g} rushing_yards", line=44.5,
+                              pass_kind=pass_kind, outcome=g % 2)
+        conn.commit()
+        rows = [r for r in _views.learning(conn, "nfl")["categories"]
+                if r["market"] in config.SPORT_PROP_MARKETS["nfl"]]
+        wrong = [f"{r['market']}: n {r['n']}, {r['status_words']!r}"
+                 for r in rows
+                 if r["n"] != 55 or "55 settled questions" not in r["status_words"]
+                 or "every prop type together" not in r["status_words"]]
+        if wrong or not rows:
+            return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(wrong or ["no prop row"]))
+        payload = _views.learning(conn, "nfl")
+        at = next(i for i, r in enumerate(payload["categories"])
+                  if r["market"] == "receiving_yards")
+        planted = dict(payload["categories"][at], n=30,
+                       status_words="not yet fitted: 30 of 50 settled questions, "
+                                    "20 more before a correction is calculated")
+        payload["categories"][at] = planted
+        try:
+            calibration.assert_no_pooled_correction_counts(payload)
+        except calibration.MergedCurve as exc:
+            return Result(LAW_CORRECTION_GATE, violation, guard, True,
+                          f"every prop row states 55, every prop type "
+                          f"together; one type's 30: "
+                          f"{str(exc).splitlines()[0][:100]}")
+        return Result(LAW_CORRECTION_GATE, violation, guard, False,
+                      "NOT CAUGHT - a prop row stating its own type's 30 "
+                      "passed the guard")
+    finally:
+        conn.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -18481,6 +19170,18 @@ def main() -> int:
     results.append(plant_a_door_keyed_without_the_rung())
     results.append(plant_a_door_keyed_without_the_forecaster())
     results.append(plant_a_distinct_bet_keyed_by_hand())
+    # EACH CORRECTION GATE'S COUNT, PER FORECASTER AND DISTINCT BET
+    # (operator question 16, ruled (B) 2026-09-27: "planting each";
+    # question 23, ruled (A) 2026-09-28): the page's line, the fit's own
+    # gate, a version's forward count and the learning panel's row, each
+    # one forecaster's questions; and the label, true of its fit's own
+    # record, on a fit that can never be put in force.
+    results.append(plant_a_correction_count_pooling_passes_or_rungs())
+    results.append(plant_a_correction_fitted_on_the_pooled_count())
+    results.append(plant_a_forward_count_counting_passes())
+    results.append(plant_a_learning_row_counting_one_prop_type())
+    results.append(plant_a_labelled_correction_activated())
+    results.append(plant_a_correction_label_the_fit_does_not_support())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())
