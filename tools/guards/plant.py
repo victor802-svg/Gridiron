@@ -18780,6 +18780,230 @@ def plant_a_learning_row_counting_one_prop_type() -> Result:
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# OPERATOR QUESTION 27 (ruled 2026-09-28; the brief's reading confirmed
+# 2026-09-29): "the standing pass is chosen by pass, not by write time: the
+# final pass stands whenever one exists before the start; otherwise the
+# latest early pass. A read rule -- no row changes. ... Separately, a
+# catch-up may not run an early pass for a question whose final pass exists;
+# it is a SlateAlreadyAnswered noop. Own commit, planting."
+# ---------------------------------------------------------------------------
+
+def plant_a_later_early_pass_standing_over_a_final_pass() -> Result:
+    """Write a question's final pass, then its early pass, both before the
+    start, and ask which one the record stands on.
+
+    THE SHAPE ON THE RECORD (docs/REPAIR_STATE.md question 27): sixteen NFL
+    week-3 reasoning-pass totals, final passes written by `final:nfl` on 23
+    September at 19:30Z and early passes by the catch-up's `predict:nfl` at
+    05:32-05:36Z the next morning, all before their starts. The standing rule
+    took the latest written, so every one stood on its early pass.
+
+    ESCAPES on the code before the ruling: the curve grades the early pass's
+    0.58. CAUGHT only if the curve grades the final pass's 0.71, the guard's
+    own recount (`gridiron.recount`) keeps the final pass, the slate's card
+    shows it (the card kept a rule of its own until the ruling), and the
+    gate's source scan (`audit.standing_pass_faults`) names the one door's
+    order put back to the write time and the at-the-line window ordering its
+    claims by the write time again -- the two a count cannot see, because on
+    this shape no count moves.
+    """
+    from gridiron import recount as _recount, views as _views
+
+    guard = "calibration.standing_row_clause and audit.standing_pass_faults"
+    violation = "a later early pass standing over a final pass written before the start"
+    subject = "Q27PLANT"
+    with tempfile.TemporaryDirectory() as tmp:
+        conn, game_id, kickoff = _timing_world(tmp)
+        if game_id is None:
+            conn.close()
+            return Result(LAW_ONE_CLAUSE, violation, guard, False,
+                          "the harness league has no NFL game to plant on")
+        _plant_pair(conn, game_id, subject, [
+            ("final", _iso_shift(kickoff, -2 * 86400), 0.71),
+            ("early", _iso_shift(kickoff, -86400), 0.58)])
+        try:
+            final_id, early_id = [r[0] for r in conn.execute(
+                "SELECT id FROM predictions WHERE subject = ? ORDER BY id",
+                (subject,))]
+            graded = _graded_claims(conn, subject)
+            rows = [r for r in _recount.forecasts(
+                conn, sport="nfl", predictor="statistical", market_type="spread",
+                prop_type=None, event_tier=None) if r["subject"] == subject]
+            recounted = sorted(r["id"] for r in _recount.standing_of(rows).values())
+            slate = conn.execute("SELECT season, week FROM games WHERE id = ?",
+                                 (game_id,)).fetchone()
+            cards = [c["prediction_id"] for c in _views.week(
+                conn, "nfl", slate["season"], slate["week"])["cards"]
+                if c["subject"] == subject]
+        finally:
+            conn.close()
+    if graded != [0.71] or recounted != [final_id] or cards != [final_id]:
+        return Result(
+            LAW_ONE_CLAUSE, violation, guard, False,
+            f"NOT CAUGHT - the final pass (#{final_id}, 0.71) was written "
+            f"before the early pass (#{early_id}, 0.58), both before the "
+            f"start; the curve grades {graded}, the recount keeps {recounted} "
+            f"and the card shows {cards}: the write time chose the pass")
+
+    scan = getattr(audit, "standing_pass_faults", None)
+    order = getattr(calibration, "standing_pass_order", None)
+    if scan is None or order is None:
+        return Result(LAW_ONE_CLAUSE, violation, guard, False,
+                      "NOT CAUGHT - no scan reads the standing rule's order")
+    if scan():
+        return Result(LAW_ONE_CLAUSE, violation, guard, False,
+                      f"the shipped tree already fails the scan: {scan()[0]}")
+    calibration.standing_pass_order = (
+        lambda f, g, row=None: f"{row or f}.created_utc DESC, {row or f}.id DESC")
+    try:
+        door = scan()
+    finally:
+        calibration.standing_pass_order = order
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        victim = root / "market" / "at_the_line.py"
+        text = victim.read_text(encoding="utf-8")
+        shipped = "ORDER BY {calibration.standing_pass_order('p', 'g', 'c')})"
+        if shipped not in text:
+            return Result(LAW_ONE_CLAUSE, violation, guard, False,
+                          "the at-the-line window is no longer written the way "
+                          "this planting expects; re-point it")
+        victim.write_text(text.replace(shipped, "ORDER BY c.created_utc DESC, "
+                                                "c.id DESC)"), encoding="utf-8")
+        window = scan(root)
+    if not door or not window:
+        return Result(LAW_ONE_CLAUSE, violation, guard, False,
+                      f"NOT CAUGHT - the door's order put back to the write "
+                      f"time: {door or 'no fault'}; the at-the-line window by "
+                      f"the write time: {window or 'no fault'}")
+    return Result(LAW_ONE_CLAUSE, violation, guard, True,
+                  f"the final pass written first stands (0.71 graded, #{final_id} "
+                  f"recounted and on the card); the order put back to the write "
+                  f"time is named ({door[0][:70]}) and so is the at-the-line "
+                  f"window ({window[0][:60]})")
+
+
+def plant_an_early_pass_written_over_a_final_pass() -> Result:
+    """Answer a slate's spread and total by the final pass while the
+    moneyline is held, then run the early pass over it -- and again with
+    nothing left for it to answer, as a hand run and as the scheduled task.
+
+    THE SHAPE ON THE RECORD (docs/REPAIR_STATE.md question 27): on 24
+    September at 05:32-05:36Z the catch-up's `predict:nfl` (run 2336) wrote
+    sixteen NFL week-3 early passes over final passes written the evening
+    before. The slate was open -- the spread and moneyline had just been
+    trained and had no rows -- and the write door asked only for an early
+    row of each question, so the answered totals were answered again.
+
+    ESCAPES on the code before the ruling: the early pass writes the spread
+    and total over their final passes. CAUGHT only if the early pass writes
+    the open market (the moneyline) and none of the answered ones, names
+    each it skipped (`final_pass_answered`); a run left with nothing else to
+    write raises exactly `run.SlateAlreadyAnswered`, naming them and writing
+    nothing; and the scheduled predict task records that 'noop' with the
+    questions in its payload.
+    """
+    from gridiron import sports as _sports, tasks as _tasks
+
+    guard = "predict.final_pass_written and run.run_slate"
+    violation = "an early pass written over a question's final pass"
+    held = dict(config.HELD_MARKETS)
+    retired = dict(config.RETIRED_MARKETS)
+    seasons = dict(config.SPORT_CURRENT_SEASON)
+    adapter = _sports.get("nfl")
+    next_slate = adapter.next_slate
+    kept = _quiet_failures()
+    hold = {("nfl", "moneyline"): {"held": "2026-09-24",
+                                   "reason": config.HELD_REASON}}
+
+    def early_rows(conn, week, market):
+        return conn.execute(
+            "SELECT COUNT(*) FROM predictions p JOIN games g ON g.id = p.game_id"
+            " WHERE g.week = ? AND p.market_type = ? AND p.pass_kind = 'early'",
+            (week, market)).fetchone()[0]
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = seeded_database(Path(tmp) / "q27_noop.db")
+        try:
+            # ONE SLATE WITH A MARKET LEFT OPEN: the final pass answers the
+            # spread and total while the moneyline is held; the early pass
+            # then runs with the hold lifted.
+            config.HELD_MARKETS = dict(hold)
+            run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                          use_llm=False, snapshot=False, final=True)
+            config.HELD_MARKETS = {}
+            opened = run.run_slate(conn, "nfl", 2025, 6, include_props=False,
+                                   use_llm=False, snapshot=False)
+            over = early_rows(conn, 6, "spread") + early_rows(conn, 6, "total")
+            open_written = early_rows(conn, 6, "moneyline")
+            named = list(opened.get("final_pass_answered") or [])
+            if over or open_written != 4 or len(named) != 8:
+                return Result(
+                    LAW_THE_JOBS, violation, guard, False,
+                    f"NOT CAUGHT - the early pass wrote {over} spread and total "
+                    f"forecasts over their final passes, {open_written} for the "
+                    f"open moneyline, and named {len(named)} it skipped")
+            # A SLATE WITH NOTHING ELSE TO ANSWER: the moneyline still held.
+            config.HELD_MARKETS = dict(hold)
+            run.run_slate(conn, "nfl", 2025, 5, include_props=False,
+                          use_llm=False, snapshot=False, final=True)
+            before = conn.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
+            refused = None
+            try:
+                run.run_slate(conn, "nfl", 2025, 5, include_props=False,
+                              use_llm=False, snapshot=False)
+            except run.SlateAlreadyAnswered as exc:
+                refused = exc
+            after = conn.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
+            if (refused is None or type(refused) is not run.SlateAlreadyAnswered
+                    or len(getattr(refused, "final_pass_answered", [])) != 8
+                    or after != before):
+                return Result(
+                    LAW_THE_JOBS, violation, guard, False,
+                    f"NOT CAUGHT - an early pass left with nothing to write but "
+                    f"answered questions {'was not refused' if refused is None else 'was refused'}"
+                    f" and wrote {after - before} forecasts")
+            # AND THE SCHEDULED TASK, which the catch-up runs: 'noop', named.
+            config.SPORT_CURRENT_SEASON["nfl"] = 2025
+            for market in config.SPORT_PROP_MARKETS.get("nfl", ()):
+                config.RETIRED_MARKETS[("nfl", market)] = {
+                    "retired": "2026-09-28", "from": "2026-09-01T00:00:00Z",
+                    "reason": "this planting's world asks the game markets only"}
+            adapter.next_slate = lambda _conn, _season: 5
+            ran = _tasks.run_task(conn, "predict:nfl", use_llm=False)
+            row = conn.execute(
+                "SELECT result, detail, payload_json FROM task_runs"
+                " WHERE task = 'predict:nfl' ORDER BY id DESC LIMIT 1").fetchone()
+        finally:
+            config.HELD_MARKETS = held
+            config.RETIRED_MARKETS.clear()
+            config.RETIRED_MARKETS.update(retired)
+            config.SPORT_CURRENT_SEASON.clear()
+            config.SPORT_CURRENT_SEASON.update(seasons)
+            adapter.next_slate = next_slate
+            _restore_failures(kept)
+            conn.close()
+    import json as _json
+
+    payload = _json.loads(row["payload_json"] or "{}")
+    if (ran.get("result") != "noop" or row["result"] != "noop"
+            or len(payload.get("final_pass_answered") or []) != 8
+            or "final forecast" not in (row["detail"] or "")):
+        return Result(
+            LAW_THE_JOBS, violation, guard, False,
+            f"NOT CAUGHT - the scheduled predict over the answered slate was "
+            f"recorded {row['result']!r} ({(row['detail'] or '')[:90]})")
+    return Result(
+        LAW_THE_JOBS, violation, guard, True,
+        f"the early pass wrote the open moneyline (4) and none of the 8 "
+        f"answered spread and total questions, naming each; with nothing "
+        f"else open it was refused as answered and wrote nothing; the "
+        f"scheduled task recorded 'noop' ({row['detail'][:80]})")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -19182,6 +19406,11 @@ def main() -> int:
     results.append(plant_a_learning_row_counting_one_prop_type())
     results.append(plant_a_labelled_correction_activated())
     results.append(plant_a_correction_label_the_fit_does_not_support())
+    # OPERATOR QUESTION 27 (ruled 2026-09-28): the standing pass is chosen by
+    # pass, not by write time; no early pass is written over a final pass,
+    # and a run left with nothing else to write is a refused rerun.
+    results.append(plant_a_later_early_pass_standing_over_a_final_pass())
+    results.append(plant_an_early_pass_written_over_a_final_pass())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

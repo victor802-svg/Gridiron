@@ -707,6 +707,22 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
     # spans two forecasters, so neither's later claim can stand in for the
     # other's question. `gridiron.recount` works this rule out again, and
     # `calibration.assert_no_pooled_claims` refuses a count that differs.
+    #
+    # CHOSEN BY PASS, NOT BY WRITE TIME (operator question 27, ruled
+    # 2026-09-28): "the final pass stands whenever one exists before the
+    # start; otherwise the latest early pass." This record's rows are claims,
+    # so the window orders them by their forecast's pass first -- a claim on
+    # a final pass written before the start stands over any claim on an
+    # early pass, whenever each was written -- and then, as before, the last
+    # claim written, the id breaking a tie. The order is the blind clause's
+    # own (`calibration.standing_pass_order`), so the two records cannot
+    # choose a pass two ways. Until this date a question whose early pass was
+    # written after its final pass (the sixteen NFL week-3 reasoning-pass
+    # totals of 24 September) stood here on the early pass's claim, because
+    # the claim writer reads every forecast at every look in the order of
+    # their numbers and the early pass's number was the higher.
+    from .. import calibration
+
     refuse_a_pooled_count(sport, market, predictor, event_tier)
     tier_clause, params = "", [sport, market, predictor]
     if event_tier is not None:
@@ -721,7 +737,7 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
         "SELECT * FROM ("
         f" SELECT {bet.columns('p')}, c.*, g.season, g.week,"
         f"        ROW_NUMBER() OVER (PARTITION BY {bet.columns('p')}"
-        "                           ORDER BY c.created_utc DESC, c.id DESC)"
+        f"                           ORDER BY {calibration.standing_pass_order('p', 'g', 'c')})"
         "          AS latest_first"
         "   FROM at_the_line_claims c"
         "   JOIN predictions p ON p.id = c.prediction_id"

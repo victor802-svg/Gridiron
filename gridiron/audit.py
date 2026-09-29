@@ -8467,6 +8467,7 @@ def distinct_bet_key_faults(root: Path | None = None) -> list[str]:
                 faults.append(
                     f"calibration.standing_row_clause({same_set}): the question "
                     f"{a} is matched to {b} by is not `bet.same({a!r}, {b!r})`")
+    faults.extend(standing_pass_faults(root))
     # AND THE PAIR A RECOMMENDATION COUNT SETS ASIDE (operator questions 12
     # and 22, 2026-09-28): two recommendations are one pair only when their
     # forecasts are one distinct bet. The recount beside the closing line
@@ -8518,6 +8519,96 @@ def distinct_bet_key_faults(root: Path | None = None) -> list[str]:
 #: The schema rule that counts a fit's questions by the key written out
 #: (question 23; 2026-09-29), read by `distinct_bet_key_faults`.
 LABEL_KEY_RULE = "correction_gate_label_is_its_fits_own_record"
+
+
+#: WHICH PASS STANDS, AS RULED (operator question 27, ruled 2026-09-28): "the
+#: standing pass is chosen by pass, not by write time: the final pass stands
+#: whenever one exists before the start; otherwise the latest early pass."
+#: The first term of the order a question's rows are chosen by, held against
+#: the one door's (`calibration.standing_pass_order`) as `RULED_DISTINCT_BET`
+#: holds the key. WHY THE TEXT IS READ: the door and its recount
+#: (`gridiron.recount`) state the rule twice, so an order put back to the
+#: write time in the door alone changes a recounted count only where one
+#: pass carried something the other did not -- a price, a second look at the
+#: line -- and on the sixteen questions it moved on 2026-09-28 it changes
+#: none; the curve's Brier and log loss move, and no count sees them.
+RULED_STANDING_PASS_FIRST = ("({f}.pass_kind = 'final' AND ({g}.kickoff_utc"
+                             " IS NULL OR {f}.created_utc <= {g}.kickoff_utc))"
+                             " DESC,")
+
+
+def _calls_the_pass_order(node) -> bool:
+    """Is `node` a call of `calibration.standing_pass_order(...)`?"""
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "standing_pass_order"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "calibration")
+
+
+def standing_pass_faults(root: Path | None = None) -> list[str]:
+    """Every place a question's standing row is chosen by something other
+    than the ruled order, in words (operator question 27, ruled 2026-09-28;
+    read by `distinct_bet_key_faults`, gate step 2).
+
+    Three reads: the one door's first term is the final pass written before
+    the start (`RULED_STANDING_PASS_FIRST`); the standing clause orders its
+    candidates by the door, both times it is built; and the at-the-line
+    record's window orders its claims by the door -- read from its source,
+    because that door's SQL is built inside the function that runs it.
+    Every other reader of a question's standing row reads the clause
+    (`calibration.resolved`, the priced, drift and outlook doors, the
+    coverage line, the ranker, the slate's cards), so it moves with it.
+    """
+    from . import calibration
+
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    faults: list[str] = []
+    order = calibration.standing_pass_order("p2", "g2")
+    ruled = RULED_STANDING_PASS_FIRST.format(f="p2", g="g2")
+    if not order.startswith(ruled):
+        faults.append(
+            f"calibration.standing_pass_order does not choose the final pass "
+            f"written before the start first: {order!r} (operator question 27, "
+            f"2026-09-28: the standing pass is chosen by pass, not by write "
+            f"time)")
+    for same_set in (False, True):
+        clause = " ".join(calibration.standing_row_clause(same_set).split())
+        if f"ORDER BY {order} LIMIT 1" not in clause:
+            faults.append(
+                f"calibration.standing_row_clause({same_set}) does not order a "
+                f"question's candidates by `standing_pass_order('p2', 'g2')`: "
+                f"it chooses the standing row some other way")
+    path = root / "market" / "at_the_line.py"
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError) as exc:
+        faults.append(f"market/at_the_line.py could not be read for its "
+                      f"standing claims' order ({exc})")
+        return faults
+    door = next((node for node in tree.body
+                 if isinstance(node, ast.FunctionDef)
+                 and node.name == "standing_claims"), None)
+    ordered = False
+    for node in ast.walk(door) if door is not None else ():
+        if not isinstance(node, ast.JoinedStr):
+            continue
+        parts = node.values
+        for i, part in enumerate(parts[:-1]):
+            nxt = parts[i + 1]
+            if (isinstance(part, ast.Constant) and isinstance(part.value, str)
+                    and part.value.rstrip().upper().endswith("ORDER BY")
+                    and isinstance(nxt, ast.FormattedValue)
+                    and _calls_the_pass_order(nxt.value)
+                    and [a.value for a in nxt.value.args
+                         if isinstance(a, ast.Constant)] == ["p", "g", "c"]):
+                ordered = True
+    if not ordered:
+        faults.append(
+            "market/at_the_line.py standing_claims: the window does not order a "
+            "question's claims by `calibration.standing_pass_order('p', 'g', "
+            "'c')` -- the claim on a final pass written before the start first "
+            "-- so the at-the-line record chooses a pass its own way")
+    return faults
 
 
 def _schema_rule_text(name: str, schema: str | None = None) -> str | None:

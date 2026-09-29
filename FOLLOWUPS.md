@@ -8358,3 +8358,242 @@ difference.
   server's start has opened the record under the schema), then
   `python tools/label_corrections_below_the_gate.py --database var/gridiron.db --write --live`
   -- nine written, or a refusal naming the difference.
+
+## The standing pass is chosen by pass; no early pass is written over a final one -- built 2026-09-29 *(operator question 27, ruled 2026-09-28, second set; the brief's reading confirmed by the operator on 2026-09-29; docs/briefs/2026-09-28-rulings-second-set.md and 2026-09-29-rulings.md)*
+
+"Q27: the standing pass is chosen by pass, not by write time: the final
+pass stands whenever one exists before the start; otherwise the latest
+early pass. A read rule -- no row changes. The 16 NFL totals are re-scored
+under it and every moved number listed. Separately, a catch-up may not run
+an early pass for a question whose final pass exists; it is a
+SlateAlreadyAnswered noop. Own commit, planting." **A READ RULE**: no row,
+table, column or schema object changes. Every moved number of the Record
+page is the numbers step's (the released code against this tree on one
+verified copy); what follows is the sixteen re-scored and every standing
+row and claim the rule moves, read on the live record itself.
+
+### RE-SCORED, READ-ONLY *(2026-09-29T05:21:44Z, through `db.read_the_live_record`; no copy of the record made; `scratchpad/q27/rescore.py` -> `rescore.json`, `claims_detail.py` -> `claims_detail.txt`. "Before" is this tree's clause with its order put back to the write time alone -- the released clause's text exactly; "after" is this tree's)*
+
+- **The whole record**: 2175 standing rows before and after (every sport,
+  forecaster and factor set, the rule over every row). Exactly sixteen
+  move -- the sixteen early passes out, their final passes in -- and no
+  other question on the record has a final pass written before an early
+  pass. No row changed.
+- **The sixteen** (NFL week 3, totals, reasoning pass, fs2, each asked at
+  the same rung both times; the final pass written by `final:nfl` run 2052
+  on 23 September 19:30-19:31Z, the early pass by the catch-up's
+  `predict:nfl` run 2336 on 24 September 05:32-05:36Z, both before every
+  start). Every one of the 32 rows claims the over; the two passes differ
+  by at most two points of probability. All sixteen are settled (PHI-CHI
+  on the night of 28 September). The outcome is the over's; Brier and log
+  loss are each row's own, the stated side's probability against it, as
+  the curve scores them:
+
+  | Game | Score | Rung | Stood -> stands | Went | Brier | Log loss |
+  |---|---|---|---|---|---|---|
+  | ATL-GB | ATL 35 at GB 14 | 41.5 | #2227 0.54 -> #1999 0.52 | over | 0.2116 -> 0.2304 | 0.6162 -> 0.6539 |
+  | CAR-CLE | CAR 18 at CLE 21 | 47.5 | #2232 0.50 -> #2009 0.50 | under | 0.2500 -> 0.2500 | 0.6931 -> 0.6931 |
+  | CIN-PIT | CIN 27 at PIT 30 | 29.5 | #2237 0.52 -> #2015 0.50 | over | 0.2304 -> 0.2500 | 0.6539 -> 0.6931 |
+  | HOU-IND | HOU 17 at IND 19 | 50.5 | #2242 0.50 -> #2021 0.50 | under | 0.2500 -> 0.2500 | 0.6931 -> 0.6931 |
+  | KC-MIA | KC 24 at MIA 10 | 47.5 | #2247 0.50 -> #2027 0.52 | under | 0.2500 -> 0.2704 | 0.6931 -> 0.7340 |
+  | LAC-BUF | LAC 16 at BUF 24 | 53.5 | #2250 0.50 -> #2033 0.50 | under | 0.2500 -> 0.2500 | 0.6931 -> 0.6931 |
+  | NE-JAX | NE 6 at JAX 35 | 29.5 | #2253 0.52 -> #2039 0.50 | over | 0.2304 -> 0.2500 | 0.6539 -> 0.6931 |
+  | NYJ-DET | NYJ 24 at DET 31 | 35.5 | #2258 0.54 -> #2045 0.54 | over | 0.2116 -> 0.2116 | 0.6162 -> 0.6162 |
+  | SEA-WAS | SEA 31 at WAS 33 | 32.5 | #2263 0.50 -> #2051 0.52 | over | 0.2500 -> 0.2304 | 0.6931 -> 0.6539 |
+  | TEN-NYG | TEN 7 at NYG 12 | 38.5 | #2268 0.50 -> #2057 0.50 | under | 0.2500 -> 0.2500 | 0.6931 -> 0.6931 |
+  | ARI-SF | ARI 30 at SF 36 | 32.5 | #2273 0.52 -> #2063 0.52 | over | 0.2304 -> 0.2304 | 0.6539 -> 0.6539 |
+  | MIN-TB | MIN 23 at TB 16 | 35.5 | #2278 0.50 -> #2068 0.52 | over | 0.2500 -> 0.2304 | 0.6931 -> 0.6539 |
+  | BAL-DAL | BAL 34 at DAL 31 | 41.5 | #2283 0.50 -> #2070 0.50 | over | 0.2500 -> 0.2500 | 0.6931 -> 0.6931 |
+  | LV-NO | LV 35 at NO 27 | 44.5 | #2286 0.52 -> #2072 0.52 | over | 0.2304 -> 0.2304 | 0.6539 -> 0.6539 |
+  | LA-DEN | LA 26 at DEN 30 | 35.5 | #2291 0.50 -> #2074 0.50 | over | 0.2500 -> 0.2500 | 0.6931 -> 0.6931 |
+  | PHI-CHI | PHI 7 at CHI 27 | 41.5 | #2296 0.52 -> #2076 0.50 | under | 0.2704 -> 0.2500 | 0.7340 -> 0.6931 |
+
+  Over the sixteen: mean Brier 0.2416 -> 0.2428, mean log loss 0.6763 ->
+  0.6786; the side is the over both ways, so the hit rate does not move
+  (10 of 16). Nine questions do not move at all (the same probability both
+  passes), four get worse by the final pass, three better.
+- **The curve they sit in**, NFL total, reasoning pass (17 settled before
+  and after): Brier 0.2409 -> 0.2420, log loss 0.6750 -> 0.6772, hit rate
+  64.7% (11 of 17) unchanged. Every other blind category of every sport,
+  market and forecaster is unchanged (each compared). No gate count moves:
+  the curve's n is 17 both ways.
+- **Nothing else of the sixteen moves**: none of the 32 rows carries a
+  priced row, each has one media look (so no drift pair either way), and
+  only PHI-CHI's early pass carries a recommendation (counted by its own
+  rule, question 12's, which does not read the standing row).
+- **At the venue's line, eight standing claims move, every count
+  unchanged** -- the at-the-line window brought to the one order (READINGS
+  TAKEN):
+
+  | Cell (n, both ways) | Question | Stood: claim on the early pass | Stands: claim on the final pass |
+  |---|---|---|---|
+  | NFL total, reasoning pass (1) | PHI-CHI 41.5 | #1720 on #2296, written 28 Sep 22:35Z, the look of 25 Sep 19:27Z, model 0.52, venue 0.485 | #650 on #2076, written 23 Sep 19:31Z, model 0.50, venue 0.475 |
+  | MLB point spread, statistical (102) | mlb_823411 PHI -1.5 | #955 on #2190, 24 Sep 21:35Z, venue 0.65 | #930 on #2335, 21:30Z, venue 0.65 |
+  | | mlb_824707 BOS -1.5 | #956 on #2195, 24 Sep 21:35Z, venue 0.355 | #934 on #2338, 21:30Z, venue 0.355 |
+  | | mlb_823816 MIA -1.5 | #1217 on #2399, 25 Sep 22:35Z, venue 0.615 | #1118 on #2535, 21:33Z, venue 0.615 |
+  | | mlb_824057 KC -1.5 | #1553 on #2619, 26 Sep 22:35Z, venue 0.615 | #1481 on #2977, 21:31Z, venue 0.615 |
+  | | mlb_823245 SD -1.5 | #1570 on #2634, 27 Sep 00:05Z, venue 0.355 | #1498 on #2992, 26 Sep 21:31Z, venue 0.355 |
+  | | mlb_823083 SEA -1.5 | #1592 on #2639, 27 Sep 01:05Z, venue 0.395 | #1504 on #2997, 26 Sep 21:31Z, venue 0.405 |
+  | MLB moneyline, statistical (107) | mlb_824866 ATL | #957 on #2203, 24 Sep 21:35Z, venue 0.665 | #942 on #2343, 21:30Z, venue 0.665 |
+
+  WHY THE SEVEN MLB QUESTIONS: their blind standing row was the final pass
+  before and after (it was written after the early pass), but the
+  near-start pass reads the venue on every firing for each open
+  recommendation's forecast, and the recommendation was the early pass's
+  (item 5 refuses a second on the game and market), so the early pass was
+  read at looks after its final pass, which was read only when it was
+  written. The two passes gave each MLB question the same probability, so
+  the claim's model number and its Brier do not move (0.1197, 0.0863,
+  0.4030, 0.1251, 0.4010, 0.3906, 0.3975); the venue's number moves only
+  for SEA (0.395 to 0.405). PHI-CHI's claim moves from 0.52 at 0.485 to
+  0.50 at 0.475 (it went under): Brier 0.2704 -> 0.2500, log loss 0.7340
+  -> 0.6931. What these move on the page -- the curve, the edge, the
+  ledger, the venue's pair -- is the numbers step's to list.
+
+### BUILT *(2026-09-29)*
+
+- **The one order**: `calibration.standing_pass_order(forecast, game, row)`
+  -- a final pass written before its game's start first (a game with no
+  start time keeps every row a candidate, as before, and its final pass
+  stands), then the latest written, the number breaking a tie.
+  `standing_row_clause` orders its candidates by it (the WHERE unchanged:
+  a withdrawn row is never a candidate; a row written after the start is
+  not one while the question has a row before it; the backtest's latest
+  row when it has none). Every record that reads the clause moves with it.
+- **Every other place that chose a question's row by write time**, brought
+  to it: the at-the-line window (`at_the_line.standing_claims`, ordered by
+  `standing_pass_order('p', 'g', 'c')`); the slate's card (`views.week`,
+  whose rule of its own -- drop a row a later row of its factor set
+  replaced, then keep the latest per question across sets -- is the clause
+  now, so Picks and the record cannot disagree: it showed the early pass
+  of the sixteen and called it an "early view"); and the guard's recount
+  (`recount.standing_of`, `recount.standing_claims_of`, reading each
+  forecast's pass). **Not standing-row choices, unchanged**: a forecast's
+  own latest claim (the pick's price, the pregame figure) and a
+  recommendation's own pricing claim or latest edge -- one forecast's rows,
+  not a question's; question 12's pair (its earlier recommendation, as
+  ruled); the correction gates (a question once whichever pass settled;
+  fits on every settled row); `early_vs_final` (both passes, compared);
+  `_superseded_ids` (labels an early row a final pass replaced; its key is
+  question 30's, FOLLOWUPS).
+- **The gate reads the rule's text**: `audit.standing_pass_faults`, inside
+  `distinct_bet_key_faults` (gate step 2, `check_every_count_keys_one_bet`),
+  holds the order's first term to `RULED_STANDING_PASS_FIRST`, the clause
+  to the door both times it is built, and the at-the-line window to the
+  door (read from its source). The recount spells the rule again, but on
+  the shape the ruling moved no count differs, so a recount alone cannot
+  see a door put back to the write time.
+- **The noop**: `predict.final_pass_written(conn, q, predictor)` is the one
+  door -- this forecaster's final pass of the question on the one
+  function's key (`bet.given`, a fourth form of `bet.KEY`: forecaster,
+  game, market, subject, rung; any factor set), asked by `write_prediction`
+  before an early pass's insert and first by `predict_slate`, before the
+  reasoning pass is paid for. A question skipped is named in
+  `BlindRun.final_pass_answered` ("<game> <market> <subject> at <rung>,
+  <forecaster>"), which `run_slate`'s result and the predict task's
+  payload carry as `final_pass_answered` -- ITS LENGTH IS THE COUNT -- and
+  the run's `skipped` says in one line; the task's detail says it in words
+  (`language.final_pass_answered_words`), and a run recorded failed by
+  `run.MarketNotTrained` keeps the list beside what it recommended. A run that writes nothing, fails
+  for no model and had no degradation, with such questions, raises
+  `run.SlateAlreadyAnswered` carrying them (`final_pass_answered`, empty for
+  R4's refusal), which `tasks._run_predict` records 'noop' in its own words
+  ("the NFL slate of Week 5, 2025 had nothing left for an early forecast to
+  answer: 8 questions already have their final forecast, the one made close
+  to the start, so no early forecast was written for them; ...") with the
+  names in the payload and no "week". CLAUDE.md: ONE CLAUSE and THE JOBS.
+
+### PROVED
+
+- `tests/test_standing_pass.py` (19): the later early pass over a final
+  pass (the clause, the same-set clause, the recount, the curve's grade,
+  no row changed); the ordinary order; two early passes and no final, the
+  latest; a withdrawn final pass, the latest early pass; a final pass after
+  the start never stands; the backtest fallback unchanged, both orders; a
+  game with no start time; the card and the early view; the at-the-line
+  record's claim (door and recount; the count 1); the source scan; and the
+  noop -- the door in the writer (another rung written; a withdrawn final
+  still refuses), the open market written and the rest named, the run with
+  nothing else refused as answered (R4's refusal names none), the
+  scheduled task's 'noop' and 'ok' in plain words, a market with no model
+  still failing by name (and the failed run's payload keeping the names),
+  and the reasoning pass not asked. On `git archive` of HEAD (3432e26), with
+  the file copied in: 15 fail -- 8 on their assertions (the later early pass
+  stood in three worlds, the card and the claim were the early pass's, the
+  run with nothing else to write was not refused, the task recorded 'ok',
+  the reasoning pass was asked 8 times for 4) and 7 on the names and
+  payload keys the change adds; the 4 that pass there are the
+  unchanged cases (the ordinary order, two early passes, a final pass after
+  the start, the backtest fallback).
+- `plant.py::plant_a_later_early_pass_standing_over_a_final_pass` and
+  `::plant_an_early_pass_written_over_a_final_pass`: on the HEAD archive
+  both ESCAPE ("the curve grades [0.58], the recount keeps [2] and the card
+  shows [2]: the write time chose the pass"; "the early pass wrote 8 spread
+  and total forecasts over their final passes, 4 for the open moneyline,
+  and named 0 it skipped"); here both are CAUGHT. EACH LATER PART
+  NEUTRALISED ALONE, in copies of this tree (`scratchpad/q27/n_*`,
+  `neutralise.py`): the run's refusal never raised -- the second ESCAPES
+  ("an early pass left with nothing to write but answered questions was not
+  refused"); the task's words for it removed -- ESCAPES (recorded 'noop' as
+  "already has 8 forecasts in every market this run asks", which is not
+  what happened, and no names); the card's own write-time rule put back --
+  the first ESCAPES ("the curve grades [0.71], the recount keeps [1] and
+  the card shows [2]"); the reasoning pass's door removed from
+  `predict_slate` (the writer's still refusing the row) --
+  `test_the_reasoning_pass_is_not_paid_for_over_its_final_pass` fails, 8
+  calls for 4.
+
+### READINGS TAKEN *(each reversible in one line)*
+
+- **The order, not the candidates.** Which rows may stand is what it was;
+  which of them does is chosen by pass. Among two final passes (two factor
+  sets) the latest stands; among early passes alone the latest. Reversal:
+  `standing_pass_order` returns `{row}.created_utc DESC, {row}.id DESC`.
+- **A game with no start time** keeps every row a candidate, as the clause
+  always has, read as written before a start nobody recorded, so its final
+  pass stands. Reversal: drop `{game}.kickoff_utc IS NULL OR` from the
+  first term.
+- **The at-the-line record** ("the at-the-line claims through it"): its
+  rows are claims, so the claim on a final pass written before the start
+  stands whenever there is one, otherwise the last claim, and within a pass
+  its last claim before the start. Read the other way -- the last claim of
+  the question's blind standing forecast -- the record today moves the same
+  eight claims. Reversal: the window's `ORDER BY c.created_utc DESC, c.id
+  DESC` (and `recount.standing_claims_of`'s order).
+- **The card** reads the one clause (the brief: "every record that reads
+  the standing rule"; `views.week`: "Picks and the record must never
+  disagree"). Reversal: the fetch's own NOT EXISTS back in place of the
+  clause.
+- **"A question whose final pass exists"** is the one function's question
+  -- forecaster, game, market, subject and rung, whatever factor set -- so
+  an early pass at another rung is another question and is written. "Exists"
+  as written: a withdrawn final pass exists (a void is a second row), and an
+  early pass is not written over it either -- the literal words and the
+  reading that writes nothing new. Reversal: add `AND NOT EXISTS (SELECT 1
+  FROM prediction_voids v WHERE v.prediction_id = p.id)` to
+  `final_pass_written`.
+- **"Nothing to write"**: the run wrote nothing, and among what it did not
+  write at least one question was left to its final pass; a run failed by
+  a market with no model stays failed (item 2), and one whose reasoning
+  pass was unavailable keeps its degradation in the payload (both are
+  questions left to answer). A question whose early row is already written
+  is the ordinary rerun no-op and is not counted as left to its final pass.
+  Reversal: drop `and not run.degradations` from `run_slate`'s condition.
+- **How the skip is counted**: the names in `final_pass_answered`, in the
+  run's result and the predict task's payload; the count is the list's
+  length, said in words in the detail, and one line in `skipped`.
+
+### OPEN *(found by this step; by the queue rule, for the re-read: none breaks LAW 1 or LAW 3 or makes a gate count false)*
+
+- **The at-the-line record's final-pass claim can be an earlier look than
+  the early pass's.** The near-start pass reads the venue on every firing
+  for each open recommendation's forecast only, and a recommendation is the
+  early pass's; so where a final pass stands, the at-the-line record now
+  grades its claim at the look taken when it was written, not the last look
+  before the start (the eight above). Whether the near-start pass should
+  read the standing forecast too is for the re-read.
+- **A held market with no row keeps a slate open** (`run.already_answered`
+  counts it missing), so R4 never refuses such a rerun; each goes into the
+  blind window and writes nothing. From this change it is refused as
+  answered when a final pass left it nothing, and otherwise still recorded
+  "every question on this slate was already answered".

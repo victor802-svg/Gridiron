@@ -31,7 +31,20 @@ _GAP = chr(10) + chr(10)
 
 
 class SlateAlreadyAnswered(RuntimeError):
-    """A slate this factor set has already forecast, and why that is refused."""
+    """A slate this factor set has already forecast, and why that is refused.
+
+    OR AN EARLY PASS LEFT WITH NOTHING TO WRITE BUT QUESTIONS WHOSE FINAL
+    PASS IS WRITTEN (operator question 27, ruled 2026-09-28: "a catch-up may
+    not run an early pass for a question whose final pass exists; it is a
+    SlateAlreadyAnswered noop"). `final_pass_answered` names those questions
+    (`predict.BlindRun.final_pass_answered`); it is empty for the refusal
+    before the run (ruling R4), which names none.
+    """
+
+    def __init__(self, message: str, *,
+                 final_pass_answered: list[str] | None = None):
+        super().__init__(message)
+        self.final_pass_answered = list(final_pass_answered or [])
 
 
 class MarketNotTrained(RuntimeError):
@@ -206,6 +219,30 @@ def run_slate(
             progress=progress,
         )
 
+    # AN EARLY PASS WITH NOTHING TO WRITE BUT ANSWERED QUESTIONS IS A REFUSED
+    # RERUN (operator question 27, ruled 2026-09-28: "a catch-up may not run
+    # an early pass for a question whose final pass exists; it is a
+    # SlateAlreadyAnswered noop"). The refusal above reads the slate per
+    # market, and a market with no row keeps it open -- which is how the
+    # catch-up of 24 September came to write sixteen NFL week-3 early passes
+    # over their final passes: the spread and moneyline had just been
+    # trained. The run now writes no early pass over a final one
+    # (`predict.final_pass_written`, naming each), and one that is left with
+    # nothing else to write is refused here the way the rerun above is, so
+    # `tasks._run_predict` records it 'noop' (item 7) and a hand run says so
+    # loudly. NOT when the run could not answer something: a market with no
+    # model fails the run by name below (item 2), and a reasoning pass that
+    # was unavailable is a degradation the payload must keep -- both are
+    # questions left to answer, not a slate already answered.
+    if (not run.written and run.final_pass_answered and not run.untrained
+            and not run.degradations):
+        from . import language
+
+        raise SlateAlreadyAnswered(
+            language.final_pass_answered_refusal(
+                sport, season, week, len(run.final_pass_answered)),
+            final_pass_answered=run.final_pass_answered)
+
     result = {
         "sport": sport,
         "season": season,
@@ -229,6 +266,11 @@ def run_slate(
         # 2026-09-06): counted so a slate whose LLM half is smaller than its
         # statistical half reads as the ruling working, not as a failure.
         "llm_routed_off": run.llm_routed_off,
+        # EVERY QUESTION THIS EARLY PASS DID NOT ANSWER BECAUSE ITS FINAL PASS
+        # IS WRITTEN, BY NAME (operator question 27, 2026-09-28): the game,
+        # market, subject, rung and forecaster of each; its length is the
+        # count. Always empty for a final pass.
+        "final_pass_answered": list(run.final_pass_answered),
         # THE FROZEN DISTRIBUTIONS (E3): how many game questions carry one and
         # why the rest do not. The at-the-line record's coverage starts here.
         "distributions": {"written": run.distributions_written,

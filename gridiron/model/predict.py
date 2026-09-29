@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 
 from datetime import date
 
-from .. import config, fingerprint, sports
+from .. import bet, config, fingerprint, sports
 from ..db import utcnow
 from ..factors import compute, context
 from . import baseline, llm, prompt_record
@@ -81,6 +81,14 @@ class BlindRun:
     #: `skipped` was the whole of the old account, and nobody read it for
     #: seventeen days.
     untrained: list[dict] = field(default_factory=list)
+    #: EVERY QUESTION AN EARLY PASS DID NOT ANSWER BECAUSE ITS FINAL PASS IS
+    #: WRITTEN, by name, one entry per forecaster's question (operator
+    #: question 27, ruled 2026-09-28: "a catch-up may not run an early pass
+    #: for a question whose final pass exists"). Carried out of the run as
+    #: `final_pass_answered` in its result and in the predict task's payload;
+    #: its length is the count. A run that writes nothing else is refused as
+    #: `run.SlateAlreadyAnswered`, which the task records 'noop'.
+    final_pass_answered: list[str] = field(default_factory=list)
 
     @property
     def prediction_ids(self) -> list[int]:
@@ -137,6 +145,59 @@ def already_written(conn: sqlite3.Connection, q: Question, predictor: str,
     return row is not None
 
 
+def final_pass_written(conn: sqlite3.Connection, q: Question,
+                       predictor: str) -> bool:
+    """Is this forecaster's FINAL pass of this question already written?
+
+    THE ONE DOOR for operator question 27's second rule (ruled 2026-09-28):
+    "a catch-up may not run an early pass for a question whose final pass
+    exists; it is a SlateAlreadyAnswered noop" -- read, and confirmed by the
+    operator on 2026-09-29, as binding every run that writes an early pass,
+    the scheduled predict as well as the catch-up's, since both write early
+    passes and the ruling's reason, a final pass already stands, holds for
+    both. `write_prediction` asks it before an early pass's insert, and
+    `predict_slate` asks it first, to name the question it skips and before
+    the reasoning pass is paid for.
+
+    THE QUESTION IS THE ONE FUNCTION'S (`bet.given`): the forecaster, the
+    game, the market, the subject and the rung asked -- the question the
+    standing rule keeps one row per (operator question 17), whatever factor
+    set wrote it. Under that rule the final pass stands over any early pass
+    of the same question, so an early pass written after it could never be
+    graded; asked at another rung it is another question (question 21), and
+    is written.
+
+    "EXISTS" IS READ AS WRITTEN: a final pass that was later withdrawn still
+    exists (a void is a second row beside it, never a deletion), so an early
+    pass is not written over it either -- the literal words, and the reading
+    that writes nothing new.
+
+    Found by the ruling's measurement: on 24 September at 05:32-05:36Z the
+    catch-up's `predict:nfl` (run 2336) wrote sixteen NFL week-3 reasoning-
+    pass totals whose final passes `final:nfl` (run 2052) had written at
+    19:30Z the evening before. The slate was open -- the spread and
+    moneyline had just been trained and had no rows -- so the run went on,
+    and `already_written`, which mirrors the key and so asks for an EARLY
+    row, found none.
+    """
+    row = conn.execute(
+        f"SELECT 1 FROM predictions p WHERE {bet.given('p')}"
+        "   AND p.pass_kind = 'final' LIMIT 1",
+        bet.of({"predictor": predictor, "game_id": q.game_id,
+                "market_type": q.market_type, "subject": q.subject,
+                "line_asked": q.line_asked}),
+    ).fetchone()
+    return row is not None
+
+
+def _final_pass_answered_name(q: Question, predictor: str) -> str:
+    """One skipped question, named for the run's payload: the game, the
+    market and subject, the rung and the forecaster -- an entry in a list
+    the run keeps, as `skipped` names its entries."""
+    rung = "" if q.line_asked is None else f" at {q.line_asked:g}"
+    return f"{q.game_id} {q.market_key} {q.subject}{rung}, {predictor}"
+
+
 def write_prediction(
     conn: sqlite3.Connection,
     q: Question,
@@ -158,7 +219,10 @@ def write_prediction(
     late pass answers a question the early pass already answered, deliberately
     and close to start, and the newer row supersedes the older as the standing
     forecast. Both rows are kept (LAW 3) and the early one is labelled rather
-    than hidden.
+    than hidden. AND NEVER THE OTHER WAY ROUND (operator question 27,
+    2026-09-28): an early pass of a question whose final pass is written is
+    not written (`final_pass_written`), and the final pass stands over an
+    early one whichever was written last (`calibration.standing_row_clause`).
 
     A REASONING FORECAST IS WRITTEN WITH THE PROMPT IT WAS SENT (the ruling
     of 2026-09-24, two additions, item 1, binding from the release that
@@ -203,6 +267,11 @@ def write_prediction(
     # doing expensive work. It is still asked here, because a check a caller
     # may forget is not a check.
     if already_written(conn, q, predictor, final=final):
+        return None
+    # NO EARLY PASS OVER A FINAL ONE (operator question 27, 2026-09-28), asked
+    # here for the same reason: `predict_slate` asks first and names the
+    # question, and a caller that forgot would still write nothing.
+    if not final and final_pass_written(conn, q, predictor):
         return None
 
     # THE CORRECTION, APPLIED AT WRITE TIME AND ONLY HERE.
@@ -491,7 +560,20 @@ def predict_slate(
                     written=False)
                 continue
 
-        written = write_prediction(
+        # NO EARLY PASS OVER A FINAL ONE (operator question 27, ruled
+        # 2026-09-28): a question this forecaster's final pass has answered is
+        # not answered again by an early pass -- the final pass stands over it
+        # whenever each was written (`calibration.standing_row_clause`), so
+        # the row could never be graded. Named in the run's list, never
+        # silent; a question whose early row is already written is the
+        # ordinary rerun no-op and is not counted here.
+        final_stands = (not final
+                        and not already_written(conn, q, "statistical")
+                        and final_pass_written(conn, q, "statistical"))
+        if final_stands:
+            run.final_pass_answered.append(
+                _final_pass_answered_name(q, "statistical"))
+        written = None if final_stands else write_prediction(
             conn,
             q,
             final=final,
@@ -536,6 +618,13 @@ def predict_slate(
         # The 34 questions already answered were answered again at full price.
         if already_written(conn, q, "llm", final=final):
             run.llm_skipped += 1
+            continue
+        # AND NOT OVER ITS FINAL PASS (operator question 27, 2026-09-28),
+        # asked before the reasoning pass is paid for: the sixteen NFL totals
+        # of 24 September were each a paid call for a row that, under the
+        # ruling, can never stand.
+        if not final and final_pass_written(conn, q, "llm"):
+            run.final_pass_answered.append(_final_pass_answered_name(q, "llm"))
             continue
         # GAME MARKETS ONLY (ruling E1, 2026-09-06). A prop question is not put
         # to the reasoning pass; it is counted as routed off and the run says
@@ -599,6 +688,14 @@ def predict_slate(
             "for this reason is the floor working, not a failure to find "
             "questions."
         )
+    if run.final_pass_answered:
+        # ONE LINE IN THE RUN'S ACCOUNT (operator question 27, 2026-09-28);
+        # the questions themselves are named in `final_pass_answered`.
+        n = len(run.final_pass_answered)
+        run.skipped.append(
+            f"{n} {'question' if n == 1 else 'questions'} not answered by this "
+            "early pass because the final pass is written: an early pass is "
+            "never written over a final one, by ruling of 2026-09-28.")
     return run
 
 

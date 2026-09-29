@@ -450,21 +450,24 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             # hidden: `early_view=True` asks for it instead, and it is
             # labelled when shown.
             #
-            # The rule matches calibration's: the standing forecast is the
-            # latest row before start. Picks and the record must never
+            # The rule matches calibration's. Picks and the record must never
             # disagree about which forecast is the live one.
+            #
+            # AND IT IS CALIBRATION'S, FROM 2026-09-28 (operator question 27:
+            # "the final pass stands whenever one exists before the start;
+            # otherwise the latest early pass"). Until then this was a rule
+            # of its own -- drop a row a later row of the same factor set
+            # replaced before the start, then keep the latest per question
+            # across sets below -- the write time alone, as the clause was.
+            # Under the ruling the two would have disagreed on the sixteen
+            # NFL week-3 reasoning totals whose early pass was written after
+            # their final pass: the record grading the final, the card
+            # showing the early row, and calling it an "early view" beside
+            # it (`_superseded_ids`). The one clause is read here instead, so
+            # they cannot: one row per distinct bet, the final pass before
+            # the start first, a withdrawn row never, a backtest's latest.
             + ("   AND p.pass_kind = 'early'" if early_view else
-               "   AND NOT EXISTS (SELECT 1 FROM predictions later"
-               "                   WHERE later.game_id = p.game_id"
-               "                     AND later.market_type = p.market_type"
-               "                     AND later.subject = p.subject"
-               "                     AND later.predictor = p.predictor"
-               "                     AND later.factor_set_version"
-               "                         = p.factor_set_version"
-               "                     AND IFNULL(later.line_asked, -1e9)"
-               "                         = IFNULL(p.line_asked, -1e9)"
-               "                     AND later.created_utc > p.created_utc"
-               "                     AND later.created_utc <= g.kickoff_utc)")
+               calibration.standing_row_clause(same_set=False))
             + " ORDER BY p.id",
             (sport, s, w, *held_types),
         ).fetchall()
@@ -565,6 +568,14 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # both rows remain in every curve, which is why the double run is a
     # RECORD problem reported in the close-out and not something a display
     # filter may quietly paper over.
+    #
+    # FROM 2026-09-28 (operator question 27) THE STANDING VIEW ARRIVES ONE
+    # ROW PER QUESTION ALREADY, chosen by the record's one clause in the
+    # fetch above -- by pass, not by write time -- so this keeps each row it
+    # is given there. It still decides the EARLY VIEW, which holds early
+    # passes only: of two early passes of one question (two factor sets, as
+    # on 2026-08-29), the later -- the ruling's "otherwise the latest early
+    # pass".
     standing: dict = {}
     for r in rows:
         key = (r["game_id"], r["market_type"], r["subject"], r["line_asked"])

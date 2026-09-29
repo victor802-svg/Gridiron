@@ -211,9 +211,55 @@ class Resolved:
     factors_json: str = "{}"
 
 
+def standing_pass_order(forecast: str, game: str, row: str | None = None) -> str:
+    """WHICH OF A QUESTION'S ROWS STANDS, as SQL `ORDER BY` terms (operator
+    question 27, ruled 2026-09-28): "the standing pass is chosen by pass, not
+    by write time: the final pass stands whenever one exists before the
+    start; otherwise the latest early pass. A read rule -- no row changes."
+
+    THE ONE DOOR FOR THE ORDER. `standing_row_clause` orders a question's
+    forecasts by it, and the at-the-line record orders a question's claims by
+    it (`at_the_line.standing_claims`: its rows are claims, `row`, each on its
+    forecast, `forecast`), so the two records cannot choose a pass two ways.
+    `gridiron.recount` spells it again in Python, as it spells the clause,
+    and `audit.distinct_bet_key_faults` reads both callers' text for it.
+
+    First a final pass written before its game's start (a game with no start
+    time recorded keeps every row a candidate, as the clause always has, and
+    its final pass stands); then the latest written; then the number, which
+    breaks a tie in the second, as it always has. Among two final passes
+    (two factor sets) the latest stands, and among early passes alone the
+    latest -- the rule as it was, which is the ruling's "otherwise".
+
+    WHY IT CHANGED. Until this date the order was the write time alone, so a
+    question whose final pass was written first and its early pass after
+    stood on the early one: sixteen NFL week-3 reasoning-pass totals, final
+    passes written by `final:nfl` on 23 September at 19:30Z, early passes by
+    the catch-up's `predict:nfl` at 05:32-05:36Z the next morning, all before
+    their starts (docs/REPAIR_STATE.md question 27). The final pass is the
+    forecast made on what is known close to the start; that is what it is
+    for, whichever row was written last.
+
+    A PASS WRITTEN AFTER THE START is not a candidate here: the clause keeps
+    it out whenever the question has a row written before the start, and
+    when it has none (a backtest) every row is written after the start, the
+    first term is false for all of them, and the latest written stands --
+    the fallback kept as it was, as the brief's reading confirmed on
+    2026-09-29 says.
+    """
+    row = row or forecast
+    return (f"({forecast}.pass_kind = 'final'"
+            f" AND ({game}.kickoff_utc IS NULL"
+            f" OR {forecast}.created_utc <= {game}.kickoff_utc)) DESC,"
+            f" {row}.created_utc DESC, {row}.id DESC")
+
+
 def standing_row_clause(same_set: bool) -> str:
-    """The SQL that keeps ONE standing row per question: the latest written
-    before start. Appended to a query over `predictions p JOIN games g`.
+    """The SQL that keeps ONE standing row per question: a final pass written
+    before the start if there is one, otherwise the latest written before
+    the start (operator question 27, 2026-09-28; the latest written before
+    the start, whatever its pass, until then). Appended to a query over
+    `predictions p JOIN games g`.
 
     ONE DOOR (audit 2026-09-05). `resolved()` had this rule inline and every
     scorecard went through it, but the version table's N and the pace line
@@ -237,6 +283,18 @@ def standing_row_clause(same_set: bool) -> str:
     every reader of a sport's markets together (the factor table, the pick
     card's worst band, the tier table's pace). The question is named by its
     subject (`gridiron.bet`), as `resolved` below has said since 2026-09-02.
+
+    CHOSEN BY PASS, NOT BY WRITE TIME (operator question 27, ruled
+    2026-09-28): among the rows the clause keeps as candidates, the order is
+    `standing_pass_order` -- a final pass before the start first, then the
+    latest written. Every record that reads this clause moves with it (the
+    blind curves and the version table, the priced record, where the line
+    went, the outlook, the coverage line at the venue's line, the ranker's
+    standing rows, the slate's cards) and no row changes. Measured on the
+    live record the day it was ruled: sixteen NFL week-3 reasoning-pass
+    totals stood on an early pass written after their final pass, and stand
+    on the final pass from this date (FOLLOWUPS, "The standing pass is chosen
+    by pass").
     """
     same = (" AND p2.factor_set_version = p.factor_set_version"
             if same_set else "")
@@ -273,6 +331,13 @@ def standing_row_clause(same_set: bool) -> str:
     #
     # `g2.kickoff_utc IS NULL` keeps a game with no scheduled time eligible
     # rather than silently dropping every question about it.
+    #
+    # AND AMONG THOSE, THE FINAL PASS (operator question 27, 2026-09-28): the
+    # candidates are ordered by `standing_pass_order`, not by the write time
+    # alone. The WHERE below is unchanged -- which rows may stand is what it
+    # was; which of them does is chosen by pass. A question whose final pass
+    # was withdrawn is left its latest early pass, because a withdrawn row is
+    # never a candidate (`skip_voided`).
     return (
         f"{voided}"
         " AND p.id = (SELECT p2.id FROM predictions p2"
@@ -290,7 +355,7 @@ def standing_row_clause(same_set: bool) -> str:
         "                                    JOIN games g3 ON g3.id = p3.game_id"
         f"                                    WHERE {bet.same('p3', 'p2')}"
         "                                      AND p3.created_utc <= g3.kickoff_utc))"
-        "              ORDER BY p2.created_utc DESC, p2.id DESC LIMIT 1)"
+        f"              ORDER BY {standing_pass_order('p2', 'g2')} LIMIT 1)"
     )
 
 
@@ -346,7 +411,10 @@ def resolved(
     # forecaster -- the same rule `views.week` already applies to Picks and
     # the same rule a revised call once followed. The earlier rows stay
     # readable in Results and in `prediction_detail`; they are simply not
-    # arithmetic.
+    # arithmetic. FROM 2026-09-28 (operator question 27) the pass decides
+    # first: a final pass written before the start stands over an early pass
+    # written after it, and the latest written decides among the rest
+    # (`standing_row_clause`, `standing_pass_order`).
     #
     # WHAT MAKES TWO ROWS THE SAME QUESTION: the game, the market, the
     # subject, the rung and the forecaster. `line_asked` is part of it -- the

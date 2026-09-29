@@ -318,6 +318,10 @@ def run_task(conn: sqlite3.Connection, task: str, *, use_llm: bool = True) -> di
 
                 if isinstance(exc, _run.MarketNotTrained):
                     payload["recommended"] = (exc.result or {}).get("recommended")
+                    # AND WHAT IT LEFT TO A FINAL PASS, by name (operator
+                    # question 27, 2026-09-28), as a run that ended ok does.
+                    payload["final_pass_answered"] = (
+                        (exc.result or {}).get("final_pass_answered") or [])
             except Exception:  # noqa: BLE001 - keeping it must never mask the fault
                 pass
             # A FAILED TASK IS EXACTLY WHEN THE SECOND CHANNEL EXISTS (ruling
@@ -1051,7 +1055,7 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
 
     try:
         result = run.run_slate(conn, sport, season, week, use_llm=use_llm)
-    except run.SlateAlreadyAnswered:
+    except run.SlateAlreadyAnswered as refused:
         # A REFUSED RERUN IS A NOOP, NOT A FAILURE (GRIDIRON_REPAIR item 7,
         # the operator's ruling of 2026-09-23: "SlateAlreadyAnswered is a
         # noop, not a failure"). The refusal is the record keeping a slate
@@ -1074,6 +1078,24 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
         # key ("slate 180"); and no "week" in the payload, which the slate
         # card reads to find the run that wrote it (`views._below_floor`).
         answered = run.already_answered(conn, sport, season, week)
+        if refused.final_pass_answered:
+            # AN EARLY PASS LEFT WITH NOTHING TO WRITE BUT QUESTIONS WHOSE
+            # FINAL PASS IS WRITTEN (operator question 27, ruled 2026-09-28:
+            # "it is a SlateAlreadyAnswered noop"). The same class, so the
+            # same record; its own words, because "every market this run
+            # asks" is not what happened -- a market may have had no row,
+            # which is what kept the slate open. The questions are named in
+            # the payload, and their count is its length.
+            return (
+                "noop",
+                f"the {config.SPORT_LABELS.get(sport, sport.upper())} slate "
+                f"of {_slate_words(conn, sport, season, week)} had nothing "
+                "left for an early forecast to answer: "
+                f"{language.final_pass_answered_words(len(refused.final_pass_answered))}"
+                ". Nothing was written.",
+                {"refused_slate": week, "already_written": answered["written"],
+                 "final_pass_answered": refused.final_pass_answered},
+            )
         return (
             "noop",
             f"the {config.SPORT_LABELS.get(sport, sport.upper())} slate of "
@@ -1099,6 +1121,11 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
         # as a second on its game and market, or because the pass took both
         # sides of one, is said, and kept with the run that refused it.
         "recommended": result.get("recommended"),
+        # EVERY QUESTION NOT ANSWERED BECAUSE ITS FINAL PASS IS WRITTEN, BY
+        # NAME (operator question 27, 2026-09-28): the run wrote the others
+        # and skipped these; the list's length is the count, and the detail
+        # says it in words.
+        "final_pass_answered": result.get("final_pass_answered") or [],
     }
     floor_note = (
         f"; {language.counted(result['below_floor'], 'prop question')} "
@@ -1106,6 +1133,9 @@ def _run_predict(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tupl
         f"{round(config.PROPS_MIN_CLAIM * 100)}% confidence floor and not asked"
         if result.get("below_floor") else ""
     )
+    if result.get("final_pass_answered"):
+        floor_note += ("; " + language.final_pass_answered_words(
+            len(result["final_pass_answered"])))
     if written == 0:
         return (
             "noop",

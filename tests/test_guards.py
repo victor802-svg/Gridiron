@@ -632,6 +632,13 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_learning_row_counting_one_prop_type",
         "plant_a_labelled_correction_activated",
         "plant_a_correction_label_the_fit_does_not_support",
+        # OPERATOR QUESTION 27 (ruled 2026-09-28): the standing pass is chosen
+        # by pass -- a final pass written before the start stands over a
+        # later early pass -- and no early pass is written over a question's
+        # final pass; a run with nothing else to write is a refused rerun,
+        # recorded 'noop'.
+        "plant_a_later_early_pass_standing_over_a_final_pass",
+        "plant_an_early_pass_written_over_a_final_pass",
         # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): a refused rerun is a noop, the closing write is
         # caught, a hung run is marked abandoned past its task's silence,
