@@ -1306,9 +1306,15 @@ def check_js_composes_no_prose(path: Path | None = None) -> None:
 #: from the fit's own record -- its category, its instant, its n_train and the
 #: record's own forecasts -- and carrying no outcome, line or score; the
 #: activation door reads it to refuse a labelled fit, as the ruling requires.
+#:
+#: AND ITS ACTIVATIONS (operator question 32, ruled 2026-09-29): a correction
+#: is in force only by its own dated row in `correction_activations` -- the
+#: correction it names, the instant, and a measured row's measurement, made
+#: from the record's own claims and outcomes by `correction.measure` -- and
+#: the door reads it; it carries no line, price or score.
 CORRECTION_TABLES = frozenset({
     "predictions", "prediction_voids", "calibration_corrections",
-    "correction_gate_labels",
+    "correction_gate_labels", "correction_activations",
 })
 
 #: WHAT A PART OF AN F-STRING WORKED OUT AT RUN TIME IS READ AS (2026-09-29).
@@ -8273,6 +8279,162 @@ def check_the_correction_counts_are_never_pooled(conn) -> None:
             + _NL2 + _NL2.join(faults))
 
 
+# ---------------------------------------------------------------------------
+# A CORRECTION IS IN FORCE ONLY BY ITS OWN DATED ROW (operator question 32)
+# ---------------------------------------------------------------------------
+#
+# "Corrections activate through the same gate as model fits. Every correction
+# row is written inactive. Activation is its own dated append-only row."
+# (Ruled 2026-09-29, second set.) The schema holds the rows; this holds the
+# DOOR to them. A door that read `active_from` again -- as the one released
+# before this date did, which is how the weekly refit's fit 71 came into
+# force -- agrees with itself on every record whose rows it wrote, so it is
+# asked here on a world made to tell the two apart, and on the record's copy
+# against the activation rows read straight off their table.
+
+
+def _in_force_straight(conn, sport: str, market_type: str,
+                       forecaster: str) -> int | None:
+    """The correction the category's latest activation row puts in force,
+    read off the table with no door: the latest row naming no labelled fit,
+    measured or scratch -- its correction; withdrawn, or none -- None."""
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                    " AND name = 'correction_activations'").fetchone() is None:
+        return None
+    row = conn.execute(
+        "SELECT a.correction_id, a.kind FROM correction_activations a"
+        " WHERE a.sport = ? AND a.market_type = ? AND a.forecaster = ?"
+        "   AND NOT EXISTS (SELECT 1 FROM correction_gate_labels l"
+        "                   WHERE l.correction_id = a.correction_id)"
+        " ORDER BY a.seq DESC LIMIT 1",
+        (sport, market_type, forecaster)).fetchone()
+    if row is None or row[1] == "withdrawn":
+        return None
+    return int(row[0])
+
+
+def correction_in_force_faults(conn=None) -> list[str]:
+    """Where a correction is served as in force by anything but its own
+    activation row, in words; [] when the door reads the rows alone.
+
+    ON A WORLD MADE TO TELL THEM APART (always): a correction written in
+    force by hand under the rule before this one (its `active_from` set,
+    the schema's refusal taken off to write it) must be served by nobody;
+    the weekly refit, on a category it can fit, must write its fit inactive
+    and no activation; a scratch activation must put its correction in force,
+    and a withdrawal must take it out. ON THE RECORD'S COPY (`conn`): every
+    category's served correction is the one its latest activation row names.
+    """
+    from . import correction, db as _db
+
+    faults: list[str] = []
+    probe = _db.connect(":memory:")
+    try:
+        _db.init(probe)
+        probe.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home,"
+            " away, kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES ('probe', 'nfl', 2025, 1, 'REG', 'AAA', 'BBB',"
+            " '2025-12-01T18:00:00Z', 'final', '2025-12-01', 24, 17)")
+        for i in range(60):
+            probe.execute(
+                "INSERT INTO predictions (sport, created_utc, game_id,"
+                " market_type, subject, model_prob, model_side, predictor,"
+                " factor_set_version, factors_json, reasoning, resolved_utc,"
+                " outcome) VALUES ('nfl', '2025-12-01T06:00:00Z', 'probe',"
+                " 'total', ?, 0.64, 'over', 'statistical', 'fs3', '{}',"
+                " 'probe', '2025-12-02T00:00:00Z', ?)", (f"P{i}", i % 3 and 1))
+        probe.commit()
+        report = correction.refit_all(probe, now="2026-01-10T00:00:00Z")
+        fitted = [c for c in report["categories"] if c["market_type"] == "total"]
+        stored = probe.execute(
+            "SELECT id, active_from FROM calibration_corrections"
+            " WHERE market_type = 'total'").fetchone()
+        rows = probe.execute(
+            "SELECT COUNT(*) FROM correction_activations").fetchone()[0]
+        if not fitted or stored is None:
+            faults.append("the weekly refit wrote no fit for a category of "
+                          "sixty settled questions")
+        elif stored["active_from"] is not None or rows or \
+                correction.active_correction(probe, sport="nfl",
+                                             market_type="total",
+                                             forecaster="statistical"):
+            faults.append(
+                f"the weekly refit put what it fitted in force (active_from "
+                f"{stored['active_from']!r}, {rows} activation row(s))")
+        else:
+            correction.activate_in_a_scratch_world(
+                probe, stored["id"], now="2026-01-11T00:00:00Z")
+            served = correction.active_correction(
+                probe, sport="nfl", market_type="total",
+                forecaster="statistical")
+            if served is None or served["id"] != stored["id"]:
+                faults.append("a correction's own activation row did not put "
+                              "it in force")
+            correction.withdraw(probe, stored["id"], now="2026-01-12T00:00:00Z",
+                                reason="the probe takes it out of force")
+            served = correction.active_correction(
+                probe, sport="nfl", market_type="total",
+                forecaster="statistical")
+            if served is not None:
+                faults.append(f"a withdrawn correction is still served in "
+                              f"force (version {served['version']})")
+        # UNDER THE RULE BEFORE: a row carrying its own activation, written
+        # the way the weekly refit wrote fit 71 -- the schema's refusal of it
+        # taken off for the one statement, and put back by `init`.
+        probe.execute("DROP TRIGGER calibration_corrections_written_inactive")
+        probe.execute(
+            "INSERT INTO calibration_corrections (sport, market_type,"
+            " forecaster, version, fitted_utc, n_train, slope, intercept,"
+            " active_from, status) VALUES ('nfl', 'moneyline', 'statistical',"
+            " 1, '2026-01-01T00:00:00Z', 120, 0.8, 0.1,"
+            " '2026-01-01T00:00:00Z', 'active - written by hand, the old rule')")
+        probe.commit()
+        _db.init(probe)
+        served = correction.active_correction(
+            probe, sport="nfl", market_type="moneyline",
+            forecaster="statistical")
+        if served is not None:
+            faults.append(
+                f"a correction carrying active_from and no activation row is "
+                f"served in force (version {served['version']}): the door "
+                f"reads active_from")
+    except Exception as exc:  # noqa: BLE001 -- the fault is the finding
+        faults.append(f"the probe world could not be asked: "
+                      f"{type(exc).__name__}: {exc}")
+    finally:
+        probe.close()
+    if conn is not None:
+        for sport, market_type, forecaster in conn.execute(
+                "SELECT DISTINCT sport, market_type, forecaster"
+                "  FROM calibration_corrections"
+                " ORDER BY sport, market_type, forecaster").fetchall():
+            served = correction.active_correction(
+                conn, sport=sport, market_type=market_type,
+                forecaster=forecaster)
+            want = _in_force_straight(conn, sport, market_type, forecaster)
+            got = None if served is None else int(served["id"])
+            if got != want:
+                faults.append(
+                    f"{sport} {market_type}, {forecaster}: the door serves "
+                    f"correction {got} and the activation rows put "
+                    f"{want} in force")
+    return faults
+
+
+def check_a_correction_is_in_force_only_by_its_own_row(conn=None) -> None:
+    """Refuse a door that serves a correction in force by anything but its
+    own dated activation row (operator question 32, ruled 2026-09-29)."""
+    faults = correction_in_force_faults(conn)
+    if faults:
+        raise LawViolation(
+            "A CORRECTION IS IN FORCE WITHOUT ITS OWN ROW (operator question "
+            "32, ruled 2026-09-29): every correction row is written inactive, "
+            "and a correction is in force only by its own dated activation "
+            "row, never by active_from:"
+            + _NL2 + _NL2.join(faults))
+
+
 def check_the_blind_outlook_is_never_pooled(conn) -> None:
     """Refuse an outlook, in any sport on the record, that counts another
     forecaster's rows, another card's, a question's superseded passes, or
@@ -8506,18 +8668,26 @@ def distinct_bet_key_faults(root: Path | None = None) -> list[str]:
     # the key is written out there. Held to the one function: the rule's text
     # (whitespace aside) carries `bet.same('q', 'p')`, the question a row is
     # counted once per.
-    rule_text = _schema_rule_text(LABEL_KEY_RULE)
-    if rule_text is None or bet.same("q", "p") not in " ".join(rule_text.split()):
-        faults.append(
-            f"schema.sql: the rule `{LABEL_KEY_RULE}` counts a fit's questions "
-            f"by something other than `bet.same('q', 'p')`, the one "
-            f"distinct-bet key -- or is not declared")
+    # AND THE ACTIVATION'S RULE (operator question 32, 2026-09-29): a
+    # measured activation's count of distinct bets is recounted in the
+    # schema the same way, and held to the same text.
+    for rule in (LABEL_KEY_RULE, ACTIVATION_KEY_RULE):
+        rule_text = _schema_rule_text(rule)
+        if rule_text is None or bet.same("q", "p") not in " ".join(rule_text.split()):
+            faults.append(
+                f"schema.sql: the rule `{rule}` counts a fit's questions "
+                f"by something other than `bet.same('q', 'p')`, the one "
+                f"distinct-bet key -- or is not declared")
     return faults
 
 
 #: The schema rule that counts a fit's questions by the key written out
 #: (question 23; 2026-09-29), read by `distinct_bet_key_faults`.
 LABEL_KEY_RULE = "correction_gate_label_is_its_fits_own_record"
+
+#: ...and the rule that recounts a measured activation's distinct bets
+#: (question 32, 2026-09-29).
+ACTIVATION_KEY_RULE = "correction_activation_counts_distinct_bets"
 
 
 def _schema_rule_text(name: str, schema: str | None = None) -> str | None:

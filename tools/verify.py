@@ -927,6 +927,14 @@ def step_2_guards() -> bool:
         ("each correction gate counts one forecaster's questions (question 16)",
          lambda: audit.check_the_correction_counts_are_never_pooled(
              _record_conn())),
+        # OPERATOR QUESTION 32 (ruled 2026-09-29, second set): every
+        # correction row is written inactive and a correction is in force only
+        # by its own dated activation row -- asked of the door on a world made
+        # to tell active_from from a row, and on the record's copy against
+        # the rows read straight off their table.
+        ("a correction is in force only by its own row (question 32)",
+         lambda: audit.check_a_correction_is_in_force_only_by_its_own_row(
+             _record_conn())),
         # THE ACTIVATION GATE (operator rulings, 2026-09-24). A market
         # forecasts from its activated fit, and that fit is the factor set
         # the config declares. Read on the migrated copy, which holds the

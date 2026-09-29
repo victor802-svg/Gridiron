@@ -1281,6 +1281,390 @@ BEGIN
         || 'activated, and nothing is written in its place');
 END;
 
+-- ---------------------------------------------------------------------------
+-- A CORRECTION IS IN FORCE ONLY BY ITS OWN DATED ROW (operator question 32,
+-- ruled 2026-09-29, second set; built the same day). "Corrections activate
+-- through the same gate as model fits. Every correction row is written
+-- inactive. Activation is its own dated append-only row, written only when
+-- the holdout bootstrap interval of the Brier improvement excludes zero,
+-- measured on distinct bets by the key, per forecaster; a tie goes to the
+-- uncorrected probability. The recalibration task never activates anything."
+--
+-- THE DEFECT. Until this release a correction carried its own activation:
+-- the weekly refit set active_from on the row it wrote whenever a point
+-- comparison on the latest fifth of the category's settled forecasts beat
+-- the raw claim by more than 0.005 -- no interval, every pass of a question
+-- counted, and no row of its own. Fit 71 (MLB moneyline, statistical,
+-- version 8) came into force that way at 2026-09-28T13:00:01Z, 73 rows held
+-- out, a gain of 0.005202. From this release a correction row is written
+-- inactive (the first rule below refuses active_from on a new row);
+-- active_from on a stored row is history and is never read as in force; and
+-- the correction in force for a category is read from this table alone: its
+-- latest row, measured or scratch naming that correction, withdrawn naming
+-- none (correction.latest_activation, the one door).
+--
+-- THREE KINDS, each refused where it does not belong:
+--   measured   the category measured on its settled questions before the
+--              correction was fitted -- one forecast per distinct bet on the
+--              key (gridiron.bet: the forecaster, the game, the market, the
+--              subject, the rung asked), in the order they settled -- a
+--              correction refit on the earliest four fifths and scored on the
+--              latest fifth, forty questions or more: the raw and corrected
+--              Brier on the same questions, the improvement (raw minus
+--              corrected), and the paired bootstrap 95 per cent interval of
+--              the improvement with its seed and its number of resamples --
+--              drawn as the gate draws it, 1000 resamples from seed
+--              20260923, and refused drawn any other way (the prover,
+--              2026-09-29: a row of ONE resample, honestly recorded, put a
+--              tie in force, and a free seed lets a tie be drawn again
+--              until one passes).
+--              Refused unless the lower bound is above zero: an interval
+--              touching zero is a tie, and a tie goes to the uncorrected
+--              probability. The count of distinct bets is recounted below
+--              from the correction's own category and instant, the key
+--              written out as bet.same('q', 'p') (audit holds the text to it).
+--   withdrawn  the correction in force taken out of force, with a reason of
+--              ten characters or more: the one the category's latest row
+--              names, or -- where the category has no row here yet -- the
+--              one written in force under the rule before this one.
+--   scratch    a test world, a planting or the gate's own pipeline, with no
+--              measurement; refused on any database whose meta kind is live,
+--              AND on any database holding a record's own rows -- a measured
+--              activation, a withdrawal, or a correction written in force
+--              under the rule before this one -- whatever its kind says (the
+--              prover, 2026-09-29: the kind is a meta value no rule holds, so
+--              one statement setting it to scratch let a scratch row put a
+--              correction in force on a copy of the record, unmeasured).
+-- NEVER a fit labelled fitted below its gate, and never a placeholder (a row
+-- whose n_train is under the gate of 50 recorded that nothing was fitted).
+--
+-- APPEND-ONLY, EACH ROW THE NEXT OF ITS CATEGORY. The key is the category and
+-- a sequence number, and a row is refused unless its number is the one after
+-- the category's last, so a statement written in a stored row's place, under
+-- any conflict clause, names a number already taken and is refused before it
+-- lands. WITHOUT ROWID, so the key is worked out once and every rule reads
+-- the row that lands (the finding of question 16's prover). Never edited,
+-- never removed, stamped when written in the one format, never before its
+-- correction was fitted and never before the category's last row -- and ON A
+-- RECORD (a live kind, or a record's own rows, as above) never more than a
+-- minute before the moment it is written (the prover, 2026-09-29: the door
+-- reads the correction in force AT an instant, and the page corrects a
+-- finished game's claim by the one in force when the claim was written, so a
+-- measured row dated a month back put its correction over every claim of
+-- that month on the page, and a withdrawal dated back would take one off).
+-- And the correction a row names is never written over (the last rule here).
+-- (The words that open a declaration may not appear in a comment in this
+-- file: at_the_line._schema_statements scans the text.)
+-- ---------------------------------------------------------------------------
+CREATE TRIGGER IF NOT EXISTS calibration_corrections_written_inactive
+BEFORE INSERT ON calibration_corrections
+FOR EACH ROW
+WHEN NEW.active_from IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: every correction is written inactive (operator question 32, '
+        || '2026-09-29). It comes into force only by its own dated row in '
+        || 'correction_activations, written when its measurement clears the '
+        || 'gate; active_from is history on the rows written before, never set '
+        || 'again');
+END;
+
+CREATE TABLE IF NOT EXISTS correction_activations (
+    sport            TEXT    NOT NULL,
+    market_type      TEXT    NOT NULL,
+    forecaster       TEXT    NOT NULL,
+    -- the row's place in its category, from 1: the latest row decides
+    seq              INTEGER NOT NULL CHECK (seq > 0),
+    correction_id    INTEGER NOT NULL REFERENCES calibration_corrections (id),
+    activated_utc    TEXT    NOT NULL,
+    kind             TEXT    NOT NULL
+                     CHECK (kind IN ('measured', 'withdrawn', 'scratch')),
+    reason           TEXT    NOT NULL CHECK (length(trim(reason)) >= 10),
+    -- THE MEASUREMENT, a measured row only: what was held out, in words; the
+    -- distinct bets measured, and those held out and scored; the raw and
+    -- corrected Brier on them; the improvement (raw minus corrected); its
+    -- paired bootstrap 95 per cent interval; the seed and the resamples.
+    holdout          TEXT,
+    bets             INTEGER,
+    holdout_n        INTEGER,
+    brier_raw        REAL,
+    brier_corrected  REAL,
+    improvement      REAL,
+    diff_low         REAL,
+    diff_high        REAL,
+    bootstrap_seed   INTEGER,
+    bootstrap_draws  INTEGER,
+    PRIMARY KEY (sport, market_type, forecaster, seq)
+) WITHOUT ROWID;
+
+CREATE TRIGGER IF NOT EXISTS correction_activations_no_update
+BEFORE UPDATE ON correction_activations
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: an activation or a withdrawal of a correction is '
+        || 'append-only; a change is a new row, and the record keeps both');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activations_no_delete
+BEFORE DELETE ON correction_activations
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: an activation or a withdrawal of a correction is '
+        || 'never deleted. Which correction was in force, and from when, is '
+        || 'part of the record');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_is_the_next_of_its_category
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.seq IS NOT (SELECT COALESCE(MAX(a.seq), 0) + 1
+                       FROM correction_activations a
+                      WHERE a.sport = NEW.sport
+                        AND a.market_type = NEW.market_type
+                        AND a.forecaster = NEW.forecaster)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a correction''s activation rows are append-only: each '
+        || 'is the next of its category, and nothing is written in a stored '
+        || 'row''s place');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_names_its_correction
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NOT EXISTS (SELECT 1 FROM calibration_corrections c
+                  WHERE c.id = NEW.correction_id
+                    AND c.sport = NEW.sport
+                    AND c.market_type = NEW.market_type
+                    AND c.forecaster = NEW.forecaster)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: an activation names a correction of its own category -- '
+        || 'the sport, the market and the forecaster the correction was '
+        || 'fitted for');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_is_stamped_when_written
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.activated_utc NOT GLOB
+     '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'
+  OR NEW.activated_utc > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  OR NEW.activated_utc < (SELECT c.fitted_utc FROM calibration_corrections c
+                           WHERE c.id = NEW.correction_id)
+  OR NEW.activated_utc < (SELECT MAX(a.activated_utc)
+                            FROM correction_activations a
+                           WHERE a.sport = NEW.sport
+                             AND a.market_type = NEW.market_type
+                             AND a.forecaster = NEW.forecaster)
+  OR (NEW.activated_utc < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds')
+      AND (COALESCE((SELECT value FROM meta WHERE key = 'kind'), 'live') = 'live'
+           OR EXISTS (SELECT 1 FROM correction_activations b
+                       WHERE b.kind IN ('measured', 'withdrawn'))
+           OR EXISTS (SELECT 1 FROM calibration_corrections k
+                       WHERE k.active_from IS NOT NULL)))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: an activation is stamped when it is written, as '
+        || 'YYYY-MM-DDTHH:MM:SSZ -- never later, never before its correction '
+        || 'was fitted, never before the last row of its category, and on a '
+        || 'record never more than a minute before it is written: a row dated '
+        || 'back would put a correction in force, or take one out, over claims '
+        || 'already written');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_never_a_labelled_fit_or_a_placeholder
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.kind IN ('measured', 'scratch')
+ AND (EXISTS (SELECT 1 FROM correction_gate_labels l
+               WHERE l.correction_id = NEW.correction_id)
+      OR (SELECT c.n_train FROM calibration_corrections c
+           WHERE c.id = NEW.correction_id) < 50)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a fit labelled fitted below its gate can never be put in '
+        || 'force, and a placeholder was never fitted (fewer than the 50 its '
+        || 'gate needs)');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_only_measured_carries_a_measurement
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.kind <> 'measured'
+ AND (NEW.holdout IS NOT NULL OR NEW.bets IS NOT NULL
+      OR NEW.holdout_n IS NOT NULL OR NEW.brier_raw IS NOT NULL
+      OR NEW.brier_corrected IS NOT NULL OR NEW.improvement IS NOT NULL
+      OR NEW.diff_low IS NOT NULL OR NEW.diff_high IS NOT NULL
+      OR NEW.bootstrap_seed IS NOT NULL OR NEW.bootstrap_draws IS NOT NULL)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a measurement is a measured activation, and is held to the '
+        || 'gate as one');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_carries_its_measurement
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.kind = 'measured'
+ AND (NEW.holdout IS NULL OR length(trim(NEW.holdout)) < 10
+      OR typeof(NEW.bets) <> 'integer' OR typeof(NEW.holdout_n) <> 'integer'
+      OR NEW.holdout_n < 40 OR NEW.bets < NEW.holdout_n
+      OR typeof(NEW.brier_raw) NOT IN ('integer', 'real')
+      OR typeof(NEW.brier_corrected) NOT IN ('integer', 'real')
+      OR typeof(NEW.improvement) NOT IN ('integer', 'real')
+      OR typeof(NEW.diff_low) NOT IN ('integer', 'real')
+      OR typeof(NEW.diff_high) NOT IN ('integer', 'real')
+      OR NEW.brier_raw < 0 OR NEW.brier_raw > 1
+      OR NEW.brier_corrected < 0 OR NEW.brier_corrected > 1
+      OR abs(NEW.improvement - (NEW.brier_raw - NEW.brier_corrected)) > 0.000002
+      OR NEW.diff_low > NEW.diff_high
+      OR NEW.diff_low < -1 OR NEW.diff_high > 1
+      OR typeof(NEW.bootstrap_seed) <> 'integer'
+      OR typeof(NEW.bootstrap_draws) <> 'integer'
+      OR NEW.bootstrap_seed <> 20260923 OR NEW.bootstrap_draws <> 1000)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: an activation without its measurement is refused. A '
+        || 'measured activation carries what was held out, the distinct bets '
+        || 'measured and the 40 or more held out, the raw and corrected Brier '
+        || 'on the same questions, the improvement between them, and the '
+        || 'bootstrap interval of the improvement with its seed and resamples, '
+        || 'drawn as the gate draws it: 1000 resamples from seed 20260923');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_counts_distinct_bets
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.kind = 'measured'
+ AND (NEW.bets IS NOT (
+          SELECT COUNT(*) FROM calibration_corrections c
+            JOIN predictions p
+              ON p.sport = c.sport AND p.market_type = c.market_type
+             AND p.predictor = c.forecaster
+           WHERE c.id = NEW.correction_id
+             AND p.resolved_utc IS NOT NULL AND p.outcome IS NOT NULL
+             AND p.resolved_utc < c.fitted_utc
+             AND NOT EXISTS (SELECT 1 FROM prediction_voids v
+                              WHERE v.prediction_id = p.id)
+             AND NOT EXISTS (
+                 SELECT 1 FROM predictions q
+                  WHERE q.id < p.id
+                    AND q.predictor IS p.predictor AND q.game_id IS p.game_id
+                    AND q.market_type IS p.market_type AND q.subject IS p.subject
+                    AND q.line_asked IS p.line_asked
+                    AND q.resolved_utc IS NOT NULL AND q.outcome IS NOT NULL
+                    AND q.resolved_utc < c.fitted_utc
+                    AND NOT EXISTS (SELECT 1 FROM prediction_voids w
+                                     WHERE w.prediction_id = q.id)))
+      OR NEW.holdout_n IS NOT (NEW.bets - CAST(NEW.bets * 0.8 AS INTEGER)))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a correction is measured on distinct bets by the key, per '
+        || 'forecaster: its category''s settled questions before it was fitted, '
+        || 'each once however many passes answered it, and the latest fifth of '
+        || 'them held out');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_ties_go_to_the_uncorrected
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.kind = 'measured' AND NEW.diff_low IS NOT NULL
+ AND NOT (typeof(NEW.diff_low) IN ('integer', 'real') AND NEW.diff_low > 0)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a tie goes to the uncorrected probability. A correction is '
+        || 'put in force only when the bootstrap interval of its Brier '
+        || 'improvement lies wholly above zero; this one touches zero, so the '
+        || 'uncorrected probability stands');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_activation_scratch_is_never_live
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.kind = 'scratch'
+ AND (COALESCE((SELECT value FROM meta WHERE key = 'kind'), 'live') = 'live'
+      OR EXISTS (SELECT 1 FROM correction_activations b
+                  WHERE b.kind IN ('measured', 'withdrawn'))
+      OR EXISTS (SELECT 1 FROM calibration_corrections k
+                  WHERE k.active_from IS NOT NULL))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a scratch activation of a correction is refused on a live '
+        || 'database, and on any database holding a record''s own rows -- a '
+        || 'measured activation, a withdrawal, or a correction written in '
+        || 'force under the rule before 29 September 2026 -- whatever its kind '
+        || 'says. Only a world that is not the operator''s record may put a '
+        || 'correction in force without a measurement');
+END;
+
+CREATE TRIGGER IF NOT EXISTS correction_withdrawal_names_the_correction_in_force
+BEFORE INSERT ON correction_activations
+FOR EACH ROW
+WHEN NEW.kind = 'withdrawn'
+ AND NOT (
+     NEW.correction_id IS (
+         SELECT a.correction_id FROM correction_activations a
+          WHERE a.sport = NEW.sport AND a.market_type = NEW.market_type
+            AND a.forecaster = NEW.forecaster
+            AND a.kind IN ('measured', 'scratch')
+            AND a.seq = (SELECT MAX(b.seq) FROM correction_activations b
+                          WHERE b.sport = NEW.sport
+                            AND b.market_type = NEW.market_type
+                            AND b.forecaster = NEW.forecaster))
+  OR (NOT EXISTS (SELECT 1 FROM correction_activations b
+                   WHERE b.sport = NEW.sport
+                     AND b.market_type = NEW.market_type
+                     AND b.forecaster = NEW.forecaster)
+      AND NEW.correction_id IS (
+          SELECT c.id FROM calibration_corrections c
+           WHERE c.sport = NEW.sport AND c.market_type = NEW.market_type
+             AND c.forecaster = NEW.forecaster
+             AND c.active_from IS NOT NULL
+           ORDER BY c.version DESC LIMIT 1)))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a withdrawal names the correction in force for its '
+        || 'category -- the one its latest activation names, or, before any, '
+        || 'the one written in force under the rule before 29 September 2026');
+END;
+
+-- A LABEL, NEVER ON A FIT THAT WAS PUT IN FORCE HERE (question 32 beside
+-- question 23): the rule above it reads active_from, how a fit was put in
+-- force before this release; this one reads the activation rows, how one is
+-- from it.
+CREATE TRIGGER IF NOT EXISTS correction_gate_label_never_on_an_activated_fit
+BEFORE INSERT ON correction_gate_labels
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM correction_activations a
+              WHERE a.correction_id = NEW.correction_id
+                AND a.kind IN ('measured', 'scratch'))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a fit that carries an activation is not labelled fitted '
+        || 'below its gate: the ruling says a labelled fit can never be '
+        || 'activated, not that one in force is taken out of force, and that '
+        || 'is the operator''s to say');
+END;
+
+-- AND THE CORRECTION AN ACTIVATION NAMES IS NEVER WRITTEN OVER. A replacing
+-- insert naming a stored correction's number (or its category and version)
+-- removes it without the no-delete rule, and one keeping its number would
+-- put other numbers in force under the same activation. Read after the row
+-- lands, so the number it landed under is the one read.
+CREATE TRIGGER IF NOT EXISTS calibration_corrections_never_replaced_under_an_activation
+AFTER INSERT ON calibration_corrections
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM correction_activations a
+              WHERE a.correction_id = NEW.id
+                 OR NOT EXISTS (SELECT 1 FROM calibration_corrections k
+                                 WHERE k.id = a.correction_id))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a correction an activation or a withdrawal names is '
+        || 'never written over; nothing is written in its place');
+END;
+
 
 -- ---------------------------------------------------------------------------
 -- THE RUNG LOG — a measurement, and deliberately NOT a record of predictions.

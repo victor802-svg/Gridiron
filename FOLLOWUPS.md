@@ -8358,3 +8358,283 @@ difference.
   server's start has opened the record under the schema), then
   `python tools/label_corrections_below_the_gate.py --database var/gridiron.db --write --live`
   -- nine written, or a refusal naming the difference.
+
+## A correction is in force only by its own dated row -- built 2026-09-29 *(operator question 32; the second set of rulings of 29 September, docs/briefs/2026-09-29-rulings-second-set.md)*
+
+The ruling: "Q32: corrections activate through the same gate as model fits.
+Every correction row is written inactive. Activation is its own dated
+append-only row, written only when the holdout bootstrap interval of the Brier
+improvement excludes zero, measured on distinct bets by the key, per
+forecaster; a tie goes to the uncorrected probability. The recalibration task
+never activates anything; fix its docstring to say what it does." And: "Fit
+71: withdrawn now by a dated append-only row, reason 'activated under the
+pre-Q32 rule: single holdout comparison, pooled rows'. Then run the new gate
+on it read-only and report the interval. If it passes, activation is a new
+dated row; if not, it stays withdrawn." What was built is CLAUDE.md's row A
+CORRECTION IS IN FORCE ONLY BY ITS OWN ROW and the activation section's
+paragraph; what follows is the evidence, the readings taken, and what is left.
+
+- **The first step (read-only, the brief's 05:46Z; again on the verified copy
+  of 06:27Z):** no forecast and no recommendation carries fit 71 or any
+  correction (0 and 0); no MLB moneyline statistical forecast was written at
+  or after fit 71's instant (0); the newest MLB forecast is 3088, 27 September
+  05:48:42Z. Nothing to label.
+- **FIT 71 UNDER THE NEW GATE (the verified copy, after its withdrawal):** its
+  category's settled questions before its instant (2026-09-28T13:00:01Z),
+  each once on the key: **260** (its 364 settled forecasts); refit on the
+  earliest **208**, scored on the latest **52**; Brier raw **0.247471**,
+  corrected **0.247620**; improvement **-0.000149**; paired bootstrap 95%
+  interval **[-0.015132, +0.016931]** (1000 resamples, seed 20260923). The
+  interval touches zero: **a tie -- it does not pass, and it stays
+  withdrawn.** Each of the 260 questions stands on the forecast the blind
+  record's standing rule keeps (`recount.correction_standing`, 260 of 260).
+  Under the rule before, on the same instant, the refit's own point check
+  held out 73 FORECASTS and read a gain of 0.005202 (row 71's
+  `holdout_brier_raw` 0.250413 -> 0.245211).
+- **The rehearsal (scratchpad `q32/rehearse.txt`; one verified copy through
+  `rebuild.verified_backup`, 45.8 s, integrity ok, 62 tables proved equal,
+  none mismatched; a copy of it opened under this tree):** `db.init` added
+  exactly the new table and its fifteen rules (250 -> 266 objects), none gone
+  or changed, no table's count or column checksums moved, the new table
+  empty; 0 differences from a fresh build of this tree with an EMPTY
+  register; the rules of the three correction tables in a fresh build's
+  order; a second open changes nothing; fit 71 served by nobody. Then the
+  tool, as it will run on the record: the withdrawal's dry run named fit 71
+  and the ruled reason and wrote nothing; `--write` wrote it (seq 1,
+  `withdrawn`, the reason exactly as ruled); again, "already withdrawn, as
+  ruled"; the gate read-only reported the interval above; `--write` exited 1,
+  "NOT ACTIVATED, NOTHING WRITTEN ... so it stays withdrawn", twice; `--live`
+  on the copy refused. Read back: one row; the door serves nothing for MLB
+  moneyline, statistical; the page says "Version 8 has been withdrawn since
+  Tuesday 29 September: it was put in force by the weekly refit under the
+  rule before 29 September, on one comparison with no interval that counted
+  each pass of a question separately; nothing is in force." (no plain-words
+  fault); both correction gate checks pass on the copy; 0 forecasts and 0
+  recommendations carry a correction. Every copy was deleted.
+- **The plantings:** eight new, each ESCAPES on the unfixed tree (db2960f,
+  exported with this `plant.py` placed in it) and is CAUGHT here: a
+  correction in force with no row of its own (the weekly refit on 500
+  questions, and a new row written with `active_from`), one activated on a
+  tie, one with no interval or no measurement, a labelled fit or a
+  placeholder activated (by the gate and by a scratch row), a scratch
+  activation on a live record (and the scratch door on a record), a row
+  edited, deleted or replaced (and the correction a row names written over),
+  the door reading `active_from` (the in-force door and the latest-row door
+  each swapped), and a measurement on pooled rows (a row stating the
+  forecasts' counts, and the measurement's door swapped for every
+  forecast). The three "CORRECTIONS ACTIVATE ONLY ON THEIR MERITS" plantings
+  now ask the gate (a placeholder, a tie, a genuine pass on 500 questions);
+  item 3's and question 16's plantings put a correction in force by its own
+  row. Scratchpad `q32/plantings_head.txt`, `q32/plantings_fix.txt`.
+- **Tests:** `tests/test_correction_activation.py` (16); the correction,
+  correction-gate, recommendation and Today tests moved to a correction put
+  in force by its own row (a scratch activation in a test world); one test
+  used an activation stamped 2099 to stand for "not in force yet" -- a stamp
+  ahead of now is refused from this release, and the test says so.
+- **The render (scratchpad `q32/render/`, the browser suite's world, 1100 and
+  390 px):** the three states read in plain words on the gate list and the
+  learning panel, no horizontal scroll, no page error. THE RENDER CAUGHT ONE
+  FALSE SENTENCE: "measured on the latest 100 of 500 settled questions, which
+  it was not fitted on" -- the version in force WAS fitted on them (it is
+  fitted on every settled forecast); only the gate's refit was not. It now
+  reads "on the 500 settled questions before it was fitted, one fitted on the
+  earliest 400 lowered the Brier score on the latest 100 by ...", and the
+  not-in-force words and the Record tab's note say the same thing the same
+  way.
+
+**Readings taken (the conservative default each time; one line to reverse):**
+1. THE MEASUREMENT'S INSTANT is the correction's own fitted instant -- the
+   record the fit saw -- not the moment the tool runs: a correction is
+   measured on what it could have been fitted on, and the measurement is the
+   same whenever it is made (reverse: `holdout_questions` reads
+   `settled_rows` at now; the schema's recount would read now too).
+2. WHAT IS SCORED is the correction's method refit on the earliest four
+   fifths, as the old check and the model gate's `tools/holdout.py` score a
+   refit; the stored fit, fitted on all of them, would be scored in-sample.
+3. WHICH ROW OF A BET STANDS: the latest written, withdrawn by no void,
+   because the correction may not read `games`; the tool refuses a
+   measurement where that is not the blind record's standing row (question
+   27 will change the standing pass; the check is where it will show).
+4. THE BOOTSTRAP is the model gate's own: 1000 resamples, seed 20260923, the
+   same two percentiles (tested equal), per question.
+5. A WITHDRAWAL names the correction in force -- the category's latest row's,
+   or, before any row, the newest written in force under the old rule (fit
+   71) -- so a withdrawal cannot take out of force a correction it does not
+   name.
+6. ACTIVATION IS A SEPARATE ACT, as for model fits: nothing writes a measured
+   row but `activate_measured`, which the tool calls; the weekly refit never
+   does (the ruling's "the recalibration task never activates anything").
+   So from this release no correction comes into force until someone runs
+   the tool on it.
+7. The tool exits 1 when `--write` was asked and the gate did not pass --
+   nothing written -- as `tools/holdout.py --activate` does on a tie.
+8. The ruled withdrawal reason is stored as ruled and said on the page in
+   plain words (`language.RULED_WITHDRAWAL_WORDS`: "the pre-Q32 rule" and
+   "pooled rows" are the repair's own terms); any other reason is shown as
+   written.
+9. A PLACEHOLDER is a row whose `n_train` is under the gate of 50, as the
+   label's rule reads it.
+10. `refit_all` no longer runs the old point check or stores holdout columns
+    on new rows: the gate's measurement is the activation's; the columns
+    stay on the rows written before, labelled on the payload as the refit's
+    own check before 29 September.
+
+**Found on the way, to the re-read (the queue rule: none breaks LAW 1 or LAW 3
+or makes a gate count false):**
+- **`correction.fit_platt` can diverge on a narrow claim range.** Measured
+  2026-09-29 on synthetic rows: claims 0.80-0.95 with coin-flip outcomes,
+  240 rows -> slope 80.7, intercept 2.2e8 (a claim of 85% corrected to
+  100%); Newton's step has no damping. On the live record the refit of fit
+  71's category converged (a corrected Brier of 0.247620 beside 0.247471
+  raw). Under the new gate a divergent refit scores worse and cannot pass,
+  so it errs toward the uncorrected probability; but a fit the weekly refit
+  STORES could be such a fit, and would then be refused by the gate forever.
+  What would settle it: a damped step or a line search, which changes every
+  slope and intercept fitted after it -- a model change no ruling names
+  (LAW 2), so the operator's.
+- **The learning panel's header states the last refit as an ISO date**
+  ("2025-01-15" in the render), where every other date on the page is in
+  words. The renderer places `last_refit.slice(0, 10)`; a plain-words line
+  from the server would settle it. (The Record tab's corrections note said
+  "fitted 2026-09-28" the same way; it says the day in words from this
+  release, since the line was being rewritten.)
+- **Only a category of 200 distinct settled questions or more can be
+  measured** (forty held out at four fifths): on the verified copy of 29
+  September, three of the 26 categories -- MLB moneyline 260, total 213 and
+  spread 202, all statistical (college point spread, statistical, next at
+  185; every reasoning-pass category under 150). That is the old floor, now
+  counted in questions; said so the page's "fitted - in force only once its
+  measurement is clear of zero" is not read as a promise for a small
+  category.
+
+- **NOT SEEN: a measured row written by hand with an interval the
+  measurement did not make.** The numbers on a measured row are the
+  measurement's own when the door writes it (`activate_measured` measures in
+  the same transaction and takes no numbers from its caller), and the schema
+  checks their shape, their consistency and their count of distinct bets --
+  but a rule cannot recompute a bootstrap, so a raw insert stating a passing
+  interval for a tie, with the right counts, would land. The model fits'
+  `fit_activations` has the same limit. What would settle it: a gate check
+  measuring every measured row on the record's copy again and comparing
+  (deterministic, seeded) -- with a reading for a void written after the
+  activation, which would move an honest measurement; the operator's.
+
+**After the release**, from the main checkout, in this order (the ruling's:
+withdrawn now, then the gate, activation only on a pass):
+
+    python tools/correction_holdout.py --database var/gridiron.db --correction 71 --withdraw
+    python tools/correction_holdout.py --database var/gridiron.db --correction 71 --withdraw --write --live
+    python tools/correction_holdout.py --database var/gridiron.db --correction 71
+    # only if the line above says PASSES:
+    python tools/correction_holdout.py --database var/gridiron.db --correction 71 --write --live
+
+Each is refused by name until a scheduled pass or the server's start has
+opened the record under this schema (`db.init` adds the table); the dry runs
+read through the read-only door. On the copy the third reports the tie above,
+so the fourth is not run and fit 71 stays withdrawn.
+
+### Its prover (2026-09-29): getting a correction in force any other way
+
+Tried on the change as first built, each on a scratch world: the weekly refit
+(writes inactive, no row), `record_fit` with `active_from` (no such parameter),
+a raw insert carrying `active_from` (refused), an edit, a delete and a
+replacing insert on the activation table (refused), a number read twice (the
+table is WITHOUT ROWID: a function in the statement ran once, so the rules and
+the key read one value, and nothing lands in a stored row's place), a labelled
+fit and a placeholder (refused by the gate and by a scratch row), a scratch row
+on a live-kind record (refused), an interval touching zero or reversed
+(refused), a measurement on every forecast (refused by the recount), and the
+door's four readers -- the card's model chip, a recommendation's
+`calibrated_fair_value`, a forecast's `calibrated_prob`, the learning line --
+each through `shown_proposition` / `shown_claim` / `latest_activation`, none
+reading `active_from`.
+
+**GOT THROUGH, AND FIXED** (each with a test form, and a planting that escapes
+on 428e1cb and on the change as first built -- shown by taking each part out
+alone in a copy, when exactly its own planting escaped and the other twenty
+correction plantings stayed caught):
+
+1. **One resample, or another seed.** `measure(conn, id, draws=1, seed=6)` on a
+   tie of 260 questions gave the "interval" [+0.0107, +0.0107], and the door's
+   own writer wrote it, every number true to its drawing; any seed was taken,
+   so a tie could be drawn again until one passed. The measured row is now
+   refused unless drawn as the gate draws it: 1000 resamples from seed
+   20260923 (`correction_activation_carries_its_measurement`, pinned and tested
+   equal to `correction.BOOTSTRAP_DRAWS` and `BOOTSTRAP_SEED`).
+   `plant.py::plant_a_correction_measured_by_another_bootstrap`.
+2. **Dated back.** `activate_measured(..., now=<a day after the fit, months
+   back>)` wrote a row the door served from that day; the page corrects a
+   finished game's claim by the correction in force when the claim was written
+   (`recommend.correction_instant`), so it would have reached every claim of
+   those months on the page. A withdrawal dated back takes one off: fit 71's
+   ruled withdrawal dated 2026-09-28T13:00:02Z was accepted on the rehearsal
+   copy. On a record -- a live kind, or a record's own rows -- a row is now
+   refused more than a minute before it is written
+   (`correction_activation_is_stamped_when_written`); a scratch world dates its
+   rows as it likes. `plant.py::plant_a_correction_activation_dated_back`.
+3. **The kind set by hand.** `UPDATE meta SET value = 'scratch' WHERE key =
+   'kind'` on a record holding a correction written in force the old way, then
+   a raw scratch row: it landed and the door served it. The scratch rule now
+   refuses a database holding a record's own rows -- a measured row, a
+   withdrawal, a correction written in force the old way -- whatever its kind
+   says (`correction_activation_scratch_is_never_live`; the Python door already
+   did). `plant.py::plant_a_scratch_correction_activation_on_a_live_record`,
+   its third form.
+
+**GOT THROUGH, HELD BY A TEST AND NOT BY A RULE (NOT SEEN by the schema): which
+questions a measurement held out, and which forecast of each it scored.** The
+rules recount the count and the fifth, not the set. A measurement that
+shuffled its questions (two shuffles of five passed the gate on a world of 250
+questions and were written), split them by number, kept each question's FIRST
+pass (written: measured on the morning passes, the count right), or mixed in
+another forecaster's questions keeping the count, writes a row every rule
+accepts -- and the suite as first built passed a random split and a split by
+number (200 of 200 correction, recommendation and Today tests).
+`test_correction_activation.py::test_the_measurement_scores_the_latest_fifth_as_they_settled_drawn_as_the_gate_draws`
+works the measurement out again from the rows -- each question's latest
+written forecast, the latest fifth as they settled held out, a refit on the
+rest, `tools/holdout.py`'s own bootstrap of the differences -- on a world whose
+questions settle in another order than they were written, and fails on all
+four. What would close it in the schema: a rule recomputing the raw Brier of
+the latest fifth on each question's latest written forecast. It is not built:
+question 27 is ruled to change the standing pass (a final pass before the
+start stands, else the latest early pass), and a rule holding "the latest
+written" would refuse the measurement question 27 makes -- a rule's text is
+never replaced on a record that holds it. For question 27's build.
+
+**Found on the way, to the re-read** (the queue rule: none breaks LAW 1 or LAW 3
+or makes a gate count false):
+- **The model fits' scratch rule has the same hole.**
+  `fit_activation_scratch_is_never_live` reads only the meta kind, so the kind
+  set to scratch by hand lets a scratch activation of a model fit land on the
+  record; `model.activation.activate_in_a_scratch_world` refuses a record in
+  Python, and a raw statement goes round it. Question 32's rule (a record known
+  by its own rows) would carry over; the model gate is not the ruling's.
+- **`schema.sql`'s column comment on `calibration_corrections.active_from`**
+  still says "NULL means fitted but NOT ACTIVE. A correction is inert until
+  this is set" -- false from this release (it is history, read as in force by
+  nothing). It sits inside the table's declaration, whose text the record
+  stores, so it is left as written rather than make a fresh build's stored
+  text differ from the record's; the block above question 32's rules says what
+  the column is now.
+
+**The prover's rehearsal** (a fresh verified copy through
+`rebuild.verified_backup`, 44.5 s, integrity ok, 62 tables proved equal, none
+mismatched, read 07:59:33Z to 08:00:18Z; a copy of it opened under this tree):
+`db.init` 250 -> 266 objects, exactly the table and its fifteen rules, none
+gone or changed, no table's count or column checksums moved, the new table
+empty, the rules in a fresh build's order, 0 differences from a fresh build
+with an EMPTY register, a second open changing nothing; fit 71's withdrawal
+dated back refused before anything was written; the tool: the dry run wrote
+nothing, the gate asked before the withdrawal refused ("the ruling's order"),
+the withdrawal written once and "already withdrawn, as ruled" after; the gate
+read-only: 260 questions, refit on 208, scored on 52, Brier raw 0.247471,
+corrected 0.247620, improvement -0.000149, 95% interval [-0.015132, +0.016931]
+(1000 resamples, seed 20260923) -- a tie, the implementer's figures exactly;
+`--write` exit 1 twice, nothing written; `--live` on the copy refused; on the
+record's own path, `--write` and `--withdraw --write` without `--live` refused
+before any open. Then on the rehearsed copy a row of one resample, a row from
+another seed, a row dated back, a scratch row after the kind was set by hand,
+and the scratch door: all refused, the one withdrawal unchanged. The door
+serves nothing in any category; both correction gate checks pass; 0 forecasts
+and 0 recommendations carry a correction. Every copy was deleted.

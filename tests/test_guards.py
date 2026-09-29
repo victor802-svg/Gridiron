@@ -632,6 +632,20 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_learning_row_counting_one_prop_type",
         "plant_a_labelled_correction_activated",
         "plant_a_correction_label_the_fit_does_not_support",
+        # OPERATOR QUESTION 32 (ruled 2026-09-29, second set): a correction is
+        # in force only by its own dated activation row.
+        "plant_a_correction_in_force_without_its_own_row",
+        "plant_a_correction_activated_on_a_tie",
+        "plant_a_correction_activation_without_its_interval",
+        "plant_a_labelled_or_placeholder_correction_activated",
+        "plant_a_scratch_correction_activation_on_a_live_record",
+        "plant_a_correction_activation_edited_deleted_or_replaced",
+        "plant_a_correction_door_reading_active_from",
+        "plant_a_correction_measured_on_pooled_rows",
+        # and its prover's (2026-09-29): the bootstrap drawn another way, a
+        # row dated back over claims already written
+        "plant_a_correction_measured_by_another_bootstrap",
+        "plant_a_correction_activation_dated_back",
         # GRIDIRON_REPAIR item 7 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): a refused rerun is a noop, the closing write is
         # caught, a hung run is marked abandoned past its task's silence,

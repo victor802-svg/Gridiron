@@ -111,10 +111,13 @@ def test_the_append_only_tables_are_the_ones_sqlite_holds_a_rule_on(tmp_path):
     # What the brief was read against on 2026-09-27: 21 tables with a delete
     # rule and one with an update rule only -- and from 2026-09-29 the
     # "fitted below its gate" labels (operator question 23), append-only
-    # from the day they were declared: 23.
-    assert len(protected) == 23
+    # from the day they were declared: 23 -- and the correction activations
+    # (operator question 32, the same day), append-only likewise: 24.
+    assert len(protected) == 24
     assert protected["correction_gate_labels"] == {
         "correction_gate_labels_no_delete", "correction_gate_labels_no_update"}
+    assert protected["correction_activations"] == {
+        "correction_activations_no_delete", "correction_activations_no_update"}
     assert {"meta", "settings", "task_runs", "predictions", "recommendations",
             "market_snapshots", "prop_rung_claims"} <= set(protected)
     assert protected["prop_rung_claims"] == {"prop_rung_claims_no_update"}

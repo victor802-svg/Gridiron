@@ -846,7 +846,20 @@ def _plus_hours(stamp: str, hours: float) -> str:
 
 
 def _run_recalibrate(conn: sqlite3.Connection) -> tuple[str, str, dict]:
-    """Re-fit every category's correction. Writes versions; activates nothing.
+    """Re-fit every category's correction: one new version per category with
+    settled forecasts (`correction.refit_all`), fitted from the fiftieth
+    settled question and recorded as a placeholder below it, every one
+    written INACTIVE. It measures nothing and puts nothing in force.
+
+    WHAT IT DOES, SAID TRUE (operator question 32, ruled 2026-09-29: "The
+    recalibration task never activates anything; fix its docstring to say
+    what it does"). Until that release this docstring said "Writes versions;
+    activates nothing" while the refit it calls set `active_from` on any fit
+    whose point holdout check passed -- which is how fit 71 came into force
+    from this task at 2026-09-28T13:00:01Z (task run 6173). A correction now
+    comes into force only by its own dated row in `correction_activations`,
+    written when its measurement clears the gate
+    (`tools/correction_holdout.py`), never by this task.
 
     Reports in the same voice as the gates elsewhere: a category under the
     threshold says how far off it is, because "no correction" and "not enough

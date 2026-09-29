@@ -2025,11 +2025,16 @@ def _corrections_note(conn: sqlite3.Connection, *, sport: str,
 
     active = correction.active_correction(
         conn, sport=sport, market_type=market_type, forecaster=predictor)
+    # SINCE WHEN, AND ON WHAT, from its own activation row (question 32,
+    # 2026-09-29): the door returns the row beside the correction.
     return language.corrections_note(
         active is not None, correction.MIN_TRAIN,
         version=active["version"] if active else None,
         fitted=active["fitted_utc"] if active else None,
         settled=active["n_train"] if active else None,
+        since=active["activated_utc"] if active else None,
+        held_out=active["measured_holdout_n"] if active else None,
+        questions=active["measured_bets"] if active else None,
     )
 
 

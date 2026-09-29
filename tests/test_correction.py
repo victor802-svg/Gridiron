@@ -206,10 +206,18 @@ _SKEWED = C.Platt(slope=0.449, intercept=-0.270, n_train=106)
 
 def _active(conn, model, *, sport="mlb", market="moneyline",
             forecaster="statistical", active_from="2026-01-01T00:00:00Z"):
-    return C.record_fit(conn, sport=sport, market_type=market,
-                        forecaster=forecaster, model=model, status="planted",
-                        active_from=active_from,
-                        fitted_utc="2026-01-01T00:00:00Z")
+    """A fit written inactive and put in force by its own row at
+    `active_from`, the one lawful way a test world has (operator question
+    32, 2026-09-29: a scratch activation, refused on the live record)."""
+    version = C.record_fit(conn, sport=sport, market_type=market,
+                           forecaster=forecaster, model=model, status="planted",
+                           fitted_utc="2026-01-01T00:00:00Z")
+    fid = conn.execute(
+        "SELECT id FROM calibration_corrections WHERE sport = ?"
+        " AND market_type = ? AND forecaster = ? AND version = ?",
+        (sport, market, forecaster, version)).fetchone()[0]
+    C.activate_in_a_scratch_world(conn, fid, now=active_from)
+    return version
 
 
 def _prop(conn, p, at_utc=None):

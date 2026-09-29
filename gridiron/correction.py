@@ -100,6 +100,54 @@ population, read with no instant; `tools/label_corrections_below_the_gate.py`
 writes only when it is exactly the nine, and refuses any other selection by
 name. (From the build to that ruling, 2026-09-29 ~01:50Z, the default: the
 63 read by the instant question 23 was ruled, and the four among them.)
+
+WRITTEN INACTIVE; IN FORCE ONLY BY ITS OWN DATED ROW (operator question 32,
+ruled 2026-09-29, second set; built the same day): "corrections activate
+through the same gate as model fits. Every correction row is written
+inactive. Activation is its own dated append-only row, written only when the
+holdout bootstrap interval of the Brier improvement excludes zero, measured on
+distinct bets by the key, per forecaster; a tie goes to the uncorrected
+probability. The recalibration task never activates anything." Until this
+release `refit_all` set `active_from` on the row it wrote whenever
+`holdout_check` -- a point comparison on the latest fifth of the category's
+settled FORECASTS, a gain over 0.005 and no interval -- passed, and the door
+read that column: fit 71 came into force that way, by the weekly task, at
+2026-09-28T13:00:01Z. From this release:
+
+  * `record_fit` writes every row inactive and the schema refuses
+    `active_from` on a new row (`calibration_corrections_written_inactive`);
+    `refit_all` fits and records, and never measures or activates.
+  * the correction in force for a category is read from
+    `correction_activations` alone, through `latest_activation` (the one
+    door; `active_correction` is it, less a withdrawal): the category's latest
+    row -- measured or scratch, that correction; withdrawn, none.
+    `active_from` on a stored row is history, never read as in force.
+  * `measure` is the gate's measurement, the model fits' shape
+    (`tools/holdout.py`): the category's settled questions before the
+    correction was fitted, ONE forecast per distinct bet on `gridiron.bet`'s
+    key, in the order they settled; a correction refit on the earliest four
+    fifths and scored on the latest fifth (the old split and its forty, now
+    counted in questions); the paired bootstrap 95% interval of the Brier
+    improvement (raw minus corrected), seeded and recorded as the model gate
+    seeds it. It passes only when the lower bound is above zero: an interval
+    touching zero is a tie, and a tie goes to the uncorrected probability.
+  * `activate_measured` measures and writes the dated row in one
+    transaction, only when it passes; `withdraw` writes a withdrawal with its
+    reason; `activate_in_a_scratch_world` is a test world's lawful path. The
+    schema's rules hold every part of it, the key's count among them.
+
+WHICH ROW OF A BET STANDS in the measurement, and why: its LATEST WRITTEN
+settled forecast, withdrawn by no void. The blind record's standing rule is
+the latest written BEFORE THE START (`calibration.standing_row_clause`,
+`recount.standing_of`), and this module may not read `games`, where the
+start is (`audit.check_correction_is_isolated`). The two are one choice
+whenever no forecast withdrawn by no void was written after its game began --
+a pass never writes one (the missed rule) and one found is voided (ruling 1,
+2026-09-24) -- and the tool that writes an activation on the record checks
+that they are, question by question, against `recount.correction_standing`,
+and refuses by name where they are not (`tools/correction_holdout.py`).
+Question 27, pending, will change the standing pass; that check is where the
+change will show.
 """
 
 from __future__ import annotations
@@ -141,6 +189,41 @@ class PooledCount(ValueError):
 
 class Refused(ValueError):
     """A label the rule does not select, or one on a fit in force."""
+
+
+class ActivationRefused(RuntimeError):
+    """An activation or a withdrawal of a correction was refused -- by the
+    schema, whose own words it carries, or by the measurement, which did not
+    pass the gate (operator question 32, 2026-09-29)."""
+
+
+class ScratchWorldRefused(RuntimeError):
+    """A scratch activation of a correction was asked of a record."""
+
+
+#: THE ACTIVATIONS (operator question 32, 2026-09-29): the table, and its
+#: three kinds as stored.
+ACTIVATIONS = "correction_activations"
+MEASURED, WITHDRAWN, SCRATCH = "measured", "withdrawn", "scratch"
+
+#: THE BOOTSTRAP, AS THE MODEL FITS' GATE DRAWS IT (question 32: "the same
+#: gate as model fits"): `tools/holdout.py`'s resamples and seed, and its
+#: percentile rule, so one measurement of one set of differences gives one
+#: interval under either gate (tested equal). Recorded on every measured row.
+BOOTSTRAP_DRAWS = 1000
+BOOTSTRAP_SEED = 20260923
+
+#: FIT 71'S WITHDRAWAL, IN THE OPERATOR'S WORDS (question 32, ruled
+#: 2026-09-29: "Fit 71: withdrawn now by a dated append-only row, reason
+#: ..."). Stored as ruled; the page says it in plain words
+#: (`language.withdrawal_reason_words`).
+FIT_71_WITHDRAWAL_REASON = (
+    "activated under the pre-Q32 rule: single holdout comparison, pooled rows")
+
+#: What a scratch activation says, in words.
+SCRATCH_REASON = (
+    "a scratch world puts its own correction in force without a measurement, "
+    "which only a database that is not the live record may do")
 
 
 @dataclass
@@ -281,9 +364,12 @@ def settled_rows(
     at = before_utc or utcnow()
     # NULL: every void on the record; an instant: those stamped by it.
     voided_by = at if as_it_stood else None
+    # WHEN EACH WAS WRITTEN, beside the key (2026-09-29, question 32): the
+    # measurement keeps one forecast per question, the latest written
+    # (`holdout_questions`). A column more, no clause changed.
     return conn.execute(
         f"SELECT p.id, {bet.columns('p')}, p.model_prob, p.calibrated_prob,"
-        "       p.outcome, p.resolved_utc"
+        "       p.outcome, p.resolved_utc, p.created_utc"
         "  FROM predictions p"
         " WHERE p.sport = ? AND p.market_type = ? AND p.predictor = ?"
         "   AND p.resolved_utc IS NOT NULL AND p.outcome IS NOT NULL"
@@ -366,44 +452,95 @@ def brier(probs: list[float], outcomes: list[float]) -> float | None:
     )
 
 
+def latest_activation(
+    conn: sqlite3.Connection, *, sport: str, market_type: str, forecaster: str,
+    at_utc: str | None = None,
+) -> sqlite3.Row | None:
+    """THE ONE DOOR for whether a correction is in force (operator question
+    32, ruled 2026-09-29: "Activation is its own dated append-only row"):
+    the category's latest row in `correction_activations` stamped at or
+    before `at_utc` (now, when left out) -- the correction it names, every
+    column of it, with the row's own beside it (`activation_kind`,
+    `activated_utc`, `activation_reason`, and a measured row's measurement:
+    `measured_bets`, `measured_holdout_n`, `measured_brier_raw`,
+    `measured_brier_corrected`, `measured_improvement`, `diff_low`,
+    `diff_high`, `bootstrap_seed`, `bootstrap_draws`, `measured_on`) -- or
+    None when the category has no row by then.
+
+    A withdrawal is returned as what it is: `active_correction` reads it as
+    nothing in force; the page says since when, and why.
+
+    `active_from` IS NEVER READ HERE. It was how a correction came into force
+    until this release -- set by the weekly refit on the row it wrote -- and
+    it stays on the stored rows as history. A record the schema of this
+    release has not reached holds no activation row, so nothing is in force
+    on it: the ruling's "every correction row is written inactive", read back.
+
+    NEVER A FIT FITTED BELOW ITS GATE (operator question 23, 2026-09-28: a
+    labelled fit "can never be activated"). The schema refuses an activation
+    naming one, and this door passes over one on a record made otherwise by
+    hand, as though it had never been activated: the category's latest row
+    naming no labelled fit decides.
+    """
+    if not table_columns(conn, ACTIVATIONS):
+        return None
+    now = at_utc or utcnow()
+    unlabelled = (" AND NOT EXISTS (SELECT 1 FROM correction_gate_labels l"
+                  "                 WHERE l.correction_id = a.correction_id)"
+                  if _labels_held(conn) else "")
+    # Latest by the row's place in its category: the schema holds the place
+    # and the stamp to one order (each row the next, never stamped before the
+    # last), so the place decides and the stamp says when.
+    return conn.execute(
+        "SELECT c.*, a.seq AS activation_seq, a.kind AS activation_kind,"
+        "       a.activated_utc, a.reason AS activation_reason,"
+        "       a.holdout AS measured_on, a.bets AS measured_bets,"
+        "       a.holdout_n AS measured_holdout_n,"
+        "       a.brier_raw AS measured_brier_raw,"
+        "       a.brier_corrected AS measured_brier_corrected,"
+        "       a.improvement AS measured_improvement, a.diff_low, a.diff_high,"
+        "       a.bootstrap_seed, a.bootstrap_draws"
+        "  FROM correction_activations a"
+        "  JOIN calibration_corrections c ON c.id = a.correction_id"
+        " WHERE a.sport = ? AND a.market_type = ? AND a.forecaster = ?"
+        "   AND a.activated_utc <= ?" + unlabelled +
+        " ORDER BY a.seq DESC LIMIT 1",
+        (sport, market_type, forecaster, now),
+    ).fetchone()
+
+
 def active_correction(
     conn: sqlite3.Connection, *, sport: str, market_type: str, forecaster: str,
     at_utc: str | None = None,
 ) -> sqlite3.Row | None:
     """The correction in force for a category, or None while it is still raw.
 
-    `active_from` NULL means fitted but inert: a fit can be recorded and read
-    without touching a single claim, which is what makes C2's gate a decision
-    rather than a side effect of fitting.
-
-    NEVER A FIT FITTED BELOW ITS GATE (operator question 23, 2026-09-28: a
-    labelled fit "can never be activated"). The schema already keeps one out
-    of force -- a label is refused on a fit carrying an activation, no stored
-    fit can gain one, and nothing may be written in a labelled fit's place --
-    and this door refuses it too, on a record made otherwise by hand: a
-    labelled fit is passed over as though it had never been activated, and
-    the version in force is the newest activation that is not labelled. A
-    record the schema has not reached holds no label, exactly (the read-only
-    doors read the live record without applying the schema).
+    FROM QUESTION 32 (2026-09-29) this is `latest_activation` less a
+    withdrawal: the correction the category's latest activation row names
+    when that row puts it in force (measured, or scratch in a test world),
+    and None when the latest row withdraws it or there is none. A fit is
+    written inert and stays inert until its own dated row -- which is what
+    makes C2's gate a decision rather than a side effect of fitting, as it
+    was meant to be and, until this release, was not: the weekly refit put
+    fit 71 in force by setting `active_from` on the row it wrote.
     """
-    now = at_utc or utcnow()
-    if not _labels_held(conn):
-        return conn.execute(
-            "SELECT * FROM calibration_corrections"
-            " WHERE sport = ? AND market_type = ? AND forecaster = ?"
-            "   AND active_from IS NOT NULL AND active_from <= ?"
-            " ORDER BY version DESC LIMIT 1",
-            (sport, market_type, forecaster, now),
-        ).fetchone()
-    return conn.execute(
-        "SELECT c.* FROM calibration_corrections c"
-        " WHERE c.sport = ? AND c.market_type = ? AND c.forecaster = ?"
-        "   AND c.active_from IS NOT NULL AND c.active_from <= ?"
-        "   AND NOT EXISTS (SELECT 1 FROM correction_gate_labels l"
-        "                   WHERE l.correction_id = c.id)"
-        " ORDER BY c.version DESC LIMIT 1",
-        (sport, market_type, forecaster, now),
-    ).fetchone()
+    latest = latest_activation(conn, sport=sport, market_type=market_type,
+                               forecaster=forecaster, at_utc=at_utc)
+    if latest is None or latest["activation_kind"] == WITHDRAWN:
+        return None
+    return latest
+
+
+def activations(conn: sqlite3.Connection, *, sport: str, market_type: str,
+                forecaster: str) -> list[dict]:
+    """Every activation and withdrawal of one category, in its order: the
+    history `version_report` sets beside each version."""
+    if not table_columns(conn, ACTIVATIONS):
+        return []
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM correction_activations"
+        " WHERE sport = ? AND market_type = ? AND forecaster = ?"
+        " ORDER BY seq", (sport, market_type, forecaster))]
 
 
 def _labels_held(conn: sqlite3.Connection) -> bool:
@@ -425,7 +562,8 @@ def shown_claim(conn: sqlite3.Connection, *, sport: str, market_type: str,
     invisible because both numbers are real.
 
     Returns the raw claim unchanged when the category has no active
-    correction, which is every category today.
+    correction -- none has an activation row of its own when question 32's
+    release lands (2026-09-29).
 
     `claim` is a CONFIDENCE -- the probability of the side the model took,
     at least 0.5 -- because that is what every fit is fitted on. A number
@@ -497,8 +635,7 @@ def next_version(conn: sqlite3.Connection, *, sport: str, market_type: str,
 
 def record_fit(
     conn: sqlite3.Connection, *, sport: str, market_type: str, forecaster: str,
-    model: Platt | None, status: str, active_from: str | None = None,
-    holdout: dict | None = None, fitted_utc: str | None = None,
+    model: Platt | None, status: str, fitted_utc: str | None = None,
 ) -> int:
     """Write one version. Never edits: a refit is a new row (LAW 3).
 
@@ -506,31 +643,37 @@ def record_fit(
     `status` and no slope to apply -- so the interface can say "corrections
     begin at 50 settled, 31 so far" from the record rather than by recomputing
     a count that could drift from what the engine actually saw.
+
+    ALWAYS INACTIVE (operator question 32, 2026-09-29: "Every correction row
+    is written inactive"). There is no `active_from` to pass -- it was how a
+    row put itself in force until this release -- and the schema refuses one
+    on a new row. A correction comes into force only by its own dated row
+    (`activate_measured`). Nor does a row carry a holdout of its own any more:
+    the measurement that can put it in force is the activation's.
     """
     version = next_version(conn, sport=sport, market_type=market_type,
                            forecaster=forecaster)
-    hold = holdout or {}
     conn.execute(
         "INSERT INTO calibration_corrections (sport, market_type, forecaster,"
         " version, fitted_utc, n_train, slope, intercept, train_brier_raw,"
-        " train_brier_corrected, holdout_n, holdout_brier_raw,"
-        " holdout_brier_corrected, active_from, status)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " train_brier_corrected, status)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (sport, market_type, forecaster, version, fitted_utc or utcnow(),
          model.n_train if model else 0,
          model.slope if model else 1.0,
          model.intercept if model else 0.0,
          model.brier_raw if model else None,
          model.brier_corrected if model else None,
-         hold.get("n"), hold.get("brier_raw"), hold.get("brier_corrected"),
-         active_from, status),
+         status),
     )
     conn.commit()
     return version
 
 
-#: The share of a category's settled rows used to FIT the holdout check. The
-#: rest -- the most recent fifth -- is what the check is scored on.
+#: The share of a category's settled QUESTIONS the measurement refits a
+#: correction on, in the order they settled. The rest -- the most recent
+#: fifth -- is what it is scored on. (Rows until question 32's release,
+#: 2026-09-29: every settled forecast, a question's passes each.)
 HOLDOUT_TRAIN_SHARE = 0.8
 
 #: THE HOLDOUT MUST BE BIG ENOUGH TO TELL THE TWO CASES APART, and this number
@@ -555,74 +698,141 @@ HOLDOUT_TRAIN_SHARE = 0.8
 #: is the bar for FITTING a correction and looking at it, not for applying one.
 HOLDOUT_MIN = 40
 
-#: HOW MUCH BETTER THE HOLDOUT MUST BE, and it is not zero. Measured
-#: 2026-08-31, 60 synthetic categories of 200 rows each at three levels of
-#: miscalibration, holdout of 40:
-#:
-#:   claims worth exactly what they say   -- bare `corrected < raw`: 23 of 60
-#:   claims worth 55% of what they say    -- bare `corrected < raw`: 45 of 60
-#:
-#: A PERFECTLY CALIBRATED CATEGORY PASSED A BARE COMPARISON 38% OF THE TIME.
-#: That is what a coin flip looks like: with no real effect the corrected Brier
-#: lands either side of the raw one at random, and half those flips would
-#: activate a correction that corrects nothing while the interface says the
-#: numbers are earned.
-#:
-#: At this margin the same trials give 2 of 60 for the null and 35 of 60 for
-#: the genuine miscalibration. The false activations fall from 38% to 3%; the
-#: cost is that a mild miscalibration waits for more record before it
-#: activates, which is the right way round for a gate.
-HOLDOUT_MIN_GAIN = 0.005
+#: THE POINT MARGIN IS GONE (operator question 32, ruled 2026-09-29). Until
+#: this release a holdout passed when the corrected Brier beat the raw one by
+#: more than 0.005 (`HOLDOUT_MIN_GAIN`), one comparison with no interval, on
+#: every settled forecast of the category -- measured 2026-08-31 on synthetic
+#: categories to pass a calibrated one 2 times in 60, and fit 71 cleared it by
+#: 0.0002. The gate is now the model fits': the bootstrap interval of the
+#: improvement, which must lie wholly above zero (`measure`).
 
 
-def holdout_check(rows: list[tuple[float, int, str]]) -> dict:
-    """Fit on the earliest 80%, score on the latest 20%. TIME-ORDERED, always.
+def paired_bootstrap(diffs: list[float], draws: int = BOOTSTRAP_DRAWS,
+                     seed: int = BOOTSTRAP_SEED) -> tuple[float, float]:
+    """The 95% percentile interval of the mean of per-question differences,
+    resampling QUESTIONS, so each draw keeps one question's raw and corrected
+    scores together -- `tools/holdout.py`'s own rule for the model fits (the
+    same draws, the same seed, the same two percentiles; tested equal)."""
+    import random
 
-    WHAT THIS IS: a thin, forward-SHAPED check. The rows are already ordered by
-    when they resolved, so the fit never sees a result that had not happened
-    when the holdout rows were still open. That is the only property that makes
-    the number worth anything.
+    rng = random.Random(seed)
+    n = len(diffs)
+    means = sorted(sum(diffs[rng.randrange(n)] for _ in range(n)) / n
+                   for _ in range(draws))
+    return means[int(0.025 * draws)], means[int(0.975 * draws) - 1]
 
-    WHAT THIS IS NOT: proof the correction helps. Ten to thirty rows decide it
-    at the sizes this gate opens at, and a category can pass by luck. It is a
-    filter against the obvious failure -- a correction that makes things worse
-    on rows it has not seen -- and it is reported as that, never as evidence.
 
-    A random split would be worse than nothing here. It would let the fit train
-    on a game from next week and be tested on one from last week, and the
-    result would look like a forward check while being a backward one.
+def holdout_questions(conn: sqlite3.Connection, fit) -> list[sqlite3.Row]:
+    """The questions a correction is measured on: its category's settled
+    questions before it was fitted -- ONE forecast per distinct bet on
+    `gridiron.bet`'s key, the forecaster in the category -- in the order they
+    settled (operator question 32, 2026-09-29: "measured on distinct bets by
+    the key, per forecaster").
+
+    Read through the gate's one door (`settled_rows`, at the correction's own
+    fitted instant: the record the fit saw, so a measurement made a week
+    later measures what was there to fit), so the questions measured are the
+    questions the gate counts and the schema recounts. Each question stands on
+    its LATEST WRITTEN forecast (the module's text says why, and what checks
+    it); settled in time order, the forecast's number breaking a tie.
     """
-    n = len(rows)
+    standing: dict[tuple, sqlite3.Row] = {}
+    for row in settled_rows(conn, sport=fit["sport"],
+                            market_type=fit["market_type"],
+                            forecaster=fit["forecaster"],
+                            before_utc=fit["fitted_utc"]):
+        key = bet.of(row)
+        held = standing.get(key)
+        if held is None or (row["created_utc"], row["id"]) > (
+                held["created_utc"], held["id"]):
+            standing[key] = row
+    return sorted(standing.values(), key=lambda r: (r["resolved_utc"], r["id"]))
+
+
+def measure(conn: sqlite3.Connection, correction_id: int, *,
+            draws: int = BOOTSTRAP_DRAWS, seed: int = BOOTSTRAP_SEED) -> dict:
+    """THE GATE'S MEASUREMENT of one stored correction (operator question 32,
+    ruled 2026-09-29, the model fits' shape): READS ONLY.
+
+    Its category's settled questions before it was fitted
+    (`holdout_questions`); a correction refit on the earliest four fifths
+    (`HOLDOUT_TRAIN_SHARE`) and scored on the latest fifth, at least
+    `HOLDOUT_MIN` of them; per held-out question, its raw claim's squared
+    error less the refit's; the improvement is their mean -- the raw Brier
+    less the corrected one on the same questions -- and its paired bootstrap
+    95% interval (`paired_bootstrap`, seeded). PASSES ONLY WHEN THE LOWER
+    BOUND IS ABOVE ZERO. An interval touching zero is a tie, and a tie goes to
+    the uncorrected probability.
+
+    WHAT IS SCORED is the correction's method on the category as it stood --
+    a Platt fit made on the earliest four fifths, scored on the rest -- as the
+    model gate scores a factor set refit through the season before
+    (`tools/holdout.py`). The stored correction was fitted on all of them, so
+    scoring it on the latest fifth would score it on rows it was fitted on.
+    What goes in force, if this passes, is the stored correction.
+
+    Never a placeholder (nothing was fitted) and never a fit labelled
+    fitted below its gate (it can never be activated): each is returned
+    unmeasured, `passed` False, with the reason in words.
+    """
+    fit = conn.execute("SELECT * FROM calibration_corrections WHERE id = ?",
+                       (correction_id,)).fetchone()
+    if fit is None:
+        raise ActivationRefused(f"there is no correction {correction_id} to measure")
+    out = {"correction_id": fit["id"], "sport": fit["sport"],
+           "market_type": fit["market_type"], "forecaster": fit["forecaster"],
+           "version": fit["version"], "fitted_utc": fit["fitted_utc"],
+           "n_train": fit["n_train"], "seed": seed, "draws": draws,
+           "passed": False}
+    if fit["n_train"] < MIN_TRAIN:
+        return dict(out, why=(
+            f"a placeholder: nothing was fitted (its {fit['n_train']} settled "
+            f"forecasts were under the {MIN_TRAIN} a fit needs), so there is "
+            f"nothing to put in force"))
+    if _labels_held(conn) and conn.execute(
+            "SELECT 1 FROM correction_gate_labels WHERE correction_id = ?",
+            (correction_id,)).fetchone():
+        return dict(out, why=(
+            "fitted below its gate, so it can never be in force (operator "
+            "question 23, 2026-09-28)"))
+    questions = holdout_questions(conn, fit)
+    n = len(questions)
     cut = int(n * HOLDOUT_TRAIN_SHARE)
-    train, test = rows[:cut], rows[cut:]
+    train, test = questions[:cut], questions[cut:]
+    out.update(bets=n, fitted_on=cut, holdout_n=len(test),
+               standing={bet.of(r): r["id"] for r in questions})
     if len(test) < HOLDOUT_MIN or not train:
-        return {"n": len(test), "passed": False,
-                "why": (f"the check would rest on {len(test)} rows, under the "
-                        f"{HOLDOUT_MIN} needed to tell a correction that helps "
-                        f"from one that does not")}
-
-    model = fit_platt(train)
+        return dict(out, why=(
+            f"the measurement would rest on {len(test)} questions of its "
+            f"{n}, under the {HOLDOUT_MIN} needed to tell a correction that "
+            f"helps from one that does not"))
+    model = fit_platt([(r["model_prob"], int(r["outcome"]), r["resolved_utc"])
+                       for r in train])
     if model is None:
-        return {"n": len(test), "passed": False,
-                "why": ("the earliest rows have only one kind of outcome, so "
-                        "there is nothing to fit a correction from")}
-
-    probs = [p for p, _y, _t in test]
-    ys = [float(y) for _p, y, _t in test]
-    raw = brier(probs, ys)
-    corrected = brier([model.apply(p) for p in probs], ys)
-    gain = None if (raw is None or corrected is None) else raw - corrected
-    passed = gain is not None and gain > HOLDOUT_MIN_GAIN
-    return {
-        "n": len(test), "brier_raw": raw, "brier_corrected": corrected,
-        "gain": None if gain is None else round(gain, 6),
-        "passed": passed,
-        "why": ("the correction scored better on the most recent rows, which "
-                "it was not fitted on"
-                if passed else
-                "the correction did not clearly improve the rows it had not "
-                "seen"),
-    }
+        return dict(out, why=("the earliest questions have only one kind of "
+                              "outcome, so there is nothing to fit a "
+                              "correction from"))
+    raw_sq = [(float(r["model_prob"]) - float(r["outcome"])) ** 2 for r in test]
+    fixed_sq = [(model.apply(r["model_prob"]) - float(r["outcome"])) ** 2
+                for r in test]
+    diffs = [a - b for a, b in zip(raw_sq, fixed_sq)]
+    low, high = paired_bootstrap(diffs, draws=draws, seed=seed)
+    passed = low > 0
+    out.update(
+        brier_raw=round(sum(raw_sq) / len(test), 6),
+        brier_corrected=round(sum(fixed_sq) / len(test), 6),
+        improvement=round(sum(diffs) / len(test), 6),
+        interval=(low, high), passed=passed,
+        holdout=(
+            f"the latest {len(test)} of the category's {n} settled questions "
+            f"before the fit ({fit['fitted_utc']}), one forecast each (its "
+            f"latest written) in the order they settled; a correction refit "
+            f"on the earliest {cut} and scored on them"),
+        why=("the bootstrap interval of the Brier improvement lies wholly "
+             "above zero" if passed else
+             "the bootstrap interval of the Brier improvement touches zero: a "
+             "tie, so the uncorrected probability stands"))
+    return out
 
 
 def categories_in_the_record(conn: sqlite3.Connection, *,
@@ -656,18 +866,24 @@ def categories_in_the_record(conn: sqlite3.Connection, *,
 
 
 def refit_all(conn: sqlite3.Connection, *, now: str | None = None) -> dict:
-    """Fit one version per category, and activate only what clears both bars.
+    """Fit one version per category, and record it -- INACTIVE, every one.
 
-    TWO BARS, and they answer different questions. `MIN_TRAIN` asks whether
-    there is enough record to fit anything. The holdout asks whether the fit is
-    any good on rows it did not see -- which is the question the in-sample
-    Brier cannot answer, because a fit always improves the rows it was fitted
-    on.
+    ONE BAR HERE, `MIN_TRAIN`: is there enough record to fit anything? A
+    category under it is recorded with its shortfall in words, and a fit is
+    recorded with words saying it is not in force.
 
-    A category failing either stays RAW, and its status says which bar it
-    missed, in words the interface shows unchanged.
+    AND NOTHING IS ACTIVATED HERE, OR MEASURED (operator question 32, ruled
+    2026-09-29: "Every correction row is written inactive ... The
+    recalibration task never activates anything"). Until this release this
+    function also ran `holdout_check` -- a point comparison on the latest
+    fifth of the category's settled forecasts -- and wrote `active_from` when
+    it passed, which put fit 71 in force from the weekly task at
+    2026-09-28T13:00:01Z. The question the holdout asked -- is the fit any
+    good on questions it did not see? -- is the gate's now, asked by
+    `measure` and answered by a dated row of its own (`activate_measured`,
+    through `tools/correction_holdout.py`).
 
-    THE FIRST BAR COUNTS QUESTIONS from question 16's release (operator
+    THE BAR COUNTS QUESTIONS from question 16's release (operator
     question 23, ruled (A) 2026-09-28: "the fit's own gate ... move[s] to the
     key, for fits from the release forward"): `MIN_TRAIN` distinct bets
     among the category's settled forecasts (`settled_rows`, at this instant),
@@ -685,7 +901,7 @@ def refit_all(conn: sqlite3.Connection, *, now: str | None = None) -> dict:
         questions = bet.count(settled_rows(
             conn, sport=sport, market_type=market_type, forecaster=forecaster,
             before_utc=at))
-        model, holdout, active_from = None, None, None
+        model = None
         if questions < MIN_TRAIN:
             status = (f"corrections begin at {MIN_TRAIN} settled questions - "
                       f"{questions} so far")
@@ -695,31 +911,29 @@ def refit_all(conn: sqlite3.Connection, *, now: str | None = None) -> dict:
                 status = ("every outcome in this category is the same, so "
                           "there is nothing to calibrate against")
             else:
-                # BOTH BARS, and the holdout is the one that can say no to a
-                # fit that already exists. A correction is activated because it
-                # improved rows it had not seen, not because it improved the
-                # rows it was fitted on -- which it always will.
-                holdout = holdout_check(rows)
-                if holdout["passed"]:
-                    active_from = at
-                    status = (f"active - {holdout['why']} "
-                              f"({holdout['n']} rows held out)")
-                else:
-                    status = f"fitted but not applied - {holdout['why']}"
+                # FITTED, NOT IN FORCE (question 32, 2026-09-29): what the
+                # row is, in the words the interface shows as written.
+                status = FITTED_NOT_IN_FORCE
         version = record_fit(conn, sport=sport, market_type=market_type,
                              forecaster=forecaster, model=model, status=status,
-                             holdout=holdout, active_from=active_from,
                              fitted_utc=at)
         written.append({
             "sport": sport, "market_type": market_type,
             "forecaster": forecaster, "version": version,
             "n_train": len(rows), "questions": questions, "status": status,
-            "active": active_from is not None,
         })
     return {"fitted_utc": at, "categories": written,
             "n": len(written),
-            "eligible": sum(1 for w in written if w["questions"] >= MIN_TRAIN),
-            "activated": sum(1 for w in written if w["active"])}
+            "eligible": sum(1 for w in written if w["questions"] >= MIN_TRAIN)}
+
+
+#: WHAT A FITTED ROW SAYS OF ITSELF from question 32's release (2026-09-29):
+#: fitted, and not in force until it is measured and activated by its own row.
+FITTED_NOT_IN_FORCE = (
+    "fitted, and not in force - a correction is put in force only by a dated "
+    "row of its own, once one fitted on the earliest four fifths of its "
+    "settled questions improves the latest fifth, with a 95% interval clear "
+    "of zero")
 
 
 def version_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
@@ -745,10 +959,21 @@ def version_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
 
     AND ITS LABEL (question 23, 2026-09-28): `below_its_gate` is the version's
     "fitted below its gate" label as written, or None.
+
+    AND WHETHER IT IS IN FORCE, FROM ITS OWN ROWS (question 32, 2026-09-29):
+    `in_force` is whether the door puts this version in force at `at_utc`,
+    and `activations` every activation or withdrawal naming it, as written.
+    `written_in_force_before_the_gate` is the row's `active_from` -- how a
+    correction was put in force until this release, kept as the history it
+    is and read as nothing else (fit 71's, 2026-09-28T13:00:01Z).
     """
     at = at_utc or utcnow()
     labelled = labels(conn, sport=sport, market_type=market_type,
                       forecaster=forecaster)
+    in_force = active_correction(conn, sport=sport, market_type=market_type,
+                                 forecaster=forecaster, at_utc=at)
+    history = activations(conn, sport=sport, market_type=market_type,
+                          forecaster=forecaster)
     out = []
     for row in conn.execute(
         "SELECT * FROM calibration_corrections"
@@ -778,7 +1003,10 @@ def version_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
             "slope": row["slope"],
             "intercept": row["intercept"],
             "status": row["status"],
-            "active_from": row["active_from"],
+            "in_force": in_force is not None and in_force["id"] == row["id"],
+            "activations": [a for a in history
+                            if a["correction_id"] == row["id"]],
+            "written_in_force_before_the_gate": row["active_from"],
             "in_sample": {
                 "brier_raw": row["train_brier_raw"],
                 "brier_corrected": row["train_brier_corrected"],
@@ -791,8 +1019,13 @@ def version_report(conn: sqlite3.Connection, *, sport: str, market_type: str,
                 "n": row["holdout_n"],
                 "brier_raw": row["holdout_brier_raw"],
                 "brier_corrected": row["holdout_brier_corrected"],
-                "label": ("a thin forward-shaped check on the most recent "
-                          "rows, not proof"),
+                # AS WRITTEN (question 32, 2026-09-29): the refit's own point
+                # check until this release, on every settled forecast; a row
+                # written from it carries none, and the gate's measurement is
+                # its activation's.
+                "label": ("the refit's own check before 29 September 2026: a "
+                          "single comparison on the most recent rows, not "
+                          "the gate"),
             },
             "forward": {
                 "n": forward["n"],
@@ -852,14 +1085,22 @@ def below_their_gates(conn: sqlite3.Connection) -> list[dict]:
     selected all the same, and the tool refuses the selection by name.
 
     `active` says whether the fit carries an activation (the schema refuses a
-    label on one: that is the operator's question), and `already` whether it
-    is labelled. Which of these the ruling labels is the tool's constants'
-    (`tools/label_corrections_below_the_gate.py`), never this rule's.
+    label on one: that is the operator's question) -- written in force under
+    the rule before question 32 (`active_from`, as the schema's older rule
+    reads it) or put in force by a row of its own since (2026-09-29) -- and
+    `already` whether it is labelled. Which of these the ruling labels is the
+    tool's constants' (`tools/label_corrections_below_the_gate.py`), never
+    this rule's.
     """
     held = set()
     if _labels_held(conn):
         held = {r[0] for r in conn.execute(
             "SELECT correction_id FROM correction_gate_labels")}
+    activated = set()
+    if table_columns(conn, ACTIVATIONS):
+        activated = {r[0] for r in conn.execute(
+            "SELECT correction_id FROM correction_activations"
+            " WHERE kind IN ('measured', 'scratch')")}
     out = []
     for fit in conn.execute(
             "SELECT * FROM calibration_corrections ORDER BY id").fetchall():
@@ -879,7 +1120,8 @@ def below_their_gates(conn: sqlite3.Connection) -> list[dict]:
             "fitted_utc": fit["fitted_utc"], "gate": MIN_TRAIN,
             "count_used": fit["n_train"], "counted": len(counted),
             "corrected_count": questions,
-            "active": fit["active_from"] is not None,
+            "active": (fit["active_from"] is not None
+                       or fit["id"] in activated),
             "already": fit["id"] in held,
             "reason": BELOW_ITS_GATE_WHY.format(
                 used=fit["n_train"], gate=MIN_TRAIN, questions=questions),
@@ -948,3 +1190,180 @@ def write_labels(conn: sqlite3.Connection, ids: list[int], *,
         raise Refused(f"the record refused a label, so none was written: "
                       f"{exc}") from exc
     return counts
+
+
+# ---------------------------------------------------------------------------
+# THE ACTIVATION ROWS (operator question 32, ruled 2026-09-29)
+# ---------------------------------------------------------------------------
+#
+# "Activation is its own dated append-only row." Every row of
+# `correction_activations` is written by `_write_activation`, one statement
+# that takes the category's next place itself; the RULES are the schema's,
+# and a refusal comes back as `ActivationRefused` carrying the rule's words.
+
+
+def _write_activation(conn: sqlite3.Connection, fit, kind: str, reason: str, *,
+                      now: str | None = None,
+                      measurement: dict | None = None) -> dict:
+    """Insert one row -- the category's next -- and say what it was. The
+    schema decides; this translates. A refused write leaves the connection
+    as it found it when this call opened the transaction (the model gate's
+    `_write`, for the same reason: a write lock held against the server)."""
+    m = measurement or {}
+    low, high = m.get("interval") or (None, None)
+    stamp = now or utcnow()
+    values = (fit["sport"], fit["market_type"], fit["forecaster"], fit["id"],
+              stamp, kind, reason, m.get("holdout"), m.get("bets"),
+              m.get("holdout_n"), m.get("brier_raw"), m.get("brier_corrected"),
+              m.get("improvement"), low, high,
+              m.get("seed") if measurement else None,
+              m.get("draws") if measurement else None)
+    opened_here = not conn.in_transaction
+    try:
+        # THE PLACE IS TAKEN IN THE SAME STATEMENT, under the write lock, so
+        # two writers cannot both take it; an aggregate gives one row even
+        # for a category with none yet.
+        conn.execute(
+            "INSERT INTO correction_activations (sport, market_type,"
+            " forecaster, seq, correction_id, activated_utc, kind, reason,"
+            " holdout, bets, holdout_n, brier_raw, brier_corrected,"
+            " improvement, diff_low, diff_high, bootstrap_seed,"
+            " bootstrap_draws)"
+            " SELECT ?, ?, ?, COALESCE(MAX(a.seq), 0) + 1, ?, ?, ?, ?, ?, ?,"
+            "        ?, ?, ?, ?, ?, ?, ?, ?"
+            # the category again, for the aggregate's WHERE
+            "   FROM correction_activations a"
+            "  WHERE a.sport = ? AND a.market_type = ? AND a.forecaster = ?",
+            values + values[:3])
+    except sqlite3.IntegrityError as exc:
+        if opened_here and conn.in_transaction:
+            conn.rollback()
+        raise ActivationRefused(str(exc)) from exc
+    conn.commit()
+    return {"correction_id": fit["id"], "kind": kind, "activated_utc": stamp,
+            "sport": fit["sport"], "market_type": fit["market_type"],
+            "forecaster": fit["forecaster"]}
+
+
+def _fit(conn: sqlite3.Connection, correction_id: int):
+    fit = conn.execute("SELECT * FROM calibration_corrections WHERE id = ?",
+                       (correction_id,)).fetchone()
+    if fit is None:
+        raise ActivationRefused(f"there is no correction {correction_id}")
+    return fit
+
+
+def activate_measured(conn: sqlite3.Connection, correction_id: int, *,
+                      reason: str, now: str | None = None) -> dict:
+    """Measure one correction and, ONLY IF IT PASSES THE GATE, write its
+    dated measured activation -- in one transaction, so nothing can land on
+    the record between the measurement and the row that carries it.
+
+    THE NUMBERS ARE THE MEASUREMENT'S OWN (`measure`, read on this
+    connection inside the transaction): a caller cannot hand this a result,
+    only a correction. Refused with `ActivationRefused` -- nothing written --
+    when the measurement does not pass (a tie goes to the uncorrected
+    probability), and when the schema refuses the row. Returns the
+    measurement with the row it wrote.
+
+    `now` is for a scratch world: ON A RECORD the schema refuses a row
+    stamped more than a minute before it is written (question 32's prover,
+    2026-09-29: the door reads the correction in force at an instant, so a
+    row dated back put its correction over claims already written), and it
+    refuses a measurement drawn any way but the gate's -- 1000 resamples
+    from seed 20260923 -- so `measure`'s own `draws` and `seed` are for
+    reading, never for a row.
+    """
+    if not table_columns(conn, ACTIVATIONS):
+        raise ActivationRefused(
+            "the record has no correction_activations table: it has not been "
+            "opened under the schema that carries it (db.init does that, on "
+            "any scheduled pass or the server's start after the release)")
+    opened_here = not conn.in_transaction
+    if opened_here:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        got = measure(conn, correction_id)
+        if not got["passed"]:
+            raise ActivationRefused(
+                f"correction {correction_id} is not put in force: "
+                f"{got['why']}"
+                + (f" (improvement {got['improvement']:+.6f}, 95% interval "
+                   f"[{got['interval'][0]:+.6f}, {got['interval'][1]:+.6f}], "
+                   f"{got['holdout_n']} of {got['bets']} questions held out)"
+                   if got.get("interval") else ""))
+        row = _write_activation(conn, _fit(conn, correction_id), MEASURED,
+                                reason, now=now, measurement=got)
+    except BaseException:
+        if opened_here and conn.in_transaction:
+            conn.rollback()
+        raise
+    return dict(got, written=row)
+
+
+def withdraw(conn: sqlite3.Connection, correction_id: int, *, reason: str,
+             now: str | None = None) -> dict:
+    """Take the correction in force for its category out of force: a dated
+    withdrawal row with its reason (ten characters or more). The schema
+    refuses one naming any correction but the one in force -- the one the
+    category's latest row puts in force, or, where the category has no row
+    yet, the one written in force under the rule before question 32 (fit 71,
+    by the ruling of 2026-09-29)."""
+    return _write_activation(conn, _fit(conn, correction_id), WITHDRAWN,
+                             reason, now=now)
+
+
+def activate_in_a_scratch_world(conn: sqlite3.Connection, correction_id: int,
+                                *, now: str | None = None) -> dict:
+    """Put a correction in force WITHOUT A MEASUREMENT, in a world that is
+    not the live record: the lawful path for a test world, a planting and
+    the gate's own pipeline, which have no record to measure on
+    (`model.activation.activate_in_a_scratch_world`'s shape and its three
+    locks):
+
+      * the file: a connection whose main database IS the live record is
+        refused by name, whatever the process is;
+      * the record: a database holding a measured or withdrawn activation,
+        or a correction written in force under the rule before question 32,
+        is a record and not a scratch world, and is refused;
+      * the schema: the rule refuses a scratch row on any database whose meta
+        kind is 'live'. A fresh file says 'live' until it says otherwise, so
+        this DECLARES the world scratch first, and a world that already calls
+        itself a backtest keeps that name. AND ON ANY DATABASE HOLDING A
+        RECORD'S OWN ROWS, whatever its kind says (question 32's prover,
+        2026-09-29: the kind is a meta value no rule holds, so one statement
+        setting it to scratch let a raw scratch row land on a record); the
+        second lock above, in the schema too.
+    """
+    from pathlib import Path
+
+    from . import db as _db
+
+    main = next((row[2] for row in conn.execute("PRAGMA database_list")
+                 if row[1] == "main"), "")
+    if main and _db._is_the_live_record(Path(main)):
+        raise ScratchWorldRefused(
+            f"{main} is the live record. A correction there comes into force "
+            f"by measurement (`correction.activate_measured`), never as a "
+            f"scratch world.")
+    records = 0
+    if table_columns(conn, ACTIVATIONS):
+        records = conn.execute(
+            "SELECT COUNT(*) FROM correction_activations"
+            " WHERE kind IN ('measured', 'withdrawn')").fetchone()[0]
+    records += conn.execute(
+        "SELECT COUNT(*) FROM calibration_corrections"
+        " WHERE active_from IS NOT NULL").fetchone()[0]
+    if records:
+        raise ScratchWorldRefused(
+            f"this database holds {records} correction(s) put in force or "
+            f"withdrawn as a record's are, so it is a record and not a scratch "
+            f"world. Put a correction in force in a world of your own.")
+    if (_db.get_meta(conn, "kind", "live") or "live") == "live":
+        _db.set_meta(conn, "kind", "scratch")
+        _db.set_meta(conn, "kind_note", (
+            "A scratch world: its corrections were put in force without a "
+            "measurement, which the live record never allows. Nothing here "
+            "is a record of anything."))
+    return _write_activation(conn, _fit(conn, correction_id), SCRATCH,
+                             SCRATCH_REASON, now=now)

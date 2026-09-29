@@ -267,6 +267,29 @@ def correction(conn: sqlite3.Connection, *, sport: str, market_type: str,
         and (version is None or r["correction_version"] == version))
 
 
+def correction_standing(conn: sqlite3.Connection, *, sport: str,
+                        market_type: str, predictor: str,
+                        before_utc: str) -> dict[tuple, int]:
+    """Which forecast stands for each settled question of one correction
+    category, by THE BLIND RECORD'S STANDING RULE, read with the start
+    (operator question 32, 2026-09-29): every forecast of the category read
+    straight off the table, `standing_of` -- the latest written before the
+    start, a withdrawn one never -- and the questions whose standing forecast
+    had settled before `before_utc`. Key -> forecast id.
+
+    `correction.holdout_questions` cannot read the start (the correction may
+    not name `games`) and keeps each question's latest written forecast
+    instead; `tools/correction_holdout.py` holds the two to one answer on the
+    record it measures, question by question, and writes nothing where they
+    differ."""
+    standing = standing_of(forecasts(conn, sport=sport, predictor=predictor,
+                                     market_type=market_type, prop_type=None,
+                                     event_tier=None))
+    return {key: row["id"] for key, row in standing.items()
+            if row["resolved_utc"] is not None and row["outcome"] is not None
+            and row["resolved_utc"] < before_utc}
+
+
 def outlook(conn: sqlite3.Connection, *, sport: str, market_type: str,
             prop_type: str | None, predictor: str, event_tier: str | None,
             season: int) -> dict:

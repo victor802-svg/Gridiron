@@ -271,12 +271,22 @@ def _away_pick(conn, *, game="g0", created="2026-09-07T00:00:00Z",
 
 
 def _correct(conn, *, active_from="2026-09-01T00:00:00Z", **model):
+    """A correction written inactive and, unless `active_from` is None, put
+    in force by its own row at that instant: a scratch activation, the one
+    lawful way a test world has (operator question 32, 2026-09-29)."""
     from gridiron import correction
 
-    return correction.record_fit(
+    version = correction.record_fit(
         conn, sport="mlb", market_type="moneyline", forecaster="statistical",
         model=correction.Platt(**(model or _SKEWED)), status="test",
-        active_from=active_from, fitted_utc="2026-09-01T00:00:00Z")
+        fitted_utc="2026-09-01T00:00:00Z")
+    if active_from is not None:
+        fid = conn.execute(
+            "SELECT id FROM calibration_corrections WHERE sport = 'mlb'"
+            " AND market_type = 'moneyline' AND forecaster = 'statistical'"
+            " AND version = ?", (version,)).fetchone()[0]
+        correction.activate_in_a_scratch_world(conn, fid, now=active_from)
+    return version
 
 
 def test_an_active_correction_that_would_flip_the_side_flips_the_pick(tmp_path):
@@ -298,11 +308,17 @@ def test_an_active_correction_that_would_flip_the_side_flips_the_pick(tmp_path):
 def test_a_fitted_correction_that_was_never_activated_decides_nothing(tmp_path):
     conn = _world(tmp_path)
     pid = _away_pick(conn)
+    from gridiron import correction
+
     _correct(conn, active_from=None)
     got = recommend.for_predictions(conn, [pid])[0]
     assert got["side"] == "no" and got["correction_version"] is None
-    # and one whose activation is still ahead is not in force yet
-    _correct(conn, active_from="2099-01-01T00:00:00Z")
+    # AND AN ACTIVATION STAMPED AHEAD IS NO ACTIVATION (question 32,
+    # 2026-09-29): a row is stamped when it is written, so one dated 2099 --
+    # which this test once used to stand for "not in force yet" -- is refused,
+    # and the fit stays out of force
+    with pytest.raises(correction.ActivationRefused, match="stamped when it is written"):
+        _correct(conn, active_from="2099-01-01T00:00:00Z")
     assert recommend.for_predictions(conn, [pid])[0]["side"] == "no"
 
 

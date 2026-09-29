@@ -141,10 +141,19 @@ def test_a_placeholder_fit_is_not_reported_as_a_fit():
         last_refit="2026-09-01T00:42:11Z", n_train=0)
     assert "eligible and not yet fitted" in placeholder
     assert "refit last ran" in placeholder
+    # IN FORCE SINCE ITS OWN ROW (operator question 32, 2026-09-29): the
+    # measured activation's instant and its interval, never the fit's day
+    measured = {"version": 1, "activation_kind": "measured",
+                "activated_utc": "2026-09-03T08:00:00Z",
+                "activation_reason": "measured in a test",
+                "measured_holdout_n": 44, "measured_bets": 220,
+                "measured_improvement": 0.0123, "diff_low": 0.0041,
+                "diff_high": 0.0201}
     real = language.correction_status_line(
         True, 110, 50, "2026-09-01T00:42:11Z", True,
-        last_refit="2026-09-01T00:42:11Z", n_train=110)
-    assert "in force since" in real
+        last_refit="2026-09-01T00:42:11Z", n_train=110, state=measured)
+    assert "in force since Thursday 3 September" in real
+    assert "95% interval 0.0041 to 0.0201" in real
     below = language.correction_status_line(False, 19, 50, None, False, n_train=0)
     assert "31 more" in below
 

@@ -71,15 +71,21 @@ def _twice(conn, games, **kw):
 
 def _fit(conn, *, market="spread", forecaster="statistical", n_train=56,
          active_from=None, fitted_utc=FIT_AT, model=True) -> int:
+    """A fit, written inactive; with `active_from`, put in force by its own
+    row at that instant -- a scratch activation, the one lawful way a test
+    world has (operator question 32, 2026-09-29)."""
     version = correction.record_fit(
         conn, sport="nfl", market_type=market, forecaster=forecaster,
         model=(correction.Platt(slope=0.8, intercept=0.1, n_train=n_train)
                if model else None),
-        status="test", active_from=active_from, fitted_utc=fitted_utc)
-    return conn.execute(
+        status="test", fitted_utc=fitted_utc)
+    fid = conn.execute(
         "SELECT id FROM calibration_corrections WHERE market_type = ?"
         " AND forecaster = ? AND version = ?",
         (market, forecaster, version)).fetchone()[0]
+    if active_from is not None:
+        correction.activate_in_a_scratch_world(conn, fid, now=active_from)
+    return fid
 
 
 def _category(report, market_type, forecaster):
@@ -360,11 +366,14 @@ def test_a_fit_is_never_called_not_yet_fitted_and_is_described_by_its_forecasts(
         True, 49, 50, "2026-09-28T13:00:01Z", False, n_train=85)
     assert "not yet fitted" not in line
     assert line.startswith("49 of 50 settled questions; fitted on Monday 28 "
-                           "September on 85 settled forecasts, and NOT in force")
+                           "September on 85 settled forecasts, and not in force")
+    # IN FORCE, AND SINCE WHEN, FROM ITS OWN ROW (question 32, 2026-09-29):
+    # without the row, no day is said -- the day it was fitted is not the
+    # day it came into force
     active = language.correction_status_line(
         True, 260, 50, "2026-09-28T13:00:01Z", True, n_train=364)
-    assert active == ("260 settled questions; in force since Monday 28 "
-                      "September, fitted on 364 settled forecasts")
+    assert active == ("260 settled questions; in force, fitted on Monday 28 "
+                      "September on 364 settled forecasts")
 
 
 # --- the guard, the API and the gate ----------------------------------------
@@ -623,44 +632,70 @@ def test_a_labelled_fit_is_never_activated(tmp_path):
     conn, short, *_ = _labelled_world(tmp_path)
     correction.write_labels(conn, [short], now="2026-06-02T00:00:00Z")
     later = "2026-06-03T00:00:00Z"
-    for sql, params in (
+    # WRITTEN IN ITS PLACE, inactive, by its number or its category and
+    # version: refused as the label's rule refuses it. (Carrying active_from,
+    # a row is refused before that by question 32's: written inactive.)
+    for sql, params, words in (
+            ("INSERT OR REPLACE INTO calibration_corrections (id, sport,"
+             " market_type, forecaster, version, fitted_utc, n_train, slope,"
+             " intercept, status) VALUES (?, 'nfl', 'spread',"
+             " 'statistical', 1, ?, 56, 0.8, 0.1, 'active')", (short, FIT_AT),
+             "can never be activated"),
+            ("REPLACE INTO calibration_corrections (sport, market_type,"
+             " forecaster, version, fitted_utc, n_train, slope, intercept,"
+             " status) VALUES ('nfl', 'spread', 'statistical', 1,"
+             " ?, 56, 0.8, 0.1, 'active')", (FIT_AT,), "can never be activated"),
+            ("REPLACE INTO calibration_corrections (rowid, sport, market_type,"
+             " forecaster, version, fitted_utc, n_train, slope, intercept,"
+             " status) VALUES (?, 'nfl', 'spread', 'statistical',"
+             " 9, ?, 56, 0.8, 0.1, 'active')", (short, FIT_AT),
+             "can never be activated"),
             ("INSERT OR REPLACE INTO calibration_corrections (id, sport,"
              " market_type, forecaster, version, fitted_utc, n_train, slope,"
              " intercept, active_from, status) VALUES (?, 'nfl', 'spread',"
-             " 'statistical', 1, ?, 56, 0.8, 0.1, ?, 'active')", (short, FIT_AT, later)),
-            ("REPLACE INTO calibration_corrections (sport, market_type,"
-             " forecaster, version, fitted_utc, n_train, slope, intercept,"
-             " active_from, status) VALUES ('nfl', 'spread', 'statistical', 1,"
-             " ?, 56, 0.8, 0.1, ?, 'active')", (FIT_AT, later)),
-            ("REPLACE INTO calibration_corrections (rowid, sport, market_type,"
-             " forecaster, version, fitted_utc, n_train, slope, intercept,"
-             " active_from, status) VALUES (?, 'nfl', 'spread', 'statistical',"
-             " 9, ?, 56, 0.8, 0.1, ?, 'active')", (short, FIT_AT, later))):
-        with pytest.raises(sqlite3.IntegrityError, match="can never be activated"):
+             " 'statistical', 1, ?, 56, 0.8, 0.1, ?, 'active')",
+             (short, FIT_AT, later), "written inactive")):
+        with pytest.raises(sqlite3.IntegrityError, match=words):
             conn.execute(sql, params)
         conn.rollback()
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("UPDATE calibration_corrections SET active_from = ?"
                      " WHERE id = ?", (later, short))
     conn.rollback()
-    # A NEW VERSION of the category is a new fit and lands as ever
-    correction.record_fit(conn, sport="nfl", market_type="spread",
-                          forecaster="statistical",
-                          model=correction.Platt(slope=0.9, intercept=0.0, n_train=60),
-                          status="active", active_from=later, fitted_utc=later)
-    # THE DOOR, ON A RECORD PUT IN FORCE BY HAND: the labelled fit is passed
-    # over, and the newest activation that is not labelled is in force
-    conn.execute("DROP TRIGGER calibration_corrections_no_update")
-    conn.execute("UPDATE calibration_corrections SET active_from = ?"
-                 " WHERE id = ?", ("2026-06-02T12:00:00Z", short))
+    # AND ITS OWN ROW IS REFUSED (question 32): no activation names it
+    with pytest.raises(correction.ActivationRefused, match="labelled fitted below"):
+        correction.activate_in_a_scratch_world(conn, short, now=later)
+    # A NEW VERSION of the category is a new fit, lands inactive as ever, and
+    # comes into force by its own row
+    version = correction.record_fit(
+        conn, sport="nfl", market_type="spread", forecaster="statistical",
+        model=correction.Platt(slope=0.9, intercept=0.0, n_train=60),
+        status="fitted", fitted_utc=later)
+    correction.activate_in_a_scratch_world(conn, _q16_id(conn, version), now=later)
+    # THE DOOR, ON A RECORD PUT IN FORCE BY HAND: the labelled fit's own row,
+    # written with the rule taken off, is passed over, and the newest row
+    # naming a fit that is not labelled decides
+    conn.execute("DROP TRIGGER correction_activation_never_a_labelled_fit_or_a_placeholder")
+    conn.execute(
+        "INSERT INTO correction_activations (sport, market_type, forecaster,"
+        " seq, correction_id, activated_utc, kind, reason) VALUES ('nfl',"
+        " 'spread', 'statistical', 2, ?, '2026-06-03T12:00:00Z', 'scratch',"
+        " 'by hand, the rule taken off')", (short,))
     conn.commit()
-    at = "2026-06-02T18:00:00Z"
     assert correction.active_correction(conn, sport="nfl", market_type="spread",
-                                        forecaster="statistical", at_utc=at) is None
+                                        forecaster="statistical",
+                                        at_utc="2026-06-02T18:00:00Z") is None
     got = correction.active_correction(conn, sport="nfl", market_type="spread",
                                        forecaster="statistical",
                                        at_utc="2026-06-04T00:00:00Z")
-    assert got["version"] == 2
+    assert got["version"] == 2 == version
+
+
+def _q16_id(conn, version, *, market="spread", forecaster="statistical"):
+    return conn.execute(
+        "SELECT id FROM calibration_corrections WHERE sport = 'nfl'"
+        " AND market_type = ? AND forecaster = ? AND version = ?",
+        (market, forecaster, version)).fetchone()[0]
 
 
 def test_a_record_the_schema_has_not_reached_holds_no_label(tmp_path):
@@ -725,10 +760,35 @@ _NEW_OBJECTS = {
 }
 
 
+#: ...and question 32's (2026-09-29), which a record from before question 16
+#: lacks as well (`test_correction_activation.py` gains them alone).
+_Q32_OBJECTS = {
+    ("table", "correction_activations"),
+    ("trigger", "calibration_corrections_written_inactive"),
+    ("trigger", "correction_activations_no_update"),
+    ("trigger", "correction_activations_no_delete"),
+    ("trigger", "correction_activation_is_the_next_of_its_category"),
+    ("trigger", "correction_activation_names_its_correction"),
+    ("trigger", "correction_activation_is_stamped_when_written"),
+    ("trigger", "correction_activation_never_a_labelled_fit_or_a_placeholder"),
+    ("trigger", "correction_activation_only_measured_carries_a_measurement"),
+    ("trigger", "correction_activation_carries_its_measurement"),
+    ("trigger", "correction_activation_counts_distinct_bets"),
+    ("trigger", "correction_activation_ties_go_to_the_uncorrected"),
+    ("trigger", "correction_activation_scratch_is_never_live"),
+    ("trigger", "correction_withdrawal_names_the_correction_in_force"),
+    ("trigger", "correction_gate_label_never_on_an_activated_fit"),
+    ("trigger", "calibration_corrections_never_replaced_under_an_activation"),
+}
+
+
 def test_an_older_record_gains_the_label_and_its_rules_through_init_and_no_row_moves(tmp_path):
     conn = _world(tmp_path)
     _twice(conn, range(1, 29))
     _fit(conn)
+    # A RECORD FROM BEFORE QUESTION 16 lacks question 32's objects too
+    for kind, name in sorted(_Q32_OBJECTS, reverse=True):
+        conn.execute(f"DROP {kind.upper()} IF EXISTS {name}")
     for kind, name in sorted(_NEW_OBJECTS, reverse=True):
         conn.execute(f"DROP {kind.upper()} {name}")
     conn.commit()
@@ -745,11 +805,11 @@ def test_an_older_record_gains_the_label_and_its_rules_through_init_and_no_row_m
     before, stored = objects(conn), rows(conn)
     db.init(conn)
     after = objects(conn)
-    assert set(after) - set(before) == _NEW_OBJECTS
+    assert set(after) - set(before) == _NEW_OBJECTS | _Q32_OBJECTS
     assert all(after[k] == before[k] for k in before)
     fresh = db.open_db(tmp_path / "fresh.db")
     try:
-        for key in _NEW_OBJECTS:
+        for key in _NEW_OBJECTS | _Q32_OBJECTS:
             assert after[key] == objects(fresh)[key]
         order = "SELECT name FROM sqlite_master WHERE type = 'trigger' AND" \
                 " tbl_name IN ('calibration_corrections', 'correction_gate_labels')" \
@@ -886,7 +946,8 @@ _WEEKLY = sorted(
 #: passes, questions answered once), a game each. The nine's counts are the
 #: record's (76 forecasts on 48 questions at fit 33's instant; UFC's 56 on 32
 #: at 22:11:39Z and 85 on 49 at the weekly refit; NFL spread 60 on 41; UFC
-#: moneyline, reasoning pass, 63 on 49); MLB moneyline is clear, and in force.
+#: moneyline, reasoning pass, 63 on 49); MLB moneyline is clear, and written
+#: in force under the rule before question 32 (fit 71).
 _SETTLED = {
     **{c: (("2026-09-21T12:00:00Z", 24, 8), ("2026-09-27T05:00:00Z", 12, 5))
        for c in (_UFC_DIST, _UFC_ML, _UFC_RDS)},
@@ -907,7 +968,9 @@ def _rehearsal_world(tmp_path):
     category when fifty or more had settled by its instant, a placeholder
     otherwise -- so the nine short on the key land at 33, 59, 61, 63, 81, 85,
     86, 87 and 89 in their categories and versions, and 71 (MLB moneyline,
-    statistical, version 8) is in force, clear on the key."""
+    statistical, version 8) is written in force as the weekly refit wrote it
+    (`active_from` set), clear on the key -- history from question 32's
+    release (2026-09-29), when the door stops reading that column."""
     path = tmp_path / "q31.db"
     conn = db.open_db(path)
     for sport in ("nfl", "mlb", "ufc"):
@@ -962,14 +1025,35 @@ def _rehearsal_world(tmp_path):
         for category in list(categories) + [next(fillers) for _ in range(n_fillers)]:
             n = settled_by(category, at)
             sport, market, forecaster = category
+            if (category, at) == (_MLB_ML, _AT_WEEKLY):
+                _written_in_force_as_fit_71_was(conn, n, at)
+                continue
             correction.record_fit(
                 conn, sport=sport, market_type=market, forecaster=forecaster,
                 model=(correction.Platt(slope=0.8, intercept=0.1, n_train=n)
                        if n >= correction.MIN_TRAIN else None),
                 status="written as the record's refits wrote it",
-                active_from=at if (category, at) == (_MLB_ML, _AT_WEEKLY) else None,
                 fitted_utc=at)
     return conn, path
+
+
+def _written_in_force_as_fit_71_was(conn, n, at):
+    """Fit 71 as the record holds it: MLB moneyline, statistical, written by
+    the weekly refit at its own instant WITH `active_from` set to it -- how a
+    correction came into force until question 32's release (2026-09-29),
+    which the schema now refuses on a new row. Written with that one rule
+    taken off, as the refit wrote it then, and the rule put back by `init`."""
+    version = correction.next_version(conn, sport="mlb", market_type="moneyline",
+                                      forecaster="statistical")
+    conn.execute("DROP TRIGGER calibration_corrections_written_inactive")
+    conn.execute(
+        "INSERT INTO calibration_corrections (sport, market_type, forecaster,"
+        " version, fitted_utc, n_train, slope, intercept, active_from, status)"
+        " VALUES ('mlb', 'moneyline', 'statistical', ?, ?, ?, 0.8, 0.1, ?,"
+        " 'active - written as the weekly refit wrote fit 71')",
+        (version, at, n, at))
+    conn.commit()
+    db.init(conn)
 
 
 def test_the_nine_are_what_the_rule_selects_on_the_rehearsal_shape(tmp_path, capsys):
@@ -977,7 +1061,9 @@ def test_the_nine_are_what_the_rule_selects_on_the_rehearsal_shape(tmp_path, cap
     rule selects exactly the nine the ruling names -- four written before
     question 23 was ruled, five by the weekly refit after it -- and no
     placeholder, though a placeholder is short on any count; the tool says it
-    would write nine, writes nine, then none; the fit in force stays in force;
+    would write nine, writes nine, then none; fit 71, written in force under
+    the rule before question 32, is served by nobody (the door reads the
+    activation rows alone from 2026-09-29) and is never labelled;
     and a refit from the release on, gated on the key, adds nothing the rule
     selects, so the selection over every fit stays the pre-release nine."""
     tool = _tool()
@@ -1027,8 +1113,10 @@ def test_the_nine_are_what_the_rule_selects_on_the_rehearsal_shape(tmp_path, cap
         assert tuple(r[0] for r in conn.execute(
             "SELECT correction_id FROM correction_gate_labels ORDER BY correction_id")) \
             == tool.RULED
+        # FROM QUESTION 32 (2026-09-29) fit 71's active_from is history, and
+        # the door reads the activation rows alone: nothing is in force
         assert correction.active_correction(conn, sport="mlb", market_type="moneyline",
-                                            forecaster="statistical")["id"] == 71
+                                            forecaster="statistical") is None
         # FROM THE RELEASE ON a refit is gated on the key: nothing it writes is
         # selected, so the rule's selection over every fit is still the nine
         report = correction.refit_all(conn)

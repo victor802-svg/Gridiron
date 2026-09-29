@@ -3595,11 +3595,15 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     payload["gates"] = (
         # A FIT FITTED BELOW ITS GATE IS NAMED BESIDE IT, in words and with
         # both its counts (operator question 23, ruled 2026-09-28; built
-        # 2026-09-29): the row's `why`, which the renderer places.
+        # 2026-09-29): the row's `why`, which the renderer places. AND WHERE
+        # ITS CORRECTION STANDS, by its own rows (question 32, 2026-09-29):
+        # in force since when, with its interval; withdrawn since when, and
+        # why; fitted and not in force.
         [dict({"name": language.gate_name("correction", c["label"]),
                "progress": c["progress"], "n": c["progress"]["n"]},
-              **({"why": " ".join(c["below_its_gate"])}
-                 if c.get("below_its_gate") else {}))
+              **({"why": " ".join(c["below_its_gate"]
+                                  + ([c["state"]] if c.get("state") else []))}
+                 if c.get("below_its_gate") or c.get("state") else {}))
          for c in payload["corrections"]["categories"] if c.get("progress")]
         # ONE ROW PER MARKET, CARD AND FORECASTER, named in words (operator
         # question 14, 2026-09-27): the row named a market type alone --
@@ -3769,9 +3773,20 @@ def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
                                       forecaster=forecaster, now=now)
             # IN FORCE THROUGH THE DOOR (C2's gate, and from 2026-09-29 never a
             # labelled fit), where this read the newest row's `active_from`.
+            # FROM QUESTION 32 (2026-09-29) the door reads the category's own
+            # activation rows alone, and the state the page says -- in force
+            # since when, on what measurement; withdrawn since when, and why;
+            # fitted and not in force -- is read from the same row, never
+            # from a stored row's status as the refit wrote it.
+            state = correction.latest_activation(
+                conn, sport=sport, market_type=market_type,
+                forecaster=forecaster, at_utc=now)
             active = correction.active_correction(
                 conn, sport=sport, market_type=market_type,
                 forecaster=forecaster, at_utc=now)
+            state_line = language.correction_state_line(
+                dict(state) if state is not None else None,
+                None if latest is None or latest["below_its_gate"] else latest)
             out.append({
                 **count,
                 # THE FORECASTER'S OWN LABEL, not the stored key, and the
@@ -3780,10 +3795,11 @@ def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
                 "label": language.correction_category_label(
                     sport, market_type, forecaster),
                 "active": active is not None,
-                "status": (latest["status"] if latest else
-                           f"corrections begin at {correction.MIN_TRAIN} "
-                           f"{language.CORRECTION_GATE_NOUN} - nothing "
-                           "settled yet"),
+                "status": state_line or (
+                    latest["status"] if latest else
+                    f"corrections begin at {correction.MIN_TRAIN} "
+                    f"{language.CORRECTION_GATE_NOUN} - nothing settled yet"),
+                "state": state_line,
                 "versions": versions,
                 "n": len(versions),
                 # HOW CLOSE THIS CATEGORY IS to its first correction (P1): the
@@ -4964,8 +4980,15 @@ def _learning(conn: sqlite3.Connection, sport: str) -> dict:
             forecaster="statistical").get(latest["id"])
             if latest is not None else None)
         settled = count["settled"]
+        # IN FORCE, WITHDRAWN OR NEITHER, BY ITS OWN ROWS (question 32,
+        # 2026-09-29): the category's latest activation row, as the door
+        # reads it, and the line says which.
+        state = correction.latest_activation(
+            conn, sport=sport, market_type=market_type, forecaster="statistical",
+            at_utc=now)
         active = correction.active_correction(
-            conn, sport=sport, market_type=market_type, forecaster="statistical")
+            conn, sport=sport, market_type=market_type, forecaster="statistical",
+            at_utc=now)
         shown, version = correction.shown_claim(
             conn, sport=sport, market_type=market_type,
             forecaster="statistical", claim=0.70)
@@ -5000,7 +5023,9 @@ def _learning(conn: sqlite3.Connection, sport: str) -> dict:
                 last_refit=last_refit,
                 n_train=(latest["n_train"] if latest else 0) or 0,
                 below_its_gate=below,
-                scope=language.correction_scope_words(sport, market_type)),
+                scope=language.correction_scope_words(sport, market_type),
+                state=dict(state) if state is not None else None,
+                latest=dict(latest) if latest is not None else None),
             "meaning_words": language.correction_meaning_line(0.70, shown),
             # EACH LINE CARRIES ITS OWN N; the renderer requires it.
             "drift": moved,

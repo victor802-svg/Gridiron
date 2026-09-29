@@ -3365,24 +3365,41 @@ def plant_a_second_look_served_from_cache() -> Result:
         _espn.NEAR_START_TTL = original
 
 
+def _asked_to_activate(conn, _c) -> tuple[str, bool]:
+    """Fit what the record holds (`refit_all`), then ask the gate to put the
+    fit in force (`activate_measured`, from question 32's release,
+    2026-09-29): the measurement's words, and whether it is in force after."""
+    report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+    fid = conn.execute("SELECT MAX(id) FROM calibration_corrections").fetchone()[0]
+    try:
+        _c.activate_measured(conn, fid, reason="asked of the gate by a planting")
+        words = "activated"
+    except _c.ActivationRefused as exc:
+        words = str(exc)
+    served = _c.active_correction(conn, sport="nfl", market_type="moneyline",
+                                  forecaster="statistical")
+    return f"{report['categories'][0]['status']} | {words}", served is not None
+
+
 def plant_an_active_correction_below_the_gate() -> Result:
     """Ask the engine to activate a category with too little record.
 
-    Fifty settled rows is the bar. Below it a correction is two numbers fitted
-    on a handful of results, and applying it would let a dozen games decide
-    what every future claim in the category is shown as.
+    Fifty settled questions is the bar for fitting. Below it a correction is
+    two numbers fitted on a handful of results -- recorded as a placeholder
+    -- and applying it would let a dozen games decide what every future claim
+    in the category is shown as. From question 32 (2026-09-29) the fit is
+    asked of the gate, which refuses a placeholder by name.
     """
     from gridiron import correction as _c
 
     conn = _memory_record()
     _settle(conn, n=20, worth=0.6)
-    report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
-    cat = report["categories"][0]
-    caught = not cat["active"] and str(_c.MIN_TRAIN) in cat["status"]
+    words, served = _asked_to_activate(conn, _c)
+    caught = not served and str(_c.MIN_TRAIN) in words and "placeholder" in words
     return Result("CORRECTIONS ACTIVATE ONLY ON THEIR MERITS",
                   "activate a correction on 20 settled rows",
-                  "correction.refit_all", caught,
-                  cat["status"] if caught else
+                  "correction.refit_all; correction.activate_measured", caught,
+                  words if caught else
                   "NOT CAUGHT - a category under the gate went active")
 
 
@@ -3390,20 +3407,21 @@ def plant_a_correction_that_does_not_help() -> Result:
     """A well-calibrated category must NOT get a correction.
 
     The in-sample Brier always improves -- a fit improves the rows it was
-    fitted on by construction -- so the gate that can say no is the holdout.
-    This is the planting that proves it says no.
+    fitted on by construction -- so the gate that can say no is the holdout,
+    and from question 32 (2026-09-29) its interval: the bootstrap interval of
+    the improvement on the questions the fit did not see touches zero, a tie,
+    and the uncorrected probability stands.
     """
     from gridiron import correction as _c
 
     conn = _memory_record()
     _settle(conn, n=200, worth=1.0)          # claims already worth what they say
-    report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
-    cat = report["categories"][0]
-    caught = not cat["active"]
+    words, served = _asked_to_activate(conn, _c)
+    caught = not served and "a tie" in words
     return Result("CORRECTIONS ACTIVATE ONLY ON THEIR MERITS",
                   "activate a correction that does not improve unseen rows",
-                  "correction.holdout_check", caught,
-                  cat["status"] if caught else
+                  "correction.measure through correction.activate_measured",
+                  caught, words if caught else
                   "NOT CAUGHT - a correction that does not help went active")
 
 
@@ -3412,20 +3430,20 @@ def plant_a_genuine_correction_refused() -> Result:
 
     A gate that never opens is not a gate, it is an off switch, and it would
     be indistinguishable from a working one for as long as no category
-    qualified.
+    qualified. Five hundred questions whose claims are worth nothing over a
+    half: the interval clears zero, and a dated row puts the fit in force.
     """
     from gridiron import correction as _c
 
     conn = _memory_record()
-    _settle(conn, n=200, worth=0.55)         # badly overconfident
-    report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
-    cat = report["categories"][0]
+    _q32_settle(conn, n=500, worth=0.0)      # claims worth nothing over a half
+    words, served = _asked_to_activate(conn, _c)
     return Result("CORRECTIONS ACTIVATE ONLY ON THEIR MERITS",
                   "refuse a correction that genuinely helps",
-                  "correction.holdout_check", cat["active"],
-                  cat["status"] if cat["active"] else
+                  "correction.measure through correction.activate_measured",
+                  served, words if served else
                   "NOT CAUGHT - a real miscalibration was refused, so the "
-                  "gate never opens")
+                  "gate never opens: " + words)
 
 
 def plant_a_retroactive_correction() -> Result:
@@ -3591,7 +3609,7 @@ def plant_a_correction_that_does_not_reach_the_pick() -> Result:
         _c.record_fit(conn, sport="mlb", market_type="moneyline",
                       forecaster="statistical", model=fit,
                       status="fitted but not applied - planted",
-                      active_from=None, fitted_utc=stamp(timedelta(days=-2)))
+                      fitted_utc=stamp(timedelta(days=-2)))
         inert = pick()
         if inert is None or inert["side"] != "no":
             return escaped(
@@ -3599,11 +3617,16 @@ def plant_a_correction_that_does_not_reach_the_pick() -> Result:
                 f"{inert and inert['side']} at {inert and inert['edge_cents']}c. "
                 f"C2's gate says a fitted correction is inert until activated")
 
+        # IN FORCE BY ITS OWN ROW (operator question 32, 2026-09-29): written
+        # inactive and put in force as a scratch world may, a day ago.
         _c.record_fit(conn, sport="mlb", market_type="moneyline",
                       forecaster="statistical", model=fit,
-                      status="active - planted",
-                      active_from=stamp(timedelta(days=-1)),
+                      status="fitted - planted",
                       fitted_utc=stamp(timedelta(days=-1)))
+        _c.activate_in_a_scratch_world(
+            conn, conn.execute("SELECT MAX(id) FROM calibration_corrections"
+                               ).fetchone()[0],
+            now=stamp(timedelta(days=-1)))
         flipped = pick()
         if flipped is None or flipped["side"] != "yes" \
                 or flipped.get("correction_version") != 2 \
@@ -3742,6 +3765,36 @@ def _settle(conn, *, n: int, worth: float) -> None:
             (f"S{i}", claim, f"2026-01-{i % 28 + 1:02d}T00:00:{i % 60:02d}Z",
              outcome),
         )
+    conn.commit()
+
+
+def _q32_settle(conn, *, n: int, worth: float, twice: bool = False,
+                market: str = "moneyline") -> None:
+    """`n` settled questions on `_memory_record`'s one game, each its own
+    subject, settling an hour apart in 2026 (question 32, 2026-09-29): claims
+    across 55-94%, each worth `worth` times what it says over a half; with
+    `twice`, each answered by the morning pass (four points shyer) and the
+    final pass. Seeded, so the measurement comes out the same every run."""
+    import random as _random
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+    rng = _random.Random(32)
+    start = _dt(2026, 1, 1, tzinfo=_tz.utc)
+    for i in range(1, n + 1):
+        claim = 0.55 + (i % 40) * 0.01
+        outcome = 1 if rng.random() < 0.5 + (claim - 0.5) * worth else 0
+        resolved = (start + _td(hours=i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        passes = (("early", claim - 0.04, "2025-11-30T06:00:00Z"),
+                  ("final", claim, "2025-11-30T16:00:00Z"))
+        for pass_kind, p, written in (passes if twice else passes[1:]):
+            conn.execute(
+                "INSERT INTO predictions (sport, created_utc, game_id,"
+                " market_type, subject, model_prob, model_side, predictor,"
+                " pass_kind, factor_set_version, factors_json, reasoning,"
+                " resolved_utc, outcome) VALUES ('nfl', ?, 'g1', ?, ?, ?,"
+                " 'win', 'statistical', ?, 'fs2', '{}', 'planted', ?, ?)",
+                (written, market, f"Q{i}", round(p, 4), pass_kind, resolved,
+                 outcome))
     conn.commit()
 
 
@@ -18368,12 +18421,36 @@ def _q16_short_fit(conn, *, games=range(1, 29), market="spread",
     _q16_both_passes(conn, games, market=market, predictor=predictor,
                      line=None if market != "spread" else -3.5)
     conn.commit()
-    version = _c.record_fit(
-        conn, sport="nfl", market_type=market, forecaster=predictor,
+    return _q32_fit_in_force(
+        conn, market=market, predictor=predictor, active_from=active_from,
         model=_c.Platt(slope=0.8, intercept=0.1, n_train=2 * len(games)),
-        status="fitted but not applied - planted", active_from=active_from,
-        fitted_utc="2026-06-01T00:00:00Z")
-    return _q16_fit_id(conn, market, predictor, version)
+        status="fitted but not applied - planted")
+
+
+def _q32_fit_in_force(conn, *, market: str, predictor: str, model,
+                      status: str, active_from: str | None,
+                      fitted_utc: str = "2026-06-01T00:00:00Z",
+                      sport: str = "nfl") -> int:
+    """A fit written as the package under test writes one, and -- with
+    `active_from` -- put in force as that package puts one: from question
+    32's release (2026-09-29) written inactive and put in force by its own
+    row, as a scratch world may; before it, by the row's own `active_from`.
+    Its number."""
+    from gridiron import correction as _c
+
+    rows_of_their_own = hasattr(_c, "activate_in_a_scratch_world")
+    kwargs = ({} if rows_of_their_own or active_from is None
+              else {"active_from": active_from})
+    version = _c.record_fit(conn, sport=sport, market_type=market,
+                            forecaster=predictor, model=model, status=status,
+                            fitted_utc=fitted_utc, **kwargs)
+    fid = conn.execute(
+        "SELECT id FROM calibration_corrections WHERE sport = ?"
+        " AND market_type = ? AND forecaster = ? AND version = ?",
+        (sport, market, predictor, version)).fetchone()[0]
+    if rows_of_their_own and active_from is not None:
+        _c.activate_in_a_scratch_world(conn, fid, now=active_from)
+    return fid
 
 
 def _q16_fit_id(conn, market: str, forecaster: str, version: int) -> int:
@@ -18462,6 +18539,32 @@ def plant_a_labelled_correction_activated() -> Result:
         if served is not None:
             missed.append(f"the door serves labelled fit {served['id']} once a "
                           f"record was put that way by hand")
+        # AND FROM QUESTION 32 (2026-09-29), where a correction comes into
+        # force by a row of its own: that row, naming the labelled fit, written
+        # by hand with its rule off. The door alone must pass over it.
+        if _c_has_the_table(conn, "correction_activations"):
+            from gridiron import db as _db
+
+            _db.set_meta(conn, "kind", "scratch")
+            # ITS RULES TAKEN OFF: the labelled fit's, and -- this world holds
+            # a fit written in force by hand above, so it is a record and a
+            # scratch row is refused whatever its kind (question 32's prover,
+            # 2026-09-29) -- the scratch row's. Stamped now, and the door
+            # asked now: a record refuses a row dated back.
+            conn.execute("DROP TRIGGER"
+                         " correction_activation_never_a_labelled_fit_or_a_placeholder")
+            conn.execute("DROP TRIGGER correction_activation_scratch_is_never_live")
+            conn.execute(
+                "INSERT INTO correction_activations (sport, market_type,"
+                " forecaster, seq, correction_id, activated_utc, kind, reason)"
+                " VALUES ('nfl', 'spread', 'statistical', 1, ?, ?, 'scratch',"
+                " 'planted by hand, the rules taken off')", (fid, _db_now()))
+            conn.commit()
+            served = _c.active_correction(conn, sport="nfl", market_type="spread",
+                                          forecaster="statistical")
+            if served is not None:
+                missed.append(f"the door serves labelled fit {served['id']} "
+                              f"through an activation row written by hand")
         if missed:
             return Result(LAW_CORRECTION_GATE, violation, guard, False,
                           "NOT CAUGHT - " + "; ".join(missed))
@@ -18471,6 +18574,12 @@ def plant_a_labelled_correction_activated() -> Result:
                       f"force by hand)")
     finally:
         conn.close()
+
+
+def _c_has_the_table(conn, name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (name,)).fetchone() is not None
 
 
 def plant_a_correction_label_the_fit_does_not_support() -> Result:
@@ -18661,6 +18770,782 @@ def _c_has_the_label_table(conn) -> bool:
         "   AND name = 'correction_gate_labels'").fetchone() is not None
 
 
+# ---------------------------------------------------------------------------
+# A CORRECTION IS IN FORCE ONLY BY ITS OWN DATED ROW (operator question 32,
+# ruled 2026-09-29, second set; built the same day)
+# ---------------------------------------------------------------------------
+#
+# "Corrections activate through the same gate as model fits. Every correction
+# row is written inactive. Activation is its own dated append-only row,
+# written only when the holdout bootstrap interval of the Brier improvement
+# excludes zero, measured on distinct bets by the key, per forecaster; a tie
+# goes to the uncorrected probability." Each planting below runs on the
+# package it is handed: on the one released before this ruling -- no
+# activation rows, a correction in force by its own `active_from` -- it puts
+# a correction in force the way that package allows and ESCAPES; on this one
+# the rows' rules, the gate's measurement or the gate's check refuse it.
+
+LAW_CORRECTION_ACTIVATION = "A CORRECTION IS IN FORCE ONLY BY ITS OWN ROW"
+
+
+def _q32_rows_of_their_own(_c) -> bool:
+    """Does the package under test put a correction in force by a row of its
+    own (question 32's release), or by the row's `active_from` (before)?"""
+    return hasattr(_c, "activate_measured")
+
+
+def _q32_served(_c, conn, market: str = "moneyline",
+                forecaster: str = "statistical"):
+    got = _c.active_correction(conn, sport="nfl", market_type=market,
+                               forecaster=forecaster)
+    return None if got is None else got["id"]
+
+
+def _q32_in_force_the_old_way(_c, conn, *, model, market: str = "moneyline",
+                              status: str = "active - planted") -> tuple:
+    """On the package before question 32: a correction written in force by
+    its own column, with no row of its own and no measurement -- the one way
+    that package has. The fit's number and what the door serves."""
+    version = _c.record_fit(conn, sport="nfl", market_type=market,
+                            forecaster="statistical", model=model,
+                            status=status, active_from="2026-06-02T00:00:00Z",
+                            fitted_utc="2026-06-01T00:00:00Z")
+    fid = conn.execute(
+        "SELECT id FROM calibration_corrections WHERE market_type = ?"
+        " AND version = ?", (market, version)).fetchone()[0]
+    return fid, _q32_served(_c, conn, market)
+
+
+def _q32_measured_row(fid: int, got: dict, **over) -> tuple[str, tuple]:
+    """One measured activation row, as the rules read it, from a
+    measurement's own numbers with `over` put in their place."""
+    low, high = got.get("interval") or (None, None)
+    # STAMPED NOW (the prover, 2026-09-29): on a live database a row dated
+    # back is refused for its date, which would stand in for the refusal a
+    # form asks about.
+    values = dict(sport="nfl", market_type="moneyline",
+                  forecaster="statistical", seq=1, correction_id=fid,
+                  activated_utc=_db_now(), kind="measured",
+                  reason="planted: a measured activation",
+                  holdout=got.get("holdout"), bets=got.get("bets"),
+                  holdout_n=got.get("holdout_n"),
+                  brier_raw=got.get("brier_raw"),
+                  brier_corrected=got.get("brier_corrected"),
+                  improvement=got.get("improvement"), diff_low=low,
+                  diff_high=high, bootstrap_seed=got.get("seed"),
+                  bootstrap_draws=got.get("draws"))
+    values.update(over)
+    return (f"INSERT INTO correction_activations ({', '.join(values)}) VALUES"
+            f" ({', '.join('?' for _ in values)})", tuple(values.values()))
+
+
+def _q32_refused(conn, forms: dict) -> tuple[list[str], list[str]]:
+    """Each statement run and taken back: (refused, with the rule's words;
+    landed)."""
+    caught, missed = [], []
+    for name, (sql, params) in forms.items():
+        try:
+            conn.execute(sql, params)
+        except sqlite3.IntegrityError as exc:
+            caught.append(f"{name}: {str(exc)[:80]}")
+        else:
+            missed.append(name)
+        conn.rollback()
+    return caught, missed
+
+
+def plant_a_correction_in_force_without_its_own_row() -> Result:
+    """Put a correction in force with no activation row of its own.
+
+    THE DEFECT (question 32): the weekly refit set `active_from` on the fit
+    it wrote whenever a point check passed, and the door read that column --
+    fit 71 came into force that way at 2026-09-28T13:00:01Z. Planted both
+    ways: the weekly refit run on five hundred settled questions whose
+    claims are worth nothing over a half, and a new row written in force as
+    the refit wrote fit 71. CAUGHT means the refit's fit is written inactive
+    with no row and served by nobody, and the row is refused by the schema.
+    """
+    from gridiron import correction as _c
+
+    guard = ("correction.refit_all; schema calibration_corrections_written_"
+             "inactive; correction.active_correction")
+    violation = "a correction put in force with no activation row of its own"
+    conn = _memory_record()
+    try:
+        _q32_settle(conn, n=500, worth=0.0)
+        caught, missed = [], []
+        _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        fit = conn.execute("SELECT id, active_from, status FROM"
+                           " calibration_corrections").fetchone()
+        served = _q32_served(_c, conn)
+        if fit["active_from"] is not None or served is not None:
+            missed.append(f"the weekly refit put fit {fit['id']} in force itself "
+                          f"(active_from {fit['active_from']}, '{fit['status']}'), "
+                          f"and the door serves {served}")
+        else:
+            caught.append(f"the weekly refit wrote fit {fit['id']} inactive and "
+                          f"nothing is served")
+        try:
+            conn.execute(
+                "INSERT INTO calibration_corrections (sport, market_type,"
+                " forecaster, version, fitted_utc, n_train, slope, intercept,"
+                " active_from, status) VALUES ('nfl', 'moneyline',"
+                " 'statistical', 2, '2026-06-02T00:00:00Z', 500, 0.3, 0.1,"
+                " '2026-06-02T00:00:00Z', 'active - planted as fit 71 was')")
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            caught.append(f"a row written in force: {str(exc)[:80]}")
+        else:
+            missed.append(f"a new row written with active_from landed, and the "
+                          f"door serves {_q32_served(_c, conn)}")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      "; ".join(caught))
+    finally:
+        conn.close()
+
+
+def plant_a_correction_activated_on_a_tie() -> Result:
+    """Put a correction in force whose holdout interval touches zero.
+
+    Two hundred settled questions whose claims are worth exactly what they
+    say: the refit's fit, measured on the latest forty it did not see, is a
+    tie, and a tie goes to the uncorrected probability. CAUGHT means the
+    gate refuses it by its measurement, and the schema refuses its measured
+    row as the measurement wrote it and with its lower bound at zero.
+    Before question 32 nothing measured an interval at all: a correction
+    was put in force by its own column, and the door served it.
+    """
+    from gridiron import correction as _c
+
+    guard = ("correction.activate_measured; schema correction_activation_"
+             "ties_go_to_the_uncorrected")
+    violation = "a correction put in force whose holdout interval touches zero"
+    conn = _memory_record()
+    try:
+        _q32_settle(conn, n=200, worth=1.0)
+        if not _q32_rows_of_their_own(_c):
+            fid, served = _q32_in_force_the_old_way(
+                _c, conn, model=_c.Platt(slope=0.9, intercept=0.0, n_train=200))
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - nothing measures an interval: fit {fid} "
+                          f"was put in force by its own column with no holdout "
+                          f"at all, and the door serves {served}")
+        _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        fid = conn.execute("SELECT id FROM calibration_corrections").fetchone()[0]
+        got = _c.measure(conn, fid)
+        if got["passed"] or not got.get("interval"):
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - the planted world is wrong: a calibrated "
+                          f"category measured {got.get('interval')}, "
+                          f"{got['why']}. Fix it before trusting this planting")
+        caught, missed = [], []
+        try:
+            _c.activate_measured(conn, fid, reason="planted: a tie")
+        except _c.ActivationRefused as exc:
+            caught.append(f"the gate: {str(exc)[:90]}")
+        else:
+            missed.append("the gate activated a tie")
+        low, high = got["interval"]
+        more, landed = _q32_refused(conn, {
+            f"its own measurement, [{low:+.4f}, {high:+.4f}]":
+                _q32_measured_row(fid, got),
+            "its lower bound at zero": _q32_measured_row(fid, got, diff_low=0.0),
+        })
+        caught += more
+        missed += landed
+        served = _q32_served(_c, conn)
+        if served is not None:
+            missed.append(f"the door serves {served}")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      f"{caught[0]} (and {len(caught) - 1} more refused)")
+    finally:
+        conn.close()
+
+
+def plant_a_correction_activation_without_its_interval() -> Result:
+    """Put a correction in force with no interval, or no measurement.
+
+    Five hundred questions whose correction passes the gate, and its measured
+    row written without the interval, without the seed and resamples,
+    without what was held out, and without the counts. CAUGHT means each is
+    refused by the schema and nothing is in force. Before question 32 a
+    correction was put in force by its own column with no holdout at all.
+    """
+    from gridiron import correction as _c
+
+    guard = "schema correction_activation_carries_its_measurement"
+    violation = "a correction put in force with no interval or no measurement"
+    conn = _memory_record()
+    try:
+        _q32_settle(conn, n=500, worth=0.0)
+        if not _q32_rows_of_their_own(_c):
+            fid, served = _q32_in_force_the_old_way(
+                _c, conn, model=_c.Platt(slope=0.3, intercept=0.1, n_train=500))
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - fit {fid} was put in force with no "
+                          f"interval and no measurement, and the door serves "
+                          f"{served}")
+        _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        fid = conn.execute("SELECT id FROM calibration_corrections").fetchone()[0]
+        got = _c.measure(conn, fid)
+        caught, missed = _q32_refused(conn, {
+            "no interval": _q32_measured_row(fid, got, diff_low=None,
+                                             diff_high=None),
+            "no upper bound": _q32_measured_row(fid, got, diff_high=None),
+            "no seed or resamples": _q32_measured_row(
+                fid, got, bootstrap_seed=None, bootstrap_draws=None),
+            "nothing said of what was held out": _q32_measured_row(
+                fid, got, holdout=None),
+            "no Brier scores": _q32_measured_row(
+                fid, got, brier_raw=None, brier_corrected=None,
+                improvement=None),
+        })
+        served = _q32_served(_c, conn)
+        if served is not None:
+            missed.append(f"the door serves {served}")
+        if not got["passed"]:
+            missed.append(f"the planted world is wrong: {got['why']}")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      f"{caught[0]} (and {len(caught) - 1} more refused)")
+    finally:
+        conn.close()
+
+
+def plant_a_labelled_or_placeholder_correction_activated() -> Result:
+    """Put a fit labelled fitted below its gate, or a placeholder, in force.
+
+    A labelled fit "can never be activated" (question 23), and a placeholder
+    was never fitted. Planted: each put in force by the gate
+    (`activate_measured`), and by a scratch row in a scratch world. CAUGHT
+    means all four refused, by name. Before question 32 a placeholder -- no
+    slope, no intercept, nothing fitted -- was put in force by its own
+    column and served.
+    """
+    from gridiron import correction as _c
+    from gridiron import db as _db
+
+    guard = ("correction.measure; schema correction_activation_never_a_"
+             "labelled_fit_or_a_placeholder")
+    violation = "a labelled fit or a placeholder put in force"
+    conn = _q16_world()
+    try:
+        for g in range(41, 61):
+            _q16_forecast(conn, g, market="total", line=44.5, outcome=g % 2)
+        conn.commit()
+        if not _q32_rows_of_their_own(_c):
+            fid, served = _q32_in_force_the_old_way(
+                _c, conn, model=None, market="total",
+                status="corrections begin at 50 settled - 20 so far")
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - placeholder {fid}, nothing fitted, was "
+                          f"put in force by its own column and the door serves "
+                          f"{served}")
+        short = _q16_short_fit(conn)
+        _c.write_labels(conn, [short], now="2026-06-02T00:00:00Z")
+        _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        placeholder = conn.execute(
+            "SELECT id FROM calibration_corrections WHERE market_type = 'total'"
+            "   AND n_train < ?", (_c.MIN_TRAIN,)).fetchone()[0]
+        _db.set_meta(conn, "kind", "scratch")
+        caught, missed = [], []
+        for name, fid, market in (("the labelled fit", short, "spread"),
+                                  ("the placeholder", placeholder, "total")):
+            for how, act in (
+                    ("by the gate", lambda f=fid: _c.activate_measured(
+                        conn, f, reason="planted: in force")),
+                    ("by a scratch row", lambda f=fid: _c.activate_in_a_scratch_world(
+                        conn, f, now="2026-06-03T00:00:00Z"))):
+                try:
+                    act()
+                except _c.ActivationRefused as exc:
+                    caught.append(f"{name} {how}: {str(exc)[:70]}")
+                else:
+                    missed.append(f"{name} was put in force {how}")
+            if _q32_served(_c, conn, market) is not None:
+                missed.append(f"the door serves {name}")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      f"{caught[0]} (and {len(caught) - 1} more refused)")
+    finally:
+        conn.close()
+
+
+def plant_a_scratch_correction_activation_on_a_live_record() -> Result:
+    """Put a correction in force with no measurement on a live record.
+
+    A scratch activation is a test world's, never the record's. Planted: a
+    scratch row on a database whose meta kind is live, the scratch door
+    asked of a database holding a correction written in force as the record
+    holds fit 71, and -- the prover, 2026-09-29 -- a scratch row on that
+    record after its kind was set to scratch by hand. CAUGHT means all three
+    refused. Before question 32 any correction went in force on a live
+    database by its own column, measured or not.
+    """
+    from gridiron import correction as _c
+
+    guard = ("schema correction_activation_scratch_is_never_live; "
+             "correction.activate_in_a_scratch_world")
+    violation = "a correction put in force without a measurement on a live record"
+    conn = _memory_record()
+    try:
+        if not _q32_rows_of_their_own(_c):
+            fid, served = _q32_in_force_the_old_way(
+                _c, conn, model=_c.Platt(slope=0.8, intercept=0.0, n_train=120))
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - on a live database fit {fid} was put in "
+                          f"force with no measurement, and the door serves "
+                          f"{served}")
+        _c.record_fit(conn, sport="nfl", market_type="moneyline",
+                      forecaster="statistical",
+                      model=_c.Platt(slope=0.8, intercept=0.0, n_train=120),
+                      status="fitted - planted", fitted_utc="2026-06-01T00:00:00Z")
+        fid = conn.execute("SELECT id FROM calibration_corrections").fetchone()[0]
+        caught, missed = _q32_refused(conn, {
+            "a scratch row on a live database": (
+                "INSERT INTO correction_activations (sport, market_type,"
+                " forecaster, seq, correction_id, activated_utc, kind, reason)"
+                " VALUES ('nfl', 'moneyline', 'statistical', 1, ?, ?,"
+                " 'scratch', 'planted: no measurement')",
+                # stamped now (the prover, 2026-09-29): a row dated back on a
+                # live database is refused for its date, which would stand
+                # in for the refusal this form asks about
+                (fid, _db_now()))})
+        # A RECORD: a correction written in force as the record holds fit 71
+        conn.execute("DROP TRIGGER calibration_corrections_written_inactive")
+        conn.execute(
+            "INSERT INTO calibration_corrections (sport, market_type,"
+            " forecaster, version, fitted_utc, n_train, slope, intercept,"
+            " active_from, status) VALUES ('nfl', 'total', 'statistical', 1,"
+            " '2026-06-01T00:00:00Z', 364, 1.0, -0.2, '2026-06-01T00:00:00Z',"
+            " 'active - as the record holds fit 71')")
+        conn.commit()
+        try:
+            _c.activate_in_a_scratch_world(conn, fid, now="2026-06-02T00:00:00Z")
+        except _c.ScratchWorldRefused as exc:
+            caught.append(f"the scratch door on a record: {str(exc)[:70]}")
+        else:
+            missed.append("the scratch door put a correction in force on a record")
+        # AND THE RECORD'S KIND SET TO SCRATCH BY HAND (the prover of question
+        # 32, 2026-09-29): the kind is a meta value no rule holds, so one
+        # statement changing it let a scratch row put a correction in force
+        # on the record, unmeasured. A record is known by its own rows too.
+        conn.execute("UPDATE meta SET value = 'scratch' WHERE key = 'kind'")
+        conn.commit()
+        more, landed = _q32_refused(conn, {
+            "a scratch row on a record whose kind was set to scratch by hand": (
+                "INSERT INTO correction_activations (sport, market_type,"
+                " forecaster, seq, correction_id, activated_utc, kind, reason)"
+                " VALUES ('nfl', 'moneyline', 'statistical', 1, ?, ?,"
+                " 'scratch', 'planted: the kind changed by hand')",
+                (fid, _db_now()))})
+        caught += more
+        missed += landed
+        if _q32_served(_c, conn) is not None:
+            missed.append("the door serves it")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      "; ".join(caught))
+    finally:
+        conn.close()
+
+
+def plant_a_correction_activation_edited_deleted_or_replaced() -> Result:
+    """Rewrite which correction was in force, and when.
+
+    A lawful measured activation and a withdrawal after it, then: the
+    withdrawal's reason edited, the activation deleted, a withdrawal written
+    in the activation's place (under OR REPLACE, and as REPLACE with its
+    place spelled as text), a row written at a place not the next, and the
+    correction the rows name written over -- by its number and by its
+    category and version -- with another slope. CAUGHT means every one is
+    refused and the rows and the fit stay as written. Before question 32 the
+    correction in force was the row itself, and a replacing insert in its
+    place put other numbers in force under the same version.
+    """
+    from gridiron import correction as _c
+
+    guard = ("schema correction_activations_no_update, _no_delete, "
+             "correction_activation_is_the_next_of_its_category, "
+             "calibration_corrections_never_replaced_under_an_activation")
+    violation = "an activation or a withdrawal of a correction edited, deleted or replaced"
+    conn = _memory_record()
+    try:
+        _q32_settle(conn, n=500, worth=0.0)
+        replace_fit = (
+            "INSERT OR REPLACE INTO calibration_corrections (id, sport,"
+            " market_type, forecaster, version, fitted_utc, n_train, slope,"
+            " intercept{col}, status) VALUES (?, 'nfl', 'moneyline',"
+            " 'statistical', 1, '2026-06-01T00:00:00Z', 500, 3.0, 1.0{val},"
+            " 'written over - planted')")
+        if not _q32_rows_of_their_own(_c):
+            fid, _served = _q32_in_force_the_old_way(
+                _c, conn, model=_c.Platt(slope=0.3, intercept=0.1, n_train=500))
+            conn.execute(replace_fit.format(col=", active_from",
+                                            val=", '2026-06-02T00:00:00Z'"), (fid,))
+            conn.commit()
+            got = _c.active_correction(conn, sport="nfl", market_type="moneyline",
+                                       forecaster="statistical")
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - the correction in force was written over "
+                          f"in its own place, and the door serves version "
+                          f"{got and got['version']} with slope "
+                          f"{got and got['slope']}")
+        _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        fid = conn.execute("SELECT id FROM calibration_corrections").fetchone()[0]
+        _c.activate_measured(conn, fid, reason="planted: measured and passed")
+        _c.withdraw(conn, fid, reason="planted: withdrawn after it")
+        stored = [tuple(r) for r in conn.execute(
+            "SELECT * FROM correction_activations ORDER BY seq")]
+        fitted = tuple(conn.execute(
+            "SELECT * FROM calibration_corrections").fetchone())
+        row = ("INSERT{how} INTO correction_activations (sport, market_type,"
+               " forecaster, seq, correction_id, activated_utc, kind, reason)"
+               " VALUES ('nfl', 'moneyline', 'statistical', {seq}, ?, ?,"
+               " 'withdrawn', 'planted: written in a stored row''s place')")
+        now = _db_now()
+        caught, missed = _q32_refused(conn, {
+            "the withdrawal's reason edited": (
+                "UPDATE correction_activations SET reason = 'rewritten"
+                " afterwards' WHERE seq = 2", ()),
+            "the activation deleted": (
+                "DELETE FROM correction_activations WHERE seq = 1", ()),
+            "a withdrawal in the activation's place, OR REPLACE": (
+                row.format(how=" OR REPLACE", seq=1), (fid, now)),
+            "the same, REPLACE, its place spelled as text": (
+                row.format(how="", seq="'1'").replace("INSERT", "REPLACE", 1),
+                (fid, now)),
+            "a row at a place not the next": (row.format(how="", seq=5), (fid, now)),
+            "the correction written over by its number": (
+                replace_fit.format(col="", val=""), (fid,)),
+            "the correction written over by its category and version": (
+                replace_fit.format(col="", val="").replace(
+                    "(id, sport,", "(sport,", 1).replace("VALUES (?, ", "VALUES (", 1),
+                ()),
+        })
+        if [tuple(r) for r in conn.execute(
+                "SELECT * FROM correction_activations ORDER BY seq")] != stored:
+            missed.append("the activation rows changed")
+        if tuple(conn.execute(
+                "SELECT * FROM calibration_corrections").fetchone()) != fitted:
+            missed.append("the correction the rows name changed")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      f"{caught[0]} (and {len(caught) - 1} more refused)")
+    finally:
+        conn.close()
+
+
+def _db_now() -> str:
+    from gridiron import db as _db
+
+    return _db.utcnow()
+
+
+def plant_a_correction_door_reading_active_from() -> Result:
+    """Put the door back as it was: in force by the row's `active_from`.
+
+    The door released before question 32 served the newest version whose
+    `active_from` had passed, so the weekly refit's own column put fit 71 in
+    force. Planted two ways -- the in-force door and the latest-row door each
+    swapped for one reading `active_from` -- and asked of the gate's check
+    (`audit.check_a_correction_is_in_force_only_by_its_own_row`), which reads
+    the door on a world made to tell the column from a row. CAUGHT means the
+    check refuses both by name.
+    """
+    from gridiron import correction as _c
+
+    guard = "audit.check_a_correction_is_in_force_only_by_its_own_row"
+    violation = "the correction door reading active_from"
+    if not hasattr(audit, "check_a_correction_is_in_force_only_by_its_own_row"):
+        conn = _memory_record()
+        try:
+            fid, served = _q32_in_force_the_old_way(
+                _c, conn, model=_c.Platt(slope=0.8, intercept=0.0, n_train=120))
+        finally:
+            conn.close()
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                      f"NOT CAUGHT - the door reads active_from (fit {fid}, in "
+                      f"force by its own column, is served as {served}) and no "
+                      f"check asks it anything")
+
+    def in_force_by_its_column(conn, *, sport, market_type, forecaster,
+                               at_utc=None):
+        return conn.execute(
+            "SELECT * FROM calibration_corrections WHERE sport = ?"
+            " AND market_type = ? AND forecaster = ?"
+            " AND active_from IS NOT NULL AND active_from <= ?"
+            " ORDER BY version DESC LIMIT 1",
+            (sport, market_type, forecaster, at_utc or _db_now())).fetchone()
+
+    def latest_by_its_column(conn, **kw):
+        got = in_force_by_its_column(conn, **kw)
+        return None if got is None else dict(got, activation_kind="measured")
+
+    caught, missed = [], []
+    for name, attr, door in (
+            ("the in-force door", "active_correction", in_force_by_its_column),
+            ("the latest-row door", "latest_activation", latest_by_its_column)):
+        real = getattr(_c, attr)
+        setattr(_c, attr, door)
+        try:
+            audit.check_a_correction_is_in_force_only_by_its_own_row()
+        except audit.LawViolation as exc:
+            caught.append(f"{name}: {str(exc).splitlines()[-1][:90]}")
+        else:
+            missed.append(f"{name} reading active_from passed the check")
+        finally:
+            setattr(_c, attr, real)
+    try:
+        audit.check_a_correction_is_in_force_only_by_its_own_row()
+    except audit.LawViolation as exc:
+        missed.append(f"the check refuses the shipped door: {exc}")
+    if missed:
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(missed))
+    return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                  "; ".join(caught))
+
+
+def plant_a_correction_measured_on_pooled_rows() -> Result:
+    """Measure a correction on its category's forecasts, not its questions.
+
+    Two hundred and fifty questions, each answered by the morning and the
+    final pass: five hundred forecasts. The gate measures the questions --
+    each once, on its latest written forecast -- and holds out the latest
+    fifty. Planted: a measured row stating the forecasts' counts, and the
+    measurement's door swapped for one handing it every forecast. CAUGHT
+    means the shipped measurement counts 250 and 50, and the schema refuses
+    both pooled rows by its own recount. Before question 32 the refit's check
+    held out the latest fifth of the FORECASTS -- a question's two passes
+    each -- and put the fit in force on it.
+    """
+    from gridiron import correction as _c
+
+    guard = ("correction.holdout_questions; schema correction_activation_"
+             "counts_distinct_bets")
+    violation = "a correction measured on its forecasts, not its distinct bets"
+    conn = _memory_record()
+    try:
+        _q32_settle(conn, n=250, worth=0.0, twice=True)
+        report = _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        fit = conn.execute("SELECT * FROM calibration_corrections").fetchone()
+        if not _q32_rows_of_their_own(_c):
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - the refit's check held out "
+                          f"{fit['holdout_n']} forecasts of 250 questions' 500 "
+                          f"and wrote '{report['categories'][0]['status']}'")
+        got = _c.measure(conn, fit["id"])
+        caught, missed = [], []
+        if (got.get("bets"), got.get("holdout_n")) != (250, 50):
+            missed.append(f"the shipped measurement counted "
+                          f"{got.get('bets')} and held out {got.get('holdout_n')}")
+        else:
+            caught.append("the shipped measurement counts 250 questions and "
+                          "holds out 50")
+        # A PASSING INTERVAL ON EACH PLANTED ROW, so the count is what the
+        # rules are asked about.
+        clear = dict(diff_low=0.01, diff_high=0.2)
+        more, landed = _q32_refused(conn, {
+            "a row stating the forecasts' counts": _q32_measured_row(
+                fit["id"], got, bets=500, holdout_n=100, **clear)})
+        caught += more
+        missed += landed
+        real = _c.holdout_questions
+
+        def every_forecast(conn, fit):
+            return sorted(_c.settled_rows(
+                conn, sport=fit["sport"], market_type=fit["market_type"],
+                forecaster=fit["forecaster"], before_utc=fit["fitted_utc"]),
+                key=lambda r: (r["resolved_utc"], r["id"]))
+
+        _c.holdout_questions = every_forecast
+        try:
+            pooled = _c.measure(conn, fit["id"])
+            more, landed = _q32_refused(conn, {
+                f"the measurement of every forecast ({pooled.get('bets')}, "
+                f"{pooled.get('holdout_n')} held out)":
+                    _q32_measured_row(fit["id"], pooled, **clear)})
+            caught += more
+            missed += landed
+            try:
+                _c.activate_measured(conn, fit["id"], reason="planted: pooled")
+            except _c.ActivationRefused as exc:
+                caught.append(f"the gate on {pooled.get('bets')} forecasts: "
+                              f"{str(exc)[:80]}")
+            else:
+                missed.append(f"a measurement on {pooled.get('bets')} "
+                              f"forecasts was written")
+        finally:
+            _c.holdout_questions = real
+        if _q32_served(_c, conn) is not None:
+            missed.append("the door serves it")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      "; ".join(caught))
+    finally:
+        conn.close()
+
+
+def plant_a_correction_measured_by_another_bootstrap() -> Result:
+    """Put a tie in force by drawing its bootstrap another way.
+
+    THE PROVER OF QUESTION 32 (2026-09-29). The gate draws the interval as
+    the model gate does -- 1000 resamples from seed 20260923 -- and the row
+    records its seed and resamples; the rules as first built took any. Two
+    hundred and sixty questions whose claims are worth what they say: the
+    gate's own measurement is a tie. Planted: the same measurement drawn
+    with ONE resample (whose "interval" is one resampled mean, clear of zero
+    for the seed that happens to give one), and the gate's measurement of a
+    category that passes, written as drawn from another seed -- each written
+    through the door's own writer, every number true to the drawing it
+    states. CAUGHT means both refused and nothing served. Before question 32
+    nothing measured an interval at all.
+    """
+    from gridiron import correction as _c
+
+    guard = "schema correction_activation_carries_its_measurement"
+    violation = "a correction put in force on a bootstrap the gate does not draw"
+    conn = _memory_record()
+    try:
+        _q32_settle(conn, n=260, worth=1.0)
+        if not _q32_rows_of_their_own(_c):
+            fid, served = _q32_in_force_the_old_way(
+                _c, conn, model=_c.Platt(slope=0.9, intercept=0.0, n_train=260))
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - nothing draws an interval: fit {fid} was "
+                          f"put in force by its own column, and the door serves "
+                          f"{served}")
+        _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        fit = conn.execute("SELECT * FROM calibration_corrections").fetchone()
+        own = _c.measure(conn, fit["id"])
+        one = next((g for g in (_c.measure(conn, fit["id"], draws=1, seed=s)
+                                for s in range(1, 60)) if g["passed"]), None)
+        if own["passed"] or one is None:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - the planted world is wrong: the gate's "
+                          f"own measurement {own.get('interval')}, one resample "
+                          f"{one and one['interval']}. Fix it before trusting "
+                          f"this planting")
+        caught, missed = [], []
+        for name, got in (
+                (f"one resample (seed {one['seed']}, "
+                 f"[{one['interval'][0]:+.4f}, {one['interval'][1]:+.4f}])", one),
+                ("another seed", dict(own, seed=7, interval=(0.01, 0.2),
+                                      passed=True))):
+            try:
+                _c._write_activation(conn, fit, _c.MEASURED,
+                                     "planted: drawn another way", measurement=got)
+            except _c.ActivationRefused as exc:
+                caught.append(f"{name}: {str(exc)[:70]}")
+            else:
+                missed.append(f"{name} was written and the door serves "
+                              f"{_q32_served(_c, conn)}")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      "; ".join(caught))
+    finally:
+        conn.close()
+
+
+def plant_a_correction_activation_dated_back() -> Result:
+    """Put a correction in force from a day before its row was written.
+
+    THE PROVER OF QUESTION 32 (2026-09-29). The door reads the correction in
+    force AT an instant, and the page corrects a finished game's claim by
+    the one in force when the claim was written (`recommend.correction_
+    instant`), so a row's date decides which claims it reaches. The rules as
+    first built took any stamp between the fit and now. Planted on a live
+    database, each the first row of its category and dated after its fit, so
+    nothing but the date is asked: a correction that passes the gate,
+    activated by the door's own writer with its row dated a day after its
+    fit, months back; and the withdrawal of a correction written in force
+    the old way, as the record holds fit 71, dated back the same way. CAUGHT
+    means both refused and nothing served at the instant they were dated.
+    Before question 32 a row written in force by its own column, dated back,
+    was served from then.
+    """
+    from gridiron import correction as _c
+    from gridiron import db as _db
+
+    guard = "schema correction_activation_is_stamped_when_written"
+    violation = "a correction's activation or withdrawal dated back over claims already written"
+    back = "2026-06-02T00:00:00Z"
+    conn = _memory_record()
+    try:
+        _q32_settle(conn, n=500, worth=0.0)
+        if not _q32_rows_of_their_own(_c):
+            fid, _served = _q32_in_force_the_old_way(
+                _c, conn, model=_c.Platt(slope=0.3, intercept=0.1, n_train=500))
+            at = _q32_served_at(_c, conn)
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          f"NOT CAUGHT - fit {fid}, written today in force from "
+                          f"2 June by its own column, is served on 3 June as {at}")
+        _c.refit_all(conn, now="2026-06-01T00:00:00Z")
+        fid = conn.execute("SELECT id FROM calibration_corrections").fetchone()[0]
+        # AS THE RECORD HOLDS FIT 71: written in force by its own column, the
+        # schema's refusal of it taken off for the one statement
+        conn.execute("DROP TRIGGER calibration_corrections_written_inactive")
+        conn.execute(
+            "INSERT INTO calibration_corrections (sport, market_type,"
+            " forecaster, version, fitted_utc, n_train, slope, intercept,"
+            " active_from, status) VALUES ('nfl', 'total', 'statistical', 1,"
+            " '2026-06-01T00:00:00Z', 364, 1.0, -0.2, '2026-06-01T00:00:00Z',"
+            " 'active - as the record holds fit 71')")
+        conn.commit()
+        _db.init(conn)
+        old = conn.execute("SELECT id FROM calibration_corrections"
+                           " WHERE market_type = 'total'").fetchone()[0]
+        caught, missed = [], []
+        try:
+            _c.activate_measured(conn, fid, reason="planted: dated a month back",
+                                 now=back)
+        except _c.ActivationRefused as exc:
+            caught.append(f"the activation: {str(exc)[:70]}")
+        else:
+            missed.append(f"the activation dated {back} was written, and the "
+                          f"door serves {_q32_served_at(_c, conn)} on 3 June")
+        try:
+            _c.withdraw(conn, old, reason="planted: dated back", now=back)
+        except _c.ActivationRefused as exc:
+            caught.append(f"the withdrawal: {str(exc)[:70]}")
+        else:
+            missed.append(f"the withdrawal of a correction written in force "
+                          f"the old way, dated {back}, was written")
+        if missed:
+            return Result(LAW_CORRECTION_ACTIVATION, violation, guard, False,
+                          "NOT CAUGHT - " + "; ".join(missed))
+        return Result(LAW_CORRECTION_ACTIVATION, violation, guard, True,
+                      "; ".join(caught))
+    finally:
+        conn.close()
+
+
+def _q32_served_at(_c, conn, at: str = "2026-06-03T00:00:00Z"):
+    got = _c.active_correction(conn, sport="nfl", market_type="moneyline",
+                               forecaster="statistical", at_utc=at)
+    return None if got is None else got["id"]
+
+
 def plant_a_forward_count_counting_passes() -> Result:
     """Count a version's forward record by forecasts where it counts questions.
 
@@ -18679,12 +19564,11 @@ def plant_a_forward_count_counting_passes() -> Result:
     violation = "a version's forward count counting a question's passes"
     conn = _q16_world()
     try:
-        _c.record_fit(conn, sport="nfl", market_type="spread",
-                      forecaster="statistical",
-                      model=_c.Platt(slope=0.8, intercept=0.1, n_train=120),
-                      status="active - planted",
-                      active_from="2025-11-01T00:00:00Z",
-                      fitted_utc="2025-11-01T00:00:00Z")
+        _q32_fit_in_force(conn, market="spread", predictor="statistical",
+                          model=_c.Platt(slope=0.8, intercept=0.1, n_train=120),
+                          status="active - planted",
+                          active_from="2025-11-01T00:00:00Z",
+                          fitted_utc="2025-11-01T00:00:00Z")
         # ten questions answered twice at one rung, and five games asked at
         # two rungs: twenty questions over thirty forecasts
         _q16_both_passes(conn, range(1, 11), version=1)
@@ -19182,6 +20066,24 @@ def main() -> int:
     results.append(plant_a_learning_row_counting_one_prop_type())
     results.append(plant_a_labelled_correction_activated())
     results.append(plant_a_correction_label_the_fit_does_not_support())
+    # OPERATOR QUESTION 32 (ruled 2026-09-29, second set): a correction is in
+    # force only by its own dated activation row -- written inactive, put in
+    # force only when the bootstrap interval of its Brier improvement on its
+    # distinct bets excludes zero, never a labelled fit or a placeholder,
+    # scratch never on a live record, every row permanent, and the door
+    # reading the rows alone.
+    results.append(plant_a_correction_in_force_without_its_own_row())
+    results.append(plant_a_correction_activated_on_a_tie())
+    results.append(plant_a_correction_activation_without_its_interval())
+    results.append(plant_a_labelled_or_placeholder_correction_activated())
+    results.append(plant_a_scratch_correction_activation_on_a_live_record())
+    results.append(plant_a_correction_activation_edited_deleted_or_replaced())
+    results.append(plant_a_correction_door_reading_active_from())
+    results.append(plant_a_correction_measured_on_pooled_rows())
+    # QUESTION 32'S PROVER (2026-09-29): the bootstrap drawn another way, and
+    # a row dated back over claims already written.
+    results.append(plant_a_correction_measured_by_another_bootstrap())
+    results.append(plant_a_correction_activation_dated_back())
     results.append(plant_a_strobing_live_mark())
     results.append(plant_a_live_import_in_a_prediction_path())
     results.append(plant_a_live_column_read_in_a_prediction_path())

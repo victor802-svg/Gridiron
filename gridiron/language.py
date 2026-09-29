@@ -2174,32 +2174,49 @@ def earned_number_line(raw: float | None, shown: float | None,
 
 def corrections_note(active: bool, min_train: int, version: int | None = None,
                      fitted: str | None = None,
-                     settled: int | None = None) -> str:
+                     settled: int | None = None, *,
+                     since: str | None = None,
+                     held_out: int | None = None,
+                     questions: int | None = None) -> str:
     """The one line the Record tab shows about corrections.
 
     Two states, and they must not read alike: numbers shown exactly as the
     model made them, or numbers adjusted by the record with the version and
     the sample that did the adjusting.
+
+    FROM QUESTION 32 (ruled 2026-09-29) a correction is in force by its own
+    dated row, once it is measured on the questions it was not fitted on and
+    the improvement is clear of zero: the line says since when (`since`, the
+    row's instant) and on how many (`held_out` of `questions`), where it said
+    the instant the correction was fitted -- which was the instant it came
+    into force only because the weekly refit put it there.
     """
     if not active:
         # TWO STAGES, SAID AS TWO. A correction is fitted and inspectable at
-        # `min_train`; it is APPLIED only once it beats the rows it was not
-        # fitted on, which needs a forty-row holdout and so about two hundred
-        # settled. Saying "corrections begin at 50" was true of the fit and
-        # false of the number on the card, and the measurement behind the
-        # holdout floor is in `correction.HOLDOUT_MIN`.
+        # `min_train`; it is APPLIED only once it is measured on the questions
+        # it was not fitted on, which needs forty held out and so about two
+        # hundred settled (`correction.HOLDOUT_MIN`). From question 32
+        # (2026-09-29) "beats" means clear of zero: the bootstrap interval of
+        # its improvement lies wholly above it.
         # QUESTIONS, FROM QUESTION 16'S RELEASE (2026-09-29): the gate counts
         # each settled question once, where this said "predictions".
         return (f"Claims are shown exactly as the model made them. A "
                 f"correction is fitted at {min_train} {CORRECTION_GATE_NOUN} "
-                f"and applied only once it beats the rows it was not fitted "
-                f"on.")
-    when = f", fitted {fitted[:10]}" if fitted else ""
+                f"and put in force only once one fitted on the earliest four "
+                f"fifths of them improves the latest fifth, with a 95% "
+                f"interval clear of zero.")
+    when = date_words_from_iso((fitted or "")[:10])
     # WHAT IT WAS FITTED ON, as written: the forecasts, which this said
     # "settled" beside a gate that now counts questions (2026-09-29).
     n = f" on {settled:,} settled forecasts" if settled else ""
+    fitted_words = f", fitted on {when}{n}" if when else n
+    in_force = date_words_from_iso((since or "")[:10])
+    measured = (f", measured on the latest {held_out} of the {questions} "
+                f"{CORRECTION_GATE_NOUN} before it was fitted"
+                if held_out and questions else "")
+    since_words = f", in force since {in_force}{measured}" if in_force else ""
     return (f"Shown numbers are earned: claims are adjusted by the record "
-            f"(version {version}{when}{n}).")
+            f"(version {version}{fitted_words}{since_words}).")
 
 
 #: The two-word label under a tile's percentage. It answers "per cent of
@@ -3890,9 +3907,12 @@ def correction_gate_progress(settled: int, minimum: int) -> dict:
     guard reads again (operator question 16, 2026-09-29). One question
     short is "1 more settled question", never "questions" (the render of
     2026-09-29: UFC's three statistical categories stand at 49)."""
+    # FROM QUESTION 32 (2026-09-29): in force only by its own dated row, once
+    # measured clear of zero -- where this said "applied only where it beat
+    # the rows it was not fitted on", which the weekly refit decided itself.
     out = progress(settled, minimum, noun=CORRECTION_GATE_NOUN,
-                   cleared_note="fitted - applied only where it beat the "
-                                "rows it was not fitted on")
+                   cleared_note="fitted - in force only once its measurement "
+                                "is clear of zero")
     if not out["cleared"] and out["remaining"] == 1:
         out["note"] = "1 more settled question"
     return out
@@ -3940,12 +3960,116 @@ def correction_below_its_gate_line(version: int, fitted_utc: str | None,
             f"the {gate} it needs, so it can never be in force.")
 
 
+#: WHAT A WITHDRAWAL'S REASON SAYS ON THE PAGE (operator question 32,
+#: 2026-09-29). The reason is stored exactly as the operator ruled it; the
+#: page says it in words a first-time reader can follow, since "the pre-Q32
+#: rule" is a question's number in the repair's own papers and "pooled rows"
+#: a term of its record. Any other reason is shown as written.
+RULED_WITHDRAWAL_WORDS = (
+    "it was put in force by the weekly refit under the rule before 29 "
+    "September, on one comparison with no interval that counted each pass of "
+    "a question separately")
+
+#: What a correction not in force waits for, said once (question 32). THE
+#: RENDER OF 2026-09-29 read "measured on the questions it was not fitted
+#: on", which is false of the version itself -- it is fitted on every
+#: settled forecast -- and true only of the gate's refit, which is what these
+#: words now name.
+NOT_IN_FORCE_WORDS = (
+    "a correction is put in force only by a dated row of its own, once one "
+    "fitted on the earliest four fifths of its settled questions improves the "
+    "latest fifth, with a 95% interval clear of zero")
+
+
+def withdrawal_reason_words(reason: str | None) -> str:
+    """A withdrawal's reason as the page says it: the ruled one in plain
+    words, any other as written."""
+    from . import correction as _correction
+
+    if reason == _correction.FIT_71_WITHDRAWAL_REASON:
+        return RULED_WITHDRAWAL_WORDS
+    return (reason or "").strip()
+
+
+def correction_state_clause(state: dict | None,
+                            latest: dict | None = None) -> str | None:
+    """Where a category's correction stands, BY ITS OWN ROWS (operator
+    question 32, ruled 2026-09-29) -- a clause the status line and the gate
+    row both say:
+
+      in force   "version 8 is in force since Tuesday 29 September: on the 260
+                 settled questions before it was fitted, one fitted on the
+                 earliest 208 lowered the Brier score on the latest 52 by
+                 0.0052 (95% interval 0.0011 to 0.0093, clear of zero)"
+      withdrawn  "version 8 has been withdrawn since Tuesday 29 September: <its
+                 reason>; nothing is in force"
+      fitted     "version 9, fitted on Monday 5 October on 380 settled
+                 forecasts, is not in force: <what it waits for>"
+
+    `state` is the category's latest activation row as the door returns it
+    (`correction.latest_activation`), or None; `latest` its newest version
+    row, named too where it is newer than the one the row is about. None
+    when there is nothing fitted to speak of.
+    """
+    from . import correction as _correction
+
+    gate = _correction.MIN_TRAIN
+
+    def fitted_clause(row: dict) -> str:
+        when = date_words_from_iso((row.get("fitted_utc") or "")[:10])
+        on = f", fitted on {when} on {row['n_train']} settled forecasts," \
+            if when else f", fitted on {row['n_train']} settled forecasts,"
+        return f"version {row['version']}{on} is not in force: {NOT_IN_FORCE_WORDS}"
+
+    newer = ""
+    if state is not None and latest is not None \
+            and latest.get("version", 0) > state["version"] \
+            and latest.get("n_train", 0) >= gate:
+        newer = "; " + fitted_clause(latest)
+    if state is not None:
+        since = date_words_from_iso((state["activated_utc"] or "")[:10])
+        kind = state["activation_kind"]
+        if kind == "measured":
+            # WHAT WAS MEASURED, TRULY (the render of 2026-09-29): the gate's
+            # refit, on the questions settled before the version was fitted
+            # -- the version itself was fitted on all of them.
+            bets, held = state["measured_bets"], state["measured_holdout_n"]
+            return (
+                f"version {state['version']} is in force since {since}: on the "
+                f"{bets} {CORRECTION_GATE_NOUN} before it was fitted, one "
+                f"fitted on the earliest {bets - held} lowered the Brier score "
+                f"on the latest {held} by {state['measured_improvement']:.4f} "
+                f"(95% interval {state['diff_low']:.4f} to "
+                f"{state['diff_high']:.4f}, clear of zero){newer}")
+        if kind == "scratch":
+            return (f"version {state['version']} is in force since {since}, "
+                    f"in a test world, without a measurement{newer}")
+        return (f"version {state['version']} has been withdrawn since "
+                f"{since}: {withdrawal_reason_words(state['activation_reason'])}"
+                f"; nothing is in force{newer}")
+    if latest is not None and latest.get("n_train", 0) >= gate:
+        return fitted_clause(latest)
+    return None
+
+
+def correction_state_line(state: dict | None,
+                          latest: dict | None = None) -> str | None:
+    """The state clause as a sentence of its own, for the Record page's gate
+    row (question 32, 2026-09-29)."""
+    clause = correction_state_clause(state, latest)
+    if not clause:
+        return None
+    return clause[0].upper() + clause[1:] + "."
+
+
 def correction_status_line(fitted: bool, n: int, minimum: int,
                            fitted_utc: str | None, active: bool,
                            last_refit: str | None = None,
                            n_train: int = 0, *,
                            below_its_gate: dict | None = None,
-                           scope: str | None = None) -> str:
+                           scope: str | None = None,
+                           state: dict | None = None,
+                           latest: dict | None = None) -> str:
     """Where one category's correction stands.
 
     FOUR STATES AND THEY ARE DIFFERENT FACTS. Below the threshold; past it but
@@ -3964,6 +4088,15 @@ def correction_status_line(fitted: bool, n: int, minimum: int,
     "fitted below its gate" (`below_its_gate`, the label as written), which
     can never be in force. `scope` names a category wider than its row
     ("every prop type together").
+
+    AND FROM QUESTION 32 (ruled 2026-09-29), IN FORCE OR WITHDRAWN BY ITS OWN
+    ROW: `state` is the category's latest activation row, as the door returns
+    it (`correction.latest_activation`), and `latest` its newest version. In
+    force, the line says since when and on what measurement, with its
+    interval; withdrawn, since when and why; fitted and never activated, that
+    it is not in force and what it waits for. "In force since" the day it was
+    FITTED, as this said until then, was true only because the weekly refit
+    put a fit in force itself.
     """
     when = date_words_from_iso((fitted_utc or "")[:10]) if fitted_utc else None
     wide = f", {scope}" if scope else ""
@@ -3977,6 +4110,8 @@ def correction_status_line(fitted: bool, n: int, minimum: int,
                 f"{below_its_gate['corrected_count']} questions, under the "
                 f"{below_its_gate['gate']} it needs, so it can never be in "
                 f"force")
+    if state is not None:
+        return f"{count}; {correction_state_clause(state, latest)}"
     if not fitted or n_train < minimum:
         if n < minimum:
             short = minimum - n
@@ -3986,12 +4121,18 @@ def correction_status_line(fitted: bool, n: int, minimum: int,
         return (f"eligible and not yet fitted: {count}, past the {minimum} a "
                 f"fit needs" + (f", and the refit last ran on {ran}" if ran else ""))
     if not active:
+        # THE SAME CLAUSE THE GATE ROW SAYS, where the newest version is given
+        # (question 32, 2026-09-29): one wording of one state.
+        clause = correction_state_clause(None, latest) if latest else None
+        if clause:
+            return f"{count}; {clause}"
         return (f"{count}; fitted{' on ' + when if when else ''} on {n_train} "
-                f"settled forecasts, and NOT in force: a fit can be recorded "
-                f"without touching a single claim, and turning it on is a "
-                f"separate decision")
-    return (f"{count}; in force since {when}, fitted on {n_train} settled "
-            f"forecasts")
+                f"settled forecasts, and not in force: {NOT_IN_FORCE_WORDS}")
+    # IN FORCE WITH NO ROW TO SAY SINCE WHEN: a caller that did not pass the
+    # door's row. The day it was fitted is not the day it came into force
+    # (question 32), so no day is said.
+    return (f"{count}; in force, fitted{' on ' + when if when else ''} on "
+            f"{n_train} settled forecasts")
 
 
 def correction_meaning_line(claim: float, corrected: float) -> str:
