@@ -1072,6 +1072,18 @@ depend on the answer.
       category's count and say it is every prop type together. Splitting
       the category would be a model change the ruling does not name.
     Default until ruled: Q16 not built.
+    **DEFAULT TAKEN IN YOUR ABSENCE (2026-09-29 ~01:50Z; the conservative
+    default and question 9's precedent):** Q16 is built now -- the count on
+    the key, the fit's own gate on the key for fits from the release, the
+    label table, its rules and its tool -- because none of that turns on
+    (i) or (ii). The label is permanent, so the tool's ruled set is the
+    four every reading covers: 33, 59, 61, 63 (among the 63 when ruled,
+    fitted, short on the key). The tool selects by rule and refuses to
+    write any other selection, as the re-grade tool refused its fourth row
+    until question 9 was ruled; if you rule (i)(B) or (ii)(A), the extra
+    labels are written by the same tool afterwards (labels only add).
+    Fits 81, 85, 86, 87, 89 and the placeholders stay unlabelled until
+    then.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
