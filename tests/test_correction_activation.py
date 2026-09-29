@@ -673,6 +673,14 @@ def test_the_page_says_each_state_in_plain_words(tmp_path):
     _questions(conn, 500, worth=0.0)
     fid = _fit(conn)
 
+    # NAMED BY THE DAY IT WAS FITTED, ITS VERSION IN THE ROW'S TOOLTIP
+    # (operator question 19, ruled 2026-09-27: "internal version names only
+    # in a tooltip"; the board merge, 2026-09-29). Each line said "Version 1
+    # ..." until then; each says "the correction fitted on Monday 1 June ...",
+    # and the tooltip of the gate row, the learning row and the category
+    # carries "Version 1: ...".
+    tip = language.version_tip("correction", 1)
+
     def said():
         category = next(c for c in views.corrections_report(conn, "nfl")["categories"]
                         if c["market_type"] == "moneyline")
@@ -680,33 +688,40 @@ def test_the_page_says_each_state_in_plain_words(tmp_path):
                    if r["market"] == "moneyline")
         gate = next(g for g in views.scorecard(conn, "nfl")["gates"]
                     if g["name"] == "A correction for moneyline, statistical")
+        assert category["version_tip"] == tip and row["version_tip"] == tip
+        assert gate.get("version_tip") == tip
         return category["state"], row["status_words"], gate.get("why")
 
     state, words, why = said()
-    assert state == ("Version 1, fitted on Monday 1 June on 500 settled "
-                     "forecasts, is not in force: " + language.NOT_IN_FORCE_WORDS + ".")
-    assert words.startswith("500 settled questions; version 1, fitted on Monday "
-                            "1 June on 500 settled forecasts, is not in force")
+    assert state == ("The correction fitted on Monday 1 June on 500 settled "
+                     "forecasts is not in force: " + language.NOT_IN_FORCE_WORDS + ".")
+    assert words.startswith("500 settled questions; the correction fitted on "
+                            "Monday 1 June on 500 settled forecasts is not in force")
     assert why == state
     got = correction.activate_measured(conn, fid, reason="measured in a test world")
     since = language.date_words_from_iso(got["written"]["activated_utc"][:10])
     state, words, why = said()
     low, high = got["interval"]
     assert state == (
-        f"Version 1 is in force since {since}: on the 500 settled questions "
-        f"before it was fitted, one fitted on the earliest 400 lowered the "
-        f"Brier score on the latest 100 by {got['improvement']:.4f} (95% "
-        f"interval {low:.4f} to {high:.4f}, clear of zero).")
+        f"The correction fitted on Monday 1 June is in force since {since}: on "
+        f"the 500 settled questions before it was fitted, one fitted on the "
+        f"earliest 400 lowered the Brier score on the latest 100 by "
+        f"{got['improvement']:.4f} (95% interval {low:.4f} to {high:.4f}, "
+        f"clear of zero).")
     # NEVER "which it was not fitted on" of the version itself (the render of
     # 2026-09-29): it was fitted on all of them; the gate's refit was not
     assert "not fitted on" not in state
     assert words == "500 settled questions; " + state[0].lower() + state[1:-1]
     correction.withdraw(conn, fid, reason="taken out of force by a test ruling")
     state, words, why = said()
-    assert state == (f"Version 1 has been withdrawn since {since}: taken out of "
-                     f"force by a test ruling; nothing is in force.")
+    assert state == (f"The correction fitted on Monday 1 June has been withdrawn "
+                     f"since {since}: taken out of force by a test ruling; "
+                     f"nothing is in force.")
     for text in (state, words, why):
         assert audit.plain_words_violations(text) == []
+        assert "ersion" not in text, text
+    assert audit.plain_words_violations(tip, in_a_tooltip=True) == []
+    assert audit.plain_words_violations(tip), "a version name outside a tooltip passed"
     # THE RULED REASON, stored as ruled and said in plain words
     assert language.withdrawal_reason_words(correction.FIT_71_WITHDRAWAL_REASON) \
         == language.RULED_WITHDRAWAL_WORDS

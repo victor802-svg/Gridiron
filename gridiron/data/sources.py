@@ -42,6 +42,11 @@ INJURIES_URL = f"{NFLVERSE}/injuries/injuries_{{season}}.csv"
 #: Offensive snap share per player per game. Keyed by player NAME upstream, so
 #: a player who cannot be matched is recorded as absent rather than guessed.
 SNAP_COUNTS_URL = f"{NFLVERSE}/snap_counts/snap_counts_{{season}}.csv"
+#: The season's roster, one row per player per club, for the JERSEY NUMBER
+#: and nothing else (operator ruling a, 2026-09-25): the same provider and
+#: licence as every other NFL file here, read at the same refresh. It is not
+#: a factor and feeds no model; `config.ROSTER_NUMBERS_DECLARED` dates it.
+ROSTERS_URL = f"{NFLVERSE}/rosters/roster_{{season}}.csv"
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 

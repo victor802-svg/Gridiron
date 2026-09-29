@@ -173,7 +173,8 @@ def test_the_old_picks_grid_and_its_renderer_are_gone():
                   'id="week-shortlist-note"'):
         assert ident not in html, ident
     # the slate's own sentences survive: a slate that says nothing is unreadable
-    assert 'id="week-cards"' in html
+    # (`#week-cards` until GRIDIRON_BOARD, 2026-09-24; `#games-notes` since)
+    assert 'id="games-notes"' in html
     assert audit.duplicate_js_definitions() == []
 
 
@@ -198,14 +199,52 @@ def test_the_live_tab_carries_the_game_and_nothing_else():
         audit.check_the_live_tab_shows_only_the_game(strayed)
 
 
-def test_a_group_head_leaves_the_screen_with_its_group():
+def test_the_live_tab_rule_holds_on_the_boards_live_rows():
+    """RE-HOMED BY THE BOARD MERGE (2026-09-29): the Live tab left with the
+    old Picks route and a game being played is a row on Games, marked LIVE.
+    The row shows the game and the pregame figure with its word -- a chance
+    or a tier chip on its pick, on a question behind it or on a live prop
+    tile, or another state's label over its pick, fails by name."""
+    from gridiron import language
+
+    label = language.pick_label_words("live", "none")
+    clean = {"board": {"games": [{"state": "live", "pick_label_words": label,
+                                  "pick": {"state": "live", "pregame_words": "pregame 61%"},
+                                  "questions": [{"state": "live",
+                                                 "pregame_words": "pregame 61%"}]}],
+                       "props": {"tiles": [{"state": "live"}]}}}
+    assert audit.live_tab_faults(clean) == []
+    for where, field in (("pick", "prob"), ("pick", "prob_words"),
+                         ("questions", "tier_chip")):
+        planted = {"board": {"games": [dict(clean["board"]["games"][0])]}}
+        game = planted["board"]["games"][0]
+        if where == "pick":
+            game["pick"] = dict(game["pick"], **{field: 0.61})
+        else:
+            game["questions"] = [dict(game["questions"][0], **{field: "STRONG"})]
+        faults = audit.live_tab_faults(planted)
+        assert faults and field in faults[0], (field, faults)
+        with pytest.raises(audit.LawViolation, match="LIVE TAB"):
+            audit.check_the_live_tab_shows_only_the_game(planted)
+    labelled = {"board": {"games": [dict(clean["board"]["games"][0],
+                                         pick_label_words="Model's pick · won")]}}
+    assert audit.live_tab_faults(labelled)
+    tile = {"board": {"props": {"tiles": [{"state": "live", "prob_words": "58%"}]}}}
+    assert audit.live_tab_faults(tile)
+
+
+def test_the_group_heads_went_with_the_groups():
     """A "SOLID" chip and a green rule stood over an empty Live tab because
-    the tab logic hid the heading SPANS and not the rows they sit in."""
+    the tab logic hid the heading SPANS and not the rows they sit in. THE
+    GROUPS ARE GONE (GRIDIRON_BOARD, 2026-09-24): a row's state is on the
+    row, so there is no heading left to strand, and this holds that neither
+    the heads nor the code that hid them came back."""
     js = (WEB / "app.js").read_text(encoding="utf-8")
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    for row in ("clears-head-row", "watching-head-row"):
-        assert f'id="{row}"' in html, row
-        assert f"'{row}'" in js, row
+    for row in ("clears-head-row", "watching-head-row", "live-heading-row"):
+        assert f'id="{row}"' not in html, row
+        assert f"'{row}'" not in js, row
+    assert "applyStateTab" not in js
 
 
 def test_one_source_of_truth_for_the_next_start(tmp_path):

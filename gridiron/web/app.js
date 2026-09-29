@@ -75,11 +75,6 @@ const Gridiron = (function () {
     host.appendChild(tbody);
   }
 
-  function skeleton(host, cls, count) {
-    host.innerHTML = '';
-    for (let i = 0; i < (count || 1); i++) host.appendChild(el('div', 'skeleton ' + cls));
-  }
-
   // --- data --------------------------------------------------------------
   // `sport` is the outermost piece of state on the page. Every fetch carries
   // it, because every number below belongs to exactly one sport (LAW 6).
@@ -101,7 +96,9 @@ const Gridiron = (function () {
     // whether the grid has been expanded past its first six, and it resets on
     // every slate, sport, sort and tab change -- a grid left expanded across a
     // filter change shows a different number of cards than the control says.
-    market: '' };
+    market: '',
+    // THE BOARD'S OWN STATE: the last slate fetched, and the props chip.
+    slate: null, propFamily: '' };
 
   // ONE ANSWER PER QUESTION ASKED (UI audit finding 1, 2026-09-05).
   //
@@ -117,6 +114,15 @@ const Gridiron = (function () {
   let sportSeq = 0;
   let weekSeq = 0;
   function stale(seq) { return seq !== sportSeq; }
+
+  // THE GAMES A READER HAS OPENED, by game (operator question 18, ruled on
+  // 2026-09-27; built by the board merge, 2026-09-29): "an open card stays
+  // open across any redraw". A row's open state lived only on its node, and
+  // every render of the slate replaced the nodes, so a row snapped shut under
+  // a redraw the reader did not start and under one they did (a sort, a
+  // filter, a page tab, the took button). `gameRow` reads this set and the
+  // row's own toggle writes it; nothing else does.
+  const openGames = new Set();
 
   function withSport(path, extra) {
     const p = new URLSearchParams(extra || {});
@@ -153,7 +159,7 @@ const Gridiron = (function () {
   function clearError() { document.getElementById('error').hidden = true; }
 
   function css(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000';
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || 'black';
   }
 
   function prepareCanvas(canvas, ctx) {
@@ -307,7 +313,9 @@ const Gridiron = (function () {
       const x = X(i), y = Y(p.gap);
       ctx.strokeStyle = rule; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x, Y(0)); ctx.lineTo(x, y); ctx.stroke();
-      ctx.fillStyle = p.gap >= 0 ? css('--pos') : css('--neg');
+      // NO VALUE COLOUR ON A GAP (amended 2026-09-24): a point above the
+      // line is drawn in the chrome, one below it in the muted ink.
+      ctx.fillStyle = p.gap >= 0 ? css('--chrome') : css('--muted');
       ctx.beginPath(); ctx.arc(x, y, p.provisional ? 2.5 : 4, 0, Math.PI * 2); ctx.fill();
       canvas._hits.push({ x: x, y: y, point: p });
     });
@@ -319,6 +327,116 @@ const Gridiron = (function () {
     ctx.textAlign = 'center'; ctx.fillStyle = ink;
     ctx.fillText('actual minus claimed, by week  ·  hover for N',
       pad.l + w / 2, pad.t + h + 12);
+  }
+
+  // THE CLOSING LINE OVER TIME (Record page, 2026-09-25): one line per
+  // market, drawn only past its floor. The N is in the title; below the
+  // floor the area carries the server's words and no drawing.
+  function drawSeries(canvas, entry) {
+    requireN(entry, 'the closing line series for ' + entry.market);
+    const points = entry.series || [];
+    const ctx = canvas.getContext('2d');
+    const dims = prepareCanvas(canvas, ctx);
+    const W = dims.W, H = dims.H;
+    const pad = { l: 48, r: 14, t: 12, b: 22 };
+    const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+    const ink = css('--chrome'), faint = css('--faint'), rule = css('--line');
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    if (!points.length) return;
+    const span = Math.max(1, Math.max.apply(null, points.map(p => Math.abs(p.cents))) * 1.25);
+    const X = i => pad.l + (points.length === 1 ? w / 2 : (i / (points.length - 1)) * w);
+    const Y = c => pad.t + h / 2 - (c / span) * (h / 2);
+    ctx.strokeStyle = rule; ctx.lineWidth = 1;
+    [-span / 2, 0, span / 2].forEach(c => {
+      ctx.beginPath(); ctx.moveTo(pad.l, Y(c)); ctx.lineTo(pad.l + w, Y(c)); ctx.stroke();
+      ctx.fillStyle = faint; ctx.textAlign = 'right';
+      ctx.fillText(signed(c, 1) + '¢', pad.l - 6, Y(c));
+    });
+    ctx.strokeStyle = ink; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    points.forEach((p, i) => { const x = X(i), y = Y(p.cents); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.stroke();
+    ctx.fillStyle = faint; ctx.textAlign = 'left';
+    ctx.fillText(localDay(points[0].when), pad.l, pad.t + h + 11);
+    ctx.textAlign = 'right';
+    ctx.fillText(localDay(points[points.length - 1].when), pad.l + w, pad.t + h + 11);
+  }
+
+  function chartCard(title, note) {
+    const card = el('div', 'chart-card');
+    card.appendChild(el('div', 'chart-title', title));
+    if (note) card.appendChild(el('div', 'chart-empty', note));
+    return card;
+  }
+
+  function renderClosingCharts(sc) {
+    const panel = document.getElementById('closing-charts');
+    const host = document.getElementById('closing-charts-list');
+    const heading = document.getElementById('closing-charts-heading');
+    const note = document.getElementById('closing-charts-note');
+    if (!panel || !host) return;
+    const words = sc.record_words || {};
+    const line = sc.closing_line || null;
+    host.innerHTML = '';
+    if (!line || !(line.markets || []).length) { panel.hidden = true; return; }
+    if (heading) heading.textContent = words.closing_heading || '';
+    if (note) note.textContent = words.closing_note || '';
+    (line.markets || []).forEach(entry => {
+      requireN(entry, 'the closing line for "' + entry.category_label + '"');
+      // ONE FORECASTER'S LINE, NAMED (the board merge, 2026-09-29): the
+      // closing line is one entry per market and forecaster (operator
+      // question 22), and its chart's title is the server's, saying whose.
+      const title = entry.chart_title || '';
+      if (!entry.renderable) { host.appendChild(chartCard(title, entry.gate_words)); return; }
+      const card = chartCard(title, null);
+      const canvas = document.createElement('canvas');
+      canvas.width = 420; canvas.height = 140; canvas.setAttribute('role', 'img');
+      canvas.setAttribute('aria-label', title);
+      card.appendChild(canvas);
+      host.appendChild(card);
+      drawSeries(canvas, entry);
+    });
+    panel.hidden = false;
+  }
+
+  // TAKEN, PASSED OVER, EVERY FORECAST: three curves per market, never
+  // merged, each behind the gate, each with its N in its title.
+  function renderTakenRecord(sc) {
+    const panel = document.getElementById('taken-record');
+    const host = document.getElementById('taken-record-list');
+    const heading = document.getElementById('taken-record-heading');
+    const note = document.getElementById('taken-record-note');
+    if (!panel || !host) return;
+    const words = sc.record_words || {};
+    const record = sc.taken_record || null;
+    host.innerHTML = '';
+    if (!record || (!(record.markets || []).length && !record.silent_words)) { panel.hidden = true; return; }
+    if (heading) heading.textContent = words.taken_heading || '';
+    if (note) note.textContent = words.taken_note || '';
+    if (record.silent_words) host.appendChild(el('p', 'footnote', record.silent_words));
+    (record.markets || []).forEach(entry => {
+      requireN(entry, 'the taken record for "' + entry.market + '"');
+      const block = el('div', 'taken-block');
+      block.appendChild(el('div', 'chart-title', entry.market_label || marketLabel(entry.market)));
+      const grid = el('div', 'chart-grid');
+      ['taken', 'not_taken', 'all'].forEach(key => {
+        const group = entry[key];
+        requireN(group, 'the ' + key + ' curve for "' + entry.market + '"');
+        const title = group.label + ' · ' + int(group.n) + ' ' + (words.resolved || '');
+        if (!entry.renderable || group.n < entry.gate) { grid.appendChild(chartCard(title, group.gate_words)); return; }
+        const card = chartCard(title, null);
+        const canvas = document.createElement('canvas');
+        canvas.width = 300; canvas.height = 220; canvas.setAttribute('role', 'img');
+        canvas.setAttribute('aria-label', title);
+        card.appendChild(canvas);
+        grid.appendChild(card);
+        drawCalibration(canvas, group);
+      });
+      block.appendChild(grid);
+      host.appendChild(block);
+    });
+    panel.hidden = false;
   }
 
   function attachStripTooltip(canvas) {
@@ -425,6 +543,8 @@ const Gridiron = (function () {
       }));
 
     renderScores(sc, curve, market, predictor);
+    renderClosingCharts(sc);
+    renderTakenRecord(sc);
     renderEdge(sc.edge);
     document.getElementById('separation-note').textContent = sc.separation_note;
     renderOverTime(market, predictor).catch(showError);
@@ -649,6 +769,9 @@ const Gridiron = (function () {
       row.appendChild(el('div', 'gate-name', e.name));
       row.appendChild(gateLine(e.progress));
       if (e.why) row.appendChild(el('div', 'gate-why', e.why));
+      // A CORRECTION'S VERSION, ONLY IN THE ROW'S TOOLTIP (operator question
+      // 19; the board merge, 2026-09-29): the line names it by its day.
+      if (e.version_tip) row.title = e.version_tip;
       host.appendChild(row);
     });
     if (count) count.textContent = entries.length + ' gates';
@@ -679,6 +802,8 @@ const Gridiron = (function () {
       row.appendChild(el('div', 'gate-name', entry.market_label));
       row.appendChild(el('div', 'gate-why', entry.status_words));
       row.appendChild(el('div', 'gate-why', entry.meaning_words));
+      // THE CORRECTION'S VERSION, IN THE ROW'S TOOLTIP (question 19).
+      if (entry.version_tip) row.title = entry.version_tip;
       // WHERE THE LINE WENT, A LINE PER CARD, EACH WITH ITS OWN N (operator
       // question 14, ruled 2026-09-27): one forecaster's bets, one per game,
       // and for UFC one card's. The sentences are the server's.
@@ -710,8 +835,11 @@ const Gridiron = (function () {
     const priced = (sc && sc.priced) || null;
     if (!cov && !line && !priced) { panel.hidden = true; return; }
 
-    const version = document.getElementById('priced-version');
-    if (version && priced) version.textContent = priced.blend_version || '';
+    // THE HEADING IN PLAIN WORDS, THE VERSION IN ITS TOOLTIP (operator
+    // question 19, ruled 2026-09-27; the board merge, 2026-09-29). The blend's
+    // name "b1" was painted beside the heading on every sport's Record page.
+    const heading = document.getElementById('priced-heading');
+    if (heading && priced) heading.title = priced.version_tip || '';
     const words = document.getElementById('coverage-words');
     if (words && cov) words.textContent = cov.words || '';
     const note = document.getElementById('priced-note');
@@ -820,13 +948,15 @@ const Gridiron = (function () {
     const panel = document.getElementById('ranker-record');
     const host = document.getElementById('ranker-list');
     const note = document.getElementById('ranker-note');
-    const version = document.getElementById('ranker-version');
+    const heading = document.getElementById('ranker-heading');
     if (!panel || !host) return;
     host.innerHTML = '';
     const rank = (sc && sc.ranker) || null;
     if (!rank) { panel.hidden = true; return; }
     if (note) note.textContent = rank.note || '';
-    if (version) version.textContent = rank.ranker_version || '';
+    // THE VERSION IN THE HEADING'S TOOLTIP, never beside it (operator
+    // question 19; the board merge, 2026-09-29).
+    if (heading) heading.title = rank.version_tip || '';
     (rank.comparisons || []).forEach(c => {
       requireN(c, 'ranker comparison "' + c.market + '"');
       requireN(c.shortlisted, 'shortlisted side of "' + c.market + '"');
@@ -907,9 +1037,12 @@ const Gridiron = (function () {
       fetchJSON('/api/prompt/' + predictionId).then(p => {
         if (p.settings_line) body.appendChild(el('p', 'prompt-settings', p.settings_line));
         if (p.model) body.appendChild(el('code', 'code-literal prompt-model', p.model));
-        if (p.code_version) {
-          body.appendChild(el('p', 'prompt-settings', p.commit_words));
-          body.appendChild(el('code', 'code-literal prompt-commit', p.code_version));
+        if (p.commit_words) {
+          // THE COMMIT'S NAME, ONLY IN THE LINE'S TOOLTIP (operator question
+          // 19; the board merge, 2026-09-29): it stood in a literal block.
+          const commit = el('p', 'prompt-settings', p.commit_words);
+          commit.title = p.commit_tip || '';
+          body.appendChild(commit);
         }
         (p.parts || []).forEach(part => {
           body.appendChild(el('h4', 'prompt-part', part.label));
@@ -920,241 +1053,1032 @@ const Gridiron = (function () {
     return box;
   }
 
-  function todayCard(entry, labels) {
-    requireN(entry, 'a card on today');
-    const state = entry.state || 'upcoming';
-    const face = el('article', 'face face-' + state + (entry.taken ? ' face-took' : ''));
-    // THE ID THE LIVE TICK FINDS IT BY. `applyLive` patches the score on a
-    // card already on screen rather than rebuilding the slate under a reader
-    // (audit.live_update_faults), and it needs a handle to patch.
-    if (entry.prediction_id !== undefined) face.dataset.id = entry.prediction_id;
-    if (entry.favoured_colour) {
-      face.style.setProperty('--club', '#' + entry.favoured_colour);
+  // --- THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24) ---------------
+  //
+  // Games: one scoreboard row per game, the model's pick the loudest thing on
+  // it, a tap expanding the row IN PLACE to every question the record holds
+  // for that game. Props: tiles three across, a jersey on each in the club's
+  // measured colours, ranked by cushion. NOTHING HERE COMPOSES A SENTENCE:
+  // every word arrives from `gridiron.board` and `gridiron.language`, and the
+  // tooltips are payload strings the same scans read.
+  //
+  // THE FOUR SIGNALS ARE FOUR CLASSES and the stylesheet decides the colour:
+  // `sig-clears` (green outline), `sig-costs` (red outline), `sig-won` (solid
+  // green), `sig-lost` (solid red). The renderer never picks a colour.
+
+  function signalClass(signal) {
+    return { clears: 'sig-clears', costs: 'sig-costs',
+             won: 'sig-won', lost: 'sig-lost' }[signal] || '';
+  }
+
+  // TOOLTIPS LIVE ON THE NUMBERS. A node carries its words in `data-tip`;
+  // one shared box shows them on hover or focus. The words are the server's.
+  function tip(node, words) {
+    if (!node || !words) return node;
+    node.dataset.tip = words;
+    if (!node.hasAttribute('tabindex') && node.tagName !== 'BUTTON') {
+      node.tabIndex = 0;
     }
+    return node;
+  }
 
-    // --- the band -----------------------------------------------------
-    const head = el('header', 'face-event');
-    const band = el('div', 'face-band');
-    band.appendChild(clubPill(entry.away_name || entry.away, entry.away_colour));
-    band.appendChild(el('span', 'face-at', entry.matchup ? '' : ''));
-    band.appendChild(clubPill(entry.home_name || entry.home, entry.home_colour));
-    head.appendChild(band);
+  function showTip(node) {
+    const box = document.getElementById('tooltip');
+    if (!box || !node || !node.dataset.tip) return;
+    box.textContent = node.dataset.tip;
+    box.style.whiteSpace = 'normal';
+    box.style.maxWidth = '34ch';
+    box.hidden = false;
+    const r = node.getBoundingClientRect();
+    const w = box.offsetWidth, h = box.offsetHeight;
+    let x = r.left, y = r.bottom + 6;
+    if (x + w > window.innerWidth - 8) x = Math.max(8, window.innerWidth - w - 8);
+    if (y + h > window.innerHeight - 8) y = Math.max(8, r.top - h - 6);
+    box.style.left = x + 'px';
+    box.style.top = y + 'px';
+  }
 
-    const when = el('span', 'face-when');
+  function hideTip() {
+    const box = document.getElementById('tooltip');
+    if (box) box.hidden = true;
+  }
+
+  function wireTips() {
+    if (document.body.dataset.tipsWired === 'true') return;
+    document.body.dataset.tipsWired = 'true';
+    const from = (event) => event.target && event.target.closest
+      ? event.target.closest('[data-tip]') : null;
+    document.addEventListener('mouseover', event => {
+      const node = from(event);
+      if (node) showTip(node); else hideTip();
+    });
+    document.addEventListener('focusin', event => {
+      const node = from(event);
+      if (node) showTip(node);
+    });
+    document.addEventListener('focusout', hideTip);
+    document.addEventListener('mouseleave', hideTip);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') hideTip();
+    });
+  }
+
+  // THE PULSE, in the header on every page: three ages in words, each marked
+  // stale past its threshold with the threshold in the words. Bold warning
+  // ink, never red -- the colour law keeps red for a pick that lost.
+  function paintPulse(freshness) {
+    const host = document.getElementById('day-jobs');
+    if (!host) return;
+    host.innerHTML = '';
+    ((freshness || {}).entries || []).forEach(entry => {
+      host.appendChild(el('span', 'day-job' + (entry.stale ? ' day-job-stale' : ''),
+                          entry.words || ''));
+    });
+  }
+
+  async function refreshPulse() {
+    const seq = sportSeq;
+    let data;
+    try {
+      data = await fetchJSON(withSport('/api/pulse'));
+    } catch (err) {
+      console.error('pulse failed:', err);
+      return;
+    }
+    if (stale(seq)) return;
+    paintPulse(data.freshness);
+  }
+
+  // THE RECORD BADGE: "12/100". Every row and every tile carries one, and a
+  // signal never renders without it -- `audit.board_signal_faults` refuses
+  // the payload otherwise, so this never has to decide.
+  function badge(q, labels) {
+    const b = el('span', 'badge', q.badge_words || '');
+    return tip(b, (q.tips || {}).badge);
+  }
+
+  // THE TAP THAT RECORDS A PICK: writes to `picks_taken` exactly as the old
+  // card did, then re-renders the route so the row shows YOURS.
+  function takeButton(q, labels, after, compact) {
+    // THE CHECKMARK (mockup, 2026-09-25): a square that fills amber once the
+    // pick is taken. The word travels in the accessible name when the mark
+    // is compact, and beside it otherwise.
+    const mark = el('button', (compact ? 'chk' : 'take') + (q.taken ? (compact ? ' on' : ' take-done') : ''));
+    mark.type = 'button';
+    mark.appendChild(el('span', 'take-mark', '✓'));
+    if (compact) {
+      mark.setAttribute('aria-label', q.taken ? labels.taken : labels.took);
+    } else {
+      mark.appendChild(el('span', 'take-word', q.taken ? labels.taken : labels.took));
+    }
+    mark.disabled = !!q.taken;
+    mark.onclick = async (event) => {
+      event.stopPropagation();
+      mark.disabled = true;
+      await fetch('/api/taken/' + q.prediction_id, {
+        method: 'POST',
+        headers: { 'X-Gridiron-Form': csrfToken || '' },
+      });
+      after().catch(showError);
+    };
+    return mark;
+  }
+
+  // ONE QUESTION AS A TILE: on an expanded row, and the shape a prop tile
+  // extends. Placed, never composed.
+  function questionTile(q, labels, after) {
+    const node = el('article', 'q ' + signalClass(q.signal) + (q.taken ? ' q-taken' : ''));
+    node.dataset.id = q.prediction_id;
+    node.dataset.state = q.state || 'upcoming';
+    if (q.state === 'upcoming') node.appendChild(takeButton(q, labels, after, true));
+    const head = el('div', 'q-head');
+    head.appendChild(el('span', 'q-market', q.market_label || ''));
+    head.appendChild(el('span', 'q-forecaster', q.forecaster_label || ''));
+    if (q.state === 'live') head.appendChild(el('span', 'q-state', labels.live || ''));
+    node.appendChild(head);
+    node.appendChild(tip(el('div', 'q-line', q.line_words || ''), (q.tips || {}).line || q.question));
+    if (q.state !== 'live') node.appendChild(probBar(q, q.price));
+    const mini = el('div', 'q-mini');
+    const nums = el('span', 'q-nums');
+    if (q.state !== 'live') {
+      nums.appendChild(tip(el('span', 'q-prob', q.prob_words || ''), (q.tips || {}).prob));
+    }
+    if (q.state === 'upcoming') {
+      nums.appendChild(tip(el('small', 'q-price', q.edge_words || q.price_words || ''), (q.tips || {}).price));
+    }
+    if (q.state === 'live' && q.pregame_words) {
+      nums.appendChild(el('span', 'q-pregame', q.pregame_words));
+    }
+    if (q.state === 'final' && q.settled_words) {
+      nums.appendChild(el('span', 'q-settled', q.settled_words));
+    }
+    mini.appendChild(nums);
+    if (q.state === 'upcoming') {
+      mini.appendChild(tip(el('span', 'pay', q.taken ? (labels.taken || '') : (q.pays_words || ABSENT)), (q.tips || {}).pays));
+    }
+    node.appendChild(mini);
+    if (q.size_words) node.appendChild(el('div', 'q-size', q.size_words));
+    if (q.method_note) node.appendChild(el('p', 'q-method', q.method_note));
+    // WHAT THE REASONING PASS WAS SENT (the rulings of 2026-09-24 and
+    // 2026-09-25), on the tile of every reasoning-pass question the expanded
+    // row holds. RE-HOMED BY THE MERGE (2026-09-29): it sat inside the old
+    // card's Why panel, which left with the old Picks route; the component is
+    // the same one Results and the Record page use, collapsed until opened.
+    if (q.prompt) node.appendChild(promptDisclosure(q.prediction_id, q.prompt));
+    const foot = el('div', 'q-foot');
+    foot.appendChild(badge(q, labels));
+    if ((q.tips || {}).signal) {
+      foot.appendChild(tip(el('span', 'q-signal'), q.tips.signal));
+    }
+    node.appendChild(foot);
+    return node;
+  }
+
+  // THE TEAM LINE: a full club-colour block with the tricode, the name on a
+  // band tinted from the same colour, the score when live or final. Colours
+  // are the measured pair from `data/team_colours.py`, arriving with the
+  // payload; nothing here types a hex.
+  function teamLine(team, showScore, lead) {
+    const line = el('div', 'team' + (lead === true ? ' lead' : lead === false ? ' trail' : ''));
+    line.style.setProperty('--club', '#' + (team.colour || ''));
+    line.style.setProperty('--club-on-white', '#' + (team.on_white || team.colour || ''));
+    line.style.setProperty('--club-2', team.secondary ? '#' + team.secondary : 'var(--white)');
+    line.appendChild(el('span', 'tri', team.tricode || ''));
+    line.appendChild(el('span', 'tname', team.name || team.tricode || ''));
+    line.appendChild(el('span', 'tscore',
+      showScore && team.score !== null && team.score !== undefined
+        ? String(team.score) : ''));
+    return line;
+  }
+
+  // ONE GAME ROW. The head is the row's face and a button; the questions
+  // beneath it are already in the tree and `hidden` until the toggle reveals
+  // them -- nothing is rebuilt when a reader opens a row.
+  function gameRow(g, labels, after) {
+    const state = g.state || 'upcoming';
+    const pick = g.pick || null;
+    const row = el('article', 'game game-' + state + (g.yours_words ? ' game-yours' : ''));
+    row.dataset.game = g.game_id;
+    row.dataset.state = state;
+
+    const head = el('div', 'game-head');
+    head.setAttribute('aria-expanded', 'false');
+
+    // THE STATUS COLUMN: the time and the day, or LIVE with the clock and
+    // when the score was last read, or FINAL.
+    const when = el('div', 'when');
     if (state === 'live') {
-      // THE SCORE WHERE THE START TIME WAS, and the time of the last poll
-      // beside it: a score with no timestamp is a score a reader trusts too
-      // much, and the poller runs only while a window is open.
-      when.appendChild(el('span', 'face-score', entry.score_words || ''));
-      when.appendChild(el('span', 'face-period', entry.period_words || ''));
-      when.appendChild(el('span', 'face-polled', entry.polled_words || ''));
+      when.appendChild(el('span', 'live-mark', labels.live || ''));
+      when.appendChild(el('b', 'game-clock', g.period_words || ''));
+      when.appendChild(el('span', 'game-polled', g.polled_words || ''));
     } else if (state === 'final') {
-      when.appendChild(el('span', 'face-score', entry.score_words || ''));
-    } else if (entry.kickoff_utc) {
-      when.appendChild(el('span', 'face-when-label', entry.kickoff_label || ''));
-      when.appendChild(el('time', 'face-time', localTime(entry.kickoff_utc)));
+      when.appendChild(el('b', 'final-mark', labels.final || ''));
+      if (g.kickoff_utc) when.appendChild(el('span', 'when-day', localDay(g.kickoff_utc)));
+    } else if (g.kickoff_utc) {
+      when.appendChild(el('b', 'when-time', localClock(g.kickoff_utc)));
+      when.appendChild(el('span', 'when-day', localDay(g.kickoff_utc)));
     }
     head.appendChild(when);
 
-    // THE SPORT'S COLOUR IS THE STYLESHEET'S, chosen by a class rather than
-    // set inline, so `tools/contrast.py` can read it off `:root` and measure
-    // it. A hex in two files is two colours that will disagree.
-    const tag = el('span', 'face-sport sport-' + (entry.sport_key || ''),
-                   entry.sport_label || '');
-    head.appendChild(tag);
-    if (entry.taken_badge) head.appendChild(el('span', 'face-yours', entry.taken_badge));
-    face.appendChild(head);
+    const teams = el('div', 'teams');
+    const showScore = state === 'live' || state === 'final';
+    const a = g.away || {}, h = g.home || {};
+    let awayLead = null, homeLead = null;
+    if (showScore && a.score !== null && a.score !== undefined && h.score !== null && h.score !== undefined && a.score !== h.score) {
+      awayLead = a.score > h.score; homeLead = !awayLead;
+    }
+    teams.appendChild(teamLine(a, showScore, awayLead));
+    teams.appendChild(teamLine(h, showScore, homeLead));
+    if (g.score_words) teams.appendChild(el('span', 'game-score', g.score_words));
+    head.appendChild(teams);
 
-    face.appendChild(el('div', 'face-q', entry.question || ''));
+    // THE MODEL'S PICK, the most pronounced element on the row.
+    const pickBox = el('div', 'pick ' + (pick ? signalClass(pick.signal) : 'pick-none'));
+    if (pick) {
+      pickBox.appendChild(el('small', 'pick-label', g.pick_label_words || ''));
+      pickBox.appendChild(tip(el('div', 'pick-line', pick.line_words || ''), (pick.tips || {}).line || pick.question));
+      const under = el('div', 'pick-under');
+      // A LIVE ROW SHOWS "pregame NN%" AND NOTHING ELSE about the number:
+      // the word is the point (ruled 2026-09-09), and a second, undated copy
+      // of the figure beside it would be the opinion the app does not have.
+      if (state !== 'live') {
+        under.appendChild(tip(el('b', 'pick-prob', pick.prob_words || ''), (pick.tips || {}).prob));
+      }
+      if (state === 'upcoming') {
+        under.appendChild(tip(el('span', 'pick-price', pick.price_words || ''), (pick.tips || {}).price));
+        under.appendChild(tip(el('b', 'pick-pays', pick.pays_words || ''), (pick.tips || {}).pays));
+      }
+      if (state === 'live' && pick.pregame_words) {
+        under.appendChild(tip(el('span', 'pick-pregame', pick.pregame_words), (pick.tips || {}).prob));
+      }
+      if (state === 'final' && pick.settled_words) {
+        under.appendChild(el('span', 'pick-settled', pick.settled_words));
+      }
+      pickBox.appendChild(under);
+      if (pick.size_words) pickBox.appendChild(el('div', 'pick-size', pick.size_words));
+      // THE FLAGGED-METHOD NOTE, on the face and not one tap in (operator
+      // ruling 2, 2026-09-04).
+      if (pick.method_note) pickBox.appendChild(el('p', 'pick-method', pick.method_note));
+    } else {
+      pickBox.appendChild(el('div', 'pick-line pick-line-none', g.no_pick_words || labels.no_pick || ''));
+    }
+    head.appendChild(pickBox);
 
-    // --- what the record already knew about this game ------------------
-    const context = el('div', 'face-context');
-    const line = (words) => {
-      if (!words) return;
-      context.appendChild(el('span', 'face-fact', words));
+    // THE META COLUMN: the record badge, YOURS, the checkmark, the caret.
+    const meta = el('div', 'meta');
+    if (pick) {
+      meta.appendChild(badge(pick, labels));
+      if ((pick.tips || {}).signal) meta.appendChild(tip(el('span', 'q-signal'), pick.tips.signal));
+    }
+    const take = el('span', 'take-row');
+    if (g.yours_words) take.appendChild(el('span', 'yours', g.yours_words));
+    // NO TAKEN CONTROL ON A LIVE ROW, and none on a settled one: the mark
+    // stands as a record where the pick was taken.
+    if (pick && state === 'upcoming') {
+      take.appendChild(takeButton(pick, labels, after, true));
+    } else if (pick && pick.taken) {
+      const stood = el('span', 'chk on');
+      stood.appendChild(el('span', 'take-mark', '✓'));
+      take.appendChild(stood);
+    }
+    const caret = el('button', 'car');
+    caret.type = 'button';
+    caret.setAttribute('aria-expanded', 'false');
+    caret.setAttribute('aria-label', labels.expand || '');
+    caret.textContent = '▾';
+    take.appendChild(caret);
+    meta.appendChild(take);
+    meta.appendChild(el('span', 'game-count', g.questions_words || ''));
+    head.appendChild(meta);
+    row.appendChild(head);
+
+    const more = el('div', 'game-more');
+    more.hidden = true;
+    more.appendChild(detailPanel(g, labels));
+    more.appendChild(el('h3', 'game-more-head', labels.every_bet || ''));
+    const tiles = el('div', 'q-grid');
+    (g.questions || []).forEach(q => tiles.appendChild(questionTile(q, labels, after)));
+    more.appendChild(tiles);
+    // THE WAY OUT TO THE WORKINGS: the coefficients and the calibration
+    // live on Record, and an expanded row says so once.
+    const link = el('a', 'game-more-link', labels.how || '');
+    link.href = '#/record';
+    more.appendChild(link);
+    row.appendChild(more);
+
+    // THE ROW'S OPEN STATE, SAID ONCE (operator question 18, ruled on
+    // 2026-09-27: "fixed in the board: an open card stays open across any
+    // redraw"; built by the merge, 2026-09-29). `shown` draws the state and
+    // nothing else, so the reader's tap and a redraw that finds the row open
+    // draw it the same way.
+    const shown = (open) => {
+      more.hidden = !open;
+      caret.setAttribute('aria-expanded', open ? 'true' : 'false');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+      caret.textContent = open ? '▴' : '▾';
+      row.classList.toggle('open', open);
     };
-    if (entry.away_starter || entry.home_starter) {
-      line(entry.away_starter);
-      line(entry.home_starter);
-    }
-    // FORM IS READ AT A GLANCE OR NOT AT ALL (operator, 2026-09-08). The
-    // last five results arrived as one grey run of letters and a reader had
-    // to spell them out. W is green and L is red -- the record's own two
-    // colours, doing the one job the law gives them, on a CLUB'S GAME rather
-    // than on a pick. A draw is neither, so it stays the colour of the line.
-    //
-    // Anything that is not a run of W/L/D is not a streak: "no finished
-    // games yet" is a sentence and renders as one.
-    const formLine = (words) => {
-      if (!words) return;
-      const marks = words.split(' ');
-      if (!marks.every(m => m === 'W' || m === 'L' || m === 'D')) {
-        line(words);
-        return;
-      }
-      const fact = el('span', 'face-fact face-form');
-      marks.forEach(m => fact.appendChild(el(
-        'span', m === 'W' ? 'fmark win' : m === 'L' ? 'fmark loss' : 'fmark',
-        m)));
-      context.appendChild(fact);
+    const toggle = () => {
+      more.hidden = !more.hidden;
+      if (!more.hidden) arrive(more);
+      // REMEMBERED BY THE GAME, NOT BY THE NODE: every redraw replaces the
+      // rows, so the row the reader opened is a new node after one.
+      if (more.hidden) openGames.delete(g.game_id); else openGames.add(g.game_id);
+      shown(!more.hidden);
     };
-    formLine(entry.away_form ? entry.away_form : null);
-    formLine(entry.home_form ? entry.home_form : null);
-    line(entry.weather_words);
-    if (context.childNodes.length) face.appendChild(context);
+    head.onclick = (event) => {
+      if (event.target.closest('button') && !event.target.closest('.car')) return;
+      if (event.target.closest('a')) return;
+      toggle();
+    };
+    // A ROW THE READER OPENED IS OPEN WHEN THE SLATE IS DRAWN AGAIN, whatever
+    // drew it: a sort, a filter, a page tab, the took button, the updating
+    // state landing, a render nobody here asked for. Until the merge
+    // `renderGames` rebuilt every row closed (question 18, found by the
+    // diagnosis of 2026-09-27: the old Why panel snapped shut the same way).
+    // Drawn open in place, with no arrival: it was already on the page.
+    if (openGames.has(g.game_id)) shown(true);
+    return row;
+  }
 
-    // --- the prices, on states that may carry them ---------------------
-    if (state === 'upcoming') {
-      const prices = el('div', 'face-prices');
-      const box = (cls, label, value) => {
-        const b = el('div', cls);
-        b.appendChild(el('span', 'box-label', label));
-        b.appendChild(el('span', 'box-value', value));
-        return b;
+  // THE SORT AND FILTER CHOICE, per page, kept in the browser (3c,
+  // 2026-09-25). Wrapped: storage can be absent or refuse, and the page
+  // renders the same either way.
+  function prefGet(key, fallback) {
+    try { const v = localStorage.getItem('gridiron.' + key); return v === null ? fallback : v; }
+    catch (e) { return fallback; }
+  }
+  function prefSet(key, value) {
+    try { localStorage.setItem('gridiron.' + key, value); } catch (e) { /* storage refused */ }
+  }
+  function fillSelect(select, options, chosen) {
+    if (!select) return;
+    select.innerHTML = '';
+    options.forEach(([value, words]) => {
+      const o = document.createElement('option');
+      o.value = value; o.textContent = words || '';
+      select.appendChild(o);
+    });
+    select.value = chosen;
+  }
+
+  // MY DAY (3b, 2026-09-25): the taken picks as chips under the header. A
+  // tap scrolls to the game; the words are the server's; nothing is money.
+  function renderMyDay(board) {
+    const strip = document.getElementById('my-day');
+    const host = document.getElementById('my-day-chips');
+    const heading = document.getElementById('my-day-heading');
+    const counts = document.getElementById('my-day-counts');
+    if (!strip || !host) return;
+    const day = board.my_day || { entries: [] };
+    if (heading) heading.textContent = day.heading || '';
+    if (counts) counts.textContent = day.n ? (day.counts_words || '') : (day.empty_words || '');
+    host.innerHTML = '';
+    (day.entries || []).forEach(e => {
+      const chip = el('button', 'my-chip' + (e.signal === 'won' || e.signal === 'lost' ? ' ' + signalClass(e.signal) : ''));
+      chip.type = 'button';
+      const club = e.club || {};
+      chip.style.setProperty('--club', '#' + (club.colour || ''));
+      chip.style.setProperty('--club-on-white', '#' + (club.on_white || club.colour || ''));
+      chip.appendChild(el('span', 'my-chip-club', club.tricode || ''));
+      chip.appendChild(tip(el('span', 'my-chip-line', e.line_words || ''), (e.tips || {}).line));
+      chip.appendChild(el('span', 'my-chip-state' + (e.state === 'live' ? ' live-mark' : ''), e.status_words || ''));
+      chip.appendChild(badge(e, {}));
+      chip.onclick = () => {
+        // A PROP IS ONE CHIP (the prover of the board merge, 2026-09-29): its
+        // tile on Props, and its game's row where the page holds no tiles.
+        const target = (e.prop
+          && document.querySelector('.prop[data-id="' + e.prediction_id + '"]'))
+          || document.querySelector('.game[data-game="' + e.game_id + '"]');
+        if (target) target.scrollIntoView({ block: 'start' });
       };
-      prices.appendChild(box('box', labels.model, entry.model_words));
-      // THE PAYOUT IS THE BIG CHIP (operator ruling, 2026-09-08), filled in
-      // the colour of the side the question names, with the price beneath it.
-      const payout = box('box box-payout', labels.venue, entry.payout_words);
-      // THE CLUB'S COLOUR ONLY WHEN THERE IS A PAYOUT TO COLOUR (2026-09-08).
-      // A card with no venue price was painting "no price yet" on the
-      // favoured club's colour, and on a club whose colour is red that reads
-      // as a verdict: the operator reported it as red, and the colour law
-      // keeps red for a loss. With no number in it the chip is grey, and
-      // `box-payout-empty` says so rather than borrowing a team's identity
-      // for an absence.
-      if (entry.payout !== null && entry.payout !== undefined &&
-          entry.favoured_colour) {
-        payout.style.background = '#' + entry.favoured_colour;
+      host.appendChild(chip);
+    });
+    strip.hidden = false;
+  }
+
+  // THE DETAIL PANEL (3a, 2026-09-25) inside an expanded row: last five for
+  // each club, the injury report, the weather, the factors the pick read.
+  // Only what the record holds; every absence arrives as the server's words.
+  function detailPanel(g, labels) {
+    const d = g.detail || {};
+    const panel = el('div', 'detail');
+    const form = el('div', 'detail-cell detail-form');
+    form.appendChild(el('span', 'detail-label', labels.form || ''));
+    [['away', g.away], ['home', g.home]].forEach(([side, club]) => {
+      const strip = el('div', 'form-strip');
+      strip.appendChild(el('span', 'form-club', (club || {}).tricode || ''));
+      const marks = d[side + '_form_marks'] || [];
+      if (marks.length) {
+        marks.forEach(m => strip.appendChild(el('span', 'fmark ' + (m === 'W' ? 'win' : m === 'L' ? 'loss' : 'draw'), m)));
       } else {
-        payout.classList.add('box-payout-empty');
+        strip.appendChild(el('span', 'form-none', d[side + '_form_words'] || ''));
       }
-      // THE OPENING READ, WITH ITS TIME (GRIDIRON_OPENING_READ, 2026-09-09).
-      // The words are the server's; the instant is turned into the reader's
-      // own clock here, the same way the kickoff line has always worked. A
-      // price with no "read at" beside it gets compared with an edge that was
-      // measured at kickoff, which is the one mistake this line prevents.
-      if (entry.open_read_words && entry.open_read_utc) {
-        const w = entry.open_read_words;
-        payout.appendChild(el(
-          'span', 'box-under',
-          w.before + ' ' + localTime(entry.open_read_utc) + ' \u00b7 ' + w.after));
+      form.appendChild(tip(strip, d[side + '_form_tip']));
+    });
+    panel.appendChild(form);
+    const injuries = el('div', 'detail-cell');
+    injuries.appendChild(el('span', 'detail-label', labels.injuries || ''));
+    const inj = el('span', 'detail-icon' + (d.injuries_n ? ' detail-icon-on' : ''));
+    inj.appendChild(el('span', 'detail-glyph', '✚'));
+    inj.appendChild(el('span', 'detail-n', d.injuries_n ? String(d.injuries_n) : ''));
+    injuries.appendChild(tip(inj, d.injuries_words));
+    if (!d.injuries_n) injuries.appendChild(el('span', 'detail-words', d.injuries_words || ''));
+    panel.appendChild(injuries);
+    const weather = el('div', 'detail-cell');
+    weather.appendChild(el('span', 'detail-label', labels.weather || ''));
+    const wx = el('span', 'detail-icon' + (d.weather_read ? ' detail-icon-on' : ''));
+    wx.appendChild(el('span', 'detail-glyph', '☁'));
+    weather.appendChild(tip(wx, d.weather_words));
+    weather.appendChild(el('span', 'detail-words', d.weather_words || ''));
+    panel.appendChild(weather);
+    const factors = el('div', 'detail-cell detail-factors');
+    factors.appendChild(el('span', 'detail-label', labels.factors || ''));
+    const list = d.factors || [];
+    if (list.length) {
+      const most = Math.max(...list.map(f => Math.abs(f.contribution || 0)), 0.001);
+      list.forEach(f => {
+        const row = el('div', 'factor');
+        row.appendChild(el('span', 'factor-words', f.factor_words || ''));
+        const bar = el('span', 'factor-bar');
+        const fill = el('span', 'factor-fill' + ((f.contribution || 0) < 0 ? ' factor-neg' : ''));
+        fill.style.width = (Math.abs(f.contribution || 0) / most * 100).toFixed(0) + '%';
+        bar.appendChild(fill);
+        row.appendChild(bar);
+        row.appendChild(el('span', 'factor-value', signed(f.contribution || 0, 2)));
+        factors.appendChild(row);
+      });
+    } else {
+      factors.appendChild(el('span', 'detail-words', d.factors_words || ''));
+    }
+    panel.appendChild(factors);
+    return panel;
+  }
+
+  // THE SPORT PILL beside the heading, in the sport's own declared colour.
+  function sportPill(id, board) {
+    const pill = document.getElementById(id);
+    if (!pill) return;
+    pill.textContent = board.sport_label || '';
+    pill.className = 'sport-pill sport-' + (board.sport_key || '');
+  }
+
+  // THE LEGEND: four swatches, each wearing the signal it explains, so the
+  // legend cannot drift from the rows. Words the server's.
+  function renderLegend(labels) {
+    const host = document.getElementById('games-legend');
+    if (!host) return;
+    host.innerHTML = '';
+    [['sig-clears', labels.legend_clears], ['sig-costs', labels.legend_costs],
+     ['sig-won', labels.legend_won], ['sig-lost', labels.legend_lost]].forEach(([cls, words]) => {
+      const item = el('span', 'lg');
+      item.appendChild(el('i', cls));
+      item.appendChild(el('span', 'lg-words', words || ''));
+      host.appendChild(item);
+    });
+  }
+
+  // THE DAY STRIP: the day, the counts, the fee line. All words the server's.
+  function renderDayStrip(data) {
+    const today = (data && data.today) || {};
+    const put = (id, words) => {
+      const node = document.getElementById(id);
+      if (!node) return;
+      node.textContent = words || '';
+      if (node.tagName === 'P') node.hidden = !words;
+    };
+    put('day-where', today.where_words);
+    put('day-counts', today.count_words);
+    put('day-note', today.no_price_words || ((data.board || {}).nothing_clears_words));
+    put('today-fee', today.fee_line);
+  }
+
+  // TAKEN TODAY: the selection record, beneath the rows.
+  function renderTakenRail(today) {
+    const rail = document.getElementById('today-rail');
+    const heading = document.getElementById('taken-heading');
+    const entries = document.getElementById('taken-entries');
+    const line = document.getElementById('today-taken');
+    if (!rail || !heading || !entries) return;
+    const list = (today && today.taken_today) || { entries: [] };
+    heading.textContent = list.heading || '';
+    entries.innerHTML = '';
+    (list.entries || []).forEach(item => {
+      const row = el('div', 'taken-row');
+      row.appendChild(el('span', 'taken-what', item.words));
+      if (item.taken_utc) row.appendChild(el('time', 'taken-when', localTime(item.taken_utc)));
+      entries.appendChild(row);
+    });
+    if (line) line.textContent = (today && today.taken_line) || '';
+    rail.hidden = !today || !(list.entries || []).length;
+  }
+
+  async function renderGames() {
+    const rows = document.getElementById('games-rows');
+    const notes = document.getElementById('games-notes');
+    if (!rows || !notes) return;
+    const picker = document.getElementById('week-picker');
+    const chosen = picker && picker.value ? JSON.parse(picker.value) : {};
+    let qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
+    const view = currentView();
+    if (view.forecaster) {
+      qs += (qs ? '&' : '?') + 'forecaster=' + encodeURIComponent(view.forecaster);
+    }
+    if (view.early) qs += (qs ? '&' : '?') + 'early_view=true';
+    const seq = ++weekSeq;
+    // THE OLD ROWS ARE STALE THE MOMENT A NEW SLATE IS ASKED FOR (found
+    // 2026-09-25): the rows were cleared only after the answer arrived, so
+    // for the length of a fetch the previous render stood on the page as if
+    // it were current -- a reader, or a test, could open a row that the
+    // answer then replaced under them. RULED the same day: the previous rows
+    // stay on screen, dimmed and untouchable, under an "updating" label, and
+    // the new ones swap in when the answer arrives. Offline keeps its rule:
+    // the bar says so, and a failed fetch leaves the last rows as they were.
+    updating(rows, 'games-updating', true);
+    let data;
+    try {
+      data = await fetchJSON(withSport('/api/week' + qs));
+    } catch (err) {
+      if (seq === weekSeq) updating(rows, 'games-updating', false);
+      throw err;
+    }
+    if (seq !== weekSeq) return;
+    updating(rows, 'games-updating', false);
+    clearError();
+    csrfToken = data.csrf || csrfToken;
+    state.slate = data;
+
+    const select = document.getElementById('week-market');
+    if (state.market && !(data.market_tabs || []).some(t => (t.market || '') === state.market)) {
+      state.market = '';
+    }
+    const market = state.market || '';
+    if (select && select.value !== market) select.value = market;
+
+    document.getElementById('week-title').textContent = data.slate_title || '';
+    const headline = document.getElementById('week-headline');
+    if (headline) headline.textContent = data.headline || '';
+    paintPulse(data.freshness);
+    renderDayStrip(data);
+    placeGreeting();
+    renderYesterday(data);
+
+    const board = data.board || {};
+    const labels = board.labels || {};
+    const again = () => renderGames();
+    rows.innerHTML = '';
+    notes.innerHTML = '';
+    // THE FIRST ANSWER REPLACES THE PLACEHOLDER (ruled 2026-09-25).
+    const loading = document.getElementById('games-loading');
+    if (loading) loading.hidden = true;
+    renderLegend(labels);
+    sportPill('games-sport', board);
+    // THE MARKET FILTER NARROWS EVERY ROW, not only the list: a row on a
+    // filtered slate shows that market's questions and leads with the one
+    // of them that clears the bar, else the surest. Chosen here from the
+    // payload's own signals; nothing is composed.
+    const narrow = (g) => {
+      if (!market) return g;
+      const qs = (g.questions || []).filter(q => (q.market || '') === market);
+      const lead = qs.slice().sort((a, b) =>
+        (b.signal === 'clears') - (a.signal === 'clears') ||
+        ((b.prob || 0) - (a.prob || 0)))[0] || null;
+      return Object.assign({}, g, { questions: qs, pick: lead });
+    };
+    // SORT AND FILTER (3c, 2026-09-25): the choice is the reader's and is
+    // kept in the browser; the order is computed here from the payload's
+    // own numbers, once, at render -- never when a score arrives.
+    const sortSel = document.getElementById('games-sort');
+    const clearsBox = document.getElementById('games-clears');
+    const sortBy = prefGet('games.sort', 'time');
+    const clearsOnly = prefGet('games.clears', '0') === '1';
+    fillSelect(sortSel, [['time', labels.sort_time], ['prob', labels.sort_prob]], sortBy);
+    if (clearsBox) clearsBox.checked = clearsOnly;
+    ['games-sort-label', 'games-market-label', 'games-clears-label'].forEach((id, i) => {
+      const node = document.getElementById(id);
+      if (node) node.textContent = [labels.sort, labels.market, labels.clears_only][i] || '';
+    });
+    if (sortSel) sortSel.onchange = () => { prefSet('games.sort', sortSel.value); renderGames().catch(showError); };
+    if (clearsBox) clearsBox.onchange = () => { prefSet('games.clears', clearsBox.checked ? '1' : '0'); renderGames().catch(showError); };
+    let games = (board.games || []).map(narrow).filter(g => (g.questions || []).length);
+    if (clearsOnly) games = games.filter(g => g.pick && g.pick.signal === 'clears');
+    if (sortBy === 'prob') {
+      games = games.slice().sort((a, b) => ((b.pick || {}).prob || 0) - ((a.pick || {}).prob || 0));
+    }
+    arrive(rows);
+    games.forEach((g, i) => {
+      const row = gameRow(g, labels, again);
+      row.style.setProperty('--i', String(Math.min(i, 8)));
+      rows.appendChild(row);
+    });
+    renderMyDay(board);
+    if (clearsOnly && !games.length && board.nothing_clears_words) {
+      notes.appendChild(el('div', 'empty', board.nothing_clears_words));
+    }
+
+    const today = data.today || null;
+    const combos = document.getElementById('combos-panel');
+    if (combos) {
+      combos.hidden = !today;
+      if (today) renderCombos(today.combos, today.labels || {});
+    }
+    renderTakenRail(today);
+    startLivePolling(data);
+
+    if (!games.length) {
+      // THE SLATE SAYS WHY IT IS EMPTY, in the server's words: no games, no
+      // forecasts from this forecaster, or a finished slate pointing at
+      // Results.
+      const settled = (data.cards || []).filter(c => c.resolved_utc !== null || c.voided).length;
+      if ((data.cards || []).length && settled === (data.cards || []).length && !board.games_n) {
+        const finished = el('div', 'empty');
+        finished.appendChild(document.createTextNode(data.message || ''));
+        notes.appendChild(finished);
       } else {
-        payout.appendChild(el('span', 'box-under', entry.price_words || ''));
+        notes.appendChild(el('div', 'empty',
+          data.forecaster_message || data.message || board.games_empty_words || ''));
       }
-      prices.appendChild(payout);
-      face.appendChild(prices);
-
-      // THE EDGE IS ONE QUIET LINE, and the only green or red on the card.
-      const edge = el('div', 'face-edge ' + (entry.edge_state || 'none'));
-      edge.appendChild(el('span', 'edge-label', entry.edge_label || labels.edge));
-      edge.appendChild(el('span', 'edge-value', entry.edge_line_words || ''));
-      face.appendChild(edge);
-
-      if (entry.size_words) face.appendChild(el('div', 'face-size', entry.size_words));
+      (data.quiet_markets || []).forEach(q => notes.appendChild(el('div', 'quiet-market', q)));
+      return;
     }
-    if (state === 'final' && entry.settled_words) {
-      face.appendChild(el('div', 'face-settled', entry.settled_words));
-    }
-    // THE ONE FIGURE A LIVE CARD MAY CARRY (operator ruling, 2026-09-09).
-    // LAW 5 has always permitted it -- "Live win probability may be displayed
-    // and is never sized" -- and the guard that forbade it outright was
-    // narrowed the same day. The WORD travels with the number, composed by
-    // the server: no live model exists here, so an undated percentage beside
-    // a live score would claim something this app does not have.
-    if (state === 'live' && entry.pregame_words) {
-      face.appendChild(el('div', 'face-pregame', entry.pregame_words));
-    }
+    (data.quiet_markets || []).forEach(q => notes.appendChild(el('div', 'quiet-market', q)));
+  }
 
-    const meta = el('div', 'face-meta');
-    meta.appendChild(el('span', 'face-gate', entry.gate_words || ''));
-    if (entry.tier_chip) meta.appendChild(el('span', 'chip', entry.tier_chip));
-    face.appendChild(meta);
+  // --- PROPS -----------------------------------------------------------------
 
-    // WHAT IS KNOWN ABOUT THIS MARKET'S METHOD, ON THE FACE AND NOT ONE TAP
-    // IN (operator ruling 2, 2026-09-04). The old grid card rendered this and
-    // the CARD_FACE card never did, so when the grid was removed on
-    // 2026-09-08 the caveat stopped reaching the reader altogether -- the
-    // payload carried it and nothing drew it. Caught by
-    // `test_the_flagged_note_is_readable_without_a_tap`, which is the test
-    // that exists for exactly this.
-    //
-    // A caveat behind a tap is a caveat most readers never reach, and the
-    // reader taking the percentage at face value is the one it is written for.
-    if (entry.method_note) {
-      face.appendChild(el('p', 'face-method', entry.method_note));
-    }
+  // ONE GENERIC JERSEY FOR EVERY CLUB. Colour is the whole of the club in it:
+  // the body in the primary, the V-neck and the sleeve bands in the club's
+  // second colour where the colour file records one and in white otherwise,
+  // seams, mesh and sheen the same on every jersey. No club's stripe, sleeve
+  // design, crest, wordmark or likeness -- a Cubs jersey looks like a Cubs
+  // jersey because it is blue, and for no other reason. The surname sits on
+  // an arched nameplate scaled to fit; a number renders only when the record
+  // holds one, which today it does not.
+  const SVG_NS = 'http://www.w3.org/2000/svg';
 
-    // THE FIRST SENTENCE WITHOUT A CLICK, the rest behind Why.
-    if (entry.first_sentence) {
-      face.appendChild(el('p', 'face-lede', entry.first_sentence));
-    }
+  function svgEl(tag, attrs) {
+    const node = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs || {}).forEach(k => node.setAttribute(k, attrs[k]));
+    return node;
+  }
 
-    const actions = el('div', 'face-actions');
-    // A LIVE CARD CARRIES NO TAP. Its game is being played; there is nothing
-    // to decide and nothing on the card to decide it with.
-    if (state === 'upcoming') {
-      const mark = el('button', 'took' + (entry.taken ? ' took-done' : ''));
-      mark.type = 'button';
-      mark.textContent = entry.taken ? labels.taken : labels.took;
-      mark.disabled = !!entry.taken;
-      mark.onclick = async () => {
-        mark.disabled = true;
-        await fetch('/api/taken/' + entry.prediction_id, {
-          method: 'POST',
-          headers: { 'X-Gridiron-Form': csrfToken || '' },
-        });
-        renderWeek().catch(showError);
-      };
-      actions.appendChild(mark);
+  function jerseySVG(tile, seqId) {
+    // THE JERSEY, ported from docs/design/gridiron-redesign.html (2026-09-25)
+    // as it was drawn there: the body clipped from one path, the sleeve
+    // bands in the second colour, the mesh, the sheen, the hem and side
+    // seams, the V-collar, the surname on an arc scaled to fit, and the
+    // number on the chest and both shoulders. Colours arrive on the tile
+    // from data/team_colours.py; the two neutrals are the page's own tokens
+    // (the mockup typed #fff and #000). A player with no number on record
+    // gets an empty slot, never a guess.
+    const uid = 'j' + (seqId || tile.prediction_id || 0);
+    const club = tile.club || {};
+    const primary = club.colour ? '#' + club.colour : 'var(--line-lit)';
+    const second = club.secondary ? '#' + club.secondary : 'var(--white)';
+    const svg = svgEl('svg', { class: 'jsvg', viewBox: '0 0 120 130', role: 'img',
+                               'aria-label': tile.surname || '' });
+    const defs = svgEl('defs');
+    const sheen = svgEl('linearGradient', { id: uid + 'sh', x1: '0', y1: '0', x2: '1', y2: '1' });
+    sheen.appendChild(svgEl('stop', { offset: '0', 'stop-color': 'var(--white)', 'stop-opacity': '.22' }));
+    sheen.appendChild(svgEl('stop', { offset: '.45', 'stop-color': 'var(--white)', 'stop-opacity': '0' }));
+    sheen.appendChild(svgEl('stop', { offset: '1', 'stop-color': 'var(--ink)', 'stop-opacity': '.28' }));
+    defs.appendChild(sheen);
+    const mesh = svgEl('pattern', { id: uid + 'mesh', width: '3', height: '3', patternUnits: 'userSpaceOnUse' });
+    mesh.appendChild(svgEl('circle', { cx: '1.5', cy: '1.5', r: '.45', fill: 'var(--ink)', opacity: '.22' }));
+    defs.appendChild(mesh);
+    defs.appendChild(svgEl('path', { id: uid + 'arc', d: 'M26 45 Q60 31 94 45' }));
+    const clip = svgEl('clipPath', { id: uid + 'clip' });
+    clip.appendChild(svgEl('path', { d: 'M30 10 L47 4 Q60 16 73 4 L90 10 L116 31 L103 56 L94 50 L94 124 Q60 131 26 124 L26 50 L17 56 L4 31 Z' }));
+    defs.appendChild(clip);
+    svg.appendChild(defs);
+    const g = svgEl('g', { 'clip-path': 'url(#' + uid + 'clip)' });
+    g.appendChild(svgEl('rect', { width: '120', height: '130', fill: primary }));
+    g.appendChild(svgEl('path', { d: 'M26 50 L34 50 L34 126 L26 124 Z M94 50 L86 50 L86 126 L94 124 Z', fill: 'var(--ink)', opacity: '.2' }));
+    g.appendChild(svgEl('path', { d: 'M10 27 L22 51 M14 24 L26 47', stroke: second, 'stroke-width': '3.2' }));
+    g.appendChild(svgEl('path', { d: 'M110 27 L98 51 M106 24 L94 47', stroke: second, 'stroke-width': '3.2' }));
+    g.appendChild(svgEl('path', { d: 'M8 29 L21 54 M112 29 L99 54', stroke: 'var(--white)', 'stroke-width': '1', opacity: '.5' }));
+    g.appendChild(svgEl('rect', { width: '120', height: '130', fill: 'url(#' + uid + 'mesh)' }));
+    g.appendChild(svgEl('rect', { width: '120', height: '130', fill: 'url(#' + uid + 'sh)' }));
+    g.appendChild(svgEl('path', { d: 'M26 122 Q60 129 94 122', stroke: 'var(--white)', 'stroke-width': '.8', 'stroke-dasharray': '2 2', fill: 'none', opacity: '.45' }));
+    g.appendChild(svgEl('path', { d: 'M26 52 L26 122 M94 52 L94 122', stroke: 'var(--white)', 'stroke-width': '.7', 'stroke-dasharray': '2 2', opacity: '.35' }));
+    svg.appendChild(g);
+    svg.appendChild(svgEl('path', { d: 'M45 4 L60 24 L75 4 L71 3 L60 17 L49 3 Z', fill: second }));
+    svg.appendChild(svgEl('path', { d: 'M47.5 5 L60 21 L72.5 5', stroke: 'var(--white)', 'stroke-width': '.8', fill: 'none', opacity: '.6' }));
+    const surname = (tile.surname || '').slice(0, 14);
+    const name = svgEl('text', { class: 'jersey-name nmT', fill: 'var(--white)' });
+    name.style.fontSize = Math.min(11, 86 / Math.max(1, surname.length)) + 'px';
+    const path = svgEl('textPath', { href: '#' + uid + 'arc', startOffset: '50%', 'text-anchor': 'middle' });
+    path.textContent = surname;
+    name.appendChild(path);
+    svg.appendChild(name);
+    if (tile.number !== null && tile.number !== undefined && tile.number !== '') {
+      const number = String(tile.number);
+      const num = svgEl('text', { class: 'jersey-number numT', x: '60', y: '93', 'text-anchor': 'middle',
+                                  fill: 'var(--white)', stroke: second });
+      num.textContent = number;
+      svg.appendChild(num);
+      [['15', 'rotate(-26 15 42)'], ['105', 'rotate(26 105 42)']].forEach(([x, rot]) => {
+        const small = svgEl('text', { class: 'jersey-shoulder snT', x: x, y: '42', 'text-anchor': 'middle',
+                                      fill: 'var(--white)', stroke: second, transform: rot });
+        small.textContent = number;
+        svg.appendChild(small);
+      });
     }
+    return svg;
+  }
 
-    const sentences = (entry.why && entry.why.sentences) || [];
-    if (sentences.length || entry.reasoning || entry.rail_line ||
-        (entry.top_factors || []).length) {
-      const more = el('button', 'expand');
-      more.type = 'button';
-      more.textContent = labels.why;
-      more.setAttribute('aria-expanded', 'false');
-      const body = el('div', 'face-why');
-      body.hidden = true;
-      // MODEL, MARKET AND GAP AS TEXT (R3), first in the body. A dot-and-span
-      // graphic stood here until 2026-09-02 and made the reader estimate two
-      // percentages off a 100-pixel track. It was rendered by the old card's
-      // body, which the grid took with it on 2026-09-08.
-      if (entry.rail_line) {
-        body.appendChild(el('p', 'face-numbers', entry.rail_line));
-      }
-      if (sentences.length) {
-        sentences.forEach(s => body.appendChild(el('p', 'face-sentence', s)));
-      } else if (entry.reasoning) {
-        body.appendChild(el('p', 'face-sentence', entry.reasoning));
-      }
-      const chips = factorChips(entry);
-      if (chips) body.appendChild(chips);
-      // WHAT THE REASONING PASS WAS SENT (2026-09-25), inside the panel that
-      // already holds its reasoning, so the card face does not change.
-      if (entry.prompt) body.appendChild(promptDisclosure(entry.prediction_id, entry.prompt));
-      // THE WAY OUT TO THE WORKINGS. The coefficient table moved to the
-      // Factors page (R1) and the old card's body carried this link to it;
-      // the CARD_FACE card never did, so removing the grid on 2026-09-08 left
-      // the card's reasons with no route to the page that explains them.
-      const w = entry.why || {};
-      const moreLink = el('a', 'face-more',
-        (w.more_label || 'How the model works') + ' →');
-      moreLink.href = w.more_href || '#/factors';
-      body.appendChild(moreLink);
-      more.onclick = () => {
-        body.hidden = !body.hidden;
-        more.setAttribute('aria-expanded', body.hidden ? 'false' : 'true');
-      };
-      actions.appendChild(more);
-      face.appendChild(actions);
-      face.appendChild(body);
-      return face;
+  // THE PROBABILITY BAR with the break-even as a white tick.
+  function probBar(t, tickAt) {
+    // THE BAR AND ITS TICK (mockup, 2026-09-25): the fill is the club's
+    // colour where the question has one, the tick is white and sits at the
+    // price on a game question or at the break-even on a prop.
+    const bar = el('div', 'pbar');
+    const fill = el('span', 'pbar-fill filling');
+    const p = Math.max(0, Math.min(1, t.prob || 0));
+    fill.style.width = (p * 100).toFixed(1) + '%';
+    bar.appendChild(fill);
+    // ONCE, ON LOAD: the start state is cleared a frame after the bar is in
+    // the tree, and nothing sets it again -- `audit.live_update_faults`
+    // refuses a live patch that reaches for it.
+    requestAnimationFrame(() => requestAnimationFrame(() => fill.classList.remove('filling')));
+    const at = tickAt === undefined ? t.breakeven : tickAt;
+    if (at !== null && at !== undefined) {
+      const tick = el('span', 'pbar-tick');
+      tick.style.left = (Math.max(0, Math.min(1, at)) * 100).toFixed(1) + '%';
+      bar.appendChild(tip(tick, tickAt === undefined ? t.breakeven_words : ((t.tips || {}).price)));
     }
-    face.appendChild(actions);
-    return face;
+    return bar;
+  }
+
+  // A HUE PER STAT FAMILY (PrizePicks polish, 2026-09-25): five tokens in
+  // the stylesheet, chosen by the family's key, never green or red.
+  const FAMILY_HUES = { passing: 'passing', receiving: 'receiving', rushing: 'rushing',
+                        receptions: 'receiving', touchdowns: 'scoring', points: 'scoring',
+                        rebounds: 'rushing', assists: 'receiving', strikeouts: 'passing',
+                        hits: 'receiving', home_runs: 'scoring', total_bases: 'rushing' };
+  function familyHue(key) {
+    const found = Object.keys(FAMILY_HUES).find(k => key.indexOf(k) !== -1);
+    return 'var(--family-' + (found ? FAMILY_HUES[found] : 'other') + ')';
+  }
+
+  function propTile(t, labels, after, seqId) {
+    const node = el('article', 'prop ' + signalClass(t.signal) + (t.taken ? ' q-taken' : ''));
+    node.dataset.id = t.prediction_id;
+    node.dataset.family = t.family || '';
+    node.dataset.alt = t.alt ? 'true' : 'false';
+    node.dataset.state = t.state || 'upcoming';
+    const club = t.club || {};
+    node.style.setProperty('--club', '#' + (club.colour || ''));
+    node.style.setProperty('--club-on-white', '#' + (club.on_white || club.colour || ''));
+    node.style.setProperty('--club-2', club.secondary ? '#' + club.secondary : 'var(--white)');
+    if (t.state === 'upcoming') node.appendChild(takeButton(t, labels, after, true));
+
+    const top = el('div', 'prop-top');
+    top.appendChild(tip(jerseySVG(t, seqId), (t.tips || {}).number));
+    const who = el('div', 'prop-who');
+    who.appendChild(el('b', 'prop-player', t.player || ''));
+    const under = el('span', 'prop-club');
+    under.appendChild(el('span', 'prop-matchup', t.matchup || (club.name || '')));
+    const fam = el('span', 'prop-family', t.family_words || '');
+    fam.style.setProperty('--family', familyHue(t.family || ''));
+    under.appendChild(fam);
+    who.appendChild(under);
+    top.appendChild(who);
+    node.appendChild(top);
+
+    const body = el('div', 'prop-body');
+    const line = el('div', 'prop-line');
+    const q = el('span', 'prop-q');
+    q.appendChild(tip(el('span', 'prop-q-words', t.line_words || ''), t.question));
+    if (t.alt && t.high_end_badge_words) {
+      q.appendChild(tip(el('span', 'tag tag-alt', labels.alt || ''), (t.tips || {}).high_end));
+    }
+    line.appendChild(q);
+    if (t.state === 'live') {
+      // A LIVE TILE: the pregame figure, its word, and nothing to act on.
+      line.appendChild(el('span', 'q-pregame', t.pregame_words || ''));
+    } else {
+      line.appendChild(tip(el('span', 'prop-prob', t.prob_words || ''), (t.tips || {}).prob));
+    }
+    body.appendChild(line);
+    if (t.state !== 'live') {
+      body.appendChild(probBar(t));
+      const cush = el('div', 'cush');
+      const needs = el('span', 'cush-needs');
+      needs.appendChild(el('span', 'cush-label', labels.needs || ''));
+      needs.appendChild(tip(el('b', 'cush-be', t.breakeven_words || ''), (t.tips || {}).cushion));
+      cush.appendChild(needs);
+      const c = el('span', 'cush-cushion');
+      c.appendChild(el('span', 'cush-label', labels.cushion || ''));
+      c.appendChild(tip(el('b', 'prop-cushion', t.cushion_words || ''), (t.tips || {}).cushion));
+      cush.appendChild(c);
+      body.appendChild(cush);
+    }
+    if (t.state === 'final' && t.settled_words) {
+      body.appendChild(el('div', 'q-settled', t.settled_words));
+    }
+    const foot = el('div', 'pfoot');
+    if (t.state !== 'live') {
+      const venue = el('span', 'prop-venue');
+      venue.appendChild(el('span', 'prop-venue-label', labels.best || ''));
+      venue.appendChild(tip(el('b', 'prop-venue-words', t.venue_words || ''), (t.tips || {}).venue));
+      foot.appendChild(venue);
+    }
+    const badges = el('span', 'pfoot-badges');
+    badges.appendChild(badge(t, labels));
+    if (t.alt && t.high_end_badge_words) {
+      badges.appendChild(tip(el('span', 'badge badge-high', t.high_end_badge_words),
+                             (t.tips || {}).high_end));
+    }
+    foot.appendChild(badges);
+    body.appendChild(foot);
+    node.appendChild(body);
+    return node;
+  }
+
+  // THE ENTRY RAIL. Legs are the props marked taken on this slate; the
+  // operator types what the venue pays; three readings and the floor follow
+  // from arithmetic on numbers the payload already carries. Labels are the
+  // server's; the numbers are formatted here and nothing is composed.
+  function entryLines(legs, pays, props, labels) {
+    const host = document.getElementById('entry-lines');
+    if (!host) return;
+    host.innerHTML = '';
+    const words = props.entry || {};
+    const line = (label, value, tipWords) => {
+      const row = el('div', 'entry-line');
+      row.appendChild(el('span', 'entry-label', label));
+      row.appendChild(tip(el('span', 'entry-value', value), tipWords));
+      host.appendChild(row);
+    };
+    const n = legs.length;
+    const probs = legs.map(l => l.prob || 0);
+    const product = probs.reduce((a, b) => a * b, 1);
+    if (!n) return;
+    const perDollar = (x) => (x === null || x === undefined || !isFinite(x))
+      ? ABSENT : signed(x, 2);
+    const be = pays && pays > 1 ? Math.pow(pays, -1 / n) : null;
+    const modelLine = pays ? pays * product - 1 : null;
+    // THE VERDICT (ruling c, 2026-09-25): the one place a prop earns its
+    // colour, against the multiple the operator typed, with the thinnest
+    // record among the legs beside it so the glow never stands alone.
+    const verdict = el('div', 'verdict');
+    if (modelLine !== null && be !== null) {
+      verdict.classList.add(modelLine > 0 ? 'sig-clears' : 'sig-costs');
+      const v = el('div', 'v');
+      v.appendChild(el('span', 'v-words', modelLine > 0 ? words.verdict_clears : words.verdict_short));
+      v.appendChild(el('b', 'v-mult', num(pays, 2) + 'x'));
+      verdict.appendChild(tip(v, words.verdict_tip));
+      const thinnest = legs.slice().sort((a, b) => (a.badge_n || 0) - (b.badge_n || 0))[0];
+      if (thinnest) verdict.appendChild(badge(thinnest, labels));
+    } else {
+      verdict.appendChild(el('div', 'v-untyped', words.verdict_untyped || ''));
+    }
+    host.appendChild(verdict);
+    line(labels.line_model, perDollar(modelLine));
+    let half = null;
+    if (pays && be !== null) {
+      const shrunk = probs.map(p => be + (p - be) / 2);
+      half = pays * shrunk.reduce((a, b) => a * b, 1) - 1;
+    }
+    line(labels.line_half, perDollar(half));
+    line(labels.line_kalshi, labels.not_listed || '', words.kalshi_absent);
+    line(labels.line_floor, product > 0 ? num(1 / product, 2) + 'x' : ABSENT);
+  }
+
+  function renderEntryRail(props, labels, after) {
+    const rail = document.getElementById('entry-rail');
+    const heading = document.getElementById('entry-heading');
+    const legsHost = document.getElementById('entry-legs');
+    const empty = document.getElementById('entry-empty');
+    const paysWords = document.getElementById('entry-pays-words');
+    const pays = document.getElementById('entry-pays');
+    const note = document.getElementById('entry-note');
+    if (!rail || !legsHost) return;
+    const words = props.entry || {};
+    if (heading) heading.textContent = words.heading || labels.entry || '';
+    if (paysWords) paysWords.textContent = labels.pays || '';
+    if (note) note.textContent = words.note || '';
+    const legs = (props.tiles || []).filter(t => t.taken && t.state === 'upcoming');
+    legsHost.innerHTML = '';
+    legs.forEach(l => {
+      const row = el('div', 'entry-leg');
+      row.appendChild(el('span', 'entry-leg-line', l.line_words || ''));
+      row.appendChild(el('span', 'entry-leg-prob', l.prob_words || ''));
+      legsHost.appendChild(row);
+    });
+    if (empty) {
+      empty.textContent = legs.length ? '' : (words.empty || '');
+      empty.hidden = !!legs.length;
+    }
+    const paint = () => entryLines(legs, parseFloat(pays && pays.value) || null, props, labels);
+    if (pays) {
+      if (!pays.value) pays.value = String(props.multiple || '');
+      pays.oninput = paint;
+    }
+    paint();
+  }
+
+  async function renderProps() {
+    const host = document.getElementById('props-tiles');
+    const notes = document.getElementById('props-notes');
+    const chips = document.getElementById('props-chips');
+    if (!host || !notes || !chips) return;
+    const picker = document.getElementById('week-picker');
+    const chosen = picker && picker.value ? JSON.parse(picker.value) : {};
+    const qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
+    const seq = sportSeq;
+    updating(host, 'props-updating', true);   // the same rule as the rows
+    let data;
+    try {
+      data = await fetchJSON(withSport('/api/week' + qs));
+    } catch (err) {
+      if (!stale(seq)) updating(host, 'props-updating', false);
+      throw err;
+    }
+    if (stale(seq)) return;
+    updating(host, 'props-updating', false);
+    clearError();
+    csrfToken = data.csrf || csrfToken;
+    paintPulse(data.freshness);
+    const board = data.board || {};
+    const props = board.props || { tiles: [], chips: [] };
+    const labels = board.labels || {};
+    const again = () => renderProps();
+    const headline = document.getElementById('props-headline');
+    if (headline) headline.textContent = data.headline || '';
+    sportPill('props-sport', board);
+    const note = document.getElementById('props-note');
+    if (note) note.textContent = props.note || '';
+
+    chips.innerHTML = '';
+    const active = state.propFamily || '';
+    (props.chips || []).forEach(c => {
+      const b = el('button', 'chip-btn');
+      b.type = 'button';
+      b.dataset.key = c.key || '';
+      if (c.key && c.key !== 'alt') b.style.setProperty('--family', familyHue(c.key));
+      b.setAttribute('aria-pressed', String((c.key || '') === active));
+      b.appendChild(el('span', 'chip-label', c.label));
+      b.appendChild(el('span', 'chip-n', String(c.n)));
+      b.onclick = () => { state.propFamily = c.key || ''; renderProps().catch(showError); };
+      chips.appendChild(b);
+    });
+
+    host.innerHTML = '';
+    notes.innerHTML = '';
+    const propsLoading = document.getElementById('props-loading');
+    if (propsLoading) propsLoading.hidden = true;
+    const sortSel = document.getElementById('props-sort');
+    const sortBy = prefGet('props.sort', 'cushion');
+    fillSelect(sortSel, [['cushion', labels.sort_cushion], ['prob', labels.sort_prob]], sortBy);
+    const sortLabel = document.getElementById('props-sort-label');
+    if (sortLabel) sortLabel.textContent = labels.sort || '';
+    if (sortSel) sortSel.onchange = () => { prefSet('props.sort', sortSel.value); renderProps().catch(showError); };
+    let tiles = props.tiles || [];
+    if (active === 'alt') tiles = tiles.filter(t => t.alt);
+    else if (active) tiles = tiles.filter(t => (t.family || '') === active);
+    if (sortBy === 'prob') tiles = tiles.slice().sort((a, b) => (b.prob || 0) - (a.prob || 0));
+    renderMyDay(board);
+    arrive(host);
+    tiles.forEach((t, i) => {
+      const tile = propTile(t, labels, again, i);
+      tile.style.setProperty('--i', String(Math.min(i, 8)));
+      host.appendChild(tile);
+    });
+    if (!tiles.length) {
+      notes.appendChild(el('div', 'empty',
+        active === 'alt' ? (props.alt_empty_words || '')
+                         : (props.empty_words || data.forecaster_message || data.message || '')));
+    }
+    renderEntryRail(props, labels, again);
+  }
+
+  // THE MENU: three pages behind one button. Opens on the button, closes on
+  // a choice, on Escape, and on any route change.
+  function wireMenu() {
+    const button = document.getElementById('menu-button');
+    const menu = document.getElementById('menu');
+    if (!button || !menu || button.dataset.wired === 'true') return;
+    button.dataset.wired = 'true';
+    const set = (open) => {
+      menu.hidden = !open;
+      button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    button.addEventListener('click', () => set(menu.hidden));
+    menu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => set(false)));
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') set(false); });
+    document.addEventListener('click', event => {
+      if (!menu.hidden && !menu.contains(event.target) && event.target !== button
+          && !button.contains(event.target)) set(false);
+    });
+  }
+
+  function closeMenu() {
+    const button = document.getElementById('menu-button');
+    const menu = document.getElementById('menu');
+    if (menu) menu.hidden = true;
+    if (button) button.setAttribute('aria-expanded', 'false');
   }
 
   // THE VENUE'S PACKAGES (GRIDIRON_COMBOS C6, 2026-09-08).
@@ -1335,242 +2259,6 @@ const Gridiron = (function () {
   // WHICH TAB IS BEING LOOKED AT. The default is Upcoming; a reader who
   // switches to Live stays there across a refresh, because a poll that moved
   // them back would take the screen away from the game they are watching.
-  let stateTab = 'upcoming';
-
-  function applyStateTab() {
-    const tabs = document.getElementById('state-tabs');
-    // THE HEADS, NOT JUST THE HEADINGS (2026-09-08). This listed the heading
-    // SPANS and not the `<h3>` rows they sit in, so switching to Live left
-    // the clears group's coloured rule and its tier chip standing over an
-    // empty tab -- a "SOLID" heading with nothing under it, which is what the
-    // operator saw.
-    const upcomingParts = ['clears-head-row', 'today-clears-heading',
-                           'today-clears', 'today-fold',
-                           'today-below-floor', 'watching-head-row',
-                           'today-watching-heading', 'today-watching',
-                           // COMBOS IS AN UPCOMING GROUP (C6). Nothing is
-                           // sized in-game, so a package has nothing to say
-                           // on Live and is a settled row rather than a card
-                           // on Results.
-                           'combos-heading-row', 'combos-counts', 'combos-fee',
-                           'today-combos', 'combos-empty'];
-    const livePresent = (document.getElementById('today-live') || {}).childNodes;
-    const liveCount = livePresent ? livePresent.length : 0;
-    if (tabs) {
-      tabs.querySelectorAll('button').forEach(button => {
-        const on = button.dataset.state === stateTab;
-        button.setAttribute('aria-pressed', on ? 'true' : 'false');
-      });
-    }
-    const show = (id, on) => {
-      const node = document.getElementById(id);
-      if (node) node.hidden = !on;
-    };
-    const upcoming = stateTab === 'upcoming';
-    upcomingParts.forEach(id => {
-      const node = document.getElementById(id);
-      if (!node) return;
-      if (upcoming) {
-        // A group hidden by its own emptiness stays hidden; this only takes
-        // the tab's word for it.
-        if (node.dataset.emptyHidden !== 'true') node.hidden = false;
-      } else {
-        node.hidden = true;
-      }
-    });
-    show('live-heading-row', !upcoming && liveCount > 0);
-    show('today-live', !upcoming && liveCount > 0);
-    show('live-empty', !upcoming && liveCount === 0);
-    const rail = document.getElementById('today-rail');
-    if (rail) rail.hidden = !upcoming;
-  }
-
-  function wireStateTabs(labels) {
-    const tabs = document.getElementById('state-tabs');
-    if (!tabs || tabs.dataset.wired === 'true') return;
-    tabs.dataset.wired = 'true';
-    tabs.querySelectorAll('button').forEach(button => {
-      button.addEventListener('click', () => {
-        stateTab = button.dataset.state;
-        applyStateTab();
-      });
-    });
-  }
-
-  function renderToday(data) {
-    const panel = document.getElementById('today');
-    const clears = document.getElementById('today-clears');
-    const watching = document.getElementById('today-watching');
-    const folded = document.getElementById('today-below-floor');
-    if (!panel || !clears || !watching || !folded) return;
-    clears.innerHTML = '';
-    watching.innerHTML = '';
-    folded.innerHTML = '';
-    csrfToken = data.csrf || csrfToken;
-    const today = (data && data.today) || null;
-    if (!today) { panel.hidden = true; return; }
-    requireN(today, 'today');
-    const labels = today.labels || {};
-    const tabs = document.getElementById('state-tabs');
-    if (tabs) {
-      tabs.querySelectorAll('button').forEach(button => {
-        const key = button.dataset.state === 'live' ? 'tab_live' : 'tab_upcoming';
-        button.textContent = labels[key] || '';
-      });
-      wireStateTabs(labels);
-    }
-
-    const where = document.getElementById('day-where');
-    if (where) where.textContent = today.where_words || '';
-    const counts = document.getElementById('day-counts');
-    if (counts) counts.textContent = today.count_words || '';
-    // THE THREE AGES, EVERY STRING THE SERVER'S. A stale one is marked, and
-    // its own words say which threshold it is past; nothing here is red,
-    // because the colour law keeps red for a loss.
-    const jobs = document.getElementById('day-jobs');
-    if (jobs) {
-      jobs.innerHTML = '';
-      const pulse = (data && data.freshness && data.freshness.entries) || [];
-      pulse.forEach(entry => {
-        jobs.appendChild(el('span', 'day-job' + (entry.stale ? ' day-job-stale' : ''),
-                            entry.words || ''));
-      });
-    }
-    // SAID ONCE FOR THE SLATE. This sentence was appended to every row --
-    // thirty times on the football slate of 2026-09-07 -- which is how a page
-    // teaches a reader that its rows are not worth reading.
-    const note = document.getElementById('day-note');
-    if (note) {
-      note.textContent = today.no_price_words || '';
-      note.hidden = !today.no_price_words;
-    }
-    const fee = document.getElementById('today-fee');
-    if (fee) fee.textContent = today.fee_line || '';
-    const taken = document.getElementById('today-taken');
-    if (taken) taken.textContent = today.taken_line || '';
-
-    const heading = document.getElementById('today-clears-heading');
-    if (heading) heading.textContent = today.clears_heading || '';
-    const watchHeading = document.getElementById('today-watching-heading');
-    if (watchHeading) watchHeading.textContent = today.watching_heading || '';
-    const groupChip = (id, value) => {
-      const host = document.getElementById(id);
-      if (!host) return;
-      host.textContent = value || '';
-      host.hidden = !value;
-    };
-    groupChip('today-clears-chip', today.clears_chip);
-    groupChip('today-watching-chip', today.watching_chip);
-
-    // THE MARKET CHIPS FILTER THE GROUPS, not only the slate beneath them.
-    // They are declared a filter row on Upcoming; while they filtered the
-    // grid alone, opening a market with no picks left the previous market's
-    // cards standing in the groups.
-    const wanted = state.market || '';
-    const keep = list => (list || []).filter(
-      e => !wanted || (e.market || '') === wanted);
-
-    renderCombos(today.combos, labels);
-
-    // CONTENT ARRIVES THROUGH THE MOTION BLOCK (2026-09-08). `arrive` was
-    // called on the old grid's host; with the grid gone its only caller went
-    // with it, and a market switch re-filled the groups with no fade at all.
-    // The panel is the container the cards now arrive in.
-    arrive(panel);
-
-    keep(today.clears).forEach(e => clears.appendChild(todayCard(e, labels)));
-    keep(today.watching).forEach(e => watching.appendChild(todayCard(e, labels)));
-    keep(today.below_floor).forEach(e => folded.appendChild(todayCard(e, labels)));
-
-    // LIVE (S3). The cards whose games are being played, taken first, with
-    // the score where the start time was. Which cards are here is the
-    // poller's answer, not the tab's.
-    const liveHost = document.getElementById('today-live');
-    const liveHeadingRow = document.getElementById('live-heading-row');
-    const liveHeading = document.getElementById('live-heading');
-    const liveEmpty = document.getElementById('live-empty');
-    if (liveHost) {
-      liveHost.innerHTML = '';
-      keep(today.live).forEach(e => liveHost.appendChild(todayCard(e, labels)));
-      if (liveHeading) liveHeading.textContent = today.live_heading || '';
-      if (liveEmpty) {
-        const words = document.getElementById('live-empty-words');
-        const at = document.getElementById('live-empty-time');
-        if (words) words.textContent = today.live_empty_words || '';
-        // The instant in the reader's own clock, beside the server's words:
-        // two elements, so nothing is glued together.
-        if (at) {
-          at.textContent = today.live_first_kickoff_utc
-            ? localDayTime(today.live_first_kickoff_utc) : '';
-        }
-      }
-    }
-    applyStateTab();
-
-    const fold = document.getElementById('today-fold');
-    if (fold) {
-      fold.textContent = today.below_floor_words || '';
-      fold.hidden = !today.below_floor_words;
-      fold.setAttribute('aria-expanded', 'false');
-      folded.hidden = true;
-      fold.onclick = () => {
-        folded.hidden = !folded.hidden;
-        fold.setAttribute('aria-expanded', folded.hidden ? 'false' : 'true');
-      };
-    }
-
-    const rail = document.getElementById('today-rail');
-    const takenHeading = document.getElementById('taken-heading');
-    const entries = document.getElementById('taken-entries');
-    if (rail && takenHeading && entries) {
-      const list = today.taken_today || { entries: [] };
-      takenHeading.textContent = list.heading || '';
-      entries.innerHTML = '';
-      (list.entries || []).forEach(item => {
-        const row = el('div', 'taken-row');
-        row.appendChild(el('span', 'taken-what', item.words));
-        if (item.taken_utc) {
-          row.appendChild(el('time', 'taken-when', localTime(item.taken_utc)));
-        }
-        entries.appendChild(row);
-      });
-    }
-    panel.hidden = false;
-  }
-
-  // WHAT IS WORTH TAKING (R4, 2026-09-07). Placed, never composed: every
-  // sentence is written by `language.recommendation_line` and scanned for
-  // advice words on the gate. An empty list gets the server's own sentence
-  // rather than a hidden section, because "nothing cleared the fee today" is
-  // the answer on most days and a blank space is not.
-  function renderRecommendations(data) {
-    const panel = document.getElementById('week-recommendations');
-    const host = document.getElementById('recommendations-list');
-    const empty = document.getElementById('recommendations-empty');
-    const count = document.getElementById('recommendations-n');
-    if (!panel || !host) return;
-    host.innerHTML = '';
-    const block = (data && data.recommendations) || null;
-    if (!block) { panel.hidden = true; return; }
-    requireN(block, 'the recommendation list');
-    (block.lines || []).forEach(line => {
-      requireN(line, 'a recommendation');
-      // ONE SENTENCE PER RECOMMENDATION. The size already carries its own
-      // reason and its own count -- "0 of 100 settled in this market" -- so a
-      // second line saying the same thing printed the same words twelve times
-      // down the page. Visible the first time this was rendered.
-      const row = el('div', 'gate-row');
-      row.appendChild(el('div', 'gate-name', line.words));
-      host.appendChild(row);
-    });
-    if (empty) {
-      empty.textContent = (block.lines || []).length ? '' : (block.empty_words || '');
-      empty.hidden = !empty.textContent;
-    }
-    if (count) count.textContent = String(block.n);
-    panel.hidden = false;
-  }
-
   // AT THE VENUE'S LINE (E4, 2026-09-06). A second record with its own gate:
   // what the model's frozen distribution says about the venue's own number,
   // beside what the venue's price says about it. PLACED, NOT COMPOSED -- every
@@ -1655,7 +2343,11 @@ const Gridiron = (function () {
     // One line on whether these numbers are raw or earned, in the same voice
     // as every other gate line on the page.
     const cn = document.getElementById('tier-corrections-note');
-    if (cn) cn.textContent = t.corrections_note || '';
+    if (cn) {
+      cn.textContent = t.corrections_note || '';
+      // ITS VERSION, ONLY IN THE TOOLTIP (question 19; the merge, 2026-09-29).
+      cn.title = t.corrections_tip || '';
+    }
 
     table(document.getElementById('tier-table'),
       [{ label: 'Tier' }, { label: 'Band' }, { label: 'Settled' },
@@ -1890,13 +2582,6 @@ const Gridiron = (function () {
     return chip;
   }
 
-  function outcomeStamp(card) {
-    if (card.voided) return el('span', 'outcome-stamp void', 'withdrawn');
-    if (card.outcome === 1) return el('span', 'outcome-stamp win', 'correct');
-    if (card.outcome === 0) return el('span', 'outcome-stamp loss', 'wrong');
-    return null;
-  }
-
   // THE NUMBER TO SHOW, and there is exactly one answer per card.
   //
   // `shown_prob` is the corrected claim where a category has an active
@@ -2025,7 +2710,7 @@ const Gridiron = (function () {
     if (data.week === null || data.week === undefined || !(data.cards || []).length) return;
     const seq = weekSeq;
     const tick = async () => {
-      if (state.view !== 'week') { stopLivePolling(); return; }
+      if (state.view !== 'games') { stopLivePolling(); return; }
       let live;
       try {
         live = await fetchJSON(withSport('/api/live?season=' + data.season +
@@ -2086,15 +2771,16 @@ const Gridiron = (function () {
   // already showing; the next render moves them.
   function applyLive(live) {
     (live.picks || []).forEach(pick => {
-      const node = document.querySelector(
-        '.face[data-id="' + pick.prediction_id + '"]');
+      const tile = document.querySelector(
+        '.q[data-id="' + pick.prediction_id + '"]');
+      const node = tile ? tile.closest('.game') : null;
       if (!node) return;
       const put = (cls, words) => {
         const el = node.querySelector(cls);
         if (el && words) el.textContent = words;
       };
-      put('.face-score', pick.score_line);
-      put('.face-period', pick.clock_line);
+      put('.game-score', pick.score_line);
+      put('.game-clock', pick.clock_line);
     });
   }
 
@@ -2104,37 +2790,28 @@ const Gridiron = (function () {
   // `renderYesterday`, `placeGreeting`, `probBlock` and `clamp01`.
   // The page threw `placeGreeting is not defined` on boot, which is
   // how it was found. Only `applyCardState` was meant to go.
+  // THE UPDATING STATE (ruled 2026-09-25): the container dims at once and
+  // takes no taps, the slate says it is busy, and a small label says so in
+  // the server's word -- the last labels the page received, since the new
+  // ones travel with the answer that has not arrived yet.
+  function updating(node, labelId, on) {
+    if (!node) return;
+    node.classList.toggle('updating', on);
+    if (on) node.setAttribute('aria-busy', 'true'); else node.removeAttribute('aria-busy');
+    const label = document.getElementById(labelId);
+    if (label) {
+      const words = ((state.slate || {}).board || {}).labels || {};
+      label.textContent = words.updating || '';
+      label.hidden = !on || !node.children.length || !words.updating;
+    }
+  }
+
   function arrive(node) {
     if (!node) return;
     node.classList.add('arriving');
     void node.offsetHeight;
     requestAnimationFrame(() => node.classList.remove('arriving'));
   }
-  function renderMarketTabs(data, active) {
-    const host = document.getElementById('week-market-tabs');
-    if (!host) return;
-    host.innerHTML = '';
-    const tabs = data.market_tabs || [];
-    if (!tabs.length) { host.hidden = true; return; }
-    host.hidden = false;
-    tabs.forEach(t => {
-      const b = el('button', 'market-tab', t.label);
-      b.type = 'button';
-      b.dataset.market = t.market || '';
-      const on = (t.market || '') === (active || '');
-      b.setAttribute('aria-pressed', String(on));
-      if (on) b.classList.add('on');
-      // ZERO-COUNT TABS STAY VISIBLE. "No strikeout questions tonight" is a
-      // fact about the slate, and a tab that disappears hides it.
-      b.appendChild(el('span', 'market-tab-n', String(t.n)));
-      b.addEventListener('click', () => {
-        state.market = t.market || '';
-        renderWeek().catch(showError);
-      });
-      host.appendChild(b);
-    });
-  }
-
   // --- the yesterday strip --------------------------------------------------
 
   function renderYesterday(data) {
@@ -2150,7 +2827,7 @@ const Gridiron = (function () {
     // GREEN ON THE RIGHT COUNT ONLY (the colour law). The wrong count is
     // drawn in the ordinary ink: red is reserved for a pick that lost, and a
     // tally is not a pick.
-    left.appendChild(el('b', 'win', String(y.right)));
+    left.appendChild(el('b', '', String(y.right)));
     left.appendChild(el('span', '', ' right, '));
     left.appendChild(el('b', '', String(y.wrong)));
     left.appendChild(el('span', '', ' wrong'));
@@ -2173,323 +2850,12 @@ const Gridiron = (function () {
     if (greeting.parentElement !== home) home.appendChild(greeting);
   }
 
-  // --- the pick card ------------------------------------------------------
-  // Rebuilt to docs/mockup/gridiron_dark.html. The order is the order the
-  // questions arrive in: who is playing, what the model thinks, how sure, where
-  // the market sits, how that tier has really done, and only then why.
-
-  // `pickSentence` WAS DELETED HERE, and finding out why took longer than the
-  // deletion. Ruling 1 says the frontend composes no prose, and this function
-  // was the clearest violation left in the file: a static lead, an uppercased
-  // data field, and -- when the server sent no phrase -- an else branch that
-  // took the raw subject and appended a verb chosen by market type. That verb
-  // table is the K1 defect, which put "97% chance WAS covers" on 34 cards.
-  //
-  // It had ZERO CALLERS. K2 replaced the pick card with `pickRow`, and this
-  // went with the old card except that nobody removed it, so the K1 shape sat
-  // in the file looking like live code for two sessions. Rewriting it to
-  // comply would have shipped a server function nobody called to feed a
-  // renderer nobody called; the orphan scan would then have failed the build,
-  // correctly, on the mess I had just made.
-  //
-  // This is exactly the sweep ruling 2 defers -- dead-but-named code in
-  // app.js, which no scan looks at today. Recorded in FOLLOWUPS.
-
-  // A SECOND `tierChip` STOOD HERE AND HAD BEEN DEAD FOR SOME TIME. It took a
-  // CARD where the surviving one takes a TIER, and it sat earlier in the file
-  // than its namesake -- so JavaScript's last-declaration-wins rule meant it
-  // never ran, and its `null` return for a card with no tier never reached
-  // anything. Deleting the desk moved the survivor ABOVE it, at which point
-  // the dead one started winning and every tier chip on the slate became
-  // `appendChild(null)`.
-  //
-  // Found by patching `Node.prototype.appendChild` to throw on a non-node and
-  // reading the stack, which named the line in four seconds after twenty
-  // minutes of reading. Worth remembering: a shadowed duplicate is invisible
-  // until something reorders the file.
-
-  function probBlock(c) {
-    const box = el('div', 'prob');
-    box.appendChild(document.createTextNode(pct(shownProb(c), 0).replace('%', '')));
-    box.appendChild(el('span', 'pct', '%'));
-    // THE VERB TABLE THAT USED TO LIVE HERE IS GONE, and its absence is the
-    // fix. It hardcoded a verb per market type, so every prop read "goes over"
-    // whichever side the model took; M4 fixed that branch and left the spread
-    // branch reading "covers" on all 34 cards where the model had said the
-    // opposite. Fixing the second branch here would have left the third.
-    //
-    // The server sends the side in words now, from the same humaniser that
-    // writes the pick sentence, so the two cannot disagree.
-    box.appendChild(el('small', '', 'chance ' + (c.chance_clause || '')));
-    return box;
-  }
-
-  // THE RAIL. 0-100 with a tick at 50; the model solid, the market hollow, the
-  // disagreement shaded between them. Where no market line exists there is one
-  // dot and a sentence — never a second dot at a number nobody published.
-  function clamp01(v) {
-    return Math.max(0, Math.min(1, typeof v === 'number' ? v : 0.5));
-  }
-
-  function bucketLine(c) {
-    const b = c.bucket || {};
-    const bits = [b.label + ' bucket', requireN(b, 'bucket line') + ' resolved'];
-    if (b.provisional) bits.push('too few to grade');
-    return el('span', 'bucket', bits.join(' · '));
-  }
-
-  function factorChips(c) {
-    const rows = (c.top_factors || [])
-      .filter(f => f.contribution !== null && f.contribution !== undefined)
-      .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
-      .slice(0, 4);
-    if (!rows.length) return null;
-    const host = el('div', 'factors');
-    rows.forEach(f => {
-      const chip = el('span', 'chip');
-      chip.appendChild(document.createTextNode(readableFactor(f.factor) + ' '));
-      chip.appendChild(el('b', '', signed(f.contribution, 1)));
-      host.appendChild(chip);
-    });
-    return host;
-  }
-
-  function readableFactor(name) {
-    return String(name).replace(/^(nfl|mlb|nba)_/, '').replace(/_/g, ' ');
-  }
-
-  // --- THIS WEEK ----------------------------------------------------------
-  // ============================================================
-  // THE COMPACT ROW
-  // ============================================================
-  //
-  // Five things visible: rank, matchup, what it picks, the chance, the tier.
-  // Everything else is behind a tap. The full card put a rail, a gap figure, a
-  // bucket line, a decomposition and three rationale essays on screen for every
-  // forecast, so a slate of eight filled several screens and the reader scrolled
-  // past the picks to find the picks.
-  //
-  // Nothing here builds a sentence. `row_title`, `phrase`, `chance_clause` and
-  // `bucket_line` all arrive written from `language.py`, which is what stopped
-  // the renderer inventing a verb and getting the side backwards twice.
-
-
-  function buildCardBody(body, c) {
-    body.innerHTML = '';
-
-    // MODEL, MARKET AND GAP AS TEXT (GRIDIRON_16 R3). A dot-and-span graphic
-    // stood here until 2026-09-02: it showed these three numbers and made the
-    // reader estimate two of them off a 100-pixel track, which is a worse way
-    // to read a percentage than reading the percentage. The sentence is
-    // written by `language.rail_numbers_line`; this places it.
-    body.appendChild(el('p', 'card-numbers', c.rail_line || ''));
-
-    // THE RATE, DIRECTLY UNDER THE NUMBER IT EXPLAINS (C3, 2026-09-03).
-    // "The model expects about 3.9 receptions; clearing 3.5 is about 56%."
-    // A count market answers in two steps and the reader is entitled to both:
-    // the percentage alone says nothing about whether the model thinks he
-    // catches four passes or nine. Present only on a count market -- a
-    // continuous market has no rate and the server sends an empty string.
-    // Composed by `language.rate_line`; this places it.
-    if (c.rate_line) {
-      body.appendChild(el('p', 'card-rate', c.rate_line));
-    }
-
-    // AT THE VENUE'S LINE (E4, 2026-09-06), one tap into the card. The model's
-    // own distribution read at the number the venue published after this
-    // forecast was written and frozen, beside what the venue's price implies
-    // for the same question. The server writes the sentence; this places it,
-    // and the gate line beneath it says how many have settled.
-    // WHY THIS ONE IS IN FRONT (THE_SHORTLIST S2, 2026-09-07). The three
-    // inputs in the reader's own terms, including whether the disagreement
-    // with the line counted toward the order or is only recorded. Composed by
-    // `language.shortlist_rank_line`; this places it.
-    if (c.rank_line) {
-      body.appendChild(el('p', 'card-rank', c.rank_line));
-    }
-
-    // THE SECOND FORECASTER (THE_PRICED P1, 2026-09-07), one tap into the
-    // card and clearly labelled as the one that read the price. The headline
-    // percentage above stays the blind forecast's.
-    if (c.priced_line) {
-      body.appendChild(el('p', 'card-priced', c.priced_line));
-    }
-
-    if (c.at_the_line && c.at_the_line.words) {
-      body.appendChild(el('p', 'card-at-the-line', c.at_the_line.words));
-      body.appendChild(el('p', 'footnote', c.at_the_line.gate_line));
-    }
-
-    const line = el('div', 'card-stats');
-    line.appendChild(el('span', 'card-bucket', c.bucket_line || ''));
-    body.appendChild(line);
-
-    // THE RAW CLAIM, ONE TAP AWAY. Present only where a correction actually
-    // moved the number, so a card in a raw category is byte-identical to what
-    // it was before corrections existed. The sentence is written by the
-    // server; this places it.
-    if (c.earned_line) {
-      body.appendChild(el('p', 'card-earned', c.earned_line));
-    }
-
-    // THE PLAIN WHY (K3). The contribution bars and the decomposition sentence
-    // that used to sit here have moved to the Factors page, which is where
-    // somebody auditing the model goes looking for them. What a reader wants on
-    // a pick is which few things drove it and how hard, in words.
-    //
-    // Every sentence is written by `language.why_block` from the SAME
-    // contributions the decomposition uses, so the prose and the arithmetic
-    // cannot disagree about direction or order.
-    const why = el('div', 'card-why');
-    const w = c.why;
-    if (w && (w.sentences || []).length) {
-      why.appendChild(el('b', '', w.heading + ':'));
-      w.sentences.forEach(sentence => {
-        why.appendChild(document.createTextNode(' ' + sentence));
-      });
-      // THE MARKET IS SENTENCE THREE now, inside `sentences`. Appending it
-      // here as well printed it twice -- the server took over a job the
-      // renderer was still doing, which is the two-implementations smell in
-      // its smallest form.
-      if (w.absent) {
-        why.appendChild(el('span', 'why-absent', ' ' + w.absent));
-      }
-    } else if (c.reasoning) {
-      // A pick whose factors carry no declared phrase still says something
-      // rather than showing an empty box.
-      why.textContent = c.reasoning;
-    }
-    body.appendChild(why);
-
-    const more = el('a', 'card-more',
-      ((w && w.more_label) || 'How the model works') + ' \u2192');
-    more.href = (w && w.more_href) || '#/factors';
-    body.appendChild(more);
-
-    // PLACED, NOT COMPOSED (S3). This used to build the sentence here --
-    // `tier.tier + ' tier ' + message.replace(/^tier /, '')` -- which is the
-    // renderer writing prose, and it broke the moment the server's message
-    // started naming its own band: it would have read "STRONG tier STRONG -
-    // 8 settled". The server writes the whole sentence now.
-    if (c.tier && c.tier.message) {
-      body.appendChild(el('div', 'card-tierline', c.tier.message));
-    }
-    // THE MODEL'S WORST BAND, beside this pick's band, so a reader sees what
-    // the record says at its weakest and not only what this chip says.
-    if (c.worst_band) {
-      body.appendChild(el('div', 'footnote', c.worst_band));
-    }
-  }
-
-  // THE TIER FILTER (R2). A fourth segmented control beside sort and market.
-  //
-  // REMEMBERED IN MEMORY ONLY, per sport. The choice should survive switching
-  // to Record and back, and should NOT survive closing the app: a filter a
-  // reader forgot they set is a slate that looks emptier than it is, and the
-  // one thing worse than a hidden filter is a hidden filter that outlives the
-  // session. No storage API is touched.
-  //
-  // THIS DECLARATION WAS DELETED BY ACCIDENT on 2026-09-02 and restored the
-  // same day. `resolvedRow` was removed by cutting from its `function` line
-  // to the next one, and this const sat between the two -- so the cut took it
-  // as well. Nothing failed at import: `tierChoice` is only read once the
-  // slate renders, and the ReferenceError surfaced as a blank Picks page with
-  // fourteen browser tests timing out on a selector.
-  const tierChoice = new Map();
-
-  //: WHICH TIER PICKS OPENS ON (ruling R2, 2026-09-02). The server declares
-  //: it; this places it. A reader's first question is what the model is most
-  //: sure of, and a slate sorted by disagreement puts fifty LEAN picks in
-  //: front of that.
-  //:
-  //: REMEMBERED FOR THE SESSION, per sport, in memory only -- the same rule
-  //: the choice already followed. A filter a reader forgot they set is a
-  //: slate that looks emptier than it is, and one that outlives the session
-  //: is worse.
-  let defaultTier = 'STRONG';
-
-  function currentTier() {
-    const chosen = tierChoice.get(state.sport);
-    return chosen === undefined ? defaultTier : chosen;
-  }
-
-  //: THE DEFAULT IS A CONVENIENCE, NOT A CLAIM. On a slate with no STRONG
-  //: picks on it, opening on STRONG would show an empty list under a filter
-  //: the reader never chose -- which reads as "nothing was forecast tonight"
-  //: and is the opposite of true. So the default applies only where the band
-  //: actually exists; a reader's OWN choice is honoured either way, empty
-  //: result included, because that is a question they asked.
-  function effectiveTier(cards) {
-    const chosen = tierChoice.get(state.sport);
-    if (chosen !== undefined) return chosen;
-    return cards.some(c => tierOf(c) === defaultTier) ? defaultTier : '';
-  }
-
-  function setTier(tier) {
-    tierChoice.set(state.sport, tier || '');
-    renderWeek();
-  }
-
-  function tierOf(card) {
-    // NO CASE CHANGE. The server sends the tier already in the form it is
-    // displayed in, and re-casing a stored value in the browser is the exact
-    // move the prose tripwire watches for -- it is how
-    // `String(s.subject).toUpperCase()` came to shout a raw identifier at a
-    // reader. Compared as sent, shown as sent.
-    return (card.tier || {}).tier || '';
-  }
-  // WHICH FORECASTER AND WHICH PASS, PER SPORT. The View menu that set these
-  // was removed on 2026-09-08 with the rest of the old Picks page; the choice
-  // itself is still read -- the day strip says whose questions it counts --
-  // and the map went with the menu by accident. Restored, because a page that
-  // cannot say which forecaster it is showing is the defect that strip was
-  // built to fix.
+  // WHICH FORECASTER AND WHICH PASS, PER SPORT. Absent on the first load, so
+  // the server applies the operator's own default (ruling 2026-09-08).
   const viewChoice = new Map();
 
   function currentView() {
     return viewChoice.get(state.sport) || { forecaster: null, early: false };
-  }
-
-  function setView(patch) {
-    viewChoice.set(state.sport, Object.assign({}, currentView(), patch));
-  }
-
-  // WHICH TOGGLE WAS CHOSEN, so that after the slate re-renders -- and the
-  // toggles with it -- focus lands on the new copy of the pressed button
-  // rather than on the body (UI audit finding 4).
-  let viewFocus = null;
-  function paintClock(glance, slateTitle) {
-    const host = document.getElementById('week-clock');
-    const line = document.getElementById('week-clock-line');
-    // THE SLATE'S NAME IS THE HEADING NOW, so the clock no longer repeats it.
-    // Adding the H1 put "Week 18, 2025" twice within three lines -- the same
-    // words in two places, which is the duplication this project keeps having
-    // to remove (the market column, the pick sentence, the tier label).
-    if (!host || !line) return;
-    if (!glance) { host.hidden = true; return; }
-
-    if (glance.state_line) {
-      // In progress or complete: a fact that does not change until a game
-      // ends, so it is written once by the server and placed here.
-      line.textContent = glance.state_line;
-      host.hidden = false;
-      return;
-    }
-    if (!glance.first_kickoff_utc) { host.hidden = true; return; }
-
-    // THE WORD IS THE SERVER'S AND THE TIME IS THE READER'S CLOCK: two
-    // elements, so nothing is glued together and nothing counts down. The
-    // date travels with the time because a slate's first game can be days
-    // away, and a bare "1:05 PM" would read as today.
-    line.textContent = '';
-    line.appendChild(el('span', 'clock-word', glance.state_word || ''));
-    // A SEPARATOR, not a sentence. Two elements with a margin between them
-    // read correctly on screen and run together in the page's text content,
-    // which is what every rendered-text scan reads.
-    line.appendChild(document.createTextNode(' '));
-    line.appendChild(el('time', 'clock-time',
-                        localDayTime(glance.first_kickoff_utc)));
-    host.hidden = false;
   }
 
   // A start instant as the reader's own calendar and clock show it. The one
@@ -2504,211 +2870,19 @@ const Gridiron = (function () {
     } catch (e) { return ''; }
   }
 
-  async function renderWeek() {
-    const host = document.getElementById('week-cards');
-    // THE SKELETON WENT WITH THE GRID (2026-09-08). It drew hairline card
-    // shapes in the grid's geometry so the layout would not jump when the
-    // data landed; with no grid there are no shapes to hold a place for, and
-    // the sentences this container now carries arrive with the payload.
+  // THE STATUS COLUMN'S TWO LINES (mockup, 2026-09-25): the clock large,
+  // the weekday small beneath it. `localDayTime` stays for the yesterday
+  // strip and the picker.
+  function localClock(iso) {
+    try {
+      return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch (e) { return ''; }
+  }
 
-    const picker = document.getElementById('week-picker');
-    const chosen = picker.value ? JSON.parse(picker.value) : {};
-    let qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
-    // WHOSE PICKS. Absent on the first load, so the server applies its own
-    // default rather than the browser having a second opinion about which
-    // forecaster leads.
-    const view = currentView();
-    if (view.forecaster) {
-      qs += (qs ? '&' : '?') + 'forecaster=' + encodeURIComponent(view.forecaster);
-    }
-    //: WHICH FORECAST (A3). Off by default: Picks shows the standing row, the
-    //: one the record is graded on. Session-only, like the tier and the
-    //: forecaster -- a reader who left the early view open yesterday should
-    //: not find yesterday's forecasts waiting for them today.
-    if (view.early) qs += (qs ? '&' : '?') + 'early_view=true';
-    const seq = ++weekSeq;
-    const data = await fetchJSON(withSport('/api/week' + qs));
-    if (seq !== weekSeq) return;
-    clearError();
-    if (data.default_tier) defaultTier = data.default_tier;
-    // THE TAB IS THE FILTER (UI audit finding 24, 2026-09-05). The cards were
-    // filtered on the hidden Market select inside "This week", and the tab
-    // click set only the pressed state -- so every tab showed the whole slate,
-    // the zero-count tab included, and the counts line never changed. One
-    // source of truth: `state.market`, set by the tab or by the select, and
-    // the select mirrors it. A market the new sport does not ask falls back
-    // to All rather than filtering the slate to nothing.
-    const select = document.getElementById('week-market');
-    if (state.market && !(data.market_tabs || []).some(t => (t.market || '') === state.market)) {
-      state.market = '';
-    }
-    const market = state.market || '';
-    if (select && select.value !== market) select.value = market;
-
-    // PLACED, NOT COMPOSED. The server names the slate in words; this used to
-    // glue the season to the raw key and print "Season 2026, week 20260905".
-    document.getElementById('week-title').textContent = data.slate_title || '';
-    // The standing note, in the mockup's words. Agreeing with the market is
-    // not a finding, which is why disagreement is the default order.
-    document.getElementById('week-sort').textContent =
-      state.weekSort === 'confidence'
-        ? 'Sorted by how sure the model is. ' + data.n + ' forecasts.'
-        : 'Agreeing confidently with the market is not a finding.';
-    paintClock(data.glance, data.slate_title);
-
-    startLivePolling(data);
-
-    host.innerHTML = '';
-    let cards = market ? data.cards.filter(c => c.market === market) : data.cards;
-    // Indexed BEFORE the filters narrow the view, so the rail can still
-    // describe a pick the reader selected under a different filter.
-
-    // THE TIER FILTER NARROWS AFTER THE MARKET ONE, and the count line below
-    // reports both the part and the whole -- four picks looks like a thin
-    // slate rather than a narrow filter unless the denominator is beside it.
-    const wholeSlate = cards.length;
-    if (viewFocus) {
-      viewFocus = null;
-    }
-    const tier = effectiveTier(cards);
-
-    if (tier) cards = cards.filter(c => tierOf(c) === tier);
-    if (state.weekSort === 'confidence') {
-      cards = cards.slice().sort((a, b) => (shownProb(b) || 0) - (shownProb(a) || 0));
-    }
-
-    placeGreeting();
-    // THE TABS AND THE STRIP, both fed from the same payload the cards are.
-    // The tabs come from the sport's DECLARED market list (R4) and the strip
-    // reports one sport's yesterday, never a total across sports.
-    // THE HEADING. Written by the server; placed here.
-    const headline = document.getElementById('week-headline');
-    if (headline) headline.textContent = data.headline || '';
-    renderMarketTabs(data, state.market);
-    renderYesterday(data);
-
-    // A resolved forecast is not a pick. Split rather than filtered, so the
-    // slate can show both without a reader mistaking last night for tonight.
-    // A RESOLVED FORECAST IS NOT A PICK -- except while its own slate is
-    // still being played. Splitting them unconditionally meant a game ending
-    // made its tile VANISH from the grid and reappear in a list below, which
-    // is precisely the shuffle L2 forbids: the reader is part way down a
-    // slate and the thing they were looking at moves. While the slate is in
-    // progress every pick keeps its place and the finished ones take a
-    // verdict chip; once the slate is complete the old split returns, so
-    // last night and tonight are still never mixed.
-    const slateRunning = (data.glance || {}).state === 'live';
-    const settled = c => c.resolved_utc !== null || c.voided;
-    const open = slateRunning ? cards : cards.filter(c => !settled(c));
-    // COUNTED, NOT LISTED (GRIDIRON_16 R4). Settled picks live in Results.
-    // They are still counted here for one reason: a slate that has finished
-    // must say so, rather than rendering nothing at all.
-    const settledCount = slateRunning ? 0 : cards.filter(settled).length;
-
-    // THE CONTROLS LINE. A thin slate has to explain itself: eight picks on a
-    // fourteen-game card looks like a failure until the floor is named.
-    const counts = document.getElementById('week-counts');
-    if (counts) {
-      // ONE WRITER FOR THIS ELEMENT. A second one was added here for the tier
-      // filter and the two fought over the same node: the page threw
-      // "Identifier 'counts' has already been declared" and never became
-      // ready -- the loudest possible version of a duplicate, and by far the
-      // kindest, because a silent second writer would have won a race
-      // intermittently.
-      //
-      // LOOKED UP, NOT COMPOSED: the server wrote a line for every
-      // combination of the two filters, so the count and its denominator are
-      // its words rather than a sentence glued together here.
-      const lines = (data.glance || {}).count_lines || {};
-      const bits = [data.slate_word === 'day' ? 'tonight' : 'this week',
-                    lines[(market || '') + '|' + tier] ||
-                    lines['|' + tier] || ''];
-      // `tier` is what was APPLIED, not what was defaulted to, so a slate with
-      // no STRONG on it reads "45 picks" rather than naming a band nobody saw.
-      if (data.below_floor) {
-        bits.push(data.below_floor + ' below the ' +
-                  Math.round((data.floor || 0.7) * 100) + '% floor');
-      }
-      // WHERE THE REST WENT (UI audit finding 9). Once a slate is not live
-      // its settled picks leave the grid; the line says how many did.
-      if (!slateRunning) {
-        const settledLine = ((data.glance || {}).settled_lines || {})[(market || '') + '|' + tier];
-        if (settledLine) bits.push(settledLine);
-      }
-      counts.textContent = bits.filter(Boolean).join(' · ');
-    }
-
-    // THE CAVEAT UNDER THE FILTER. Opening on STRONG puts the most confident
-    // claims first AND the tier with the fewest settled rows behind them;
-    // saying so is the point. The server writes the sentence and stops
-    // sending it once the band earns its verdict.
-    const caveat = document.getElementById('tier-caveat');
-    if (caveat) {
-      const show = data.tier_caveat && tier === (data.default_tier || '');
-      caveat.textContent = show ? data.tier_caveat : '';
-      caveat.hidden = !show;
-    }
-
-    // TODAY IS DRAWN BEFORE THE EMPTY BRANCH, not inside the branch that has
-    // cards. It used to be called only where cards existed, so switching to a
-    // sport with no forecasts left the LAST sport's cards standing in the
-    // groups -- fifteen of them, found by
-    // `test_a_sport_with_no_forecasts_shows_nothing_of_the_last_one` on
-    // 2026-09-08. That test exists because the same shape of defect left a
-    // hero behind in September.
-    renderToday(data);
-
-    if (!open.length) {
-      // A FINISHED SLATE SAYS SO AND POINTS AT RESULTS.
-      // NOTHING OF THE LAST SLATE SURVIVES AN EMPTY ONE (UI audit finding 2,
-      // 2026-09-05). This branch returned before it touched the grid
-      // heading or the show-all button, so the NBA tab -- no forecasts until
-      // October -- opened on a "More picks" heading over nothing and a
-      // "show all 7" button that showed nothing. The hero it also left
-      // standing was removed with the rest of that page on 2026-09-08.
-      //
-      // This tested `!open.length && !done.length` while a resolved section
-      // still rendered underneath. With that section gone (R4) the same
-      // condition left a slate whose games had all finished showing NOTHING
-      // AT ALL: no picks, and no sentence either, because `done` was not
-      // empty. A blank page is the one answer a reader cannot act on.
-      if (settledCount) {
-        const finished = el('div', 'empty');
-        finished.appendChild(document.createTextNode(
-          'Every pick on this slate has been settled. '));
-        const link = el('a', '', 'See them in Results →');
-        link.href = '#/results';
-        finished.appendChild(link);
-        host.appendChild(finished);
-        return;
-      }
-      // WHOSE picks are missing, when that is why the list is empty. "No
-      // forecasts recorded for this slate yet" is false on a slate that has
-      // 23 of them from the other forecaster, and a reader who just changed
-      // the selector would read it as a broken page.
-      host.appendChild(el('div', 'empty', data.forecaster_message || data.message ||
-        (market ? 'No ' + marketLabel(market) + ' forecasts on this slate.'
-                : 'No forecasts recorded for this slate yet.')));
-      (data.quiet_markets || []).forEach(q =>
-        host.appendChild(el('div', 'quiet-market', q)));
-      return;
-    }
-
-    // THE CARDS ARE THE PAGE, AND THERE IS ONLY ONE SET OF THEM
-    // (2026-09-08). The grid that stood here rendered every shortlisted
-    // question a second time, in the design CARD_FACE replaced. What it
-    // showed that the groups above do not is the NON-shortlisted
-    // questions, and those are reachable on Results and in the record;
-    // the ruling is that one screen shows one set of cards.
-    // A market the slate asked nothing in says so, rather than leaving a gap
-    // that reads as a failure to find questions.
-    (data.quiet_markets || []).forEach(q =>
-      host.appendChild(el('div', 'quiet-market', q)));
-
-    // NO RESOLVED SECTION ON PICKS (GRIDIRON_16 R4). Settled rows live in
-    // Results and only there. Picks answers "what does the model say about
-    // tonight"; a list of what already happened underneath it answers a
-    // different question and made the page longer every day of the season.
+  function localDay(iso) {
+    try {
+      return new Date(iso).toLocaleDateString([], { weekday: 'long' });
+    } catch (e) { return ''; }
   }
 
   async function loadWeekPicker() {
@@ -3057,6 +3231,9 @@ const Gridiron = (function () {
   function resultChip(item) {
     const word = item.result || 'PENDING';
     const chip = el('span', 'result-chip ' + word.toLowerCase(), word);
+    // A SETTLED VERDICT IS A SOLID FILL (colour law, amended 2026-09-24):
+    // the two verdict words take the two fill signals and nothing else does.
+    chip.classList.add(({ win: 'sig-won', loss: 'sig-lost' })[word.toLowerCase()] || 'sig-none');
     if (!item.withdrawn_words) return chip;
     chip.title = item.withdrawn_words;
     const cell = el('span', 'result-withdrawn');
@@ -3413,10 +3590,14 @@ const Gridiron = (function () {
       // reader to go looking for the thing that would enable it.
       //
       // A `literal` value is an identifier a reader must be able to match
-      // against a stored one -- the factor set version is stamped on every
-      // prediction -- so it is marked as sanctioned code rather than
-      // paraphrased into something that would not match.
-      val.appendChild(el('code', f.literal ? 'code-literal' : '', f.value));
+      // against a stored one, marked as sanctioned code rather than
+      // paraphrased into something that would not match. THE FACTOR SET'S
+      // NAME WAS ONE until the board merge (2026-09-29): an internal version
+      // name appears only in a tooltip (operator question 19), so its row
+      // says the set by its day and carries the name as the value's title.
+      const value = el('code', f.literal ? 'code-literal' : '', f.value);
+      if (f.tip) value.title = f.tip;
+      val.appendChild(value);
       val.appendChild(el('div', 'set-how', 'declared ' + (f.declared || '')));
       row.appendChild(val);
       host.appendChild(row);
@@ -3466,6 +3647,8 @@ const Gridiron = (function () {
   // THE SETTLED CARDS (S3). The same card the pick was born on, in its
   // third state. Fetched from the slate payload rather than the history
   // table, because a card is a card and a table row is a row.
+  // THE SETTLED CARDS ON RESULTS (S3): the same question tile the board
+  // uses, in its third state -- filled with its verdict, the score beside it.
   async function renderSettledCards() {
     const host = document.getElementById('results-settled');
     const headingRow = document.getElementById('settled-heading-row');
@@ -3474,9 +3657,6 @@ const Gridiron = (function () {
     host.innerHTML = '';
     let data = null;
     try {
-      // The current slate, which is what the week picker is pointing at.
-      // No forecaster or tier arguments: the settled cards are the day's, and
-      // the day strip on Picks is where a filter is named.
       const picked = document.getElementById('week-picker');
       const chosen = picked && picked.value ? JSON.parse(picked.value) : null;
       const qs = chosen
@@ -3488,11 +3668,24 @@ const Gridiron = (function () {
       return;
     }
     const today = (data && data.today) || {};
-    const cards = today.settled || [];
-    const labels = today.labels || {};
-    cards.forEach(entry => host.appendChild(todayCard(entry, labels)));
-    host.hidden = !cards.length;
-    if (headingRow) headingRow.hidden = !cards.length;
+    const board = (data && data.board) || {};
+    const labels = board.labels || {};
+    // THE HEADING'S OWN QUESTIONS (the prover of the board merge,
+    // 2026-09-29): the Today block's settled cards, which its heading counts,
+    // drawn as the board's tiles. Every question on every finished row, both
+    // forecasters', stood under a heading that counted fewer.
+    const ids = new Set(board.settled_ids || []);
+    const settled = (board.games || [])
+      .filter(g => g.state === 'final')
+      .flatMap(g => (g.questions || []).filter(q => ids.has(q.prediction_id))
+        .map(q => ({ game: g, q: q })));
+    settled.forEach(item => {
+      const tile = questionTile(item.q, labels, () => renderResults());
+      tile.insertBefore(el('div', 'q-game', item.game.score_words || ''), tile.firstChild);
+      host.appendChild(tile);
+    });
+    host.hidden = !settled.length;
+    if (headingRow) headingRow.hidden = !settled.length;
     if (heading) heading.textContent = today.settled_heading || '';
   }
 
@@ -3569,21 +3762,6 @@ const Gridiron = (function () {
   // The active sport's own settled record. Never a total: LAW 6 means the
   // header shows whichever sport is being looked at, and the never-summed note
   // moves to a quiet footer line.
-  function wireSortToggle() {
-    const seg = document.getElementById('week-sort-seg');
-    if (!seg) return;
-    seg.querySelectorAll('button').forEach(button => {
-      button.addEventListener('click', () => {
-        state.weekSort = button.dataset.sort;
-        seg.querySelectorAll('button').forEach(b => {
-          b.setAttribute('aria-pressed', b === button ? 'true' : 'false');
-        });
-        renderWeek().catch(showError);
-      });
-    });
-  }
-
-
   async function loadSports() {
     const data = await fetchJSON('/api/sports');
     state.sports = data.sports;
@@ -3683,7 +3861,7 @@ const Gridiron = (function () {
   // means. The one thing this panel must never do is look calm when the
   // appliance has stopped.
   function settledRow(s) {
-    const row = el('div', 'settled-row' + (s.correct ? ' win' : ' loss'));
+    const row = el('div', 'settled-row' + (s.correct ? ' sig-won' : ' sig-lost'));
     row.appendChild(el('span', 'settled-verdict', s.correct ? 'WIN' : 'LOSS'));
     row.appendChild(el('span', 'settled-match', s.matchup));
     row.appendChild(el('span', 'settled-pick', s.phrase || ''));
@@ -3711,7 +3889,7 @@ const Gridiron = (function () {
       msg.appendChild(document.createTextNode('Since you last looked: '));
       msg.appendChild(el('b', '', data.n + ' resolved'));
       msg.appendChild(document.createTextNode(' — '));
-      msg.appendChild(el('span', 'up', data.correct + ' correct'));
+      msg.appendChild(el('span', '', data.correct + ' correct'));
       msg.appendChild(document.createTextNode(', ' + data.wrong + ' wrong'));
       if (data.brier !== null && data.brier !== undefined) {
         msg.appendChild(el('span', 'mono-inline', ' · Brier ' + num(data.brier, 4)));
@@ -3807,13 +3985,12 @@ const Gridiron = (function () {
   //: Where a renamed route now lives. A redirect rather than a second entry
   //: in ROUTES, so there is exactly one name for the page and the address bar
   //: says which one it is.
-  //: FOUR PAGES (GRIDIRON_13 P5), and every old address still lands.
   //:
-  //: `factors` and `versions` were two more places to go and one more
-  //: decision about where a thing lived; both were about the same subject --
-  //: what the model is and what changed -- and both are sections of Record
-  //: now. `schedule` became Settings > Health. `digest` went: the greeting
-  //: keeps its data, and a particular day is a filter on Results.
+  //: TWO PAGE TABS AND A MENU (GRIDIRON_BOARD, operator ruling 2026-09-24).
+  //: The old Picks route was `week`; Live and Today were tabs and groups on
+  //: it. Every address a reader may have kept for any of them lands on Games.
+  //: `factors` and `versions` are sections of Record; `schedule` became
+  //: Settings > Health; `digest` went, and its data is the greeting.
   //:
   //: REDIRECTS, NOT 404s. A link somebody bookmarked or wrote down still
   //: works, and the address bar says where the page went.
@@ -3822,15 +3999,17 @@ const Gridiron = (function () {
     factors: 'record',
     versions: 'record',
     schedule: 'settings',
-    digest: 'week',
+    digest: 'games',
+    week: 'games',
+    picks: 'games',
+    live: 'games',
+    today: 'games',
   };
 
   const ROUTES = {
+    games: renderGames,
+    props: renderProps,
     record: renderRecord,
-    week: renderWeek,
-    // RESULTS, renamed from History on 2026-09-02 (GRIDIRON_16 R4). Settled
-    // rows live here and only here; Picks no longer carries a resolved
-    // section. `#/history` still resolves -- see the redirect in `route`.
     results: renderResults,
     settings: renderSettings
   };
@@ -3846,13 +4025,17 @@ const Gridiron = (function () {
   // unhide the strip unconditionally afterwards -- so it reappeared on
   // whatever page the reader had since navigated to.
   function applyRouteVisibility() {
-    const home = (state.view || 'record') === 'record';
+    const home = (state.view || 'games') === 'games';
     const greeting = document.getElementById('glance');
     if (greeting) {
       const msg = document.getElementById('greet-msg');
       if (msg) msg.hidden = !home;
       greeting.hidden = !home || greeting.dataset.empty === 'true';
     }
+    // THE WHOLE GREETING GOES QUIET OFF-HOME, its countdown line included:
+    // that line sat under the Props tabs until the first capture showed it.
+    const countdown = document.getElementById('greet-countdown');
+    if (countdown) countdown.hidden = !home || !countdown.textContent;
     const settled = document.getElementById('greet-settled');
     if (settled) settled.hidden = !home;
   }
@@ -3861,14 +4044,14 @@ const Gridiron = (function () {
     clearError();
     // PICKS IS THE LANDING PAGE (GRIDIRON_13 P6). The first question on
     // opening a forecaster is what it says about tonight, not how it did.
-    let name = (location.hash.replace('#/', '') || 'week');
+    let name = (location.hash.replace('#/', '') || 'games');
     // OLD ROUTES REDIRECT, they do not 404 (R4). A link somebody bookmarked
     // or a note they wrote down still lands where the page went.
     if (RENAMED[name]) {
       location.replace('#/' + RENAMED[name]);
       return;
     }
-    const view = ROUTES[name] ? name : 'week';
+    const view = ROUTES[name] ? name : 'games';
     document.querySelectorAll('.view').forEach(v => { v.hidden = true; });
     // The strip leads the FRONT page. On the digest route the same content is
     // the page itself, and showing both put two identical panels on screen.
@@ -3878,11 +4061,14 @@ const Gridiron = (function () {
     // notice bar stays on every page, because a warning nobody sees is not a
     // warning.
     state.view = view;
+    closeMenu();
     applyRouteVisibility();
     applyDeskClass();
     document.getElementById('view-' + view).hidden = false;
     document.querySelectorAll('nav a').forEach(a => {
-      a.classList.toggle('active', a.dataset.route === view);
+      const on = a.dataset.route === view;
+      a.classList.toggle('active', on);
+      if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
     try { await ROUTES[view](); } catch (err) { showError(err); }
   }
@@ -3909,7 +4095,6 @@ const Gridiron = (function () {
 
   async function boot() {
     renderConnection();
-    skeleton(document.getElementById('week-cards'), 'skeleton-card', 3);
     const seq = sportSeq;
     try {
       await loadSports();
@@ -3928,7 +4113,8 @@ const Gridiron = (function () {
       showError(err);
     }
 
-    wireSortToggle();
+    wireMenu();
+    wireTips();
     // THE DIGEST'S DAY PICKER went with the page (P5). Choosing a particular
     // day is now a click on the Results calendar, which shows the same day's
     // record with its balance rather than making a reader type a date.
@@ -3940,10 +4126,10 @@ const Gridiron = (function () {
     document.getElementById('tier-market').addEventListener('change', () =>
       refreshTierTable().catch(showError));
     document.getElementById('week-picker').addEventListener('change', () =>
-      renderWeek().catch(showError));
+      route().catch(showError));
     document.getElementById('week-market').addEventListener('change', event => {
       state.market = event.target.value || '';
-      renderWeek().catch(showError);
+      renderGames().catch(showError);
     });
     ['history-q', 'history-market', 'history-predictor', 'history-outcome'].forEach(id =>
       document.getElementById(id).addEventListener('input', () => {
@@ -3964,7 +4150,7 @@ const Gridiron = (function () {
   }
 
   return { boot, route, state, requireN, MissingSampleSize,
-           drawCalibration, drawOverTime, dumbbell, contributions, bucketChip,
+           drawCalibration, drawOverTime, drawSeries, dumbbell, contributions, bucketChip,
            fetchJSON };
 })();
 

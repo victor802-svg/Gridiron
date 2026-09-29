@@ -732,10 +732,14 @@ def test_the_page_names_a_labelled_fit_in_plain_words_with_its_counts(tmp_path):
     conn, short, *_ = _labelled_world(tmp_path)
     correction.write_labels(conn, [short], now="2026-06-02T00:00:00Z")
     category = _category(views.corrections_report(conn, "nfl"), "spread", "statistical")
+    # NAMED BY ITS DAY, ITS VERSION IN THE ROW'S TOOLTIP (operator question
+    # 19; the board merge, 2026-09-29): this read "Version 1, fitted on
+    # Monday 1 June, was fitted below its gate ...".
     assert category["below_its_gate"] == [
-        "Version 1, fitted on Monday 1 June, was fitted below its gate: its 56 "
-        "settled forecasts are 28 questions, under the 50 it needs, so it can "
-        "never be in force."]
+        "The correction fitted on Monday 1 June was fitted below its gate: its "
+        "56 settled forecasts are 28 questions, under the 50 it needs, so it "
+        "can never be in force."]
+    assert category["version_tip"] == language.version_tip("correction", 1)
     assert audit.plain_words_violations(category["below_its_gate"][0]) == []
     gates = views.scorecard(conn, "nfl")["gates"]
     named = [g for g in gates if g["name"] == "A correction for point spread, statistical"]

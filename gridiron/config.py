@@ -1618,6 +1618,34 @@ COMBO_RECORD_WITHDRAWN = "2026-09-09"
 #: a day and a night with no read means the pass is not running.
 #: THE REASONING PASS: 36 hours, because the LLM writes once per daily slate
 #: and this is the line the dead key would have turned red on 3 September.
+# ---------------------------------------------------------------------------
+# THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
+# ---------------------------------------------------------------------------
+
+#: WHAT A TWO-PICK STANDARD PICK'EM ENTRY PAYS, and the date it was declared.
+#:
+#: DECLARED, NOT READ. No pick'em venue is read: `docs/PRIZEPICKS_FEASIBILITY.md`
+#: recorded on 2026-09-02 that the projections feed sits behind bot detection
+#: and nothing was built, and the record holds no line with a multiplier of
+#: its own. The Props page ranks by CUSHION -- the model's chance minus the
+#: break-even for a leg of a two-pick entry -- and until a venue is read the
+#: only multiplier it can use is this one, stated on every tile as declared.
+#: The per-leg break-even follows: both legs must hit, so a leg breaks even at
+#: the square root of one over the multiple, 57.7% at 3x.
+#:
+#: A multiplier the record READS replaces this per line on the day a venue is
+#: read; this constant is then the standard entry and nothing else.
+PICKEM_TWO_PICK_MULTIPLE = 3.0
+PICKEM_TWO_PICK_DECLARED = "2026-09-24T00:00:00Z"
+PICKEM_LEGS = 2
+
+#: JERSEY NUMBERS ARE A DECLARED, DATED DATA ADDITION (operator ruling a,
+#: 2026-09-25): nflverse's roster file, the provider already used under the
+#: same licence, read at the existing NFL refresh into `player_numbers`. Not
+#: a factor. A player with no row shows an empty slot on the jersey, never a
+#: guess.
+ROSTER_NUMBERS_DECLARED = "2026-09-25T00:00:00Z"
+
 FRESHNESS_HOURS = {"daily_run": 36.0, "venue_read": 30.0, "reasoning": 36.0}
 FRESHNESS_DECLARED = "2026-09-08T00:00:00Z"
 

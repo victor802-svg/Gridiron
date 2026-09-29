@@ -9000,3 +9000,355 @@ start; UFC cards; props at two rungs; an early pass written by another path.
   asked), so one rewritten to a rule of its own would be seen only by a
   recount, and only where one pass carried a price or a second look the
   other did not.
+
+## The board merged into the repair -- built 2026-09-29 *(the board-merge checklist, step 2 with its third-set additions; operator questions 18 and 19, question 20's side question; docs/briefs/2026-09-27-board-merge.md and 2026-09-27-rulings-third-set.md)*
+
+`origin/board` at a63463a (16 commits from fe4dc58) merged into `repair` at
+8ce66d2 with `git merge --no-commit --no-ff`, left uncommitted for the
+prover. `board` itself was read and merged, never checked out, committed to
+or moved. Every conflict went to repair's behaviour; the board restyles, and
+removes and recounts nothing repair released. CLAUDE.md's THE BOARD, MERGED
+row says what the merge's own guards are; this is the record of how it went.
+
+### THE CONFLICTS -- 7 files, 16 hunks, each and how it resolved
+
+1. **`gridiron/audit.py`, one hunk at the end of the file.** Repair appended
+   question 12/22's recount of the closing line, question 13's and 24's
+   rules' checks and question 15's replacing-write scan; the board appended
+   its three guards (a signal carries its badge, no typed club hex, the board
+   speaks plain) with their import-time check. Both kept, repair's first; the
+   board's are separate functions and names. In the board's block afterwards:
+   a tooltip may carry a version name (question 19), and the advice scan
+   reads a sentence with the declared factor phrases taken out (below).
+2. **`gridiron/calibration.py`, one hunk in `clv_report`.** The board added
+   a `series` (every measured close, in the order it closed) and `gate_words`
+   ("12 of 50") to the one loop over a sport's markets -- both forecasters
+   pooled, the closes from before the repair included, drawn once a market
+   had fifty. Repair had split that loop per forecaster into
+   `_closing_line_of` (question 22), read through `recommend.counted_once`
+   (question 12) and counted from the window (ruling 8). RESOLVED to repair's
+   loop; the series, the chart's words and its title are made inside
+   `_closing_line_of` from `got` -- this forecaster's counted closes since the
+   window opened -- and there are none until the first clean read (a point is
+   a figure): the area says "N of 50 · nothing is drawn before Thursday 15
+   October" (`language.chart_gate_words`, `closing_chart_title`).
+3. **`gridiron/language.py`, one hunk at the end.** Repair's prompt-record
+   words; the board's board words. Both kept.
+4. **`gridiron/web/app.js`, hunk 1.** Repair's `promptDisclosure` (the prompt
+   a reasoning forecast was sent, 2026-09-25) and the head of `todayCard`, the
+   old card; the board's `signalClass` and `tip`, having deleted `todayCard`
+   with the old route. `promptDisclosure` kept, the board's taken; `todayCard`
+   goes with the old Picks route (step 4 removes it in this release).
+5. **`app.js`, hunk 2.** Repair's end of `todayCard`: the Why panel holding
+   the prompt disclosure and the "How the model works" link; the board's
+   `probBar`. The board's taken: the old Why panel leaves with the board
+   (question 20's side question). The prompt disclosure is RE-HOMED on the
+   tile of every reasoning-pass question on a game's open row (the board's
+   blocks carry `prompt` now, the other forecaster's rows' included, through
+   `views._prompts_for`); the link to the workings is on the open row already
+   (the board's `.game-more-link`), made a 44px target.
+6. **`app.js`, hunk 3.** Repair's `phraseWithPrompt` (Results' rows) against
+   the board's blank. Repair's kept.
+7. **`gridiron/web/style.css`, hunk 1.** Repair's `#today` arriving by its
+   fade alone (question 20); the board's `#games-rows, #props-tiles`
+   transitioning opacity AND transform. RESOLVED: the board's panels, opacity
+   alone. The Today panel is gone.
+8. **`style.css`, hunk 2.** Repair's `#today.arriving` with no transform; the
+   board's `#games-rows.arriving, #props-tiles.arriving` one per cent below,
+   and its updating state. RESOLVED: the board's panels with no transform, the
+   updating state (dimmed, untouchable, busy, instant) kept.
+9. **`style.css`, hunk 3, at the end.** Repair's prompt-disclosure rules; the
+   board's whole block. Both kept, then the board's motion put under question
+   20: each row and tile's stagger and an opened row's expansion arrive by
+   opacity (the board's were `translateY(1%)` with a transform transition);
+   no row lifts on hover (the tap that opens a row leaves it hovered on a
+   phone, off whole pixels at rest); the bar's one first-load fill fades
+   instead of scaling (`audit.bar_fill_faults` re-ruled to a fade, the
+   MOTION row). `.prompt-commit` went (question 19).
+10. **`tests/test_guards.py`, one hunk.** Both sides appended planting names
+    to the harness's list; both kept, and the merge's three added.
+11-16. **`tests/test_smoke.py`, six hunks** -- `test_a_card_expands_and_shows_
+    its_detail`, `test_nothing_moves_under_reduced_motion`, `test_the_phone_
+    layout_does_not_overflow`, `test_a_card_still_expands_on_a_phone`,
+    `test_the_dumbbell_and_contribution_bars_fit` and `_open_first_card`.
+    Repair wrapped each hash change in question 28's `wait_for_the_redraw_it_
+    starts` on `#/week` and `#today .face`; the board re-pointed each at
+    `#/games` and `#games-rows .game`, with no wait. RESOLVED: the board's
+    selectors inside repair's wait, the helper re-pointed at the Games rows.
+
+And one not a conflict: `.gitattributes`. The board vendored two licences,
+hashed in `web/fonts/SOURCE.md`, from a machine with no CRLF conversion; on
+this one the merge checked both out with carriage returns and
+`audit.check_vendored_fonts` failed, as it did for OFL.txt on 2026-09-04.
+The two files are declared `-text` beside it.
+
+### WHAT MOVED WITHOUT A CONFLICT -- the board's code, through repair's doors
+
+Every file git merged cleanly was read for code going round a door. What was
+found, and where it goes now:
+
+- **The badge** (`board._settled_n`) counted `calibration.resolved` itself --
+  the same rows as the edge gate, so no number moves -- and now asks the
+  gate's own door, `shortlist.settled_for_gate`, by name: one forecaster's
+  standing rows on question 17's key, question 27's order.
+  (`test_every_badge_counts_the_edge_gates_own_questions` is a pin: it
+  passes on the board's code too.)
+- **The other forecaster's rows on an open row** (`_other_forecaster_rows`)
+  kept a rule of their own -- the latest written before the start, keyed
+  without the prop type through `IFNULL(line_asked, -1e9)` -- which is the
+  write-time rule question 27 replaced. Now `calibration.standing_row_clause`
+  (on `bet.same`), and the number shown is the one stored for the reader
+  (`calibrated_prob`). Proved: an early pass written after a final one stood
+  on the board's code.
+- **A priced question's chance** read the card's stored number; the old
+  card's model chip read the Today entry's `fair_value`, corrected through
+  `correction.shown_proposition` by what question 32's door puts in force.
+  Now the entry's, turned to the side the question names. The same number
+  today: nothing is in force.
+- **A live row's blocks** carried `prob` and `prob_words`, never drawn. Gone
+  (LIVE TAB, below).
+- **"Taken, passed over, every forecast"** (`calibration.taken_comparison`,
+  on a page for the first time): a tap was matched to the standing row's
+  number, so a question tapped on one pass and standing on another was
+  "passed over"; now by `bet.of`, a tap on a withdrawn forecast taking
+  nothing (the released `test_voids.py` test holds that). The board asked
+  every prop market twice -- as a market type, finding nothing, and as a
+  prop -- so the panel said "Nothing settled yet in passing yards, ..." above
+  a passing-yards block with its count (found by looking at the render);
+  each market is asked once now. Each block says whose ("passing yards,
+  statistical"), the empty list says it once, and the panel's total over
+  every market is gone (nothing read it; questions 14 and 22 took the like
+  off every panel).
+- **`loader.load_rosters`** was an `ON CONFLICT ... DO UPDATE` upsert on the
+  new `player_numbers`; `audit.UPSERTS_REGISTERED` is frozen at 35 and only
+  shrinks. Written plainly (an update, then a plain insert where no row
+  changed, the one transaction); `test_load_rosters_writes_the_rows_the_
+  upsert_wrote` runs the board's statement beside it.
+- **`player_numbers`** reaches the record through `db.init` alone. Rehearsed
+  2026-09-29 on ONE verified copy of the live record
+  (`rebuild.verified_backup`, 1,086,259,200 bytes, integrity ok, 63 tables,
+  1,296,172 rows, nothing mismatched): db.init added exactly the table and
+  its automatic index, each byte for byte a fresh build's; no table's count
+  or column checksums moved (62 tables, 1,296,159 rows); the sequence
+  unchanged; 0 differences from a fresh build of the tree (9 cosmetic, as
+  before); a second db.init changed nothing. The copy and the fresh build
+  were deleted by the script (`scratchpad/board/step2/rehearsal.txt`).
+  And `board._player_number` reads a record the release has not reached --
+  no table -- as no number: three released tests that read the record
+  read-only failed on it in the first run of the merged suite.
+- **The board's own scans on the live record** (read-only, through
+  `db.read_the_live_record`, 2026-09-29): the plain-words scan of the NFL
+  slate failed twelve times -- the tooltip carrying a pick's reasons is the
+  old Why panel's sentences, built from declared factor phrases, and the
+  advice scan read "plays" in "how many plays both offences run" as a verb.
+  The board spared that phrase as `factor_words` and not inside a sentence;
+  the scan now takes every declared phrase (the registry's `why`) out of the
+  text before the advice scan reads the rest. After it: every sport's slate
+  passes the badge, plain-words, live-row and live-card scans.
+- **The tooltip was unreadable**: its words were `--ink`, the page's own
+  colour, on `--card` (contrast 1.07 to 1; found by looking at the render).
+  The text colour now, held by the tooltip test at 4.5 to 1.
+- **Found by the full run, in its order** (a pick taken on the shared world
+  by an earlier test): on a phone a row with YOURS and the checkmark wraps
+  its count onto three lines of 11px type at its normal line height, and the
+  row's head stood at 265.9375px -- `.game-count` has 16px lines now, and the
+  per-view test takes a pick first whatever ran before it; and a taken
+  checkmark wears the board's one-shot `pop`, which the browser's motion test
+  refused as "not the live pulse" -- it holds `audit.ONE_SHOT_KEYFRAMES` now
+  as the stylesheet scan does (once, within 200ms). The pop replays on every
+  redraw of a taken mark, not only when it is taken (the board's; left).
+- **The Record page's words** paint no version name (question 19): the
+  blend's and the ordering's are their headings' titles; the correction
+  lines say "the correction fitted on Monday 28 September ..." where they
+  said "version 8 ..." (Q32's, Q16's and Q31's sentences: the same facts,
+  the number in the row's title); Settings says the factor set by its day.
+- **The clock.** The board brought 18 fixed waits into the browser tests
+  under function names the register did not hold: 8 in its own
+  `test_board.py`, and 10 in tests it re-homed and renamed (`test_motion.py`
+  1, `test_rapid.py` 5, `test_tabs.py` 4). Each is rebuilt on an in-page
+  signal -- the redraw helper with a panel and a count, the rail's verdict
+  naming its multiple, the scroll itself, the Record view on screen, the
+  slate's request going out -- and the nine entries they replaced are gone
+  from `audit.ELAPSED_TIME_HELD` (28 functions and 44 waits to 19 and 27).
+
+### EACH NEW TEST, PROVED ON THE CODE WITHOUT ITS FIX *(scratchpad `board/step2/prove.py`: a copy of the tree, one fix undone, the tests run there)*
+
+- question 18's two tests: both fail with the redraw drawing the row closed
+  ("a redraw the reader did not start landed and the row they had opened is
+  closed"; "the sort closed the open row");
+- the per-frame check with the board's rising arrivals put back: 110
+  readings off whole pixels in 426 frames (a row's head at 241.99994px);
+- the per-view tap tests with the board's line heights and link: three views
+  fail (the link to the workings 17px, a row's head at 245.05px); and with
+  the count's line height alone put back, three fail (a row's head at
+  265.9375px beside YOURS);
+- the live row's chance put back: both live tests fail;
+- the board's doors put back (its standing rule, the stored chance, the
+  taken split by row number): three tests fail, the badge pin passes;
+- the chart drawn before the window: its test fails;
+- the tooltip's old colour: its test fails at 1.07 to 1.
+
+### READINGS TAKEN, BY THE CONSERVATIVE DEFAULT *(none breaks LAW 1 or LAW 3 or makes a gate count false: FOLLOWUPS by the queue rule)*
+
+- **What a tap target is**: a control -- every link, button, select, field,
+  summary, the label a checkbox is tapped through, and a row's head, which
+  opens the row. A number carrying an explanation in a tooltip on hover or
+  focus (a chance, a badge, a price) is text that explains itself; it opens
+  and changes nothing, and is not counted. Counted, every such number would
+  have to stand 44px tall.
+- **"Removed"** is read as the board built it: `#/week`, `#/picks`,
+  `#/live` and `#/today` render nothing of their own and redirect to Games
+  (R4's precedent: an old address lands, never a 404; `audit.nav_faults`
+  requires the redirects).
+- **The hover lift** is dropped, not only the arrival's rise: on a phone the
+  tap that opens a row leaves it hovered, so the row sat a fraction of a
+  pixel off whole at rest.
+- **Question 19's version names**: the app's own -- every factor set, the
+  blend's, the ordering's, a correction's number, and the reconstruction's
+  commit. The model's name in the prompt disclosure stays verbatim (a
+  provider's name, not a version this app coins), as does the prompt's text.
+
+### NOT SEEN, AND OPEN
+
+- **The version scans' limits**: a version name the renderer paints from a
+  field not named `..._version`, and one inside a `.code-literal` block
+  (the rendered pages' scan leaves those out, for the prompt's verbatim
+  text), are seen by nothing but the browser tests' visible-text scan.
+- **A redraw fades the whole slate in again**, the board's design: the took
+  button's redraw blinks every row, and a render nobody asked for (none is
+  scheduled today) would too; an open row stays open through it. Question
+  5's render-finished signal is the place to look.
+- **My day's counts** -- CORRECTED BY THE PROVER (2026-09-29, below): two
+  taps on two passes of one question are not two chips; the board shows one
+  standing block per question per forecaster, so a question tapped on its
+  morning pass and standing on its final one shows NOT taken on the rows and
+  on My day, and its checkmark can be tapped again (`views.taken_ids` matches
+  a tap to the standing row's number, as the released Today card did; the
+  Record page's taken comparison matches by `bet.of`). The page disagrees
+  with its own Record page about such a question. Not a gate count;
+  question 30's class.
+- **`calibration.ranker_scorecard`'s `n`** sums every market's count (older
+  than the board; not painted).
+- **The board's own open ends** stand in `docs/FOLLOWUPS.md` (2026-09-25):
+  the csrf test's order dependence, and no test of the My day chip's painted
+  fill.
+
+### THE PROVER OF THE MERGE (2026-09-29) -- what got through, and what did not
+
+Each repair behaviour walked through the merged board on real payloads (the
+browser suite's world; test_recommend's priced world; every row opened at
+390px), before the merge was committed.
+
+GOT THROUGH, FIXED, each with a test, a guard in gate step 2 and a planting:
+
+- **A priced row's numbers were not the card's (GRIDIRON_REPAIR item 3; the
+  wrong-side rule of 2026-09-07).** The merge's "a priced chance is the Today
+  entry's corrected fair value" read `fair_value` and
+  `question_takes_the_proposition` from `views._today_card`'s cards, which
+  carried neither, so the branch never ran on a real payload (its test built
+  the entry by hand, and `prove.py`'s `doors` variant undid a line that was
+  dead anyway). And the board drew the entry's price and payout as they came:
+  the claim's fixed proposition's. On test_recommend's world (the away side
+  at 57%, a 48.5c home price, a correction in force making the home side
+  53.58%) the merged row read "57%", "48c", "2.06x" and wore the clears
+  outline, where the old card's chip read 46c against 52c. The card carries
+  both numbers now (popped on a live card with the chip), and
+  `board._question_block` turns the chance, the price and the payout to the
+  side the question names; a priced chance's tooltip is its own sentence,
+  not the slate's numbers line, which states the stored figure.
+  `audit.board_price_side_faults` holds every upcoming priced block to its
+  card: the chip's number, the card's price and payout turned by the card's
+  own answer, and a priced card that carries no `fair_value` refused by
+  name. `test_board.py::test_a_priced_row_is_its_cards_corrected_number_on_the_side_it_names`,
+  `plant.py::plant_a_board_row_priced_off_the_other_side` (three forms: the
+  merge's card, the price left on the proposition, the chance left at the
+  stored number). On the record today no correction is in force, so the
+  chance moves nowhere; the price and payout move on every priced question
+  that names the away side or the under.
+- **My day counted a taken prop twice.** A prop question is on its game's
+  row and is a tile, and `_my_day` read both: one tap, two chips, "2 taken".
+  One chip now, marked a prop and wearing its player's club; a chip scrolls
+  to its tile on Props and to its game's row where no tile is drawn.
+- **A game row's count pooled the forecasters.** "4 questions on this game"
+  over three of the model's and one of the reasoning pass's: one figure over
+  both under the word "question". Each forecaster's standing questions on
+  the game are counted apart on question 17's key (`bet.count`) and said so
+  -- "3 questions from the model · 1 from the reasoning pass" -- and the
+  payload carries `questions_n` per forecaster.
+- **Results' settled heading counted one set and headed another.** The
+  Today block's "Settled -- 15 questions" (the page forecaster's shortlisted
+  or taken questions on finished games) stood over every question on every
+  finished row, both forecasters'. The tiles are the heading's own questions
+  again (`board.settled_ids`), restyled, never recounted. Equal on the
+  browser world; apart wherever a reasoning pass answered a finished game.
+  These three: `audit.board_count_faults`, `test_board.py::test_my_day_counts_a_taken_prop_once`,
+  `::test_a_rows_questions_are_counted_for_each_forecaster_apart`,
+  `::test_results_settled_tiles_are_the_questions_its_heading_counts`,
+  `plant.py::plant_a_board_count_counting_a_bet_twice` (five forms).
+
+WHAT THEY MOVE ON THE RECORD, read through `db.read_the_live_record` on
+each sport's current slate (2026-09-29, the fixed code; nothing written, no
+copy): NFL week 3 -- Results' heading counts 46 settled questions and the
+finished rows hold 100, both forecasters', which the merge drew beneath it;
+16 rows carry both forecasters' questions (each said apart now). MLB -- 42
+against 72; 14 rows. College football -- 6 priced upcoming questions, 2 of
+them naming the other side of the claim's proposition, whose price and
+payout the merge drew for the side they do not name; 2 rows. UFC -- 15
+priced, none turned; 5 rows. NBA -- no slate. No taken prop on any slate
+(My day's double count waits for one). Both new scans pass on every slate,
+and gate step 2, dry-run on one verified copy of the record (deleted after),
+passes every row, both schema comparisons with no difference in behaviour.
+
+HELD, AND CHECKED: the regrade and withdrawn lines beside the closing line
+(each forecaster's); no closing-line point, mean or finding before 15
+October (the chart's area says the date); the taken comparison per
+forecaster on the key, gated at the hundred; the badge on the edge gate's
+door; one recommendation per game and market (a write rule; question 11:
+the page need not follow it); corrections through question 32's door and
+the "fitted below its gate" words with both counts; the prompt disclosure on
+a reasoning tile (its summary measured at 44px at 390 with that row open);
+no replacing write (`load_rosters`); arrivals by opacity; an open row open
+across every redraw the tests start; no internal version name in visible
+text; the clock register 28/44 to 19/27, none grown.
+
+A READING, CORRECTED IN ITS LABEL: "what a tap target is" (above) was
+taken BY PRECEDENT, not by the conservative default -- the released
+tap-target tests and question 20's per-frame check define a tap target as
+what `SLATE_TAP_TARGETS` measures, controls, and "links included" widened
+that to every link, which the merge did. The stricter reading would count
+every focusable number that shows a tooltip: measured at 390, a tap on a
+badge focuses it and shows its tooltip, and on a row's head the same tap
+opens the row, whose layout shift hides the tooltip again -- so on a phone
+the head's tooltips are unreadable (below). Were they counted, the badge
+stands 21px, the chance 18px and the price tick 2px wide.
+
+NOT FIXED, FOUND ON THE WAY (not a gate count, no law):
+
+- **A live score is patched where nobody reads it.** `applyLive` writes the
+  live tick's score into `.game-score`, which the stylesheet puts off-screen
+  (`left: -9999px`), and never into the team lines' `.tscore`, so a live
+  row's visible score stands still until the next render of the slate.
+- **A tooltip on a row's head cannot be read on a phone** (above).
+- **"Model's pick"** labels the row's pick whichever forecaster the page is
+  showing (`?forecaster=llm` included).
+- **A prompt disclosure opened inside an open row closes on a redraw**: the
+  row stays open (question 18), its `<details>` is a new node.
+- **The pick's `payout_words` on the released Today card** were the
+  proposition's while its price words were turned (the card is gone; the
+  board turns both).
+- **"At rest" can read true before a redraw has begun.** `test_smoke.py`'s
+  `_AT_REST` (no finite animation running) held on the render before a hash
+  change's own redraw, whose rows then arrived at opacity 0 while the probe
+  read them: measured at 390, the condition passed with every row and the
+  panel at opacity 0 and five transitions running a moment later. The tap
+  sizes it guards are layout, and every arrival is opacity alone, so the
+  heights read are the heights at rest; the per-frame test covers the frames.
+  The merge's own screenshots (`scratchpad/board/step2/shots`) were taken
+  mid-arrival -- rows dimmer down the page -- and `tools/board_shots.py`
+  waits a fixed 600ms: step 3's captures should wait for the arrival's end
+  (question 5's signal is the place).
+- **Two vocabularies on one row**: a tile's head says "STATISTICAL" or "LLM"
+  (`config.FORECASTER_LABELS`, the Record page picker's labels) while the
+  row's count and the Record page's sentences say "the model" and "the
+  reasoning pass" (`language.FORECASTER_WORDS`, whose own note calls "LLM"
+  an acronym a reader did not ask about).

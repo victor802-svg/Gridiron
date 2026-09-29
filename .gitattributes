@@ -20,3 +20,13 @@
 # edits; it is a document received under terms, recorded by hash, and shipped
 # unchanged. Line-ending normalisation is a modification, small and silent.
 gridiron/web/fonts/OFL.txt -text
+
+# AND THE BOARD'S TWO LICENCES (the board merge, 2026-09-29). The board
+# vendored Barlow Condensed and Inter with a licence each, hashed in
+# SOURCE.md like OFL.txt, and was built where no CRLF conversion happens. On
+# this machine the merge checked both out with carriage returns -- 93 and 92
+# bytes more than SOURCE.md records -- and `audit.check_vendored_fonts`
+# failed exactly as it did for OFL.txt on 2026-09-04. The same line, drawn
+# around the two files the board added.
+gridiron/web/fonts/OFL-barlow-condensed.txt -text
+gridiron/web/fonts/OFL-inter.txt -text

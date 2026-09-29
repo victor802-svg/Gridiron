@@ -31,6 +31,12 @@
    stylesheet without it, and a planting deletes it to prove the guard fires. */
 [hidden] { display: none !important; }
 
+/* THE SCROLLBAR'S GUTTER IS ALWAYS RESERVED, so a row opening on a short
+   page does not summon a scrollbar that shoves the whole page sideways:
+   `test_a_card_expands_in_place_and_shows_the_why` measured 8.5px of that on
+   2026-09-25, and "in place" means in place. */
+html { scrollbar-gutter: stable; }
+
 @font-face {
   font-family: 'Manrope';
   font-style: normal;
@@ -47,6 +53,79 @@
   font-weight: 200 800;
   font-display: swap;
   src: url('fonts/manrope-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* INTER, VENDORED (visual pass, 2026-09-25): the mockup's sans, for
+   everything the condensed face does not set. A variable font, 400 to 700,
+   the same two subsets as Manrope, which stays vendored as the fallback the
+   Record and Results pages were measured in. Provenance and licence in
+   `web/fonts/SOURCE.md` and `web/fonts/OFL-inter.txt`. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('fonts/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('fonts/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+
+/* BARLOW CONDENSED, VENDORED (GRIDIRON_BOARD, 2026-09-24). The condensed
+   bold face for team names, scores, picks and big numbers; everything else
+   stays in Manrope. Static instances, two weights, the same two subsets as
+   Manrope and for the same reason. Provenance and licence in
+   `web/fonts/SOURCE.md` and `web/fonts/OFL-barlow-condensed.txt`. */
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/barlow-condensed-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/barlow-condensed-700-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('fonts/barlow-condensed-800-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('fonts/barlow-condensed-800-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
     U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -75,18 +154,22 @@
      Approved mockup: docs/mockup/gridiron_dark.html. Dark is the only theme
      now, not a preference-dependent variant: two themes is two sets of
      contrast ratios to keep true, and only one of them was ever designed. */
-  --ink: #0F1114;            /* page. Cards UI palette, 2026-09-04 */
-  --card: #171A1F;           /* elevated card */
-  --card-2: #1D2127;         /* raised: hover, inner wells */
-  --line: #262B33;           /* hairline */
-  --line-lit: #39404B;       /* hairline, hover and the 50 tick */
-  --resolved: #111419;       /* a settled card sits lower than a live one */
+  /* THE MOCKUP'S GROUND (docs/design/gridiron-redesign.html, ported
+     2026-09-25): its --bg, --panel, --tile and --tile2, under the names
+     this file already used. */
+  --ink: #07090c;            /* page */
+  --card: #0f1318;           /* elevated panel */
+  --card-2: #131820;         /* a tile on a panel */
+  --card-3: #1a2029;         /* a raised well on a tile: badge, pay pill, input */
+  --line: #222a35;           /* hairline */
+  --line-lit: #2e3846;       /* hairline, hover and the 50 tick */
+  --resolved: #0c1015;       /* the expansion's ground */
 
   /* ---- ink --------------------------------------------------------------
      Three weights of text and no more: chrome for headings and primary
      values, muted for secondary, faint for captions and sample sizes. */
-  --chrome: #F4F5F7;
-  --muted: #9AA3AF;
+  --chrome: #f2f5f8;
+  --muted: #8a94a3;
   /* Lightened from the mockup's #5A6B5C, which measured 3.23:1 on a card
      and failed WCAG AA. This is the token every SAMPLE SIZE is drawn in,
      and an N nobody can read is an N that is not there — LAW 4 means it
@@ -127,14 +210,24 @@
      colour doing its one job. HE CHOSE THE SECOND, on 2026-09-09, and that
      is why the line is here rather than in a close-out. */
   --white: #ffffff;
-  --yours: #8a6417;
+  /* YOURS IS AMBER INK on the panel now (mockup --you), not a filled badge;
+     the checkmark's ground is the same amber with the page ink on it. */
+  --yours: #ffb020;
   --state-clears: #2f7d5b;
-  --state-live: #2f5f9e;
+  --state-live: #3d8bff;
   --sport-nfl: #2c3d5b;
   --sport-mlb: #1d4e4a;
   --sport-nba: #5a2f57;
   --sport-cfb: #4a3520;
   --sport-ufc: #5c2a2a;
+  /* A HUE PER STAT FAMILY (PrizePicks polish, 2026-09-25): chips and the
+     tag on a tile. Blue, violet, teal, amber, slate -- never the two value
+     colours. Each is measured with white on it by tools/contrast.py. */
+  --family-passing: #2f5f9e;
+  --family-receiving: #5a2f9e;
+  --family-rushing: #1d6b6b;
+  --family-scoring: #7a4b12;
+  --family-other: #4b5563;
 
 
   /* ---- the two colours, and their ONE job each (GRIDIRON_16 R2) ---------
@@ -157,10 +250,10 @@
 
      Confidence still escalates by WEIGHT, not hue -- see .tier -- for the
      same reason. */
-  --win: #22D37A;
-  --loss: #FF6B6B;
-  --win-wash: rgba(34, 211, 122, 0.10);
-  --loss-wash: rgba(255, 107, 107, 0.10);
+  --win: #22e07a;
+  --loss: #ff4d4f;
+  /* THE WASHES ARE GONE (amended 2026-09-24): a tint is neither an outline
+     nor a solid fill, and the amended law admits nothing in between. */
   --model-halo: rgba(242, 245, 240, 0.12);
   --span-far: #3A5238;       /* the lit end of the disagreement span */
 
@@ -186,8 +279,6 @@
   /* THE ACCENT IS NO LONGER A COLOUR. It aliased --green, which is how the
      positive value came to paint every link and focus ring on the page. */
   --accent: var(--chrome);
-  --pos: var(--win);
-  --neg: var(--loss);
   --band: rgba(242, 245, 240, 0.07);
   --rule-1: var(--card-2);
   /* A WARNING IS NOT A LOSS (R2). These were red; a stale feed and a pick
@@ -238,9 +329,15 @@
      line up so a changed digit does not move the ones beside it -- was being
      kept by the monospace face. It is now kept by `font-variant-numeric` on
      the body, which is what that property is for. */
-  --body: 'Manrope', 'Inter', 'Segoe UI Variable Text', 'Segoe UI',
+  --body: 'Inter', 'Manrope', 'Segoe UI Variable Text', 'Segoe UI',
           system-ui, sans-serif;
-  --cond: var(--body);
+  /* THE CONDENSED FACE IS BACK (GRIDIRON_BOARD, operator ruling 2026-09-24),
+     for team names, scores, picks and big numbers and nothing else. The
+     cards-UI rule of 2026-09-04 -- no condensed caps anywhere -- is replaced
+     by that ruling; `test_the_condensed_face_is_where_the_brief_put_it`
+     holds the new line. Fallbacks share Barlow's proportions. */
+  --cond: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow',
+          'Helvetica Neue Condensed', 'Segoe UI', sans-serif;
   --mono: var(--body);
 
   --t-display: 28px;
@@ -335,7 +432,7 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
 #sport-note { flex-basis: 100%; color: var(--faint); font-size: 11px; }
 #sport-tabs { display: flex; gap: 2px; }
 #sport-tabs button {
-  font-family: var(--cond); font-size: 16px; font-weight: 600;
+  font-family: var(--body); font-size: 16px; font-weight: 600;
   letter-spacing: 0.08em;
   background: none; border: 0; border-bottom: 2px solid transparent;
   padding: 8px 14px 10px; color: var(--muted); cursor: pointer;
@@ -461,7 +558,7 @@ table.grid td.wide {
 }
 
 .matchup {
-  font-family: var(--cond); font-weight: 700; font-size: 24px;
+  font-family: var(--body); font-weight: 700; font-size: 24px;
   letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.1;
 }
 .market-line { font-size: var(--t-caption); color: var(--muted); margin-top: 3px; }
@@ -478,7 +575,7 @@ table.grid td.wide {
    outline, filled. Colour is not available for this — green has two jobs
    already (interactive, positive) and a third would empty it of meaning. */
 .tier {
-  display: inline-block; font-family: var(--cond); font-weight: 700;
+  display: inline-block; font-family: var(--body); font-weight: 700;
   font-size: 13px; letter-spacing: 0.14em; padding: 2px 9px;
   border-radius: 5px; margin-top: 8px;
 }
@@ -591,15 +688,15 @@ table.grid td.wide {
 .card.resolved { background: var(--resolved); }
 .card.resolved .matchup { color: var(--muted); }
 .verdict {
-  font-family: var(--cond); font-weight: 700; font-size: 15px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
   letter-spacing: 0.12em; padding: 3px 10px; border-radius: 6px;
 }
-.verdict.win { color: var(--win); background: var(--win-wash); }
-.verdict.loss { color: var(--loss); background: var(--loss-wash); }
+.verdict.sig-won { background: var(--win); color: var(--ink); }
+.verdict.sig-lost { background: var(--loss); color: var(--ink); }
 .final { font-family: var(--mono); font-size: var(--t-caption); color: var(--muted); }
 
 .section-label {
-  font-family: var(--cond); font-size: 15px; font-weight: 600;
+  font-family: var(--body); font-size: 15px; font-weight: 600;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
   margin: 30px 0 2px;
 }
@@ -671,8 +768,6 @@ table.grid td.wide {
   margin-left: 6px;
 }
 .tag.warn { border-color: var(--warn-rule); background: var(--warn-bg); color: var(--warn-ink); }
-.tag.win { border-color: var(--pos); color: var(--pos); }
-.tag.loss { border-color: var(--neg); color: var(--neg); }
 
 /* expansion: the only motion on the page */
 .card-detail {
@@ -701,8 +796,6 @@ table.grid td.wide {
   padding: 4px 10px; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; font-size: var(--t-caption);
 }
-.outcome-stamp.win { color: var(--pos); border-color: var(--pos); }
-.outcome-stamp.loss { color: var(--neg); border-color: var(--neg); }
 .outcome-stamp.void { color: var(--ink-3); border-color: var(--rule-2); }
 
 /* --- charts ------------------------------------------------------------- */
@@ -904,7 +997,6 @@ button {
 }
 .greet .msg { color: var(--muted); }
 .greet .msg b { color: var(--chrome); font-weight: 600; }
-.greet .msg .up { color: var(--win); }
 .greet .mono-inline { font-family: var(--mono); font-size: var(--t-caption); }
 .countdown {
   font-family: var(--mono); font-size: var(--t-caption); color: var(--faint);
@@ -926,13 +1018,13 @@ button {
   background: var(--resolved); border: 1px solid var(--line);
 }
 .settled-verdict {
-  font-family: var(--cond); font-weight: 700; font-size: 12px;
+  font-family: var(--body); font-weight: 700; font-size: 12px;
   letter-spacing: 0.12em; padding: 1px 7px; border-radius: 4px;
 }
-.settled-row.win .settled-verdict { color: var(--win); background: var(--win-wash); }
-.settled-row.loss .settled-verdict { color: var(--loss); background: var(--loss-wash); }
+.settled-row.sig-won .settled-verdict { background: var(--win); color: var(--ink); }
+.settled-row.sig-lost .settled-verdict { background: var(--loss); color: var(--ink); }
 .settled-match {
-  font-family: var(--cond); font-weight: 700; font-size: 15px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
   letter-spacing: 0.04em; text-transform: uppercase; color: var(--chrome);
 }
 .settled-pick { color: var(--muted); font-size: var(--t-caption); }
@@ -963,7 +1055,7 @@ label { color: var(--muted); font-size: var(--t-caption); }
 /* --- tables, on the dark ground ----------------------------------------- */
 table.grid { width: 100%; border-collapse: collapse; }
 table.grid th {
-  text-align: left; font-family: var(--cond); font-weight: 600;
+  text-align: left; font-family: var(--body); font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--faint); font-size: 11px;
   border-bottom: 1px solid var(--line); padding: 8px 10px;
@@ -988,12 +1080,13 @@ table.grid tr:hover td { background: var(--card-2); }
 /* --- the history row ------------------------------------------------------
    One sentence per prediction, then only the columns that earn their space. */
 .result-chip {
-  font-family: var(--cond); font-weight: 700; font-size: 11px;
+  font-family: var(--body); font-weight: 700; font-size: 11px;
   letter-spacing: 0.12em; padding: 2px 8px; border-radius: 4px;
   display: inline-block;
 }
-.result-chip.win { color: var(--win); background: var(--win-wash); }
-.result-chip.loss { color: var(--loss); background: var(--loss-wash); }
+/* A SETTLED VERDICT IS A SOLID FILL (amended 2026-09-24). */
+.result-chip.sig-won { background: var(--win); color: var(--ink); }
+.result-chip.sig-lost { background: var(--loss); color: var(--ink); }
 .result-chip.pending { color: var(--muted); border: 1px solid var(--line); }
 /* WITHDRAWN (VOID until 2026-09-24, operator ruling 1). Neither a win nor a
    loss, so it borrows neither colour; the reason sits under it in words,
@@ -1346,8 +1439,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font: 700 11px/1 var(--body); letter-spacing: 0.06em;
   padding: 4px 8px; border-radius: var(--radius-pill);
 }
-.card-verdict.v-win { color: var(--win); background: var(--win-wash); }
-.card-verdict.v-loss { color: var(--loss); background: var(--loss-wash); }
 .card-verdict.v-void { color: var(--faint); border: 1px solid var(--line); }
 
 /* --- the yesterday strip --------------------------------------------------- */
@@ -1357,9 +1448,9 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font: 600 13px/1.5 var(--body); color: var(--muted);
 }
 .yesterday-label { color: var(--faint); margin-right: 4px; }
-/* GREEN ON THE RIGHT COUNT ONLY. The wrong count is drawn in the ordinary ink:
-   `--loss` is the colour of a pick that lost, and a tally is not a pick. */
-.yesterday .win { color: var(--win); }
+/* NO COLOUR ON A TALLY (amended 2026-09-24): the right count is bold, the
+   wrong count is plain, and neither borrows a pick's colour. */
+.yesterday b { color: var(--chrome); }
 .yesterday-season, .yesterday-next { color: var(--faint); }
 
 .slate-footer { margin-top: 18px; }
@@ -1482,8 +1573,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-weight: 700; font-size: 12px; letter-spacing: 0.12em;
   padding: 3px 9px; border-radius: 5px; min-width: 64px; text-align: center;
 }
-.verdict.win { color: var(--win); background: var(--win-wash); }
-.verdict.loss { color: #ff6b6b; background: rgba(255, 107, 107, 0.10); }
 .verdict.void { color: var(--faint); border: 1px solid var(--line); }
 .chip-none { border: 0; }
 
@@ -1615,7 +1704,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    know what "and 17 more" was. */
 .set-detail { margin: 2px 0 12px; }
 .set-detail-head {
-  font-family: var(--cond); font-size: 11px; letter-spacing: 0.08em;
+  font-family: var(--body); font-size: 11px; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--ink-3); margin-top: 8px;
 }
 .set-detail-list {
@@ -1702,8 +1791,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px;
 }
-.tile-verdict.v-win { color: var(--win); background: var(--win-wash); }
-.tile-verdict.v-loss { color: var(--loss); background: var(--loss-wash); }
 .tile-verdict.v-void { color: var(--faint); border: 1px solid var(--line); }
 .tile[data-state="final"] .tile-rank { opacity: 0; }
 
@@ -1756,18 +1843,22 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 /* `#week-hero` and `#week-cards` carried this until 2026-09-08; the hero and
    the grid are both gone and the Today panel is what swaps its whole contents
    when a market chip changes the slate. Same duration, same easing. */
-/* THE TODAY PANEL ARRIVES BY ITS FADE ALONE (operator question 20, ruled (A)
-   on 2026-09-27). Until then it rose from one per cent below its place, and
-   while it moved it sat a fraction of a pixel off whole: the browser mapped
-   each button's box through that offset and rounded its top and bottom
-   apart, so a 44px control read 43.9995px -- under the floor, on a frame a
-   thumb can land on -- and the slate's tap-target test flaked whenever a
-   redraw landed inside its measurement. The panel holds tap targets (the
-   fold, and each card's Why control and took button), so its transition
-   names opacity alone and its start state carries no transform;
-   `audit.arrival_movement_faults` refuses a movement in the arrival of any
-   panel that holds them. Same 200ms, same ease-out. */
-#today {
+/* THE ROWS AND THE TILES ARE WHERE CONTENT ARRIVES NOW (GRIDIRON_BOARD,
+   2026-09-24): a market filter refills the rows, a chip refills the tiles.
+   The Today panel that arrived here until the board went with the old Picks
+   route.
+   AND THEY ARRIVE BY THEIR FADE ALONE (operator question 20, ruled (A) on
+   2026-09-27; the board merge's step 2, 2026-09-29: "arrival motion on any
+   panel holding tap targets is opacity only"). The board brought them in
+   rising from one per cent below, as the Today panel did until question 20
+   -- and while a panel moves, every control inside it sits a fraction of a
+   pixel off whole: a 44px caret or checkmark reads 43.9995px on the frames
+   it moves. The rows hold the caret, the checkmark and every tile's took
+   button; the tiles hold theirs. So the transition names opacity alone and
+   the start state carries no transform; `audit.arrival_movement_faults`
+   refuses a movement in the arrival of any panel that holds them. Same
+   200ms, same ease-out. */
+#games-rows, #props-tiles {
   transition: opacity var(--motion-panel) var(--motion-ease);
 }
 /* The start state snaps -- `transition: none` -- so that adding the class
@@ -1777,8 +1868,17 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    THE TODAY PANEL IS WHERE CONTENT ARRIVES NOW (2026-09-08) -- a market chip
    switching the slate refills its groups, and without this rule the swap was
    instantaneous, which is the one thing the motion vocabulary exists to
-   prevent. The `translateY(1%)` it carried went on 2026-09-27 (above). */
-#today.arriving { opacity: 0; transition: none; }
+   prevent. The `translateY(1%)` it carried went on 2026-09-27 (above), and
+   the board's rows and tiles carry none either (2026-09-29, above). */
+#games-rows.arriving, #props-tiles.arriving { opacity: 0; transition: none; }
+/* A STALE SLATE IS DIMMED AND CANNOT BE TAPPED (operator ruling, 2026-09-25):
+   from the moment a new slate is asked for until its rows land, the previous
+   rows stay on screen dimmed, take no pointer events, and the slate is
+   `aria-busy` with a small "updating" label above it. The dim is applied
+   instantly, never transitioned; the new rows arrive as before. */
+#games-rows.updating, #props-tiles.updating { opacity: 0.45; pointer-events: none; transition: none; }
+.loading-words { margin: 18px 0; font: 700 14px/1.2 var(--body); color: var(--muted); }
+.updating-label { margin: 0 0 6px; font: 700 11px/1 var(--cond); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 /* THE ONE KEYFRAME. A game being played is the only thing on this page that
    repeats, because it is the only thing that is still happening. It pulses
    between full and half opacity -- no scale, no colour change, no glow. */
@@ -1868,8 +1968,11 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    the same as saying nothing is known. */
 .day.empty { opacity: 0.35; }
 .day.has-result { cursor: pointer; color: var(--chrome); }
-.day.up { background: var(--win-wash); border-color: var(--win); }
-.day.down { background: var(--loss-wash); border-color: var(--loss); }
+/* A DAY'S BALANCE IS WEIGHT, NOT HUE (amended 2026-09-24): a day is not a
+   pick, so its square borrows neither colour; the number inside says which
+   way it went. */
+.day.up { border-color: var(--chrome); }
+.day.down { border-color: var(--faintest); }
 .day.even { background: var(--card-2); }
 .day.today { outline: 1px solid var(--muted); outline-offset: 1px; }
 .day.sel { outline: 2px solid var(--chrome); outline-offset: 1px; }
@@ -2223,8 +2326,13 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
    the context row's, so five marks read as one run rather than five facts.
    `.win` and `.loss` are the class names the colour law scans for, and they
    are the words themselves: this is a game the club won and a game it lost. */
+/* THE COLOUR LEFT THE STREAK ON 2026-09-24. The amended law names four
+   signals and says nothing else wears the two colours; a club's game is not
+   a pick. A win is the heavier mark, a loss the quieter one. */
 .face-form { display: inline-flex; gap: 5px; font-weight: 600; }
-.fmark.win { color: var(--win); }
+/* THE FORM ROW'S LETTERS (ruled 2026-09-25, the ruling of 2026-09-08
+   standing): the colour is the letter's ink and nothing else. */
+.fmark.win { color: var(--win); font-weight: 800; }
 .fmark.loss { color: var(--loss); }
 
 .face-prices {
@@ -2277,8 +2385,8 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   color: rgba(255, 255, 255, 0.82);
 }
 
-/* THE EDGE, ON ITS OWN QUIET LINE, and the only place a value colour appears
-   on this card. */
+/* THE EDGE, ON ITS OWN QUIET LINE. No value colour here since the amendment
+   of 2026-09-24: the outline on the row says whether it clears. */
 .face-edge {
   display: flex;
   align-items: baseline;
@@ -2288,8 +2396,6 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 }
 .edge-label { color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em; }
 .edge-value { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--muted); }
-.face-edge.up .edge-value { color: var(--win); }
-.face-edge.down .edge-value { color: var(--loss); }
 
 .face-size {
   margin-top: var(--face-rhythm);
@@ -2446,7 +2552,9 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
   margin: 0 0 6px; font-size: 12px; color: var(--muted); line-height: 1.45;
 }
 .prompt-part { margin: 10px 0 4px; font-size: 12px; font-weight: 600; color: var(--chrome); }
-.prompt-model, .prompt-commit { display: block; margin: 0 0 6px; font-size: 12px; }
+/* `.prompt-commit` went with the board merge (2026-09-29): the commit's name
+   is its line's tooltip (operator question 19). */
+.prompt-model { display: block; margin: 0 0 6px; font-size: 12px; }
 .prompt-text {
   margin: 0; padding: 8px 10px;
   background: var(--card-2); border: 1px solid var(--line); border-radius: 6px;
@@ -2464,3 +2572,529 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .prompt-row { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .prompt-row:last-child { border-bottom: 0; }
 .prompt-row-phrase { margin: 0; font-size: 13px; color: var(--chrome); }
+/* THE CONDENSED FACE IS THE BOARD'S (GRIDIRON_BOARD, 2026-09-24): team
+   names, scores, picks and big numbers, all of them in the block at the end
+   of this file. Every older rule that reached for `--cond` -- sport tabs,
+   section labels, table headers, verdict chips -- now asks for the body face,
+   which is what "clean sans for everything else" means. */
+
+/* =========================================================================
+   THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
+   =========================================================================
+   A COMMENT THAT ATE A RULE, 2026-09-24/25. This banner was written with a
+   second comment opened inside it, so its second half stood OUTSIDE any
+   comment and the browser read it as the prelude of the next rule -- which
+   swallowed `.bar { height: auto }` whole, in both builds, until the bar was
+   measured at 52px on 2026-09-25. `audit.stray_comment_marker_faults` now
+   refuses a `*​/` left standing once the comments are blanked.
+   Dark sportsbook grammar with none of the pressure: condensed bold for team
+   names, scores, picks and big numbers; Manrope for everything else; nothing
+   animates on a price; no countdown; and the two value colours do exactly
+   four jobs, stated in `--win`/`--loss`'s own comment above and scanned by
+   `audit.colour_law_faults`: a green OUTLINE clears the bar, a red OUTLINE
+   costs after fees, a SOLID green fill won, a SOLID red fill lost. */
+
+/* --- the header ---------------------------------------------------------- */
+/* PORTED FROM THE MOCKUP (docs/design/gridiron-redesign.html, 2026-09-25):
+   `.top`, `.bar1`, `.logo`, `.sports`, `.menu`, `.bar2`, `.pages`, `.pulse`.
+   Adapted where a law requires: the active sport tab underlines in chrome and
+   the pulse dots are chrome, because green is the outline of a pick that
+   clears the bar and nothing else; the menu opens on a press, not a hover. */
+.bar {
+  height: auto; background: color-mix(in srgb, var(--ink) 96%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+}
+.bar-inner { height: auto; max-width: var(--page, 1240px); padding: 12px 28px 0; gap: 28px; }
+.brand { font-family: var(--cond); font-weight: 800; font-size: 22px; letter-spacing: 0.06em; }
+.brand-a, .brand-b { color: var(--chrome); }
+.bar #sport-tabs { gap: 4px; }
+.bar #sport-tabs button {
+  font-family: var(--cond); font-weight: 700; font-size: 16px; letter-spacing: 0.05em;
+  color: var(--muted); padding: 10px 14px 12px; min-height: 44px;
+  border-bottom: 3px solid transparent;
+}
+.bar #sport-tabs button[aria-pressed="true"] { color: var(--chrome); border-bottom-color: var(--chrome); }
+.bar-under {
+  max-width: var(--page, 1240px); margin: 0 auto; padding: 10px 28px 12px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.bar #nav { display: flex; gap: 6px; margin: 0; }
+.bar #nav a {
+  font-family: var(--cond); font-weight: 700; font-size: 15px; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 9px 18px; min-height: 44px; display: inline-flex; align-items: center;
+  border-radius: 999px; color: var(--muted); border: 1px solid var(--line);
+}
+.bar #nav a.active, .bar #nav a[aria-current="page"] {
+  background: var(--chrome); color: var(--ink); border-color: var(--chrome);
+}
+.menu-button {
+  margin-left: auto; width: 44px; min-height: 44px; flex: none;
+  background: none; border: 1px solid var(--line); border-radius: 10px;
+  color: var(--chrome); font-size: 18px; cursor: pointer;
+}
+.menu-button:hover, .menu-button[aria-expanded="true"] { border-color: var(--line-lit); background: var(--card-3); }
+.menu {
+  position: absolute; right: 28px; top: 56px; z-index: 50;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 6px; min-width: 170px;
+}
+.menu a {
+  padding: 0 12px; min-height: 44px; display: flex; align-items: center;
+  color: var(--chrome); text-decoration: none; border-radius: 8px; font-size: 14px;
+}
+.menu a:hover, .menu a.active { background: var(--card-3); }
+/* THE PULSE: three ages in words, a chrome dot before each, stale in bold
+   warning ink past its threshold. Never red, never green. */
+.pulse { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-left: auto; flex: 1 1 auto; justify-content: flex-end; font-size: 12px; color: var(--muted); }
+.pulse .day-job::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--chrome); margin-right: 6px; vertical-align: 1px;
+}
+.pulse .day-job-stale::before { background: var(--warn-ink); }
+
+/* --- the day header -------------------------------------------------------- */
+/* `.day` in the mockup; `.day-head` here, because `.day` is the Results
+   calendar's square and was first. */
+.day-head { display: flex; align-items: baseline; gap: 14px; margin: 4px 0 16px; flex-wrap: wrap; }
+.day-head .slate-headline { font: 800 34px/1 var(--cond); letter-spacing: 0.02em; margin: 0; text-transform: uppercase; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.legend:empty { display: none; }
+.lg { display: inline-flex; align-items: center; gap: 6px; }
+.lg i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+.day-strip { margin: -6px 0 14px; }
+
+/* --- the four signals ------------------------------------------------------ */
+/* THE GLOW SYSTEM, ported: the mockup's `.g-bet`, `.g-risk`, `.f-won` and
+   `.f-lost` under the names the scan reads. The halo is the token mixed to
+   the mockup's alpha rather than an rgba literal, so `--win` stays the one
+   place the hue is written. Outline means a state of the price; fill means
+   a settled verdict; nothing else on the page reaches for these tokens. */
+.sig-clears { box-shadow: 0 0 0 1.5px var(--win), 0 0 22px color-mix(in srgb, var(--win) 28%, transparent); }
+.sig-costs { box-shadow: 0 0 0 1.5px var(--loss), 0 0 22px color-mix(in srgb, var(--loss) 24%, transparent); }
+.sig-won, .pick.sig-won, .q.sig-won, .prop.sig-won, .lg .sig-won { background: var(--win); }
+.sig-lost, .pick.sig-lost, .q.sig-lost, .prop.sig-lost, .lg .sig-lost { background: var(--loss); }
+.pick.sig-won, .pick.sig-lost, .q.sig-won, .q.sig-lost, .prop.sig-won, .prop.sig-lost { border-color: transparent; }
+.pick.sig-won, .pick.sig-lost, .q.sig-won, .q.sig-lost, .prop.sig-won, .prop.sig-lost,
+.sig-won .pick-label, .sig-lost .pick-label, .sig-won .pick-line, .sig-lost .pick-line,
+.sig-won .pick-prob, .sig-lost .pick-prob, .sig-won .pick-under, .sig-lost .pick-under,
+.sig-won .pick-settled, .sig-lost .pick-settled, .sig-won .pick-size, .sig-lost .pick-size,
+.sig-won .pick-method, .sig-lost .pick-method,
+.sig-won .q-head, .sig-lost .q-head, .sig-won .q-line, .sig-lost .q-line,
+.sig-won .q-nums, .sig-lost .q-nums, .sig-won .q-prob, .sig-lost .q-prob,
+.sig-won .q-settled, .sig-lost .q-settled, .sig-won .q-size, .sig-lost .q-size,
+.sig-won .q-method, .sig-lost .q-method, .sig-won .q-foot, .sig-lost .q-foot,
+.sig-won .badge, .sig-lost .badge, .sig-won .q-signal, .sig-lost .q-signal,
+.sig-won .prop-prob, .sig-lost .prop-prob, .sig-won .prop-q-words, .sig-lost .prop-q-words,
+.sig-won .cush, .sig-lost .cush, .sig-won .cush b, .sig-lost .cush b,
+.sig-won .prop-venue, .sig-lost .prop-venue, .sig-won .prop-venue-words, .sig-lost .prop-venue-words
+  { color: var(--ink); border-color: var(--ink); }
+.sig-won .q-signal, .sig-lost .q-signal, .sig-won .badge, .sig-lost .badge { background: transparent; opacity: .85; }
+
+/* --- the rows -------------------------------------------------------------- */
+/* `.games`, `.game`, `.row`, `.status`, `.teams`, `.team`, `.pick`, `.meta`
+   from the mockup. The row is `article.game > .game-head` here and the
+   status column is `.when`. */
+.rows { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.game { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.game-head {
+  display: grid; grid-template-columns: 96px 1fr 290px 150px; align-items: stretch;
+  width: 100%; text-align: left; padding: 0; background: none; border: 0; color: inherit;
+  font: inherit; cursor: pointer;
+}
+.when {
+  display: flex; flex-direction: column; justify-content: center; padding: 0 16px;
+  border-right: 1px solid var(--line); min-width: 0; gap: 0;
+}
+.when b, .when-time, .final-mark, .game-clock { font: 700 18px/1.1 var(--cond); letter-spacing: 0.03em; color: var(--chrome); }
+.when span, .when-day, .game-polled { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.live-mark { color: var(--state-live); font-weight: 700; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+.live-mark::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--state-live); margin-right: 5px;
+}
+.teams { display: flex; flex-direction: column; justify-content: center; min-width: 0; position: relative; }
+/* THE TEAM BAND: the club block, the tinted band behind the name, the fade.
+   The 58px block and the band are TEXT BACKGROUNDS, so they take the shade
+   white was measured to read on (`--club-on-white`, the primary itself for
+   every club that passes, the club's darker declared shade for one that
+   does not -- ruling 2026-09-25, contrast without muting). The fade's tail
+   carries no text and is the primary at full strength. */
+.team {
+  display: flex; align-items: center; gap: 12px; height: 44px; padding-right: 18px; min-width: 0;
+  background: linear-gradient(90deg,
+    var(--club-on-white) 0 58px,
+    color-mix(in srgb, var(--club-on-white) 70%, var(--ink)) 58px,
+    color-mix(in srgb, var(--club) 22%, var(--card)) 62%,
+    transparent 100%);
+}
+.team + .team { border-top: 1px solid color-mix(in srgb, var(--ink) 35%, transparent); }
+.tri {
+  width: 58px; align-self: stretch; display: grid; place-items: center; flex: none;
+  font: 800 18px/1 var(--cond); letter-spacing: 0.04em; color: var(--white);
+  border-right: 3px solid var(--club-2);
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 45%, transparent);
+}
+.tname {
+  font: 700 20px/1 var(--cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--white);
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 40%, transparent);
+  min-width: 0; overflow-wrap: anywhere;
+}
+.tscore { margin-left: auto; font: 800 26px/1 var(--cond); color: var(--white); flex: none; }
+.team.trail .tscore { color: color-mix(in srgb, var(--white) 55%, transparent); }
+.game-score { position: absolute; left: -9999px; }
+.pick {
+  margin: 10px 12px; border-radius: 12px; background: var(--card-2); border: 1px solid transparent;
+  display: flex; flex-direction: column; justify-content: center; padding: 8px 16px; min-width: 0;
+}
+.pick-label { font: 600 10px/1 var(--body); letter-spacing: 0.14em; color: var(--muted); text-transform: uppercase; }
+.pick-line { font: 800 30px/1.05 var(--cond); letter-spacing: 0.02em; margin-top: 3px; color: var(--chrome); text-transform: uppercase; overflow-wrap: anywhere; }
+.pick-line-none { font-size: 16px; font-weight: 700; color: var(--muted); text-transform: none; }
+.pick-under { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0 4px; align-items: baseline; }
+.pick-under > * + *::before { content: "·"; margin-right: 4px; color: var(--muted); }
+.pick-under > :empty { display: none; }
+.pick-prob, .pick-pays { color: var(--chrome); font-weight: 700; }
+.pick-prob { font-family: var(--cond); font-weight: 800; font-size: 15px; }
+.pick-price, .pick-pays { font-variant-numeric: tabular-nums; }
+.pick-pregame, .pick-settled { color: var(--muted); }
+.pick-size { font-size: 12px; color: var(--chrome); margin-top: 4px; }
+/* A ROW'S HEAD IS A TAP TARGET, AND IT STANDS ON WHOLE PIXELS (the board
+   merge, 2026-09-29; the merge checklist's "every tap target, links
+   included, is 44px or more at 390px at rest", and the flaky-test ruling of
+   2026-09-27: "render at 44px or more in whole pixels"). A reader opens a
+   row by tapping its head, which took its height from the pick's text --
+   30px type at a line height of 1.05, a baseline-aligned line of 13px and
+   15px type -- and measured 245.046875px at 390. Each line of the pick has
+   a whole-pixel line height now, the line of numbers is centred rather than
+   aligned on a baseline its mixed sizes put off whole, and the head is a
+   whole number of pixels at every width. The type is unchanged. */
+.pick-line { line-height: 32px; }
+.pick-line-none { line-height: 22px; }
+.pick-under { line-height: 18px; align-items: center; }
+.pick-size { line-height: 16px; }
+.meta {
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 8px;
+  padding: 0 16px; border-left: 1px solid var(--line);
+}
+.badge {
+  display: inline-block; font: 600 11px/1 var(--body); padding: 5px 8px; border-radius: 999px;
+  background: var(--card-3); color: var(--muted); letter-spacing: 0.02em; font-variant-numeric: tabular-nums;
+}
+.badge-high { outline: 1px dashed var(--line-lit); outline-offset: -1px; }
+.q-signal {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  border: 1px solid var(--line-lit); background: var(--card-3);
+}
+.take-row { display: flex; align-items: center; gap: 8px; }
+.chk {
+  width: 44px; height: 44px; min-height: 44px; display: grid; place-items: center;
+  background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; color: transparent;
+}
+.chk .take-mark {
+  width: 30px; height: 30px; border-radius: 9px; border: 1.5px solid var(--line);
+  display: grid; place-items: center; font-size: 15px; color: inherit; font-weight: 800;
+}
+.chk:hover .take-mark { border-color: var(--line-lit); }
+.chk:focus-visible { outline: 2px solid var(--chrome); outline-offset: -2px; border-radius: 9px; }
+.chk.on, .chk:disabled.on { color: var(--ink); cursor: default; }
+.chk.on .take-mark, .chk:disabled.on .take-mark { border-color: var(--yours); background: var(--yours); }
+span.chk.on { color: var(--ink); }
+span.chk.on .take-mark, span.chk.on { font-weight: 800; }
+.car {
+  font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0 4px; cursor: pointer;
+  min-height: 44px; min-width: 44px; font-family: inherit;
+}
+.yours { font: 800 11px/1 var(--cond); letter-spacing: 0.1em; color: var(--yours); text-transform: uppercase; }
+/* 16px lines (the board merge, 2026-09-29): on a phone the count wraps
+   beside YOURS and the checkmark, and three lines of 11px type at its normal
+   line height put the row's head, a tap target, off whole pixels. */
+.game-count { font-size: 11px; line-height: 16px; color: var(--faint); }
+.game-head:focus-within .car { outline: 0; }
+
+/* the expansion: `.exp`, `.mkts`, `.mkt`, `.lab`, `.pk`, `.mini`, `.pay`,
+   `.probar` from the mockup, revealed in place. */
+.game-more { padding: 16px; border-top: 1px solid var(--line); background: linear-gradient(180deg, var(--resolved), var(--ink)); }
+.game-more-head { font: 700 13px/1 var(--cond); letter-spacing: 0.14em; color: var(--muted); margin: 0 0 10px; text-transform: uppercase; }
+.q-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.q { background: var(--card-2); border-radius: 12px; padding: 12px 14px; position: relative; border: 1px solid transparent; min-width: 0; }
+.q-taken { box-shadow: inset 3px 0 0 var(--yours); }
+.q.q-taken.sig-clears { box-shadow: inset 3px 0 0 var(--yours), 0 0 0 1.5px var(--win), 0 0 22px color-mix(in srgb, var(--win) 28%, transparent); }
+.q.q-taken.sig-costs { box-shadow: inset 3px 0 0 var(--yours), 0 0 0 1.5px var(--loss), 0 0 22px color-mix(in srgb, var(--loss) 24%, transparent); }
+.q .chk { position: absolute; top: 2px; right: 2px; }
+.q .chk .take-mark { width: 24px; height: 24px; font-size: 12px; border-radius: 7px; }
+.q-head { font: 600 11px/1 var(--body); letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; display: flex; gap: 8px; padding-right: 30px; }
+.q-forecaster { color: var(--faint); }
+.q-state { margin-left: auto; }
+.q-line { font: 800 24px/1.05 var(--cond); margin: 8px 0 2px; color: var(--chrome); overflow-wrap: anywhere; }
+.q-mini { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; gap: 8px; }
+.q-nums { display: flex; align-items: baseline; gap: 4px; min-width: 0; flex-wrap: wrap; }
+.q-prob { font: 800 22px/1 var(--cond); color: var(--chrome); }
+.q-price { font: 600 11px var(--body); color: var(--muted); margin-left: 4px; }
+.q-pregame, .q-settled, .q-size { font-size: 12px; color: var(--muted); }
+.pay { font: 700 14px/1 var(--cond); letter-spacing: 0.03em; padding: 6px 10px; border-radius: 8px; background: var(--card-3); color: var(--chrome); white-space: nowrap; }
+.q-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.pbar { height: 6px; border-radius: 3px; background: var(--line-lit); position: relative; margin: 10px 0 2px; }
+.pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--club, var(--muted)); }
+.pbar-tick { position: absolute; top: -4px; width: 2px; height: 14px; background: var(--white); border-radius: 1px; margin-left: -1px; }
+.take {
+  margin-left: auto; min-height: 44px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 8px; background: transparent;
+  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
+}
+.take:hover { border-color: var(--line-lit); color: var(--chrome); }
+.take:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
+.take-mark { font-weight: 800; color: var(--yours); }
+.take-done { cursor: default; border-color: var(--yours); color: var(--chrome); }
+.take-done .take-mark { color: var(--yours); }
+/* THE LINK TO THE WORKINGS IS A TAP TARGET (the board merge, 2026-09-29;
+   question 20's side question: "the board merge checks every tap target,
+   links included"). It measured 17px tall at 390 -- the old Why panel's
+   link, moved to the open row with the same size. 44px of hit area, made of
+   the line box, as the brand and the colophon's links are. */
+.game-more-link {
+  display: inline-flex; align-items: center; min-height: 44px; margin-top: 4px;
+  font-size: 12px; color: var(--chrome);
+}
+/* 16px lines, not 1.4 (the board merge, 2026-09-29): the note sits in the
+   row's head, a tap target, and 11px at 1.4 put the head off whole pixels. */
+.pick-method, .q-method { margin: 6px 0 0; font-size: 11px; font-style: italic; color: var(--faint); line-height: 16px; }
+
+/* --- props ----------------------------------------------------------------- */
+/* `.pchips`, `.propsgrid`, `.tiles`, `.ptile`, `.ptop`, `.jsvg`, `.pwho`,
+   `.pbody`, `.pline`, `.cush`, `.pfoot`, `.tag`, `.rail` from the mockup.
+   Adapted where a law requires: the pressed chip is chrome, not green; the
+   cushion's sign is ink, not a colour; and a tile wears no outline at all
+   until a real multiplier exists for its line (ruling c, 2026-09-25). */
+.chips { display: flex; gap: 8px; align-items: center; margin: -4px 0 16px; flex-wrap: wrap; }
+.chip-btn {
+  font: 700 14px/1 var(--cond); letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 8px 14px; min-height: 44px; border-radius: 999px; border: 1px solid var(--line);
+  color: var(--muted); background: transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.chip-btn[aria-pressed="true"] { border-color: var(--chrome); color: var(--chrome); }
+.chip-btn:hover { border-color: var(--line-lit); color: var(--chrome); }
+.chip-n { color: var(--faint); font-size: 11px; font-family: var(--body); letter-spacing: 0; }
+.props-body { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
+.props-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.prop { background: var(--card-2); border-radius: 14px; overflow: hidden; position: relative; border: 1px solid transparent; min-width: 0; }
+.prop .chk { position: absolute; top: 2px; right: 2px; z-index: 1; }
+.prop .chk .take-mark { background: color-mix(in srgb, var(--ink) 35%, transparent); border-color: color-mix(in srgb, var(--white) 35%, transparent); }
+.prop .chk.on .take-mark { background: var(--yours); border-color: var(--yours); }
+.prop-top {
+  display: flex; gap: 12px; align-items: center; padding: 10px 14px 10px 10px;
+  background: linear-gradient(120deg, var(--club-on-white) 0%, color-mix(in srgb, var(--club) 35%, var(--card-2)) 55%, var(--card-2) 100%);
+}
+.jsvg { width: 92px; height: 100px; flex: 0 0 auto; filter: drop-shadow(0 4px 8px color-mix(in srgb, var(--ink) 45%, transparent)); }
+.jsvg .nmT { font-family: var(--cond); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.jsvg .numT { font: 800 50px var(--cond); paint-order: stroke; stroke-width: 3.2px; stroke-linejoin: round; }
+.jsvg .snT { font: 800 12px var(--cond); paint-order: stroke; stroke-width: 1.2px; }
+.prop-who { min-width: 0; padding-right: 28px; }
+.prop-player {
+  display: block; font: 800 21px/1 var(--cond); letter-spacing: 0.02em; text-transform: uppercase;
+  color: var(--white); text-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 40%, transparent); overflow-wrap: break-word;
+}
+.prop-club { font-size: 12px; color: color-mix(in srgb, var(--white) 80%, transparent); display: flex; flex-wrap: wrap; gap: 0 4px; }
+.prop-club > * + *::before { content: "·"; margin-right: 4px; }
+.prop-body { padding: 12px 14px 14px; }
+.prop-line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.prop-q { font: 800 26px/1 var(--cond); color: var(--chrome); min-width: 0; overflow-wrap: anywhere; }
+.prop-prob { font: 800 30px/1 var(--cond); color: var(--chrome); flex: none; }
+.tag {
+  font: 700 10px/1 var(--body); letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 7px;
+  border-radius: 6px; background: color-mix(in srgb, var(--white) 8%, transparent); color: var(--muted);
+  margin-left: 6px; vertical-align: 4px;
+}
+.tag-alt { background: color-mix(in srgb, var(--state-live) 16%, transparent); color: var(--state-live); }
+.cush { display: flex; gap: 10px; align-items: baseline; font-size: 12px; color: var(--muted); margin-top: 4px; flex-wrap: wrap; }
+.cush b { font: 800 16px/1 var(--cond); color: var(--chrome); margin-left: 4px; }
+.pfoot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
+.prop-venue { font-size: 12px; color: var(--muted); }
+.prop-venue b { color: var(--chrome); margin-left: 4px; font-weight: 600; }
+.pfoot-badges { display: flex; gap: 6px; margin-left: auto; }
+.entry-rail {
+  position: sticky; top: 130px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+  display: grid; gap: 4px;
+}
+.entry-rail h4 { font: 800 20px/1 var(--cond); letter-spacing: 0.04em; text-transform: uppercase; margin: 0 0 4px; }
+.entry-leg { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; gap: 8px; }
+.entry-leg-line { font: 700 16px/1.1 var(--cond); letter-spacing: 0.02em; color: var(--chrome); overflow-wrap: anywhere; }
+.entry-leg-prob { color: var(--muted); font-variant-numeric: tabular-nums; }
+.entry-pays { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 4px; font-size: 12px; color: var(--muted); gap: 8px; }
+.entry-pays input {
+  width: 96px; background: var(--card-3); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  color: var(--chrome); font: 800 18px/1 var(--cond); text-align: right;
+  /* A FIELD A THUMB TYPES INTO (the board merge, 2026-09-29): 40px tall at
+     390 until then; the floor is 44, in whole pixels. */
+  min-height: 44px;
+}
+#entry-lines { margin-top: 12px; border-radius: 12px; padding: 14px; background: var(--card-2); display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 12px; color: var(--muted); }
+#entry-lines:empty { display: none; }
+.entry-line { display: contents; }
+.entry-label { color: var(--muted); }
+.entry-value { font: 800 16px/1 var(--cond); color: var(--chrome); text-align: right; font-variant-numeric: tabular-nums; }
+.entry-rail .footnote { font-size: 11px; color: var(--muted); margin: 12px 0 0; line-height: 1.5; }
+
+/* THE VERDICT (ruling c, 2026-09-25): the mockup's `.verdict` and `.v`,
+   wearing the outline the typed multiple earns, with a leg's badge beside it. */
+.verdict { border-radius: 12px; padding: 14px; background: var(--card-2); display: flex; align-items: center; justify-content: space-between; gap: 10px; grid-column: 1 / -1; margin-bottom: 6px; }
+.verdict .v { font: 800 22px/1.05 var(--cond); color: var(--chrome); display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+.verdict .v-mult { font-weight: 800; }
+.verdict .v-untyped { font-size: 12px; color: var(--muted); }
+
+/* THE FAMILY HUE on a chip's dot and its pressed state, and on the tile's tag. */
+.chip-btn[style*="--family"]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--family); display: inline-block; }
+.chip-btn[style*="--family"][aria-pressed="true"] { background: var(--family); border-color: var(--family); color: var(--white); }
+.chip-btn[style*="--family"][aria-pressed="true"] .chip-n { color: var(--white); }
+.chip-btn[style*="--family"][aria-pressed="true"]::before { background: var(--white); }
+.prop-family { display: inline-block; padding: 2px 7px; border-radius: 6px; background: var(--family, var(--card-3)); color: var(--white); font: 700 10px/1.2 var(--body); letter-spacing: 0.08em; text-transform: uppercase; }
+.prop-club > .prop-family::before { content: none; }
+
+/* THE SPORT PILL beside the heading, in the sport's declared colour. */
+.sport-pill { display: inline-block; padding: 5px 10px; border-radius: 999px; color: var(--white); font: 700 12px/1 var(--cond); letter-spacing: 0.1em; text-transform: uppercase; align-self: center; }
+.sport-pill:empty { display: none; }
+
+/* THE HERO TILE (PrizePicks polish, 2026-09-25): a bigger jersey, a richer
+   club gradient behind it, rounder corners, more room between cards. */
+.props-grid { gap: 18px; }
+.prop { border-radius: 16px; }
+.prop-top { padding: 12px 16px 12px 12px; background: linear-gradient(120deg, var(--club-on-white) 0%, color-mix(in srgb, var(--club) 55%, var(--card-2)) 50%, var(--card-2) 100%); }
+.jsvg { width: 108px; height: 117px; }
+.prop-player { font-size: 24px; }
+.prop-q { font-size: 28px; }
+.prop-prob { font-size: 34px; }
+.prop-body { padding: 14px 16px 16px; }
+.pbar { height: 7px; }
+.game { border-radius: 16px; }
+.rows { gap: 12px; }
+
+/* MY DAY (3b, 2026-09-25): chips under the header, the club block on each,
+   the state in a word, the badge beside it. A won or lost chip is filled
+   like any settled verdict. */
+.my-day { border-bottom: 1px solid var(--line); background: var(--card); }
+.my-day-inner { max-width: var(--page, 1240px); margin: 0 auto; padding: 8px 28px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.my-day h4 { margin: 0; font: 800 14px/1 var(--cond); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.my-day-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.my-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px 0 0;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card-2); color: var(--chrome);
+  font: inherit; font-size: 12px; cursor: pointer; overflow: hidden;
+}
+.my-chip:hover { border-color: var(--line-lit); }
+.my-chip:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
+.my-chip-club { align-self: stretch; display: grid; place-items: center; padding: 0 8px; background: var(--club-on-white); color: var(--white); font: 800 13px/1 var(--cond); letter-spacing: 0.04em; }
+.my-chip-line { font: 700 14px/1 var(--cond); text-transform: uppercase; }
+.my-chip-state { color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+/* THE FILL AT TWO CLASSES, so it wins over the chip's own ground (the same
+   lesson the tile's fill taught on 2026-09-24). */
+.my-chip.sig-won { background: var(--win); border-color: transparent; }
+.my-chip.sig-lost { background: var(--loss); border-color: transparent; }
+.my-chip.sig-won .my-chip-line, .my-chip.sig-lost .my-chip-line, .my-chip.sig-won .my-chip-state, .my-chip.sig-lost .my-chip-state,
+.my-chip.sig-won .badge, .my-chip.sig-lost .badge { color: var(--ink); }
+.my-chip.sig-won .badge, .my-chip.sig-lost .badge { background: transparent; opacity: .85; }
+.my-day-counts { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+/* SORT AND FILTER (3c, 2026-09-25): one quiet row of controls. */
+.controls-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: -6px 0 12px; font-size: 12px; color: var(--muted); }
+.controls-bar label { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+.controls-bar select { background: var(--card-2); color: var(--chrome); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 12px; min-height: 44px; }
+.controls-bar input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--chrome); }
+.controls-bar label.check { padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; }
+
+/* THE DETAIL PANEL (3a, 2026-09-25) above the tiles in an expanded row. */
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr); gap: 14px 22px; align-items: start; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.detail-cell { display: grid; gap: 6px; font-size: 12px; color: var(--muted); min-width: 0; }
+.detail-label { font: 700 11px/1 var(--cond); letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+.form-strip { display: flex; align-items: center; gap: 6px; }
+.form-club { font: 800 12px/1 var(--cond); letter-spacing: 0.04em; color: var(--chrome); min-width: 34px; }
+.fmark { font: 800 13px/1 var(--cond); letter-spacing: 0.04em; }
+.fmark.draw { color: var(--muted); }
+.form-none { color: var(--faint); }
+.detail-icon { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); color: var(--faint); font-size: 14px; }
+.detail-icon-on { color: var(--chrome); border-color: var(--line-lit); }
+.detail-n { font: 800 12px/1 var(--cond); }
+.detail-words { color: var(--faint); line-height: 1.4; }
+.factor { display: grid; grid-template-columns: minmax(0, 1fr) 90px 44px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.factor-words { overflow-wrap: break-word; min-width: 0; }
+.factor-bar { height: 6px; border-radius: 3px; background: var(--line-lit); position: relative; overflow: hidden; }
+.factor-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--chrome); border-radius: 3px; }
+.factor-fill.factor-neg { background: var(--muted); }
+.factor-value { font: 700 12px/1 var(--cond); color: var(--chrome); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* MOTION, A BIT MORE THAN SUBTLE (2026-09-25), inside the vocabulary:
+   opacity and transform only, one curve, 200ms, nothing on a number.
+   - a row or a tile arrives with a stagger on first load (`--i` from the
+     renderer, capped there at eight);
+   - an expansion arrives the same way, once, when it opens;
+   - the bar fills once on first load, never on an update (by its fade from
+     the board merge, 2026-09-29: see the rule below);
+   - a checkmark pops by two per cent when a pick is marked taken;
+   - the LIVE dot pulses at 1.6s, the one loop on the page.
+   All of it is off under prefers-reduced-motion (the block above).
+   BY THEIR FADE ALONE, EACH OF THEM (the board merge, 2026-09-29; operator
+   question 20 and the merge checklist's step 2: "arrival motion on any panel
+   holding tap targets is opacity only"). A row, a tile and an expansion each
+   hold tap targets -- the caret, the checkmark, a tile's took button, the
+   prompt's summary and the link to the workings -- and the board brought
+   each in rising from one per cent below, which is the movement question 20
+   took off the Today panel: while it runs every control inside sits a
+   fraction of a pixel off whole and a 44px control reads 43.9995px. So each
+   arrives by opacity, in place. AND NO ROW LIFTS ON HOVER: the board lifted
+   a row one per cent under the pointer, and on a phone the tap that opens a
+   row leaves it hovered, so the row -- caret, checkmark and all -- sat off
+   whole pixels at rest. The hover marks the row's edge instead, in the
+   neutral line colour (an interactive selector wears no value colour). */
+.game, .prop { transition: opacity 200ms ease-out; transition-delay: calc(var(--i, 0) * 30ms); }
+#games-rows.arriving .game, #props-tiles.arriving .prop { opacity: 0; transition: none; }
+.game:hover { border-color: var(--line-lit); }
+.game-more { transition: opacity 200ms ease-out; }
+.game-more.arriving { opacity: 0; transition: none; }
+/* THE BAR FILLS ONCE, ON LOAD, BY ITS FADE (the board merge, 2026-09-29):
+   the board grew it from nothing by `scaleX` at the panel duration, inside a
+   row or a tile holding tap targets, and an arrival there is opacity only
+   (question 20; `audit.bar_fill_faults`). It fades in once, in place, and an
+   update never re-arms it. */
+.pbar-fill { transition: opacity 200ms ease-out; }
+.pbar-fill.filling { opacity: 0; transition: none; }
+@keyframes pop {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+.chk.on .take-mark { animation: pop 200ms ease-out; }
+.live-mark::before { animation: live-pulse 1.6s ease-out infinite; }
+
+/* THE RECORD PAGE'S TWO CHART PANELS (2026-09-25). */
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.chart-card { border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); padding: 10px 12px; display: grid; gap: 8px; min-width: 0; }
+.chart-card canvas { width: 100%; height: auto; display: block; }
+.chart-title { font: 700 13px/1.2 var(--body); color: var(--chrome); }
+.chart-empty { font: 800 22px/1 var(--cond); color: var(--muted); padding: 18px 0; text-align: center; }
+.taken-block { display: grid; gap: 8px; margin-bottom: 16px; }
+
+/* --- widths ---------------------------------------------------------------- */
+@media (max-width: 1000px) {
+  .game-head { grid-template-columns: 78px 1fr; }
+  .pick { grid-column: 1 / -1; margin: 0 12px 10px; }
+  .meta { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; border: 0; border-top: 1px solid var(--line); padding: 8px 16px; }
+  .q-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .props-body { grid-template-columns: minmax(0, 1fr); }
+  .props-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .entry-rail { position: static; }
+  /* THE MOCKUP HIDES THE PULSE UNDER 1000px; the FIRST SCREEN law keeps it:
+     a dead job is visible on the first screen the operator opens, and on
+     a phone that screen is this one. It wraps under the pills instead. */
+  .pulse { flex-basis: 100%; justify-content: flex-start; }
+}
+@media (max-width: 640px) {
+  .bar-inner { gap: 8px; height: auto; padding: 8px 14px 0; }
+  .bar #sport-tabs { gap: 0; }
+  .bar #sport-tabs button { font-size: 13px; padding: 8px 8px 10px; }
+  .bar-under { padding: 8px 14px 10px; gap: 6px; }
+  .bar #nav a { font-size: 14px; padding: 8px 14px; }
+  .menu { right: 14px; }
+  .props-grid, .q-grid { grid-template-columns: minmax(0, 1fr); }
+  .detail { grid-template-columns: minmax(0, 1fr); }
+  .my-day-inner { padding: 8px 14px; }
+  .when { padding: 0 10px; }
+  .tname { font-size: 17px; }
+  .pick-line { font-size: 26px; line-height: 28px; }
+}

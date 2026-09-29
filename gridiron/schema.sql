@@ -150,6 +150,20 @@ CREATE TABLE IF NOT EXISTS player_week_stats (
 CREATE INDEX IF NOT EXISTS pws_player ON player_week_stats (player_id, season, week);
 CREATE INDEX IF NOT EXISTS pws_name   ON player_week_stats (player_name);
 
+-- JERSEY NUMBERS (operator ruling a, 2026-09-25). One row per player per club
+-- per season from nflverse's roster file, read at the same refresh as the
+-- player stats. NOT A FACTOR: nothing in the model reads this table; the
+-- board draws the number on a jersey and draws an empty slot where the row
+-- is missing. Never guessed from a name or a position.
+CREATE TABLE IF NOT EXISTS player_numbers (
+    season        INTEGER NOT NULL,
+    player_id     TEXT    NOT NULL,
+    team          TEXT    NOT NULL,
+    jersey_number INTEGER,
+    fetched_utc   TEXT    NOT NULL,
+    PRIMARY KEY (season, player_id, team)
+);
+
 CREATE TABLE IF NOT EXISTS injuries (
     season        INTEGER NOT NULL,
     week          INTEGER NOT NULL,

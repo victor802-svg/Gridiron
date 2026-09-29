@@ -139,7 +139,8 @@ def test_the_calibration_chart_refuses_a_bucket_with_no_n(page):
 
 def test_every_screen_renders(page):
     for route, selector in (
-        ("#/week", "#today .face"),
+        ("#/games", "#games-rows .game"),
+        ("#/props", "#props-tiles .prop"),
         # THE CARDS, not the table: the measurements in full sit behind a
         # collapsed <details> now (P5), so their rows exist and are not
         # visible. The cards are what a reader sees on this page.
@@ -173,7 +174,7 @@ def _open_route(target, route):
     # own copy of the default -- so `_open_route(page, "")` waited for a view
     # the app no longer opens on. A default written down twice is a default
     # that goes stale in one of the two places.
-    name = (route.rsplit("/", 1)[-1] or "week")
+    name = (route.rsplit("/", 1)[-1] or "games")
     target.wait_for_function(
         """(id) => {
             if (document.body.dataset.ready !== 'true') return false;
@@ -193,7 +194,7 @@ def test_picks_is_the_default_screen(page):
     the slate is the thing with a deadline on it.
     """
     _open_route(page, "")
-    assert page.locator("#view-week").is_visible()
+    assert page.locator("#view-games").is_visible()
     assert not page.locator("#view-record").is_visible()
 
 
@@ -212,9 +213,11 @@ def test_the_pick_states_model_market_and_gap_in_words(page):
     would have kept passing on if the rail had silently emptied.
     """
     _open_first_card(page)
-    page.wait_for_selector("#today .face .face-why .face-numbers", timeout=10000)
+    # RE-HOMED 2026-09-24 (GRIDIRON_BOARD): explanations live in tooltips on
+    # the numbers, so the sentence is the probability's tooltip, and it is
+    # still a real sentence with the numbers in it.
     text = page.eval_on_selector(
-        "#today .face .face-why .face-numbers", "el => el.textContent.trim()")
+        "#games-rows .game.open .q .q-prob", "el => (el.dataset.tip || '').trim()")
     assert "The model says" in text, text
     assert re.search(r"\d+%", text), f"no percentage in the line: {text!r}"
     # Either a market comparison or the absence stated in words -- never a
@@ -228,10 +231,9 @@ def test_the_pick_states_model_market_and_gap_in_words(page):
 def test_no_graph_is_drawn_anywhere_on_picks(page):
     """R3: no graphs on Picks, in the tiles or behind the expansion."""
     _open_first_card(page)
-    page.wait_for_selector("#today .face .face-why .face-numbers", timeout=10000)
     graphics = page.evaluate(
         """() => {
-            const scope = document.getElementById('view-week');
+            const scope = document.getElementById('view-games');
             const found = scope.querySelectorAll(
                 'canvas, svg, .dumbbell, .rail, .dot, .contrib-bar, .bar2');
             return [...found].map(e => e.tagName.toLowerCase() + '.' + e.className);
@@ -259,40 +261,29 @@ def test_the_contribution_bars_render_signed(page):
 
 
 def test_a_card_expands_and_shows_its_detail(page):
+    """RE-HOMED 2026-09-24 (GRIDIRON_BOARD): the row is the card, its head is
+    the control, and the detail is every question on the game, as tiles
+    already in the tree and revealed in place."""
     # THE REDRAW THIS HASH STARTS, WAITED FOR (operator question 28,
-    # 2026-09-28): the render before it already drew a card, and a card opened
-    # before the redraw lands is closed by it. See conftest.
+    # 2026-09-28; the board merge, 2026-09-29: the Games rows are what
+    # arrives now): the render before it may already have drawn a row, and
+    # the tap below belongs on the one the redraw leaves. See conftest.
     with wait_for_the_redraw_it_starts(page):
-        page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
-    card = page.locator("#today .face").first
-    # RE-POINTED 2026-09-08: the CARD_FACE card's detail is `.face-why`,
-    # revealed by the `.expand` control.
-    detail = card.locator(".face-why")
-    # T1 old -> new: the detail is now display:none rather than a collapsed
-    # max-height, so it has NO bounding box when closed. `is_visible()` is the
-    # honest check either way and does not depend on how the hiding is done.
-    assert not detail.is_visible(), "the card starts open"
+        page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
+    card = page.locator("#games-rows .game").first
+    detail = card.locator(".game-more")
+    assert not detail.is_visible(), "the row starts open"
 
-    card.locator(".expand").click()
-    # WAIT FOR THE THING THE NEXT LINE ASSERTS. A clock here would pass on a
-    # fast machine and fail on a loaded one, and the failure would read as
-    # "the card did not expand" rather than "we did not wait long enough".
+    card.locator(".game-head").click()
     detail.wait_for(state="visible", timeout=10000)
-    assert detail.is_visible(), "the card did not expand"
+    assert detail.is_visible(), "the row did not expand"
     assert detail.bounding_box()["height"] > 40
-    # The DECOMPOSITION moved to the Factors page (K3): a card carries the
-    # numbers, the bucket line and the reasoning, and the table of
-    # coefficients belongs where someone auditing goes looking for it.
-    #
-    # `.dumbbell` was asserted here until 2026-09-02. The graphic went with
-    # GRIDIRON_16 R3 and the sentence replaced it.
-    # RE-POINTED 2026-09-08. The old body's three parts are the new body's:
-    # the body itself, R3's model/market/gap sentence, and the way out to the
-    # page that carries the coefficients.
-    assert card.locator(".face-why").count() == 1
-    assert card.locator(".face-numbers").count() == 1
-    assert card.locator(".face-more").count() == 1, "the link to the Factors page"
+    # the three parts of the old body, on the new row: the questions, the
+    # numbers (in the tooltip on the probability) and the way out to Record
+    assert card.locator(".game-more .q").count() >= 1
+    assert card.locator(".game-more .q .q-prob[data-tip]").count() >= 1
+    assert card.locator(".game-more-link").count() == 1, "the link to the workings"
 
 
 def test_the_bucket_line_never_shows_an_accuracy_without_its_n(page):
@@ -306,24 +297,21 @@ def test_the_bucket_line_never_shows_an_accuracy_without_its_n(page):
     """
     import re
 
-    # The compact screen hides the detail until a row is tapped, so this
-    # opens one before looking for anything inside it.
+    # The detail hides behind the row until it is tapped, so this opens one
+    # before looking for anything inside it.
     _open_first_card(page)
-    page.wait_for_selector("#today .face .face-gate", timeout=10000)
-    lines = page.eval_on_selector_all(
-        "#today .face .face-gate", "els => els.map(e => e.textContent)"
+    # RE-HOMED 2026-09-24 (GRIDIRON_BOARD): the record badge "12/100" is the
+    # count on every row and tile, and its tooltip says it in words.
+    badges = page.eval_on_selector_all(
+        "#games-rows .game.open .badge",
+        "els => els.map(e => ({ text: e.textContent, tip: e.dataset.tip || '' }))"
     )
-    assert lines
-    for text in lines:
-        # RE-POINTED 2026-09-08. The old card's bucket line said "N resolved";
-        # the CARD_FACE gate line says "N settled · M more before a verdict".
-        # The promise is LAW 4's and is unchanged: a count is always present.
-        assert re.search(r"\d+ (resolved|settled)", text), (
-            f"a bucket line rendered without its count: {text!r}"
-        )
-        # If it states an accuracy, the count must be right there with it.
-        if "hits" in text or re.search(r"\d+% actual", text):
-            assert re.search(r"\d+ resolved", text)
+    assert badges
+    for b in badges:
+        assert re.fullmatch(r"\d+/\d+", b["text"].strip()), (
+            f"a badge rendered without its two counts: {b['text']!r}")
+        assert re.search(r"\d+ (resolved|settled)", b["tip"]), (
+            f"a badge's words carry no count: {b['tip']!r}")
 
 
 def test_the_weekly_strip_renders_with_hit_targets(page):
@@ -385,8 +373,8 @@ def test_every_moving_thing_is_inside_the_motion_vocabulary(page):
     media query or an inline style composed at runtime, none of which
     `audit.motion_faults` can see.
     """
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
     moving = page.evaluate(
         """() => {
             const out = [];
@@ -405,7 +393,8 @@ def test_every_moving_thing_is_inside_the_motion_vocabulary(page):
                     out.push({what: name, kind: 'animation',
                               duration: s.animationDuration,
                               ease: s.animationTimingFunction,
-                              prop: s.animationName});
+                              prop: s.animationName,
+                              count: s.animationIterationCount});
                 }
             });
             return out;
@@ -416,8 +405,22 @@ def test_every_moving_thing_is_inside_the_motion_vocabulary(page):
         text = text.strip()
         return float(text[:-2]) if text.endswith("ms") else float(text.rstrip("s")) * 1000
 
+    from gridiron import audit
+
     allowed = {"opacity", "transform", "background-color", "border-color", "color"}
     for item in moving:
+        # THE ONE ONE-SHOT KEYFRAME (the board merge, 2026-09-29): the board
+        # declared `pop`, a checkmark's two per cent once when a pick is
+        # marked taken (`audit.ONE_SHOT_KEYFRAMES`, its brief of 2026-09-25),
+        # and a taken pick on the slate wears it -- which this test met only
+        # once the suite took a pick before it. Held here as the stylesheet
+        # scan holds it: once, and inside the 200ms ceiling.
+        if item["kind"] == "animation" and item["prop"] in audit.ONE_SHOT_KEYFRAMES:
+            assert item["count"] == "1", (
+                f"{item['what']} repeats the one-shot {item['prop']}: {item['count']}")
+            assert seconds(item["duration"]) <= 200, (
+                f"{item['what']} runs {item['prop']} over {item['duration']}")
+            continue
         if item["kind"] == "animation":
             assert item["prop"] == "live-pulse", (
                 f"{item['what']} runs an animation that is not the live pulse: "
@@ -463,9 +466,10 @@ def test_nothing_moves_under_reduced_motion(served, _browser):
     # the tap below back until the redraw had landed: this test raced before
     # question 20 too (Q5's diagnosis). The arrival here carries no
     # transition; it is seen to start and to end all the same. See conftest.
+    # The Games rows are what arrives (the board merge, 2026-09-29).
     with wait_for_the_redraw_it_starts(page):
-        page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
+        page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
 
     assert page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches")
     durations = page.evaluate(
@@ -483,20 +487,18 @@ def test_nothing_moves_under_reduced_motion(served, _browser):
     )
     assert durations == [], f"motion survived prefers-reduced-motion: {durations}"
 
-    # ...and the card still opens, because motion is decoration not mechanism
-    page.locator("#today .face .expand").first.click()
+    # ...and the row still opens, because motion is decoration not mechanism
+    page.locator("#games-rows .game .game-head").first.click()
     page.wait_for_function(
         """() => {
-            // RE-POINTED 2026-09-08: the CARD_FACE card opens by clearing
-            // `hidden` on a body already in the tree, not by an `open` class.
-            const row = document.querySelector('#today .face');
-            const body = row && row.querySelector('.face-why');
+            const row = document.querySelector('#games-rows .game');
+            const body = row && row.querySelector('.game-more');
             return !!body && !body.hidden;
         }""",
         timeout=10000,
     )
-    assert page.locator("#today .face").first.evaluate(
-        "e => { const b = e.querySelector('.face-why'); return !!b && !b.hidden; }"
+    assert page.locator("#games-rows .game").first.evaluate(
+        "e => { const b = e.querySelector('.game-more'); return !!b && !b.hidden; }"
     )
     assert errors == []
     context.close()
@@ -517,10 +519,10 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     page.wait_for_url(served + "/", timeout=15000)
     page.wait_for_function("document.body.dataset.ready === 'true'", timeout=15000)
     # THE REDRAW THIS HASH STARTS, WAITED FOR (operator question 28,
-    # 2026-09-28): the row opened below would otherwise be closed by it.
+    # 2026-09-28; the Games rows from the board merge, 2026-09-29).
     with wait_for_the_redraw_it_starts(page):
-        page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
+        page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
 
     # The COLLAPSED list must not scroll sideways -- that is the state a
     # reader arrives in, and it is the state the 84px and 78px regressions
@@ -533,8 +535,8 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     # K2 old -> new: the detail lives behind a tap, so it has to be opened
     # before it can be measured. And it must not overflow AFTER opening
     # either -- an expanded row is still a phone screen.
-    page.locator("#today .face .expand").first.click()
-    page.wait_for_selector("#today .face .face-why .face-numbers", timeout=5000)
+    page.locator("#games-rows .game .game-head").first.click()
+    page.wait_for_selector("#games-rows .game.open .q .q-line", timeout=5000)
     overflow_open = page.evaluate(
         "() => document.documentElement.scrollWidth > window.innerWidth + 1"
     )
@@ -546,16 +548,16 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     # to prove is that it is actually on screen and not clipped away.
     box = page.evaluate(
         """() => {
-            const n = document.querySelector('#today .face .face-why .face-numbers');
+            const n = document.querySelector('#games-rows .game.open .q .q-line');
             if (!n) return null;
             const r = n.getBoundingClientRect();
             return { width: r.width, height: r.height,
                      right: r.right, text: n.textContent.trim().length };
         }"""
     )
-    assert box, "no numbers line in the expanded row"
-    assert box["width"] > 120, "the numbers line collapsed on a phone"
-    assert box["height"] > 0 and box["text"] > 20
+    assert box, "no question line in the expanded row"
+    assert box["width"] > 120, "the question line collapsed on a phone"
+    assert box["height"] > 0 and box["text"] > 6
     assert box["right"] <= 375 + 1, "the numbers line runs off a phone screen"
     context.close()
 
@@ -709,7 +711,7 @@ def _overflow(page) -> int:
 
 
 @pytest.mark.parametrize(
-    "route", ["#/week", "#/record", "#/results", "#/settings"]
+    "route", ["#/games", "#/props", "#/record", "#/results", "#/settings"]
 )
 def test_no_screen_overflows_a_phone(phone, route):
     """Sideways scroll on a phone is the single most common way a dense layout
@@ -760,8 +762,8 @@ def test_the_sport_tabs_are_reachable_and_tappable(phone):
 def test_every_tap_target_on_the_slate_is_big_enough(phone):
     """44px is Apple's floor and the one most people cite. Checked on the
     controls that are actually tapped, not on every element."""
-    phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#today .face", timeout=10000)
+    phone.evaluate("location.hash = '#/games'")
+    phone.wait_for_selector("#games-rows .game", timeout=10000)
     small = phone.evaluate("""
       Array.from(document.querySelectorAll(
         'nav a, #sport-tabs a, #sport-tabs button, select, button, .expand, summary'
@@ -788,27 +790,34 @@ def test_every_tap_target_on_the_slate_is_big_enough(phone):
     assert not narrow, f"tap targets under their width floor: {narrow}"
 
 
-#: EVERY TAP TARGET THE TAP-TARGET TESTS MEASURE ON THE SLATE (2026-09-27):
-#: this file's slate test, `test_cards.py`'s `#view-week a` and the colophon's
-#: source links the settings test measures, which are on the slate as well.
-#: A card stays closed, so the Why panel's link is not among them: operator
-#: question 20's side question, ruled not in scope (it leaves with the board).
-SLATE_TAP_TARGETS = ("nav a, #sport-tabs a, #sport-tabs button, select, button, "
-                     ".expand, summary, #view-week a, .colophon a")
+#: EVERY TAP TARGET, LINKS INCLUDED (the board merge, 2026-09-29): what the
+#: per-frame check and the per-view tests below read. Until the merge this
+#: was the old slate's list -- the nav, the sport tabs, selects, buttons, the
+#: Why control, summaries, `#view-week a` and the colophon's links; the board
+#: merge's checklist asks for every tap target, links included, so it is
+#: every link, button, select, field and summary, the label a checkbox is
+#: tapped through, and the Games row's head, which opens the row.
+SLATE_TAP_TARGETS = ("a[href], button, select, summary, "
+                     "input:not([type=hidden]):not([type=checkbox]):not([type=radio]), "
+                     "label:has(> input[type=checkbox]), label:has(> input[type=radio]), "
+                     ".game-head, [role=button]")
 
-#: How many times each market chip redraws the slate. Two rounds of this
-#: world's chips, and the hash set first, as the flaky test sets it.
+#: How many times each filter redraws the slate. Two rounds of this world's
+#: markets, and the hash set first, as the slate test sets it.
 ARRIVAL_ROUNDS = 2
 
 #: THE SAMPLER, installed before the redraw it watches (2026-09-27, operator
-#: question 20). It starts on the mutation that puts the arrival class on the
-#: Today panel -- the redraw's start, before any frame of it is drawn -- reads
-#: every tap target's height on every animation frame after it, and ends on
-#: the arrival's own end: the class gone and no transition left running on the
-#: panel. No clock is read and nothing waits a fixed time; the caller's only
-#: limit is an upper one.
-WATCH_ONE_ARRIVAL = """([SEL, after]) => {
-    const panel = document.getElementById('today');
+#: question 20; re-homed onto the board's panels by the merge, 2026-09-29: the
+#: Today panel left with the old Picks route, and the Games rows and the Props
+#: tiles are what arrive now, each row and tile on a stagger of its own). It
+#: starts on the mutation that puts the arrival class on the panel -- the
+#: redraw's start, before any frame of it is drawn -- reads every tap target's
+#: height on every animation frame after it, and ends on the arrival's own
+#: end: the class gone and nothing inside the panel still running but the
+#: live mark's pulse. No clock is read and nothing waits a fixed time; the
+#: caller's only limit is an upper one.
+WATCH_ONE_ARRIVAL = """([SEL, after, panelId]) => {
+    const panel = document.getElementById(panelId);
     const out = { after, frames: 0, fading: 0, measured: 0, controls: 0,
                   readings: [], done: false };
     window.__arrival = out;
@@ -819,8 +828,14 @@ WATCH_ONE_ARRIVAL = """([SEL, after]) => {
         const words = (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 40);
         return el.tagName.toLowerCase() + id + cls + (words ? ' "' + words + '"' : '');
     };
+    const moving = () => panel.getAnimations({ subtree: true }).some(a => {
+        const timing = a.effect && a.effect.getComputedTiming();
+        return !timing || timing.iterations !== Infinity;
+    });
     const sample = frame => {
-        const opacity = parseFloat(getComputedStyle(panel).opacity);
+        const first = panel.firstElementChild;
+        const opacity = Math.min(parseFloat(getComputedStyle(panel).opacity),
+            first ? parseFloat(getComputedStyle(first).opacity) : 1);
         if (opacity > 0 && opacity < 1) out.fading += 1;
         document.querySelectorAll(SEL).forEach(el => {
             if (el.offsetParent === null) return;
@@ -840,7 +855,7 @@ WATCH_ONE_ARRIVAL = """([SEL, after]) => {
         const tick = () => {
             out.frames += 1;
             sample(out.frames);
-            if (panel.classList.contains('arriving') || panel.getAnimations().length) {
+            if (panel.classList.contains('arriving') || moving()) {
                 requestAnimationFrame(tick);
             } else {
                 out.done = true;
@@ -852,57 +867,70 @@ WATCH_ONE_ARRIVAL = """([SEL, after]) => {
 }"""
 
 
-def _watch_one_arrival(page, redraw, after: str) -> dict:
+def _watch_one_arrival(page, redraw, after: str, panel: str = "games-rows") -> dict:
     """Install the sampler, start one redraw, and wait for its arrival to end
     (fifteen seconds is the upper limit, never a wait)."""
-    page.evaluate(WATCH_ONE_ARRIVAL, [SLATE_TAP_TARGETS, after])
+    page.evaluate(WATCH_ONE_ARRIVAL, [SLATE_TAP_TARGETS, after, panel])
     redraw()
     page.wait_for_function("window.__arrival && window.__arrival.done", timeout=15000)
     return page.evaluate("window.__arrival")
 
 
 def test_no_tap_target_leaves_whole_pixels_on_any_frame_of_the_slates_arrival(phone):
-    """Operator question 20, ruled (A) on 2026-09-27: the Today panel arrives
-    by its fade alone.
+    """Operator question 20, ruled (A) on 2026-09-27: a panel that holds tap
+    targets arrives by its fade alone. RE-HOMED BY THE BOARD MERGE
+    (2026-09-29) onto the board's panels: the Games rows, redrawn by the hash
+    and by every market the filter offers, twice; and the Props tiles, redrawn
+    by every family chip.
 
-    WHY EVERY FRAME. The slate test above flaked at 43.99951171875px: 44 less
+    WHY EVERY FRAME. The slate test flaked at 43.99951171875px: 44 less
     1/2048. Every tap target is laid out at a whole number of pixels, 44 or
     more, at rest -- and while the panel rose from one per cent below its
     place it sat a fraction of a pixel off whole, the browser mapped each
     button's box through that offset and rounded its top and bottom apart, so
     44 read 43.9995 or 44.0005. Measured on 2026-09-27 over twelve market
     switches: 9 of 192 frames read a tap target off whole pixels, 3 of those
-    under 44; with the movement removed, 193 of 193 were whole. A test that
-    measures once passes or fails by where its measurement lands; this one
-    reads every frame of every arrival, from the mutation that starts it to
-    the transition's own end, and names the element, the frame and the
-    reading. Nothing is rounded and nothing is widened: 44 is the floor and a
-    fraction of a pixel is a failure.
+    under 44; with the movement removed, 193 of 193 were whole. The board
+    brought its rows, tiles and expansion in rising one per cent the same
+    way. A test that measures once passes or fails by where its measurement
+    lands; this one reads every frame of every arrival, from the mutation
+    that starts it to the arrival's own end, and names the element, the
+    frame and the reading. Nothing is rounded and nothing is widened: 44 is
+    the floor and a fraction of a pixel is a failure.
     """
     page = phone
     arrivals = [_watch_one_arrival(
-        page, lambda: page.evaluate("location.hash = '#/week'"),
+        page, lambda: page.evaluate("location.hash = '#/games'"),
         "the hash was set to the slate, as the slate test sets it")]
-    page.wait_for_selector("#today .face", timeout=10000)
+    page.wait_for_selector("#games-rows .game", timeout=10000)
     markets = page.evaluate(
-        "[...document.querySelectorAll('.market-tab')].map(b => b.dataset.market)")
-    assert markets, "the slate drew no market chips to switch between"
+        "[...document.querySelectorAll('#week-market option')].map(o => o.value)")
+    assert len(markets) > 1, "the slate offered no market to filter by"
     for _ in range(ARRIVAL_ROUNDS):
-        for market in markets:
+        for market in markets[1:] + markets[:1]:
             arrivals.append(_watch_one_arrival(
-                page,
-                lambda m=market: page.click(f".market-tab[data-market='{m}']"),
-                f"the market chip {market or 'all'!r} was pressed"))
+                page, lambda m=market: page.select_option("#week-market", m),
+                f"the market filter was set to {market or 'all'!r}"))
+    arrivals.append(_watch_one_arrival(
+        page, lambda: page.evaluate("location.hash = '#/props'"),
+        "the Props tab was opened", panel="props-tiles"))
+    page.wait_for_selector("#props-chips .chip-btn", timeout=10000)
+    chips = page.evaluate(
+        "[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
+    for key in chips[1:] + chips[:1]:
+        arrivals.append(_watch_one_arrival(
+            page, lambda k=key: page.click(f"#props-chips .chip-btn[data-key='{k}']"),
+            f"the props chip {key or 'all'!r} was pressed", panel="props-tiles"))
 
     # IT LOOKED AT SOMETHING MOVING: every arrival was sampled, the whole
-    # slate's card controls were among what it measured (a market with no
-    # card this week has none to measure), and frames were read mid-fade.
+    # slate's row controls were among what it measured, and frames were read
+    # mid-fade.
     assert all(a["frames"] > 0 for a in arrivals), arrivals
     assert arrivals[0]["controls"] > 0, (
-        "the whole slate arrived with no tap target inside the Today panel, "
-        "so no card's controls were measured")
+        "the whole slate arrived with no tap target inside the Games rows, "
+        "so no row's controls were measured")
     assert sum(a["fading"] for a in arrivals) > 0, (
-        "no frame was read while the panel faded in, so no arrival was watched")
+        "no frame was read while a panel faded in, so no arrival was watched")
 
     off = [f"{r['what']}, {r['y']}px down the page, read {r['h']!r}px on "
            f"frame {r['frame']} of the arrival after {a['after']}"
@@ -911,9 +939,124 @@ def test_no_tap_target_leaves_whole_pixels_on_any_frame_of_the_slates_arrival(ph
     assert not off, (
         f"A TAP TARGET LEFT WHOLE PIXELS OR FELL UNDER 44 WHILE THE SLATE "
         f"ARRIVED ({len(off)} readings in {frames} frames of {len(arrivals)} "
-        f"arrivals at 390px, three device pixels to one). The panel must "
+        f"arrivals at 390px, three device pixels to one). A panel must "
         f"arrive by its fade alone (operator question 20, 2026-09-27):\n"
         + "\n".join(off[:12]))
+
+
+# --- every tap target on every board view, links included (the merge) --------
+#
+# The board merge's checklist, third-set addition to step 3 (2026-09-27):
+# "every tap target, links included, is 44px or more at 390px at rest ... Each
+# gets a test." And question 20's side question: "the board merge checks every
+# tap target, links included" (the old Why panel's 17px "How the model works"
+# link left with the old UI). Built 2026-09-29: A TEST PER VIEW, each reading
+# every tap target the view shows (`SLATE_TAP_TARGETS`, above) at 390px, three
+# device pixels to one, once the view is AT REST -- nothing inside the page
+# still running but the live mark's pulse -- and each must be 44px or more
+# tall in whole pixels, and 44px or more wide. Nothing rounded, nothing
+# widened.
+#
+# A NUMBER CARRYING AN EXPLANATION on hover or focus -- a chance, a badge, a
+# price -- is text, not a control, and is not counted: it opens nothing and
+# changes nothing when tapped (the reading is recorded in FOLLOWUPS).
+
+#: At rest: nothing inside the page running, the one loop excepted.
+_AT_REST = """() => document.body.dataset.ready === 'true'
+    && document.getAnimations().every(a => {
+        const t = a.effect && a.effect.getComputedTiming();
+        return t && t.iterations === Infinity;
+    })"""
+
+#: Every tap target the page shows, measured.
+_MEASURE_THE_TARGETS = """(SEL) => {
+    const describe = el => {
+        const id = el.id ? '#' + el.id : '';
+        const cls = (typeof el.className === 'string' && el.className.trim())
+            ? '.' + el.className.trim().split(/\\s+/).join('.') : '';
+        const words = (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 40);
+        return el.tagName.toLowerCase() + id + cls + (words ? ' "' + words + '"' : '');
+    };
+    const out = { measured: 0, small: [] };
+    document.querySelectorAll(SEL).forEach(el => {
+        if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') return;
+        if (getComputedStyle(el).visibility === 'hidden') return;
+        const r = el.getBoundingClientRect();
+        if (!(r.height > 0 && r.width > 0)) return;
+        out.measured += 1;
+        if (r.height < 44 || r.height !== Math.round(r.height) || r.width < 44) {
+            out.small.push(describe(el) + ' is ' + r.width + ' x ' + r.height + 'px');
+        }
+    });
+    return out;
+}"""
+
+#: The board's views, each with what brings it to the screen.
+BOARD_VIEWS = ("games", "games, a row open", "games, every row open", "props",
+               "record", "results", "settings", "the menu")
+
+
+def _open_a_view(phone, view):
+    """Bring one board view to the screen at 390px and let it come to rest."""
+    route = {"games": "#/games", "games, a row open": "#/games",
+             "games, every row open": "#/games",
+             "props": "#/props", "record": "#/record", "results": "#/results",
+             "settings": "#/settings", "the menu": "#/games"}[view]
+    _open_route(phone, route)
+    if view.startswith("games") or view == "the menu":
+        phone.wait_for_selector("#games-rows .game", timeout=15000)
+        # A ROW WITH A PICK TAKEN IS ON THE SLATE, whatever ran before: YOURS
+        # and the checkmark squeeze a row's count onto three lines on a phone,
+        # which put the row's head off whole pixels only in a suite that had
+        # taken a pick first (the full run of 2026-09-29).
+        if not phone.evaluate("!!document.querySelector('#games-rows .game .yours')"):
+            take = phone.locator(
+                "#games-rows .game[data-state='upcoming'] .meta .chk:not([disabled])").first
+            with wait_for_the_redraw_it_starts(phone):
+                take.click()
+            phone.wait_for_selector("#games-rows .game .yours", timeout=10000)
+    if view == "games, a row open":
+        phone.locator("#games-rows .game .game-head").first.click()
+        phone.wait_for_selector("#games-rows .game.open .game-more:not([hidden])",
+                                timeout=10000)
+    # EVERY ROW OPEN (the merge's prover, 2026-09-29): the first row holds no
+    # reasoning-pass tile, so the prompt disclosure's summary -- a tap target
+    # on the tile of every reasoning question -- was measured by no view.
+    if view == "games, every row open":
+        heads = phone.locator("#games-rows .game .game-head")
+        for i in range(heads.count()):
+            heads.nth(i).click()
+        phone.wait_for_function(
+            "[...document.querySelectorAll('#games-rows .game')].every(g =>"
+            " g.classList.contains('open'))", timeout=10000)
+        assert phone.locator("#games-rows .game.open summary").count() > 0, \
+            "no prompt disclosure on any open row of this world"
+    if view == "props":
+        phone.wait_for_selector("#props-tiles .prop, #props-notes .empty",
+                                timeout=15000)
+    if view == "record":
+        phone.wait_for_selector("#view-record .panel:not([hidden])", timeout=15000)
+    if view == "results":
+        phone.wait_for_selector("#history-table tbody tr", timeout=15000)
+    if view == "settings":
+        phone.wait_for_selector("#settings-health .set", timeout=15000)
+    if view == "the menu":
+        phone.click("#menu-button")
+        phone.wait_for_selector("#menu:not([hidden]) a", timeout=5000)
+    phone.wait_for_function(_AT_REST, timeout=15000)
+
+
+@pytest.mark.parametrize("view", BOARD_VIEWS)
+def test_every_tap_target_on_every_board_view_is_44px_at_rest(phone, view):
+    """Every link, button, select, field, summary and row head the view shows,
+    at 390px, at rest: 44px or more tall in whole pixels, and 44px or more
+    wide (the board merge's checklist, step 3; question 20's side question)."""
+    _open_a_view(phone, view)
+    got = phone.evaluate(_MEASURE_THE_TARGETS, SLATE_TAP_TARGETS)
+    assert got["measured"] > 0, f"{view}: no tap target was measured"
+    assert not got["small"], (
+        f"{view}: {len(got['small'])} tap targets under 44px, or off whole "
+        f"pixels, at 390px at rest:\n" + "\n".join(got["small"][:20]))
 
 
 def test_a_card_still_expands_on_a_phone(phone):
@@ -922,34 +1065,26 @@ def test_a_card_still_expands_on_a_phone(phone):
     control that reveals `.face-why`. The promise -- a card opens in place and
     does not overflow the phone doing it -- is unchanged."""
     # THE REDRAW THIS HASH STARTS, WAITED FOR (operator question 28,
-    # 2026-09-28): the card opened below would otherwise be closed by it.
+    # 2026-09-28; the Games rows from the board merge, 2026-09-29).
     with wait_for_the_redraw_it_starts(phone):
-        phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#today .face", timeout=10000)
-    # A LOCATOR, NOT AN ELEMENT HANDLE. `query_selector` snapshots one node
-    # and `renderWeek` rebuilds `#today` wholesale, so a render landing
-    # between the query and the click detaches it -- which it did, once in
-    # three runs, in the gate of 2026-09-09. A locator re-resolves at click
-    # time and retries while the node is detached.
-    phone.locator("#today .face .expand").first.click()
-    phone.wait_for_selector("#today .face .face-why", state="visible", timeout=5000)
-    assert _overflow(phone) <= 0, "an expanded card overflows the phone"
+        phone.evaluate("location.hash = '#/games'")
+    phone.wait_for_selector("#games-rows .game", timeout=10000)
+    # A LOCATOR, NOT AN ELEMENT HANDLE: a render landing between the query
+    # and the click detaches a handle; a locator re-resolves at click time.
+    phone.locator("#games-rows .game .game-head").first.click()
+    phone.wait_for_selector("#games-rows .game .game-more", state="visible", timeout=5000)
+    assert _overflow(phone) <= 0, "an expanded row overflows the phone"
 
 
 def test_the_dumbbell_and_contribution_bars_fit(phone):
     """Both are horizontal by nature and are the first things to break narrow."""
     # THE REDRAW THIS HASH STARTS, WAITED FOR (operator question 28,
-    # 2026-09-28): the card opened below would otherwise be closed by it.
+    # 2026-09-28; the Games rows from the board merge, 2026-09-29).
     with wait_for_the_redraw_it_starts(phone):
-        phone.evaluate("location.hash = '#/week'")
-    phone.wait_for_selector("#today .face", timeout=10000)
-    # A LOCATOR, NOT AN ELEMENT HANDLE. `query_selector` snapshots one node
-    # and `renderWeek` rebuilds `#today` wholesale, so a render landing
-    # between the query and the click detaches it -- which it did, once in
-    # three runs, in the gate of 2026-09-09. A locator re-resolves at click
-    # time and retries while the node is detached.
-    phone.locator("#today .face .expand").first.click()
-    phone.wait_for_selector("#today .face .face-why", state="visible", timeout=5000)
+        phone.evaluate("location.hash = '#/games'")
+    phone.wait_for_selector("#games-rows .game", timeout=10000)
+    phone.locator("#games-rows .game .game-head").first.click()
+    phone.wait_for_selector("#games-rows .game .game-more", state="visible", timeout=5000)
 
     # `.factors` is where the contribution chips live on the CARD_FACE card;
     # the dumbbell and the contribution rows belonged to the old expanded
@@ -1041,11 +1176,11 @@ def _open_first_card(page):
     card, and a row opened first is closed by the redraw. See conftest.
     """
     with wait_for_the_redraw_it_starts(page):
-        page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=10000)
-    head = page.locator("#today .face .expand").first
+        page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=10000)
+    head = page.locator("#games-rows .game .game-head").first
     head.click()
-    page.wait_for_selector("#today .face .face-why .face-numbers", timeout=5000)
+    page.wait_for_selector("#games-rows .game.open .q", timeout=5000)
 
 
 @pytest.mark.skip(reason="RE-POINT NEEDED (2026-09-08): this reaches into the OLD grid card -- .card-numbers, .card-bucket, .card-head -- which was removed with the More picks grid. The CARD_FACE card has no one-to-one equivalent, and rewriting the assertion to something the new card happens to have would be a test that passes by saying less. Needs re-pointing against the new card deliberately.")
@@ -1150,12 +1285,12 @@ def test_a_resolved_pick_is_shown_on_results_not_on_picks(page):
 def test_the_greeting_strip_leads_the_page(page):
     """It is the first thing on the page because it answers the first
     question: was I right last night."""
-    _open_route(page, "#/record")
+    _open_route(page, "#/games")
     box = page.evaluate("""() => {
         const g = document.getElementById('glance');
         if (!g || g.hidden) return null;
         const r = g.getBoundingClientRect();
-        const cards = document.querySelector('#week-cards');
+        const cards = document.querySelector('#games-rows');
         return { top: r.top, text: document.getElementById('greet-msg').textContent };
     }""")
     # `#glance` stays hidden when the digest has nothing to say -- an empty
@@ -1194,7 +1329,7 @@ def test_the_calibration_chart_is_not_drawn_in_the_page_colour(page):
     assert painted > 2, f"the chart painted only {painted} distinct colours"
 
 
-@pytest.mark.parametrize("route", ["#/week", "#/record", "#/results", "#/settings"])
+@pytest.mark.parametrize("route", ["#/games", "#/props", "#/record", "#/results", "#/settings"])
 def test_each_dark_screen_renders_on_a_phone(route, page):
     page.set_viewport_size({"width": 390, "height": 844})
     _open_route(page, route)
@@ -1208,7 +1343,7 @@ def test_each_dark_screen_renders_on_a_phone(route, page):
 # --- the plain-words law, on the rendered page ------------------------------
 
 @pytest.mark.parametrize(
-    "route", ["#/week", "#/record", "#/results", "#/settings"]
+    "route", ["#/games", "#/props", "#/record", "#/results", "#/settings"]
 )
 def test_no_internal_vocabulary_reaches_the_reader(route, page):
     """Scanned on the RENDERED page, not in the source. Labels are only half of
@@ -1299,13 +1434,15 @@ def test_the_result_reads_as_a_word_not_as_open(page):
 # where they still are.
 
 def test_the_greeting_is_on_the_home_tab_only(page):
-    """One page greets; every page warns."""
-    _open_route(page, "#/record")
+    """One page greets; every page warns. GAMES IS THE HOME TAB since
+    GRIDIRON_BOARD (2026-09-24): the first screen is the one that answers
+    "what happened while I was away"."""
+    _open_route(page, "#/games")
     assert page.locator("#glance").is_visible(), "the home tab does not greet"
 
     # NOT the home tab -- that is the page that greets. This list is every
-    # OTHER page, and it shrank to two when the seven pages became four.
-    for route in ("#/results", "#/settings"):
+    # OTHER page.
+    for route in ("#/props", "#/record", "#/results", "#/settings"):
         _open_route(page, route)
         # K2 old -> new: the greeting and the notices are ONE strip now, and
         # this test's own docstring is why the assertion had to move. "One
@@ -1331,7 +1468,7 @@ def test_law_six_sits_in_the_footer_not_on_the_masthead(page):
 
 
 @pytest.mark.parametrize(
-    "route", ["#/week", "#/record", "#/results", "#/settings"]
+    "route", ["#/games", "#/props", "#/record", "#/results", "#/settings"]
 )
 def test_no_bare_dash_stands_in_for_a_value(route, page):
     """A dash in a data cell reads as a rendering fault. Every absence names
@@ -1399,26 +1536,34 @@ def test_the_nav_says_results_and_the_old_route_redirects(page):
 
 def test_picks_carries_no_resolved_section(page):
     """Settled rows live in Results and only there (R4)."""
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#week-cards", timeout=10000)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-notes", timeout=10000)
     labels = page.eval_on_selector_all(
-        "#view-week .section-label", "els => els.map(e => e.textContent.trim())")
+        "#view-games .section-label", "els => els.map(e => e.textContent.trim())")
     assert "Resolved" not in labels, labels
-    assert page.locator("#view-week .rows-done").count() == 0
+    assert page.locator("#view-games .rows-done").count() == 0
 
 
-def test_the_nav_has_exactly_four_pages(page):
-    """FOUR PAGES (GRIDIRON_13 P5).
+def test_the_nav_is_two_tabs_and_a_menu_of_three(page):
+    """TWO PAGE TABS AND A MENU (GRIDIRON_BOARD, operator ruling 2026-09-24).
 
-    Seven entries was one more decision about where a thing lived every time
-    a reader wanted something. Factors and Versions were both about the same
-    subject -- what the model is and what changed -- and are sections of
-    Record now. Schedule became Settings > Health. Digest went: the greeting
-    keeps its data and a particular day is a click on the Results calendar.
+    Four pages in one row was GRIDIRON_13 P5 and held for three weeks. The
+    board puts Games and Props under the sport tabs and Record, Results and
+    Settings behind the menu, and the menu opens on its button.
     """
     labels = page.eval_on_selector_all(
         "nav#nav a", "els => els.map(e => e.textContent.trim())")
-    assert labels == ["Picks", "Record", "Results", "Settings"], labels
+    assert labels == ["Games", "Props"], labels
+    menu = page.eval_on_selector_all(
+        "nav#menu a", "els => els.map(e => e.textContent.trim())")
+    assert menu == ["Record", "Results", "Settings"], menu
+    assert page.evaluate("document.getElementById('menu').hidden"), "the menu starts open"
+    page.click("#menu-button")
+    page.wait_for_function("() => !document.getElementById('menu').hidden", timeout=5000)
+    assert page.get_attribute("#menu-button", "aria-expanded") == "true"
+    page.click("nav#menu a[data-route='record']")
+    page.wait_for_function("() => location.hash === '#/record'", timeout=5000)
+    assert page.evaluate("document.getElementById('menu').hidden"), "the menu stayed open after a choice"
 
 
 @pytest.mark.parametrize("old,expected", [
@@ -1426,7 +1571,12 @@ def test_the_nav_has_exactly_four_pages(page):
     ("#/factors", "#/record"),
     ("#/versions", "#/record"),
     ("#/schedule", "#/settings"),
-    ("#/digest", "#/week"),
+    ("#/digest", "#/games"),
+    # THE OLD PICKS ROUTE AND ITS TABS (GRIDIRON_BOARD, 2026-09-24)
+    ("#/week", "#/games"),
+    ("#/picks", "#/games"),
+    ("#/live", "#/games"),
+    ("#/today", "#/games"),
 ])
 def test_every_old_route_redirects(page, old, expected):
     """NO DEAD LINKS. A link somebody bookmarked or wrote down still lands,
@@ -1578,9 +1728,9 @@ def test_no_internal_vocabulary_reaches_the_reader_on_the_llm_view(page):
     #
     # THAT PICKS CAN NO LONGER SHOW THE REASONING PASS IS RECORDED IN
     # `docs/FOLLOWUPS.md` as a consequence of that removal, not hidden here.
-    page.evaluate("location.hash = '#/week'")
+    page.evaluate("location.hash = '#/games'")
     page.wait_for_function(
-        """() => document.querySelectorAll('#today .face').length > 0""",
+        """() => document.querySelectorAll('#games-rows .game').length > 0""",
         timeout=10000)
     llm = page.evaluate("""async () => {
         const r = await fetch('/api/week?sport=' + Gridiron.state.sport
@@ -1598,7 +1748,7 @@ def test_no_internal_vocabulary_reaches_the_reader_on_the_llm_view(page):
 
     # Open every card, because the reasoning lives in the body.
     page.evaluate("""() => {
-        document.querySelectorAll('#today .face-head')
+        document.querySelectorAll('#games-rows .game-head')
                 .forEach(h => h.click());
     }""")
     visible = page.evaluate("""() => {

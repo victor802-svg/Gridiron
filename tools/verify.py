@@ -660,6 +660,7 @@ def step_2_guards() -> bool:
         # as text and pass, while the browser runs none of it. This is the
         # check that was missing on 2026-09-08.
         ("the browser files parse", audit.check_the_browser_files_parse),
+        ("the bar fills once, on load", audit.check_the_bar_fills_once),
         ("prediction closures (LAW 1)", audit.check_all_prediction_closures),
         ("no orphan functions", audit.check_no_orphan_functions),
         # ADDED 2026-09-03 AFTER IT HAPPENED. Widening a sport CHECK on `games`
@@ -814,8 +815,40 @@ def step_2_guards() -> bool:
              audit.PROGRESS_FIXTURE_GOOD)),
         ("the withdrawn feature left nothing behind",
          audit.check_the_calls_feature_stayed_withdrawn),
-        ("four pages, and every old address lands",
+        ("two tabs and a menu, and every old address lands",
          audit.check_the_nav_is_four_pages),
+        # THE BOARD (GRIDIRON_BOARD, 2026-09-24): a signal never renders
+        # without its badge, a club's colour is never typed, and every word
+        # on a row, a tile or a tooltip is one a reader may meet.
+        ("a signal carries its badge",
+         lambda: [audit.check_the_board_signals_carry_their_badges(_slate_payload(sport))
+                  for sport in config.SPORTS]),
+        ("no club colour is typed", audit.check_no_hand_typed_club_hex),
+        ("the board speaks plain, tooltips included",
+         lambda: [audit.check_the_board_speaks_plain(_slate_payload(sport))
+                  for sport in config.SPORTS]),
+        # THE BOARD MERGE (2026-09-29). Operator question 19: headings in
+        # plain words, an internal version name only in a tooltip -- every
+        # heading index.html writes, and no `..._version` field painted as
+        # text. And LIVE TAB, re-homed: a live row of the board shows the
+        # game and the pregame figure and nothing else, read on every
+        # sport's slate from the record's copy.
+        ("headings in plain words, version names only in a tooltip (question 19)",
+         audit.check_headings_are_plain_words),
+        ("a live row shows the game and nothing else (LIVE TAB, on the board)",
+         lambda: [audit.check_the_live_tab_shows_only_the_game(_slate_payload(sport))
+                  for sport in _config().SPORTS] and None),
+        # THE MERGE'S PROVER (2026-09-29): My day counted a taken prop twice,
+        # a row's count pooled the forecasters, Results' settled heading
+        # counted another set than it headed; and a priced row showed the
+        # stored chance beside the price and payout of the side its question
+        # does not name. Read on every sport's slate from the record's copy.
+        ("the board counts each bet once, each forecaster's apart",
+         lambda: [audit.check_the_board_counts_each_bet_once(_slate_payload(sport))
+                  for sport in _config().SPORTS] and None),
+        ("a priced row is its card's numbers on the side its question names",
+         lambda: [audit.check_the_board_prices_the_side_it_names(_slate_payload(sport))
+                  for sport in _config().SPORTS] and None),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

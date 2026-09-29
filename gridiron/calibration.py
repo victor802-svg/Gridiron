@@ -2024,6 +2024,10 @@ def tier_table(
         # looking at.
         "corrections_note": _corrections_note(
             conn, sport=sport, market_type=market_type, predictor=predictor),
+        # THE CORRECTION'S VERSION, IN THE NOTE'S TOOLTIP (operator question
+        # 19; the board merge, 2026-09-29): the note names it by its day.
+        "corrections_tip": _corrections_tip(
+            conn, sport=sport, market_type=market_type, predictor=predictor),
         # WHICH GATE IS NEAREST, named once at the top rather than left for a
         # reader to work out by comparing four rows.
         "closest": _closest_verdict(conn, rows, sport=sport),
@@ -2090,6 +2094,18 @@ def _days_ago_iso(days: int) -> str:
 
     return (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ")
+
+
+def _corrections_tip(conn: sqlite3.Connection, *, sport: str,
+                     market_type: str, predictor: str) -> str | None:
+    """The version of the correction the note speaks of, for its tooltip, or
+    None when none is in force (operator question 19; the board merge,
+    2026-09-29)."""
+    from . import correction, language
+
+    active = correction.active_correction(
+        conn, sport=sport, market_type=market_type, forecaster=predictor)
+    return language.correction_versions_tip([active["version"]] if active else [])
 
 
 def _corrections_note(conn: sqlite3.Connection, *, sport: str,
@@ -2681,6 +2697,9 @@ def ranker_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
         "sport": sport,
         "record": "ranker",
         "ranker_version": config.RANKER_VERSION,
+        # THE NAME'S ONE PLACE ON THE PAGE (operator question 19; the board
+        # merge, 2026-09-29): the heading's tooltip, with what it names.
+        "version_tip": language.version_tip("ranker", config.RANKER_VERSION),
         "n": sum(c["n"] for c in comparisons),
         "comparisons": comparisons,
         "note": (
@@ -2893,6 +2912,7 @@ def _closing_line_of(conn: sqlite3.Connection, *, sport: str, predictor: str,
     # are read at all.
     rows = conn.execute(
         "SELECT r.market, r.side, r.price, c.clv_cents, c.restated,"
+        "       r.closed_utc,"
         "       c.recommendation_id IS NOT NULL AS accounted,"
         "       r.created_utc >= ? AS in_window"
         "  FROM recommendations r"
@@ -2971,6 +2991,25 @@ def _closing_line_of(conn: sqlite3.Connection, *, sport: str, predictor: str,
         }
         if entry["renderable"] and mean is not None and mean < 0:
             entry["finding"] = language.clv_finding_line(mean, n)
+        # THE SERIES, ON REPAIR'S COUNT (the board merge, 2026-09-29). The
+        # board drew the closing line over time from every measured close of a
+        # market, both forecasters pooled and from before the repair; its
+        # points are now this forecaster's counted rows since the window
+        # opened -- `got`, read through `recommend.counted_once` -- and there
+        # are none at all until the chart may be drawn: `renderable` needs the
+        # first clean read to have come AND the floor (ruling 8: no figure
+        # before 15 October; a point is a figure). Below either, the chart
+        # area says how far off it is, the date included while it is to come.
+        entry["series"] = [
+            {"when": r["closed_utc"], "cents": round(r["clv_cents"], 2)}
+            for r in sorted(got, key=lambda r: r["closed_utc"] or "")
+        ] if entry["renderable"] else []
+        entry["gate_words"] = language.chart_gate_words(
+            n, floor, first_read=(None if window["open"]
+                                  else window["first_clean_read"]))
+        # THE CHART'S TITLE, the server's words: whose line, and its N.
+        entry["chart_title"] = language.closing_chart_title(
+            entry["category_label"], n)
         entries.append(entry)
 
     open_rows = conn.execute(
@@ -3160,6 +3199,9 @@ def priced_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
         "sport": sport,
         "record": "priced",
         "blend_version": config.PRICED_VERSION,
+        # THE NAME'S ONE PLACE ON THE PAGE (operator question 19; the board
+        # merge, 2026-09-29): the heading's tooltip, with what it names.
+        "version_tip": language.version_tip("blend", config.PRICED_VERSION),
         "model_weight": config.PRICED_MODEL_WEIGHT,
         "declared": config.PRICED_WEIGHT_DECLARED,
         # NO TOTAL, AND NO POOLED "AWAITING" COUNT (2026-09-27). The `n` that
@@ -3320,18 +3362,36 @@ def taken_comparison(conn: sqlite3.Connection, *, sport: str,
     # table carrying a package id instead of a prediction id, and it belongs to
     # `combo_2`/`combo_3` rather than to this market -- counting it here would
     # put a package in a leg's curve, which is LAW 6 one level down.
-    taken_set = {
-        r["prediction_id"] for r in conn.execute(
-            "SELECT prediction_id FROM picks_taken"
-            " WHERE prediction_id IS NOT NULL"
-            "   AND id NOT IN (SELECT taken_id FROM picks_retracted)")
+    # TAKEN IS A DISTINCT BET TAKEN (the board merge, 2026-09-29; operator
+    # question 17's key). `items` holds one standing row per distinct bet --
+    # the final pass before the start where one exists (question 27) -- and a
+    # tap names whichever row was on the page when it was made. Matched by
+    # row number, a question tapped on its morning pass and standing on its
+    # final one was counted "passed over"; matched by `bet.of`, a tap on any
+    # pass of a question takes that question, once. The board brought this
+    # comparison onto the Record page (2026-09-25), where a gate distance is
+    # a count on the key.
+    # A TAP ON A WITHDRAWN FORECAST TAKES NOTHING (operator ruling 1,
+    # 2026-09-24: a voided forecast is never counted): the tap stays, as
+    # every tap does, and the question it named is not moved into the taken
+    # curve by another pass of it the operator was never shown.
+    taken_keys = {
+        bet.of(r) for r in conn.execute(
+            f"SELECT {bet.columns('p')} FROM picks_taken t"
+            "  JOIN predictions p ON p.id = t.prediction_id"
+            " WHERE t.prediction_id IS NOT NULL"
+            "   AND t.id NOT IN (SELECT taken_id FROM picks_retracted)"
+            "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                   WHERE v.prediction_id = p.id)")
     }
-    took = [r for r in items if r.id in taken_set]
-    passed = [r for r in items if r.id not in taken_set]
+    took = [r for r in items if bet.of(r) in taken_keys]
+    passed = [r for r in items if bet.of(r) not in taken_keys]
     gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
     payload = {
         "sport": sport,
         "record": "taken",
+        # WHOSE (the board merge, 2026-09-29): one forecaster's questions.
+        "predictor": predictor,
         "market": prop_type or market_type,
         "n": len(items),
         "gate": gate,

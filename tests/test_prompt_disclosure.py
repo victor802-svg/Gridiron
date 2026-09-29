@@ -213,25 +213,33 @@ def test_the_record_page_shows_the_prompts_when_the_reasoning_pass_is_picked(
 
 
 @pytest.mark.parametrize("width,height", WIDTHS)
-def test_a_reasoning_card_shows_its_prompt_inside_why(
+def test_a_reasoning_question_shows_its_prompt_on_the_open_row(
         prompt_world, _browser, width, height):
+    """RE-HOMED BY THE BOARD MERGE (2026-09-29). The old card carried the
+    disclosure inside its Why panel, and the Why panel left with the old
+    Picks route (question 20's side question: "the old Why panel leaves with
+    the board"). A reasoning-pass question's tile on the game's expanded row
+    carries it now: not on the row's face, collapsed on the open row until
+    it is opened, the same component, the same words."""
     context, page = _signed_in(_browser, prompt_world["base"], width, height)
     try:
         # THE REDRAW THIS HASH STARTS, WAITED FOR (operator question 28,
-        # 2026-09-28): the render before it already drew the cards, and a
-        # Why opened before the redraw lands is closed by it. See conftest.
+        # 2026-09-28; the Games rows from the board merge): the render before
+        # it may already have drawn the rows. See conftest.
         with conftest.wait_for_the_redraw_it_starts(page):
-            page.evaluate("location.hash = '#/week'")
+            page.evaluate("location.hash = '#/games'")
         for pid, kind in ((prompt_world["rebuilt"], "reconstructed"),
                           (prompt_world["sent"], "sent")):
-            card = page.locator(f"article.face[data-id='{pid}']")
-            card.first.wait_for(timeout=15000)
-            box = card.first.locator("details.prompt-box")
+            tile = page.locator(f"#games-rows .game .q[data-id='{pid}']")
+            tile.first.wait_for(state="attached", timeout=15000)
+            box = tile.first.locator("details.prompt-box")
             assert box.count() == 1 and not box.is_visible(), \
-                "the prompt sits on the card face instead of inside Why"
-            card.first.locator("button.expand").click()
-            # COLLAPSED INSIDE WHY: one line, its label, and nothing of the
-            # prompt until it is opened (render check, 2026-09-25).
+                "the prompt sits on the row's face instead of on its open row"
+            row = page.locator(f"#games-rows .game:has(.q[data-id='{pid}'])").first
+            if not row.evaluate("r => r.classList.contains('open')"):
+                row.locator(".game-head").click()
+            # COLLAPSED ON THE OPEN ROW: one line, its label, and nothing of
+            # the prompt until it is opened (render check, 2026-09-25).
             box.wait_for(state="visible", timeout=5000)
             assert not box.evaluate("b => b.open")
             assert box.locator("p.prompt-note").is_hidden()

@@ -44,8 +44,8 @@ def test_an_open_slate_has_no_settled_line(world_copy):
 
 def test_the_counts_line_names_the_settled_picks(page):
     page.set_viewport_size(WIDE)
-    page.evaluate("location.hash = '#/week'")
-    page.wait_for_selector("#today .face", timeout=15000)
+    page.evaluate("location.hash = '#/games'")
+    page.wait_for_selector("#games-rows .game", timeout=15000)
     page.evaluate("document.querySelector('.week-more').open = true")
     options = page.evaluate("[...document.querySelectorAll('#week-picker option')].map(o => o.value)")
     assert len(options) >= 2, options
@@ -53,7 +53,9 @@ def test_the_counts_line_names_the_settled_picks(page):
     with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
         page.select_option("#week-picker", resolved)
     page.wait_for_timeout(600)
-    counts = page.text_content("#week-counts")
+    # THE DAY STRIP'S COUNTS carry the settled count since GRIDIRON_BOARD
+    # (2026-09-24); the old `#week-counts` line went with the Picks page.
+    counts = page.text_content("#day-counts")
     assert " settled" in counts, f"the counts line on a finished slate reads {counts!r}"
     with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
         page.select_option("#week-picker", options[0])

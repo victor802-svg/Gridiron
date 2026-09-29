@@ -220,6 +220,19 @@ def seed_league(conn) -> sqlite3.Connection:
                             ),
                         )
 
+    # FIXTURE ROSTERS CARRY NUMBERS (operator ruling a, 2026-09-25): every
+    # quarterback and every receiver but one, so the jersey draws a number
+    # where the record holds one and an empty slot where it does not.
+    with conn:
+        for i, team in enumerate(TEAMS):
+            conn.execute(
+                "INSERT INTO player_numbers (season, player_id, team, jersey_number, fetched_utc)"
+                " VALUES (?,?,?,?,?)", (2025, f"QB-{team}", team, 10 + i, _iso(start)))
+            if team != TEAMS[-1]:
+                conn.execute(
+                    "INSERT INTO player_numbers (season, player_id, team, jersey_number, fetched_utc)"
+                    " VALUES (?,?,?,?,?)", (2025, f"WR-{team}", team, 80 + i, _iso(start)))
+
     # This fixture is a BACKTEST database and says so, because that is what it
     # is: every test needing a resolvable prediction forecasts a week already
     # played. Declaring it lets the live rule - a forecast must precede its own
@@ -909,33 +922,62 @@ def page(served, _browser):
 # redraws the slate unasked (the live tick patches scores in place, and
 # `audit.live_update_faults` refuses a re-render on a tick). Q5's signal
 # should say WHICH render finished, which is what this cannot see.
+#
+# ON THE BOARD (the merge, 2026-09-29). The Today panel is gone with the old
+# Picks route; the Games rows and the Props tiles arrive in its place, each
+# row and tile fading in on a stagger inside them, and a card the reader
+# opened stays open across any redraw (question 18, built by the merge). So
+# the helper watches the panel it is told to, waits until nothing inside it
+# is still running, and can wait for more than one arrival. It is also what
+# every fixed wait the board brought into the browser tests was rebuilt on
+# (the clock register, `audit.ELAPSED_TIME_HELD`, only shrinks).
 
 #: Installed before the action. `window.__theRedraw.done` once the arrival
-#: the action started has ended.
-_ARM_THE_REDRAW = """() => {
-    const panel = document.getElementById('today');
-    if (!panel) throw new Error('there is no Today panel on this page to redraw');
-    const redraw = { started: false, done: false, frames: 0 };
+#: the action started has ended. THE GAMES ROWS BY DEFAULT (the board merge,
+#: 2026-09-29): the Today panel this watched left with the old Picks route,
+#: and `renderGames` arrives `#games-rows` on every render of the slate, as
+#: `renderProps` arrives `#props-tiles`; the panel is the first argument. AND
+#: ITS ROWS' OWN FADES: each row and tile fades in on a stagger of its own
+#: inside the panel, so an arrival has ended when nothing inside the panel is
+#: still running -- the live mark's pulse, the one loop, excepted. AND HOW
+#: MANY (2026-09-29): an action that asks for the slate twice -- a chip
+#: pressed twice, two chips in quick succession -- starts two arrivals, and
+#: the second argument says how many to see start before the last one's end
+#: counts.
+_ARM_THE_REDRAW = """([panelId, count]) => {
+    const panel = document.getElementById(panelId);
+    if (!panel) throw new Error('there is no #' + panelId + ' on this page to redraw');
+    const redraw = { started: false, starts: 0, done: false, frames: 0 };
     window.__theRedraw = redraw;
     const arriving = value => (' ' + (value || '') + ' ').includes(' arriving ');
+    const moving = () => panel.getAnimations({ subtree: true }).some(a => {
+        const timing = a.effect && a.effect.getComputedTiming();
+        return !timing || timing.iterations !== Infinity;
+    });
+    let ticking = false;
+    const tick = () => {
+        redraw.frames += 1;
+        if (panel.classList.contains('arriving') || moving()) {
+            requestAnimationFrame(tick);
+        } else if (redraw.starts >= count) {
+            redraw.done = true;
+            watch.disconnect();
+        } else {
+            ticking = false;
+        }
+    };
     const watch = new MutationObserver(records => {
         // A record carries the class as it WAS; as it became is the next
-        // record's old value, or the attribute now for the last one.
-        const started = records.some((m, i) => arriving(
-            i + 1 < records.length ? records[i + 1].oldValue
-                                   : panel.getAttribute('class')));
-        if (!started) return;
-        watch.disconnect();
+        // record's old value, or the attribute now for the last one. A start
+        // is the class going on, never the class coming off.
+        records.forEach((m, i) => {
+            const now = i + 1 < records.length ? records[i + 1].oldValue
+                                               : panel.getAttribute('class');
+            if (arriving(now) && !arriving(m.oldValue)) redraw.starts += 1;
+        });
+        if (!redraw.starts) return;
         redraw.started = true;
-        const tick = () => {
-            redraw.frames += 1;
-            if (panel.classList.contains('arriving') || panel.getAnimations().length) {
-                requestAnimationFrame(tick);
-            } else {
-                redraw.done = true;
-            }
-        };
-        requestAnimationFrame(tick);
+        if (!ticking) { ticking = true; requestAnimationFrame(tick); }
     });
     watch.observe(panel, { attributes: true, attributeFilter: ['class'],
                            attributeOldValue: true });
@@ -947,20 +989,24 @@ REDRAW_LIMIT_MS = 15000
 
 
 @contextlib.contextmanager
-def wait_for_the_redraw_it_starts(page):
+def wait_for_the_redraw_it_starts(page, panel: str = "games-rows", count: int = 1):
     """Arm on entering, do the action that redraws the slate inside the
     block, and on leaving it wait INSIDE THE PAGE until that redraw's arrival
     has started and ended (operator question 28, 2026-09-28; Q5's
     render-finished signal replaces this).
 
         with wait_for_the_redraw_it_starts(page):
-            page.evaluate("location.hash = '#/week'")
+            page.evaluate("location.hash = '#/games'")
 
-    An action that starts no redraw of the Today panel fails by name at the
+    `panel` is the id of what arrives -- the Games rows by default, the Props
+    tiles as `"props-tiles"` (the board merge, 2026-09-29: the Today panel it
+    watched until then left with the old Picks route) -- and `count` how many
+    arrivals the action starts, for one that asks twice (a chip pressed
+    twice). An action that starts no redraw of the panel fails by name at the
     upper limit, rather than passing on the render before it. Arm it with no
     other redraw of the slate pending, as every caller does (after `ready`):
-    the first arrival after arming is taken as the action's."""
-    page.evaluate(_ARM_THE_REDRAW)
+    the first arrivals after arming are taken as the action's."""
+    page.evaluate(_ARM_THE_REDRAW, [panel, count])
     yield
     try:
         page.wait_for_function(
@@ -971,9 +1017,10 @@ def wait_for_the_redraw_it_starts(page):
         raise AssertionError(
             "THE REDRAW THIS TEST STARTED "
             + ("NEVER ENDED" if seen.get("started") else "NEVER STARTED")
-            + f" within the {REDRAW_LIMIT_MS}ms upper limit: the Today panel's "
+            + f" within the {REDRAW_LIMIT_MS}ms upper limit: #{panel}'s "
             f"arrival was {'seen to start' if seen.get('started') else 'not seen'}"
-            f" ({seen.get('frames', 0)} frames read after it). The action inside "
+            f" ({seen.get('starts', 0)} of {count} started, {seen.get('frames', 0)}"
+            f" frames read after it). The action inside "
             f"`wait_for_the_redraw_it_starts` must redraw the slate -- setting "
             f"the hash to what it already is fires no hashchange and redraws "
             f"nothing.") from None

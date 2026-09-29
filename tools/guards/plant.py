@@ -2093,18 +2093,27 @@ def plant_a_run_line_contradicting_its_moneyline() -> Result:
 
 
 def plant_a_fifth_nav_item() -> Result:
-    """Add a fifth page to the nav.
+    """Add a third page tab.
 
     A nav grows ONE LINK AT A TIME, each defensible on its own, which is how
-    this one got to seven: Picks, Record, Results, Settings, Schedule,
-    Factors, Versions, Digest. Every addition was reasonable and the total was
-    a page a reader had to make a decision about before they could ask a
-    question. Four is the ruling (GRIDIRON_13 R4).
+    the old one got to seven: Picks, Record, Results, Settings, Schedule,
+    Factors, Versions, Digest. The board ruling of 2026-09-24 makes it two
+    tabs and a menu of three; a third tab is the same growth starting again.
     """
-    good = ("const RENAMED = { history: 'results', factors: 'record',"
-            " versions: 'record', schedule: 'settings', digest: 'week' };")
-    faults = audit.nav_faults(good, audit.NAV_FIXTURE_A_FIFTH_ITEM)
-    return _desk_plant(faults, "add a fifth page to the nav",
+    faults = audit.nav_faults(audit.NAV_REDIRECTS_GOOD, audit.NAV_FIXTURE_A_FIFTH_ITEM)
+    return _desk_plant(faults, "add a third page tab",
+                       "audit.nav_faults")
+
+
+def plant_a_menu_missing_a_page() -> Result:
+    """Drop Settings from the menu.
+
+    THE OTHER WAY A NAV DRIFTS: a page quietly leaves it, and the only route
+    to Settings is an address nobody wrote down. The menu holds three pages
+    by ruling and the scan names the one that went.
+    """
+    faults = audit.nav_faults(audit.NAV_REDIRECTS_GOOD, audit.NAV_FIXTURE_A_SHORT_MENU)
+    return _desk_plant(faults, "drop a page from the menu",
                        "audit.nav_faults")
 
 
@@ -2113,11 +2122,9 @@ def plant_an_old_route_left_to_404() -> Result:
 
     A link somebody bookmarked or wrote down still has to land. A 404 tells
     them the app lost something; a redirect tells them where it went, and the
-    address bar says so.
+    address bar says so. `#/week` is the one most likely to be bookmarked.
     """
-    good_nav = "".join(
-        f'<a href="#/{p}" data-route="{p}">x</a>' for p in audit.NAV_PAGES)
-    faults = audit.nav_faults(audit.NAV_FIXTURE_A_DEAD_LINK, good_nav)
+    faults = audit.nav_faults(audit.NAV_FIXTURE_A_DEAD_LINK, audit._nav_markup())
     return _desk_plant(faults, "leave a removed route to 404",
                        "audit.nav_faults")
 
@@ -2404,6 +2411,161 @@ def plant_a_red_warning_border() -> Result:
                                "means lost", "audit.colour_law_faults")
 
 
+def plant_a_fill_on_a_pick_that_only_clears() -> Result:
+    """Fill a pick that merely clears the bar solid green.
+
+    THE AMENDED LAW'S FIRST CASE (2026-09-24). A solid green fill means a pick
+    WON; a pick that clears the bar wears a green OUTLINE. Filling it says the
+    game is over and the model was right, about a game that has not started.
+    """
+    faults = audit.colour_law_faults(".sig-clears { background: var(--win); }")
+    return _desk_plant(faults, "fill a pick that only clears the bar solid green",
+                       "audit.colour_law_faults")
+
+
+def plant_an_outline_on_a_pick_that_won() -> Result:
+    """Draw a settled win as a green ring.
+
+    THE SECOND CASE. A win is a solid fill; an outline is the price
+    comparison's mark, so a won pick drawn as a ring reads as one that merely
+    clears the bar -- a verdict demoted to a forecast.
+    """
+    faults = audit.colour_law_faults(".sig-won { box-shadow: 0 0 0 1px var(--win); }")
+    return _desk_plant(faults, "draw a settled win as an outline",
+                       "audit.colour_law_faults")
+
+
+def plant_a_red_fill_on_a_pick_that_only_costs() -> Result:
+    """Fill a pick that costs after fees solid red.
+
+    THE THIRD CASE, the red half of the first: a solid red fill means a pick
+    LOST. A pick the fee eats is still unplayed and wears a red outline.
+    """
+    faults = audit.colour_law_faults(".sig-costs { background: var(--loss); }")
+    return _desk_plant(faults, "fill a pick that only costs after fees solid red",
+                       "audit.colour_law_faults")
+
+
+def plant_a_value_colour_on_a_form_streak() -> Result:
+    """Fill the W of a club's last five solid green.
+
+    THE FOURTH CASE, re-ruled: the overnight build of 2026-09-24 read the
+    amendment as retiring the form row's colours and planted the letter's
+    ink; the operator ruled on 2026-09-25 (ruling d) that the 2026-09-08
+    ruling stands. So the allowance is the LETTER'S INK ONLY, and what is
+    planted now is the form mark wearing the colour as a fill -- a club's
+    game dressed as a pick that won. The ink itself is in the scan's own
+    negative fixture, proved at import.
+    """
+    faults = audit.colour_law_faults(".fmark.win { background: var(--win); }")
+    ringed = audit.colour_law_faults(".fmark.loss { border: 1px solid var(--loss); }")
+    ink = audit.colour_law_faults(".fmark.win { color: var(--win); }")
+    if ink:
+        return Result("THE DESK", "fill a club's form mark like a verdict",
+                      "audit.colour_law_faults", False,
+                      "NOT CAUGHT THE RIGHT WAY - the scan refuses the form "
+                      "row's own ink, which the ruling of 2026-09-25 allows: "
+                      + ink[0])
+    return _desk_plant(faults if (faults and ringed) else [],
+                       "fill a club's form mark like a verdict",
+                       "audit.colour_law_faults")
+
+
+def plant_an_outline_on_a_prop_against_an_assumed_multiple() -> Result:
+    """Light a prop tile green against the declared 3x, as if it were read.
+
+    RULING c, 2026-09-25: a prop tile's outline needs a real multiplier for
+    its line -- read, or typed in the entry rail -- and the tile's own
+    multiple is a declared constant. The cushion shows; the colour does not.
+    """
+    from gridiron import audit as _audit
+
+    planted = {"board": {"props": {"tiles": [{
+        "prediction_id": 9, "state": "upcoming", "signal": "clears",
+        "badge_words": "12/100", "badge_n": 12, "alt": False,
+        "multiple_source": "declared", "cushion_words": "+11"}]}}}
+    try:
+        _audit.check_the_board_signals_carry_their_badges(planted)
+    except _audit.LawViolation as exc:
+        return Result("RULING c", "a green outline on a prop tile against an assumed multiplier",
+                      "audit.board_signal_faults", True, str(exc))
+    return Result("RULING c", "a green outline on a prop tile against an assumed multiplier",
+                  "audit.board_signal_faults", False,
+                  "NOT CAUGHT - a tile lights up against a number nobody read")
+
+
+def plant_a_glow_without_its_badge() -> Result:
+    """A green outline on a row with no record badge beside it."""
+    from gridiron import audit as _audit
+
+    planted = {"board": {"games": [{"game_id": "g1", "state": "upcoming", "pick": {
+        "prediction_id": 1, "signal": "clears", "line_words": "Over 44.5 total",
+        "prob_words": "64%", "badge_words": None}}]}}
+    try:
+        _audit.check_the_board_signals_carry_their_badges(planted)
+    except _audit.LawViolation as exc:
+        return Result("LAW 4", "a green glow with no record badge beside it",
+                      "audit.board_signal_faults", True, str(exc))
+    return Result("LAW 4", "a green glow with no record badge beside it",
+                  "audit.board_signal_faults", False,
+                  "NOT CAUGHT - the most persuasive mark on the page renders "
+                  "with nothing saying how much stands behind it")
+
+
+def plant_a_hand_typed_club_hex() -> Result:
+    """Type a club's colour into the renderer."""
+    from gridiron import audit as _audit
+    from gridiron.data.team_colours import TEAM_COLOURS
+
+    chiefs = TEAM_COLOURS["nfl"]["KC"][0]
+    faults = _audit.club_hex_faults(texts={
+        "web/app.js": "  const CHIEFS = '#" + chiefs + "';\n"})
+    if faults:
+        return Result("COLOUR", "type a club's hex into the renderer",
+                      "audit.club_hex_faults", True, faults[0])
+    return Result("COLOUR", "type a club's hex into the renderer",
+                  "audit.club_hex_faults", False,
+                  "NOT CAUGHT - a second copy of a measured colour sits in "
+                  "the renderer and will disagree with the file the day the "
+                  "file is re-measured")
+
+
+def plant_a_price_on_a_live_row() -> Result:
+    """A price and a payout on a game row whose game is being played."""
+    from gridiron import audit as _audit
+
+    faults = _audit.live_card_faults(
+        {"board": {"games": [{"state": "live", "pick": {
+            "state": "live", "pregame_words": "pregame 61%",
+            "price_words": "58c", "pays_words": "1.72x", "size_words": "1 unit"}}]}})
+    named = {f.split("carries ")[1].split(":")[0] for f in faults if "carries " in f}
+    if {"'price_words'", "'pays_words'", "'size_words'"} <= named:
+        return Result(LAW_LIVE_PREGAME, "a price, a payout and a size on a live row",
+                      "audit.live_card_faults", True, faults[0])
+    return Result(LAW_LIVE_PREGAME, "a price, a payout and a size on a live row",
+                  "audit.live_card_faults", False,
+                  "NOT CAUGHT - a live row carries " + ", ".join(sorted(
+                      {"'price_words'", "'pays_words'", "'size_words'"} - named)))
+
+
+def plant_a_tooltip_with_internal_vocabulary() -> Result:
+    """A tooltip that says `rushing_yards` and calls the tile hot."""
+    from gridiron import audit as _audit
+
+    planted = {"board": {"props": {"tiles": [{
+        "prediction_id": 1, "signal": "none", "badge_words": "5/100",
+        "tips": {"prob": "a hot rushing_yards claim, the best bet tonight"}}]}}}
+    try:
+        _audit.check_the_board_speaks_plain(planted)
+    except _audit.LawViolation as exc:
+        return Result("PLAIN WORDS", "internal vocabulary and pressure in a tooltip",
+                      "audit.board_words_faults", True, str(exc))
+    return Result("PLAIN WORDS", "internal vocabulary and pressure in a tooltip",
+                  "audit.board_words_faults", False,
+                  "NOT CAUGHT - a tooltip is text a reader meets, and the scan "
+                  "did not read it")
+
+
 def plant_a_green_live_mark() -> Result:
     """Draw the live mark in the accent colour.
 
@@ -2505,9 +2667,16 @@ def plant_a_panel_holding_tap_targets_moving_as_it_arrives() -> Result:
     movement must not trip it (a comment is not code), the gate's own
     call must refuse the first form read from a copy of the package, and the
     gate's step 2 must make that call (read from its syntax tree).
+
+    ON THE BOARD'S PANELS FROM THE MERGE (2026-09-29): the Today panel left
+    with the old Picks route, and every form is planted on the Games rows
+    and the Props tiles as they ship (`#games-rows, #props-tiles`), the first
+    being the arrival exactly as the board built it; and two more, the
+    board's own: each row and tile rising on its stagger, and an opened
+    row's expansion rising -- both hold tap targets, both must be named.
     """
     guard = "audit.arrival_movement_faults"
-    violation = "the Today panel's movement put back as it arrives"
+    violation = "a movement put back into the board's arrivals"
     scan = getattr(audit, "arrival_movement_faults", None)
     if scan is None:
         return Result(LAW_ARRIVAL, violation, guard, False,
@@ -2527,24 +2696,37 @@ def plant_a_panel_holding_tap_targets_moving_as_it_arrives() -> Result:
         return Result(LAW_ARRIVAL, violation, guard, False,
                       "the shipped stylesheet already fails; fix that before "
                       "trusting this planting: " + shipped[0])
-    state = "#today.arriving { opacity: 0; transition: none; }"
+    state = "#games-rows.arriving, #props-tiles.arriving { opacity: 0; transition: none; }"
     fade = "  transition: opacity var(--motion-panel) var(--motion-ease);" + chr(10) + "}"
+    panel = "#games-rows, #props-tiles {"
+    rows_state = "#games-rows.arriving .game, #props-tiles.arriving .prop { opacity: 0; transition: none; }"
+    rows_fade = ".game, .prop { transition: opacity 200ms ease-out; transition-delay: calc(var(--i, 0) * 30ms); }"
+    more_state = ".game-more.arriving { opacity: 0; transition: none; }"
+    more_fade = ".game-more { transition: opacity 200ms ease-out; }"
     arrive_add = "node.classList.add('arriving');"
-    if css.count(state) != 1 or css.count("#today {" + chr(10) + fade) != 1 \
+    # RE-POINTED AT THE BOARD'S PANELS (the board merge, 2026-09-29): the
+    # Today panel this planted on left with the old Picks route; the Games
+    # rows and the Props tiles arrive now, each row and tile inside them on a
+    # stagger of its own, and an opened row's expansion arrives too -- all
+    # holding tap targets, all by their fade alone.
+    if css.count(state) != 1 or css.count(panel + chr(10) + fade) != 1 \
+            or css.count(rows_state) != 1 or css.count(rows_fade) != 1 \
+            or css.count(more_state) != 1 or css.count(more_fade) != 1 \
             or script.count(arrive_add) != 1:
         return Result(LAW_ARRIVAL, violation, guard, False,
-                      "the Today panel's arrival is no longer written the way "
+                      "the board's arrivals are no longer written the way "
                       "this planting expects; re-point it")
-    moved_state = "#today.arriving { opacity: 0; transform: translateY(1%); transition: none; }"
+    moved_state = ("#games-rows.arriving, #props-tiles.arriving { opacity: 0;"
+                   " transform: translateY(1%); transition: none; }")
     moved_fade = ("  transition: opacity var(--motion-panel) var(--motion-ease)," + chr(10)
                   + "              transform var(--motion-panel) var(--motion-ease);"
                   + chr(10) + "}")
 
     def with_fade(replacement: str) -> str:
-        return css.replace("#today {" + chr(10) + fade, "#today {" + chr(10) + replacement)
+        return css.replace(panel + chr(10) + fade, panel + chr(10) + replacement)
 
     forms = {
-        "as it shipped until 2026-09-27":
+        "as the board shipped it until the merge":
             (with_fade(moved_fade).replace(state, moved_state), script,
              ["carries `transform: translateY(1%)`", "transitions `transform`"]),
         "its start state alone":
@@ -2553,7 +2735,8 @@ def plant_a_panel_holding_tap_targets_moving_as_it_arrives() -> Result:
         "its transition alone":
             (with_fade(moved_fade), script, ["transitions `transform`"]),
         "the translate property":
-            (css.replace(state, "#today.arriving { opacity: 0; translate: 0 1%; transition: none; }"),
+            (css.replace(state, "#games-rows.arriving, #props-tiles.arriving"
+                                " { opacity: 0; translate: 0 1%; transition: none; }"),
              script, ["carries `translate: 0 1%`"]),
         "a transition naming every property":
             (with_fade("  transition: all var(--motion-panel) var(--motion-ease);" + chr(10) + "}"),
@@ -2562,21 +2745,39 @@ def plant_a_panel_holding_tap_targets_moving_as_it_arrives() -> Result:
             (with_fade("  transition: var(--motion-panel) var(--motion-ease);" + chr(10) + "}"),
              script, ["transitions `all`"]),
         "on the panel's class":
-            (css + chr(10) + ".today { transition: opacity var(--motion-state) var(--motion-ease),"
+            (css + chr(10) + ".rows { transition: opacity var(--motion-state) var(--motion-ease),"
              " transform var(--motion-state) var(--motion-ease); }" + chr(10),
-             script, ["`.today` transitions `transform` on the panel `#today`"]),
+             script, ["`.rows` transitions `transform` on the panel `#games-rows`"]),
         "at phone width":
             (css + chr(10) + "@media (max-width: 640px) {" + chr(10)
-             + "  #today.arriving { transform: translateY(1%); }" + chr(10) + "}" + chr(10),
+             + "  #games-rows.arriving { transform: translateY(1%); }" + chr(10) + "}" + chr(10),
              script, ["carries `transform: translateY(1%)`"]),
         "under another class the script arrives it by":
-            (css.replace(state, "#today.entering { opacity: 0; transform: translateY(1%); transition: none; }"),
+            (css.replace(state, "#games-rows.entering, #props-tiles.entering"
+                                " { opacity: 0; transform: translateY(1%); transition: none; }"),
              script.replace(arrive_add, "node.classList.add('entering');"),
-             ["`#today.entering`, the state a panel arrives from, carries"]),
+             ["`#games-rows.entering`, the state a panel arrives from, carries"]),
         "a new panel arriving at the panel duration":
             (css + chr(10) + ".games-panel { transition: opacity var(--motion-panel) var(--motion-ease),"
              " transform var(--motion-panel) var(--motion-ease); }" + chr(10),
              script, ["`.games-panel` transitions `transform` on a panel"]),
+        # THE BOARD'S OWN THREE (2026-09-29): each row and tile rising on its
+        # stagger, as the board built it, and an opened row's expansion.
+        "each row and tile rising as it arrives":
+            (css.replace(rows_state, "#games-rows.arriving .game, #props-tiles.arriving .prop"
+                                     " { opacity: 0; transform: translateY(1%); transition: none; }")
+                .replace(rows_fade, ".game, .prop { transition: opacity 200ms ease-out,"
+                                    " transform 200ms ease-out; transition-delay:"
+                                    " calc(var(--i, 0) * 30ms); }"),
+             script, ["`#games-rows.arriving .game`, the state a panel arrives from, carries",
+                      "`.game` transitions `transform` on the panel `#games-rows .game`"]),
+        "an opened row's expansion rising":
+            (css.replace(more_state, ".game-more.arriving { opacity: 0; transform:"
+                                     " translateY(1%); transition: none; }")
+                .replace(more_fade, ".game-more { transition: opacity 200ms ease-out,"
+                                    " transform 200ms ease-out; }"),
+             script, ["`.game-more.arriving`, the state a panel arrives from, carries",
+                      "`.game-more` transitions `transform` on the panel `.game-more`"]),
     }
     missed, first = [], None
     for name, (planted_css, planted_script, wanted) in forms.items():
@@ -2585,7 +2786,7 @@ def plant_a_panel_holding_tap_targets_moving_as_it_arrives() -> Result:
         if absent:
             missed.append(f"{name}: {absent} not named in {faults!r}")
         first = first or (faults[0] if faults else None)
-    commented = css.replace(state, state + " /* was: #today.arriving { transform: "
+    commented = css.replace(state, state + " /* was: #games-rows.arriving { transform: "
                             "translateY(1%); } */")
     stray = scan(commented, markup, script)
     if stray:
@@ -2595,13 +2796,13 @@ def plant_a_panel_holding_tap_targets_moving_as_it_arrives() -> Result:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         root = Path(tmp) / "gridiron"
         shutil.copytree(web, root / "web", ignore=shutil.ignore_patterns("fonts"))
-        (root / "web" / "style.css").write_text(forms["as it shipped until 2026-09-27"][0],
-                                                encoding="utf-8")
+        (root / "web" / "style.css").write_text(
+            forms["as the board shipped it until the merge"][0], encoding="utf-8")
         try:
             check(root)
             missed.append("the gate's own call passed the arrival as it shipped")
         except audit.LawViolation as refused:
-            if "#today.arriving" not in str(refused):
+            if "#games-rows.arriving" not in str(refused):
                 missed.append(f"the gate's own call refused it without naming "
                               f"the start state: {refused}")
     # AND THE GATE MAKES THAT CALL (the prover, 2026-09-27). With its row taken
@@ -7077,7 +7278,10 @@ def plant_a_third_control_row_above_the_first_card() -> Result:
     # first draft anchored on `id="today"` and spliced a div INTO the section's
     # opening tag, which is not a row of controls, it is broken markup -- and
     # the scan was right not to count it.
-    anchor = '<nav class="state-tabs"'
+    # RE-POINTED AT THE GAMES PAGE (2026-09-24): the rows are the first card
+    # and nothing is declared above them, so one row with one button is the
+    # whole planting.
+    anchor = '<div id="games-rows"'
     if anchor not in html:
         return Result(LAW_TWO_ROWS, "a third control row above the first card",
                       "audit.picks_control_row_faults", False,
@@ -8235,6 +8439,25 @@ def plant_a_horizon_that_counts_days_for_a_weekly_sport() -> Result:
 LAW_COMMENTS = "A SCANNER READS CODE, NOT COMMENTS"
 
 
+def plant_a_comment_that_eats_a_rule() -> Result:
+    """Open a comment inside a comment, so its tail stands outside one.
+
+    THIS SHIPPED, 2026-09-24: the board's banner comment did exactly this and
+    the browser dropped `.bar { height: auto }` on both builds. Found by
+    measuring the bar at 52px on 2026-09-25, not by any scan.
+    """
+    css = ("/* a banner\n/* nested */\n   the tail of the banner */\n"
+           ".bar { height: auto; }\n")
+    faults = audit.stray_comment_marker_faults(css)
+    clean = audit.stray_comment_marker_faults("/* one */\n.bar { height: auto; }\n")
+    if clean:
+        return Result("THE GATE", "a comment that eats the next rule",
+                      "audit.stray_comment_marker_faults", False,
+                      "NOT CAUGHT THE RIGHT WAY - a well-formed comment is refused: " + clean[0])
+    return _desk_plant(faults, "a comment that eats the next rule",
+                       "audit.stray_comment_marker_faults")
+
+
 def plant_a_comment_naming_the_forbidden_thing() -> Result:
     """Write the forbidden thing into a COMMENT, in front of eight scanners.
 
@@ -8293,9 +8516,14 @@ def plant_a_comment_naming_the_forbidden_thing() -> Result:
         ("toggle rebuild", _audit.selection_moves_the_frame,
          js[:tb] + f"{nl}      // never {rebuilder} here{nl}" + js[tb:],
          js[:tb] + f"{nl}      {rebuilder});{nl}" + js[tb:]),
+        # THE WHOLE HEADER, not the one nav: the scan reads the page tabs
+        # and the menu together, so a fragment holding only one of them
+        # reads as the other having gone (re-ruled 2026-09-24).
         ("nav", lambda t: _audit.nav_faults(js, t),
-         nav_open + '<!-- <a data-route="calls">Calls</a> -->' + "</nav>",
-         nav_open + '<a data-route="calls">Calls</a>' + "</nav>"),
+         html.replace(nav.group(0),
+                      nav_open + '<!-- <a data-route="calls">Calls</a> -->' + "</nav>"),
+         html.replace(nav.group(0),
+                      nav_open + '<a data-route="calls">Calls</a>' + "</nav>")),
     ]
     fired_on_prose = [name for name, scan, commented, _real in probes if scan(commented)]
     blind = [name for name, scan, _commented, real in probes if not scan(real)]
@@ -8714,6 +8942,367 @@ def plant_another_groups_heading_on_the_live_tab() -> Result:
                   "NOT CAUGHT - a heading for a group that is not on this tab, "
                   "which is what the clears group's rule and its SOLID chip "
                   "were doing over an empty Live tab")
+
+
+def plant_an_internal_version_name_in_a_heading() -> Result:
+    """Paint the blend's version back beside the Record page's heading.
+
+    OPERATOR QUESTION 19, ruled 2026-09-27 (third set): "fixed in the board:
+    headings in plain words; internal version names only in a tooltip". Built
+    by the board merge (2026-09-29). The Record page's "Priced, and against the
+    close" carried the blend's name "b1" in a `<small>` the renderer filled
+    from `priced.blend_version`, on every sport. Planted four ways, each of
+    which the scans must name: the heading with the name written into it, the
+    renderer painting a version field as visible text, a correction's number
+    said in words on a line a reader sees, and the page's own words with a
+    version name in them -- while the same name in a TOOLTIP (a `title`, or a
+    board tooltip) must pass. And the gate's step 2 must make the call (read
+    from its syntax tree, as question 20's and question 15's are pinned).
+    """
+    guard = "audit.heading_words_faults, audit.version_painted_faults"
+    violation = "an internal version name beside a heading"
+    web = config.PACKAGE_ROOT / "web"
+    html = (web / "index.html").read_text(encoding="utf-8")
+    js = (web / "app.js").read_text(encoding="utf-8")
+    shipped = audit.heading_words_faults(html) + audit.version_painted_faults(js)
+    if shipped:
+        return Result("PLAIN WORDS", violation, guard, False,
+                      "the shipped page already fails; fix that before "
+                      "trusting this planting: " + shipped[0])
+    heading = '<h3 id="priced-heading">Priced, and against the close</h3>'
+    painter = "if (heading && priced) heading.title = priced.version_tip || '';"
+    if html.count(heading) != 1 or js.count(painter) != 1:
+        return Result("PLAIN WORDS", violation, guard, False,
+                      "the priced heading is no longer written the way this "
+                      "planting expects; re-point it")
+    missed, first = [], None
+    written = audit.heading_words_faults(html.replace(
+        heading, '<h3 id="priced-heading">Priced, and against the close '
+                 f'<small>{config.PRICED_VERSION}</small></h3>'))
+    if not written:
+        missed.append("a heading with the blend's name written into it passed")
+    painted = audit.version_painted_faults(js.replace(
+        painter, "if (heading && priced) heading.textContent = priced.blend_version || '';"))
+    if not painted:
+        missed.append("the renderer painting `blend_version` as the heading's text passed")
+    said = audit.plain_words_violations(
+        "Version 8 has been withdrawn since Tuesday 29 September")
+    if not said:
+        missed.append("a correction's number in words on a line a reader sees passed")
+    ranker = audit.plain_words_violations(
+        f"Did the ordering earn its place {config.RANKER_VERSION}")
+    if not ranker:
+        missed.append("the ordering's name beside its heading passed")
+    # THE TOOLTIP IS WHERE THE NAME BELONGS, and it must pass there.
+    if audit.plain_words_violations(
+            f"Version {config.PRICED_VERSION}: the blend.", in_a_tooltip=True):
+        missed.append("a version name in a tooltip was refused")
+    titled = audit.heading_words_faults(html.replace(
+        heading, f'<h3 id="priced-heading" title="Version {config.PRICED_VERSION}">'
+                 'Priced, and against the close</h3>'))
+    if titled:
+        missed.append(f"a version name in a heading's title was refused: {titled[0]}")
+    first = (written or painted or said or [None])[0]
+    import ast as _ast
+    gate = Path(audit.__file__).resolve().parents[1] / "tools" / "verify.py"
+    step = next((node for node in _ast.parse(gate.read_text(encoding="utf-8")).body
+                 if isinstance(node, _ast.FunctionDef) and node.name == "step_2_guards"),
+                None)
+    if step is None or not any(
+            isinstance(node, _ast.Attribute)
+            and node.attr == "check_headings_are_plain_words"
+            and isinstance(node.value, _ast.Name) and node.value.id == "audit"
+            for node in _ast.walk(step)):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_headings_are_plain_words`")
+    if missed:
+        return Result("PLAIN WORDS", violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result("PLAIN WORDS", violation, guard, True, first or "")
+
+
+def plant_a_chance_on_a_live_board_row() -> Result:
+    """Put a chance and a tier chip on a live row of the board.
+
+    LIVE TAB, RE-HOMED BY THE BOARD MERGE (2026-09-29). The Live tab left with
+    the old Picks route; a game being played is a row on Games now, and the
+    promise travels with it: the row shows the game and the pregame figure
+    with its word, and nothing else. The board built a live row's block with
+    its chance in the payload (`prob`, `prob_words`) and drew neither; this
+    plants them, and a tier chip, on the pick and on a question behind it,
+    and on a live prop tile, and expects each named.
+    """
+    from gridiron import audit as _audit
+
+    planted = {"board": {
+        "games": [{"state": "live", "pick_label_words": "Model's pick · pregame",
+                   "pick": {"state": "live", "pregame_words": "pregame 61%",
+                            "prob": 0.61, "prob_words": "61%"},
+                   "questions": [{"state": "live", "tier_chip": "STRONG"}]}],
+        "props": {"tiles": [{"state": "live", "prob_words": "58%"}]}}}
+    faults = _audit.live_tab_faults(planted)
+    wanted = ("board.games[0].pick carries 'prob'",
+              "board.games[0].pick carries 'prob_words'",
+              "board.games[0].questions[0] carries 'tier_chip'",
+              "board.props.tiles[0] is live and carries 'prob_words'")
+    absent = [w for w in wanted if not any(w in f for f in faults)]
+    try:
+        _audit.check_the_live_tab_shows_only_the_game(planted)
+        refused = False
+    except _audit.LawViolation:
+        refused = True
+    if absent or not refused:
+        return Result(LAW_CARDS, "a chance and a tier chip on a live board row",
+                      "audit.live_tab_faults", False,
+                      f"NOT CAUGHT - {absent or 'the check raised nothing'}")
+    return Result(LAW_CARDS, "a chance and a tier chip on a live board row",
+                  "audit.live_tab_faults", True, faults[0])
+
+
+def plant_another_states_label_on_a_live_board_row() -> Result:
+    """Let a settled state's label follow a game into play on the board.
+
+    LIVE TAB's second half, re-homed (2026-09-29): a heading belonging to
+    another group on Live is, on the board, a live row whose pick is labelled
+    for another state -- "won", or the plain label of an upcoming pick.
+    """
+    from gridiron import audit as _audit
+
+    caught = []
+    for label in ("Model's pick · won", "Model's pick"):
+        planted = {"board": {"games": [{
+            "state": "live", "pick_label_words": label,
+            "pick": {"state": "live", "pregame_words": "pregame 61%"},
+            "questions": []}]}}
+        faults = _audit.live_tab_faults(planted)
+        caught.append(bool(faults) and "followed the game into play" in faults[0])
+    if not all(caught):
+        return Result(LAW_CARDS, "another state's label on a live board row",
+                      "audit.live_tab_faults", False,
+                      f"NOT CAUGHT - {caught}")
+    return Result(LAW_CARDS, "another state's label on a live board row",
+                  "audit.live_tab_faults", True,
+                  "a live row labelled for another state is refused by name")
+
+
+def _step_2_calls(name: str) -> bool:
+    """Does the gate's step 2 make the call, read from its syntax tree (as
+    question 15's and question 20's plantings pin theirs)?"""
+    import ast as _ast
+
+    gate = Path(audit.__file__).resolve().parents[1] / "tools" / "verify.py"
+    step = next((node for node in _ast.parse(gate.read_text(encoding="utf-8")).body
+                 if isinstance(node, _ast.FunctionDef) and node.name == "step_2_guards"),
+                None)
+    return step is not None and any(
+        isinstance(node, _ast.Attribute) and node.attr == name
+        and isinstance(node.value, _ast.Name) and node.value.id == "audit"
+        for node in _ast.walk(step))
+
+
+def plant_a_board_count_counting_a_bet_twice() -> Result:
+    """Count a bet twice on the board, pool its forecasters, or head Results'
+    settled tiles with another set's count.
+
+    THE MERGE'S PROVER (2026-09-29), each measured on the merged board before
+    it was fixed: a taken prop is on its game's row and is a tile, and My day
+    read both -- one tap, two chips, "2 taken"; a row said "4 questions on
+    this game" over three of the model's and one of the reasoning pass's, the
+    pooled count operator questions 14 and 22 took off every other panel; and
+    Results drew every question on every finished row, both forecasters',
+    under the Today block's "Settled -- 15 questions". Planted in the board's
+    own shapes, each must be named; the fixed shapes must pass; and the
+    gate's step 2 must make the call on every sport's slate.
+    """
+    from gridiron import audit as _audit, language as _language
+
+    guard = "audit.board_count_faults"
+    violation = "a bet counted twice or pooled across forecasters on the board"
+
+    def row(blocks):
+        counts: dict = {}
+        for b in blocks:
+            counts[b["forecaster"]] = counts.get(b["forecaster"], 0) + 1
+        return {"state": "final", "questions": blocks, "questions_n": counts,
+                "questions_words": _language.game_questions_words(counts, "statistical")}
+
+    prop = {"prediction_id": 7, "forecaster": "statistical", "taken": True}
+    spread = {"prediction_id": 8, "forecaster": "statistical", "taken": False}
+    theirs = {"prediction_id": 9, "forecaster": "llm", "taken": False}
+    good = {"forecaster": "statistical",
+            "today": {"settled": [{"prediction_id": 7}, {"prediction_id": 8}]},
+            "board": {"games": [row([prop, spread, theirs])],
+                      "props": {"tiles": [dict(prop)]},
+                      "my_day": {"n": 1, "entries": [{"prediction_id": 7}]},
+                      "settled_ids": [7, 8]}}
+    missed, first = [], None
+    shipped = _audit.board_count_faults(good)
+    if shipped:
+        missed.append("the fixed shapes are refused: " + shipped[0])
+    forms = {
+        "one taken prop entered from its row and from its tile": dict(
+            good, board=dict(good["board"], my_day={
+                "n": 2, "entries": [{"prediction_id": 7}, {"prediction_id": 7}]})),
+        "a row's count over both forecasters under 'question'": dict(
+            good, board=dict(good["board"], games=[dict(
+                row([prop, spread, theirs]),
+                questions_words=_language.counted(3, "question") + " on this game")])),
+        "a row's count carrying no forecaster": dict(
+            good, board=dict(good["board"], games=[dict(
+                row([prop, spread, theirs]), questions_n=3)])),
+        "Results' settled tiles every finished question, both forecasters'": dict(
+            good, board=dict(good["board"], settled_ids=[7, 8, 9])),
+        "a My day count stating another number than its chips": dict(
+            good, board=dict(good["board"], my_day={
+                "n": 2, "entries": [{"prediction_id": 7}]})),
+    }
+    for name, planted in forms.items():
+        faults = _audit.board_count_faults(planted)
+        if not faults:
+            missed.append(f"{name} passed")
+        elif first is None:
+            first = faults[0]
+    try:
+        _audit.check_the_board_counts_each_bet_once(forms[next(iter(forms))])
+        missed.append("the check raised nothing on the doubled My day")
+    except _audit.LawViolation:
+        pass
+    if not _step_2_calls("check_the_board_counts_each_bet_once"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_the_board_counts_each_bet_once`")
+    if missed:
+        return Result(LAW_CARDS, violation, guard, False, "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_CARDS, violation, guard, True, first or "")
+
+
+def plant_a_board_row_priced_off_the_other_side() -> Result:
+    """Show a priced row's stored chance beside the price and payout of the
+    side its question does not name.
+
+    THE MERGE'S PROVER (2026-09-29). GRIDIRON_REPAIR item 3: the card's model
+    chip reads the entry's corrected `fair_value` (a correction in force by
+    its own row, operator question 32); and 2026-09-07's wrong-side rule: a
+    price row is about the side the question names. The merge read
+    `fair_value` from a Today card that never carried it, so a priced row
+    showed the stored chance; and it drew the claim's fixed proposition's
+    price and payout under a question naming the other side. On this world
+    -- the away side at 57%, a 48.5c home price, a correction in force making
+    the home side 53.58% -- the merged row read 57% beside 48c and 2.06x where
+    the card's chip read 46c against 52c. Planted three ways on the real
+    payload: the card without the two numbers (the merge's shape), the price
+    left on the proposition, and the chance left at the stored number.
+    """
+    import json as _json
+
+    from gridiron import audit as _audit, correction as _correction
+    from gridiron import shortlist as _shortlist, views as _views
+    from gridiron.market import recommend as _recommend
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.board_price_side_faults"
+    violation = "a priced board row off its card's corrected number, or priced on the other side"
+    dist = {"quantity": "home_margin", "family": "normal", "mean": 2.0, "sd": 13.0,
+            "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+    whole = _json.dumps({"coverage": 1.0, "margin_distribution": dist})
+    missed, first = [], None
+    saved_priceable, saved_card = _coverage.priceable, _views._today_card
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(Path(tmp) / "priced.db")
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+                " kickoff_utc, status, league_date) VALUES ('g0', 'mlb', 2026, 1,"
+                " 'R', 'AAA', 'BBB', '2099-01-01T00:00:00Z', 'scheduled', '2026-09-08')")
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+                " factor_set_version, factors_json, reasoning) VALUES"
+                " ('2026-09-07T00:00:00Z', 'mlb', 'g0', 'moneyline', 'BBB', NULL,"
+                " 0.57, 'win', 'statistical', 'final', 'fs2', ?, 'planting')", (whole,))
+            pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+            claimed = "2026-09-07T01:30:00Z"
+            conn.execute(
+                "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+                " implied_prob, kind) VALUES (?, ?, 'planting', 0.485, 'open_at_predict')",
+                (pid, claimed))
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+                " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+                " VALUES ('kalshi', 't0', 'e', 'mlb', 'g0', 'moneyline', 'home_win',"
+                " NULL, 'home', 0.475, 0.495, ?)", (claimed,))
+            quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+            conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+                " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+                " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+                " VALUES (?, ?, 'kalshi', 'mlb', 'g0', 'moneyline', 'home_win', NULL,"
+                " 'home', 'line_less', NULL, NULL, 0.43, 0.485, 0.485, 'mid', ?)",
+                (pid, quote, claimed))
+            conn.commit()
+            _shortlist.rank_rows(conn, [pid])
+            version = _correction.record_fit(
+                conn, sport="mlb", market_type="moneyline", forecaster="statistical",
+                model=_correction.Platt(slope=0.449, intercept=-0.270, n_train=106),
+                status="planting", fitted_utc="2026-09-01T00:00:00Z")
+            fid = conn.execute(
+                "SELECT id FROM calibration_corrections WHERE version = ? AND"
+                " sport = 'mlb' AND market_type = 'moneyline' AND forecaster ="
+                " 'statistical'", (version,)).fetchone()[0]
+            _correction.activate_in_a_scratch_world(conn, fid, now="2026-09-01T00:00:00Z")
+
+            def block_of(payload):
+                return next(q for g in payload["board"]["games"] for q in g["questions"]
+                            if q["prediction_id"] == pid)
+
+            shipped = _views.week(conn, "mlb", 2026, 1)
+            faults = _audit.board_price_side_faults(shipped)
+            got = block_of(shipped)
+            if faults or abs(got["prob"] - (1 - 0.5358)) > 1e-3 or abs(got["price"] - 0.515) > 1e-9:
+                missed.append(f"the shipped row is not the card's numbers on the away "
+                              f"side ({got.get('prob')}, {got.get('price')}): "
+                              + (faults[0] if faults else "no fault named"))
+
+            def as_merged(*args, **kwargs):
+                out = saved_card(*args, **kwargs)
+                out.pop("fair_value", None)
+                out.pop("question_takes_the_proposition", None)
+                return out
+
+            _views._today_card = as_merged
+            merged = _views.week(conn, "mlb", 2026, 1)
+            _views._today_card = saved_card
+            forms = {"the card without its corrected number (the merge's shape)": merged}
+            left = _views.week(conn, "mlb", 2026, 1)
+            block = block_of(left)
+            block["price"], block["pays"] = 0.485, _recommend.payout_multiple(0.485)
+            forms["the price and payout left on the proposition"] = left
+            stored = _views.week(conn, "mlb", 2026, 1)
+            block = block_of(stored)
+            block["prob"], block["prob_words"] = 0.57, "57%"
+            forms["the chance left at the stored number"] = stored
+            for name, planted in forms.items():
+                faults = _audit.board_price_side_faults(planted)
+                if not faults:
+                    missed.append(f"{name} passed")
+                elif first is None:
+                    first = faults[0]
+            try:
+                _audit.check_the_board_prices_the_side_it_names(merged)
+                missed.append("the check raised nothing on the merge's shape")
+            except _audit.LawViolation:
+                pass
+        finally:
+            _coverage.priceable = saved_priceable
+            _views._today_card = saved_card
+            conn.close()
+    if not _step_2_calls("check_the_board_prices_the_side_it_names"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_the_board_prices_the_side_it_names`")
+    if missed:
+        return Result(LAW_CARDS, violation, guard, False, "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_CARDS, violation, guard, True, first or "")
 
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
@@ -12659,6 +13248,42 @@ def plant_a_word_that_only_looks_like_pressure() -> Result:
     return Result(LAW_NO_PRESSURE, "an innocent word flagged as pressure",
                   "audit.pressure_word_faults", True,
                   "ordinary English passes: the rule matches whole words only")
+
+
+def plant_a_bar_that_fills_on_an_update() -> Result:
+    """Two halves: a bar whose width transitions, and a live patch that
+    re-arms the fill. Either would make a probability move when a score
+    arrives (motion, 2026-09-25)."""
+    from gridiron import audit as _audit
+
+    css_faults = _audit.bar_fill_faults(".pbar-fill { transition: width 200ms ease-out; }")
+    js_faults = _audit.live_update_faults(
+        "  function applyLive(live) {\n"
+        "    (live.picks || []).forEach(pick => {\n"
+        "      const bar = document.querySelector('.pbar-fill');\n"
+        "      bar.classList.add('filling');\n"
+        "    });\n  }\n")
+    if css_faults and js_faults:
+        return Result(LAW_NO_PRESSURE, "a bar that fills again on a live update",
+                      "audit.bar_fill_faults, audit.live_update_faults", True,
+                      css_faults[0] + " | " + js_faults[0])
+    return Result(LAW_NO_PRESSURE, "a bar that fills again on a live update",
+                  "audit.bar_fill_faults, audit.live_update_faults", False,
+                  "NOT CAUGHT - a probability bar would move when a score arrives")
+
+
+def plant_a_score_that_animates() -> Result:
+    """A transition on the score in the club band."""
+    from gridiron import audit as _audit
+
+    faults = _audit.price_chip_animation_faults(".tscore { transition: color 200ms ease-out; }")
+    faults += _audit.price_chip_animation_faults(".game-score { animation: pop 200ms ease-out; }")
+    if len(faults) >= 2:
+        return Result(LAW_NO_PRESSURE, "a score that moves when it changes",
+                      "audit.price_chip_animation_faults", True, faults[0])
+    return Result(LAW_NO_PRESSURE, "a score that moves when it changes",
+                  "audit.price_chip_animation_faults", False,
+                  "NOT CAUGHT - the score in the band would animate on a live tick")
 
 
 def plant_a_price_that_moves_when_it_changes() -> Result:
@@ -20131,6 +20756,8 @@ def main() -> int:
     results.append(plant_a_pressure_word_in_a_card_label())
     results.append(plant_a_word_that_only_looks_like_pressure())
     results.append(plant_a_price_that_moves_when_it_changes())
+    results.append(plant_a_bar_that_fills_on_an_update())
+    results.append(plant_a_score_that_animates())
     results.append(plant_a_countdown_to_kickoff())
     results.append(plant_a_renderer_function_defined_twice())
     results.append(plant_a_thin_edge_on_an_expensive_contract())
@@ -20209,6 +20836,7 @@ def main() -> int:
     # hold's own below.
     results.append(plant_a_rerun_refused_over_a_market_it_never_asked())
     results.append(plant_a_comment_naming_the_forbidden_thing())
+    results.append(plant_a_comment_that_eats_a_rule())
     results.append(plant_a_horizon_that_counts_days_for_a_weekly_sport())
     results.append(plant_a_superseded_row_counted_as_settled())
     results.append(plant_a_run_recorded_only_when_it_ends())
@@ -20259,6 +20887,16 @@ def main() -> int:
     results.append(plant_a_resolved_row_on_picks())
     results.append(plant_a_surviving_calls_symbol())
     results.append(plant_a_green_link())
+    results.append(plant_a_fill_on_a_pick_that_only_clears())
+    results.append(plant_an_outline_on_a_pick_that_won())
+    results.append(plant_a_red_fill_on_a_pick_that_only_costs())
+    results.append(plant_a_value_colour_on_a_form_streak())
+    results.append(plant_a_glow_without_its_badge())
+    results.append(plant_an_outline_on_a_prop_against_an_assumed_multiple())
+    results.append(plant_a_hand_typed_club_hex())
+    results.append(plant_a_price_on_a_live_row())
+    results.append(plant_a_tooltip_with_internal_vocabulary())
+    results.append(plant_a_menu_missing_a_page())
     results.append(plant_a_red_warning_border())
     results.append(plant_a_green_live_mark())
     results.append(plant_a_re_sort_during_a_live_slate())
@@ -20281,6 +20919,15 @@ def main() -> int:
     results.append(plant_a_market_import_after_the_priced_exemption())
     results.append(plant_the_old_card_on_the_live_tab())
     results.append(plant_another_groups_heading_on_the_live_tab())
+    # THE BOARD MERGE (2026-09-29): LIVE TAB on the board's live rows, and
+    # operator question 19's headings.
+    results.append(plant_a_chance_on_a_live_board_row())
+    results.append(plant_another_states_label_on_a_live_board_row())
+    results.append(plant_an_internal_version_name_in_a_heading())
+    # THE MERGE'S PROVER (2026-09-29): the board's counts, each bet once and
+    # each forecaster's apart, and a priced row on its card's numbers.
+    results.append(plant_a_board_count_counting_a_bet_twice())
+    results.append(plant_a_board_row_priced_off_the_other_side())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

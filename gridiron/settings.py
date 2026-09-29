@@ -368,13 +368,16 @@ def fenced() -> list[dict]:
         {
             "name": "FACTOR_SET_VERSION",
             "label": "The factor set in force",
-            # THE CODE IS THE VALUE HERE. A factor set has no plain name -- it
-            # is an identifier stamped onto every prediction so a curve can
-            # say which model produced it, and a reader matching a row against
-            # `predictions.factor_set_version` needs the literal. Marked as
-            # sanctioned code so it renders as one.
-            "value": config.FACTOR_SET_VERSION,
-            "literal": True,
+            # THE CODE WAS THE VALUE HERE until the board merge (2026-09-29),
+            # marked as sanctioned code for a reader matching a row against
+            # `predictions.factor_set_version`. Operator question 19 (ruled
+            # 2026-09-27): "internal version names only in a tooltip". So the
+            # value says the set by the day it came into force, as the
+            # Record page's version cards do, and the name is its tooltip,
+            # still there to match against.
+            "value": language.factor_set_words(config.FACTOR_SET_ACTIVATED.get(
+                config.FACTOR_SET_VERSION, "")),
+            "tip": language.version_tip("factor_set", config.FACTOR_SET_VERSION),
             "declared": config.FACTOR_SET_ACTIVATED.get(
                 config.FACTOR_SET_VERSION, "")[:10],
             "what": ("LAW 2: factors are declared in advance with a rationale "

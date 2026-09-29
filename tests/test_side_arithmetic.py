@@ -147,11 +147,15 @@ def test_the_renderer_has_no_verb_table_left():
     from gridiron import config
 
     app = (Path(config.PACKAGE_ROOT) / "web" / "app.js").read_text(encoding="utf-8")
-    body = app.split("function probBlock")[1].split("function ")[0]
-    assert "chance_clause" in body, "the renderer must print what the server sends"
+    # RE-HOMED 2026-09-24 (GRIDIRON_BOARD): `probBlock` went with the old
+    # card. The tile and the row place the server's `line_words` and
+    # `question`; the same four invented words are refused in them.
+    body = app[app.index("function questionTile"):app.index("function renderProps")]
+    assert "line_words" in body and "q.question" in body, (
+        "the renderer must print what the server sends")
     for invented in ("'covers'", "'goes '", "'wins'", "'loses'"):
         assert invented not in body, (
-            f"probBlock is building words again ({invented}); the humaniser is "
+            f"the board is building words again ({invented}); the humaniser is "
             "the single source of truth for what a side is called"
         )
 

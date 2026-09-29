@@ -2215,8 +2215,10 @@ def corrections_note(active: bool, min_train: int, version: int | None = None,
                 f"{CORRECTION_GATE_NOUN} before it was fitted"
                 if held_out and questions else "")
     since_words = f", in force since {in_force}{measured}" if in_force else ""
+    # THE CORRECTION BY ITS DAY, ITS VERSION IN THE NOTE'S TOOLTIP (operator
+    # question 19; the board merge, 2026-09-29): this said "(version 8, ...)".
     return (f"Shown numbers are earned: claims are adjusted by the record "
-            f"(version {version}{fitted_words}{since_words}).")
+            f"(the correction{fitted_words}{since_words}).")
 
 
 #: The two-word label under a tile's percentage. It answers "per cent of
@@ -3949,13 +3951,15 @@ def correction_category_label(sport: str, market_type: str,
 def correction_below_its_gate_line(version: int, fitted_utc: str | None,
                                    count_used: int, corrected: int,
                                    gate: int) -> str:
-    """"Version 3, fitted on Monday 21 September, was fitted below its gate:
-    its 56 settled forecasts are 32 questions, under the 50 it needs, so it
-    can never be in force." -- a labelled fit, in words, with both its counts
-    (question 23, ruled 2026-09-28)."""
-    when = date_words_from_iso((fitted_utc or "")[:10])
-    on = f", fitted on {when}," if when else ""
-    return (f"Version {version}{on} was {FITTED_BELOW_ITS_GATE_WORDS}: its "
+    """"The correction fitted on Monday 21 September was fitted below its
+    gate: its 56 settled forecasts are 32 questions, under the 50 it needs,
+    so it can never be in force." -- a labelled fit, in words, with both its
+    counts (question 23, ruled 2026-09-28). NAMED BY ITS DAY (operator
+    question 19; the board merge, 2026-09-29): it said "Version 3, fitted on
+    ...", and the version is the row's tooltip now; `version` is kept in the
+    signature for the callers that pass it."""
+    the = the_correction_words(fitted_utc)
+    return (f"{the[0].upper()}{the[1:]} was {FITTED_BELOW_ITS_GATE_WORDS}: its "
             f"{count_used} settled forecasts are {corrected} questions, under "
             f"the {gate} it needs, so it can never be in force.")
 
@@ -4010,6 +4014,14 @@ def correction_state_clause(state: dict | None,
     (`correction.latest_activation`), or None; `latest` its newest version
     row, named too where it is newer than the one the row is about. None
     when there is nothing fitted to speak of.
+
+    NAMED BY THE DAY IT WAS FITTED, NOT BY ITS VERSION (operator question 19,
+    ruled 2026-09-27: "internal version names only in a tooltip"; the board
+    merge, 2026-09-29). Each clause said "version 8 ..." -- a number that
+    tells a reader nothing and matches a stored row; it is the row's tooltip
+    now (`correction_versions_tip`), and the clause names the correction by
+    the day it was fitted: "the correction fitted on Monday 28 September is
+    in force since ...".
     """
     from . import correction as _correction
 
@@ -4017,9 +4029,9 @@ def correction_state_clause(state: dict | None,
 
     def fitted_clause(row: dict) -> str:
         when = date_words_from_iso((row.get("fitted_utc") or "")[:10])
-        on = f", fitted on {when} on {row['n_train']} settled forecasts," \
-            if when else f", fitted on {row['n_train']} settled forecasts,"
-        return f"version {row['version']}{on} is not in force: {NOT_IN_FORCE_WORDS}"
+        on = f" fitted on {when} on {row['n_train']} settled forecasts" \
+            if when else f" fitted on {row['n_train']} settled forecasts"
+        return f"the correction{on} is not in force: {NOT_IN_FORCE_WORDS}"
 
     newer = ""
     if state is not None and latest is not None \
@@ -4029,27 +4041,49 @@ def correction_state_clause(state: dict | None,
     if state is not None:
         since = date_words_from_iso((state["activated_utc"] or "")[:10])
         kind = state["activation_kind"]
+        the = the_correction_words(state.get("fitted_utc"))
         if kind == "measured":
             # WHAT WAS MEASURED, TRULY (the render of 2026-09-29): the gate's
             # refit, on the questions settled before the version was fitted
             # -- the version itself was fitted on all of them.
             bets, held = state["measured_bets"], state["measured_holdout_n"]
             return (
-                f"version {state['version']} is in force since {since}: on the "
+                f"{the} is in force since {since}: on the "
                 f"{bets} {CORRECTION_GATE_NOUN} before it was fitted, one "
                 f"fitted on the earliest {bets - held} lowered the Brier score "
                 f"on the latest {held} by {state['measured_improvement']:.4f} "
                 f"(95% interval {state['diff_low']:.4f} to "
                 f"{state['diff_high']:.4f}, clear of zero){newer}")
         if kind == "scratch":
-            return (f"version {state['version']} is in force since {since}, "
+            return (f"{the} is in force since {since}, "
                     f"in a test world, without a measurement{newer}")
-        return (f"version {state['version']} has been withdrawn since "
+        return (f"{the} has been withdrawn since "
                 f"{since}: {withdrawal_reason_words(state['activation_reason'])}"
                 f"; nothing is in force{newer}")
     if latest is not None and latest.get("n_train", 0) >= gate:
         return fitted_clause(latest)
     return None
+
+
+def the_correction_words(fitted_utc: str | None) -> str:
+    """"the correction fitted on Monday 28 September": a correction named in
+    words, by the day it was fitted (operator question 19; the board merge,
+    2026-09-29) -- its version number is the tooltip's."""
+    when = date_words_from_iso((fitted_utc or "")[:10]) if fitted_utc else None
+    return f"the correction fitted on {when}" if when else "the correction"
+
+
+def correction_versions_tip(versions) -> str | None:
+    """The tooltip carrying the correction versions a row speaks of --
+    "Version 8: the correction's number within its category; ..." -- or None
+    when it names none (operator question 19; the board merge, 2026-09-29)."""
+    named = sorted({int(v) for v in versions if v is not None})
+    if not named:
+        return None
+    if len(named) == 1:
+        return version_tip("correction", named[0])
+    listed = ", ".join(str(v) for v in named[:-1]) + f" and {named[-1]}"
+    return f"Versions {listed}: {VERSION_KIND_WORDS['correction']}."
 
 
 def correction_state_line(state: dict | None,
@@ -4103,8 +4137,11 @@ def correction_status_line(fitted: bool, n: int, minimum: int,
     count = (f"{n} {CORRECTION_GATE_NOUN}{wide}" if n >= minimum else
              f"{n} of {minimum} {CORRECTION_GATE_NOUN}{wide}")
     if below_its_gate:
-        return (f"{count}; version {below_its_gate['version']}"
-                f"{' of ' + when if when else ''} was "
+        # NAMED BY ITS DAY, its version in the row's tooltip (operator
+        # question 19; the board merge, 2026-09-29).
+        labelled = the_correction_words(
+            below_its_gate.get("fitted_utc") or fitted_utc)
+        return (f"{count}; {labelled} was "
                 f"{FITTED_BELOW_ITS_GATE_WORDS}: its "
                 f"{below_its_gate['count_used']} settled forecasts are "
                 f"{below_its_gate['corrected_count']} questions, under the "
@@ -4966,8 +5003,12 @@ PROMPT_LABELS = {
 #: existed and not yet rebuilt. The gate fails on one; the page still says so.
 PROMPT_NOT_KEPT = "No prompt kept for this forecast"
 
-#: Beside a reconstruction's commit, which is placed as a literal.
-PROMPT_COMMIT_WORDS = "Rebuilt through the prompt code of this commit:"
+#: A reconstruction's commit, said in words; the commit's name is the line's
+#: tooltip (operator question 19, "internal version names only in a
+#: tooltip"; the board merge, 2026-09-29). It was placed as a literal after
+#: "Rebuilt through the prompt code of this commit:" until then.
+PROMPT_COMMIT_WORDS = ("Rebuilt through the prompt code of the commit named in "
+                       "this line's tooltip.")
 
 #: The parts of a request, as a reader would name them.
 PROMPT_PART_LABELS = {
@@ -5078,3 +5119,449 @@ def prompt_record_line(n: int, sent: int, reconstructed: int) -> str:
     if missing:
         line += f", and {missing} with no prompt kept"
     return line + "."
+# THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# Every word on a game row, a bet tile, a prop tile, a chip, a badge, a
+# tooltip and the entry rail is composed here. The renderer places them and
+# decides nothing about wording; the plain-words scan, the pressure scan and
+# the advice scan read this payload, tooltips included.
+
+#: The words on the row that never change with the data.
+def board_labels() -> dict:
+    """Every fixed label the board's renderer places.
+
+    Typed once, here, so the browser never composes one: a label the renderer
+    typed for itself is outside the plain-words scan, and "Payspays" is what
+    that produced last time.
+    """
+    return {
+        "starts": "starts",
+        "live": "LIVE",
+        "final": "FINAL",
+        "yours": "Yours",
+        "no_pick": "no forecast on this game",
+        "questions": "questions",
+        "forecaster": "forecaster",
+        "expand": "every question on this game",
+        "collapse": "fewer",
+        "took": "I took this",
+        "taken": "taken",
+        "record": "record",
+        "cushion": "cushion",
+        "breakeven": "break-even",
+        "venue": "venue line",
+        "not_read": "not read yet",
+        "not_listed": "not listed",
+        "alt": "Alt lines",
+        "all": "All",
+        "high_end": "high-end record",
+        "entry": "Entry",
+        "pays": "venue pays",
+        "legs": "legs",
+        "line_model": "model",
+        "line_half": "if half as good",
+        "line_kalshi": "Kalshi where listed",
+        "line_floor": "floor",
+        "per_dollar": "per dollar",
+        "pregame": "pregame",
+        "how": "How the model works",
+        # THE MOCKUP'S FIXED WORDS (visual pass, 2026-09-25), placed by the
+        # renderer and never composed there.
+        "every_bet": "Every bet on this game",
+        "legend_clears": "clears the bar",
+        "legend_costs": "costs after fees",
+        "legend_won": "won",
+        "legend_lost": "lost",
+        "needs": "needs",
+        "best": "best line",
+        "sorted": "sorted by cushion",
+        "polled": "polled",
+        # SORT AND FILTER (visual pass, 2026-09-25) and the detail panel.
+        "sort": "sort",
+        "sort_time": "start time",
+        "sort_prob": "the model's chance",
+        "sort_cushion": "cushion",
+        "show": "show",
+        "clears_only": "clears the bar only",
+        "market": "market",
+        "all_markets": "all markets",
+        "form": "last five",
+        "injuries": "injuries",
+        "weather": "weather",
+        "factors": "what the model read",
+        "my_day": my_day_heading(),
+        "updating": "updating",
+    }
+
+
+def number_tip(number: int | None) -> str:
+    """What the jersey's number slot means, on hover."""
+    if number is None:
+        return "No number on record for this player, so the slot stays empty."
+    return f"Number {number}, from the roster file read at the last refresh."
+
+
+def chart_gate_words(n: int, gate: int, *, first_read: str | None = None) -> str:
+    """"12 of 50": what a chart area says below its gate, and draws nothing.
+
+    AND BEFORE THE FIRST CLEAN READ, THE DATE (the board merge, 2026-09-29;
+    the operator's ruling 8 of 2026-09-23): a closing-line chart draws
+    nothing before `config.CLOSING_LINE_FIRST_CLEAN_READ` whatever its count,
+    so its area says when it may, in the words the closing line's own
+    sentence uses -- a chart saying "50 of 50" and drawing nothing would read
+    as a fault."""
+    head = f"{n} of {gate}"
+    if first_read is None:
+        return head
+    when = date_words_from_iso(first_read) or first_read
+    return f"{head} · nothing is drawn before {when}"
+
+
+def closing_chart_title(category_label: str, n: int) -> str:
+    """"total, statistical · 12 against the close": a closing-line chart's
+    title, naming whose line it is and its N (the board merge, 2026-09-29;
+    operator question 22: one line per market and forecaster). Composed here,
+    where the board's renderer glued a market's label to its count."""
+    return f"{category_label} · {n} against the close"
+
+
+def record_page_words() -> dict:
+    """The Record page's fixed words for the two chart panels (2026-09-25)."""
+    return {
+        "closing_heading": "The closing line, over time",
+        "closing_note": ("Each point is one recommendation against the market's own "
+                         "final price for the same question, in the order they "
+                         "closed. A chart draws only past its floor; below it the "
+                         "area says how many of the floor there are."),
+        "taken_heading": "Taken, passed over, every forecast",
+        "taken_note": ("Three curves on the same questions, never merged: the "
+                       "picks the operator marked, the ones he passed over, and "
+                       "all of them. Each draws only past the gate. Voided and "
+                       "withdrawn forecasts are never counted."),
+        "resolved": "resolved",
+    }
+
+
+def taken_record_silent_words(markets: list[str],
+                              predictor: str | None = None) -> str | None:
+    """"Nothing of the statistical model's settled yet in passing yards, ..."
+    -- the markets said once, whose said once (the board merge, 2026-09-29:
+    each block names its forecaster, and a list of "passing yards,
+    statistical, receiving yards, statistical" read as twice as many
+    markets, which the render showed)."""
+    if not markets:
+        return None
+    whose = (f" of the {FORECASTER_FILTER_WORDS.get(predictor, predictor)} "
+             f"model's" if predictor == "statistical" else
+             f" of the {FORECASTER_FILTER_WORDS.get(predictor, predictor)}'s"
+             if predictor else "")
+    return f"Nothing{whose} settled yet in " + ", ".join(markets) + "."
+
+
+def my_day_heading() -> str:
+    return "My day"
+
+
+def my_day_empty_words() -> str:
+    return "Nothing taken on this slate yet."
+
+
+def my_day_counts_words(n: int, live: int, won: int, lost: int) -> str:
+    """"3 taken · 1 live · 1 won · 1 lost": counts of picks, never money."""
+    parts = [f"{n} taken"]
+    if live:
+        parts.append(f"{live} live")
+    if won:
+        parts.append(f"{won} won")
+    if lost:
+        parts.append(f"{lost} lost")
+    return " · ".join(parts)
+
+
+def my_day_status_words(state: str, signal: str, score_words: str | None) -> str:
+    """The chip's state in a word: upcoming, live with the score, won, lost."""
+    if state == "live":
+        return f"live · {score_words}" if score_words else "live"
+    if signal == "won":
+        return "won"
+    if signal == "lost":
+        return "lost"
+    if signal == "withdrawn":
+        return "withdrawn"
+    if state == "final":
+        return "settled"
+    return "upcoming"
+
+
+def form_marks_tip(team: str, marks: list[str]) -> str:
+    if not marks:
+        return f"{team}: no finished games in this record yet."
+    return f"{team}'s last {len(marks)}, most recent first, from this record's own finished games."
+
+
+def injuries_words(names: list[str]) -> str:
+    """"Two out or doubtful: A. Player (Out), B. Player (Doubtful)", or the
+    absence in words. Only what the injury report the model already reads
+    lists; nothing is fetched for this."""
+    if not names:
+        return "No injuries on the report the model read."
+    return f"{len(names)} on the injury report: " + ", ".join(names) + "."
+
+
+def no_weather_words() -> str:
+    return "No forecast was read for this game (the weather pass runs for outdoor football only)."
+
+
+def factors_absent_words() -> str:
+    return "No factor reading on this pick: the forecaster shows no decomposition."
+
+
+def factor_line_words(plain_name: str | None, factor: str) -> str:
+    return plain_name or humanise(factor)
+
+
+def pick_label_words(state: str, signal: str) -> str:
+    """The small label over the row's pick: whose it is, and its state."""
+    base = "Model's pick"
+    if state == "live":
+        return base + " · pregame"
+    if signal == "won":
+        return base + " · won"
+    if signal == "lost":
+        return base + " · lost"
+    if signal == "withdrawn":
+        return base + " · withdrawn"
+    return base
+
+
+def badge_words(n: int, gate: int) -> str:
+    """"12/100": settled in this market against the hundred LAW 4 asks for.
+
+    THE BADGE IS THE SAMPLE SIZE, on every row and every tile, which is what
+    lets a signal be read beside how much stands behind it. It never renders
+    without its two numbers, and a signal never renders without it.
+    """
+    return f"{int(n)}/{int(gate)}"
+
+
+def badge_tip(n: int, gate: int, market_words: str) -> str:
+    """What the badge means, for its tooltip."""
+    if n >= gate:
+        return (f"{n} settled in {market_words}, past the {gate} this app asks "
+                f"for before it claims an edge.")
+    return (f"{n} settled in {market_words}. {gate - n} more before this app "
+            f"claims an edge here; until then a size is a flat unit and a "
+            f"signal is a price comparison, not a verdict.")
+
+
+def high_end_badge_words(n: int, gate: int) -> str:
+    """The second badge an alt-line tile carries: how the record has done at
+    the high end of the probability range, which is where an alt line lives.
+    """
+    return f"{int(n)}/{int(gate)} at 70% and up"
+
+
+def high_end_badge_tip(n: int, gate: int) -> str:
+    return (f"An alt line is a claim near the top of the range, and the "
+            f"record there is its own: {n} settled at 70% and up of the {gate} "
+            f"this app asks for before it trusts that end of the curve.")
+
+
+def signal_tip(signal: str) -> str | None:
+    """What an outline or a fill means, in words, for the tooltip on it."""
+    return {
+        "clears": ("Clears the bar: the model's price beats the venue's by more "
+                   "than the fee, and the return on the money is at least "
+                   "five per cent."),
+        "costs": ("Costs after fees: at this price the venue's fee eats what "
+                  "the model sees, so being right still loses money."),
+        "won": "Settled: it happened.",
+        "lost": "Settled: it did not happen.",
+        "withdrawn": "Withdrawn: this forecast was voided and is never counted.",
+    }.get(signal)
+
+
+def prob_tip(shown: float | None, forecaster_label: str) -> str:
+    """The model's chance, and where it came from."""
+    if shown is None:
+        return "No probability on this row."
+    return (f"The {forecaster_label} forecaster's chance, {round(shown * 100)}%, "
+            f"written before any price was seen and corrected only where the "
+            f"record has earned a correction.")
+
+
+def price_tip(price: float | None, market: str | None, hours: float) -> str:
+    if price is None:
+        if market is not None and market not in MARKETS_READ_AT_THE_VENUE:
+            return ("No venue price: this market is not read at the venue "
+                    "yet, so there is nothing to compare the model with.")
+        return (f"No venue price yet. The first read is taken about {hours:g} "
+                f"hours before the start, and the close is the last read "
+                f"before it.")
+    return (f"The venue's last read of this contract, {round(price * 100)}¢. "
+            f"The fee is charged on top and is largest near a coin flip.")
+
+
+def pays_tip(multiple: float | None) -> str:
+    if multiple is None:
+        return "Nothing to pay out: there is no venue price on this contract."
+    return (f"What a dollar returns if this happens, {multiple:.2f} times, "
+            f"before the fee.")
+
+
+def pick_line_words(item: dict) -> str:
+    """The pick in its loudest honest form, for the row: the same short form
+    the old tiles used, so the side is resolved by the one door."""
+    return tile_line(item)
+
+
+def game_questions_words(counts: dict, chosen: str) -> str:
+    """"3 questions from the model · 1 from the reasoning pass": a game row's
+    questions, EACH FORECASTER'S COUNTED APART (the prover of the board merge,
+    2026-09-29). Questions, never bets or plays.
+
+    The board said "4 questions on this game" over three of the model's and
+    one of the reasoning pass's: one figure over both forecasters under the
+    word "question", which counted a question both answered twice -- the
+    pooled count operator questions 14 and 22 took off every other panel
+    ("Recommendation counts split per forecaster, like every other count").
+    `counts` is each forecaster's standing questions on the game, on question
+    17's key (`bet.count`); the page's own forecaster is said first, and a
+    forecaster with none on the game is not mentioned."""
+    order = [chosen] + sorted(f for f in counts if f != chosen)
+    parts = []
+    for forecaster in order:
+        n = counts.get(forecaster) or 0
+        if not n:
+            continue
+        whose = FORECASTER_WORDS.get(forecaster, forecaster)
+        parts.append(f"{counted(n, 'question')} from {whose}" if not parts
+                     else f"{n} from {whose}")
+    return " · ".join(parts) if parts else f"{counted(0, 'question')} on this game"
+
+
+def games_empty_words(sport_label: str) -> str:
+    """The Games page with nothing on it."""
+    return f"No {sport_label} games on this slate."
+
+
+def nothing_clears_words() -> str:
+    """The day strip's line when no row carries a green outline."""
+    return "Nothing clears the bar today. Every pick below is priced, and none of them beats the fee."
+
+
+def cushion_words(cushion: float | None) -> str:
+    """The cushion in points of probability, signed."""
+    if cushion is None:
+        return "no cushion to show"
+    return f"{cushion * 100:+.1f} points"
+
+
+def breakeven_words(breakeven: float) -> str:
+    return f"{breakeven * 100:.1f}% to break even"
+
+
+def cushion_tip(shown: float | None, breakeven: float, multiple: float,
+                legs: int, declared: str) -> str:
+    """Why the tile sits where it sits, and what the number is NOT."""
+    when = (declared or "")[:10]
+    if shown is None:
+        return "No probability on this tile, so no cushion."
+    return (f"The model's chance, {round(shown * 100)}%, minus the "
+            f"{breakeven * 100:.1f}% a leg needs to break even in a "
+            f"{legs}-pick entry paying {multiple:g} times. The {multiple:g} "
+            f"times is declared on {when}, not read from a venue: no pick'em "
+            f"venue is read yet, so this is arithmetic against a standard "
+            f"entry and not an edge against a price.")
+
+
+def venue_line_tip() -> str:
+    return ("No pick'em venue is read yet, so the only line here is the one "
+            "the record asked. Other lines from the same venue would sit here "
+            "once one is read.")
+
+
+def props_empty_words(sport_label: str) -> str:
+    return f"No {sport_label} player props forecast on this slate."
+
+
+def props_not_read_words() -> str:
+    """The Props page's standing note: where the lines come from, and that a
+    venue's are not read yet."""
+    return ("Every tile is a question this record asked at its own line. No "
+            "pick'em venue is read yet, so a venue line reads 'not read yet' "
+            "and the cushion is against a declared standard entry.")
+
+
+def alt_lines_empty_words() -> str:
+    return ("No alt lines: a venue's alternate lines are not read yet, so "
+            "there is nothing here to rank.")
+
+
+def entry_words() -> dict:
+    """The entry rail's fixed sentences."""
+    return {
+        "heading": "Entry",
+        "empty": ("Tap a tile to mark it taken; taken props are the legs "
+                  "here."),
+        "note": ("Three readings of the same entry: the model's own chance, "
+                 "the same chance with half its cushion taken away, and "
+                 "Kalshi's price where one is listed. The floor is what the "
+                 "entry would have to pay for the model to break even. "
+                 "Nothing here is a balance and nothing is placed."),
+        "kalshi_absent": "Kalshi lists no player props, so there is nothing to price this against.",
+        # THE VERDICT (ruling c, 2026-09-25): the one place a prop earns a
+        # colour, against the multiple the operator typed. "Worth it" is an
+        # advice word and stays out; the bar is the same bar the rows use.
+        "verdict_clears": "Clears the bar at",
+        "verdict_short": "Falls short at",
+        "verdict_untyped": "Type what the venue pays to read a verdict.",
+        "verdict_tip": ("From the multiple you typed and the model's own numbers: "
+                        "the entry returns more than a dollar per dollar at the "
+                        "model's chances, or it does not. A venue read would "
+                        "replace the typed number; none is read yet."),
+    }
+
+
+# ---------------------------------------------------------------------------
+# AN INTERNAL VERSION NAME, ONLY IN A TOOLTIP (operator question 19, ruled
+# 2026-09-27, third set: "fixed in the board: headings in plain words;
+# internal version names only in a tooltip"; built by the board merge,
+# 2026-09-29)
+# ---------------------------------------------------------------------------
+#
+# The Record page painted the blend's version ("b1") beside the heading
+# "Priced, and against the close" on every sport, and the ordering's ("r3")
+# beside "Did the ordering earn its place". A version name is how a stored row
+# is matched to the formula that wrote it; a reader needs it to match, never
+# to read. So the heading says what the panel is, in words, and the name sits
+# in the heading's tooltip with a sentence saying what it names.
+
+#: What each kind of version names, said once.
+VERSION_KIND_WORDS = {
+    "blend": ("the formula that mixes the model's number with the market's; "
+              "every priced row carries it"),
+    "ranker": ("the formula that orders a slate's questions; every rank "
+               "carries it"),
+    "factor_set": ("the set of declared factors a forecast was made from; "
+                   "every forecast carries it"),
+    "correction": ("the correction's number within its category; every "
+                   "forecast and recommendation made under it carries it"),
+    "commit": ("the commit of this project whose prompt code rebuilt this "
+               "prompt; the reconstruction carries it"),
+}
+
+
+def version_tip(kind: str, name) -> str:
+    """The tooltip that carries an internal version name: "Version b1: the
+    formula that mixes ..." -- the one place the name may appear."""
+    return f"Version {name}: {VERSION_KIND_WORDS[kind]}."
+
+
+def factor_set_words(activated: str | None) -> str:
+    """A factor set said by the day it came into force -- "since Thursday 24
+    September", beside the label "The factor set in force" -- where its name
+    is the tooltip's (question 19; the board merge, 2026-09-29)."""
+    when = date_words_from_iso((activated or "")[:10]) if activated else None
+    return f"since {when}" if when else "no day on record"

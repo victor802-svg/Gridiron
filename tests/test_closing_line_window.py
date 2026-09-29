@@ -306,3 +306,28 @@ def test_the_words_are_plain_and_tip_nothing():
         language.closing_line_window_line("2026-09-24", "2026-10-15", 1,
                                           verdict_open=True, predictor="llm"))
     assert language.closing_line_label("total", "llm") == "total, reasoning pass"
+
+
+def test_the_boards_chart_draws_nothing_before_the_first_clean_read(world):
+    """THE CLOSING LINE OVER TIME, ON REPAIR'S COUNT (the board merge,
+    2026-09-29). The board drew a market's every measured close as a line --
+    both forecasters together, the closes from before the repair included --
+    once a market had fifty. It is drawn from one forecaster's counted rows
+    since the window opened, and not at all before 15 October: a point is a
+    figure, and ruling 8 allows no figure before the first clean read. The
+    chart area says how far it is, the date included."""
+    report = calibration.clv_report(world, sport="mlb", now=EVE)
+    for entry in report["markets"]:
+        assert entry["series"] == [], entry["category_label"]
+        assert entry["gate_words"] == (
+            "50 of 50 · nothing is drawn before Thursday 15 October")
+        assert audit.plain_words_violations(entry["gate_words"]) == []
+    report = calibration.clv_report(world, sport="mlb", now=ON_THE_DAY)
+    by = {e["market"]: e for e in report["markets"]}
+    # THE TEN WRITTEN BEFORE THE WINDOW ARE NOT POINTS: fifty, not sixty
+    assert [p["cents"] for p in by["spread"]["series"]] == [3.0] * 50
+    assert [p["cents"] for p in by["total"]["series"]] == [-4.0] * 50
+    when = [p["when"] for p in by["spread"]["series"]]
+    assert when == sorted(when), "the points are not in the order they closed"
+    assert by["spread"]["gate_words"] == "50 of 50"
+    calibration.assert_every_figure_has_n(report)

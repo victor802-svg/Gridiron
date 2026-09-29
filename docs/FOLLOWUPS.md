@@ -65,6 +65,62 @@ measurements the brief cites.
 desk it described was deleted on 2026-09-04 (cards UI, R1): one layout at
 every width.
 
+### 2026-09-25 — the board's four open ends (GRIDIRON_BOARD)
+
+Recorded by the overnight build of 2026-09-24/25 (`docs/closeouts/2026-09-25-board-overnight.md`).
+
+**RULED 2026-09-25, all four** (`docs/briefs/2026-09-25-board-visual.md`,
+built in `docs/closeouts/2026-09-25-board-visual.md`): (a) numbers from
+nflverse's roster file into `player_numbers` at the NFL refresh, fixture
+rosters carry them, an absent number is an empty slot; (b) the pick'em read
+stays suspended; (c) a prop tile wears no outline until a multiplier is read
+or typed, and `audit.board_signal_faults` refuses one against the declared
+multiple; (d) the form row keeps green and red as the letter's ink. The four
+entries below are kept as they were written, for the record.
+
+- **No jersey numbers in the record.** The brief assumed the roster carried
+  them; no table does (`schema.sql`, every player table read). The jersey
+  renders the surname on its plate and a number only when the payload carries
+  one. **What would settle it:** the operator rules whether the roster load
+  should carry numbers (nflverse rosters publish `jersey_number`; MLB and NBA
+  feeds carry one too), and a dated factor-free column is added to the player
+  tables with its provenance.
+- **No pick'em venue is read, so the cushion is against a declared constant.**
+  `config.PICKEM_TWO_PICK_MULTIPLE` (3x, declared 2026-09-24) stands in for a
+  read multiplier; every tile says "not read yet"; the Alt lines chip is
+  permanently empty. `docs/PRIZEPICKS_FEASIBILITY.md` says why. **What would
+  settle it:** a venue whose public lines this app may read without an
+  account, measured before anything is built, on the new-market checklist.
+- **A prop tile wears no outline.** Reading A (built): an edge needs a
+  RECORDED price (LAW 5), and a declared multiple is not one, so a cushion
+  never lights a tile. Reading B: the cushion is expected-value arithmetic,
+  which LAW 5 permits, and a positive one above the gate could wear the green
+  outline. **What would settle it:** an operator ruling; one line in
+  `board.build` changes it.
+- **The form streak's colours.** The amended colour law's "nothing else uses
+  those colours" retired the ruling of 2026-09-09 (W green, L red). If the
+  amendment meant to leave that ruling standing, it is one stylesheet rule
+  and one allowance in `audit.colour_law_faults`, with the planting
+  `plant_a_value_colour_on_a_form_streak` reversed. The form line is not on
+  the board's rows at all; the data still travels on `cards[]`.
+
+### 2026-09-25 — `test_the_csrf_token_is_bound_to_the_session` depends on test order
+
+Run alone, `tests/test_guards.py::test_the_csrf_token_is_bound_to_the_session`
+fails: `auth.csrf_token("session-one")` is `None` until something has exported
+the token variable, which in the full suite an earlier browser fixture does.
+Found while running the board's files in isolation on 2026-09-24. **What
+would settle it:** the test sets the variable itself, or the fixture that
+exports it is made explicit.
+
+### 2026-09-25 — the retired STRONG-by-default tests
+
+Eight tests in `tests/test_cards.py` read `#week-tier-seg` and `#week-counts`,
+which THREE_STATES removed on 2026-09-08; every one had passed since by
+skipping or by finding nothing to press. Retired with the board rather than
+re-pointed, because the board has no tier filter to hold them to. If a tier
+filter returns, so do they, from `git show 38df569^:tests/test_cards.py`.
+
 ### 2026-12-01 — the bowls decision
 
 Whether to forecast college bowl games, and if so whether they are their own
@@ -1127,3 +1183,23 @@ is not one of them, so it is amendable -- by him, by name.
   record.
 
 Nothing else is in flight. The observation window's other terms stand.
+
+### 2026-09-25 — the My day chip's painted fill has no test
+
+`.my-chip.sig-won` lost its fill to the chip's own ground and was caught by
+looking at a capture (`docs/closeouts/2026-09-25-board-visual.md`). Fixed at
+two classes, like the tile's fill on 2026-09-24. **What would settle it:** a
+browser test that takes a pick on a settled slate and reads the chip's
+computed background, the way `test_a_settled_pick_is_painted_solid_and_its_words_are_ink`
+reads the tile's; the shared world has no taken settled pick on the current
+slate, so the test needs a fresh world.
+
+### 2026-09-25 — `test_a_card_expands_in_place_and_shows_the_why` depends on test order
+
+Fails when `tests/test_smoke.py` runs before `tests/test_cards.py`, passes in
+every other order tried (`docs/closeouts/2026-09-25-board-visual.md`). The
+card the test holds is detached by the time it measures, so a re-render
+landed inside its 250ms wait. Began with the visual pass. **What would settle
+it:** run that order with the renderer logging each `renderGames` call and
+its trigger; the two candidates are the arrival stagger on `.game` and a
+second render after the one `_open_week` awaits.

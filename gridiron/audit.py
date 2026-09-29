@@ -661,16 +661,60 @@ SNAKE_CASE = __import__("re").compile(
     r"(?:^|[^A-Za-z0-9_])([a-z][a-z0-9]*(?:_[a-z0-9]+)+)(?:[^A-Za-z0-9_]|$)")
 
 
-def plain_words_violations(text: str) -> list[str]:
+def version_names() -> tuple[str, ...]:
+    """Every internal version name this app coins for its own parts (operator
+    question 19; the board merge, 2026-09-29): every factor set ever declared,
+    every ordering up to the one in force, and the blend's."""
+    sets = set(config.FACTOR_SET_HISTORY) | {config.FACTOR_SET_VERSION} \
+        | set(getattr(config, "FACTOR_SET_ACTIVATED", {}) or {})
+    rank = int(config.RANKER_VERSION.lstrip("r") or 0)
+    ranker = {f"r{i}" for i in range(1, rank + 1)} | {config.RANKER_VERSION}
+    return tuple(sorted(sets | ranker | {config.PRICED_VERSION}))
+
+
+#: A correction's number said in words -- "version 8", "Versions 8 and 9".
+_VERSION_IN_WORDS = re.compile(r"(?<![A-Za-z0-9])[Vv]ersions?\s+[0-9]+(?![0-9])")
+
+
+def version_name_violations(text: str) -> list[str]:
+    """An internal version name in text a reader sees (operator question 19,
+    ruled 2026-09-27: "internal version names only in a tooltip")."""
+    hits = []
+    for name in version_names():
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", text):
+            hits.append(f"the internal version name {name!r} is visible to a "
+                        f"reader -- it belongs in a tooltip (operator question "
+                        f"19, 2026-09-27)")
+    for match in _VERSION_IN_WORDS.findall(text):
+        hits.append(f"a version number, {match!r}, is visible to a reader -- "
+                    f"name it in words and put the number in a tooltip "
+                    f"(operator question 19, 2026-09-27)")
+    return hits
+
+
+def plain_words_violations(text: str, *, in_a_tooltip: bool = False) -> list[str]:
     """Internal vocabulary found in text a person will read.
 
     Deliberately crude: it looks at rendered visible text, not at markup, and
     flags anything shaped like an identifier. A false positive is fixed by
     writing the label in words, which is the desired outcome anyway.
+
+    AND AN INTERNAL VERSION NAME, UNLESS THE TEXT IS A TOOLTIP (operator
+    question 19, ruled 2026-09-27: "headings in plain words; internal version
+    names only in a tooltip"; built by the board merge, 2026-09-29): a factor
+    set's, the blend's or the ordering's name, or a correction's number said
+    as "version 8", is refused in visible text (`version_name_violations`)
+    and passes in a tooltip, the one place it may be. Everything else is
+    refused in a tooltip as anywhere.
     """
     hits: list[str] = []
+    if not in_a_tooltip:
+        hits.extend(version_name_violations(text))
+    # A FACTOR SET'S NAME IS A VERSION NAME (question 19): in a tooltip it is
+    # the name's one place, so the list below does not refuse it there.
+    versions = set(version_names()) if in_a_tooltip else set()
     for term in INTERNAL_TERMS:
-        if term in text:
+        if term in text and term not in versions:
             hits.append(f"internal term {term!r} is visible to a reader")
     for match in SNAKE_CASE.findall(text):
         if match in SNAKE_ALLOWED or any(match in h for h in hits):
@@ -1927,7 +1971,7 @@ _JS_CARD_TOGGLE = re.compile(
 
 #: What a toggle may not do. Each of these rebuilds the slate from the payload,
 #: which is the one thing that cannot happen while a reader is mid-tap.
-_REBUILDERS = ("renderWeek(", "innerHTML")
+_REBUILDERS = ("renderGames(", "innerHTML")
 
 
 def selection_moves_the_frame(js: str) -> list[str]:
@@ -1966,7 +2010,7 @@ def selection_moves_the_frame(js: str) -> list[str]:
 SELECT_FIXTURE_POSITIVE = """
     const toggle = () => {
       state.openCard = c.prediction_id;
-      renderWeek();
+      renderGames();
     };
 """
 SELECT_FIXTURE_NEGATIVE = """
@@ -2084,6 +2128,9 @@ MOTION_MAX_MS = 200
 #: The one curve, and the one keyframe.
 MOTION_EASE = "ease-out"
 ALLOWED_KEYFRAMES = frozenset({"live-pulse"})
+#: ONE-SHOT KEYFRAMES (motion, 2026-09-25): a small pop when a pick is marked
+#: taken, and nothing else. They run once, under the ceiling, and never loop.
+ONE_SHOT_KEYFRAMES = frozenset({"pop"})
 
 #: THE CEILING GOVERNS CHANGES; THE PULSE HAS A FLOOR INSTEAD.
 #:
@@ -2224,6 +2271,10 @@ def motion_faults(css: str) -> list[str]:
         pulse = any(name in value for name in ALLOWED_KEYFRAMES)
         if not pulse:
             check_duration(where, value)
+            if "infinite" in value:
+                faults.append(
+                    f"{where}: a one-shot keyframe may not loop. The only thing "
+                    f"that repeats is the live mark.")
             continue
         # The one repeating animation, held to its floor rather than the
         # ceiling. See MOTION_PULSE_MIN_MS.
@@ -2237,7 +2288,7 @@ def motion_faults(css: str) -> list[str]:
                     f"attention.")
 
     for name in _CSS_KEYFRAMES.findall(css):
-        if name not in ALLOWED_KEYFRAMES:
+        if name not in ALLOWED_KEYFRAMES and name not in ONE_SHOT_KEYFRAMES:
             faults.append(
                 f"@keyframes {name!r} is not in the vocabulary. The only thing "
                 f"on this page that repeats is the mark saying a game is being "
@@ -2316,15 +2367,46 @@ _check_the_motion_scanner_can_see()
 # rename to `--win` and `--loss` makes the misuse visible in the source, and
 # this scan makes it fail.
 
-#: The value tokens and their aliases. `--pos` and `--neg` are the older
-#: names, still used by the pages built before the dark theme.
+#: The value tokens and their aliases. `--pos` and `--neg` were the older
+#: names; they are gone from the stylesheet and stay on this list so a rule
+#: that reaches for them fails rather than resolving to nothing.
 _WIN_TOKENS = ("--win", "--win-wash", "--pos")
 _LOSS_TOKENS = ("--loss", "--loss-wash", "--neg")
 
-#: A selector that is allowed to say "won" / "lost". `up` and `down` are
-#: the counts of picks that went the model's way and against it -- in
-_WIN_SELECTOR = re.compile(r"\.win\b|v-win\b|\.up\b|\.pos\b")
-_LOSS_SELECTOR = re.compile(r"\.loss\b|v-loss\b|\.neg\b|\.down\b")
+#: THE COLOUR LAW AS AMENDED BY THE OPERATOR ON 2026-09-24 (GRIDIRON_BOARD),
+#: recorded in CLAUDE.md with the text it replaced beneath it.
+#:
+#: Each colour has exactly two jobs and the FORM says which:
+#:
+#:   a green OUTLINE glow   a pick clears the bar          `.sig-clears`
+#:   a red OUTLINE glow     it costs the operator after fees   `.sig-costs`
+#:   a SOLID green fill     a pick won                     `.sig-won`
+#:   a SOLID red fill       a pick lost                    `.sig-lost`
+#:
+#: AND THE FORM ROW (ruling d, 2026-09-25, the ruling of 2026-09-08
+#: standing): the W and L of a club's last five keep green and red, as the
+#: LETTER'S INK ONLY. `.fmark.win` may set `color` to `--win` and
+#: `.fmark.loss` `color` to `--loss`; a form mark filled or ringed is refused,
+#: because a solid green W is a pick that won, which a club's game is not.
+#:
+#: Nothing else uses those colours: not a link, not a tally, not a warning,
+#: not the edge line. So the scan reads the selector for the state AND the
+#: declaration for the form: an outline state painted as a fill is a pick
+#: that merely clears the bar dressed as one that won, and a verdict drawn as
+#: an outline is a win that looks like a price comparison.
+_OUTLINE_WIN = re.compile(r"\.sig-clears\b")
+_OUTLINE_LOSS = re.compile(r"\.sig-costs\b")
+_FILL_WIN = re.compile(r"\.sig-won\b")
+_FILL_LOSS = re.compile(r"\.sig-lost\b")
+_FORM_WIN = re.compile(r"\.fmark\.win\b")
+_FORM_LOSS = re.compile(r"\.fmark\.loss\b")
+#: The one declaration a form mark may make with its colour.
+_INK_PROPERTIES = ("color",)
+
+#: Declarations that draw an OUTLINE: a ring, a glow, a border. Anything
+#: else -- background, color, fill, stroke -- is a fill or ink.
+_OUTLINE_PROPERTIES = ("box-shadow", "outline", "border")
+_FILL_PROPERTIES = ("background", "background-color")
 
 #: Anything a person clicks, focuses or navigates by. These may never carry a
 #: value colour, whatever their class happens to be called.
@@ -2425,20 +2507,34 @@ def tier_count_faults(payload: dict) -> list[str]:
     return faults
 
 
+def _declarations(body: str) -> list[tuple[str, str]]:
+    """(property, value) pairs of a rule body, lower-cased properties."""
+    out = []
+    for piece in body.split(";"):
+        if ":" not in piece:
+            continue
+        prop, _, value = piece.partition(":")
+        out.append((prop.strip().lower(), value.strip()))
+    return out
+
+
 def colour_law_faults(css: str) -> list[str]:
-    """Every rule that paints something a value colour without a value."""
+    """Every rule that paints something a value colour it is not entitled to.
+
+    Four signals, two colours, two forms (amended 2026-09-24). A rule may use
+    `--win` only if its selector names `.sig-clears` and the token sits in an
+    outline declaration, or names `.sig-won` and the token sits in a fill;
+    `--loss` the same way with `.sig-costs` and `.sig-lost`. Everything else
+    is a fault by name, interactive selectors first.
+    """
     css = _without_comments(css, "css")
     faults = []
     for match in _CSS_RULE.finditer(css):
         selector = match.group("selector")
-        # A selector spanning a comment or an at-rule preamble is not a rule.
         selector = selector.split("*/")[-1].strip()
         if not selector or selector.startswith("@"):
             continue
         # `:root` DECLARES the tokens; it does not paint anything with them.
-        # The legacy aliases `--pos` and `--neg` are defined there in terms of
-        # `--win` and `--loss`, which is the one place those names may appear
-        # without a verdict beside them.
         if selector == ":root" or selector.endswith(":root"):
             continue
         body = match.group("body")
@@ -2451,32 +2547,79 @@ def colour_law_faults(css: str) -> list[str]:
             faults.append(
                 f"{one_line!r} is interactive and paints itself "
                 f"{', '.join(f'var({t})' for t in used_win + used_loss)}. "
-                f"Green means a pick won and red means a pick lost; a link, a "
-                f"tab, a focus ring and a pressed segment are none of those. "
-                f"Interactive is chrome (R2).")
+                f"A link, a tab, a focus ring and a pressed segment are none "
+                f"of the four signals. Interactive is chrome (R2).")
             continue
-        if used_win and not _WIN_SELECTOR.search(selector):
-            faults.append(
-                f"{one_line!r} uses {', '.join(used_win)} but says nothing "
-                f"about a pick that won. GREEN MEANS A PICK WON, and nothing "
-                f"else may wear it (R2).")
-        if used_loss and not _LOSS_SELECTOR.search(selector):
-            faults.append(
-                f"{one_line!r} uses {', '.join(used_loss)} but says nothing "
-                f"about a pick that lost. A warning, an error and a stale feed "
-                f"are not losses; they carry weight and position instead (R2).")
+        for tokens, colour, outline_sel, fill_sel, form_sel, outline_word, fill_word in (
+                (used_win, "green", _OUTLINE_WIN, _FILL_WIN, _FORM_WIN,
+                 "clears the bar", "won"),
+                (used_loss, "red", _OUTLINE_LOSS, _FILL_LOSS, _FORM_LOSS,
+                 "costs the operator after fees", "lost")):
+            if not tokens:
+                continue
+            is_outline = bool(outline_sel.search(selector))
+            is_fill = bool(fill_sel.search(selector))
+            if form_sel.search(selector) and not (is_outline or is_fill):
+                # THE FORM ROW'S LETTER (ruling d, 2026-09-25): ink and
+                # nothing else. A filled or ringed W is a pick's signal.
+                for prop, value in _declarations(body):
+                    if not any(f"var({t})" in value for t in tokens):
+                        continue
+                    if prop not in _INK_PROPERTIES:
+                        faults.append(
+                            f"{one_line!r} paints `{prop}` {colour} on a form "
+                            f"mark. The form row's W and L wear {colour} as "
+                            f"the letter's ink only (ruled 2026-09-25); a "
+                            f"{colour} fill or ring on a club's game says a "
+                            f"pick {fill_word if prop in _FILL_PROPERTIES else outline_word}, "
+                            f"and a club's game is not a pick.")
+                continue
+            if not (is_outline or is_fill):
+                faults.append(
+                    f"{one_line!r} uses {', '.join(tokens)} and is none of the "
+                    f"four signals. A {colour} OUTLINE means a pick "
+                    f"{outline_word}; a SOLID {colour} fill means a pick "
+                    f"{fill_word}; the form row's letter is the one other "
+                    f"place (ruled 2026-09-25); nothing else wears {colour} "
+                    f"(amended 2026-09-24).")
+                continue
+            for prop, value in _declarations(body):
+                if not any(f"var({t})" in value for t in tokens):
+                    continue
+                in_outline = any(prop.startswith(p) for p in _OUTLINE_PROPERTIES)
+                in_fill = prop in _FILL_PROPERTIES
+                if is_outline and not is_fill and not in_outline:
+                    faults.append(
+                        f"{one_line!r} paints `{prop}` {colour}, and its state "
+                        f"is an OUTLINE: a pick that {outline_word} wears a "
+                        f"{colour} ring, never a fill. Filling it says it "
+                        f"{fill_word}.")
+                if is_fill and not is_outline and not in_fill:
+                    faults.append(
+                        f"{one_line!r} draws `{prop}` {colour}, and its state "
+                        f"is a FILL: a pick that {fill_word} is filled solid "
+                        f"{colour}. An outline says it only {outline_word}.")
     return faults
 
 
-#: A green LINK and a red WARNING BORDER: the two misuses the rename ended,
-#: and the two the plantings reproduce.
+#: THE FIVE MISUSES THE PLANTINGS REPRODUCE: a green link, a red warning
+#: border, a fill on a pick that only clears the bar, an outline on a pick
+#: that won, and a form mark FILLED green -- the form row keeps the colour
+#: for its letter (ruled 2026-09-25) and for nothing else.
 COLOUR_LAW_FIXTURE_POSITIVE = """
 .row-more { color: var(--win); text-decoration: none; }
 .notices-summary { border-left: 2px solid var(--loss); }
+.sig-clears { background: var(--win); }
+.sig-won { box-shadow: 0 0 0 1px var(--win); }
+.fmark.win { background: var(--win); }
 """
 COLOUR_LAW_FIXTURE_NEGATIVE = """
-.verdict.win { color: var(--win); background: var(--win-wash); }
-.verdict.loss { color: var(--loss); background: var(--loss-wash); }
+.sig-clears { box-shadow: 0 0 0 1.5px var(--win), 0 0 14px 0 var(--win); }
+.sig-costs { box-shadow: 0 0 0 1.5px var(--loss), 0 0 14px 0 var(--loss); }
+.sig-won { background: var(--win); color: var(--ink); }
+.sig-lost { background: var(--loss); color: var(--ink); }
+.fmark.win { color: var(--win); }
+.fmark.loss { color: var(--loss); }
 .row-more { color: var(--chrome); text-decoration: none; }
 """
 
@@ -3079,19 +3222,22 @@ def check_the_colour_law(path: Path | None = None) -> None:
     faults = colour_law_faults(Path(path).read_text(encoding="utf-8"))
     if faults:
         raise LawViolation(
-            "THE COLOUR LAW WAS BROKEN -- green means a pick won, red means a "
-            "pick lost, and nothing else wears either:"
+            "THE COLOUR LAW WAS BROKEN -- a green outline clears the bar, a red "
+            "outline costs after fees, a solid green fill won, a solid red fill "
+            "lost, and nothing else wears either (amended 2026-09-24):"
             + _NL2 + _NL2.join(faults))
 
 
 def _check_the_colour_scanner_can_see() -> None:
     problems = []
     hits = colour_law_faults(COLOUR_LAW_FIXTURE_POSITIVE)
-    if len(hits) < 2:
+    if len(hits) < 5:
         problems.append(
-            "colour_law_faults misses a green link or a red warning border")
+            f"colour_law_faults sees {len(hits)} of the five misuses in its "
+            f"positive fixture")
     if colour_law_faults(COLOUR_LAW_FIXTURE_NEGATIVE):
-        problems.append("colour_law_faults flags a correct verdict chip")
+        problems.append("colour_law_faults flags a correct signal: "
+                        + "; ".join(colour_law_faults(COLOUR_LAW_FIXTURE_NEGATIVE)))
     if problems:
         raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
 
@@ -3195,30 +3341,66 @@ _check_the_run_line_scanner_can_see()
 # somebody bookmarked or wrote down still has to land, and the address bar is
 # what tells them where the page went.
 
-#: The nav, as ruled. Order included: it is the order the questions come in.
-NAV_PAGES = ("week", "record", "results", "settings")
+#: THE NAV, AS RE-RULED BY THE OPERATOR ON 2026-09-24 (GRIDIRON_BOARD).
+#:
+#: Two PAGE TABS under the sport tabs -- Games, then Props -- and a MENU
+#: holding the three pages a reader opens less often. Four pages in one row
+#: was the ruling of GRIDIRON_13 R4 and it held for three weeks; the board
+#: brief replaces it with this shape, and the scanner is re-ruled rather than
+#: deleted, so a third tab or a fourth menu entry still fails by name.
+#:
+#: `NAV_PAGES` keeps its name because two tests and a planting call it by
+#: that name; it is now the whole ruled set, tabs first, then the menu.
+PAGE_TABS = ("games", "props")
+MENU_PAGES = ("record", "results", "settings")
+NAV_PAGES = PAGE_TABS + MENU_PAGES
 
-#: Every route that was removed, and where it went.
+#: Every route that was removed, and where it went. The old Picks route was
+#: `week`; Live and Today were tabs and groups on it, never routes of their
+#: own, and every address a reader may have kept for them lands on Games.
 REDIRECTED = {
     "history": "results",
     "factors": "record",
     "versions": "record",
     "schedule": "settings",
-    "digest": "week",
+    "digest": "games",
+    "week": "games",
+    "picks": "games",
+    "live": "games",
+    "today": "games",
 }
 
 
 def nav_faults(js: str, html: str) -> list[str]:
-    """A nav that is not the four ruled pages, or an old route left to 404."""
+    """A nav that is not the ruled shape, or an old route left to 404.
+
+    `html` is the header's markup: the page tabs are the links inside
+    `<nav id="nav">` and the menu's are the links inside `<nav id="menu">`.
+    Handed a fragment with only one of them, the scan reports the other as
+    missing rather than passing on half a header.
+    """
     js = _without_comments(js, "js")
     html = _without_comments(html, "html")
     faults = []
-    links = re.findall(r'data-route="([a-z-]+)"', html)
-    if tuple(links) != NAV_PAGES:
+
+    def links_in(nav_id: str) -> tuple[str, ...]:
+        block = re.search(rf'<nav id="{nav_id}".*?</nav>', html, re.S)
+        return tuple(re.findall(r'data-route="([a-z-]+)"',
+                                block.group(0) if block else ""))
+
+    tabs = links_in("nav")
+    if tabs != PAGE_TABS:
         faults.append(
-            f"the nav is {links}, not {list(NAV_PAGES)}. Four pages is the "
-            f"ruling (GRIDIRON_13 R4); a nav grows one link at a time, each "
-            f"defensible on its own, which is how it got to seven.")
+            f"the page tabs are {list(tabs)}, not {list(PAGE_TABS)}. Two tabs "
+            f"is the ruling (GRIDIRON_BOARD, 2026-09-24): Games and Props, in "
+            f"that order; a nav grows one link at a time, each defensible on "
+            f"its own, which is how the old one got to seven.")
+    menu = links_in("menu")
+    if menu != MENU_PAGES:
+        faults.append(
+            f"the menu holds {list(menu)}, not {list(MENU_PAGES)}. Record, "
+            f"Results and Settings live behind the menu and nothing else "
+            f"does (GRIDIRON_BOARD, 2026-09-24).")
     for old, new in REDIRECTED.items():
         if not re.search(rf"{old}\s*:\s*'{new}'", js):
             faults.append(
@@ -3228,23 +3410,35 @@ def nav_faults(js: str, html: str) -> list[str]:
     return faults
 
 
-NAV_FIXTURE_A_FIFTH_ITEM = (
-    '<a href="#/week" data-route="week">Picks</a>'
-    '<a href="#/record" data-route="record">Record</a>'
-    '<a href="#/results" data-route="results">Results</a>'
-    '<a href="#/settings" data-route="settings">Settings</a>'
-    '<a href="#/digest" data-route="digest">Digest</a>'
-)
+def _nav_markup(tabs=PAGE_TABS, menu=MENU_PAGES) -> str:
+    """A header fragment in the shipped shape, for the fixtures below."""
+    return ('<nav id="nav">' + "".join(
+        f'<a href="#/{p}" data-route="{p}">x</a>' for p in tabs) + "</nav>"
+        '<nav id="menu">' + "".join(
+        f'<a href="#/{p}" data-route="{p}">x</a>' for p in menu) + "</nav>")
+
+
+NAV_REDIRECTS_GOOD = ("const RENAMED = { "
+                      + ", ".join(f"{k}: '{v}'" for k, v in REDIRECTED.items())
+                      + " };")
+#: A third page tab, which is how a nav starts growing again.
+NAV_FIXTURE_A_FIFTH_ITEM = _nav_markup(tabs=PAGE_TABS + ("digest",))
+#: A menu that quietly lost Settings.
+NAV_FIXTURE_A_SHORT_MENU = _nav_markup(menu=("record", "results"))
 NAV_FIXTURE_A_DEAD_LINK = "const RENAMED = { history: 'results' };"
 
 
 def check_the_nav_is_four_pages(js_path=None, html_path=None) -> None:
+    """Raise unless the header is the ruled shape. THE NAME IS HISTORY: it
+    ruled four pages from GRIDIRON_13 R4 until the board brief re-ruled the
+    header on 2026-09-24, and the name stays so the gate's row and the
+    close-outs that cite it still point at the check that fires."""
     js_path = js_path or (config.PACKAGE_ROOT / "web" / "app.js")
     html_path = html_path or (config.PACKAGE_ROOT / "web" / "index.html")
     html = Path(html_path).read_text(encoding="utf-8")
-    nav = re.search(r'<nav id="nav".*?</nav>', html, re.S)
+    header = re.search(r"<header.*?</header>", html, re.S)
     faults = nav_faults(Path(js_path).read_text(encoding="utf-8"),
-                        nav.group(0) if nav else html)
+                        header.group(0) if header else html)
     if faults:
         raise LawViolation(
             "THE NAV IS NOT WHAT WAS RULED:" + _NL2 + _NL2.join(faults))
@@ -3252,15 +3446,13 @@ def check_the_nav_is_four_pages(js_path=None, html_path=None) -> None:
 
 def _check_the_nav_scanner_can_see() -> None:
     problems = []
-    good_js = ("const RENAMED = { history: 'results', factors: 'record',"
-               " versions: 'record', schedule: 'settings', digest: 'week' };")
-    good_nav = "".join(
-        f'<a href="#/{p}" data-route="{p}">x</a>' for p in NAV_PAGES)
-    if nav_faults(good_js, good_nav):
-        problems.append("nav_faults flags the four ruled pages")
-    if not nav_faults(good_js, NAV_FIXTURE_A_FIFTH_ITEM):
-        problems.append("nav_faults misses a fifth nav item")
-    if not nav_faults(NAV_FIXTURE_A_DEAD_LINK, good_nav):
+    if nav_faults(NAV_REDIRECTS_GOOD, _nav_markup()):
+        problems.append("nav_faults flags the ruled header")
+    if not nav_faults(NAV_REDIRECTS_GOOD, NAV_FIXTURE_A_FIFTH_ITEM):
+        problems.append("nav_faults misses a third page tab")
+    if not nav_faults(NAV_REDIRECTS_GOOD, NAV_FIXTURE_A_SHORT_MENU):
+        problems.append("nav_faults misses a menu that lost a page")
+    if not nav_faults(NAV_FIXTURE_A_DEAD_LINK, _nav_markup()):
         problems.append("nav_faults misses a removed route left to 404")
     if problems:
         raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
@@ -3823,7 +4015,12 @@ def check_the_live_mark_is_not_an_opinion(path: Path | None = None) -> None:
 #: and sorting a slate while it is being played shuffles the screen under
 #: somebody reading it -- by confidence, the finished games climb over the ones
 #: still on.
-RESORT_CALLS = ("renderWeek", ".sort(")
+RESORT_CALLS = ("renderGames", ".sort(")
+#: AND NOTHING MAY MOVE ON THE WAY (motion, 2026-09-25): the class that starts
+#: the bar's one first-load fill, and an arrival, are out of a live patch's
+#: reach. Declared here, above the scanner that reads them.
+BAR_FILL_START = "filling"
+LIVE_PATCH_FORBIDDEN = ("pbar", BAR_FILL_START, "arrive(", "arriving")
 
 
 def live_update_faults(js: str) -> list[str]:
@@ -3843,13 +4040,20 @@ def live_update_faults(js: str) -> list[str]:
                 f"or reorder the grid. A tile changing state re-renders IN "
                 f"PLACE -- the reader is part way down a slate and the thing "
                 f"they were looking at must not move.")
+    for word in LIVE_PATCH_FORBIDDEN:
+        if word in body:
+            faults.append(
+                f"applyLive() reaches {word!r}: a score arriving may set the "
+                f"new value and nothing may move on its way there -- not the "
+                f"bar, not an arrival. The bar fills once, on load (motion, "
+                f"2026-09-25).")
     return faults
 
 
 LIVE_UPDATE_FIXTURE_POSITIVE = """
   function applyLive(live) {
     (live.picks || []).forEach(p => Object.assign(slateCards.get(p.id), p));
-    renderWeek();
+    renderGames();
   }
 """
 LIVE_UPDATE_FIXTURE_NEGATIVE = """
@@ -5404,8 +5608,21 @@ def check_every_task_wakes_to_run() -> None:
 #: now. The two rows that remain are the market chips and the state tabs, so
 #: the page carries fewer controls above its first card than when this rule
 #: was written, not more.
-PICKS_FIRST_CARD = "id=\"today\""
-PICKS_CONTROL_ROWS = ("week-market-tabs", "state-tabs")
+#: RE-POINTED AT THE GAMES PAGE (GRIDIRON_BOARD, 2026-09-24). The Picks route
+#: is gone; the first thing on Games is the rows themselves, and the brief
+#: puts NO control row above them: the sport and page tabs are in the header,
+#: the pulse is words, and the week picker sits beneath the rows behind a
+#: <details>. So the declared list is empty, and any control row that
+#: appears above the first game row is a fault by name.
+#: ONE ROW DECLARED, 2026-09-25: the sort-and-filter bar the visual brief
+#: asks for ("Sort and filter bar on Games and Props"). The 2026-09-24 brief
+#: put none above the rows; the later brief asks for this one by name, so it
+#: is declared here with its date rather than slipped past the scan. A second
+#: one is still a fault, and the planting still plants an undeclared row.
+#: RULED BY THE OPERATOR the same day (the merge brief, ruling 2): "the sort
+#: and filter bar stays above the rows, as built."
+PICKS_FIRST_CARD = "id=\"games-rows\""
+PICKS_CONTROL_ROWS: tuple[str, ...] = ("games-controls",)
 
 _VOID_TAGS = frozenset({"input", "br", "img", "hr", "meta", "link", "source", "wbr"})
 
@@ -5415,10 +5632,10 @@ def picks_control_rows(html: str) -> list[str]:
     from html.parser import HTMLParser
 
     html = _without_comments(html, "html")
-    start = html.find('id="view-week"')
+    start = html.find('id="view-games"')
     end = html.find(PICKS_FIRST_CARD)
     if start < 0 or end < 0:
-        return ["<view-week or the first card missing>"]
+        return ["<view-games or the first game row missing>"]
     section = html[html.rfind("<", 0, start): html.rfind("<", 0, end)]
 
     class Walker(HTMLParser):
@@ -5469,11 +5686,11 @@ def picks_control_row_faults(html: str | None = None) -> list[str]:
     for name in rows:
         if name not in PICKS_CONTROL_ROWS:
             faults.append(
-                f"a row of controls named {name!r} sits above the first card "
-                f"on Picks, "
-                f"and the declared rows are {list(PICKS_CONTROL_ROWS)}. Two rows: "
-                f"the controls line and the market tabs. A third is how a page "
-                f"grows a fifth segmented control.")
+                f"a row of controls named {name!r} sits above the first game "
+                f"row on Games, and the declared rows are "
+                f"{list(PICKS_CONTROL_ROWS)}. The board brief puts the tabs in "
+                f"the header and nothing above the rows; a control row here is "
+                f"how a page grows a fifth segmented control.")
     if len(rows) > len(PICKS_CONTROL_ROWS):
         faults.append(f"{len(rows)} control rows above the first card; "
                       f"{len(PICKS_CONTROL_ROWS)} are declared: {rows}")
@@ -5485,7 +5702,7 @@ def check_picks_has_two_control_rows() -> None:
     faults = picks_control_row_faults()
     if faults:
         raise LawViolation(
-            "A THIRD CONTROL ROW ABOVE THE HERO:" + _NL2 + _NL2.join(faults))
+            "A CONTROL ROW ABOVE THE FIRST GAME ROW:" + _NL2 + _NL2.join(faults))
 
 
 def retired_market_faults(conn) -> list[str]:
@@ -5786,17 +6003,17 @@ def render_guard_faults(source: str) -> list[str]:
     """Which sport-scoped fetches paint without checking they are still wanted?"""
     source = _without_comments(source, "js")
     faults: list[str] = []
-    week = re.search(r"async function renderWeek\(\)\s*\{(?P<body>[\s\S]*?)\n  \}", source)
+    week = re.search(r"async function renderGames\(\)\s*\{(?P<body>[\s\S]*?)\n  \}", source)
     if week is None:
-        faults.append("`renderWeek` is gone from app.js; nothing renders the slate.")
+        faults.append("`renderGames` is gone from app.js; nothing renders the slate.")
     else:
         body = week.group("body")
         at = body.find(_JS_SPORT_FETCH + "'/api/week'")
         if at < 0 or "++weekSeq" not in body[:at]:
-            faults.append("`renderWeek` takes no sequence number before it asks for the "
+            faults.append("`renderGames` takes no sequence number before it asks for the "
                           "slate, so two renders in flight paint in arrival order.")
         elif "!== weekSeq" not in body[at:at + 240]:
-            faults.append("`renderWeek` does not drop an answer a later render has "
+            faults.append("`renderGames` does not drop an answer a later render has "
                           "superseded; the slower slate takes the page.")
     if not re.search(r"async function selectSport\([^)]*\)\s*\{[\s\S]*?\+\+sportSeq", source):
         faults.append("`selectSport` no longer moves `sportSeq` on, so nothing asked "
@@ -6542,7 +6759,60 @@ def pressure_word_faults(text: str) -> list[str]:
 #: The selectors that carry a price. A transition or an animation on one of
 #: these is a number that MOVES when it changes, which is the single most
 #: effective piece of pressure a book has.
-PRICE_SELECTORS = (".box", ".box-value", ".edge", ".face-prices")
+#: EXTENDED FOR THE BOARD (motion, 2026-09-25): every class a price, a
+#: probability, a payout or a score is drawn in. A transition on any of them
+#: would make a number move on its way to a new value.
+PRICE_SELECTORS = (".box", ".box-value", ".edge", ".face-prices",
+                   ".pick-price", ".pick-pays", ".pick-prob", ".q-price", ".q-prob",
+                   ".pay", ".prop-prob", ".cush", ".entry-value", ".tscore", ".game-score",
+                   ".my-chip-state", ".v-mult")
+#: THE BAR FILL may arrive once, on first load, and never on an update: the
+#: stylesheet may transition `.pbar-fill` on `opacity` alone, and the JS
+#: that patches a live score may not reach the bar or the class that starts
+#: the fill. Both are scanned; both are planted.
+#: BY ITS FADE, NOT A TRANSFORM (the board merge, 2026-09-29). The board
+#: grew the fill from nothing by `scaleX`, at the panel duration, inside a
+#: row or a tile that holds tap targets; operator question 20 and the merge
+#: checklist's step 2 ("arrival motion on any panel holding tap targets is
+#: opacity only") leave an arrival its fade and nothing else, and
+#: `audit.arrival_movement_faults` refuses a movement at that duration. So
+#: the fill fades in, once, in place -- the same "once, on load, never on an
+#: update" the board ruled, in the one property an arrival may use.
+BAR_FILL_CLASS = ".pbar-fill"
+
+
+def bar_fill_faults(css: str | None = None) -> list[str]:
+    """A bar fill that would move on anything but its one first-load fade."""
+    if css is None:
+        path = Path(__file__).resolve().parent / "web" / "style.css"
+        css = path.read_text(encoding="utf-8") if path.exists() else ""
+    css = _without_comments(css, "css")
+    faults = []
+    for match in _CSS_RULE.finditer(css):
+        selector = " ".join(match.group("selector").split()).split("*/")[-1].strip()
+        if BAR_FILL_CLASS not in selector:
+            continue
+        for animated in _CSS_ANIMATED.finditer(match.group("body")):
+            value = animated.group(0)
+            if "none" in value.split(":", 1)[-1].split(";")[0]:
+                continue   # the start state snaps into place; nothing moves
+            named = _transition_properties(
+                animated.group(1), value.split(":", 1)[-1]) \
+                if animated.group(1) == "transition" else ["animation"]
+            if animated.group(1) == "animation" or any(p != "opacity" for p in named):
+                faults.append(
+                    f"{selector!r} sets {value.strip()[:50]!r}: the bar fills once on "
+                    f"first load, by its fade and nothing else, and never on an "
+                    f"update (motion, 2026-09-25; by its fade alone from the "
+                    f"board merge, 2026-09-29).")
+    return faults
+
+
+def check_the_bar_fills_once(css: str | None = None) -> None:
+    faults = bar_fill_faults(css)
+    if faults:
+        raise LawViolation("THE BAR FILLS ONCE, ON LOAD:" + _NL2 + _NL2.join(faults))
+
 
 _CSS_ANIMATED = re.compile(r"(?:^|[;\s])(transition|animation)\b[^;]*")
 
@@ -6860,7 +7130,7 @@ def check_no_marks(directory=None) -> None:
 #: with, carrying the word "pregame". Everything else here stands.
 LIVE_FORBIDDEN = ("size_words", "edge_words", "edge_line_words", "edge_label",
                   "payout_words", "price_words", "model_words", "venue_words",
-                  "tier_chip")
+                  "tier_chip", "price", "payout")
 
 #: The word a live card's probability must carry. WITHOUT IT the figure reads
 #: as the model's opinion of the game in front of the reader, and there is no
@@ -7014,11 +7284,12 @@ def live_tab_faults(payload) -> list[str]:
     """Anything on the Live tab that is not the game.
 
     Reads the day's payload: the live group's cards and the headings that
-    would render beside them.
+    would render beside them -- and, from the board merge (2026-09-29), the
+    board's live rows and tiles, where a game being played is shown now.
     """
     today = ((payload or {}).get("today") or {})
     if not today:
-        return []
+        return _board_live_row_faults(payload)
     faults: list[str] = []
     for i, card in enumerate(today.get("live") or []):
         if not isinstance(card, dict):
@@ -7036,6 +7307,60 @@ def live_tab_faults(payload) -> list[str]:
             f"the Live tab's heading is {heading!r}, which is not one of "
             f"{LIVE_TAB_HEADINGS}: a heading from another group has followed "
             f"the reader onto this tab")
+    return faults + _board_live_row_faults(payload)
+
+
+#: What a live row of the board may not carry (LIVE TAB, re-homed by the
+#: board merge, 2026-09-29): the old card's fields, and the board's own names
+#: for a chance -- `prob` and `prob_words` -- which the board built on every
+#: block and drew on none of its live rows.
+BOARD_LIVE_FORBIDDEN_FIELDS = LIVE_TAB_FORBIDDEN_FIELDS + ("prob", "prob_words")
+
+
+def _board_live_row_faults(payload) -> list[str]:
+    """LIVE TAB ON THE BOARD (the merge, 2026-09-29). The Live tab left with
+    the old Picks route; a game being played is a row on Games now, marked
+    LIVE, and the same promise holds it: the row shows the game and the
+    pregame figure with its word, and nothing else -- no chance and no tier
+    chip on its pick, on any question behind it or on a live prop tile, and
+    no label over its pick but the live one (another state's label following
+    a game into play is the heading that followed the reader onto Live)."""
+    from . import language
+
+    board = ((payload or {}).get("board") or {})
+    if not board:
+        return []
+    faults: list[str] = []
+    live_label = language.pick_label_words("live", "none")
+    for i, game in enumerate(board.get("games") or []):
+        if not isinstance(game, dict) or game.get("state") != "live":
+            continue
+        blocks = ([("pick", game.get("pick"))] if game.get("pick") else []) + [
+            (f"questions[{j}]", q) for j, q in enumerate(game.get("questions") or [])]
+        for where, block in blocks:
+            if not isinstance(block, dict):
+                continue
+            for field in BOARD_LIVE_FORBIDDEN_FIELDS:
+                if block.get(field) is not None:
+                    faults.append(
+                        f"board.games[{i}].{where} carries {field!r}: a live "
+                        f"row shows the game and the pregame figure, and a "
+                        f"chance or a tier chip beside a game in progress is "
+                        f"the pre-CARD_FACE card returning")
+        label = game.get("pick_label_words")
+        if game.get("pick") and label != live_label:
+            faults.append(
+                f"board.games[{i}] is live and its pick is labelled {label!r}, "
+                f"not {live_label!r}: a label from another state has followed "
+                f"the game into play")
+    for i, tile in enumerate(((board.get("props") or {}).get("tiles")) or []):
+        if not isinstance(tile, dict) or tile.get("state") != "live":
+            continue
+        for field in BOARD_LIVE_FORBIDDEN_FIELDS:
+            if tile.get(field) is not None:
+                faults.append(
+                    f"board.props.tiles[{i}] is live and carries {field!r}: a "
+                    f"prop being played shows the game and nothing else")
     return faults
 
 
@@ -7181,8 +7506,36 @@ def browser_syntax_faults(root: Path | None = None) -> list[str]:
     return faults
 
 
+_STRAY_MARKER = re.compile(r"\*/|/\*")
+
+
+def stray_comment_marker_faults(css: str) -> list[str]:
+    """A comment marker left standing once every comment is blanked.
+
+    A COMMENT THAT ATE A RULE (2026-09-24/25): a banner comment opened a
+    second comment inside itself, so the first `*​/` closed both and the
+    banner's second half stood outside any comment. A browser reads such
+    text as the prelude of the next rule and drops that rule whole -- which
+    is how `.bar { height: auto }` was written twice and never applied. The
+    JS syntax check cannot see this: CSS never fails to parse, it drops.
+    """
+    stripped = _without_comments(css, "css")
+    faults = []
+    for n, line in enumerate(stripped.split("\n"), 1):
+        if _STRAY_MARKER.search(line):
+            faults.append(
+                f"style.css line {n} carries a comment marker outside any "
+                f"comment ({line.strip()[:60]!r}). The browser reads what "
+                f"follows as a rule's prelude and drops the next rule whole.")
+    return faults
+
+
 def check_the_browser_files_parse() -> None:
     faults = browser_syntax_faults()
+    from . import config as _config
+    css_path = _config.PACKAGE_ROOT / "web" / "style.css"
+    if css_path.exists():
+        faults += stray_comment_marker_faults(css_path.read_text(encoding="utf-8"))
     if faults:
         raise LawViolation(
             "A BROWSER FILE DOES NOT PARSE, so nothing on any route renders "
@@ -9617,9 +9970,18 @@ ELAPSED_TIME_EXEMPT: dict[str, str] = {
 #: changed and none may be ADDED: a function holding more than its count
 #: here fails by name, and one holding fewer must lower its count, so this
 #: register can only shrink.
+#: SHRUNK BY THE BOARD MERGE (2026-09-29), from 28 functions and 44 waits to
+#: 19 and 27. The board removed `test_the_toggle_is_remembered_for_the_session`
+#: with the tier filter, and re-homed eight more onto its own controls under
+#: new names, bringing their fixed waits along -- `test_motion.py`'s tab
+#: switch, `test_rapid.py`'s two tab tests and `test_tabs.py`'s five. A wait
+#: under a new name is an added one, so none was registered again: each was
+#: rebuilt on an in-page signal (`tests/conftest.py::wait_for_the_redraw_it_
+#: starts`, which takes the panel and a count from this merge), and so were
+#: the board's own new ones in `test_board.py`. The entries below are the
+#: ones that still stand, each at its count.
 ELAPSED_TIME_HELD: dict[str, int] = {
     "tests/test_cards.py:test_the_grid_does_not_re_sort_while_a_slate_is_in_progress": 1,
-    "tests/test_cards.py:test_the_toggle_is_remembered_for_the_session": 1,
     "tests/test_empty.py:_nothing_but_the_message": 1,
     "tests/test_empty.py:_open_week": 1,
     "tests/test_empty.py:test_a_sport_with_no_forecasts_shows_nothing_of_the_last_one": 1,
@@ -9630,22 +9992,14 @@ ELAPSED_TIME_HELD: dict[str, int] = {
     "tests/test_every_control.py:test_the_forecaster_picker_fetches_the_tier_table_it_names": 2,
     "tests/test_every_control.py:test_the_market_select_fetches_the_tier_table_it_names": 1,
     "tests/test_hidden.py:_open": 1,
-    "tests/test_motion.py:test_a_tab_switch_arrives_through_the_motion_block": 1,
     "tests/test_motion.py:test_reduced_motion_is_the_same_layout_with_no_transition": 2,
     "tests/test_rapid.py:_open_week": 1,
     "tests/test_rapid.py:_select": 1,
     "tests/test_rapid.py:slow": 1,
-    "tests/test_rapid.py:test_a_double_clicked_tab_renders_each_pick_once": 2,
     "tests/test_rapid.py:test_a_slower_earlier_slate_does_not_take_the_page": 2,
     "tests/test_rapid.py:test_offline_says_so_in_words_and_a_later_success_clears_it": 2,
-    "tests/test_rapid.py:test_two_tabs_in_quick_succession_leave_the_second_one": 2,
     "tests/test_settled_line.py:test_the_counts_line_names_the_settled_picks": 2,
     "tests/test_smoke.py:test_the_sport_tabs_are_reachable_and_tappable": 1,
-    "tests/test_tabs.py:_open_week": 2,
-    "tests/test_tabs.py:test_a_market_tab_shows_only_that_markets_picks": 2,
-    "tests/test_tabs.py:test_a_tab_the_next_sport_does_not_ask_falls_back_to_all": 3,
-    "tests/test_tabs.py:test_a_tab_with_no_picks_shows_nothing_of_the_last_one": 2,
-    "tests/test_tabs.py:test_the_hidden_market_select_presses_the_tab": 2,
 }
 
 
@@ -11329,3 +11683,624 @@ def check_no_replacing_write_on_an_append_only_table(root: Path | None = None) -
             "write against every append-only table, and names every other "
             "upsert in a register that only shrinks):" + _NL2
             + _NL2.join(faults))
+# THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
+# ---------------------------------------------------------------------------
+#
+# Three guards the board brought with it, each proved by a planting:
+#
+#   * A SIGNAL NEVER RENDERS WITHOUT ITS BADGE. A green outline beside no
+#     sample size is the most persuasive thing on the page and says nothing
+#     about how much stands behind it -- LAW 4, on the row.
+#   * A CLUB'S COLOUR IS MEASURED, NEVER TYPED. `data/team_colours.py` is
+#     generated from the feed the names come from; a hex typed into the
+#     stylesheet, the renderer or a composer is a second copy that will
+#     disagree with it, and a jersey drawn from it would be a guess wearing
+#     a club's identity.
+#   * A LIVE ROW CARRIES NO PRICE, NO SIZE AND NO TAP. `live_card_faults`
+#     already ruled the old card; `LIVE_FORBIDDEN` names the board's own
+#     field names as well, so the same walk covers the rows.
+
+#: The four signals, and the two that must be earned before they show.
+BOARD_SIGNALS = ("clears", "costs", "won", "lost")
+BOARD_GLOWS = ("clears", "costs")
+
+
+def board_signal_faults(payload) -> list[str]:
+    """A row or a tile wearing a signal with no record badge beside it."""
+    board = (payload or {}).get("board") or {}
+    faults: list[str] = []
+
+    def check(node, where):
+        if not isinstance(node, dict):
+            return
+        signal = node.get("signal")
+        if signal in BOARD_SIGNALS and not node.get("badge_words"):
+            faults.append(
+                f"{where} wears the {signal!r} signal with no record badge "
+                f"beside it. A glow or a fill beside no sample size is the "
+                f"most persuasive thing on the page and says nothing about "
+                f"how much stands behind it (LAW 4).")
+        if signal in BOARD_SIGNALS and node.get("badge_n") is None:
+            faults.append(f"{where} wears {signal!r} and its badge has no count")
+
+    for i, game in enumerate(board.get("games") or []):
+        check(game.get("pick"), f"board.games[{i}].pick")
+        for j, q in enumerate(game.get("questions") or []):
+            check(q, f"board.games[{i}].questions[{j}]")
+    for i, chip in enumerate((board.get("my_day") or {}).get("entries") or []):
+        check(chip, f"board.my_day.entries[{i}]")
+    for i, tile in enumerate((board.get("props") or {}).get("tiles") or []):
+        check(tile, f"board.props.tiles[{i}]")
+        # RULING c, 2026-09-25: a prop tile wears no outline until a real
+        # multiplier exists for its line -- read from a venue, or typed in
+        # the entry rail. The tile's own multiple is DECLARED, and a cushion
+        # against a declared number is arithmetic, not an edge. The colour is
+        # earned in the rail, against the number the operator typed.
+        if tile.get("signal") in ("clears", "costs") and tile.get("multiple_source") != "read":
+            faults.append(
+                f"board.props.tiles[{i}] wears the {tile.get('signal')!r} outline "
+                f"against a multiplier the app assumed "
+                f"({tile.get('multiple_source') or 'none'}). A prop tile's "
+                f"outline needs a multiplier that was READ for that line; until "
+                f"one is, the cushion shows and the colour does not (ruled "
+                f"2026-09-25).")
+        if tile.get("alt") and not tile.get("high_end_badge_words"):
+            faults.append(
+                f"board.props.tiles[{i}] is an alt line with no high-end "
+                f"record badge: an alt line is a claim near the top of the "
+                f"range, and the record there is its own")
+    return faults
+
+
+def check_the_board_signals_carry_their_badges(payload) -> None:
+    faults = board_signal_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A SIGNAL WITHOUT ITS BADGE:" + _NL2 + _NL2.join(faults[:6]))
+
+
+BOARD_SIGNAL_FIXTURE_GOOD = {"board": {"games": [{"pick": {
+    "signal": "clears", "badge_words": "12/100", "badge_n": 12}}]}}
+BOARD_SIGNAL_FIXTURE_BARE = {"board": {"games": [{"pick": {
+    "signal": "clears", "badge_words": None}}]}}
+#: A prop tile lit against the DECLARED multiple (ruling c, 2026-09-25) and
+#: the same tile against one that was read, which the scan must let stand.
+BOARD_SIGNAL_FIXTURE_ASSUMED = {"board": {"props": {"tiles": [{
+    "signal": "clears", "badge_words": "12/100", "badge_n": 12,
+    "multiple_source": "declared"}]}}}
+BOARD_SIGNAL_FIXTURE_READ = {"board": {"props": {"tiles": [{
+    "signal": "clears", "badge_words": "12/100", "badge_n": 12,
+    "multiple_source": "read"}]}}}
+
+
+#: Where a hand-typed club hex would sit: the web files and the composers
+#: that hand colours to the page. The generated colour file is the one place
+#: a club's hex belongs, and `tools/measure_team_colours.py` writes it.
+CLUB_HEX_SCAN = (
+    "web/app.js", "web/style.css", "web/index.html", "web/login.html",
+    "board.py", "views.py", "language.py",
+)
+_HEX_LITERAL = re.compile(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b")
+
+
+def _club_hexes() -> dict[str, str]:
+    from .data.team_colours import TEAM_COLOURS
+
+    out: dict[str, str] = {}
+    for sport, clubs in TEAM_COLOURS.items():
+        for code, (primary, on_white, _how) in clubs.items():
+            out.setdefault(primary.lower(), f"{sport} {code}")
+            out.setdefault(on_white.lower(), f"{sport} {code}")
+    return out
+
+
+def club_hex_faults(root: Path | None = None, texts: dict | None = None) -> list[str]:
+    """A colour literal in the web files or the composers that is a club's."""
+    root = root or config.PACKAGE_ROOT
+    clubs = _club_hexes()
+    faults = []
+    sources = texts if texts is not None else {
+        name: (root / name).read_text(encoding="utf-8")
+        for name in CLUB_HEX_SCAN if (root / name).is_file()}
+    for name, text in sources.items():
+        kind = "css" if name.endswith(".css") else ("html" if name.endswith(".html") else "js")
+        if name.endswith(".py"):
+            text = _python_without_comments(text)
+        else:
+            text = _without_comments(text, kind)
+        for n, line in enumerate(text.split("\n"), 1):
+            for match in _HEX_LITERAL.finditer(line):
+                hexed = match.group(1).lower()
+                if len(hexed) == 3:
+                    hexed = "".join(c * 2 for c in hexed)
+                if hexed in clubs:
+                    faults.append(
+                        f"{name} line {n} types #{match.group(1)}, which is "
+                        f"{clubs[hexed]}'s measured colour. A club's colour "
+                        f"comes from data/team_colours.py and nowhere else; a "
+                        f"second copy is one that will disagree with it.")
+    return faults
+
+
+def check_no_hand_typed_club_hex(root: Path | None = None) -> None:
+    faults = club_hex_faults(root)
+    if faults:
+        raise LawViolation(
+            "A CLUB'S COLOUR WAS TYPED, NOT MEASURED:" + _NL2 + _NL2.join(faults[:6]))
+
+
+#: The board's own fields a live row may not carry, added to the old card's
+#: list so one walk rules both.
+LIVE_FORBIDDEN = LIVE_FORBIDDEN + ("pays_words", "size_words", "edge_words")
+
+#: The board's texts a reader meets: every one is scanned for internal
+#: vocabulary, pressure and advice, tooltips included.
+BOARD_TEXT_KEYS = (
+    "line_words", "question", "prob_words", "price_words", "pays_words",
+    "size_words", "edge_words", "pregame_words", "settled_words",
+    "badge_words", "high_end_badge_words", "cushion_words", "breakeven_words",
+    "venue_words", "family_words", "questions_words", "no_pick_words",
+    "yours_words", "score_words", "period_words", "polled_words",
+    "games_empty_words", "nothing_clears_words", "note", "empty_words",
+    "status_words", "counts_words", "heading", "home_form_words", "away_form_words",
+    "home_form_tip", "away_form_tip", "injuries_words", "weather_words",
+    "factors_words", "factor_words",
+    "alt_empty_words", "label", "heading", "empty", "kalshi_absent",
+    "market_label", "forecaster_label", "player", "surname", "name",
+)
+
+
+def _without_declared_factor_phrases(text: str) -> str:
+    """`text` with every declared factor's own phrase (the registry's `why`)
+    blanked, for the advice scan alone (the board merge, 2026-09-29): a
+    factor's name is a noun about the game, whatever verb it looks like."""
+    from .factors import registry
+
+    out = text or ""
+    for factor in registry.REGISTRY.values():
+        phrase = getattr(factor, "why", None)
+        if phrase:
+            out = re.sub(re.escape(phrase), " ", out, flags=re.I)
+    return out
+
+
+def board_words_faults(payload) -> list[str]:
+    """Internal vocabulary, pressure or advice anywhere on the board, the
+    tooltips included."""
+    board = (payload or {}).get("board")
+    if not board:
+        return []
+    faults: list[str] = []
+
+    def scan(text, where):
+        # A TOOLTIP MAY CARRY A VERSION NAME, and only a tooltip (operator
+        # question 19; the board merge, 2026-09-29).
+        for fault in plain_words_violations(
+                text, in_a_tooltip=where.endswith("(a tooltip)")):
+            faults.append(f"{where}: {fault}")
+        for fault in pressure_word_faults(text):
+            faults.append(f"{where}: {fault}")
+        # A DECLARED FACTOR'S PHRASE ("how many plays both offences run") is
+        # the registry's own name for it, read for internal vocabulary and
+        # pressure like everything else, and not for advice: the advice scan
+        # reads "plays" as a verb, and the phrase is a noun about the game.
+        # AND WHERE A SENTENCE QUOTES ONE (the board merge, 2026-09-29): the
+        # reasons on a pick's tooltip are the old card's Why sentences, built
+        # from the same phrases -- "Mostly it comes down to how many plays
+        # both offences run" -- and on the live record's NFL slate twelve of
+        # them failed this scan, which the board, built with no record, never
+        # met. The declared phrases are taken out of the text before the
+        # advice scan reads the rest of the sentence, which is still read.
+        if not where.endswith(".factor_words"):
+            for fault in advice_word_faults(
+                    _without_declared_factor_phrases(text), where):
+                faults.append(fault)
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                here = f"{path}.{key}" if path else str(key)
+                if key == "tips" and isinstance(value, dict):
+                    for tkey, words in value.items():
+                        if isinstance(words, str):
+                            scan(words, f"{here}.{tkey} (a tooltip)")
+                    continue
+                if key in BOARD_TEXT_KEYS and isinstance(value, str):
+                    scan(value, here)
+                walk(value, here)
+        elif isinstance(node, list):
+            for i, value in enumerate(node):
+                walk(value, f"{path}[{i}]")
+
+    walk(board, "board")
+    return sorted(set(faults))
+
+
+def check_the_board_speaks_plain(payload) -> None:
+    faults = board_words_faults(payload)
+    if faults:
+        raise LawViolation(
+            "THE BOARD SHOWS A WORD A READER SHOULD NOT MEET:"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+def _check_the_board_scanners_can_see() -> None:
+    problems = []
+    if board_signal_faults(BOARD_SIGNAL_FIXTURE_GOOD):
+        problems.append("board_signal_faults flags a badged signal")
+    if not board_signal_faults(BOARD_SIGNAL_FIXTURE_BARE):
+        problems.append("board_signal_faults misses a glow with no badge")
+    if not board_signal_faults(BOARD_SIGNAL_FIXTURE_ASSUMED):
+        problems.append("board_signal_faults misses an outline on a prop tile "
+                        "against an assumed multiplier")
+    if board_signal_faults(BOARD_SIGNAL_FIXTURE_READ):
+        problems.append("board_signal_faults refuses an outline against a "
+                        "multiplier that was read")
+    sample = next(iter(_club_hexes()))
+    if not club_hex_faults(texts={"web/app.js": f"const x = '#{sample}';"}):
+        problems.append("club_hex_faults misses a typed club hex")
+    if club_hex_faults(texts={"web/app.js": "const x = '#0F1114';"}):
+        problems.append("club_hex_faults flags the page's own ground")
+    if not board_words_faults({"board": {"games": [{"pick": {
+            "tips": {"prob": "a hot rushing_yards lock"}}}]}}):
+        problems.append("board_words_faults misses a tooltip")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_board_scanners_can_see()
+
+
+# ---------------------------------------------------------------------------
+# THE BOARD MERGE'S OWN GUARDS (the merge checklist of 2026-09-27, with its
+# third-set additions; built 2026-09-29)
+# ---------------------------------------------------------------------------
+#
+# HEADINGS IN PLAIN WORDS, AN INTERNAL VERSION NAME ONLY IN A TOOLTIP
+# (operator question 19, ruled 2026-09-27: "fixed in the board: headings in
+# plain words; internal version names only in a tooltip"). The Record page
+# painted the blend's version "b1" beside the heading "Priced, and against
+# the close" on every sport, and the ordering's "r3" beside "Did the ordering
+# earn its place"; the correction lines said "version 8 is in force since
+# ...". A version name is how a stored row is matched to what wrote it; a
+# reader needs it to match, never to read. `plain_words_violations` refuses
+# one in visible text from this merge (`version_name_violations`, above it),
+# and a tooltip may carry it. Two more places are read for it here, in the
+# gate where no browser runs:
+#
+#   * every heading index.html writes, a `<small>` beside the words included
+#     (`heading_words_faults`); the words a heading is given at render time
+#     are the server's, read by the payload scans and the rendered pages;
+#   * the renderer placing a payload's `..._version` field as visible text --
+#     `textContent`, `innerText`, `innerHTML`, or the text argument of
+#     `el(tag, cls, text)` -- where a `title` may carry it
+#     (`version_painted_faults`).
+#
+# NOT SEEN (FOLLOWUPS): a version name placed by the renderer from a field
+# not named `..._version`, and one inside a `.code-literal` block, which the
+# rendered pages' scan leaves out on purpose (the prompt disclosure's
+# verbatim text).
+
+_HEADING = re.compile(r"<(h[1-6])\b[^>]*>(?P<body>.*?)</\1>", re.S | re.I)
+
+
+def heading_words_faults(html: str | None = None) -> list[str]:
+    """A heading in index.html that is not plain words -- a version name or
+    an identifier inside it included (question 19)."""
+    if html is None:
+        html = (config.PACKAGE_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    html = _without_comments(html, "html")
+    faults = []
+    for match in _HEADING.finditer(html):
+        text = " ".join(re.sub(r"<[^>]+>", " ", match.group("body")).split())
+        for fault in plain_words_violations(text):
+            line = html.count(chr(10), 0, match.start()) + 1
+            faults.append(f"index.html:{line} <{match.group(1)}> {text!r}: {fault}")
+    return faults
+
+
+#: The renderer placing a payload's version field as visible text.
+_JS_VERSION_PAINTED = re.compile(
+    r"(?:\.(?:textContent|innerText|innerHTML)\s*=[^;\n]*|"
+    r"\bel\(\s*'[^']*'\s*,\s*[^,()]*,\s*[^;\n]*)"
+    r"\b[A-Za-z_$][\w$]*\.(?P<field>\w*_version)\b")
+
+
+def version_painted_faults(js: str | None = None) -> list[str]:
+    """The renderer painting a `..._version` field as visible text (q19)."""
+    if js is None:
+        js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    js = _without_comments(js, "js")
+    faults = []
+    for match in _JS_VERSION_PAINTED.finditer(js):
+        line = js.count(chr(10), 0, match.start()) + 1
+        faults.append(
+            f"app.js:{line} paints `{match.group('field')}` as visible text. "
+            f"An internal version name appears only in a tooltip (operator "
+            f"question 19, 2026-09-27): set it as a `title`, beside words "
+            f"that say what the panel is.")
+    return faults
+
+
+def check_headings_are_plain_words() -> None:
+    faults = heading_words_faults() + version_painted_faults()
+    if faults:
+        raise LawViolation(
+            "A HEADING IS NOT PLAIN WORDS, OR A VERSION NAME IS PAINTED "
+            "(operator question 19, ruled 2026-09-27: headings in plain words; "
+            "internal version names only in a tooltip):"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+#: The Record page's priced heading as it shipped until the merge, and the
+#: renderer line that painted the blend's name into it; and as they ship
+#: now. Checked at import, like every scanner.
+HEADING_FIXTURE_PAINTED = (
+    '<h3>Priced, and against the close <small id="priced-version">b1</small></h3>',
+    "    if (version && priced) version.textContent = priced.blend_version || '';")
+HEADING_FIXTURE_PLAIN = (
+    '<h3 id="priced-heading" title="Version b1">Priced, and against the close</h3>',
+    "    if (heading && priced) heading.title = priced.version_tip || '';")
+
+
+def _check_the_version_scanners_can_see() -> None:
+    problems = []
+    html, js = HEADING_FIXTURE_PAINTED
+    if not heading_words_faults(html):
+        problems.append("heading_words_faults misses 'b1' beside a heading")
+    if not version_painted_faults(js):
+        problems.append("version_painted_faults misses a version painted as text")
+    html, js = HEADING_FIXTURE_PLAIN
+    if heading_words_faults(html) or version_painted_faults(js):
+        problems.append("the version scans refuse a heading with its name in a title")
+    if not version_name_violations("version 8 is in force since Monday"):
+        problems.append("version_name_violations misses a correction's number")
+    if version_name_violations("Since the repair, statistical: 12 of 50"):
+        problems.append("version_name_violations flags plain words")
+    if plain_words_violations("Version b1: the blend.", in_a_tooltip=True):
+        problems.append("plain_words_violations refuses a version name in a tooltip")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_version_scanners_can_see()
+
+
+# ---------------------------------------------------------------------------
+# THE BOARD'S COUNTS AND ITS PRICED NUMBERS (the prover of the board merge,
+# 2026-09-29)
+# ---------------------------------------------------------------------------
+#
+# Found by walking repair's behaviour through the merged board, each on a
+# real payload, none seen by the merge's own guards:
+#
+#   * MY DAY COUNTED A TAKEN PROP TWICE. A prop question is on its game's row
+#     and is a tile, and My day read both: one tap, two chips, "2 taken".
+#   * A GAME ROW'S COUNT POOLED THE FORECASTERS. "4 questions on this game"
+#     over three of the model's and one of the reasoning pass's, a question
+#     both answered counted twice under the word "question" -- the pooled
+#     figure operator questions 14 and 22 took off every other panel.
+#   * RESULTS' SETTLED HEADING COUNTED ONE SET AND HEADED ANOTHER: the Today
+#     block's settled cards ("Settled -- 15 questions") above every question
+#     on every finished row, both forecasters'.
+#   * A PRICED ROW'S NUMBERS WERE NOT THE CARD'S. The merge read the entry's
+#     corrected `fair_value` for a priced question's chance (GRIDIRON_REPAIR
+#     item 3, operator question 32's door) from the Today card, which never
+#     carried it, so the chance was the stored number; and the price and the
+#     payout were the claim's fixed proposition's, never turned to the side
+#     the question names -- the wrong-side defect of 2026-09-07 -- so an away
+#     side's question read 57% beside the home side's 48c and 2.06x, where
+#     the card said 46c against 52c.
+#
+# `board_count_faults` recounts the first three from the payload's own
+# blocks and composes the row's words again; `board_price_side_faults` holds
+# each priced block to its Today card: the chance the card's chip states
+# (`model_words`, the released chip, corrected and turned), and the card's
+# price and payout turned by the card's own `question_takes_the_proposition`
+# -- and refuses a priced card that carries no `fair_value`, the shape the
+# merge's reading met on every real payload. Both run in gate step 2 over
+# every sport's slate on the record's copy.
+
+
+def board_count_faults(payload) -> list[str]:
+    """A count on the board that counts a bet twice, pools the forecasters,
+    or states another count than the blocks it heads."""
+    from . import language as _language
+
+    board = (payload or {}).get("board") or {}
+    if not board:
+        return []
+    faults: list[str] = []
+    chosen = (payload or {}).get("forecaster") or config.PICKS_DEFAULT_FORECASTER
+    games = board.get("games") or []
+    tiles = ((board.get("props") or {}).get("tiles")) or []
+    # MY DAY: each taken question once, none lost, and the count its chips'.
+    day = board.get("my_day") or {}
+    entries = day.get("entries") or []
+    ids = [e.get("prediction_id") for e in entries]
+    twice = sorted({i for i in ids if ids.count(i) > 1})
+    if twice:
+        faults.append(
+            f"board.my_day counts taken question(s) {twice} more than once: a "
+            f"prop is on its game's row and is a tile, and one tap is one chip")
+    taken = {q.get("prediction_id") for g in games for q in (g.get("questions") or [])
+             if q.get("taken")} | {t.get("prediction_id") for t in tiles if t.get("taken")}
+    if set(ids) != taken:
+        faults.append(
+            f"board.my_day holds {sorted(i for i in set(ids) if i is not None)} "
+            f"and the board's taken questions are {sorted(i for i in taken if i is not None)}")
+    if day and day.get("n") != len(entries):
+        faults.append(
+            f"board.my_day says {day.get('n')!r} taken over {len(entries)} chips")
+    # EACH ROW'S QUESTIONS, EACH FORECASTER'S APART.
+    for i, game in enumerate(games):
+        blocks = game.get("questions") or []
+        recount: dict = {}
+        for q in blocks:
+            recount[q.get("forecaster")] = recount.get(q.get("forecaster"), 0) + 1
+        stated = game.get("questions_n")
+        if not isinstance(stated, dict):
+            faults.append(
+                f"board.games[{i}] carries no count per forecaster "
+                f"({stated!r}): a row's questions are each forecaster's, "
+                f"counted apart (operator questions 14 and 22)")
+            continue
+        if {f: n for f, n in stated.items() if n} != recount:
+            faults.append(
+                f"board.games[{i}] counts {stated} and its blocks are {recount}")
+        words = _language.game_questions_words(recount, chosen)
+        if game.get("questions_words") != words:
+            faults.append(
+                f"board.games[{i}] says {game.get('questions_words')!r} where its "
+                f"blocks, each forecaster's apart, say {words!r}")
+    # RESULTS' SETTLED TILES ARE THE HEADING'S OWN QUESTIONS.
+    if "settled_ids" in board:
+        heading_set = {c.get("prediction_id") for c in
+                       (((payload or {}).get("today") or {}).get("settled") or [])}
+        named = board.get("settled_ids") or []
+        if set(named) != heading_set or len(named) != len(set(named)):
+            faults.append(
+                f"board.settled_ids {sorted(named)} are not the questions the "
+                f"settled heading counts {sorted(heading_set)}")
+        finished = {q.get("prediction_id") for g in games if g.get("state") == "final"
+                    for q in (g.get("questions") or []) if q.get("forecaster") == chosen}
+        stray = sorted(set(named) - finished)
+        if stray:
+            faults.append(
+                f"board.settled_ids names {stray}, which no finished row of "
+                f"the page's forecaster holds")
+    return faults
+
+
+def check_the_board_counts_each_bet_once(payload) -> None:
+    faults = board_count_faults(payload)
+    if faults:
+        raise LawViolation(
+            "THE BOARD COUNTS A BET TWICE, POOLS THE FORECASTERS OR STATES "
+            "ANOTHER COUNT THAN IT SHOWS:" + _NL2 + _NL2.join(faults[:8]))
+
+
+def board_price_side_faults(payload) -> list[str]:
+    """A priced block of the board whose chance, price or payout is not the
+    Today card's, turned to the side the question names."""
+    from .market import recommend as _recommend
+
+    board = (payload or {}).get("board") or {}
+    today = (payload or {}).get("today") or {}
+    if not board or not today:
+        return []
+    cards = {c.get("prediction_id"): c for group in ("clears", "below_floor", "watching")
+             for c in (today.get(group) or []) if isinstance(c, dict)}
+    faults: list[str] = []
+
+    def check(block, where):
+        card = cards.get((block or {}).get("prediction_id"))
+        if card is None or block.get("state") != "upcoming" or card.get("state") == "live":
+            return
+        if card.get("model_words") and "fair_value" not in card:
+            faults.append(
+                f"{where}: its Today card states the chip {card['model_words']!r} "
+                f"and carries no `fair_value`, so the board cannot read the "
+                f"corrected number the chip states (GRIDIRON_REPAIR item 3)")
+            return
+        fair = card.get("fair_value")
+        flip = card.get("question_takes_the_proposition") is False
+        if fair is not None:
+            chance = 1.0 - fair if flip else fair
+            if block.get("prob") is None or abs(block["prob"] - chance) > 1e-9:
+                faults.append(
+                    f"{where} shows the chance {block.get('prob')!r} where its "
+                    f"card's corrected number, on the question's side, is "
+                    f"{chance!r} (item 3; question 32's door)")
+            chip = (card.get("model_words") or "").replace("¢", "%")
+            if chip and block.get("prob_words") != chip:
+                faults.append(
+                    f"{where} says {block.get('prob_words')!r} where its card's "
+                    f"chip says {card.get('model_words')!r}")
+        price = card.get("price")
+        if price is not None:
+            side = 1.0 - price if flip else price
+            if block.get("price") is None or abs(block["price"] - side) > 1e-9:
+                faults.append(
+                    f"{where} shows the price {block.get('price')!r} where the "
+                    f"side its question names costs {side!r}: a price of the "
+                    f"claim's fixed proposition under a question naming the "
+                    f"other side is the wrong-side defect of 2026-09-07")
+            pays = _recommend.payout_multiple(side) if flip else card.get("payout")
+            if pays is not None and (block.get("pays") is None
+                                     or abs(block["pays"] - pays) > 1e-9):
+                faults.append(
+                    f"{where} shows the payout {block.get('pays')!r} where the "
+                    f"side its question names pays {pays!r}")
+
+    for i, game in enumerate(board.get("games") or []):
+        if game.get("pick"):
+            check(game["pick"], f"board.games[{i}].pick")
+        for j, q in enumerate(game.get("questions") or []):
+            check(q, f"board.games[{i}].questions[{j}]")
+    for i, tile in enumerate(((board.get("props") or {}).get("tiles")) or []):
+        check(tile, f"board.props.tiles[{i}]")
+    return faults
+
+
+def check_the_board_prices_the_side_it_names(payload) -> None:
+    faults = board_price_side_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A PRICED ROW OF THE BOARD IS NOT ITS CARD'S NUMBERS ON THE SIDE "
+            "ITS QUESTION NAMES:" + _NL2 + _NL2.join(faults[:8]))
+
+
+#: One upcoming priced question naming the claim's other side (the away
+#: side at a 48.5c home price, a correction in force: the chip 46c), as the
+#: payload carries it -- and as the merge carried it.
+BOARD_PRICED_FIXTURE_GOOD = {
+    "forecaster": "statistical",
+    "today": {"clears": [{"prediction_id": 1, "state": "upcoming",
+                          "model_words": "46¢", "fair_value": 0.5358,
+                          "question_takes_the_proposition": False,
+                          "price": 0.485, "payout": 2.062}]},
+    "board": {"games": [{"questions": [{
+        "prediction_id": 1, "state": "upcoming", "forecaster": "statistical",
+        "prob": 1.0 - 0.5358, "prob_words": "46%", "price": 1.0 - 0.485,
+        "pays": 1.942}]}]}}
+BOARD_PRICED_FIXTURE_MERGED = {
+    "forecaster": "statistical",
+    "today": {"clears": [{"prediction_id": 1, "state": "upcoming",
+                          "model_words": "46¢", "price": 0.485,
+                          "payout": 2.062}]},
+    "board": {"games": [{"questions": [{
+        "prediction_id": 1, "state": "upcoming", "forecaster": "statistical",
+        "prob": 0.57, "prob_words": "57%", "price": 0.485,
+        "pays": 2.062}]}]}}
+
+
+def _check_the_board_count_scanners_can_see() -> None:
+    from . import language as _language
+
+    problems = []
+    if board_price_side_faults(BOARD_PRICED_FIXTURE_GOOD):
+        problems.append("board_price_side_faults refuses a block on its card's numbers: "
+                        + board_price_side_faults(BOARD_PRICED_FIXTURE_GOOD)[0])
+    if not board_price_side_faults(BOARD_PRICED_FIXTURE_MERGED):
+        problems.append("board_price_side_faults misses the merge's priced row")
+    twice = {"forecaster": "statistical", "board": {
+        "games": [{"questions": [{"prediction_id": 7, "forecaster": "statistical",
+                                  "taken": True}],
+                   "questions_n": {"statistical": 1},
+                   "questions_words": _language.game_questions_words(
+                       {"statistical": 1}, "statistical")}],
+        "props": {"tiles": [{"prediction_id": 7, "taken": True}]},
+        "my_day": {"n": 2, "entries": [{"prediction_id": 7}, {"prediction_id": 7}]}}}
+    if not board_count_faults(twice):
+        problems.append("board_count_faults misses a prop counted twice on My day")
+    once = {"forecaster": "statistical", "board": dict(
+        twice["board"], my_day={"n": 1, "entries": [{"prediction_id": 7}]})}
+    if board_count_faults(once):
+        problems.append("board_count_faults refuses a prop counted once: "
+                        + board_count_faults(once)[0])
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_board_count_scanners_can_see()

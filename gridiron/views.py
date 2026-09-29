@@ -496,8 +496,16 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
             # that disappears when there is nothing on the card only works on
             # the days a reader least needs it, and one payload shape with a
             # sometimes-missing key is how a renderer learns to guess.
+            from . import board as _board
+
             return {"sport": sport, "season": season, "week": None, "n": 0,
                     "cards": [], "message": _empty_slate_message(conn, sport),
+                    # ONE PAYLOAD SHAPE for the board as well: an empty slate
+                    # carries empty rows and the words that say so.
+                    "board": _board.build(conn, sport=sport, season=season,
+                                          wk=None, cards=[], today=None,
+                                          chosen=forecaster or config.PICKS_DEFAULT_FORECASTER),
+                    "freshness": freshness(conn),
                     # ONE PAYLOAD SHAPE. A key that is present on a full slate
                     # and missing on an empty one is how a renderer learns to
                     # guess, which is the rule the glance already follows.
@@ -972,8 +980,20 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # THE COUNT IS OF ONE FORECASTER'S QUESTIONS, and the strip says which.
         forecaster=chosen, sport=sport)
 
+    # THE BOARD (GRIDIRON_BOARD, 2026-09-24): the Games rows and the Props
+    # tiles, built from these same cards and this same Today block so the
+    # page cannot disagree with itself about what cleared the fee.
+    from . import board as _board
+
+    board_block = _board.build(
+        conn, sport=sport, season=season, wk=wk, cards=cards, today=today_block,
+        chosen=chosen,
+        unit_dollars=(float(_settings.value(conn, "unit_dollars"))
+                      if _settings.value(conn, "unit_dollars") else None))
+
     payload = {
         "sport": sport,
+        "board": board_block,
         # THE SLATE AT A GLANCE (D3), computed from the cards above rather than
         # by asking the database the same questions a second time.
         "glance": _glance(conn, sport, cards),
@@ -1708,6 +1728,26 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "edge_state": language.edge_state(entry.get("edge_cents")),
         "edge_cents": entry.get("edge_cents"),
         "payout": entry.get("payout"),
+        # THE PRICE AS A NUMBER (visual pass, 2026-09-25): the board's row
+        # draws its tick from it and its price words with it. Until now the
+        # card carried the words and the payout and not the price itself,
+        # so a priced row read "venue has not listed this yet" beside a
+        # payout -- unseen because the fixture world had no prices.
+        "price": entry.get("price"),
+        # THE CORRECTED NUMBER AND WHICH SIDE THE QUESTION NAMES, AS NUMBERS
+        # (the prover of the board merge, 2026-09-29). The board's row reads
+        # its chance, its price and its payout off this card; the card
+        # carried the chip's WORDS (`model_words`, the entry's corrected
+        # `fair_value` turned to the question's side) and the price of the
+        # claim's fixed proposition, and not the two numbers the turn is made
+        # from -- so the merge's reading of `fair_value` never ran on a real
+        # payload, and a priced row showed the stored number (GRIDIRON_REPAIR
+        # item 3: the model chip reads the corrected one) beside the home
+        # side's price and payout under an away side's question (the
+        # wrong-side defect of 2026-09-07). Both travel now, unturned, as the
+        # entry holds them; `board._question_block` turns all three.
+        "fair_value": entry.get("fair_value"),
+        "question_takes_the_proposition": takes,
         "gate_words": language.gate_status_words(entry["gate_n"], entry["gate"]),
         # THE TIER CHIP ONLY WHEN IT SAYS SOMETHING. Twelve chips reading
         # "STRONG · unproven" down one page is a group heading wearing a
@@ -1777,7 +1817,10 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     if state == "live":
         for field in ("payout_words", "price_words", "edge_words",
                       "edge_line_words", "edge_label", "size_words",
-                      "model_words", "venue_words"):
+                      "model_words", "venue_words", "price", "payout",
+                      # the chip's number goes with the chip (2026-09-29): a
+                      # live card's one figure is its pregame words
+                      "fair_value"):
             out.pop(field, None)
         out["edge_state"] = "none"
         # A CHIP EVERY CARD IN A GROUP WOULD WEAR belongs to the heading, and
@@ -3547,6 +3590,8 @@ def prompt_detail(conn: sqlite3.Connection, prediction_id: int) -> dict | None:
     out["code_version"] = record.get("code_version")
     if out["code_version"]:
         out["commit_words"] = language.PROMPT_COMMIT_WORDS
+        # THE COMMIT'S NAME, IN THE LINE'S TOOLTIP (question 19; 2026-09-29).
+        out["commit_tip"] = language.version_tip("commit", out["code_version"])
     # EACH PART NAMED BY THE RECORD'S OWN KIND (render check, 2026-09-25): a
     # reconstruction's headings say "reconstructed" beside its text.
     kind = record["kind"]
@@ -3591,6 +3636,44 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
          "informed": False},
         {"forecaster": "llm", "label": "LLM", "informed": False},
     ]
+    # TAKEN, PASSED OVER, EVERY FORECAST (Record page, 2026-09-25): three
+    # curves per market, never merged, behind the same gate as every curve.
+    # Read from the operator's own marks and never from the model's inputs.
+    # EACH DECLARED MARKET ONCE, BY ITS OWN KIND (the board merge,
+    # 2026-09-29). The board asked every declared market as a market type and
+    # every prop market again as a prop, so each prop was a block with its
+    # count AND a name in "Nothing settled yet in ..." -- the render showed
+    # passing yards both ways on one panel. Asked as the ordering's record
+    # asks them (`market_type_of`, `prop_type_of`), each market is one entry.
+    taken_markets = []
+    for market in config.SPORT_MARKETS.get(sport, ()):
+        taken_markets.append(calibration.taken_comparison(
+            conn, sport=sport, market_type=calibration.market_type_of(sport, market),
+            prop_type=calibration.prop_type_of(sport, market)))
+    for entry in taken_markets:
+        # WHOSE CURVES, IN THE LABEL (the board merge, 2026-09-29; operator
+        # question 22's rule that every count names its forecaster). The
+        # comparison is the statistical model's questions alone, each once on
+        # question 17's key; the heading says so, as the closing line's does.
+        entry["market_label"] = language.closing_line_label(
+            language.market_words(sport, entry["market"]), entry["predictor"])
+        for group in ("taken", "not_taken", "all"):
+            entry[group]["gate_words"] = language.chart_gate_words(entry[group]["n"], entry["gate"])
+    # A MARKET WITH NOTHING SETTLED gets one sentence, not three empty
+    # cards: the page already runs long, and "0 of 100" three times over says
+    # less than the market's name in a list.
+    # SAID ONCE, AND WHOSE ONCE (the board merge, 2026-09-29): the markets in
+    # plain words, the forecaster named in the sentence, not after each one.
+    silent = [language.market_words(sport, e["market"]) for e in taken_markets
+              if not e["n"]]
+    # NO TOTAL ACROSS MARKETS (the board merge, 2026-09-29). The board put
+    # the sum of every market's N at the head of the panel; nothing read it,
+    # and a count pooled over markets is the figure questions 14 and 22 took
+    # off every other panel. Each market carries its own N.
+    payload["taken_record"] = {"markets": [e for e in taken_markets if e["n"]],
+                               "silent_words": language.taken_record_silent_words(
+                                   silent, "statistical")}
+    payload["record_words"] = language.record_page_words()
     payload["meta"] = meta(conn, sport)
     # THE PROMPT RECORD ON THE RECORD PAGE (the ruling of 2026-09-25): how
     # many of this sport's reasoning forecasts carry the prompt as sent and
@@ -3621,7 +3704,9 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
         [dict({"name": language.gate_name("correction", c["label"]),
                "progress": c["progress"], "n": c["progress"]["n"]},
               **({"why": " ".join(c["below_its_gate"]
-                                  + ([c["state"]] if c.get("state") else []))}
+                                  + ([c["state"]] if c.get("state") else [])),
+                  # ITS VERSIONS, IN THE ROW'S TOOLTIP (question 19).
+                  "version_tip": c.get("version_tip")}
                  if c.get("below_its_gate") or c.get("state") else {}))
          for c in payload["corrections"]["categories"] if c.get("progress")]
         # ONE ROW PER MARKET, CARD AND FORECASTER, named in words (operator
@@ -3806,7 +3891,16 @@ def corrections_report(conn: sqlite3.Connection, sport: str) -> dict:
             state_line = language.correction_state_line(
                 dict(state) if state is not None else None,
                 None if latest is None or latest["below_its_gate"] else latest)
+            # THE VERSIONS THE ROW SPEAKS OF, FOR ITS TOOLTIP (operator
+            # question 19, "internal version names only in a tooltip"; the
+            # board merge, 2026-09-29): the lines name each correction by the
+            # day it was fitted, and the numbers are here.
+            named = ([state["version"]] if state is not None else []) + (
+                [latest["version"]] if state_line and latest is not None
+                and not latest["below_its_gate"] else []) + [
+                v["version"] for v in versions if v["below_its_gate"]]
             out.append({
+                "version_tip": language.correction_versions_tip(named),
                 **count,
                 # THE FORECASTER'S OWN LABEL, not the stored key, and the
                 # category whole (2026-09-29): "player props, every prop type
@@ -5046,6 +5140,13 @@ def _learning(conn: sqlite3.Connection, sport: str) -> dict:
                 state=dict(state) if state is not None else None,
                 latest=dict(latest) if latest is not None else None),
             "meaning_words": language.correction_meaning_line(0.70, shown),
+            # THE VERSIONS THE STATUS LINE SPEAKS OF, IN ITS TOOLTIP (operator
+            # question 19; the board merge, 2026-09-29): the line names each
+            # correction by the day it was fitted.
+            "version_tip": language.correction_versions_tip(
+                ([below["version"]] if below else [])
+                + ([state["version"]] if state is not None else [])
+                + ([latest["version"]] if latest is not None and not below else [])),
             # EACH LINE CARRIES ITS OWN N; the renderer requires it.
             "drift": moved,
         })
