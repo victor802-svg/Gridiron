@@ -16,6 +16,25 @@
   read-only: no forecast or recommendation carries fit 71 or any
   correction; no MLB pass can apply it (regular season over, loader reads
   `gameType=R` only, no unstarted MLB game on the record).
+  **Q32 released as c5dbd3b (2026-09-29 09:12Z; gate 4/4, 360/360, first
+  run):** every correction row is written inactive (a rule refuses
+  `active_from` on a new row); the append-only `correction_activations`
+  (measured / withdrawn / scratch, 15 rules) is the only way into force;
+  a measured row carries the bootstrap interval of the Brier improvement on
+  distinct bets (seed 20260923, 1000 resamples, pinned) and is refused
+  unless its lower bound is above zero; the door reads these rows alone;
+  the recalibration fits and never activates (its docstring says so);
+  `tools/correction_holdout.py` measures and activates or withdraws.
+  **FIT 71:** withdrawn at 2026-09-29T09:12:46Z by a dated row, reason as
+  ruled ("activated under the pre-Q32 rule: single holdout comparison,
+  pooled rows"); then measured read-only under the new gate on the live
+  record: 260 distinct questions, refit on the earliest 208 and scored on
+  the latest 52, Brier raw 0.247471 against corrected 0.247620 (improvement
+  -0.000149), paired bootstrap 95% interval [-0.015132, +0.016931] --
+  **DOES NOT PASS: a tie, the uncorrected probability stands; no activation
+  written, fit 71 stays withdrawn.** The door serves nothing in any
+  category. **Next: Q27** (restarted from the released code; `q27-held` is
+  read as a reference only).
 
 - **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
   (ii)(B): label every fitted row written before Q16's release that is
