@@ -19,6 +19,32 @@
   **Observed 21:11:54Z:** `/api/health` did not answer; the Serve task's
   repeat trigger started it again at 21:12:01Z (f0a4418). Cause not found
   (no step of this session stopped it); watch for a repeat.
+  **Q17 (with Q21, Q22) released as 00b66d3 (2026-09-29 01:32Z; gate 4/4,
+  344/344, first run; commits c57354c the one key and the four gate
+  records, 1949730 the recommendation counts per forecaster, 00b66d3 a fix
+  before release).** `gridiron/bet.py` holds the key once: forecaster,
+  game, market, subject (which names a prop's player and type), the rung
+  asked; every count door and its recount read it. THE FIX: the key as
+  first built also compared `prop_type`, so eight NFL week-one props
+  written without one (fs1, 29 Aug 05:55Z) and their fs2 re-asks
+  (9/68, 18/76, 23/91, 24/92, 27/95, 29/102, 33/66, 41/104) counted as two
+  questions -- 193 NFL values moved that no ruling named (the factor table,
+  "scored over 154" -> 162, the pick-card worst-band footnote, a pace
+  figure); the numbers step caught it, the key dropped the column, and all
+  193 are back at their released values. EVERY RELEASED NUMBER THAT MOVED
+  (scratchpad `q17fix\numbers\moves.md`, and FOLLOWUPS): at the venue's
+  line, coverage per question (NCAAF spread 46 of 142 games -> 46 of 187
+  questions; NFL spread 14/29 -> 14/42; NFL total 1/17 -> 1/18; MLB total
+  25/202 -> 25/213 and reasoning 25/133 -> 25/141; 16 lines' wording only);
+  where the line went (NCAAF spread 22% over 65 -> 28% over 78 questions,
+  gate row 65 -> 78 pairs; NFL spread 10 -> 11 of 50; venue pairs MLB
+  spread 55 -> 56, NFL spread 12 -> 11 of 50); the closing line per
+  forecaster (MLB "since the repair" 16 -> 15 and 1; "Both sides, no
+  position" gone, 45 in the model's total line and 46 in the reasoning
+  pass's; "Would not have cleared" 2 the model's; NFL 12 -> 11 and 1 at
+  00:52Z; counted once MLB 66 -> 57 and 11); empty_bar per forecaster. The
+  kill criterion stops nothing either way; no mean painted before 15
+  October. Question 30 below. **Next: Q16.**
 
 - **THE ORDER NOW (rulings of 28 Sep, docs/briefs/2026-09-28-rulings.md;
   wins over every order below):** Q20 with Q28 (A: one shared test helper
@@ -973,6 +999,18 @@ depend on the answer.
     sequence store other than the rebuild's), or leave them in FOLLOWUPS?
     Default until ruled: FOLLOWUPS. (Before Q16, so the new queue rule does
     not yet apply; by it, this touches LAW 3.)
+
+30. **Counts that do not read Q17's key. (Found by Q17's numbers step,
+    2026-09-28; none moved, none a gate count.)** The header record, the
+    sport tabs and the sign-in page count every settled row -- both passes
+    of a question, both forecasters together. A pick card's footnote, "the
+    model's worst band" (`views._worst_band`), draws one curve over every
+    market and both forecasters of the sport. `views._superseded_ids` (the
+    "early view" label) keeps a key of its own (with the factor set, without
+    the prop type); it labels rows and counts none. Put them on the key, or
+    leave them (none states a gate distance)? Default until ruled: as they
+    are, in FOLLOWUPS; by the queue rule after Q16 they would wait for the
+    re-read.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
