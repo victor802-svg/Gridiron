@@ -8762,7 +8762,25 @@ ATL's early pass its media line's second look.
 - **Nothing else moved**: no count anywhere (no curve's n, gate line,
   outlook, priced count, drift count, coverage line, closing line, kill
   criterion, correction count or empty-bar day), no other blind curve, no
-  other sport's slate.
+  other sport's slate. **CORRECTED 2026-09-29 by the numbers step** (the
+  released c5dbd3b against 2eda91a on one verified copy read 11:03Z, every
+  slate of every sport built; `scratchpad/q27/numbers/moves.md`): the list
+  above measured only the current week and week 3, and it left out four
+  moves, each the same mechanism as the 72 -> 45 it lists (a question asked
+  under two factor sets was counted once per set on the slate; the card now
+  reads the one clause):
+  - NFL week-1 slate: the statistical forecaster's count, on both
+    forecasters' pages and in the words "statistical made N", 128 -> 101
+    (27 questions asked under two factor sets).
+  - NCAAF slate of 5 September: the statistical count 250 -> 243 (7
+    questions under two sets). So "no other sport's slate" was untrue.
+  - NFL week-2 NYG-LA total card (1796 on the standing view, 1769 on the
+    early view): its band's claimed 0.5118 -> 0.5106.
+  - The Today panel: "Settled - 38 questions" -> "Settled - 42 questions",
+    and "Watching - 38 more" -> "Watching - 42 more" (watching_n 38 -> 42);
+    the "45 settled" count is unchanged.
+  None breaks LAW 1 or LAW 3 or makes a gate count false (the queue rule):
+  the counts are now right; only this list was short.
 
 ### BUILT
 - **The rule, one door.** `calibration.standing_pass_order(forecast, game,
