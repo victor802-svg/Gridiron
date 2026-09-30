@@ -39,6 +39,45 @@ def just_after(iso: str | None) -> str:
     return max(now, after)
 
 
+def instant(stamp: str | None) -> datetime | None:
+    """A stored instant -- a game's listed start, a read, a run -- as an
+    aware UTC datetime; None when nothing is stored.
+
+    ADDED 2026-09-30 (GRIDIRON_REPAIR item 1, the close window: "The
+    near-start run keeps every game until its start, so the close is the
+    last read before the start"). "Before the start" is decided by the
+    listed start AS AN INSTANT, never as text: starts are stored to the
+    second ("2026-09-27T19:10:00Z") for four sports and to the minute
+    ("2026-12-13T02:00Z") for UFC, and compared as text a read at
+    "...T02:00:30Z" sorts BEFORE a start of "...T02:00Z" (':' is below
+    'Z'), so a read thirty seconds after the start was taken for one
+    before it. Operator question 35 (ruled 2026-09-30, next in the order)
+    stores and compares every start as an instant; this is the parse the
+    near-start pass and the close read now, so they agree with it when it
+    lands.
+
+    A stamp this cannot read is refused by name (ValueError), never taken
+    for "no start": a start nobody can read is not a game that never
+    starts.
+    """
+    if stamp is None:
+        return None
+    text = str(stamp).strip()
+    if not text:
+        return None
+    try:
+        when = datetime.fromisoformat(
+            text[:-1] + "+00:00" if text.endswith("Z") else text)
+    except ValueError:
+        raise ValueError(
+            f"the stored instant {stamp!r} cannot be read as an instant "
+            f"(ISO-8601, UTC, Z-suffixed, to the second or to the minute)"
+        ) from None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when.astimezone(timezone.utc)
+
+
 class LiveRecordTouched(RuntimeError):
     """Verification opened the operator's own record. It never may.
 

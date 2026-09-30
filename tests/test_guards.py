@@ -486,6 +486,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_held_market_that_is_forecast_anyway",
         "plant_a_held_market_the_strip_leaves_off",
         "plant_a_close_that_cites_its_own_pricing_read",
+        # THE CLOSE WINDOW (the operator's ruling of 2026-09-30, item 1)
+        "plant_a_game_marked_live_before_its_start_left_out",
+        "plant_a_close_from_a_read_before_the_last_one_before_the_start",
+        "plant_a_read_after_a_start_to_the_minute_taken_as_before_it",
         "plant_a_withdrawn_recommendation_in_the_closing_line",
         "plant_a_recommendation_reader_that_goes_round_the_door",
         "plant_a_gate_step_that_opens_the_live_record_writable",

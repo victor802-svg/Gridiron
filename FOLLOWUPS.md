@@ -11140,3 +11140,202 @@ the record was deleted, with its -wal and -shm, at 2026-09-30T13:30:11Z; it was
 read with `db.read_only` and written only by the test server serving it
 (sign-in rows). Nothing was written to the record; no network, no real
 token, the live app never contacted, nothing run from the main checkout.
+
+## The close window: every game is read until its listed start -- built 2026-09-30 *(GRIDIRON_REPAIR item 1, the operator's ruling of 30 September, docs/briefs/2026-09-30-rulings.md; the re-read's item 1 PARTLY and its F3, docs/closeouts/2026-09-29-the-re-read.md; uncommitted for its prover)*
+
+The ruling: "Item 1 (close window): first after the wrong-side fix. The
+near-start run keeps every game until its start, so the close is the last
+read before the start. Measure read-only first whether NFL and NCAAF closes
+show the same 35-minute gap. Must be released before 15 October; if it can't
+be, tell me." Built on 30 September, in the order (after the wrong-side fix
+and pick-number steps C and B); nothing stands in the way of a release well
+before 15 October.
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, 2026-09-30T14:42:48Z to 14:43:34Z: integrity ok, 64 tables, none mismatched; read only through `db.read_only`, the clock held at 14:42:48Z, the copy's newest task row 14:42:01Z; scratchpad `item1/m01_shapes.py` to `m08_schedule.py`, outputs beside them; the copy deleted with its -shm and -wal at 15:04:09Z)*
+
+Every close the repaired closer wrote (`recommendation_closes.restated` = 0,
+item 1 on master from 2026-09-24T06:49:12Z), against every firing of the
+pass inside its recommendation's window -- the near-start task and the
+refresh task, which calls the same pass: 314 firings since item 1 (275
+near-start, 72 'ok' and 203 'noop'; 39 refresh). A firing asked for a
+recommendation if the venue's near-start reads of its game were written
+during that run; a firing whose payload asked for fewer recommendations than
+were open in its window, and which wrote no read of a game, left that game
+out.
+
+| sport | closes since item 1 | measured | unmeasured | measured closes on the last firing before the start | minutes out, measured closes | left out by a firing inside the window |
+|---|---|---|---|---|---|---|
+| MLB | 30 | 19 | 11 (56-61, 79-83) | 5 of 19 | 5.0 (86, 94); 9.7-9.9 (84, 93, 106); 34.5-35.0 (the 14) | 14, by nine firings, every one five minutes before its listed start |
+| NFL | 13 | 12 | 1 (67) | 12 of 12 | 10.0 (65, 78); 15.0 (77); 20.0 (76); 24.9-25.0 (68-73); 30.0 (74, 75) | none |
+| NCAAF | 8 | 8 | 0 | 7 of 8 | 24.7-25.0 (88-91, 102, 104, 105); 49.0 (103) | none |
+| NBA | 0 (112 and 113 are open, starting 20 and 21 October) | | | | | |
+| UFC | 0 (no UFC recommendation has been written) | | | | | |
+
+**NFL AND NCAAF DO NOT SHOW THE 35-MINUTE GAP.** Every NFL close and seven of
+eight NCAAF closes are the read of the last firing before the start, 10 to 30
+minutes out as the schedule gives (below). NCAAF rec 103 closed 49 minutes
+out because the firing 25 minutes out read its game and the venue's answer
+held no quote of its contract -- not a selection. Every (recommendation,
+firing) pair inside a window was asked for in NFL (50) and NCAAF (33).
+
+**THE 14 (all MLB).** The nine firings: run 3504 (25 Sep 22:35:01Z, rec 92),
+3525 (23:05, rec 85), 3568 (26 Sep 00:05, recs 87 and 95), 3633 (01:35,
+96), 4431 (20:05, 97), 4561 (23:05, 98 and 99), 4625 (27 Sep 00:35, 100),
+4669 (01:35, 101 and 107), 5405 (19:05, 108, 109, 110). Eight of them
+wrote 38 to 230 near-start reads of the games they did ask for, and none of
+these; 4669 asked for nothing at all (both open recommendations were the
+two left out). Each of the 14 closed on the read 35 minutes out (34.5 to
+35.0). MLB was asked five minutes out four times (57 and 59 on 24 September,
+86 and 94 on 25 September) and at every other lead every time.
+
+**WHY -- THE SELECTION RULE, AND WHAT IS INFERRED.** `tasks._near_start_
+snapshots` kept a recommendation only while `g.status IS NULL OR g.status IN
+('scheduled', 'pre')` and its listed start, compared as text, was in (now,
+now + 2h]; a drift row only while 'scheduled'. The live poller maps MLB's
+`abstractGameState` 'Live' to 'in' (`live.MLB_STATES`), and the league's feed
+gives a game in its warm-up 'Live'; the poll opens ten minutes before a
+listed start (`live.WINDOW_LEAD`). At each of the nine firings the MLB poll
+ten minutes before the start (hh:m0:0x) saw more games and changed 3 to 8;
+on 24 September the polls before 18:05 and 19:05 changed none, and those
+firings asked for 57 and 59. The record keeps only a game's current status,
+so "left out because it was marked 'in' in its warm-up" remains inferred.
+ESPN's feed (NFL, NCAAF) keeps a game `STATUS_SCHEDULED` until kickoff -- no
+warm-up state -- which is why neither shows the gap; its `STATUS_DELAYED` and
+`STATUS_RAIN_DELAY` map to 'in', so a delayed start would have been left out
+the same way (none on the record).
+
+**THE UNMEASURED.** MLB 56-61 and 79-82 and NFL 67: on 24 September all 17
+firings that asked the venue got 0 prices back (the re-read's F4); 83 and 67
+started while the machine was off (no firing in 83's window; 67's last two
+firings did not run). None of them was left out by a firing.
+
+### BUILT
+
+- **`db.instant`**: a stored instant -- a listed start, a read -- as an aware
+  UTC datetime, to the second or to the minute as stored; None for nothing
+  stored; an unreadable one refused by name (`ValueError`), never taken for
+  "no start". The parse the pass and the close read, so they agree with
+  operator question 35 when it lands.
+- **`tasks._near_start_selection(conn, now)`** is what every firing reads:
+  every drift row (a media line at its first look) and every open, standing
+  recommendation (`recommend.not_withdrawn`) whose game's LISTED START is
+  after `now` and within `NEAR_START_HOURS`, read as instants, WHATEVER THE
+  GAME'S STATUS SAYS. `_near_start_snapshots` asks it; the noop line's count
+  (`_games_starting_within`) reads the same window. `audit.RECORD_READERS`'s
+  entry moved to it.
+- **The payload names the status** (`near_start_marked_under_way`): each
+  forecast a firing read while its game's status said 'in' or 'final', with
+  the game, the status and the listed start -- so the next reading of this
+  is seen, not inferred.
+- **`at_the_line.evaluate`**: its status refusal (`game_under_way`) is gone;
+  a read taken before the listed start is claimed whatever the status, and
+  one at or after it never (`quote_after_first_pitch`), as instants. Without
+  this the read five minutes out on a game in its warm-up would be taken and
+  claim nothing.
+- **`recommend.close_of`**: the pricing claim is the latest written by the
+  recommendation and before the start, and the close the last near-start
+  read of the recommendation's own contract after its pricing read and
+  before the start -- every comparison an instant; `record_closing_prices`
+  closes once the start instant has passed; `_minutes_between` reads
+  instants. As text, a start stored to the minute (UFC's, "...T02:00Z")
+  sorted a read at "...T02:00:30Z" before it, the pass read the game thirty
+  seconds after its start, the close could be that read, and
+  `_minutes_between` raised on it: on 2330954 the first UFC recommendation
+  with a measured close would have stopped the closer -- and so every
+  near-start firing, the closer running first -- until fixed by hand (none
+  written; latent).
+- **Tests** (`tests/test_near_start_reads.py`, the close-window block, 11;
+  `tests/test_at_the_price.py`, 2, one replacing
+  `test_no_claim_is_written_on_a_game_already_under_way`, which pinned the
+  status refusal the ruling removes): a game read until its listed start
+  whether scheduled, 'in' or 'final', named in the payload when not
+  scheduled; never after it; a start to the minute read as an instant; a
+  drift row of a game marked 'in' given its look; the noop line counting it;
+  the fourteen's shape end to end (the close is the read five minutes out,
+  +9.0c, 5.0 minutes); a read in the start's own minute after it never the
+  close; the closer waiting for a start to the minute; `db.instant` itself; a
+  claim on a game marked 'in' before its start; no claim at or after the
+  start, whatever the status. Every clock is held (`_hold`: `db.utcnow` and
+  the name the market modules imported); no wall-clock read, sleep or fixed
+  wait added. 12 of the 13 fail on c0b70ee (2330954 and one commit of
+  documents; `git archive`, the two files copied in); the one that passes
+  there, the closer waiting for a start to the minute, holds what was right.
+- **Plantings** (`tools/guards/plant.py`, in `main()` and in
+  `tests/test_guards.py`'s list; `LAW_THE_CLOSE`; the clock held and the
+  venue a stub, `_HeldFirings`): `plant_a_game_marked_live_before_its_start_
+  left_out` (a recommendation and a drift row on games marked 'in' five
+  minutes before the listed start), `plant_a_close_from_a_read_before_the_
+  last_one_before_the_start` (the fourteen's shape end to end: priced the day
+  before, read 35 minutes out at 50c, marked 'in', 55c on offer five minutes
+  out -- the close must be the 55c read), `plant_a_read_after_a_start_to_
+  the_minute_taken_as_before_it` (a start stored to the minute, 89c on offer
+  thirty seconds after it). ALL THREE ESCAPE on c0b70ee (`run_plantings.py`
+  over its `git archive` with this `plant.py`): "the venue was asked for []
+  and the media looked at for []"; "closed on 0.5 (4.0c) from the read at
+  2026-09-27T18:35:01Z, 35.0 minutes out ... the firing then asked for
+  nothing"; "the venue was asked at ['2026-09-27T02:00:30Z'] firing after
+  the start ... the pass stopped: ValueError: time data '2026-09-27T02:00Z'
+  does not match format '%Y-%m-%dT%H:%M:%SZ'" -- and all three are CAUGHT
+  here.
+
+### BEFORE AND AFTER *(the copy; the fixed `close_of`, read-only; `m06_before_after.py`)*
+
+**No close on the record moves.** The fixed `close_of` gives every one of
+the 106 closes again unchanged -- the same pricing read, closing read and
+price (51 since item 1: MLB 30, NFL 13, NCAAF 8; and the 55 restated MLB
+closes). For the 14, the read that would have been the close -- the firing
+five minutes out -- was never taken: THE VENUE WAS NOT READ AT ALL for those
+games at those firings. The only reads of their games after the closing
+read and before the start are the same firing's other ladders one second
+later (98: 13, 100: 13, 108: 2). What the close would have been cannot be
+recovered from the record; the 14 stand as written, their CLV as recorded
+(92 +0.0c, 85 -2.5, 87 +2.5, 95 +0.0, 96 +2.0, 97 -2.5, 98 -3.0, 99 +0.0,
+100 -1.5, 101 +5.0, 107 +0.5, 108 -2.5, 109 -4.5, 110 +5.0), each still the
+last read taken before its start (the rule held; the price is earlier than
+the ruling means). Baseball's regular season is over, so no MLB close is
+waiting; NFL's and NCAAF's closes did not have the gap. From the release on,
+a game in its warm-up, 'in', delayed or anything else is read on every
+firing until its listed start, and its close is the last of those reads.
+What the page and the record say about closes is unchanged in shape: no
+column, table, payload key of the Record page or word was added (the one new
+key is the near-start run's own payload).
+
+### THE SCHEDULE *(read-only: `tools/schedule_install.ps1`; `m08_schedule.py`)*
+
+`Gridiron-NearStart` fires every 30 minutes from 00:05 local -- at :05 and
+:35 of every hour, and on this machine's whole-hour offset the same minutes
+in UTC. The last firing before a listed start is therefore (minute - 5) mod
+30 minutes before it, 30 where that is 0 (a firing at hh:05:01 is after an
+hh:05 start). For the 2026 games on the record: NCAAF 25 minutes for 850 of
+892 (starts on :00 and :30); NFL 25 for 161 of 272, 10 for 33 (:15), 15 for
+20 (:20), 20 for 36 (:25), 30 for 22 (:05); MLB 5 for 1,403 of 2,430 (:10
+and :40), 10 for 362 (:15 and :45), 30 for 430 (:05 and :35), 2-3 for 153,
+15 or 25 for 81 and 7 for 1; NBA and UFC 25 for all. THE SCHEDULE IS NOT MOVED: the ruling defines the close as the last
+read before the start, and the schedule gives one before every start; it
+names no lead, so its words do not need the schedule moved (the conservative
+default: no change the ruling does not name). If the operator wants the last
+read nearer the start -- e.g. firings at :03 and :33 (a :05 start 2 minutes
+out, a :00 start 27), or every 15 minutes (at most 15; twice the no-op rows)
+-- that is one line in the installer and his to rule; not built.
+
+### NOT HERE, AND NAMED
+
+- **A game that really starts before its listed start** would now be read,
+  and could close, in play until its listed start: the status refusal this
+  removes is what stood against that (its comment named a doubleheader's
+  second game). None is measurable on the record (the status history is not
+  kept); from the release the payload names every read while a game was
+  marked under way, so it can be. Reported to the operator under the queue
+  rule (a close is a price on a pick), not built. The record's doubleheaders
+  point the other way: a second game is listed with a placeholder start
+  EARLIER than it is played (e.g. BAL at NYY, 25 September: 20:10Z and
+  20:05Z), so the pass stops reading it early, as it always did.
+- **Other starts compared as text** are operator question 35's (next in the
+  order): the at-the-line door's window (`at_the_line.standing_claims`,
+  `c.created_utc < g.kickoff_utc`), `recommend.for_predictions`'s pricing
+  window and `correction_instant`, `tasks._opening_read`'s horizon (and its
+  'scheduled' filter), `live.open_windows`, and the forecast passes'
+  standing rule. This change reads instants only where the ruling reaches:
+  the near-start selection, its claims and the close.
+- **A read the venue answered without the recommendation's contract** (rec
+  103) falls back to an earlier read, by the rule; not this ruling's.

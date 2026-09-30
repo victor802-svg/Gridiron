@@ -7876,9 +7876,12 @@ RECORD_READERS = {
     "gridiron/market/recommend.py:restate_old_closes":
         "the restatement writes an account beside every old close as "
         "written; it ran once, on 2026-09-24",
-    "gridiron/tasks.py:_near_start_snapshots":
+    # MOVED 2026-09-30 (GRIDIRON_REPAIR item 1, the close window) from
+    # `_near_start_snapshots`, which now asks this function what to read.
+    "gridiron/tasks.py:_near_start_selection":
         "the near-start reader: every open standing recommendation's "
-        "contract is read until its start, so the closer can close it",
+        "contract is read until its listed start, whatever its game's "
+        "status says, so the closer can close it",
     "gridiron/views.py:taken_today":
         "the edge on record when a pick was marked, looked up as written; "
         "it counts nothing",

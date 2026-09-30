@@ -297,12 +297,47 @@ def test_no_claim_is_written_against_a_live_price(tmp_path):
     assert got["claims"] == 0 and got["quote_after_first_pitch"] == 1
 
 
-def test_no_claim_is_written_on_a_game_already_under_way(tmp_path):
-    conn = _world(tmp_path, status="in")
+def test_a_game_marked_under_way_before_its_listed_start_is_claimed_until_it(tmp_path):
+    """THE LISTED START DECIDES, NEVER THE STATUS (2026-09-30, the operator's
+    ruling on the close window, GRIDIRON_REPAIR item 1: "The near-start run
+    keeps every game until its start, so the close is the last read before
+    the start").
+
+    This test said the opposite until that date
+    (`test_no_claim_is_written_on_a_game_already_under_way`: a game whose
+    status said 'in' got no claim, whenever its read was taken). Baseball's
+    feed calls a game in its warm-up 'Live', stored 'in' about ten minutes
+    before the listed start, so the read five minutes out -- which the
+    near-start pass now takes -- would have been refused a claim.
+    """
+    conn = _world(tmp_path, kickoff="2026-09-09T00:00:00Z", status="in")
     pid = _predict(conn)
-    _quote(conn, price=0.55)
+    _quote(conn, price=0.55, fetched="2026-09-08T23:55:00Z")   # 5 minutes out
     got = atl.evaluate(conn, [pid])
-    assert got["claims"] == 0 and got["game_under_way"] == 1
+    assert got["claims"] == 1 and got["quote_after_first_pitch"] == 0
+    assert "game_under_way" not in got, "the status is not a refusal any more"
+
+
+def test_a_read_at_or_after_the_listed_start_is_never_claimed_whatever_the_status(tmp_path):
+    """The one rule left, and it reads the start as an INSTANT (2026-09-30):
+    a read at the start, or thirty seconds after a start stored to the
+    minute -- which sorted BEFORE it as text -- is refused on a game whose
+    status still says 'scheduled'."""
+    (tmp_path / "at").mkdir()
+    conn = _world(tmp_path / "at", kickoff="2026-09-09T00:00:00Z")
+    pid = _predict(conn)
+    _quote(conn, price=0.55, fetched="2026-09-09T00:00:00Z")   # at the start
+    got = atl.evaluate(conn, [pid])
+    assert got["claims"] == 0 and got["quote_after_first_pitch"] == 1
+
+    (tmp_path / "minute").mkdir()
+    conn = _world(tmp_path / "minute", kickoff="2026-09-09T02:00Z")
+    pid = _predict(conn)
+    _quote(conn, price=0.55, fetched="2026-09-09T02:00:30Z")
+    assert "2026-09-09T02:00:30Z" < "2026-09-09T02:00Z", \
+        "the text comparison this replaces would have called it before the start"
+    got = atl.evaluate(conn, [pid])
+    assert got["claims"] == 0 and got["quote_after_first_pitch"] == 1
 
 
 # --- the table itself --------------------------------------------------------

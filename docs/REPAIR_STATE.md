@@ -141,6 +141,26 @@
   step A: every leg on NFL's current slate is a venue contract's number at
   another line than its words' ("Chicago covers -15.5" at 86% is Chicago
   -3.5's; its own is 42%). **Next: step A when Q36 is ruled.**
+  **ITEM 1, THE CLOSE WINDOW, BUILT (2026-09-30, uncommitted for its
+  prover; FOLLOWUPS "The close window"; CLAUDE.md THE CLOSE):** measured
+  first on one verified copy (made 14:42:48Z, deleted 15:04:09Z): NFL 12
+  of 12 and NCAAF 7 of 8 measured closes are the last firing's read (10-30
+  minutes out, as the :05/:35 schedule gives; NCAAF 103's venue answer
+  lacked its contract) -- NO 35-MINUTE GAP; MLB 5 of 19, the 14 left out
+  by nine firings, every one five minutes before its listed start (the
+  status rule: 'scheduled'/'pre' only, and MLB's warm-up is 'Live' -> 'in';
+  inferred, the status history not kept). Built: `tasks._near_start_
+  selection` reads every open recommendation and drift row until the
+  listed START INSTANT (`db.instant`), whatever the status; `at_the_line.
+  evaluate` claims by the start instant alone; `close_of` and the closer
+  compare instants (on 2330954 a start stored to the minute -- UFC's --
+  took a read 30 s after it as before it, and `_minutes_between` raised on
+  it); the payload names each read while marked under way. No close on the
+  record moves (106 of 106 given again; the venue was not read at all for
+  the 14 at the firing five minutes out). The schedule is not moved (the
+  ruling names no lead; FOLLOWUPS has what it gives). Three plantings
+  escape on c0b70ee and are caught here. Releasable well before 15
+  October.
 
 - **THE ORDER NOW (29 Sep, second set, ~05:40Z;
   docs/briefs/2026-09-29-rulings-second-set.md; wins over every order
