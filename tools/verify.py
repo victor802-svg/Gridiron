@@ -856,6 +856,20 @@ def step_2_guards() -> bool:
         ("a priced row is its card's numbers on the side its question names",
          lambda: [audit.check_the_board_prices_the_side_it_names(_slate_payload(sport))
                   for sport in _config().SPORTS] and None),
+        # PICK-NUMBER STEP C (2026-09-30; the queue rule as amended that
+        # day): the Today card's payout, each recommendation line and each
+        # My day chip state the picked side's numbers and club, in that
+        # side's words. Read on every sport's slate from the record's copy.
+        ("every pick names its own side: the payout, the recommendation line, My day",
+         lambda: [audit.check_every_pick_names_its_side(_slate_payload(sport))
+                  for sport in _config().SPORTS] and None),
+        # AND THE RESULTS TABLE (the step's prover, 2026-09-30): each sport's
+        # latest 500 history rows say the side their number is for -- a
+        # moneyline "lose" read "KC to win" on 403 rows of the record.
+        ("every Results row names the side its number is for",
+         lambda: [audit.check_every_pick_names_its_side(
+                      views.history(_record_conn(), sport=sport, limit=500))
+                  for sport in _config().SPORTS] and None),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

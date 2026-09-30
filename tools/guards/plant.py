@@ -9618,6 +9618,434 @@ def plant_an_unplaceable_side_the_check_passes() -> Result:
     return Result(LAW_THE_SIDE_IS_PLACED, violation, guard, True, faults[0])
 
 
+# ---------------------------------------------------------------------------
+# EVERY PICK NAMES ITS OWN SIDE: THE PAYOUT, THE RECOMMENDATION LINE AND MY
+# DAY (pick-number step C, 2026-09-30; the queue rule as amended that day)
+# ---------------------------------------------------------------------------
+#
+# The reading taken (docs/REPAIR_STATE.md): a number on a pick is always
+# stated under the words of the exact contract it belongs to -- its line and
+# its side. Three places stated another side's number, or club, under a
+# pick's words (the wrong-side fix's builder and prover, 2026-09-30): the
+# Today card's payout (finding 3), the recommendation line (finding 4) and
+# My day's chip (finding 6); and the sweep found the payout floor folding by
+# the proposition's payout. Each is planted as the released code (fa4c8eb)
+# ships it, on a scratch world, and must be refused by
+# `audit.pick_side_faults`, which gate step 2 calls on every sport's slate.
+
+LAW_THE_PICK_NAMES_ITS_SIDE = ("A NUMBER ON A PICK IS STATED UNDER THE WORDS OF "
+                               "THE SIDE IT BELONGS TO")
+
+
+def _pick_side_moneyline_world(path: Path, *, price: float):
+    """The board-merge prover's world: BBB (away) to win at 57%, a claim of
+    43% on the home side AAA against a home price of `price`, on the
+    shortlist, the game in 2099."""
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+
+    dist = {"quantity": "home_margin", "family": "normal", "mean": 2.0, "sd": 13.0,
+            "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+    conn = db.open_db(path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g0', 'mlb', 2026, 1,"
+        " 'R', 'AAA', 'BBB', '2099-01-01T00:00:00Z', 'scheduled', '2026-09-08')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-07T00:00:00Z', 'mlb', 'g0', 'moneyline', 'BBB', NULL,"
+        " 0.57, 'win', 'statistical', 'final', 'fs2', ?, 'planting')",
+        (_json.dumps({"coverage": 1.0, "margin_distribution": dist}),))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    claimed = "2026-09-07T01:30:00Z"
+    conn.execute(
+        "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+        " implied_prob, kind) VALUES (?, ?, 'planting', ?, 'open_at_predict')",
+        (pid, claimed, price))
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+        " VALUES ('kalshi', 't0', 'e', 'mlb', 'g0', 'moneyline', 'home_win',"
+        " NULL, 'home', ?, ?, ?)", (price - 0.01, price + 0.01, claimed))
+    quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'mlb', 'g0', 'moneyline', 'home_win', NULL,"
+        " 'home', 'line_less', NULL, NULL, 0.43, ?, ?, 'mid', ?)",
+        (pid, quote, price, price, claimed))
+    conn.commit()
+    _shortlist.rank_rows(conn, [pid])
+    return conn, pid
+
+
+def _pick_side_check(payload, name: str, missed: list, want: str):
+    """Ask the step's check about a planted payload: named, or missed."""
+    scan = getattr(audit, "pick_side_faults", None)
+    if scan is None:
+        missed.append(f"{name}: the gate has no check that a pick names its own side")
+        return None
+    faults = scan(payload)
+    if not any(want in f for f in faults):
+        missed.append(f"{name} passed" + (f" (named only: {faults[0]})" if faults else ""))
+        return None
+    try:
+        audit.check_every_pick_names_its_side(payload)
+        missed.append(f"{name}: the check raised nothing")
+    except audit.LawViolation:
+        pass
+    return next(f for f in faults if want in f)
+
+
+def plant_a_payout_on_the_propositions_side() -> Result:
+    """The Today card's payout and payout words left on the claim's fixed
+    proposition under a question naming the other side, and the payout floor
+    folding by the proposition's payout.
+
+    AS RELEASED (fa4c8eb): "BBB to win" at a 48.5c home price reads "52¢ ·
+    pays 1.94x" in its venue words and says 2.062 and "2.06x" -- the home
+    side's -- as its payout and payout words (pick-number finding 3); and
+    under a 2.0x floor it is shown above the floor, on the home side's 2.06x,
+    where the side it buys pays 1.94x (the sweep). CAUGHT means: the shipped
+    card says 1.942 and "1.94x" and is folded, both released shapes are named
+    by `audit.pick_side_faults`, and the gate's step 2 makes the call.
+    """
+    from gridiron import settings as _settings, views as _views
+    from gridiron.market import recommend as _recommend
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.pick_side_faults"
+    violation = "a payout of the other side on a pick, or a fold by another side's payout"
+    missed, first = [], None
+    saved = _coverage.priceable
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            conn, pid = _pick_side_moneyline_world(Path(tmp) / "payout.db", price=0.485)
+            _settings.set_value(conn, "min_payout", "2.0")
+
+            def card_of(payload):
+                return next((c for group in ("clears", "below_floor", "watching")
+                             for c in payload["today"][group] if c["prediction_id"] == pid),
+                            None)
+
+            shipped = _views.week(conn, "mlb", 2026, 1)
+            card = card_of(shipped)
+            want = _recommend.payout_multiple(1.0 - 0.485)
+            if card is None or card.get("payout") != want or card.get("payout_words") != "1.94x":
+                missed.append(f"the shipped card says {card and card.get('payout')!r} "
+                              f"and {card and card.get('payout_words')!r} where BBB "
+                              f"to win pays {want!r}")
+            if pid not in {c["prediction_id"] for c in shipped["today"]["below_floor"]}:
+                missed.append("the shipped card is not folded under the 2.0x floor, "
+                              "where the side it buys pays 1.94x")
+            released = _views.week(conn, "mlb", 2026, 1)
+            planted = card_of(released)
+            planted.update({"payout": _recommend.payout_multiple(0.485),
+                            "payout_words": "2.06x"})
+            first = _pick_side_check(released, "the proposition's payout on the turned card",
+                                     missed, "finding 3")
+            folded = _views.week(conn, "mlb", 2026, 1)
+            today = folded["today"]
+            today["clears"] = today["clears"] + today["below_floor"]
+            today["below_floor"] = []
+            _pick_side_check(folded, "the pick shown above the floor on the home side's "
+                                     "payout", missed, "shown above")
+            conn.close()
+        finally:
+            _coverage.priceable = saved
+    if not _step_2_calls("check_every_pick_names_its_side"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_every_pick_names_its_side`")
+    if missed:
+        return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, True, first or "")
+
+
+def plant_a_recommendation_line_on_the_proposition() -> Result:
+    """A recommendation line stating the proposition's number and price
+    after the question's words, and calling the side it buys "the yes side"
+    or "the other side".
+
+    AS RELEASED (fa4c8eb), on two worlds: the recommendation buys the side
+    the words name (BBB, at 51.5c) and the line read "BBB to win -- the model
+    makes it 43¢, the venue is at 48¢, and the other side is worth ..."; and
+    it buys the OTHER side of the words (AAA at 30c, as recs 47 and 82 on the
+    record did) and the line still named BBB. CAUGHT means: the shipped lines
+    name the side each buys with that side's number and price -- "BBB to win
+    -- ... 57¢ ... 52¢" and "AAA to win -- ... 43¢ ... 30¢" -- and the
+    released lines are named by `audit.pick_side_faults`.
+    """
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.pick_side_faults"
+    violation = "a recommendation line on the proposition's numbers, calling its side 'the other side'"
+    missed, first = [], None
+    saved = _coverage.priceable
+    released_words = {
+        0.485: ("BBB to win — the model makes it 43¢, the venue is at 48¢, and the "
+                "other side is worth +3.5¢ a contract after the fee."),
+        0.30: ("BBB to win — the model makes it 43¢, the venue is at 30¢, and the "
+               "yes side is worth +11.0¢ a contract after the fee."),
+    }
+    shipped_head = {
+        0.485: "BBB to win — the model makes it 57¢, the venue is at 52¢, and it is worth",
+        0.30: "AAA to win — the model makes it 43¢, the venue is at 30¢, and it is worth",
+    }
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            for price, planted_words in released_words.items():
+                conn, pid = _pick_side_moneyline_world(Path(tmp) / f"line{price}.db",
+                                                       price=price)
+                shipped = _views.week(conn, "mlb", 2026, 1)
+                line = next((x for x in shipped["recommendations"]["lines"]
+                             if x["prediction_id"] == pid), None)
+                if line is None or not str(line.get("words")).startswith(shipped_head[price]):
+                    missed.append(f"at {price}: the shipped line reads "
+                                  f"{line and line.get('words')!r}")
+                released = _views.week(conn, "mlb", 2026, 1)
+                for x in released["recommendations"]["lines"]:
+                    if x["prediction_id"] == pid:
+                        for key in ("side_words", "fair_value", "price"):
+                            x.pop(key, None)
+                        x["words"] = planted_words
+                got = _pick_side_check(released, f"the released line at {price}", missed,
+                                       "finding 4")
+                first = first or got
+                conn.close()
+        finally:
+            _coverage.priceable = saved
+    if not _step_2_calls("check_every_pick_names_its_side"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_every_pick_names_its_side`")
+    if missed:
+        return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, True, first or "")
+
+
+def plant_a_my_day_chip_wearing_the_subjects_club() -> Result:
+    """A taken no-side game pick's My day chip wearing the club of its
+    question's SUBJECT -- the home club -- beside the words of the side the
+    model took.
+
+    AS RELEASED (fa4c8eb): a taken "not_cover" on PHI -3.5 is the chip "PHI
+    · DAL +3.5" and a taken "lose" moneyline "PHI · DAL to win" (pick-number
+    finding 6; its prover's scratch world). CAUGHT means: the shipped chips
+    wear DAL, and the released chips are named by `audit.pick_side_faults`.
+    """
+    from gridiron import shortlist as _shortlist, views as _views
+
+    guard = "audit.pick_side_faults"
+    violation = "a My day chip wearing the club its pick's words do not name"
+    missed, first = [], None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(Path(tmp) / "day.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('g1', 'nfl', 2026, 5,"
+            " 'REG', 'PHI', 'DAL', '2099-10-05T17:00:00Z', 'scheduled', '2026-10-05')")
+        ids = []
+        for stamp, market, line, side in (("2026-09-28T15:00:00Z", "spread", -3.5, "not_cover"),
+                                          ("2026-09-28T15:00:01Z", "moneyline", None, "lose")):
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+                " factor_set_version, factors_json, reasoning) VALUES (?, 'nfl', 'g1',"
+                " ?, 'PHI', ?, 0.61, ?, 'statistical', 'final', 'fs3', '{}', 'planting')",
+                (stamp, market, line, side))
+            ids.append(conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0])
+        conn.commit()
+        _shortlist.rank_rows(conn, ids)
+        for pid in ids:
+            conn.execute("INSERT INTO picks_taken (prediction_id, taken_utc) VALUES (?, ?)",
+                         (pid, db.utcnow()))
+        conn.commit()
+        shipped = _views.week(conn, "nfl", 2026, 5)
+        chips = {e["prediction_id"]: e for e in shipped["board"]["my_day"]["entries"]}
+        worn = {pid: (chips.get(pid) or {}).get("club", {}).get("tricode") for pid in ids}
+        if set(worn.values()) != {"DAL"}:
+            missed.append(f"the shipped chips wear {sorted(set(map(str, worn.values())))} "
+                          f"beside {[(chips.get(p) or {}).get('line_words') for p in ids]}")
+        released = _views.week(conn, "nfl", 2026, 5)
+        for e in released["board"]["my_day"]["entries"]:
+            if e["prediction_id"] in ids:
+                e["club"] = dict(e["club"], tricode="PHI")
+        first = _pick_side_check(released, "the chips wearing PHI beside DAL's words",
+                                 missed, "finding 6")
+        conn.close()
+    if not _step_2_calls("check_every_pick_names_its_side"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_every_pick_names_its_side`")
+    if missed:
+        return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, True, first or "")
+
+
+def _step_2_hands_history_to(name: str) -> bool:
+    """Does the gate's step 2 hand `views.history(...)` to `audit.<name>`,
+    read from its syntax tree (the Results table's rows, 2026-09-30)?"""
+    import ast as _ast
+
+    gate = Path(audit.__file__).resolve().parents[1] / "tools" / "verify.py"
+    step = next((node for node in _ast.parse(gate.read_text(encoding="utf-8")).body
+                 if isinstance(node, _ast.FunctionDef) and node.name == "step_2_guards"),
+                None)
+
+    def is_history(node) -> bool:
+        return (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+                and node.func.attr == "history"
+                and isinstance(node.func.value, _ast.Name) and node.func.value.id == "views")
+
+    return step is not None and any(
+        isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+        and node.func.attr == name and isinstance(node.func.value, _ast.Name)
+        and node.func.value.id == "audit" and node.args and is_history(node.args[0])
+        for node in _ast.walk(step))
+
+
+def plant_a_results_row_naming_the_other_side() -> Result:
+    """A Results row -- `views.history`, drawn in the Results table as
+    "Prediction | ... | Model | Market then | ... | Result" -- whose words
+    name the other side of the number beside them.
+
+    AS RELEASED (fa4c8eb, and every release since the table was built;
+    found by the step's prover, 2026-09-30, on a verified copy of the
+    record): a history row carries no opponent, so `language.phrase` could
+    not restate a no side as the other club, and its moneyline branch said
+    the subject "to win" anyway -- "PHI to win" beside the model's 61% for
+    PHI LOSING, the market's number for the same and the lose pick's
+    verdict. 403 rows on the record, in every sport. CAUGHT means: the
+    shipped rows say each side as asked ("PHI to lose", "PHI does not cover
+    -3.5", "under 44.5 total points"), the released row is named by
+    `audit.pick_side_faults`, and the gate's step 2 hands it every sport's
+    history.
+    """
+    from gridiron import views as _views
+
+    guard = "audit.pick_side_faults"
+    violation = "a Results row naming the other side of its number"
+    missed, first = [], None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = db.open_db(Path(tmp) / "results.db")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('g1', 'nfl', 2026, 5,"
+            " 'REG', 'PHI', 'DAL', '2099-10-05T17:00:00Z', 'scheduled', '2026-10-05')")
+        ids = {}
+        for stamp, market, subject, line, side in (
+                ("2026-09-28T15:00:00Z", "moneyline", "PHI", None, "lose"),
+                ("2026-09-28T15:00:01Z", "spread", "PHI", -3.5, "not_cover"),
+                ("2026-09-28T15:00:02Z", "total", "DAL @ PHI", 44.5, "under")):
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+                " factor_set_version, factors_json, reasoning) VALUES (?, 'nfl', 'g1',"
+                " ?, ?, ?, 0.61, ?, 'statistical', 'final', 'fs3', '{}', 'planting')",
+                (stamp, market, subject, line, side))
+            ids[market] = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.commit()
+        want = {"moneyline": "PHI to lose", "spread": "PHI does not cover -3.5",
+                "total": "under 44.5 total points"}
+        shipped = _views.history(conn, sport="nfl", limit=50)
+        said = {i["prediction_id"]: i["phrase"] for i in shipped["items"]}
+        for market, pid in ids.items():
+            if said.get(pid) != want[market]:
+                missed.append(f"the shipped Results row of the {market} says "
+                              f"{said.get(pid)!r} where its side reads {want[market]!r}")
+        released = _views.history(conn, sport="nfl", limit=50)
+        for item in released["items"]:
+            if item["prediction_id"] == ids["moneyline"]:
+                item["phrase"] = "PHI to win"
+        first = _pick_side_check(released, "the lose row said 'PHI to win'", missed,
+                                 "Results table")
+        conn.close()
+    if not _step_2_hands_history_to("check_every_pick_names_its_side"):
+        missed.append("the gate's step 2 does not hand `views.history` to "
+                      "`audit.check_every_pick_names_its_side`")
+    if missed:
+        return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, True, first or "")
+
+
+def plant_an_edge_on_the_other_side_drawn_as_the_questions() -> Result:
+    """An edge figure that is the OTHER side's, labelled on the Today card as
+    the question's own and drawn bare on the board's tile.
+
+    AS RELEASED (fa4c8eb; found by the step's prover, 2026-09-30): the
+    figure is the better side's, and the card's label read `edge_side`,
+    which is None when neither side clears the fee -- so "BBB to win" at 57%
+    against 58c (AAA's yes price 42c) was labelled "Edge after fees" over
+    -1.0c, which is AAA's; BBB's own is -3.0c. The board's tile draws the
+    figure where the price is, with no label at all. On the record: ten
+    cards, one upcoming that day (NBA 3166, "San Antonio to win", -1.5c
+    where its own is -2.5c). CAUGHT means: the shipped card says "on the
+    other side" and so does the tile, and both released shapes are named by
+    `audit.pick_side_faults`.
+    """
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.pick_side_faults"
+    violation = "the other side's edge drawn under the question's words"
+    missed, first = [], None
+    saved = _coverage.priceable
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            conn, pid = _pick_side_moneyline_world(Path(tmp) / "edge.db", price=0.42)
+
+            def card_of(payload):
+                return next((c for group in ("clears", "below_floor", "watching")
+                             for c in payload["today"][group] if c["prediction_id"] == pid),
+                            None)
+
+            def tile_of(payload):
+                return next((q for g in payload["board"]["games"] for q in g["questions"]
+                             if q["prediction_id"] == pid), None)
+
+            shipped = _views.week(conn, "mlb", 2026, 1)
+            card, tile = card_of(shipped), tile_of(shipped)
+            if card is None or card.get("edge_words") != "-1.0¢" \
+                    or not str(card.get("edge_label")).endswith("on the other side"):
+                missed.append(f"the shipped card labels {card and card.get('edge_words')!r} "
+                              f"{card and card.get('edge_label')!r} under 'BBB to win', "
+                              f"where -1.0c is AAA's and BBB's own is -3.0c")
+            if tile is None or tile.get("edge_words") != "-1.0¢ on the other side":
+                missed.append(f"the shipped tile draws {tile and tile.get('edge_words')!r} "
+                              f"beside {tile and tile.get('line_words')!r}")
+            released = _views.week(conn, "mlb", 2026, 1)
+            card_of(released)["edge_label"] = "Edge after fees"
+            first = _pick_side_check(released, "the card labelling AAA's edge as BBB's",
+                                     missed, "labels its")
+            bare = _views.week(conn, "mlb", 2026, 1)
+            tile_of(bare)["edge_words"] = "-1.0¢"
+            _pick_side_check(bare, "the tile drawing AAA's edge bare beside BBB's words",
+                             missed, "draws the edge")
+            conn.close()
+        finally:
+            _coverage.priceable = saved
+    if not _step_2_calls("check_every_pick_names_its_side"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_every_pick_names_its_side`")
+    if missed:
+        return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, True, first or "")
+
+
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
 
@@ -21507,6 +21935,17 @@ def main() -> int:
     results.append(plant_a_side_the_one_place_does_not_know_shown_with_numbers())
     results.append(plant_rec_111_painted_on_the_other_sides_numbers())
     results.append(plant_an_unplaceable_side_the_check_passes())
+    # PICK-NUMBER STEP C (2026-09-30; the queue rule as amended that day):
+    # the Today card's payout, the recommendation line and My day's chip
+    # state the picked side's numbers and club in that side's words, and the
+    # payout floor folds by what the side bought pays.
+    results.append(plant_a_payout_on_the_propositions_side())
+    results.append(plant_a_recommendation_line_on_the_proposition())
+    results.append(plant_a_my_day_chip_wearing_the_subjects_club())
+    # ...and from the step's prover (2026-09-30): the Results table's rows,
+    # and the edge figure's side on the Today card and the board's tile.
+    results.append(plant_a_results_row_naming_the_other_side())
+    results.append(plant_an_edge_on_the_other_side_drawn_as_the_questions())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

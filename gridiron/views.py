@@ -1405,6 +1405,24 @@ def _edge_side_words(edge_side, takes_the_proposition):
     return "yes" if on_the_proposition == takes_the_proposition else "no"
 
 
+def _edge_figure_side(entry: dict) -> str | None:
+    """Which side of the claim's proposition the entry's edge FIGURE is --
+    'yes', 'no', or None where there is no figure.
+
+    THE PROVER OF PICK-NUMBER STEP C (2026-09-30). The card asked
+    `edge_side`, the side a pick was chosen on, which is None when neither
+    side clears the fee -- and the figure shown is then still one side's,
+    the better of the two (`recommend.side_for`). So a watched card whose
+    figure was the other side's was labelled as the question's own: ten
+    cards on the record, one upcoming that day (NBA 3166, "San Antonio to
+    win", -1.5c where San Antonio's own is -2.5c). The engine names the
+    figure's side now (`edge_cents_side`); an entry made before it, or by
+    hand, falls back to `edge_side`.
+    """
+    side = entry.get("edge_cents_side")
+    return entry.get("edge_side") if side is None else side
+
+
 def _placed(entry: dict, card: dict, context: dict) -> bool | None:
     """Does the question on this card name the claim's fixed proposition --
     the home side, or the over? True, False, or None where it cannot be said.
@@ -1762,6 +1780,17 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
 
     price = turned(entry.get("price"), "a venue price")
     fair_on_the_question = turned(entry.get("fair_value"), "the model's number")
+    # WHAT THE SIDE THE QUESTION NAMES PAYS (pick-number finding 3,
+    # 2026-09-30). The payout chip's words and the payout itself read the
+    # entry's `payout` -- what the claim's fixed proposition pays -- while
+    # the chip, the venue words and the price words beside them were turned:
+    # on a question naming the other side the card said "52¢ · pays 1.94x"
+    # and "2.06x" at once. It is the payout of the price the card states,
+    # as the venue words' has been since 2026-09-07. On a question naming
+    # the proposition it is the entry's own payout, unchanged (measured
+    # 2026-09-30 on a verified copy of the record: no claim's price has more
+    # than four places, so the two are the same number on every one).
+    pays_on_the_question = _payout_for(price) if flip else entry.get("payout")
     # WHICH CLUB THE QUESTION FAVOURS, for the accent and the payout chip.
     # The side the question names, which is the side its numbers are about.
     favoured = context.get("home") if _favours_home(
@@ -1769,6 +1798,12 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         else context.get("away")
     favoured_colour = (context.get("home_colour") if favoured == context.get("home")
                        else context.get("away_colour")) or {}
+    # WHICH SIDE THE EDGE FIGURE IS, against the side the question names --
+    # asked once, for the label, the quiet line and the board (the prover of
+    # pick-number step C, 2026-09-30). It read `edge_side`, which is None when
+    # neither side clears the fee, so a watched card whose figure was the
+    # OTHER side's was labelled as the question's own.
+    edge_on = _edge_side_words(_edge_figure_side(entry), takes)
     out = {
         "prediction_id": entry["prediction_id"],
         # LAW 4 travels with every row on this page, as it does everywhere.
@@ -1794,18 +1829,23 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "model_words": language.price_chip_words(
             None if fair_on_the_question is None else fair_on_the_question * 100),
         "venue_words": language.venue_chip_words(
-            price, _payout_for(price) if flip else entry.get("payout"),
+            price, pays_on_the_question,
             market=entry.get("market") or card.get("market")),
         "edge_words": language.edge_chip_words(entry.get("edge_cents")),
         # THE EDGE KEEPS ITS SIGN -- it is what the better side is worth
         # either way -- and its label says "on the other side" only when the
         # better side is not the one the question names.
         "edge_label": language.edge_label_words(
-            language.price_row_labels()["edge"],
-            _edge_side_words(entry.get("edge_side"), takes)),
+            language.price_row_labels()["edge"], edge_on),
+        # THE SAME ANSWER AS A FACT, for the board, which draws the figure on
+        # a tile with no label above it (2026-09-30).
+        "edge_on_the_other_side": edge_on == "no",
         "edge_state": language.edge_state(entry.get("edge_cents")),
         "edge_cents": entry.get("edge_cents"),
-        "payout": entry.get("payout"),
+        # THE SIDE THE QUESTION NAMES (pick-number finding 3, 2026-09-30),
+        # as the payout words below; `audit.pick_side_faults` holds both to
+        # the price the card states.
+        "payout": pays_on_the_question,
         # THE PRICE AS A NUMBER (visual pass, 2026-09-25): the board's row
         # draws its tick from it and its price words with it. Until now the
         # card carried the words and the payout and not the price itself,
@@ -1823,7 +1863,10 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # item 3: the model chip reads the corrected one) beside the home
         # side's price and payout under an away side's question (the
         # wrong-side defect of 2026-09-07). Both travel now, unturned, as the
-        # entry holds them; `board._question_block` turns all three.
+        # entry holds them; `board._question_block` turns all three. (The
+        # card's `payout` is the question side's from 2026-09-30, pick-number
+        # finding 3; `price` and `fair_value` stay the proposition's, the
+        # board's inputs, `question_takes_the_proposition` beside them.)
         "fair_value": entry.get("fair_value"),
         "question_takes_the_proposition": takes,
         "gate_words": language.gate_status_words(entry["gate_n"], entry["gate"]),
@@ -1846,7 +1889,7 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # THE PAYOUT IS THE BIG CHIP from 2026-09-08, with the price beneath
         # it and the edge on its own quiet line under the row.
         "payout_words": language.payout_chip_words(
-            entry.get("payout"),
+            pays_on_the_question,
             market=entry.get("market") or card.get("market")),
         "price_words": language.price_under_payout_words(price),
         "favoured": favoured,
@@ -1890,8 +1933,7 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
             out["price_words"] = ""
     out.update({k: v for k, v in context.items() if k != "state"})
     out["edge_line_words"] = language.edge_line_words(
-        entry.get("edge_cents"),
-        other_side=_edge_side_words(entry.get("edge_side"), takes) == "no")
+        entry.get("edge_cents"), other_side=edge_on == "no")
     # A LIVE CARD CARRIES NO PRICE, NO EDGE, NO SIZE AND NO TAP. The in-game
     # rule is already law (THE_PRICED P2): a score up to ninety seconds stale
     # against a live market is adversely selected by construction, so a card
@@ -1899,7 +1941,8 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # acted on. `audit.live_card_faults` fails the gate on any of them.
     if state == "live":
         for field in ("payout_words", "price_words", "edge_words",
-                      "edge_line_words", "edge_label", "size_words",
+                      "edge_line_words", "edge_label", "edge_on_the_other_side",
+                      "size_words",
                       "model_words", "venue_words", "price", "payout",
                       # the chip's number goes with the chip (2026-09-29): a
                       # live card's one figure is its pregame words
@@ -2365,7 +2408,15 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         card["size_words"] = language.size_words(
             units=size["units"], flat=size["kind"] == "flat",
             why=size.get("why"), unit_dollars=unit_dollars)
-        payout = entry.get("payout")
+        # WHAT THE SIDE BOUGHT PAYS, against the floor (the sweep of
+        # pick-number step C, 2026-09-30). This read the entry's `payout` --
+        # what the claim's fixed proposition pays, the home side or the over
+        # -- whichever side the pick buys, so a no-side pick was folded, or
+        # left out of the fold, on the other side's payout, and the day strip
+        # counted it "below your floor" by a number that was not its own: an
+        # away +1.5 bought at 70¢ pays 1.43x, and was held to the home -1.5's
+        # 3.33x. The floor's own words are "picks that ... pay less than this".
+        payout = _payout_for(_cost_of_the_side_bought(entry))
         (below_floor if (payout is not None and payout < floor) else clears
          ).append(card)
     for entry in watch_entries:
@@ -2614,14 +2665,16 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
                 no_edge += 1
             continue
         size = entry["size"]
+        card = next((c for c in cards
+                     if c["prediction_id"] == entry["prediction_id"]), {})
         # A LINE ON A SIDE THAT CANNOT BE PLACED IS REFUSED (the ruling of
         # 2026-09-30): the line states the model's number and the venue's
         # beside the question's words.
         _on_the_question(entry.get("fair_value"),
                          entry.get("question_takes_the_proposition"),
                          what="a recommendation line's numbers", entry=entry,
-                         card=next((c for c in cards
-                                    if c["prediction_id"] == entry["prediction_id"]), {}))
+                         card=card)
+        bought = _the_side_bought(entry, card)
         lines.append({
             "prediction_id": entry["prediction_id"],
             "n": entry["gate_n"],
@@ -2629,10 +2682,16 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
             "edge_cents": entry["edge_cents"],
             "units": size["units"],
             "flat": size["kind"] == "flat",
+            # THE SIDE IT BUYS, AS NUMBERS AND WORDS (pick-number finding 4,
+            # 2026-09-30): the model's number for that side and what that
+            # side costs, and its own words -- which the gate's
+            # `audit.pick_side_faults` works out again from the Today card.
+            "side_words": bought["words"],
+            "fair_value": bought["fair_value"],
+            "price": bought["price"],
             "words": language.recommendation_line(
-                question=_question_words(cards, entry),
-                fair_value=entry["fair_value"], price=entry["price"],
-                edge_cents=entry["edge_cents"], side=entry["side"],
+                words=bought["words"], fair_value=bought["fair_value"],
+                price=bought["price"], edge_cents=entry["edge_cents"],
                 units=size["units"], flat=size["kind"] == "flat",
                 size_why=size.get("why")),
         })
@@ -2647,13 +2706,59 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
     }
 
 
-def _question_words(cards: list[dict], entry: dict) -> str:
-    """The question this recommendation is about, in the words already on its
-    card. Composed once, on the card, and reused rather than rebuilt."""
-    for card in cards:
-        if card["prediction_id"] == entry["prediction_id"]:
-            return card.get("phrase") or card.get("row_title") or "this question"
-    return "this question"
+def _the_side_bought(entry: dict, card: dict) -> dict:
+    """The side a recommendation buys: its words, the model's number for it
+    and what it costs.
+
+    PICK-NUMBER FINDING 4 (2026-09-30). `entry["side"]` is 'yes' or 'no' of
+    the claim's FIXED proposition -- the home side, the over -- and
+    `fair_value` and `price` are that proposition's. The recommendation line
+    printed both after the QUESTION's words, which name the side the model
+    took, and called the side bought "the yes side" or "the other side". On
+    a question naming the proposition's other side both numbers were the
+    other side's, and where the price made the side the model did not take
+    the one worth buying (recs 47 and 82: the model's "Washington covers
+    +1.5", the recommendation Detroit -1.5) the words named the side it did
+    not buy. So the side is placed here, once: on the words' side when the
+    side bought is the one the question names, and on the other side --
+    `language.phrase_of_the_other_side`, through the one place -- when it is
+    not; and both numbers are that side's.
+
+    THE LINE THE NUMBERS ARE READ AT IS NOT CHANGED HERE: a claim read at the
+    venue's line where it is not the question's (pick-number finding 2,
+    operator question 36) is step A's, and the words keep the question's
+    line until it is ruled.
+    """
+    takes = entry.get("question_takes_the_proposition")
+    buys_the_proposition = entry["side"] == "yes"
+    fair = entry.get("fair_value")
+    if buys_the_proposition == takes:
+        words = card.get("phrase") or card.get("row_title") or "this question"
+    else:
+        words = language.phrase_of_the_other_side(card)
+    # TURNED AS THE CARD TURNS THEM (`_on_the_question`: one minus the
+    # number, unrounded), so a line and its card never round one half-cent
+    # two ways -- 54.5c read 54c on one and 55c on the other.
+    return {
+        "words": words,
+        "fair_value": None if fair is None else (fair if buys_the_proposition
+                                                  else 1.0 - fair),
+        "price": _cost_of_the_side_bought(entry),
+    }
+
+
+def _cost_of_the_side_bought(entry: dict) -> float | None:
+    """What one contract of the side a recommendation buys costs: the yes
+    price on the yes side of the claim's proposition, the rest of the dollar
+    on the no side -- `recommend._cost_of`'s orientation, the one the edge
+    and the bar share (GRIDIRON_REPAIR item 4). None without a price or a
+    side (2026-09-30, pick-number step C)."""
+    from .market import recommend as _recommend
+
+    price = entry.get("price")
+    if price is None or entry.get("side") not in ("yes", "no"):
+        return None
+    return _recommend._cost_of(entry["side"], price)
 
 
 def _shortlist_block(conn: sqlite3.Connection, sport: str,

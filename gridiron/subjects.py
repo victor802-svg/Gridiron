@@ -185,6 +185,24 @@ def takes_the_yes_side(market_type: str | None, side: str | None) -> bool:
     return side_taken(market_type, side) == "yes"
 
 
+def other_side_spelling(market_type: str | None, side: str | None) -> str:
+    """The declared spelling of the OTHER side of the question `side` was
+    stored on: "not_cover" for "cover", "win" for "lose", "over" for "under".
+
+    ADDED 2026-09-30 (pick-number step C) because a recommendation can buy the
+    other side of the words its question was asked in -- the price made the
+    side the model did not take the one worth buying -- and the line that
+    states it has to name THAT side in its own words, not "the other side".
+    Placed through `side_taken` first, so a side the one place cannot place
+    raises by name here too. Where a side has two spellings (a spread's no
+    side: "not_cover", and college football's "fail to cover") the first
+    declared is given; every spelling of one side is said in the same words.
+    """
+    other = "no" if side_taken(market_type, side) == "yes" else "yes"
+    return next(spelling for spelling, which in SIDES[market_type].items()
+                if which == other)
+
+
 YES_SIDE = {market: next(spelling for spelling, which in sides.items()
                          if which == "yes")
             for market, sides in SIDES.items()}

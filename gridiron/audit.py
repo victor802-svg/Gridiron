@@ -993,6 +993,13 @@ SIDE_ALLOWLIST: dict[str, str] = {
         "side taken, not from the question's subject."
     ),
     "why_market": "2026-08-31: calls side_named; the reach is inside a comment.",
+    "club_named": (
+        "2026-09-30 (pick-number finding 6): returns the CODE of the club a "
+        "game pick's words name, for My day's chip, where `side_named` "
+        "returns its display name. It names nobody in prose, and it takes "
+        "the club by `side_flips`, the same flip the words take, so the chip "
+        "and its words cannot name two clubs."
+    ),
 }
 
 
@@ -12481,6 +12488,459 @@ def _check_the_board_count_scanners_can_see() -> None:
 
 
 _check_the_board_count_scanners_can_see()
+
+
+# ---------------------------------------------------------------------------
+# EVERY PICK NAMES ITS OWN SIDE: THE PAYOUT, THE RECOMMENDATION LINE AND MY
+# DAY (pick-number step C, 2026-09-30; the queue rule as amended that day:
+# "anything that could show the operator a wrong number on a pick (side,
+# price, probability, size) joins the queue first, display or not")
+# ---------------------------------------------------------------------------
+#
+# The reading taken (docs/REPAIR_STATE.md, the conservative default): a
+# number on a pick is always stated under the words of the exact contract it
+# belongs to -- its line and its side. Three places stated a pick's side, or
+# a number of it, under another side's words (found by the wrong-side fix's
+# builder and prover, 2026-09-30):
+#
+#   * THE TODAY CARD'S PAYOUT (finding 3). `payout` and `payout_words` were
+#     the entry's: what the claim's fixed proposition -- the home side, the
+#     over -- pays, while the chip, the venue words and the price words
+#     beside them were turned to the side the question names. Rec 111's
+#     card said "52¢ · pays 1.94x" and "2.06x" at once.
+#   * THE RECOMMENDATION LINE (finding 4). `recommendations.lines[].words`
+#     put the proposition's number and price after the QUESTION's words and
+#     called the side bought "the yes side" or "the other side" of a
+#     proposition the reader never sees: rec 111 "North Texas covers -6.5 --
+#     the model makes it 24¢, the venue is at 48¢, and the other side is
+#     worth ...", and recs 47 and 82, which bought the side the model did
+#     not take, named the side they did not buy.
+#   * MY DAY (finding 6). A taken game pick's chip wore the club of the
+#     question's SUBJECT -- the home club -- so a taken "not_cover" on PHI
+#     -3.5 was "PHI · DAL +3.5" and a taken "lose" moneyline "PHI · DAL to
+#     win".
+#
+# `pick_side_faults` works each out again from the payload's own numbers:
+# the payout of the price the card states, turned by the card's own
+# `question_takes_the_proposition`; the side a line buys from the Today card
+# of its question (its proposition's number and price, and which side its
+# words name) and that side's words through the one place; the club a chip's
+# words name from its forecast's stored side through `subjects.side_taken`,
+# never through the builder's own `language.club_named`. Gate step 2 reads
+# every sport's slate on the record's copy.
+#
+# AND TWO MORE, FROM THE STEP'S PROVER (2026-09-30), each measured on a
+# verified copy of the record:
+#
+#   * THE RESULTS TABLE (`views.history`, drawn: "Prediction | ... | Model |
+#     Market then | ... | Result"). A history row carries no opponent, so a
+#     no side cannot be restated as the other club's -- and a moneyline
+#     "lose" was said "KC to win" beside the model's number for KC LOSING,
+#     the market's number for the same, and the verdict of the lose pick: 403
+#     rows on the record, every sport (NFL 30, MLB 172, NBA 33, NCAAF 61, UFC
+#     107), on every release since the table was built. The step's own words
+#     fix ("said as asked": "KC to lose") mends it; nothing held it.
+#   * THE EDGE'S SIDE. The edge figure is the better side's; the Today card
+#     labels it "on the other side" where that is not the side the question
+#     names -- and read the label off `edge_side`, which is None when neither
+#     side clears the fee, so a watched card drew the other side's figure as
+#     the question's own (ten cards on the record, one upcoming: NBA 3166,
+#     "San Antonio to win" at -1.5c, San Antonio's own -2.5c). The board's
+#     tile draws the figure where the price is, with no label at all.
+#
+# A history payload (its `items`) is read by the same function, and gate
+# step 2 hands it every sport's latest 500 rows.
+#
+# NOT HERE (named in docs/REPAIR_STATE.md and FOLLOWUPS): the line a number
+# is read at where the claim was read at the venue's line and not the
+# question's (pick-number finding 2 and operator question 36, step A), a
+# combo's legs (finding 1, step B), the opening read's rung (finding 5), and
+# a recommendation that buys the other side of its question's words shown
+# on the board and the Today card under the model's own side's words
+# (operator question 37).
+
+
+def pick_side_faults(payload) -> list[str]:
+    """A payout, a recommendation line, an edge, a My day chip or a Results
+    row that states another side's number, or names another side's club,
+    than its pick's own."""
+    import re as _re
+
+    from . import language as _language, subjects as _subjects
+    from .market import recommend as _recommend
+
+    payload = payload or {}
+    today = payload.get("today") or {}
+    board = payload.get("board") or {}
+    faults: list[str] = []
+    groups = ("clears", "below_floor", "watching")
+    today_cards = {c.get("prediction_id"): c for group in groups
+                   for c in (today.get(group) or []) if isinstance(c, dict)}
+    slate = {c.get("prediction_id"): c for c in (payload.get("cards") or [])
+             if isinstance(c, dict)}
+
+    # THE TODAY CARD'S PAYOUT IS WHAT THE SIDE ITS QUESTION NAMES PAYS.
+    for group in groups:
+        for i, card in enumerate(today.get(group) or []):
+            if not isinstance(card, dict) or card.get("state") == "live":
+                continue
+            price = card.get("price")
+            takes = card.get("question_takes_the_proposition")
+            # A side nobody can place is `board_price_side_faults`' to name;
+            # a card with no price at the line (an opening read) is finding
+            # 5's, and step A's.
+            if price is None or (takes is not True and takes is not False):
+                continue
+            pays = _recommend.payout_multiple(1.0 - price if takes is False else price)
+            got = card.get("payout")
+            where = f"today.{group}[{i}] (question {card.get('prediction_id')})"
+            if got is None or pays is None or abs(got - pays) > 1e-9:
+                faults.append(
+                    f"{where} says it pays {got!r} where the side its question "
+                    f"names pays {pays!r}: the payout of the claim's fixed "
+                    f"proposition under a question naming the other side "
+                    f"(pick-number finding 3)")
+            words = _language.payout_chip_words(pays)
+            if card.get("payout_words") != words:
+                faults.append(
+                    f"{where} says {card.get('payout_words')!r} where the side "
+                    f"its question names pays {words!r} (pick-number finding 3)")
+
+    # THE EDGE SAYS WHOSE FIGURE IT IS (the step's prover, 2026-09-30): the
+    # better side's figure, worked out again from the card's own proposition
+    # number and price by `recommend.edge_cents`, is labelled "on the other
+    # side" exactly when that side is not the one the question names -- on
+    # the Today card, and on the board's tile, which draws the figure where
+    # the price is (a spread's tile excepted: its line is step A's).
+    blocks = {q.get("prediction_id"): q
+              for g in (board.get("games") or []) if isinstance(g, dict)
+              for q in (g.get("questions") or []) if isinstance(q, dict)}
+    for group in groups:
+        for i, card in enumerate(today.get(group) or []):
+            if not isinstance(card, dict) or card.get("state") == "live":
+                continue
+            fair, price = card.get("fair_value"), card.get("price")
+            takes = card.get("question_takes_the_proposition")
+            if (fair is None or price is None or card.get("edge_cents") is None
+                    or (takes is not True and takes is not False)):
+                continue
+            yes = _recommend.edge_cents(fair, price, "yes")
+            no = _recommend.edge_cents(fair, price, "no")
+            # A TIE WITHIN THE ROUNDING of the card's four-place number is
+            # either side's figure, and names neither.
+            if yes is None or no is None or abs(yes - no) < 0.05:
+                continue
+            other = (yes > no) is not takes
+            pid = card.get("prediction_id")
+            where = f"today.{group}[{i}] (question {pid})"
+            label = str(card.get("edge_label") or "")
+            if other != label.endswith("on the other side"):
+                faults.append(
+                    f"{where} labels its {card.get('edge_words')!r} {label!r}, "
+                    f"where the figure is the "
+                    f"{'OTHER' if other else 'same'} side's than the one its "
+                    f"question names ({card.get('question')!r}, whose own side "
+                    f"is worth {round(yes if takes else no, 2)!r}c after the "
+                    f"fee): the edge of one contract under another's words "
+                    f"(the step's prover)")
+            block = blocks.get(pid)
+            if (block is not None and block.get("state") == "upcoming"
+                    and block.get("edge_words") is not None):
+                spread = (slate.get(pid) or {}).get("market_type") == "spread"
+                said = str(block.get("edge_words")).endswith("on the other side")
+                if said != (other and not spread):
+                    faults.append(
+                        f"board block of question {pid} draws the edge "
+                        f"{block.get('edge_words')!r} beside "
+                        f"{block.get('line_words')!r}, where the figure is the "
+                        f"{'OTHER' if other else 'same'} side's"
+                        + (" (a spread's tile keeps the bare figure: step A)"
+                           if spread else "")
+                        + ": the edge of one contract under another's words "
+                          "(the step's prover)")
+
+    # EACH RECOMMENDATION LINE STATES THE SIDE IT BUYS, IN THAT SIDE'S WORDS,
+    # WITH THAT SIDE'S NUMBERS.
+    for i, line in enumerate(((payload.get("recommendations") or {}).get("lines")) or []):
+        if not isinstance(line, dict):
+            continue
+        pid = line.get("prediction_id")
+        where = f"recommendations.lines[{i}] (question {pid})"
+        words = str(line.get("words") or "")
+        for said in ("the yes side", "the other side"):
+            if said in words:
+                faults.append(
+                    f"{where} calls the side it buys {said!r}, of a proposition "
+                    f"the reader never sees, rather than naming it: {words!r} "
+                    f"(pick-number finding 4)")
+        card = today_cards.get(pid)
+        side = line.get("side")
+        if card is None or side not in ("yes", "no"):
+            faults.append(
+                f"{where} has no Today card on this slate to hold its side to "
+                f"(side {side!r}): a recommendation's numbers are stated on "
+                f"its question's card first")
+            continue
+        takes = card.get("question_takes_the_proposition")
+        fair, price = card.get("fair_value"), card.get("price")
+        if (takes is not True and takes is not False) or fair is None or price is None:
+            faults.append(
+                f"{where}: its Today card cannot say which side is bought "
+                f"(question_takes_the_proposition {takes!r}, number {fair!r}, "
+                f"price {price!r})")
+            continue
+        yes = side == "yes"
+        want_fair = fair if yes else 1.0 - fair
+        want_price = price if yes else 1.0 - price
+        if yes == takes:
+            want_words = card.get("question")
+        else:
+            try:
+                want_words = _language.phrase_of_the_other_side(slate.get(pid) or {})
+            except (_subjects.UnplaceableSide, ValueError, TypeError, KeyError) as exc:
+                faults.append(f"{where}: the side it buys cannot be put in words: {exc}")
+                continue
+        got_fair, got_price = line.get("fair_value"), line.get("price")
+        if got_fair is None or abs(got_fair - want_fair) > 1e-9:
+            faults.append(
+                f"{where} states the model's number {got_fair!r} where the side "
+                f"it buys, {want_words!r}, is {round(want_fair, 4)!r}: the "
+                f"proposition's number on the other side (pick-number finding 4)")
+        if got_price is None or abs(got_price - want_price) > 1e-9:
+            faults.append(
+                f"{where} states the price {got_price!r} where the side it buys, "
+                f"{want_words!r}, costs {round(want_price, 4)!r} (pick-number "
+                f"finding 4)")
+        if line.get("side_words") != want_words:
+            faults.append(
+                f"{where} names {line.get('side_words')!r} where the side it "
+                f"buys is {want_words!r} (pick-number finding 4)")
+        head = (f"{want_words} — the model makes it {round(want_fair * 100)}¢, the "
+                f"venue is at {round(want_price * 100)}¢")
+        if not words.startswith(head):
+            faults.append(
+                f"{where} says {words!r} where the side it buys reads "
+                f"{head!r}... (pick-number finding 4)")
+        # THE FLOOR FOLDS BY WHAT THE SIDE BOUGHT PAYS (the sweep of step C):
+        # "picks that clear the bar but pay less than this fold into one
+        # line", and the day strip counts them "below your floor". It read
+        # the proposition's payout whatever side the pick buys.
+        floor = today.get("floor")
+        folded = {c.get("prediction_id") for c in (today.get("below_floor") or [])
+                  if isinstance(c, dict)}
+        shown = {c.get("prediction_id") for c in (today.get("clears") or [])
+                 if isinstance(c, dict)}
+        pays = _recommend.payout_multiple(want_price)
+        if (isinstance(floor, (int, float)) and pays is not None
+                and pid in folded | shown and (pays < floor) != (pid in folded)):
+            faults.append(
+                f"{where} buys {want_words!r} at {round(want_price, 4)!r}, which "
+                f"pays {pays!r}x, and it is "
+                f"{'folded below' if pid in folded else 'shown above'} the "
+                f"{floor!r}x floor: the fold read another side's payout (the "
+                f"sweep of pick-number step C)")
+
+    # MY DAY'S CHIP WEARS THE CLUB ITS PICK'S WORDS NAME.
+    rows = {g.get("game_id"): g for g in (board.get("games") or []) if isinstance(g, dict)}
+    for i, chip in enumerate(((board.get("my_day") or {}).get("entries")) or []):
+        if not isinstance(chip, dict) or chip.get("prop"):
+            continue
+        pid = chip.get("prediction_id")
+        where = f"board.my_day.entries[{i}] (question {pid})"
+        game = rows.get(chip.get("game_id")) or {}
+        block = next((q for q in (game.get("questions") or [])
+                      if isinstance(q, dict) and q.get("prediction_id") == pid), None)
+        if block is None:
+            faults.append(f"{where}: no row of its game holds the question it names")
+            continue
+        if chip.get("line_words") != block.get("line_words"):
+            faults.append(
+                f"{where} says {chip.get('line_words')!r} where its row's "
+                f"question says {block.get('line_words')!r}")
+        forecast = slate.get(pid)
+        if forecast is None:
+            faults.append(f"{where}: no card on the slate says which side it took")
+            continue
+        market_type = forecast.get("market_type")
+        if market_type not in ("moneyline", "spread"):
+            continue  # a total names no club, and wears the game's home club
+        try:
+            taken = _subjects.side_taken(market_type, forecast.get("model_side"))
+        except _subjects.UnplaceableSide as exc:
+            faults.append(f"{where}: {exc}")
+            continue
+        home = (game.get("home") or {}).get("tricode")
+        away = (game.get("away") or {}).get("tricode")
+        subject = forecast.get("subject")
+        named = subject if taken == "yes" else (
+            away if subject == home else home if subject == away else None)
+        got = (chip.get("club") or {}).get("tricode")
+        if named is not None and got != named:
+            faults.append(
+                f"{where} wears {got!r} beside {chip.get('line_words')!r}, whose "
+                f"words name {named!r}: the club of the question's subject, not "
+                f"of the side taken (pick-number finding 6)")
+
+    # EACH RESULTS ROW SAYS THE SIDE ITS NUMBER IS FOR (the step's prover,
+    # 2026-09-30). A history row (`views.history`) carries no opponent, so
+    # its words can only say the question as asked, on the side the model
+    # took: "KC to lose", "CWS does not cover -1.5", "under 8.5 total runs".
+    # Worked out again from the row's stored side through the one place; a
+    # row carrying an opponent (restated as the other club, as a card is) is
+    # not this shape and is left to the cards' own checks.
+    for i, item in enumerate(payload.get("items") or []):
+        if not isinstance(item, dict) or item.get("opponent"):
+            continue
+        market_type = item.get("market_type")
+        if market_type not in ("moneyline", "spread", "total"):
+            continue
+        where = f"items[{i}] (question {item.get('prediction_id')})"
+        try:
+            taken = _subjects.side_taken(market_type, item.get("model_side"))
+        except _subjects.UnplaceableSide as exc:
+            faults.append(f"{where}: {exc}")
+            continue
+        words = str(item.get("phrase") or "")
+        if market_type == "moneyline":
+            said = words.endswith(" to win") if taken == "yes" else words.endswith(" to lose")
+        elif market_type == "spread":
+            said = (bool(_re.search(r"\bcovers\b", words))
+                    if taken == "yes" else bool(_re.search(r"\bdoes not cover\b", words)))
+        else:
+            said = words.lower().startswith("over " if taken == "yes" else "under ")
+        if not said:
+            faults.append(
+                f"{where} says {words!r} beside the model's "
+                f"{item.get('shown_prob')!r} for its stored side "
+                f"{item.get('model_side')!r} -- the {taken} side of its question: "
+                f"the Results table's words name the other side (the step's "
+                f"prover; 403 rows on the record said 'to win' for a lose)")
+    return faults
+
+
+def check_every_pick_names_its_side(payload) -> None:
+    faults = pick_side_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A PICK STATES ANOTHER SIDE'S NUMBER OR NAMES ANOTHER SIDE'S CLUB "
+            "(a number on a pick is stated under the words of the contract it "
+            "belongs to; pick-number step C, 2026-09-30):"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+#: One slate in the payload's own shape, as this step leaves it: a moneyline
+#: question naming the away side (BBB) whose recommendation buys the home
+#: side (AAA) -- the claim's proposition, 53.58% at 48.5c -- and a taken
+#: "not_cover" on PHI -3.5, said "Dallas +3.5".
+PICK_SIDE_FIXTURE_GOOD = {
+    "forecaster": "statistical",
+    "cards": [
+        {"prediction_id": 1, "sport": "mlb", "market_type": "moneyline",
+         "subject": "BBB", "opponent": "AAA", "line_asked": None,
+         "model_side": "win", "phrase": "BBB to win"},
+        {"prediction_id": 2, "sport": "nfl", "market_type": "spread",
+         "subject": "PHI", "opponent": "DAL", "line_asked": -3.5,
+         "model_side": "not_cover", "phrase": "DAL covers +3.5"}],
+    "today": {"floor": 1.5, "below_floor": [], "clears": [{
+        "prediction_id": 1, "state": "upcoming", "question": "BBB to win",
+        "fair_value": 0.5358, "question_takes_the_proposition": False,
+        "price": 0.485, "payout": 1.942, "payout_words": "1.94x",
+        # the recommendation buys AAA, so its +3.08c is the other side's
+        # (the step's prover, 2026-09-30)
+        "edge_cents": 3.08, "edge_words": "+3.1¢",
+        "edge_label": "Edge after fees, on the other side"}]},
+    "recommendations": {"lines": [{
+        "prediction_id": 1, "side": "yes", "side_words": "AAA to win",
+        "fair_value": 0.5358, "price": 0.485, "edge_cents": 3.3,
+        "words": ("AAA to win — the model makes it 54¢, the venue is at 48¢, "
+                  "and it is worth +3.3¢ a contract after the fee. One flat "
+                  "unit — no measured edge in this market yet.")}]},
+    "board": {
+        "games": [{"game_id": "g1", "home": {"tricode": "AAA"},
+                   "away": {"tricode": "BBB"}, "state": "upcoming",
+                   "questions": [{"prediction_id": 1, "state": "upcoming",
+                                  "line_words": "BBB to win",
+                                  "edge_words": "+3.1¢ on the other side"}]},
+                  {"game_id": "g2", "home": {"tricode": "PHI"},
+                   "away": {"tricode": "DAL"},
+                   "questions": [{"prediction_id": 2, "line_words": "DAL +3.5",
+                                  "taken": True}]}],
+        "my_day": {"n": 1, "entries": [{
+            "prediction_id": 2, "game_id": "g2", "prop": False,
+            "line_words": "DAL +3.5", "club": {"tricode": "DAL"}}]}},
+    # THE RESULTS TABLE (`views.history`'s shape; the step's prover): rows
+    # with no opponent, said as asked on the side each took.
+    "items": [
+        {"prediction_id": 3, "market_type": "moneyline", "subject": "KC",
+         "model_side": "lose", "shown_prob": 0.52, "phrase": "KC to lose"},
+        {"prediction_id": 4, "market_type": "spread", "subject": "CWS",
+         "model_side": "not_cover", "line_asked": -1.5, "shown_prob": 0.58,
+         "phrase": "CWS does not cover -1.5"},
+        {"prediction_id": 5, "market_type": "total", "subject": "AZ @ KC",
+         "model_side": "under", "line_asked": 8.5, "shown_prob": 0.55,
+         "phrase": "under 8.5 total runs"}]}
+
+
+def _pick_side_fixture(**changes):
+    """PICK_SIDE_FIXTURE_GOOD with one place put back as it was released."""
+    out = json.loads(json.dumps(PICK_SIDE_FIXTURE_GOOD))
+    if "payout" in changes:
+        out["today"]["clears"][0].update(changes["payout"])
+    if "line" in changes:
+        out["recommendations"]["lines"][0] = changes["line"]
+    if "club" in changes:
+        out["board"]["my_day"]["entries"][0]["club"] = changes["club"]
+    if "floor" in changes:
+        out["today"]["floor"] = changes["floor"]
+    if "edge" in changes:
+        out["today"]["clears"][0].update(changes["edge"])
+    if "tile" in changes:
+        out["board"]["games"][0]["questions"][0].update(changes["tile"])
+    if "row" in changes:
+        out["items"][0].update(changes["row"])
+    return out
+
+
+#: THE THREE SHAPES AS RELEASED (fa4c8eb): the proposition's payout on a
+#: card whose question names the other side; the line with the proposition's
+#: numbers after the question's words and "the yes side"; the chip wearing
+#: the subject's club.
+PICK_SIDE_FIXTURES_AS_RELEASED = {
+    "the proposition's payout on a turned card (finding 3)":
+        {"payout": {"payout": 2.062, "payout_words": "2.06x"}},
+    "the line on the proposition, after the question's words (finding 4)":
+        {"line": {"prediction_id": 1, "side": "yes", "edge_cents": 3.3,
+                  "words": ("BBB to win — the model makes it 54¢, the venue is "
+                            "at 48¢, and the yes side is worth +3.3¢ a contract "
+                            "after the fee. One flat unit — no measured edge in "
+                            "this market yet.")}},
+    "My day's chip wearing the subject's club (finding 6)":
+        {"club": {"tricode": "PHI"}},
+    "a pick paying under the floor left out of the fold (the sweep)":
+        {"floor": 2.1},
+    # THE STEP'S PROVER (2026-09-30): the released shapes of the other two.
+    "the other side's edge labelled as the question's own (the prover)":
+        {"edge": {"edge_label": "Edge after fees"}},
+    "the other side's edge drawn bare on the board's tile (the prover)":
+        {"tile": {"edge_words": "+3.1¢"}},
+    "a Results row saying 'to win' for a lose (the prover)":
+        {"row": {"phrase": "KC to win"}},
+}
+
+
+def _check_the_pick_side_scanner_can_see() -> None:
+    problems = []
+    if pick_side_faults(PICK_SIDE_FIXTURE_GOOD):
+        problems.append("pick_side_faults refuses the slate as this step leaves "
+                        "it: " + pick_side_faults(PICK_SIDE_FIXTURE_GOOD)[0])
+    for name, change in PICK_SIDE_FIXTURES_AS_RELEASED.items():
+        if not pick_side_faults(_pick_side_fixture(**change)):
+            problems.append(f"pick_side_faults passes {name}")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_pick_side_scanner_can_see()
 
 
 # ---------------------------------------------------------------------------

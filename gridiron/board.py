@@ -177,6 +177,10 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
     # QUESTION NAMES"). The board drew the entry's price and payout as they
     # came, so an away side's question read the home side's 48c and 2.06x
     # under the away side's chance. Turned here, once, as the card turns them.
+    # (From 2026-09-30 the card's own `payout` is already the side its
+    # question names -- pick-number finding 3 -- and the payout worked out
+    # here from the turned price is that same number; the card's `price` and
+    # `fair_value` stay the proposition's, the two numbers this turns.)
     if flip and price is not None:
         from .views import _payout_for
 
@@ -190,6 +194,10 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         "market": market,
         "market_label": language.market_label(card),
         "subject": card.get("subject"),
+        # THE CLUB THE PICK'S WORDS NAME, by the same flip as the words
+        # (pick-number finding 6, 2026-09-30): My day's chip wears it. None
+        # for a question about no club.
+        "named_club": language.club_named(card),
         "line_words": language.pick_line_words(card),
         "question": card.get("phrase") or "",
         "prob": shown,
@@ -258,7 +266,23 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         if entry and entry.get("size_words"):
             out["size_words"] = entry["size_words"]
         if entry and entry.get("edge_line_words"):
-            out["edge_words"] = entry["edge_line_words"]
+            # THE EDGE SAYS WHOSE IT IS (the prover of pick-number step C,
+            # 2026-09-30). The figure is the better side's, and the Today card
+            # labelled it "on the other side" where that is not the side the
+            # question names; the tile draws the figure where the price was,
+            # under the question's words, with no label, so "San Antonio to
+            # win · 54% · -1.5¢" drew the other side's -1.5c (San Antonio's own
+            # is -2.5c). The tile's words carry the card's answer now.
+            # NOT ON A SPREAD ROW: a spread claim is read at the venue's line,
+            # which is often not the question's (pick-number finding 2), so
+            # "the other side" of the question's words would name another
+            # contract again; how a spread row draws a priced number waits
+            # for step A (operator question 36), and a recommendation's edge
+            # on the other side of its words for question 37.
+            out["edge_words"] = language.board_edge_words(
+                entry["edge_line_words"],
+                other_side=bool(entry.get("edge_on_the_other_side"))
+                and card.get("market_type") != "spread")
     elif state == "live":
         # THE ONE FIGURE A LIVE ROW MAY CARRY, with its word (ruled 2026-09-09).
         out["pregame_words"] = (entry or {}).get("pregame_words") or \
@@ -500,9 +524,18 @@ def _my_day(games: list[dict], tiles: list[dict]) -> dict:
                                              tile.get("club") or {},
                                              g.get("score_words"), prop=True))
                 continue
-            subject = (b.get("subject") or "")
-            club = g["home"] if subject == g["home"].get("tricode") else (
-                g["away"] if subject == g["away"].get("tricode") else g["home"])
+            # THE CLUB OF THE SIDE THE PICK'S WORDS NAME (pick-number finding
+            # 6, 2026-09-30). This chose by the question's SUBJECT, which on a
+            # game question is the home club, so a taken "not_cover" on PHI
+            # -3.5 was the chip "PHI · DAL +3.5" and a taken "lose" moneyline
+            # "PHI · DAL to win": the club the model forecast against beside
+            # the side it took. The block carries the club its words name
+            # (`language.club_named`, the words' own flip); a question naming
+            # no club -- a total -- wears the home club as the game's mark, as
+            # it did.
+            named = b.get("named_club")
+            club = g["home"] if named == g["home"].get("tricode") else (
+                g["away"] if named == g["away"].get("tricode") else g["home"])
             entries.append(_my_day_entry(b, g["game_id"], g["state"], club, g.get("score_words")))
     for tile in tiles:
         if tile.get("taken") and tile["prediction_id"] not in seen:

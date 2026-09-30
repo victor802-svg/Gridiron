@@ -105,17 +105,28 @@ def side_for(model_prob: float | None, price: float | None) -> dict:
     MOST QUESTIONS GET NO SIDE, and that is the intended answer rather than a
     failure to find one. A page that produced twenty opinions a day would be
     manufacturing them.
+
+    THE EDGE FIGURE NAMES ITS SIDE EVEN WHEN NO SIDE IS CHOSEN (the prover of
+    pick-number step C, 2026-09-30). With neither side clearing the fee the
+    figure returned is still one side's -- "the better of the two" -- and
+    `side` is None, so nothing downstream could say whose it was: the Today
+    card labelled it as the question's own ("Edge after fees", no "on the
+    other side") and the board drew it under the question's words. NBA 3166,
+    "San Antonio to win" at 54% against 54.5c, showed -1.5c, the other side's;
+    San Antonio's own is -2.5c. `better_side` is the side the figure is, with
+    or without a side chosen; `side` is unchanged, and so is everything that
+    reads it (no side, no return, no recommendation).
     """
     yes, no = edge_cents(model_prob, price, "yes"), edge_cents(model_prob, price, "no")
     if yes is None or no is None:
-        return {"side": None, "edge_cents": None,
+        return {"side": None, "edge_cents": None, "better_side": None,
                 "why": "no recorded price to compare against"}
     best_side, best = ("yes", yes) if yes >= no else ("no", no)
     if best < config.MIN_EDGE_CENTS:
-        return {"side": None, "edge_cents": round(best, 2),
+        return {"side": None, "edge_cents": round(best, 2), "better_side": best_side,
                 "why": (f"neither side clears the fee: the better of the two is "
                         f"{best:+.1f} cents after it")}
-    return {"side": best_side, "edge_cents": round(best, 2),
+    return {"side": best_side, "edge_cents": round(best, 2), "better_side": best_side,
             "why": f"{best:+.1f} cents a contract after the venue's fee"}
 
 
@@ -454,6 +465,10 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         # face, and a number with no side is the defect this project has had
         # more often than any other.
         edge_side = chosen["side"]
+        # WHOSE THE EDGE FIGURE IS, even where no side was chosen (the prover
+        # of pick-number step C, 2026-09-30; `side_for`): read before `chosen`
+        # is replaced below, and None only where there is no figure.
+        edge_cents_side = chosen.get("better_side")
         # ON WHAT THE SIDE COSTS (GRIDIRON_REPAIR item 4, 2026-09-26). This
         # line asked the bar with the yes price whichever side the edge was
         # on; a no-side edge is now divided by the no side's cost. With no
@@ -496,6 +511,11 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             # `side` is None for a pick that does not clear the bar and this
             # is not, because the card still shows the number.
             "edge_side": edge_side,
+            # ...and the side the EDGE FIGURE is, which a pick with no side
+            # still shows (2026-09-30): `edge_side` is None when neither side
+            # clears the fee, and the card then said nothing of whose figure
+            # it drew. The words beside the figure read this.
+            "edge_cents_side": edge_cents_side,
             "side_why": chosen["why"],
             # WHAT THE EDGE IS WORTH PER DOLLAR RISKED, and what the contract
             # pays if it settles at a dollar. Both are arithmetic on the

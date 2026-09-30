@@ -710,6 +710,16 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_side_the_one_place_does_not_know_shown_with_numbers",
         "plant_rec_111_painted_on_the_other_sides_numbers",
         "plant_an_unplaceable_side_the_check_passes",
+        # PICK-NUMBER STEP C (2026-09-30): the payout, the recommendation
+        # line and My day's chip name the picked side; the floor folds by
+        # what the side bought pays.
+        "plant_a_payout_on_the_propositions_side",
+        "plant_a_recommendation_line_on_the_proposition",
+        "plant_a_my_day_chip_wearing_the_subjects_club",
+        # ...and from its prover (2026-09-30): the Results table's rows, and
+        # the edge figure's side on the Today card and the board's tile.
+        "plant_a_results_row_naming_the_other_side",
+        "plant_an_edge_on_the_other_side_drawn_as_the_questions",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

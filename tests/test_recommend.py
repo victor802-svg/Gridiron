@@ -388,9 +388,16 @@ def test_the_card_the_line_sentence_and_the_pregame_figure_read_one_number(tmp_p
                              taken=False, group_tier=None, unit_dollars=None)
     # the question names the away side, so the chip is the other half of 54%
     assert card["model_words"] == "46¢"
+    # THE LINE STATES THE SIDE IT BUYS (pick-number finding 4, 2026-09-30):
+    # the corrected 54% makes the home side the one worth buying, so the line
+    # names it, in its own words, with its own number -- where the card it
+    # is handed names the away side the model took.
     line = views._recommendations_block(
-        conn, [{"prediction_id": pid, "on_shortlist": True, "phrase": "x"}])
-    assert "54¢" in line["lines"][0]["words"]
+        conn, [{"prediction_id": pid, "on_shortlist": True, "phrase": "BBB to win",
+                "sport": "mlb", "market_type": "moneyline", "subject": "BBB",
+                "opponent": "AAA", "model_side": "win", "line_asked": None}])
+    assert entry["side"] == "yes"
+    assert line["lines"][0]["words"].startswith("AAA to win — the model makes it 54¢")
     # A LIVE CARD: the claim's own instant. A correction activated after the
     # claim was written does not reach the pregame figure.
     assert views._pregame_probability(conn, entry, {}) == pytest.approx(0.5358, abs=1e-4)
@@ -1165,8 +1172,8 @@ def test_the_closing_line_claims_nothing_from_a_small_sample(tmp_path):
 
 def test_the_words_are_plain_and_recommend_without_tipping():
     line = language.recommendation_line(
-        question="Seattle covering -4.5", fair_value=0.58, price=0.46,
-        edge_cents=8.6, side="yes", units=1.0, flat=True,
+        words="Seattle covers -4.5", fair_value=0.58, price=0.46,
+        edge_cents=8.6, units=1.0, flat=True,
         size_why="no measured edge yet: 3 of 100 settled in this market")
     assert "flat unit" in line and "8.6" in line
     for words in (line, language.nothing_priced_line(18, 4, 14),

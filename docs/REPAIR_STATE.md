@@ -45,6 +45,41 @@
   Built in that order, A first, released before 2 Oct 01:00Z; the reading
   (a number is always shown under the words of the contract it belongs to)
   is recorded in docs/briefs/2026-09-30-rulings.md's successor note here.
+  **STEP A STOPPED on question 36** (the away contracts' sign). **STEP C
+  BUILT (2026-09-30, uncommitted for its prover; FOLLOWUPS "Every pick
+  names its own side"):** the Today card's payout and payout words are
+  what the side its question names pays (finding 3); each recommendation
+  line names the side it buys, in that side's words, with that side's
+  number and cost -- never "the yes side / the other side" (finding 4);
+  My day's chip wears the club its pick's words name (finding 6); and from
+  the sweep, the payout floor folds by what the side bought pays, and a
+  moneyline "lose" with no opponent is said "PHI to lose". Gate:
+  `audit.check_every_pick_names_its_side` (step 2); three plantings. ITS
+  SWEEP STOPPED ON ONE ITEM, **question 37** below: a recommendation that
+  buys the OTHER side of its question's words (16 on the record) is drawn
+  on the board and the Today card with its size, edge and outline under
+  the model's own side's words; which contract such a row headlines is not
+  settled by the rulings.
+  **STEP C PROVED (2026-09-30, its prover, alone in the worktree; one local
+  commit, "My day, the payout and the recommendation line name the picked
+  side"; FOLLOWUPS "Every pick names its own side", THE PROVER):** the
+  three findings and the sweep's two fixes hold on a verified copy of the
+  record (0 faults on this tree's 50 payloads, 909 on 401d059's), and the
+  prover found two more and fixed them: (1) THE RESULTS TABLE drew a
+  moneyline "lose" as "KC to win" beside the lose pick's number, market
+  figure and verdict -- 403 rows on the record, every sport, on every
+  release (a history row carries no opponent); the sweep's "said as asked"
+  fix mends it ("KC to lose"), which its builder had recorded as moving
+  nothing drawn, and a check now holds it (gate step 2 reads each sport's
+  latest 500 rows); (2) THE EDGE'S SIDE: a watched card whose edge figure is
+  the other side's was labelled as the question's own when neither side
+  clears the fee (10 cards on the record; NBA 3166 upcoming, "San Antonio
+  to win" -1.5c where its own is -2.5c), and the board's tile drew the
+  figure bare -- the engine names the figure's side (`edge_cents_side`),
+  the card says "on the other side", and so does a moneyline or total tile;
+  a spread tile keeps its bare figure for step A. Five plantings, each
+  escaping on 401d059 and caught here. Question 37 stays open (its edge
+  part is narrower now: see its prover's note).
 
 - **THE ORDER NOW (29 Sep, second set, ~05:40Z;
   docs/briefs/2026-09-29-rulings-second-set.md; wins over every order
@@ -1434,6 +1469,65 @@ depend on the answer.
       away one, so rec 111 reads "North Texas +1.5" before its kickoff
       (2026-10-02T01:00Z)?
     Default until ruled: nothing built; step A not started.
+37. **A recommendation that buys the OTHER side of its question's words is
+    drawn under the model's own side's words: its size, its edge and the
+    green outline beside the other side's chance, price and payout. (Found
+    2026-09-30 by pick-number step C's sweep, on one verified copy of the
+    record made at 08:18Z and deleted after. Step C built findings 3, 4 and
+    6 and the sweep's other two fixes; it stopped on this item alone.)**
+    - **What happens.** A question's words name the side the model took; a
+      recommendation buys the side the price makes worth buying, and that
+      can be the other one (the old Today card's edge label said "on the
+      other side"). On the board (from 2026-09-29) the row's pick and the
+      tile draw the words' side's chance, price and payout and, beside
+      them, the recommendation's size ("$15 · one flat unit"), its edge
+      ("+2.1¢") and the green outline "clears the bar" -- the three that
+      belong to the other side -- and nothing says which side they are. The
+      Today card's size words and the taken list's "edge when marked" do the
+      same (payload). The recommendation line now names the side bought
+      (step C, finding 4); the row and the card do not.
+    - **On the record: 16 of the 113 recommendations.** MLB 47 and 82, read
+      at the question's own rung: the model's "Washington covers +1.5" at
+      58%, the recommendation Detroit -1.5 at 37.5¢ worth 41.6% (+2.1¢); "Tampa
+      Bay covers +1.5", the recommendation New York -1.5 at 37.5¢ worth 42.5%
+      (+3.0¢). NFL 67-69, 71-74, 76-78 and NCAAF 89, 91, 102, 103, every one a
+      spread read at the venue's line where it is not the question's
+      (finding 2, question 36: the side flips because the line does) -- e.g.
+      rec 76, "Las Vegas covers +15.5", bought New Orleans at the venue's line
+      at 46.5¢ worth 84%. None is upcoming, and no game pick on the record is
+      taken. None yet in a moneyline or a total; it can happen in any market
+      whenever the model's side is priced above its own number.
+    - **What needs your ruling** (the reading taken covers a number's line;
+      for its side it would choose what a row labelled "Model's pick"
+      headlines): (A) the pick names the contract the recommendation buys
+      -- its words, chance, price, payout, size and outline -- and says
+      beside it, in plain words, the model's own side and number (the
+      reading's "the pick names the venue's contract ... the one the operator
+      would buy", applied to the side); the label then heads a side the
+      model did not take and would say so; (B) the row keeps the model's own
+      side and its numbers, and the size, the edge and the outline are drawn
+      with the words of the contract they belong to ("$15 on Detroit -1.5 at
+      38¢"); or (C) such a recommendation is refused by name on the page
+      (the API answers 500 for its slate) until one of those is built. For
+      a spread it lands with step A in any case (steps B and C may not
+      change how a spread row draws a priced number). Recommended: (A), the
+      reading already taken for the line.
+    - **Its prover's note (2026-09-30).** The edge now says whose it is where
+      the page could say it without choosing a headline: the Today card
+      labels the figure "on the other side" in every market (the label the
+      card already carried, which read no side when neither side cleared
+      the fee), and a moneyline or total tile draws "+2.1¢ on
+      the other side" (none of the 16 is a moneyline or a total). A spread
+      tile keeps its bare figure: its line is step A's (question 36), so all
+      16 still draw the edge bare, with the size and the green outline, under
+      the words of the side they did not buy. And the payout floor folds a
+      recommendation by what the side it BUYS pays (step C's sweep), while
+      the row states the payout of its words' side: on these rows the fold
+      and the drawn payout are two sides' numbers (all 16 final; before step
+      C the fold read the proposition's, which on these rows is also not
+      always the drawn one). Nothing else of this question is built.
+    Default until ruled: nothing built; the list is in FOLLOWUPS ("Every pick
+    names its own side", THE SWEEP).
 
 ## Rulings taken in your absence (2026-09-27, third set)
 

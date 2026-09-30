@@ -354,6 +354,24 @@ def side_flips(item: dict) -> bool:
     return is_no_side(item) and bool(item.get("opponent"))
 
 
+def club_named(item: dict) -> str | None:
+    """The code of the club a game pick's WORDS name, or None when they name
+    no club (a total, a fight's rounds or distance, a prop -- whose club is
+    its player's, which the stats tables say).
+
+    THE SAME FLIP AS THE WORDS (pick-number finding 6, 2026-09-30). My day
+    chose a taken pick's club by the question's subject, which is the home
+    club on a game question, so a taken "not_cover" on PHI -3.5 was the chip
+    "PHI · DAL +3.5" and a taken "lose" moneyline "PHI · DAL to win": the
+    club the model forecast AGAINST beside the words of the side it took.
+    The club named is the one `side_named` names, decided by `side_flips`,
+    so the chip's club and its words cannot come apart.
+    """
+    if item.get("market_type") not in ("moneyline", "spread"):
+        return None
+    return item.get("opponent") if side_flips(item) else item.get("subject")
+
+
 def spread_verb(item: dict) -> str:
     """"covers" or "does not cover", decided ONCE.
 
@@ -464,7 +482,15 @@ def phrase(item: dict) -> str:
         # Falls back to the literal form only when the opponent is unknown,
         # because inventing one would be worse than reading oddly.
         # `subject` is already the club being backed, flip included.
-        if is_no_side(item):
+        # THE FALLBACK THE NOTE ABOVE PROMISED (the sweep of pick-number step
+        # C, 2026-09-30). This asked `is_no_side`, so a "lose" with no
+        # opponent recorded -- no club to move the pick to, `subject` still
+        # the question's own -- read "PHI to win" for a pick AGAINST PHI, the
+        # words and `chance_clause` ("PHI loses") naming opposite sides. It
+        # asks `side_flips`, the one door for the flip, and a no side that did
+        # not flip is said as asked: "PHI to lose". Every card on the record
+        # carries an opponent, so nothing drawn moves.
+        if side_flips(item):
             return f"{subject} to win"
         return f"{subject} {side_word(side)}".strip()
 
@@ -473,6 +499,26 @@ def phrase(item: dict) -> str:
     # about the side being backed -- and the negative one when there was no
     # opponent to move the pick to and the question stands as asked.
     return f"{subject} {spread_verb(item)} "           f"{_signed(flipped_line(item))}".strip()
+
+
+def phrase_of_the_other_side(item: dict) -> str:
+    """The question's OTHER side, in the words `phrase` would give it:
+    "Detroit covers -1.5" for a pick stated "Washington covers +1.5",
+    "Dallas to win" for "Philadelphia to win", "over 8.5 total runs" for
+    "under 8.5 total runs".
+
+    FOR A RECOMMENDATION THAT BUYS THE SIDE THE MODEL DID NOT TAKE
+    (pick-number finding 4, 2026-09-30). The price can make the other side
+    of a question the one worth buying -- recommendations 47 and 82 bought
+    Detroit -1.5 and New York -1.5 on questions the model answered
+    "Washington covers +1.5" and "Tampa Bay covers +1.5" -- and the line that
+    states a recommendation said "the other side" after the question's words
+    rather than naming it. The side is swapped through the one place
+    (`subjects.other_side_spelling`), and the words come from `phrase`, so a
+    side it cannot place is refused by name as it is everywhere else.
+    """
+    other = _subjects.other_side_spelling(item.get("market_type"), item.get("model_side"))
+    return phrase(dict(item, model_side=other))
 
 
 class NoWordsForThisMarket(ValueError):
@@ -2926,6 +2972,14 @@ def tile_line(item: dict) -> str:
         return "Not the distance" if is_no_side(item) else "Goes the distance"
 
     if market_type == "moneyline":
+        # A NO SIDE THAT DID NOT FLIP IS SAID AS ASKED (the sweep of
+        # pick-number step C, 2026-09-30): with no opponent recorded `subject`
+        # is the question's own club, and "PHI to win" over a pick against
+        # PHI was the wrong side on the row, on My day's chip and on the tile.
+        # `phrase` says the same now; every card on the record carries an
+        # opponent, so nothing drawn moves.
+        if is_no_side(item) and not side_flips(item):
+            return f"{subject} {side_word(item.get('model_side'))}"
         return f"{subject} to win"
 
     if market_type == "spread":
@@ -3465,8 +3519,8 @@ def ranker_verdict_line(led_brier: float | None, rest_brier: float | None,
 # left after the fee, how much, and whether anything has settled behind it.
 # `audit.ADVICE_WORDS` scans these strings on every gate run.
 
-def recommendation_line(*, question: str, fair_value: float, price: float,
-                        edge_cents: float, side: str, units: float,
+def recommendation_line(*, words: str, fair_value: float, price: float,
+                        edge_cents: float, units: float,
                         flat: bool, size_why: str | None = None) -> str:
     """One recommendation, in the order a reader needs it.
 
@@ -3475,10 +3529,20 @@ def recommendation_line(*, question: str, fair_value: float, price: float,
     settled where the model is behind the price. Collapsing them into "no
     measured edge yet" would tell a reader the second case is waiting for data
     it already has.
+
+    THE SIDE IT BUYS, IN ITS OWN WORDS, WITH ITS OWN NUMBERS (pick-number
+    finding 4, 2026-09-30). `words` names the side the recommendation buys,
+    `fair_value` is the model's number for that side and `price` what that
+    side costs. Until this date the line put the claim's fixed proposition's
+    number and price (the home side's, the over's) after the QUESTION's
+    words and called the side bought "the yes side" or "the other side" --
+    of a proposition the reader never sees: "Washington covers +1.5 -- the
+    model makes it 42¢, the venue is at 38¢, and the yes side is worth
+    +2.1¢", where 42% and 38¢ are Detroit -1.5's and Detroit -1.5 is what it
+    bought. The caller works out the side (`views._recommendations_block`).
     """
-    what = "the yes side" if side == "yes" else "the other side"
-    return (f"{question} — the model makes it {round(fair_value * 100)}¢, the "
-            f"venue is at {round(price * 100)}¢, and {what} is worth "
+    return (f"{words} — the model makes it {round(fair_value * 100)}¢, the "
+            f"venue is at {round(price * 100)}¢, and it is worth "
             f"{edge_cents:+.1f}¢ a contract after the fee. "
             f"{_units_words(units, flat, size_why)}")
 
@@ -4671,6 +4735,23 @@ def edge_line_words(edge_cents: float | None, other_side: bool = False) -> str:
     # that passes it keeps compiling; the label is where the words live.
     del other_side
     return f"{edge_cents:+.1f}¢"
+
+
+def board_edge_words(edge_words: str, *, other_side: bool) -> str:
+    """The edge as a board tile draws it, where the price would be: the
+    Today card's quiet line, and, when the figure is the OTHER side's, the
+    words its label says ("-1.5¢ on the other side").
+
+    THE TILE HAS NO LABEL ABOVE IT (the prover of pick-number step C,
+    2026-09-30). The Today card puts "on the other side" in the label over
+    the figure (`edge_label_words`) and keeps the figure bare; the board
+    merge drew the bare figure alone, beside the question's words and the
+    question side's chance, so the other side's worth read as the question's.
+    The label's own words, after the figure, since there is no label.
+    """
+    if other_side:
+        return f"{edge_words} on the other side"
+    return edge_words
 
 
 def starter_words(name: str | None) -> str:

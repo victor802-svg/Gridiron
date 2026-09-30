@@ -10447,3 +10447,373 @@ the words North Texas -6.5; this build draws them as ruled.
 **SEEN, NOT MEASURED:** in the 390px capture the sport tabs in the header
 run together ("NFL 193-119MLB 832-640NBA 0NCAAF ..."); not this fix's, and
 not measured whether the capture or the page is at fault.
+
+## Every pick names its own side: the payout, the recommendation line and My day -- built 2026-09-30 *(pick-number step C; the queue rule as amended on 30 September, docs/briefs/2026-09-30-rulings.md; uncommitted for its prover)*
+
+The reading taken (docs/REPAIR_STATE.md, the conservative default): a number
+on a pick is always stated under the words of the exact contract it belongs
+to -- its line and its side. Step C is findings 3, 4 and 6 of the wrong-side
+fix's builder and prover (above, "PICK-NUMBER FINDINGS"), and a sweep of
+every other place a pick's side, price, probability or size is stated. Step A
+(the line) stopped on operator question 36; nothing here changes which line
+or contract a spread claim's price belongs to, `at_the_line.home_view_line`,
+the claim writer, or how a spread row draws a priced number.
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, 2026-09-30T08:18:10Z, 1,092,984,832 bytes, integrity ok, 64 tables, none mismatched; read with `db.read_only`; `scratchpad/picknum/C/`; deleted after -- see PROVED)*
+
+- **Which side each recommendation buys, against its words**
+  (`measure_sides.py` -> `measure_sides.json`): of the 113 recommendations,
+  16 buy the OTHER side of their question's words -- MLB 47 and 82 (read at
+  the question's own rung: the model's "Washington covers +1.5" at 58%, the
+  recommendation Detroit -1.5 at 37.5¢ worth 41.6%, +2.06¢; "Tampa Bay covers
+  +1.5", New York -1.5 at 37.5¢ worth 42.5%, +3.03¢), NFL 67-69, 71-74, 76-78
+  and NCAAF 89, 91, 102, 103 (every one a spread read at the venue's line
+  where it is not the question's: finding 2, question 36). All final; none
+  taken. None in a moneyline or a total. The other 97 buy the side their
+  words name (4 of them withdrawn).
+- **Prices**: no claim's `venue_implied` (1,746) has more than four places,
+  and the payout of the price rounded to four places is the payout of the
+  price on every one -- so the card's payout on a question naming the
+  proposition is the same number whichever the builder reads.
+
+### BUILT
+
+- **The Today card's payout (finding 3).** `views._today_card` states
+  `payout` and `payout_words` for the side its question names: the payout of
+  the price the card states (`_payout_for` of the turned price, as the venue
+  words have since 2026-09-07), and on a question naming the proposition the
+  entry's own payout. They were the entry's -- what the claim's fixed
+  proposition pays -- beside a turned chip: rec 111's card said "52¢ · pays
+  1.94x" and "2.06x" at once. The card's `price` and `fair_value` stay the
+  proposition's: they are the board's inputs, `question_takes_the_proposition`
+  beside them, and `board._question_block` turns them (its comment says so).
+- **The recommendation line (finding 4).** `views._the_side_bought` places
+  the side a recommendation buys once: its question's words when the side
+  bought is the one they name, else `language.phrase_of_the_other_side` (the
+  other spelling through the one place, `subjects.other_side_spelling`), with
+  that side's number and what it costs (`views._cost_of_the_side_bought`,
+  `recommend._cost_of`'s orientation), turned as the card turns them so the
+  line and the card round a half-cent one way (first built rounded to four
+  places, nine lines of the copy rounded a half-cent otherwise than their
+  cards; found by the gate's check on the copy, fixed). `language.recommendation_line`
+  takes `words` and says "... and it is worth +X¢", never "the yes side" or
+  "the other side". The line carries `side_words`, `fair_value` and `price`.
+- **My day (finding 6).** Each board block carries `named_club`
+  (`language.club_named`: by `side_flips`, the words' own flip; in
+  `audit.SIDE_ALLOWLIST` with its date), and `board._my_day` wears that club.
+  A total names no club and wears the home club as the game's mark, as it
+  did (the render below).
+- **From the sweep, two fixes.** THE PAYOUT FLOOR folds by what the side
+  bought pays (`views._today_block`): it read the proposition's payout, so a
+  no-side pick was folded, or left out of the fold, on the other side's
+  payout, and the day strip counted "N of them below your floor" by it -- an
+  away +1.5 bought at 70¢ pays 1.43x and was held to the home -1.5's 3.33x.
+  A MONEYLINE "LOSE" WITH NO OPPONENT was said "PHI to win" by
+  `language.phrase` and `tile_line` (the chance clause beside it said "PHI
+  loses"): both ask `side_flips` now, "PHI to lose". Every card on the
+  record carries an opponent, so nothing drawn moved. *(CORRECTED BY ITS
+  PROVER: a Results row -- `views.history` -- carries no opponent, and the
+  Results table drew 403 moneyline "lose" rows as "<club> to win"; this fix
+  is what mends them. See THE PROVER below.)*
+- **The gate.** `audit.pick_side_faults` works each out again from the
+  payload: the payout of the price a Today card states turned by its own
+  `question_takes_the_proposition`, and its payout words; for each
+  recommendation line, the side it buys from its question's Today card (the
+  proposition's number and price, and which side the words name), that
+  side's words, number and cost, no "the yes side / the other side", and the
+  fold by what it pays; for each My day chip, the club its forecast's stored
+  side names through `subjects.side_taken` and the game's two clubs (never
+  the builder's `club_named`), and the row's line words.
+  `audit.check_every_pick_names_its_side` raises, called in gate step 2 on
+  every sport's slate (the record's copy). Its fixtures
+  (`PICK_SIDE_FIXTURE_GOOD`, the four `PICK_SIDE_FIXTURES_AS_RELEASED`) are
+  held at import.
+- **Tests:** `tests/test_pick_names_its_side.py`, 10, each failing on
+  401d059's package (run there with this module copied in): the turned
+  payout (and the released shape named), a card naming the proposition keeps
+  its payout, the line on the words' side (57¢ / 52¢, BBB), the line on the
+  other side (AAA at 30¢, 43¢), the line's own words, My day on both no sides
+  and a yes side and a total, the floor, the moneyline with no opponent, the
+  other side through the one place, and the gate making the call.
+  `test_recommend.py::test_the_card_the_line_sentence_and_the_pregame_figure_
+  read_one_number` hands the line a real card and asserts it names AAA, the
+  side the corrected 54% buys; `::test_the_words_are_plain_and_recommend_
+  without_tipping` takes `words`.
+- **Plantings** (`tools/guards/plant.py`, in `main()` and in
+  `tests/test_guards.py`'s list; `LAW_THE_PICK_NAMES_ITS_SIDE`):
+  `plant_a_payout_on_the_propositions_side` (and the fold on the
+  proposition's payout), `plant_a_recommendation_line_on_the_proposition`
+  (on the words' side and on the other side),
+  `plant_a_my_day_chip_wearing_the_subjects_club`.
+
+### EVERY NUMBER THE STEP MOVES *(both trees on the one verified copy, the clock held at 2026-09-30T08:18:10Z: every sport's current slate and all 20 slates that ever carried a price or an opening read, both forecasters, with each sport's history and digest; `measure_moves.py` -> `m_head.json` (401d059), `m_fix.json`; `flatten_diff.py` -> `moves.json`)*
+
+1,179,547 figures compared, 5,625 moved, no errors either side. Every moved
+figure is one of:
+
+- **A turned card's `payout` and `payout_words`**: 146 Today cards (MLB 104,
+  NFL 25, NCAAF 14, NBA 3), each now the payout of the price it states --
+  e.g. rec 111's 2.062/"2.06x" -> 1.942/"1.94x", rec 104's "2.02x" -> "1.98x",
+  forecast 2493's "3.28x" -> "1.44x". Payload only: nothing draws them.
+- **The recommendation lines**: 87 lines' words (MLB 60, NFL 13, NCAAF 9, NBA
+  5), with their new `side_words`, `fair_value` and `price`. 70 name the
+  same side as before with that side's numbers (rec 111: "North Texas covers
+  -6.5 -- the model makes it 24¢, the venue is at 48¢, and the other side is
+  worth +22.5¢" -> "... 76¢, the venue is at 52¢, and it is worth +22.5¢");
+  17 now name the other side of their question's words, the side they buy:
+  forecasts 1819 (Washington -> Detroit -1.5), 2341 (Tampa Bay -> New York
+  -1.5), 2305, 2307, 2309, 2315, 2317, 2319, 2321, 2323, 2328, 2330, 2332
+  (NFL), 2484, 2502, 2744, 2808 (NCAAF) -- sixteen recommendations and one
+  page line with no stored recommendation (forecast 2321, "Tennessee covers
+  +3.5" -> "New York covers -3.5"). Payload only.
+- **`named_club`**, a new field on every board block (the rest of the 5,625).
+
+No figure the board draws moved (every row's and tile's chance, price,
+payout, size and edge are as they were); no fold moved (the day strip's
+counts are unchanged on all 50 payloads); no My day chip moved (no game pick
+on the record is taken). `pick_side_faults` names 893 faults on the 50
+payloads 401d059 builds and none on this tree's; `board_price_side_faults`,
+`board_count_faults` and `live_card_faults` are empty on both
+(`check_payloads.py`).
+
+### THE SWEEP: EVERY PLACE A PICK'S SIDE, PRICE, PROBABILITY OR SIZE IS STATED *(the payload `/api/week` builds, and the page where it draws it; read from the code and from the 50 payloads above)*
+
+- **The Today card** (payload; the board reads it): `question`, the chip
+  (`model_words`), `venue_words`, `price_words` -- the side the question
+  names, correct; `payout`, `payout_words` -- FIXED (finding 3); `price`,
+  `fair_value` -- the proposition's, the board's inputs beside
+  `question_takes_the_proposition`, stated under no words (left: turning
+  them on the card would have the board turn them twice); the edge and its
+  label -- the better side's edge, labelled "on the other side" where it is
+  (true, relative words); `size_words` -- the recommendation's size, under
+  the question's words: correct where the side bought is the words' side,
+  QUESTION 37 where it is not; the opening read (unpriced) -- finding 5,
+  the venue's main rung (step A's family); `pregame_words` on a live card --
+  placed (the wrong-side fix), at the venue's line on a rung-differs claim
+  (finding 2); `settled_words` -- the model's own number on its own side,
+  correct.
+- **The Today block's fold and the day strip's counts** ("N of them below
+  your floor", drawn) -- FIXED (the floor by what the side bought pays).
+- **The taken list** ("<question> · +X¢ when marked", payload): the
+  recommendation's edge at the tap under the question's words -- correct
+  where the side bought is the words' side, QUESTION 37 otherwise (no game
+  pick on the record is taken).
+- **The recommendation lines** (payload) -- FIXED (finding 4); a
+  rung-differs line names the side it buys at the QUESTION's line with the
+  venue line's numbers ("Howard covers +24.5 -- 89¢" for rec 89): finding 2,
+  step A.
+- **The board's rows and tiles** (drawn): the pick's words, chance, price,
+  payout and their tooltips -- the side the question names, turned once in
+  `board._question_block`, correct, and at the venue's line on a rung-differs
+  spread (finding 2, step A, out of this step's scope); `size_words`,
+  `edge_words` and the green outline -- the recommendation's: QUESTION 37
+  where it buys the other side of the words; the live row's pregame figure
+  -- placed; the settled verdict -- correct.
+- **My day** (drawn) -- FIXED (finding 6); a total's chip wears the home
+  club as the game's mark, its words naming no club (unchanged, and read in
+  the render).
+- **The other forecaster's rows on an open row** (drawn): `language.phrase`
+  and the stored number, placed by the one place -- correct.
+- **Combos** (drawn): the proposals -- finding 1, step B; the graded
+  packages -- each leg's number and price turned to the side the venue's leg
+  names (`views._leg_reading`), correct.
+- **The slate's cards** (payload): `phrase`, `shown_prob`, `rail_line`,
+  `side_word` -- the model's side, correct; the at-the-line sentence --
+  names its own contract (the proposition at the venue's line) with its own
+  numbers, correct apart from question 36's sign on an away contract;
+  `priced_line` -- the blind and priced numbers against a market snapshot
+  oriented to the model's side (`lines.snapshot_prediction`), correct.
+- **The words** (`language`): `phrase` and `tile_line` on a moneyline no
+  side with no opponent -- FIXED; `chance_clause` already said it right.
+- **Results, history, the digest and the Record page**: the model's side and
+  number on a settled question, and counts; no price or size of a pick.
+  *(CORRECTED BY ITS PROVER: the Results table's words named the other side
+  on every moneyline "lose" row -- see THE PROVER below.)*
+
+### READINGS TAKEN *(the conservative default)*
+
+- **"The picked side"** is, for the Today card's payout, the side its
+  question names (the side every other number on the card states); for a
+  recommendation line, the side it buys; for My day, the side the taken
+  pick's words name.
+- **The payout floor** ("picks that clear the bar but pay less than this")
+  is read as what the side bought pays: the fold is of recommendations.
+- **The line's words keep the question's line**: a claim read at the venue's
+  line is step A's (question 36), and this step changes no line.
+
+### NOT SEEN, AND OPEN
+
+- **Question 37** (docs/REPAIR_STATE.md): a recommendation that buys the
+  OTHER side of its question's words is drawn on the board and the Today
+  card with its size, edge and outline under the model's own side's words
+  -- 16 on the record, all spreads, 14 of them rung-differs. Which contract
+  such a row headlines is not settled by the rulings; nothing built.
+- A taken game pick on the record: none, so My day's fix is seen on a
+  scratch world only (the render below), not on a live page.
+- SEEN, NOT THIS STEP'S: the reasoning pass's prose in the board's
+  tooltips trips the plain-words scan ("boost", "play") on the reasoning
+  pass's own slates of the copy -- NFL week 3 (the current slate) 24, week 2
+  2, NBA 15, seven MLB slates 1 to 6 each -- on 401d059 and on this tree
+  alike; the gate reads the statistical model's slates only. Not a number
+  on a pick.
+
+### THE RENDER *(a scratch world -- no game pick on the record is taken -- served by the test server on a free local port with a dummy token, never the live app on 8848; Chromium at 1100px and 390px; `scratchpad/picknum/C/render_myday.py`, `render/`)*
+
+Four taken questions: PHI -3.5 "not_cover", PHI moneyline "lose", NYG -7.5
+"cover", and the DAL at PHI total "under". On 401d059 the chips read "PHI ·
+DAL +3.5", "PHI · DAL TO WIN", "PHI · UNDER 44.5 TOTAL", "NYG · NYG -7.5"; on
+this tree "DAL · DAL +3.5" and "DAL · DAL TO WIN" in Dallas's own colour, the
+total and New York's as they were. Every chip 44px tall, no page error, no
+sideways scroll at either width; the words read.
+
+### PROVED *(`scratchpad/picknum/C/`)*
+
+- The three plantings, run alone by this tree's `plant.py` against the `git
+  archive` of 401d059 (`head/`, `run_plantings.py` -> `escape_on_head.txt`):
+  all three ESCAPE -- "the shipped card says 2.062 and '2.06x' where BBB to
+  win pays 1.942 | the shipped card is not folded under the 2.0x floor ... |
+  the gate has no check that a pick names its own side"; "at 0.485: the
+  shipped line reads 'BBB to win -- the model makes it 43¢, the venue is at
+  48¢, and the other side is worth +3.5¢ ...' | at 0.3: ... 'and the yes side
+  is worth +11.0¢' ..."; "the shipped chips wear ['PHI'] beside ['DAL +3.5',
+  'DAL to win']" -- and all three are CAUGHT on this tree
+  (`caught_on_fix.txt`).
+- `tests/test_pick_names_its_side.py` on 401d059's package: 10 of 10 fail.
+- The one copy of the record was deleted, with its -wal and -shm, at
+  2026-09-30T08:53:59Z. It was only read (`db.read_only`); the render used
+  scratch worlds. No network, no real token, the live app never contacted,
+  nothing written to the record.
+- `plant.py` whole: 390/390 caught (387 and these three), "Every law has a
+  guard, and every guard has now fired at least once", exit 0
+  (`plant_all.txt`; again on the tree as left, `plant_all_final.txt`). The
+  full suite, a dummy non-secret token, TMP/TEMP at their defaults, on the
+  tree as left: 2240 passed, 4 skipped, exit 0 (`suite.txt`; 2230 and this
+  module's 10).
+
+### THE PROVER *(2026-09-30, alone in the worktree; ONE verified copy of the record through `rebuild.verified_backup` at 2026-09-30T09:36:00Z -- 1,092,984,832 bytes, integrity ok, 64 tables, none mismatched -- read with `db.read_only`, except where the test server took its sign-in rows and the render's one tap; deleted after, below; scripts and outputs in `scratchpad/picknum/C/prover/`)*
+
+**The builder's claims, checked on the copy.** HEAD (401d059, a `git
+archive`) and this tree each built the 50 payloads again (every sport's
+current slate and the 20 slates that ever carried a price or an opening read,
+both forecasters, the clock held at the copy's instant; `measure_moves.py`):
+`pick_side_faults` 893 faults on HEAD's and none on the builder's tree, the
+board's other checks empty on both, and every moved figure of the builder's
+list (the turned payouts, the 87 lines, `named_club`) moved as listed; the
+three plantings escape on HEAD and are caught on the tree; its ten tests fail
+on HEAD. One claim was wrong (next).
+
+**FOUND AND FIXED: THE RESULTS TABLE NAMED THE OTHER SIDE ON EVERY "LOSE"
+ROW.** `views.history` -- the Results page's table, drawn as "Prediction |
+Date | Week | Model | Market then | Tier | Result", and the reasoning pass's
+prompt list -- builds each row with no opponent, so `language.phrase` could
+not restate a no side as the other club, and its moneyline branch then said
+the SUBJECT "to win": "KC to win · 52.0% · LOSS" for a pick of KC to LOSE at
+52% (KC won, the pick lost), "Camila Reynoso to win · 70.3% · WIN" for her to
+lose (she lost). On the copy (`probe_history.py`), 403 of 3,434 rows, every
+moneyline "lose" row the record holds, in every sport: NFL 30, MLB 172, NBA
+33, NCAAF 61, UFC 107 -- on every release since the table was built. The
+sweep's fix 2 (said as asked, `side_flips`) mends every one ("KC to lose",
+"Camila Reynoso to lose"); the builder recorded it as moving nothing drawn
+("every card carries an opponent"), measured before that fix was made. Now
+HELD: `audit.pick_side_faults` reads a history payload's rows (a row with no
+opponent is said as asked: a moneyline "to win" / "to lose", a spread
+"covers" / "does not cover", a total "over" / "under", each by its stored side
+through `subjects.side_taken`), gate step 2 hands it each sport's latest 500
+rows ("every Results row names the side its number is for"), and
+`plant_a_results_row_naming_the_other_side` plants it. Spreads and totals were
+said as asked already ("KC does not cover -1.5", "under 9.5 total runs").
+
+**FOUND AND FIXED: THE EDGE FIGURE'S SIDE.** The edge figure is the better
+side's (`recommend.side_for`), and the Today card labels it "on the other
+side" where that is not the side its question names -- reading `edge_side`,
+which is None when neither side clears the fee. So a watched card whose
+figure was the OTHER side's was labelled as the question's own, and the
+board's tile, which draws the figure where the price is (`q.edge_words ||
+q.price_words`), drew it bare in every case. On the copy
+(`edges_count.py`): 10 cards -- MLB 1296, 1560, 2344, 2570, 2594, 2972, 2992,
+3065 (final; 3065 showed "+0.6¢" where its own side was worth -4.56¢), NFL
+2075 (final) and NBA 3166, upcoming, drawn on the reasoning pass's board:
+"San Antonio to win · 54% · -1.5¢", San Antonio's own -2.5¢. BUILT:
+`side_for` returns `better_side` (the figure's side, with or without a side
+chosen), `for_predictions` carries it as `edge_cents_side` beside
+`edge_side` (unchanged: no side, no return, `test_recommend`'s own test
+holds), `views._edge_figure_side` reads it for the label, the quiet line and
+the card's new `edge_on_the_other_side`, and `language.board_edge_words`
+puts "on the other side" after the tile's figure -- on a moneyline or total
+row. A SPREAD TILE KEEPS ITS BARE FIGURE: a spread claim is read at the
+venue's line, often not the question's (finding 2), so "the other side" of
+the question's words would name another contract again; how a spread row
+draws a priced number is step A's (question 36). Held by the same check (the
+figure's side worked out again from the card's own number and price, each
+side by `recommend.edge_cents`, a tie within the rounding naming neither;
+the card's label, and a non-spread tile's words) and planted
+(`plant_an_edge_on_the_other_side_drawn_as_the_questions`).
+
+**EVERY NUMBER THE STEP MOVES, WITH ITS PROVER'S FIXES** *(HEAD against this
+tree on the one copy, after the render's tap; `m_head2.json`, `m_fix2.json`,
+`moves2.json`)*: 7,228 of 1,180,857 figures -- the builder's list, and: 300
+Results rows' words in each sport's latest 500 (the table's first pages; 403
+on the whole record); the edge label of the 10 cards above (13 figures:
+three of the cards are on two slates each); forecast 3166's tile and its row's pick,
+"-1.5¢" -> "-1.5¢ on the other side" (the one drawn board figure that moved);
+`edge_on_the_other_side` on every card (new); and rec 111's My day chip --
+the prover TAPPED rec 111 on the copy (a scratch copy, deleted after; no game
+pick on the record is taken) to draw My day from the record's own rows: HEAD
+wears TLSA in Tulsa's blue beside "North Texas -6.5", this tree UNT in North
+Texas's green. `pick_side_faults`: 909 faults on HEAD's 50 payloads (366 a
+payout, 527 a recommendation line, 12 an edge's label, 2 a tile's edge, 2 My
+day -- rec 111's chip, on its two slates) and 300 on its Results rows; none
+on this tree's.
+
+**THE RENDER** *(the copy served by the test server on a free local port,
+this tree's app, a dummy non-secret token, never the live app on 8848;
+Chromium at 1300px and 390px; `render.py`, `render_results.py`,
+`render_fix/`, and `render_head/` for the Results rows on HEAD's code)*: My
+day's chip "UNT · NORTH TEXAS -6.5 · UPCOMING · 185/100" in North Texas's
+green, 44px tall at both widths; rec 111's row and open tiles (the tile's
+"+22.5¢" is North Texas at the venue's +1.5: finding 2, step A); NBA 3166's
+tile "54% · -1.5¢ on the other side · 1.83x", wrapping inside the tile at
+390px; the Results rows "KC to lose · 52.0% · LOSS" and "Camila Reynoso to
+lose · 70.3% · WIN" (HEAD: "KC to win", "Camila Reynoso to win" beside the
+same numbers). No page error, no sideways scroll at either width. Read: the
+words and numbers agree on every changed element; nothing is hard to read.
+
+**PROVED.** The five plantings (`run_plantings.py`), run by this tree's
+`plant.py` against the `git archive` of 401d059: all five ESCAPE -- the
+builder's three as before, "the shipped Results row of the moneyline says
+'PHI to win' where its side reads 'PHI to lose'", "the shipped card labels
+'-1.0¢' 'Edge after fees' under 'BBB to win', where -1.0c is AAA's and BBB's
+own is -3.0c | the shipped tile draws '-1.0¢'" -- and all five are CAUGHT
+here (`escape_on_head.txt`, `caught_on_fix.txt`).
+`tests/test_pick_names_its_side.py`, 15 (the builder's 10 and five more):
+all 15 fail on 401d059. Gate step 2's touched rows, dry-run with
+GRIDIRON_VERIFYING set on the copy (`step2_dry.py`, not verify.py whole): 30
+of 30 pass, the two pick-side rows among them; `prose_reaching_the_raw_side()`
+is empty. `plant.py` whole: 392/392 caught (the builder's 390 and these two),
+"Every law has a guard, and every guard has now fired at least once", exit 0
+(`plant_all.txt`). The full suite, a dummy non-secret token, TMP/TEMP at
+their defaults: 2245 passed, 4 skipped, exit 0 (`suite.txt`; the builder's
+2240 and the five new tests); the only line under "tests that reached the
+network" is the network guard's own self-test. The one copy of the record
+was deleted at 2026-09-30T10:44:20Z (it had no -wal or -shm left); it was
+read with `db.read_only`, and written only by the test server serving it
+(sign-in rows, and the one tap on rec 111 for the render). Nothing was
+written to the record; no network, no real token, the live app never
+contacted, nothing run from the main checkout.
+
+**SEEN, NOT FIXED (named for the queue; none is this step's to build):**
+- A watched row's RED OUTLINE ("costs the operator after fees") is decided by
+  the better side's figure: where the question's own side costs and the other
+  side's figure is above nothing but below the fee's bar, the row wears none
+  -- MLB 1540 ("New York covers +1.5", +1.3¢ on the other side, its own
+  -5.3¢) and 3065 (+0.6¢, its own -4.56¢), both final. A signal, not a
+  number; question 37's family (the outline).
+- Question 37 as its prover's note says: the size, the green outline and
+  the headline of a recommendation that buys the other side of its words, and
+  every spread tile's edge (step A).
+- The no-side SIZE above a market's gate is sized on the yes side's number
+  and price (`recommend.size_for`) -- question 10, already queued; every
+  market is below its gate or not measured ahead, so every size is a flat
+  unit today.
+- rec 111's tile edge "+22.5¢" and every rung-differs spread figure: finding
+  2, step A.
