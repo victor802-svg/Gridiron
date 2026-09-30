@@ -2,6 +2,19 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **THE ORDER NOW (30 Sep, docs/briefs/2026-09-30-rulings.md; wins over
+  every order below):** the NCAAF wrong-side fix (rec 111; own commit and
+  gate; released before 2026-10-02T01:00Z) -> item 1, the close window (the
+  near-start run keeps every game until its start; measure NFL/NCAAF
+  first; released before 2026-10-15) -> Q35 (starts as instants; the 18
+  voided; the final pass's schedule moved before the start) -> Q33 + Q34
+  (UFC outlook on cards still to come; every UFC count per card) -> Q25/Q26
+  released as planned (`q25-held` 3c36861, `q26-held` 72c90bd, set aside
+  2026-09-30 03:33Z; `repair` returned to bd90dc3) -> Q5 -> Q10.
+  **QUEUE RULE AMENDED:** anything that could show the operator a wrong
+  number on a pick (side, price, probability, size) joins the queue first,
+  display or not.
+
 - **THE ORDER NOW (29 Sep, second set, ~05:40Z;
   docs/briefs/2026-09-29-rulings-second-set.md; wins over every order
   below):** **Q32** (corrections activate through the model fits' gate:
