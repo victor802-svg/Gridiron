@@ -120,6 +120,9 @@ def test_the_rung_is_the_one_priced_nearest_a_coin_flip(tmp_path):
     # an away-side strike answers the other question, so its price is complemented
     away = at_the_line.rung_for([rows[2]])
     assert away["price"] == pytest.approx(0.31) and away["implied"] == pytest.approx(0.69)
+    # ...and its line is the one it sells: the home side's +6.5 (operator
+    # question 36 (i), 2026-09-30), where the released reading said -6.5
+    assert away["line"] == 6.5 and best["line"] == -2.5
     # no two-sided quote: the last trade, named as such
     _quote(conn, ticker="d", line=-3.5, yes_bid=None, yes_ask=None, last_price=0.49,
            fetched_utc="2026-09-07T06:00:00Z")

@@ -1665,6 +1665,15 @@ def _opening_price(conn: sqlite3.Connection | None, game_id: str | None,
 
     Returns None when the venue has not listed the market, which is a
     different fact from not having been asked and is said in different words.
+
+    AND THE LINE IT READ (operator question 36 (i), ruled 2026-09-30): the
+    rung is the venue's contract priced nearest an even chance, and `line`
+    is the line that contract sells, read in the one place
+    (`at_the_line.home_view_line`, through `rung_for`) -- an away contract
+    "<away> wins by over s" is the home side's +s, never -s. The card draws
+    the price alone today; which line it names beside it is pick-number step
+    A's (the opening read's rung is the venue's main rung, not always the
+    question's).
     """
     if conn is None or not game_id or market not in ("spread", "total", "moneyline"):
         return None
@@ -1693,7 +1702,8 @@ def _opening_price(conn: sqlite3.Connection | None, game_id: str | None,
     price = 1.0 - rung["implied"] if flip else rung["implied"]
     if not 0 < price < 1:
         return None
-    return {"price": price, "payout": _payout_for(price), "read_utc": latest}
+    return {"price": price, "payout": _payout_for(price), "read_utc": latest,
+            "line": rung["line"]}
 
 
 def _pregame_probability(conn, entry: dict, card: dict) -> float | None:

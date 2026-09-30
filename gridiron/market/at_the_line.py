@@ -132,11 +132,21 @@ def implied_of(quote: sqlite3.Row) -> tuple[float, float, str] | None:
 def rung_for(quotes: list[sqlite3.Row]) -> dict | None:
     """The venue's own line out of one look at one ladder.
 
-    Returns the quote, the price the venue showed, and that price read as a
-    probability for OUR fixed proposition -- the home side, or the over. A
-    strike quoted from the away side answers the complementary question, so
-    its price is complemented too; the stored line is already written from the
-    home side's view, which is what makes that a subtraction and not a guess.
+    Returns the quote, the price the venue showed, that price read as a
+    probability for OUR fixed proposition -- the home side, or the over --
+    and the line that proposition is at (`line`, from the one place,
+    `home_view_line`). A strike quoted from the away side answers the
+    complementary question, so its price is complemented too; the stored
+    line is already written from the home side's view, which is what makes
+    that a subtraction and not a guess.
+
+    THAT SENTENCE WAS TRUE ALL ALONG (operator question 36 (i), ruled
+    2026-09-30). `home_view_line` said it was not, and negated an away row's
+    line, so from the first claim writer (2026-09-07) every claim priced off
+    an away contract stored the other sign from the price it carried. The
+    rung now carries its line, read in the one place, so the claim writer
+    and the opening read take the line and the price from the same contract
+    by the same rule.
     """
     best = None
     for quote in quotes:
@@ -149,27 +159,105 @@ def rung_for(quotes: list[sqlite3.Row]) -> dict | None:
             best = {"quote": quote, "price": round(price, 6),
                     "implied": round(implied, 6), "basis": basis,
                     "distance": distance}
+    if best is not None:
+        best["line"] = home_view_line(best["quote"])
     return best
 
 
+class UnreadContract(ValueError):
+    """A venue contract whose side the one place has no rule for -- never
+    read as either side (the schema admits no other, so none can be stored)."""
+
+
+#: THE SIDES A VENUE CONTRACT CAN NAME, and what its stored number is to the
+#: claim's fixed proposition (operator question 36 (i), ruled 2026-09-30):
+#: the same number in every case -- `kalshi.parse_markets` stores each
+#: contract at the line it sells, read from the home side or the over.
+CONTRACT_SIDES = {
+    # "<home> wins by over s": the home side covering -s, stored at -s
+    "home": "the home side covering the stored line (-s)",
+    # "<away> wins by over s": the complement of the home side covering +s,
+    # stored at +s; `implied_of` complements its price
+    "away": "the home side covering the stored line (+s), its price complemented",
+    "over": "the over at the stored number",
+    "under": "the over at the stored number, its price complemented",
+}
+
+
 def home_view_line(quote) -> float | None:
-    """The venue's number as the CLAIM's fixed proposition sees it.
+    """The line a venue contract SELLS, as the claim's fixed proposition
+    reads it: the home side covering it for a spread, the over for a total.
+    THE ONE PLACE every reader asks (operator question 36 (i), ruled
+    2026-09-30: "the writer -- read an away contract at +s (the stored
+    number as it is) from the release"): the claim writer (through
+    `rung_for`, which carries it beside the price), the near-start reader
+    (`lines.refresh_venue_ladder`, which writes its claims through the claim
+    writer), the opening read (`views._opening_price`, through `rung_for`)
+    and drift's ladder matching (`quotes_selling`).
 
-    A LATENT SIGN ERROR, FOUND BEFORE THE FIRST CLAIM WAS EVER WRITTEN.
-    `rung_for` says "the stored line is already written from the home side's
-    view", and it is not: `kalshi.parse_markets` stores the home strike for a
-    home row and the AWAY strike for an away row, which are opposite numbers.
-    The price was already being complemented for an away row; the line was
-    not, so a claim built from one would have integrated the distribution at
-    +3.5 while pricing -3.5.
+    WHAT THE VENUE SELLS. Every spread contract is "<team> wins by over <s>"
+    -- the venue's own words, in the record's cached payloads: "North Texas
+    wins by over 1.5 points" (UNT at TLSA), "Toronto wins by over 1.5 runs"
+    (TOR at BAL), "SEA Seahawks wins by over 7.5 points" (SEA at WAS).
+    `kalshi.parse_markets` stores a home contract at -s and an away one at
+    +s, and `implied_of` complements an away contract's price. So:
 
-    Nothing had ever been written through this path, so nothing in the record
-    is wrong. It would have been wrong on the first row.
+      * "<home> wins by over s" IS the home side covering -s: its line is -s
+        and its price is the proposition's;
+      * "<away> wins by over s" is the complement of the home side covering
+        +s (the away side does not win by more than s = the home side covers
+        +s): its line is +s -- the number `parse_markets` already stored --
+        and its complemented price is the proposition's at +s.
+
+    So the stored number is read as it is, whichever side the contract
+    names (`CONTRACT_SIDES`), and a side this has no rule for is refused by
+    name (`UnreadContract`), never read as either. The venue's words, the
+    storage and this reading are held together by
+    `audit.check_every_venue_contract_is_read_at_the_line_it_sells`, which
+    runs `parse_markets` and every reader on the venue's own contracts and
+    compares each with the line worked out by hand from its words.
+
+    WHAT THIS REPLACED (from the first claim writer, 25d83b8, 2026-09-07,
+    until 2026-09-30). It negated an away row -- "`kalshi.parse_markets`
+    stores the home strike for a home row and the AWAY strike for an away
+    row, which are opposite numbers" -- which misread the storage: +s on an
+    away row is already the home side's line of the complemented
+    proposition. So every claim priced off an away contract stored -s: its
+    model number was the forecast read at -s and its price was about +s.
+    Measured on one verified copy of the record (made 2026-09-30T16:04:46Z;
+    FOLLOWUPS, "An away contract is read at the line it sells"): 269 of the
+    567 spread claims (MLB 139, NFL 90, NCAAF 40) and 54 of the 113
+    recommendations; the released reading priced "the home side covers -s"
+    twice at each of the 8,286 strikes the venue listed from both sides in
+    one look, the two prices 41.18 points apart on average and the same way
+    in 99.96% -- one proposition read twice would agree within the spread
+    (32 did). Read here, all 8,286 pairs sit on one rising curve within the
+    spread, and no look's whole ladder falls by more than the spread (759 of
+    the 854 looks quoting both sides did on the released reading). Nothing
+    stored changes (LAW 3): what happens to the 269 claims and 54
+    recommendations is question 36 (ii), not ruled.
+
+    A contract with no line (a winner market) has none: None.
     """
     if quote["line"] is None:
         return None
-    return (float(quote["line"]) if quote["yes_side"] in ("home", "over")
-            else -float(quote["line"]))
+    if quote["yes_side"] not in CONTRACT_SIDES:
+        raise UnreadContract(
+            f"a venue contract names side {quote['yes_side']!r}, which the one "
+            f"place that reads a contract's line has no rule for; it is read "
+            f"as neither side")
+    return float(quote["line"])
+
+
+def quotes_selling(ladder, line) -> list:
+    """The contracts of one look that sell the claim's fixed proposition at
+    `line`, read in the one place (`home_view_line`): at most one per line on
+    a spread ladder -- the home contract at a line below zero, the away
+    contract above it -- never a home and an away contract at one strike
+    taken as one (operator question 36 (i), 2026-09-30; drift's ladder
+    matching did that until then). A winner market's contracts have no line,
+    and the same None matches them all, as it always has."""
+    return [q for q in ladder if home_view_line(q) == line]
 
 
 #: The claim table as it stands after AT_THE_PRICE. A database built before
@@ -545,7 +633,17 @@ def evaluate(conn: sqlite3.Connection,
             if pred["kickoff_utc"] and quote["fetched_utc"] >= pred["kickoff_utc"]:
                 counts_out["quote_after_first_pitch"] += 1
                 continue
-            home_line = home_view_line(quote)
+            # THE LINE THE CONTRACT SELLS, from the one place, carried by the
+            # rung beside its price (operator question 36 (i), 2026-09-30):
+            # an away contract "<away> wins by over s" is the home side's +s,
+            # the line its complemented price is about. It was read at -s
+            # until then (`home_view_line`). A look whose rung is another
+            # line than the question's is read from the frozen distribution
+            # at that line, or refused where there is none -- a baseball
+            # forecast carries none, so a run-line look whose rung is an away
+            # contract (+1.5, where every run line is asked at -1.5) writes
+            # no claim: the writer's ordinary `no_distribution` refusal.
+            home_line = best["line"]
             classified = shapes.claim_shape(pred, home_line,
                                             quantity=quote["quantity"])
             if classified["shape"] is None:

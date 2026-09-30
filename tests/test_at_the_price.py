@@ -190,17 +190,30 @@ def test_an_unclassifiable_question_is_refused_by_name():
 # --- the venue's number, from the claim's side -------------------------------
 
 def test_the_venue_line_is_read_from_the_home_side():
-    """A LATENT SIGN ERROR, found before the first claim was written.
+    """AN AWAY CONTRACT IS READ AT THE LINE IT SELLS (operator question 36
+    (i), ruled 2026-09-30).
 
-    `kalshi.parse_markets` stores the home strike on a home row and the AWAY
-    strike on an away row -- opposite numbers. `rung_for` complemented the
-    price for an away row and left the line alone, so a claim from one would
-    have integrated the distribution at +3.5 while pricing -3.5.
+    This test asserted the negation from 2026-09-07 to 2026-09-30, on the
+    reading that "`kalshi.parse_markets` stores the home strike on a home row
+    and the AWAY strike on an away row -- opposite numbers", so an away row's
+    +3.5 had to become -3.5. That reading was the error. The venue sells
+    "<team> wins by over <s>": a home row "<home> wins by over 3.5" is the
+    home side covering -3.5, and an away row "<away> wins by over 3.5" is the
+    complement of the home side covering +3.5 -- `parse_markets` stores it at
+    +3.5, already the home side's line, and `implied_of` complements its
+    price. Negating it put every claim priced off an away contract at -3.5
+    with a price about +3.5 (269 claims on the record, 54 recommendations;
+    the two contracts at one strike read as one proposition 41 points apart
+    on average, 8,286 pairs). The line is read from the home side's view
+    still -- a home contract at -s, an away one at +s, never one for the
+    other.
     """
     home = _row({"line": -3.5, "yes_side": "home"})
     away = _row({"line": 3.5, "yes_side": "away"})
     assert atl.home_view_line(home) == -3.5
-    assert atl.home_view_line(away) == -3.5
+    assert atl.home_view_line(away) == 3.5, (
+        "'<away> wins by over 3.5' sells the home side at +3.5")
+    assert atl.home_view_line(_row({"line": 44.5, "yes_side": "over"})) == 44.5
     assert atl.home_view_line(_row({"line": None, "yes_side": "home"})) is None
 
 

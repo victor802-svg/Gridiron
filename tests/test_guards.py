@@ -726,6 +726,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_combo_leg_named_on_the_side_it_does_not_buy",
         # ITS PROVER (2026-09-30): each leg names the game it is in.
         "plant_a_combo_leg_that_names_no_game",
+        # OPERATOR QUESTION 36 (i) (ruled 2026-09-30): an away contract is
+        # read at the line it sells, and drift never matches across signs.
+        "plant_an_away_contract_read_at_minus_s",
+        "plant_a_ladder_matched_across_the_two_signs_in_drift",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

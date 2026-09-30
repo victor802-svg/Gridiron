@@ -7706,6 +7706,465 @@ def check_claims_price_at_the_line(conn=None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# A VENUE CONTRACT IS READ AT THE LINE IT SELLS (operator question 36 (i),
+# ruled 2026-09-30: "the writer -- read an away contract at +s (the stored
+# number as it is) from the release, with a planting that escapes on the
+# released code; a baseball look at an away contract then becomes the
+# writer's ordinary refusal")
+# ---------------------------------------------------------------------------
+#
+# Every venue spread contract is "<team> wins by over <s>". A home contract
+# is the home side covering -s; an away contract is the complement of the
+# home side covering +s, and `kalshi.parse_markets` stores it at +s, which is
+# already that line. From the first claim writer (2026-09-07) until this
+# ruling, `at_the_line.home_view_line` negated an away row, so every claim
+# priced off an away contract stored -s -- the model's number at -s beside a
+# price about +s (269 claims, 54 recommendations; question 36) -- and drift
+# matched a claim's opening ladder across the two signs.
+#
+# CHECKED BY FIXTURES, NOT ON THE RECORD (2026-09-30; the task's words: a
+# gate check that reads the record must not fail on the 269 stored claims,
+# which are question 36 (ii)'s, not ruled). A check reading the record's
+# claims would fail on the 269 as written; and one held to "claims written
+# from the release" would pass vacuously until the next away rung, since
+# nothing written after 2026-09-29T00:05Z is off an away contract. So the
+# gate runs the SHIPPED readers on a scratch world made from the venue's own
+# contracts, cut from the record's cached payloads, asked the record's own
+# questions on those games, and compares every reader's answer with the line
+# worked out BY HAND from the contract's words -- never by the code under
+# test: `kalshi.parse_markets` and the one place, the rung, the claim writer
+# (and the near-start reader, which writes claims through it alone), the
+# opening read, and drift's ladder matching.
+
+#: THE VENUE'S OWN CONTRACTS, cut from the record's cached payloads (read
+#: 2026-09-30 on one verified copy of the record, made 16:04:46Z): per game,
+#: the teams, the event, when the payload was cached, and for each contract
+#: its ticker's last part, the venue's words, its strike, its yes bid and ask
+#: as cached, and THE LINE IT SELLS from the home side's view, worked out by
+#: hand from the words: "<home> wins by over s" is the home side covering -s;
+#: "<away> wins by over s" is the complement of the home side covering +s.
+#: (Four contracts of each ladder: the rung the record priced its claims off,
+#: and three beside it.)
+#:
+#: AND THE QUESTIONS ASKED OF THEM: the record's own statistical final-pass
+#: forecast on each game -- its rung, its stored side and number, and its
+#: frozen margin distribution as stored (a baseball forecast carries none) --
+#: with `home_covers`, the chance the home side covers the question's own
+#: rung, turned by hand from the stored side. On SEA at WAS one more,
+#: CONSTRUCTED (the record asked that game at +7.5 alone): the same
+#: distribution asked at -1.5, so a rung the question did not ask, sold by an
+#: away contract, is read from the distribution at the line it sells.
+VENUE_SPREAD_CONTRACTS_AS_SOLD: tuple = (
+    {"sport": "cfb", "game": "q36_UNT_TLSA", "home": "TLSA", "away": "UNT",
+     "event": "KXNCAAFSPREAD-26OCT01UNTTLSA", "cached": "2026-09-29T13:12:41Z",
+     "contracts": (
+         ("TLSA2", "Tulsa wins by over 1.5 points", 1.5, 0.48, 0.49, -1.5),
+         ("UNT2", "North Texas wins by over 1.5 points", 1.5, 0.45, 0.46, 1.5),
+         ("TLSA7", "Tulsa wins by over 6.5 points", 6.5, 0.30, 0.31, -6.5),
+         ("UNT7", "North Texas wins by over 6.5 points", 6.5, 0.28, 0.29, 6.5),
+     ),
+     "questions": (
+         {"from": "the record's forecast 3147", "pass": "final", "asked": 6.5,
+          "side": "fail to cover", "prob": 0.626036, "home_covers": 0.373964,
+          "distribution": (-10.846, 17.46)},
+     )},
+    {"sport": "mlb", "game": "q36_TOR_BAL", "home": "BAL", "away": "TOR",
+     "event": "KXMLBSPREAD-26SEP211835TORBAL", "cached": "2026-09-21T22:11:55Z",
+     "contracts": (
+         ("BAL2", "Baltimore wins by over 1.5 runs", 1.5, 0.32, 0.33, -1.5),
+         ("TOR2", "Toronto wins by over 1.5 runs", 1.5, 0.36, 0.37, 1.5),
+         ("BAL3", "Baltimore wins by over 2.5 runs", 2.5, 0.22, 0.23, -2.5),
+         ("TOR3", "Toronto wins by over 2.5 runs", 2.5, 0.26, 0.27, 2.5),
+     ),
+     "questions": (
+         {"from": "the record's forecast 1811", "pass": "final", "asked": -1.5,
+          "side": "not_cover", "prob": 0.663352, "home_covers": 0.336648,
+          "distribution": None},
+     )},
+    {"sport": "nfl", "game": "q36_SEA_WAS", "home": "WAS", "away": "SEA",
+     "event": "KXNFLSPREAD-26SEP27SEAWAS", "cached": "2026-09-27T16:35:03Z",
+     "contracts": (
+         ("WAS2", "WAS Commanders wins by over 1.5 points", 1.5, 0.19, 0.20, -1.5),
+         ("SEA2", "SEA Seahawks wins by over 1.5 points", 1.5, 0.75, 0.76, 1.5),
+         ("WAS8", "WAS Commanders wins by over 7.5 points", 7.5, 0.07, 0.08, -7.5),
+         ("SEA8", "SEA Seahawks wins by over 7.5 points", 7.5, 0.52, 0.53, 7.5),
+     ),
+     "questions": (
+         {"from": "the record's forecast 2319", "pass": "final", "asked": 7.5,
+          "side": "cover", "prob": 0.548175, "home_covers": 0.548175,
+          "distribution": (-6.781, 13.54)},
+         {"from": "constructed: forecast 2319's distribution asked at -1.5",
+          "pass": "early", "asked": -1.5, "side": "cover", "prob": 0.40,
+          "home_covers": 0.40, "distribution": (-6.781, 13.54)},
+     )},
+)
+
+
+def venue_contract_payload(game: dict) -> dict:
+    """One fixture game's contracts as the venue's markets payload carries
+    them (the fields `kalshi.parse_markets` reads; the last price is the
+    bid, which no reader here prices from while a bid and ask stand)."""
+    return {"markets": [
+        {"ticker": f"{game['event']}-{suffix}", "event_ticker": game["event"],
+         "floor_strike": strike, "yes_sub_title": words,
+         "yes_bid_dollars": f"{bid:.4f}", "yes_ask_dollars": f"{ask:.4f}",
+         "last_price_dollars": f"{bid:.4f}", "volume_fp": "1000"}
+        for suffix, words, strike, bid, ask, _sold in game["contracts"]]}
+
+
+def _q36_sold(game: dict) -> dict:
+    """Each fixture contract's ticker -> (the line it sells, the price of its
+    own yes side, the chance that price gives the home side covering the
+    line it sells, the venue's words) -- from the fixture alone: a home
+    contract's mid is the proposition's; an away contract's is its
+    complement's."""
+    out = {}
+    for suffix, words, _strike, bid, ask, sold in game["contracts"]:
+        mid = (bid + ask) / 2
+        out[f"{game['event']}-{suffix}"] = (
+            sold, round(mid, 6), round(1 - mid if sold > 0 else mid, 6), words)
+    return out
+
+
+def _q36_rung(game: dict) -> str:
+    """The fixture contract priced nearest an even chance, by the fixture's
+    own numbers (the declared rung rule, `at_the_line.RUNG_CHOICE_RATIONALE`)."""
+    sold = _q36_sold(game)
+    return min(sold, key=lambda t: abs(sold[t][2] - 0.5))
+
+
+def _q36_expected(game: dict, question: dict) -> dict | None:
+    """The claim the writer should write for one fixture question off the
+    near-start look, worked out by hand, or None where it should refuse:
+    at the line the rung SELLS, with that contract's price; the model's
+    number is the question's own where that line is the question's rung,
+    the frozen distribution read at the line where it is another, and
+    nothing where it is another and no distribution was frozen."""
+    import math
+
+    ticker = _q36_rung(game)
+    line, price, chance, words = _q36_sold(game)[ticker]
+    out = {"ticker": ticker, "words": words, "line": line, "price": price,
+           "implied": chance}
+    if abs(line - question["asked"]) < 1e-9:
+        return dict(out, shape="rung_matched", model=question["home_covers"])
+    if question["distribution"] is None:
+        return None
+    mean, sd = question["distribution"]
+    return dict(out, shape="rung_differs_margin",
+                model=round(0.5 * (1.0 + math.erf((mean + line) / sd / math.sqrt(2.0))), 6))
+
+
+def _q36_world(conn) -> dict:
+    """The scratch world the check reads: each fixture game, each of its
+    questions as a statistical spread forecast on the home side, and an
+    opening look and a near-start look at its contracts as
+    `kalshi.parse_markets` stores them. Returns (game, pass) -> forecast id."""
+    from .market import kalshi
+
+    ids = {}
+    for game in VENUE_SPREAD_CONTRACTS_AS_SOLD:
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, ?, 2099, 1, 'REG', ?, ?,"
+            " '2099-01-01T00:00:00Z', 'scheduled', '2098-12-31')",
+            (game["game"], game["sport"], game["home"], game["away"]))
+        for question in game["questions"]:
+            factors = {"coverage": 1.0}
+            if question["distribution"] is not None:
+                mean, sd = question["distribution"]
+                factors["margin_distribution"] = {
+                    "quantity": "home_margin", "family": "normal", "mean": mean,
+                    "sd": sd, "declared": "2026-08-31T00:00:00Z",
+                    "written_blind": True}
+            cur = conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+                " factor_set_version, factors_json, reasoning) VALUES"
+                " ('2098-12-30T00:00:00Z', ?, ?, 'spread', ?, ?, ?, ?, 'statistical',"
+                " ?, 'fsQ36', ?, 'question 36 fixture')",
+                (game["sport"], game["game"], game["home"], question["asked"],
+                 question["prob"], question["side"], question["pass"],
+                 json.dumps(factors)))
+            ids[(game["game"], question["pass"])] = cur.lastrowid
+        quotes, _unread = kalshi.parse_markets(
+            game["sport"], "spread", {"home": game["home"], "away": game["away"]},
+            venue_contract_payload(game))
+        for kind, stamp in (("open", "2098-12-30T06:00:00Z"),
+                            ("near_start", "2098-12-31T22:00:00Z")):
+            for q in quotes:
+                conn.execute(
+                    "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                    " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                    " last_price, volume, fetched_utc, read_kind)"
+                    " VALUES ('kalshi', ?, ?, ?, ?, 'spread', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (q["ticker"], q["event_ticker"], game["sport"], game["game"],
+                     q["quantity"], q["line"], q["yes_side"], q["yes_bid"],
+                     q["yes_ask"], q["last_price"], q["volume"], stamp, kind))
+    conn.commit()
+    return ids
+
+
+def _q36_claim_writers() -> list[str]:
+    """Every function of the shipped package, outside this module's scratch
+    worlds, whose SQL inserts a claim -- as `file:function`, read from the
+    syntax tree."""
+    pattern = re.compile(r"INSERT\s+INTO\s+at_the_line_claims\b", re.I)
+    root = Path(__file__).resolve().parent
+    found = []
+    for path in sorted(root.rglob("*.py")):
+        if path.name == "audit.py" and path.parent == root:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if any(isinstance(n, ast.Constant) and isinstance(n.value, str)
+                   and pattern.search(n.value) for n in ast.walk(fn)):
+                found.append(f"{path.relative_to(root).as_posix()}:{fn.name}")
+    return sorted(set(found))
+
+
+def contract_line_faults() -> list[str]:
+    """Every reader that turns a venue spread contract into another line
+    than the one it sells, in words; [] when none does (operator question 36
+    (i), ruled 2026-09-30).
+
+    Asked of the shipped code on a scratch world made from the venue's own
+    contracts (`VENUE_SPREAD_CONTRACTS_AS_SOLD`), never of the record, and
+    compared with the lines worked out by hand from the venue's words:
+      * `kalshi.parse_markets` and the one place, `at_the_line.home_view_line`,
+        for every contract -- a contract STORED at another line or side than
+        its words sell named at `parse_markets`, and the one place named only
+        where it misreads a contract stored as its words sell (the prover,
+        2026-09-30: the one place reads the stored number as it is, so a
+        storage flip is not its fault); and `at_the_line.rung_for`'s line;
+      * the claim writer, `at_the_line.evaluate`: each fixture question's
+        claim at the line its rung sells, with that contract's price, and the
+        model's number for that line -- the question's own at its own rung,
+        the frozen distribution read at the line at another -- or refused
+        where it is another rung and no distribution was frozen (a baseball
+        run line off an away contract);
+      * the near-start reader, `lines.refresh_venue_ladder`: it writes its
+        claims through the claim writer (it calls `at_the_line.evaluate`, and
+        no function of the package but the claim writer inserts a claim) --
+        read from the source, because running it would ask the venue;
+      * the opening read, `views._opening_price`: the line and the price of
+        the rung it read;
+      * drift's ladder matching, `drift._pairs_of`: each claim beside the
+        opening read of the contract that sells its own line, never the other
+        sign's contract at the same strike.
+    """
+    from . import db as _db, drift, views
+    from .market import at_the_line, kalshi
+
+    faults: list[str] = []
+    sold: dict = {}
+    for game in VENUE_SPREAD_CONTRACTS_AS_SOLD:
+        sold.update(_q36_sold(game))
+
+    # THE STORAGE AND THE ONE PLACE, contract by contract.
+    for game in VENUE_SPREAD_CONTRACTS_AS_SOLD:
+        quotes, unread = kalshi.parse_markets(
+            game["sport"], "spread", {"home": game["home"], "away": game["away"]},
+            venue_contract_payload(game))
+        if unread or len(quotes) != len(game["contracts"]):
+            faults.append(f"kalshi.parse_markets: read {len(quotes)} of "
+                          f"{len(game['contracts'])} contracts of {game['event']} "
+                          f"(unread {unread})")
+        for q in quotes:
+            line, _price, _chance, words = sold[q["ticker"]]
+            # THE STORAGE FIRST (the prover, 2026-09-30). The ruling's words
+            # are "read an away contract at +s (the stored number as it is)",
+            # so the reading is only as right as what `parse_markets` stored:
+            # a contract stored at another line or side than its words sell is
+            # named there, and the one place -- which reads it as stored -- is
+            # not blamed for it. As first built this check named only the one
+            # place for an away contract stored at -s ("... stored at -1.5 on
+            # the away side is read at -1.5"), sending a reader to the
+            # function that was right.
+            side = "home" if line < 0 else "away"
+            if q["line"] != line or q["yes_side"] != side:
+                faults.append(
+                    f"kalshi.parse_markets: {words!r} ({q['ticker']}) is stored at "
+                    f"{q['line']!r} on the {q['yes_side']} side; its words sell the "
+                    f"home side ({game['home']}) at {line:+g}, from the {side} side")
+                continue
+            try:
+                got = at_the_line.home_view_line(q)
+            except Exception as exc:  # noqa: BLE001 -- named, never passed
+                got = f"refused ({type(exc).__name__}: {exc})"
+            if got != line:
+                faults.append(
+                    f"at_the_line.home_view_line: {words!r} ({q['ticker']}, "
+                    f"stored at {q['line']:+g} on the {q['yes_side']} side) is read "
+                    f"at {got!r}; it sells the home side ({game['home']}) at {line:+g}")
+
+    probe = _db.connect(":memory:")
+    try:
+        _db.init(probe)
+        ids = _q36_world(probe)
+
+        # THE RUNG, and the line it carries.
+        for game in VENUE_SPREAD_CONTRACTS_AS_SOLD:
+            ladder = probe.execute(
+                "SELECT * FROM venue_quotes WHERE game_id = ?"
+                "   AND read_kind = 'near_start'", (game["game"],)).fetchall()
+            rung = at_the_line.rung_for(list(ladder))
+            want = _q36_rung(game)
+            if rung is None or rung["quote"]["ticker"] != want:
+                faults.append(f"at_the_line.rung_for: {game['event']}'s rung is "
+                              f"{rung and rung['quote']['ticker']!r}, where the "
+                              f"contract priced nearest an even chance is {want}")
+                continue
+            line, _price, chance, words = sold[want]
+            if rung.get("line") != line or abs(rung["implied"] - chance) > 1e-6:
+                faults.append(
+                    f"at_the_line.rung_for: the rung {words!r} carries line "
+                    f"{rung.get('line')!r} at {rung['implied']:.4f}; it sells "
+                    f"{line:+g} at {chance:.4f}")
+
+        # THE CLAIM WRITER.
+        counts = at_the_line.evaluate(probe, sorted(ids.values()))
+        for game in VENUE_SPREAD_CONTRACTS_AS_SOLD:
+            for question in game["questions"]:
+                pid = ids[(game["game"], question["pass"])]
+                want = _q36_expected(game, question)
+                claims = probe.execute(
+                    "SELECT c.*, q.ticker FROM at_the_line_claims c"
+                    "  JOIN venue_quotes q ON q.id = c.quote_id"
+                    " WHERE c.prediction_id = ?", (pid,)).fetchall()
+                what = (f"the {game['sport']} question asked at "
+                        f"{question['asked']:+g} ({question['from']})")
+                if want is None:
+                    rung_line, _p, _c, rung_words = sold[_q36_rung(game)]
+                    for c in claims:
+                        faults.append(
+                            f"at_the_line.evaluate: {what}, which carries no margin "
+                            f"distribution, got a claim at {c['line']:+g} with the "
+                            f"model's {c['model_prob']:.4f} beside {c['venue_implied']:.4f} "
+                            f"off {sold[c['ticker']][3]!r}, which sells "
+                            f"{sold[c['ticker']][0]:+g}; a rung the question did not "
+                            f"ask ({rung_words!r} sells {rung_line:+g}) is refused "
+                            f"where no distribution was frozen")
+                    continue
+                if len(claims) != 1:
+                    faults.append(
+                        f"at_the_line.evaluate: {len(claims)} claims for {what}, "
+                        f"where one is written off {want['words']!r} (counts {counts})")
+                    continue
+                c = claims[0]
+                if c["ticker"] != want["ticker"]:
+                    faults.append(f"at_the_line.evaluate: {what} was priced off "
+                                  f"{sold[c['ticker']][3]!r}, not the rung "
+                                  f"{want['words']!r}")
+                    continue
+                if c["line"] is None or abs(c["line"] - want["line"]) > 1e-9:
+                    faults.append(
+                        f"at_the_line.evaluate: the claim for {what} priced off "
+                        f"{want['words']!r} is stored at {c['line']!r} with the "
+                        f"model's {c['model_prob']:.4f} beside {c['venue_implied']:.4f}; "
+                        f"the contract sells the home side at {want['line']:+g}, "
+                        f"its price is about {want['line']:+g}, and the model's "
+                        f"number there is {want['model']:.4f}")
+                    continue
+                if (abs(c["venue_price"] - want["price"]) > 1e-6
+                        or abs(c["venue_implied"] - want["implied"]) > 1e-6):
+                    faults.append(
+                        f"at_the_line.evaluate: the claim for {what} priced off "
+                        f"{want['words']!r} carries {c['venue_price']:.4f} and "
+                        f"{c['venue_implied']:.4f} for the home side at "
+                        f"{c['line']:+g}; the contract's price is {want['price']:.4f}, "
+                        f"which says {want['implied']:.4f}")
+                if c["shape"] != want["shape"] or abs(c["model_prob"] - want["model"]) > 1e-6:
+                    faults.append(
+                        f"at_the_line.evaluate: the claim for {what} priced off "
+                        f"{want['words']!r} at {c['line']:+g} carries the model's "
+                        f"{c['model_prob']:.4f} ({c['shape']}); at the line the "
+                        f"contract sells it is {want['model']:.4f} ({want['shape']})")
+
+        # THE NEAR-START READER writes its claims through the claim writer.
+        from .market import lines as _lines
+
+        source = ast.parse(Path(_lines.__file__).read_text(encoding="utf-8"))
+        reader = next((n for n in ast.walk(source) if isinstance(n, ast.FunctionDef)
+                       and n.name == "refresh_venue_ladder"), None)
+        if reader is None or not any(
+                isinstance(n, ast.Attribute) and n.attr == "evaluate"
+                and isinstance(n.value, ast.Name) and n.value.id == "at_the_line"
+                for n in ast.walk(reader)):
+            faults.append("lines.refresh_venue_ladder: the near-start reader does "
+                          "not write its claims through at_the_line.evaluate")
+        writers = _q36_claim_writers()
+        if writers != ["market/at_the_line.py:evaluate"]:
+            faults.append(f"lines.refresh_venue_ladder: a claim is written by "
+                          f"{writers}, where the claim writer, "
+                          f"market/at_the_line.py:evaluate, is the only one")
+
+        # THE OPENING READ, and the line and price of the rung it read.
+        for game in VENUE_SPREAD_CONTRACTS_AS_SOLD:
+            opened = views._opening_price(probe, game["game"], "spread", flip=False)
+            line, _price, chance, words = sold[_q36_rung(game)]
+            if (opened is None or opened.get("line") != line
+                    or abs(opened["price"] - chance) > 1e-6):
+                faults.append(
+                    f"views._opening_price: the opening read of {game['sport']} "
+                    f"{game['away']} at {game['home']} names line "
+                    f"{(opened or {}).get('line')!r} at "
+                    f"{(opened or {}).get('price')!r} for its rung {words!r}, "
+                    f"which sells {line:+g} at {chance:.4f}")
+
+        # DRIFT'S LADDER MATCHING: every contract's line, as a claim's, beside
+        # the opening read of the contract that sells it.
+        claims = []
+        for n, (ticker, (line, _price, chance, words)) in enumerate(sorted(sold.items())):
+            game = next(g for g in VENUE_SPREAD_CONTRACTS_AS_SOLD
+                        if ticker.startswith(g["event"] + "-"))
+            claims.append({
+                "id": -1 - n, "prediction_id": ids[(game["game"], "final")],
+                "predictor": "statistical", "game_id": game["game"],
+                "market": "spread", "market_type": "spread",
+                "subject": game["home"], "line_asked": line, "line": line,
+                # far from every opening price, so each claim makes a pair
+                "model_prob": 0.99, "venue_implied": chance,
+                "_ticker": ticker, "_words": words, "_chance": chance})
+        paired = {p["claim_id"]: p for p in drift._pairs_of(probe, claims)}
+        for c in claims:
+            got = paired.get(c["id"])
+            if got is None:
+                faults.append(
+                    f"drift._pairs_of: a claim at {c['line']:+g} found no opening "
+                    f"read at its own line, where the opening ladder sells it "
+                    f"({c['_words']!r})")
+            elif abs(got["opened"] - c["_chance"]) > 1e-6:
+                event = c["_ticker"].rsplit("-", 1)[0]
+                other = next((w for t, (_l, _p, ch, w) in sold.items()
+                              if t.rsplit("-", 1)[0] == event
+                              and abs(ch - got["opened"]) < 1e-6), "another contract")
+                faults.append(
+                    f"drift._pairs_of: a claim at {c['line']:+g} ({c['_words']!r}) "
+                    f"was set beside the opening read of {other!r} "
+                    f"({got['opened']:.4f}), where its own contract opened at "
+                    f"{c['_chance']:.4f}; a home contract at -s and an away one "
+                    f"at +s are two lines, never one ladder rung")
+    finally:
+        probe.close()
+    return faults
+
+
+def check_every_venue_contract_is_read_at_the_line_it_sells() -> None:
+    """Operator question 36 (i), ruled 2026-09-30: an away contract is read
+    at the line it sells, in one place every reader asks. Gate step 2; by
+    fixtures, never the record (`contract_line_faults` says why)."""
+    faults = contract_line_faults()
+    if faults:
+        raise LawViolation(
+            "A VENUE CONTRACT IS READ AT THE LINE IT SELLS (question 36): "
+            "\"<away> wins by over s\" is the home side's +s, never -s:"
+            + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
 # THE LIVE POLL KEEPS ASKING, AND NEVER ASKS FOR A PRICE (ruled 2026-09-09)
 # ---------------------------------------------------------------------------
 #

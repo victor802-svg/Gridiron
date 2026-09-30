@@ -531,13 +531,13 @@ def _pairs_of(conn: sqlite3.Connection, claims) -> list[dict]:
     start), the pair set "home covers -3.5" beside "home covers -4.5", two
     questions, and called the difference movement. By the ruling a price at
     another strike is another question. The opening read is taken at the
-    claim's strike (`at_the_line.home_view_line`, the claim's own view; a
-    moneyline has none on either side), and a claim whose strike the
-    opening ladder did not quote has no pair: the open said nothing about
-    its question. Each pair carries its claim's distinct bet (`bet.KEY`).
+    claim's strike (`_opening_at_the_claims_line`: the contract that sells
+    the claim's own line, read in the one place; a moneyline has none on
+    either side), and a claim whose strike the opening ladder did not quote
+    has no pair: the open said nothing about its question. Each pair carries
+    its claim's distinct bet (`bet.KEY`).
     """
     from . import bet
-    from .market import at_the_line
 
     out = []
     for claim in claims:
@@ -552,8 +552,7 @@ def _pairs_of(conn: sqlite3.Connection, claims) -> list[dict]:
             " WHERE game_id = ? AND market = ? AND read_kind = 'open'"
             "   AND fetched_utc = ?",
             (claim["game_id"], claim["market"], first)).fetchall()
-        opened = at_the_line.rung_for(
-            [q for q in ladder if at_the_line.home_view_line(q) == claim["line"]])
+        opened = _opening_at_the_claims_line(ladder, claim)
         if opened is None:
             continue
         disagreement = claim["model_prob"] - opened["implied"]
@@ -576,6 +575,32 @@ def _pairs_of(conn: sqlite3.Connection, claims) -> list[dict]:
         })
         out.append(pair)
     return out
+
+
+def _opening_at_the_claims_line(ladder, claim) -> dict | None:
+    """The opening ladder's read of the contract that sells the claim's own
+    line, or None where the open quoted none.
+
+    READ IN THE ONE PLACE (operator question 36 (i), ruled 2026-09-30):
+    `at_the_line.quotes_selling`, through `at_the_line.home_view_line`. Until
+    then this matched the ladder by the released reading, which read an away
+    contract "<away> wins by over s" at -s: a claim at -s was set beside
+    BOTH the home contract at -s and the away contract at strike s -- two
+    propositions, "the home side covers -s" and "covers +s", taken as one --
+    and the open was whichever of the two was priced nearer an even chance;
+    a claim at +s found nothing. A contract is one line now: a home one at
+    -s, an away one at +s, never matched across the two signs.
+
+    THE 269 CLAIMS STORED AT -s off an away contract (question 36 (ii), not
+    ruled) are matched by their stored line like any other: their open is
+    the home contract at -s, the line their model number is about, while
+    their near price is about +s. What that does to this record's figures
+    until (ii) is ruled is in FOLLOWUPS ("An away contract is read at the
+    line it sells").
+    """
+    from .market import at_the_line
+
+    return at_the_line.rung_for(at_the_line.quotes_selling(ladder, claim["line"]))
 
 
 def venue_pairs(conn: sqlite3.Connection, *, sport: str, market_type: str,

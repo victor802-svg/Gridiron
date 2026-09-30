@@ -11140,3 +11140,475 @@ the record was deleted, with its -wal and -shm, at 2026-09-30T13:30:11Z; it was
 read with `db.read_only` and written only by the test server serving it
 (sign-in rows). Nothing was written to the record; no network, no real
 token, the live app never contacted, nothing run from the main checkout.
+
+## An away contract is read at the line it sells -- built 2026-09-30 *(operator question 36 (i), ruled 2026-09-30 -- the order's second message, "Order: Q36.1 -> step A -> item 1 -> ..."; uncommitted for its prover)*
+
+The ruling (`docs/REPAIR_STATE.md` question 36 (i)): "the writer -- read an
+away contract at +s (the stored number as it is) from the release, with a
+planting that escapes on the released code; a baseball look at an away
+contract then becomes the writer's ordinary refusal." (ii) -- the 269 stored
+claims and 54 recommendations -- and (iii) -- what the page draws for a row
+priced off one -- are NOT ruled: nothing stored changes here, and no page
+draws anything new. LAW 1 unchanged (the claim is written after the forecast
+exists); LAW 3 unchanged (no row edited, voided or labelled).
+
+A first build agent for this step ran about 25 minutes and was cut off when
+its session ended (nothing run, proved or committed). Its partial change was
+read whole and kept where right; what was replaced is under THE PARTIAL
+BUILD below. Everything here was measured and run again by this build.
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, made 2026-09-30T16:04:46Z in 47 s: integrity ok, 64 tables, none mismatched; read with `db.read_only`; the released code a `git archive` of 8662205 in `scratchpad/q36/head/`; `measure.py` -> `measure.json`, `q3.py`, `mlbdist.py`, `atl_record.py`; deleted after -- see PROVED. The partial build's own copy, made 15:37Z, was deleted before this one was made)*
+
+**What the venue sells.** The record caches 208 spread payloads with
+markets; all 3,109 contracts in them are worded "<team> wins by over <s>
+points" (NFL 845, NCAAF 1,555) or "... runs" (MLB 709), no other wording, and
+each `floor_strike` is its words' s. `kalshi.parse_markets` stored every home
+contract at -s (8,923 quotes: 4,415 near-start, 4,508 opening) and every away
+one at +s (7,923: 3,826 and 4,097); every total quote is an over (15,168).
+The line each contract's words sell -- "<home> wins by over s" the home side
+covering -s, "<away> wins by over s" the complement of the home side covering
++s -- is its stored number for all 3,109; the released reading put 1,408 of
+them (every away one) at the other sign.
+
+**One proposition read twice.** 8,286 times a look quoted a home and an away
+contract at one strike (NFL 5,237, MLB 1,614, NCAAF 1,435). Read the released
+way both are "the home side covers -s": the home contract's mid and one minus
+the away contract's stood 41.18 points apart on average, the same way in
+99.96%, and only 32 agreed within the spread. Read at the lines they sell,
+covering -s is below covering +s in all 8,286, within the spread. Of the 854
+looks quoting both sides, 759 fell somewhere by more than the spread when
+sorted by the released reading (3,080 steps), and none by this one.
+
+**Every place a venue contract becomes a line and a side, and what each did
+with an away contract (8662205).**
+- `kalshi.parse_markets`: the side from the ticker's club, a home contract at
+  -s and an away one at +s. Right, unchanged.
+- `at_the_line.implied_of`: complements any price not the home side's or the
+  over's. Right, unchanged; the claim, the close and the opening read price
+  through it.
+- `at_the_line.home_view_line`: negated an away row -- THE DEFECT, "A LATENT
+  SIGN ERROR, FOUND BEFORE THE FIRST CLAIM WAS EVER WRITTEN" in its words.
+- `at_the_line.rung_for`: the contract priced nearest an even chance, with no
+  line; its docstring already said "the stored line is already written from
+  the home side's view".
+- The claim writer, `at_the_line.evaluate`: the claim's line from
+  `home_view_line`, so an away rung was written at -s -- its model number the
+  blind number where -s was the question's rung, else the distribution read
+  at -s -- beside the complemented price, which is about +s.
+- The near-start reader, `lines.refresh_venue_ladder`: asks the venue, then
+  writes claims through `at_the_line.evaluate` alone (`snapshot_many` too).
+  The same.
+- The opening read, `views._opening_price`: the rung's price only, no line --
+  right on the price; the card draws no line.
+- Drift, `drift._pairs_of`: kept the opening ladder's contracts whose
+  released reading equalled the claim's line -- a claim at -s matched the home
+  contract at -s AND the away one at strike s, and opened at whichever was
+  nearer an even chance; a claim at +s (none was stored) would match nothing.
+- The closer, `recommend.close_of`: the same ticker's later near-start read,
+  priced through `implied_of`. Right on either reading.
+- `lines.py`: reads the media lines (`market_snapshots`, `repair_run_line_signs`
+  are theirs) and the venue only through `kalshi.capture_for_predictions` and
+  `at_the_line.evaluate`; it turns no venue contract into a line of its own.
+- Every reader of a claim's stored line (the resolver's `spread_outcome`,
+  the at-the-line sentence's `_signed`, `recommend`'s `venue_line`, the
+  record's items, `recount`) reads it as the home side's line whatever its
+  sign. On the released reading every stored spread claim is at or below
+  zero; a claim at +s is new from this release, worded "covering +7.5".
+
+**The claims and recommendations.** 269 of the 567 spread claims were priced
+off an away contract: MLB 139 of 293, NFL 90 of 171, NCAAF 40 of 103 -- all
+the statistical model's, all settled, the first written 2026-09-07T19:41:47Z
+and the last 2026-09-29T00:05:02Z; none since (1,746 claims in all, as at the
+first measurement). Where this reading puts each: MLB 139, stored as
+rung-matched at the question's -1.5, are +1.5, another rung, with no
+distribution -- refused; NFL 77 and NCAAF 34, stored rung-differs at -s, are
+the distribution read at +s; NFL 13 and NCAAF 6 are the question's own line
+(+s) -- the price at the question's line, the model's number at the other
+sign, question 36's "19". 54 of the 113 recommendations were priced from one
+(MLB 6, 8, 11, 14, 16, 20, 25, 30, 32, 34, 38-42, 44, 48, 50, 51, 53-55, 57,
+59, 60, 79, 84-87, 93-98, 100, 106-109; NFL 62, 63, 66, 68-70, 73, 75, 77, 78;
+NCAAF 88, 90, 91): 41 of the 69 MLB run-line recommendations. The record's
+own examples: SEA at WAS was asked at +7.5 (forecast 2319, "cover" 54.8%),
+and its rung, "SEA Seahawks wins by over 7.5 points", sells exactly Washington
++7.5 -- the released writer stored claim 1662 at -7.5 with the distribution
+read at -7.5 (14.6%) beside 47.5%; TOR at BAL (forecast 1811, "not_cover"
+66.3% at -1.5), rung "Toronto wins by over 1.5 runs", claims 612 and 613 at
+-1.5 with 33.7% beside 63.5%.
+
+**The distribution.** None of the 308 MLB spread forecasts carries a margin
+distribution (235 carry the key empty, 73 lack it), and every one was asked
+at -1.5; NBA none of 141; NFL 26 of 99; NCAAF 63 of 259. All 9,720 MLB games
+on the record are the regular season's, the last started 2026-09-27T19:10Z,
+the last MLB forecast was written 2026-09-27T05:48:42Z, and none is still to
+start: FROM THE RELEASE THE BASEBALL REFUSAL STOPS NO CLAIM.
+
+**What the fix reaches today.** Unstarted games with a spread forecast:
+NCAAF 2 (8 forecasts), NBA 47 (141, the first 2026-10-20T19:00Z). Only UNT at
+TLSA (2026-10-02T01:00Z, asked at +6.5) has spread quotes, and its latest
+near-start look's rung (2026-09-28T15:00:44Z) and latest opening read's
+(2026-09-30T05:11:42Z) are both "Tulsa wins by over 1.5 points", a home
+contract: no claim or opening read on the record today reads differently. No
+NBA spread quote has ever been read.
+
+### BUILT
+
+- **The one place.** `at_the_line.home_view_line` reads the stored number as
+  it is, for each side it has a rule for (`at_the_line.CONTRACT_SIDES`: a
+  home contract at -s, an away one at +s, a total's over or under at its
+  number), and refuses any other side by name (`at_the_line.UnreadContract`),
+  never reading it as either. Its docstring keeps what it replaced.
+- **The rung carries its line.** `rung_for` adds `line` from the one place,
+  so the price and the line come from one contract by one rule.
+- **The claim writer** (`at_the_line.evaluate`) takes the rung's `line`: an
+  away rung is written at +s with its complemented price, the question's own
+  number where +s is the question's rung, the distribution read at +s where
+  it is another, and -- a baseball forecast carrying none -- the writer's
+  ordinary `no_distribution` refusal where it is another and none was frozen
+  (the schema's `at_the_line_requires_a_frozen_distribution` behind it). The
+  near-start reader writes through it and is unchanged.
+- **The opening read** (`views._opening_price`) returns the line its rung
+  sells beside the price. The card draws the price alone, as it did; which
+  line a card names beside it is step A's.
+- **Drift** (`drift._opening_at_the_claims_line`, through
+  `at_the_line.quotes_selling`) sets a claim beside the opening read of the
+  contract that sells its own line: a home contract at -s and an away one at
+  +s are two lines, never one rung.
+- **The test that asserted the negation**,
+  `tests/test_at_the_price.py::test_the_venue_line_is_read_from_the_home_side`,
+  asserts +3.5 for "<away> wins by over 3.5", and its words say why the old
+  assertion was the error; `test_at_the_line.py`'s rung test asserts the
+  rung's line.
+- **The gate, by fixtures and not on the record** (a record check would fail
+  on the 269 as written, which are question 36 (ii)'s; one held to claims
+  written from the release would pass until the next away rung, since none
+  has been written since 2026-09-29T00:05Z): `audit.contract_line_faults`
+  builds a scratch world from the venue's own contracts, cut from the three
+  cached payloads -- UNT at TLSA, TOR at BAL, SEA at WAS, four contracts each,
+  bids and asks as cached (`audit.VENUE_SPREAD_CONTRACTS_AS_SOLD`) -- asked the
+  record's own statistical final-pass questions on those games (forecasts
+  3147, 1811, 2319: rung, stored side and number, frozen distribution) and one
+  constructed (2319's distribution asked at -1.5). Each contract's sold line
+  is worked out by hand from its words, and each question's claim from the
+  fixture alone (the rung by its prices, the model's number at the line it
+  sells, or no claim), never by the code under test. It names `parse_markets`
+  and the one place, the rung, the claim writer (line, price, the model's
+  number, or the refusal), the near-start reader (by its source: it calls
+  the claim writer, and no function of the package but the claim writer
+  inserts a claim -- running it would ask the venue), the opening read and
+  drift. `audit.check_every_venue_contract_is_read_at_the_line_it_sells`,
+  gate step 2, raises. It runs in about 1.6 s.
+- **Plantings** (`tools/guards/plant.py`, `LAW_THE_CONTRACT_LINE`, in `main()`
+  and in `tests/test_guards.py`'s list): `plant_an_away_contract_read_at_minus_s`
+  (the one place put back to the negation; the rung carrying the negated line
+  past it; the gate's call) and `plant_a_ladder_matched_across_the_two_signs_in_drift`
+  (drift matched by the strike alone; by the released reading; the gate's
+  call). On a package with no check (the released one) each builds the
+  record's two games itself and reports what that code writes.
+- **Tests:** `tests/test_away_contract_line.py`, 17.
+
+### THE PARTIAL BUILD *(the first agent's change, read whole)*
+
+Kept: `rung_for`'s line, `quotes_selling`, the claim writer's use of the
+rung's line, drift's `_opening_at_the_claims_line`, the opening read's line,
+the fixed `test_at_the_price` test and `test_at_the_line`'s assertion, the
+step 2 row, the plantings' names in `main()` and the harness list.
+Replaced:
+- `home_view_line` worked the line out again from the side and the strike
+  (`-abs(line)` for a home contract, `abs(line)` for an away one). The
+  ruling's words are "(the stored number as it is)": it reads the stored
+  number now. The two agree on every stored quote (home at or below zero,
+  away at or above), and the check runs `parse_markets` too, so a storage
+  change there is named.
+- Its fixture asked questions of its own (UNT at TLSA at -6.5, SEA at WAS at
+  -1.5, a distribution of its own). They are the record's own now, so the
+  released code writes the record's own claims back (1662; 612 and 613).
+- Its check held every claim's model number to the distribution, which a
+  rung-matched claim does not read (SEA at WAS at +7.5 is one now), and took
+  the rung from the code under test; both are worked out from the fixture.
+- The near-start reader was said to write through the claim writer and not
+  checked; it is checked by its source, and a test runs it.
+- Its CLAUDE.md row carried figures from its own unproven run (the planting's
+  "0.3646" came from its own world); every figure here is this run's.
+- Its FOLLOWUPS section was a scratch draft never written to this file.
+
+### EVERY NUMBER THE FIX MOVES *(both trees on the one verified copy, the clock held at 16:04:46Z: every sport's Record, learning, drift, history (latest 500) and digest payloads, the current slates and the 20 slates that carried a price or an opening read, both forecasters; `measure_moves.py` -> `m_head.json`, `m_fix.json`; `compare.py` -> `moves.json`; pair by pair, `drift_pairs.py` -> `drift_head.json`, `drift_fix.json`, `drift_compare.py`)*
+
+1,194,726 figures compared; one moves -- MLB spread's venue drift, the
+statistical model's, on the Record page's drift panel and in the scorecard's
+drift block: "Between the venue's opening read and its price at the line,
+and where the model disagreed by 5% or more, the price moved toward the model
+29% of the time over 56 questions" -> "36 of 50 disagreements have both the
+venue's opening read and its price at the line. Nothing is reported about
+direction until there are enough." (The build identity's `head` differs
+because the archive has no repository; not a figure.) No claim,
+recommendation, price, card, combo, board figure or Results row moves. Pair by
+pair:
+- MLB (102 standing claims, 39 off an away contract): 56 pairs -> 36. Of the
+  56, 31 were claims off an away contract and 4 more were home-contract claims
+  the released matching had opened at the away contract; 20 leave (16 and
+  those 4, their open now their own contract, within 5 points of the model),
+  none join, and 15 opens move (all off an away contract).
+- NFL (14, 6): 11 -> 11; opens move on 6 (5 off an away contract, one a
+  home-contract claim opened at the away contract).
+- NCAAF (46, 20): 26 -> 26, one pair off an away contract out and one in;
+  opens move on 10 (all off an away contract).
+- The reasoning pass has no spread claim.
+
+### WHAT THE AT-THE-LINE RECORD'S SPREAD FIGURES INCLUDE UNTIL QUESTION 36 (ii) IS RULED
+
+The 269 claims stay in every count, curve and pair as written. Each carries
+the model's number at -s, the price about +s, and settles at -s, its stored
+line: its market number is the other line's price, scored against this
+line's outcome. The statistical model's settled standing spread claims (the
+at-the-line record's one door, this tree):
+- MLB 102, 39 of them off an away contract -- past its gate of 100, so the
+  page prints the model's Brier and log loss beside the market's: 0.2085 and
+  0.6075 against 0.2611 and 0.7162. On the 63 priced off a home contract they
+  are 0.2245 and 0.6406 against 0.2317 and 0.6559; on the 39, 0.1826 and
+  0.5539 against 0.3088 and 0.8136. The 39 make the model look far better
+  than the market than the 63 do.
+- NFL 14, 6 of them (under the gate): the model 0.2563 against the market
+  0.2463 (0.3303 against 0.2406 on the 8 home; 0.1576 against 0.2540 on the
+  6).
+- NCAAF 45, 20 of them (under the gate; 46 standing with UNT at TLSA's
+  unsettled home-contract claim): 0.2314 against 0.2526 (0.2853 against
+  0.2533 on the 25; 0.1640 against 0.2517 on the 20).
+- The hypothetical ledger (MLB 67, NFL 13, NCAAF 38 disagreements) and the
+  edge (1, 8 and 8) are under their 100 and not shown. Drift's venue pairs
+  are above.
+Question 36 (ii)(A) would leave them out of this record by a dated rule;
+(B) and (C) keep them. Nothing here chooses.
+
+### READINGS TAKEN *(the conservative default)*
+
+- **"The stored number as it is"** is read literally: the one place returns
+  the stored line for every side it has a rule for, and the check holds the
+  storage and the reading to the venue's words together.
+- **"A baseball look ... becomes the writer's ordinary refusal"**: the
+  `no_distribution` refusal already counted by name; nothing new refuses.
+  The same reading reaches basketball, whose forecasts carry no distribution
+  either (below).
+- **"With a planting"**: two, the ruling's one and the task's drift one, each
+  escaping on 8662205 and caught here.
+- **Drift** reads the stored claims by their stored line through the one
+  place, as the task orders; that moves MLB's venue-drift line (above), a
+  measurement of stored rows, and no stored row.
+- **The gate** is by fixtures, not on the record, and says why.
+
+### FOR THE QUEUE, NOT BUILT *(the amended queue rule of 2026-09-30: each could show the operator a wrong number; reported, not built)*
+
+- **The Record page's MLB spread at-the-line comparison is past its gate and
+  flattered by the 39 away-contract claims** (above: the market's 0.2611 with
+  them, 0.2317 without). Question 36 (ii).
+- **Basketball, from 2026-10-20.** 141 NBA spread forecasts on 47 games are
+  waiting, asked at rungs from -14.5 to +10.5, none carrying a distribution.
+  An NBA claim is written only where the look's rung sells the question's own
+  line; the released reading took an away contract at strike s for a question
+  asked at -s (a claim with the model's -s beside +s's price) and refused one
+  asked at +s. From the release the reverse, which is the contract's own
+  line. How many NBA spread recommendations that makes cannot be counted
+  before the venue lists the games.
+- **A claim at +s beside a question's words at another line** (rung-differs,
+  now also off away contracts) is drawn under the question's line: finding 2,
+  step A, as before -- and SEA at WAS's kind (an away contract at the
+  question's own line) is now rung-matched, the question's own number.
+- **The opening read on a Today card** is the venue's main rung's price, its
+  line not named: finding 5, step A.
+- **The 269 claims, the 54 recommendations, the 37 combo legs in 22
+  proposals priced off one, and THE LIST's rows priced across two contracts**:
+  question 36 (ii) and (iii).
+
+### FOUND ON THE WAY *(not a pick number, no law broken: FOLLOWUPS by the queue rule)*
+
+- **The at-the-line curve omits every claim below 50%.** Its buckets start at
+  50% (`calibration.BUCKETS`, the sub-50 rule for forecasts, which are stored
+  on their confident side), but a claim is about the fixed proposition and
+  is often below 50%. MLB spread's 102 settled claims all sit below 50%, so
+  the category says "102 settled comparisons, past the 100 this record needs"
+  beside "Nothing has resolved yet, so there is no calibration to report" --
+  a count and its denial; NFL's 14 put 8 in buckets, NCAAF's 45 put 10. On
+  8662205 too.
+
+### PROVED *(`scratchpad/q36/`)*
+
+- **The two plantings**, run alone by this tree's `plant.py` against the
+  `git archive` of 8662205 (`head/`, `run_plantings.py` ->
+  `escape_on_head.txt`): both ESCAPE -- "nfl asked at +7.5: a claim off 'SEA
+  Seahawks wins by over 7.5 points' stored at -7.5 with the model's 0.1458
+  beside 0.4750 | mlb asked at -1.5: a claim off 'Toronto wins by over 1.5
+  runs' stored at -1.5 with the model's 0.3366 beside 0.6350 | no check asks
+  which line a contract sells" (the record's claims 1662, 612 and 613), and "a
+  claim at -1.5 opens at 0.245 (the price of 'SEA Seahawks wins by over 1.5
+  points', Washington +1.5) where its own contract, 'WAS Commanders wins by
+  over 1.5 points', opened at 0.195; a claim at +1.5 has no pair". Both are
+  CAUGHT here (`caught_on_fix.txt`): the one place put back to the negation,
+  23 faults naming the one place, the rung, the claim writer, the opening read
+  and drift; the rung carrying the negated line past it, 7 naming the rung,
+  the claim writer and the opening read and no other; drift matched by the
+  strike alone, 6, and by the released reading, 10, each naming drift alone.
+- **`tests/test_away_contract_line.py`, 17**, on a copy of this tree with the
+  three readers' files -- `at_the_line.py`, `drift.py`, `views.py` -- put back
+  to 8662205 (`released_readers/`): 13 fail (the three payloads' contracts,
+  the same-strike pair, the one place, the claims off an away contract, the
+  near-start reader, the baseball refusal, the opening read on three games,
+  drift's pairs, the gate's check and call, drift across the signs named, a
+  second writer named -- the last two because the released readers are named
+  as well); 4 pass, holding what was right (a home contract at -s, the
+  fixture's words and questions, the released one place named at every
+  reader, one claim writer). All 17 pass here.
+- **The full suite**: 2,275 passed, 4 skipped, none failed (a dummy
+  non-secret `GRIDIRON_ACCESS_TOKEN`, TMP and TEMP at their defaults,
+  16:24:05-16:48:40Z; `suite.txt`).
+- **`plant.py` whole**: 397/397 caught (`plant_all.txt`, 16:49-16:57Z).
+- **Gate step 2's touched rows**, dry-run with `GRIDIRON_VERIFYING` set (not
+  `tools/verify.py` whole; `step2_dry.py` -> `step2_dry.txt`): 14 of 14 pass --
+  the prediction closures (LAW 1), no orphan function, market sources in the
+  market module, every recommendation reader through the door, no raw
+  connect, no replacing write, the roster numbers, every count on the one
+  key, the prompt record's one door, the new check; and on the copy, read
+  only: claims priced at the line, where the line went, the at-the-line
+  record's counts, the at-the-line words.
+- **No render**: nothing new is drawn. The one moved figure is MLB's
+  venue-drift line, in the sentence NFL's and NCAAF's already carry.
+- **The copy**: made 16:04:46Z, deleted with its -wal and -shm at
+  2026-09-30T17:00:20Z; never written (its -wal empty, its size and time as
+  made). The partial build's copy of 15:37Z was deleted at 16:03:48Z, before
+  this one was made.
+
+### THE PROVER *(2026-09-30, alone in the worktree; one local commit. ONE verified copy of the record through `rebuild.verified_backup`, made 2026-09-30T17:11:04Z in 46.8 s: integrity ok, 64 tables, none mismatched, 1,094,451,200 bytes; read only with `db.read_only`; deleted after -- below. The released code a fresh `git archive` of 8662205 in `scratchpad/q36/head/`. Scripts and outputs in `scratchpad/q36/prover/`)*
+
+**Every reader hunted, and what each does with an away contract on this tree.**
+- `kalshi.parse_markets`: right. Of the 3,109 contracts in the record's 208
+  cached spread payloads, 3,036 were placed on their game's home or away club
+  by the words' club name ALONE (the teams table's names, never the ticker or
+  the crosswalk); every one is stored on the side its words name, at the line
+  they sell ("<home> wins by over s" at -s, "<away> wins by over s" at +s),
+  and the one place reads that line; the released negation misread 1,394 of
+  them, every away one. The other 73 carry the venue's own abbreviations
+  ("Los Angeles R" 30, "A's" 18, "LA Rams" 14, "Louisiana-Monroe" 11), which a
+  name match cannot place (`pairs.py`).
+- TOTALS DO NOT SHARE THE SHAPE: all 3,011 contracts in the cached total
+  payloads read "Over N points", "Over N points scored" or "Over N runs
+  scored" -- no under, no club -- and are stored as the over at their number.
+  A moneyline contract has no line.
+- The one place, the rung, the claim writer, the opening read and drift: as
+  built. The near-start reader (`lines.refresh_venue_ladder`) and the daily
+  snapshot (`lines.snapshot_many`) write claims through the claim writer
+  alone; no other function of the package inserts a claim.
+- The closer (`recommend.close_of`) and the restatement: by the contract's
+  ticker. The venue's packages (`kalshi.capture_packages`,
+  `views._leg_reading`): moneyline legs only, no line. Coverage
+  (`priced/coverage.py`): bid and ask widths, no line. The ranker and the
+  opening-read task: whether a quote exists.
+- Every reader of a claim's stored line -- the resolver
+  (`questions.spread_outcome`), the at-the-line sentence
+  (`language.at_the_line_side_words`), `recommend`'s `venue_line` (carried,
+  drawn nowhere), the record's items -- reads it as the home side's line
+  whatever its sign: right for +s ("covering +7.5").
+- The board reads no venue contract and draws no claim's line; its tooltips
+  (`price_tip`, the numbers line) name none. `tools/board_shots.py` writes a
+  screenshot world's own home quotes at the question's line (a scratch world,
+  not a reader). No fixture in `tests/` or `plant.py` stores an away contract
+  at -s.
+- MLB: the loader reads the regular season only (`mlb_loader.GAME_TYPES =
+  ("R",)`), so no postseason game joins the record; the refusal stops no
+  run-line claim until the 2027 regular season.
+No reader on this tree turns an away contract at the wrong sign.
+
+**Found and fixed here: the gate blamed the one place for a storage flip.**
+The ruling's words are "read an away contract at +s (the stored number as it
+is)", so the reading is exactly as right as what `parse_markets` stores. As
+built, an away contract STORED at -s (or placed on the home side at -s) was
+caught -- 23 faults -- but six of them named `at_the_line.home_view_line`
+("... stored at -1.5 on the away side is read at -1.5") and none named
+`kalshi.parse_markets`, the function that was wrong; the docstring said the
+check names `parse_markets`. `audit.contract_line_faults` now compares each
+contract's storage with its words first and names `kalshi.parse_markets`
+for a contract stored at another line or side, and the one place only where
+it misreads a contract stored as its words sell. Held by a third form of
+`plant_an_away_contract_read_at_minus_s` (the storage at -s, the one place
+untouched: CAUGHT only if the storage, the rung, the claim writer, the
+opening read and drift are named and the one place is not -- NOT CAUGHT on
+the check as first built, "refused without naming ['kalshi.parse_markets']")
+and `test_away_contract_line.py::test_an_away_contract_stored_at_minus_s_is_named_at_the_storage`
+(two forms, both failing on the check as first built, `prover/asbuilt/`).
+
+**The same-strike pairs, re-derived (`pairs_rows.py`, `pairs.py`).** 8,286
+pair ROWS (NFL 5,237, MLB 1,614, NCAAF 1,435: a look's home and away quote
+rows at one strike) -- 6,177 distinct pairs, because the looks hold 1,661
+ticker rows written twice. Read the released way, all 8,286 are one line;
+the two prices 41.18 points apart on average (40.97 over the distinct
+pairs), the same way in 99.96% (3 level), 32 agreeing within the spread --
+the builder's figures exactly. Read at the lines they sell, none is one line,
+and in all 8,286 the bid for covering -s is at or below the complemented
+ask for covering +s: one rising curve within the spread, no inversion. Of the
+854 looks quoting both sides, 404 have a higher line priced wholly below a
+lower one (both spreads apart; 3,409 steps) sorted by the released reading,
+and none at the lines sold. (The builder's 759 looks and 3,080 steps count
+"falls by more than the spread" another way.)
+
+**A dry claim-writer run over the record's quotes (`dry_writer.py`,
+`dry_compare.py`).** An in-memory world made from the copy -- the 192 games
+with a spread forecast and a spread quote, their 1,584 forecasts as stored
+(381 spread), their 14,930 spread quotes as stored -- each game's status set
+to scheduled and its score cleared in memory only, its start kept (so a quote
+read after the start is still refused); then each tree's own
+`at_the_line.evaluate` over the 381:
+- THE FIX: 615 claims. None off an away contract at -s; every claim's line
+  is its contract's stored number; 172 off an away contract (NFL 126, NCAAF
+  46), each at +s; none off an MLB away contract (546 `no_distribution`
+  refusals, 355 on the release).
+- THE RELEASE (8662205): 806 claims, 363 of them off an away contract at -s
+  (MLB 210, NFL 113, NCAAF 40). It gives back 564 of the record's 567 stored
+  spread claims exactly -- line, shape, the model's number and the price --
+  so the world is the record's; the other three (claims 9, 12 and 15,
+  written 2026-09-07T19:41:47Z) were priced off quotes read after the first
+  pitch, which both writers refuse now.
+- On the 567 stored: the fix writes the 297 home-contract claims
+  identically, refuses all 139 MLB away ones, and writes the 130 NFL and
+  NCAAF away ones at +s with the same price (NFL 77 and NCAAF 34 the
+  distribution read at +s, NFL 13 and NCAAF 6 the question's own line) --
+  the builder's figures.
+
+**Drift's venue pairs, contract by contract (`drift_check.py`).** The fix:
+MLB 36, NFL 11, NCAAF 26 (as built; MLB 56 on 8662205). Every pair of a claim
+priced off a home contract opens at that same contract (42). Every pair of a
+STORED claim priced off an away contract -- 31 of the 73 (MLB 15 of 36, NFL
+5 of 11, NCAAF 11 of 26) -- sets its near price (the away contract, about +s)
+beside the home contract's opening read at -s, the line its stored model
+number is about: its disagreement is one line's, its movement spans two
+contracts. On 8662205 those claims' 47 pairs opened at their own contract
+(the disagreement then spanning two lines) and 5 home-contract pairs (MLB 4,
+NFL 1) opened at the away contract. No direction is reported in any of the
+three (each under its 50), but the counts include them. A claim written from
+the release opens at its own contract, since one contract sells each line.
+What the 31 are is question 36 (ii): not built.
+
+**The plantings (`run_plantings.py`).** Both ESCAPE on 8662205 (the archive
+with this tree's `plant.py` copied in, `escape_on_head.txt`: the record's
+claims 1662, 612 and 613 come back, and a claim at -1.5 opens at the
+Seahawks' 0.245); on the check as first built the third form escapes
+(`on_asbuilt.txt`); here both are CAUGHT with all five forms
+(`caught_on_fix.txt`).
+
+**The gate and the suite.** Gate step 2's rows, dry-run on this tree (not
+`tools/verify.py` whole; `step2_dry.py` -> `step2_dry.txt`, 17:22-17:27Z):
+the rows read out of `verify.step_2_guards`' own syntax tree, every record
+row on the copy through a read-only handle, `GRIDIRON_VERIFYING` set, an
+empty scratch file standing for the env file (the operator's `.env` never
+read): 108 of 110 pass, none fails -- among them a claim priced at the line,
+where the line went, the at-the-line record's counts and words, the priced
+record, every slate's board, pick and combo checks, the side placed by the
+one place, and the new check; the two schema rows were not run (no schema
+changes here, and they build the release and read the record itself). No
+record row fails on the 269 stored claims: the new check reads fixtures,
+and every other row reads them as stored. `audit.prose_reaching_the_raw_side()`
+is `[]`. `plant.py` whole: 397/397 caught (17:27-17:35Z, `plant_all.txt`).
+The full suite: 2,277 passed, 4 skipped, none failed, exit 0 (a dummy
+non-secret `GRIDIRON_ACCESS_TOKEN`, TMP and TEMP at their defaults,
+17:35:21-17:59:59Z, `suite.txt`); the only test that reached the network
+is the suite's own marked one.
+
+**The copy**: made 17:11:04Z, read only, deleted with its -wal and -shm at
+2026-09-30T17:27:56Z; never written (its -wal empty, its size and time as
+made). No copy of the record remains under `scratchpad/q36`.

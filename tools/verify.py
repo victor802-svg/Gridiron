@@ -919,6 +919,17 @@ def step_2_guards() -> bool:
         # promise about the code.
         ("a claim is priced at the line, never at the open",
          lambda: audit.check_claims_price_at_the_line(_record_conn())),
+        # OPERATOR QUESTION 36 (i) (ruled 2026-09-30): "<away> wins by over
+        # s" is the home side's +s, read in one place by the claim writer
+        # (and the near-start reader, which writes through it alone), the
+        # opening read and drift's ladder matching. BY FIXTURES, NOT ON THE
+        # RECORD (2026-09-30): the 269 claims stored at -s off an away
+        # contract are question 36 (ii)'s, not ruled, and a record check
+        # would fail on them as written; the shipped readers are run on a
+        # scratch world made from the venue's own cached contracts, asked the
+        # record's own questions on those games.
+        ("a venue contract is read at the line it sells (question 36)",
+         audit.check_every_venue_contract_is_read_at_the_line_it_sells),
         # THE LIVE RULINGS (2026-09-09). A page that stops asking the first
         # time nothing is on never learns the day started -- which is how the
         # server came to hold six live cards while the screen said nothing was

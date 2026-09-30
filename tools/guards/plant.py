@@ -10400,6 +10400,309 @@ def plant_a_combo_leg_that_names_no_game() -> Result:
     return Result(LAW_THE_COMBO_IS_ITS_PICKED_SIDES, violation, guard, True, first or "")
 
 
+# ---------------------------------------------------------------------------
+# A VENUE CONTRACT IS READ AT THE LINE IT SELLS (operator question 36 (i),
+# ruled 2026-09-30)
+# ---------------------------------------------------------------------------
+
+LAW_THE_CONTRACT_LINE = ("A VENUE CONTRACT IS READ AT THE LINE IT SELLS: "
+                         "'<away> wins by over s' IS THE HOME SIDE'S +s")
+
+_Q36_CHECK = "check_every_venue_contract_is_read_at_the_line_it_sells"
+
+#: FOR THE PLANTINGS' RELEASED BRANCH, which runs on a package with no
+#: fixture of its own (8662205): two of the record's games as the venue's
+#: cached payloads sell them, cut to two strikes each -- (ticker's last part,
+#: words, stored line, side, bid, ask) -- and the record's own statistical
+#: final-pass question on each (forecasts 2319 and 1811): its rung, stored
+#: side and number, and frozen distribution as stored.
+_Q36_RELEASED_GAMES = (
+    {"game": "g36nfl", "sport": "nfl", "home": "WAS", "away": "SEA",
+     "event": "KXNFLSPREAD-26SEP27SEAWAS",
+     "contracts": (
+         ("WAS2", "WAS Commanders wins by over 1.5 points", -1.5, "home", 0.19, 0.20),
+         ("SEA2", "SEA Seahawks wins by over 1.5 points", 1.5, "away", 0.75, 0.76),
+         ("WAS8", "WAS Commanders wins by over 7.5 points", -7.5, "home", 0.07, 0.08),
+         ("SEA8", "SEA Seahawks wins by over 7.5 points", 7.5, "away", 0.52, 0.53),
+     ),
+     "asked": 7.5, "side": "cover", "prob": 0.548175, "distribution": (-6.781, 13.54)},
+    {"game": "g36mlb", "sport": "mlb", "home": "BAL", "away": "TOR",
+     "event": "KXMLBSPREAD-26SEP211835TORBAL",
+     "contracts": (
+         ("BAL2", "Baltimore wins by over 1.5 runs", -1.5, "home", 0.32, 0.33),
+         ("TOR2", "Toronto wins by over 1.5 runs", 1.5, "away", 0.36, 0.37),
+         ("BAL3", "Baltimore wins by over 2.5 runs", -2.5, "home", 0.22, 0.23),
+         ("TOR3", "Toronto wins by over 2.5 runs", 2.5, "away", 0.26, 0.27),
+     ),
+     "asked": -1.5, "side": "not_cover", "prob": 0.663352, "distribution": None},
+)
+
+
+def _q36_released_world(path: Path):
+    """The two games on the package being planted: one statistical final
+    spread forecast each, as the record holds it, and each game's contracts
+    as an opening and a near-start look, as `kalshi.parse_markets` stores
+    them. Returns the connection and the forecast ids by game."""
+    import json
+
+    conn = db.open_db(path)
+    ids = {}
+    for g in _Q36_RELEASED_GAMES:
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, ?, 2099, 1, 'REG', ?, ?,"
+            " '2099-01-01T00:00:00Z', 'scheduled', '2098-12-31')",
+            (g["game"], g["sport"], g["home"], g["away"]))
+        factors = {"coverage": 1.0}
+        if g["distribution"] is not None:
+            factors["margin_distribution"] = {
+                "quantity": "home_margin", "family": "normal",
+                "mean": g["distribution"][0], "sd": g["distribution"][1],
+                "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+        cur = conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2098-12-30T00:00:00Z', ?, ?, 'spread', ?, ?, ?, ?, 'statistical',"
+            " 'final', 'fsQ36', ?, 'planted')",
+            (g["sport"], g["game"], g["home"], g["asked"], g["prob"], g["side"],
+             json.dumps(factors)))
+        ids[g["game"]] = cur.lastrowid
+        for kind, stamp in (("open", "2098-12-30T06:00:00Z"),
+                            ("near_start", "2098-12-31T22:00:00Z")):
+            for suffix, _words, line, side, bid, ask in g["contracts"]:
+                conn.execute(
+                    "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                    " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                    " last_price, volume, fetched_utc, read_kind) VALUES ('kalshi',"
+                    " ?, ?, ?, ?, 'spread', 'home_margin', ?, ?, ?, ?, ?, 1000, ?, ?)",
+                    (f"{g['event']}-{suffix}", g["event"], g["sport"], g["game"],
+                     line, side, bid, ask, bid, stamp, kind))
+    conn.commit()
+    return conn, ids
+
+
+def _q36_named(planted: str, doors: tuple, missed: list, caught: list,
+               only: tuple | None = None) -> None:
+    """Run the check on a planted reader and file what it said: CAUGHT when
+    it names every reader in `doors` and, where `only` is given, no reader
+    outside it."""
+    faults = audit.contract_line_faults()
+    if not faults:
+        missed.append(f"{planted}: the check passed it")
+        return
+    unnamed = [d for d in doors if not any(f.startswith(d) for f in faults)]
+    if unnamed:
+        missed.append(f"{planted}: refused without naming {unnamed}")
+        return
+    if only and any(not f.startswith(only) for f in faults):
+        missed.append(f"{planted}: named readers it did not change: "
+                      f"{[f for f in faults if not f.startswith(only)][:2]}")
+        return
+    caught.append(f"{planted}: {len(faults)} faults, naming {', '.join(doors)}")
+
+
+def plant_an_away_contract_read_at_minus_s() -> Result:
+    """Read "<away> wins by over s" at -s, the released reading.
+
+    FROM THE FIRST CLAIM WRITER (25d83b8, 2026-09-07) TO 2026-09-30,
+    `at_the_line.home_view_line` negated an away contract's stored +s, so
+    every claim priced off one stored -s: the model's number read at -s
+    beside the complemented price, which is about +s (269 claims, 54
+    recommendations on the record; operator question 36). Planted two ways
+    on this tree: the one place put back to the negation; and the rung
+    carrying the negated line past it (a reader of its own). CAUGHT means
+    `audit.contract_line_faults`, on the venue's own cached contracts asked
+    the record's own questions, names every reader the planting reaches --
+    the one place, the rung, the claim writer, the opening read and drift for
+    the first; the rung, the claim writer and the opening read for the
+    second -- the shipped readers pass, and the gate's step 2 makes the
+    call. ON THE RELEASED CODE (8662205) the record's own claims come back:
+    the question asked at +7.5 on SEA at WAS, priced off "SEA Seahawks wins
+    by over 7.5 points" (Washington +7.5, its own line), is stored at -7.5
+    with the model's 0.1458 (claim 1662's) beside 0.4750; the run line asked
+    at -1.5 on TOR at BAL, off "Toronto wins by over 1.5 runs" (Baltimore
+    +1.5), is written at -1.5 with the model's 0.3366 beside 0.6350 (claims
+    612 and 613); and nothing asks which line a contract sells.
+
+    A THIRD FORM (its prover, 2026-09-30): the away contract STORED at -s by
+    `kalshi.parse_markets`, the one place untouched -- the same claim at -s,
+    reached through the storage the ruling's "the stored number as it is"
+    relies on. CAUGHT means the check names the storage, the rung, the claim
+    writer, the opening read and drift, and not the one place, which read it
+    as stored; as first built the check named the one place for it and never
+    the storage.
+    """
+    from gridiron.market import at_the_line as _atl
+
+    guard = f"audit.{_Q36_CHECK} (audit.contract_line_faults)"
+    violation = "an away contract '<away> wins by over s' read at -s"
+    if not hasattr(audit, _Q36_CHECK):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            conn, ids = _q36_released_world(Path(tmp) / "q36.db")
+            _atl.evaluate(conn, sorted(ids.values()))
+            seen = []
+            for g in _Q36_RELEASED_GAMES:
+                for c in conn.execute(
+                        "SELECT c.line, c.model_prob, c.venue_implied, q.ticker"
+                        "  FROM at_the_line_claims c JOIN venue_quotes q"
+                        "    ON q.id = c.quote_id WHERE c.prediction_id = ?",
+                        (ids[g["game"]],)):
+                    words = next(w for s, w, *_ in g["contracts"]
+                                 if c["ticker"].endswith("-" + s))
+                    seen.append(f"{g['sport']} asked at {g['asked']:+g}: a claim off "
+                                f"{words!r} stored at {c['line']:+g} with the model's "
+                                f"{c['model_prob']:.4f} beside {c['venue_implied']:.4f}")
+            conn.close()
+        return Result(LAW_THE_CONTRACT_LINE, violation, guard, False,
+                      "NOT CAUGHT - " + (" | ".join(seen) or "no claim written")
+                      + " | no check asks which line a contract sells")
+
+    missed, caught = [], []
+    shipped = audit.contract_line_faults()
+    if shipped:
+        missed.append(f"the check refuses the shipped readers: {shipped[:2]}")
+    real_one_place, real_rung = _atl.home_view_line, _atl.rung_for
+
+    def negated(quote):
+        if quote["line"] is None:
+            return None
+        return (float(quote["line"]) if quote["yes_side"] in ("home", "over")
+                else -float(quote["line"]))
+
+    def rung_negated(quotes):
+        best = real_rung(quotes)
+        if best is not None and best["quote"]["yes_side"] == "away":
+            best = dict(best, line=-float(best["quote"]["line"]))
+        return best
+
+    try:
+        _atl.home_view_line = negated
+        _q36_named("the one place put back to the negation",
+                   ("at_the_line.home_view_line", "at_the_line.rung_for",
+                    "at_the_line.evaluate", "views._opening_price",
+                    "drift._pairs_of"), missed, caught)
+    finally:
+        _atl.home_view_line = real_one_place
+    try:
+        _atl.rung_for = rung_negated
+        _q36_named("the rung carrying the negated line past the one place",
+                   ("at_the_line.rung_for", "at_the_line.evaluate",
+                    "views._opening_price"), missed, caught,
+                   only=("at_the_line.rung_for", "at_the_line.evaluate",
+                         "views._opening_price"))
+    finally:
+        _atl.rung_for = real_rung
+    # THE THIRD FORM (the prover, 2026-09-30): the storage put at -s, the
+    # one place untouched. The ruling reads "the stored number as it is", so
+    # an away contract STORED at -s is read at -s by a correct one place;
+    # CAUGHT means the check names `kalshi.parse_markets` and every reader it
+    # reaches, and NOT the one place, which read it as stored. As first built
+    # the check named the one place for it and not the storage.
+    import importlib
+
+    _kalshi = importlib.import_module("gridiron.market.kalshi")
+    real_parse = _kalshi.parse_markets
+
+    def stored_at_minus_s(*args, **kwargs):
+        quotes, unread = real_parse(*args, **kwargs)
+        return ([dict(q, line=-float(q["line"]))
+                 if q["yes_side"] == "away" and q["line"] is not None else q
+                 for q in quotes], unread)
+
+    reached = ("kalshi.parse_markets", "at_the_line.rung_for",
+               "at_the_line.evaluate", "views._opening_price", "drift._pairs_of")
+    try:
+        _kalshi.parse_markets = stored_at_minus_s
+        _q36_named("an away contract stored at -s, the one place untouched",
+                   reached, missed, caught, only=reached)
+    finally:
+        _kalshi.parse_markets = real_parse
+    if not _step_2_calls(_Q36_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_Q36_CHECK}`")
+    if missed:
+        return Result(LAW_THE_CONTRACT_LINE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_CONTRACT_LINE, violation, guard, True, "; ".join(caught))
+
+
+def plant_a_ladder_matched_across_the_two_signs_in_drift() -> Result:
+    """Match a claim's opening ladder across the two signs in drift.
+
+    UNTIL 2026-09-30 `drift._pairs_of` kept the opening ladder's contracts
+    whose released reading equalled the claim's line, and that reading put an
+    away contract at -s: a claim at -s was set beside the home contract at -s
+    AND the away contract at strike s -- "the home side covers -s" and
+    "covers +s" taken as one rung -- and opened at whichever was priced
+    nearer an even chance; a claim at +s found nothing. Planted two ways on
+    this tree, each in drift alone (`drift._opening_at_the_claims_line`):
+    matched by the strike alone, and by the released reading. CAUGHT means
+    `audit.contract_line_faults` names `drift._pairs_of` and no other reader,
+    the shipped matching passes, and the gate's step 2 makes the call. ON THE
+    RELEASED CODE (8662205) a claim at -1.5 on SEA at WAS opens at the
+    Seahawks' 0.245 where its own contract, "WAS Commanders wins by over
+    1.5 points", opened at 0.195, one at +1.5 finds no open, and nothing
+    checks it.
+    """
+    from gridiron import drift as _drift
+    from gridiron.market import at_the_line as _atl
+
+    guard = f"audit.{_Q36_CHECK} (audit.contract_line_faults, drift._pairs_of)"
+    violation = "a claim's opening ladder matched across the two signs in drift"
+
+    def claim_at(line, n, pid):
+        return {"id": n, "prediction_id": pid, "predictor": "statistical",
+                "game_id": "g36nfl", "market": "spread", "market_type": "spread",
+                "subject": "WAS", "line_asked": line, "line": line,
+                "model_prob": 0.99, "venue_implied": 0.5}
+
+    if not hasattr(audit, _Q36_CHECK):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            conn, ids = _q36_released_world(Path(tmp) / "q36.db")
+            pid = ids["g36nfl"]
+            pairs = {p["line"]: p for p in _drift._pairs_of(
+                conn, [claim_at(-1.5, 1, pid), claim_at(1.5, 2, pid)])}
+            conn.close()
+        at_minus = pairs.get(-1.5, {}).get("opened")
+        return Result(LAW_THE_CONTRACT_LINE, violation, guard, False,
+                      f"NOT CAUGHT - a claim at -1.5 opens at {at_minus!r} (the "
+                      f"price of 'SEA Seahawks wins by over 1.5 points', "
+                      f"Washington +1.5) where its own contract, 'WAS "
+                      f"Commanders wins by over 1.5 points', opened at 0.195; "
+                      f"a claim at +1.5 has {'a' if 1.5 in pairs else 'no'} "
+                      f"pair; and no check asks which contract drift matched")
+
+    missed, caught = [], []
+    if audit.contract_line_faults():
+        missed.append("the check refuses the shipped matching")
+    real = _drift._opening_at_the_claims_line
+
+    def by_the_strike(ladder, claim):
+        return _atl.rung_for([q for q in ladder
+                              if abs(_atl.home_view_line(q)) == abs(claim["line"])])
+
+    def by_the_released_reading(ladder, claim):
+        def released(q):
+            return (float(q["line"]) if q["yes_side"] in ("home", "over")
+                    else -float(q["line"]))
+        return _atl.rung_for([q for q in ladder if released(q) == claim["line"]])
+
+    for name, planted in (("matched by the strike alone", by_the_strike),
+                          ("matched by the released reading", by_the_released_reading)):
+        try:
+            _drift._opening_at_the_claims_line = planted
+            _q36_named(name, ("drift._pairs_of",), missed, caught,
+                       only=("drift._pairs_of",))
+        finally:
+            _drift._opening_at_the_claims_line = real
+    if not _step_2_calls(_Q36_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_Q36_CHECK}`")
+    if missed:
+        return Result(LAW_THE_CONTRACT_LINE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_CONTRACT_LINE, violation, guard, True, "; ".join(caught))
+
+
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
 
@@ -22307,6 +22610,11 @@ def main() -> int:
     results.append(plant_a_combo_leg_named_on_the_side_it_does_not_buy())
     # ITS PROVER (2026-09-30): each leg names the game it is in.
     results.append(plant_a_combo_leg_that_names_no_game())
+    # OPERATOR QUESTION 36 (i) (ruled 2026-09-30): "<away> wins by over s"
+    # is the home side's +s, read in one place by the claim writer, the
+    # opening read and drift's ladder matching.
+    results.append(plant_an_away_contract_read_at_minus_s())
+    results.append(plant_a_ladder_matched_across_the_two_signs_in_drift())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

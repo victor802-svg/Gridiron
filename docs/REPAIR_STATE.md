@@ -16,6 +16,45 @@
   step A draws such a row WITHOUT a price and says why (the conservative
   default: no number is shown under a contract it does not belong to; the
   amended queue rule). Q37 not ruled.
+  **Q36.1 BUILT (2026-09-30, resumed 16:01Z after its first build agent was
+  cut off; uncommitted for its prover; FOLLOWUPS "An away contract is read
+  at the line it sells"):** `at_the_line.home_view_line` reads a venue
+  contract's stored number as it is -- "<away> wins by over s" at the home
+  side's +s -- and refuses a side it has no rule for; the claim writer (and
+  the near-start reader through it), the opening read and drift's ladder
+  matching read through it; a baseball run line off an away contract is the
+  writer's `no_distribution` refusal (139 of 293 MLB run-line claims on the
+  record; none from the release -- no MLB game is still to start). Nothing
+  stored changes. The one page figure that moves: MLB spread's venue drift,
+  56 pairs -> 36 ("36 of 50"). Gate by fixtures
+  (`audit.check_every_venue_contract_is_read_at_the_line_it_sells`); two
+  plantings, each escaping on 8662205 and caught here; the suite 2275
+  passed, 4 skipped; `plant.py` 397/397. For the queue, not built: the
+  Record page's MLB spread at-the-line comparison, past its gate, is
+  flattered by the 39 away-contract claims (the market's Brier 0.2611 with
+  them, 0.2317 without) -- Q36 (ii).
+  **Q36.1 PROVED (2026-09-30, its prover, alone in the worktree; one local
+  commit, "Q36.1: an away-side spread contract is read at the line the
+  venue sells"; FOLLOWUPS, the same section, THE PROVER):** no reader on
+  this tree turns an away contract at the wrong sign (every reader hunted:
+  the storage, totals -- all "Over N ...", none shares the shape -- the
+  closer, the packages, coverage, the board, the claim-line readers). On one
+  verified copy (made 17:11:04Z, deleted 17:27:56Z): the 8,286 same-strike
+  pair rows rise within the spread at the lines they sell (the builder's
+  41.18 points and 32 on the released reading reproduced); the claim writer
+  run dry in memory over every spread forecast and quote on the record
+  writes no claim off an away contract at -s (the released writer: 363, and
+  564 of the 567 stored spread claims given back exactly); gate step 2's
+  rows 108 of 110 on the copy, none failing on the 269 (the two schema rows
+  not run). Found and fixed: the gate blamed the one place for a storage
+  flip (an away contract stored at -s), never naming `parse_markets`; it
+  names the storage now -- a third planting form and two tests, each
+  escaping or failing on the check as first built. Not built, for (ii):
+  under this tree 31 of the 73 venue-drift pairs (MLB 15 of 36, NFL 5 of 11,
+  NCAAF 11 of 26) set a stored away-contract claim's near price (+s) beside
+  the home contract's open (-s) -- their movement spans two contracts (on
+  8662205 those claims' disagreement did); no direction is shown under the
+  50. `plant.py` 397/397; the suite 2277 passed, 4 skipped.
 
 - **THE ORDER NOW (30 Sep, docs/briefs/2026-09-30-rulings.md; wins over
   every order below):** the NCAAF wrong-side fix (rec 111; own commit and
