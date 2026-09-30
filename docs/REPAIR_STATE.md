@@ -22,6 +22,24 @@
   spread. From the release: no claim, recommendation, price, card or
   combo moves; MLB spread's venue drift 56 -> 36 pairs; 0 future MLB
   run-line claims refused (season over). Stored rows unchanged.
+  **STEP A released as 48c4ddd (2026-09-30 22:43Z; gate 4/4, 401/401,
+  first run):** every number on a pick names the contract it belongs to
+  (`views._the_contract`, `views._as_the_page_draws`); rec 111 reads "North
+  Texas +1.5 · 76% · 52¢ · 1.94x · $15" (the question's -6.5 and the
+  model's 63% in the tooltip); rec 117 "Atlanta +2.5"; the opening read is
+  the question's own rung or names the rung it is; a row priced across two
+  contracts (the stored away-contract claims; Q36 (iii) not ruled -- the
+  default) shows the model's own number and no price, payout, edge, size or
+  outline, with "Priced across two contracts before 30 September; no single
+  contract carries these numbers."; `audit.check_every_number_names_its_line`
+  in step 2. NEW BEFORE Q36.1 SHIPPED: predict:nfl run 8464 (18:00-18:05Z)
+  wrote six NFL week-4 claims off an away contract at -s (1749, 1752, 1755,
+  1761, 1780, 1786); two became recommendations: rec 114 (PIT at CLE, 2 Oct
+  00:15Z) and rec 115 (GB at TB) -- drawn unpriced; they join Q36 (ii)'s
+  rows (now 275 claims, 56 recommendations). 69 of 117 past recommendations
+  were drawn under another line's words while live (FOLLOWUPS, THE LIST).
+  **Next: item 1** (fresh on the released code; `item1-held` read as a
+  reference).
   Q36 (ii) (the 269 stored claims and 54 recommendations:
   void, label or leave) and (iii) (what the page draws for a row priced off
   one) are not ruled: until they are, the stored rows stay as written and
