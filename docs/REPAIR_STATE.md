@@ -2,6 +2,21 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **THE ORDER NOW (30 Sep, second, ~15:30Z; wins over every order below):**
+  Q36.1 (the claim writer reads an away-side spread contract at +s, the
+  sign the venue sells, from the release; a planting) -> step A (every
+  number on a pick names the line it belongs to; rec 111 reads "North Texas
+  +1.5") -> item 1 (the close window; its partial build kept on
+  `item1-held`, 15:33Z) -> Q35 -> THE ENTRY CHECK
+  (docs/briefs/2026-09-30-entry-check.md; steps 1-4, each its own gate and
+  release; step 1 first) -> Q33 + Q34 -> Q25/Q26 (`q25-held`, `q26-held`)
+  -> Q5 -> Q10. Q36 (ii) (the 269 stored claims and 54 recommendations:
+  void, label or leave) and (iii) (what the page draws for a row priced off
+  one) are not ruled: until they are, the stored rows stay as written and
+  step A draws such a row WITHOUT a price and says why (the conservative
+  default: no number is shown under a contract it does not belong to; the
+  amended queue rule). Q37 not ruled.
+
 - **THE ORDER NOW (30 Sep, docs/briefs/2026-09-30-rulings.md; wins over
   every order below):** the NCAAF wrong-side fix (rec 111; own commit and
   gate; released before 2026-10-02T01:00Z) -> item 1, the close window (the
