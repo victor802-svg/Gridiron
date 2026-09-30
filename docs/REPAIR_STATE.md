@@ -1344,6 +1344,96 @@ depend on the answer.
     to the minute covers that minute. (B) Read to the second: a pass
     written after hh:mm:00 is after the start (the stricter reading, LAW
     1's spirit). Default until ruled: (A), unchanged.
+36. **The venue's away-side spread contracts are read at the wrong sign,
+    so 269 claims and 54 recommendations put the model's number for one
+    line beside the venue's price for another. (Found 2026-09-30 by the
+    measurement that opens pick-number step A, "every number on a pick
+    names the line it belongs to", on one verified copy of the record made
+    at about 08:00Z and deleted after. The step STOPPED here: nothing is
+    built, nothing committed.)**
+    - **What the venue sells.** Every spread contract is "<team> wins by
+      over <s> points" -- the venue's own words, in the record's cached
+      payloads: "North Texas wins by over 1.5 points" and "Tulsa wins by
+      over 1.5 points" (UNT at TLSA), "Toronto wins by over 1.5 runs" (TOR
+      at BAL), "SEA Seahawks wins by over 7.5 points" (SEA at WAS).
+      `kalshi.parse_markets` stores a home contract as -s and an away one as
+      +s. For an away contract, +s is already the home side's line of the
+      proposition its complemented price is about (the away side does not
+      win by more than s = the home side covers +s). `at_the_line.
+      home_view_line` negates it, so every claim priced off an away contract
+      stores -s: its model number is the forecast read at -s, and its price
+      is about +s. From the first claim writer (25d83b8, 2026-09-07);
+      `test_at_the_price.py::test_the_venue_line_is_read_from_the_home_side`
+      asserts the negation.
+    - **Proved on the record.** The released reading prices "the home side
+      covers -s" twice wherever the venue lists s from both sides (8,286
+      pairs): the home contract's mid and one minus the away contract's mid
+      differ by 41 points on average, the same way in 99.96% of pairs. One
+      proposition read twice would agree within the spread. Read at +s, each
+      ladder is one rising curve (UNT at TLSA: Tulsa -6.5 30.5¢, -1.5 48.5¢;
+      Tulsa +1.5 54.5¢, +6.5 71.5¢).
+    - **What it touched.** 269 of the 567 spread claims, all statistical, all
+      settled, written 2026-09-07 to 2026-09-29: MLB 139 of 293 (the model's
+      number at the question's own -1.5, the price about +1.5), NFL 90 of
+      171 and NCAAF 40 of 103 (19 with the price at the question's line and
+      the model's number at the other sign, 111 with neither at it). 54 of
+      the 113 recommendations were priced from one, their side, edge and
+      size worked out across two contracts: MLB run lines 6, 8, 11, 14, 16,
+      20, 25, 30, 32, 34, 38-42, 44, 48, 50, 51, 53-55, 57, 59, 60, 79,
+      84-87, 93-98, 100, 106-109; NFL 62, 63, 66, 68-70, 73, 75, 77, 78;
+      NCAAF 88, 90, 91. Their mean edge is +23.2¢, against +10.8¢ on the 40
+      spreads priced off a home contract. E.g. rec 44 (TOR at BAL) was drawn
+      "Toronto +1.5 · 66% · 36.5¢": 66% is Toronto +1.5's chance, and 36.5¢
+      is the price of the contract the recommendation buys, "Toronto wins by
+      over 1.5 runs" (Toronto -1.5). Rec 90, "Navy -6.5 · 80% · 50.5¢": 80%
+      is Navy +6.5's chance, 50.5¢ the price of "Navy wins by over 6.5". A
+      baseball forecast carries no margin distribution, so a claim at the
+      right sign (+1.5, another rung than the question's -1.5) would have
+      been refused: none of the 41 MLB run-line recommendations would exist.
+      On the page: 53 of the 68 priced rows (shortlisted forecasts' last
+      claim before the start) whose numbers are not at their words' line,
+      and 47 of 60 such live pregame figures. The at-the-line record's
+      market figures for spreads score those 269 prices against the other
+      line's outcome, and `drift.py` matches a claim's ladder by the same
+      reading (a home contract at -s and an away one at +s taken as one).
+      The list of 30 September (FOLLOWUPS, "THE LIST") carries it: rec 88's
+      and 90's "should be" figures are two contracts' numbers, and so are 47
+      cards of its list B. No game-market pick on the record is taken.
+    - **Today:** nothing upcoming carries one (UNT at TLSA is priced off the
+      home contract TLSA2; WKU at NMSU has moneylines only). The next
+      near-start look at an NFL or NCAAF spread whose rung nearest 50¢ is an
+      away contract writes another, and the page draws it.
+    - **Step A's own measurement, for when it resumes** (same copy):
+      recommendations shown under another line's words, 66 -- the 54 above
+      and 12 priced off a home contract at another rung than the question's
+      (NFL 64, 67, 71, 72, 74, 76; NCAAF 89, 102-105, 111: rec 111 drawn
+      "North Texas -6.5 · 76% · 50.5-51.5¢", each number North Texas
+      +1.5's);
+      priced rows 68 (15 + 53), live pregame figures 60 (13 + 47); opening
+      reads at another rung than the question's, 628 reads on 167
+      shortlisted forecasts (the question's own rung listed in 337 of them,
+      not in 291). Lists: scratchpad `picknum\A\measure.json`,
+      `measure2.json`.
+    - **What needs your ruling** (LAW 3 keeps the stored rows as written, and
+      the rulings do not say what a pick priced across two contracts is):
+      (i) the writer -- read an away contract at +s (the stored number as it
+      is) from the release, with a planting that escapes on the released
+      code; a baseball look at an away contract then becomes the writer's
+      ordinary refusal. (ii) The 269 stored claims and 54 recommendations --
+      (A) void the recommendations by append-only rows (ruling 1 of
+      2026-09-24's rule) and leave the claims out of the at-the-line record
+      by a dated rule that names them, (B) label them and keep them counted,
+      or (C) leave them as they are. (iii) The page, for a row priced off one
+      (past slates' payload today; new ones until (i) ships) -- (A) refuse it
+      by name (the API answers 500 for that slate), (B) draw it unpriced: the
+      model's own number at the question's line, no price, no size, a
+      sentence saying why; or (C) each number under its own contract.
+      (iv) Step A waits on (i)-(iii): its gate check must know which line a
+      price belongs to, and on the released reading it would pass rec 44's
+      row. Or build step A now on the home contracts, with (iii)(B) for an
+      away one, so rec 111 reads "North Texas +1.5" before its kickoff
+      (2026-10-02T01:00Z)?
+    Default until ruled: nothing built; step A not started.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
