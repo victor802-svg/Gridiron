@@ -45,6 +45,18 @@
   Built in that order, A first, released before 2 Oct 01:00Z; the reading
   (a number is always shown under the words of the contract it belongs to)
   is recorded in docs/briefs/2026-09-30-rulings.md's successor note here.
+  **STEP A STOPPED for question 36** (the venue's away-side spread contracts
+  read at the wrong sign: 269 claims, 54 recommendations priced across two
+  contracts); nothing of A is built. **STEP C released as 8109f1f
+  (2026-09-30 11:27Z; gate 4/4, 392/392, first run):** My day's chip wears
+  the picked side's club; the Today card's payout and the payout floor are
+  the side bought's; each recommendation line names the side it buys in its
+  own words (no "the yes side / the other side"); the Results table said
+  "<club> to win" beside a "lose" pick's number on 403 of 3,434 rows (every
+  release so far) -- now "to lose", held by a gate row; the edge figure,
+  the better side's, is labelled "on the other side" where it is (10 cards,
+  NBA 3166 upcoming); `audit.check_every_pick_names_its_side` in step 2.
+  Question 37 below. **Next: step B (combos)**, then A when Q36 is ruled.
   **STEP A STOPPED on question 36** (the away contracts' sign). **STEP C
   BUILT (2026-09-30, uncommitted for its prover; FOLLOWUPS "Every pick
   names its own side"):** the Today card's payout and payout words are
