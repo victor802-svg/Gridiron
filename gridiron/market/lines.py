@@ -18,7 +18,7 @@ import math
 import json
 import sqlite3
 
-from .. import config
+from .. import config, subjects
 from ..db import utcnow
 from . import sources
 
@@ -357,7 +357,12 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int, *,
         home_p, away_p = devig_pair(row["home_moneyline"], row["away_moneyline"])
         # `subject` names the side; model_side is 'win' or 'lose' for that side.
         implied_home = home_p
-        implied = implied_home if pred["model_side"] == "win" else 1.0 - implied_home
+        # THE SIDE FROM THE ONE PLACE (the ruling of 2026-09-30), here and
+        # below: a spelling it does not know is refused by name rather than
+        # compared as the no side.
+        implied = (implied_home
+                   if subjects.takes_the_yes_side("moneyline", pred["model_side"])
+                   else 1.0 - implied_home)
         return write(row["source"], float(row["home_moneyline"]), round(implied, 6))
 
     if pred["market_type"] == "total":
@@ -368,7 +373,9 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int, *,
             return None
         implied_yes = implied_over_probability(
             row["total_line"], pred["line_asked"], sport)
-        implied = implied_yes if pred["model_side"] == "over" else 1.0 - implied_yes
+        implied = (implied_yes
+                   if subjects.takes_the_yes_side("total", pred["model_side"])
+                   else 1.0 - implied_yes)
         return write(row["source"], row["total_line"], round(implied, 6))
 
     if row["spread_line"] is None:
@@ -384,7 +391,9 @@ def snapshot_prediction(conn: sqlite3.Connection, prediction_id: int, *,
     if _sign_column(row) == "contradicted":
         return None
     implied_yes = implied_cover_probability(row["spread_line"], pred["line_asked"], sport)
-    implied = implied_yes if pred["model_side"] == "cover" else 1.0 - implied_yes
+    implied = (implied_yes
+               if subjects.takes_the_yes_side("spread", pred["model_side"])
+               else 1.0 - implied_yes)
     return write(row["source"], row["spread_line"], round(implied, 6))
 
 
@@ -444,7 +453,9 @@ def _snapshot_prop(conn: sqlite3.Connection, pred: sqlite3.Row, write) -> dict:
         other = props.line_for(
             conn, pred["game_id"], pred["prop_type"], espn_id,
             pred["line_asked"],
-            "under" if pred["model_side"] == "over" else "over",
+            # the other side's spelling, the side placed by the one place
+            "under" if subjects.takes_the_yes_side("prop", pred["model_side"])
+            else "over",
         )
         return write(
             NO_PROP_THIS_SIDE if other is not None else NO_PROP_AT_RUNG,

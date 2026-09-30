@@ -4159,6 +4159,99 @@ def check_every_side_has_words(conn=None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# EVERY SIDE IS PLACED BY THE ONE PLACE (the operator's ruling of 2026-09-30)
+# ---------------------------------------------------------------------------
+#
+# `check_every_side_has_words` asked whether the words had a verb for every
+# stored side, and they did -- "fail to cover" had one since 2026-09-01. Nothing
+# asked whether the NUMBERS could place it, and they could not: 93 college
+# spreads sat on a side `priced.shape.blind_probability` had no rule for, and
+# recommendation 111 was drawn with the other side's chance and price. This
+# asks the one place (`subjects.side_taken`) about every side the record
+# holds and every side a sport declares on its questions -- and holds each
+# declared label to the side it is declared as, so the one place cannot come
+# to read a sport's no side as its yes side either.
+
+
+def declared_sides(root: Path | None = None) -> list[tuple[str | None, str, str, str]]:
+    """Every (market_type, label, "yes" or "no", where) a sport module writes
+    on a `Question`, read from the source: `yes_label=` and `no_label=`
+    beside the call's `market_type=`."""
+    import ast as _ast
+
+    root = Path(root) if root is not None else Path(__file__).resolve().parent / "sports"
+    out = []
+    for path in sorted(root.glob("*.py")):
+        tree = _ast.parse(path.read_text(encoding="utf-8"))
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Call):
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name != "Question":
+                continue
+            kw = {k.arg: k.value for k in node.keywords if k.arg}
+            market = kw.get("market_type")
+            market = market.value if isinstance(market, _ast.Constant) else None
+            for field, which in (("yes_label", "yes"), ("no_label", "no")):
+                value = kw.get(field)
+                if isinstance(value, _ast.Constant) and isinstance(value.value, str):
+                    out.append((market, value.value, which,
+                                f"{path.name}:{node.lineno}"))
+    return out
+
+
+def sides_not_placed(stored, declared) -> list[str]:
+    """Stored (market_type, side) pairs the one place cannot place, and
+    declared labels it cannot place or places on the other side. Empty is the
+    only pass."""
+    from . import subjects
+
+    faults = []
+    for market, side in sorted(set(stored), key=lambda p: (str(p[0]), str(p[1]))):
+        try:
+            subjects.side_taken(market, side)
+        except subjects.UnplaceableSide as exc:
+            faults.append(f"the record holds a {market} forecast on the side "
+                          f"{side!r}, which the one place cannot place: {exc}")
+    for market, label, which, where in declared:
+        if market is None:
+            faults.append(f"{where} declares the label {label!r} on a question "
+                          f"whose market_type is not written beside it, so the "
+                          f"one place cannot be asked about it")
+            continue
+        try:
+            placed = subjects.side_taken(market, label)
+        except subjects.UnplaceableSide as exc:
+            faults.append(f"{where} declares {label!r} as the {which} side of a "
+                          f"{market} question, and the one place cannot place "
+                          f"it: {exc}")
+            continue
+        if placed != which:
+            faults.append(f"{where} declares {label!r} as the {which} side of a "
+                          f"{market} question, and the one place reads it as the "
+                          f"{placed} side: every number on it would be turned "
+                          f"the wrong way")
+    return faults
+
+
+def check_every_side_is_placed(conn=None) -> None:
+    """Every side the record holds and every side a sport declares, placed by
+    `subjects.side_taken` on the side it is declared as."""
+    stored = set()
+    if conn is not None:
+        stored = {(r[0], r[1]) for r in conn.execute(
+            "SELECT DISTINCT market_type, model_side FROM predictions")}
+    faults = sides_not_placed(stored, declared_sides())
+    if faults:
+        raise LawViolation(
+            "A SIDE THE ONE PLACE CANNOT PLACE. A number on it would be painted "
+            "on a guessed side -- recommendation 111 read 'North Texas -6.5 · "
+            "24% · 48¢', the other side's chance and price, because 'fail to "
+            "cover' was a side the numbers could not place (the ruling of "
+            "2026-09-30):" + _NL2 + _NL2.join(faults[:10]))
+
+
+# ---------------------------------------------------------------------------
 # A CALL IS A CONFIDENCE, NOT A STAKE -- GUARD WITHDRAWN WITH ITS FEATURE
 # ---------------------------------------------------------------------------
 #
@@ -12212,7 +12305,25 @@ def board_price_side_faults(payload) -> list[str]:
                 f"corrected number the chip states (GRIDIRON_REPAIR item 3)")
             return
         fair = card.get("fair_value")
-        flip = card.get("question_takes_the_proposition") is False
+        takes = card.get("question_takes_the_proposition")
+        # A SIDE THE PAGE CANNOT PLACE FAILS, IT DOES NOT PASS (the
+        # operator's ruling of 2026-09-30). This read `is False` and treated
+        # anything else as "the question takes the proposition", so a priced
+        # card whose side could not be placed was held to its own unturned
+        # numbers and passed: rec 111's "North Texas -6.5 · 24% · 48¢" went
+        # through, the other side's chance and price under North Texas.
+        if ((fair is not None or card.get("price") is not None)
+                and takes is not True and takes is not False):
+            faults.append(
+                f"{where}: its Today card is priced (chance {fair!r}, price "
+                f"{card.get('price')!r}) on a question whose side cannot be "
+                f"placed against the claim's proposition "
+                f"(question_takes_the_proposition {takes!r}), and the board "
+                f"shows {block.get('prob_words')!r} at {block.get('price')!r}: "
+                f"a number on a side nobody can place is refused, never shown "
+                f"(the ruling of 2026-09-30)")
+            return
+        flip = takes is False
         if fair is not None:
             chance = 1.0 - fair if flip else fair
             if block.get("prob") is None or abs(block["prob"] - chance) > 1e-9:
@@ -12248,6 +12359,26 @@ def board_price_side_faults(payload) -> list[str]:
             check(q, f"board.games[{i}].questions[{j}]")
     for i, tile in enumerate(((board.get("props") or {}).get("tiles")) or []):
         check(tile, f"board.props.tiles[{i}]")
+    # A LIVE ROW'S PREGAME FIGURE ON A SIDE NOBODY CAN PLACE FAILS TOO (the
+    # prover of the ruling of 2026-09-30). The walk above holds the priced
+    # upcoming blocks only, so a live card carrying the claim's pregame chance
+    # beside a question whose side could not be placed passed -- the released
+    # page drew exactly that on every live row naming the claim's other side,
+    # its live entry carrying no side at all (116 cards since 2026-09-09).
+    # The builder refuses it now; this is the gate's second line, as the
+    # priced check is for the chance and the price.
+    for i, card in enumerate(today.get("live") or []):
+        if not isinstance(card, dict) or not card.get("pregame_words"):
+            continue
+        takes = card.get("question_takes_the_proposition")
+        if takes is not True and takes is not False:
+            faults.append(
+                f"today.live[{i}] (question {card.get('prediction_id')}) shows "
+                f"{card.get('pregame_words')!r}, the claim's pregame chance, on a "
+                f"question whose side cannot be placed against the claim's "
+                f"proposition (question_takes_the_proposition {takes!r}): a "
+                f"number on a side nobody can place is refused, never shown "
+                f"(the ruling of 2026-09-30)")
     return faults
 
 
@@ -12281,6 +12412,30 @@ BOARD_PRICED_FIXTURE_MERGED = {
         "prediction_id": 1, "state": "upcoming", "forecaster": "statistical",
         "prob": 0.57, "prob_words": "57%", "price": 0.485,
         "pays": 2.062}]}]}}
+#: RECOMMENDATION 111 AS THE RELEASED PAGE CARRIED IT (2026-09-30): a priced
+#: card whose side could not be placed (None), and a board block agreeing
+#: with its unturned numbers -- "North Texas -6.5 · 24% · 48¢ · 2.06x".
+BOARD_PRICED_FIXTURE_UNPLACED = {
+    "forecaster": "statistical",
+    "today": {"clears": [{"prediction_id": 3147, "state": "upcoming",
+                          "model_words": "24¢", "fair_value": 0.2398,
+                          "question_takes_the_proposition": None,
+                          "price": 0.485, "payout": 2.062}]},
+    "board": {"games": [{"questions": [{
+        "prediction_id": 3147, "state": "upcoming", "forecaster": "statistical",
+        "prob": 0.2398, "prob_words": "24%", "price": 0.485,
+        "pays": 2.062}]}]}}
+#: RECOMMENDATION 88'S LIVE ROW AS THE RELEASED PAGE CARRIED IT (the prover,
+#: 2026-09-30): a live card with the claim's pregame chance and no placed
+#: side -- "Army covers +0.5 · pregame 43%", where Army's own was 57%.
+BOARD_LIVE_FIXTURE_UNPLACED = {
+    "forecaster": "statistical",
+    "today": {"live": [{"prediction_id": 2478, "state": "live",
+                        "pregame_words": "pregame 43%",
+                        "question_takes_the_proposition": None}]},
+    "board": {"games": [{"questions": [{
+        "prediction_id": 2478, "state": "live", "forecaster": "statistical",
+        "pregame_words": "pregame 43%"}]}]}}
 
 
 def _check_the_board_count_scanners_can_see() -> None:
@@ -12292,6 +12447,20 @@ def _check_the_board_count_scanners_can_see() -> None:
                         + board_price_side_faults(BOARD_PRICED_FIXTURE_GOOD)[0])
     if not board_price_side_faults(BOARD_PRICED_FIXTURE_MERGED):
         problems.append("board_price_side_faults misses the merge's priced row")
+    if not board_price_side_faults(BOARD_PRICED_FIXTURE_UNPLACED):
+        problems.append("board_price_side_faults passes a priced card whose side "
+                        "cannot be placed (rec 111's shape, 2026-09-30)")
+    if not board_price_side_faults(BOARD_LIVE_FIXTURE_UNPLACED):
+        problems.append("board_price_side_faults passes a live card's pregame "
+                        "figure whose side cannot be placed (rec 88's live row, "
+                        "2026-09-30)")
+    placed_live = {"forecaster": "statistical", "board": BOARD_LIVE_FIXTURE_UNPLACED["board"],
+                   "today": {"live": [dict(BOARD_LIVE_FIXTURE_UNPLACED["today"]["live"][0],
+                                           pregame_words="pregame 57%",
+                                           question_takes_the_proposition=False)]}}
+    if board_price_side_faults(placed_live):
+        problems.append("board_price_side_faults refuses a live card whose side is "
+                        "placed: " + board_price_side_faults(placed_live)[0])
     twice = {"forecaster": "statistical", "board": {
         "games": [{"questions": [{"prediction_id": 7, "forecaster": "statistical",
                                   "taken": True}],

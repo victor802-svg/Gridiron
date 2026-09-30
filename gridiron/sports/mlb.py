@@ -21,7 +21,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from .. import config
+from .. import config, subjects
 from ..data import mlb_repo as repo
 from ..model import questions
 from ..factors import compute
@@ -855,17 +855,23 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
         # sport. Written before the first prediction; see `questions.py`.
         covered = questions.run_line_outcome(
             game["home_score"], game["away_score"], pred["line_asked"])
-        return covered if pred["model_side"] == "cover" else 1 - covered
+        # THE SIDE FROM THE ONE PLACE (the ruling of 2026-09-30), here and in
+        # every branch below: a spelling it does not know is refused by name
+        # rather than graded as the no side.
+        return covered if subjects.takes_the_yes_side("spread", pred["model_side"]) \
+            else 1 - covered
 
     if pred["market_type"] == "total":
         over = questions.total_outcome(
             game["home_score"], game["away_score"], pred["line_asked"])
-        return over if pred["model_side"] == "over" else 1 - over
+        return over if subjects.takes_the_yes_side("total", pred["model_side"]) \
+            else 1 - over
 
     home_won = 1 if game["home_score"] > game["away_score"] else 0
     subject_is_home = pred["subject"] == game["home"]
     subject_won = home_won if subject_is_home else 1 - home_won
-    return subject_won if pred["model_side"] == "win" else 1 - subject_won
+    return subject_won if subjects.takes_the_yes_side("moneyline", pred["model_side"]) \
+        else 1 - subject_won
 
 
 def markets() -> tuple[str, ...]:
@@ -1103,7 +1109,7 @@ def _resolve_prop(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
     from ..model.questions import prop_outcome
 
     over = prop_outcome(float(actual), pred["line_asked"])
-    return over if pred["model_side"] == "over" else 1 - over
+    return over if subjects.takes_the_yes_side("prop", pred["model_side"]) else 1 - over
 
 
 def _today_utc() -> str:

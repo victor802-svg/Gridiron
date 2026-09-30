@@ -9508,6 +9508,11 @@ for the re-read, under the queue rule.**
 
 ### FIRST: THE NCAAF WRONG SIDE -- OPEN, NOT FIXED HERE; IT WAITS FOR THE OPERATOR (reported to them now)
 
+**RULED AND BUILT 2026-09-30** (the operator's rulings of 30 September): see
+"The side is placed in one place, and a side it cannot place is refused",
+at the end of this file, for the fix and the list of every past
+recommendation and card shown with the wrong side's numbers.
+
 In the step's own words: **WRONG SIDE on a live, sized, green-outlined
 recommendation (NCAAF, UNT at TLSA, Thursday 1 October): the board reads
 'North Texas -6.5 · 24% · 48¢ · 2.06x', but the record's numbers for that
@@ -9819,3 +9824,626 @@ pass here (22 passed with the tap, overflow and tab tests).
   touch it (last changed in "prog 6: entry"), so it is here under the queue
   rule, not fixed: a `min-height: 44px` on the field is the likely fix, for
   the re-read.
+
+## The side is placed in one place, and a side it cannot place is refused -- built 2026-09-30 *(the operator's ruling of 30 September on rec 111 / the NCAAF wrong side; docs/briefs/2026-09-30-rulings.md)*
+
+"Rec 111 / NCAAF wrong side: fix it, now, own commit and gate, released before
+2 October 01:00Z. Read 'fail to cover' as the no side in the one place the
+side is worked out; the page and the check refuse any side they can't place
+instead of passing it; planting. List every past rec shown with the wrong
+side's numbers." Built on `repair` at 8121a9a (whose code is the released
+cb8c7da), uncommitted for the prover.
+
+### MEASURED FIRST *(read-only: `db.read_the_live_record` for the spellings, 2026-09-30 ~03:40Z, `scratchpad/wrongside/measure_spellings.py` -> `spellings.json`; then ONE verified copy of the record through `rebuild.verified_backup`, 2026-09-30T03:41:45Z, integrity ok, 64 tables, nothing mismatched, read with `db.read_only` by the released code -- a `git archive` of 8121a9a in `scratchpad/wrongside/head/` -- and deleted after)*
+
+**Every stored side, per sport and market** (both forecasters): spread
+`cover` / `not_cover` (MLB, NBA, NFL) and `cover` / `fail to cover` (NCAAF:
+93 rows, 65 statistical and 28 reasoning pass); moneyline `win` / `lose`
+(every sport, UFC included); total `over` / `under`; prop `over` / `under`
+(MLB, NFL); UFC rounds `over` / `under`, UFC distance `yes` / `no`. No other
+spelling is on the record. Totals store `under`, moneylines `lose`: both
+were placed by the released numbers. The sports declare the same labels on
+their questions (`Question(yes_label=..., no_label=...)`, 36 of them, read
+from the source), and college football's spread is the only one declaring
+`fail to cover`.
+
+**What the released code could place** (`priced.shape.
+question_takes_the_proposition`, every forecast on the record): every
+spelling except `fail to cover` (all 93 NCAAF rows, 26 of them priced) and
+the UFC rounds and distance questions (224 rows, none ever priced: the
+recommendation engine declares no quantity for those markets, so no claim,
+no price and no number from a claim is ever drawn for them -- they stay
+unplaced and are refused only if a number would be drawn). Every
+recommendation's side: 4 unplaced (88, 90, 104, 111, all NCAAF `fail to
+cover`); 109 placed.
+
+**Every place that decided which side a question takes**, each on its own
+rule until this build:
+
+1. `priced.shape.blind_probability` -- THE NUMBERS: the claim writer's
+   line-less and rung-matched claims, `question_takes_the_proposition`, and
+   through it every turn the page made. Listed `cover`/`not_cover`,
+   `win`/`lose`, `over`/`under`; anything else None. This is the one the
+   ruling names, and the hole.
+2. `language.is_no_side` (through `subjects.YES_SIDE`) -- THE WORDS: any
+   spelling but the yes one is the no side. So the words named North Texas
+   while the numbers were Tulsa's.
+3. `language`'s own composers: totals and rounds said "over" for anything
+   but `under`; the distance phrase listed `no`, `under`, `not_cover` as the
+   no side; the moneyline phrases and clauses tested `== "lose"`.
+4. The resolvers: `resolve.resolve_nfl_outcome` (`== "over"/"win"/"cover"`),
+   `sports/mlb.py` and `sports/nba.py` (the same), `sports/cfb.py` (its own
+   dict of yes spellings) -- all "anything but the yes spelling is the no
+   side" -- and the fight resolver in `resolve.py`, which listed `lose`,
+   `under`, `no`, `not_cover` and graded ANY OTHER spelling as the YES side:
+   the opposite default. Right on every stored spelling; two defaults
+   pointing opposite ways on the next one.
+5. `market/lines.py`'s snapshot (the book's implied probability for the
+   model's side; `== "win"/"over"/"cover"`), and its prop quote's other side.
+6. `calibration.factor_report`'s `outcome_yes` -- compares with the
+   forecast's OWN stored `yes_label`, no table of its own (left as it is:
+   it reads the question's declaration, not a spelling list).
+7. `tools/diagnose.py`'s "which side the model took" buckets:
+   `== "not_cover"`, which left `fail to cover` out.
+8. `language.WHY_YES_SIDE`: a second literal of the yes spellings (unused
+   beyond its definition).
+9. The page's own turns: `views._today_card`, `views._favours_home`,
+   `views._edge_side_words`, `views._opening_price`'s `flip`, the live
+   card's pregame figure, and `board._question_block` -- all on
+   `question_takes_the_proposition is False`; and the gate's
+   `audit.board_price_side_faults` on the same `is False`.
+
+Readers that do NOT decide a question's side (checked, left alone): the
+recommendation's own `side` ('yes'/'no' on the claim's proposition:
+`recommend.side_for`, `clv_cents`, `close_of`, `_cost_of`), the package legs
+(`views._leg_reading`, oriented by the club the venue's leg names), the
+at-the-line sentence (it names the proposition itself), the renderer
+(`app.js` prints the stored side's name in one chip and decides nothing).
+
+**The claim writer never refused a claim for want of a side**: every look at
+the 93 college `fail to cover` forecasts was a rung-differs margin claim
+(101 looks), which reads the frozen distribution and never asks the side;
+none was rung-matched (`measure_claims.py`). So no count of the at-the-line
+record moved, and from this build a rung-matched look at one would be
+claimed rather than refused.
+
+### THE LIST: EVERY PAST RECOMMENDATION (AND EVERY CARD) SHOWN WITH THE WRONG SIDE'S NUMBERS
+
+Reconstructed by running the RELEASED builders (`recommend.for_predictions`,
+`views._today_card`, `board._question_block`, `combos.propose`,
+`views._pregame_probability`, `views.week`) on the verified copy, and from
+each recommendation's own stored row and every claim written before the
+start (`measure_list.py` -> `list.json`, `measure_live.py` -> `live.json`,
+`measure_open.py` -> `open.json`, `measure_combos.py` -> `combos.json`). No
+correction was ever in force at any of these stamps, so each chance is the
+raw claim. "Should" is the same number on the side the question names: one
+minus the chance, one minus the price, and the payout of that price. The
+record cannot say which of these the operator had open; each is what the
+page drew whenever it was open then. None of these rows was taken (the
+record's only tap is a 2026-09-08 package).
+
+**A. The priced rows of the four recommendations the released code could not
+place** (NCAAF `fail to cover`; statistical; each one flat unit, $15, "measured
+and NOT ahead"). The recommendation's own side was stored correctly every
+time (the no side of the question as asked), and its close and CLV are on
+that stored side, unaffected.
+
+- **rec 88** -- forecast 2478, ARMY at TEM, 2026-09-25 20:00Z, "Army covers
+  +0.5". Drawn 43% (chip 43¢), 48.5¢ (48¢), pays 2.06x; should be 57%,
+  51.5¢ (52¢), 1.94x. Two looks, 19:33 and 19:35Z, on the old Today card.
+  Settled: WON (Army 21 - 17). Close 48.5¢, CLV 0.0¢.
+- **rec 90** -- forecast 2490, NAVY at UAB, 2026-09-25 23:00Z, "Navy covers
+  -6.5". Drawn 20%, 49.5¢ (50¢), 2.02x; should be 80%, 50.5¢ (50¢), 1.98x.
+  Six looks, 19:33 to 22:35Z, the old Today card. Settled: LOST (Navy 20 -
+  24). Close 49.5¢, CLV 0.0¢.
+- **rec 104** -- forecast 2874, TA&M at LSU, 2026-09-26 23:30Z, "Texas A&M
+  covers +0.5". Drawn 27%, 48.5¢ then 49.5¢ (48¢, 50¢), 2.06x then 2.02x;
+  should be 73%, 51.5¢ then 50.5¢, 1.94x then 1.98x. Five looks, 16:17 to
+  23:05Z, the old Today card. Settled: LOST (TA&M 6 - 35). Close 49.5¢,
+  CLV -1.0¢.
+- **rec 111** -- forecast 3115 (the early pass), UNT at TLSA, 2026-10-02
+  01:00Z, "North Texas covers -6.5". At its write (2026-09-27 16:00Z) and
+  while that pass stood: 24%, 49.5¢ (50¢), 2.02x; should be 76%, 50.5¢,
+  1.98x. From 2026-09-28 15:00Z its final pass, forecast 3147, stands on the
+  slate (the recommendation stays on 3115 -- one per game and market) and is
+  the row's pick: 24% (chip 24¢), 48.5¢ (48¢), 2.06x, "$15 · one flat unit"
+  under the green outline; should be 76%, 51.5¢ (52¢), 1.94x -- on the old
+  Today card until the board's release (2026-09-29 19:09Z), on the board
+  since ("North Texas -6.5 · 24% · 48¢ · 2.06x", the step-3 capture). NOT
+  SETTLED; the game is 2 October 01:00Z. After this build, on the same copy:
+  "North Texas covers -6.5 · 76% · 52¢ · 1.94x", the check passing.
+
+**B. The live rows' pregame figure -- every card whose question names the
+claim's other side, not only college football's** (found by this build; the
+refusal could not ship without it). A live card is built from an entry that
+carries no side at all, so `flip` was never True on a live card, and from
+the pregame figure's release (fb6dcdf, 2026-09-09 21:36Z) every live row --
+the old Live tab, then the board's live rows -- whose question names the
+claim's other side showed the PROPOSITION's pregame chance. Proved on the
+released code: "BBB to win" beside "pregame 43%" where the forecast's own
+side is 57% (`test_the_side_is_placed.py::test_a_live_cards_pregame_figure_
+is_on_the_side_its_question_names` fails on 8121a9a). 116 cards on 13
+slates, 57 of them recommendations, from 2026-09-09 22:35Z to 2026-09-29
+00:15Z (each forecaster's standing shortlisted cards with a claim, on games
+that started after fb6dcdf; the release that carried fb6dcdf may have come
+after the first of these). The numbers are the claim's, read at the venue's
+line; the recommendation's own side and price were never touched by this.
+Where the venue's line is not the question's rung (the NFL and NCAAF
+spreads: rec 67's "Atlanta covers +15.5" beside a figure about Atlanta at
+the venue's own number), neither figure is the question's own chance: that
+is pick-number finding 2, below, and not this list.
+
+
+**C. The opening read on an unplaced side** (reasoning pass, the Watching
+group, no price at the line yet). A card with no price at the line shows the
+venue's latest opening read, turned on `is False` alone, so on a `fail to
+cover` question it was the proposition's opening price and payout:
+
+- forecast 3148 (UNT at TLSA, final pass, "North Texas covers -6.5"): from
+  2026-09-28 15:00Z, 51¢ · pays 1.96x (the 05:11Z read), then 48.5¢ · 2.06x
+  (the reads of 09-28 21:12Z and 09-29 13:12Z); should be 49¢ · 2.04x, then
+  51.5¢ · 1.94x. On the old Today card until 2026-09-29 19:09Z; since the
+  board, only in the payout's tooltip ("2.06 times"), the row reading "venue
+  has not listed this yet".
+- forecast 2503 (CLEM at CAL, "Clemson covers -6.5"): 50.5¢ · 1.98x from
+  2026-09-25 21:01Z to the start; should be 49.5¢ · 2.02x.
+- forecast 2917 (TLSA at ARK, "Tulsa covers +14.5"): 53.5¢ · 1.87x from
+  2026-09-26 17:01Z to the start; should be 46.5¢ · 2.15x.
+- forecast 2923 (FAU at ULM, "Florida Atlantic covers -6.5"): 50.5¢ · 1.98x
+  from 2026-09-26 17:01Z to the start; should be 49.5¢ · 2.02x.
+
+**D. The combos panel** (statistical, NCAAF), three proposals built on recs
+88, 90 and 104: "Rutgers covers -24.5 + Navy covers -6.5" worth 2.3%, "pay
+below 1¢" (the recommended sides' product is 71.1%); "California covers
++6.5 + Army covers +0.5" 14.3%, below 12¢ (38.0%); "Florida International
+covers -14.5 + Texas A&M covers +0.5" 3.8%, below 2¢ (62.8%). Each number is
+wrong for a reason beyond this ruling -- a proposal multiplies every leg's
+yes-side number whatever side its recommendation is on (the pick-number
+findings below) -- and the unplaced legs are refused by the page now.
+
+THE FULL LIST OF B, each card with what the live row showed and should have:
+
+RECOMMENDATIONS (57):
+
+- rec 25 (forecast 1530), MLB CLE at BAL, 2026-09-09T22:35Z, "Cleveland covers +1.5" [not_cover]: live pregame 36%, should be 64%; lost
+- rec 26 (forecast 1535), MLB HOU at PHI, 2026-09-09T22:40Z, "Houston covers +1.5" [not_cover]: live pregame 35%, should be 65%; lost
+- rec 27 (forecast 1545), MLB LAA at BOS, 2026-09-09T22:45Z, "Los Angeles covers +1.5" [not_cover]: live pregame 37%, should be 63%; won
+- rec 28 (forecast 1567, reasoning pass), MLB AZ at KC, 2026-09-09T23:40Z, "under 8.5 total runs" [under]: live pregame 38%, should be 62%; won
+- rec 29 (forecast 1572, reasoning pass), MLB PIT at CWS, 2026-09-09T23:40Z, "under 8.5 total runs" [under]: live pregame 41%, should be 59%; won
+- rec 30 (forecast 1581), MLB TB at ATL, 2026-09-10T16:15Z, "Tampa Bay covers +1.5" [not_cover]: live pregame 33%, should be 67%; lost
+- rec 31 (forecast 1586), MLB HOU at PHI, 2026-09-10T17:05Z, "Houston covers +1.5" [not_cover]: live pregame 37%, should be 63%; won
+- rec 33 (forecast 1658), MLB COL at NYY, 2026-09-10T23:05Z, "Colorado covers +1.5" [not_cover]: live pregame 45%, should be 55%; lost
+- rec 34 (forecast 1663), MLB PIT at CWS, 2026-09-10T23:40Z, "Pittsburgh covers +1.5" [not_cover]: live pregame 39%, should be 61%; won
+- rec 35 (forecast 1704), MLB KC at BOS, 2026-09-11T23:10Z, "Kansas City covers +1.5" [not_cover]: live pregame 36%, should be 64%; won
+- rec 36 (forecast 1706, reasoning pass), MLB KC at BOS, 2026-09-11T23:10Z, "under 8.5 total runs" [under]: live pregame 42%, should be 58%; won
+- rec 37 (forecast 1709), MLB PHI at ATL, 2026-09-11T23:15Z, "Philadelphia covers +1.5" [not_cover]: live pregame 36%, should be 64%; won
+- rec 38 (forecast 1719), MLB CLE at MIN, 2026-09-12T00:10Z, "Cleveland covers +1.5" [not_cover]: live pregame 33%, should be 67%; won
+- rec 39 (forecast 1729), MLB SEA at ATH, 2026-09-12T01:40Z, "Seattle covers +1.5" [not_cover]: live pregame 33%, should be 67%; won
+- rec 40 (forecast 1739), MLB SD at SF, 2026-09-12T02:15Z, "San Diego covers +1.5" [not_cover]: live pregame 36%, should be 64%; won
+- rec 44 (forecast 1811), MLB TOR at BAL, 2026-09-21T22:35Z, "Toronto covers +1.5" [not_cover]: live pregame 34%, should be 66%; won
+- rec 46 (forecast 1816, reasoning pass), MLB TOR at BAL, 2026-09-21T22:35Z, "under 7.5 total runs" [under]: live pregame 43%, should be 57%; won
+- rec 47 (forecast 1819), MLB WSH at DET, 2026-09-21T22:40Z, "Washington covers +1.5" [not_cover]: live pregame 42%, should be 58%; lost
+- rec 48 (forecast 1824), MLB MIN at SF, 2026-09-22T01:45Z, "Minnesota covers +1.5" [not_cover]: live pregame 38%, should be 62%; lost
+- rec 49 (forecast 1826, reasoning pass), MLB MIN at SF, 2026-09-22T01:45Z, "under 8.5 total runs" [under]: live pregame 38%, should be 62%; won
+- rec 50 (forecast 2106), MLB MIL at PHI, 2026-09-23T22:40Z, "Milwaukee covers +1.5" [not_cover]: live pregame 31%, should be 69%; won
+- rec 51 (forecast 2126), MLB CWS at KC, 2026-09-23T23:40Z, "Chicago covers +1.5" [not_cover]: live pregame 28%, should be 72%; won
+- rec 52 (forecast 2131), MLB MIA at CHC, 2026-09-23T23:40Z, "Miami covers +1.5" [not_cover]: live pregame 34%, should be 66%; won
+- rec 53 (forecast 2136), MLB NYM at TEX, 2026-09-24T00:05Z, "New York covers +1.5" [not_cover]: live pregame 32%, should be 68%; won
+- rec 54 (forecast 2141), MLB AZ at COL, 2026-09-24T00:40Z, "Arizona covers +1.5" [not_cover]: live pregame 31%, should be 69%; won
+- rec 55 (forecast 2146), MLB LAA at ATH, 2026-09-24T01:40Z, "Los Angeles covers +1.5" [not_cover]: live pregame 29%, should be 71%; lost
+- rec 56 (forecast 2165), MLB STL at PIT, 2026-09-24T16:35Z, "St. Louis covers +1.5" [not_cover]: live pregame 34%, should be 66%; won
+- rec 57 (forecast 2170), MLB CWS at KC, 2026-09-24T18:10Z, "Chicago covers +1.5" [not_cover]: live pregame 37%, should be 63%; won
+- rec 58 (forecast 2175), MLB MIA at CHC, 2026-09-24T18:20Z, "Miami covers +1.5" [not_cover]: live pregame 33%, should be 67%; won
+- rec 59 (forecast 2185), MLB AZ at COL, 2026-09-24T19:10Z, "Arizona covers +1.5" [not_cover]: live pregame 26%, should be 74%; won
+- rec 67 (forecast 2305), NFL ATL at GB, 2026-09-25T00:15Z, "Atlanta covers +15.5" [not_cover]: live pregame 80%, should be 20%; won
+- rec 70 (forecast 2311), NFL HOU at IND, 2026-09-27T17:00Z, "Houston covers -0.5" [not_cover]: live pregame 42%, should be 58%; lost
+- rec 71 (forecast 2315), NFL NE at JAX, 2026-09-27T17:00Z, "New England covers +9.5" [not_cover]: live pregame 67%, should be 33%; lost
+- rec 72 (forecast 2317), NFL NYJ at DET, 2026-09-27T17:00Z, "New York covers +15.5" [not_cover]: live pregame 70%, should be 30%; won
+- rec 74 (forecast 2323), NFL ARI at SF, 2026-09-27T20:05Z, "Arizona covers +15.5" [not_cover]: live pregame 73%, should be 27%; won
+- rec 75 (forecast 2325), NFL MIN at TB, 2026-09-27T20:05Z, "Minnesota covers -7.5" [not_cover]: live pregame 21%, should be 79%; lost
+- rec 76 (forecast 2328), NFL LV at NO, 2026-09-27T20:25Z, "Las Vegas covers +15.5" [not_cover]: live pregame 84%, should be 16%; won
+- rec 77 (forecast 2330), NFL LA at DEN, 2026-09-28T00:20Z, "LA covers +5.5" [not_cover]: live pregame 62%, should be 38%; won
+- rec 78 (forecast 2332), NFL PHI at CHI, 2026-09-29T00:15Z, "Philadelphia covers +15.5" [not_cover]: live pregame 86%, should be 14%; lost
+- rec 79 (forecast 2335), MLB MIL at PHI, 2026-09-24T22:05Z, "Milwaukee covers +1.5" [not_cover]: live pregame 35%, should be 65%; won
+- rec 80 (forecast 2338), MLB CLE at BOS, 2026-09-24T22:45Z, "Cleveland covers +1.5" [not_cover]: live pregame 29%, should be 71%; won
+- rec 82 (forecast 2341), MLB TB at NYY, 2026-09-24T23:05Z, "Tampa Bay covers +1.5" [not_cover]: live pregame 43%, should be 57%; lost
+- rec 83 (forecast 2353), MLB SD at LAD, 2026-09-25T02:10Z, "San Diego covers +1.5" [not_cover]: live pregame 33%, should be 67%; won
+- rec 88 (forecast 2478), CFB ARMY at TEM, 2026-09-25T20:00Z, "Army covers +0.5" [fail to cover]: live pregame 43%, should be 57%; won
+- rec 90 (forecast 2490), CFB NAVY at UAB, 2026-09-25T23:00Z, "Navy covers -6.5" [fail to cover]: live pregame 20%, should be 80%; lost
+- rec 92 (forecast 2515), MLB TB at PHI, 2026-09-25T22:40Z, "Tampa Bay covers +1.5" [not_cover]: live pregame 35%, should be 65%; won
+- rec 93 (forecast 2525), MLB NYM at WSH, 2026-09-25T22:45Z, "New York covers +1.5" [not_cover]: live pregame 33%, should be 67%; won
+- rec 94 (forecast 2545), MLB CLE at KC, 2026-09-25T23:40Z, "Cleveland covers +1.5" [not_cover]: live pregame 34%, should be 66%; won
+- rec 95 (forecast 2555), MLB TEX at MIN, 2026-09-26T00:10Z, "Texas covers +1.5" [not_cover]: live pregame 30%, should be 70%; lost
+- rec 96 (forecast 2565), MLB HOU at ATH, 2026-09-26T01:40Z, "Houston covers +1.5" [not_cover]: live pregame 32%, should be 68%; won
+- rec 97 (forecast 2609), MLB ATL at MIA, 2026-09-26T20:10Z, "Atlanta covers +1.5" [not_cover]: live pregame 36%, should be 64%; won
+- rec 104 (forecast 2874), CFB TA&M at LSU, 2026-09-26T23:30Z, "Texas A&M covers +0.5" [fail to cover]: live pregame 27%, should be 73%; lost
+- rec 106 (forecast 2987), MLB TB at PHI, 2026-09-26T23:15Z, "Tampa Bay covers +1.5" [not_cover]: live pregame 37%, should be 63%; won
+- rec 107 (forecast 3002), MLB HOU at ATH, 2026-09-27T01:40Z, "Houston covers +1.5" [not_cover]: live pregame 32%, should be 68%; won
+- rec 108 (forecast 3065), MLB ATL at MIA, 2026-09-27T19:10Z, "Atlanta covers +1.5" [not_cover]: live pregame 38%, should be 62%; lost
+- rec 109 (forecast 3070), MLB CLE at KC, 2026-09-27T19:10Z, "Cleveland covers +1.5" [not_cover]: live pregame 27%, should be 73%; won
+- rec 110 (forecast 3080), MLB COL at CWS, 2026-09-27T19:10Z, "Colorado covers +1.5" [not_cover]: live pregame 41%, should be 59%; lost
+
+THE OTHER 59 CARDS (shortlisted, no recommendation):
+
+- forecast 1540 (statistical), MLB NYM at MIA, 2026-09-09T22:40Z, "New York covers +1.5" [not_cover]: 39%, should be 61%
+- forecast 1555 (statistical), MLB TB at ATL, 2026-09-09T23:15Z, "Tampa Bay covers +1.5" [not_cover]: 34%, should be 66%
+- forecast 1560 (statistical), MLB CHC at MIL, 2026-09-09T23:40Z, "Chicago covers +1.5" [not_cover]: 37%, should be 63%
+- forecast 1570 (statistical), MLB PIT at CWS, 2026-09-09T23:40Z, "Pittsburgh covers +1.5" [not_cover]: 34%, should be 66%
+- forecast 1580 (reasoning pass), MLB TB at ATL, 2026-09-10T16:15Z, "Tampa Bay to win" [lose]: 43%, should be 57%
+- forecast 1583 (reasoning pass), MLB TB at ATL, 2026-09-10T16:15Z, "under 8.5 total runs" [under]: 44%, should be 56%
+- forecast 1591 (statistical), MLB TEX at SEA, 2026-09-10T20:10Z, "Texas covers +1.5" [not_cover]: 33%, should be 67%
+- forecast 1662 (reasoning pass), MLB PIT at CWS, 2026-09-10T23:40Z, "Pittsburgh to win" [lose]: 46%, should be 54%
+- forecast 1684 (statistical), MLB NYM at NYY, 2026-09-11T23:05Z, "New York covers +1.5" [not_cover]: 34%, should be 66%
+- forecast 1688 (reasoning pass), MLB BAL at TOR, 2026-09-11T23:07Z, "Baltimore to win" [lose]: 42%, should be 58%
+- forecast 1689 (statistical), MLB BAL at TOR, 2026-09-11T23:07Z, "Baltimore covers +1.5" [not_cover]: 35%, should be 65%
+- forecast 1810 (reasoning pass), MLB TOR at BAL, 2026-09-21T22:35Z, "Toronto to win" [lose]: 44%, should be 56%
+- forecast 1823 (reasoning pass), MLB MIN at SF, 2026-09-22T01:45Z, "Minnesota to win" [lose]: 42%, should be 58%
+- forecast 1825 (statistical), MLB MIN at SF, 2026-09-22T01:45Z, "under 8.5 total runs" [under]: 46%, should be 54%
+- forecast 2116 (statistical), MLB CLE at BOS, 2026-09-23T23:10Z, "Cleveland covers +1.5" [not_cover]: 34%, should be 66%
+- forecast 2145 (reasoning pass), MLB LAA at ATH, 2026-09-24T01:40Z, "Los Angeles to win" [lose]: 38%, should be 62%
+- forecast 2164 (reasoning pass), MLB STL at PIT, 2026-09-24T16:35Z, "St. Louis to win" [lose]: 42%, should be 58%
+- forecast 2180 (statistical), MLB NYM at TEX, 2026-09-24T18:35Z, "New York covers +1.5" [not_cover]: 33%, should be 67%
+- forecast 2183 (statistical), MLB AZ at COL, 2026-09-24T19:10Z, "Arizona to win" [lose]: 40%, should be 60%
+- forecast 2184 (reasoning pass), MLB AZ at COL, 2026-09-24T19:10Z, "Arizona to win" [lose]: 38%, should be 62%
+- forecast 2337 (statistical), MLB CLE at BOS, 2026-09-24T22:45Z, "Cleveland to win" [lose]: 45%, should be 55%
+- forecast 2344 (statistical), MLB CIN at ATL, 2026-09-24T23:15Z, "Cincinnati covers +1.5" [not_cover]: 48%, should be 52%
+- forecast 2347 (statistical), MLB LAA at SEA, 2026-09-25T01:40Z, "Los Angeles covers +1.5" [not_cover]: 41%, should be 59%
+- forecast 2349 (statistical), MLB HOU at ATH, 2026-09-25T01:40Z, "Houston to win" [lose]: 46%, should be 54%
+- forecast 2481 (reasoning pass), CFB ARMY at TEM, 2026-09-25T20:00Z, "Army to win" [lose]: 48%, should be 52%
+- forecast 2492 (statistical), CFB NAVY at UAB, 2026-09-25T23:00Z, "Navy to win" [lose]: 31%, should be 69%
+- forecast 2493 (reasoning pass), CFB NAVY at UAB, 2026-09-25T23:00Z, "Navy to win" [lose]: 23%, should be 77%
+- forecast 2530 (statistical), MLB CIN at TOR, 2026-09-25T23:07Z, "Cincinnati covers +1.5" [not_cover]: 38%, should be 62%
+- forecast 2564 (reasoning pass), MLB HOU at ATH, 2026-09-26T01:40Z, "Houston to win" [lose]: 43%, should be 57%
+- forecast 2569 (reasoning pass), MLB LAA at SEA, 2026-09-26T02:10Z, "Los Angeles to win" [lose]: 43%, should be 57%
+- forecast 2570 (statistical), MLB LAA at SEA, 2026-09-26T02:10Z, "Los Angeles covers +1.5" [not_cover]: 34%, should be 66%
+- forecast 2504 (statistical), CFB CLEM at CAL, 2026-09-26T02:30Z, "Clemson to win" [lose]: 40%, should be 60%
+- forecast 2505 (reasoning pass), CFB CLEM at CAL, 2026-09-26T02:30Z, "Clemson to win" [lose]: 28%, should be 72%
+- forecast 2668 (statistical), CFB ND at PUR, 2026-09-26T18:00Z, "Notre Dame to win" [lose]: 12%, should be 88%
+- forecast 2594 (statistical), MLB CIN at TOR, 2026-09-26T19:07Z, "Cincinnati covers +1.5" [not_cover]: 42%, should be 58%
+- forecast 2598 (reasoning pass), MLB LAD at SF, 2026-09-26T20:05Z, "Los Angeles to win" [lose]: 42%, should be 58%
+- forecast 2971 (reasoning pass), MLB STL at MIL, 2026-09-26T23:10Z, "St. Louis to win" [lose]: 46%, should be 54%
+- forecast 2972 (statistical), MLB STL at MIL, 2026-09-26T23:10Z, "St. Louis covers +1.5" [not_cover]: 42%, should be 58%
+- forecast 2977 (statistical), MLB CLE at KC, 2026-09-26T23:10Z, "Cleveland covers +1.5" [not_cover]: 35%, should be 65%
+- forecast 2992 (statistical), MLB AZ at SD, 2026-09-27T00:40Z, "Arizona covers +1.5" [not_cover]: 37%, should be 63%
+- forecast 2997 (statistical), MLB LAA at SEA, 2026-09-27T01:40Z, "Los Angeles covers +1.5" [not_cover]: 38%, should be 62%
+- forecast 3001 (reasoning pass), MLB HOU at ATH, 2026-09-27T01:40Z, "Houston to win" [lose]: 42%, should be 58%
+- forecast 2306 (statistical), NFL CAR at CLE, 2026-09-27T17:00Z, "Carolina to win" [lose]: 35%, should be 65%
+- forecast 2308 (statistical), NFL CIN at PIT, 2026-09-27T17:00Z, "Cincinnati to win" [lose]: 35%, should be 65%
+- forecast 2310 (statistical), NFL HOU at IND, 2026-09-27T17:00Z, "Houston to win" [lose]: 44%, should be 56%
+- forecast 2312 (statistical), NFL KC at MIA, 2026-09-27T17:00Z, "Kansas City to win" [lose]: 11%, should be 89%
+- forecast 2318 (statistical), NFL SEA at WAS, 2026-09-27T17:00Z, "Seattle to win" [lose]: 28%, should be 72%
+- forecast 2321 (statistical), NFL TEN at NYG, 2026-09-27T17:00Z, "Tennessee covers +3.5" [not_cover]: 55%, should be 45%
+- forecast 2451 (reasoning pass), NFL CAR at CLE, 2026-09-27T17:00Z, "Carolina to win" [lose]: 38%, should be 62%
+- forecast 2453 (reasoning pass), NFL CIN at PIT, 2026-09-27T17:00Z, "Cincinnati to win" [lose]: 42%, should be 58%
+- forecast 2455 (reasoning pass), NFL HOU at IND, 2026-09-27T17:00Z, "Houston to win" [lose]: 38%, should be 62%
+- forecast 2457 (reasoning pass), NFL KC at MIA, 2026-09-27T17:00Z, "Kansas City to win" [lose]: 28%, should be 72%
+- forecast 2463 (reasoning pass), NFL SEA at WAS, 2026-09-27T17:00Z, "Seattle to win" [lose]: 32%, should be 68%
+- forecast 3068 (statistical), MLB CLE at KC, 2026-09-27T19:10Z, "Cleveland to win" [lose]: 44%, should be 56%
+- forecast 2324 (statistical), NFL MIN at TB, 2026-09-27T20:05Z, "Minnesota to win" [lose]: 26%, should be 74%
+- forecast 2469 (reasoning pass), NFL MIN at TB, 2026-09-27T20:05Z, "Minnesota to win" [lose]: 38%, should be 62%
+- forecast 2326 (statistical), NFL BAL at DAL, 2026-09-27T20:25Z, "Baltimore to win" [lose]: 18%, should be 82%
+- forecast 2471 (reasoning pass), NFL BAL at DAL, 2026-09-27T20:25Z, "Baltimore to win" [lose]: 35%, should be 65%
+- forecast 2075 (statistical), NFL PHI at CHI, 2026-09-29T00:15Z, "under 41.5 total points" [under]: 49%, should be 51%
+
+### BUILT
+
+- **The one place: `subjects.side_taken(market_type, side)`** -> "yes" or
+  "no", with `subjects.SIDES`: every spelling the record holds or a sport
+  declares, per market, on its side -- `fail to cover` on the no side beside
+  `not_cover`. A market with no declared sides or a spelling it does not
+  know raises `subjects.UnplaceableSide`, naming both; never a default.
+  `subjects.YES_SIDE` is read off it. In `subjects`, which imports nothing,
+  because the resolvers and the sport modules are on the prediction path and
+  LAW 1 refuses `gridiron.priced` there (`audit.check_prediction_closure`),
+  so the table could not live in `priced.shape`.
+- **Every other place goes through it.** `priced.shape.blind_probability`
+  places the side by its quantity's market (`QUANTITY_MARKET`); a spelling it
+  cannot place is still None with the reason -- the claim writer's ordinary,
+  counted refusal (`unmappable_side`). `language.is_no_side` asks the one
+  place (a question with no stored side, or of a market with no declared
+  sides, is said as asked, as before), and so do the total, rounds,
+  distance and moneyline phrases and clauses and `side_named`'s total;
+  `language.WHY_YES_SIDE` is read off `YES_SIDE`. The resolvers
+  (`resolve._yes_side` for the NFL's and the fights', and the college,
+  baseball and basketball ones), `market/lines.py`'s snapshot and its prop
+  quote's other side, and `tools/diagnose.py`'s buckets all ask
+  `subjects.takes_the_yes_side`: the same answer on every stored spelling,
+  and a spelling it does not know refused by name rather than graded, which
+  under LAW 3 is written once.
+- **The page refuses a side it cannot place.** `views._on_the_question`:
+  every number on a Today card about the claim's proposition -- the chance
+  chip, the price, the opening read, the pregame figure -- is kept on True,
+  turned on False, and anything else raises by name.
+  `views._edge_side_words` raises for an edge beside an unplaced side (it
+  said the edge was on the question's own side). A combo leg and a
+  recommendation line on an unplaced side are refused
+  (`views._combo_block`, `views._recommendations_block`).
+  `board._question_block` raises on a priced block whose side is not True or
+  False (the tiles, the rail and My day are built from it). `/api/week`
+  answers 500 with the refusal's words. `views._placed` places a live or a
+  settled card from its own forecast through `question_takes_the_proposition`
+  -- the live pregame fix of B.
+- **The check refuses it.** `audit.board_price_side_faults` fails a priced
+  card whose `question_takes_the_proposition` is not True or False (it read
+  `is False`); the module's own self-check holds it to
+  `BOARD_PRICED_FIXTURE_UNPLACED`, rec 111 as the released payload carried
+  it. `audit.check_every_side_is_placed` (gate step 2, on the record's copy;
+  `audit.sides_not_placed`, `audit.declared_sides`) fails a stored side the
+  one place cannot place and a label a sport declares that it cannot place
+  or places off its declared side.
+- **Tests:** `tests/test_the_side_is_placed.py`, 43. Rec 111's shape shows
+  about 76% and about 51.5¢ for North Texas -6.5 (0.7602, 0.515, 1.94x, the
+  pick the same, the check passing); each stored spelling of each sport (33,
+  as measured) placed on one side by the one place, the words, the numbers
+  and the resolvers alike; every declared label on its declared side; a
+  declared no side read as yes caught; the college resolver grades `fail to
+  cover` as the no side and refuses an unknown spelling; an unknown spelling
+  refused by name in the one place, the words, the page, `/api/week` (500)
+  and the gate; each builder refusing a priced unplaced side (and not an
+  unpriced one); the check refusing it; rec 111 painted on Tulsa's numbers
+  named; a live card's pregame figure on its question's side.
+  `test_board.py`: the hand-made priced entry now carries its side (a
+  priced entry with none is refused), and the merge's shape is refused by
+  the builder and still named by the check.
+- **Plantings** (`tools/guards/plant.py`, in `main()` and in
+  `tests/test_guards.py`'s list; `LAW_THE_SIDE_IS_PLACED`):
+  `plant_a_side_the_one_place_does_not_know_shown_with_numbers` (rec 111's
+  shape spelled "fails to cover"), `plant_rec_111_painted_on_the_other_sides_
+  numbers`, `plant_an_unplaceable_side_the_check_passes`. And
+  `plant_a_board_row_priced_off_the_other_side` takes the builder's refusal
+  of the merge's shape as caught, and still holds the check to the merge's
+  payload.
+
+### EVERY NUMBER THE FIX MOVES *(both trees on the one verified copy, the clock held at its instant 2026-09-30T03:41:45Z: every sport's current slate and all 20 slates that ever carried a price or an opening read, both forecasters, with each sport's history and digest; `measure_moves.py` -> `m_head.json`, `m_fix.json`, `flatten_diff.py` -> `moves.json`)*
+
+1,174,395 figures compared, 1,885 moved, no errors either side.
+
+- **The numbers:** only the `fail to cover` rows of A and C. Rec 111's row
+  (3147): chance 0.2398 -> 0.7602 ("24%" -> "76%"), price 0.485 -> 0.515
+  ("48¢" -> "52¢"), pays 2.062 -> 1.942, their tooltips; the Today card's
+  chip 24¢ -> 76¢ and its venue words; 88, 90 and 104's Today cards on their
+  finished slates (43¢ -> 57¢, 20¢ -> 80¢, 27¢ -> 73¢, and the venue words);
+  3148's opening read (2.06x -> 1.94x, its tooltip and venue words).
+- **Fields no view draws:** `question_takes_the_proposition` on the Today
+  cards, None -> True or False (666: MLB 361, NFL 208, NCAAF 89 -- the
+  settled cards, and the unplaced priced rows above -- UFC 8, moneylines
+  only; its rounds and distance stay None); and the settled cards'
+  `favoured` / `favoured_colour` / `favoured_on_white` (the accent), which
+  followed a guess by the subject and follow the placed side now (1,160).
+  Nothing in `app.js` reads either. The other 59 moved figures are the
+  numbers above: rec 111's rows (42, its pick included), 3148's 10, and 88's,
+  90's and 104's Today cards (7).
+- **No word moved** in any history, digest or card phrase: the words already
+  placed every stored spelling where the one place does.
+- No live game was on the copy, so B's pregame figure is not in this diff;
+  its test proves it on a world in play.
+
+### PROVED *(`scratchpad/wrongside/`)*
+
+- The three plantings, run alone by this tree's `plant.py` against the
+  `git archive` of 8121a9a (`head/`, `run_plantings.py`): all three ESCAPE --
+  "the page drew the unplaceable side with numbers: 'UNT covers -6.5' at
+  '24%', price 0.485, pays 2.062 | the gate has no check that every stored
+  side is placed"; "the shipped row is not North Texas's own numbers: '24%'
+  at 0.485 | the row painted on Tulsa's 24%, 48c and 2.06x passed";
+  "board_price_side_faults passed a priced card whose side is None" -- and
+  all three are CAUGHT on this tree.
+- `tests/test_the_side_is_placed.py` on 8121a9a's package: 43 of 43 fail --
+  rec 111's shape ("assert None is False"), the live pregame ("'pregame 43%'
+  == 'pregame 57%'"), the painted row (no fault) by their numbers; the rest
+  for want of the one place.
+- This tree's builders on every priced slate of the verified copy and every
+  sport's current slate, both forecasters (`measure_after.py`): 50 slates
+  built, none refused, no error, `board_price_side_faults` and
+  `board_count_faults` empty on every one, `check_every_side_is_placed`
+  passing on the record.
+- `plant.py` whole: 387/387 caught (384 and these three), twice, the second
+  on the tree as left for the prover (`plant_all2.txt`). The full suite, a
+  dummy token, TMP/TEMP at their defaults, on the tree as left: 2227 passed,
+  4 skipped, exit 0 (`suite3.txt`). One run before it (`suite2.txt`, beside
+  a whole `plant.py`) failed one test,
+  `test_smoke.py::test_the_weekly_strip_renders_with_hit_targets` ("the
+  weekly strip is blank"): a race that is not this build's -- run alone it
+  fails 3 times in 4 on 8121a9a's package and 3 in 4 here (below).
+- The one copy of the record (1,090,383,872 bytes) was deleted at
+  2026-09-30T04:21:54Z; no network, no real token, the live app on 8848
+  never contacted, nothing written to the record.
+
+### READINGS TAKEN *(the conservative default; none breaks LAW 1 or LAW 3 or makes a gate count false)*
+
+- **"The one place"** is `subjects.side_taken`, which
+  `priced.shape.blind_probability` -- the place the brief names -- now asks.
+  The table could not sit in `priced.shape`: the resolvers had to go through
+  it too, and `gridiron.priced` may not be imported on the prediction path.
+- **"If others decide it independently, route them through the one place"**
+  reached the resolvers. Their answer is the same on every spelling the
+  record holds and every label a sport declares (tested); what changes is a
+  spelling nobody declared: refused, not graded. `calibration.factor_report`
+  compares with the forecast's own stored `yes_label` and was left alone.
+- **"Refuse" means raise, and only where a number would be drawn:** an
+  unpriced card on an unplaceable side (the UFC rounds and distance
+  questions) is drawn as before, with the model's own number on its own
+  side; a priced one is not drawn at all.
+- **The live pregame figure** was fixed here, not queued: placing the side
+  was the only way the refusal could ship without refusing every live row
+  whose question names the claim's other side.
+- **The combos' orientation, the rung under the chance, the Today card's
+  payout words and the recommendation line** (below) are pick-number
+  findings met outside this fix: reported to the operator for the queue, not
+  built.
+
+### PICK-NUMBER FINDINGS, FOR THE QUEUE FIRST *(the amended queue rule of 2026-09-30: each could show the operator a wrong number on a pick; not built here)*
+
+1. **A proposed combo is worth the product of its legs' YES-SIDE numbers,
+   whatever side each leg's recommendation is on.** `combos.propose`
+   multiplies `fair_value` (the claim's proposition) and prices the singles
+   line off `price` (the yes price), and `views._proposal_card` labels each
+   leg with its question's words. On the record's priced slates 34 of 35
+   proposals carry a no-side leg: 25 MLB ones drawn at 9-20% worth and "pay
+   below 7-17¢" where the recommended sides multiply to 35-50%; NFL week
+   3's three at 12-18% (below 10-16¢; the sides 63-73%), among them "Las
+   Vegas covers +15.5 + Pittsburgh covers +7.5" at 17.9%, whose Las Vegas
+   leg's recommendation is on the proposition's side -- the other side of
+   the words it is drawn with; four NCAAF (D above) and two NBA. The panel
+   is drawn on the board today. (`combos.json`)
+2. **A priced spread or total row names the question's rung and draws the
+   venue contract's chance and price at another line.** A rung-differs claim
+   is the frozen distribution read at the venue's number, and the row's
+   words are the question's: rec 111's numbers (now 76% and 51.5¢) are the no
+   side of "Tulsa by more than 1.5" (KXNCAAFSPREAD-26OCT01UNTTLSA-TLSA2,
+   home line -1.5), drawn under "North Texas -6.5"; the live row's pregame
+   figure likewise. 262 of the record's 274 NFL and NCAAF spread claims are
+   rung-differs (NCAAF 103 of 103, NFL 159 of 171). A reader could buy North
+   Texas -6.5 at the venue on a chance and a price that belong to North
+   Texas +1.5.
+3. **The Today card's `payout_words` and `payout` are the proposition's**
+   on a turned card (the chip beside them is turned). No view draws them
+   since the board; they are in `/api/week`'s payload.
+4. **`recommendation_line`** (`payload.recommendations.lines[].words`)
+   states the proposition's fair value and price after the question's words
+   and calls the sides "the yes side" and "the other side" of the
+   proposition. Not drawn; in the payload.
+
+### NOT SEEN, AND OPEN
+
+- A live board row on the record: none was in play on the copy. B is proved
+  on a world in play and by reading the released code, not on a live page.
+- The payload's `question_takes_the_proposition` and accent on settled cards
+  changed and nothing draws them; if a later view does, it draws the placed
+  side.
+- The claim writer: from this build a rung-matched look at a `fail to cover`
+  question is claimed rather than refused. None has ever occurred.
+- **FOUND ON THE WAY (not a gate count, no law: FOLLOWUPS by the queue
+  rule) -- `test_smoke.py::test_the_weekly_strip_renders_with_hit_targets`
+  races the page.** It reads the Record page's weekly strip as soon as the
+  view is shown, while `/api/over-time` is still in flight (traced: the view
+  shows about 40-60ms before the strip's answer lands, on both trees). Run
+  alone it failed 3 of 4 on 8121a9a's package and 3 of 4 on this tree; in
+  the whole suite it passed twice here and failed once beside a whole
+  `plant.py`. A wait on the condition (the strip painted) rather than on the
+  view would close it; not a fixed wait, so `ELAPSED_TIME_HELD` would not
+  move. The release gate may meet it.
+
+### THE PROVER *(2026-09-30, alone in the worktree; ONE verified copy of the record through `rebuild.verified_backup` at 06:14Z -- 1,092,984,832 bytes, integrity ok, 64 tables, none mismatched -- read with `db.read_only` except where the test server took its sign-in rows, and deleted with its -wal and -shm at 2026-09-30T06:37:21Z; scripts and outputs in `scratchpad/wrongside/prover_*`)*
+
+**THE ONE PLACE AGAINST AN ORACLE.** Every forecast on the copy (3,434)
+placed by this tree and by 8121a9a's package, each held to an oracle written
+apart from `subjects.SIDES` (its own table of spellings, the subject against
+the home and away sides): this tree disagrees with it on none. The released
+code differs from it only on `('cfb', 'spread', 'fail to cover')`, 93
+forecasts, 26 of them priced (a claim or a recommendation), recommendations
+88, 90, 104 and 111 among them -- the implementer's count. UFC rounds and
+distance are unplaced by both, and none is priced. No priced forecast is
+unplaced by this tree.
+
+**THE LIST, RE-CHECKED ON THE COPY.**
+- **A** -- each look at the line, the released and the fixed `_today_card`
+  and `board._question_block` run on the entry the page held at that look
+  (the look's claim corrected at its instant -- nothing was in force for
+  NCAAF spreads -- and its price): rec 88 (Army covers +0.5; 2 looks) drawn
+  43% · 48.5c · 2.06x, should be 57% · 51.5c · 1.94x, WON; rec 90 (Navy
+  covers -6.5; 6 looks) 20% · 49.5c · 2.02x, should be 80% · 50.5c · 1.98x,
+  LOST; rec 104 (Texas A&M covers +0.5; 5 looks) 27% at 48.5c then 49.5c,
+  should be 73% at 51.5c then 50.5c, LOST; rec 111 (North Texas covers
+  -6.5): its own forecast 3115 carried 0.2398 at 49.5c from its write
+  (2026-09-27T16:00Z) until the final pass 3147 stood (2026-09-28T15:00Z;
+  3115 is not on the slate now, so its row is worked from the rec's own
+  stored numbers), and 3147's last look is 24% · 48.5c · 2.06x, should be
+  76% · 51.5c · 1.94x; not settled. Exactly the implementer's figures.
+- **B** -- worked again from this tree's slates and the oracle: 116 cards,
+  57 recommendations, the same cards and the same figures as the
+  implementer's `live.json`, card for card (recs 25-31, 33-40, 44, 46-59,
+  67, 70-72, 74-80, 82, 83, 88, 90, 92-97, 104, 106-110).
+- **C** -- forecasts 2503, 2917, 2923 and 3148 are reasoning-pass "fail to
+  cover" spreads with no claim and opening reads before their start (26, 31,
+  32 and 145 of them); 3148 on the fixed page now: "52¢ · pays 1.94x", the
+  proposition's latest open 48.5c turned.
+- **D -- NOT REPAIRED BY THIS COMMIT.** The fixed page still proposes the
+  three NCAAF combos on their yes-side numbers: "Rutgers covers -24.5 + Navy
+  covers -6.5" worth 2% (the recommended sides multiply to 71.1%), "California
+  covers +6.5 + Army covers +0.5" 14% (38.0%), "Florida International covers
+  -14.5 + Texas A&M covers +0.5" 4% (62.8%) -- and Rutgers', California's and
+  Florida International's picks (the side each entry clears the bar on) are
+  on the OTHER side of the words their legs are drawn with. Pick-number finding 1; its sides are placed, so
+  no refusal applies.
+
+**THREE PATHS THE BUILD LEFT OPEN, FOUND AND CLOSED.** Probed on scratch
+worlds (`prover_probe.py`, `prover_probe2.py`, `prover_probe_ufc.py`): every
+market (NFL spread, moneyline, total, prop; UFC moneyline, rounds,
+distance), spelled every way a writer could get it wrong ('', mixed case, a
+trailing space, another market's word, an unknown verb), priced and
+unpriced, upcoming, live and finished, as the page's forecaster and as the
+other forecaster's row on an open row. On 8121a9a's package 32 of 42, 24 of
+32 and 36 of 54 were drawn with a number. On the build as first written:
+1. **An empty stored side was said as asked.** `language.is_no_side` read
+   `not side`, so '' took the yes side's words and an unpriced card drew the
+   model's number under them -- "over 44.5 total points · 62%", "HOM covers
+   -3.5 · 62%", a prop likewise (a priced one was refused by the numbers; a
+   moneyline failed on `UnknownSide`, not by the ruling's name). Only a
+   question with no side at all (None) is said as asked now; `model_side` is
+   NOT NULL on the record.
+2. **The other forecaster's prop was drawn on a side nobody can place.** Its
+   light card (`board._other_forecaster_rows`) is built from
+   `language.phrase` alone, and the prop branch never asked the one place:
+   it printed an unknown spelling as itself -- "Some Player Over 55.5
+   receiving yards · 62%", "pregame 62%" live -- and '' likewise. It asks
+   `is_no_side` before it words a prop now.
+3. **The check passed a live pregame figure on an unplaced side.**
+   `audit.board_price_side_faults` walked the priced upcoming blocks only; a
+   live card carrying the claim's pregame chance with no placed side -- the
+   released shape of all 116 cards in B -- passed. It fails now
+   (`BOARD_LIVE_FIXTURE_UNPLACED`, rec 88's live row, in the module's
+   self-check beside a placed live card that must pass).
+After: every unplaceable probe refused by `subjects.UnplaceableSide`, naming
+the spelling; every declared spelling drawn, on every state and forecaster.
+Each has a test (`test_the_side_is_placed.py`, the last three: failing on
+the build as first written, passing here) and a planting form
+(`plant_a_side_the_one_place_does_not_know_shown_with_numbers` gains the
+empty total and the other forecaster's "Over" prop;
+`plant_an_unplaceable_side_the_check_passes` gains the live row), each
+ESCAPING on 8121a9a and on the build as first written and CAUGHT here.
+
+**REC 111 RENDERED** from the copy served by the test server (this tree's
+app on a free local port, a dummy token; never the live app), Chromium at
+1300px and 390px (`render/rec111-*.png`, read): the row reads "MODEL'S PICK
+NORTH TEXAS -6.5 · 76% · 52¢ · 1.94x · $15 · one flat unit, measured and
+NOT ahead", and the open row's tile "POINT SPREAD STATISTICAL North Texas
+-6.5 · 76% · +22.5¢ · 1.94x" (52¢ is the 51.5c price as the chip rounds
+it). No page error, no sideways scroll.
+
+**THE GATE, DRY RUN.** The nineteen step-2 rows the fix touches, read out of
+`step_2_guards` and called with `GRIDIRON_VERIFYING` set on the copy: all
+pass (the one place, every side has words, both side-in-prose scans, LAW 1's
+closures, no orphans, no shadowed definitions, the five board and live
+checks on every sport's slate, the docstring, raw-open, replacing-write and
+clock scans). `prose_reaching_the_raw_side()` is []. This tree's page on
+every slate holding a claim or a recommendation and every sport's current
+slate, both forecasters: 44 builds, none refused, no fault. `plant.py`
+whole on the tree as committed: 387/387 caught, exit 0
+(`prover_plant_all.txt`). The full suite, a dummy non-secret token,
+TMP/TEMP at their defaults: 2230 passed, 4 skipped, exit 0
+(`prover_suite.txt`; the weekly-strip race above passed this run).
+
+**PICK-NUMBER FINDINGS THE PROVER ADDS, FOR THE QUEUE FIRST** *(not built)*:
+5. **The opening read is the venue's main rung, not the question's.**
+   `at_the_line.rung_for` takes the rung nearest 50c, so an unpriced card's
+   opening read is another line's price under the question's words: on the
+   copy, "Under 60.5 total" (UNT at TLSA) carries the 57.5 rung's 48.5c,
+   turned -- "52¢ · pays 1.94x" in the Today card and "1.94 times" in the
+   board's payout tooltip -- where under 60.5 costs about 58.5c (1.71x).
+   The same family as finding 2.
+6. **My day names the question's subject's club on a no-side pick.**
+   `board._my_day` picks the club by the subject, not the side: a taken
+   "not_cover" spread on PHI -3.5 is the chip "PHI · DAL +3.5", a taken
+   "lose" moneyline "PHI · DAL to win" (scratch world). No game-market pick
+   on the record is taken, so none has been drawn yet.
+And finding 2, made concrete on the rendered row: the statistical tile reads
+76% for "North Texas -6.5" where that forecast's own number for the
+question is 62.6% (the reasoning pass's tile beside it reads 62%), and
+"North Texas to win" reads 76% too. The ruled "about 76% and about 51.5¢"
+are the numbers of the venue's -1.5 contract -- North Texas +1.5 -- under
+the words North Texas -6.5; this build draws them as ruled.
+
+**SEEN, NOT MEASURED:** in the 390px capture the sport tabs in the header
+run together ("NFL 193-119MLB 832-640NBA 0NCAAF ..."); not this fix's, and
+not measured whether the capture or the page is at fault.

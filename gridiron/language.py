@@ -274,8 +274,9 @@ def side_named(item: dict, form: str = "full") -> tuple[str, float | None]:
         # market has AKR @ WAKE at 71%" in the prose -- raw identifiers in a
         # sentence, and the wrong framing besides: nobody is backing Akron.
         #
-        # The side IS the answer here, so that is what gets named.
-        return ("the over" if side != "under" else "the under"), item.get("model_prob")
+        # The side IS the answer here, so that is what gets named -- placed by
+        # the one place (2026-09-30), never by "anything but under".
+        return ("the under" if is_no_side(item) else "the over"), item.get("model_prob")
 
     if market_type in ("moneyline", "spread"):
         # THE FLIP, ON BOTH MARKETS NOW (ruling E1). A game market's subject is
@@ -303,10 +304,32 @@ def side_named(item: dict, form: str = "full") -> tuple[str, float | None]:
 
 
 def is_no_side(item: dict) -> bool:
-    """Did the model take the NO side of the question as asked?"""
-    yes = YES_SIDE.get(item.get("market_type"))
+    """Did the model take the NO side of the question as asked?
+
+    THROUGH THE ONE PLACE (the operator's ruling of 2026-09-30). This read
+    "any spelling but the yes one is the no side" while the numbers
+    (`priced.shape.blind_probability`) listed spellings of their own: two
+    rules for one fact, and on college football's "fail to cover" the words
+    named North Texas while the numbers were Tulsa's. Both ask
+    `subjects.side_taken` now. A spelling it does not know raises
+    `subjects.UnplaceableSide` by name, so the card is refused rather than
+    worded on a guessed side. A question with no stored side, or of a market
+    with no declared sides, is said as it was asked, as before.
+
+    AN EMPTY SPELLING IS A STORED SIDE, NOT A MISSING ONE (the prover,
+    2026-09-30). This read `not side`, so a forecast stored with the side ''
+    was said as asked -- the yes side's words -- and an unpriced card drew
+    the model's own number under them: "over 44.5 total points · 62%" for a
+    side nobody can place, on a spread, a total and a prop alike (measured on
+    a scratch world; a priced one was refused by the numbers). `model_side`
+    is NOT NULL on the record, so only a question with no side at all (None)
+    is said as asked; '' goes to the one place, which refuses it by name.
+    """
+    market_type = item.get("market_type")
     side = item.get("model_side")
-    return bool(yes and side and side != yes)
+    if side is None or market_type not in _subjects.SIDES:
+        return False
+    return _subjects.side_taken(market_type, side) == "no"
 
 
 def side_flips(item: dict) -> bool:
@@ -377,6 +400,17 @@ def phrase(item: dict) -> str:
 
     if market_type == "prop" or (market and market in MARKET_WORDS
                                  and market not in ("spread", "moneyline")):
+        # THE SIDE IS PLACED BY THE ONE PLACE BEFORE IT IS WORDED (the
+        # prover, 2026-09-30). This branch never asked `is_no_side`: it
+        # printed a spelling it had no word for as itself, so the OTHER
+        # forecaster's prop on an open row -- the one card built from
+        # `phrase` alone -- stored as "Over" or "" was drawn "Some Player
+        # Over 55.5 receiving yards · 62%", a number on a side nobody can
+        # place (measured on a scratch world, live and finished; the page's
+        # own forecaster's card was refused by its other composers). Asked
+        # here, an unknown spelling is refused by name, as on every other
+        # market; the words below are unchanged for every declared one.
+        is_no_side(item)
         # A half-unit question is a yes/no question, and gets said that way.
         if line is not None and float(line) == 0.5:
             said = half_unit_phrase(subject, market, side)
@@ -394,8 +428,11 @@ def phrase(item: dict) -> str:
     # "Dan Hooker vs Salahdine Parnasse covers +4.5" is what the shared spread
     # path produced, and it is wrong twice: nobody covers anything in a fight,
     # and the number is a count of rounds rather than points.
+    # EACH SIDE BELOW IS PLACED BY THE ONE PLACE (`is_no_side`, through
+    # `subjects.side_taken`; the ruling of 2026-09-30), never by "anything
+    # but under" or a list of no-side spellings of its own.
     if market_type == "rounds":
-        over = "Over" if side != "under" else "Under"
+        over = "Under" if is_no_side(item) else "Over"
         rung = _number(line)
         unit = "round" if str(rung) in ("0.5", "1", "1.5") else "rounds"
         return f"{over} {rung} {unit}"
@@ -403,15 +440,15 @@ def phrase(item: dict) -> str:
     if market_type == "distance":
         # THE QUESTION IS ABOUT THE BOUT, not about a fighter, so the sentence
         # names neither -- the same reasoning the totals branch below follows.
-        return ("Goes the distance" if side not in ("no", "under", "not_cover")
-                else "Does not go the distance")
+        return ("Does not go the distance" if is_no_side(item)
+                else "Goes the distance")
 
     if market_type == "total":
         # NOT A TEAM AND NOT A PLAYER. A totals question is about the GAME, so
         # the sentence names neither side: "over 52.5 total points". Routing it
         # through the subject would produce "Ohio State over 52.5", which reads
         # as a claim about one team's scoring and is not the question asked.
-        over = "over" if side != "under" else "under"
+        over = "under" if is_no_side(item) else "over"
         # WHAT THIS SPORT COUNTS. Hardcoded to "total points" until 2026-09-08,
         # when the operator read "under 12.5 total points" on a baseball card.
         # `SPORT_MARKET_WORDS` has held ("mlb", "total") -> "total runs" since
@@ -427,7 +464,7 @@ def phrase(item: dict) -> str:
         # Falls back to the literal form only when the opponent is unknown,
         # because inventing one would be worse than reading oddly.
         # `subject` is already the club being backed, flip included.
-        if side == "lose":
+        if is_no_side(item):
             return f"{subject} to win"
         return f"{subject} {side_word(side)}".strip()
 
@@ -501,7 +538,8 @@ def chance_clause(item: dict) -> str:
         # arriving through a market type that did not exist when it was.
         #
         # It names no team on purpose -- the question is about the game.
-        return f"the game goes {'under' if side == 'under' else 'over'}"
+        # placed by the one place (2026-09-30), never "anything but under"
+        return f"the game goes {'under' if is_no_side(item) else 'over'}"
 
     if market_type == "prop":
         market = item.get("prop_type") or item.get("market")
@@ -511,7 +549,7 @@ def chance_clause(item: dict) -> str:
             said = half_unit_phrase(subject, market, side)
             if said:
                 return said
-        return f"{subject} goes {'under' if side == 'under' else 'over'}"
+        return f"{subject} goes {'under' if is_no_side(item) else 'over'}"
 
     if market_type == "moneyline":
         # Same flip as `phrase`: name the club the model is actually backing.
@@ -528,7 +566,7 @@ def chance_clause(item: dict) -> str:
         raw = team_name(strip_market_suffix(item.get("subject"),
                                             item.get("prop_type")),
                         item.get("team_names"), "city")
-        if side == "lose":
+        if is_no_side(item):
             if item.get("opponent"):
                 # THROUGH THE NAME LOOKUP, like every other club here. Left
                 # raw, this printed "TOL wins" beside "Tulsa wins" on the same
@@ -554,9 +592,9 @@ def chance_clause(item: dict) -> str:
     # here -- "the fight" is what a reader would say, and it sidesteps the
     # plural problem the spread branch spent a session on.
     if market_type == "rounds":
-        return f"the fight goes {'under' if side == 'under' else 'over'}"
+        return f"the fight goes {'under' if is_no_side(item) else 'over'}"
     if market_type == "distance":
-        return ("the fight goes the distance" if side != "no"
+        return ("the fight goes the distance" if not is_no_side(item)
                 else "the fight ends early")
 
     if market_type == "spread":
@@ -794,8 +832,9 @@ def _second(phrase: str, helps: bool, share: float) -> str:
 
 
 #: The side each market's question was FORMED as. A contribution is signed
-#: toward this side, which is not always the side the model took.
-WHY_YES_SIDE = {"spread": "cover", "moneyline": "win", "prop": "over"}
+#: toward this side, which is not always the side the model took. READ OFF
+#: THE ONE PLACE (2026-09-30), not a second literal of the yes spellings.
+WHY_YES_SIDE = {market: YES_SIDE[market] for market in ("spread", "moneyline", "prop")}
 
 
 def why_is_flipped(item: dict) -> bool:

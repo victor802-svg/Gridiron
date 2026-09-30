@@ -107,6 +107,20 @@ def outcome_for(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
     return sports.get(sport).resolve_outcome(conn, pred)
 
 
+def _yes_side(pred) -> bool:
+    """Did this forecast take the yes side of its question? FROM THE ONE PLACE
+    (`subjects.takes_the_yes_side`, the operator's ruling of 2026-09-30).
+
+    Each resolver compared the stored side with a yes spelling of its own and
+    graded anything else as the no side -- and the fight resolver below did
+    the opposite, grading anything off its list of no spellings as the yes
+    side. Right on every spelling the record holds, and two defaults pointing
+    opposite ways on the next one. A spelling the one place does not know is
+    refused by name now, and no outcome is written for it (LAW 3: an outcome
+    is written once)."""
+    return subjects.takes_the_yes_side(pred["market_type"], pred["model_side"])
+
+
 def resolve_nfl_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
     """NFL: a spread cover, or a player prop over/under."""
     game = conn.execute(
@@ -120,7 +134,7 @@ def resolve_nfl_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
         # NO PUSH IS POSSIBLE: every declared rung is a half-point.
         yes = questions.total_outcome(
             game["home_score"], game["away_score"], pred["line_asked"])
-        return yes if pred["model_side"] == "over" else 1 - yes
+        return yes if _yes_side(pred) else 1 - yes
 
     if pred["market_type"] == "moneyline":
         # A DRAWN GAME VOIDS, and unlike basketball this is not a bad row --
@@ -135,17 +149,17 @@ def resolve_nfl_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
                 f"the home side would win, a drawn game answers neither yes "
                 f"nor no, and it is not being given an answer.")
         home_won = 1 if game["home_score"] > game["away_score"] else 0
-        return home_won if pred["model_side"] == "win" else 1 - home_won
+        return home_won if _yes_side(pred) else 1 - home_won
 
     if pred["market_type"] == "spread":
         yes = questions.spread_outcome(
             game["home_score"], game["away_score"], pred["line_asked"]
         )
-        return yes if pred["model_side"] == "cover" else 1 - yes
+        return yes if _yes_side(pred) else 1 - yes
 
     actual = _prop_actual(conn, pred)
     yes = questions.prop_outcome(actual, pred["line_asked"])
-    return yes if pred["model_side"] == "over" else 1 - yes
+    return yes if _yes_side(pred) else 1 - yes
 
 
 def open_predictions(conn: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -337,7 +351,7 @@ def resolve_ufc_outcome(conn, pred) -> int:
     # THE STORED SIDE DECIDES WHAT COUNTS AS RIGHT. `outcome` above is about
     # the YES side of the question; a prediction that took the NO side is
     # correct exactly when the yes side did not happen.
-    side = (pred["model_side"] or "").lower()
-    if side in ("lose", "under", "no", "not_cover"):
-        return 1 - outcome
-    return outcome
+    # FROM THE ONE PLACE (2026-09-30): this was a list of no spellings with
+    # every other spelling graded as the yes side -- the opposite default of
+    # the game resolvers'. A spelling the one place does not know is refused.
+    return outcome if _yes_side(pred) else 1 - outcome

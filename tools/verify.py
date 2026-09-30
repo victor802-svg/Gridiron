@@ -784,6 +784,13 @@ def step_2_guards() -> bool:
         ("selecting leaves the frame alone",
          audit.check_selection_leaves_the_frame_alone),
         ("every side has words", audit.check_every_side_has_words),
+        # THE ONE PLACE (the operator's ruling of 2026-09-30): every side the
+        # record's copy holds and every side a sport declares is placed by
+        # `subjects.side_taken`, each declared label on its declared side.
+        # 'fail to cover' had words and no place, and rec 111 was drawn with
+        # the other side's numbers.
+        ("every side is placed by the one place",
+         lambda: audit.check_every_side_is_placed(_record_conn())),
         ("one motion vocabulary", audit.check_motion_vocabulary),
         # OPERATOR QUESTION 20 (ruled (A) 2026-09-27): the Today panel, and
         # every panel that arrives, arrives by its fade alone.

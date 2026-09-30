@@ -46,7 +46,7 @@ for stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):  # pragma: no cover
         pass
 
-from gridiron import config, db  # noqa: E402
+from gridiron import config, db, subjects  # noqa: E402
 
 # ===========================================================================
 # PRE-REGISTRATION. Nothing below this block may be added after looking.
@@ -263,10 +263,12 @@ class Disagreement:
             return 5 <= self.week <= 13
         if key == "late":
             return self.week >= 14
+        # THE SIDE FROM THE ONE PLACE (the ruling of 2026-09-30): "not_cover"
+        # alone left college football's "fail to cover" out of this bucket.
         if key == "side_cover":
-            return self.model_side == "cover"
+            return subjects.takes_the_yes_side("spread", self.model_side)
         if key == "side_not_cover":
-            return self.model_side == "not_cover"
+            return not subjects.takes_the_yes_side("spread", self.model_side)
         if key == "srs_season":
             return self.srs_basis == "season"
         if key == "srs_prior":

@@ -1048,7 +1048,11 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
         # rounding convenience.
         outcome = questions.total_outcome(
             game["home_score"], game["away_score"], pred["line_asked"])
-        return outcome if pred["model_side"] == "over" else 1 - outcome
+        # THE SIDE FROM THE ONE PLACE (the ruling of 2026-09-30), here and in
+        # every branch below: a spelling it does not know is refused by name
+        # rather than graded as the no side.
+        return outcome if subjects.takes_the_yes_side("total", pred["model_side"]) \
+            else 1 - outcome
 
     if pred["market_type"] == "moneyline":
         # NO DRAW BRANCH, AND THAT IS A FACT ABOUT BASKETBALL rather than an
@@ -1062,13 +1066,15 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
                 f"NBA does not produce. The row is wrong rather than the game "
                 f"being drawn, and a wrong row gets no outcome.")
         home_won = 1 if game["home_score"] > game["away_score"] else 0
-        return home_won if pred["model_side"] == "win" else 1 - home_won
+        return home_won if subjects.takes_the_yes_side("moneyline", pred["model_side"]) \
+            else 1 - home_won
 
     if pred["market_type"] == "spread":
         outcome = questions.spread_outcome(
             game["home_score"], game["away_score"], pred["line_asked"]
         )
-        return outcome if pred["model_side"] == "cover" else 1 - outcome
+        return outcome if subjects.takes_the_yes_side("spread", pred["model_side"]) \
+            else 1 - outcome
 
     stat = pred["prop_type"]
     player_id = _player_of(pred)
@@ -1093,7 +1099,8 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
             "for a roster decision it never forecast."
         )
     outcome = questions.prop_outcome(float(row["v"]), pred["line_asked"])
-    return outcome if pred["model_side"] == "over" else 1 - outcome
+    return outcome if subjects.takes_the_yes_side("prop", pred["model_side"]) \
+        else 1 - outcome
 
 
 def _player_of(pred: sqlite3.Row) -> int | None:

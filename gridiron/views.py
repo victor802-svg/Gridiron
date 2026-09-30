@@ -1386,11 +1386,81 @@ def _edge_side_words(edge_side, takes_the_proposition):
     `edge_side` is 'yes' or 'no' against the CLAIM's fixed proposition;
     `takes_the_proposition` says whether the question names that same side.
     The two together answer the only question a reader has.
+
+    AN EDGE ON A SIDE THAT CANNOT BE PLACED IS REFUSED (the ruling of
+    2026-09-30). This answered None, and the card then said the edge was on
+    the question's own side -- a guess, worded as a fact.
     """
-    if edge_side is None or takes_the_proposition is None:
+    if edge_side is None:
         return None
+    if takes_the_proposition is not True and takes_the_proposition is not False:
+        from .subjects import UnplaceableSide
+
+        raise UnplaceableSide(
+            f"THE PAGE REFUSES A SIDE IT CANNOT PLACE: an edge on the {edge_side!r} "
+            f"side of the claim's proposition, beside a question whose side "
+            f"cannot be placed ({takes_the_proposition!r}), so which side the "
+            f"edge is on cannot be said (the ruling of 2026-09-30)")
     on_the_proposition = edge_side == "yes"
-    return "yes" if on_the_proposition == bool(takes_the_proposition) else "no"
+    return "yes" if on_the_proposition == takes_the_proposition else "no"
+
+
+def _placed(entry: dict, card: dict, context: dict) -> bool | None:
+    """Does the question on this card name the claim's fixed proposition --
+    the home side, or the over? True, False, or None where it cannot be said.
+
+    THE ONE PLACE, NEVER A GUESS (the ruling of 2026-09-30). A priced entry
+    carries the answer from `recommend.for_predictions`, which asks
+    `priced.shape.question_takes_the_proposition`. An entry built here for a
+    live or a settled card carried nothing, so its pregame figure was the
+    claim's proposition's whatever the question named: a live row asking
+    "Atlanta to win" beside the home side's pregame chance. Those are placed
+    from the card's own forecast through the same function now.
+    """
+    if "question_takes_the_proposition" in entry:
+        return entry["question_takes_the_proposition"]
+    if not context.get("home") or not card.get("market_type"):
+        return None
+    from .market import recommend as _recommend
+    from .priced import shape as _shapes
+
+    forecast = {"model_prob": card.get("model_prob"),
+                "model_side": card.get("model_side"),
+                "subject": card.get("subject"),
+                "market_type": card.get("market_type")}
+    return _shapes.question_takes_the_proposition(
+        forecast, {"home": context.get("home"), "away": context.get("away")},
+        quantity=_recommend._quantity_of(forecast))
+
+
+def _on_the_question(number: float | None, takes: bool | None, *,
+                     what: str, entry: dict, card: dict) -> float | None:
+    """A number about the claim's fixed proposition, turned to the side the
+    question names -- or refused, by name, where that side cannot be placed.
+
+    THE PAGE REFUSES INSTEAD OF PASSING (the operator's ruling of
+    2026-09-30). Every number on a card was turned on `takes is False`, so a
+    side nobody could place passed as "not turned": recommendation 111 read
+    "North Texas -6.5 · 24% · 48¢", the other side's chance and price, where
+    its own were about 76% and 51.5¢. A number with no placeable side is not
+    painted at all; the API answers 500 and names the forecast.
+    """
+    if number is None:
+        return None
+    if takes is True:
+        return number
+    if takes is False:
+        return 1.0 - number
+    from .subjects import UnplaceableSide
+
+    raise UnplaceableSide(
+        f"THE PAGE REFUSES A SIDE IT CANNOT PLACE: forecast "
+        f"{entry.get('prediction_id') or card.get('prediction_id')} "
+        f"({card.get('market_type') or entry.get('market')} "
+        f"{card.get('model_side')!r}, {card.get('phrase')!r}) "
+        f"carries {what} about the claim's fixed proposition, and which side its "
+        f"question names cannot be said, so no number is painted rather than "
+        f"the other side's (the ruling of 2026-09-30)")
 
 
 # ---------------------------------------------------------------------------
@@ -1675,18 +1745,27 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # -- and the question is stated from the side the model took. On the first
     # card that ever cleared the bar those were opposites, so it read
     # "Toronto covers +1.5" over three numbers about the Athletics.
-    takes = entry.get("question_takes_the_proposition")
-    flip = takes is False
-    price = entry.get("price")
-    if flip and price is not None:
-        price = 1.0 - price
+    # PLACED BY THE ONE PLACE, AND REFUSED WHERE IT CANNOT BE (the ruling of
+    # 2026-09-30): every number below about the claim's proposition goes
+    # through `_on_the_question`, which turns it on False, keeps it on True
+    # and raises by name on anything else. It turned on `is False` alone, so
+    # a side nobody could place was painted unturned -- rec 111.
     tier = (card.get("tier") or {})
     chip = tier.get("chip_label")
     context = _card_context(conn, card) if conn is not None else {"state": "upcoming"}
     state = context.get("state", "upcoming")
+    takes = _placed(entry, card, context)
+    flip = takes is False
+
+    def turned(number, what):
+        return _on_the_question(number, takes, what=what, entry=entry, card=card)
+
+    price = turned(entry.get("price"), "a venue price")
+    fair_on_the_question = turned(entry.get("fair_value"), "the model's number")
     # WHICH CLUB THE QUESTION FAVOURS, for the accent and the payout chip.
     # The side the question names, which is the side its numbers are about.
-    favoured = context.get("home") if _favours_home(entry, card, context) \
+    favoured = context.get("home") if _favours_home(
+        dict(entry, question_takes_the_proposition=takes), card, context) \
         else context.get("away")
     favoured_colour = (context.get("home_colour") if favoured == context.get("home")
                        else context.get("away_colour")) or {}
@@ -1713,8 +1792,7 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "market": _market_key(card) or entry.get("market"),
         # the three chips
         "model_words": language.price_chip_words(
-            None if entry.get("fair_value") is None
-            else (1.0 - entry["fair_value"] if flip else entry["fair_value"]) * 100),
+            None if fair_on_the_question is None else fair_on_the_question * 100),
         "venue_words": language.venue_chip_words(
             price, _payout_for(price) if flip else entry.get("payout"),
             market=entry.get("market") or card.get("market")),
@@ -1794,10 +1872,15 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # say nothing for four days, and labels itself as a read so nobody
     # compares it with an edge measured at kickoff.
     if price is None and state == "upcoming":
+        # READ ON THE PROPOSITION AND TURNED LIKE EVERY OTHER NUMBER HERE
+        # (2026-09-30): an opening read beside a question whose side cannot
+        # be placed is refused, not painted unturned.
         opened = _opening_price(conn, card.get("game_id"),
                                 entry.get("market") or card.get("market"),
-                                flip=flip)
+                                flip=False)
         if opened is not None:
+            opened_price = turned(opened["price"], "an opening read of the venue's price")
+            opened = dict(opened, price=opened_price, payout=_payout_for(opened_price))
             out["payout_words"] = language.payout_chip_words(opened["payout"])
             out["payout"] = opened["payout"]
             out["venue_words"] = language.venue_chip_words(
@@ -1840,9 +1923,13 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # price row read "Toronto covers +1.5" over three numbers about the
         # Athletics. An unflipped pregame figure would be that defect again,
         # on a number with no price beside it to make the mismatch obvious.
-        _pregame = _pregame_probability(conn, entry, card)
-        if flip and _pregame is not None:
-            _pregame = 1.0 - _pregame
+        # AND IT WAS THAT DEFECT, on every live card, until 2026-09-30: a live
+        # card is built from an entry that carried no side at all, so `flip`
+        # was never True and every live question naming the claim's other
+        # side showed the proposition's pregame chance. `_placed` places it
+        # from the card's own forecast now, and `turned` refuses what it
+        # cannot place.
+        _pregame = turned(_pregame_probability(conn, entry, card), "a pregame figure")
         out["pregame_words"] = language.pregame_words(_pregame)
     if state == "final":
         out["settled_words"] = language.settled_outcome_words(
@@ -2108,6 +2195,16 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
     # the quote. `shown` -- the prepackaged series this build already graded --
     # stays, as `graded`, because those rare series do carry a public price.
     label = language.SPORT_LABELS.get(sport, (sport or "").upper())
+    # A LEG ON A SIDE THAT CANNOT BE PLACED IS REFUSED, NOT PROPOSED (the
+    # ruling of 2026-09-30): a proposal states each leg's worth under that
+    # leg's question, so a leg whose question's side cannot be placed has no
+    # number that could stand there. The API answers 500 and names it.
+    for entry in priced:
+        if entry.get("side") is not None and entry.get("fair_value") is not None:
+            _on_the_question(entry["fair_value"],
+                             entry.get("question_takes_the_proposition"),
+                             what="a combo leg's worth", entry=entry,
+                             card=by_id.get(entry["prediction_id"]) or {})
     proposals = [
         _proposal_card(p, unit_dollars=unit_dollars, names=names,
                        colours=colours, by_id=by_id)
@@ -2517,6 +2614,14 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
                 no_edge += 1
             continue
         size = entry["size"]
+        # A LINE ON A SIDE THAT CANNOT BE PLACED IS REFUSED (the ruling of
+        # 2026-09-30): the line states the model's number and the venue's
+        # beside the question's words.
+        _on_the_question(entry.get("fair_value"),
+                         entry.get("question_takes_the_proposition"),
+                         what="a recommendation line's numbers", entry=entry,
+                         card=next((c for c in cards
+                                    if c["prediction_id"] == entry["prediction_id"]), {}))
         lines.append({
             "prediction_id": entry["prediction_id"],
             "n": entry["gate_n"],

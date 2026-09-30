@@ -117,12 +117,38 @@ def question_takes_the_proposition(prediction, game, *, quantity: str) -> bool |
     first slate that produced a recommendation.
 
     None where the mapping cannot say, which is the same answer
-    `blind_probability` gives and for the same reasons.
+    `blind_probability` gives and for the same reasons. NONE IS NOT FALSE
+    (2026-09-30): every page builder turned the claim's numbers round only on
+    `is False`, so a None passed as "the question takes the proposition" and
+    painted the other side's numbers under the question's words (rec 111). A
+    builder that meets None where it would show a number refuses by name
+    (`subjects.UnplaceableSide`).
     """
     got = blind_probability(prediction, game, quantity=quantity)
     if got["prob"] is None:
         return None
     return not got.get("complemented", False)
+
+
+#: WHICH MARKET'S SPELLINGS EACH QUANTITY'S QUESTION IS WRITTEN IN, for the
+#: one place (`subjects.side_taken`, 2026-09-30): a claim about the home side
+#: winning answers a moneyline, the home side covering a spread, the over a
+#: total or a counting prop.
+QUANTITY_MARKET = {"home_win": "moneyline", "home_margin": "spread",
+                   "total": "total", "count": "prop"}
+
+
+def _placed(quantity: str, side) -> str | None:
+    """"yes" or "no" for this quantity's question, through the one place;
+    None where it cannot be placed. The claim writer counts a None as a
+    refusal by name (`unmappable_side`), an ordinary outcome for it; a page
+    builder that meets the None refuses to paint a number (2026-09-30)."""
+    from .. import subjects
+
+    try:
+        return subjects.side_taken(QUANTITY_MARKET.get(quantity), side)
+    except subjects.UnplaceableSide:
+        return None
 
 
 def needs_margin_distribution(shape: str | None) -> bool:
@@ -145,12 +171,26 @@ def blind_probability(prediction, game, *, quantity: str) -> dict:
     answers.
 
     Anything not covered here is refused rather than assumed.
+
+    WHICH SIDE A STORED SPELLING IS, FROM THE ONE PLACE (the operator's
+    ruling of 2026-09-30). Each branch listed its own spellings until then,
+    and the spread branch knew "cover" and "not_cover" but not college
+    football's "fail to cover": 93 college spreads could not be placed, so
+    every page builder left their claim's numbers unturned and recommendation
+    111 read the other side's 24% and 48¢ under "North Texas -6.5". The
+    spelling is placed by `subjects.side_taken` now, "fail to cover" on the no
+    side beside "not_cover", and a spelling it does not know is refused here
+    exactly as before -- None, with the reason -- never assumed.
     """
     prob = prediction["model_prob"]
     side = prediction["model_side"]
     subject = prediction["subject"]
     if prob is None:
         return {"prob": None, "why": "the prediction carries no probability"}
+    if quantity not in QUANTITY_MARKET:
+        return {"prob": None,
+                "why": f"{quantity!r} is a quantity this mapping has no rule for"}
+    taken = _placed(quantity, side)
 
     if quantity == "home_win":
         # TWO INDEPENDENT FLIPS, and the first version of this read only one.
@@ -158,20 +198,20 @@ def blind_probability(prediction, game, *, quantity: str) -> dict:
         # loses. Six of today's twenty-two baseball moneylines say 'lose', and
         # reading the subject alone turned "the home side loses, 62%" into
         # "the home side wins, 62%".
-        if side == "win":
+        if taken == "yes":
             about_subject = float(prob)
-        elif side == "lose":
+        elif taken == "no":
             about_subject = 1.0 - float(prob)
         else:
             return {"prob": None, "why": (
                 f"side {side!r} is neither winning nor losing, so what the "
                 f"probability is about cannot be established")}
         if subject == game["home"]:
-            return {"prob": about_subject, "complemented": side != "win", "why": (
+            return {"prob": about_subject, "complemented": taken != "yes", "why": (
                 f"the question was asked about the home side and took the "
                 f"{side} side")}
         if subject == game["away"]:
-            return {"prob": 1.0 - about_subject, "complemented": side == "win",
+            return {"prob": 1.0 - about_subject, "complemented": taken == "yes",
                     "why": (
                 f"the question was asked about the away side taking the {side} "
                 f"side, so the claim's probability is its complement")}
@@ -185,23 +225,21 @@ def blind_probability(prediction, game, *, quantity: str) -> dict:
                 f"the question is about {subject!r} covering, and the claim is "
                 f"about the home side covering the venue's number; those are "
                 f"the same only when the subject is the home side")}
-        if side == "cover":
+        if taken == "yes":
             return {"prob": float(prob), "complemented": False,
                     "why": "the question took the cover side"}
-        if side == "not_cover":
+        if taken == "no":
             return {"prob": 1.0 - float(prob), "complemented": True, "why": (
-                "the question took the not-cover side, so the claim's "
-                "probability is its complement")}
+                f"the question took the not-cover side ({side!r}), so the "
+                f"claim's probability is its complement")}
         return {"prob": None, "why": f"side {side!r} is not a spread side"}
 
-    if quantity in ("total", "count"):
-        if side == "over":
-            return {"prob": float(prob), "complemented": False,
-                    "why": "the question took the over"}
-        if side == "under":
-            return {"prob": 1.0 - float(prob), "complemented": True, "why": (
-                "the question took the under, so the claim's probability is "
-                "its complement")}
-        return {"prob": None, "why": f"side {side!r} is not an over-or-under side"}
-
-    return {"prob": None, "why": f"{quantity!r} is a quantity this mapping has no rule for"}
+    # a total, or a counting prop: the over is the proposition
+    if taken == "yes":
+        return {"prob": float(prob), "complemented": False,
+                "why": "the question took the over"}
+    if taken == "no":
+        return {"prob": 1.0 - float(prob), "complemented": True, "why": (
+            "the question took the under, so the claim's probability is "
+            "its complement")}
+    return {"prob": None, "why": f"side {side!r} is not an over-or-under side"}

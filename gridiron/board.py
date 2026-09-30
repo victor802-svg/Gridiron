@@ -140,8 +140,28 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
     # and not `fair_value` or `question_takes_the_proposition`, so this
     # branch never ran on a real payload and its test handed it a dict made
     # by hand. The card carries both numbers now.
-    flip = entry is not None and entry.get("question_takes_the_proposition") is False
+    # A SIDE THAT CANNOT BE PLACED IS REFUSED, NOT PASSED (the operator's
+    # ruling of 2026-09-30). This turned on `is False` alone, so a question
+    # whose side the one place could not place -- college football's "fail
+    # to cover", before the ruling -- was drawn on the claim's own numbers:
+    # "North Texas -6.5 · 24% · 48¢" for rec 111, whose numbers are about
+    # 76% and 51.5¢. A priced block with no placed side raises by name now,
+    # and the API answers 500 rather than paint the other side's numbers.
+    takes = entry.get("question_takes_the_proposition") if entry is not None else None
+    flip = takes is False
     corrected = entry is not None and entry.get("fair_value") is not None
+    if (corrected or (entry is not None and entry.get("price") is not None)) \
+            and takes is not True and takes is not False:
+        from .subjects import UnplaceableSide
+
+        raise UnplaceableSide(
+            f"THE BOARD REFUSES A SIDE IT CANNOT PLACE: question "
+            f"{card.get('prediction_id')} ({card.get('market_type')} "
+            f"{card.get('model_side')!r}, {card.get('phrase')!r}) "
+            f"is priced, and which side its question names against the claim's "
+            f"proposition cannot be said ({takes!r}), so no chance, price or "
+            f"payout is drawn rather than the other side's (the ruling of "
+            f"2026-09-30)")
     if corrected:
         fair = entry["fair_value"]
         shown = 1.0 - fair if flip else fair

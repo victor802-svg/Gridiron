@@ -704,6 +704,12 @@ def test_every_new_guard_is_in_the_planted_harness():
         # rows.
         "plant_a_board_count_counting_a_bet_twice",
         "plant_a_board_row_priced_off_the_other_side",
+        # THE ONE PLACE (the operator's ruling of 2026-09-30): rec 111's
+        # wrong side, the page and the check refusing a side they cannot
+        # place.
+        "plant_a_side_the_one_place_does_not_know_shown_with_numbers",
+        "plant_rec_111_painted_on_the_other_sides_numbers",
+        "plant_an_unplaceable_side_the_check_passes",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

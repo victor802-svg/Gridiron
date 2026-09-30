@@ -467,8 +467,19 @@ def week(request: Request, sport: str | None = None, season: int | None = None,
     forecaster's empty list and says whose picks are missing, which is the
     honest answer to a question about a forecaster that made none.
     """
-    payload = views.week(get_conn(), _sport(sport), season, week, forecaster,
-                         early_view=early_view)
+    # A SIDE THE PAGE CANNOT PLACE IS A 500 THAT SAYS SO (the operator's
+    # ruling of 2026-09-30): the builders refuse to paint a number on a
+    # question whose side the one place cannot place, and the refusal names
+    # the forecast and the spelling rather than reaching the reader as an
+    # unexplained error -- or, as before the ruling, as the other side's
+    # numbers.
+    from . import subjects
+
+    try:
+        payload = views.week(get_conn(), _sport(sport), season, week, forecaster,
+                             early_view=early_view)
+    except subjects.UnplaceableSide as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     # THE FORM TOKEN TRAVELS WITH THE SLATE (T2, 2026-09-07), because the one
     # write this page can make -- marking a pick as taken -- lives on it. It
     # used to be issued only with the settings payload, so a tap made by

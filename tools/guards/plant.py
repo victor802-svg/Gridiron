@@ -9270,9 +9270,31 @@ def plant_a_board_row_priced_off_the_other_side() -> Result:
                 out.pop("question_takes_the_proposition", None)
                 return out
 
+            # FROM 2026-09-30 THE PAGE REFUSES THE MERGE'S SHAPE ITSELF: a
+            # priced card with no placed side is not drawn (the operator's
+            # ruling of 2026-09-30), so the builder raises by name where the
+            # merge drew 57% beside the home side's 48c. Either answer -- the
+            # refusal, or a payload the check names -- catches it; a payload
+            # drawn and passed does not.
             _views._today_card = as_merged
-            merged = _views.week(conn, "mlb", 2026, 1)
+            try:
+                merged = _views.week(conn, "mlb", 2026, 1)
+            except Exception as exc:  # noqa: BLE001 - which refusal is the point
+                if type(exc).__name__ != "UnplaceableSide":
+                    raise
+                merged = None
             _views._today_card = saved_card
+            if merged is None:
+                # THE PAYLOAD THE MERGE PRODUCED, for the check: the card
+                # without its two numbers, the row at the stored 57% and 48.5c.
+                merged = _views.week(conn, "mlb", 2026, 1)
+                card = next(c for c in merged["today"]["clears"] + merged["today"]["watching"]
+                            if c["prediction_id"] == pid)
+                card.pop("fair_value", None)
+                card.pop("question_takes_the_proposition", None)
+                block = block_of(merged)
+                block.update({"prob": 0.57, "prob_words": "57%", "price": 0.485,
+                              "pays": _recommend.payout_multiple(0.485)})
             forms = {"the card without its corrected number (the merge's shape)": merged}
             left = _views.week(conn, "mlb", 2026, 1)
             block = block_of(left)
@@ -9303,6 +9325,298 @@ def plant_a_board_row_priced_off_the_other_side() -> Result:
     if missed:
         return Result(LAW_CARDS, violation, guard, False, "NOT CAUGHT - " + " | ".join(missed))
     return Result(LAW_CARDS, violation, guard, True, first or "")
+
+
+# ---------------------------------------------------------------------------
+# THE SIDE IS PLACED IN ONE PLACE, AND A SIDE IT CANNOT PLACE IS REFUSED
+# (the operator's ruling of 2026-09-30, docs/briefs/2026-09-30-rulings.md)
+# ---------------------------------------------------------------------------
+#
+# "Rec 111 / NCAAF wrong side: fix it ... Read 'fail to cover' as the no side
+# in the one place the side is worked out; the page and the check refuse any
+# side they can't place instead of passing it; planting." Recommendation 111,
+# stored correctly as the no side of "TLSA covers +6.5" (0.2398 for Tulsa
+# covering, a 48.5c yes price), was drawn "North Texas -6.5 · 24% · 48¢":
+# the other side's numbers, because `priced.shape.blind_probability` had no
+# rule for college football's "fail to cover" and the page and the gate's
+# check turned only on `is False`. Three plantings, each on rec 111's shape.
+
+LAW_THE_SIDE_IS_PLACED = ("A NUMBER IS SHOWN ONLY ON A SIDE THE ONE PLACE CAN "
+                          "PLACE, AND ON THAT SIDE")
+
+
+def _rec_111_world(path: Path, side: str):
+    """Rec 111's shape on a scratch file: UNT at TLSA, the final pass on
+    "TLSA covers +6.5" answered on `side` at 62.6%, a claim of 0.2398 for the
+    home side covering against a 48.5c yes price, on the shortlist."""
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+
+    dist = {"quantity": "home_margin", "family": "normal", "mean": -9.0, "sd": 14.0,
+            "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+    conn = db.open_db(path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('401862786', 'cfb', 2026,"
+        " 20261001, 'REG', 'TLSA', 'UNT', '2099-10-02T01:00:00Z', 'scheduled',"
+        " '2026-10-01')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-28T15:00:00Z', 'cfb', '401862786', 'spread', 'TLSA', 6.5,"
+        " 0.626036, ?, 'statistical', 'final', 'fs2', ?, 'planting')",
+        (side, _json.dumps({"coverage": 1.0, "margin_distribution": dist})))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+        " VALUES ('kalshi', 't111', 'e', 'cfb', '401862786', 'spread',"
+        " 'home_margin', 6.5, 'home', 0.475, 0.495, '2026-09-28T15:00:44Z')")
+    quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'cfb', '401862786', 'spread', 'home_margin',"
+        " 6.5, 'home', 'rung_differs_margin', -9.0, 14.0, 0.2398, 0.485, 0.485,"
+        " 'mid', '2026-09-28T15:00:45Z')", (pid, quote))
+    conn.commit()
+    _shortlist.rank_rows(conn, [pid])
+    return conn, pid
+
+
+def _rec_111_block(payload, pid):
+    return next(q for g in payload["board"]["games"] for q in g["questions"]
+                if q["prediction_id"] == pid)
+
+
+def _unplaced_nfl_world(path: Path, *, market: str, subject: str, line, side: str,
+                        predictor: str, status: str, prop_type: str | None = None):
+    """THE PROVER'S TWO FORMS (2026-09-30): one NFL game with a well-spelled
+    question of the page's forecaster on it, so the row exists, and the
+    question under test stored on `side` -- unpriced, so no number but the
+    model's own could stand beside it."""
+    from gridiron import shortlist as _shortlist
+
+    played = status != "scheduled"
+    conn = db.open_db(path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date, home_score, away_score) VALUES"
+        " ('g1', 'nfl', 2026, 5, 'REG', 'HOM', 'AWY', ?, ?, '2026-09-28', ?, ?)",
+        ("2026-09-28T17:00:00Z" if played else "2099-10-05T17:00:00Z", status,
+         27 if played else None, 20 if played else None))
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-28T15:00:00Z', 'nfl', 'g1', 'total', 'AWY @ HOM', 41.5, 0.6,"
+        " 'over', 'statistical', 'early', 'fs2', '{}', 'planting')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning, prop_type, outcome,"
+        " resolved_utc) VALUES ('2026-09-28T15:00:01Z', 'nfl', 'g1', ?, ?, ?, 0.62,"
+        " ?, ?, 'final', 'fs3', '{}', 'planting', ?, ?, ?)",
+        (market, subject, line, side, predictor, prop_type,
+         1 if status == "final" else None,
+         "2026-09-28T21:00:00Z" if status == "final" else None))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.commit()
+    _shortlist.rank_rows(conn, [pid - 1, pid])
+    return conn, pid
+
+
+def plant_a_side_the_one_place_does_not_know_shown_with_numbers() -> Result:
+    """Rec 111's shape with its side spelled "fails to cover" -- a spelling no
+    sport declares and the one place does not know, as "fail to cover" was
+    to the numbers until 2026-09-30.
+
+    On the released code the page draws it -- the claim's own 24% and 48c
+    under the words of the side the words guessed -- and nothing in the gate
+    asks whether a stored side can be placed. CAUGHT means: the page refuses
+    it by name (`subjects.UnplaceableSide`, the API's 500), and the gate's
+    `audit.check_every_side_is_placed` fails on the record that holds it,
+    called from step 2.
+
+    AND TWO FORMS FROM ITS PROVER (2026-09-30), each drawn with a number by
+    the build as first written, where the page must refuse by name: an EMPTY
+    stored side on an unpriced total ("over 44.5 total points · 62%": the
+    words read '' as "no side, said as asked"), and the OTHER forecaster's
+    prop stored "Over" on a finished game ("Some Player Over 55.5 receiving
+    yards · 62%": its card is built from `language.phrase` alone, whose prop
+    branch printed an unknown spelling as itself).
+    """
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = "subjects.side_taken (the page refuses) + audit.check_every_side_is_placed"
+    violation = "a stored side the one place cannot place, drawn with numbers"
+    missed, first = [], None
+    saved = _coverage.priceable
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            # THE PROVER'S FORMS, each on a world of its own.
+            for label, spec in (
+                    ("an empty stored side on an unpriced total",
+                     {"market": "total", "subject": "AWY @ HOM", "line": 44.5, "side": "",
+                      "predictor": "statistical", "status": "scheduled"}),
+                    ("the other forecaster's prop stored 'Over' on a finished game",
+                     {"market": "prop", "subject": "Some Player receiving_yards",
+                      "line": 55.5, "side": "Over", "predictor": "llm",
+                      "status": "final", "prop_type": "receiving_yards"})):
+                form_conn, form_pid = _unplaced_nfl_world(
+                    Path(tmp) / f"form-{spec['market']}.db", **spec)
+                try:
+                    payload = _views.week(form_conn, "nfl", 2026, 5,
+                                          forecaster="statistical")
+                    drawn = [q for g in payload["board"]["games"]
+                             for q in g["questions"] if q["prediction_id"] == form_pid]
+                    missed.append(
+                        f"{label}: the page drew it with a number: "
+                        + "; ".join(f"{q.get('question')!r} at {q.get('prob_words')!r}"
+                                    for q in drawn))
+                except Exception as exc:  # noqa: BLE001 - which refusal is the point
+                    if (type(exc).__name__ != "UnplaceableSide"
+                            or repr(spec["side"]) not in str(exc)):
+                        missed.append(f"{label}: the page failed, but not by name: {exc!r}")
+                form_conn.close()
+            conn, pid = _rec_111_world(Path(tmp) / "unknown.db", "fails to cover")
+            try:
+                payload = _views.week(conn, "cfb", 2026, 20261001)
+                block = _rec_111_block(payload, pid)
+                missed.append(
+                    f"the page drew the unplaceable side with numbers: "
+                    f"{block.get('question')!r} at {block.get('prob_words')!r}, "
+                    f"price {block.get('price')!r}, pays {block.get('pays')!r}")
+            except Exception as exc:  # noqa: BLE001 - which refusal is the point
+                if type(exc).__name__ != "UnplaceableSide" or "fails to cover" not in str(exc):
+                    missed.append(f"the page failed, but not by name: {exc!r}")
+                else:
+                    first = str(exc)
+            placed = getattr(audit, "check_every_side_is_placed", None)
+            if placed is None:
+                missed.append("the gate has no check that every stored side is placed")
+            else:
+                try:
+                    placed(conn)
+                    missed.append("audit.check_every_side_is_placed passed a record "
+                                  "holding 'fails to cover'")
+                except audit.LawViolation as exc:
+                    if "fails to cover" not in str(exc):
+                        missed.append(f"the check failed without naming the side: {exc}")
+            conn.close()
+        finally:
+            _coverage.priceable = saved
+    if not _step_2_calls("check_every_side_is_placed"):
+        missed.append("the gate's step 2 does not call `audit.check_every_side_is_placed`")
+    if missed:
+        return Result(LAW_THE_SIDE_IS_PLACED, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_SIDE_IS_PLACED, violation, guard, True, first or "")
+
+
+def plant_rec_111_painted_on_the_other_sides_numbers() -> Result:
+    """Rec 111's row drawn on Tulsa's numbers -- 24%, 48c, 2.06x -- under
+    "North Texas -6.5", exactly as the released page drew it.
+
+    On the released code the check held the row to its card, and the card
+    could not place its side, so the other side's numbers passed. CAUGHT
+    means: the shipped row is North Texas's own numbers (about 76% and
+    51.5c), and the same row painted on Tulsa's is named by
+    `audit.board_price_side_faults`.
+    """
+    from gridiron import views as _views
+    from gridiron.market import recommend as _recommend
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.board_price_side_faults"
+    violation = "a priced row painted with the other side's chance, price and payout"
+    missed, first = [], None
+    saved = _coverage.priceable
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            conn, pid = _rec_111_world(Path(tmp) / "painted.db", "fail to cover")
+            shipped = _views.week(conn, "cfb", 2026, 20261001)
+            got = _rec_111_block(shipped, pid)
+            if (got.get("prob") is None or abs(got["prob"] - 0.7602) > 1e-4
+                    or got.get("price") is None or abs(got["price"] - 0.515) > 1e-9):
+                missed.append(f"the shipped row is not North Texas's own numbers: "
+                              f"{got.get('prob_words')!r} at {got.get('price')!r}")
+            painted = _views.week(conn, "cfb", 2026, 20261001)
+            block = _rec_111_block(painted, pid)
+            block.update({"prob": 0.2398, "prob_words": "24%", "price": 0.485,
+                          "pays": _recommend.payout_multiple(0.485)})
+            faults = audit.board_price_side_faults(painted)
+            if not faults:
+                missed.append("the row painted on Tulsa's 24%, 48c and 2.06x passed")
+            else:
+                first = faults[0]
+            conn.close()
+        finally:
+            _coverage.priceable = saved
+    if missed:
+        return Result(LAW_THE_SIDE_IS_PLACED, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_SIDE_IS_PLACED, violation, guard, True, first or "")
+
+
+def plant_an_unplaceable_side_the_check_passes() -> Result:
+    """A priced Today card whose side could not be placed
+    (`question_takes_the_proposition` None) and a board row agreeing with its
+    unturned numbers: rec 111 as the released payload carried it.
+
+    On the released code the check read `is False` and passed it. CAUGHT
+    means `audit.board_price_side_faults` names it and
+    `audit.check_the_board_prices_the_side_it_names` raises.
+
+    AND A LIVE ROW (the prover's form, 2026-09-30): rec 88's live card as the
+    released page carried it -- the claim's "pregame 43%" beside "Army covers
+    +0.5", its side not placed -- which the check, walking only the priced
+    upcoming blocks, passed even as first built.
+    """
+    guard = "audit.board_price_side_faults"
+    violation = "the gate's check passing a priced side nobody can place"
+    payload = {
+        "forecaster": "statistical",
+        "today": {"clears": [{"prediction_id": 3147, "state": "upcoming",
+                              "model_words": "24¢", "fair_value": 0.2398,
+                              "question_takes_the_proposition": None,
+                              "price": 0.485, "payout": 2.062}]},
+        "board": {"games": [{"questions": [{
+            "prediction_id": 3147, "state": "upcoming", "forecaster": "statistical",
+            "prob": 0.2398, "prob_words": "24%", "price": 0.485, "pays": 2.062}]}]}}
+    live = {
+        "forecaster": "statistical",
+        "today": {"live": [{"prediction_id": 2478, "state": "live",
+                            "pregame_words": "pregame 43%",
+                            "question_takes_the_proposition": None}]},
+        "board": {"games": [{"questions": [{
+            "prediction_id": 2478, "state": "live", "forecaster": "statistical",
+            "pregame_words": "pregame 43%"}]}]}}
+    missed = []
+    faults = audit.board_price_side_faults(payload)
+    if not faults:
+        missed.append("board_price_side_faults passed a priced card whose side is None")
+    try:
+        audit.check_the_board_prices_the_side_it_names(payload)
+        missed.append("the check raised nothing")
+    except audit.LawViolation:
+        pass
+    if not audit.board_price_side_faults(live):
+        missed.append("board_price_side_faults passed a live card's pregame figure "
+                      "whose side is None (rec 88's live row)")
+    if missed:
+        return Result(LAW_THE_SIDE_IS_PLACED, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_SIDE_IS_PLACED, violation, guard, True, faults[0])
+
 
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
@@ -21187,6 +21501,12 @@ def main() -> int:
     # each forecaster's apart, and a priced row on its card's numbers.
     results.append(plant_a_board_count_counting_a_bet_twice())
     results.append(plant_a_board_row_priced_off_the_other_side())
+    # THE ONE PLACE (the operator's ruling of 2026-09-30): rec 111's wrong
+    # side -- a side the one place cannot place, drawn with numbers; the
+    # row painted on the other side's numbers; and the check passing it.
+    results.append(plant_a_side_the_one_place_does_not_know_shown_with_numbers())
+    results.append(plant_rec_111_painted_on_the_other_sides_numbers())
+    results.append(plant_an_unplaceable_side_the_check_passes())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

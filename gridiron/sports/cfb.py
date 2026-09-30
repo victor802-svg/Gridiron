@@ -48,7 +48,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 
-from .. import config
+from .. import config, subjects
 from ..data import cfb_repo as repo
 from ..data import cfb_venues as venues
 from ..data import weather
@@ -301,8 +301,13 @@ def resolve_outcome(conn: sqlite3.Connection, pred: sqlite3.Row) -> int:
     else:
         raise Void(f"CFB has no market called {market!r}")
 
-    yes = {"moneyline": "win", "spread": "cover", "total": "over"}[market]
-    return outcome if pred["model_side"] == yes else 1 - outcome
+    # WHICH SIDE THE FORECAST TOOK, FROM THE ONE PLACE (the ruling of
+    # 2026-09-30): this read a table of yes spellings of its own and put
+    # anything else on the no side, which is right for "fail to cover" and
+    # was a second rule for one fact. A spelling the one place does not
+    # know is refused by name rather than graded as the no side.
+    return outcome if subjects.takes_the_yes_side(market, pred["model_side"]) \
+        else 1 - outcome
 
 
 def training_set(conn: sqlite3.Connection, seasons, market: str, *,

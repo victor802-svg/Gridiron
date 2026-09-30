@@ -432,8 +432,12 @@ def test_a_priced_question_carries_its_price_in_words_and_as_a_number():
     card = {"prediction_id": 1, "market": "total", "market_type": "total",
             "shown_prob": 0.64, "phrase": "over 41.5", "side_words": "over 41.5",
             "line_asked": 41.5, "subject": "over", "model_side": "over"}
+    # THE SIDE IS PLACED, as every priced entry's is (the ruling of
+    # 2026-09-30): an over names the claim's own proposition. A priced entry
+    # with no placed side is refused by the block, by name
+    # (test_the_side_is_placed.py).
     entry = {"price": 0.54, "payout": 1.85, "group": "clears", "edge_cents": 8.0,
-             "edge_line_words": "+8.0¢"}
+             "edge_line_words": "+8.0¢", "question_takes_the_proposition": True}
     block = board._question_block(card, entry, state="upcoming", taken=False,
                                   forecaster="statistical", n_settled=12, hours=3.0,
                                   unit_dollars=None)
@@ -960,9 +964,22 @@ def test_a_priced_row_is_its_cards_corrected_number_on_the_side_it_names(tmp_pat
         return out
 
     monkeypatch.setattr(views, "_today_card", as_merged)
+    # FROM 2026-09-30 THE BOARD REFUSES THAT SHAPE ITSELF: a priced card with
+    # no placed side is not drawn at all (the ruling of 2026-09-30) -- where
+    # the merge drew 57% beside the home side's 48c.
+    from gridiron import subjects
+
+    with pytest.raises(subjects.UnplaceableSide, match="cannot be said"):
+        views.week(conn, "mlb", 2026, 1)
+    # AND THE CHECK STILL NAMES IT, on the payload the merge produced: the
+    # card without the two numbers, the row at the stored 57% and 48.5c.
+    monkeypatch.setattr(views, "_today_card", real)
     merged = views.week(conn, "mlb", 2026, 1)
-    block, _ = _block_and_card(merged, pid)
-    assert block["prob"] == pytest.approx(0.57) and block["price"] == pytest.approx(0.485)
+    block, card = _block_and_card(merged, pid)
+    card.pop("fair_value")
+    card.pop("question_takes_the_proposition")
+    block.update({"prob": 0.57, "prob_words": "57%", "price": 0.485,
+                  "pays": recommend.payout_multiple(0.485)})
     faults = audit.board_price_side_faults(merged)
     assert faults and "carries no `fair_value`" in faults[0], faults
     # AND A BLOCK LEFT ON THE PROPOSITION'S PRICE is named by its numbers.
