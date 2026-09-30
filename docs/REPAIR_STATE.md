@@ -10,7 +10,19 @@
   `item1-held`, 15:33Z) -> Q35 -> THE ENTRY CHECK
   (docs/briefs/2026-09-30-entry-check.md; steps 1-4, each its own gate and
   release; step 1 first) -> Q33 + Q34 -> Q25/Q26 (`q25-held`, `q26-held`)
-  -> Q5 -> Q10. Q36 (ii) (the 269 stored claims and 54 recommendations:
+  -> Q5 -> Q10.
+  **Q36.1 released as 4b1facb (2026-09-30 18:44Z; gate 4/4, 397/397,
+  first run; resumed after the session ended at ~15:59Z mid-build):**
+  `at_the_line.home_view_line` is the one place a contract's line is read
+  (a home contract at -s, an away one at +s, as the venue sells it);
+  the claim writer, the near-start reader, the opening read and drift read
+  through it; the gate checks it by fixtures of the venue's own contracts
+  (`audit.check_every_venue_contract_is_read_at_the_line_it_sells`). All
+  8,286 same-strike pair rows (6,177 distinct) now agree within the
+  spread. From the release: no claim, recommendation, price, card or
+  combo moves; MLB spread's venue drift 56 -> 36 pairs; 0 future MLB
+  run-line claims refused (season over). Stored rows unchanged.
+  Q36 (ii) (the 269 stored claims and 54 recommendations:
   void, label or leave) and (iii) (what the page draws for a row priced off
   one) are not ruled: until they are, the stored rows stay as written and
   step A draws such a row WITHOUT a price and says why (the conservative
