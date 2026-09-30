@@ -14,6 +14,37 @@
   **QUEUE RULE AMENDED:** anything that could show the operator a wrong
   number on a pick (side, price, probability, size) joins the queue first,
   display or not.
+  **THE WRONG-SIDE FIX released as fa4c8eb (2026-09-30 07:55Z; gate 4/4,
+  387/387, first run; before the 2 Oct 01:00Z deadline):** one place,
+  `subjects.SIDES` / `side_taken()`, reads every stored side ('fail to
+  cover' is the no side beside 'not_cover'); the words, the resolvers, the
+  lines module and the page all ask it; the page and the gate
+  (`audit.board_price_side_faults`, `audit.check_every_side_is_placed`)
+  refuse a side they cannot place (`UnplaceableSide`, the API answers 500).
+  THE LIST (FOLLOWUPS, "The side is placed in one place ... THE LIST"):
+  recs 88, 90, 104, 111 were drawn with the other side's chance and price
+  (88: 43% 48.5¢ for 57% 51.5¢, WON; 90: 20% for 80%, LOST; 104: 27% for 73%,
+  LOST; 111: 24% 48.5¢ for 76% 51.5¢, not settled); and, found by the fix,
+  THE LIVE ROWS' PREGAME FIGURE showed the proposition's chance on the
+  other side from 2026-09-09 (fb6dcdf): 116 live cards on 13 slates, 57 of
+  them recommendations (recs 25-31, 33-40, 44, 46-59, 67, 70-72, 74-80, 82,
+  83, 88, 90, 92-97, 104, 106-110; e.g. rec 67 showed 80% for 20%); the
+  opening read of forecasts 2503, 2917, 2923, 3148; three NCAAF combos (not
+  repaired here: pick-number finding 1). None was taken.
+  **PICK-NUMBER FINDINGS JOIN THE QUEUE FIRST (the amended rule; found by
+  the fix's builder and prover, verified on the record):** (A) a priced
+  spread row names the QUESTION's line but draws the VENUE contract's
+  numbers at another line -- rec 111 was priced on claim line -1.5 ("Tulsa
+  by more than 1.5"), so the pick is North Texas +1.5 at about 76% and
+  50.5-51.5¢, yet the row reads "North Texas -6.5" (North Texas -6.5 is the
+  UNT7 contract at about 29¢; the model's own number for it is 62.6%); 262
+  of 274 NFL/NCAAF spread claims are rung-differs; the opening read is the
+  venue's main rung, not the question's; (B) combos worth the product of
+  each leg's yes-side number, legs named on the other side; (C) My day's
+  chip, the payout and the recommendation line on the proposition's side.
+  Built in that order, A first, released before 2 Oct 01:00Z; the reading
+  (a number is always shown under the words of the contract it belongs to)
+  is recorded in docs/briefs/2026-09-30-rulings.md's successor note here.
 
 - **THE ORDER NOW (29 Sep, second set, ~05:40Z;
   docs/briefs/2026-09-29-rulings-second-set.md; wins over every order
