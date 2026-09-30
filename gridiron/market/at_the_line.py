@@ -260,6 +260,62 @@ def quotes_selling(ladder, line) -> list:
     return [q for q in ladder if home_view_line(q) == line]
 
 
+def rung_at(quotes: list, line) -> dict | None:
+    """The contract of one look that sells `line` and carries a price, in the
+    shape `rung_for` returns (the quote, its price, that price read for the
+    claim's fixed proposition, and the line), or None where the look lists
+    no priced contract at that line.
+
+    THE QUESTION'S OWN RUNG, FOR THE OPENING READ (pick-number step A,
+    2026-09-30; finding 5). The card's opening read took `rung_for`'s rung,
+    the venue's contract priced nearest an even chance, and drew its price
+    under the QUESTION's words -- "Under 60.5 total" at the 57.5 rung's
+    48.5c turned, "52c · pays 1.94x", where Under 60.5 cost about 58.5c
+    (1.71x). A number is shown under the words of the contract it belongs
+    to (the reading recorded in docs/REPAIR_STATE.md), so the opening read
+    asks for the question's own line here first. The claim writer still
+    reads `rung_for`'s rung (the rung choice declared 2026-09-06 is the
+    claim's, and nothing here changes it)."""
+    for quote in quotes_selling(quotes, line):
+        read = implied_of(quote)
+        if read is None:
+            continue
+        implied, price, basis = read
+        return {"quote": quote, "price": round(price, 6),
+                "implied": round(implied, 6), "basis": basis,
+                "distance": abs(implied - 0.5), "line": home_view_line(quote)}
+    return None
+
+
+def priced_across_two_contracts(claim_line, quote) -> bool:
+    """Was this claim's model number read at another line than the line its
+    contract sells -- its number about one contract and its price about
+    another?
+
+    THE ONE PLACE THE PAGE ASKS (pick-number step A, 2026-09-30, under
+    operator question 36). A claim stores the line its model number was read
+    at (`line`) and cites the venue contract its price came from; the line
+    that contract sells is `home_view_line` of it. From the first claim
+    writer (25d83b8, 2026-09-07) until Q36.1 (4b1facb) an away contract was
+    read at -s, so its claim stored -s beside a price about +s: 269 claims
+    and 54 recommendations by 29 September, and -- written by the released
+    code at 18:05Z on 30 September, before Q36.1 was released at 18:44Z --
+    six more on NFL week 4 games still to start, two of them recommended
+    (recs 114 and 115). Such a claim's numbers belong to two contracts, and
+    no single contract carries them; the page draws them nowhere (question
+    36 (ii) and (iii) are not ruled; the conservative default, recorded in
+    docs/REPAIR_STATE.md). Every claim written from Q36.1 on reads its
+    contract at the line it sells, so this is True only of those rows.
+
+    A winner market's claim and contract both have no line: not across."""
+    if quote is None:
+        return False
+    sold = home_view_line(quote)
+    if claim_line is None or sold is None:
+        return (claim_line is None) != (sold is None)
+    return abs(float(claim_line) - float(sold)) > 1e-9
+
+
 #: The claim table as it stands after AT_THE_PRICE. A database built before
 #: 2026-09-07 has the narrow one: no `shape`, NOT NULL distribution columns,
 #: and CHECKs that admit neither a prop nor a count.

@@ -1219,6 +1219,8 @@ const Gridiron = (function () {
     node.appendChild(mini);
     if (q.size_words) node.appendChild(el('div', 'q-size', q.size_words));
     if (q.method_note) node.appendChild(el('p', 'q-method', q.method_note));
+    // PRICED ACROSS TWO CONTRACTS: why there is no price (step A, 2026-09-30).
+    if (q.across_words) node.appendChild(el('p', 'q-method', q.across_words));
     // WHAT THE REASONING PASS WAS SENT (the rulings of 2026-09-24 and
     // 2026-09-25), on the tile of every reasoning-pass question the expanded
     // row holds. RE-HOMED BY THE MERGE (2026-09-29): it sat inside the old
@@ -1319,6 +1321,9 @@ const Gridiron = (function () {
       // THE FLAGGED-METHOD NOTE, on the face and not one tap in (operator
       // ruling 2, 2026-09-04).
       if (pick.method_note) pickBox.appendChild(el('p', 'pick-method', pick.method_note));
+      // A ROW PRICED ACROSS TWO CONTRACTS SAYS WHY IT HAS NO PRICE, on the
+      // face (pick-number step A, 2026-09-30): the server's one sentence.
+      if (pick.across_words) pickBox.appendChild(el('p', 'pick-method', pick.across_words));
     } else {
       pickBox.appendChild(el('div', 'pick-line pick-line-none', g.no_pick_words || labels.no_pick || ''));
     }

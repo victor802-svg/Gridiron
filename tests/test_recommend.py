@@ -384,7 +384,14 @@ def test_the_card_the_line_sentence_and_the_pregame_figure_read_one_number(tmp_p
     beside = views._at_the_line(conn, "mlb", [pid], {})[pid]
     assert beside["model_prob"] == pytest.approx(entry["fair_value"], abs=1e-4)
     assert "is a 54% chance" in beside["words"]
-    card = views._today_card(entry, {"prediction_id": pid, "phrase": "x"},
+    # THE PAGE READS AN ENTRY AS IT DRAWS IT (pick-number step A,
+    # 2026-09-30): its numbers named by the line they belong to; a claim's
+    # numbers handed straight to the card are refused by name.
+    with pytest.raises(language.LineNotNamed):
+        views._today_card(entry, {"prediction_id": pid, "phrase": "x"},
+                          taken=False, group_tier=None, unit_dollars=None)
+    card = views._today_card(views._as_the_page_draws(entry),
+                             {"prediction_id": pid, "phrase": "x"},
                              taken=False, group_tier=None, unit_dollars=None)
     # the question names the away side, so the chip is the other half of 54%
     assert card["model_words"] == "46¢"

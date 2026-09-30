@@ -364,6 +364,7 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
     """
     from .. import shortlist as ranker
     from ..priced import shape as _shapes
+    from . import at_the_line
 
     if not prediction_ids:
         return []
@@ -383,13 +384,20 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         " p.line_asked, p.model_prob, p.model_side, p.predictor, p.created_utc,"
         " g.status, g.kickoff_utc, g.home, g.away,"
         " c.model_prob AS claim_prob, c.venue_implied AS implied_prob,"
-        " c.line AS venue_line, c.venue AS venue, c.created_utc AS claim_utc"
+        " c.line AS venue_line, c.venue AS venue, c.created_utc AS claim_utc,"
+        # THE CONTRACT THE PRICE CAME FROM (pick-number step A, 2026-09-30):
+        # the claim's own number, and the line its quote sells, so the page
+        # can name the contract the numbers belong to -- and refuse a claim
+        # whose number and price belong to two (`at_the_line.
+        # priced_across_two_contracts`). Nothing here is priced differently.
+        " c.id AS claim_id, q.line AS quote_line, q.yes_side AS quote_side"
         f" FROM predictions p JOIN games g ON g.id = p.game_id"
         " LEFT JOIN at_the_line_claims c ON c.id = ("
         "     SELECT c2.id FROM at_the_line_claims c2"
         "      WHERE c2.prediction_id = p.id"
         "        AND (g.kickoff_utc IS NULL OR c2.created_utc < g.kickoff_utc)"
         "      ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
+        " LEFT JOIN venue_quotes q ON q.id = c.quote_id"
         f" WHERE p.id IN ({placeholders})"
         # A VOIDED FORECAST IS NEVER A LIVE PICK (ruling 1, 2026-09-24). The
         # page passes only standing cards, but a caller handed a voided id
@@ -504,6 +512,20 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
             "correction_version": correction_version,
             "venue": row["venue"],
             "venue_line": row["venue_line"],
+            # WHICH CLAIM, AND WHETHER ITS NUMBER AND ITS PRICE BELONG TO ONE
+            # CONTRACT (pick-number step A, 2026-09-30), with the game's two
+            # clubs: the page names the contract its numbers belong to
+            # (`views._as_the_page_draws`, `views._the_contract`) and draws
+            # no number of a claim priced across two. Read by the page only;
+            # `record_for` writes what it wrote before.
+            "claim_id": row["claim_id"],
+            "priced_across_two_contracts": (
+                row["claim_id"] is not None
+                and at_the_line.priced_across_two_contracts(
+                    row["venue_line"], None if row["quote_side"] is None else
+                    {"line": row["quote_line"], "yes_side": row["quote_side"]})),
+            "home": row["home"],
+            "away": row["away"],
             "price": round(price, 4) if price is not None else None,
             "edge_cents": chosen["edge_cents"],
             "side": chosen["side"],

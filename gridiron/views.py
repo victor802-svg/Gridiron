@@ -975,8 +975,12 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
 
     today_block = _today_block(
         conn, cards,
-        _recommend.for_predictions(
-            conn, [c["prediction_id"] for c in cards if c.get("on_shortlist")]),
+        # AS THE PAGE DRAWS THEM (pick-number step A, 2026-09-30): every
+        # entry's numbers named by the line they belong to, and none of a
+        # claim priced across two contracts (`_as_the_page_draws`) -- the
+        # Today cards, the board read off them, and the combos alike.
+        [_as_the_page_draws(e) for e in _recommend.for_predictions(
+            conn, [c["prediction_id"] for c in cards if c.get("on_shortlist")])],
         # THE COUNT IS OF ONE FORECASTER'S QUESTIONS, and the strip says which.
         forecaster=chosen, sport=sport)
 
@@ -1246,7 +1250,9 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
         return {}
     placeholders = ",".join("?" for _ in ids)
     rows = conn.execute(
-        f"SELECT c.* FROM at_the_line_claims c WHERE c.prediction_id IN ({placeholders})"
+        f"SELECT c.*, q.line AS quote_line, q.yes_side AS quote_side"
+        f"  FROM at_the_line_claims c LEFT JOIN venue_quotes q ON q.id = c.quote_id"
+        f" WHERE c.prediction_id IN ({placeholders})"
         "   AND c.created_utc = (SELECT MAX(c2.created_utc) FROM at_the_line_claims c2"
         "                        WHERE c2.prediction_id = c.prediction_id)",
         ids).fetchall()
@@ -1298,14 +1304,23 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
         # `recommend.correction_instant`, from the prover of 2026-09-26).
         model_prob, _version = ((row["model_prob"], None) if forecast is None
                                 else _corrected_claim(conn, forecast, row))
+        # A CLAIM PRICED ACROSS TWO CONTRACTS (pick-number step A,
+        # 2026-09-30): its price is about another line than the one this
+        # sentence names, so the sentence states the model's number at its
+        # own line and no price, and says why.
+        across = venue.priced_across_two_contracts(
+            row["line"], None if row["quote_side"] is None else
+            {"line": row["quote_line"], "yes_side": row["quote_side"]})
+        implied = None if across else row["venue_implied"]
         out[row["prediction_id"]] = {
             "words": language.at_the_line_line(
-                row["market"], row["line"], model_prob, row["venue_implied"],
+                row["market"], row["line"], model_prob, implied,
                 n, home=home),
             "venue": venue.VENUE,
             "line": row["line"],
             "model_prob": model_prob,
-            "venue_implied": row["venue_implied"],
+            "venue_implied": implied,
+            "across_two_contracts": across,
             "price_basis": row["price_basis"],
             "n": n,
             "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
@@ -1449,6 +1464,128 @@ def _placed(entry: dict, card: dict, context: dict) -> bool | None:
     return _shapes.question_takes_the_proposition(
         forecast, {"home": context.get("home"), "away": context.get("away")},
         quantity=_recommend._quantity_of(forecast))
+
+
+def _as_the_page_draws(entry: dict) -> dict:
+    """A priced entry as the page may draw it: its numbers named by the line
+    they belong to, or -- priced across two contracts -- no numbers at all.
+
+    PICK-NUMBER STEP A (2026-09-30). `recommend.for_predictions` prices each
+    shortlisted question off its claim, whose model number was read at the
+    claim's line (`venue_line`) -- the venue's rung, often not the question's
+    (finding 2). This names that line for the words (`numbers_line`, read by
+    `_the_contract`), so every figure below is shown under the words of the
+    contract it belongs to (the reading recorded in docs/REPAIR_STATE.md).
+
+    A CLAIM PRICED ACROSS TWO CONTRACTS (`at_the_line.
+    priced_across_two_contracts`: an away contract read at -s before Q36.1)
+    carries a model number about one line and a price about another. Operator
+    question 36 (ii) and (iii) are not ruled, and the conservative default is
+    that no single contract carries such numbers, so none is drawn: no
+    chance of the claim, no price, payout, edge or size -- and no side, so
+    no outline and no combo leg -- only the model's own number for the
+    question as asked and one plain sentence (`language.
+    across_two_contracts_words`). The stored rows are untouched (LAW 3); the
+    recommendation written from such a claim stays in the record as written.
+
+    Every reader of a priced entry on the page reads it through here; a
+    claim's numbers reaching `_the_contract` without it are refused by name.
+    """
+    if not entry.get("claim_id"):
+        return dict(entry, numbers_line=None)
+    if entry.get("priced_across_two_contracts"):
+        return dict(
+            entry, numbers_line=None, price=None, fair_value=None,
+            raw_fair_value=None, edge_cents=None, side=None, edge_side=None,
+            edge_cents_side=None, return_on_stake=None, payout=None,
+            size={"kind": "none", "units": 0.0, "fraction": 0.0,
+                  "gate_n": entry.get("gate_n"), "gated": False,
+                  "why": language.across_two_contracts_words()},
+            side_why=language.across_two_contracts_words(),
+            across_words=language.across_two_contracts_words())
+    return dict(entry, numbers_line=entry.get("venue_line"))
+
+
+def _the_contract(entry: dict | None, card: dict) -> dict:
+    """THE ONE DOOR for a pick's words: the contract its numbers belong to.
+
+    PICK-NUMBER STEP A (2026-09-30; findings 2 and 5, the live pregame
+    figure). A priced row named the QUESTION's line and drew the VENUE
+    contract's numbers at another: rec 111 read "North Texas -6.5 · 76% ·
+    51.5c", where 76% and 51.5c are North Texas +1.5's (the claim was read
+    at "Tulsa by more than 1.5"; North Texas -6.5 is the venue's UNT7 at
+    about 29c, and the model's own number for it is 62.6%). A number is
+    shown under the words of the exact contract it belongs to, its line and
+    its side: the claim's line where the numbers are the claim's, the
+    question's own where they are the question's (the reading recorded in
+    docs/REPAIR_STATE.md). Every surface that names a pick asks here -- the
+    board's row and tile (through the Today card), the Today card, the
+    recommendation line, a combo's leg, the taken rail, the live figure and
+    the opening read.
+
+    `entry` says whose numbers are drawn: `numbers_line` (set by
+    `_as_the_page_draws`, or by the caller for a live claim, a stored
+    recommendation's claim or an opening read) and `home`, the game's home
+    club, from whose side a venue line is read; None, or no `numbers_line`,
+    where the numbers are the question's own. A claim's numbers that arrive
+    without `numbers_line` are refused by name (`language.LineNotNamed`),
+    never drawn under the question's words.
+
+    Returns the card at that contract (`item`, for every composer), its
+    words (`words`, the long form; `line_words`, the row's), the line its
+    words are asked at (`line_asked`, the subject's), whether the words
+    moved from the question's line (`moved`) and, where they did, what the
+    model was asked about (`asked_words`).
+    """
+    line = None
+    if entry is not None:
+        if entry.get("claim_id") and "numbers_line" not in entry:
+            raise language.LineNotNamed(
+                f"THE PAGE REFUSES A NUMBER WHOSE LINE IT HAS NOT NAMED: "
+                f"question {entry.get('prediction_id')} carries claim "
+                f"{entry.get('claim_id')}'s numbers, and no line was named for "
+                f"them (`views._as_the_page_draws`), so they are not drawn under "
+                f"the question's words (pick-number step A, 2026-09-30)")
+        line = entry.get("numbers_line")
+    item = card if line is None else language.at_the_contract(
+        card, line, home=entry.get("home"))
+    moved = item is not card
+    out = {"item": item, "words": card.get("phrase") or card.get("row_title")
+           or "this question", "line_words": language.pick_line_words(card),
+           "line_asked": card.get("line_asked"), "moved": moved,
+           "asked_words": None}
+    if moved:
+        words = language.phrase(item)
+        out.update({"words": words, "line_words": language.pick_line_words(item),
+                    "line_asked": item.get("line_asked"),
+                    "asked_words": language.asked_elsewhere_words(
+                        language.pick_line_words(card),
+                        card.get("shown_prob") if card.get("shown_prob") is not None
+                        else card.get("model_prob"))})
+    return out
+
+
+def _question_home_line(card: dict, home: str | None) -> float | None:
+    """The question's own line from the claim's proposition's view -- the
+    home side's line on a spread, the over's on a total -- so the opening
+    read can ask the venue for the question's own contract (pick-number
+    step A, 2026-09-30). None for a market with no line. A spread whose
+    subject is neither club cannot say which contract is its own, and is
+    refused by name rather than read at the venue's main rung."""
+    line, market_type = card.get("line_asked"), card.get("market_type")
+    if line is None or market_type not in ("spread", "total", "prop"):
+        return None
+    if market_type != "spread":
+        return float(line)
+    if home and card.get("subject") == home:
+        return float(line)
+    if home and card.get("opponent") == home:
+        return -float(line)
+    raise language.LineNotNamed(
+        f"THE PAGE REFUSES AN OPENING READ IT CANNOT NAME: question "
+        f"{card.get('prediction_id')} ({card.get('phrase')!r}) asks about a club "
+        f"that is not placed against the home club {home!r}, so which venue "
+        f"contract is its own cannot be said (pick-number step A, 2026-09-30)")
 
 
 def _on_the_question(number: float | None, takes: bool | None, *,
@@ -1655,7 +1792,8 @@ def _card_context(conn: sqlite3.Connection, card: dict) -> dict:
 
 
 def _opening_price(conn: sqlite3.Connection | None, game_id: str | None,
-                   market: str | None, *, flip: bool) -> dict | None:
+                   market: str | None, *, flip: bool,
+                   line: float | None = None) -> dict | None:
     """The venue's latest OPENING read for this game and market.
 
     THE LATEST, not the first. "The open" for drift is the earliest read --
@@ -1670,10 +1808,17 @@ def _opening_price(conn: sqlite3.Connection | None, game_id: str | None,
     rung is the venue's contract priced nearest an even chance, and `line`
     is the line that contract sells, read in the one place
     (`at_the_line.home_view_line`, through `rung_for`) -- an away contract
-    "<away> wins by over s" is the home side's +s, never -s. The card draws
-    the price alone today; which line it names beside it is pick-number step
-    A's (the opening read's rung is the venue's main rung, not always the
-    question's).
+    "<away> wins by over s" is the home side's +s, never -s.
+
+    AT THE QUESTION'S OWN LINE (pick-number step A, 2026-09-30; finding 5).
+    `line` is the question's line from the claim's proposition's view; where
+    the look lists a priced contract selling it (`at_the_line.rung_at`), that
+    is the read, and `at_the_question` says so. Where it lists none, the
+    venue's main rung is read as before and `line` names the line it sells,
+    so the card can say it is another contract's -- "Under 60.5 total" drew
+    the 57.5 rung's 48.5c turned, "52c · pays 1.94x", where Under 60.5 cost
+    about 58.5c (1.71x). With no `line` (a winner market, or a caller asking
+    for the main rung) the main rung is read, as it always was.
     """
     if conn is None or not game_id or market not in ("spread", "total", "moneyline"):
         return None
@@ -1696,14 +1841,19 @@ def _opening_price(conn: sqlite3.Connection | None, game_id: str | None,
         (game_id, market, latest)).fetchall()
     from .market import at_the_line
 
-    rung = at_the_line.rung_for(list(ladder))
+    rung = None if line is None else at_the_line.rung_at(list(ladder), line)
+    at_the_question = rung is not None
+    if rung is None:
+        rung = at_the_line.rung_for(list(ladder))
     if rung is None:
         return None
     price = 1.0 - rung["implied"] if flip else rung["implied"]
     if not 0 < price < 1:
         return None
     return {"price": price, "payout": _payout_for(price), "read_utc": latest,
-            "line": rung["line"]}
+            "line": rung["line"],
+            "at_the_question": at_the_question or line is None
+            or rung["line"] == line}
 
 
 def _pregame_probability(conn, entry: dict, card: dict) -> float | None:
@@ -1727,6 +1877,19 @@ def _pregame_probability(conn, entry: dict, card: dict) -> float | None:
     WRITTEN, so a correction activated mid-game never rewrites a pregame
     figure.
     """
+    got = _pregame_claim(conn, entry, card)
+    return None if got is None else got["prob"]
+
+
+def _pregame_claim(conn, entry: dict, card: dict) -> dict | None:
+    """The claim a live card's pregame figure is read from -- its corrected
+    number (`prob`, as `_pregame_probability` returns it), the claim, the
+    line its number was read at, and whether its number and price belong to
+    two contracts -- so the words beside the figure name its line
+    (pick-number step A, 2026-09-30: the live pregame figure drew the
+    claim's number at the venue's rung under the question's words, 60 live
+    figures on the record before 30 September, 47 of them off a claim priced
+    across two contracts). None where there is no claim."""
     if conn is None:
         return None
     pid = entry.get("prediction_id") or card.get("prediction_id")
@@ -1737,21 +1900,28 @@ def _pregame_probability(conn, entry: dict, card: dict) -> float | None:
     if "at_the_line_claims" not in tables:
         return None
     row = conn.execute(
-        "SELECT c.model_prob, c.created_utc, p.sport, p.market_type,"
-        "       p.predictor"
+        "SELECT c.id, c.line, c.model_prob, c.created_utc, p.sport, p.market_type,"
+        "       p.predictor, g.home, q.line AS quote_line, q.yes_side AS quote_side"
         "  FROM at_the_line_claims c JOIN predictions p ON p.id = c.prediction_id"
+        "  JOIN games g ON g.id = p.game_id"
+        "  LEFT JOIN venue_quotes q ON q.id = c.quote_id"
         " WHERE c.prediction_id = ?"
         " ORDER BY c.created_utc DESC, c.id DESC LIMIT 1",
         (pid,)).fetchone()
     if row is None or row["model_prob"] is None:
         return None
     from . import correction
+    from .market import at_the_line
 
     shown, _version = correction.shown_proposition(
         conn, sport=row["sport"], market_type=row["market_type"],
         forecaster=row["predictor"], proposition=float(row["model_prob"]),
         at_utc=row["created_utc"])
-    return float(shown)
+    across = at_the_line.priced_across_two_contracts(
+        row["line"], None if row["quote_side"] is None else
+        {"line": row["quote_line"], "yes_side": row["quote_side"]})
+    return {"prob": float(shown), "claim_id": row["id"], "line": row["line"],
+            "home": row["home"], "across": across}
 
 
 def _today_card(entry: dict, card: dict, *, taken: bool,
@@ -1814,6 +1984,25 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # neither side clears the fee, so a watched card whose figure was the
     # OTHER side's was labelled as the question's own.
     edge_on = _edge_side_words(_edge_figure_side(entry), takes)
+    # THE CONTRACT THE NUMBERS BELONG TO, AND ITS WORDS (pick-number step A,
+    # 2026-09-30): through the one door, after the side is placed. A priced
+    # card's numbers are its claim's, read at the claim's line; a live card's
+    # pregame figure is the latest claim's, at that claim's line; a settled
+    # card's, and an unpriced one's, are the question's own. A claim priced
+    # across two contracts gives no number at all (`_as_the_page_draws`; for
+    # a live card, below): the question's own words and number, and the
+    # sentence saying why.
+    live_claim = _pregame_claim(conn, entry, card) if state == "live" else None
+    across = bool(entry.get("across_words")) or bool(live_claim and live_claim["across"])
+    if state == "live":
+        numbers = (None if live_claim is None or live_claim["across"] else {
+            "prediction_id": entry.get("prediction_id"),
+            "claim_id": live_claim["claim_id"], "numbers_line": live_claim["line"],
+            "home": live_claim["home"]})
+    else:
+        numbers = entry
+    contract = _the_contract(numbers, card)
+    question = contract["words"]
     out = {
         "prediction_id": entry["prediction_id"],
         # LAW 4 travels with every row on this page, as it does everywhere.
@@ -1827,7 +2016,13 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "kickoff_label": language.kickoff_label_words(),
         "sport_label": language.SPORT_LABELS.get(entry.get("sport"),
                                                  (entry.get("sport") or "").upper()),
+        # THE WORDS OF THE CONTRACT THE CARD'S NUMBERS BELONG TO (step A):
+        # the long form, the row's short form -- which the board draws, never
+        # composing its own beside these numbers -- and the line they are
+        # asked at, the subject's (`words_line_asked`).
         "question": question,
+        "line_words": contract["line_words"],
+        "words_line_asked": contract["line_asked"],
         # WHICH MARKET, so the chips above can filter the groups. The chips
         # are declared a filter row on Upcoming and were filtering only the
         # slate beneath it: switching to a market with no picks left the
@@ -1919,31 +2114,81 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # the product with it.
     if card.get("rail_line"):
         out["rail_line"] = card["rail_line"]
+    # WHAT THE MODEL WAS ASKED, beside a pick named at the venue's line
+    # (pick-number step A, 2026-09-30): the words above name the contract the
+    # numbers belong to; this says, in plain words, the question the forecast
+    # was about and its own number for it.
+    if contract["asked_words"]:
+        out["asked_words"] = contract["asked_words"]
+    # AND THE FORECAST'S OWN SENTENCES NAME THE QUESTION THEY ARE ABOUT (step
+    # A's prover, 2026-09-30). Where the words above moved to the venue's
+    # contract, the card still carried the forecast's numbers line and its why
+    # block bare: "The model says 63%. The market implies 36% -- 27 points
+    # apart." and "The market has North Texas at 36%" beside "North Texas
+    # covers +1.5", whose chance is 76% and price 51.5c -- rec 111, North Texas
+    # -6.5's numbers under North Texas +1.5's words (payload only; the board
+    # draws neither). Each is the forecast's, unchanged, and now names the
+    # question it is about at the question's own line.
+    if contract["moved"]:
+        asked_line = language.pick_line_words(card)
+        if out.get("rail_line"):
+            out["rail_line"] = language.as_the_model_was_asked(asked_line, out["rail_line"])
+        if isinstance(out.get("why"), dict) and out["why"].get("heading"):
+            out["why"] = dict(out["why"], heading=language.why_heading_as_asked(asked_line))
+    # A CLAIM PRICED ACROSS TWO CONTRACTS (step A; operator question 36 (ii)
+    # and (iii) not ruled, the conservative default): no chance of the
+    # claim, no price, payout, edge or size -- the entry arrives with none
+    # (`_as_the_page_draws`) -- and each place a price would be says why,
+    # never "not listed", which would be false: the venue listed it.
+    if across:
+        out["across_words"] = language.across_two_contracts_words()
+        out["venue_words"] = language.across_two_contracts_price_words()
+        out["payout_words"] = language.across_two_contracts_price_words()
+        out["price_words"] = ""
     # THE OPENING READ (GRIDIRON_OPENING_READ, 2026-09-09), and ONLY where
     # there is no price at the line. The near-start read remains the only
     # number an edge is measured at; this fills a chip that would otherwise
     # say nothing for four days, and labels itself as a read so nobody
     # compares it with an edge measured at kickoff.
-    if price is None and state == "upcoming":
+    # NOT BESIDE A CLAIM PRICED ACROSS TWO CONTRACTS (step A): that row is
+    # drawn without any price, the default says, an opening read included.
+    if price is None and state == "upcoming" and not across and conn is not None:
         # READ ON THE PROPOSITION AND TURNED LIKE EVERY OTHER NUMBER HERE
         # (2026-09-30): an opening read beside a question whose side cannot
         # be placed is refused, not painted unturned.
+        # AT THE QUESTION'S OWN LINE, OR NAMING THE LINE IT IS (pick-number
+        # step A, 2026-09-30; finding 5): the read took the venue's main rung
+        # and drew its price under the question's words.
         opened = _opening_price(conn, card.get("game_id"),
                                 entry.get("market") or card.get("market"),
-                                flip=False)
+                                flip=False,
+                                line=_question_home_line(card, context.get("home")))
         if opened is not None:
             opened_price = turned(opened["price"], "an opening read of the venue's price")
             opened = dict(opened, price=opened_price, payout=_payout_for(opened_price))
-            out["payout_words"] = language.payout_chip_words(opened["payout"])
+            out["open_read_line"] = opened["line"]
+            out["open_read_price"] = opened["price"]
+            if opened["at_the_question"]:
+                out["payout_words"] = language.payout_chip_words(opened["payout"])
+                out["venue_words"] = language.venue_chip_words(
+                    opened["price"], opened["payout"])
+            else:
+                elsewhere = _the_contract(
+                    {"prediction_id": entry.get("prediction_id"),
+                     "numbers_line": opened["line"], "home": context.get("home")},
+                    card)["line_words"]
+                out["open_read_line_words"] = elsewhere
+                out["payout_words"] = language.opening_read_elsewhere_payout_words(
+                    elsewhere, opened["payout"])
+                out["venue_words"] = language.opening_read_elsewhere_words(
+                    elsewhere, opened["price"], opened["payout"])
             out["payout"] = opened["payout"]
-            out["venue_words"] = language.venue_chip_words(
-                opened["price"], opened["payout"])
             out["open_read_utc"] = opened["read_utc"]
             out["open_read_words"] = language.opening_read_words()
             out["price_words"] = ""
     out.update({k: v for k, v in context.items() if k != "state"})
-    out["edge_line_words"] = language.edge_line_words(
-        entry.get("edge_cents"), other_side=edge_on == "no")
+    out["edge_line_words"] = ("" if across else language.edge_line_words(
+        entry.get("edge_cents"), other_side=edge_on == "no"))
     # A LIVE CARD CARRIES NO PRICE, NO EDGE, NO SIZE AND NO TAP. The in-game
     # rule is already law (THE_PRICED P2): a score up to ninety seconds stale
     # against a live market is adversely selected by construction, so a card
@@ -1982,13 +2227,66 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # side showed the proposition's pregame chance. `_placed` places it
         # from the card's own forecast now, and `turned` refuses what it
         # cannot place.
-        _pregame = turned(_pregame_probability(conn, entry, card), "a pregame figure")
+        # AND IT IS NAMED BY ITS CLAIM'S LINE (pick-number step A,
+        # 2026-09-30): the card's words above are the claim's contract's
+        # (`_the_contract`), so "pregame 76%" stands under "North Texas +1.5",
+        # not under "North Texas -6.5". A claim priced across two contracts
+        # gives none: the figure is the question's own pregame number, the
+        # forecast's, under the question's words, and the sentence says why.
+        if live_claim is not None and live_claim["across"]:
+            _pregame = (card.get("shown_prob") if card.get("shown_prob") is not None
+                        else card.get("model_prob"))
+        else:
+            _pregame = turned(None if live_claim is None else live_claim["prob"],
+                              "a pregame figure")
         out["pregame_words"] = language.pregame_words(_pregame)
     if state == "final":
+        # THE VERDICT OF THE CONTRACT THE CARD NAMES (step A's prover,
+        # 2026-09-30). A finished game's question is still priced
+        # (`recommend.for_predictions` skips a game in play, not a finished
+        # one), so its card in CLEARS or WATCHING names the claim's contract
+        # and shows the claim's chance -- and said "the model had this at 65%
+        # and it happened" of the QUESTION: its number and its outcome under
+        # the contract's words. On the record, 12 finished cards (NFL week 3
+        # and NCAAF), three with the other verdict: "New York covers +6.5 · 30c · the model
+        # had this at 67% and it happened", where 67% is New York +15.5's and
+        # New York did not cover +6.5 (DET 31-24). Where the words moved, the
+        # figure is the chance the card shows and the verdict its claim's,
+        # settled at the claim's own line and said of the side the words
+        # name; a claim not yet settled says so. (The board's finished row is
+        # drawn from the settled group's card, which is the question's own:
+        # unchanged.)
+        settled_prob, settled_outcome = card.get("shown_prob"), card.get("outcome")
+        if contract["moved"]:
+            settled_prob = fair_on_the_question
+            settled_outcome = _claim_outcome_on_the_words(conn, entry, takes)
         out["settled_words"] = language.settled_outcome_words(
-            card.get("shown_prob"), card.get("outcome"),
-            out.get("question", ""))
+            settled_prob, settled_outcome, out.get("question", ""))
     return out
+
+
+def _claim_outcome_on_the_words(conn, entry: dict, takes: bool | None) -> int | None:
+    """Whether the side a card's words name happened, at the line of the
+    claim its numbers are read from: the claim's own settled outcome (the
+    home side covering, the over, at the claim's stored line --
+    `at_the_line.resolve_claims`) turned to the side the words name. None
+    where the claim is not settled or cannot be read (step A's prover,
+    2026-09-30)."""
+    if conn is None or not entry.get("claim_id"):
+        return None
+    row = conn.execute("SELECT outcome FROM at_the_line_claims WHERE id = ?",
+                       (entry["claim_id"],)).fetchone()
+    if row is None or row["outcome"] is None:
+        return None
+    if takes is not True and takes is not False:
+        from .subjects import UnplaceableSide
+
+        raise UnplaceableSide(
+            f"THE PAGE REFUSES A VERDICT IT CANNOT PLACE: question "
+            f"{entry.get('prediction_id')}'s claim settled, and which side its "
+            f"words name against the claim's proposition cannot be said "
+            f"({takes!r}) (step A's prover, 2026-09-30)")
+    return int(row["outcome"]) if takes else 1 - int(row["outcome"])
 
 
 def _favours_home(entry: dict, card: dict, context: dict) -> bool:
@@ -2313,10 +2611,12 @@ def _proposal_card(proposal: dict, *, unit_dollars: float | None,
     reasoning pass's baseball combos) named no contract
     (`language.combo_leg_words`).
 
-    THE LINE IS NOT CHANGED HERE: where a spread's claim was read at the
-    venue's line and not the question's (pick-number finding 2, operator
-    question 36), the words keep the question's line until step A is ruled,
-    through the same function.
+    AND AT THE LINE ITS NUMBERS BELONG TO (pick-number step A, 2026-09-30):
+    `_the_side_bought` names the side through the one door, so a spread leg
+    whose claim was read at the venue's line and not the question's (finding
+    2) is named at the claim's line -- "Howard covers +41.5", not "+24.5" --
+    and a leg priced across two contracts is no leg at all (it has no side
+    once `_as_the_page_draws` has read it).
     """
     from .market import combos as _combos
 
@@ -2637,18 +2937,40 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
         # THROUGH THE DOOR (2026-09-24): a withdrawn recommendation's edge is
         # not the edge the pick was taken at. The tap stands -- it was his
         # choice -- and says it had none on record.
+        # AND THE CONTRACT THAT EDGE BELONGS TO (pick-number step A,
+        # 2026-09-30): the claim the recommendation was priced from -- the
+        # latest written by then and before the start, the close's own rule
+        # (`recommend.close_of`) -- names the line of the words, through the
+        # one door; an edge worked out across two contracts is not stated.
         edge = conn.execute(
-            "SELECT r.edge_cents FROM recommendations r"
+            "SELECT r.edge_cents, c.id AS claim_id, c.line AS claim_line,"
+            "       q.line AS quote_line, q.yes_side AS quote_side, g.home"
+            "  FROM recommendations r JOIN games g ON g.id = r.game_id"
+            "  LEFT JOIN at_the_line_claims c ON c.id = ("
+            "      SELECT c2.id FROM at_the_line_claims c2"
+            "       WHERE c2.prediction_id = r.prediction_id"
+            "         AND c2.created_utc <= r.created_utc"
+            "         AND (g.kickoff_utc IS NULL OR c2.created_utc < g.kickoff_utc)"
+            "       ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
+            "  LEFT JOIN venue_quotes q ON q.id = c.quote_id"
             " WHERE r.prediction_id = ? AND r.created_utc <= ?"
             + _recommend.not_withdrawn(conn) +
             " ORDER BY r.created_utc DESC, r.id DESC LIMIT 1",
             (row["prediction_id"], row["taken_utc"])).fetchone()
+        from .market import at_the_line as _atl
+
+        across = bool(edge and edge["claim_id"] and _atl.priced_across_two_contracts(
+            edge["claim_line"], None if edge["quote_side"] is None else
+            {"line": edge["quote_line"], "yes_side": edge["quote_side"]}))
+        numbers = (None if not edge or not edge["claim_id"] or across else
+                   {"prediction_id": row["prediction_id"], "claim_id": edge["claim_id"],
+                    "numbers_line": edge["claim_line"], "home": edge["home"]})
         entries.append({
             "prediction_id": row["prediction_id"],
             "taken_utc": row["taken_utc"],
             "words": language.taken_entry_words(
-                card.get("phrase") or card.get("row_title") or "this question",
-                edge["edge_cents"] if edge else None),
+                _the_contract(numbers, card)["words"],
+                edge["edge_cents"] if edge else None, across=across),
         })
     # AND THE PACKAGES HE MARKED (GRIDIRON_COMBOS C4, 2026-09-08). The rail
     # said "nothing marked yet" beneath a package card whose button read
@@ -2700,11 +3022,18 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
     from .market import recommend
 
     ids = [c["prediction_id"] for c in cards if c.get("on_shortlist")]
-    priced = recommend.for_predictions(conn, ids)
+    # AS THE PAGE DRAWS THEM (pick-number step A, 2026-09-30): each entry's
+    # numbers named by the line they belong to, and none of a claim priced
+    # across two contracts -- counted by that reason, never as a line.
+    priced = [_as_the_page_draws(e) for e in recommend.for_predictions(conn, ids)]
     lines = []
     uncovered = 0
     no_edge = 0
+    across = 0
     for entry in priced:
+        if entry.get("across_words"):
+            across += 1
+            continue
         if entry["side"] is None:
             if not (entry.get("coverage") or {}).get("priceable", True):
                 uncovered += 1
@@ -2747,9 +3076,12 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
         "n": len(lines),
         "considered": considered,
         "lines": lines,
-        "empty_words": language.nothing_priced_line(considered, uncovered, no_edge),
+        "empty_words": language.nothing_priced_line(considered, uncovered, no_edge,
+                                                    across),
         "uncovered": uncovered,
         "no_edge": no_edge,
+        # PRICED ACROSS TWO CONTRACTS (step A): counted, never a line.
+        "across": across,
     }
 
 
@@ -2771,18 +3103,22 @@ def _the_side_bought(entry: dict, card: dict) -> dict:
     `language.phrase_of_the_other_side`, through the one place -- when it is
     not; and both numbers are that side's.
 
-    THE LINE THE NUMBERS ARE READ AT IS NOT CHANGED HERE: a claim read at the
-    venue's line where it is not the question's (pick-number finding 2,
-    operator question 36) is step A's, and the words keep the question's
-    line until it is ruled.
+    AND AT THE LINE THE NUMBERS BELONG TO (pick-number step A, 2026-09-30):
+    the words are the contract's, through the one door (`_the_contract`) --
+    the claim's line, where the claim was read at the venue's line and not
+    the question's (finding 2). Until then they kept the question's line:
+    rec 111's line read "North Texas covers -6.5 -- the model makes it 76c,
+    the venue is at 52c", both numbers North Texas +1.5's. A claim priced
+    across two contracts has no side here at all (`_as_the_page_draws`).
     """
     takes = entry.get("question_takes_the_proposition")
     buys_the_proposition = entry["side"] == "yes"
     fair = entry.get("fair_value")
+    contract = _the_contract(entry, card)
     if buys_the_proposition == takes:
-        words = card.get("phrase") or card.get("row_title") or "this question"
+        words = contract["words"]
     else:
-        words = language.phrase_of_the_other_side(card)
+        words = language.phrase_of_the_other_side(contract["item"])
     # TURNED AS THE CARD TURNS THEM (`_on_the_question`: one minus the
     # number, unrounded), so a line and its card never round one half-cent
     # two ways -- 54.5c read 54c on one and 55c on the other.

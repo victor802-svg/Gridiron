@@ -67,6 +67,92 @@
   the home contract's open (-s) -- their movement spans two contracts (on
   8662205 those claims' disagreement did); no direction is shown under the
   50. `plant.py` 397/397; the suite 2277 passed, 4 skipped.
+  **STEP A BUILT (2026-09-30, from 4422403; uncommitted for its prover;
+  FOLLOWUPS "Every number on a pick names the line it belongs to"; CLAUDE.md
+  row of the same name):** THE READING TAKEN (the conservative default, under
+  the amended queue rule): a number on a pick is always shown under the words
+  of the exact contract it belongs to -- its line and its side; where a
+  recommendation was priced on the venue's contract at a line other than the
+  question's, the pick names the VENUE's contract and says beside it, in
+  plain words, what the model was asked and its own number for it; nothing
+  pairs one line's words with another line's numbers; the side drawn is the
+  one the page already drew (question 37 not touched). Built: one door for a
+  pick's words (`views._the_contract`, with `language.at_the_contract`),
+  read by the board's rows and tiles through the Today card, the Today card,
+  the recommendation line, a combo's leg, the taken rail, the live figure and
+  the opening read; the opening read asks the question's own contract and
+  names the one it is where the ladder lists none; a row whose stored claim
+  was priced across two contracts is drawn with none of its numbers and the
+  sentence "Priced across two contracts before 30 September; no single
+  contract carries these numbers." (the default of 15:30Z); the gate's
+  `audit.check_every_number_names_its_line` (step 2, every sport's slate,
+  both forecasters) reads the line off the record and off the drawn words.
+  Rec 111 reads "North Texas +1.5 · 76% · 52c · 1.94x" (tooltip: "The model
+  was asked about North Texas -6.5 and gives it 63%."). Measured on one
+  verified copy (made 18:52:24Z): 69 of the 117 recommendations were drawn
+  under another line's words while live (13 at the venue's rung, 56 across two
+  contracts), 60 live pregame figures, 855 opening reads; 289 faults on
+  4422403's 52 payloads, none here. Nothing stored changes; `record_for`
+  writes what it wrote before. Three plantings, each escaping on 4422403 and
+  caught here; `plant.py` 400/400; the suite 2292 passed, 4 skipped; gate
+  step 2's rows 109/109 on the copy (the copy deleted 20:40:37Z).
+  **FOUND BY STEP A'S MEASUREMENT, FOR THE OPERATOR (no question: the default
+  of 15:30Z covers the page):** `predict:nfl` at 18:00-18:05Z (run 8464) ran
+  the released code before Q36.1 was released at 18:44Z and wrote six NFL
+  week-4 claims off an away contract at -s (claims 1749, 1752, 1755, 1761,
+  1780, 1786), two of them recommended -- rec 114 (PIT at CLE, 2 October
+  00:15Z) and rec 115 (GB at TB, 4 October), both drawn as clearing the bar
+  on the release ("Pittsburgh -0.5 · 62% · 52c · $15") and unpriced with the
+  sentence here. Question 36's "nothing upcoming carries one" no longer holds:
+  (ii) now covers 275 claims and 56 recommendations. And question 37 has a
+  game still to start: rec 117 (ATL at NO, 6 October) buys New Orleans -2.5
+  while its row reads "Atlanta +2.5" with that contract's $15 and outline.
+  **STEP A PROVED (2026-09-30, its prover, alone in the worktree; one local
+  commit, "Every number on a pick names the line it belongs to"; FOLLOWUPS,
+  the same section, THE PROVER):** on one verified copy of the record (made
+  20:49:25-20:50:12Z, deleted after) every slate that carried a claim or an
+  opening read and every sport's current slate, both forecasters, were drawn
+  three ways -- as the record holds them, every game read as still to start
+  (each priced row the record ever held, as before its start: 135 priced
+  blocks, 47 recommendation lines, 32 combo legs, 158 opening reads, 111 rows
+  across two contracts) and every finished game read as being played -- and
+  the early passes; neither the gate's check nor one written apart from it,
+  which holds each number's VALUE to the contract its words name, finds a
+  number under another contract's words (on 4422403: 710 and 531). Found and
+  fixed, each on the step as first built: (1) A FINISHED GAME'S CARD IS STILL
+  PRICED, and its card in CLEARS named the claim's contract with the claim's
+  chance but the QUESTION's figure and verdict -- "New York covers +6.5 · 30c
+  · the model had this at 67% and it happened", New York not having covered
+  +6.5 (12 cards, 3 with the other verdict; payload): now the chance the card
+  shows and its claim's settled verdict; (2) THE FORECAST'S OWN SENTENCES
+  beside words moved to the claim's line -- the Today card's numbers line and
+  why heading (14 questions; payload) and a live row's reasons tooltip (12;
+  drawn) -- now name the question they are about ("The model was asked about
+  New York +15.5 and gives it 67%. ..."); (3) A ROW PRICED ACROSS TWO
+  CONTRACTS left its payout slot empty, which a tile draws "not recorded"
+  (recs 114 and 115): it says "not shown"; (4) THE CHECK demanded the
+  sentence of a live tile drawing the question's own figure with no Today
+  card (the other forecaster's, or off the shortlist) -- 196 on the finished
+  slates read as live; the gate would have failed step 2 during PIT at CLE
+  (2 October 00:15Z) and five more NFL week-4 games -- and read an opening
+  read against the first of a ticker written twice in one look; both
+  mended. THE READING, UNCHANGED: the sentence travels with the figure a
+  claim priced across two contracts would have given (the Today card's), as
+  step A drew it on an upcoming row; a tile that never drew the claim's
+  numbers draws the question's own and needs none. One planting
+  (`plant_the_questions_own_numbers_under_the_contracts_words`) and a form in
+  the across planting, each escaping on 4422403 and on the step as first
+  built; six tests, each failing on the step as first built. FOR THE
+  OPERATOR, NO QUESTION (the words are true of their numbers): a pick drawn
+  at the venue's contract before its start settles, on the board, at its
+  question's -- rec 111 reads "North Texas +1.5 · 76% · $15" now and, once
+  finished, "North Texas -6.5 · the model had this at 63% ..." (the finished
+  row is the forecast graded on its question; the claim's own verdict is on
+  the Today card, payload only; a taken pick's My day chip moves with it) --
+  a companion to question 37; nothing on the record is taken. `plant.py`
+  401/401; the suite 2298 passed, 4 skipped; gate step 2's rows 109/109 on
+  the copy (the copy deleted 21:58:18Z). **Next: release step A (gate,
+  merge, restart), then item 1.**
 
 - **THE ORDER NOW (30 Sep, docs/briefs/2026-09-30-rulings.md; wins over
   every order below):** the NCAAF wrong-side fix (rec 111; own commit and
@@ -1655,6 +1741,15 @@ depend on the answer.
       always the drawn one). Nothing else of this question is built.
     Default until ruled: nothing built; the list is in FOLLOWUPS ("Every pick
     names its own side", THE SWEEP).
+    - **Step A's note (2026-09-30).** Step A moved a spread row's words to the
+      line its numbers belong to and kept the side it drew, so on these rows
+      the words, chance, price and payout are now one contract's -- the
+      words' side at the venue's line -- and only the size, the green
+      outline and the edge (labelled "on the other side") are the other
+      contract's. One is on a game still to start: rec 117 (ATL at NO, 6
+      October 00:15Z) reads "MODEL'S PICK · ATLANTA +2.5 · 32% · 48c · 2.06x
+      · $15" with the outline, and buys New Orleans -2.5 (68%, 51.5c). Still
+      nothing built for this question.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 

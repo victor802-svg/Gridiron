@@ -10703,6 +10703,624 @@ def plant_a_ladder_matched_across_the_two_signs_in_drift() -> Result:
     return Result(LAW_THE_CONTRACT_LINE, violation, guard, True, "; ".join(caught))
 
 
+# ---------------------------------------------------------------------------
+# EVERY NUMBER ON A PICK NAMES THE LINE IT BELONGS TO (pick-number step A,
+# 2026-09-30; the queue rule as amended that day)
+# ---------------------------------------------------------------------------
+#
+# Findings 2 and 5 of the wrong-side fix's builder and prover, the live
+# pregame figure, and operator question 36's default: a priced row named the
+# QUESTION's line beside the VENUE contract's numbers at another (rec 111:
+# "North Texas -6.5 · 76% · 51.5c", every number North Texas +1.5's); the
+# opening read was the venue's main rung under the question's words ("Under
+# 60.5 total" at 57.5's "52c · pays 1.94x"); and a claim priced across two
+# contracts (an away contract read at -s before Q36.1: rec 114 on PIT at
+# CLE, written at 18:05Z on 30 September) was drawn with its price, payout,
+# edge and size. Each is planted on a scratch world in its released shape
+# (4422403) and must be named by `audit.number_line_faults`, which reads the
+# line off the record (`audit.pick_contracts`) and off the drawn words; gate
+# step 2 must make the call.
+
+LAW_THE_NUMBER_NAMES_ITS_LINE = "EVERY NUMBER ON A PICK NAMES THE LINE IT BELONGS TO"
+_LINE_CHECK = "check_every_number_names_its_line"
+
+
+def _line_world(path: Path, kind: str):
+    """A scratch world holding one question in a released shape:
+
+      * "rec111": UNT at TLSA, "TLSA covers +6.5" answered "fail to cover"
+        (the words name North Texas), priced off the home contract "Tulsa
+        wins by over 1.5" (TLSA -1.5, the venue's rung) at 48.5c with the
+        model's 0.2398 -- recommendation 111's claim as the record holds it;
+      * "live111": the same, its game under way (the live pregame figure);
+      * "rec114": PIT at CLE, "CLE covers +0.5" answered "not_cover"
+        (Pittsburgh), its claim stored at -2.5 off "Pittsburgh wins by over
+        2.5" -- which sells +2.5 -- the model's 0.3834 beside 0.475, as the
+        released writer wrote it at 18:05Z on 30 September;
+      * "open": UNT at TLSA, "under 60.5 total points", no claim, and an
+        opening ladder whose rung nearest an even chance is over 57.5 at
+        48.5c, with the question's own over 60.5 at 41.5c listed (and, with
+        `kind` "open-unlisted", not listed);
+      * AND FROM STEP A'S PROVER (2026-09-30): "final111", rec 111's shape
+        finished TLSA 20 UNT 23 -- North Texas +1.5 happened (its claim, Tulsa
+        -1.5, settled no) and North Texas -6.5 did not -- the forecast and the
+        claim settled as the resolvers settle them; and "live114", rec 114's
+        shape with its game under way.
+
+    Returns (conn, prediction id, sport, season, week)."""
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+
+    dist = {"quantity": "home_margin", "family": "normal", "mean": -9.0, "sd": 14.0,
+            "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+    whole = _json.dumps({"coverage": 1.0, "margin_distribution": dist})
+    conn = db.open_db(path)
+    live, final = kind in ("live111", "live114"), kind == "final111"
+    shape = {"live111": "rec111", "final111": "rec111", "live114": "rec114"}.get(kind, kind)
+    if shape == "rec114":
+        sport, season, week, game, home, away = "nfl", 2026, 4, "g114", "CLE", "PIT"
+        league_date = "2026-10-01"
+    else:
+        sport, season, week, game, home, away = "cfb", 2026, 20261001, "g111", "TLSA", "UNT"
+        league_date = "2026-10-01"
+    status = "in" if live else "final" if final else "scheduled"
+    kickoff = ("2026-09-30T00:00:00Z" if live else "2026-09-29T01:00:00Z" if final
+               else "2099-10-02T01:00:00Z")
+    score = (7, 10) if live else (20, 23) if final else (None, None)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date, home_score, away_score)"
+        " VALUES (?, ?, ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?)",
+        (game, sport, season, week, home, away, kickoff, status, league_date, *score))
+    # THE CLUBS' NAMES, as the feed gives them, so the words are the page's
+    for code, full, short, city in (
+            ("TLSA", "Tulsa Golden Hurricane", "Golden Hurricane", "Tulsa"),
+            ("UNT", "North Texas Mean Green", "Mean Green", "North Texas"),
+            ("CLE", "Cleveland Browns", "Browns", "Cleveland"),
+            ("PIT", "Pittsburgh Steelers", "Steelers", "Pittsburgh")):
+        if code in (home, away):
+            conn.execute(
+                "INSERT INTO teams (sport, tricode, display_name, short_name, location,"
+                " source_url, fetched_utc) VALUES (?, ?, ?, ?, ?, 'planting',"
+                " '2026-09-01T00:00:00Z')", (sport, code, full, short, city))
+    if kind in ("open", "open-unlisted"):
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-28T15:00:00Z', ?, ?, 'total', 'UNT @ TLSA', 60.5, 0.66,"
+            " 'under', 'statistical', 'final', 'fs2', ?, 'planting')",
+            (sport, game, _json.dumps({"coverage": 1.0})))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        rungs = [(57.5, 0.475, 0.495), (63.5, 0.34, 0.36)]
+        if kind == "open":
+            rungs.append((60.5, 0.405, 0.425))
+        for line, bid, ask in rungs:
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+                " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc,"
+                " read_kind) VALUES ('kalshi', ?, 'e', ?, ?, 'total', 'total', ?,"
+                " 'over', ?, ?, '2026-09-29T12:00:00Z', 'open')",
+                (f"tOVER{line:g}", sport, game, line, bid, ask))
+        conn.commit()
+        _shortlist.rank_rows(conn, [pid])
+        return conn, pid, sport, season, week
+    if shape == "rec114":
+        subject, asked, prob, side = "CLE", 0.5, 0.561059, "not_cover"
+        quote = ("tPIT3", 2.5, "away", 0.515, 0.535)
+        claim_line, claim_prob, implied = -2.5, 0.3834, 0.475
+    else:
+        subject, asked, prob, side = "TLSA", 6.5, 0.626036, "fail to cover"
+        quote = ("tTLSA2", -1.5, "home", 0.475, 0.495)
+        claim_line, claim_prob, implied = -1.5, 0.2398, 0.485
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-28T15:00:00Z', ?, ?, 'spread', ?, ?, ?, ?, 'statistical',"
+        " 'final', 'fs2', ?, 'planting')", (sport, game, subject, asked, prob, side, whole))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    ticker, line, yes_side, bid, ask = quote
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+        " VALUES ('kalshi', ?, 'e', ?, ?, 'spread', 'home_margin', ?, ?, ?, ?,"
+        " '2026-09-28T15:00:44Z')", (ticker, sport, game, line, yes_side, bid, ask))
+    quote_id = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', ?, ?, 'spread', 'home_margin', ?, 'home',"
+        " 'rung_differs_margin', -9.0, 14.0, ?, ?, ?, 'mid', '2026-09-28T15:00:45Z')",
+        (pid, quote_id, sport, game, claim_line, claim_prob,
+         round((bid + ask) / 2, 4), implied))
+    if final:
+        # SETTLED AS THE RESOLVERS SETTLE THEM: TLSA 20 UNT 23 -- Tulsa covered
+        # +6.5, so the forecast's "fail to cover" is wrong; Tulsa did not cover
+        # -1.5, so the claim's proposition settled no
+        from gridiron.model import questions as _questions
+
+        conn.execute(
+            "UPDATE predictions SET resolved_utc = '2026-09-29T05:00:00Z', outcome = ?"
+            " WHERE id = ?", (1 - _questions.spread_outcome(*score, asked), pid))
+        conn.execute(
+            "UPDATE at_the_line_claims SET resolved_utc = '2026-09-29T05:00:00Z',"
+            " outcome = ? WHERE prediction_id = ?",
+            (_questions.spread_outcome(*score, claim_line), pid))
+    conn.commit()
+    _shortlist.rank_rows(conn, [pid])
+    return conn, pid, sport, season, week
+
+
+def _line_blocks(payload, pid):
+    """The board's blocks of one question, and its Today card."""
+    blocks = [q for g in (payload.get("board") or {}).get("games") or []
+              for q in ([g.get("pick")] if g.get("pick") else []) + (g.get("questions") or [])
+              if q and q.get("prediction_id") == pid]
+    card = next((c for group in ("clears", "below_floor", "watching", "live")
+                 for c in (payload.get("today") or {}).get(group) or []
+                 if c.get("prediction_id") == pid), None)
+    return blocks, card
+
+
+def _line_check(conn, payload, name: str, missed: list, want: str):
+    """Ask step A's check about a planted payload: named, or missed."""
+    scan = getattr(audit, "number_line_faults", None)
+    if scan is None:
+        missed.append(f"{name}: the gate has no check that a number names the line "
+                      f"it belongs to")
+        return None
+    faults = scan(payload, audit.pick_contracts(conn, payload))
+    if not any(want in f for f in faults):
+        missed.append(f"{name} passed" + (f" (named only: {faults[0]})" if faults else ""))
+        return None
+    try:
+        getattr(audit, _LINE_CHECK)(conn, payload)
+        missed.append(f"{name}: the check raised nothing")
+    except audit.LawViolation:
+        pass
+    return next(f for f in faults if want in f)
+
+
+def _as_released_door():
+    """`views._the_contract` put back as the released page named a pick: the
+    question's own words whatever its numbers (4422403)."""
+    from gridiron import views as _views
+
+    real = _views._the_contract
+    return real, (lambda entry, card: real(None, card))
+
+
+def plant_a_row_pairing_the_questions_line_with_the_venue_lines_numbers() -> Result:
+    """A priced row naming its QUESTION's line beside the VENUE contract's
+    numbers at another line -- and a live figure the same.
+
+    AS RELEASED (4422403; pick-number finding 2): recommendation 111's claim
+    was read at the venue's rung, "Tulsa wins by over 1.5", so its 76% and
+    51.5c are North Texas +1.5's, and the row, the tile, the Today card and
+    the recommendation line said "North Texas -6.5" beside them (the venue's
+    North Texas -6.5 is about 29c; the model's own number for it is 62.6%).
+    A live row drew the latest claim's pregame figure under the question's
+    line the same way. CAUGHT means: the shipped page names North Texas +1.5
+    with 76% and 51.5c and the live figure under its claim's line, the door
+    put back to the question's words is named by
+    `audit.number_line_faults` on the row, the card, the line and the live
+    figure, and the gate's step 2 makes the call.
+    """
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = f"audit.{_LINE_CHECK} (audit.number_line_faults)"
+    violation = "a row naming the question's line beside the venue line's numbers"
+    missed, caught = [], []
+    saved = _coverage.priceable
+    # THE COVERAGE LIST IS NOT WHAT THIS PLANTS: every market is priceable
+    # here, so rec 111's shape is recommended and has its line.
+    _coverage.priceable = lambda conn, sport, market, **_: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    try:
+        return _plant_the_questions_line_beside_the_venue_lines_numbers(
+            _views, guard, violation, missed, caught)
+    finally:
+        _coverage.priceable = saved
+
+
+def _plant_the_questions_line_beside_the_venue_lines_numbers(_views, guard, violation,
+                                                            missed, caught) -> Result:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, pid, sport, season, week = _line_world(Path(tmp) / "rec111.db", "rec111")
+        shipped = _views.week(conn, sport, season, week)
+        blocks, card = _line_blocks(shipped, pid)
+        drawn = [(b.get("line_words"), b.get("prob_words"), b.get("price"))
+                 for b in blocks]
+        if not hasattr(audit, _LINE_CHECK):
+            conn.close()
+            return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, False,
+                          f"NOT CAUGHT - the shipped row of rec 111's shape reads "
+                          f"{drawn} (76% and 51.5c are North Texas +1.5's) and no "
+                          f"check asks which line a number belongs to")
+        if not blocks or any(d[0] != "North Texas +1.5" or d[1] != "76%"
+                             or d[2] is None or abs(d[2] - 0.515) > 1e-9 for d in drawn):
+            missed.append(f"the shipped row reads {drawn}, where rec 111's numbers are "
+                          f"North Texas +1.5's: 76% at 51.5c")
+        if card is None or card.get("question") != "North Texas covers +1.5":
+            missed.append(f"the shipped Today card says {card and card.get('question')!r}")
+        shipped_faults = audit.number_line_faults(shipped, audit.pick_contracts(conn, shipped))
+        if shipped_faults:
+            missed.append(f"the check refuses the shipped page: {shipped_faults[0]}")
+        real, released = _as_released_door()
+        try:
+            _views._the_contract = released
+            planted = _views.week(conn, sport, season, week)
+        finally:
+            _views._the_contract = real
+        got = _line_check(conn, planted, "the door put back to the question's words",
+                          missed, "a number under the words of another line")
+        if got:
+            caught.append(got)
+        for where in ("board.games", "today.clears", "recommendations.lines"):
+            faults = audit.number_line_faults(planted, audit.pick_contracts(conn, planted))
+            if not any(f.startswith(where) for f in faults):
+                missed.append(f"the released page's {where} passed")
+        conn.close()
+        # THE LIVE FIGURE: the latest claim's pregame number under its line
+        conn, pid, sport, season, week = _line_world(Path(tmp) / "live111.db", "live111")
+        shipped = _views.week(conn, sport, season, week)
+        blocks, card = _line_blocks(shipped, pid)
+        live = [(b.get("line_words"), b.get("pregame_words")) for b in blocks]
+        if not blocks or any(x != ("North Texas +1.5", "pregame 76%") for x in live):
+            missed.append(f"the shipped live row reads {live}")
+        try:
+            _views._the_contract = released
+            planted = _views.week(conn, sport, season, week)
+        finally:
+            _views._the_contract = real
+        got = _line_check(conn, planted, "a live figure under the question's line",
+                          missed, "a number under the words of another line")
+        if got:
+            caught.append(got)
+        conn.close()
+    if not _step_2_calls(_LINE_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_LINE_CHECK}`")
+    if missed:
+        return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, True, "; ".join(caught))
+
+
+def plant_an_opening_read_at_another_rung_under_the_questions_words() -> Result:
+    """An opening read taken at the venue's main rung and drawn under the
+    QUESTION's words.
+
+    AS RELEASED (4422403; pick-number finding 5): "Under 60.5 total" on UNT
+    at TLSA drew the 57.5 rung's 48.5c turned -- "52c · pays 1.94x" -- where
+    Under 60.5 cost about 58.5c (1.71x); the opening read took the rung
+    nearest an even chance whichever line the question asked. CAUGHT means:
+    the shipped card reads the question's own contract where the ladder lists
+    it (58.5c, 1.71x) and names the contract it is where it does not ("Under
+    57.5 total opened at 52c"), the released read and an unnamed read at
+    another rung are named by `audit.number_line_faults`, and the gate's
+    step 2 makes the call.
+    """
+    from gridiron import views as _views
+
+    guard = f"audit.{_LINE_CHECK} (audit.number_line_faults)"
+    violation = "an opening read at another rung under the question's words"
+    missed, caught = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, pid, sport, season, week = _line_world(Path(tmp) / "open.db", "open")
+        shipped = _views.week(conn, sport, season, week)
+        _blocks, card = _line_blocks(shipped, pid)
+        drawn = card and (card.get("question"), card.get("venue_words"))
+        if not hasattr(audit, _LINE_CHECK):
+            conn.close()
+            return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, False,
+                          f"NOT CAUGHT - the shipped card reads {drawn} (the 57.5 "
+                          f"rung's price; Under 60.5 costs 58.5c) and no check asks "
+                          f"which rung an opening read is")
+        if card is None or card.get("venue_words") != "58¢ · pays 1.71x":
+            missed.append(f"the shipped card reads {drawn}, where Under 60.5 opened "
+                          f"at 58.5c and pays 1.71x")
+        if audit.number_line_faults(shipped, audit.pick_contracts(conn, shipped)):
+            missed.append("the check refuses the shipped opening read")
+        real = _views._opening_price
+
+        def released(conn_, game_id, market, *, flip, line=None):
+            got = real(conn_, game_id, market, flip=flip)
+            return None if got is None else dict(got, at_the_question=True)
+
+        try:
+            _views._opening_price = released
+            planted = _views.week(conn, sport, season, week)
+        finally:
+            _views._opening_price = real
+        got = _line_check(conn, planted, "the released opening read", missed,
+                          "an opening read of another rung under the question's words")
+        if got:
+            caught.append(got)
+        conn.close()
+        # WHERE THE LADDER LISTS NO CONTRACT AT THE QUESTION'S LINE, the read
+        # names the contract it is -- and a read left unnamed is named
+        conn, pid, sport, season, week = _line_world(Path(tmp) / "open2.db", "open-unlisted")
+        shipped = _views.week(conn, sport, season, week)
+        _blocks, card = _line_blocks(shipped, pid)
+        if card is None or card.get("open_read_line_words") != "Under 57.5 total" \
+                or not str(card.get("venue_words")).startswith("Under 57.5 total opened at"):
+            missed.append(f"the shipped card at another rung reads "
+                          f"{card and card.get('venue_words')!r}")
+        if audit.number_line_faults(shipped, audit.pick_contracts(conn, shipped)):
+            missed.append("the check refuses the shipped read naming its rung")
+        unnamed = _views.week(conn, sport, season, week)
+        _blocks, card = _line_blocks(unnamed, pid)
+        if card is not None:
+            card.pop("open_read_line_words", None)
+            card["venue_words"] = "52¢ · pays 1.94x"
+        got = _line_check(conn, unnamed, "a read at another rung, unnamed", missed,
+                          "must name the contract")
+        if got:
+            caught.append(got)
+        conn.close()
+    if not _step_2_calls(_LINE_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_LINE_CHECK}`")
+    if missed:
+        return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, True, "; ".join(caught))
+
+
+def plant_a_row_priced_across_two_contracts_drawn_with_its_numbers() -> Result:
+    """A row whose stored claim was priced across two contracts drawn with
+    its chance, price, payout, edge and size -- or without saying why it has
+    none.
+
+    AS RELEASED (4422403; operator question 36, the conservative default for
+    (ii) and (iii)): recommendation 114, written by the released code at
+    18:05Z on 30 September before Q36.1 was released, is priced off
+    "Pittsburgh wins by over 2.5" -- which sells +2.5 -- with its claim
+    stored at -2.5: the model's 0.3834 about CLE -2.5 beside a price about
+    CLE +2.5. The row drew "Pittsburgh -0.5 · 62% · 52c · 1.91x · $15" and
+    the green outline, none of which one contract carries. CAUGHT means: the
+    shipped row shows the model's own 56% for Pittsburgh -0.5, no price,
+    payout, edge or size, and the sentence; the released entry
+    (`views._as_the_page_draws` put back to naming the claim's line whatever
+    it is) and a row drawn without the sentence are named by
+    `audit.number_line_faults`; and the gate's step 2 makes the call. AND
+    FROM ITS PROVER (2026-09-30): the shipped row's payout slot says "not
+    shown", and a slot left empty -- as first built, which a tile draws "not
+    recorded", false of a price the venue listed -- is named too.
+    """
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = f"audit.{_LINE_CHECK} (audit.number_line_faults)"
+    violation = "a row priced across two contracts drawn with its numbers"
+    missed, caught = [], []
+    saved = _coverage.priceable
+    # every market priceable here, so rec 114's shape is recommended, sized
+    # and outlined as the released page drew it
+    _coverage.priceable = lambda conn, sport, market, **_: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    try:
+        return _plant_a_row_priced_across_two_contracts(_views, guard, violation,
+                                                        missed, caught)
+    finally:
+        _coverage.priceable = saved
+
+
+def _plant_a_row_priced_across_two_contracts(_views, guard, violation, missed,
+                                             caught) -> Result:
+    from gridiron import language as _language
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, pid, sport, season, week = _line_world(Path(tmp) / "rec114.db", "rec114")
+        shipped = _views.week(conn, sport, season, week)
+        blocks, card = _line_blocks(shipped, pid)
+        drawn = [(b.get("line_words"), b.get("prob_words"), b.get("price"),
+                  b.get("size_words"), b.get("signal")) for b in blocks]
+        if not hasattr(audit, _LINE_CHECK):
+            conn.close()
+            return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, False,
+                          f"NOT CAUGHT - the shipped row of rec 114's shape reads "
+                          f"{drawn}: a chance about -2.5 and a price about +2.5, "
+                          f"sized and outlined, and no check asks")
+        sentence = _language.across_two_contracts_words()
+        if not blocks or any(d[:3] != ("Pittsburgh -0.5", "56%", None) or d[3]
+                             or d[4] != "none" for d in drawn):
+            missed.append(f"the shipped row reads {drawn}, where no single contract "
+                          f"carries its claim's numbers")
+        if not blocks or any(b.get("across_words") != sentence for b in blocks):
+            missed.append("the shipped row does not say why it has no price")
+        if audit.number_line_faults(shipped, audit.pick_contracts(conn, shipped)):
+            missed.append("the check refuses the shipped row")
+        real = _views._as_the_page_draws
+
+        def released(entry):
+            return dict(entry, numbers_line=entry.get("venue_line"))
+
+        try:
+            _views._as_the_page_draws = released
+            planted = _views.week(conn, sport, season, week)
+        finally:
+            _views._as_the_page_draws = real
+        got = _line_check(conn, planted, "the released entry, priced across two contracts",
+                          missed, "priced across two contracts")
+        if got:
+            caught.append(got)
+        silent = _views.week(conn, sport, season, week)
+        for block in _line_blocks(silent, pid)[0]:
+            block.pop("across_words", None)
+        got = _line_check(conn, silent, "the row with no sentence", missed,
+                          "drawn without the sentence saying why")
+        if got:
+            caught.append(got)
+        # AND ITS PAYOUT SLOT (its prover, 2026-09-30): left empty as first
+        # built, which a tile draws "not recorded" -- false of a price the
+        # venue listed and the record kept
+        pays = getattr(_language, "across_two_contracts_pays_words", lambda: "not shown")()
+        if not blocks or any(b.get("pays_words") != pays for b in blocks):
+            missed.append(f"the shipped row's payout slot reads "
+                          f"{[b.get('pays_words') for b in blocks]}, which a tile draws "
+                          f"'not recorded' when empty")
+        empty = _views.week(conn, sport, season, week)
+        for block in _line_blocks(empty, pid)[0]:
+            block["pays_words"] = ""
+        got = _line_check(conn, empty, "the payout slot left empty", missed,
+                          "an empty slot is drawn")
+        if got:
+            caught.append(got)
+        conn.close()
+    if not _step_2_calls(_LINE_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_LINE_CHECK}`")
+    if missed:
+        return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, True, "; ".join(caught))
+
+
+def plant_the_questions_own_numbers_under_the_contracts_words() -> Result:
+    """The forecast's OWN numbers -- a finished card's figure and verdict,
+    its numbers line, its why block -- left beside words moved to the claim's
+    contract; and a live tile with no Today card refused for drawing the
+    question's own figure.
+
+    FOUND BY STEP A'S PROVER (2026-09-30), on one verified copy of the record,
+    each on step A as first built: a finished game's question is still priced
+    (`recommend.for_predictions` skips a game in play, not a finished one), so
+    its card in CLEARS named the claim's contract and showed the claim's chance
+    and said "the model had this at 67% and it happened" of the QUESTION --
+    "New York covers +6.5 · 30c", where New York did not cover +6.5 (12 NFL
+    week-3 cards, three with the other verdict); a card whose words moved
+    carried the forecast's numbers line ("The model says 63%. The market
+    implies 36%") and its why block ("The market has North Texas at 36%")
+    bare beside "North Texas covers +1.5" (rec 111; payload only); a live
+    row's reasons tooltip, the forecast's ("the question sits 2 points above
+    what the model expects", of New York +15.5), under "New York +6.5 ·
+    pregame 30%" without the question named (drawn); and the
+    check demanded the sentence of a live tile with no Today card beside a
+    claim priced across two contracts, which draws the question's own figure
+    as the default asks (196 on the record's finished slates read as live: the
+    gate would have failed during PIT at CLE). CAUGHT means: the shipped
+    finished card says "the model had this at 76% and it happened" of North
+    Texas +1.5, its numbers line and why heading name North Texas -6.5 as the
+    model was asked, a live row's reasons name it first, and the check names
+    the four as first built; the
+    shipped live tile off the shortlist passes; and the gate's step 2 makes
+    the call. Escapes on 4422403 (no check) and on step A as first built."""
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = f"audit.{_LINE_CHECK} (audit.number_line_faults)"
+    violation = "the question's own numbers under the words of the claim's contract"
+    missed, caught = [], []
+    saved = _coverage.priceable
+    # every market priceable here, so rec 111's shape is recommended
+    _coverage.priceable = lambda conn, sport, market, **_: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    try:
+        return _plant_the_questions_own_numbers(_views, guard, violation, missed, caught)
+    finally:
+        _coverage.priceable = saved
+
+
+def _plant_the_questions_own_numbers(_views, guard, violation, missed, caught) -> Result:
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, pid, sport, season, week = _line_world(Path(tmp) / "final111.db", "final111")
+        shipped = _views.week(conn, sport, season, week)
+        card = next((c for g in ("clears", "below_floor", "watching")
+                     for c in shipped["today"].get(g) or [] if c.get("prediction_id") == pid),
+                    None)
+        drawn = card and (card.get("question"), card.get("model_words"),
+                          card.get("settled_words"))
+        if not hasattr(audit, _LINE_CHECK):
+            conn.close()
+            return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, False,
+                          f"NOT CAUGHT - the shipped finished card reads {drawn} and no "
+                          f"check asks which contract a number belongs to")
+        if drawn != ("North Texas covers +1.5", "76¢",
+                     "the model had this at 76% and it happened"):
+            missed.append(f"the shipped finished card reads {drawn}, where North Texas "
+                          f"+1.5 is 76% and happened")
+        slate = next(c for c in shipped["cards"] if c["prediction_id"] == pid)
+        if card is not None and not (
+                str(card.get("rail_line")).startswith(
+                    "For North Texas -6.5, as the model was asked: The model says 63%.")
+                and (card.get("why") or {}).get("heading")
+                == "Why North Texas -6.5, as the model was asked"):
+            missed.append(f"the shipped card's own sentences read "
+                          f"{card.get('rail_line')!r} and {card.get('why')!r}")
+        if audit.number_line_faults(shipped, audit.pick_contracts(conn, shipped)):
+            missed.append("the check refuses the shipped finished card")
+        # AS FIRST BUILT, each on its own: the question's figure and verdict,
+        # the numbers line bare, the why heading bare
+        for name, field, value, want in (
+                ("the question's figure and verdict", "settled_words",
+                 "the model had this at 63% and it did not", "is finished and says"),
+                ("the numbers line left bare", "rail_line", slate.get("rail_line"),
+                 "carries its rail_line"),
+                ("the why heading left bare", "why", slate.get("why"),
+                 "carries its why heading")):
+            planted = _json.loads(_json.dumps(shipped))
+            for g in ("clears", "below_floor", "watching"):
+                for c in planted["today"].get(g) or []:
+                    if c.get("prediction_id") == pid:
+                        c[field] = value
+            got = _line_check(conn, planted, name, missed, want)
+            if got:
+                caught.append(got)
+        conn.close()
+        # A LIVE ROW'S REASONS: the forecast's, of North Texas -6.5, beside
+        # "North Texas +1.5 · pregame 76%" -- as first built, not named
+        conn, pid, sport, season, week = _line_world(Path(tmp) / "live111.db", "live111")
+        shipped = _views.week(conn, sport, season, week)
+        blocks, _card = _line_blocks(shipped, pid)
+        asked = "The model was asked about North Texas -6.5 and gives it 63%."
+        tips = [str((b.get("tips") or {}).get("line") or "") for b in blocks]
+        if not blocks or not all(t.startswith(asked) for t in tips):
+            missed.append(f"the shipped live row's reasons read {tips}")
+        planted = _json.loads(_json.dumps(shipped))
+        for block in _line_blocks(planted, pid)[0]:
+            block.setdefault("tips", {})["line"] = str(
+                (block.get("tips") or {}).get("line") or "").replace(asked, "").strip() \
+                or "Mostly it comes down to how good the two teams have been."
+        got = _line_check(conn, planted, "a live row's reasons left unnamed", missed,
+                          "without naming it")
+        if got:
+            caught.append(got)
+        conn.close()
+        # A LIVE TILE WITH NO TODAY CARD, beside a claim priced across two
+        # contracts: the question's own figure under its own words, no sentence
+        conn, pid, sport, season, week = _line_world(Path(tmp) / "live114.db", "live114")
+        real = _shortlist.choose
+        _shortlist.choose = lambda conn_, sport_, ids: {
+            "shortlist": [], "rest": list(ids), "cap": 20, "ranked": True}
+        try:
+            shipped = _views.week(conn, sport, season, week)
+        finally:
+            _shortlist.choose = real
+        blocks, card = _line_blocks(shipped, pid)
+        live = [(b.get("line_words"), b.get("pregame_words")) for b in blocks]
+        if card is not None or not blocks or any(
+                x != ("Pittsburgh -0.5", "pregame 56%") for x in live):
+            missed.append(f"the shipped live tile off the shortlist reads {live}")
+        refused = audit.number_line_faults(shipped, audit.pick_contracts(conn, shipped))
+        if refused:
+            missed.append(f"the check refuses the shipped live tile drawing the question's "
+                          f"own figure: {refused[0][:160]}")
+        conn.close()
+    if not _step_2_calls(_LINE_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_LINE_CHECK}`")
+    if missed:
+        return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, True, "; ".join(caught))
+
+
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
 
@@ -22615,6 +23233,17 @@ def main() -> int:
     # opening read and drift's ladder matching.
     results.append(plant_an_away_contract_read_at_minus_s())
     results.append(plant_a_ladder_matched_across_the_two_signs_in_drift())
+    # PICK-NUMBER STEP A (2026-09-30): every number on a pick names the line
+    # it belongs to -- the row, the card, the line, the live figure and the
+    # opening read -- and a claim priced across two contracts is drawn with
+    # none of its numbers and says why.
+    results.append(plant_a_row_pairing_the_questions_line_with_the_venue_lines_numbers())
+    results.append(plant_an_opening_read_at_another_rung_under_the_questions_words())
+    results.append(plant_a_row_priced_across_two_contracts_drawn_with_its_numbers())
+    # AND FROM ITS PROVER (2026-09-30): a finished card's figure and verdict,
+    # and the forecast's own sentences, beside words moved to the claim's
+    # contract; and a live tile with no Today card left unrefused.
+    results.append(plant_the_questions_own_numbers_under_the_contracts_words())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

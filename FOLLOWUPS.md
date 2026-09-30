@@ -11612,3 +11612,416 @@ is the suite's own marked one.
 **The copy**: made 17:11:04Z, read only, deleted with its -wal and -shm at
 2026-09-30T17:27:56Z; never written (its -wal empty, its size and time as
 made). No copy of the record remains under `scratchpad/q36`.
+
+## Every number on a pick names the line it belongs to -- built 2026-09-30 *(pick-number step A; the queue rule as amended on 30 September, docs/briefs/2026-09-30-rulings.md; the order of 30 September's second message, "Q36.1 -> step A -> item 1 -> ..."; uncommitted for its prover)*
+
+Findings 2 and 5 of the wrong-side fix's builder and prover, the live
+pregame figure, and operator question 36's default for (ii) and (iii), which
+are not ruled. The reading taken (the conservative default, recorded in
+`docs/REPAIR_STATE.md`): a number on a pick is always shown under the words
+of the exact contract it belongs to -- its line and its side. Where a
+recommendation was priced on the venue's contract at a line other than the
+question's, the pick names the VENUE's contract (the one the numbers, the
+price and the size belong to) and says beside it what the model was asked;
+nothing pairs one line's words with another line's numbers. A row priced
+across two contracts is drawn without the price, the payout, the edge and
+the size, with one plain sentence saying why.
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, started 2026-09-30T18:51:38Z, finished 18:52:24Z: integrity ok, 64 tables, none mismatched; read with `db.read_only`; the release before this step a `git archive` of 4422403 in `scratchpad/picknum/A/head2/`; every sport's current slate and every slate carrying a claim or an opening read -- 52 payloads, both forecasters -- built by each tree on the copy with the clock held at 18:52:24Z; `measure_lines.py` -> `m_head.json`, `m_fix.json`; `dump_payloads.py` -> `d_head.json`, `d_fix.json`; `check_payloads.py` -> `c_head.json`, `c_fix.json`; `diff_dumps.py`, `summarise_moves.py`; deleted after -- see PROVED)*
+
+**How the line of a number is worked out** -- from the record alone, never
+from the payload: the claim the page reads (the latest written before the
+start for a priced row, `recommend.for_predictions`' rule; the latest written
+for a live card's pregame figure), the line its model number was read at
+(the claim's `line`) and the line its contract sells (the quote's stored
+number, read as it is: Q36.1). A number the page drew from no claim is the
+question's own, at the question's own line. The line the WORDS name is parsed
+from the drawn words: the signed number after the club, turned to the home
+side's view by the side the words name; a total's number.
+
+**On 4422403, numbers under another line's words** (distinct questions over
+the 52 payloads): 56 Today cards (14 priced at the venue's rung, 42 across
+two contracts), 56 recommendation lines (14 and 42), 16 combo legs (8 and 8),
+73 at-the-line sentences (across two contracts: a model number about one line
+beside a price about another); on the current slates the board drew 4 rows
+(rec 111 "North Texas -6.5 · 76% · 52c"; rec 117 "Atlanta +9.5 · 32% · 48.5c"
+priced at New Orleans -2.5's contract; recs 114 and 115, below) and 3
+opening reads under the question's words (UNT at TLSA: "North Texas -6.5" at
+the TLSA -1.5 rung's 52c, and both forecasters' "Under 60.5 total" at the
+57.5 rung's 52c). The new check (`audit.number_line_faults`) names 289
+faults on those payloads.
+
+**THE LIST -- every recommendation drawn under another line's words while it
+was live: 69 of the 117 on the record.**
+- *Priced at the venue's rung, another line than its words' (13)* -- the
+  question's line, then the claim's, from the home side's view: NFL 64 (LV at
+  NO, -15.5 / -3.5; withdrawn), 67 (ATL at GB, -15.5 / -4.5), 71 (NE at JAX,
+  -9.5 / -2.5), 72 (NYJ at DET, -15.5 / -6.5), 74 (ARI at SF, -15.5 / -8.5), 76
+  (LV at NO, -15.5 / -3.5), 117 (ATL at NO, -9.5 / -2.5; upcoming, 6 October);
+  NCAAF 89 (HOW at RUTG, -24.5 / -41.5), 102 (RMU at BUFF, -24.5 / -28.5), 103
+  (LIU at FIU, -14.5 / -35.5), 104 (TA&M at LSU, -0.5 / -8.5), 105 (HCU at UNT,
+  -41.5 / -38.5), 111 (UNT at TLSA, +6.5 / -1.5; upcoming, 2 October).
+- *Priced across two contracts (56)*: MLB 6, 8, 11, 14, 16, 20, 25, 30, 32, 34,
+  38-42, 44, 48, 50, 51, 53-55, 57, 59, 60, 79, 84-87, 93-98, 100, 106-109 (41);
+  NFL 62, 63, 66, 68-70, 73, 75, 77, 78, 114, 115 (12); NCAAF 88, 90, 91 (3) --
+  question 36's 54 and the two below.
+- None of the 69 was taken.
+
+**Live pregame figures** (every shortlisted or taken spread or total whose
+game started from 2026-09-09, the latest claim's number): 60 drawn under
+another line's words -- 13 at the venue's rung (NCAAF 5, NFL 8), 47 across two
+contracts (MLB 35, NFL 9, NCAAF 3) -- and 60 at the question's own line.
+
+**Opening reads** (every read of a shortlisted spread or total before its
+first claim): 855 at another rung than the question's -- 491 where the venue's
+opening ladder listed the question's own contract, 364 where it did not --
+and 75 at the question's own.
+
+**SIX CLAIMS PRICED ACROSS TWO CONTRACTS ON GAMES STILL TO START.**
+`predict:nfl` (task run 8464, 18:00:00-18:05:02Z) wrote NFL week 4's claims
+with the released code, before Q36.1 was released at 18:44Z, and six are off
+an away contract stored at -s: claim 1749 (forecast 3446, PIT at CLE, off
+"PIT3", Pittsburgh by over 2.5), 1752 (3464, IND at WAS, "IND4"), 1755 (3482,
+ARI at NYG, "ARI3"), 1761 (3517, GB at TB, "GB4"), 1780 (3565, KC at LV,
+"KC5"), 1786 (3577, DET at CAR, "DET4"); two were recommended -- rec 114 (PIT
+at CLE, 2 October 00:15Z: "Pittsburgh -0.5 · 62% · 52c · 1.91x · $15", the
+green outline, where 62% is Pittsburgh +2.5's and 52c Pittsburgh -2.5's) and
+rec 115 (GB at TB, 4 October: "Green Bay +7.5 · 41% · 50c", its line
+"Tampa Bay covers -7.5 -- the model makes it 59c"). Question 36's "nothing
+upcoming carries one" was true when measured (16:04Z) and is not now.
+
+### BUILT
+
+- **The one door for a pick's words, `views._the_contract`.** It decides which
+  line the numbers on a pick belong to -- the claim's line where they are the
+  claim's (`numbers_line`, set by `views._as_the_page_draws`), the latest
+  claim's for a live figure, the stored recommendation's claim for the taken
+  rail's edge, the rung read for an opening read, the question's own where
+  they are the question's -- and `language.at_the_contract` asks the question
+  again at that line on the same side (a spread's line is its subject's, from
+  the home club's view), so every composer words that contract. A claim's
+  numbers reaching the door without a line are refused by name
+  (`language.LineNotNamed`), and so is a board block drawing a Today card's
+  numbers without the card's words; `/api/week` answers 500 with the words.
+- **`views._as_the_page_draws`** is the one reader of a priced entry on the
+  page (the Today block, the board through it, the combos, the
+  recommendation lines). `recommend.for_predictions` carries the claim, its
+  contract's line and whether the two agree
+  (`at_the_line.priced_across_two_contracts`), and the game's clubs; it prices
+  nothing differently, and `record_for` writes what it wrote before.
+- **The Today card** carries the contract's words (`question`, `line_words`),
+  the line they are asked at (`words_line_asked`) and, where they moved, what
+  the model was asked (`asked_words`: "The model was asked about North Texas
+  -6.5 and gives it 63%."). **The board** draws the card's words beside the
+  card's numbers, and the chance's tooltip says what the chance is and what
+  the model was asked. **The recommendation line and a combo's leg** name the
+  side bought at that line ("North Texas covers +1.5 -- the model makes it
+  76c, the venue is at 52c"; "New Orleans covers -2.5"). **The live figure**
+  stands under its claim's words ("North Texas +1.5 · pregame 76%"). **The
+  taken rail** names its recommendation's claim's contract.
+- **The opening read** asks the question's own contract (`at_the_line.rung_at`,
+  read through the one place) and, where the venue's opening ladder lists
+  none, reads the main rung as before and names the contract it is ("Under
+  57.5 total opened at 52c · pays 1.94x", "1.94x on Under 57.5 total"; the
+  board's payout tooltip: "The venue's opening read lists no contract at this
+  line. At Under 57.5 total a dollar returns 1.94 times ..."). The claim
+  writer's rung is not touched.
+- **A claim priced across two contracts** gives the page none of its
+  numbers: the model's own number for the question as asked; no price,
+  payout, edge, size, side or outline, so no recommendation line and no combo
+  leg (counted in `recommendations.across`, and said in the empty list's
+  sentence); no opening read either; and on the face of the row and the tile
+  one sentence, "Priced across two contracts before 30 September; no single
+  contract carries these numbers.", with "no single contract" where the price
+  would be and the longer reason in its tooltip. A live figure off one is the
+  forecast's own pregame number. The at-the-line sentence states the model's
+  number at its own stored line and no price.
+- **A spread's tile says "on the other side" of its edge** like any other
+  tile: its words name the figure's own contract now (step C held the bare
+  figure for this step).
+- **The gate.** `audit.number_line_faults` works the line out again from the
+  record (`audit.pick_contracts`) and from the drawn words, never from the
+  payload's own line fields, and names a number under another line's words on
+  the board's rows and tiles, the Today cards, the recommendation lines, the
+  combo legs, the taken rail and the at-the-line sentence; a claim across two
+  contracts drawn with a price, or without its sentence; and an opening read
+  of another rung under the question's words or unnamed.
+  `audit.check_every_number_names_its_line` (gate step 2: every sport's slate,
+  both forecasters, on the record's copy) raises; `NUMBER_LINE_FIXTURE_GOOD`
+  and ten `NUMBER_LINE_FIXTURES_AS_RELEASED` are held at import. Step C's
+  checks work out the other side's words at the card's line
+  (`audit._at_the_cards_line`), and hold a spread's tile to "on the other
+  side".
+
+### WHAT MOVED *(4422403 -> this tree, the same 52 payloads; `summarise_moves.py`, `diff_head_fix.txt`: 13,562 of 315,500 figures, most of them two cards moving group and the new fields)*
+
+- **On the current slates**: rec 111 "North Texas -6.5" -> "North Texas +1.5",
+  76%, 52c, 1.94x and $15 unchanged; rec 117 "Atlanta +9.5" -> "Atlanta +2.5",
+  32%, 48.5c, 2.06x unchanged, its edge "+15.0c" -> "+15.0c on the other
+  side"; recs 114 and 115 "Pittsburgh -0.5 · 62% · 52c · 1.91x · $15" and
+  "Green Bay +7.5 · 41% · 50c · 2.02x · $15", both outlined -> "Pittsburgh
+  -0.5 · 56% · no single contract" and "Green Bay +7.5 · 60% · no single
+  contract", with the sentence, no size, no outline, among the watched, and
+  no recommendation line; the opening reads of UNT at TLSA: "North Texas
+  -6.5" (the reasoning pass) 52c · 1.94x -> 29c · 3.51x, "Under 60.5 total"
+  (both forecasters) 52c · 1.94x -> 58c · 1.71x.
+- **On the past slates** (payload; a finished row draws its question's own
+  number): 42 recommendation lines priced across two contracts are gone and 14
+  are worded at their claim's line ("Howard covers +41.5", "Green Bay covers
+  -4.5"); 25 proposed combos are gone or changed and 6 are new (legs priced
+  across two contracts dropped); 73 at-the-line sentences drop their price.
+
+### READINGS TAKEN *(the conservative default)*
+
+- The words move to the numbers, never the numbers to the words; the model's
+  own question and number are said beside the chance, in its tooltip (the
+  reading's "may say beside it") and in the card's `asked_words`.
+- The SIDE is the one the page already drew (the question's side, at the
+  claim's line). A recommendation that buys the other side of its words
+  keeps the side it had: operator question 37, not ruled.
+- A claim priced across two contracts is detected by its own row (its stored
+  line is not the line its contract sells), not by a date; only claims
+  written before Q36.1 are.
+- The opening read reads the question's own contract where listed; where not,
+  the main rung, named. A winner market has no line and reads as before.
+
+### NOT HERE, AND NAMED
+
+- **Operator question 37, now on a game still to start**: rec 117 (ATL at NO,
+  6 October) buys New Orleans -2.5, and the row, now "Atlanta +2.5 · 32% ·
+  48.5c", still wears New Orleans -2.5's "$15 · one flat unit" and the green
+  outline (its edge says "on the other side"). Which contract such a row
+  headlines is question 37's.
+- **Question 36 (ii)**: the stored rows -- the 275 claims priced across two
+  contracts (269 and the six above) and the 56 recommendations -- are as
+  written, and the at-the-line record's spread figures still count them.
+- **The writer.** `record_for` still prices from the latest claim before the
+  start. The four other claims of 18:05Z (forecasts 3464, 3482, 3565, 3577,
+  early passes, not recommended) would be read by a later pass over those
+  forecasts until a newer claim is written; the near-start reader writes a
+  claim at each look, through Q36.1's reading, so a newer one normally stands
+  first. Changing what the writer writes is outside this step (FOLLOWUPS, for
+  question 36 (ii)).
+- **The reasons beside a moved pick** are the forecast's own ("the question
+  sits 4 points above what the model expects", about the question as asked);
+  the line's tooltip now names that question first ("The model was asked
+  about North Texas -6.5 and gives it 63%. Mostly it comes down to ..."),
+  found reading rec 111's render. The Why sentences themselves are not
+  re-worded for the venue's line.
+
+### THE RENDER *(the ONE verified copy served by the test server on a free local port with this tree's app and a dummy, non-secret token -- never the live app on 8848; Chromium at 1300px and 390px; `render_rows.py` -> `render/rows-fix.json`, `render/*-fix-*.png`, and the same from the `git archive` of 4422403 -> `render/*-head-*.png`; the copy took the test server's sign-in rows and nothing else)*
+
+- **Rec 111 (UNT at TLSA)**, the row and the open row's tile, at both widths:
+  "MODEL'S PICK · NORTH TEXAS +1.5 · 76% · 52c · 1.94x · $15 · one flat unit,
+  measured and NOT ahead ...", the tile "North Texas +1.5 · 76% · +22.5c ·
+  1.94x", the price tick at 51.5c on the bar; the chance's tooltip "The
+  statistical forecaster's chance for this contract, 76%, read from the
+  forecast it wrote before any price was seen, at the venue's line. The model
+  was asked about North Texas -6.5 and gives it 63%." On 4422403 the same row
+  read "NORTH TEXAS -6.5 · 76% · 52c · 1.94x".
+- **Rec 114 (PIT at CLE) and rec 115 (GB at TB)**: "PITTSBURGH -0.5 · 56% · no
+  single contract" and "GREEN BAY +7.5 · 60% · no single contract", no
+  outline, no size, the sentence in the method note's quiet italic under the
+  pick and on the tile ("... no single contract · not recorded" in the tile's
+  price and payout slots); the price slot's tooltip gives the longer reason.
+- **Rec 117 (ATL at NO)**: "ATLANTA +2.5 · 32% · 48c · 2.06x · $15" with the
+  green outline, the tile's edge "+15.0c on the other side" -- the size and
+  outline New Orleans -2.5's (question 37, above).
+- No page error, no sideways scroll at either width. (The first 390px captures
+  of the NFL rows caught a row under the sticky header and one mid-fade; the
+  capture was redone with the row centred and its fade finished -- the
+  picture's wait, not the page's.)
+
+### PROVED *(`scratchpad/picknum/A/`)*
+
+- **The measurement's own tool on this tree** (`m_fix.json`): 0 numbers under
+  another line's words on the 52 payloads (4422403: the figures above).
+- **The new check** (`check_payloads.py`): 289 faults on 4422403's payloads,
+  0 on this tree's (`c_head.json`, `c_fix.json`).
+- **The three plantings** (`run_plantings.py`): each ESCAPES on the `git
+  archive` of 4422403 with this tree's `plant.py` copied in -- the shipped
+  row "North Texas -6.5 · 76% · 0.515", the card "52c · pays 1.94x" under
+  "under 60.5 total points", the row "Pittsburgh -0.5 · 62% · 0.525", sized
+  and outlined, and no check (`escape_on_head.txt`) -- and is CAUGHT here
+  (`caught_on_fix.txt`).
+- **`tests/test_every_number_names_its_line.py`, 15**: all fail on the
+  archive of 4422403 (`tests_on_head.txt`), all pass here.
+- **`plant.py` whole**: 400/400 caught, 20:00:39-20:08:41Z (`plant_all.txt`).
+- **The full suite**: 2,292 passed, 4 skipped, none failed, exit 0 (a dummy
+  non-secret `GRIDIRON_ACCESS_TOKEN`, TMP and TEMP at their defaults,
+  20:10:21-20:35:28Z, `suite2.txt`); the only test that reached the network
+  is the suite's own marked one. (A first run, `suite1.txt`, failed three
+  tests because files were edited while it ran -- two board fixtures updated
+  mid-run and `inspect.getsource` reading `audit.py` after its lines moved;
+  each passed alone, and the clean run above is the record.)
+- **Gate step 2's rows**, dry-run on this tree with every record row on the
+  copy through a read-only handle, `GRIDIRON_VERIFYING` set and an empty
+  scratch file for the env file (not `tools/verify.py` whole; `step2_dry.py`
+  -> `step2_dry.txt`, 20:35:44-20:40:30Z): 109 of 109 pass, the new check
+  among them on every sport's slate for both forecasters; the two schema
+  rows not run (no schema changes here). A first run had named a raw subject
+  in the new opening-read refusal's words ("the side, in prose, anywhere");
+  the words no longer carry it.
+- **The copy**: made 18:52:24Z, read only except the test server's sign-in
+  rows during the render, deleted with its -wal and -shm at
+  2026-09-30T20:40:37Z. No copy of the record remains under
+  `scratchpad/picknum/A`.
+
+### THE PROVER *(alone in the worktree, 2026-09-30; ONE verified copy of the record through `rebuild.verified_backup`, started 20:49:25Z, finished 20:50:12Z: integrity ok, 64 tables, none mismatched; read through `db.read_only`, written only by the test server's sign-in rows during the render; step A as first built snapshotted to `built/` and 4422403 archived to `head/`; everything in `scratchpad/picknum/A/prover/`)*
+
+**How it was hunted.** Every slate that carried a claim or an opening read
+and every sport's current slate, both forecasters -- 52 payloads -- built by
+this tree on the copy in three readings (`dump.py`): as the record holds
+them; THE TIME MACHINE, every game read as still to start
+(`views.card_state` answering "upcoming" inside the dumping process;
+nothing written), so each priced row the record ever held is drawn as it
+was before its start, with its claim (the latest before the start), its
+opening read, its recommendation line and its combo legs; and every finished
+game read as being played, so each live pregame figure is drawn. And the
+early passes' pages, in the second reading. Two checks read every payload:
+the gate's own (`audit.number_line_faults`, `gatecheck.py`) and one written
+apart from it (`independent.py`), which reads the club and the signed
+number, or over or under and the number, from the drawn words alone, turns
+them to the home side's view, and holds each NUMBER to the contract its
+words name -- line, side and value: each priced row's chance and price
+against its claim, each Today card's model and venue chips, each
+recommendation line's two numbers, each combo leg's worth and cost, each
+opening read's price against the look's contract at the line it names, each
+live figure's line against the latest claim, and a finished card's figure
+and verdict against its claim's settled outcome.
+
+**What step A built holds.** In the time machine: 135 priced board blocks,
+47 Today cards that clear the bar, 47 recommendation lines, 32 combo legs,
+158 opening reads and 111 rows priced across two contracts drawn with no
+price -- none under another contract's words, by either check (on 4422403
+the independent check names 531 and the gate's 710).
+
+**FOUND AND FIXED**, each measured on step A as first built (`built/`;
+`checks_built.txt`, `moved.py`):
+- **A finished game's card is still priced** -- `recommend.for_predictions`
+  skips a game in play, not a finished one -- so its card in CLEARS
+  (payload; the board's finished row is the settled group's card, the
+  question's own) named the claim's contract and carried the claim's chance,
+  and said "the model had this at 67% and it happened" of the QUESTION:
+  "New York covers +6.5 · 30c · the model had this at 67% and it happened",
+  where 67% is New York +15.5's and New York did not cover +6.5 (DET 31-24).
+  12 cards (NFL week 3 and NCAAF), 3 with the other verdict (forecasts 2317,
+  2330, 2808). The figure is the chance the card shows now, and the verdict
+  its claim's, settled at the claim's own line and turned to the side the
+  words name (`views._claim_outcome_on_the_words`); a claim not settled
+  says so.
+- **The forecast's own sentences beside words moved to the claim's line.**
+  The Today card's numbers line ("The model says 63%. The market implies 36%
+  -- 27 points apart.") and why block ("Why North Texas", "The market has
+  North Texas at 36%") stood bare beside "North Texas covers +1.5" (payload;
+  14 questions, recs 111 and 117 among them); and a live row's reasons
+  tooltip, the forecast's, spoke of "the question" -- New York +15.5's "the
+  question sits 2 points above what the model expects" -- under "New York
+  +6.5 · pregame 30%" (drawn; 12 questions on the finished slates read as
+  live): the prefix naming the question was asked only of a priced chance.
+  Each names the question it is about now: "For North Texas -6.5, as the
+  model was asked: The model says 63%. ..." (`language.as_the_model_was_asked`),
+  "Why North Texas -6.5, as the model was asked"
+  (`language.why_heading_as_asked`), and on a live row "The model was asked
+  about New York +15.5 and gives it 67%. ..." first.
+- **A row priced across two contracts left its payout slot empty**, and a
+  tile draws an empty payout "not recorded" -- "56% · no single contract |
+  not recorded" on the tiles of recs 114 and 115, at both widths (step A's
+  own render read it and passed it) -- false of a price the venue listed and
+  the record kept. It says "not shown" (`language.across_two_contracts_pays_words`),
+  the sentence beneath it and its tooltip why (42 questions' rows in the time
+  machine, recs 114 and 115 on the current slate).
+- **The check refused a true drawing.** It demanded the sentence of every
+  live tile beside a claim priced across two contracts, where the page draws
+  the sentence with the Today card's figure; a live tile with no Today card
+  -- the other forecaster's question on an open row, or one off the
+  shortlist -- draws the question's own pregame figure under its own words,
+  which is what the default asks. 196 faults on the record's finished slates
+  read as live (138 on the reasoning pass's pages, 58 on the model's); on the
+  current slate the gate's step 2 would have failed during PIT at CLE (2
+  October 00:15Z) and during IND at WAS, ARI at NYG, GB at TB, KC at LV and
+  DET at CAR. It asks the sentence where the Today card carries the figure,
+  as it already did of an upcoming row.
+- **The check read an opening read against the first read of a contract in
+  an unordered look.** A look holds some tickers written twice at two prices
+  (DET7 at 54.5c and 53.5c in one NFL week-1 look); the page reads the first
+  it meets. On the record the two orders agreed; the check now holds the
+  read to any read of the question's contract in the look.
+- The check now also names a finished card's figure or verdict, a numbers
+  line, a why heading or a row's reasons tooltip that does not name the
+  question beside words moved to the claim's line, and an across row's price
+  or payout slot that does not say so; `NUMBER_LINE_FIXTURES_AS_RELEASED` has
+  fifteen shapes, and the good fixture a finished card and a live tile off
+  the shortlist beside an across claim. On the first-built payloads it names
+  60 (as held), 180 (the time machine) and 62 (as live); here none.
+
+**WHAT MOVED** (step A as first built -> this tree, the same readings): as
+held, 48 of 230,192 figures -- 16 numbers lines and 16 why headings on
+Today cards, 12 finished cards' settled words and 4 across rows' payout
+slots (recs 114 and 115, row and tile); in the time machine 77 of 184,062
+(45 payout slots, 16 and 16); as live 49 of 173,202 (12 live rows' reasons,
+the Today cards' lines and headings, 4 payout slots). Nothing else on the
+board moved.
+
+**NOT HERE, AND NAMED** (for the operator; no question -- the words are
+true of their numbers):
+- **A pick drawn at the venue's contract settles, on the board, at its
+  question's.** Rec 111 reads "North Texas +1.5 · 76% · 52c · $15" before
+  its start; once finished its row is the settled group's card, the forecast
+  graded on its own question -- "North Texas -6.5 · the model had this at
+  63% and it ..." -- and a taken pick's My day chip moves from the one to
+  the other with it; the claim's own verdict is on the Today card in CLEARS,
+  payload only. Which contract a finished pick is read as is a companion to
+  question 37; nothing on the record is taken.
+- **Props.** The checks read spreads and totals; no prop claim is on the
+  record and no venue prop series is read. `at_the_contract` would word a
+  prop at its claim's rung; a check over props would need a half-unit
+  prop's words ("no home run") read.
+- **Claims written in one second.** 11 questions hold two or three claims
+  stamped in one second at different lines (a near-start pass writing
+  several looks at once); `for_predictions`, the live figure and the check
+  take the higher number, and `views._at_the_line` keeps the last row of an
+  unordered read -- on the record, the same one.
+
+**PROVED** *(`scratchpad/picknum/A/prover/`)*:
+- **The four plantings** (`run_plantings.py`): each ESCAPES on the `git
+  archive` of 4422403 with this `plant.py` copied in -- no check
+  (`plant4_head.txt`); on step A as first built the builder's first two are
+  caught, and the across planting (its new payout-slot form) and the prover's
+  ESCAPE -- the shipped finished card "the model had this at 63% and it did
+  not" under "North Texas covers +1.5", the three forms passed, the live
+  tile refused (`plant4_built.txt`); all four are CAUGHT here
+  (`plant4_fix.txt`).
+- **`tests/test_every_number_names_its_line.py`, 21**: the prover's six fail
+  on step A as first built (`tests_on_built.txt`); all pass here.
+- **`plant.py` whole**: 401/401 caught, exit 0, 21:23:45-21:31:56Z
+  (`plant_all.txt`).
+- **Gate step 2's rows**, dry-run on this tree (`step2_dry.py`, not
+  `tools/verify.py` whole): every record row on the copy through a read-only
+  handle, `GRIDIRON_VERIFYING` set, an empty scratch file for the env file:
+  109 of 111 pass, none fails, the two schema rows not run (no schema change
+  here), 21:24:34-21:29:27Z (`step2_dry.txt`). `audit.prose_reaching_the_raw_side()`
+  is empty.
+- **The full suite**: 2,298 passed, 4 skipped, none failed, exit 0, with a
+  dummy non-secret `GRIDIRON_ACCESS_TOKEN` and TMP and TEMP at their
+  defaults, 21:32:49-21:58:02Z, no file edited while it ran (`suite.txt`);
+  the only test that reached the network is the suite's own marked one.
+- **The render** (`render.py`: the copy served by the test server on a free
+  local port with this tree's app, never the live app on 8848, a dummy
+  non-secret token; Chromium at 1300px and 390px; `render/`, read): rec 111
+  "NORTH TEXAS +1.5 · 76% · 52c · 1.94x · $15", its line's and chance's
+  tooltips naming North Texas -6.5 at 63%; recs 114 and 115 "PITTSBURGH -0.5
+  · 56% · no single contract · not shown" and "GREEN BAY +7.5 · 60% · ...",
+  the sentence beneath, the tile's payout chip "not shown" where it read "not
+  recorded"; rec 117 "ATLANTA +2.5 · 32% · 48c · 2.06x · $15" with the green
+  outline and the tile's edge "+15.0c on the other side" (question 37); and,
+  the time machine in the server process only, NYJ at DET under way -- its
+  tile "New York +6.5 · pregame 30%", its reasons tooltip opening "The model
+  was asked about New York +15.5 and gives it 67%." (the row's "no score has
+  been read yet" is the reading's, the game's record holding a final score and
+  no live one). No page error and no sideways scroll at either width.
+- **The copy**: made 20:50:12Z, read only except the test server's sign-in
+  rows during the render, deleted with its -wal and -shm at
+  2026-09-30T21:58:18Z. No copy of the record remains under
+  `scratchpad/picknum/A`. Nothing was written to the live record; no network
+  but the suite's own marked test; the live app on 8848 and `.env` untouched.

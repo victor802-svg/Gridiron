@@ -730,6 +730,15 @@ def test_every_new_guard_is_in_the_planted_harness():
         # read at the line it sells, and drift never matches across signs.
         "plant_an_away_contract_read_at_minus_s",
         "plant_a_ladder_matched_across_the_two_signs_in_drift",
+        # PICK-NUMBER STEP A (2026-09-30): every number on a pick names the
+        # line it belongs to, the opening read its rung, and a claim priced
+        # across two contracts draws none of its numbers.
+        "plant_a_row_pairing_the_questions_line_with_the_venue_lines_numbers",
+        "plant_an_opening_read_at_another_rung_under_the_questions_words",
+        "plant_a_row_priced_across_two_contracts_drawn_with_its_numbers",
+        # and its prover's (2026-09-30): the question's own figure, verdict
+        # and sentences beside words moved to the claim's contract
+        "plant_the_questions_own_numbers_under_the_contracts_words",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

@@ -408,13 +408,16 @@ def test_an_edge_on_the_questions_own_side_says_nothing_more(tmp_path, covered):
     assert audit.pick_side_faults(payload) == []
 
 
-def test_a_spread_tile_keeps_its_bare_figure_for_step_a(tmp_path, covered):
+def test_a_spread_tile_names_the_other_side_from_step_a(tmp_path, covered):
     """A spread claim is read at the venue's line, often not the question's
-    (pick-number finding 2), so "the other side" of the question's words
-    could name another contract again; how a spread row draws a priced
-    number waits for step A (operator question 36). The Today card's label
-    (payload) says whose the figure is; the tile keeps the bare figure, and
-    the check accepts that and nothing else."""
+    (pick-number finding 2), so while the words named the question's line
+    "the other side" of them could name another contract again, and the
+    spread tile kept its bare figure (step C). From pick-number step A
+    (2026-09-30) the words name the claim's contract, so the other side of
+    them IS the other side of the figure's own contract: the tile says so as
+    a moneyline or total tile does, and the check holds it to that. (Held
+    here at the question's own line, where both readings are one contract;
+    `test_every_number_names_its_line.py` holds a claim at another.)"""
     from tests import test_recommend as rec
 
     conn = rec._world(tmp_path, kickoff="2099-01-01T00:00:00Z")
@@ -449,8 +452,15 @@ def test_a_spread_tile_keeps_its_bare_figure_for_step_a(tmp_path, covered):
     assert card["edge_label"] == "Edge after fees, on the other side"
     tile = next(q for g in payload["board"]["games"] for q in g["questions"]
                 if q["prediction_id"] == pid)
-    assert tile["edge_words"] == "-1.0¢"
+    assert tile["edge_words"] == "-1.0¢ on the other side"
     assert audit.pick_side_faults(payload) == []
+    # AND THE BARE FIGURE, AS STEP C LEFT A SPREAD TILE, IS NAMED NOW
+    bare = json.loads(json.dumps(payload, default=str))
+    for g in bare["board"]["games"]:
+        for q in g["questions"]:
+            if q["prediction_id"] == pid:
+                q["edge_words"] = "-1.0¢"
+    assert any("the OTHER side's" in f for f in audit.pick_side_faults(bare))
 
 
 def test_the_better_side_is_named_with_or_without_a_side_chosen():

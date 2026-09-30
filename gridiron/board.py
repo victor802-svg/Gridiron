@@ -165,6 +165,32 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
     if corrected:
         fair = entry["fair_value"]
         shown = 1.0 - fair if flip else fair
+    # THE WORDS OF THE CONTRACT THE NUMBERS BELONG TO (pick-number step A,
+    # 2026-09-30; findings 2 and 5). The block named its question through
+    # `language.pick_line_words(card)` -- the QUESTION's line -- beside the
+    # Today card's numbers, which are its claim's, read at the venue's line:
+    # rec 111 drew "North Texas -6.5 · 76% · 52c", every number North Texas
+    # +1.5's. The Today card names the contract its numbers belong to through
+    # the one door (`views._the_contract`), and the block draws those words;
+    # where there is no Today card the numbers are the question's own, and so
+    # are the words. A card carrying numbers and no words for them is
+    # refused by name, never drawn under the question's line.
+    carries = entry is not None and (
+        corrected or entry.get("price") is not None
+        or (state == "live" and entry.get("pregame_words")))
+    if carries and "line_words" not in entry:
+        raise language.LineNotNamed(
+            f"THE BOARD REFUSES A NUMBER WHOSE LINE IT HAS NOT NAMED: question "
+            f"{card.get('prediction_id')} ({card.get('phrase')!r}) is drawn with "
+            f"its Today card's numbers, and the card names no contract for them "
+            f"(`views._the_contract`), so they are not drawn under the "
+            f"question's words (pick-number step A, 2026-09-30)")
+    if entry is not None and "line_words" in entry:
+        line_words = entry["line_words"]
+        question_words = entry.get("question") or card.get("phrase") or ""
+    else:
+        line_words = language.pick_line_words(card)
+        question_words = card.get("phrase") or ""
     market = card.get("market") or card.get("market_type")
     signal = _signal(card, entry, state)
     price = entry.get("price") if entry else None
@@ -198,8 +224,10 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         # (pick-number finding 6, 2026-09-30): My day's chip wears it. None
         # for a question about no club.
         "named_club": language.club_named(card),
-        "line_words": language.pick_line_words(card),
-        "question": card.get("phrase") or "",
+        # THE CONTRACT'S WORDS, never the question's beside its numbers
+        # (pick-number step A, 2026-09-30; above).
+        "line_words": line_words,
+        "question": question_words,
         "prob": shown,
         "prob_words": language.price_chip_words(
             None if shown is None else shown * 100).replace("¢", "%"),
@@ -216,7 +244,12 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         "price": price if state == "upcoming" else None,
         "pays": pays if state == "upcoming" else None,
         "tips": {
-            "prob": language.prob_tip(shown, label),
+            # WHAT THE MODEL WAS ASKED, where the words name the venue's
+            # contract at another line (step A): the chance is that
+            # contract's, and the tooltip says so and names the question.
+            "prob": language.prob_tip(
+                shown, label,
+                asked_words=(entry or {}).get("asked_words") if corrected else None),
             "badge": language.badge_tip(n_settled, config.MIN_SAMPLE_FOR_EDGE_CLAIM,
                                         language.market_label(card)),
         },
@@ -230,6 +263,15 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
     # tooltip is a caveat most readers never reach.
     if card.get("method_note"):
         out["method_note"] = card["method_note"]
+    # A CLAIM PRICED ACROSS TWO CONTRACTS (pick-number step A, 2026-09-30;
+    # operator question 36 (ii) and (iii) not ruled, the conservative
+    # default): the row is drawn without the price, the payout, the edge and
+    # the size, with one plain sentence saying why -- on the face, as the
+    # method note is, because a missing price explained only in a tooltip
+    # reads as "not listed", which would be false.
+    across = (entry or {}).get("across_words")
+    if across:
+        out["across_words"] = across
     # WHAT THE REASONING PASS WAS SENT (the rulings of 2026-09-24 and
     # 2026-09-25, re-homed by the board merge, 2026-09-29). The old card
     # carried the prompt disclosure inside its Why panel, and the Why panel
@@ -251,6 +293,22 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         out["tips"]["line"] = " ".join(sentences)
     elif card.get("reasoning"):
         out["tips"]["line"] = card["reasoning"]
+    # THE REASONS ARE THE QUESTION'S, AND SAY SO (pick-number step A,
+    # 2026-09-30). Where the words name the venue's contract at another line,
+    # the forecast's reasons beside them ("the question sits 4 points above
+    # what the model expects") are about the question as asked; the tooltip
+    # names that question first, found reading rec 111's render.
+    # ON A LIVE ROW TOO (step A's prover, 2026-09-30): its words name the
+    # latest claim's contract ("New York +6.5 · pregame 30%") and its reasons
+    # are the question's ("the question sits 2 points above what the model
+    # expects", of New York +15.5); the prefix was asked only of a priced
+    # chance, so a live row's tooltip spoke of "the question" under another
+    # contract's words -- and, where the forecast gives one reason, carried
+    # the market's number for it too ("The market has New York at 76%").
+    asked = (entry or {}).get("asked_words")
+    if asked:
+        out["tips"]["line"] = " ".join(
+            x for x in (asked, out["tips"].get("line")) if x)
     if state == "upcoming":
         # THE PRICE AND WHAT IT PAYS, beneath the pick, in the words the
         # Today card already used. A live row carries neither: LAW 5's
@@ -262,7 +320,23 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         out["pays_words"] = (language.payout_chip_words(pays, market=market)
                              if price is not None else "")
         out["tips"]["price"] = language.price_tip(price, market, hours)
-        out["tips"]["pays"] = language.pays_tip(pays)
+        # AN OPENING READ AT ANOTHER LINE NAMES ITS CONTRACT (pick-number
+        # step A, 2026-09-30; finding 5): the tooltip said "what a dollar
+        # returns if this happens" under the question's words, of a rung the
+        # question is not.
+        out["tips"]["pays"] = language.pays_tip(
+            pays, elsewhere=(entry or {}).get("open_read_line_words")
+            if price is None else None)
+        if across:
+            out["price_words"] = language.across_two_contracts_price_words()
+            # THE PAYOUT SLOT SAYS SO TOO (step A's prover, 2026-09-30): it was
+            # left empty, and a tile draws an empty payout as "not recorded"
+            # ("56% · no single contract | not recorded", rec 114's tile) --
+            # false, since the venue's price was recorded. It says the payout
+            # is not shown, the sentence beneath it and its tooltip why.
+            out["pays_words"] = language.across_two_contracts_pays_words()
+            out["tips"]["price"] = language.across_two_contracts_tip()
+            out["tips"]["pays"] = language.across_two_contracts_tip()
         if entry and entry.get("size_words"):
             out["size_words"] = entry["size_words"]
         if entry and entry.get("edge_line_words"):
@@ -273,16 +347,17 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
             # under the question's words, with no label, so "San Antonio to
             # win · 54% · -1.5¢" drew the other side's -1.5c (San Antonio's own
             # is -2.5c). The tile's words carry the card's answer now.
-            # NOT ON A SPREAD ROW: a spread claim is read at the venue's line,
-            # which is often not the question's (pick-number finding 2), so
-            # "the other side" of the question's words would name another
-            # contract again; how a spread row draws a priced number waits
-            # for step A (operator question 36), and a recommendation's edge
-            # on the other side of its words for question 37.
+            # A SPREAD ROW TOO, FROM PICK-NUMBER STEP A (2026-09-30). It kept
+            # its bare figure while its words named the question's line and
+            # its numbers the venue's (finding 2), where "the other side" of
+            # the words would have named another contract again. Its words
+            # name the claim's contract now, so the other side of them is the
+            # other side of the figure's own contract. (A recommendation's
+            # size and outline beside the words of the side it does not buy
+            # are operator question 37's, not ruled.)
             out["edge_words"] = language.board_edge_words(
                 entry["edge_line_words"],
-                other_side=bool(entry.get("edge_on_the_other_side"))
-                and card.get("market_type") != "spread")
+                other_side=bool(entry.get("edge_on_the_other_side")))
     elif state == "live":
         # THE ONE FIGURE A LIVE ROW MAY CARRY, with its word (ruled 2026-09-09).
         out["pregame_words"] = (entry or {}).get("pregame_words") or \

@@ -878,6 +878,19 @@ def step_2_guards() -> bool:
         ("every proposed combo is its legs' picked sides, each leg named on its side",
          lambda: [audit.check_every_combo_is_its_picked_sides(_slate_payload(sport))
                   for sport in _config().SPORTS] and None),
+        # PICK-NUMBER STEP A (2026-09-30; the queue rule as amended that
+        # day): every number on a pick is drawn under the words of the
+        # contract it belongs to -- a claim read at the venue's line names
+        # that line, an opening read its own rung, and a claim priced across
+        # two contracts (operator question 36, the conservative default) is
+        # drawn with none of its numbers and says why. The line is read off
+        # the record's copy, never off the payload; every sport's slate,
+        # both forecasters.
+        ("every number on a pick names the line it belongs to (step A)",
+         lambda: [audit.check_every_number_names_its_line(
+                      _record_conn(), _slate_payload(sport, forecaster))
+                  for sport in _config().SPORTS
+                  for forecaster in ("statistical", "llm")] and None),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

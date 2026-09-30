@@ -436,8 +436,12 @@ def test_a_priced_question_carries_its_price_in_words_and_as_a_number():
     # 2026-09-30): an over names the claim's own proposition. A priced entry
     # with no placed side is refused by the block, by name
     # (test_the_side_is_placed.py).
+    # THE CONTRACT'S WORDS TRAVEL WITH ITS NUMBERS (pick-number step A,
+    # 2026-09-30): a Today card carries the words of the contract its numbers
+    # belong to, and the block draws them -- here the question's own line.
     entry = {"price": 0.54, "payout": 1.85, "group": "clears", "edge_cents": 8.0,
-             "edge_line_words": "+8.0¢", "question_takes_the_proposition": True}
+             "edge_line_words": "+8.0¢", "question_takes_the_proposition": True,
+             "line_words": "Over 41.5 total", "question": "over 41.5"}
     block = board._question_block(card, entry, state="upcoming", taken=False,
                                   forecaster="statistical", n_settled=12, hours=3.0,
                                   unit_dollars=None)
@@ -891,8 +895,10 @@ def test_a_priced_chance_is_the_corrected_one_and_a_live_row_carries_none():
                                       forecaster="statistical", n_settled=12,
                                       hours=3.0, unit_dollars=None)
 
+    # the Today card's words for its numbers travel with them (step A)
     entry = {"price": 0.54, "payout": 1.85, "group": "clears", "edge_cents": 8.0,
-             "fair_value": 0.58, "question_takes_the_proposition": True}
+             "fair_value": 0.58, "question_takes_the_proposition": True,
+             "line_words": "Over 41.5 total", "question": "over 41.5"}
     assert block(entry)["prob"] == 0.58
     assert block(dict(entry, question_takes_the_proposition=False))["prob"] == \
         pytest.approx(0.42)

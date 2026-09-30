@@ -521,6 +521,134 @@ def phrase_of_the_other_side(item: dict) -> str:
     return phrase(dict(item, model_side=other))
 
 
+class LineNotNamed(ValueError):
+    """A number on a pick whose line its words cannot name -- refused, never
+    drawn under the words of another line (pick-number step A, 2026-09-30)."""
+
+
+def at_the_contract(item: dict, line, *, home: str | None) -> dict:
+    """The question on `item` asked again at `line` -- the line of the venue
+    contract its numbers belong to, from the claim's fixed proposition's
+    view (the home side's line on a spread, the over's on a total) -- on the
+    same side, so every composer here (`phrase`, `tile_line`,
+    `phrase_of_the_other_side`, `club_named`) words that contract.
+
+    PICK-NUMBER STEP A (2026-09-30; findings 2 and 5). A claim is read at the
+    venue's line, which is often not the question's: rec 111 asked "North
+    Texas -6.5" and was priced off "Tulsa by more than 1.5", so its 76% and
+    51.5c are North Texas +1.5's -- and the row read "North Texas -6.5 ·
+    76% · 51.5c". A number is shown under the words of the exact contract it
+    belongs to, its line and its side (the reading recorded in
+    docs/REPAIR_STATE.md): this moves the words to the numbers, never the
+    numbers to the words. `views._the_contract` is the one door that decides
+    which line; this only says it.
+
+    A spread's line is the SUBJECT's: the home side's line where the subject
+    is the home club, its negation where the subject is the visitor (the
+    visitor covering -L is the home side not covering L). A subject that is
+    neither club cannot be placed at the line and is refused by name
+    (`LineNotNamed`). A market with no line -- a moneyline, a fight's
+    distance -- or no line to move to is said as asked."""
+    market_type = item.get("market_type")
+    if line is None or market_type not in ("spread", "total", "prop"):
+        return item
+    if market_type == "spread":
+        if home and item.get("subject") == home:
+            own = float(line)
+        elif home and item.get("opponent") == home:
+            own = -float(line)
+        else:
+            raise LineNotNamed(
+                f"THE PAGE REFUSES A NUMBER WHOSE LINE IT CANNOT NAME: question "
+                f"{item.get('prediction_id')} ({item.get('phrase') or item.get('subject')!r}) "
+                f"carries numbers read at the home side's {float(line):+g}, and "
+                f"its subject {item.get('subject')!r} is not placed against the "
+                f"home club {home!r}, so no words can name that line "
+                f"(pick-number step A, 2026-09-30)")
+    else:
+        own = float(line)
+    asked = item.get("line_asked")
+    if asked is not None and abs(float(asked) - own) < 1e-9:
+        return item
+    return dict(item, line_asked=own)
+
+
+#: WHY A ROW PRICED ACROSS TWO CONTRACTS SHOWS NO PRICE (pick-number step A,
+#: 2026-09-30; operator question 36 (ii) and (iii) not ruled, the
+#: conservative default in docs/REPAIR_STATE.md): its stored model number is
+#: about one venue contract and its price about another, so no price, payout,
+#: edge or size is drawn for it -- only the model's own number for the
+#: question as asked, and this sentence.
+ACROSS_TWO_CONTRACTS_WORDS = ("Priced across two contracts before 30 September; "
+                              "no single contract carries these numbers.")
+
+
+def across_two_contracts_words() -> str:
+    """The one plain sentence a row priced across two contracts carries."""
+    return ACROSS_TWO_CONTRACTS_WORDS
+
+
+def across_two_contracts_price_words() -> str:
+    """What such a row says where its price would be: short, and true."""
+    return "no single contract"
+
+
+def across_two_contracts_pays_words() -> str:
+    """What such a row's payout chip says: that no payout is shown -- never
+    left empty, which a tile draws as "not recorded", false of a price the
+    venue listed and the record kept (step A's prover, 2026-09-30). The
+    sentence beneath it and the chip's tooltip say why."""
+    return "not shown"
+
+
+def across_two_contracts_tip() -> str:
+    """The longer reason, for the tooltip on that short slot."""
+    return ("Before 30 September the venue's contracts naming the visiting side "
+            "were read at the wrong sign, so this row's stored chance is about "
+            "one contract and its price about another. Neither is shown and "
+            "nothing is sized on them; the chance here is the model's own for "
+            "the question as asked.")
+
+
+def asked_elsewhere_words(question_words: str, probability: float | None) -> str:
+    """What the model was asked, beside a pick named at the venue's line.
+
+    "The model was asked about North Texas -6.5 and gives it 63%." The pick
+    beside it names the venue's contract at another line -- the one its
+    numbers, its price and its size belong to (pick-number step A,
+    2026-09-30) -- and this says, in plain words, what the forecast itself
+    was about, so the two are never read as one line."""
+    if probability is None:
+        return f"The model was asked about {question_words}."
+    return (f"The model was asked about {question_words} and gives it "
+            f"{round(float(probability) * 100)}%.")
+
+
+def as_the_model_was_asked(question_words: str, sentence: str) -> str:
+    """One of the forecast's own sentences, said beside a pick named at the
+    venue's line: it names the question it is about first.
+
+    "For North Texas -6.5, as the model was asked: The model says 63%. The
+    market implies 36% -- 27 points apart." FOUND BY STEP A'S PROVER
+    (2026-09-30): where a card's words moved to the contract its numbers
+    belong to (`views._the_contract`), the card still carried the forecast's
+    own numbers line bare -- "The model says 63%" beside "North Texas covers
+    +1.5", whose chance is 76% -- North Texas -6.5's numbers under North Texas
+    +1.5's words. The sentence is the forecast's, unchanged; this says which
+    question it is about."""
+    return f"For {question_words}, as the model was asked: {sentence}"
+
+
+def why_heading_as_asked(question_words: str) -> str:
+    """The why block's heading beside a pick named at the venue's line: the
+    reasons, and the market's number among them ("The market has North Texas
+    at 36%"), are the forecast's question's, so the heading names it at its
+    own line -- "Why North Texas -6.5, as the model was asked" -- where it
+    said "Why North Texas" over a card reading "North Texas covers +1.5"
+    (step A's prover, 2026-09-30)."""
+    return f"Why {question_words}, as the model was asked"
+
+
 class NoWordsForThisMarket(ValueError):
     """A market reached the prose layer without declaring how to say it."""
 
@@ -3266,6 +3394,14 @@ def at_the_line_line(market: str, line: float | None, model_prob: float,
     """
     what = at_the_line_side_words(market, line, home)
     forecast = "total" if market == "total" else "margin"
+    # A CLAIM PRICED ACROSS TWO CONTRACTS (pick-number step A, 2026-09-30):
+    # its price is about another line than `line`, so the sentence states the
+    # model's number at its own line and no price beside it, and says why.
+    if venue_implied is None:
+        return (f"from the model's {forecast} forecast, {what} is a "
+                f"{round(model_prob * 100)}% chance; "
+                f"{ACROSS_TWO_CONTRACTS_WORDS[0].lower()}"
+                f"{ACROSS_TWO_CONTRACTS_WORDS[1:-1]}; {n} settled so far")
     return (f"from the model's {forecast} forecast, {what} is a "
             f"{round(model_prob * 100)}% chance; the venue's price implies "
             f"{round(venue_implied * 100)}%; {n} settled so far")
@@ -3852,7 +3988,8 @@ def drift_line(sport: str, market: str, n: int, moved_toward: int | None,
             f"over {n} {noun}.")
 
 
-def nothing_priced_line(considered: int, uncovered: int, no_edge: int) -> str:
+def nothing_priced_line(considered: int, uncovered: int, no_edge: int,
+                        across: int = 0) -> str:
     """Why the list is empty, which is not the same question every day.
 
     THREE DIFFERENT REASONS AND THEY MATTER DIFFERENTLY. A slate where nothing
@@ -3860,20 +3997,35 @@ def nothing_priced_line(considered: int, uncovered: int, no_edge: int) -> str:
     prices existed and none cleared the fee is the engine working; and a slate
     with no prices at all is a data gap. A single sentence for all three would
     hide the one that needs fixing.
+
+    AND A FOURTH (pick-number step A, 2026-09-30): a question whose stored
+    claim was priced across two venue contracts before 30 September is not
+    priced on this page at all, and is counted by that reason rather than
+    as one that "carried a venue price and none cleared its fee".
     """
     if not considered:
         return ("Nothing priced wrong enough today. No question on this slate "
                 "reached the point of being priced at all.")
+    two = (f"{across} {'was' if across == 1 else 'were'} priced across two "
+           f"contracts before 30 September; no single contract carries "
+           f"{'its' if across == 1 else 'their'} numbers.") if across else ""
+    if across and not (uncovered or no_edge):
+        return f"Nothing priced wrong enough today. {two}"
     if uncovered and not no_edge:
-        return (f"Nothing priced wrong enough today. All {uncovered} of the "
+        head = (f"Nothing priced wrong enough today. All {uncovered} of the "
+                f"other questions leading this slate were in markets this engine "
+                f"does not cover." if across else
+                f"Nothing priced wrong enough today. All {uncovered} of the "
                 f"questions leading this slate were in markets this engine "
                 f"does not cover.")
+        return f"{head} {two}".strip()
     parts = []
     if no_edge:
         parts.append(f"{no_edge} carried a venue price and none cleared its fee")
     if uncovered:
         parts.append(f"{uncovered} were in markets the engine does not cover")
-    return "Nothing priced wrong enough today. " + ", and ".join(parts) + "."
+    return (f"Nothing priced wrong enough today. " + ", and ".join(parts)
+            + f". {two}").strip()
 
 
 def priced_coverage_line(sport_label: str, covered: list, entries: int) -> str:
@@ -4423,6 +4575,26 @@ def opening_read_words() -> dict:
     return {"before": "read", "after": "re-read near kickoff"}
 
 
+def opening_read_elsewhere_words(contract_words: str, price: float,
+                                 payout: float | None) -> str:
+    """An opening read taken at ANOTHER line than the question's, naming the
+    contract it is -- "North Texas +1.5 opened at 52¢ · pays 1.94x" -- where
+    the venue's opening ladder lists no priced contract at the question's own
+    line (pick-number step A, 2026-09-30; finding 5). The price was drawn
+    bare under the question's words until then, whichever rung it was."""
+    tail = f" · pays {payout:.2f}x" if payout is not None else ""
+    return f"{contract_words} opened at {round(price * 100)}¢{tail}"
+
+
+def opening_read_elsewhere_payout_words(contract_words: str,
+                                        payout: float | None) -> str:
+    """The payout chip of an opening read at another line: what it pays, and
+    on which contract, since the chip alone would sit under the question."""
+    if payout is None:
+        return no_price_words()
+    return f"{payout:.2f}x on {contract_words}"
+
+
 def price_chip_words(cents: float | None) -> str:
     """The model's fair value, as a price.
 
@@ -4532,12 +4704,19 @@ def taken_today_heading(n: int) -> str:
     return f"Taken today · {counted(n, 'pick')}"
 
 
-def taken_entry_words(question: str, edge_cents: float | None) -> str:
+def taken_entry_words(question: str, edge_cents: float | None, *,
+                      across: bool = False) -> str:
     """One line in the running list: what it was, and what it was worth then.
 
     THE EDGE IS FROZEN AT THE TAP. A number that moved afterwards would make
     the list a scoreboard, and this is a record of what was chosen.
+
+    `question` names the contract the edge belongs to (pick-number step A,
+    2026-09-30), and an edge worked out across two contracts is not stated
+    (`across`): no single contract carries it.
     """
+    if across:
+        return f"{question} · {across_two_contracts_price_words()} carries its edge"
     if edge_cents is None:
         return f"{question} · no price recorded at the time"
     return f"{question} · {edge_cents:+.1f}¢ when marked"
@@ -5528,10 +5707,20 @@ def signal_tip(signal: str) -> str | None:
     }.get(signal)
 
 
-def prob_tip(shown: float | None, forecaster_label: str) -> str:
-    """The model's chance, and where it came from."""
+def prob_tip(shown: float | None, forecaster_label: str, *,
+             asked_words: str | None = None) -> str:
+    """The model's chance, and where it came from.
+
+    `asked_words` (pick-number step A, 2026-09-30): where the pick names the
+    venue's contract at another line than the model was asked about, the
+    chance is the model's own distribution read at that contract's line, and
+    the tooltip says what the model was asked (`asked_elsewhere_words`)."""
     if shown is None:
         return "No probability on this row."
+    if asked_words:
+        return (f"The {forecaster_label} forecaster's chance for this contract, "
+                f"{round(shown * 100)}%, read from the forecast it wrote before "
+                f"any price was seen, at the venue's line. {asked_words}")
     return (f"The {forecaster_label} forecaster's chance, {round(shown * 100)}%, "
             f"written before any price was seen and corrected only where the "
             f"record has earned a correction.")
@@ -5549,9 +5738,15 @@ def price_tip(price: float | None, market: str | None, hours: float) -> str:
             f"The fee is charged on top and is largest near a coin flip.")
 
 
-def pays_tip(multiple: float | None) -> str:
+def pays_tip(multiple: float | None, *, elsewhere: str | None = None) -> str:
+    """`elsewhere` (pick-number step A, 2026-09-30): an opening read taken at
+    another line than the question's names the contract it pays on."""
     if multiple is None:
         return "Nothing to pay out: there is no venue price on this contract."
+    if elsewhere:
+        return (f"The venue's opening read lists no contract at this line. At "
+                f"{elsewhere} a dollar returns {multiple:.2f} times if it "
+                f"happens, before the fee.")
     return (f"What a dollar returns if this happens, {multiple:.2f} times, "
             f"before the fee.")
 
